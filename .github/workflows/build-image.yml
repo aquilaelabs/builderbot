@@ -41,7 +41,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            # Explicitly keyed to main rather than {{is_default_branch}}: the
+            # repo's default branch is a settings value that can differ from
+            # the trunk this workflow builds, and silently losing the :latest
+            # tag breaks every consumer pulling it.
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=ref,event=branch
             type=ref,event=pr
             type=sha,format=short
