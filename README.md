@@ -58,8 +58,9 @@ decisions you need to make.
 | Credential | Lives where | Used for |
 |---|---|---|
 | **GHCR pull token** — classic PAT, `read:packages` scope only | On the Unraid **host** (`docker login`) | Lets the server pull the private image. Fine-grained PATs don't work for GHCR pulls |
-| **Runner PAT** — fine-grained PAT, *Administration: R/W* (+ *Contents: R/W* optionally) on the target repos | In the **secrets folder** (recommended) or the `GITHUB_PAT` variable | Mints runner registration tokens. Only needed if `ENABLE_RUNNER=true` |
-| **Git SSH key(s)** | `secrets/ssh/` (shielded) or `home/.ssh/` (simple) | `git pull`/`push` in your projects. Deploy keys (one per repo, write-enabled) are the tightest option |
+| **Runner PAT** — fine-grained, owned by the org. Repo runner: *Administration R/W*. Org runner: *Self-hosted runners R/W*. Nothing else | In the **secrets folder** (recommended) or the `GITHUB_PAT` variable | Mints runner registration tokens — that is its only job. Skip if `ENABLE_RUNNER=false` |
+| **Git SSH key(s)** | `secrets/ssh/` (shielded) or `home/.ssh/` (simple) | `git clone/pull/push` in your projects. Shielded keys are usable but unreadable |
+| **`GIT_PAT`** — fine-grained, *Contents R/W* (+ *Pull requests R/W*) | `GIT_PAT` variable — session-readable by design | Only for **GitHub API** calls from inside (`gh pr create`, `gh release create`). Not needed if ssh covers your git usage |
 
 ### 1. Authorize the server to pull the image (one-time)
 

@@ -19,16 +19,31 @@ Either way, start with the two shared steps below.
 The container needs a token to register itself as an Actions runner and to
 work with your private repos.
 
-**Fine-grained token** (preferred):
+**Fine-grained token** (preferred). Keep this one minimal — its *only* job is
+minting runner registration tokens through the root helper:
 
 1. GitHub → *Settings* → *Developer settings* → *Personal access tokens* →
    *Fine-grained tokens* → **Generate new token**.
-2. Resource owner: **Stencil-Projects**.
-3. Repository access: the repo(s) you want the runner attached to.
-4. Repository permissions:
-   * **Administration**: *Read and write* — mints runner registration tokens.
-   * **Contents**: *Read and write* — so `gh`/`git` can push from inside.
-   * **Pull requests**: *Read and write* — optional, lets Claude open PRs.
+2. Resource owner: **Stencil-Projects** (the org, not your personal account —
+   a personally-owned token cannot administer org repos).
+3. Repository access: the repo(s) the runner serves.
+4. Permissions — exactly one, depending on the runner scope you want:
+
+   | `GITHUB_URL` | Permission |
+   |---|---|
+   | `https://github.com/OWNER/REPO` | Repository permissions → **Administration**: Read and write |
+   | `https://github.com/ORG` | Organization permissions → **Self-hosted runners**: Read and write |
+
+   *Metadata: Read-only* is added automatically and cannot be removed.
+
+Do **not** add Contents or Pull requests here. Nothing in the shielded path
+uses them, and workflow jobs check code out with the per-run `GITHUB_TOKEN`
+GitHub injects, never with this PAT.
+
+Git access inside the container is a separate credential — an ssh key in
+`/secrets/ssh` (recommended) or `GIT_PAT`. Note that ssh keys authenticate
+*git* but not the *GitHub API*, so `gh pr create` / `gh release create` from
+inside the container needs `GIT_PAT` with Contents + Pull requests.
 
 You'll also need a **classic PAT with `read:packages`** for pulling the
 private image from GHCR (fine-grained tokens still don't cover GHCR pulls; a
