@@ -72,14 +72,30 @@ chown -R 99:100 /mnt/user/appdata/BuilderBot
 
 ### Install
 
-Get the template onto the flash drive (the repo is private, so fetch with a
-token or copy it over from a clone):
+Get the template onto the flash drive. The repo is private, so a plain
+`wget` of the raw URL returns 404 — pick one of these:
+
+**Copy it over (simplest, no token).** The flash drive is an SMB share. On a
+desktop logged into GitHub, open `unraid/builderbot.xml` → **Raw** → save,
+then drop it into `\\<TOWER>\flash\config\plugins\dockerMan\templates-user\`
+as `my-builderbot.xml`.
+
+**Fetch via the API.** Note this needs a token with *repository contents*
+read — the `read:packages` token from step 2 will **not** work (it returns
+404, because GitHub answers 404 rather than 403 for things your token can't
+see). Use a fine-grained token with Contents: read, or a classic one with
+`repo`. Also note `raw.githubusercontent.com` does not reliably accept
+`Authorization` headers for private repos; the API endpoint does:
 
 ```bash
-curl -fsSL -H "Authorization: Bearer <YOUR_PAT>" \
+curl -fsSL \
+  -H "Authorization: Bearer <TOKEN_WITH_CONTENTS_READ>" \
+  -H "Accept: application/vnd.github.raw" \
   -o /boot/config/plugins/dockerMan/templates-user/my-builderbot.xml \
-  https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/unraid/builderbot.xml
+  https://api.github.com/repos/Stencil-Projects/BuilderBot/contents/unraid/builderbot.xml
 ```
+
+**Or copy it out of a clone**, if you already cloned the repo for Option B.
 
 Then in the WebUI: **Docker** tab → **Add Container** → in the *Template*
 dropdown pick **builderbot**. You get a form with everything already wired:

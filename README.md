@@ -120,10 +120,14 @@ just see them.
 
 ### 4. Install the container
 
-**Docker template (recommended)** — fetch
+**Docker template (recommended)** — get
 [`unraid/builderbot.xml`](unraid/builderbot.xml) into
-`/boot/config/plugins/dockerMan/templates-user/` (the repo is private, so
-fetch with a token), then **Docker → Add Container →** pick *builderbot*.
+`/boot/config/plugins/dockerMan/templates-user/`, then **Docker → Add
+Container →** pick *builderbot*. The repo is private, so the raw URL 404s
+without auth — easiest is to save the file from your browser and drop it on
+the `flash` SMB share; [docs/unraid.md](docs/unraid.md#install) also has an
+API-based `curl` (which needs a *contents*-read token, not the
+`read:packages` one).
 
 **Compose Manager** — copy `docker-compose.yml` + `.env.example`→`.env` into
 a compose stack. Same container either way; don't run both.
