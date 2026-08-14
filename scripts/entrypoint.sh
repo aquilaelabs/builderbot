@@ -56,7 +56,7 @@ s/npm_[A-Za-z0-9]\{16,\}/[REDACTED]/g
 s/eyJ[A-Za-z0-9_-]\{20,\}\.[A-Za-z0-9._-]\{10,\}/[REDACTED]/g
 SED
 
-    local var val esc
+    local var val esc found=0 names=""
     for var in "${SECRET_VARS[@]}" GITHUB_URL; do
         val="${!var:-}"
         [ -n "$val" ] || continue
@@ -64,10 +64,23 @@ SED
         # Literal-value redaction rule (skip short strings and the non-secret
         # GITHUB_URL).
         if [ "$var" != "GITHUB_URL" ] && [ "${#val}" -ge 8 ]; then
+            found=$((found + 1))
+            names="${names:+$names,}${var}"
             esc="$(printf '%s' "$val" | sed -e 's/[&/\]/\\&/g' -e 's/[][^$.*]/\\&/g')"
             printf 's/%s/[REDACTED]/g\n' "$esc" >> "$redact"
         fi
     done
+
+    # Say plainly what was and wasn't found: a missing /secrets mount or a
+    # misnamed file used to fail silently, leaving "no runner credential" in
+    # bb doctor with nothing in the log to explain it.
+    if [ "$found" -gt 0 ]; then
+        log "secrets: loaded ${found} value(s) [${names}]"
+    elif [ -d /secrets ]; then
+        warn "secrets: /secrets is mounted but no values loaded — expected files named *.env containing e.g. GITHUB_PAT=..."
+    else
+        log "secrets: no /secrets mount and no secret variables set"
+    fi
 
     if is_true "${SHIELD_SECRETS:-true}"; then
         # The runner gets tokens through the sudo helper; nothing running as

@@ -38,13 +38,19 @@ else
     log "GitHub Actions runner: disabled (ENABLE_RUNNER=${ENABLE_RUNNER:-})"
 fi
 
+# The container NAME is what `docker exec` needs, and it is not the hostname —
+# Unraid names the container BuilderBot while the hostname is builderbot, and
+# docker matches names case-sensitively. Unraid exports HOST_CONTAINERNAME;
+# fall back to the hostname elsewhere.
+CONTAINER_NAME="${HOST_CONTAINERNAME:-${HOSTNAME}}"
+
 cat <<EOF
 [builderbot] ready.
 
   Open a Claude Code session:
-      docker exec -it ${HOSTNAME} claude
-  Or a plain shell:
-      docker exec -it ${HOSTNAME} bash -l
+      docker exec -it ${CONTAINER_NAME} claude
+  Or a shell as the builder user:
+      docker exec -it ${CONTAINER_NAME} bb shell
 
   Projects are mounted under ${WORKSPACE}:
 $(find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d -not -name '_work' -printf '      %p\n' 2>/dev/null || true)
