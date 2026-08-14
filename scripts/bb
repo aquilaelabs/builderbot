@@ -208,6 +208,12 @@ cmd_doctor() {
     elif compgen -G "$HOME/.ssh/id_*" >/dev/null; then
         ssh_src="key file in ~/.ssh"
     fi
+    # Distinguish "no key" from "key loaded but the agent is unreachable from
+    # this uid", which is otherwise indistinguishable and very confusing.
+    if [ -z "$ssh_src" ] && [ -S "${SSH_AUTH_SOCK:-/run/ssh-agent.sock}" ]; then
+        printf '  [FAIL] an agent socket exists but this user cannot use it — see: bb logs | grep ssh\n'
+        ok=1
+    fi
     if [ -n "$ssh_src" ]; then
         # A successful GitHub ssh auth still exits nonzero (no shell access),
         # so judge by the greeting instead of the exit code.

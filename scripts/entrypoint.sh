@@ -104,32 +104,70 @@ SED
 # *use* the keys — the agent signs on their behalf — but no session can ever
 # read the private key material itself.
 setup_ssh_agent() {
-    local keydir=/secrets/ssh sock="${SSH_AUTH_SOCK:-/run/ssh-agent.sock}"
+    local keydir=/secrets/ssh
+    local user_sock="${SSH_AUTH_SOCK:-/run/ssh-agent.sock}"
+    local root_sock=/run/builderbot/ssh-agent.sock
     local k added=0
+
     [ -d "$keydir" ] || return 0
     command -v ssh-agent >/dev/null 2>&1 || { warn "ssh-agent not available"; return 0; }
 
-    rm -f "$sock"
-    ssh-agent -a "$sock" >/dev/null
+    mkdir -p /run/builderbot
+    chmod 700 /run/builderbot
+    rm -f "$root_sock" "$user_sock"
+
+    # The agent itself lives in the root-only directory and holds the keys.
+    ssh-agent -a "$root_sock" >/dev/null
 
     for k in "$keydir"/*; do
         [ -f "$k" ] || continue
         grep -q 'PRIVATE KEY' "$k" 2>/dev/null || continue
         # ssh-add refuses group/world-readable keys; the mount is root-only
         # but a sloppy chmod on the host shouldn't break startup silently.
-        if SSH_AUTH_SOCK="$sock" ssh-add "$k" >/dev/null 2>&1; then
+        if SSH_AUTH_SOCK="$root_sock" ssh-add "$k" >/dev/null 2>&1; then
             added=$((added + 1))
         else
             warn "could not load ssh key $(basename "$k") (bad perms or passphrase-protected?)"
         fi
     done
 
-    if [ "$added" -gt 0 ]; then
-        chown "$PUID:$PGID" "$sock"
-        chmod 600 "$sock"
+    if [ "$added" -eq 0 ]; then
+        warn "no usable keys in ${keydir}; ssh-agent left empty"
+        rm -f "$root_sock"
+        return 0
+    fi
+
+    # ssh-agent rejects any client whose uid differs from its own (root is the
+    # sole exception), so the builder user cannot talk to it directly no matter
+    # how the socket is chowned — sessions would see an empty agent while the
+    # keys sat loaded and usable only by root.
+    #
+    # Bridge it with a root-owned socat proxy. The agent sees root as the peer
+    # and accepts; the builder-facing socket carries only agent-protocol
+    # requests, which can sign but by design can never export a private key.
+    # Because the proxy runs as root, the builder user cannot ptrace it to read
+    # key material out of memory either.
+    if ! command -v socat >/dev/null 2>&1; then
+        warn "socat is missing — sessions cannot reach the root-owned agent, so"
+        warn "the shielded keys will be unusable. Set GIT_PAT or use ~/.ssh instead."
+        return 0
+    fi
+
+    socat "UNIX-LISTEN:${user_sock},fork,unlink-early,mode=0600,user=${PUID},group=${PGID}" \
+          "UNIX-CONNECT:${root_sock}" >/dev/null 2>&1 &
+
+    # Give socat a moment to create the socket so the first hook that uses git
+    # does not race it.
+    local waited=0
+    while [ ! -S "$user_sock" ] && [ "$waited" -lt 50 ]; do
+        sleep 0.1
+        waited=$((waited + 1))
+    done
+
+    if [ -S "$user_sock" ]; then
         log "ssh-agent: ${added} shielded key(s) loaded — sessions can use them, not read them"
     else
-        warn "no usable keys in ${keydir}; ssh-agent left empty"
+        warn "ssh-agent proxy failed to start; shielded keys will be unusable"
     fi
 }
 
