@@ -151,6 +151,41 @@ Fill in `GITHUB_PAT` (and `GIT_USER_NAME`/`GIT_USER_EMAIL`), leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
 **Apply**. Unraid pulls the image and starts it.
 
+### Stopping cleanly before an update
+
+Nothing you care about lives in the container: projects are bind mounts to the
+array, and sessions, memory files, logins and AVDs are all on the home volume.
+Uncommitted work is not at risk from a restart. Still, a tidy shutdown avoids
+two annoyances:
+
+```bash
+# 1. Exit any Claude session (in the app, or Ctrl-C twice in a terminal).
+#    Transcripts and memory are appended as you go, so at most you lose an
+#    in-flight turn — but a clean exit loses nothing.
+
+# 2. Stop the emulator gracefully if it is running. A hard kill can leave the
+#    AVD in a dirty state that costs you a cold boot later.
+docker exec -it BuilderBot bb emu stop
+
+# 3. Check the runner is not mid-job — a killed job shows up as a CI failure.
+docker exec -it BuilderBot bb runner status
+
+# 4. Stop with a timeout that lets the runner deregister.
+docker stop -t 150 BuilderBot
+```
+
+**That `-t 150` matters.** The supervisor gives the runner up to
+`RUNNER_SHUTDOWN_TIMEOUT` (120s default) to finish its job and deregister, but
+Docker's own default stop timeout is **10 seconds** — after which it sends
+SIGKILL regardless. A plain `docker stop` therefore cuts the graceful shutdown
+short, leaving a stale registration on GitHub until it times out server-side.
+Unraid's *Check for Updates* button uses the host's configured stop timeout
+(Settings → Docker), not this one, so if you update from the UI and care about
+clean deregistration, stop the container by hand first.
+
+The consequence of getting this wrong is cosmetic — a phantom offline runner
+in the repo's runner list — so it is not worth losing sleep over.
+
 ### Updating — the whole point
 
 CI publishes a fresh `:latest` on every push to `main` and on a weekly
