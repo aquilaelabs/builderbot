@@ -17,7 +17,7 @@ Helper CLI inside:       docker exec -it BuilderBot bb status
 NOTES
 - The image is a private GHCR package: run `docker login ghcr.io` on the Unraid host once (and persist it via the go file) or the pull will fail. See docs/unraid.md in the repo.
 - For the Android emulator, add  --device=/dev/kvm  to Extra Params and set ENABLE_ANDROID_EMULATOR to true.
-- The Docker socket mapping gives the container control of the host Docker daemon (root-equivalent). Remove that path if you don't want workflow jobs and Claude building images on the host.
+- The Docker socket mapping is OFF by default: mounting it gives the container root-equivalent control of the Unraid host. Fill in the socket path only if you accept that and want docker build/compose available inside.
   </Overview>
   <Category>Tools: Productivity:</Category>
   <TemplateURL/>
@@ -36,7 +36,7 @@ NOTES
   <Config Name="Home (Claude login, shell config)" Target="/home/builder" Default="/mnt/user/appdata/BuilderBot/home" Mode="rw" Description="Persists Claude Code credentials, npm globals, AVDs and shell history across image updates" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/BuilderBot/home</Config>
   <Config Name="Config (custom startup hooks)" Target="/config" Default="/mnt/user/appdata/BuilderBot/config" Mode="rw" Description="Drop your own *.sh files into startup.d/ here to run them at container start" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/BuilderBot/config</Config>
   <Config Name="Runner work directory" Target="/workspace/_work" Default="/mnt/user/appdata/BuilderBot/work" Mode="rw" Description="Where GitHub Actions jobs check out code" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/BuilderBot/work</Config>
-  <Config Name="Docker socket" Target="/var/run/docker.sock" Default="/var/run/docker.sock" Mode="rw" Description="Lets Claude and CI jobs run docker build / docker compose against the Unraid daemon. Root-equivalent on the host - remove if unwanted." Type="Path" Display="advanced" Required="false" Mask="false">/var/run/docker.sock</Config>
+  <Config Name="Docker socket (OFF by default - root-equivalent!)" Target="/var/run/docker.sock" Default="" Mode="rw" Description="LEAVE EMPTY unless you accept the risk: mounting the host Docker socket lets anything in this container run arbitrary code on the Unraid host as root. Set to /var/run/docker.sock only if you want Claude/CI jobs building images against the host daemon." Type="Path" Display="advanced" Required="false" Mask="false"/>
 
   <!-- ===================== core settings ===================== -->
   <Config Name="TZ" Target="TZ" Default="America/New_York" Mode="" Description="Container timezone" Type="Variable" Display="always" Required="true" Mask="false">America/New_York</Config>

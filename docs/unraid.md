@@ -204,7 +204,7 @@ AVDs persist in the home volume. Need more platforms?
 |---|---|
 | npm | set `NPM_TOKEN`, then `npm publish` |
 | PyPI | set `UV_PUBLISH_TOKEN`, then `uv publish` |
-| GHCR (docker) | automatic `docker login ghcr.io` from `GITHUB_PAT` at startup; `docker push ghcr.io/stencil-projects/<image>` |
+| GHCR (docker) | requires the (off-by-default) Docker socket mount; then `docker login` happens automatically from `GITHUB_PAT` and `docker push ghcr.io/stencil-projects/<image>` works |
 | Play Store / Maven | Gradle handles it (`./gradlew publish`); signing keys belong in the home volume or CI secrets, not the image |
 | GitHub Releases | `gh release create` — `gh` is already authenticated |
 
@@ -212,9 +212,15 @@ AVDs persist in the home volume. Need more platforms?
 
 ## Notes and gotchas
 
-**The Docker socket.** Mapping `/var/run/docker.sock` gives the container
-control of the host Docker daemon — effectively root on the host. Appropriate
-for a private toolchain box; remove the mapping if you'd rather not.
+**The Docker socket is OFF by default.** Mapping `/var/run/docker.sock` gives
+the container control of the host Docker daemon — anything inside could start
+a privileged container and execute code on the host as root. It ships
+disabled (empty template field / commented compose line). Without it, the
+container cannot touch the host: repo mounts only expose those directories,
+`/dev/kvm` only accelerates the emulator, and container-root is not host-root.
+Enable the socket only if you want `docker build`/`docker compose`/GHCR
+pushes available inside, and accept the trade. The startup scripts detect its
+absence and skip Docker-related setup cleanly.
 
 **File ownership.** The container writes as `99:100` (`nobody:users`). If a
 project share is owned differently, fix it once
