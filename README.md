@@ -189,6 +189,16 @@ jobs:
     runs-on: [self-hosted, builderbot]
 ```
 
+**Every label in `runs-on` must be one the runner carries.** A job asking for a
+label BuilderBot does not have sits in *Waiting for a runner* forever while the
+runner shows *Idle* — the job is simply not addressed to it, and neither screen
+mentions the other. If a job queues and never starts, compare its
+`Requested labels:` line against the labels beside the runner in
+*Settings → Actions → Runners*, and either fix the workflow or add the label to
+`RUNNER_LABELS`. Stale **Offline** runners carrying the label a job wants are
+worth deleting for the same reason — they make a job look routable when nothing
+is going to pick it up.
+
 ### 8. Daily use and updating
 
 ```bash
@@ -216,7 +226,7 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `ENABLE_RUNNER` | `true` | `false` = pure workstation |
 | `GITHUB_URL` | — | Repo or org URL the runner registers with |
 | `GITHUB_PAT` | *(empty)* | Runner PAT — prefer the secrets folder; values here are session-visible |
-| `RUNNER_NAME` / `RUNNER_LABELS` / `RUNNER_GROUP` | `builderbot` / `builderbot,self-hosted,linux,x64` / — | Runner identity |
+| `RUNNER_NAME` / `RUNNER_LABELS` / `RUNNER_GROUP` | `builderbot` / `builderbot,self-hosted,linux,x64,unraid` / — | Runner identity |
 | `RUNNER_EPHEMERAL` | `true` | Fresh registration per job |
 | `RUNNER_RESTART_DELAY` / `RUNNER_SHUTDOWN_TIMEOUT` | `5` / `120` | Seconds between re-registrations, and how long a stop waits for a job to finish |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |

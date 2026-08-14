@@ -40,6 +40,45 @@ bb_log_dir() {
     fi
 }
 
+# clear_npm_staging — remove half-finished npm upgrade directories.
+#
+# npm upgrades a package by renaming the installed directory to a hidden
+# sibling before unpacking the replacement. A container killed mid-update
+# leaves that sibling behind, and every install from then on fails with
+# ENOTEMPTY — permanently, because nothing removes it on its own. The symptom
+# is a container that silently stops picking up Claude Code updates.
+clear_npm_staging() {
+    local scope="${HOME}/.npm-global/lib/node_modules/@anthropic-ai"
+    [ -d "$scope" ] || return 0
+    find "$scope" -maxdepth 1 -type d -name '.claude-code-*' \
+        -exec rm -rf {} + 2>/dev/null || true
+}
+
+# install_claude_code [VERSION] — install or upgrade Claude Code into the home
+# volume. Retries once from a clean package directory, which is safe to do:
+# ~/.npm-global precedes /usr/local on PATH, so the worst case falls back to
+# the copy baked into the image.
+install_claude_code() {
+    local version="${1:-latest}"
+    local pkg="${HOME}/.npm-global/lib/node_modules/@anthropic-ai/claude-code"
+
+    clear_npm_staging
+    # --allow-scripts: newer npm majors block postinstall by default, which
+    # would silently skip Claude Code's native installer.
+    if npm install -g --no-fund --no-audit \
+        --allow-scripts=@anthropic-ai/claude-code \
+        "@anthropic-ai/claude-code@${version}"; then
+        return 0
+    fi
+
+    warn "npm install failed — clearing the package directory and retrying once"
+    clear_npm_staging
+    rm -rf "$pkg"
+    npm install -g --no-fund --no-audit \
+        --allow-scripts=@anthropic-ai/claude-code \
+        "@anthropic-ai/claude-code@${version}"
+}
+
 # git_branch DIR — current branch name, or '?'. Handles a freshly-init'd repo
 # with no commits, where `rev-parse --abbrev-ref HEAD` both prints and fails.
 git_branch() {

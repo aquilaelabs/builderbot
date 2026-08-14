@@ -20,7 +20,12 @@ set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
 
 RUNNER_NAME="${RUNNER_NAME:-$(hostname)}"
-RUNNER_LABELS="${RUNNER_LABELS:-builderbot,self-hosted,linux}"
+# 'unraid' is in the default set because that is where this container is meant
+# to live, and workflows written for an Unraid box tend to target it. A runner
+# matches a job only when it carries every label the job asks for, so a missing
+# one strands the job in "Waiting for a runner" while the runner sits Idle —
+# the two halves of that never appear on the same screen.
+RUNNER_LABELS="${RUNNER_LABELS:-builderbot,self-hosted,linux,x64,unraid}"
 RUNNER_WORKDIR="${RUNNER_WORKDIR:-$WORKSPACE/_work}"
 CURRENT_TOKEN=""
 
