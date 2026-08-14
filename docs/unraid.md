@@ -14,41 +14,68 @@ Either way, start with the two shared steps below.
 
 ---
 
-## Shared step 1: GitHub PAT
+## Shared step 1: credentials
 
-The container needs a token to register itself as an Actions runner and to
-work with your private repos.
+BuilderBot deliberately uses **separate credentials for separate jobs**, so a
+leak of one doesn't hand over the others. Work out which you actually need
+before creating anything.
 
-**Fine-grained token** (preferred). Keep this one minimal — its *only* job is
-minting runner registration tokens through the root helper:
+### Which credentials does my setup need?
 
-1. GitHub → *Settings* → *Developer settings* → *Personal access tokens* →
-   *Fine-grained tokens* → **Generate new token**.
-2. Resource owner: **Stencil-Projects** (the org, not your personal account —
-   a personally-owned token cannot administer org repos).
-3. Repository access: the repo(s) the runner serves.
-4. Permissions — exactly one, depending on the runner scope you want:
+Find the rows that describe what you want; you need every credential marked in
+those rows. Nothing else.
 
-   | `GITHUB_URL` | Permission |
-   |---|---|
-   | `https://github.com/OWNER/REPO` | Repository permissions → **Administration**: Read and write |
-   | `https://github.com/ORG` | Organization permissions → **Self-hosted runners**: Read and write |
+| I want to… | Host GHCR token | Shielded `GITHUB_PAT` | SSH key | `GIT_PAT` |
+|---|:--:|:--:|:--:|:--:|
+| Pull the image at all — *everyone needs this* | ● | | | |
+| Run Claude against the mounted projects, no remote git | ● | | | |
+| `git clone` / `pull` / `push` private repos from inside | ● | | ● | *or* ● |
+| `gh pr create`, `gh release create` from inside | ● | | ● | ● |
+| Run a self-hosted runner for **one repo** | ● | ● | | |
+| Run a self-hosted runner for the **whole org** | ● | ● | | |
+| `docker build` / push images from inside | ● | | | see note |
 
-   *Metadata: Read-only* is added automatically and cannot be removed.
+### What each one is, exactly
 
-Do **not** add Contents or Pull requests here. Nothing in the shielded path
-uses them, and workflow jobs check code out with the per-run `GITHUB_TOKEN`
-GitHub injects, never with this PAT.
+| Credential | Type | Permissions | Lives where |
+|---|---|---|---|
+| **Host GHCR token** | PAT **(classic)** | `read:packages` — nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
+| **`GITHUB_PAT`** (shielded) | PAT (fine-grained), resource owner = **the org** | *One* permission — see the runner-scope table below | `/secrets/builderbot.env`, root-only. Never visible to sessions |
+| **SSH key** | ed25519, **no passphrase** | n/a — access is whatever GitHub grants the key | `/secrets/ssh/`. Loaded into a root-owned agent: usable by git, unreadable by sessions |
+| **`GIT_PAT`** | PAT (fine-grained) | *Contents*: R/W, plus *Pull requests*: R/W for PRs | `GIT_PAT` variable. Readable by sessions **by design** — see below |
 
-Git access inside the container is a separate credential — an ssh key in
-`/secrets/ssh` (recommended) or `GIT_PAT`. Note that ssh keys authenticate
-*git* but not the *GitHub API*, so `gh pr create` / `gh release create` from
-inside the container needs `GIT_PAT` with Contents + Pull requests.
+**Runner scope decides the `GITHUB_PAT` permission**, and it is the only one
+that token needs:
 
-You'll also need a **classic PAT with `read:packages`** for pulling the
-private image from GHCR (fine-grained tokens still don't cover GHCR pulls; a
-classic token with `read:packages` + `repo` can double for everything if you
-prefer one token).
+| `GITHUB_URL` | Permission to grant |
+|---|---|
+| `https://github.com/OWNER/REPO` | Repository permissions → **Administration**: Read and write |
+| `https://github.com/ORG` | Organization permissions → **Self-hosted runners**: Read and write |
+
+*Metadata: Read-only* is added automatically and can't be removed. Do **not**
+add Contents or Pull requests here — nothing in the shielded path uses them,
+and workflow jobs check code out with the per-run `GITHUB_TOKEN` GitHub
+injects, never with this PAT.
+
+### Three things that trip people up
+
+**SSH authenticates git, not the API.** A key covers `clone`/`pull`/`push`.
+It does nothing for `gh pr create`, `gh release create`, or `gh issue` — those
+are REST calls and need `GIT_PAT`. If you'd rather open PRs from your desktop,
+skip `GIT_PAT` entirely and the ssh key is your only in-container credential,
+which is the tightest arrangement available.
+
+**`GIT_PAT` is readable by Claude, and that's unavoidable.** Over HTTPS, "git
+can authenticate with it" and "sessions can't read it" are contradictory —
+same user, same environment. Only the ssh-agent breaks that tie. Scope
+`GIT_PAT` to Contents (+ Pull requests) and it grants no reach Claude lacks
+anyway, since it already has read/write on the mounted working trees. Keep
+Administration out of it.
+
+**Pushing images from inside** needs the (off-by-default) Docker socket *and*
+a classic token with `write:packages`; fine-grained tokens don't cover GitHub
+Packages. Enabling the socket is root-equivalent on the host — see the notes
+at the end before doing it.
 
 ## Shared step 2: log the Unraid host into GHCR
 
