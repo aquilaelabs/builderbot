@@ -10,7 +10,8 @@
 #
 #   mint-runner-token registration   print a 1-hour runner registration token
 #   mint-runner-token remove         print a runner removal token
-#   mint-runner-token --check        exit 0 if minting is possible
+#   mint-runner-token --check        exit 0 if a credential is present (offline)
+#   mint-runner-token --validate     ask GitHub whether that credential is live
 #
 set -euo pipefail
 
@@ -22,16 +23,28 @@ STASH=/run/builderbot/secrets.env
 
 kind="${1:-registration}"
 case "$kind" in
-    registration|remove|--check) ;;
-    *) die "usage: mint-runner-token [registration|remove|--check]" ;;
+    registration|remove|--check|--validate) ;;
+    *) die "usage: mint-runner-token [registration|remove|--check|--validate]" ;;
 esac
 
 [ -f "$STASH" ] || die "no secrets stashed at ${STASH}"
 # shellcheck disable=SC1090
 . "$STASH"
 
+# Presence only — deliberately offline, so a network blip at boot cannot stop
+# the runner from trying.
 if [ "$kind" = "--check" ]; then
     [ -n "${GITHUB_PAT:-}" ] && [ -n "${GITHUB_URL:-}" ]
+    exit
+fi
+
+# Ask GitHub whether the credential is actually live. Catches the revoked or
+# expired token that --check happily reports as present. Uses /rate_limit
+# because every valid token can call it regardless of scopes.
+if [ "$kind" = "--validate" ]; then
+    [ -n "${GITHUB_PAT:-}" ] || die "no GITHUB_PAT in the stash"
+    github_api GET /rate_limit >/dev/null
+    echo "token accepted by GitHub"
     exit
 fi
 
