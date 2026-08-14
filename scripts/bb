@@ -123,9 +123,14 @@ cmd_emu() {
             avdmanager list avd 2>/dev/null | grep -q "Name: ${avd}$" \
                 || die "AVD '${avd}' not found — set ENABLE_ANDROID_EMULATOR=true and restart, or create one with avdmanager"
             [ -w /dev/kvm ] || warn "/dev/kvm not available — this will be very slow"
-            log "starting AVD '${avd}' headless (log: ~/.android/emulator.log)"
+            # Software rendering by default: it is the only mode guaranteed to
+            # work with no GPU passed through. With an NVIDIA GPU (and
+            # NVIDIA_DRIVER_CAPABILITIES including graphics) try host; with
+            # neither, swangle_indirect is usually faster than swiftshader.
+            local gpu="${ANDROID_EMULATOR_GPU:-swiftshader_indirect}"
+            log "starting AVD '${avd}' headless, -gpu ${gpu} (log: ~/.android/emulator.log)"
             nohup emulator -avd "$avd" -no-window -no-audio -no-boot-anim \
-                -gpu swiftshader_indirect \
+                -gpu "$gpu" \
                 > "$HOME/.android/emulator.log" 2>&1 &
             log "waiting for the device to come up..."
             adb wait-for-device
@@ -182,6 +187,28 @@ cmd_doctor() {
         check "docker socket usable"  docker info
     else
         printf '  [skip] docker socket not mounted\n'
+    fi
+    # nvidia-smi is injected by the container runtime, never installed in the
+    # image — its absence means no GPU was passed through.
+    if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
+        printf '  [ok]   nvidia gpu: %s\n' \
+            "$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
+        # Compute works with the default capabilities; GL/EGL/Vulkan do not.
+        # The vendor ICD only lands when capabilities include graphics, so test
+        # for the file rather than trusting the variable.
+        if [ -e /usr/share/glvnd/egl_vendor.d/10_nvidia.json ]; then
+            printf '  [ok]   nvidia graphics stack injected (EGL available)\n'
+        else
+            printf '  [FAIL] nvidia gpu present but no EGL — set NVIDIA_DRIVER_CAPABILITIES=all\n'
+            printf '         (currently %s; compute works, -gpu host does not)\n' \
+                "${NVIDIA_DRIVER_CAPABILITIES:-unset, so the default compute,utility applies}"
+            ok=1
+        fi
+    elif command -v nvidia-smi >/dev/null 2>&1; then
+        printf '  [FAIL] nvidia-smi present but no GPU visible — check --runtime=nvidia --gpus all\n'
+        ok=1
+    else
+        printf '  [skip] no nvidia gpu passed through\n'
     fi
     if [ -n "${GITHUB_PAT:-}" ]; then
         printf '  [ok]   runner credential: GITHUB_PAT in environment (visible to sessions)\n'

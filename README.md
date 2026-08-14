@@ -155,6 +155,7 @@ Everything else has sane defaults — full reference below.
 | Want | Do |
 |---|---|
 | Android emulator | Extra Params: `--device=/dev/kvm`, set `ENABLE_ANDROID_EMULATOR=true`; then `bb emu start` |
+| NVIDIA GPU | Extra Params: `--runtime=nvidia --gpus all`, keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Docker builds inside (CI jobs, Claude) | Fill the **Docker socket** path field — **off by default; this is root-equivalent on the host**, read the warning in the docs first |
 | Emulator adb from your desktop | Map port 5555 |
@@ -219,6 +220,8 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create the default AVD at startup |
+| `ANDROID_EMULATOR_GPU` | `swiftshader_indirect` | Emulator renderer — `swangle_indirect` (faster software) or `host` (needs a GPU) |
+| `NVIDIA_DRIVER_CAPABILITIES` | `all` | Only with `--runtime=nvidia`; `all` is what gets you GL/EGL/Vulkan, not just CUDA |
 | `NPM_TOKEN` | — | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
 | `EXTRA_APT_PACKAGES` / `EXTRA_NPM_PACKAGES` / `EXTRA_PIPX_PACKAGES` | — | Space-separated extras installed each start |
 | `PROJECT_BOOTSTRAP` | `false` | Run `<project>/.builderbot/setup.sh` each start |
@@ -283,6 +286,35 @@ bb logs [-f] [N]   the persistent startup log
 as root, which would break your saved login and file ownership. A bare
 `docker exec -it BuilderBot bash` is still root; use `bb shell` for the
 normal user.
+
+## NVIDIA GPU
+
+Pass the card through with `--runtime=nvidia --gpus all` (Extra Params) or the
+`deploy:` block in the compose file — it needs the NVIDIA Container Toolkit on
+the host.
+
+**Keep `NVIDIA_DRIVER_CAPABILITIES=all`.** The runtime defaults to
+`compute,utility`, which injects CUDA but none of the GL/EGL/Vulkan drivers.
+That failure mode is nasty because `nvidia-smi` reports a perfectly healthy GPU
+while every attempt at hardware rendering falls back or fails outright.
+`bb doctor` distinguishes the two: it checks for the EGL vendor ICD, not just
+the device.
+
+What actually gets faster, in rough order of payoff:
+
+| Workload | Notes |
+|---|---|
+| `ffmpeg` transcodes | The big one. Check `ffmpeg -encoders \| grep nvenc`, then use `h264_nvenc`/`hevc_nvenc` |
+| CUDA / ML | Works with capabilities left at the default |
+| Android emulator | Set `ANDROID_EMULATOR_GPU=host`. Least reliable of the three — the emulator is picky about host rendering with no display attached, so verify rather than assume |
+| Playwright | Headless runs are rarely GPU-bound; usually not worth it |
+
+For the emulator specifically, `swangle_indirect` is worth trying before
+`host` — it's still software, needs no GPU, and is usually faster than the
+`swiftshader_indirect` default. And if the goal is verifying animation timing
+rather than watching it, `dumpsys gfxinfo <pkg> framestats` gives real
+per-frame timestamps under any renderer; `screenrecord` caps out around 10fps
+in software and will mislead you.
 
 ## Playwright, Android, publishing
 

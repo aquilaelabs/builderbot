@@ -161,7 +161,11 @@ RUN set -eux; \
     arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
     if [ "$arch" != "amd64" ]; then echo "skipping Android SDK on ${arch}"; exit 0; fi; \
     apt-get update; \
-    apt-get install -y --no-install-recommends libpulse0 libgl1 libglu1-mesa libasound2t64; \
+    # libegl1/libvulkan1 are the GLVND + Vulkan dispatch layers. They are inert
+    # on their own, but without them the vendor drivers that the NVIDIA
+    # container runtime injects have no loader, so -gpu host cannot work.
+    apt-get install -y --no-install-recommends \
+        libpulse0 libgl1 libglu1-mesa libasound2t64 libegl1 libvulkan1; \
     mkdir -p "${ANDROID_HOME}/cmdline-tools"; \
     curl -fsSL -o /tmp/clt.zip \
         "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip"; \

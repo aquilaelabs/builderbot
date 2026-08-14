@@ -17,6 +17,7 @@ Helper CLI inside:       docker exec -it BuilderBot bb status
 NOTES
 - The image is a private GHCR package: run `docker login ghcr.io` on the Unraid host once (and persist it via the go file) or the pull will fail. See docs/unraid.md in the repo.
 - For the Android emulator, add  --device=/dev/kvm  to Extra Params and set ENABLE_ANDROID_EMULATOR to true.
+- For an NVIDIA GPU, add  --runtime=nvidia --gpus all  to Extra Params and leave NVIDIA_DRIVER_CAPABILITIES at "all" — the runtime default gives you CUDA but no GL/EGL/Vulkan. Confirm with: docker exec -it BuilderBot bb doctor
 - The Docker socket mapping is OFF by default: mounting it gives the container root-equivalent control of the Unraid host. Fill in the socket path only if you accept that and want docker build/compose available inside.
   </Overview>
   <Category>Tools: Productivity:</Category>
@@ -66,6 +67,10 @@ NOTES
 
   <!-- ===================== Android ===================== -->
   <Config Name="ENABLE_ANDROID_EMULATOR" Target="ENABLE_ANDROID_EMULATOR" Default="false" Mode="" Description="Create the default AVD at startup. Also add --device=/dev/kvm to Extra Params. Start with: bb emu start" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="ANDROID_EMULATOR_GPU" Target="ANDROID_EMULATOR_GPU" Default="swiftshader_indirect" Mode="" Description="Emulator renderer. swiftshader_indirect (default) is software and always works; swangle_indirect is software but usually faster; host needs an NVIDIA GPU passed through." Type="Variable" Display="advanced" Required="false" Mask="false">swiftshader_indirect</Config>
+
+  <!-- ===================== nvidia gpu ===================== -->
+  <Config Name="NVIDIA_DRIVER_CAPABILITIES" Target="NVIDIA_DRIVER_CAPABILITIES" Default="all" Mode="" Description="Only applies with --runtime=nvidia --gpus all in Extra Params. Leave at all: the runtime default (compute,utility) injects CUDA but no GL/EGL/Vulkan, so hardware rendering silently fails." Type="Variable" Display="advanced" Required="false" Mask="false">all</Config>
 
   <!-- ===================== publishing ===================== -->
   <Config Name="NPM_TOKEN" Target="NPM_TOKEN" Default="" Mode="" Description="Optional: auth token for npm publish to registry.npmjs.org" Type="Variable" Display="advanced" Required="false" Mask="true"/>
