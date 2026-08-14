@@ -227,6 +227,7 @@ absence and skip Docker-related setup cleanly.
 | Log | Where | Survives image updates? |
 |---|---|---|
 | Startup + runner supervisor | `/mnt/user/appdata/BuilderBot/config/logs/builderbot.log` (also `docker logs BuilderBot` / WebUI **Log** button) | ✅ file yes; `docker logs` no |
+| — or your own location | Map the optional **Logs directory** path (template, advanced view) / the `/logs` volume (compose) to any share — e.g. on the array — and the log moves there automatically | ✅ |
 | Runner diagnostics (`_diag`) | `/mnt/user/appdata/BuilderBot/work/_diag/` | ✅ |
 | CI job output | GitHub → repo → *Actions* → the run | ✅ (kept by GitHub) |
 | Android emulator | `/mnt/user/appdata/BuilderBot/home/.android/emulator.log` | ✅ |

@@ -14,7 +14,9 @@ services:
     #   context: .
     #   args:
     #     RUNNER_VERSION: latest
-    container_name: builderbot
+    # Same name the Unraid template uses, so every `docker exec -it
+    # BuilderBot ...` command in the docs works under either install method.
+    container_name: BuilderBot
     hostname: builderbot
     restart: unless-stopped
 
@@ -76,6 +78,11 @@ services:
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/config:/config
       # Actions runner checkout/work directory.
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/work:/workspace/_work
+
+      # Optional: send the persistent log somewhere else (e.g. an array
+      # share). The container auto-detects a /logs mount; without it, logs
+      # stay in config/logs.
+      # - /mnt/user/logs/builderbot:/logs
 
       # --- host Docker access (OFF by default) ------------------------------
       # SECURITY: mounting the host Docker socket is root-equivalent on the

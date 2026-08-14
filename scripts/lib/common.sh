@@ -27,6 +27,19 @@ run_as_builder() {
     fi
 }
 
+# bb_log_dir — where the persistent log lives. Priority: explicit BB_LOG_DIR
+# env, then a mounted /logs volume (the optional template/compose mapping),
+# then the default inside /config.
+bb_log_dir() {
+    if [ -n "${BB_LOG_DIR:-}" ]; then
+        printf '%s' "$BB_LOG_DIR"
+    elif [ -d /logs ]; then
+        printf '%s' /logs
+    else
+        printf '%s' /config/logs
+    fi
+}
+
 # git_branch DIR — current branch name, or '?'. Handles a freshly-init'd repo
 # with no commits, where `rev-parse --abbrev-ref HEAD` both prints and fails.
 git_branch() {

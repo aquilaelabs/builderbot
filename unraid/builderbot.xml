@@ -36,6 +36,7 @@ NOTES
   <Config Name="Home (Claude login, shell config)" Target="/home/builder" Default="/mnt/user/appdata/BuilderBot/home" Mode="rw" Description="Persists Claude Code credentials, npm globals, AVDs and shell history across image updates" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/BuilderBot/home</Config>
   <Config Name="Config (custom startup hooks)" Target="/config" Default="/mnt/user/appdata/BuilderBot/config" Mode="rw" Description="Drop your own *.sh files into startup.d/ here to run them at container start" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/BuilderBot/config</Config>
   <Config Name="Runner work directory" Target="/workspace/_work" Default="/mnt/user/appdata/BuilderBot/work" Mode="rw" Description="Where GitHub Actions jobs check out code" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/BuilderBot/work</Config>
+  <Config Name="Logs directory (optional override)" Target="/logs" Default="" Mode="rw" Description="Leave empty to keep logs under the Config path in logs/. Set a host path (e.g. an array share like /mnt/user/logs/builderbot) to send the persistent log there instead - the container auto-detects this mount." Type="Path" Display="advanced" Required="false" Mask="false"/>
   <Config Name="Docker socket (OFF by default - root-equivalent!)" Target="/var/run/docker.sock" Default="" Mode="rw" Description="LEAVE EMPTY unless you accept the risk: mounting the host Docker socket lets anything in this container run arbitrary code on the Unraid host as root. Set to /var/run/docker.sock only if you want Claude/CI jobs building images against the host daemon." Type="Path" Display="advanced" Required="false" Mask="false"/>
 
   <!-- ===================== core settings ===================== -->
@@ -54,10 +55,12 @@ NOTES
   <Config Name="RUNNER_NAME" Target="RUNNER_NAME" Default="builderbot" Mode="" Description="Runner name shown in GitHub" Type="Variable" Display="advanced" Required="false" Mask="false">builderbot</Config>
   <Config Name="RUNNER_LABELS" Target="RUNNER_LABELS" Default="builderbot,self-hosted,linux,x64" Mode="" Description="Labels workflows target with runs-on" Type="Variable" Display="advanced" Required="false" Mask="false">builderbot,self-hosted,linux,x64</Config>
   <Config Name="RUNNER_EPHEMERAL" Target="RUNNER_EPHEMERAL" Default="true" Mode="" Description="Fresh registration per job (recommended)" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="RUNNER_GROUP" Target="RUNNER_GROUP" Default="" Mode="" Description="Runner group (org-level runners only)" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="CLAUDE_CODE_VERSION" Target="CLAUDE_CODE_VERSION" Default="latest" Mode="" Description="Pin a Claude Code version for the startup auto-update" Type="Variable" Display="advanced" Required="false" Mask="false">latest</Config>
 
   <!-- ===================== git identity ===================== -->
-  <Config Name="GIT_USER_NAME" Target="GIT_USER_NAME" Default="" Mode="" Description="git commit author name" Type="Variable" Display="always" Required="false" Mask="false"/>
-  <Config Name="GIT_USER_EMAIL" Target="GIT_USER_EMAIL" Default="" Mode="" Description="git commit author email" Type="Variable" Display="always" Required="false" Mask="false"/>
+  <Config Name="GIT_USER_NAME" Target="GIT_USER_NAME" Default="BuilderBot" Mode="" Description="git commit author name (set to yours)" Type="Variable" Display="always" Required="false" Mask="false">BuilderBot</Config>
+  <Config Name="GIT_USER_EMAIL" Target="GIT_USER_EMAIL" Default="builderbot@localhost" Mode="" Description="git commit author email (set to yours)" Type="Variable" Display="always" Required="false" Mask="false">builderbot@localhost</Config>
 
   <!-- ===================== Android ===================== -->
   <Config Name="ENABLE_ANDROID_EMULATOR" Target="ENABLE_ANDROID_EMULATOR" Default="false" Mode="" Description="Create the default AVD at startup. Also add --device=/dev/kvm to Extra Params. Start with: bb emu start" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>

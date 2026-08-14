@@ -142,7 +142,8 @@ cmd_emu() {
 }
 
 cmd_logs() {
-    local logfile=/config/logs/builderbot.log follow=0 lines=100
+    local logfile follow=0 lines=100
+    logfile="$(bb_log_dir)/builderbot.log"
     while [ $# -gt 0 ]; do
         case "$1" in
             -f) follow=1 ;;
@@ -150,7 +151,7 @@ cmd_logs() {
         esac
         shift
     done
-    [ -f "$logfile" ] || die "no persistent log at ${logfile} (is /config mounted?)"
+    [ -f "$logfile" ] || die "no persistent log at ${logfile}"
     if [ "$follow" -eq 1 ]; then
         tail -n "$lines" -f "$logfile"
     else

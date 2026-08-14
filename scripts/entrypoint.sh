@@ -22,10 +22,10 @@ PGID="${PGID:-100}"
 # happens on every image update — exactly when you want yesterday's log).
 # Docker's own `docker logs` keeps working: tee passes output through.
 setup_logging() {
-    [ -d /config ] || return 0
-    local logdir=/config/logs logfile
+    local logdir logfile
+    logdir="$(bb_log_dir)"
     logfile="$logdir/builderbot.log"
-    mkdir -p "$logdir"
+    mkdir -p "$logdir" 2>/dev/null || return 0
     # Simple size-based rotation: keep one previous generation.
     if [ -f "$logfile" ] && [ "$(stat -c %s "$logfile" 2>/dev/null || echo 0)" -gt 5242880 ]; then
         mv -f "$logfile" "$logfile.1"
@@ -120,7 +120,7 @@ seed_home() {
         chown -R "$PUID:$PGID" "$BUILDER_HOME"
     fi
     # Make the persistent log readable/rotatable from the share.
-    chown -R "$PUID:$PGID" /config/logs 2>/dev/null || true
+    chown -R "$PUID:$PGID" "$(bb_log_dir)" 2>/dev/null || true
     chown "$PUID:$PGID" "$WORKSPACE" "${RUNNER_WORKDIR:-$WORKSPACE/_work}" 2>/dev/null || true
     chown -R "$PUID:$PGID" "$RUNNER_DIR" 2>/dev/null || true
 
