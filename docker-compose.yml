@@ -59,6 +59,12 @@ services:
       # --- publishing -------------------------------------------------------
       NPM_TOKEN: ${NPM_TOKEN:-}
 
+      # --- security ---------------------------------------------------------
+      # Scrub GITHUB_PAT/RUNNER_TOKEN from what sessions can see (the runner
+      # uses the root-only stash instead). Set false only if you want the
+      # legacy behavior back (PAT visible, gh auto-authenticated).
+      SHIELD_SECRETS: ${SHIELD_SECRETS:-true}
+
       # --- optional extras --------------------------------------------------
       EXTRA_APT_PACKAGES: ${EXTRA_APT_PACKAGES:-}
       EXTRA_NPM_PACKAGES: ${EXTRA_NPM_PACKAGES:-}

@@ -69,6 +69,9 @@ NOTES
   <!-- ===================== publishing ===================== -->
   <Config Name="NPM_TOKEN" Target="NPM_TOKEN" Default="" Mode="" Description="Optional: auth token for npm publish to registry.npmjs.org" Type="Variable" Display="advanced" Required="false" Mask="true"/>
 
+  <!-- ===================== security ===================== -->
+  <Config Name="SHIELD_SECRETS" Target="SHIELD_SECRETS" Default="true" Mode="" Description="Scrub GITHUB_PAT/RUNNER_TOKEN from session environments; the runner mints tokens via a root-only helper instead. Set false only for legacy behavior (PAT visible inside, gh auto-authenticated)." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
   <!-- ===================== extras ===================== -->
   <Config Name="EXTRA_APT_PACKAGES" Target="EXTRA_APT_PACKAGES" Default="" Mode="" Description="Space-separated apt packages installed at every start" Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="EXTRA_NPM_PACKAGES" Target="EXTRA_NPM_PACKAGES" Default="" Mode="" Description="Space-separated global npm packages installed at every start" Type="Variable" Display="advanced" Required="false" Mask="false"/>
