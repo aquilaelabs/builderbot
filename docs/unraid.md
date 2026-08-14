@@ -62,8 +62,8 @@ echo 'install -D -m 600 /boot/config/ghcr-auth.json /root/.docker/config.json' >
 Create the appdata directories:
 
 ```bash
-mkdir -p /mnt/user/appdata/builderbot/{home,config/startup.d,work}
-chown -R 99:100 /mnt/user/appdata/builderbot
+mkdir -p /mnt/user/development/BuilderBot/{home,config/startup.d,work}
+chown -R 99:100 /mnt/user/development/BuilderBot
 ```
 
 ---

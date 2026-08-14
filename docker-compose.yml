@@ -71,11 +71,11 @@ services:
 
       # --- persistent container state --------------------------------------
       # Claude Code login, shell history, npm globals, runner registration.
-      - ${APPDATA_PATH:-/mnt/user/appdata/builderbot}/home:/home/builder
+      - ${APPDATA_PATH:-/mnt/user/development/BuilderBot}/home:/home/builder
       # Drop your own *.sh startup hooks in here.
-      - ${APPDATA_PATH:-/mnt/user/appdata/builderbot}/config:/config
+      - ${APPDATA_PATH:-/mnt/user/development/BuilderBot}/config:/config
       # Actions runner checkout/work directory.
-      - ${APPDATA_PATH:-/mnt/user/appdata/builderbot}/work:/workspace/_work
+      - ${APPDATA_PATH:-/mnt/user/development/BuilderBot}/work:/workspace/_work
 
       # --- host Docker access ----------------------------------------------
       # Lets workflow jobs (and Claude) run `docker build` / `docker compose`
