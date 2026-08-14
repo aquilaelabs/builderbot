@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+#
+# Root-only helper that mints GitHub Actions runner registration/removal
+# tokens from the shielded secrets stash, so the unprivileged `builder` user
+# (and any Claude session running as it) never holds the PAT itself.
+#
+# The builder user may run exactly this script via sudo (see the image's
+# sudoers rule). It accepts one argument and reads everything else from the
+# root-only stash — sudo's env_reset means the caller cannot inject values.
+#
+#   mint-runner-token registration   print a 1-hour runner registration token
+#   mint-runner-token remove         print a runner removal token
+#   mint-runner-token --check        exit 0 if minting is possible
+#
+set -euo pipefail
+
+. /opt/builderbot/scripts/lib/common.sh
+
+STASH=/run/builderbot/secrets.env
+
+[ "$(id -u)" -eq 0 ] || die "must run as root (via sudo)"
+
+kind="${1:-registration}"
+case "$kind" in
+    registration|remove|--check) ;;
+    *) die "usage: mint-runner-token [registration|remove|--check]" ;;
+esac
+
+[ -f "$STASH" ] || die "no secrets stashed at ${STASH}"
+# shellcheck disable=SC1090
+. "$STASH"
+
+if [ "$kind" = "--check" ]; then
+    [ -n "${GITHUB_PAT:-}" ] && [ -n "${GITHUB_URL:-}" ]
+    exit
+fi
+
+[ -n "${GITHUB_PAT:-}" ] || die "no GITHUB_PAT in the stash"
+[ -n "${GITHUB_URL:-}" ] || die "no GITHUB_URL in the stash"
+
+token="$(github_api POST "$(scope_path "$kind")" | jq -r .token)"
+[ -n "$token" ] && [ "$token" != "null" ] || die "GitHub returned no token"
+printf '%s\n' "$token"

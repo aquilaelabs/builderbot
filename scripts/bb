@@ -183,18 +183,31 @@ cmd_doctor() {
     else
         printf '  [skip] docker socket not mounted\n'
     fi
-    if compgen -G "$HOME/.ssh/id_*" >/dev/null; then
+    if [ -n "${GITHUB_PAT:-}" ]; then
+        printf '  [ok]   runner credential: GITHUB_PAT in environment (visible to sessions)\n'
+    elif sudo -n /opt/builderbot/scripts/mint-runner-token --check >/dev/null 2>&1; then
+        printf '  [ok]   runner credential: shielded (root-only stash + sudo helper)\n'
+    else
+        printf '  [skip] no runner credential (fine if ENABLE_RUNNER=false)\n'
+    fi
+    local ssh_src=""
+    if ssh-add -l >/dev/null 2>&1; then
+        ssh_src="shielded agent key"
+    elif compgen -G "$HOME/.ssh/id_*" >/dev/null; then
+        ssh_src="key file in ~/.ssh"
+    fi
+    if [ -n "$ssh_src" ]; then
         # A successful GitHub ssh auth still exits nonzero (no shell access),
         # so judge by the greeting instead of the exit code.
         if ssh -T -o BatchMode=yes -o ConnectTimeout=10 git@github.com 2>&1 \
                 | grep -q 'successfully authenticated'; then
-            printf '  [ok]   github ssh key works\n'
+            printf '  [ok]   github ssh auth works (%s)\n' "$ssh_src"
         else
-            printf '  [FAIL] ssh key present but github auth failed (key not added to GitHub?)\n'
+            printf '  [FAIL] %s present but github auth failed (key not added to GitHub?)\n' "$ssh_src"
             ok=1
         fi
     else
-        printf '  [skip] no ssh key in ~/.ssh (git auth via PAT, or add a key)\n'
+        printf '  [skip] no ssh key (agent empty, nothing in ~/.ssh)\n'
     fi
     if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
         printf '  [ok]   ANTHROPIC_API_KEY set\n'

@@ -84,6 +84,13 @@ services:
       # stay in config/logs.
       # - /mnt/user/logs/builderbot:/logs
 
+      # Recommended for the runner PAT and git ssh keys: a root-owned
+      # (chmod 700) folder with builderbot.env (GITHUB_PAT=...) and an ssh/
+      # subfolder of private keys. Secrets provided here are shielded from
+      # Claude sessions (keys are served via a root-owned ssh-agent) — the
+      # GITHUB_PAT env var above and keys in home/.ssh are not.
+      # - /mnt/user/appdata/BuilderBot/secrets:/secrets:ro
+
       # --- host Docker access (OFF by default) ------------------------------
       # SECURITY: mounting the host Docker socket is root-equivalent on the
       # host — anything inside the container could start a privileged

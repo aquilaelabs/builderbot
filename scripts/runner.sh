@@ -32,27 +32,17 @@ if [ -z "${GITHUB_URL:-}" ]; then
     exit 0
 fi
 
-if [ -z "${GITHUB_PAT:-}" ] && [ -z "${RUNNER_TOKEN:-}" ]; then
-    warn "neither GITHUB_PAT nor RUNNER_TOKEN is set — the runner will not start."
+# can_mint_shielded — true when the PAT lives in the root-only stash and the
+# sudo helper can mint tokens for us without this process ever seeing it.
+can_mint_shielded() {
+    sudo -n /opt/builderbot/scripts/mint-runner-token --check >/dev/null 2>&1
+}
+
+if [ -z "${GITHUB_PAT:-}" ] && [ -z "${RUNNER_TOKEN:-}" ] && ! can_mint_shielded; then
+    warn "no GITHUB_PAT / RUNNER_TOKEN in the environment and no shielded secret available —"
+    warn "the runner will not start."
     exit 0
 fi
-
-# ---------------------------------------------------------------------------
-# Work out whether GITHUB_URL points at a repo or an org, and build the API
-# path used for registration/removal tokens.
-# ---------------------------------------------------------------------------
-scope_path() {
-    local kind="$1" path
-    path="${GITHUB_URL#*://}"      # strip scheme
-    path="${path#*/}"              # strip host
-    path="${path%/}"
-    path="${path%.git}"
-    case "$path" in
-        */*) printf '/repos/%s/actions/runners/%s-token' "$path" "$kind" ;;
-        "")  die "could not parse GITHUB_URL='${GITHUB_URL}'" ;;
-        *)   printf '/orgs/%s/actions/runners/%s-token' "$path" "$kind" ;;
-    esac
-}
 
 mint_token() {
     local kind="$1"
@@ -60,7 +50,11 @@ mint_token() {
         printf '%s' "$RUNNER_TOKEN"
         return
     fi
-    github_api POST "$(scope_path "$kind")" | jq -r .token
+    if [ -n "${GITHUB_PAT:-}" ]; then
+        github_api POST "$(scope_path "$kind")" | jq -r .token
+    else
+        sudo -n /opt/builderbot/scripts/mint-runner-token "$kind"
+    fi
 }
 
 configure() {

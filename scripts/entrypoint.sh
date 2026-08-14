@@ -17,6 +17,102 @@ set -euo pipefail
 PUID="${PUID:-99}"
 PGID="${PGID:-100}"
 
+# Shield secrets from the builder user (and therefore from Claude sessions).
+#
+# Values may arrive as container env vars or as /secrets/*.env files (a
+# root-owned mount — the fully shielded path, since env vars remain visible
+# to `docker exec`'d processes no matter what we do here). Either way they
+# are stashed into a root-only file for the mint-runner-token helper, turned
+# into log-redaction rules, and — when SHIELD_SECRETS is on — scrubbed from
+# the environment every builder process inherits.
+SECRET_VARS=(GITHUB_PAT RUNNER_TOKEN ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN)
+
+stash_secrets() {
+    mkdir -p /run/builderbot
+    chmod 700 /run/builderbot
+
+    # /secrets/*.env can define or override any secret var.
+    if [ -d /secrets ]; then
+        local f
+        for f in /secrets/*.env; do
+            [ -e "$f" ] || continue
+            set -a
+            # shellcheck disable=SC1090
+            . "$f"
+            set +a
+        done
+    fi
+
+    local stash=/run/builderbot/secrets.env redact=/run/builderbot/redact.sed
+    : > "$stash";  chmod 600 "$stash"
+    : > "$redact"; chmod 600 "$redact"
+
+    # Pattern rules: catch well-known token shapes wherever they appear.
+    cat >> "$redact" <<'SED'
+s/gh[pousr]_[A-Za-z0-9]\{8,\}/[REDACTED]/g
+s/github_pat_[A-Za-z0-9_]\{20,\}/[REDACTED]/g
+s/sk-ant-[A-Za-z0-9_-]\{8,\}/[REDACTED]/g
+s/npm_[A-Za-z0-9]\{16,\}/[REDACTED]/g
+s/eyJ[A-Za-z0-9_-]\{20,\}\.[A-Za-z0-9._-]\{10,\}/[REDACTED]/g
+SED
+
+    local var val esc
+    for var in "${SECRET_VARS[@]}" GITHUB_URL; do
+        val="${!var:-}"
+        [ -n "$val" ] || continue
+        printf '%s=%q\n' "$var" "$val" >> "$stash"
+        # Literal-value redaction rule (skip short strings and the non-secret
+        # GITHUB_URL).
+        if [ "$var" != "GITHUB_URL" ] && [ "${#val}" -ge 8 ]; then
+            esc="$(printf '%s' "$val" | sed -e 's/[&/\]/\\&/g' -e 's/[][^$.*]/\\&/g')"
+            printf 's/%s/[REDACTED]/g\n' "$esc" >> "$redact"
+        fi
+    done
+
+    if is_true "${SHIELD_SECRETS:-true}"; then
+        # The runner gets tokens through the sudo helper; nothing running as
+        # builder needs the raw PAT. Claude-facing tools DO need their own
+        # credentials (ANTHROPIC_API_KEY, NPM_TOKEN), so those stay.
+        unset GITHUB_PAT RUNNER_TOKEN
+        log "secrets shielded: GITHUB_PAT/RUNNER_TOKEN removed from the session environment"
+    fi
+}
+
+# Shielded SSH keys: private keys dropped in /secrets/ssh (root-only mount)
+# are loaded into a root-owned ssh-agent. Builder processes get only the
+# agent socket (SSH_AUTH_SOCK is baked into the image env), so git/ssh can
+# *use* the keys — the agent signs on their behalf — but no session can ever
+# read the private key material itself.
+setup_ssh_agent() {
+    local keydir=/secrets/ssh sock="${SSH_AUTH_SOCK:-/run/ssh-agent.sock}"
+    local k added=0
+    [ -d "$keydir" ] || return 0
+    command -v ssh-agent >/dev/null 2>&1 || { warn "ssh-agent not available"; return 0; }
+
+    rm -f "$sock"
+    ssh-agent -a "$sock" >/dev/null
+
+    for k in "$keydir"/*; do
+        [ -f "$k" ] || continue
+        grep -q 'PRIVATE KEY' "$k" 2>/dev/null || continue
+        # ssh-add refuses group/world-readable keys; the mount is root-only
+        # but a sloppy chmod on the host shouldn't break startup silently.
+        if SSH_AUTH_SOCK="$sock" ssh-add "$k" >/dev/null 2>&1; then
+            added=$((added + 1))
+        else
+            warn "could not load ssh key $(basename "$k") (bad perms or passphrase-protected?)"
+        fi
+    done
+
+    if [ "$added" -gt 0 ]; then
+        chown "$PUID:$PGID" "$sock"
+        chmod 600 "$sock"
+        log "ssh-agent: ${added} shielded key(s) loaded — sessions can use them, not read them"
+    else
+        warn "no usable keys in ${keydir}; ssh-agent left empty"
+    fi
+}
+
 # Mirror everything this container prints into a persistent file on the
 # /config volume, so startup output survives container recreation (which
 # happens on every image update — exactly when you want yesterday's log).
@@ -30,7 +126,13 @@ setup_logging() {
     if [ -f "$logfile" ] && [ "$(stat -c %s "$logfile" 2>/dev/null || echo 0)" -gt 5242880 ]; then
         mv -f "$logfile" "$logfile.1"
     fi
-    exec > >(tee -a "$logfile") 2>&1
+    # All output — the persistent file AND the docker-logs passthrough —
+    # flows through the redaction rules built by stash_secrets.
+    if [ -s /run/builderbot/redact.sed ]; then
+        exec > >(sed -u -f /run/builderbot/redact.sed | tee -a "$logfile") 2>&1
+    else
+        exec > >(tee -a "$logfile") 2>&1
+    fi
     log "===== container start $(date -Is) — logging to ${logfile} ====="
 }
 
@@ -169,22 +271,33 @@ run_hooks() {
 resolve_command() {
     case "${1:-supervise}" in
         supervise) printf '%s\0' /opt/builderbot/scripts/supervisor.sh ;;
-        shell|bash) printf '%s\0' bash -l ;;
-        *)          printf '%s\0' "$@" ;;
+        shell|bash)
+            # Bare `bash`/`shell` means "give me a login shell"; anything with
+            # arguments (e.g. `bash -c '...'`) must run verbatim.
+            if [ "$#" -le 1 ]; then
+                printf '%s\0' bash -l
+            else
+                printf '%s\0' "$@"
+            fi
+            ;;
+        *) printf '%s\0' "$@" ;;
     esac
 }
 
 main() {
-    setup_logging
-    banner
-
     local privileged=0
     [ "$(id -u)" -eq 0 ] && privileged=1
+
+    # Stash + scrub before anything is logged or spawned.
+    [ "$privileged" -eq 1 ] && stash_secrets
+    setup_logging
+    banner
 
     if [ "$privileged" -eq 1 ]; then
         setup_timezone
         remap_user
         seed_home
+        setup_ssh_agent
     else
         warn "not running as root — skipping user remap, ownership fixes and root hooks"
     fi

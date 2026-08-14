@@ -48,6 +48,21 @@ git_branch() {
         || echo '?'
 }
 
+# scope_path KIND — API path for runner registration/removal tokens, derived
+# from GITHUB_URL (repo URL vs org URL).
+scope_path() {
+    local kind="$1" path
+    path="${GITHUB_URL#*://}"      # strip scheme
+    path="${path#*/}"              # strip host
+    path="${path%/}"
+    path="${path%.git}"
+    case "$path" in
+        */*) printf '/repos/%s/actions/runners/%s-token' "$path" "$kind" ;;
+        "")  die "could not parse GITHUB_URL='${GITHUB_URL}'" ;;
+        *)   printf '/orgs/%s/actions/runners/%s-token' "$path" "$kind" ;;
+    esac
+}
+
 # github_api METHOD PATH — authenticated call against the GitHub REST API.
 # Requires GITHUB_PAT. Prints the response body.
 github_api() {

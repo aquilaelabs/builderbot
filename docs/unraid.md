@@ -134,6 +134,80 @@ the `image:`/`build:` lines in the compose file as commented.
 
 ---
 
+## Shielding secrets (PAT + SSH keys) from Claude sessions
+
+Anything set as a container *variable* (template field / compose `environment:`)
+is visible to every process inside — including Claude, and so is anything in
+`/home/builder`. The shielded path for both kinds of credential is one
+root-only folder:
+
+1. Create it on the host and drop your secrets in:
+   ```bash
+   mkdir -p /mnt/user/appdata/BuilderBot/secrets/ssh
+
+   # the runner PAT
+   cat > /mnt/user/appdata/BuilderBot/secrets/builderbot.env <<'EOF'
+   GITHUB_PAT=github_pat_xxxxxxxxxxxxxxxx
+   EOF
+
+   # any git ssh keys (no passphrase; filename doesn't matter)
+   cp /path/to/id_ed25519 /mnt/user/appdata/BuilderBot/secrets/ssh/
+
+   chown -R root:root /mnt/user/appdata/BuilderBot/secrets
+   chmod -R go-rwx   /mnt/user/appdata/BuilderBot/secrets
+   ```
+2. Set the template's **Secrets directory** field (or uncomment the
+   `/secrets` volume in compose) to that folder, and leave the `GITHUB_PAT`
+   *variable* empty.
+
+**How the SSH shielding works:** at startup a *root-owned* `ssh-agent` loads
+every key from `secrets/ssh/`; sessions get only the agent's socket. When
+Claude runs `git push`, the agent signs the authentication challenge on its
+behalf — the key *works* everywhere, but the private key bytes are never
+readable by any session, so it cannot be copied out of the container. (Keys
+placed in `~/.ssh` instead keep working too — that's the simple, unshielded
+option.)
+
+**You never need a sudo password to manage any of this** — and a password
+field would actually punch a hole in the model (it would have to live
+somewhere Claude could read). Administration happens from the Unraid side,
+where you're already root: edit the secrets folder on the host and restart
+the container, or hop in as root with
+`docker exec -it -u 0 BuilderBot bash` — a door only someone with host
+access can use. Inside the container, the `builder` user (Claude) has no
+password to find and no sudo to escalate with.
+
+What happens then:
+
+* At startup (as root, before anything else runs) the entrypoint stashes the
+  values into a root-only file in `/run` and **scrubs them from the
+  environment** every builder-user process inherits.
+* The runner never holds the PAT: a `sudo`-whitelisted root helper
+  (`mint-runner-token`) reads the stash and hands back only short-lived
+  (1-hour) registration tokens.
+* The `builder` user has **no general sudo** — exactly one command is
+  whitelisted, and it only ever outputs registration tokens, never the PAT.
+* **All log output is redacted** — both the persistent file and
+  `docker logs` pass through filters that strip known token shapes
+  (`github_pat_…`, `ghp_…`, `sk-ant-…`, `npm_…`, JWTs) *and* the literal
+  values of every configured secret. So logs stay safe for Claude to read
+  even if some tool echoes a token.
+* Trade-off: `gh` is not auto-authenticated in sessions anymore (the PAT
+  isn't there to do it). Git works through the shielded agent keys; run
+  `gh auth login` manually if you also want the API CLI.
+
+`bb doctor` shows which mode you're in — `runner credential: shielded` vs
+`in environment`, and `github ssh auth works (shielded agent key)` vs
+`(~/.ssh key file)`.
+
+Honest limits: container-root can always read the stash (that's what makes
+the runner and the agent work); a session can still *use* the agent to push
+while it's running (usage is the point — extraction is what's blocked);
+`ANTHROPIC_API_KEY` can't be hidden from Claude Code since Claude Code
+itself must send it; and `NPM_TOKEN` lands in `~/.npmrc` if you use it.
+Shielding covers the credentials with real blast radius: the PAT and the
+SSH private keys.
+
 ## First-run checks
 
 ```bash

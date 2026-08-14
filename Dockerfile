@@ -205,7 +205,12 @@ RUN set -eux; \
     userdel -r ubuntu 2>/dev/null || true; \
     groupadd -g 1000 builder; \
     useradd -m -u 1000 -g 1000 -s /bin/bash builder; \
-    echo 'builder ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/builder; \
+    # No general sudo: with blanket root access, shielding secrets from the
+    # builder user (i.e. from Claude sessions) would be theater. The one
+    # sanctioned privilege is minting short-lived runner tokens from the
+    # root-only secret stash. System packages install via EXTRA_APT_PACKAGES,
+    # which runs as root during startup.
+    echo 'builder ALL=(root) NOPASSWD: /opt/builderbot/scripts/mint-runner-token' > /etc/sudoers.d/builder; \
     chmod 0440 /etc/sudoers.d/builder; \
     mkdir -p "${WORKSPACE}" "${RUNNER_DIR}" /opt/builderbot; \
     chown -R builder:builder "${WORKSPACE}" "${RUNNER_DIR}"
@@ -268,6 +273,12 @@ RUN set -eux; \
     ln -sf /opt/builderbot/scripts/as-builder /opt/builderbot/bin/claude; \
     ln -sf /opt/builderbot/scripts/as-builder /opt/builderbot/bin/bb; \
     chown -R builder:builder /opt/builderbot/skel
+
+# Baked in so `docker exec` sessions also see it: when the entrypoint has
+# loaded shielded keys from /secrets/ssh into the root-owned agent, every
+# session's ssh/git picks them up through this socket. Harmless when no
+# agent is running — ssh falls back to ~/.ssh key files.
+ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 
 ENV PUID=99 \
     PGID=100 \
