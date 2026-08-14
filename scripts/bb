@@ -164,6 +164,19 @@ cmd_doctor() {
     else
         printf '  [skip] docker socket not mounted\n'
     fi
+    if compgen -G "$HOME/.ssh/id_*" >/dev/null; then
+        # A successful GitHub ssh auth still exits nonzero (no shell access),
+        # so judge by the greeting instead of the exit code.
+        if ssh -T -o BatchMode=yes -o ConnectTimeout=10 git@github.com 2>&1 \
+                | grep -q 'successfully authenticated'; then
+            printf '  [ok]   github ssh key works\n'
+        else
+            printf '  [FAIL] ssh key present but github auth failed (key not added to GitHub?)\n'
+            ok=1
+        fi
+    else
+        printf '  [skip] no ssh key in ~/.ssh (git auth via PAT, or add a key)\n'
+    fi
     if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
         printf '  [ok]   ANTHROPIC_API_KEY set\n'
     elif [ -f "$HOME/.claude.json" ] || [ -d "$HOME/.claude" ]; then
