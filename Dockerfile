@@ -212,6 +212,12 @@ RUN set -eux; \
     # which runs as root during startup.
     echo 'builder ALL=(root) NOPASSWD: /opt/builderbot/scripts/mint-runner-token' > /etc/sudoers.d/builder; \
     chmod 0440 /etc/sudoers.d/builder; \
+    # Explicitly lock both accounts' passwords: password auth must never be a
+    # path to privilege in this container — there is nothing to brute-force,
+    # which is stronger than any lockout policy. (They are created locked;
+    # this pins the guarantee against future drift.)
+    passwd -l root; \
+    passwd -l builder; \
     mkdir -p "${WORKSPACE}" "${RUNNER_DIR}" /opt/builderbot; \
     chown -R builder:builder "${WORKSPACE}" "${RUNNER_DIR}"
 
