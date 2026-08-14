@@ -1,12 +1,15 @@
 # BuilderBot
 
-One container that is both a **Claude Code workstation** and a **self-hosted
-GitHub Actions runner**, built to live on an Unraid server with your projects
-mounted straight in.
+One container that is a **Claude Code workstation**, a **self-hosted GitHub
+Actions runner**, a **Playwright browser lab** and an **Android build/emulator
+box** — built to live on an Unraid server with your projects mounted straight
+in.
 
 ```
-  ┌─────────────────────── builderbot ───────────────────────┐
-  │  claude · node 22 · python 3 + uv · gh · docker cli       │
+  ┌─────────────────────── builderbot ────────────────────────┐
+  │  claude · node 22 · python 3 + uv · jdk 21 · gh · docker  │
+  │  playwright (chromium/firefox/webkit)                     │
+  │  android sdk + emulator · bundletool                      │
   │  git/git-lfs · ripgrep/fd/fzf/jq · build-essential · mise │
   │                                                           │
   │  actions-runner ──► listens for jobs from GitHub          │
@@ -25,39 +28,42 @@ jobs to the same box.
 | | |
 |---|---|
 | **Claude Code** | `@anthropic-ai/claude-code`, auto-updated on every start |
-| **Node** | 22.x (NodeSource) + npm |
+| **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
+| **Java** | OpenJDK 21 |
+| **Playwright** | CLI + chromium/firefox/webkit with system deps, shared at `/opt/pw-browsers` |
+| **Android** | SDK cmdline-tools/platform-tools/build-tools + platform 35, emulator with Google-APIs x86_64 image, adb, `bundletool` |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins (talks to the host daemon via the mounted socket) |
 | **Search** | ripgrep, fd, fzf, jq |
 | **Build** | build-essential, cmake, pkg-config |
 | **Media** | ffmpeg, imagemagick (MediaReducer needs these) |
 | **Runner** | latest `actions/runner`, ephemeral by default |
-| **Versioning** | `mise` for per-project tool pinning |
+| **Versioning** | `mise` for per-project tool pinning (gradle, go, rust, any node/python — on demand) |
+
+Trim it down with build args if you don't want the heavy toolchains:
+`--build-arg INSTALL_PLAYWRIGHT=false`, `INSTALL_ANDROID=false`,
+`INSTALL_ANDROID_EMULATOR=false`.
 
 ## Quick start on Unraid
 
-Full walkthrough with screenshots-worth-of-detail: **[docs/unraid.md](docs/unraid.md)**.
-The short version:
+Full walkthrough: **[docs/unraid.md](docs/unraid.md)**. Two install options:
 
-```bash
-# on the Unraid box, via terminal
-mkdir -p /boot/config/plugins/compose.manager/projects/builderbot
-cd /boot/config/plugins/compose.manager/projects/builderbot
+**Docker template (recommended)** — [`unraid/builderbot.xml`](unraid/builderbot.xml)
+drops into `/boot/config/plugins/dockerMan/templates-user/`, giving you a
+native Unraid container with a form-based settings page. CI auto-publishes
+`ghcr.io/stencil-projects/builderbot:latest` on every push to `main`, so the
+Docker tab's *Check for Updates* lights up **update ready** and updating is
+one click. (One-time: `docker login ghcr.io` on the host, persisted via the
+`go` file — the package is private.)
 
-# grab the compose file + env template
-wget https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/docker-compose.yml
-wget -O .env https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/.env.example
-
-nano .env          # fill in GITHUB_PAT, TZ, and (optionally) ANTHROPIC_API_KEY
-docker compose up -d
-docker exec -it builderbot bb login     # only if you left ANTHROPIC_API_KEY blank
-```
+**Compose Manager** — the `docker-compose.yml` in this repo, updated with
+`docker compose pull && docker compose up -d`.
 
 Then start working:
 
 ```bash
-docker exec -it builderbot claude       # opens in /workspace
+docker exec -it BuilderBot claude       # opens in /workspace
 ```
 
 ## Configuration
@@ -75,6 +81,8 @@ annotated list. The ones that matter:
 | `GITHUB_PAT` | — | Mints runner registration tokens and authenticates `gh` |
 | `RUNNER_LABELS` | `builderbot,self-hosted,linux,x64` | What `runs-on:` targets |
 | `RUNNER_EPHEMERAL` | `true` | Re-register after every job — no state leaks between runs |
+| `ENABLE_ANDROID_EMULATOR` | `false` | Create the default AVD at startup (start it with `bb emu start`; needs `--device=/dev/kvm`) |
+| `NPM_TOKEN` | — | Auth for `npm publish` |
 | `EXTRA_APT_PACKAGES` | — | Space-separated apt packages installed at startup |
 | `EXTRA_NPM_PACKAGES` | — | Space-separated global npm packages |
 | `EXTRA_PIPX_PACKAGES` | — | Space-separated pipx tools |
@@ -107,7 +115,9 @@ The entrypoint runs, in order:
    | `10-system-packages.root.sh` | `EXTRA_APT_PACKAGES` |
    | `20-claude-code.sh` | update Claude Code, `EXTRA_NPM_PACKAGES`, `EXTRA_PIPX_PACKAGES` |
    | `30-git-and-auth.sh` | git identity, `gh auth`, GitHub SSH host keys |
+   | `35-publishing.sh` | npm publish auth, `docker login ghcr.io` |
    | `40-projects.sh` | report mounted projects, optional per-project bootstrap |
+   | `50-android.sh` | create the default AVD when the emulator is enabled |
 
 4. **supervisor** — starts the Actions runner in the background and keeps the
    container alive as a workstation.
@@ -132,7 +142,25 @@ bb update          update Claude Code in place
 bb login           run the Claude Code auth flow
 bb runner status   show the current runner registration
 bb runner restart  re-register the runner
+bb emu start       boot the Android emulator, headless
+bb emu stop        shut it down
+bb emu status      adb devices
 ```
+
+## Playwright, Android, publishing
+
+* **Playwright**: chromium/firefox/webkit + system deps are pre-installed;
+  `npx playwright test` works headless immediately. Browsers live in a shared,
+  writable `/opt/pw-browsers`, so projects pinning other Playwright versions
+  can `npx playwright install` their own revisions.
+* **Android**: JDK 21 + SDK are baked in — `./gradlew assembleRelease` works
+  out of the box. The emulator boots headless via `bb emu start`
+  (`ENABLE_ANDROID_EMULATOR=true` + `--device=/dev/kvm`); AVDs persist in the
+  home volume, and `sdkmanager --install` adds anything else.
+* **Publishing**: `npm publish` (via `NPM_TOKEN`), `uv publish` (via
+  `UV_PUBLISH_TOKEN`), `docker push` to GHCR (auto-login from `GITHUB_PAT`),
+  `gh release create`, and Gradle's `publish`/Play-Store tasks. Details in
+  [docs/unraid.md](docs/unraid.md#publishing-packages).
 
 ### A note on `docker exec` and users
 
@@ -203,6 +231,7 @@ scripts/
   lib/common.sh                  shared shell helpers
   startup.d/*.sh                 startup hooks
 config/skel/                     home directory skeleton (bashrc etc.)
+unraid/builderbot.xml            Unraid Docker template (one-click updates)
 docs/unraid.md                   step-by-step Unraid setup
 ```
 

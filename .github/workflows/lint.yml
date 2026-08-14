@@ -41,3 +41,10 @@ jobs:
           cp .env.example .env
           docker compose config >/dev/null
           echo "compose file is valid"
+      - name: Validate Unraid template XML
+        run: |
+          python3 - <<'EOF'
+          import xml.dom.minidom
+          xml.dom.minidom.parse("unraid/builderbot.xml")
+          print("unraid template is well-formed")
+          EOF

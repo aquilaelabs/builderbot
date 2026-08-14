@@ -60,6 +60,24 @@ remap_user() {
         usermod -aG "$sock_group" builder
         log "builder added to '${sock_group}' for the host Docker socket (gid ${sock_gid})"
     fi
+
+    # Same dance for /dev/kvm, which the Android emulator needs for hardware
+    # acceleration (pass it in with --device=/dev/kvm).
+    if [ -e /dev/kvm ]; then
+        local kvm_gid kvm_group
+        kvm_gid="$(stat -c '%g' /dev/kvm)"
+        if [ "$kvm_gid" != "0" ]; then
+            if ! getent group "$kvm_gid" >/dev/null; then
+                groupadd -g "$kvm_gid" hostkvm
+            fi
+            kvm_group="$(getent group "$kvm_gid" | cut -d: -f1)"
+            usermod -aG "$kvm_group" builder
+            log "builder added to '${kvm_group}' for /dev/kvm (gid ${kvm_gid})"
+        else
+            chmod 666 /dev/kvm 2>/dev/null || true
+            log "/dev/kvm opened for the emulator"
+        fi
+    fi
 }
 
 seed_home() {

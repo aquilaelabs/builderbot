@@ -17,6 +17,18 @@ ARG NODE_MAJOR=22
 ARG RUNNER_VERSION=latest
 ARG TARGETARCH
 
+# --- Playwright / Android build knobs --------------------------------------
+# Set INSTALL_* to "false" for a slimmer image without that toolchain.
+ARG INSTALL_PLAYWRIGHT=true
+ARG INSTALL_ANDROID=true
+ARG INSTALL_ANDROID_EMULATOR=true
+# Bootstrap build of Google's commandline-tools zip; sdkmanager then manages
+# everything else, so this pin only has to exist, not be current.
+ARG ANDROID_CMDLINE_TOOLS_BUILD=11076708
+ARG ANDROID_PLATFORM=35
+ARG ANDROID_BUILD_TOOLS=35.0.0
+ARG ANDROID_SYSTEM_IMAGE_VARIANT="google_apis;x86_64"
+
 # Several steps below pipe curl into a shell or into gpg. Under the default
 # /bin/sh the exit status of a pipeline is only its *last* command, so a failed
 # download would be silently baked into the image. Fail on any stage instead.
@@ -103,6 +115,88 @@ RUN set -eux; \
     mise --version
 
 # ---------------------------------------------------------------------------
+# Java (needed for Android builds, Gradle/Maven publishing, bundletool)
+# ---------------------------------------------------------------------------
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends openjdk-21-jdk-headless; \
+    rm -rf /var/lib/apt/lists/*
+
+ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+
+# ---------------------------------------------------------------------------
+# Playwright + browsers (chromium, firefox, webkit), shared system-wide.
+#
+# PLAYWRIGHT_BROWSERS_PATH makes every project's playwright resolve browsers
+# from the same directory instead of per-project caches; the dir is left
+# world-writable so a project pinning a different playwright version can
+# `npx playwright install` its own revisions into it at runtime.
+# ---------------------------------------------------------------------------
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
+
+RUN set -eux; \
+    if [ "${INSTALL_PLAYWRIGHT}" != "true" ]; then echo "skipping Playwright"; exit 0; fi; \
+    npm install -g --foreground-scripts playwright; \
+    apt-get update; \
+    playwright install --with-deps chromium firefox webkit; \
+    chmod -R a+rwX "${PLAYWRIGHT_BROWSERS_PATH}"; \
+    npm cache clean --force; \
+    rm -rf /var/lib/apt/lists/*; \
+    playwright --version
+
+# ---------------------------------------------------------------------------
+# Android SDK: cmdline-tools, platform-tools, build-tools, one platform, and
+# (by default) the emulator with a Google-APIs x86_64 system image.
+#
+# The SDK lives in the image so a fresh pull is ready to build APKs/AABs with
+# zero setup; AVDs live in ~/.android on the persistent home volume. The tree
+# is left world-writable so `sdkmanager --install` works at runtime for any
+# extra platforms a project needs.
+# ---------------------------------------------------------------------------
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk
+
+RUN set -eux; \
+    if [ "${INSTALL_ANDROID}" != "true" ]; then echo "skipping Android SDK"; exit 0; fi; \
+    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
+    if [ "$arch" != "amd64" ]; then echo "skipping Android SDK on ${arch}"; exit 0; fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends libpulse0 libgl1 libglu1-mesa libasound2t64; \
+    mkdir -p "${ANDROID_HOME}/cmdline-tools"; \
+    curl -fsSL -o /tmp/clt.zip \
+        "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip"; \
+    unzip -q /tmp/clt.zip -d /tmp/clt; \
+    rm /tmp/clt.zip; \
+    mv /tmp/clt/cmdline-tools "${ANDROID_HOME}/cmdline-tools/latest"; \
+    sdkm="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"; \
+    # `yes` dies of SIGPIPE when sdkmanager stops reading — expected, and not
+    # a failure, hence the || true inside the pipeline's first stage.
+    (yes || true) | "$sdkm" --licenses >/dev/null; \
+    "$sdkm" --install \
+        "platform-tools" \
+        "platforms;android-${ANDROID_PLATFORM}" \
+        "build-tools;${ANDROID_BUILD_TOOLS}" \
+        >/dev/null; \
+    if [ "${INSTALL_ANDROID_EMULATOR}" = "true" ]; then \
+        "$sdkm" --install \
+            "emulator" \
+            "system-images;android-${ANDROID_PLATFORM};${ANDROID_SYSTEM_IMAGE_VARIANT}" \
+            >/dev/null; \
+    fi; \
+    # bundletool for building/installing from .aab bundles
+    bt_ver="$(curl -fsSL https://api.github.com/repos/google/bundletool/releases/latest | jq -r '.tag_name')"; \
+    curl -fsSL -o "${ANDROID_HOME}/bundletool.jar" \
+        "https://github.com/google/bundletool/releases/download/${bt_ver}/bundletool-all-${bt_ver}.jar"; \
+    printf '#!/bin/sh\nexec java -jar %s/bundletool.jar "$@"\n' "${ANDROID_HOME}" \
+        > /usr/local/bin/bundletool; \
+    chmod +x /usr/local/bin/bundletool; \
+    chmod -R a+rwX "${ANDROID_HOME}"; \
+    rm -rf /var/lib/apt/lists/* /tmp/clt; \
+    "${ANDROID_HOME}/platform-tools/adb" --version | head -1
+
+ENV PATH=${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator
+
+# ---------------------------------------------------------------------------
 # Unprivileged user. UID/GID are remapped at startup from PUID/PGID, so the
 # build-time numbers here are only a placeholder. Ubuntu 24.04 ships a stock
 # "ubuntu" user on 1000 — drop it so 1000 is free.
@@ -121,9 +215,15 @@ RUN set -eux; \
 # still has a working `claude` on PATH. Runtime updates install into
 # ~/.npm-global, which precedes /usr/local on PATH.
 # ---------------------------------------------------------------------------
+# Node 22's bundled npm 10 is kept deliberately: newer npm majors block
+# postinstall scripts by default, which silently skips Claude Code's native
+# installer (install.cjs). The --allow-scripts flag covers the day an npm
+# upgrade sneaks in anyway; on npm 10 it is an ignored config key.
 RUN set -eux; \
-    npm install -g npm@latest; \
-    npm install -g @anthropic-ai/claude-code; \
+    npm install -g --foreground-scripts \
+        --allow-scripts=@anthropic-ai/claude-code \
+        @anthropic-ai/claude-code; \
+    corepack enable; \
     npm cache clean --force; \
     claude --version
 

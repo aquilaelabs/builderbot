@@ -3,9 +3,9 @@ name: build image
 on:
   push:
     branches: ["main"]
-    paths-ignore: ["**.md", "docs/**"]
+    paths-ignore: ["**.md", "docs/**", "unraid/**"]
   pull_request:
-    paths-ignore: ["**.md", "docs/**"]
+    paths-ignore: ["**.md", "docs/**", "unraid/**"]
   schedule:
     # Weekly rebuild so the base image, Claude Code and the runner stay fresh.
     - cron: "0 6 * * 1"

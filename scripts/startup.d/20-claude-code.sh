@@ -13,7 +13,11 @@ npm config set prefix "${HOME}/.npm-global" >/dev/null 2>&1 || true
 
 if is_true "${AUTO_UPDATE_CLAUDE:-true}"; then
     log "updating Claude Code (AUTO_UPDATE_CLAUDE=true)"
-    if npm install -g --no-fund --no-audit "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION:-latest}"; then
+    # --allow-scripts: newer npm majors block postinstall scripts by default,
+    # which would silently skip Claude Code's native installer.
+    if npm install -g --no-fund --no-audit \
+        --allow-scripts=@anthropic-ai/claude-code \
+        "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION:-latest}"; then
         log "claude $(claude --version 2>/dev/null || echo '?')"
     else
         warn "Claude Code update failed — keeping the version baked into the image"

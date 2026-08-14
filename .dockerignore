@@ -4,6 +4,7 @@
 .env.*
 !.env.example
 docs
+unraid
 *.md
 !scripts/**/*.md
 .DS_Store

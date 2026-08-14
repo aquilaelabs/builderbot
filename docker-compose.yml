@@ -50,6 +50,13 @@ services:
       GIT_USER_NAME: ${GIT_USER_NAME:-BuilderBot}
       GIT_USER_EMAIL: ${GIT_USER_EMAIL:-builderbot@localhost}
 
+      # --- Android emulator -------------------------------------------------
+      # Also uncomment the devices: block below for KVM acceleration.
+      ENABLE_ANDROID_EMULATOR: ${ENABLE_ANDROID_EMULATOR:-false}
+
+      # --- publishing -------------------------------------------------------
+      NPM_TOKEN: ${NPM_TOKEN:-}
+
       # --- optional extras --------------------------------------------------
       EXTRA_APT_PACKAGES: ${EXTRA_APT_PACKAGES:-}
       EXTRA_NPM_PACKAGES: ${EXTRA_NPM_PACKAGES:-}
@@ -75,6 +82,16 @@ services:
       # against the Unraid daemon. Remove this line if you'd rather not grant
       # the container root-equivalent control of the host.
       - /var/run/docker.sock:/var/run/docker.sock
+
+    # Hardware acceleration for the Android emulator. Uncomment if your CPU
+    # has virtualization enabled (it does if Unraid can run VMs).
+    # devices:
+    #   - /dev/kvm:/dev/kvm
+
+    # Uncomment to reach the emulator's adb from other machines on your LAN
+    # (e.g. Android Studio on your desktop: adb connect tower:5555).
+    # ports:
+    #   - "5555:5555"
 
     # Tells the Unraid Compose Manager plugin to adopt this container.
     labels:

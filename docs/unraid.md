@@ -1,28 +1,23 @@
 # Running BuilderBot on Unraid
 
-Step-by-step, from a stock Unraid box to `docker exec -it builderbot claude`.
+Two ways to run it:
+
+* **Option A — Docker template** *(recommended)*: a native Unraid container
+  with a form-based settings page and **one-click updates** from the Docker
+  tab whenever a new image is published.
+* **Option B — Compose Manager plugin**: the `docker-compose.yml` from this
+  repo, if you prefer compose stacks.
+
+Pick one — both create a container named the same thing, so don't run both.
+
+Either way, start with the two shared steps below.
 
 ---
 
-## 1. Install the Docker Compose plugin
+## Shared step 1: GitHub PAT
 
-1. Make sure **Community Applications** is installed
-   (Unraid → *Apps* tab; if it's missing, install it from
-   <https://forums.unraid.net/topic/38582-plug-in-community-applications/>).
-2. Go to the **Apps** tab and search for **Compose Manager**
-   (by *dcflachs*). Install it.
-3. A **Compose** section now appears at the bottom of the **Docker** tab.
-
-The plugin is a thin wrapper: it stores each stack under
-`/boot/config/plugins/compose.manager/projects/<name>/` and shells out to the
-real `docker compose`. Anything you can do in the WebUI you can also do from
-the terminal, which is usually easier for the first setup.
-
----
-
-## 2. Get a GitHub PAT
-
-The container needs a token to register itself as a runner.
+The container needs a token to register itself as an Actions runner and to
+work with your private repos.
 
 **Fine-grained token** (preferred):
 
@@ -31,49 +26,40 @@ The container needs a token to register itself as a runner.
 2. Resource owner: **Stencil-Projects**.
 3. Repository access: the repo(s) you want the runner attached to.
 4. Repository permissions:
-   * **Administration**: *Read and write* — required to mint runner
-     registration tokens.
-   * **Contents**: *Read and write* — so `gh` and `git` can push from inside
-     the container.
+   * **Administration**: *Read and write* — mints runner registration tokens.
+   * **Contents**: *Read and write* — so `gh`/`git` can push from inside.
    * **Pull requests**: *Read and write* — optional, lets Claude open PRs.
-5. Copy the token; you'll paste it into `.env` in a moment.
 
-For an **org-level** runner (one runner serving every repo in
-Stencil-Projects) use a classic token with the `admin:org` scope and set
-`GITHUB_URL=https://github.com/Stencil-Projects`.
+You'll also need a **classic PAT with `read:packages`** for pulling the
+private image from GHCR (fine-grained tokens still don't cover GHCR pulls; a
+classic token with `read:packages` + `repo` can double for everything if you
+prefer one token).
 
----
+## Shared step 2: log the Unraid host into GHCR
 
-## 3. Create the stack
+The image auto-publishes to `ghcr.io/stencil-projects/builderbot` on every
+push to `main` (plus a weekly freshness rebuild). The repo is private, so the
+package is private, so the Unraid host must authenticate to pull it.
 
-Open the Unraid terminal (the `>_` icon in the top-right) and run:
+In the Unraid terminal:
 
 ```bash
-STACK=/boot/config/plugins/compose.manager/projects/builderbot
-mkdir -p "$STACK"
-cd "$STACK"
-
-wget -O docker-compose.yml \
-  https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/docker-compose.yml
-wget -O .env \
-  https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/.env.example
+docker login ghcr.io -u <your-github-username>
+# paste the classic PAT with read:packages when prompted
 ```
 
-> The repo is private, so `wget` on the raw URLs will 404 until you either make
-> it public or fetch with a token. The easy alternative is to clone with the PAT
-> you just made:
->
-> ```bash
-> cd /mnt/user/appdata
-> git clone https://<YOUR_PAT>@github.com/Stencil-Projects/BuilderBot.git
-> cp BuilderBot/docker-compose.yml BuilderBot/.env.example "$STACK"/
-> mv "$STACK"/.env.example "$STACK"/.env
-> ```
->
-> Cloning also gives you the Dockerfile, so you can build locally instead of
-> pulling from GHCR (see step 5b).
+Unraid's root filesystem is rebuilt from flash on every boot, so that login
+would vanish on reboot. Persist it:
 
-Create the appdata directories the stack expects:
+```bash
+cp /root/.docker/config.json /boot/config/ghcr-auth.json
+echo 'install -D -m 600 /boot/config/ghcr-auth.json /root/.docker/config.json' >> /boot/config/go
+```
+
+> The auth file on flash contains your PAT base64-encoded (not encrypted).
+> Scope that token to `read:packages` only, so it can't do anything else.
+
+Create the appdata directories:
 
 ```bash
 mkdir -p /mnt/user/appdata/builderbot/{home,config/startup.d,work}
@@ -82,181 +68,169 @@ chown -R 99:100 /mnt/user/appdata/builderbot
 
 ---
 
-## 4. Edit `.env`
+## Option A: the Docker template
+
+### Install
+
+Get the template onto the flash drive (the repo is private, so fetch with a
+token or copy it over from a clone):
 
 ```bash
-nano /boot/config/plugins/compose.manager/projects/builderbot/.env
+curl -fsSL -H "Authorization: Bearer <YOUR_PAT>" \
+  -o /boot/config/plugins/dockerMan/templates-user/my-builderbot.xml \
+  https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/unraid/builderbot.xml
 ```
 
-The lines to actually change:
+Then in the WebUI: **Docker** tab → **Add Container** → in the *Template*
+dropdown pick **builderbot**. You get a form with everything already wired:
 
-```ini
-TZ=America/New_York
+* both project paths (`/mnt/user/appdata/mediareducer-dev`,
+  `/mnt/user/development/FreshBoot`) mapped into `/workspace/…`
+* the appdata paths for home / config / runner work
+* fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), git identity, TZ
 
-# blank = log in with your Claude subscription after first start
-ANTHROPIC_API_KEY=
+Fill in `GITHUB_PAT` (and `GIT_USER_NAME`/`GIT_USER_EMAIL`), leave
+`ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
+**Apply**. Unraid pulls the image and starts it.
 
-GITHUB_URL=https://github.com/Stencil-Projects/BuilderBot
-GITHUB_PAT=github_pat_xxxxxxxxxxxxxxxxxxxx
+### Updating — the whole point
 
-GIT_USER_NAME=Sean Bowman
-GIT_USER_EMAIL=you@example.com
-```
+CI publishes a fresh `:latest` on every push to `main` and on a weekly
+schedule. On the **Docker** tab, Unraid's *Check for Updates* compares your
+running image's digest against GHCR and flips the container to
+**update ready** — click it and you're on the new build. That's the entire
+update procedure. Ansible not required.
 
-Leave `PUID=99` / `PGID=100` alone unless you know your shares want something
-else — that pair is Unraid's `nobody:users`, which is what
-`/mnt/user/...` expects.
+Template edits (new paths, changed variables) are done from the container's
+own settings page (click the icon → *Edit*), and survive image updates.
 
-The project mount paths are already set to yours:
+### Android emulator (optional)
 
-```ini
-MEDIAREDUCER_PATH=/mnt/user/appdata/mediareducer-dev
-FRESHBOOT_PATH=/mnt/user/development/FreshBoot
-```
-
-They land in the container as `/workspace/mediareducer-dev` and
-`/workspace/FreshBoot`.
-
-Lock the file down — it holds a token:
-
-```bash
-chmod 600 "$STACK"/.env
-```
+1. Container settings → **Extra Params**: append ` --device=/dev/kvm`
+2. Set `ENABLE_ANDROID_EMULATOR` to `true`
+3. Apply, then: `docker exec -it BuilderBot bb emu start`
 
 ---
 
-## 5a. Pull the prebuilt image from GHCR
+## Option B: Compose Manager
 
-The image is published to `ghcr.io/stencil-projects/builderbot`. Because the
-repo is private, the package is private too, so Unraid has to log in once:
+1. **Apps** tab → install **Compose Manager** (by *dcflachs*).
+2. ```bash
+   STACK=/boot/config/plugins/compose.manager/projects/builderbot
+   mkdir -p "$STACK"
+   cd /mnt/user/appdata
+   git clone https://<YOUR_PAT>@github.com/Stencil-Projects/BuilderBot.git
+   cp BuilderBot/docker-compose.yml "$STACK"/
+   cp BuilderBot/.env.example "$STACK"/.env
+   nano "$STACK"/.env && chmod 600 "$STACK"/.env
+   ```
+3. ```bash
+   cd "$STACK" && docker compose pull && docker compose up -d
+   ```
+4. Update later with `docker compose pull && docker compose up -d`.
 
-```bash
-# a classic PAT with read:packages scope (can be the same token if it's classic)
-echo "<YOUR_PAT>" | docker login ghcr.io -u <your-github-username> --password-stdin
-```
-
-Then:
-
-```bash
-cd /boot/config/plugins/compose.manager/projects/builderbot
-docker compose pull
-docker compose up -d
-```
-
-## 5b. …or build it on the server
-
-No registry login needed:
-
-```bash
-cd /mnt/user/appdata/BuilderBot          # the clone from step 3
-cp /boot/config/plugins/compose.manager/projects/builderbot/.env .
-docker compose build          # ~5-10 minutes on first build
-docker compose up -d
-```
-
-If you build here, edit `docker-compose.yml` to comment out the `image:` line
-and uncomment the `build:` block.
+To build on the server instead of pulling, use the clone directory and swap
+the `image:`/`build:` lines in the compose file as commented.
 
 ---
 
-## 6. First-run checks
+## First-run checks
 
 ```bash
-docker logs -f builderbot
+docker logs -f BuilderBot        # banner → hooks → "registering runner" → ready
+docker exec -it BuilderBot bb doctor
 ```
 
-You want to see the banner, the hooks running, `registering runner
-'builderbot'`, and finally `[builderbot] ready.`
-
-Then:
+Every line should read `[ok]`. If it warns about no saved login:
 
 ```bash
-docker exec -it builderbot bb doctor
-```
-
-Every line should read `[ok]`. If `no ANTHROPIC_API_KEY and no saved login`
-shows up, do the login now:
-
-```bash
-docker exec -it builderbot bb login
+docker exec -it BuilderBot bb login
 ```
 
 Confirm the runner arrived: GitHub → repo → *Settings* → *Actions* →
-*Runners*. You should see **builderbot** as *Idle*.
+*Runners* → **builderbot** shows *Idle*.
 
----
-
-## 7. Daily use
+## Daily use
 
 ```bash
-# Claude Code, with both projects visible
-docker exec -it builderbot claude
-
-# start it already inside a project
-docker exec -it -w /workspace/FreshBoot builderbot claude
-
-# shell as the builder user
-docker exec -it builderbot bb shell
-
-# what's going on
-docker exec -it builderbot bb status
+docker exec -it BuilderBot claude                          # Claude Code
+docker exec -it -w /workspace/FreshBoot BuilderBot claude  # in a project
+docker exec -it BuilderBot bb shell                        # shell as builder
+docker exec -it BuilderBot bb status                       # overview
 ```
 
 `claude` and `bb` re-exec themselves as the `builder` user, because
-`docker exec` bypasses the entrypoint and would otherwise drop you in as root
-— which loses your saved Claude login and writes root-owned files into your
-shares. A bare `docker exec -it builderbot bash` *is* root; use `bb shell` (or
-`docker exec -it -u builder builderbot bash -l`) instead.
+`docker exec` (and the WebUI **Console** button) land you in as root — which
+would lose your saved Claude login and write root-owned files into your
+shares. A bare `docker exec -it BuilderBot bash` *is* root; use `bb shell`.
 
-The Unraid WebUI's container → **Console** button opens as root for the same
-reason. Type `bb shell` once you're in.
+### Playwright
 
-### Updating
+Chromium, Firefox and WebKit are pre-installed with all system deps, shared
+at `/opt/pw-browsers`:
 
 ```bash
-cd /boot/config/plugins/compose.manager/projects/builderbot
-docker compose pull && docker compose up -d
+docker exec -it -w /workspace/FreshBoot BuilderBot bb shell
+npx playwright test                 # a project pinning another version can
+npx playwright install chromium     # add its own browsers to the shared dir
 ```
 
-Claude Code itself updates on every container start (`AUTO_UPDATE_CLAUDE=true`),
-so you don't need to pull the image just for that. `docker exec -it builderbot
-bb update` does it without a restart.
+Headless works out of the box; there is no display server in the container.
+
+### Android
+
+The SDK (platform-tools, build-tools, platform 35), JDK 21 and `bundletool`
+are baked in — Gradle projects build with their own wrapper immediately:
+
+```bash
+cd /workspace/YourApp && ./gradlew assembleRelease
+```
+
+Emulator workflow (after enabling KVM per your install option above):
+
+```bash
+bb emu start        # boots the 'builderbot' AVD headless
+adb devices
+./gradlew connectedAndroidTest
+bb emu stop
+```
+
+AVDs persist in the home volume. Need more platforms?
+`sdkmanager --install "platforms;android-34"` just works.
+
+### Publishing packages
+
+| Target | How |
+|---|---|
+| npm | set `NPM_TOKEN`, then `npm publish` |
+| PyPI | set `UV_PUBLISH_TOKEN`, then `uv publish` |
+| GHCR (docker) | automatic `docker login ghcr.io` from `GITHUB_PAT` at startup; `docker push ghcr.io/stencil-projects/<image>` |
+| Play Store / Maven | Gradle handles it (`./gradlew publish`); signing keys belong in the home volume or CI secrets, not the image |
+| GitHub Releases | `gh release create` — `gh` is already authenticated |
 
 ---
 
 ## Notes and gotchas
 
-**The Docker socket mount.** `- /var/run/docker.sock:/var/run/docker.sock` in
-the compose file lets workflow jobs and Claude run `docker build` /
-`docker compose` against the Unraid daemon. That is effectively root on the
-host — appropriate for a private toolchain box you control, but delete the line
-if you'd rather not.
+**The Docker socket.** Mapping `/var/run/docker.sock` gives the container
+control of the host Docker daemon — effectively root on the host. Appropriate
+for a private toolchain box; remove the mapping if you'd rather not.
 
-**File ownership.** The container writes as `99:100`. If a project directory is
-owned by something else you'll get permission errors; either fix the share's
-ownership (`chown -R 99:100 /mnt/user/development/FreshBoot`) or set
-`CHOWN_PROJECTS=true` in `.env` to have the container do it on every start.
+**File ownership.** The container writes as `99:100` (`nobody:users`). If a
+project share is owned differently, fix it once
+(`chown -R 99:100 /mnt/user/development/FreshBoot`) or set
+`CHOWN_PROJECTS=true`.
 
-**`/mnt/user` vs `/mnt/cache`.** Mounting through `/mnt/user` (the FUSE layer)
-is correct and safest. It's slower than `/mnt/cache/...` direct paths, but
-mixing the two for the same share can corrupt files — don't.
+**`/mnt/user` vs `/mnt/cache`.** Mount through `/mnt/user` (the FUSE layer).
+Mixing direct-disk and user-share paths for the same data corrupts files.
 
-**Public repos.** Don't point the runner at a public repository. Anyone who can
-open a pull request could run arbitrary code on your server.
+**Public repos.** Don't attach the runner to a public repository — anyone who
+can open a PR could run code on your server.
 
-**Ephemeral runners.** With `RUNNER_EPHEMERAL=true` the runner deregisters
-after each job and re-registers immediately. Seeing the runner briefly vanish
-from the GitHub UI between jobs is expected.
+**Stopping cleanly.** Stop from the Docker tab (or `docker stop`) sends
+SIGTERM; the runner drains its in-flight job (default 120s) and deregisters.
+Hard kills leave a stale runner entry in GitHub to delete by hand.
 
-**Stopping cleanly.** `docker compose down` sends SIGTERM; the container drains
-the in-flight job (up to `RUNNER_SHUTDOWN_TIMEOUT`, default 120s) and
-deregisters itself. If you hard-kill it instead, delete the stale runner in
-GitHub's Runners settings.
-
-**Adding a third project.** Add the mount to `docker-compose.yml`:
-
-```yaml
-      - /mnt/user/development/SomethingElse:/workspace/SomethingElse
-```
-
-then `docker compose up -d`. It shows up under `/workspace` automatically.
+**Image size.** With Playwright's three browsers plus the Android SDK and
+emulator image baked in, expect a pull of several GB. Updates are
+layer-diffed, so routine updates move far less data.

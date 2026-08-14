@@ -14,7 +14,7 @@ target="$(basename "$0")"
 
 # Deliberately excludes /opt/builderbot/bin so the exec below finds the real
 # binary instead of recursing into this wrapper.
-REAL_PATH="/home/builder/.npm-global/bin:/home/builder/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+REAL_PATH="/home/builder/.npm-global/bin:/home/builder/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/android-sdk/cmdline-tools/latest/bin:/opt/android-sdk/platform-tools:/opt/android-sdk/emulator"
 
 if [ "$(id -u)" -eq 0 ] && id builder >/dev/null 2>&1 && command -v gosu >/dev/null 2>&1; then
     exec gosu builder env \

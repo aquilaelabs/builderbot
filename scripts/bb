@@ -17,6 +17,9 @@ bb — BuilderBot helper
   bb login               run the Claude Code auth flow
   bb runner status       show runner registration
   bb runner restart      re-register the GitHub Actions runner
+  bb emu start           boot the Android emulator (headless)
+  bb emu stop            shut the emulator down
+  bb emu status          adb devices
   bb doctor              check the things that usually go wrong
 EOF
 }
@@ -41,6 +44,9 @@ cmd_status() {
     version gh     gh --version
     version docker docker --version
     version mise   mise --version
+    version java   java --version
+    version adb    adb --version
+    version pw     playwright --version
     printf '  %-8s %s\n' runner "$(cat "${RUNNER_DIR}/.runner-version" 2>/dev/null || echo '-')"
     echo
     echo "== runner =="
@@ -104,6 +110,36 @@ cmd_runner() {
     esac
 }
 
+cmd_emu() {
+    local avd="${ANDROID_AVD_NAME:-builderbot}"
+    case "${1:-status}" in
+        start)
+            command -v emulator >/dev/null 2>&1 \
+                || die "emulator is not installed in this image"
+            if adb devices 2>/dev/null | grep -q '^emulator-'; then
+                log "an emulator is already running"; adb devices; return 0
+            fi
+            avdmanager list avd 2>/dev/null | grep -q "Name: ${avd}$" \
+                || die "AVD '${avd}' not found — set ENABLE_ANDROID_EMULATOR=true and restart, or create one with avdmanager"
+            [ -w /dev/kvm ] || warn "/dev/kvm not available — this will be very slow"
+            log "starting AVD '${avd}' headless (log: ~/.android/emulator.log)"
+            nohup emulator -avd "$avd" -no-window -no-audio -no-boot-anim \
+                -gpu swiftshader_indirect \
+                > "$HOME/.android/emulator.log" 2>&1 &
+            log "waiting for the device to come up..."
+            adb wait-for-device
+            adb devices
+            ;;
+        stop)
+            adb emu kill 2>/dev/null || warn "no emulator to stop"
+            ;;
+        status)
+            adb devices -l
+            ;;
+        *) usage; exit 1 ;;
+    esac
+}
+
 cmd_doctor() {
     local ok=0
     check() { # check DESCRIPTION COMMAND...
@@ -145,6 +181,7 @@ case "${1:-status}" in
     update)   cmd_update ;;
     login)    cmd_login ;;
     runner)   shift; cmd_runner "$@" ;;
+    emu)      shift; cmd_emu "$@" ;;
     doctor)   cmd_doctor ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;
