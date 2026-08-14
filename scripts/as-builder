@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#
+# Privilege-dropping wrapper, dispatched on the name it's invoked as.
+#
+# `docker exec` does NOT go through the entrypoint, so it lands you as root —
+# which would run Claude Code with HOME=/root (no saved login) and leave
+# root-owned files in your Unraid shares. Symlinks named `claude` and `bb` in
+# /opt/builderbot/bin point here so those commands re-exec as `builder`
+# whichever way you enter the container.
+#
+set -euo pipefail
+
+target="$(basename "$0")"
+
+# Deliberately excludes /opt/builderbot/bin so the exec below finds the real
+# binary instead of recursing into this wrapper.
+REAL_PATH="/home/builder/.npm-global/bin:/home/builder/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+
+if [ "$(id -u)" -eq 0 ] && id builder >/dev/null 2>&1 && command -v gosu >/dev/null 2>&1; then
+    exec gosu builder env \
+        HOME=/home/builder USER=builder PATH="$REAL_PATH" \
+        "$target" "$@"
+fi
+
+exec env PATH="$REAL_PATH" "$target" "$@"

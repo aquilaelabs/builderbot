@@ -1,0 +1,88 @@
+# BuilderBot — Claude Code workstation + GitHub Actions runner for Unraid.
+#
+#   docker compose up -d
+#   docker exec -it builderbot claude
+#
+# Settings live in .env next to this file (copy .env.example).
+
+services:
+  builderbot:
+    image: ghcr.io/stencil-projects/builderbot:${BUILDERBOT_TAG:-latest}
+    # Building locally instead of pulling? Comment out `image:` above and
+    # uncomment this block (or keep both to build and tag in one step).
+    # build:
+    #   context: .
+    #   args:
+    #     RUNNER_VERSION: latest
+    container_name: builderbot
+    hostname: builderbot
+    restart: unless-stopped
+
+    # Keeps a TTY attached so `docker exec -it builderbot claude` behaves like a
+    # real terminal.
+    stdin_open: true
+    tty: true
+
+    environment:
+      # --- Unraid file ownership -------------------------------------------
+      PUID: ${PUID:-99}
+      PGID: ${PGID:-100}
+      TZ: ${TZ:-America/New_York}
+
+      # --- Claude Code ------------------------------------------------------
+      # Leave ANTHROPIC_API_KEY empty to log in interactively with a Claude
+      # subscription instead (`docker exec -it builderbot bb login`).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AUTO_UPDATE_CLAUDE: ${AUTO_UPDATE_CLAUDE:-true}
+      CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-latest}
+
+      # --- GitHub Actions runner -------------------------------------------
+      ENABLE_RUNNER: ${ENABLE_RUNNER:-true}
+      GITHUB_URL: ${GITHUB_URL:-}
+      GITHUB_PAT: ${GITHUB_PAT:-}
+      RUNNER_NAME: ${RUNNER_NAME:-builderbot}
+      RUNNER_LABELS: ${RUNNER_LABELS:-builderbot,self-hosted,linux,x64}
+      RUNNER_GROUP: ${RUNNER_GROUP:-}
+      RUNNER_EPHEMERAL: ${RUNNER_EPHEMERAL:-true}
+      RUNNER_WORKDIR: /workspace/_work
+
+      # --- git identity -----------------------------------------------------
+      GIT_USER_NAME: ${GIT_USER_NAME:-BuilderBot}
+      GIT_USER_EMAIL: ${GIT_USER_EMAIL:-builderbot@localhost}
+
+      # --- optional extras --------------------------------------------------
+      EXTRA_APT_PACKAGES: ${EXTRA_APT_PACKAGES:-}
+      EXTRA_NPM_PACKAGES: ${EXTRA_NPM_PACKAGES:-}
+      EXTRA_PIPX_PACKAGES: ${EXTRA_PIPX_PACKAGES:-}
+      PROJECT_BOOTSTRAP: ${PROJECT_BOOTSTRAP:-false}
+      CHOWN_PROJECTS: ${CHOWN_PROJECTS:-false}
+
+    volumes:
+      # --- your projects ----------------------------------------------------
+      - ${MEDIAREDUCER_PATH:-/mnt/user/appdata/mediareducer-dev}:/workspace/mediareducer-dev
+      - ${FRESHBOOT_PATH:-/mnt/user/development/FreshBoot}:/workspace/FreshBoot
+
+      # --- persistent container state --------------------------------------
+      # Claude Code login, shell history, npm globals, runner registration.
+      - ${APPDATA_PATH:-/mnt/user/appdata/builderbot}/home:/home/builder
+      # Drop your own *.sh startup hooks in here.
+      - ${APPDATA_PATH:-/mnt/user/appdata/builderbot}/config:/config
+      # Actions runner checkout/work directory.
+      - ${APPDATA_PATH:-/mnt/user/appdata/builderbot}/work:/workspace/_work
+
+      # --- host Docker access ----------------------------------------------
+      # Lets workflow jobs (and Claude) run `docker build` / `docker compose`
+      # against the Unraid daemon. Remove this line if you'd rather not grant
+      # the container root-equivalent control of the host.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+    # Tells the Unraid Compose Manager plugin to adopt this container.
+    labels:
+      net.unraid.docker.managed: composeman
+
+    healthcheck:
+      test: ["CMD", "/opt/builderbot/scripts/healthcheck.sh"]
+      interval: 60s
+      timeout: 10s
+      start_period: 120s
+      retries: 3

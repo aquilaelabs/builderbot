@@ -1,0 +1,151 @@
+#!/usr/bin/env bash
+#
+# `bb` — small convenience CLI inside the container.
+#
+set -euo pipefail
+
+. /opt/builderbot/scripts/lib/common.sh
+
+usage() {
+    cat <<'EOF'
+bb — BuilderBot helper
+
+  bb status              show tool versions, runner state and mounted projects
+  bb projects            list mounted project directories
+  bb shell               open a login shell as the builder user
+  bb update              update Claude Code (and npm globals) in place
+  bb login               run the Claude Code auth flow
+  bb runner status       show runner registration
+  bb runner restart      re-register the GitHub Actions runner
+  bb doctor              check the things that usually go wrong
+EOF
+}
+
+# version LABEL COMMAND... — print a tool's version, or "-" when it is absent
+# or answers with nothing.
+version() {
+    local label="$1"; shift
+    local out
+    out="$("$@" 2>/dev/null | head -1)" || out=""
+    printf '  %-8s %s\n' "$label" "${out:--}"
+}
+
+cmd_status() {
+    echo "== versions =="
+    version claude claude --version
+    version node   node --version
+    version npm    npm --version
+    version python python3 --version
+    version uv     uv --version
+    version git    git --version
+    version gh     gh --version
+    version docker docker --version
+    version mise   mise --version
+    printf '  %-8s %s\n' runner "$(cat "${RUNNER_DIR}/.runner-version" 2>/dev/null || echo '-')"
+    echo
+    echo "== runner =="
+    if [ -f "${RUNNER_DIR}/.runner" ]; then
+        jq -r '"  name: \(.agentName)\n  url:  \(.gitHubUrl)"' "${RUNNER_DIR}/.runner" 2>/dev/null \
+            || echo "  registered"
+        if pgrep -f 'Runner.Listener' >/dev/null; then
+            echo "  state: listening for jobs"
+        else
+            echo "  state: starting up or between jobs"
+        fi
+    else
+        echo "  not registered (ENABLE_RUNNER=${ENABLE_RUNNER:-true})"
+    fi
+    echo
+    cmd_projects
+}
+
+cmd_projects() {
+    echo "== projects (${WORKSPACE}) =="
+    local d found=0
+    for d in "$WORKSPACE"/*/; do
+        [ -d "$d" ] || continue
+        case "$(basename "$d")" in _work) continue ;; esac
+        found=1
+        if [ -d "$d/.git" ]; then
+            printf '  %-40s git: %s\n' "$(basename "$d")" "$(git_branch "$d")"
+        else
+            printf '  %-40s (not a git repo)\n' "$(basename "$d")"
+        fi
+    done
+    [ "$found" -eq 1 ] || echo "  none mounted"
+}
+
+cmd_update() {
+    log "updating Claude Code"
+    npm install -g @anthropic-ai/claude-code@latest
+    claude --version
+}
+
+cmd_login() {
+    claude /login || claude
+}
+
+cmd_runner() {
+    case "${1:-status}" in
+        status)
+            if [ -f "${RUNNER_DIR}/.runner" ]; then
+                cat "${RUNNER_DIR}/.runner"
+            else
+                echo "not registered"
+            fi
+            ;;
+        restart)
+            pkill -TERM -f 'runner\.sh' || true
+            sleep 2
+            nohup /opt/builderbot/scripts/runner.sh >/proc/1/fd/1 2>&1 &
+            echo "runner restarting"
+            ;;
+        *) usage; exit 1 ;;
+    esac
+}
+
+cmd_doctor() {
+    local ok=0
+    check() { # check DESCRIPTION COMMAND...
+        local desc="$1"; shift
+        if "$@" >/dev/null 2>&1; then
+            printf '  [ok]   %s\n' "$desc"
+        else
+            printf '  [FAIL] %s\n' "$desc"; ok=1
+        fi
+    }
+    echo "== doctor =="
+    check "claude on PATH"            command -v claude
+    check "workspace writable"        test -w "$WORKSPACE"
+    check "home writable"             test -w "$HOME"
+    check "git identity configured"   git config --get user.email
+    # No -f here: we only care that the connection and TLS handshake work.
+    # These endpoints answer a bare GET with 4xx, which -f would treat as an error.
+    check "anthropic api reachable"   curl -sS -m 10 -o /dev/null https://api.anthropic.com/
+    check "github api reachable"      curl -sS -m 10 -o /dev/null https://api.github.com/
+    if [ -S /var/run/docker.sock ]; then
+        check "docker socket usable"  docker info
+    else
+        printf '  [skip] docker socket not mounted\n'
+    fi
+    if [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+        printf '  [ok]   ANTHROPIC_API_KEY set\n'
+    elif [ -f "$HOME/.claude.json" ] || [ -d "$HOME/.claude" ]; then
+        printf '  [ok]   Claude Code credentials present in %s\n' "$HOME"
+    else
+        printf '  [warn] no ANTHROPIC_API_KEY and no saved login — run `bb login`\n'
+    fi
+    return $ok
+}
+
+case "${1:-status}" in
+    status)   cmd_status ;;
+    projects) cmd_projects ;;
+    shell)    exec bash -l ;;
+    update)   cmd_update ;;
+    login)    cmd_login ;;
+    runner)   shift; cmd_runner "$@" ;;
+    doctor)   cmd_doctor ;;
+    -h|--help|help) usage ;;
+    *) usage; exit 1 ;;
+esac
