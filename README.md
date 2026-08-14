@@ -124,7 +124,7 @@ The entrypoint runs, in order:
 
 Naming rules for hooks: `*.root.sh` runs as root, anything else runs as
 `builder`; `*.disabled.sh` is skipped. To add your own without rebuilding the
-image, drop a script into `/mnt/user/development/BuilderBot/config/startup.d/`.
+image, drop a script into `/mnt/user/appdata/BuilderBot/config/startup.d/`.
 
 Per-project setup belongs in the project itself — create
 `.builderbot/setup.sh` in the repo and set `PROJECT_BOOTSTRAP=true`.
