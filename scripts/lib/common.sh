@@ -64,13 +64,33 @@ scope_path() {
 }
 
 # github_api METHOD PATH — authenticated call against the GitHub REST API.
-# Requires GITHUB_PAT. Prints the response body.
+# Requires GITHUB_PAT. Prints the response body on success; on failure it
+# explains what the status code means for *this* call rather than leaving a
+# bare "curl: (22) ... error: 403" in the log.
 github_api() {
-    local method="$1" path="$2"
+    local method="$1" path="$2" resp code body scope_hint
     [ -n "${GITHUB_PAT:-}" ] || die "GITHUB_PAT is required for '$path'"
-    curl -fsSL -X "$method" \
+
+    case "$path" in
+        /orgs/*) scope_hint="an ORG-level call: the token needs Organization permissions -> 'Self-hosted runners': Read and write (fine-grained), or the admin:org scope (classic), and its resource owner must be the organization" ;;
+        *)       scope_hint="a REPO-level call: the token needs Repository permissions -> 'Administration': Read and write on that repository" ;;
+    esac
+
+    resp="$(curl -sS -w $'\n%{http_code}' -X "$method" \
         -H "Accept: application/vnd.github+json" \
         -H "Authorization: Bearer ${GITHUB_PAT}" \
         -H "X-GitHub-Api-Version: 2022-11-28" \
-        "${GITHUB_API_URL:-https://api.github.com}${path}"
+        "${GITHUB_API_URL:-https://api.github.com}${path}" 2>&1)" \
+        || die "could not reach the GitHub API for ${path} (network/DNS?)"
+
+    code="${resp##*$'\n'}"
+    body="${resp%$'\n'*}"
+
+    case "$code" in
+        2*) printf '%s' "$body" ;;
+        401) die "GitHub rejected the token (401) on ${path} — it is invalid, revoked, or expired." ;;
+        403) die "GitHub denied the request (403) on ${path}. This is ${scope_hint}." ;;
+        404) die "GitHub returned 404 on ${path}. Either GITHUB_URL points somewhere that does not exist, or the token cannot see it — GitHub answers 404 rather than 403 for resources a token has no access to. This is ${scope_hint}." ;;
+        *)   die "GitHub API returned ${code} on ${path}: $(printf '%s' "$body" | tr -d '\n' | head -c 200)" ;;
+    esac
 }
