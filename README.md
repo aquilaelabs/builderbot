@@ -60,6 +60,30 @@ one click. (One-time: `docker login ghcr.io` on the host, persisted via the
 **Compose Manager** — the `docker-compose.yml` in this repo, updated with
 `docker compose pull && docker compose up -d`.
 
+### Authorizing the server to pull the image (one-time)
+
+This repo is private, so its GHCR package is private too — an anonymous
+`docker pull` gets `denied`. The Unraid **host** needs credentials
+(this is separate from the `GITHUB_PAT` you put *inside* the container):
+
+1. Create a **classic** PAT with only the `read:packages` scope
+   (GitHub → *Settings* → *Developer settings* → *Tokens (classic)*).
+   Fine-grained tokens don't cover GHCR pulls.
+2. In the Unraid terminal:
+   ```bash
+   docker login ghcr.io -u <your-github-username>   # paste the PAT as password
+   ```
+3. Unraid rebuilds its root filesystem every boot, which would wipe that
+   login. Persist it via the flash drive:
+   ```bash
+   cp /root/.docker/config.json /boot/config/ghcr-auth.json
+   echo 'install -D -m 600 /boot/config/ghcr-auth.json /root/.docker/config.json' >> /boot/config/go
+   ```
+
+The auth file stores the PAT base64-encoded (not encrypted) on flash — which
+is why it should be a `read:packages`-only token: worst case it can pull
+packages, nothing else.
+
 Then start working:
 
 ```bash
@@ -94,7 +118,7 @@ annotated list. The ones that matter:
 Two options, pick one:
 
 * **API key** — set `ANTHROPIC_API_KEY` in `.env`. Nothing else to do.
-* **Claude subscription** — leave it blank, then run `docker exec -it builderbot bb login`
+* **Claude subscription** — leave it blank, then run `docker exec -it BuilderBot bb login`
   once. Follow the URL it prints, paste the code back. The credentials land in
   `/home/builder`, which is a persistent volume, so this survives restarts and
   image upgrades.
@@ -170,12 +194,12 @@ files in your shares. `claude` and `bb` are therefore wrappers that re-exec
 themselves as `builder`, so these all do the right thing:
 
 ```bash
-docker exec -it builderbot claude      # runs as builder
-docker exec -it builderbot bb shell    # builder login shell
+docker exec -it BuilderBot claude      # runs as builder
+docker exec -it BuilderBot bb shell    # builder login shell
 ```
 
-A bare `docker exec -it builderbot bash` is still root. Use `bb shell`, or
-`docker exec -it -u builder builderbot bash -l`, when you want the normal
+A bare `docker exec -it BuilderBot bash` is still root. Use `bb shell`, or
+`docker exec -it -u builder BuilderBot bash -l`, when you want the normal
 user.
 
 ## Using it as a GitHub runner
