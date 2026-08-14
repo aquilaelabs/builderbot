@@ -18,18 +18,24 @@ git config --global init.defaultBranch main
 git config --global pull.rebase false
 git config --global core.editor "${GIT_EDITOR:-nano}"
 
-# Authenticate gh + git-over-https from the PAT, when one is visible.
-if [ -n "${GITHUB_PAT:-}" ]; then
-    if printf '%s' "$GITHUB_PAT" | gh auth login --with-token >/dev/null 2>&1; then
+# Authenticate gh + git-over-https. GIT_PAT is the credential intended for
+# this (session-visible by necessity); a session-visible GITHUB_PAT works too
+# when shielding is off.
+git_token="${GIT_PAT:-${GITHUB_PAT:-}}"
+git_token_name="GIT_PAT"
+[ -n "${GIT_PAT:-}" ] || git_token_name="GITHUB_PAT"
+
+if [ -n "$git_token" ]; then
+    if printf '%s' "$git_token" | gh auth login --with-token >/dev/null 2>&1; then
         gh auth setup-git >/dev/null 2>&1 || true
-        log "gh CLI authenticated from GITHUB_PAT"
+        log "gh CLI + git-over-https authenticated from ${git_token_name}"
     else
-        warn "gh auth login failed — check GITHUB_PAT scopes"
+        warn "gh auth login failed — check ${git_token_name} scopes (needs Contents: read/write)"
     fi
 elif sudo -n /opt/builderbot/scripts/mint-runner-token --check >/dev/null 2>&1; then
-    log "GITHUB_PAT is shielded: the runner uses it via the root helper, but gh/git"
-    log "are NOT auto-authenticated in this session — use SSH keys (recommended) or"
-    log "run 'gh auth login' manually."
+    log "GITHUB_PAT is shielded, so gh/git are NOT authenticated in this session."
+    log "For git access pick one: shielded ssh key in /secrets/ssh, or set GIT_PAT"
+    log "(a Contents-scoped token, readable by sessions by design), or 'gh auth login'."
 fi
 
 # Pre-trust GitHub's SSH host keys so `git clone git@github.com:...` doesn't

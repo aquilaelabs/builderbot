@@ -190,6 +190,11 @@ cmd_doctor() {
     else
         printf '  [skip] no runner credential (fine if ENABLE_RUNNER=false)\n'
     fi
+    if gh auth status >/dev/null 2>&1; then
+        printf '  [ok]   git over https authenticated (gh)\n'
+    else
+        printf '  [skip] git over https not authenticated (set GIT_PAT, or use an ssh key)\n'
+    fi
     local ssh_src=""
     if ssh-add -l >/dev/null 2>&1; then
         ssh_src="shielded agent key"

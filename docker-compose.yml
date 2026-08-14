@@ -42,6 +42,9 @@ services:
       ENABLE_RUNNER: ${ENABLE_RUNNER:-true}
       GITHUB_URL: ${GITHUB_URL:-}
       GITHUB_PAT: ${GITHUB_PAT:-}
+      # Token for git/gh *inside* the container. Session-readable by design —
+      # scope it to Contents only, never Administration.
+      GIT_PAT: ${GIT_PAT:-}
       RUNNER_NAME: ${RUNNER_NAME:-builderbot}
       RUNNER_LABELS: ${RUNNER_LABELS:-builderbot,self-hosted,linux,x64}
       RUNNER_GROUP: ${RUNNER_GROUP:-}

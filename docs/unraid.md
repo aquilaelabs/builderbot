@@ -176,6 +176,17 @@ root-only folder:
    `/secrets` volume in compose) to that folder, and leave the `GITHUB_PAT`
    *variable* empty.
 
+**Git access is a separate question from the runner PAT.** Over HTTPS,
+"git can use it" and "Claude can't read it" are mutually exclusive — a
+credential the session's git authenticates with is one the session can read.
+Pick per your taste:
+
+| Approach | Result |
+|---|---|
+| SSH key in `secrets/ssh/` | Usable *and* unreadable — the only option that gives both |
+| `GIT_PAT` variable | Simple; session-readable by design. Scope it to **Contents** only. Claude already has read/write on the mounted trees, so this adds no reach — keep Administration in the shielded `GITHUB_PAT` |
+| `gh auth login` in a session | Same exposure as GIT_PAT, but a separate token you can revoke independently |
+
 **How the SSH shielding works:** at startup a *root-owned* `ssh-agent` loads
 every key from `secrets/ssh/`; sessions get only the agent's socket. When
 Claude runs `git push`, the agent signs the authentication challenge on its

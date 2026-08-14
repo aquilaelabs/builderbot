@@ -25,7 +25,14 @@ PGID="${PGID:-100}"
 # are stashed into a root-only file for the mint-runner-token helper, turned
 # into log-redaction rules, and — when SHIELD_SECRETS is on — scrubbed from
 # the environment every builder process inherits.
-SECRET_VARS=(GITHUB_PAT RUNNER_TOKEN ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN)
+# Values stashed for the root helper and registered for log redaction.
+# GIT_PAT is deliberately NOT in the scrub list below: git and gh must be able
+# to use it from inside a session, and any credential a session's git can
+# authenticate with is a credential that session can read. Scope GIT_PAT to
+# repository Contents only — Claude already has read/write on the mounted
+# working trees, so a contents-scoped token grants it nothing new, while the
+# Administration scope that manages runners stays shielded in GITHUB_PAT.
+SECRET_VARS=(GITHUB_PAT GIT_PAT RUNNER_TOKEN ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN)
 
 stash_secrets() {
     mkdir -p /run/builderbot
