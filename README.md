@@ -155,6 +155,7 @@ Everything else has sane defaults — full reference below.
 | Want | Do |
 |---|---|
 | Android emulator | Extra Params: `--device=/dev/kvm`, set `ENABLE_ANDROID_EMULATOR=true`; then `bb emu start` |
+| NVIDIA GPU | Nvidia-Driver plugin + Extra Params: `--runtime=nvidia`, keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Docker builds inside (CI jobs, Claude) | Fill the **Docker socket** path field — **off by default; this is root-equivalent on the host**, read the warning in the docs first |
 | Emulator adb from your desktop | Map port 5555 |
@@ -169,8 +170,9 @@ docker exec -it BuilderBot bb doctor
 
 Every `bb doctor` line should be `[ok]` or an expected `[skip]`. It verifies:
 Claude on PATH, connectivity to Anthropic/GitHub, git identity, **runner
-credential mode** (shielded vs in-environment), and **SSH auth against
-GitHub** (agent key vs file key).
+credential mode** (shielded vs in-environment), **SSH auth against GitHub**
+(agent key vs file key), and — when a GPU is passed through — whether its
+**graphics stack** is usable or only CUDA is.
 
 If you're on a Claude subscription (no API key):
 
@@ -216,13 +218,20 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `GITHUB_PAT` | *(empty)* | Runner PAT — prefer the secrets folder; values here are session-visible |
 | `RUNNER_NAME` / `RUNNER_LABELS` / `RUNNER_GROUP` | `builderbot` / `builderbot,self-hosted,linux,x64` / — | Runner identity |
 | `RUNNER_EPHEMERAL` | `true` | Fresh registration per job |
+| `RUNNER_RESTART_DELAY` / `RUNNER_SHUTDOWN_TIMEOUT` | `5` / `120` | Seconds between re-registrations, and how long a stop waits for a job to finish |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
+| `GIT_PAT` | *(empty)* | GitHub **API** auth for `gh` from inside (`gh pr create`). Session-readable by design; not needed if ssh covers your git usage |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create the default AVD at startup |
+| `ANDROID_AVD_NAME` | `builderbot` | Which AVD `bb emu` creates and starts |
+| `ANDROID_EMULATOR_GPU` | `swiftshader_indirect` | Emulator renderer — `swangle_indirect` (faster software) or `host` (needs a GPU) |
+| `NVIDIA_VISIBLE_DEVICES` | `all` | Only with `--runtime=nvidia`; GPU UUID when you have more than one card |
+| `NVIDIA_DRIVER_CAPABILITIES` | `all` | Only with `--runtime=nvidia`; `all` is what gets you GL/EGL/Vulkan, not just CUDA |
 | `NPM_TOKEN` | — | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
 | `EXTRA_APT_PACKAGES` / `EXTRA_NPM_PACKAGES` / `EXTRA_PIPX_PACKAGES` | — | Space-separated extras installed each start |
 | `PROJECT_BOOTSTRAP` | `false` | Run `<project>/.builderbot/setup.sh` each start |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
+| `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `BB_LOG_DIR` | *(auto)* | Log location override; normally use the `/logs` mount instead |
 
 Mounts: two project dirs, three state dirs (`home`, `config`, `work`), and
@@ -284,6 +293,52 @@ as root, which would break your saved login and file ownership. A bare
 `docker exec -it BuilderBot bash` is still root; use `bb shell` for the
 normal user.
 
+## NVIDIA GPU
+
+Pass the card through with `--runtime=nvidia` (Extra Params) or the `deploy:`
+block in the compose file. It needs the NVIDIA Container Toolkit on the host —
+on Unraid that's the **Nvidia-Driver** plugin, which also lists your GPU UUIDs
+for `NVIDIA_VISIBLE_DEVICES`. Step-by-step:
+[docs/unraid.md](docs/unraid.md#nvidia-gpu-optional).
+
+**Keep `NVIDIA_DRIVER_CAPABILITIES=all`.** The runtime defaults to
+`compute,utility`, which injects CUDA but none of the GL/EGL/Vulkan drivers.
+That failure mode is nasty because `nvidia-smi` reports a perfectly healthy GPU
+while every attempt at hardware rendering falls back or fails outright.
+`bb doctor` distinguishes the two: it checks for the EGL vendor ICD, not just
+the device.
+
+What actually gets faster, in rough order of payoff:
+
+| Workload | Notes |
+|---|---|
+| `ffmpeg` transcodes | The big one. Check `ffmpeg -encoders \| grep nvenc`, then use `h264_nvenc`/`hevc_nvenc` |
+| CUDA / ML | Works with capabilities left at the default |
+| Android emulator | Set `ANDROID_EMULATOR_GPU=host`. Least reliable of the three — the emulator is picky about host rendering with no display attached, so verify rather than assume |
+| Playwright | Headless runs are rarely GPU-bound; usually not worth it |
+
+For the emulator specifically, `swangle_indirect` is worth trying before
+`host` — it's still software, needs no GPU, and is usually faster than the
+`swiftshader_indirect` default. And if the goal is verifying animation timing
+rather than watching it, `dumpsys gfxinfo <pkg> framestats` gives real
+per-frame timestamps under any renderer; `screenrecord` caps out around 10fps
+in software and will mislead you.
+
+## Telling a project's sessions about this environment
+
+A Claude session started in `/workspace/<project>` sees the project, not the
+container around it — so it does not know that `apt-get install` will not
+survive an update, that there is no display, or that ssh keys are deliberately
+unreadable. The image ships a template that explains all of it:
+
+```bash
+cp /opt/builderbot/templates/project-CLAUDE.md /workspace/<project>/CLAUDE.md
+```
+
+Then fill in the project-specific section at the bottom. Claude Code picks up
+`CLAUDE.md` from the project root automatically. If the project already has
+one, append the template's contents instead of overwriting.
+
 ## Playwright, Android, publishing
 
 - **Playwright**: three browsers + deps pre-installed; `npx playwright test`
@@ -332,6 +387,7 @@ scripts/
   lib/common.sh                  shared shell helpers
   startup.d/*.sh                 startup hooks
 config/skel/                     home directory skeleton
+config/templates/                project CLAUDE.md template (shipped in the image)
 docs/unraid.md                   step-by-step Unraid walkthrough
 .github/workflows/               GHCR publish + shellcheck/hadolint/compose/xml lint
 ```

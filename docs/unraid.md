@@ -151,6 +151,41 @@ Fill in `GITHUB_PAT` (and `GIT_USER_NAME`/`GIT_USER_EMAIL`), leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
 **Apply**. Unraid pulls the image and starts it.
 
+### Stopping cleanly before an update
+
+Nothing you care about lives in the container: projects are bind mounts to the
+array, and sessions, memory files, logins and AVDs are all on the home volume.
+Uncommitted work is not at risk from a restart. Still, a tidy shutdown avoids
+two annoyances:
+
+```bash
+# 1. Exit any Claude session (in the app, or Ctrl-C twice in a terminal).
+#    Transcripts and memory are appended as you go, so at most you lose an
+#    in-flight turn — but a clean exit loses nothing.
+
+# 2. Stop the emulator gracefully if it is running. A hard kill can leave the
+#    AVD in a dirty state that costs you a cold boot later.
+docker exec -it BuilderBot bb emu stop
+
+# 3. Check the runner is not mid-job — a killed job shows up as a CI failure.
+docker exec -it BuilderBot bb runner status
+
+# 4. Stop with a timeout that lets the runner deregister.
+docker stop -t 150 BuilderBot
+```
+
+**That `-t 150` matters.** The supervisor gives the runner up to
+`RUNNER_SHUTDOWN_TIMEOUT` (120s default) to finish its job and deregister, but
+Docker's own default stop timeout is **10 seconds** — after which it sends
+SIGKILL regardless. A plain `docker stop` therefore cuts the graceful shutdown
+short, leaving a stale registration on GitHub until it times out server-side.
+Unraid's *Check for Updates* button uses the host's configured stop timeout
+(Settings → Docker), not this one, so if you update from the UI and care about
+clean deregistration, stop the container by hand first.
+
+The consequence of getting this wrong is cosmetic — a phantom offline runner
+in the repo's runner list — so it is not worth losing sleep over.
+
 ### Updating — the whole point
 
 CI publishes a fresh `:latest` on every push to `main` and on a weekly
@@ -167,6 +202,47 @@ own settings page (click the icon → *Edit*), and survive image updates.
 1. Container settings → **Extra Params**: append ` --device=/dev/kvm`
 2. Set `ENABLE_ANDROID_EMULATOR` to `true`
 3. Apply, then: `docker exec -it BuilderBot bb emu start`
+
+### NVIDIA GPU (optional)
+
+1. **Apps** tab → install the **Nvidia-Driver** plugin. This is what puts the
+   driver and the `nvidia` container runtime on the host; without it none of
+   the rest applies. It needs Unraid 6.9 or newer.
+   ([unraid/unraid-nvidia-driver](https://github.com/unraid/unraid-nvidia-driver)
+   — originally *ich777*'s, since adopted by Unraid, so you may see either name
+   attached to it.)
+2. Container settings → **Extra Params**: append ` --runtime=nvidia`
+3. Set `NVIDIA_VISIBLE_DEVICES`. `all` is fine for a single card. With more
+   than one, use the GPU UUID — **Settings → Nvidia-Driver** lists them, in the
+   form `GPU-7f326d12-d4c8-4011-9db1-36c47710daf6`.
+4. Leave `NVIDIA_DRIVER_CAPABILITIES` at `all` (see below).
+5. Apply, then: `docker exec -it BuilderBot bb doctor`
+
+`--gpus all` works too and is equivalent for a single-GPU host, but
+`--runtime=nvidia` plus the variable is the form the Unraid template and the
+plugin are built around, so prefer it here.
+
+**Why capabilities matter.** The NVIDIA runtime defaults to
+`compute,utility`, which injects CUDA but no GL/EGL/Vulkan drivers. `nvidia-smi`
+then reports a completely healthy GPU while anything that tries to *render*
+fails or silently falls back — which is a genuinely annoying thing to chase.
+`bb doctor` separates the two questions:
+
+```
+  [ok]   nvidia gpu: NVIDIA GeForce RTX 3070 Ti
+  [ok]   nvidia graphics stack injected (EGL available)
+```
+
+If the second line is `[FAIL]`, capabilities are the cause.
+
+**Two gotchas worth knowing:**
+
+- A GPU bound to **VFIO** for VM passthrough is not available to Docker. It is
+  one or the other; check *Settings → VFIO-PCI Config* if the card does not
+  appear.
+- The plugin fetches a driver build matched to your Unraid kernel, so a
+  **version upgrade needs the plugin to update too**. If the GPU vanishes after
+  an Unraid update, that is the first thing to check.
 
 ---
 
