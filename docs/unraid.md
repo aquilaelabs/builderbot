@@ -168,6 +168,44 @@ own settings page (click the icon → *Edit*), and survive image updates.
 2. Set `ENABLE_ANDROID_EMULATOR` to `true`
 3. Apply, then: `docker exec -it BuilderBot bb emu start`
 
+### NVIDIA GPU (optional)
+
+1. **Apps** tab → install the **Nvidia-Driver** plugin (by *ich777*). This is
+   what puts the driver and the `nvidia` container runtime on the host; without
+   it none of the rest applies.
+2. Container settings → **Extra Params**: append ` --runtime=nvidia`
+3. Set `NVIDIA_VISIBLE_DEVICES`. `all` is fine for a single card. With more
+   than one, use the GPU UUID — **Settings → Nvidia-Driver** lists them, in the
+   form `GPU-7f326d12-d4c8-4011-9db1-36c47710daf6`.
+4. Leave `NVIDIA_DRIVER_CAPABILITIES` at `all` (see below).
+5. Apply, then: `docker exec -it BuilderBot bb doctor`
+
+`--gpus all` works too and is equivalent for a single-GPU host, but
+`--runtime=nvidia` plus the variable is the form the Unraid template and the
+plugin are built around, so prefer it here.
+
+**Why capabilities matter.** The NVIDIA runtime defaults to
+`compute,utility`, which injects CUDA but no GL/EGL/Vulkan drivers. `nvidia-smi`
+then reports a completely healthy GPU while anything that tries to *render*
+fails or silently falls back — which is a genuinely annoying thing to chase.
+`bb doctor` separates the two questions:
+
+```
+  [ok]   nvidia gpu: NVIDIA GeForce RTX 3070 Ti
+  [ok]   nvidia graphics stack injected (EGL available)
+```
+
+If the second line is `[FAIL]`, capabilities are the cause.
+
+**Two gotchas worth knowing:**
+
+- A GPU bound to **VFIO** for VM passthrough is not available to Docker. It is
+  one or the other; check *Settings → VFIO-PCI Config* if the card does not
+  appear.
+- The plugin fetches a driver build matched to your Unraid kernel, so a
+  **version upgrade needs the plugin to update too**. If the GPU vanishes after
+  an Unraid update, that is the first thing to check.
+
 ---
 
 ## Option B: Compose Manager

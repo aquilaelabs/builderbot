@@ -64,11 +64,14 @@ services:
       ANDROID_EMULATOR_GPU: ${ANDROID_EMULATOR_GPU:-swiftshader_indirect}
 
       # --- nvidia gpu -------------------------------------------------------
-      # Only meaningful with the runtime/deploy block below. The default
-      # capabilities are compute,utility — which inject CUDA but NOT the
-      # GL/EGL/Vulkan drivers, so anything graphical fails with a GPU that
-      # nvidia-smi happily reports as present. "all" is what makes -gpu host
-      # and hardware ffmpeg reachable.
+      # Only meaningful with the deploy: block below. The default capabilities
+      # are compute,utility — which inject CUDA but NOT the GL/EGL/Vulkan
+      # drivers, so anything graphical fails with a GPU that nvidia-smi happily
+      # reports as present. "all" is what makes -gpu host and hardware ffmpeg
+      # reachable. On Unraid, "all" is also fine for NVIDIA_VISIBLE_DEVICES
+      # with a single card; with several, use the UUID from the Nvidia-Driver
+      # plugin.
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-all}
 
       # --- publishing -------------------------------------------------------

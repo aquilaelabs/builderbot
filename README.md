@@ -155,7 +155,7 @@ Everything else has sane defaults — full reference below.
 | Want | Do |
 |---|---|
 | Android emulator | Extra Params: `--device=/dev/kvm`, set `ENABLE_ANDROID_EMULATOR=true`; then `bb emu start` |
-| NVIDIA GPU | Extra Params: `--runtime=nvidia --gpus all`, keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
+| NVIDIA GPU | Nvidia-Driver plugin + Extra Params: `--runtime=nvidia`, keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Docker builds inside (CI jobs, Claude) | Fill the **Docker socket** path field — **off by default; this is root-equivalent on the host**, read the warning in the docs first |
 | Emulator adb from your desktop | Map port 5555 |
@@ -221,6 +221,7 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create the default AVD at startup |
 | `ANDROID_EMULATOR_GPU` | `swiftshader_indirect` | Emulator renderer — `swangle_indirect` (faster software) or `host` (needs a GPU) |
+| `NVIDIA_VISIBLE_DEVICES` | `all` | Only with `--runtime=nvidia`; GPU UUID when you have more than one card |
 | `NVIDIA_DRIVER_CAPABILITIES` | `all` | Only with `--runtime=nvidia`; `all` is what gets you GL/EGL/Vulkan, not just CUDA |
 | `NPM_TOKEN` | — | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
 | `EXTRA_APT_PACKAGES` / `EXTRA_NPM_PACKAGES` / `EXTRA_PIPX_PACKAGES` | — | Space-separated extras installed each start |
@@ -289,9 +290,11 @@ normal user.
 
 ## NVIDIA GPU
 
-Pass the card through with `--runtime=nvidia --gpus all` (Extra Params) or the
-`deploy:` block in the compose file — it needs the NVIDIA Container Toolkit on
-the host.
+Pass the card through with `--runtime=nvidia` (Extra Params) or the `deploy:`
+block in the compose file. It needs the NVIDIA Container Toolkit on the host —
+on Unraid that's the **Nvidia-Driver** plugin by *ich777*, which also lists
+your GPU UUIDs for `NVIDIA_VISIBLE_DEVICES`. Step-by-step:
+[docs/unraid.md](docs/unraid.md#nvidia-gpu-optional).
 
 **Keep `NVIDIA_DRIVER_CAPABILITIES=all`.** The runtime defaults to
 `compute,utility`, which injects CUDA but none of the GL/EGL/Vulkan drivers.
