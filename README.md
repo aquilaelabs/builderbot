@@ -292,8 +292,8 @@ normal user.
 
 Pass the card through with `--runtime=nvidia` (Extra Params) or the `deploy:`
 block in the compose file. It needs the NVIDIA Container Toolkit on the host —
-on Unraid that's the **Nvidia-Driver** plugin by *ich777*, which also lists
-your GPU UUIDs for `NVIDIA_VISIBLE_DEVICES`. Step-by-step:
+on Unraid that's the **Nvidia-Driver** plugin, which also lists your GPU UUIDs
+for `NVIDIA_VISIBLE_DEVICES`. Step-by-step:
 [docs/unraid.md](docs/unraid.md#nvidia-gpu-optional).
 
 **Keep `NVIDIA_DRIVER_CAPABILITIES=all`.** The runtime defaults to

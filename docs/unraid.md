@@ -170,9 +170,12 @@ own settings page (click the icon → *Edit*), and survive image updates.
 
 ### NVIDIA GPU (optional)
 
-1. **Apps** tab → install the **Nvidia-Driver** plugin (by *ich777*). This is
-   what puts the driver and the `nvidia` container runtime on the host; without
-   it none of the rest applies.
+1. **Apps** tab → install the **Nvidia-Driver** plugin. This is what puts the
+   driver and the `nvidia` container runtime on the host; without it none of
+   the rest applies. It needs Unraid 6.9 or newer.
+   ([unraid/unraid-nvidia-driver](https://github.com/unraid/unraid-nvidia-driver)
+   — originally *ich777*'s, since adopted by Unraid, so you may see either name
+   attached to it.)
 2. Container settings → **Extra Params**: append ` --runtime=nvidia`
 3. Set `NVIDIA_VISIBLE_DEVICES`. `all` is fine for a single card. With more
    than one, use the GPU UUID — **Settings → Nvidia-Driver** lists them, in the
