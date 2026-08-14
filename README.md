@@ -170,8 +170,9 @@ docker exec -it BuilderBot bb doctor
 
 Every `bb doctor` line should be `[ok]` or an expected `[skip]`. It verifies:
 Claude on PATH, connectivity to Anthropic/GitHub, git identity, **runner
-credential mode** (shielded vs in-environment), and **SSH auth against
-GitHub** (agent key vs file key).
+credential mode** (shielded vs in-environment), **SSH auth against GitHub**
+(agent key vs file key), and — when a GPU is passed through — whether its
+**graphics stack** is usable or only CUDA is.
 
 If you're on a Claude subscription (no API key):
 
@@ -217,9 +218,12 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `GITHUB_PAT` | *(empty)* | Runner PAT — prefer the secrets folder; values here are session-visible |
 | `RUNNER_NAME` / `RUNNER_LABELS` / `RUNNER_GROUP` | `builderbot` / `builderbot,self-hosted,linux,x64` / — | Runner identity |
 | `RUNNER_EPHEMERAL` | `true` | Fresh registration per job |
+| `RUNNER_RESTART_DELAY` / `RUNNER_SHUTDOWN_TIMEOUT` | `5` / `120` | Seconds between re-registrations, and how long a stop waits for a job to finish |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
+| `GIT_PAT` | *(empty)* | GitHub **API** auth for `gh` from inside (`gh pr create`). Session-readable by design; not needed if ssh covers your git usage |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create the default AVD at startup |
+| `ANDROID_AVD_NAME` | `builderbot` | Which AVD `bb emu` creates and starts |
 | `ANDROID_EMULATOR_GPU` | `swiftshader_indirect` | Emulator renderer — `swangle_indirect` (faster software) or `host` (needs a GPU) |
 | `NVIDIA_VISIBLE_DEVICES` | `all` | Only with `--runtime=nvidia`; GPU UUID when you have more than one card |
 | `NVIDIA_DRIVER_CAPABILITIES` | `all` | Only with `--runtime=nvidia`; `all` is what gets you GL/EGL/Vulkan, not just CUDA |
@@ -227,6 +231,7 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `EXTRA_APT_PACKAGES` / `EXTRA_NPM_PACKAGES` / `EXTRA_PIPX_PACKAGES` | — | Space-separated extras installed each start |
 | `PROJECT_BOOTSTRAP` | `false` | Run `<project>/.builderbot/setup.sh` each start |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
+| `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `BB_LOG_DIR` | *(auto)* | Log location override; normally use the `/logs` mount instead |
 
 Mounts: two project dirs, three state dirs (`home`, `config`, `work`), and
@@ -319,6 +324,21 @@ rather than watching it, `dumpsys gfxinfo <pkg> framestats` gives real
 per-frame timestamps under any renderer; `screenrecord` caps out around 10fps
 in software and will mislead you.
 
+## Telling a project's sessions about this environment
+
+A Claude session started in `/workspace/<project>` sees the project, not the
+container around it — so it does not know that `apt-get install` will not
+survive an update, that there is no display, or that ssh keys are deliberately
+unreadable. The image ships a template that explains all of it:
+
+```bash
+cp /opt/builderbot/templates/project-CLAUDE.md /workspace/<project>/CLAUDE.md
+```
+
+Then fill in the project-specific section at the bottom. Claude Code picks up
+`CLAUDE.md` from the project root automatically. If the project already has
+one, append the template's contents instead of overwriting.
+
 ## Playwright, Android, publishing
 
 - **Playwright**: three browsers + deps pre-installed; `npx playwright test`
@@ -367,6 +387,7 @@ scripts/
   lib/common.sh                  shared shell helpers
   startup.d/*.sh                 startup hooks
 config/skel/                     home directory skeleton
+config/templates/                project CLAUDE.md template (shipped in the image)
 docs/unraid.md                   step-by-step Unraid walkthrough
 .github/workflows/               GHCR publish + shellcheck/hadolint/compose/xml lint
 ```

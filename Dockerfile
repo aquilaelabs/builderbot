@@ -272,6 +272,7 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 COPY scripts/ /opt/builderbot/scripts/
 COPY config/skel/ /opt/builderbot/skel/
+COPY config/templates/ /opt/builderbot/templates/
 
 RUN set -eux; \
     chmod -R +x /opt/builderbot/scripts; \

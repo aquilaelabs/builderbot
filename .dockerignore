@@ -7,4 +7,6 @@ docs
 unraid
 *.md
 !scripts/**/*.md
+# Shipped so sessions can copy it into a project from inside the container.
+!config/templates/*.md
 .DS_Store
