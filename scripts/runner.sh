@@ -113,6 +113,12 @@ trap on_term TERM INT
 
 mkdir -p "$RUNNER_WORKDIR"
 
+# The runner writes its diagnostic logs to $RUNNER_DIR/_diag, which lives in
+# the ephemeral container layer. Point it at the persistent work volume so
+# runner crashes can be diagnosed after a container recreation.
+mkdir -p "$RUNNER_WORKDIR/_diag"
+ln -sfn "$RUNNER_WORKDIR/_diag" "$RUNNER_DIR/_diag"
+
 # Clear any registration left behind by a previous container; the old
 # credentials are useless after a restart.
 [ -f "${RUNNER_DIR}/.runner" ] && deregister

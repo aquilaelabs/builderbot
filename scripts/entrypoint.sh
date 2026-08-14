@@ -17,6 +17,23 @@ set -euo pipefail
 PUID="${PUID:-99}"
 PGID="${PGID:-100}"
 
+# Mirror everything this container prints into a persistent file on the
+# /config volume, so startup output survives container recreation (which
+# happens on every image update — exactly when you want yesterday's log).
+# Docker's own `docker logs` keeps working: tee passes output through.
+setup_logging() {
+    [ -d /config ] || return 0
+    local logdir=/config/logs logfile
+    logfile="$logdir/builderbot.log"
+    mkdir -p "$logdir"
+    # Simple size-based rotation: keep one previous generation.
+    if [ -f "$logfile" ] && [ "$(stat -c %s "$logfile" 2>/dev/null || echo 0)" -gt 5242880 ]; then
+        mv -f "$logfile" "$logfile.1"
+    fi
+    exec > >(tee -a "$logfile") 2>&1
+    log "===== container start $(date -Is) — logging to ${logfile} ====="
+}
+
 banner() {
     cat <<'EOF'
   ___      _ _   _         ___      _
@@ -102,6 +119,8 @@ seed_home() {
     if is_true "${CHOWN_HOME:-true}"; then
         chown -R "$PUID:$PGID" "$BUILDER_HOME"
     fi
+    # Make the persistent log readable/rotatable from the share.
+    chown -R "$PUID:$PGID" /config/logs 2>/dev/null || true
     chown "$PUID:$PGID" "$WORKSPACE" "${RUNNER_WORKDIR:-$WORKSPACE/_work}" 2>/dev/null || true
     chown -R "$PUID:$PGID" "$RUNNER_DIR" 2>/dev/null || true
 
@@ -156,6 +175,7 @@ resolve_command() {
 }
 
 main() {
+    setup_logging
     banner
 
     local privileged=0

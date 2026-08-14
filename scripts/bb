@@ -20,6 +20,7 @@ bb — BuilderBot helper
   bb emu start           boot the Android emulator (headless)
   bb emu stop            shut the emulator down
   bb emu status          adb devices
+  bb logs [-f] [N]       show the persistent startup log (default: last 100 lines)
   bb doctor              check the things that usually go wrong
 EOF
 }
@@ -140,6 +141,23 @@ cmd_emu() {
     esac
 }
 
+cmd_logs() {
+    local logfile=/config/logs/builderbot.log follow=0 lines=100
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -f) follow=1 ;;
+            *[0-9]*) lines="$1" ;;
+        esac
+        shift
+    done
+    [ -f "$logfile" ] || die "no persistent log at ${logfile} (is /config mounted?)"
+    if [ "$follow" -eq 1 ]; then
+        tail -n "$lines" -f "$logfile"
+    else
+        tail -n "$lines" "$logfile"
+    fi
+}
+
 cmd_doctor() {
     local ok=0
     check() { # check DESCRIPTION COMMAND...
@@ -195,6 +213,7 @@ case "${1:-status}" in
     login)    cmd_login ;;
     runner)   shift; cmd_runner "$@" ;;
     emu)      shift; cmd_emu "$@" ;;
+    logs)     shift; cmd_logs "$@" ;;
     doctor)   cmd_doctor ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;

@@ -222,6 +222,20 @@ Enable the socket only if you want `docker build`/`docker compose`/GHCR
 pushes available inside, and accept the trade. The startup scripts detect its
 absence and skip Docker-related setup cleanly.
 
+**Where the logs are.** Four places, by purpose:
+
+| Log | Where | Survives image updates? |
+|---|---|---|
+| Startup + runner supervisor | `/mnt/user/appdata/BuilderBot/config/logs/builderbot.log` (also `docker logs BuilderBot` / WebUI **Log** button) | ✅ file yes; `docker logs` no |
+| Runner diagnostics (`_diag`) | `/mnt/user/appdata/BuilderBot/work/_diag/` | ✅ |
+| CI job output | GitHub → repo → *Actions* → the run | ✅ (kept by GitHub) |
+| Android emulator | `/mnt/user/appdata/BuilderBot/home/.android/emulator.log` | ✅ |
+
+Inside the container, `bb logs` tails the persistent startup log (`bb logs -f`
+to follow, `bb logs 500` for more lines), and `bb doctor` is the first thing
+to run when something misbehaves. The file rotates at ~5 MB keeping one
+previous generation, so it can't grow unbounded.
+
 **File ownership.** The container writes as `99:100` (`nobody:users`). If a
 project share is owned differently, fix it once
 (`chown -R 99:100 /mnt/user/development/FreshBoot`) or set
