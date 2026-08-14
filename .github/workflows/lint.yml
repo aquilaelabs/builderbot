@@ -26,8 +26,11 @@ jobs:
       - uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
-          # DL3008: we deliberately don't pin apt versions in a rolling dev image
-          ignore: DL3008,DL3013,DL3016
+          # DL3008/DL3013/DL3016: a rolling dev image deliberately tracks the
+          #   newest apt/pip/npm packages rather than pinning them.
+          # SC1091: shellcheck can't follow `. /etc/os-release`, which only
+          #   exists inside the image being built.
+          ignore: DL3008,DL3013,DL3016,SC1091
 
   compose:
     runs-on: ubuntu-latest

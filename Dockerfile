@@ -17,6 +17,11 @@ ARG NODE_MAJOR=22
 ARG RUNNER_VERSION=latest
 ARG TARGETARCH
 
+# Several steps below pipe curl into a shell or into gpg. Under the default
+# /bin/sh the exit status of a pipeline is only its *last* command, so a failed
+# download would be silently baked into the image. Fail on any stage instead.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
