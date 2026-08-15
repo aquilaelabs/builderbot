@@ -25,11 +25,15 @@ recreated on every image update.
 | This project, including uncommitted work | `/workspace/<project>` → a share on the array |
 | Your session transcripts and memory files | `~/.claude/` |
 | Claude Code login, shell history, AVDs | `~` (the home volume) |
+| Android system images and platforms | `~/.android/sdk` (symlinked into the SDK) |
 | Gradle / npm / pip caches | `~/.gradle`, `~/.npm`, … |
 
 **Does not survive** — anything written outside those paths:
 
-- `/tmp`, `/var`, `/opt`, and the rest of the root filesystem
+- `/tmp`, `/var`, and the rest of the root filesystem
+- `/opt` — including the Android SDK's tools and build-tools. The two
+  expensive subdirectories (`system-images/`, `platforms/`) are symlinked to
+  the home volume and *do* persist; everything else there comes from the image
 - System packages installed ad hoc with `apt-get install`
 - Running processes, including the emulator and any dev server
 
@@ -66,13 +70,20 @@ show a GUI on.
 Only relevant if this is an Android project.
 
 ```bash
-bb emu start      # boot the AVD headless (takes ~50s cold)
+bb emu list       # which API levels are configured, and which AVDs exist
+bb emu start      # boot the default AVD headless (takes ~50s cold)
+bb emu start 37   # boot a specific API level, if it is configured
 bb emu status     # adb devices -l
 bb emu stop       # graceful shutdown — use this, do not kill the process
 ```
 
-The emulator is **not** started automatically and holds a few GB of RAM, so
-start it when you need it and stop it when you are done.
+The emulator is **not** started automatically, holds a few GB of RAM, and runs
+one at a time — so start it when you need it and stop it when you are done.
+
+Which API levels exist is set by `ANDROID_SYSTEM_IMAGES` on the container. Run
+`bb emu list` before assuming a version is available; if the one you need is
+missing, say so rather than trying to install it — a runtime `sdkmanager`
+install works but the user should decide to spend the disk.
 
 Rendering is software by default (`swiftshader_indirect`), which has one
 consequence worth internalizing:
@@ -100,26 +111,41 @@ you should say so rather than guessing from a headless emulator.
 
 ## CI runs on this same box
 
-The self-hosted runner (`runs-on: [self-hosted, builderbot]`) executes jobs in
-this container, under `/workspace/_work`. Two implications:
+The self-hosted runner executes jobs in this container, under
+`/workspace/_work`. It carries the labels
+`builderbot,self-hosted,linux,x64,unraid`, and a workflow matches only if every
+label in its `runs-on` is one the runner has. Three implications:
 
 - The toolchain CI sees is the toolchain you see. If a build works here it
   should work in CI, and if you needed an undocumented step, CI needs it too.
 - CI jobs and your session share CPU, RAM and disk. A heavy build while the
-  emulator is running can starve both.
+  emulator is running can starve both — stop the emulator before pushing.
+- A job stuck in *Waiting for a runner* while the runner shows *Idle* is a
+  label mismatch, not a broken runner. Compare the job's `Requested labels:`
+  against the list above.
 
 ## Toolchain already present
 
 Do not install these; they are in the image.
 
 `node 22` · `npm`/`yarn`/`pnpm` · `python 3.12` + `uv`/`pipx` · `jdk 21` ·
-`android sdk` (platform 35, build-tools, platform-tools, `bundletool`) ·
+`android sdk` (build-tools, platform-tools, `bundletool`; platforms and system
+images per `ANDROID_SYSTEM_IMAGES`) ·
 `playwright` (chromium/firefox/webkit) · `git`/`git-lfs`/`gh` ·
 `ripgrep`/`fd`/`fzf`/`jq` · `build-essential`/`cmake` · `ffmpeg`/`imagemagick` ·
 `mise` for per-project tool pinning
 
 Check `bb status` for versions and `bb doctor` when something environmental
 looks wrong — it diagnoses auth, connectivity and GPU state in one pass.
+
+The container's own log rotates on every start, which is worth knowing when
+something broke across a restart:
+
+```bash
+bb logs            # this boot
+bb logs -p         # the previous boot
+bb logs --list     # what is kept
+```
 
 ---
 

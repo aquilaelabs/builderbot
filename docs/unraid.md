@@ -142,7 +142,7 @@ curl -fsSL \
 Then in the WebUI: **Docker** tab → **Add Container** → in the *Template*
 dropdown pick **builderbot**. You get a form with everything already wired:
 
-* both project paths (`/mnt/user/appdata/mediareducer-dev`,
+* both project paths (`/mnt/user/development/MediaReducer-Dev`,
   `/mnt/user/development/FreshBoot`) mapped into `/workspace/…`
 * the appdata paths for home / config / runner work
 * fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), git identity, TZ
@@ -452,9 +452,23 @@ absence and skip Docker-related setup cleanly.
 | Android emulator | `/mnt/user/appdata/BuilderBot/home/.android/emulator.log` | ✅ |
 
 Inside the container, `bb logs` tails the persistent startup log (`bb logs -f`
-to follow, `bb logs 500` for more lines), and `bb doctor` is the first thing
-to run when something misbehaves. The file rotates at ~5 MB keeping one
-previous generation, so it can't grow unbounded.
+to follow, `bb logs 500` for more lines), and `bb doctor` is the first thing to
+run when something misbehaves.
+
+The log **rotates on every container start**, so one file is one container
+lifetime — which is what you want when diagnosing an update that went wrong,
+since the boot before it is still intact rather than blended into the same
+stream:
+
+```bash
+bb logs --list     # kept boots, newest first
+bb logs -p         # the previous boot
+bb logs -p 3       # three boots back
+```
+
+Five generations are kept (`BB_LOG_KEEP`). A container stuck in a restart loop
+burns through them quickly — if that happens, raise it or grab the files off
+the share before restarting again.
 
 **File ownership.** The container writes as `99:100` (`nobody:users`). If a
 project share is owned differently, fix it once

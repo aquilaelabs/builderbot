@@ -30,7 +30,7 @@ NOTES
   <Requires/>
 
   <!-- ===================== project mounts ===================== -->
-  <Config Name="MediaReducer project" Target="/workspace/mediareducer-dev" Default="/mnt/user/appdata/mediareducer-dev" Mode="rw" Description="First project directory, visible to Claude Code at /workspace/mediareducer-dev" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/mediareducer-dev</Config>
+  <Config Name="MediaReducer project" Target="/workspace/MediaReducer-Dev" Default="/mnt/user/development/MediaReducer-Dev" Mode="rw" Description="First project directory, visible to Claude Code at /workspace/MediaReducer-Dev" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/development/MediaReducer-Dev</Config>
   <Config Name="FreshBoot project" Target="/workspace/FreshBoot" Default="/mnt/user/development/FreshBoot" Mode="rw" Description="Second project directory, visible to Claude Code at /workspace/FreshBoot" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/development/FreshBoot</Config>
 
   <!-- ===================== persistent state ===================== -->
@@ -67,6 +67,7 @@ NOTES
 
   <!-- ===================== Android ===================== -->
   <Config Name="ENABLE_ANDROID_EMULATOR" Target="ENABLE_ANDROID_EMULATOR" Default="false" Mode="" Description="Create the default AVD at startup. Also add --device=/dev/kvm to Extra Params. Start with: bb emu start" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="ANDROID_SYSTEM_IMAGES" Target="ANDROID_SYSTEM_IMAGES" Default="35" Mode="" Description="Comma-separated API levels to keep an emulator image and AVD for, e.g. 34,35,36,37 for Android 14 through 17. Budget ~2GB each on the appdata share - downloaded once, kept across image updates. AVDs are named builderbot-&lt;api&gt;; boot one with: bb emu start 37" Type="Variable" Display="advanced" Required="false" Mask="false">35</Config>
   <Config Name="ANDROID_EMULATOR_GPU" Target="ANDROID_EMULATOR_GPU" Default="swiftshader_indirect" Mode="" Description="Emulator renderer. swiftshader_indirect (default) is software and always works; swangle_indirect is software but usually faster; host needs an NVIDIA GPU passed through." Type="Variable" Display="advanced" Required="false" Mask="false">swiftshader_indirect</Config>
 
   <!-- ===================== nvidia gpu ===================== -->

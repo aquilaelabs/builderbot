@@ -175,15 +175,38 @@ setup_ssh_agent() {
 # /config volume, so startup output survives container recreation (which
 # happens on every image update — exactly when you want yesterday's log).
 # Docker's own `docker logs` keeps working: tee passes output through.
+# rotate_log FILE — shift generations down and leave FILE free for a new one.
+# Rotating per start rather than per size means one file equals one container
+# lifetime, so "what happened on that boot" is answerable by opening a file
+# instead of hunting for the boundary in an appended stream. The cost is that a
+# crash loop burns through generations quickly; BB_LOG_KEEP buys headroom.
+rotate_log() {
+    local logfile="$1" keep="${BB_LOG_KEEP:-5}" i
+    case "$keep" in
+        ''|*[!0-9]*) keep=5 ;;
+    esac
+    if [ "$keep" -lt 1 ]; then
+        keep=1
+    fi
+    [ -f "$logfile" ] || return 0
+
+    rm -f "${logfile}.${keep}"
+    i=$((keep - 1))
+    while [ "$i" -ge 1 ]; do
+        if [ -f "${logfile}.${i}" ]; then
+            mv -f "${logfile}.${i}" "${logfile}.$((i + 1))"
+        fi
+        i=$((i - 1))
+    done
+    mv -f "$logfile" "${logfile}.1"
+}
+
 setup_logging() {
     local logdir logfile
     logdir="$(bb_log_dir)"
     logfile="$logdir/builderbot.log"
     mkdir -p "$logdir" 2>/dev/null || return 0
-    # Simple size-based rotation: keep one previous generation.
-    if [ -f "$logfile" ] && [ "$(stat -c %s "$logfile" 2>/dev/null || echo 0)" -gt 5242880 ]; then
-        mv -f "$logfile" "$logfile.1"
-    fi
+    rotate_log "$logfile"
     # All output — the persistent file AND the docker-logs passthrough —
     # flows through the redaction rules built by stash_secrets.
     if [ -s /run/builderbot/redact.sed ]; then
@@ -297,6 +320,55 @@ seed_home() {
     fi
 }
 
+# The Android SDK lives in the image at /opt, so anything sdkmanager installs
+# at runtime is thrown away by the next image update — and with a weekly
+# rebuild that means re-downloading gigabytes of system images on a schedule.
+# Move the expensive, purely-downloaded parts of the tree onto the home volume
+# and symlink them back into place. Tools and build-tools stay in the image, so
+# updates still deliver them.
+persist_android_downloads() {
+    local sdk="${ANDROID_HOME:-/opt/android-sdk}"
+    local base="$BUILDER_HOME/.android/sdk"
+    local sub store dir name adopted=0
+
+    [ -d "$sdk" ] || return 0
+
+    for sub in system-images platforms; do
+        store="$base/$sub"
+        mkdir -p "$store"
+
+        # Adopt whatever the image shipped before replacing the directory, or
+        # the baked-in system image disappears the moment the symlink lands.
+        # -e rather than a copy each time: these are immutable once downloaded.
+        if [ -d "$sdk/$sub" ] && [ ! -L "$sdk/$sub" ]; then
+            for dir in "$sdk/$sub"/*/; do
+                [ -d "$dir" ] || continue
+                name="$(basename "$dir")"
+                if [ -e "$store/$name" ]; then
+                    continue
+                fi
+                # Gigabytes, on the first start after an image ships a new one.
+                # Announce it rather than looking hung.
+                log "adopting ${sub}/${name} onto the home volume"
+                cp -a "$dir" "$store/$name"
+                adopted=1
+            done
+            rm -rf "${sdk:?}/$sub"
+        fi
+
+        if ! ln -sfn "$store" "$sdk/$sub"; then
+            warn "could not link ${sdk}/${sub} to ${store}"
+            warn "runtime sdkmanager installs will not survive the next image update"
+        fi
+    done
+
+    if [ "$adopted" -eq 1 ]; then
+        log "android sdk downloads persist at ${base}"
+    fi
+
+    chown -R "$PUID:$PGID" "$base" 2>/dev/null || true
+}
+
 run_hooks() {
     local dir script
     for dir in /opt/builderbot/scripts/startup.d /config/startup.d; do
@@ -355,6 +427,7 @@ main() {
         setup_timezone
         remap_user
         seed_home
+        persist_android_downloads
         setup_ssh_agent
     else
         warn "not running as root — skipping user remap, ownership fixes and root hooks"

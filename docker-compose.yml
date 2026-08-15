@@ -58,6 +58,11 @@ services:
       # --- Android emulator -------------------------------------------------
       # Also uncomment the devices: block below for KVM acceleration.
       ENABLE_ANDROID_EMULATOR: ${ENABLE_ANDROID_EMULATOR:-false}
+      # API levels to keep an emulator image + AVD for, e.g. "34,35,36,37"
+      # (Android 14 through 17). Each is ~2GB, downloaded once and kept on the
+      # home volume, so the cost lands on your appdata share rather than the
+      # image. Start one with: bb emu start 37
+      ANDROID_SYSTEM_IMAGES: ${ANDROID_SYSTEM_IMAGES:-35}
       # swiftshader_indirect (default) is software rendering and always works.
       # swangle_indirect is usually faster, still software. host needs a GPU
       # and the nvidia block below.
@@ -92,7 +97,7 @@ services:
 
     volumes:
       # --- your projects ----------------------------------------------------
-      - ${MEDIAREDUCER_PATH:-/mnt/user/appdata/mediareducer-dev}:/workspace/mediareducer-dev
+      - ${MEDIAREDUCER_PATH:-/mnt/user/development/MediaReducer-Dev}:/workspace/MediaReducer-Dev
       - ${FRESHBOOT_PATH:-/mnt/user/development/FreshBoot}:/workspace/FreshBoot
 
       # --- persistent container state --------------------------------------
