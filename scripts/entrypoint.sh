@@ -297,6 +297,41 @@ seed_home() {
     fi
 }
 
+# The Android SDK lives in the image at /opt, so anything sdkmanager installs
+# at runtime is thrown away by the next image update — and with a weekly
+# rebuild that means re-downloading gigabytes of system images on a schedule.
+# Move the expensive, purely-downloaded parts of the tree onto the home volume
+# and symlink them back into place. Tools and build-tools stay in the image, so
+# updates still deliver them.
+persist_android_downloads() {
+    local sdk="${ANDROID_HOME:-/opt/android-sdk}"
+    local base="$BUILDER_HOME/.android/sdk"
+    local sub store dir name
+
+    [ -d "$sdk" ] || return 0
+
+    for sub in system-images platforms; do
+        store="$base/$sub"
+        mkdir -p "$store"
+
+        # Adopt whatever the image shipped before replacing the directory, or
+        # the baked-in system image disappears the moment the symlink lands.
+        # -e rather than a copy each time: these are immutable once downloaded.
+        if [ -d "$sdk/$sub" ] && [ ! -L "$sdk/$sub" ]; then
+            for dir in "$sdk/$sub"/*/; do
+                [ -d "$dir" ] || continue
+                name="$(basename "$dir")"
+                [ -e "$store/$name" ] || cp -a "$dir" "$store/$name"
+            done
+            rm -rf "${sdk:?}/$sub"
+        fi
+
+        ln -sfn "$store" "$sdk/$sub"
+    done
+
+    chown -R "$PUID:$PGID" "$base" 2>/dev/null || true
+}
+
 run_hooks() {
     local dir script
     for dir in /opt/builderbot/scripts/startup.d /config/startup.d; do
@@ -355,6 +390,7 @@ main() {
         setup_timezone
         remap_user
         seed_home
+        persist_android_downloads
         setup_ssh_agent
     else
         warn "not running as root — skipping user remap, ownership fixes and root hooks"

@@ -232,8 +232,9 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
 | `GIT_PAT` | *(empty)* | GitHub **API** auth for `gh` from inside (`gh pr create`). Session-readable by design; not needed if ssh covers your git usage |
-| `ENABLE_ANDROID_EMULATOR` | `false` | Create the default AVD at startup |
-| `ANDROID_AVD_NAME` | `builderbot` | Which AVD `bb emu` creates and starts |
+| `ENABLE_ANDROID_EMULATOR` | `false` | Create system images and AVDs at startup |
+| `ANDROID_SYSTEM_IMAGES` | `35` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
+| `ANDROID_AVD_NAME` / `ANDROID_AVD_PREFIX` | *(derived)* / `builderbot` | Override the default AVD, or the `<prefix>-<api>` naming |
 | `ANDROID_EMULATOR_GPU` | `swiftshader_indirect` | Emulator renderer — `swangle_indirect` (faster software) or `host` (needs a GPU) |
 | `NVIDIA_VISIBLE_DEVICES` | `all` | Only with `--runtime=nvidia`; GPU UUID when you have more than one card |
 | `NVIDIA_DRIVER_CAPABILITIES` | `all` | Only with `--runtime=nvidia`; `all` is what gets you GL/EGL/Vulkan, not just CUDA |
@@ -294,7 +295,7 @@ bb shell           login shell as the builder user
 bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
 bb runner status | restart
-bb emu start | stop | status
+bb emu start [api] | stop | status | list
 bb logs [-f] [N]   the persistent startup log
 ```
 
@@ -334,6 +335,39 @@ rather than watching it, `dumpsys gfxinfo <pkg> framestats` gives real
 per-frame timestamps under any renderer; `screenrecord` caps out around 10fps
 in software and will mislead you.
 
+## Multiple Android versions
+
+The image ships one system image (API 35). To emulate more, list the API levels
+you want:
+
+```
+ANDROID_SYSTEM_IMAGES=34,35,36,37
+```
+
+On the next start each missing level is downloaded and given an AVD named
+`builderbot-<api>`:
+
+```bash
+bb emu list          # configured levels, and which AVDs exist
+bb emu start 37      # boot Android 17
+bb emu start         # the first configured level
+bb emu stop
+```
+
+As of 2026 the supported range is **34–37** (Android 14 through 17). API 33 and
+below stopped receiving security patches in March 2026.
+
+**Where the space goes.** System images and platforms are symlinked onto the
+home volume, so each level is downloaded **once** and survives image updates —
+without that, a weekly `:latest` rebuild would re-fetch every one of them. The
+cost lands on your appdata share instead of the image: budget roughly **2 GB per
+API level**. If that is tight, `ANDROID_SYSTEM_IMAGE_VARIANT=default;x86_64`
+gets you smaller AOSP images at the price of the Google APIs.
+
+Two practical limits: an Android 17 phone AVD wants **4 GB of RAM minimum**, and
+`bb emu` runs one emulator at a time — this is for testing across versions in
+sequence, not a device farm.
+
 ## Telling a project's sessions about this environment
 
 A Claude session started in `/workspace/<project>` sees the project, not the
@@ -355,8 +389,8 @@ one, append the template's contents instead of overwriting.
   works headless immediately. Shared writable `/opt/pw-browsers` lets
   projects pin their own versions.
 - **Android**: `./gradlew assembleRelease` works out of the box; emulator
-  headless via `bb emu start`; AVDs persist; more platforms via
-  `sdkmanager --install`.
+  headless via `bb emu start`. See [Multiple Android versions](#multiple-android-versions)
+  to emulate more than one API level.
 - **Publishing**: `npm publish` (`NPM_TOKEN`), `uv publish`
   (`UV_PUBLISH_TOKEN`), `gh release create`, Gradle publish tasks; `docker
   push` to GHCR needs the opt-in socket. Signing keys belong in the home

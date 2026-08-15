@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 #
-# Android: report the SDK, and create the default AVD when the emulator is
-# enabled. AVDs live in ~/.android on the persistent home volume, so this is
-# a one-time cost.
+# Android: report the SDK, then make sure every API level in
+# ANDROID_SYSTEM_IMAGES has a system image, a matching platform, and an AVD.
+#
+# The entrypoint symlinks system-images/ and platforms/ onto the home volume,
+# so each level is downloaded once and survives image updates. Without that
+# this hook would re-fetch gigabytes on every rebuild.
 #
 # The emulator is started on demand with `bb emu start`, never automatically —
 # it holds a few GB of RAM.
@@ -26,24 +29,44 @@ if [ ! -e /dev/kvm ]; then
     warn "Add '--device=/dev/kvm' (template Extra Params) or the devices: block (compose)."
 fi
 
-AVD_NAME="${ANDROID_AVD_NAME:-builderbot}"
+VARIANT="${ANDROID_SYSTEM_IMAGE_VARIANT:-google_apis;x86_64}"
+VARIANT_PATH="$(printf '%s' "$VARIANT" | tr ';' '/')"
+PREFIX="${ANDROID_AVD_PREFIX:-builderbot}"
 
-if avdmanager list avd 2>/dev/null | grep -q "Name: ${AVD_NAME}$"; then
-    log "AVD '${AVD_NAME}' already exists"
-    exit 0
-fi
+for api in $(printf '%s' "${ANDROID_SYSTEM_IMAGES:-35}" | tr ',' ' '); do
+    case "$api" in
+        ''|*[!0-9]*)
+            warn "ANDROID_SYSTEM_IMAGES: '${api}' is not an API level — skipping"
+            continue ;;
+    esac
 
-# Use whatever system image the build baked in.
-sys_image="$(sdkmanager --list_installed 2>/dev/null \
-    | awk '$1 ~ /^system-images;/ {print $1; exit}')"
-if [ -z "$sys_image" ]; then
-    warn "no system image installed — cannot create an AVD"
-    exit 0
-fi
+    pkg="system-images;android-${api};${VARIANT}"
+    avd="${PREFIX}-${api}"
 
-log "creating AVD '${AVD_NAME}' from ${sys_image}"
-if echo no | avdmanager create avd -n "$AVD_NAME" -k "$sys_image" --device pixel_7 >/dev/null; then
-    log "AVD ready — start it with: bb emu start"
-else
-    warn "AVD creation failed"
-fi
+    if [ ! -d "${ANDROID_HOME}/system-images/android-${api}/${VARIANT_PATH}" ]; then
+        log "installing ${pkg} — a couple of GB, downloaded once and kept on the home volume"
+        if ! sdkmanager --install "$pkg" >/dev/null 2>&1; then
+            warn "could not install ${pkg} — check that API ${api} ships a '${VARIANT}' image"
+            continue
+        fi
+    fi
+
+    # Cheap next to the system image, and you generally want to compile against
+    # a level you are emulating.
+    if [ ! -d "${ANDROID_HOME}/platforms/android-${api}" ]; then
+        sdkmanager --install "platforms;android-${api}" >/dev/null 2>&1 \
+            || warn "could not install platforms;android-${api}"
+    fi
+
+    if avdmanager list avd 2>/dev/null | grep -q "Name: ${avd}$"; then
+        log "AVD '${avd}' already exists"
+        continue
+    fi
+
+    log "creating AVD '${avd}' from ${pkg}"
+    if echo no | avdmanager create avd -n "$avd" -k "$pkg" --device pixel_7 >/dev/null; then
+        log "AVD ready — start it with: bb emu start ${api}"
+    else
+        warn "AVD creation failed for ${avd}"
+    fi
+done

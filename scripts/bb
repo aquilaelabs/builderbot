@@ -17,9 +17,10 @@ bb — BuilderBot helper
   bb login               run the Claude Code auth flow
   bb runner status       show runner registration
   bb runner restart      re-register the GitHub Actions runner
-  bb emu start           boot the Android emulator (headless)
+  bb emu start [API]     boot the emulator headless (e.g. `bb emu start 37`)
   bb emu stop            shut the emulator down
   bb emu status          adb devices
+  bb emu list            configured API levels and the AVDs that exist
   bb logs [-f] [N]       show the persistent startup log (default: last 100 lines)
   bb doctor              check the things that usually go wrong
 EOF
@@ -112,8 +113,35 @@ cmd_runner() {
     esac
 }
 
+avd_exists() { avdmanager list avd 2>/dev/null | grep -q "Name: ${1}$"; }
+
+# emu_avd [TARGET] — resolve which AVD to act on. A bare API level (37) maps to
+# that version's AVD; anything else is taken as a literal name. With no target:
+# ANDROID_AVD_NAME wins if set, then the first configured API level, then the
+# unsuffixed name AVDs used before this was multi-version.
+emu_avd() {
+    local target="${1:-}" prefix="${ANDROID_AVD_PREFIX:-builderbot}" first
+    if [ -n "$target" ]; then
+        case "$target" in
+            *[!0-9]*) printf '%s' "$target" ;;
+            *)        printf '%s-%s' "$prefix" "$target" ;;
+        esac
+        return
+    fi
+    if [ -n "${ANDROID_AVD_NAME:-}" ]; then
+        printf '%s' "$ANDROID_AVD_NAME"
+        return
+    fi
+    first="$(printf '%s' "${ANDROID_SYSTEM_IMAGES:-35}" | tr ',' ' ' | awk '{print $1}')"
+    if avd_exists "${prefix}-${first}"; then
+        printf '%s-%s' "$prefix" "$first"
+    else
+        printf '%s' "$prefix"
+    fi
+}
+
 cmd_emu() {
-    local avd="${ANDROID_AVD_NAME:-builderbot}"
+    local avd
     case "${1:-status}" in
         start)
             command -v emulator >/dev/null 2>&1 \
@@ -121,8 +149,9 @@ cmd_emu() {
             if adb devices 2>/dev/null | grep -q '^emulator-'; then
                 log "an emulator is already running"; adb devices; return 0
             fi
-            avdmanager list avd 2>/dev/null | grep -q "Name: ${avd}$" \
-                || die "AVD '${avd}' not found — set ENABLE_ANDROID_EMULATOR=true and restart, or create one with avdmanager"
+            avd="$(emu_avd "${2:-}")"
+            avd_exists "$avd" \
+                || die "AVD '${avd}' not found — add its API level to ANDROID_SYSTEM_IMAGES and restart, or see: bb emu list"
             [ -w /dev/kvm ] || warn "/dev/kvm not available — this will be very slow"
             # Software rendering by default: it is the only mode guaranteed to
             # work with no GPU passed through. With an NVIDIA GPU (and
@@ -142,6 +171,14 @@ cmd_emu() {
             ;;
         status)
             adb devices -l
+            ;;
+        list)
+            printf 'configured API levels: %s\n' "${ANDROID_SYSTEM_IMAGES:-35}"
+            printf 'default for `bb emu start`: %s\n\n' "$(emu_avd)"
+            avdmanager list avd 2>/dev/null \
+                | grep -E 'Name:|Based on:' \
+                | sed 's/^ */  /' \
+                || printf '  (no AVDs)\n'
             ;;
         *) usage; exit 1 ;;
     esac
