@@ -34,10 +34,17 @@ ARG ANDROID_SYSTEM_IMAGE_VARIANT="google_apis;x86_64"
 # download would be silently baked into the image. Fail on any stage instead.
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
+# NPM_CONFIG_FUND / PIP_DISABLE_PIP_VERSION_CHECK drop banners that carry no
+# information: the funding appeal and the "a new pip is available" nag. Set as
+# container env rather than in the shell profile, because that profile is
+# guarded on an interactive shell and a Claude session's commands are not one.
+# Deliberately NOT disabling `npm audit` — that one is a real signal.
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     TZ=Etc/UTC \
+    NPM_CONFIG_FUND=false \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
     BUILDER_HOME=/home/builder \
     WORKSPACE=/workspace \
     RUNNER_DIR=/opt/actions-runner \
