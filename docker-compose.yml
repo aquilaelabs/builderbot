@@ -46,7 +46,7 @@ services:
       # scope it to Contents only, never Administration.
       GIT_PAT: ${GIT_PAT:-}
       RUNNER_NAME: ${RUNNER_NAME:-builderbot}
-      RUNNER_LABELS: ${RUNNER_LABELS:-builderbot,self-hosted,linux,x64}
+      RUNNER_LABELS: ${RUNNER_LABELS:-builderbot,self-hosted,linux,x64,unraid}
       RUNNER_GROUP: ${RUNNER_GROUP:-}
       RUNNER_EPHEMERAL: ${RUNNER_EPHEMERAL:-true}
       RUNNER_WORKDIR: /workspace/_work
