@@ -14,7 +14,7 @@ in.
   │                                                           │
   │  actions-runner ──► listens for jobs from GitHub          │
   │                                                           │
-  │  /workspace/mediareducer-dev  ◄── /mnt/user/appdata/…     │
+  │  /workspace/MediaReducer-Dev  ◄── /mnt/user/development/… │
   │  /workspace/FreshBoot         ◄── /mnt/user/development/… │
   └───────────────────────────────────────────────────────────┘
 ```
@@ -139,7 +139,7 @@ Required / usually touched:
 
 | Field | Set it to |
 |---|---|
-| Project paths | Pre-wired: `/mnt/user/appdata/mediareducer-dev` and `/mnt/user/development/FreshBoot` → `/workspace/…` |
+| Project paths | Pre-wired: `/mnt/user/development/MediaReducer-Dev` and `/mnt/user/development/FreshBoot` → `/workspace/…` |
 | State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config,work}` |
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
 | `TZ` | Your timezone |

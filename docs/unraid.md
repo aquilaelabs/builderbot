@@ -142,7 +142,7 @@ curl -fsSL \
 Then in the WebUI: **Docker** tab → **Add Container** → in the *Template*
 dropdown pick **builderbot**. You get a form with everything already wired:
 
-* both project paths (`/mnt/user/appdata/mediareducer-dev`,
+* both project paths (`/mnt/user/development/MediaReducer-Dev`,
   `/mnt/user/development/FreshBoot`) mapped into `/workspace/…`
 * the appdata paths for home / config / runner work
 * fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), git identity, TZ

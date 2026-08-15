@@ -97,7 +97,7 @@ services:
 
     volumes:
       # --- your projects ----------------------------------------------------
-      - ${MEDIAREDUCER_PATH:-/mnt/user/appdata/mediareducer-dev}:/workspace/mediareducer-dev
+      - ${MEDIAREDUCER_PATH:-/mnt/user/development/MediaReducer-Dev}:/workspace/MediaReducer-Dev
       - ${FRESHBOOT_PATH:-/mnt/user/development/FreshBoot}:/workspace/FreshBoot
 
       # --- persistent container state --------------------------------------

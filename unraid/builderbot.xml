@@ -30,7 +30,7 @@ NOTES
   <Requires/>
 
   <!-- ===================== project mounts ===================== -->
-  <Config Name="MediaReducer project" Target="/workspace/mediareducer-dev" Default="/mnt/user/appdata/mediareducer-dev" Mode="rw" Description="First project directory, visible to Claude Code at /workspace/mediareducer-dev" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/mediareducer-dev</Config>
+  <Config Name="MediaReducer project" Target="/workspace/MediaReducer-Dev" Default="/mnt/user/development/MediaReducer-Dev" Mode="rw" Description="First project directory, visible to Claude Code at /workspace/MediaReducer-Dev" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/development/MediaReducer-Dev</Config>
   <Config Name="FreshBoot project" Target="/workspace/FreshBoot" Default="/mnt/user/development/FreshBoot" Mode="rw" Description="Second project directory, visible to Claude Code at /workspace/FreshBoot" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/development/FreshBoot</Config>
 
   <!-- ===================== persistent state ===================== -->
