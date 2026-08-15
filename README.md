@@ -234,6 +234,7 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `GIT_PAT` | *(empty)* | GitHub **API** auth for `gh` from inside (`gh pr create`). Session-readable by design; not needed if ssh covers your git usage |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create system images and AVDs at startup |
 | `ANDROID_SYSTEM_IMAGES` | `35` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
+| `ANDROID_SYSTEM_IMAGE_VARIANT` | `google_apis;x86_64` | Image flavour; `default;x86_64` is smaller AOSP, no Google APIs |
 | `ANDROID_AVD_NAME` / `ANDROID_AVD_PREFIX` | *(derived)* / `builderbot` | Override the default AVD, or the `<prefix>-<api>` naming |
 | `ANDROID_EMULATOR_GPU` | `swiftshader_indirect` | Emulator renderer — `swangle_indirect` (faster software) or `host` (needs a GPU) |
 | `NVIDIA_VISIBLE_DEVICES` | `all` | Only with `--runtime=nvidia`; GPU UUID when you have more than one card |
