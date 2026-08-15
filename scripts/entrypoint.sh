@@ -306,7 +306,7 @@ seed_home() {
 persist_android_downloads() {
     local sdk="${ANDROID_HOME:-/opt/android-sdk}"
     local base="$BUILDER_HOME/.android/sdk"
-    local sub store dir name
+    local sub store dir name adopted=0
 
     [ -d "$sdk" ] || return 0
 
@@ -321,13 +321,27 @@ persist_android_downloads() {
             for dir in "$sdk/$sub"/*/; do
                 [ -d "$dir" ] || continue
                 name="$(basename "$dir")"
-                [ -e "$store/$name" ] || cp -a "$dir" "$store/$name"
+                if [ -e "$store/$name" ]; then
+                    continue
+                fi
+                # Gigabytes, on the first start after an image ships a new one.
+                # Announce it rather than looking hung.
+                log "adopting ${sub}/${name} onto the home volume"
+                cp -a "$dir" "$store/$name"
+                adopted=1
             done
             rm -rf "${sdk:?}/$sub"
         fi
 
-        ln -sfn "$store" "$sdk/$sub"
+        if ! ln -sfn "$store" "$sdk/$sub"; then
+            warn "could not link ${sdk}/${sub} to ${store}"
+            warn "runtime sdkmanager installs will not survive the next image update"
+        fi
     done
+
+    if [ "$adopted" -eq 1 ]; then
+        log "android sdk downloads persist at ${base}"
+    fi
 
     chown -R "$PUID:$PGID" "$base" 2>/dev/null || true
 }
