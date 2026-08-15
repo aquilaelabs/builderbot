@@ -175,15 +175,38 @@ setup_ssh_agent() {
 # /config volume, so startup output survives container recreation (which
 # happens on every image update — exactly when you want yesterday's log).
 # Docker's own `docker logs` keeps working: tee passes output through.
+# rotate_log FILE — shift generations down and leave FILE free for a new one.
+# Rotating per start rather than per size means one file equals one container
+# lifetime, so "what happened on that boot" is answerable by opening a file
+# instead of hunting for the boundary in an appended stream. The cost is that a
+# crash loop burns through generations quickly; BB_LOG_KEEP buys headroom.
+rotate_log() {
+    local logfile="$1" keep="${BB_LOG_KEEP:-5}" i
+    case "$keep" in
+        ''|*[!0-9]*) keep=5 ;;
+    esac
+    if [ "$keep" -lt 1 ]; then
+        keep=1
+    fi
+    [ -f "$logfile" ] || return 0
+
+    rm -f "${logfile}.${keep}"
+    i=$((keep - 1))
+    while [ "$i" -ge 1 ]; do
+        if [ -f "${logfile}.${i}" ]; then
+            mv -f "${logfile}.${i}" "${logfile}.$((i + 1))"
+        fi
+        i=$((i - 1))
+    done
+    mv -f "$logfile" "${logfile}.1"
+}
+
 setup_logging() {
     local logdir logfile
     logdir="$(bb_log_dir)"
     logfile="$logdir/builderbot.log"
     mkdir -p "$logdir" 2>/dev/null || return 0
-    # Simple size-based rotation: keep one previous generation.
-    if [ -f "$logfile" ] && [ "$(stat -c %s "$logfile" 2>/dev/null || echo 0)" -gt 5242880 ]; then
-        mv -f "$logfile" "$logfile.1"
-    fi
+    rotate_log "$logfile"
     # All output — the persistent file AND the docker-logs passthrough —
     # flows through the redaction rules built by stash_secrets.
     if [ -s /run/builderbot/redact.sed ]; then

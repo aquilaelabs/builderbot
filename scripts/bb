@@ -21,7 +21,9 @@ bb — BuilderBot helper
   bb emu stop            shut the emulator down
   bb emu status          adb devices
   bb emu list            configured API levels and the AVDs that exist
-  bb logs [-f] [N]       show the persistent startup log (default: last 100 lines)
+  bb logs [-f] [N]       show this boot's log (default: last 100 lines)
+  bb logs -p [N]         show a previous boot's log (the log rotates per start)
+  bb logs --list         list the kept boot logs, newest first
   bb doctor              check the things that usually go wrong
 EOF
 }
@@ -185,16 +187,35 @@ cmd_emu() {
 }
 
 cmd_logs() {
-    local logfile follow=0 lines=100
-    logfile="$(bb_log_dir)/builderbot.log"
+    local base logfile follow=0 lines=100 gen=""
+    base="$(bb_log_dir)/builderbot.log"
     while [ $# -gt 0 ]; do
         case "$1" in
             -f) follow=1 ;;
+            -l|--list)
+                # Newest first, so the top of the list is the current boot.
+                ls -1t "$base" "$base".[0-9]* 2>/dev/null \
+                    || die "no logs in $(bb_log_dir)"
+                return 0
+                ;;
+            -p|--prev)
+                # The log rotates per container start, so generation N is the
+                # Nth boot back. Bare -p means the previous one.
+                case "${2:-}" in
+                    ''|*[!0-9]*) gen=1 ;;
+                    *) gen="$2"; shift ;;
+                esac
+                ;;
             *[0-9]*) lines="$1" ;;
         esac
         shift
     done
-    [ -f "$logfile" ] || die "no persistent log at ${logfile}"
+    if [ -n "$gen" ]; then
+        logfile="${base}.${gen}"
+    else
+        logfile="$base"
+    fi
+    [ -f "$logfile" ] || die "no log at ${logfile} — see: bb logs --list"
     if [ "$follow" -eq 1 ]; then
         tail -n "$lines" -f "$logfile"
     else

@@ -244,6 +244,7 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `BB_LOG_DIR` | *(auto)* | Log location override; normally use the `/logs` mount instead |
+| `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 
 Mounts: two project dirs, three state dirs (`home`, `config`, `work`), and
 three optional ones — `/secrets` (ro, shielded credentials), `/logs`
@@ -296,7 +297,9 @@ bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
 bb runner status | restart
 bb emu start [api] | stop | status | list
-bb logs [-f] [N]   the persistent startup log
+bb logs [-f] [N]   this boot's log
+bb logs -p [N]     a previous boot's log
+bb logs --list     the kept boot logs, newest first
 ```
 
 `claude` and `bb` re-exec as `builder` automatically — `docker exec` lands
@@ -400,7 +403,7 @@ one, append the template's contents instead of overwriting.
 
 | Log | Where |
 |---|---|
-| Startup + runner supervisor | `config/logs/builderbot.log` (persists across updates, size-rotated, secret-redacted) — or the `/logs` mount |
+| Startup + runner supervisor | `config/logs/builderbot.log` — one file per container start, `.1` … `.5` are previous boots. Persists across updates, secret-redacted. Or the `/logs` mount |
 | Runner diagnostics | `work/_diag/` |
 | CI job output | GitHub → Actions → the run |
 | Emulator | `home/.android/emulator.log` |
