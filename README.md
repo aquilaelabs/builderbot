@@ -14,8 +14,9 @@ in.
   │                                                           │
   │  actions-runner ──► listens for jobs from GitHub          │
   │                                                           │
-  │  /workspace/MediaReducer-Dev  ◄── /mnt/user/development/… │
-  │  /workspace/FreshBoot         ◄── /mnt/user/development/… │
+  │  /workspace/MediaReducer-Dev    ◄── /mnt/user/development │
+  │  /workspace/MediaReducer-Stage  ◄── /mnt/user/development │
+  │  /workspace/FreshBoot           ◄── /mnt/user/development │
   └───────────────────────────────────────────────────────────┘
 ```
 
@@ -139,7 +140,7 @@ Required / usually touched:
 
 | Field | Set it to |
 |---|---|
-| Project paths | Pre-wired: `/mnt/user/development/MediaReducer-Dev` and `/mnt/user/development/FreshBoot` → `/workspace/…` |
+| Project paths | Pre-wired: `MediaReducer-Dev`, `MediaReducer-Stage` and `FreshBoot` under `/mnt/user/development` → `/workspace/…` |
 | State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config,work}` |
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
 | `TZ` | Your timezone |
@@ -157,6 +158,7 @@ Everything else has sane defaults — full reference below.
 | Android emulator | Extra Params: `--device=/dev/kvm`, set `ENABLE_ANDROID_EMULATOR=true`; then `bb emu start` |
 | NVIDIA GPU | Nvidia-Driver plugin + Extra Params: `--runtime=nvidia`, keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
+| Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
 | Docker builds inside (CI jobs, Claude) | Fill the **Docker socket** path field — **off by default; this is root-equivalent on the host**, read the warning in the docs first |
 | Emulator adb from your desktop | Map port 5555 |
 | Extra tools at startup | `EXTRA_APT_PACKAGES` / `EXTRA_NPM_PACKAGES` / `EXTRA_PIPX_PACKAGES`, or drop hooks in `config/startup.d/` |
@@ -298,6 +300,7 @@ bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
 bb runner status | restart
 bb emu start [api] | stop | status | list
+bb findings [PATH] digest scanner SARIF reports (default /reports)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -371,6 +374,36 @@ gets you smaller AOSP images at the price of the Google APIs.
 Two practical limits: an Android 17 phone AVD wants **4 GB of RAM minimum**, and
 `bb emu` runs one emulator at a time — this is for testing across versions in
 sequence, not a device farm.
+
+## Static analysis reports
+
+If you run a scanner on the host, mount only its **output** — read-only:
+
+```
+/mnt/user/appdata/scanners/reports:/reports:ro
+```
+
+That boundary is the point. The scanner binaries stay outside, so nothing in
+this container can run a scan, change the rules, or edit what was reported. It
+reads findings; it does not produce them. If a report looks stale, re-run the
+scanner on the host — there is deliberately no way to do it from in here.
+
+```bash
+bb findings              # digest every SARIF report under /reports
+bb findings x.sarif      # just one
+```
+
+Raw SARIF is mostly metadata — a few hundred KB of it fills a session's context
+before it reaches the code the findings are about. `bb findings` groups by
+severity and rule, prints each message once with the locations under it, and
+rewrites the scanner's paths to be repo-relative so they can be opened
+directly. Run it from the project directory; the current directory name is what
+gets stripped from the recorded paths (override with `FINDINGS_PROJECT`).
+
+**Review the diffs.** Findings need judgement about intent — whether a `|safe`
+is deliberate, whether a SHA1 is for dedup rather than security. Asking Claude
+to fix everything and re-scan unattended optimises for a clean report, which is
+not the same as better code, and suppressing a finding satisfies that goal too.
 
 ## Telling a project's sessions about this environment
 

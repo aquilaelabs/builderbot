@@ -142,8 +142,8 @@ curl -fsSL \
 Then in the WebUI: **Docker** tab → **Add Container** → in the *Template*
 dropdown pick **builderbot**. You get a form with everything already wired:
 
-* both project paths (`/mnt/user/development/MediaReducer-Dev`,
-  `/mnt/user/development/FreshBoot`) mapped into `/workspace/…`
+* the project paths (`MediaReducer-Dev`, `MediaReducer-Stage`, `FreshBoot`
+  under `/mnt/user/development`) mapped into `/workspace/…`
 * the appdata paths for home / config / runner work
 * fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), git identity, TZ
 
@@ -202,6 +202,24 @@ own settings page (click the icon → *Edit*), and survive image updates.
 1. Container settings → **Extra Params**: append ` --device=/dev/kvm`
 2. Set `ENABLE_ANDROID_EMULATOR` to `true`
 3. Apply, then: `docker exec -it BuilderBot bb emu start`
+
+### Static analysis reports (optional)
+
+Running a scanner on the host? Give the container its **output** and nothing
+else:
+
+1. Container settings → **Scanner reports (read-only)** → your scanner's output
+   directory, e.g. `/mnt/user/appdata/scanners/reports`
+2. Apply, then from a project directory: `bb findings`
+
+The read-only mount is the whole design. The scanner binaries stay on the host,
+so a session can read what was found but cannot run a scan, change the rules,
+or rewrite the report — the container consumes the output and has no path back
+to the tool that produced it.
+
+`bb findings` reduces SARIF to grouped markdown with repo-relative paths.
+Handing a session the raw file instead would spend most of a context window on
+metadata before it reached any code.
 
 ### NVIDIA GPU (optional)
 

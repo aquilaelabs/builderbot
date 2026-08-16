@@ -96,6 +96,27 @@ consequence worth internalizing:
 Judging whether a duration *feels* right is a question for real hardware, and
 you should say so rather than guessing from a headless emulator.
 
+## Static analysis findings
+
+If `/reports` exists, a scanner runs on the host and drops SARIF there.
+
+```bash
+bb findings        # grouped digest, repo-relative paths
+```
+
+Read it with `bb findings`, not by opening the SARIF — the raw file is mostly
+metadata and will eat the context you need for the code.
+
+**You cannot run a scan from here.** `/reports` is read-only and no scanner is
+installed, deliberately. If findings look stale, say so and let the user re-run
+it on the host; do not try to install a scanner to work around it.
+
+Treat findings as claims to evaluate, not a queue to clear. Whether a `|safe`
+is deliberate or a SHA1 is for dedup rather than security is a judgement about
+intent — check the surrounding code and say what you concluded. Suppressing a
+rule makes the report clean without making the code better, so propose that
+only when the finding is genuinely a false positive, and say why.
+
 ## Git and credentials
 
 - Commit identity is already configured from the container's environment. Do

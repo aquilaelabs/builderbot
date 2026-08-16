@@ -98,6 +98,7 @@ services:
     volumes:
       # --- your projects ----------------------------------------------------
       - ${MEDIAREDUCER_PATH:-/mnt/user/development/MediaReducer-Dev}:/workspace/MediaReducer-Dev
+      - ${MEDIAREDUCER_STAGE_PATH:-/mnt/user/development/MediaReducer-Stage}:/workspace/MediaReducer-Stage
       - ${FRESHBOOT_PATH:-/mnt/user/development/FreshBoot}:/workspace/FreshBoot
 
       # --- persistent container state --------------------------------------
@@ -107,6 +108,12 @@ services:
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/config:/config
       # Actions runner checkout/work directory.
       - ${APPDATA_PATH:-/mnt/user/appdata/BuilderBot}/work:/workspace/_work
+
+      # Static-analysis reports, READ-ONLY. The scanner stays on the host by
+      # design: mounting only its output means nothing in this container can
+      # run it, reconfigure it, or rewrite what it found. Read them with
+      # `bb findings`.
+      # - /mnt/user/appdata/scanners/reports:/reports:ro
 
       # Optional: send the persistent log somewhere else (e.g. an array
       # share). The container auto-detects a /logs mount; without it, logs
