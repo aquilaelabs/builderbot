@@ -22,7 +22,13 @@ NOTES
   </Overview>
   <Category>Tools: Productivity:</Category>
   <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/docs/icon.png</Icon>
+  <!-- Left empty on purpose: Unraid falls back to its own placeholder, which
+       beats the broken image an unreachable URL produces. raw.githubusercontent
+       .com answers 404 for a private repo to Unraid's unauthenticated fetch, so
+       docs/icon.png cannot be linked from here while this repo stays private.
+       If it ever goes public, or the file is copied somewhere public, put that
+       URL here. -->
+  <Icon/>
   <ExtraParams>--hostname=builderbot</ExtraParams>
   <PostArgs/>
   <DonateText/>
