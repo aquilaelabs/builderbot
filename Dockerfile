@@ -301,7 +301,7 @@ COPY config/templates/ /opt/builderbot/templates/
 # Carried in the image so the container can seed Unraid's icon cache itself
 # rather than depending on a URL Unraid can reach — see
 # scripts/startup.d/05-unraid-icon.root.sh.
-COPY docs/icon.png /opt/builderbot/icon.png
+COPY config/icon.png /opt/builderbot/icon.png
 
 RUN set -eux; \
     chmod -R +x /opt/builderbot/scripts; \

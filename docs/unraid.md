@@ -199,7 +199,7 @@ own settings page (click the icon → *Edit*), and survive image updates.
 
 ### The container icon (optional, cosmetic)
 
-The template's `Icon` points at `docs/icon.png` in this repo. While the repo is
+The template's `Icon` points at `config/icon.png` in this repo. While the repo is
 private that URL answers **404** to Unraid's unauthenticated fetch, and you get
 a placeholder.
 

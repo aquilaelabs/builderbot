@@ -32,7 +32,7 @@ NOTES
        empty URL and never consults the cache, so an empty <Icon/> shows the
        question-mark placeholder however many PNGs are sitting on disk.
        If the repo ever goes public this starts working on its own. -->
-  <Icon>https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/docs/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/config/icon.png</Icon>
   <ExtraParams>--hostname=builderbot --device=/dev/kvm --runtime=nvidia</ExtraParams>
   <PostArgs/>
   <DonateText/>
