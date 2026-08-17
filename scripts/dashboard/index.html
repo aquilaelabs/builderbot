@@ -138,6 +138,32 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
   stroke-width:1.4;stroke-linecap:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
 
+/* What a Claude session is doing, at a glance. Blue matches the runner card's
+   "busy" spinner — work in progress — and amber is the colour this page
+   already uses for "wants a decision from you". Never green: a session
+   waiting for input on an active (green) tab would vanish into it. */
+.st{display:inline-block;width:8px;height:8px;border-radius:50%;flex:0 0 auto;
+  margin-right:6px;vertical-align:baseline}
+.st.working{background:var(--note);animation:pulse 1.6s ease-in-out infinite}
+.st.waiting{background:var(--warn)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@media(prefers-reduced-motion:reduce){ .st.working{animation:none} }
+
+/* Doctor card: healthy checks collapse into green chips; anything wrong is a
+   full-width line, because a failure is for reading and a pass is for
+   counting. */
+.doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
+.doctor .probs:empty{display:none}
+.doctor .chips{display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px;
+  border-top:1px solid var(--line)}
+.doctor .probs+.chips{border-top:1px solid var(--line)}
+.doctor .probs:empty+.chips{border-top:0}
+.doctor .chips .pill{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  max-width:100%}
+#docTog{display:flex;align-items:center;gap:8px}
+#docWhen{font:11px/1 var(--mono);color:var(--dim);text-transform:none;
+  letter-spacing:0}
+
 .pill{font:11px/1 var(--mono);padding:3px 7px;border-radius:99px;
   border:1px solid var(--line);color:var(--dim)}
 .pill.ok{color:var(--accent);border-color:#22452c}
@@ -327,6 +353,11 @@ body.dragging .tab .lbl{cursor:grabbing}
       <h2>Sessions</h2>
       <div id="sessions"><div class="empty">loading…</div></div>
     </div>
+    <div class="card doctor">
+      <h2>Doctor<span id="docTog"><span id="docWhen"></span
+        ><button id="bDoctor" title="run bb doctor now">↻</button></span></h2>
+      <div id="doctor"><div class="empty">first run pending…</div></div>
+    </div>
     <div class="card">
       <h2>bb commands<span id="cmdTog"></span></h2>
       <div class="macros" id="commands"><div class="empty">loading…</div></div>
@@ -386,6 +417,17 @@ function sessionOf(arg){
 const isClaude = t => t.kind === "term" && sessionOf(t.arg).startsWith("claude-");
 const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
 
+// What a Claude session is doing — {state: "working"|"waiting", task} — read
+// from the pane title the server collected, or null for anything else. The
+// distinction the badge carries is the phone-glance question: is it still
+// going, or is it sitting there needing me?
+const claudeOf = name =>
+  (state?.sessions || []).find(s => s.name === name)?.claude || null;
+
+const stateDot = c => c
+  ? `<span class="st ${c.state}" title="${c.state === "working"
+      ? "working" : "waiting for you"}"></span>` : "";
+
 // ---- what a tab is called --------------------------------------------
 // Derived at draw time from where the terminal *is*, not from the argument it
 // was opened with — so a `cd` shows up in the strip. The stored label is only
@@ -423,10 +465,13 @@ function tabLabel(t){
   return sessionLabels().get(sessionOf(t.arg)) || t.label;
 }
 
-// The tooltip is the full path, which is the thing a basename loses.
+// The tooltip is the full path, which is the thing a basename loses — plus,
+// for a Claude tab, what the session says it is doing.
 function tabTitle(t){
   if (t.kind !== "term") return t.label;
-  return cwdOf(sessionOf(t.arg)) || t.label;
+  const base = cwdOf(sessionOf(t.arg)) || t.label;
+  const c = isClaude(t) ? claudeOf(sessionOf(t.arg)) : null;
+  return c?.task ? `${base}\n${c.state === "working" ? "working on" : "done"}: ${c.task}` : base;
 }
 
 function tabLabels(){
@@ -643,7 +688,7 @@ function drawTabs(){
     const where = panes[0] === t.id ? "◧" : panes[1] === t.id ? "◨" : "";
     const held = drag?.moved && drag.id === t.id ? " held" : "";
     return `<span class="tab ${t.id===cur?"on":""}${held}" data-id="${esc(t.id)}">
-      <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
+      <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
       <button class="ic" data-pin="${esc(t.id)}" title="pin to a pane">⇱</button>
       ${t.fixed ? ""
         // A terminal is minimised, not closed: it keeps running and is listed
@@ -822,8 +867,16 @@ const levelClass = l => l === "error" ? "bad" : l === "warning" ? "warn"
 // had collapsed — and their scroll position with it.
 let findingsRev = 0;
 
+// The reports' mtime as of the last load, so a scan re-run on the host shows
+// up on its own: the status poll carries the current mtime, and a mismatch
+// while a findings tab is open triggers a reload. Only then — reloading on a
+// timer would fight the reader for the page (their collapsed sections do
+// survive, but their scroll position does not).
+let findingsMtime = null;
+
 async function loadFindings(force){
   if (findings && !force) return;
+  findingsMtime = state?.reports_mtime ?? null;
   findings = {loading:true}; findingsRev++;
   drawPanes();
   try{
@@ -1050,6 +1103,47 @@ function drawProjects(ps){
   el.closest(".card").querySelectorAll(".resumemenu").forEach(n => n.remove());
   if (resumeFor) placeResumeMenu();
 }
+
+// ---- doctor -----------------------------------------------------------
+// bb doctor's verdict, run by the server on a slow loop and on the ↻ button.
+// Failures and warnings are full lines — they are for reading — while passing
+// checks collapse into chips: what a healthy card says is just "all n ok".
+function drawDoctor(){
+  const el = $("doctor"), d = state?.doctor;
+  $("docWhen").textContent = d?.running ? "running…" : d?.when ? ago(d.when) : "";
+  if (!d || !d.when){
+    el.innerHTML = `<div class="empty">${d?.running ? "running…" : "first run pending…"}</div>`;
+    return;
+  }
+  const tip = c => c.text + (c.detail ? "\n\n" + c.detail : "");
+  const probs = d.checks.filter(c => c.level === "FAIL" || c.level === "warn");
+  const fine = d.checks.filter(c => c.level === "ok");
+  const skip = d.checks.filter(c => c.level === "skip");
+  el.innerHTML =
+    `<div class="probs">${probs.map(c =>
+       `<div class="sub ${c.level === "FAIL" ? "bad" : "warn"}" title="${esc(tip(c))}">${esc(c.text)}</div>`
+     ).join("")}</div>` +
+    `<div class="chips">${
+       fine.map(c => `<span class="pill ok" title="${esc(tip(c))}">${esc(c.text)}</span>`).join("") +
+       skip.map(c => `<span class="pill" title="${esc(tip(c))}">${esc(c.text)}</span>`).join("")
+     }</div>`;
+}
+
+$("bDoctor").onclick = async () => {
+  const b = $("bDoctor");
+  if (b.disabled) return;
+  b.disabled = true;
+  $("docWhen").textContent = "running…";
+  try{
+    const r = await fetch("/api/doctor", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: "{}"});
+    const j = await r.json();
+    if (j.error) notify(j.error, true);
+    else { if (state) state.doctor = j; drawDoctor(); }
+  }catch(e){ notify("doctor failed: " + e, true); }
+  b.disabled = false;
+  drawDoctor();
+};
 
 // ---- commands ---------------------------------------------------------
 // Every `bb` command is listed, which is more than fits a sidebar card, so the
@@ -1309,8 +1403,10 @@ function drawSessions(ss){
   el.innerHTML = ss.map(s => `
     <div class="row">
       <div class="grow"><span class="name" title="${esc(s.name + (s.cwd ? " — " + s.cwd : ""))}"
-        >${esc(names.get(s.name) || s.name)}</span>
-        <span class="pill ${s.attached?"ok":""}">${s.attached?"attached":"detached"}</span></div>
+        >${stateDot(s.claude)}${esc(names.get(s.name) || s.name)}</span>
+        <span class="pill ${s.attached?"ok":""}">${s.attached?"attached":"detached"}</span>
+        ${s.claude?.task ? `<div class="sub" title="${esc(s.claude.task)}">${
+          s.claude.state === "working" ? "working on" : "done"}: ${esc(s.claude.task)}</div>` : ""}</div>
       <button data-a="${esc(s.name)}">Open</button>
       <button data-k="${esc(s.name)}" title="end this session">✕</button>
     </div>`).join("");
@@ -1455,7 +1551,13 @@ async function refresh(){
     drawSessions(state.sessions);
     drawCommands();
     drawCustom();
+    drawDoctor();
     $("cardFindings").hidden = !state.reports;
+    // A scan re-ran on the host: refresh any open findings view to match.
+    if (findings && !findings.loading && findingsMtime !== null
+        && state.reports_mtime !== findingsMtime
+        && tabs.some(t => t.kind === "findings"))
+      loadFindings(true);
     render();
   }catch(e){ $("dot").classList.add("off"); }
 }

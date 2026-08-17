@@ -265,6 +265,7 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `ENABLE_DASHBOARD` | `false` | Web dashboard + browser terminal |
 | `DASHBOARD_AUTH` | *(empty)* | `user:password` — **required** when the dashboard is enabled; it will not start otherwise |
 | `DASHBOARD_PORT` / `DASHBOARD_TTYD_PORT` | `8080` / `7681` | Page and terminal ports; both must be published |
+| `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
@@ -478,13 +479,27 @@ terminal on `7681`:
   or has an error carries **no Claude button at all**, because a session cannot
   start there; **Shell** stays, since that is often how you would fix it
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
-  grouped by project and rule, with severity counts and CVEs linked to NVD
+  grouped by project and rule, with severity counts and CVEs linked to NVD.
+  If the scanner re-runs while the report is open, the view reloads itself —
+  the page watches the report files' mtime, so you never triage stale findings
 - a **Stop / Start** toggle for the runner, showing whichever one applies.
   Stopping waits for GitHub to release the runner's session rather than
   reporting success and leaving a listener behind
 - every `bb` command as a button, pinnable, typed into the terminal you are
   looking at — and a second card for **your own** command lists
-- live list of tmux sessions, named exactly as their tabs are, with attach
+- live list of tmux sessions, named exactly as their tabs are, with attach.
+  Every Claude session — in this list and on its tab — carries a **state dot**:
+  blue and pulsing while it works, amber when it is waiting on you (input, a
+  permission decision, or a finished turn), with the task it reported
+  alongside. That is the phone-glance question answered without opening the
+  terminal: is it still going, or does it need me? The state comes from the
+  terminal title Claude Code itself maintains, read through tmux — no polling
+  of the conversation, no extra process
+- a **Doctor** card: `bb doctor`'s checks, run by the server in the background
+  every 30 minutes (`DASHBOARD_DOCTOR_INTERVAL` seconds to change that) and
+  re-run on demand with its ↻. Passing checks collapse into green chips;
+  failures and warnings are full lines, with the fix hint from `bb doctor`'s
+  own output in the tooltip
 
 ### Tabs and panes
 

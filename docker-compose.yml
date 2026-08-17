@@ -106,6 +106,8 @@ services:
       # Ceiling on open dashboard tabs. Each terminal tab is an iframe running
       # a full terminal emulator over its own websocket.
       DASHBOARD_MAX_TABS: ${DASHBOARD_MAX_TABS:-12}
+      # How often the dashboard re-runs `bb doctor` in the background (seconds).
+      DASHBOARD_DOCTOR_INTERVAL: ${DASHBOARD_DOCTOR_INTERVAL:-1800}
 
       # --- publishing -------------------------------------------------------
       NPM_TOKEN: ${NPM_TOKEN:-}

@@ -16,6 +16,8 @@ import os
 import re
 import shlex
 import subprocess
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -580,21 +582,52 @@ def projects():
 
 
 def session_cwds():
-    """Session name -> the working directory of its active pane.
+    """Session name -> {cwd, title} of its active pane.
 
-    Where a terminal *is* right now, which is not where it was opened: the tab
-    is labelled from this, so a `cd` shows up in the strip.
+    cwd is where a terminal *is* right now, which is not where it was opened:
+    the tab is labelled from this, so a `cd` shows up in the strip. The pane
+    title rides along because for Claude sessions it is a status report —
+    see claude_state below.
     """
+    # Title last and split bounded, so a title containing a tab cannot shift
+    # the fields before it.
     r = run(["tmux", "list-panes", "-a", "-F",
-             "#{session_name}\t#{pane_active}\t#{pane_current_path}"], timeout=10)
+             "#{session_name}\t#{pane_active}\t#{pane_current_path}\t#{pane_title}"],
+            timeout=10)
     out = {}
     if r["code"] != 0:
         return out
     for line in r["out"].splitlines():
-        parts = line.split("\t")
-        if len(parts) == 3 and parts[1] == "1":
-            out[parts[0]] = parts[2]
+        parts = line.split("\t", 3)
+        if len(parts) == 4 and parts[1] == "1":
+            out[parts[0]] = {"cwd": parts[2], "title": parts[3]}
     return out
+
+
+# Claude Code reports its state through the terminal title, and tmux keeps
+# that per pane. Observed lifecycle (verified against a live session, not
+# guessed from docs): a working session's title starts with an animated
+# spinner glyph and the task summary ("◐ Fix the login flow"); one waiting
+# for input starts with ✳ ("✳ Claude Code" fresh, "✳ Fix the login flow"
+# after a turn). Before the REPL — trust dialog, theme picker — no title is
+# set at all, which the spinner rule correctly reads as "waiting": those
+# screens are waiting for input.
+#
+# Activity timestamps are deliberately NOT the signal here: the TUI goes
+# quiet while a long tool call runs, so "no output lately" cannot tell a
+# session hard at work from one sitting at the prompt.
+SPINNER_GLYPHS = tuple("◐◓◑◒")
+
+
+def claude_state(title):
+    """(state, task) for a Claude pane title: "working" or "waiting"."""
+    working = title.startswith(SPINNER_GLYPHS)
+    task = title.lstrip("".join(SPINNER_GLYPHS) + "✳ ").strip()
+    # A title Claude never set (tmux's hostname default) carries no task; a
+    # fresh session's "Claude Code" is a name, not a task.
+    if not title.startswith(SPINNER_GLYPHS + ("✳",)) or task == "Claude Code":
+        task = ""
+    return ("working" if working else "waiting"), task
 
 
 def tmux_sessions():
@@ -602,13 +635,18 @@ def tmux_sessions():
             timeout=10)
     if r["code"] != 0:
         return []          # no server running yet is the normal empty case
-    cwds = session_cwds()
+    panes = session_cwds()
     rows = []
     for line in r["out"].splitlines():
         if "\t" in line:
             name, attached = line.split("\t", 1)
-            rows.append({"name": name, "attached": attached.strip() not in ("", "0"),
-                         "cwd": cwds.get(name, "")})
+            info = panes.get(name, {})
+            row = {"name": name, "attached": attached.strip() not in ("", "0"),
+                   "cwd": info.get("cwd", "")}
+            if name.startswith("claude-"):
+                state, task = claude_state(info.get("title", ""))
+                row["claude"] = {"state": state, "task": task}
+            rows.append(row)
     return rows
 
 
@@ -794,6 +832,67 @@ def uptime():
     return r["out"].strip() or "?"
 
 
+# ---------------------------------------------------------------------------
+# bb doctor, cached. The checks take up to half a minute of network timeouts
+# when something is down, which rules out running them on the 15-second poll —
+# so a background thread keeps a cached verdict warm and the poll just carries
+# it. The card's refresh button re-runs on demand for the "did my fix work"
+# moment.
+# ---------------------------------------------------------------------------
+DOCTOR_EVERY = max(300, int(os.environ.get("DASHBOARD_DOCTOR_INTERVAL", "1800")))
+
+_doctor_lock = threading.Lock()
+_doctor = {"when": 0, "checks": [], "failed": False, "running": True}
+
+# bb doctor's own line shape: "  [ok]   claude on PATH". Indented lines that
+# carry no tag are elaboration on the check above them (the ssh diagnosis
+# hint, the GPU capability note) and travel with it as detail.
+DOCTOR_LINE = re.compile(r"^\s*\[(ok|FAIL|skip|warn)\]\s+(.*\S)")
+
+
+def run_doctor():
+    """Run bb doctor and cache the parsed result. False if one is mid-run —
+    two at once would double every network probe for the same answer."""
+    with _doctor_lock:
+        if _doctor.get("busy"):
+            return False
+        _doctor["busy"] = True
+        _doctor["running"] = True
+    r = run(["bb", "doctor"], timeout=180)
+    checks = []
+    for line in r["out"].splitlines():
+        m = DOCTOR_LINE.match(line)
+        if m:
+            checks.append({"level": m.group(1), "text": m.group(2), "detail": ""})
+        elif checks and line.strip() and not line.startswith("=="):
+            checks[-1]["detail"] = (checks[-1]["detail"] + "\n" + line.strip()).strip()
+    with _doctor_lock:
+        _doctor.update(when=int(time.time()), checks=checks,
+                       failed=r["code"] != 0, running=False, busy=False)
+    return True
+
+
+def doctor_payload():
+    with _doctor_lock:
+        return {k: _doctor[k] for k in ("when", "checks", "failed", "running")}
+
+
+def _doctor_loop():
+    while True:
+        run_doctor()
+        time.sleep(DOCTOR_EVERY)
+
+
+def reports_mtime():
+    """Newest mtime among the scanner reports, so a client showing the
+    findings tab can notice a re-run scan without anyone pressing reload."""
+    try:
+        files = list(REPORTS.glob("*.sarif")) + list(REPORTS.glob("*.sarif.json"))
+        return max((int(f.stat().st_mtime) for f in files), default=0)
+    except OSError:
+        return 0
+
+
 def snapshot():
     return {
         "host": os.uname().nodename,
@@ -803,6 +902,8 @@ def snapshot():
         "runner": runner(),
         "ttyd_port": TTYD_PUBLIC_PORT,
         "reports": REPORTS.is_dir(),
+        "reports_mtime": reports_mtime(),
+        "doctor": doctor_payload(),
         "max_tabs": MAX_TABS,
         # The command list is built from the table above rather than spelled out
         # again in the page, so a command added here appears as a button and one
@@ -920,6 +1021,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._claude_md(req)
         if path.startswith("/api/custom"):
             return self._custom(req)
+        if path.startswith("/api/doctor"):
+            return self._doctor(req)
         self._json({"error": "not found"}, 404)
 
     def _custom(self, req):
@@ -991,6 +1094,17 @@ class Handler(BaseHTTPRequestHandler):
         if r["code"] != 0:
             return self._json({"error": r["out"].strip() or f"{action} failed"}, 500)
         return self._json({"state": md_state(md), "out": r["out"].strip()})
+
+    def _doctor(self, req):
+        """Re-run bb doctor now and answer with the fresh verdict.
+
+        Synchronous on purpose: the caller pressed a button asking for an
+        answer, and the threading server keeps everything else responsive
+        while this one connection waits the half-minute a bad network takes.
+        """
+        if not run_doctor():
+            return self._json({"error": "doctor is already running"}, 409)
+        return self._json(doctor_payload())
 
     def _pin(self, req):
         """Pin or unpin a command. Names are keys from MACROS, so this file can
@@ -1139,6 +1253,8 @@ def main():
             "source trees; it will not start unauthenticated."
         )
     prune_claude_tabs()
+    # Daemon: the doctor loop must die with the server, not hold it open.
+    threading.Thread(target=_doctor_loop, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 
 
