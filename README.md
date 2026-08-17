@@ -499,6 +499,12 @@ Everything below the end marker is never read, compared or written. A file
 without markers is refused rather than guessed at — merge those once by hand,
 and every refresh after that is mechanical.
 
+The template also tells sessions to run the check at the start of a session and
+refresh if it reports drift, so a project's environment notes keep up with the
+container without you remembering to do it. It asks the session to say when it
+updates rather than doing it silently, because a modified tracked file that
+nobody mentioned is the kind of thing that gets swept into an unrelated commit.
+
 ## Playwright, Android, publishing
 
 - **Playwright**: three browsers + deps pre-installed; `npx playwright test`
