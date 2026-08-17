@@ -124,6 +124,17 @@ EXCLUDES_FILE = STATE / "excluded-projects.json"
 # operator, and a pin made on the desktop should be there on the phone.
 PINS_FILE = STATE / "pinned-commands.json"
 
+# The operator's own command lists. Stored, never executed here: pressing one
+# types its lines into a terminal exactly as `bb` macros do. That is why this is
+# not the "arbitrary command string" the API refuses everywhere else — the text
+# goes to a tty the same authenticated operator is already sitting at, and they
+# could have typed it themselves. Nothing runs in the server's own process.
+CUSTOM_FILE = STATE / "custom-commands.json"
+CUSTOM_MAX = 40                 # macros
+CUSTOM_TITLE_MAX = 60           # characters
+CUSTOM_LINES_MAX = 20           # lines per macro
+CUSTOM_LINE_MAX = 500           # characters per line
+
 
 TABS_FILE = STATE / "tabs.json"
 
@@ -232,6 +243,65 @@ def load_pins():
     if not isinstance(v, list):
         return []
     return sorted({x for x in v if isinstance(x, str) and x in MACROS})
+
+
+def load_custom():
+    """The stored custom macros, validated on the way out.
+
+    Read back through the same checks the writer applies, so a hand-edited file
+    cannot put something in the page that the page could not have saved.
+    """
+    try:
+        v = json.loads(CUSTOM_FILE.read_text())
+    except (OSError, ValueError):
+        return []
+    if not isinstance(v, list):
+        return []
+    out, seen = [], set()
+    for m in v[:CUSTOM_MAX]:
+        if not isinstance(m, dict):
+            continue
+        mid, title, lines = m.get("id"), m.get("title"), m.get("lines")
+        if not isinstance(mid, str) or not re.fullmatch(r"c[0-9]{1,6}", mid) or mid in seen:
+            continue
+        if not isinstance(title, str) or not title.strip():
+            continue
+        if not isinstance(lines, list) or not lines:
+            continue
+        lines = [l for l in lines[:CUSTOM_LINES_MAX]
+                 if isinstance(l, str) and l.strip() and len(l) <= CUSTOM_LINE_MAX]
+        if not lines:
+            continue
+        seen.add(mid)
+        out.append({"id": mid, "title": title.strip()[:CUSTOM_TITLE_MAX], "lines": lines})
+    return out
+
+
+def save_custom(macros):
+    STATE.mkdir(parents=True, exist_ok=True)
+    tmp = CUSTOM_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(macros, indent=2) + "\n")
+    tmp.replace(CUSTOM_FILE)
+
+
+def clean_lines(body):
+    """Split an edit box into command lines.
+
+    Blank lines and comment-only lines are dropped rather than typed: pressing
+    Enter on an empty line is noise in a terminal, and a stored macro that
+    silently includes them looks like it did something wrong.
+    """
+    lines = []
+    for raw in (body or "").replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        # Control characters would go through send-keys -l as literal bytes and
+        # could move the cursor or clear the screen mid-macro.
+        line = "".join(ch for ch in line if ch == "\t" or ord(ch) >= 32)
+        if line.strip():
+            lines.append(line[:CUSTOM_LINE_MAX])
+    return lines[:CUSTOM_LINES_MAX]
 
 
 def save_pins(names):
@@ -408,9 +478,12 @@ def md_state(path):
 
 def projects():
     out = []
-    if not WORKSPACE.is_dir():
-        return out
     uid, gid = os.getuid(), os.getgid()
+    try:
+        if not WORKSPACE.is_dir():
+            return out
+    except OSError:
+        pass                    # unreadable: reported by the listing below
     excluded = set(load_excludes())
     stopped = last_stop()
     try:
@@ -477,7 +550,8 @@ def projects():
                 # put a `fatal:` line where the branch name goes.
                 branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
                 if not has_md:
-                    issues.append({"level": "warning", "text": "no CLAUDE.md"})
+                    issues.append({"level": "warning", "action": "claude-md-init",
+                                   "text": "no CLAUDE.md — create one"})
                 elif (md := md_state(d / "CLAUDE.md")) == "stale":
                     # Offered as an action, not just a complaint: the fix is one
                     # command with no decisions in it, and the block goes stale
@@ -734,6 +808,7 @@ def snapshot():
         # removed cannot leave a button that posts a name the server rejects.
         "macros": [{"name": k, "label": " ".join(v[1:])} for k, v in MACROS.items()],
         "pinned": load_pins(),
+        "custom": load_custom(),
         # The open tabs, so a phone picks up the desktop's layout rather than
         # starting from scratch. Carried in the status poll because it is small
         # and every client is already asking for that every 15s.
@@ -842,19 +917,64 @@ class Handler(BaseHTTPRequestHandler):
             return self._pin(req)
         if path.startswith("/api/claude-md"):
             return self._claude_md(req)
+        if path.startswith("/api/custom"):
+            return self._custom(req)
         self._json({"error": "not found"}, 404)
 
+    def _custom(self, req):
+        """Save or delete one of the operator's own command lists.
+
+        Ids are minted here rather than accepted from the page, so the file
+        cannot grow a key that came from a request, and every stored macro is
+        addressable by something this server chose.
+        """
+        action = req.get("action")
+        macros = load_custom()
+        if action == "delete":
+            mid = req.get("id")
+            macros = [m for m in macros if m["id"] != mid]
+        elif action == "save":
+            title = (req.get("title") or "").strip()[:CUSTOM_TITLE_MAX]
+            lines = clean_lines(req.get("body"))
+            if not title:
+                return self._json({"error": "a title is required"}, 400)
+            if not lines:
+                return self._json({"error": "no commands to run"}, 400)
+            mid = req.get("id")
+            if mid and any(m["id"] == mid for m in macros):
+                macros = [{"id": m["id"], "title": title, "lines": lines}
+                          if m["id"] == mid else m for m in macros]
+            else:
+                if len(macros) >= CUSTOM_MAX:
+                    return self._json({"error": f"at most {CUSTOM_MAX} custom commands"}, 400)
+                used = {int(m["id"][1:]) for m in macros}
+                mid = "c" + str(max(used, default=0) + 1)
+                macros.append({"id": mid, "title": title, "lines": lines})
+        else:
+            return self._json({"error": "unknown action"}, 400)
+        try:
+            save_custom(macros)
+        except OSError as e:
+            return self._json({"error": f"could not save: {e}"}, 500)
+        return self._json({"custom": load_custom()})
+
     def _claude_md(self, req):
-        """Refresh one project's CLAUDE.md environment block.
+        """Create or refresh one project's CLAUDE.md.
 
         Run here rather than typed into a terminal: the project has no terminal
-        open in the general case, and the command takes no decisions — it
-        replaces a delimited block and leaves everything below it alone.
+        open in the general case, and neither command takes a decision — one
+        copies the template in, the other replaces a delimited block and leaves
+        everything below it alone.
+
+        Creating one is deliberately a thing a *person* asks for; sessions are
+        told not to. That is what this link is — the person asking.
 
         The project name is checked against the directories that exist, so the
         path handed to `bb` is one this server built, never one the page sent.
         """
-        name = req.get("name", "")
+        name, action = req.get("name", ""), req.get("action", "update")
+        if action not in ("update", "init"):
+            return self._json({"error": "unknown action"}, 400)
         try:
             here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
         except OSError:
@@ -862,11 +982,13 @@ class Handler(BaseHTTPRequestHandler):
         if name not in here:
             return self._json({"error": f"unknown project: {name}"}, 400)
         md = WORKSPACE / name / "CLAUDE.md"
-        if not md.is_file():
+        if action == "init" and md.is_file():
+            return self._json({"error": f"{name} already has a CLAUDE.md"}, 400)
+        if action == "update" and not md.is_file():
             return self._json({"error": f"{name} has no CLAUDE.md"}, 400)
-        r = run(["bb", "claude-md", "--update", str(md)], timeout=60)
+        r = run(["bb", "claude-md", f"--{action}", str(md)], timeout=60)
         if r["code"] != 0:
-            return self._json({"error": r["out"].strip() or "update failed"}, 500)
+            return self._json({"error": r["out"].strip() or f"{action} failed"}, 500)
         return self._json({"state": md_state(md), "out": r["out"].strip()})
 
     def _pin(self, req):
@@ -960,25 +1082,40 @@ class Handler(BaseHTTPRequestHandler):
     def _send(self, req):
         """Type a macro's command line into a shell session and press Enter.
 
-        Still a name from the fixed table, never a command string — the page
-        cannot ask for anything not listed above, and what lands in the
-        terminal is exactly what the operator would have typed.
+        Two kinds, and neither is a command string from the request: a name from
+        the fixed `bb` table, or the id of a custom macro the operator saved
+        earlier through /api/custom. What lands in the terminal is exactly what
+        they would have typed, in a tty they are already sitting at.
         """
-        session, name = req.get("session", ""), req.get("macro", "")
-        if name not in MACROS:
-            return self._json({"error": f"unknown macro: {name}"}, 400)
+        session, name, cid = (req.get("session", ""), req.get("macro", ""),
+                              req.get("custom", ""))
+        if cid:
+            m = next((x for x in load_custom() if x["id"] == cid), None)
+            if not m:
+                return self._json({"error": f"unknown custom command: {cid}"}, 400)
+            lines = m["lines"]
+        else:
+            if name not in MACROS:
+                return self._json({"error": f"unknown macro: {name}"}, 400)
+            lines = [shlex.join(MACROS[name])]
         if session not in {s["name"] for s in tmux_sessions()}:
             return self._json({"error": f"no such session: {session}"}, 400)
         # Never into a Claude session: that would not run the command, it would
         # submit it as a prompt.
         if session.startswith("claude-"):
             return self._json({"error": "refusing to type into a Claude session"}, 400)
-        line = shlex.join(MACROS[name])
-        r = run(["tmux", "send-keys", "-t", session, "-l", line], timeout=10)
-        if r["code"] != 0:
-            return self._json(r)
-        return self._json(run(["tmux", "send-keys", "-t", session, "Enter"], timeout=10)
-                          | {"sent": line})
+        # Typed one after another without waiting. That is what happens when a
+        # person types ahead too — the tty buffers the input and the shell reads
+        # each line when it is ready for one.
+        for line in lines:
+            r = run(["tmux", "send-keys", "-t", session, "-l", line], timeout=10)
+            if r["code"] != 0:
+                return self._json(r)
+            r = run(["tmux", "send-keys", "-t", session, "Enter"], timeout=10)
+            if r["code"] != 0:
+                return self._json(r)
+        return self._json(r | {"sent": lines[0] if len(lines) == 1
+                               else f"{len(lines)} commands"})
 
 
 def _constant_eq(a, b):
