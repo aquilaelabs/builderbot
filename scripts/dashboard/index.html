@@ -59,9 +59,13 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
   letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);
   font-weight:600;display:flex;align-items:center;gap:8px;min-height:33px}
 /* The header is two gestures and nothing else: click collapses, drag reorders.
-   Grab cursor and touch-action:none as on the tab strip's drag handles —
-   scrolling the sidebar by touch starts from a card body instead. */
-.side .card h2{cursor:grab;touch-action:none;user-select:none}
+   touch-action stays permissive: a finger that starts on a header and moves
+   before the hold has elapsed is scrolling the sidebar, and the browser is
+   left free to do that — the drag code only says no once a hold has picked
+   the card up (see the touchmove listener). No callout: the same hold would
+   otherwise raise the platform's long-press menu. */
+.side .card h2{cursor:grab;touch-action:manipulation;user-select:none;
+  -webkit-touch-callout:none}
 body.dragging .side .card h2{cursor:grabbing}
 .card h2 .chev{margin-left:auto;font-size:10px;transition:transform .15s}
 .card.closed h2 .chev{transform:rotate(-90deg)}
@@ -224,7 +228,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .tab.on{background:#1f6f36;border-color:#2ea043}
 .tab button{border:0;border-radius:0;background:transparent;min-height:28px}
 .tab .lbl{padding:6px 8px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;
-  cursor:grab;touch-action:none;user-select:none}
+  cursor:grab;touch-action:manipulation;user-select:none;-webkit-touch-callout:none}
 .tab.held{opacity:.45}
 .card.held{opacity:.6}   /* the long-press pickup state, cards as tabs */
 body.dragging{cursor:grabbing;user-select:none}
@@ -236,9 +240,8 @@ body.dragging .tab .lbl{cursor:grabbing}
 .tabstrip{display:flex;align-items:stretch}
 .tabstrip .tabbar{flex:1;min-width:0}
 .tscroll{display:none}
-/* On a phone the strip is one row that pages with the arrows — the tabs are
-   drag handles (touch-action:none), so the bar cannot be swipe-scrolled on
-   them and wrapping to more rows would eat the terminal's space. */
+/* On a phone the strip is one row: swipe it, or page it with the arrows —
+   wrapping to more rows would eat the terminal's space. */
 @media(max-width:900px){
   .tabbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
     border-radius:0;border-left:0;border-right:0}
@@ -294,6 +297,26 @@ body.dragging .tab .lbl{cursor:grabbing}
 .keys.show{display:flex}
 .keys button{font-family:var(--mono);min-width:40px;min-height:var(--tap);padding:6px 8px}
 .keys .gap{flex-basis:100%;height:0}
+
+/* Phone bottom bar ---------------------------------------------------- */
+/* On a phone the terminal view carries its own two toggles at the bottom —
+   the on-screen keys, and the command macros, which move here out of the
+   dashboard's cards. One panel at a time: there is not the height for both.
+   Desktop keeps ⌨ on the tab strip and the macros in their cards. */
+.mobar,.mpanel{display:none}
+@media(max-width:900px){
+  .tabbar #bKeys,.tabbar .sep{display:none}
+  .card[data-card="commands"],.card[data-card="custom"]{display:none}
+  .mobar{display:flex;gap:6px;padding:6px;flex:0 0 auto;background:var(--panel);
+    border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}
+  .mobar button{flex:1;min-height:var(--tap)}
+  .mobar button.on{background:#1f6f36;border-color:#2ea043}
+  .keys,.panes{border-radius:0}   /* the bar below them owns the bottom corners */
+  .mpanel.show{display:block;flex:0 0 auto;max-height:45vh;overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-top:0}
+  .mpanel .lab{font-size:10px;text-transform:uppercase;letter-spacing:.6px;
+    color:var(--dim);padding:8px 10px 0}
+}
 
 /* Findings view ------------------------------------------------------ */
 .fx h3{margin:0 0 8px;font-size:15px}
@@ -430,6 +453,14 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="pane hidden" id="pane1"></div>
     </div>
     <div class="keys" id="keys"></div>
+    <div class="mpanel" id="macpanel">
+      <div class="lab">bb commands</div><div id="mpCmd"></div>
+      <div class="lab">custom commands</div><div id="mpCustom"></div>
+    </div>
+    <div class="mobar" id="mobar">
+      <button id="mKeys">⌨ Keys</button>
+      <button id="mMacros">» Commands</button>
+    </div>
   </div>
 </main>
 
@@ -715,6 +746,21 @@ let drag = null, swallowClick = false;
 // rather than reordering tabs under it. Mouse drags arm immediately.
 const HOLD_MS = 500;
 
+// Before the hold, the browser owns a moving finger: touch-action lets it
+// scroll the sidebar or the tab strip, and its pointercancel ends the
+// would-be drag for us. After the hold, the finger's movement IS the drag,
+// and this is the one place the page says no to a pan — registered
+// non-passive on purpose, since a passive listener's preventDefault is
+// ignored, and only while something is picked up, so ordinary scrolling
+// never pays for it.
+window.addEventListener("touchmove", e => {
+  if (drag?.armed || cardDrag?.armed) e.preventDefault();
+}, {passive: false});
+// The same half-second is the platform's long-press menu; not over a handle.
+document.addEventListener("contextmenu", e => {
+  if (drag || cardDrag) e.preventDefault();
+});
+
 function startDrag(ev, id){
   if (ev.pointerType === "mouse" && ev.button !== 0) return;
   drag = {id, x0: ev.clientX, y0: ev.clientY, moved: false,
@@ -724,7 +770,7 @@ function startDrag(ev, id){
       if (!drag) return;
       drag.armed = drag.moved = true;
       document.body.classList.add("dragging");
-      drawTabs();                       // shows the held state
+      holdTab(id);
     }, HOLD_MS);
   window.addEventListener("pointermove", onDrag);
   window.addEventListener("pointerup", endDrag, {once: true});
@@ -736,7 +782,7 @@ function startDrag(ev, id){
 // dragged tab is spliced out, and it handles a wrapped tab bar for free.
 function dropIndex(x, y, from){
   let idx = 0;
-  [...$("tabbar").querySelectorAll(".tab")].forEach((el, i) => {
+  [...$("tabbar").querySelectorAll(".tab[data-id]")].forEach((el, i) => {
     if (i === from) return;
     const r = el.getBoundingClientRect();
     if (y > r.bottom || (y >= r.top && x > r.left + r.width / 2)) idx++;
@@ -761,6 +807,7 @@ function onDrag(ev){
     if (!far) return;
     drag.moved = true; pinFor = null;
     document.body.classList.add("dragging");
+    holdTab(drag.id);
   }
   ev.preventDefault();
   const from = tabs.findIndex(t => t.id === drag.id);
@@ -768,8 +815,24 @@ function onDrag(ev){
   const to = dropIndex(ev.clientX, ev.clientY, from);
   if (to !== from){
     tabs.splice(to, 0, tabs.splice(from, 1)[0]);
-    drawTabs();
+    reorderTabEls();
   }
+}
+
+// Mid-drag the strip is re-sorted in place — the same elements moved, never
+// rebuilt. A touch is implicitly captured by the node it began on: rebuild
+// the strip and that node is detached, its events stop reaching the window
+// listeners that run the drag, and the browser scrolls instead. Moving a
+// node keeps it in the document. The full redraw waits for pointerup.
+const holdTab = id => $("tabbar").querySelector(`.tab[data-id="${id}"]`)?.classList.add("held");
+
+function reorderTabEls(){
+  const bar = $("tabbar");
+  const els = new Map([...bar.querySelectorAll(".tab[data-id]")].map(el => [el.dataset.id, el]));
+  const play = flip(() => bar.querySelectorAll(".tab[data-id]"), el => el.dataset.id);
+  const anchor = bar.querySelector(".sep");
+  for (const t of tabs){ const el = els.get(t.id); if (el) bar.insertBefore(el, anchor); }
+  play();
 }
 
 function endDrag(){
@@ -792,6 +855,10 @@ function endDrag(){
 let tabsDrawn = false;
 
 function drawTabs(){
+  // Mid-drag, only re-sort: the status poll renders every fifteen seconds,
+  // and a rebuild here would detach the node a finger is holding (see
+  // reorderTabEls). Labels catch up on the redraw that follows the drop.
+  if (drag){ reorderTabEls(); return; }
   // Slide, don't teleport — and across the innerHTML rebuild, which is why
   // everything is keyed by tab id rather than element. Old positions (plus a
   // clone, for a tab about to vanish) are captured before the rebuild; after
@@ -992,11 +1059,34 @@ const KEYS = [
    ["under","_"],["dollar","$"],["star","*"],["lt","<"],["gt",">"]],
 ];
 
+// The phone's second panel. Keys and macros are exclusive there — see the
+// toggles below — and the macro lists are the dashboard's own #commands and
+// #custom elements, moved between their cards and this panel as the viewport
+// crosses the phone breakpoint: one DOM, one set of handlers, no second copy
+// to drift. Desktop never shows the panel, so nothing moves there.
+let showMacros = false;
+
+function placeMacros(){
+  const phone = isPhone();
+  const cmdHome = phone ? $("mpCmd")    : document.querySelector('.card[data-card="commands"]');
+  const cusHome = phone ? $("mpCustom") : document.querySelector('.card[data-card="custom"]');
+  if ($("commands").parentElement !== cmdHome) cmdHome.appendChild($("commands"));
+  if ($("custom").parentElement   !== cusHome) cusHome.appendChild($("custom"));
+}
+placeMacros();
+window.matchMedia("(max-width:900px)").addEventListener("change", () => { placeMacros(); render(); });
+
+$("mKeys").onclick   = () => { showKeys = !showKeys;     if (showKeys)   showMacros = false; render(); };
+$("mMacros").onclick = () => { showMacros = !showMacros; if (showMacros) showKeys   = false; render(); };
+
 function drawKeys(){
   const el = $("keys");
   const t = tabOf(panes[active]);
   const on = showKeys && t?.kind === "term";     // pointless over a document
   el.classList.toggle("show", on);
+  $("mKeys").classList.toggle("on", on);
+  $("mMacros").classList.toggle("on", showMacros);
+  $("macpanel").classList.toggle("show", showMacros);
   if (!on){ el.innerHTML = ""; return; }
   el.innerHTML = KEYS.map(r =>
     r.map(([k,l]) => `<button data-k="${esc(k)}">${esc(l)}</button>`).join("")
@@ -1157,7 +1247,10 @@ function renderFindingsInto(i){
 // Doctor first: the verdict on the whole box outranks any one card below it.
 const CARD_ORDER = ["doctor","runner","projects","findings","sessions","commands","custom"];
 let cards = {order: CARD_ORDER.slice(), closed: []};
-let cardDrag = null;
+let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
+                                           // the arrangement here: a poll
+                                           // issued before that carries a
+                                           // stale copy and must not win
 
 const cardEls = () => [...document.querySelectorAll(".side .card[data-card]")];
 
@@ -1178,6 +1271,7 @@ function applyCards(animate){
 }
 
 async function saveCards(){
+  cardsChangedAt = performance.now();
   try{
     const r = await fetch("/api/cards", {method:"POST",
       headers:{"Content-Type":"application/json"}, body: JSON.stringify(cards)});
@@ -1221,17 +1315,20 @@ function slideCard(el, closing){
 // projects error toggle, the commands cut-off, doctor's detail — with the
 // same height tween as the card-level fold. `mutate` does the actual redraw.
 function slideBody(el, mutate){
-  const card = el.closest(".card");
-  if (noMotion()){ mutate(); return; }
+  const card = el.closest(".card, .mpanel");   // the phone panel hosts these too
+  if (!card || noMotion()){ mutate(); return; }
   const from = card.offsetHeight;
-  card.getAnimations().forEach(a => a.cancel());
+  // Only its own kind: cancelling a card-level fold here would swallow the
+  // class write that fold's finish handler was going to make.
+  card.getAnimations().forEach(a => { if (a.id === "body") a.cancel(); });
   mutate();
   const to = card.offsetHeight;
   if (from === to) return;
   card.style.overflow = "hidden";
-  card.animate([{height: from + "px"}, {height: to + "px"}],
-               {duration: 180, easing: "ease"})
-      .onfinish = () => card.style.overflow = "";
+  const anim = card.animate([{height: from + "px"}, {height: to + "px"}],
+                            {duration: 180, easing: "ease"});
+  anim.id = "body";
+  anim.onfinish = () => card.style.overflow = "";
 }
 
 // The same pointer-based drag as the tab strip, turned vertical: the number
@@ -1239,10 +1336,14 @@ function slideBody(el, mutate){
 // insertion index. A hidden card (findings without /reports) offers nothing
 // to aim at, so it is re-appended after the visible order — the bottom is
 // where it surfaces if it ever appears.
+// Rendered, as opposed to merely present: a hidden card (findings without
+// /reports) and one a phone hides by stylesheet both offer nothing to aim at.
+const rendered = el => el && !el.hidden && el.getClientRects().length > 0;
+
 function cardDropIndex(y, fromKey){
   let idx = 0;
   cardEls().forEach(el => {
-    if (el.dataset.card === fromKey || el.hidden) return;
+    if (el.dataset.card === fromKey || !rendered(el)) return;
     const r = el.getBoundingClientRect();
     if (y > r.top + r.height / 2) idx++;
   });
@@ -1286,7 +1387,7 @@ function onCardDrag(ev){
   }
   ev.preventDefault();
   const vis = cards.order.filter(k => k !== cardDrag.key
-    && !document.querySelector(`.card[data-card="${k}"]`)?.hidden);
+    && rendered(document.querySelector(`.card[data-card="${k}"]`)));
   vis.splice(cardDropIndex(ev.clientY, cardDrag.key), 0, cardDrag.key);
   const next = [...vis, ...cards.order.filter(k => !vis.includes(k))];
   if (next.join() !== cards.order.join()){
@@ -1953,6 +2054,7 @@ function adoptLayout(v){
 }
 
 async function refresh(){
+  const asked = performance.now();
   try{
     const r = await fetch("/api/status");
     if (!r.ok) throw new Error("HTTP " + r.status);
@@ -1963,7 +2065,7 @@ async function refresh(){
     adoptLayout(state.layout);
     // Not mid-drag: adopting the server's order under a moving pointer would
     // snap the card out of the operator's hand.
-    if (state.cards && !cardDrag){ cards = state.cards; applyCards(); }
+    if (state.cards && !cardDrag && asked > cardsChangedAt){ cards = state.cards; applyCards(); }
     drawRunner(state.runner);
     drawProjects(state.projects);
     drawSessions(state.sessions);

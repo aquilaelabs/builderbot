@@ -456,7 +456,9 @@ in `/config/cards.json`, so the phone and the desktop agree about the
 arrangement and it survives restarts and image updates. The **▤** button in
 the top bar puts it all back: default order — Doctor on top — with every
 card expanded. On a touch screen, hold a header for half a second to pick
-the card up; a finger that moves sooner is scrolling, not dragging. The
+the card up; a finger that moves sooner is scrolling, and the sidebar scrolls
+under it as if the header were not there — a fast flick that happens to land
+on a header is never a misfire. The
 headers hold nothing but the title and a chevron — every control a card has
 lives in its body. The cards:
 
@@ -557,7 +559,7 @@ a placeholder, and **+** starts over.
   so they stay distinguishable.
 - **Drag a tab** by its label to reorder the strip. With a finger, hold for
   half a second first — the tab dims to say it is picked up; a finger that
-  moves sooner is swiping, not dragging.
+  moves sooner is swiping, and on a phone that swipe scrolls the strip.
 - **⇱ on a tab** pins it to the **left** or **right** pane, which splits the
   view. The pin marker on the tab (◧ / ◨) says where it currently is.
 - **✕ on a pane** collapses back to a single pane. It does **not** close the
@@ -565,8 +567,12 @@ a placeholder, and **+** starts over.
   it was being shown.
 - **On a phone** there is no split: the pin buttons are hidden and only the
   active pane is shown — a split made at the desk is still there when you get
-  back to it. The strip stays one row and pages with **‹ ›** arrows instead
-  of wrapping, so the terminal keeps its screen space.
+  back to it. The strip stays one row — swipe it, or page it with the **‹ ›**
+  arrows — instead of wrapping, so the terminal keeps its screen space. Under
+  the terminal sit two buttons, **Keys** and **Commands**: the on-screen keys,
+  and the `bb` and custom command macros, which on a phone live here rather
+  than in dashboard cards (those two cards are hidden there). One panel at a
+  time — there is not the height for both.
 
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
 or a reloaded page detaches instead of killing the session. The **Sessions
