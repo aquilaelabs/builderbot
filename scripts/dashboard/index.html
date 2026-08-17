@@ -382,10 +382,14 @@ body.dragging .tab .lbl{cursor:grabbing}
 "use strict";
 
 // ---- state -----------------------------------------------------------
-// One permanent workspace tab; everything else is opened and closable. Tabs
-// are separate from panes on purpose: a pane is a viewport, and closing one
-// should not destroy what it was showing.
-let tabs = [{id:"ws", kind:"term", arg:"shell", label:"sh: workspace", fixed:true}];
+// The workspace tab is only the default the page starts with, not a fixture:
+// every tab can be minimised, and killing a session from the Sessions card
+// takes its tab with it — the workspace one included, which used to be
+// unclosable and so sat pointing at a dead session. An empty strip is legal;
+// the pane renders a placeholder and "+" starts over. Tabs are separate from
+// panes on purpose: a pane is a viewport, and closing one should not destroy
+// what it was showing.
+let tabs = [{id:"ws", kind:"term", arg:"shell", label:"sh: workspace"}];
 let panes = ["ws", null];
 let active = 0;
 let state = null;
@@ -565,18 +569,19 @@ function show(t){
 function hideTab(id, ev){
   ev?.stopPropagation();
   const t = tabOf(id);
-  if (!t || t.fixed) return;
+  if (!t) return;
   dropTab(id);
   refresh();
 }
 
 // Remove a tab and repair the layout: a pane it was in falls back to the other
-// one, and the workspace tab is the floor beneath everything.
+// one, then to whatever tab is still open, then to nothing — which drawPanes
+// renders as a placeholder rather than this function preventing.
 function dropTab(id){
   tabs = tabs.filter(x => x.id !== id);
   for (let i = 0; i < 2; i++) if (panes[i] === id) panes[i] = null;
   if (panes[0] === null && panes[1] !== null){ panes[0] = panes[1]; panes[1] = null; }
-  if (panes[0] === null) panes[0] = "ws";
+  if (panes[0] === null) panes[0] = tabs[0]?.id ?? null;
   if (panes[1] === null) active = 0;
   render();
 }
@@ -602,7 +607,7 @@ function pinTo(id, idx, ev){
 function closePane(idx, ev){
   ev?.stopPropagation();
   if (idx === 1){ panes[1] = null; active = 0; }
-  else { panes[0] = panes[1] ?? "ws"; panes[1] = null; active = 0; }
+  else { panes[0] = panes[1] ?? tabs[0]?.id ?? null; panes[1] = null; active = 0; }
   render();
 }
 
@@ -690,11 +695,12 @@ function drawTabs(){
     return `<span class="tab ${t.id===cur?"on":""}${held}" data-id="${esc(t.id)}">
       <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
       <button class="ic" data-pin="${esc(t.id)}" title="pin to a pane">⇱</button>
-      ${t.fixed ? ""
+      ${
         // A terminal is minimised, not closed: it keeps running and is listed
-        // under Sessions. A document has nothing to keep, so its ✕ means what
-        // it says. Neither asks — nothing is lost either way.
-        : t.kind === "term"
+        // under Sessions — the workspace tab the same as any other. A document
+        // has nothing to keep, so its ✕ means what it says. Neither asks —
+        // nothing is lost either way.
+        t.kind === "term"
           ? `<button class="ic" data-min="${esc(t.id)}"
                title="minimise — the terminal keeps running, reopen it from Sessions">—</button>`
           : `<button class="ic" data-close="${esc(t.id)}" title="close">✕</button>`}
@@ -787,7 +793,7 @@ function drawPanes(){
     pane.dataset.tab = t?.id || ""; pane.dataset.kind = t?.kind || "";
     pane.onclick = () => { if (isSplit()){ active = i; render(); } };
 
-    if (!t){ pane.innerHTML = `<div class="empty-pane">empty</div>`; continue; }
+    if (!t){ pane.innerHTML = `<div class="empty-pane">no tab here — “+” opens a terminal, Sessions reopens a running one</div>`; continue; }
     pane.innerHTML = `<div class="bar"></div>` + (t.kind === "term"
       // Selecting in a shell copies: the terminal fires the copy itself, and
       // this is the permission that lets it, since the terminal is served from
@@ -1378,7 +1384,7 @@ async function setExcluded(name, on){
     // The server ends a running session when excluding; drop its tab too, or
     // the page keeps offering a terminal onto something that is gone.
     if (j.killed){
-      const t = tabs.find(x => x.kind === "term" && !x.fixed && sessionOf(x.arg) === j.killed);
+      const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
       if (t) dropTab(t.id);
     }
   }catch(e){ notify("exclude failed: " + e, true); }
@@ -1439,7 +1445,7 @@ async function killSession(name){
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
     // Its tab, if one is open, is now pointing at nothing.
-    const t = tabs.find(x => x.kind === "term" && !x.fixed && sessionOf(x.arg) === name);
+    const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === name);
     if (t) dropTab(t.id);
     notify(`ended ${name}`);
   }catch(e){ notify("could not end it: " + e, true); }
@@ -1458,11 +1464,12 @@ function notify(msg, bad){
 
 // Where a macro should be typed. The active tab if it is a shell — never a
 // Claude one, where the command would not run at all but be submitted as a
-// prompt — otherwise the workspace terminal, which always exists.
+// prompt — otherwise any open shell tab. There may be none: the workspace tab
+// is closable now, so the caller opens a terminal instead of assuming one.
 function macroTarget(){
   const here = tabOf(panes[active]);
   if (here && here.kind === "term" && !isClaude(here)) return here;
-  return tabOf("ws");
+  return tabs.find(t => t.kind === "term" && !isClaude(t)) || null;
 }
 
 // Macros run in a terminal rather than reporting into a pane of their own: the
@@ -1470,6 +1477,11 @@ function macroTarget(){
 // `bb runner stop` that takes a minute — none of which a one-shot text box did.
 async function macro(name, custom){
   const t = macroTarget();
+  if (!t){
+    newShell("");
+    notify("Opening a terminal — press the button again once it is up.");
+    return;
+  }
   const session = sessionOf(t.arg);
   focusTab(t.id);
   if (!liveSessions().has(session)){
@@ -1498,7 +1510,7 @@ let myRev = -1, savePending = false, saveTimer = null, adopting = false;
 
 function layoutNow(){
   return {tabs: tabs.map(t => ({id:t.id, kind:t.kind, arg:t.arg,
-                                label:t.label, fixed:!!t.fixed})),
+                                label:t.label})),
           panes, active};
 }
 
@@ -1526,18 +1538,25 @@ let lastSaved = null;
 // same directory if it is not.
 function adoptLayout(v){
   if (!v || v.rev === myRev || savePending) return;
+  // Revision 0 with nothing in it is a server that has never been written to,
+  // not an operator who closed every tab — keep the default strip rather than
+  // adopting the void. A strip the operator deliberately emptied was saved,
+  // which bumped the revision, so it still propagates.
+  if (v.rev === 0 && !v.tabs.length){ myRev = v.rev; return; }
   myRev = v.rev;
   adopting = true;
-  const restored = v.tabs.filter(t => !t.fixed);
-  tabs = [tabs.find(t => t.fixed) || tabs[0], ...restored];
+  // Taken whole, workspace tab included — it is an ordinary tab now, so a
+  // browser that closed it must not have it resurrected by this one. The map
+  // also quietly drops the `fixed` flag a layout saved by the older page has.
+  tabs = v.tabs.map(t => ({id:t.id, kind:t.kind, arg:t.arg, label:t.label}));
   // Ids come back from another browser's counter; keep ours ahead of them so a
   // tab opened here cannot collide with one opened there.
-  for (const t of restored){
+  for (const t of tabs){
     const n = parseInt(String(t.id).replace(/^t/, ""), 10);
     if (Number.isFinite(n) && n > seq) seq = n;
   }
   const ids = new Set(tabs.map(t => t.id));
-  panes = [ids.has(v.panes[0]) ? v.panes[0] : tabs[0].id,
+  panes = [ids.has(v.panes[0]) ? v.panes[0] : (tabs[0]?.id ?? null),
            ids.has(v.panes[1]) ? v.panes[1] : null];
   if (panes[1] === panes[0]) panes[1] = null;
   active = panes[1] && v.active === 1 ? 1 : 0;

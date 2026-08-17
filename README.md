@@ -503,8 +503,10 @@ terminal on `7681`:
 
 ### Tabs and panes
 
-One tab is permanent: **workspace**, a shell at `/workspace`. Everything else
-you open gets its own closable tab above the terminal.
+The page starts with one tab — **workspace**, a shell at `/workspace` — and
+everything you open gets its own tab above the terminal. Every tab, the
+workspace one included, can be minimised or closed; an empty strip just shows
+a placeholder, and **+** starts over.
 
 - **Claude** on a project opens *one* session per project. If it is already
   running the button is green and takes you to its tab. If it is not but the
@@ -520,12 +522,14 @@ you open gets its own closable tab above the terminal.
   and is listed under Sessions, where **Open** brings it back; a **Claude** tab
   is the same, the conversation carries on without a tab. Nothing is lost, so
   nothing is asked. **Middle-clicking** a tab does the same, the way it does in
-  a browser. The workspace tab has no button — it is the floor.
+  a browser.
 - **✕ appears on the findings tab only**, because a document has no session to
   keep. It closes without asking too.
 - **Ending a session for good is the ✕ in the Sessions card.** That one asks,
   because that is where something is actually lost: the shell and everything
   in it, or the Claude conversation (its transcript is kept and can be resumed).
+  Killing a session also closes its tab, whichever tab that is — a tab left
+  pointing at a dead session would only offer to recreate it.
 - **Tabs are named for where they are.** A terminal reads `sh: <directory>`,
   following the shell as it `cd`s; hover for the full path. A Claude tab reads
   `Claude: <project>`. Two terminals in the same directory carry their number
