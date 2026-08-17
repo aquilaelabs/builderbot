@@ -205,8 +205,22 @@ Do not install these; they are in the image.
 `android sdk` (build-tools, platform-tools, `bundletool`; platforms and system
 images per `ANDROID_SYSTEM_IMAGES`) ·
 `playwright` (chromium/firefox/webkit) · `git`/`git-lfs`/`gh` ·
-`ripgrep`/`fd`/`fzf`/`jq` · `build-essential`/`cmake` · `ffmpeg`/`imagemagick` ·
+`ripgrep`/`fd`/`fzf`/`jq`/`yq` · `build-essential`/`cmake` · `ffmpeg`/`imagemagick` ·
+`shellcheck`/`hadolint`/`actionlint`/`ruff` · `lsof`/`strace`/`tree` ·
 `mise` for per-project tool pinning
+
+Before pushing anything that touches shell scripts, Dockerfiles, workflows,
+compose files or XML, run:
+
+```bash
+bb lint            # lints those files in the current repo, same tools as CI
+```
+
+It checks `runs-on` labels against the labels this runner actually carries, so
+the "Waiting for a runner" label mismatch is caught here instead of on GitHub.
+It does not run the project's own linters (eslint, ruff configs, gradle
+checks) — those have their own configuration; use the project's documented
+commands for them.
 
 Check `bb status` for versions and `bb doctor` when something environmental
 looks wrong — it diagnoses auth, connectivity and GPU state in one pass. Bare
@@ -245,9 +259,12 @@ a change is only really live after CI builds a new image and Unraid updates the
 container.
 
 - **Build:** the image, and nothing else. `.github/workflows/build-image.yml`
-  builds and pushes `ghcr.io/stencil-projects/builderbot` on every push to
-  `main` — plus a weekly cron rebuild, so the base image, Claude Code and the
-  runner stay fresh. It runs on `ubuntu-latest`, not on this box. Locally,
+  builds and pushes `ghcr.io/stencil-projects/builderbot` on pushes to `main`
+  that touch the image's inputs (Dockerfile, `scripts/`, `config/`) — plus a
+  weekly cron rebuild, so the base image, Claude Code and the runner stay
+  fresh. It runs on `ubuntu-latest`, deliberately: hosted minutes cost more,
+  but building the image on the box that runs the image is circular — a bad
+  image would take down the runner that has to build the fix. Locally,
   `docker compose build` needs the host Docker socket, which is not mounted by
   default; `bb doctor` says whether it is.
 - **Test:** there is no test suite. Verification is the lint workflow, plus the
@@ -264,8 +281,11 @@ container.
   runs the repo copy — it prints `[skip]` for any tool the running image does
   not carry yet, rather than passing by omission.
 
-- **Lint:** CI runs shellcheck, hadolint and actionlint; `bb lint` runs the
-  same three (plus compose validation and XML well-formedness) in-container.
+- **Lint:** CI runs shellcheck, hadolint and actionlint — on *this* runner,
+  where minutes are free and the image already carries the tools (the job
+  fetches any that are missing, so it stays green on a container whose image
+  predates a newly added tool); `bb lint` runs the same three (plus compose
+  validation and XML well-formedness) in-container.
   The shared configs are the contract: `.hadolint.yaml` holds the Dockerfile
   ignores (DL3008/DL3013/DL3016 — a rolling dev image deliberately tracks the
   newest packages — and SC1091), `.github/actionlint.yaml` declares the labels
