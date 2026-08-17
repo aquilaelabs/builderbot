@@ -453,9 +453,10 @@ Off by default. When enabled it serves a status page on `8080` and a browser
 terminal on `7681`. Every sidebar card collapses to its header with a click
 on that header, and dragging a header reorders the cards; both are remembered
 in `/config/cards.json`, so the phone and the desktop agree about the
-arrangement and it survives restarts and image updates. The **⟲** button in
+arrangement and it survives restarts and image updates. The **▤** button in
 the top bar puts it all back: default order — Doctor on top — with every
-card expanded. The
+card expanded. On a touch screen, hold a header for half a second to pick
+the card up; a finger that moves sooner is scrolling, not dragging. The
 headers hold nothing but the title and a chevron — every control a card has
 lives in its body. The cards:
 
@@ -501,9 +502,9 @@ lives in its body. The cards:
   reporting success and leaving a listener behind
 - every `bb` command as a button, pinnable, typed into the terminal you are
   looking at — and a second card for **your own** command lists
-- live list of tmux sessions, named exactly as their tabs are. Each row says
-  where its tab is — **tab bar**, or **minimised** when it has none — and
-  Open brings it back either way.
+- live list of tmux sessions, named exactly as their tabs are. Each row's
+  **Open** button wears where its tab is: green when the tab is on the tab
+  bar (Open goes to it), plain when it is minimised (Open brings it back).
   Every Claude session — in this list and on its tab — carries a **state dot**:
   blue and pulsing while it works, amber when it is waiting on you (input, a
   permission decision, or a finished turn), with the task it reported
@@ -554,13 +555,18 @@ a placeholder, and **+** starts over.
   following the shell as it `cd`s; hover for the full path. A Claude tab reads
   `Claude: <project>`. Two terminals in the same directory carry their number
   so they stay distinguishable.
-- **Drag a tab** by its label to reorder the strip. Works with a mouse or a
-  finger.
+- **Drag a tab** by its label to reorder the strip. With a finger, hold for
+  half a second first — the tab dims to say it is picked up; a finger that
+  moves sooner is swiping, not dragging.
 - **⇱ on a tab** pins it to the **left** or **right** pane, which splits the
   view. The pin marker on the tab (◧ / ◨) says where it currently is.
 - **✕ on a pane** collapses back to a single pane. It does **not** close the
   tab or touch its session — the tab owns the session, the pane is only where
   it was being shown.
+- **On a phone** there is no split: the pin buttons are hidden and only the
+  active pane is shown — a split made at the desk is still there when you get
+  back to it. The strip stays one row and pages with **‹ ›** arrows instead
+  of wrapping, so the terminal keeps its screen space.
 
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
 or a reloaded page detaches instead of killing the session. The **Sessions
