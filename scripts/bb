@@ -333,12 +333,17 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
 
 [ .runs[]
   | (reduce ((.tool.driver.rules // [])[]) as $x
-      ({}; .[$x.id] = ($x.defaultConfiguration.level // "warning"))) as $lvl
+      ({}; .[$x.id] = { level: ($x.defaultConfiguration.level // "warning"),
+                        desc:  ($x.shortDescription.text // $x.fullDescription.text // "") })) as $rules
   | .results[]?
   | (.locations[0].physicalLocation.artifactLocation.uri // "?") as $uri
-  | { level: (.level // $lvl[.ruleId] // "warning"),
+  | { level: (.level // $rules[.ruleId].level // "warning"),
       rule:  (.ruleId // "unknown"),
-      msg:   ((.message.text // "") | split("\n")[0]),
+      # The rule description beats the result message as a group heading. Some
+      # tools (Trivy) put the artifact path on the message first line, so the
+      # heading would name one file while the group lists several.
+      msg:   ( if ($rules[.ruleId].desc // "") != "" then $rules[.ruleId].desc
+               else ((.message.text // "") | split("\n")[0]) end ),
       mine:  ((parts($uri) | index($proj)) != null),
       # First two components identify the tree a finding came from, which is
       # what you need when the answer is "that is a different project".
