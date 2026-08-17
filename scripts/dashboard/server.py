@@ -34,14 +34,16 @@ TTYD_PUBLIC_PORT = int(os.environ.get("DASHBOARD_TTYD_PUBLIC_PORT") or TTYD_PORT
 # nothing else — no argument passthrough, no shell. A dashboard that accepted a
 # command string would be a remote shell with extra steps, and there is already
 # a real terminal one port over for anything not listed here.
+#
+# One entry per button. Deliberately not a superset of what `bb` can do: an
+# entry the page never sends is a line nothing exercises, and the terminal is
+# one click away for everything else.
 MACROS = {
     "status":        ["bb", "status"],
     "doctor":        ["bb", "doctor"],
-    "projects":      ["bb", "projects"],
     "runner-status": ["bb", "runner", "status"],
     "runner-stop":   ["bb", "runner", "stop"],
     "runner-start":  ["bb", "runner", "start"],
-    "runner-restart":["bb", "runner", "restart"],
     "emu-list":      ["bb", "emu", "list"],
     "emu-start":     ["bb", "emu", "start"],
     "emu-stop":      ["bb", "emu", "stop"],
@@ -111,7 +113,7 @@ def load_layout():
         v = json.loads(TABS_FILE.read_text())
     except (OSError, ValueError):
         v = {}
-    tabs = []
+    tabs, ids = [], set()
     for t in (v.get("tabs") or [])[:MAX_TABS]:
         if not isinstance(t, dict) or t.get("kind") not in TAB_KINDS:
             continue
@@ -120,9 +122,13 @@ def load_layout():
             continue
         if len(tid) > 32 or len(arg) > 200 or len(label) > 80:
             continue
+        # Ids address panes and are how a tab is closed; a duplicate would make
+        # two tabs indistinguishable to everything downstream.
+        if tid in ids:
+            continue
+        ids.add(tid)
         tabs.append({"id": tid, "kind": t["kind"], "arg": arg, "label": label,
                      "fixed": bool(t.get("fixed"))})
-    ids = {t["id"] for t in tabs}
     panes = [p if p in ids else None for p in (v.get("panes") or [None, None])[:2]]
     while len(panes) < 2:
         panes.append(None)
@@ -263,6 +269,7 @@ def projects():
         return out
     uid, gid = os.getuid(), os.getgid()
     excluded = set(load_excludes())
+    stopped = last_stop()
     for d in sorted(WORKSPACE.iterdir()):
         if not d.is_dir() or d.name == "_work":
             continue
@@ -323,7 +330,7 @@ def projects():
                            "text": "excluded — no Claude session can start here"})
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "claude_md": has_md, "excluded": d.name in excluded,
-                    "last_claude": None if d.name in excluded else last_claude(d),
+                    "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     "issues": issues})
     return out
 
@@ -415,7 +422,22 @@ def link_state(lines):
     return True, None                            # nothing logged either way
 
 
-def last_claude(project_dir):
+def last_stop():
+    """Project -> transcript id, as recorded by the supervisor on its way down.
+
+    Written by scripts/supervisor.sh on SIGTERM. Distinguishes "this project
+    has an old transcript lying about" from "this conversation was open when
+    the container stopped", which is the one worth offering to resume.
+    """
+    try:
+        v = json.loads((STATE / "last-sessions.json").read_text())
+        s = v.get("sessions")
+        return s if isinstance(s, dict) else {}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def last_claude(project_dir, name, stopped):
     """The most recent Claude transcript for a working directory, or None.
 
     Used to offer "resume" rather than silently starting a fresh conversation
@@ -430,7 +452,10 @@ def last_claude(project_dir):
     if not files:
         return None
     newest = max(files, key=lambda f: f.stat().st_mtime)
-    return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
+    return {"id": newest.stem, "when": int(newest.stat().st_mtime),
+            # True when this is the conversation that was actually open when
+            # the container was stopped, not merely the last file touched.
+            "was_open": stopped.get(name) == newest.stem}
 
 
 def _pidfile_alive(p):
