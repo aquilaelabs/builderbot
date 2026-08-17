@@ -100,6 +100,32 @@ button.on{background:#1f6f36;border-color:#2ea043}
   stroke-width:1.4;stroke-linejoin:round;stroke-linecap:round}
 .cmd .tack.on svg{fill:currentColor}
 @media(max-width:900px){ .cmd button{min-height:var(--tap)} }
+/* A custom command's title is the operator's own words and can be any length;
+   the card keeps its shape and the full text lives in the tooltip. */
+.cmd .run{max-width:190px;overflow:hidden;text-overflow:ellipsis;display:block}
+
+/* The editor. A dialog rather than a card of its own: it is a detour, and it
+   should hand the page back when it is done. */
+#modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);
+  display:flex;align-items:center;justify-content:center;padding:16px}
+#modal[hidden]{display:none}
+#modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  width:min(520px,100%);max-height:90vh;overflow:auto;
+  box-shadow:0 18px 50px rgba(0,0,0,.6)}
+#modal h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
+  font:600 13px/1.2 system-ui,sans-serif;letter-spacing:.3px;text-transform:uppercase}
+#modal .field{padding:11px 14px}
+#modal label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
+  margin-bottom:5px}
+#modal input,#modal textarea{width:100%;box-sizing:border-box;background:#161b22;
+  color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 9px;
+  font:13px/1.5 var(--mono)}
+#modal textarea{min-height:132px;resize:vertical;white-space:pre}
+#modal input:focus,#modal textarea:focus{outline:2px solid #2f4d6d;outline-offset:-1px}
+#modal .hint{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-top:6px}
+#modal .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line)}
+#modal .foot .sp{flex:1}
+#modal .danger{color:var(--bad);border-color:#4d2220}
 /* Icon-width, so it sits beside Shell rather than wrapping the row. */
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
 button.eye:hover{color:var(--ink)}
@@ -224,6 +250,29 @@ body.dragging .tab .lbl{cursor:grabbing}
 </head>
 <body data-view="dash">
 <div id="toast" role="status" aria-live="polite"></div>
+<div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="box">
+    <h3 id="mTitle">New custom command</h3>
+    <div class="field">
+      <label for="mName">Title</label>
+      <input id="mName" maxlength="60" autocomplete="off" spellcheck="false"
+             placeholder="e.g. rebuild and test">
+    </div>
+    <div class="field">
+      <label for="mBody">Commands</label>
+      <textarea id="mBody" spellcheck="false" autocomplete="off"
+                placeholder="./gradlew clean&#10;./gradlew test"></textarea>
+      <div class="hint">One per line. They are typed into the terminal you are
+        looking at, in order, exactly as if you had typed them.</div>
+    </div>
+    <div class="foot">
+      <button id="mSave" class="primary">Save</button>
+      <button id="mCancel">Cancel</button>
+      <span class="sp"></span>
+      <button id="mDelete" class="danger" hidden>Delete</button>
+    </div>
+  </div>
+</div>
 <header>
   <!-- The mark doubles as the connection light: green while the dashboard can
        reach the container, red when it cannot. A mask rather than painted-in
@@ -274,8 +323,12 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div id="sessions"><div class="empty">loading…</div></div>
     </div>
     <div class="card">
-      <h2>Commands<span id="cmdTog"></span></h2>
+      <h2>bb commands<span id="cmdTog"></span></h2>
       <div class="macros" id="commands"><div class="empty">loading…</div></div>
+    </div>
+    <div class="card">
+      <h2>Custom commands<span><button id="bAdd" title="new custom command">+</button></span></h2>
+      <div class="macros" id="custom"></div>
     </div>
   </div>
 
@@ -335,12 +388,34 @@ const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
 const cwdOf = session => (state?.sessions || []).find(s => s.name === session)?.cwd || "";
 const baseOf = path => path.replace(/\/+$/, "").split("/").pop() || "/";
 
+// One naming rule, computed from the session list and read by both the tab
+// strip and the Sessions card. A tab and its session are the same thing, so
+// they must not be able to disagree about what that thing is called — including
+// after the tab is closed, when the session is all that is left.
+//
+// Two terminals in one directory would be indistinguishable, so the duplicates
+// — and only the duplicates — carry a number.
+function sessionLabels(){
+  const list = (state?.sessions || []);
+  const of = s => s.name.startsWith("claude-") ? "Claude: " + s.name.slice(7)
+           : s.cwd ? "sh: " + baseOf(s.cwd)
+           : "sh: " + s.name;
+  const total = {};
+  list.forEach(s => { const l = of(s); total[l] = (total[l] || 0) + 1; });
+  const nth = {}, out = new Map();
+  for (const s of list){
+    const l = of(s);
+    nth[l] = (nth[l] || 0) + 1;
+    out.set(s.name, total[l] > 1 ? `${l} ${nth[l]}` : l);
+  }
+  return out;
+}
+
 function tabLabel(t){
   if (t.kind !== "term") return t.label;
-  const s = sessionOf(t.arg);
-  if (s.startsWith("claude-")) return "Claude: " + s.slice(7);
-  const cwd = cwdOf(s);
-  return cwd ? "sh: " + baseOf(cwd) : t.label;
+  // Falls back to the stored label only while tmux has yet to register a
+  // just-opened session.
+  return sessionLabels().get(sessionOf(t.arg)) || t.label;
 }
 
 // The tooltip is the full path, which is the thing a basename loses.
@@ -349,17 +424,8 @@ function tabTitle(t){
   return cwdOf(sessionOf(t.arg)) || t.label;
 }
 
-// Two terminals in one directory would otherwise be indistinguishable, so the
-// duplicates — and only the duplicates — carry their terminal number.
 function tabLabels(){
-  const seen = {};
-  tabs.forEach(t => { const l = tabLabel(t); seen[l] = (seen[l] || 0) + 1; });
-  const out = new Map();
-  for (const t of tabs){
-    const l = tabLabel(t), n = /^sh:(\d+):/.exec(t.arg);
-    out.set(t.id, seen[l] > 1 && n ? `${l} ${n[1]}` : l);
-  }
-  return out;
+  return new Map(tabs.map(t => [t.id, tabLabel(t)]));
 }
 
 // The next free numbered terminal for a project ("" = the workspace root).
@@ -689,12 +755,39 @@ function drawPanes(){
 
     if (!t){ pane.innerHTML = `<div class="empty-pane">empty</div>`; continue; }
     pane.innerHTML = `<div class="bar"></div>` + (t.kind === "term"
-      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}" src="${esc(ttydUrl(t.arg))}"></iframe></div>`
+      // Selecting in a shell copies: the terminal fires the copy itself, and
+      // this is the permission that lets it, since the terminal is served from
+      // its own port and so counts as a cross-origin frame. Claude tabs are
+      // left without it — they keep tmux's mouse mode, where a drag never
+      // becomes a browser selection in the first place.
+      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}"></iframe></div>`
       : `<div class="doc fx" id="doc${i}"></div>`);
     paintBar(pane, t, i);
     if (t.kind === "findings"){ pane.dataset.rev = String(findingsRev); renderFindingsInto(i); }
   }
 }
+
+// Two browsers attached to one tmux session fight over its size: tmux sizes a
+// window to whichever client used it last, and paints the spare rows of the
+// bigger client with dots until that client does something. The terminal is
+// served from its own port, so we cannot ask it to refit — but resizing its
+// frame makes it refit itself, and the size comes back here.
+//
+// Done when this page returns to the front, which is exactly when the other
+// device has been the one using it.
+let nudgeTimer = null;
+function nudgeTerminals(){
+  const frames = [...document.querySelectorAll(".pane iframe")];
+  if (!frames.length) return;
+  clearTimeout(nudgeTimer);
+  frames.forEach(f => f.style.width = "calc(100% - 1px)");
+  // A frame has to be laid out at the new width for the resize to reach the
+  // document inside it, so this cannot be folded into an animation frame.
+  nudgeTimer = setTimeout(() => frames.forEach(f => f.style.width = ""), 60);
+}
+
+document.addEventListener("visibilitychange", () => { if (!document.hidden) nudgeTerminals(); });
+window.addEventListener("focus", nudgeTerminals);
 
 // ---- keys ------------------------------------------------------------
 const KEYS = [
@@ -889,15 +982,20 @@ function drawRunner(r){
   el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
 }
 
-// Anything with a problem is hidden behind this, and stays reachable. The only
-// thing never listed is an empty directory, which the server drops: it is not a
-// problem to fix but a mount point waiting for content.
+// What gets folded away is what the button says: projects with an *error*, and
+// ones excluded on purpose. A warning is not an error — a repo with no
+// CLAUDE.md or one whose environment block has drifted still works, and hiding
+// it would bury the very thing the amber text is asking for. The only thing
+// never listed at all is an empty directory, which the server drops: it is not
+// a problem to fix but a mount point waiting for content.
+const isBroken = p => p.issues.some(i => i.level === "error" || i.level === "excluded");
+
 let showAllProjects = false;
 
 function drawProjects(ps){
   const el = $("projects"), tog = $("projTog");
-  const flagged = ps.filter(p => p.issues.length);
-  const shown   = showAllProjects ? ps : ps.filter(p => !p.issues.length);
+  const flagged = ps.filter(isBroken);
+  const shown   = showAllProjects ? ps : ps.filter(p => !isBroken(p));
 
   tog.innerHTML = flagged.length
     ? `<button id="bAll">${showAllProjects ? "Hide" : "Show"} projects with errors (${flagged.length})</button>`
@@ -926,11 +1024,12 @@ function drawProjects(ps){
           // should look like one.
           ? `<div class="sub ${cls[i.level] || ""}"><a href="#" class="fix"
                data-fix="${esc(i.action)}" data-proj="${esc(p.name)}"
-               title="runs bb claude-md --update in ${esc(p.name)}"
+               title="runs bb claude-md ${i.action === "claude-md-init" ? "--init" : "--update"
+                     } in ${esc(p.name)}"
                >${esc(i.text)}</a></div>`
           : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
-      ${p.excluded ? "" : `<button class="${live.has("claude-"+p.name) ? "primary" : ""}"
+      ${isBroken(p) ? "" : `<button class="${live.has("claude-"+p.name) ? "primary" : ""}"
          data-c="${esc(p.name)}"
          title="${live.has("claude-"+p.name) ? "session running — go to its tab"
                  : p.last_claude ? "no session running — resume or start one"
@@ -944,7 +1043,8 @@ function drawProjects(ps){
     </div>`).join("");
   el.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
     e.preventDefault();
-    if (a.dataset.fix === "claude-md-update") updateClaudeMd(a.dataset.proj, a);
+    if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
+    if (a.dataset.fix === "claude-md-init")   claudeMd(a.dataset.proj, "init", a);
   });
   el.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
   el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
@@ -1010,26 +1110,84 @@ function drawCommands(){
     setPinned(b.dataset.tack, b.dataset.on === "0"));
 }
 
-// Refresh one project's environment block. The link says what it is doing
-// while it does it: the update is quick but not instant, and a line that looks
-// unchanged invites a second click.
-async function updateClaudeMd(name, link){
+// Create or refresh one project's CLAUDE.md. The link says what it is doing
+// while it does it: neither is instant, and a line that looks unchanged invites
+// a second click.
+async function claudeMd(name, action, link){
   if (link.dataset.busy) return;
   link.dataset.busy = "1";
   const said = link.textContent;
-  link.textContent = `updating ${name}…`;
+  link.textContent = `${action === "init" ? "creating" : "updating"} ${name}…`;
   try{
     const r = await fetch("/api/claude-md", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body: JSON.stringify({name})});
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({name, action})});
     const j = await r.json();
     if (j.error){ notify(j.error, true); link.textContent = said; link.dataset.busy = ""; return; }
-    notify(`${name}: CLAUDE.md environment block updated — your project notes are untouched`);
+    notify(action === "init"
+      ? `${name}: CLAUDE.md created from the template — fill in the project section at the bottom`
+      : `${name}: CLAUDE.md environment block updated — your project notes are untouched`);
   }catch(e){
-    notify("could not update it: " + e, true);
+    notify("could not do that: " + e, true);
     link.textContent = said; link.dataset.busy = "";
     return;
   }
   refresh();                            // the warning goes away on its own
+}
+
+// ---- custom commands --------------------------------------------------
+// The operator's own lists, typed into the terminal like the bb ones. Kept in
+// their own card because they are theirs: the bb card is what the image can do
+// and changes with it, this one is what they added and does not.
+const PENCIL = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M11.3 2.2 13.8 4.7 5.6 12.9 2.4 13.6 3.1 10.4z"/>
+  <path d="M9.9 3.6 12.4 6.1"/></svg>`;
+
+function drawCustom(){
+  const el = $("custom"), list = state?.custom || [];
+  if (!list.length){
+    el.innerHTML = `<div class="empty">none yet — add one with +</div>`;
+    return;
+  }
+  el.innerHTML = list.map(m => {
+    // The full title and what it will run, for the hover: a one-word title is
+    // no help six months later when you have forgotten what it does.
+    const tip = `${m.title}\n\n${m.lines.join("\n")}`;
+    return `<span class="cmd">
+      <button class="run" data-run="${esc(m.id)}" title="${esc(tip)}">${esc(m.title)}</button>
+      <button class="tack" data-edit="${esc(m.id)}" aria-label="edit"
+        title="edit or delete">${PENCIL}</button>
+    </span>`;
+  }).join("");
+  el.querySelectorAll("[data-run]").forEach(b => b.onclick = () => macro(null, b.dataset.run));
+  el.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => editCustom(b.dataset.edit));
+}
+
+let editing = null;
+
+function editCustom(id){
+  const m = (state?.custom || []).find(x => x.id === id) || null;
+  editing = m?.id || null;
+  $("mTitle").textContent = m ? "Edit custom command" : "New custom command";
+  $("mName").value = m?.title || "";
+  $("mBody").value = (m?.lines || []).join("\n");
+  $("mDelete").hidden = !m;
+  $("modal").hidden = false;
+  $("mName").focus();
+  $("mName").select();
+}
+
+function closeEditor(){ $("modal").hidden = true; editing = null; }
+
+async function postCustom(body){
+  try{
+    const r = await fetch("/api/custom", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body)});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return false; }
+    if (state) state.custom = j.custom;
+    drawCustom();
+    return true;
+  }catch(e){ notify("could not save it: " + e, true); return false; }
 }
 
 async function setPinned(name, on){
@@ -1151,9 +1309,13 @@ function argForSession(name){
 function drawSessions(ss){
   const el = $("sessions");
   if (!ss.length){ el.innerHTML = '<div class="empty">no tmux sessions — nothing is running</div>'; return; }
+  // Named exactly as its tab is — the tmux name and the full path are on hover,
+  // where the detail belongs.
+  const names = sessionLabels();
   el.innerHTML = ss.map(s => `
     <div class="row">
-      <div class="grow"><span class="name">${esc(s.name)}</span>
+      <div class="grow"><span class="name" title="${esc(s.name + (s.cwd ? " — " + s.cwd : ""))}"
+        >${esc(names.get(s.name) || s.name)}</span>
         <span class="pill ${s.attached?"ok":""}">${s.attached?"attached":"detached"}</span></div>
       <button data-a="${esc(s.name)}">Open</button>
       <button data-k="${esc(s.name)}" title="end this session">✕</button>
@@ -1207,7 +1369,7 @@ function macroTarget(){
 // Macros run in a terminal rather than reporting into a pane of their own: the
 // output belongs where the operator can scroll it, page it, and follow a
 // `bb runner stop` that takes a minute — none of which a one-shot text box did.
-async function macro(name){
+async function macro(name, custom){
   const t = macroTarget();
   const session = sessionOf(t.arg);
   focusTab(t.id);
@@ -1219,7 +1381,7 @@ async function macro(name){
   try{
     const r = await fetch("/api/send", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({session, macro:name})});
+      body: JSON.stringify(custom ? {session, custom} : {session, macro:name})});
     const j = await r.json();
     if (j.error) notify(j.error, true);
     else notify(`${j.sent} → ${tabLabel(t)}`);
@@ -1298,6 +1460,7 @@ async function refresh(){
     drawProjects(state.projects);
     drawSessions(state.sessions);
     drawCommands();
+    drawCustom();
     $("cardFindings").hidden = !state.reports;
     render();
   }catch(e){ $("dot").classList.add("off"); }
@@ -1319,6 +1482,25 @@ document.addEventListener("click", e => {
     resumeFor = null;
     if (state) drawProjects(state.projects);
   }
+});
+
+$("bAdd").onclick = () => editCustom(null);
+$("mCancel").onclick = closeEditor;
+$("mSave").onclick = async () => {
+  if (await postCustom({action:"save", id: editing,
+                        title: $("mName").value, body: $("mBody").value}))
+    closeEditor();
+};
+$("mDelete").onclick = async () => {
+  if (!editing || !confirm(`Delete "${$("mName").value}"?`)) return;
+  if (await postCustom({action:"delete", id: editing})) closeEditor();
+};
+// The backdrop and Escape both mean "never mind"; Enter in the title field
+// means "save", because a one-line field with a Save button below it does.
+$("modal").onclick = e => { if (e.target.id === "modal") closeEditor(); };
+$("mName").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("mSave").click(); } };
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && !$("modal").hidden) closeEditor();
 });
 
 refresh();

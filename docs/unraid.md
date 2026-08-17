@@ -293,10 +293,19 @@ terminal you are looking at (thumbtack the ones you use to keep them on top),
 and browser terminals backed by tmux.
 
 The Projects card is the list of folders in the projects share, and it says
-what is wrong with each one rather than hiding it: no git repository or
-ownership the container cannot work with in red, no `CLAUDE.md` in amber, and a
-`CLAUDE.md` whose environment block has fallen behind the image as an
-underlined link that updates it on the spot.
+what is wrong with each one rather than hiding it. Errors fold away behind a
+button — no git repository, or ownership the container cannot work with, in red.
+Warnings stay in the list in amber, because they are asking for something: no
+`CLAUDE.md`, or one whose environment block has fallen behind the image. Both
+are underlined links that fix themselves in place. A row that is excluded or has
+an error carries no Claude button, since a session cannot start there.
+
+Selecting text in a shell terminal copies it to your clipboard as you release
+the mouse. Claude tabs keep tmux's mouse mode instead, so they do not.
+
+Below the `bb` commands is a card for your own: **+** takes a title and a list
+of command lines, and the button it makes types them into the terminal in order.
+They are kept in `/config`, so they survive updates.
 
 A permanent workspace tab sits at the left. **Claude** opens one session per
 project — resumable if a previous conversation exists — and **Shell** opens

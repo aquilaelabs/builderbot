@@ -459,25 +459,28 @@ terminal on `7681`:
   and **Shell** per project. Anything with a problem is folded away behind
   **Show projects with errors** — in red, a directory the container user
   cannot read/write/enter (with the `chown` that fixes it) or one holding no
-  valid git repository; in amber, a repo with no `CLAUDE.md` yet, or one whose
-  environment block has drifted from the image's — that one is an underlined
-  link, and clicking it runs `bb claude-md --update` on that project. This is
-  what
+  valid git repository. Only errors are folded away — a **warning stays in the
+  list**, in amber, because it is asking for something: a repo with no
+  `CLAUDE.md` yet, or one whose environment block has drifted from the image's.
+  Both are underlined links that fix themselves — `bb claude-md --init` and
+  `bb claude-md --update` on that project. This is what
   makes one mapping for the whole folder workable: a directory that is not a
   project says so instead of quietly not appearing. Hidden directories and the
   runner's `_work` are skipped outright, and empty
   directories are never listed either: a mount point waiting for
   content is not a fault to report
 - an **eye** per project, which excludes it: persists across restarts and
-  blocks Claude sessions for that directory — see below
+  blocks Claude sessions for that directory — see below. A row that is excluded
+  or has an error carries **no Claude button at all**, because a session cannot
+  start there; **Shell** stays, since that is often how you would fix it
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD
 - a **Stop / Start** toggle for the runner, showing whichever one applies.
   Stopping waits for GitHub to release the runner's session rather than
   reporting success and leaving a listener behind
 - every `bb` command as a button, pinnable, typed into the terminal you are
-  looking at
-- live list of tmux sessions, with attach
+  looking at — and a second card for **your own** command lists
+- live list of tmux sessions, named exactly as their tabs are, with attach
 
 ### Tabs and panes
 
@@ -513,7 +516,20 @@ you open gets its own closable tab above the terminal.
   it was being shown.
 
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
-or a reloaded page detaches instead of killing the session.
+or a reloaded page detaches instead of killing the session. The **Sessions
+card** names them the same way the tabs do — `sh: <directory>`, `Claude:
+<project>` — including the ones whose tab you closed; the tmux name and full
+path are on hover.
+
+**Selecting in a shell copies it.** Release the mouse and the selection is on
+your system clipboard. That is why tmux's mouse mode is off in shell sessions:
+with it on, tmux takes the drag and the text only ever reaches a tmux paste
+buffer. The trade is that the wheel no longer scrolls tmux's scrollback there —
+at a prompt it walks shell history instead, and `Ctrl-b [` enters copy mode
+where the wheel scrolls again. **Claude tabs keep mouse mode** and so do not
+copy on select; its interface wants the mouse more than the clipboard. Put
+`set -g mouse on` in `~/.tmux.conf` after the `source-file` line to have the old
+behaviour back everywhere.
 
 **The tab strip is shared, not per-browser.** It lives on the container, so
 opening the dashboard on a phone shows what the desktop has open, and a change
@@ -550,6 +566,24 @@ Two rules about what is *not* there: nothing but `bb`, and nothing that needs an
 argument to mean anything — a button is never a half-written command line.
 Between them that leaves out exactly one command, `bb shell`, which from a
 terminal only opens a second shell inside the one you typed it into.
+
+### Your own commands
+
+The **Custom commands** card starts empty with a **+**. It takes a title and a
+box of command lines, and the button it makes types those lines into the
+terminal you are looking at, in order, exactly as if you had typed them — one
+line or twenty. The pencil beside each one edits or deletes it.
+
+Long titles are cut with an ellipsis so the card keeps its shape; hovering shows
+the full title *and* the commands it will run, which is the thing you will want
+six months later. They live in `/config/custom-commands.json`, so they survive
+restarts and image updates and are the same on every device.
+
+This is the one place the dashboard sends text you wrote rather than a name from
+a fixed list — and it is still not a remote-execution API. The lines are stored
+by one authenticated request and typed by another into a tty that the same
+operator is already sitting at with a full shell. Nothing is executed in the
+dashboard's own process.
 
 ### Keeping a session in its own project
 
@@ -606,10 +640,13 @@ terminal fails. The terminal is a separate
 service on its own port rather than proxied through the page, because relaying
 a PTY websocket by hand is the kind of code that works until it deadlocks.
 
-The dashboard's own API only runs commands from a fixed list — it takes a macro
-name, never a command string, and the list is `bb`'s own commands rather than
-anything the page can compose. Anything not on it belongs in the terminal,
-which is one port away and honest about being a shell.
+The dashboard's own API runs commands from a fixed list — it takes a macro name,
+never a command string, and the list is `bb`'s own commands rather than anything
+the page can compose. The one exception is a **custom command**: the operator's
+own lines, stored by one authenticated request and typed by another into a tty
+they are already sitting at with a full shell. Nothing runs in the dashboard's
+process either way, and anything else belongs in the terminal, which is one port
+away and honest about being a shell.
 
 ## Telling a project's sessions about this environment
 
