@@ -63,6 +63,8 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
 .row .sub{color:var(--dim);font:12px/1.4 var(--mono)}
 .row .sub.bad{color:var(--bad)}
 .row .sub.warn{color:var(--warn)}
+/* Excluded is a decision, not a fault — stated plainly rather than alarming. */
+.row .sub.off{color:var(--dim);font-style:italic}
 .grow{flex:1;min-width:120px}
 
 button{background:#232b34;color:var(--ink);border:1px solid var(--line);
@@ -748,21 +750,55 @@ function drawProjects(ps){
     return;
   }
 
+  const cls = {error:"bad", warning:"warn", excluded:"off"};
   el.innerHTML = shown.map(p => `
     <div class="row">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}</div>` : ""}
         ${p.issues.map(i =>
-          `<div class="sub ${i.level === "error" ? "bad" : "warn"}">${esc(i.text)}</div>`).join("")}
+          `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
-      <button class="primary" data-c="${esc(p.name)}">Claude</button>
+      ${p.excluded ? "" : `<button class="primary" data-c="${esc(p.name)}">Claude</button>`}
       <button data-s="${esc(p.name)}">Shell</button>
+      <button data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
+        title="${p.excluded ? "allow Claude sessions here again"
+                            : "block Claude sessions for this directory, and keep it blocked"}"
+        >${p.excluded ? "Include" : "Exclude"}</button>
     </div>`).join("");
   el.querySelectorAll("[data-c]").forEach(b => b.onclick = () =>
     openTab({kind:"term", arg:`claude:${b.dataset.c}`, label:`claude ${b.dataset.c}`}));
   el.querySelectorAll("[data-s]").forEach(b => b.onclick = () =>
     openTab({kind:"term", arg:`shell:${b.dataset.s}`, label:`sh ${b.dataset.s}`}));
+  el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
+    setExcluded(b.dataset.x, b.dataset.on === "1"));
+}
+
+async function setExcluded(name, on){
+  if (on && !confirm(`Exclude ${name}?\n\nNo Claude session will be able to start `
+        + `here, and any running one ends now. A shell is still available, and `
+        + `Include reverses this.`)) return;
+  try{
+    const r = await fetch("/api/exclude", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name, excluded:on})});
+    const j = await r.json();
+    if (j.error){ $("out").textContent = "exclude: " + j.error; return; }
+    // The server ends a running session when excluding; drop its tab too, or
+    // the page keeps offering a terminal onto something that is gone.
+    if (j.killed){
+      const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
+      if (t){
+        tabs = tabs.filter(x => x.id !== t.id);
+        for (let i = 0; i < 2; i++) if (panes[i] === t.id) panes[i] = null;
+        if (panes[0] === null && panes[1] !== null){ panes[0] = panes[1]; panes[1] = null; }
+        if (panes[0] === null) panes[0] = "ws";
+        if (panes[1] === null) active = 0;
+        render();
+      }
+    }
+  }catch(e){ $("out").textContent = "exclude failed: " + e; }
+  refresh();
 }
 
 function drawSessions(ss){

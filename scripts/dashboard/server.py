@@ -85,6 +85,33 @@ MAX_BODY = 64 * 1024
 CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
 REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 
+# Excluded projects live on the /config volume so the list survives the image
+# updates this container is built to expect. bb-tty reads the same file — a
+# rule only the dashboard honoured would be advice, since the terminal URL is
+# reachable on its own.
+STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
+EXCLUDES_FILE = STATE / "excluded-projects.json"
+
+
+def load_excludes():
+    try:
+        v = json.loads(EXCLUDES_FILE.read_text())
+        return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def save_excludes(names):
+    """Write via a temp file in the same directory, then rename.
+
+    bb-tty reads this on every session launch; a half-written file would be a
+    parse error at exactly the moment someone is trying to start work.
+    """
+    STATE.mkdir(parents=True, exist_ok=True)
+    tmp = EXCLUDES_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(sorted(set(names)), indent=2) + "\n")
+    tmp.replace(EXCLUDES_FILE)
+
 
 def _project_of(uri, known):
     """Which mounted project a scanner-recorded path belongs to.
@@ -191,6 +218,7 @@ def projects():
     if not WORKSPACE.is_dir():
         return out
     uid, gid = os.getuid(), os.getgid()
+    excluded = set(load_excludes())
     for d in sorted(WORKSPACE.iterdir()):
         if not d.is_dir() or d.name == "_work":
             continue
@@ -246,8 +274,12 @@ def projects():
         # Every directory is still reported. The dashboard decides what to show,
         # and SARIF paths are attributed by matching these names — dropping one
         # here would silently orphan its findings.
+        if d.name in excluded:
+            issues.append({"level": "excluded",
+                           "text": "excluded — no Claude session can start here"})
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
-                    "claude_md": has_md, "issues": issues})
+                    "claude_md": has_md, "excluded": d.name in excluded,
+                    "issues": issues})
     return out
 
 
@@ -500,6 +532,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "bad request"}, 400)
 
         path = self.path.split("?")[0]
+        if path.startswith("/api/exclude"):
+            return self._exclude(req)
         if path.startswith("/api/session"):
             return self._session(req)
         if path.startswith("/api/keys"):
@@ -507,6 +541,33 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/run"):
             return self._run(req)
         self._json({"error": "not found"}, 404)
+
+    def _exclude(self, req):
+        """Add or remove a project from the exclusion list.
+
+        Names are checked against the directories that actually exist, so this
+        cannot be used to write arbitrary strings into a file another script
+        reads — and excluding something that has since been unmounted is a
+        no-op rather than a permanent stale entry.
+        """
+        name, on = req.get("name", ""), bool(req.get("excluded"))
+        if name not in {d.name for d in WORKSPACE.iterdir() if d.is_dir()}:
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        names = set(load_excludes())
+        names.add(name) if on else names.discard(name)
+        try:
+            save_excludes(names)
+        except OSError as e:
+            return self._json({"error": f"could not save: {e}"}, 500)
+
+        # An excluded project must not keep a live session running — leaving one
+        # attached would mean the exclusion takes effect only next time, which
+        # is not what a button labelled "exclude" implies.
+        killed = None
+        if on and f"claude-{name}" in {s["name"] for s in tmux_sessions()}:
+            run(["tmux", "kill-session", "-t", f"claude-{name}"], timeout=10)
+            killed = f"claude-{name}"
+        return self._json({"excluded": sorted(names), "killed": killed})
 
     def _session(self, req):
         """Kill a session. Closing a tab that owns a Claude conversation should

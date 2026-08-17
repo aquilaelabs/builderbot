@@ -77,6 +77,12 @@ container is about to eat it.
 directory is this project. Do not read from or write to sibling projects, and
 do not go looking for context in them — if something seems to be missing, ask.
 
+If this session was started from the dashboard, that is also enforced: the file
+tools are denied every sibling path and the runner's `_work` tree, via a
+settings file passed on the command line. A `Read` or `Edit` that comes back
+denied for a path outside this project is that rule, working as intended — not
+a bug to route around with Bash.
+
 ## There is no display
 
 Everything is headless. There is no X server, no window manager, nothing to

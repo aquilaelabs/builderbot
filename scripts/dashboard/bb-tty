@@ -19,6 +19,50 @@ set -euo pipefail
 
 target="${1:-shell}"
 
+# Projects the operator has excluded. Shared with the dashboard, which writes
+# it; enforced here, because a rule only the UI honours is a suggestion — the
+# ttyd URL is reachable directly.
+EXCLUDES_FILE="${DASHBOARD_STATE:-/config}/excluded-projects.json"
+
+is_excluded() {
+    [ -f "$EXCLUDES_FILE" ] || return 1
+    jq -e --arg n "$1" 'index($n) != null' "$EXCLUDES_FILE" >/dev/null 2>&1
+}
+
+siblings_of() {
+    find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d \
+        -not -name '_work' -not -name "$1" -printf '%p\n' 2>/dev/null
+}
+
+# claude_scope PROJECT — write a settings file that walls this session into its
+# own directory, and echo the path.
+#
+# Passed with --settings, which ranks as a command-line argument: above the
+# project's own .claude/settings.json and .claude/settings.local.json, so a
+# session cannot widen its own boundary by editing files in the repo it is
+# working on. Only the managed policy file outranks it, and that is root-owned.
+#
+# This binds the file tools. It is a guardrail against a session wandering into
+# the wrong tree by mistake, not a sandbox: Bash still reaches the filesystem,
+# and the only hard boundary is not mounting the other projects at all.
+claude_scope() {
+    local proj="$1" dir out
+    # One file per project, rewritten each time rather than a fresh temp file:
+    # ttyd runs this script on every browser connection, including a reattach,
+    # so mktemp here would drop a file per page load. Under the cache dir
+    # because it is this user's, not world-writable /tmp.
+    dir="${XDG_CACHE_HOME:-$HOME/.cache}/builderbot"
+    mkdir -p "$dir"
+    out="$dir/claude-scope-${proj}.json"
+    siblings_of "$proj" | jq -R . | jq -s --arg ws "$WORKSPACE" '
+        {permissions: {
+           additionalDirectories: [],
+           deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
+                  + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)"])
+        }}' > "$out"
+    printf '%s' "$out"
+}
+
 case "$target" in
     shell)
         exec tmux new-session -A -s shell -c "$WORKSPACE"
@@ -36,11 +80,17 @@ case "$target" in
             sleep 10
             exit 1
         fi
+        if is_excluded "$proj"; then
+            echo "'${proj}' is excluded: no Claude session can be started here." >&2
+            echo "Clear it from the dashboard's Projects card to allow one again." >&2
+            sleep 10
+            exit 1
+        fi
         # -A attaches to the existing session when there is one, so clicking a
         # project twice returns to the same conversation rather than starting a
         # second alongside it.
         exec tmux new-session -A -s "claude-${proj}" -c "$dir" \
-            claude --remote-control "$proj"
+            claude --remote-control "$proj" --settings "$(claude_scope "$proj")"
         ;;
     shell:*)
         proj="${target#shell:}"

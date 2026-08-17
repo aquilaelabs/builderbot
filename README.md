@@ -451,6 +451,8 @@ terminal on `7681`:
   valid git repository; in amber, a repo with no `CLAUDE.md` yet. Empty
   directories are the one thing never listed: a mount point waiting for
   content is not a fault to report
+- an **Exclude** button per project, which persists across restarts and blocks
+  Claude sessions for that directory — see below
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD
 - a **Stop / Start** toggle for the runner, showing whichever one applies.
@@ -484,6 +486,41 @@ you open gets its own closable tab above the terminal.
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
 or a reloaded page detaches instead of killing the session. Only the tab's ✕
 ends one.
+
+### Keeping a session in its own project
+
+A Claude session started from the dashboard is launched with a generated
+settings file that denies its file tools access to every *other* project under
+`/workspace`, plus the runner's `_work` checkouts. That file is passed with
+`--settings`, which ranks as a command-line argument — above the project's own
+`.claude/settings.json` and `.claude/settings.local.json` — so a session cannot
+widen its own boundary by editing files in the repo it is working on. Only the
+root-owned managed policy file outranks it.
+
+**This is a guardrail, not a sandbox.** It stops a session wandering into the
+wrong tree by mistake, which is the common failure. It does not contain one
+that goes looking: Bash still reaches the whole filesystem, and no in-process
+permission system changes that. If you need a hard boundary, do not mount the
+other projects into the same container.
+
+### Excluding a project
+
+**Exclude** on a project row blocks Claude sessions for that directory. The
+list lives in `/config/excluded-projects.json`, so it survives restarts and
+image updates, and it is enforced by the terminal launcher rather than the
+page — the ttyd URL is reachable on its own, so a rule only the UI honoured
+would be advice. Specifically, excluding a project:
+
+- refuses `claude:<project>` at launch, with a message saying why
+- ends any Claude session already running there, rather than taking effect
+  "next time"
+- folds the row away behind **Show projects with errors**, where **Include**
+  reverses it
+
+Other projects' sessions were already denied read access to it, the same as to
+any sibling — that comes from the scoping above, not from excluding it.
+
+A shell there is still offered, so you can go and look at what you excluded.
 
 ```
 ENABLE_DASHBOARD=true
