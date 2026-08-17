@@ -62,13 +62,21 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
+      # PR builds log in too, although they never push: they read the cache
+      # manifest out of :latest, and the package is private. Same-repo PRs
+      # get a token that can; this repo takes no fork PRs.
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Registry refs must be lowercase and the repository name is not.
+      - name: Derive cache ref
+        id: cache
+        run: |
+          echo "ref=$(echo "$REGISTRY/$IMAGE_NAME" | tr '[:upper:]' '[:lower:]'):latest" >> "$GITHUB_OUTPUT"
 
       - name: Derive tags
         id: meta
@@ -94,10 +102,21 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          # No layer cache, deliberately. The GHA cache quota is 10GB per
-          # repo and this image's layers alone exceed it, so every build's
-          # cache export evicted the previous build's entry: all of the cost
-          # at the end of each build (gigabytes written to the cache service,
-          # plus a second on-disk copy of every layer during export), none of
-          # the hits at the start of the next. Uncached is both faster and
-          # lighter on disk here.
+          # Inline cache, not the GHA cache. The GHA quota is 10GB per repo
+          # and this image's layers alone exceed it, so every build's cache
+          # export evicted the previous build's entry: all of the cost, none
+          # of the hits. Inline embeds the cache metadata in the pushed image
+          # itself — no separate store, nothing to evict — and seeding from
+          # :latest lets an unchanged prefix of the Dockerfile reuse the
+          # previous build's layers digest-for-digest. That reuse is also
+          # what keeps the host's pull small: scripts/ and config/ are COPY'd
+          # last, so a scripts-only change re-downloads megabytes of tail
+          # instead of every gigabyte of toolchain above it.
+          cache-from: type=registry,ref=${{ steps.cache.outputs.ref }}
+          cache-to: type=inline
+          # The weekly build exists to pick up fresh packages, and a fully
+          # cached rebuild of an unchanged Dockerfile would reuse every layer
+          # and refresh nothing. Scheduled runs — and manual dispatches,
+          # whose usual intent is "freshen it now" — pay for the full
+          # rebuild; that is the once a week the big download buys something.
+          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
