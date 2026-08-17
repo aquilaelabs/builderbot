@@ -13,6 +13,30 @@ server. It is a Claude Code workstation, a self-hosted GitHub Actions runner, a
 Playwright browser lab and an Android build box. This file describes the
 environment; it is not a description of the project itself.
 
+## Check this file is current, first
+
+Before anything else in a session:
+
+```bash
+bb claude-md
+```
+
+That compares the environment block above against the template the container
+ships, and changes nothing. If it reports the block differs, run
+`bb claude-md --update` and mention that you did — the update rewrites only the
+marked block and never touches the project notes below the end marker.
+
+Two things about doing it:
+
+- The refresh lands **for the next session**. Your context already holds the
+  old text, so re-read this file if you need the new content now.
+- If the environment turns out to disagree with what this file says, the
+  container is right and the file is stale. Trust `bb doctor` and `bb status`
+  over anything written here.
+
+Do not create a `CLAUDE.md` anywhere one does not already exist — `--init` is
+the user's decision, not a session's.
+
 ## What persists and what does not
 
 This matters more than anything else here. The container is disposable and gets

@@ -458,7 +458,11 @@ ssh-agent and read-write mounts of every project — so that credential is worth
 as much as the ssh keys are. It is not a convenience toggle; treat it like the
 Docker socket mount.
 
-Both ports must be reachable from your browser. The terminal is a separate
+Both ports must be reachable from your browser. If you remap the **host** side
+of the terminal port, set `DASHBOARD_TTYD_PUBLIC_PORT` to that host port —
+the page has to tell the browser where to connect and cannot see Docker's port
+mappings from inside. The failure is quiet: the page loads and only the
+terminal fails. The terminal is a separate
 service on its own port rather than proxied through the page, because relaying
 a PTY websocket by hand is the kind of code that works until it deadlocks.
 
@@ -494,6 +498,12 @@ bb claude-md --update    # replace just that block
 Everything below the end marker is never read, compared or written. A file
 without markers is refused rather than guessed at — merge those once by hand,
 and every refresh after that is mechanical.
+
+The template also tells sessions to run the check at the start of a session and
+refresh if it reports drift, so a project's environment notes keep up with the
+container without you remembering to do it. It asks the session to say when it
+updates rather than doing it silently, because a modified tracked file that
+nobody mentioned is the kind of thing that gets swept into an unrelated commit.
 
 ## Playwright, Android, publishing
 

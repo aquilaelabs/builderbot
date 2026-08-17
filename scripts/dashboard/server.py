@@ -24,6 +24,11 @@ WORKSPACE = Path(os.environ.get("WORKSPACE", "/workspace"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "8080"))
 AUTH = os.environ.get("DASHBOARD_AUTH", "")
 TTYD_PORT = int(os.environ.get("DASHBOARD_TTYD_PORT", "7681"))
+# What the *browser* should connect to. Identical to TTYD_PORT unless the host
+# publishes the terminal on a different port, which nothing inside the
+# container can see — Docker port mappings are invisible from in here. Getting
+# this wrong is quiet: the page loads and only the terminal fails.
+TTYD_PUBLIC_PORT = int(os.environ.get("DASHBOARD_TTYD_PUBLIC_PORT") or TTYD_PORT)
 
 # Every command the UI can run, by name. The UI posts a key from this table and
 # nothing else — no argument passthrough, no shell. A dashboard that accepted a
@@ -42,6 +47,27 @@ MACROS = {
     "logs":          ["bb", "logs", "200"],
     "update":        ["bb", "update"],
 }
+
+# Keys an Android keyboard has no way to send. Names on the left are what the
+# page posts; values are tmux key names. A table rather than passthrough for the
+# same reason as MACROS — `send-keys` will happily type anything it is given.
+TMUX_KEYS = {
+    "escape": "Escape", "tab": "Tab", "enter": "Enter", "bspace": "BSpace",
+    "up": "Up", "down": "Down", "left": "Left", "right": "Right",
+    "home": "Home", "end": "End", "pgup": "PPage", "pgdn": "NPage",
+    "ctrl-c": "C-c", "ctrl-d": "C-d", "ctrl-z": "C-z", "ctrl-l": "C-l",
+    "ctrl-r": "C-r", "ctrl-a": "C-a", "ctrl-e": "C-e", "ctrl-u": "C-u",
+    "ctrl-k": "C-k", "ctrl-w": "C-w",
+}
+
+# Characters that are buried behind two taps on a phone keyboard. Sent with
+# send-keys -l so tmux treats them as literal text, never as key names.
+TMUX_LITERALS = {
+    "pipe": "|", "tilde": "~", "slash": "/", "backslash": "\\", "dash": "-",
+    "under": "_", "star": "*", "amp": "&", "dollar": "$", "caret": "^",
+    "lt": "<", "gt": ">", "brace-l": "{", "brace-r": "}",
+}
+
 
 # Macros that take a project as their working directory rather than an argument.
 PROJECT_MACROS = {
@@ -123,9 +149,8 @@ def snapshot():
         "projects": projects(),
         "sessions": tmux_sessions(),
         "runner": runner(),
-        "ttyd_port": TTYD_PORT,
+        "ttyd_port": TTYD_PUBLIC_PORT,
         "reports": Path("/reports").is_dir(),
-        "emulator": run(["adb", "devices"], timeout=15)["out"].strip(),
     }
 
 
@@ -180,14 +205,35 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._authed():
             return self._deny()
-        if not self.path.startswith("/api/run"):
-            return self._json({"error": "not found"}, 404)
+        # Read the body once, here, rather than in each handler: doing it after
+        # dispatch is how the request stream ends up consumed twice or not at all.
         try:
             n = int(self.headers.get("Content-Length", "0"))
             req = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, TypeError):
             return self._json({"error": "bad request"}, 400)
 
+        path = self.path.split("?")[0]
+        if path.startswith("/api/keys"):
+            return self._keys(req)
+        if path.startswith("/api/run"):
+            return self._run(req)
+        self._json({"error": "not found"}, 404)
+
+    def _keys(self, req):
+        session, key = req.get("session", ""), req.get("key", "")
+        # Only sessions that currently exist — never an arbitrary -t argument.
+        if session not in {s["name"] for s in tmux_sessions()}:
+            return self._json({"error": f"no such session: {session}"}, 400)
+        if key in TMUX_KEYS:
+            return self._json(run(["tmux", "send-keys", "-t", session,
+                                   TMUX_KEYS[key]], timeout=10))
+        if key in TMUX_LITERALS:
+            return self._json(run(["tmux", "send-keys", "-t", session, "-l",
+                                   TMUX_LITERALS[key]], timeout=10))
+        self._json({"error": f"unknown key: {key}"}, 400)
+
+    def _run(self, req):
         name, proj = req.get("macro", ""), req.get("project")
         if name in MACROS:
             return self._json(run(MACROS[name]))
@@ -196,8 +242,7 @@ class Handler(BaseHTTPRequestHandler):
             if proj not in names:
                 return self._json({"error": f"unknown project: {proj}"}, 400)
             return self._json(run(PROJECT_MACROS[name], cwd=str(WORKSPACE / proj)))
-        self._json({"error": f"unknown macro: {name}"}, 400)
-
+        self._json({"error": f"unknown macro: {name}"})
 
 def _constant_eq(a, b):
     """Compare without leaking length or position through timing."""
