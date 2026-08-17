@@ -213,7 +213,9 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .tabbar .newtab:hover{color:var(--ink)}
 
 /* Tabs --------------------------------------------------------------- */
-.col.term{min-height:0}
+/* min-width:0 matters: a grid item's min-content width is the whole nowrap
+   tab strip, which would push the column past the viewport on a phone. */
+.col.term{min-height:0;min-width:0}
 .tabbar{display:flex;gap:5px;flex-wrap:wrap;padding:6px 7px;background:var(--panel);
   border:1px solid var(--line);border-radius:8px 8px 0 0;flex:0 0 auto;
   align-items:center;position:relative}
@@ -241,6 +243,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   .tabbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
     border-radius:0;border-left:0;border-right:0}
   .tabbar::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto}   /* overflow and scroll, rather than squeeze to fit */
   .tscroll{display:block;flex:0 0 auto;border:1px solid var(--line);
     background:var(--panel);padding:0 12px;font-size:16px;color:var(--dim)}
   #tabL{border-radius:8px 0 0 0;border-right:0}
