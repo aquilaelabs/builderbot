@@ -15,7 +15,13 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck
       - name: Check shell scripts
         run: |
-          mapfile -t files < <(find scripts -type f \( -name '*.sh' -o -name 'bb' -o -name 'as-builder' -o -name 'mint-runner-token' \))
+          # Selected by shebang rather than by name. The list used to be a
+          # hand-maintained enumeration of extensions and filenames, which fails
+          # in the one direction that matters: an extensionless script added
+          # later is simply never checked, and nothing says so. That is how
+          # scripts/dashboard/bb-tty — which validates a browser-supplied
+          # argument — went unlinted. A shebang cannot be forgotten.
+          mapfile -t files < <(find scripts -type f -exec grep -lE '^#!.*\b(ba)?sh\b' {} + | sort)
           printf 'checking %s\n' "${files[@]}"
           shellcheck -x -S warning "${files[@]}"
 
