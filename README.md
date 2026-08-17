@@ -14,9 +14,8 @@ in.
   │                                                           │
   │  actions-runner ──► listens for jobs from GitHub          │
   │                                                           │
-  │  /workspace/MediaReducer-Dev    ◄── /mnt/user/development │
-  │  /workspace/MediaReducer-Stage  ◄── /mnt/user/development │
-  │  /workspace/FreshBoot           ◄── /mnt/user/development │
+  │  /workspace  ◄────────────────── /mnt/user/development    │
+  │    every folder in there is a project                     │
   └───────────────────────────────────────────────────────────┘
 ```
 
@@ -140,7 +139,7 @@ Required / usually touched:
 
 | Field | Set it to |
 |---|---|
-| Project paths | Pre-wired: `MediaReducer-Dev`, `MediaReducer-Stage` and `FreshBoot` under `/mnt/user/development` → `/workspace/…` |
+| Projects folder | One mapping for all of them: `/mnt/user/development` → `/workspace`. Every folder inside it is a project |
 | State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config,work}` |
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
 | `TZ` | Your timezone |
@@ -216,6 +215,13 @@ docker exec -it -w /workspace/FreshBoot BuilderBot claude  # in a project
 docker exec -it BuilderBot bb shell                        # shell as builder
 ```
 
+**Adding a project**: make a folder in the projects share. That is the whole
+step — the folder is mounted along with everything else beside it, and it
+appears on the dashboard at the next poll. A directory that is not a working
+project is not hidden but reported: no git repository or the wrong ownership in
+red, no `CLAUDE.md` in amber, both behind **Show projects with errors**. Only
+empty directories, hidden ones and the runner's `_work` are left out.
+
 **Updating**: CI publishes `:latest` on every push to `main` + a weekly
 freshness rebuild. Unraid's *Check for Updates* flips the container to
 **update ready** — click it. Rollback = point the Repository field at a
@@ -260,7 +266,7 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `DASHBOARD_PORT` / `DASHBOARD_TTYD_PORT` | `8080` / `7681` | Page and terminal ports; both must be published |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 
-Mounts: two project dirs, three state dirs (`home`, `config`, `work`), and
+Mounts: the projects folder, three state dirs (`home`, `config`, `work`), and
 three optional ones — `/secrets` (ro, shielded credentials), `/logs`
 (relocate logs), `/var/run/docker.sock` (host Docker, off by default).
 
@@ -302,9 +308,10 @@ they check state before installing.
 
 ## The `bb` helper
 
+Bare `bb` prints this list; `bb status` is the tool-version wall.
+
 ```
 bb status          tool versions, runner registration, mounted projects
-bb doctor          check everything that usually goes wrong
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
@@ -318,7 +325,10 @@ bb findings        this project's scanner findings (--all for every project)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
+bb doctor          check everything that usually goes wrong
 ```
+
+The dashboard's Commands card is this same list in this same order.
 
 `claude` and `bb` re-exec as `builder` automatically — `docker exec` lands
 as root, which would break your saved login and file ownership. A bare
@@ -449,8 +459,14 @@ terminal on `7681`:
   and **Shell** per project. Anything with a problem is folded away behind
   **Show projects with errors** — in red, a directory the container user
   cannot read/write/enter (with the `chown` that fixes it) or one holding no
-  valid git repository; in amber, a repo with no `CLAUDE.md` yet. Empty
-  directories are the one thing never listed: a mount point waiting for
+  valid git repository; in amber, a repo with no `CLAUDE.md` yet, or one whose
+  environment block has drifted from the image's — that one is an underlined
+  link, and clicking it runs `bb claude-md --update` on that project. This is
+  what
+  makes one mapping for the whole folder workable: a directory that is not a
+  project says so instead of quietly not appearing. Hidden directories and the
+  runner's `_work` are skipped outright, and empty
+  directories are never listed either: a mount point waiting for
   content is not a fault to report
 - an **eye** per project, which excludes it: persists across restarts and
   blocks Claude sessions for that directory — see below
@@ -523,14 +539,17 @@ watchable while it runs, and one that asks a question (`bb login`) or follows
 into a **Claude** tab — that would submit it as a prompt rather than run it — so
 it goes to the workspace terminal instead when a Claude tab has focus.
 
-The list is longer than the card, so it is cut off at eight with **Show all**
-underneath. The **thumbtack** on each command keeps it above that cut; pinned
-commands sort alphabetically among themselves, and the rest keep their grouped
-order. Pins live in `/config/pinned-commands.json` — one machine, one operator,
+They are listed in `bb help`'s own order, so the card and the CLI read the
+same. The list is longer than the card, so it is cut off at eight with **Show
+all** in the header. The **thumbtack** on each command keeps it above that cut —
+pinning moves a command up, it does not re-sort it into an order the CLI never
+uses. Pins live in `/config/pinned-commands.json` — one machine, one operator,
 so a pin made at the desk is there on the phone.
 
-`bb shell` is the one command with no button: from a terminal it only opens a
-second shell inside the one you typed it into.
+Two rules about what is *not* there: nothing but `bb`, and nothing that needs an
+argument to mean anything — a button is never a half-written command line.
+Between them that leaves out exactly one command, `bb shell`, which from a
+terminal only opens a second shell inside the one you typed it into.
 
 ### Keeping a session in its own project
 
@@ -626,6 +645,14 @@ refresh if it reports drift, so a project's environment notes keep up with the
 container without you remembering to do it. It asks the session to say when it
 updates rather than doing it silently, because a modified tracked file that
 nobody mentioned is the kind of thing that gets swept into an unrelated commit.
+
+**The dashboard checks too.** A project whose block has drifted is flagged in
+amber on the Projects card, and that line is a link: clicking it runs the same
+`bb claude-md --update` against that project and the warning clears. It is the
+same comparison `bb claude-md` makes — the marked block against the image's
+template, and nothing below the end marker — done in-process rather than by
+shelling out once per project on every poll. A `CLAUDE.md` with no markers is
+named but *not* offered the link, because `--update` refuses that file too.
 
 ## Playwright, Android, publishing
 

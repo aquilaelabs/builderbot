@@ -304,7 +304,17 @@ seed_home() {
     fi
     # Make the persistent log readable/rotatable from the share.
     chown -R "$PUID:$PGID" "$(bb_log_dir)" 2>/dev/null || true
-    chown "$PUID:$PGID" "$WORKSPACE" "${RUNNER_WORKDIR:-$WORKSPACE/_work}" 2>/dev/null || true
+    # The workspace root is only ours to chown when it is a directory this
+    # container made. Mounted, it is the host's projects share, and quietly
+    # changing the ownership of somebody's share because a container started is
+    # not a repair — it is a surprise. The Projects card reports it instead.
+    if is_mountpoint "$WORKSPACE"; then
+        run_as_builder test -w "$WORKSPACE" \
+            || warn "$WORKSPACE is not writable by ${PUID}:${PGID} — new projects cannot be created there (chown it on the host)"
+    else
+        chown "$PUID:$PGID" "$WORKSPACE" 2>/dev/null || true
+    fi
+    chown "$PUID:$PGID" "${RUNNER_WORKDIR:-$WORKSPACE/_work}" 2>/dev/null || true
     chown -R "$PUID:$PGID" "$RUNNER_DIR" 2>/dev/null || true
 
     # Project mounts are deliberately left alone — a recursive chown across a

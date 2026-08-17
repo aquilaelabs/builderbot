@@ -35,34 +35,41 @@ TTYD_PUBLIC_PORT = int(os.environ.get("DASHBOARD_TTYD_PUBLIC_PORT") or TTYD_PORT
 # command string would be a remote shell with extra steps, and there is already
 # a real terminal one port over for anything not listed here.
 #
-# This is `bb`'s whole command surface, in the order the card lists it. Commands
-# that prompt or follow (`login`, `logs -f`) are fine here because a macro is
-# typed into the real terminal rather than captured — the operator answers the
-# prompt or presses Ctrl-C exactly as if they had typed it. The one command left
-# out is `bb shell`, which from a terminal only nests a second shell inside the
-# one it was typed into.
+# This is `bb`'s command surface, in `bb help`'s own order — the card is the
+# same list in the same sequence, so what you learn from one you can find in the
+# other. Commands that prompt or follow (`login`, `logs -f`) belong here because
+# a macro is typed into the real terminal rather than captured: the operator
+# answers the prompt or presses Ctrl-C exactly as if they had typed it.
+#
+# Two rules about what is NOT here. Nothing but `bb` — anything else belongs in
+# the terminal, which is one click away. And nothing that needs an argument to
+# mean anything: every entry below is a command that does the right thing typed
+# exactly as it stands, so a button is never a half-written command line. That
+# leaves out `bb shell`, which from a terminal only nests a second shell inside
+# the one it was typed into.
 MACROS = {
     "status":           ["bb", "status"],
-    "doctor":           ["bb", "doctor"],
     "projects":         ["bb", "projects"],
-    "logs":             ["bb", "logs", "200"],
-    "logs-follow":      ["bb", "logs", "-f"],
-    "logs-list":        ["bb", "logs", "--list"],
+    "update":           ["bb", "update"],
+    "login":            ["bb", "login"],
     "runner-status":    ["bb", "runner", "status"],
     "runner-stop":      ["bb", "runner", "stop"],
     "runner-start":     ["bb", "runner", "start"],
     "runner-restart":   ["bb", "runner", "restart"],
-    "emu-list":         ["bb", "emu", "list"],
     "emu-start":        ["bb", "emu", "start"],
-    "emu-status":       ["bb", "emu", "status"],
     "emu-stop":         ["bb", "emu", "stop"],
+    "emu-status":       ["bb", "emu", "status"],
+    "emu-list":         ["bb", "emu", "list"],
     "claude-md":        ["bb", "claude-md"],
     "claude-md-update": ["bb", "claude-md", "--update"],
     "claude-md-init":   ["bb", "claude-md", "--init"],
     "findings":         ["bb", "findings"],
     "findings-all":     ["bb", "findings", "--all"],
-    "update":           ["bb", "update"],
-    "login":            ["bb", "login"],
+    "logs":             ["bb", "logs"],
+    "logs-follow":      ["bb", "logs", "-f"],
+    "logs-prev":        ["bb", "logs", "-p"],
+    "logs-list":        ["bb", "logs", "--list"],
+    "doctor":           ["bb", "doctor"],
 }
 
 # Keys an Android keyboard has no way to send. Names on the left are what the
@@ -354,6 +361,51 @@ def run(cmd, cwd=None, timeout=120):
         return {"cmd": shlex.join(cmd), "code": 127, "out": str(e)}
 
 
+# Where the image keeps the CLAUDE.md the environment block is copied from.
+# Same file `bb claude-md` reads; overridable only so the tests can point at a
+# checkout instead of an installed image.
+TEMPLATE_MD = Path(os.environ.get("TEMPLATE_MD",
+                                  "/opt/builderbot/templates/project-CLAUDE.md"))
+ENV_BEGIN = "<!-- BUILDERBOT:ENV:BEGIN -->"
+ENV_END = "<!-- BUILDERBOT:ENV:END -->"
+
+
+def md_block(path):
+    """The environment block of a CLAUDE.md, markers included, or None.
+
+    The same span `bb claude-md` compares — everything below the end marker is
+    the project's own writing and is never read here.
+    """
+    try:
+        text = path.read_text(errors="replace")
+    except OSError:
+        return None
+    lines, out = text.splitlines(), []
+    for line in lines:
+        if not out and ENV_BEGIN not in line:
+            continue
+        out.append(line)
+        if ENV_END in line:
+            return "\n".join(out)
+    return None                          # no begin marker, or no end after it
+
+
+def md_state(path):
+    """"current" | "stale" | "unmarked" | "unknown" for a project's CLAUDE.md.
+
+    Compared here rather than by shelling out to `bb claude-md` once per project
+    on every fifteen-second poll: the comparison is two file reads, and a
+    subprocess per project per poll is not.
+    """
+    want = md_block(TEMPLATE_MD)
+    if want is None:
+        return "unknown"                 # no template to compare against
+    have = md_block(path)
+    if have is None:
+        return "unmarked"
+    return "current" if have == want else "stale"
+
+
 def projects():
     out = []
     if not WORKSPACE.is_dir():
@@ -372,7 +424,11 @@ def projects():
                              "text": f"cannot list this directory as uid {uid}:{gid}"
                                      " — chown it to PUID:PGID on the host"}]}]
     for d in here:
-        if not d.is_dir() or d.name == "_work":
+        # `_work` is the runner's checkout area, not a project. Hidden
+        # directories are not projects either: the whole projects folder is
+        # mounted now, so this list would otherwise open with the share's own
+        # furniture (.Recycle.Bin and friends) presented as things to fix.
+        if not d.is_dir() or d.name == "_work" or d.name.startswith("."):
             continue
         issues = []
 
@@ -422,6 +478,18 @@ def projects():
                 branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
                 if not has_md:
                     issues.append({"level": "warning", "text": "no CLAUDE.md"})
+                elif (md := md_state(d / "CLAUDE.md")) == "stale":
+                    # Offered as an action, not just a complaint: the fix is one
+                    # command with no decisions in it, and the block goes stale
+                    # every time the image gains a feature.
+                    issues.append({"level": "warning", "action": "claude-md-update",
+                                   "text": "CLAUDE.md environment block is out of date — update"})
+                elif md == "unmarked":
+                    # `bb claude-md --update` refuses this one, so it must not be
+                    # offered as a link that would do nothing.
+                    issues.append({"level": "warning",
+                                   "text": "CLAUDE.md predates the BUILDERBOT:ENV markers"
+                                           " — merge the block in by hand once"})
 
         # Every directory is still reported. The dashboard decides what to show,
         # and SARIF paths are attributed by matching these names — dropping one
@@ -772,7 +840,34 @@ class Handler(BaseHTTPRequestHandler):
             return self._layout(req)
         if path.startswith("/api/pin"):
             return self._pin(req)
+        if path.startswith("/api/claude-md"):
+            return self._claude_md(req)
         self._json({"error": "not found"}, 404)
+
+    def _claude_md(self, req):
+        """Refresh one project's CLAUDE.md environment block.
+
+        Run here rather than typed into a terminal: the project has no terminal
+        open in the general case, and the command takes no decisions — it
+        replaces a delimited block and leaves everything below it alone.
+
+        The project name is checked against the directories that exist, so the
+        path handed to `bb` is one this server built, never one the page sent.
+        """
+        name = req.get("name", "")
+        try:
+            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
+        except OSError:
+            here = set()
+        if name not in here:
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        md = WORKSPACE / name / "CLAUDE.md"
+        if not md.is_file():
+            return self._json({"error": f"{name} has no CLAUDE.md"}, 400)
+        r = run(["bb", "claude-md", "--update", str(md)], timeout=60)
+        if r["code"] != 0:
+            return self._json({"error": r["out"].strip() or "update failed"}, 500)
+        return self._json({"state": md_state(md), "out": r["out"].strip()})
 
     def _pin(self, req):
         """Pin or unpin a command. Names are keys from MACROS, so this file can

@@ -125,9 +125,12 @@ services:
 
     volumes:
       # --- your projects ----------------------------------------------------
-      - ${MEDIAREDUCER_PATH:-/mnt/user/development/MediaReducer-Dev}:/workspace/MediaReducer-Dev
-      - ${MEDIAREDUCER_STAGE_PATH:-/mnt/user/development/MediaReducer-Stage}:/workspace/MediaReducer-Stage
-      - ${FRESHBOOT_PATH:-/mnt/user/development/FreshBoot}:/workspace/FreshBoot
+      # The whole folder, not one entry per project: every subfolder of it
+      # becomes a project, so adding one no longer means editing this file.
+      # Anything wrong with a directory (no git repository, no CLAUDE.md, an
+      # ownership the container user cannot work with) is reported on the
+      # dashboard rather than silently not showing up.
+      - ${WORKSPACE_PATH:-/mnt/user/development}:/workspace
 
       # --- persistent container state --------------------------------------
       # Claude Code login, shell history, npm globals, runner registration.
