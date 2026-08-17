@@ -494,7 +494,9 @@ terminal on `7681`:
   reporting success and leaving a listener behind
 - every `bb` command as a button, pinnable, typed into the terminal you are
   looking at — and a second card for **your own** command lists
-- live list of tmux sessions, named exactly as their tabs are, with attach.
+- live list of tmux sessions, named exactly as their tabs are. Each row says
+  where its tab is — **on the tab bar**, or **minimised** when it has none —
+  and Open brings it back either way.
   Every Claude session — in this list and on its tab — carries a **state dot**:
   blue and pulsing while it works, amber when it is waiting on you (input, a
   permission decision, or a finished turn), with the task it reported
