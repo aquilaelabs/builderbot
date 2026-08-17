@@ -89,9 +89,48 @@ bad() {
     exit 1
 }
 
+# start SESSION DIR [COMMAND...] — attach to a session, creating it if needed,
+# with the settings this dashboard depends on applied to it.
+#
+# Applied here rather than left to ~/.tmux.conf because that file lives on a
+# persistent volume: an install upgraded from an older image still has the one
+# BuilderBot used to write directly, which sets `mouse on` and never sources the
+# file we own now. Set on the session itself, this holds whatever the config
+# said, which is what a behaviour the page promises has to do.
+start() {
+    local s="$1" dir="$2"; shift 2
+    # -A -d creates it if it is missing and attaches to it if it is not, without
+    # attaching yet — race-free where has-session followed by new-session is not.
+    tmux new-session -A -d -s "$s" -c "$dir" "$@"
+
+    # Mouse mode decides who owns a drag. Off, the browser makes an ordinary
+    # selection and the terminal copies it as the button comes up. On, tmux
+    # takes the drag and the text reaches a tmux buffer the browser cannot see.
+    # Shells want the clipboard; Claude's interface wants the mouse.
+    # Plain name, not tmux's `=exact` prefix: set-option rejects that form
+    # ("no such session: =shell"), and the session was just created here, so an
+    # exact match is the one it resolves to anyway.
+    case "$s" in
+        claude-*) tmux set-option -t "$s" mouse on ;;
+        *)        tmux set-option -t "$s" mouse off ;;
+    esac
+
+    # tmux's own right-click menu is drawn in the terminal, underneath the
+    # browser's context menu, which covers it — two menus for one click, and
+    # only one of them dismissable. The browser's cannot be suppressed from
+    # here (the terminal is served from its own port and is a cross-origin
+    # frame), so the one we control is the one that goes.
+    tmux unbind-key -n MouseDown3Pane 2>/dev/null || true
+    tmux unbind-key -n MouseDown3Status 2>/dev/null || true
+    tmux unbind-key -n MouseDown3StatusLeft 2>/dev/null || true
+    tmux unbind-key -n MouseDown3StatusRight 2>/dev/null || true
+
+    exec tmux attach-session -t "$s"
+}
+
 case "$target" in
     shell)
-        exec tmux new-session -A -s shell -c "$WORKSPACE"
+        start shell "$WORKSPACE"
         ;;
 
     # sh:N:PROJECT — an additional numbered terminal, so the Shell button can
@@ -105,12 +144,12 @@ case "$target" in
             ''|*[!0-9]*) bad "Invalid terminal number: ${num}" ;;
         esac
         if [ -z "$proj" ]; then
-            exec tmux new-session -A -s "shell-${num}" -c "$WORKSPACE"
+            start "shell-${num}" "$WORKSPACE"
         fi
         dir="$WORKSPACE/$proj"
         [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
-        exec tmux new-session -A -s "shell-${proj}-${num}" -c "$dir"
+        start "shell-${proj}-${num}" "$dir"
         ;;
 
     claude:*)
@@ -157,17 +196,17 @@ case "$target" in
             echo "WARNING: could not build the project scope for '${proj}'." >&2
             echo "This session is NOT restricted to its own directory." >&2
         fi
-        # -A attaches to the existing session when there is one, so clicking a
-        # project twice returns to the same conversation rather than starting a
-        # second alongside it.
-        exec tmux new-session -A -s "claude-${proj}" -c "$dir" "${cmd[@]}"
+        # An existing session is attached to rather than replaced, so clicking
+        # a project twice returns to the same conversation instead of starting a
+        # second one alongside it.
+        start "claude-${proj}" "$dir" "${cmd[@]}"
         ;;
     shell:*)
         proj="${target#shell:}"
         dir="$WORKSPACE/$proj"
         [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
-        exec tmux new-session -A -s "shell-${proj}" -c "$dir"
+        start "shell-${proj}" "$dir"
         ;;
     *)
         # A named scratch session. Restricted to characters tmux is happy with
@@ -175,6 +214,6 @@ case "$target" in
         case "$target" in
             *[!A-Za-z0-9._-]*) bad "Invalid session name: ${target}" ;;
         esac
-        exec tmux new-session -A -s "$target" -c "$WORKSPACE"
+        start "$target" "$WORKSPACE"
         ;;
 esac

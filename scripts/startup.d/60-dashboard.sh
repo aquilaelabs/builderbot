@@ -50,21 +50,30 @@ cat > "$HOME/.tmux.builderbot.conf" <<'EOF'
 # you put there after the source-file line wins.
 set -g history-limit 50000
 
-# Mouse mode is what decides who owns a drag, and the answer differs per
-# session. With it ON, tmux takes the drag: the text lands in a tmux paste
-# buffer and the browser never sees a selection, so nothing reaches the system
-# clipboard. With it OFF, xterm.js makes an ordinary browser selection and the
-# terminal copies it as you release the button.
+# Mouse mode decides who owns a drag, and the answer differs per session. With
+# it ON, tmux takes the drag: the text lands in a tmux paste buffer and the
+# browser never sees a selection, so nothing reaches the system clipboard. With
+# it OFF, the terminal makes an ordinary browser selection and copies it as you
+# release the button.
 #
-# Shells want the clipboard. Claude's interface wants the mouse. So: off by
-# default, back on for the sessions the dashboard names `claude-*`.
+# Shells want the clipboard, Claude's interface wants the mouse, so bb-tty sets
+# this per session as it launches one — that is the authoritative copy, and it
+# holds even where this file is not read. This is the default for a session
+# started any other way.
 #
 # The cost in a shell is that the wheel no longer scrolls tmux's scrollback —
 # at a prompt it walks shell history instead. `Ctrl-b [` enters copy mode,
 # where the wheel scrolls again. Put `set -g mouse on` in ~/.tmux.conf after
 # the source-file line to have the old behaviour back everywhere.
 set -g mouse off
-set-hook -g session-created 'if -F "#{m:claude-*,#{session_name}}" "set mouse on"'
+
+# tmux's right-click menu is drawn in the terminal, underneath the browser's
+# context menu, which covers it. The browser's cannot be suppressed from
+# outside the frame, so the one we control is the one that goes.
+unbind -n MouseDown3Pane
+unbind -n MouseDown3Status
+unbind -n MouseDown3StatusLeft
+unbind -n MouseDown3StatusRight
 set -g status-style bg=colour236,fg=colour252
 set -g status-left '#[bold] #S '
 set -g status-right ' builderbot '
@@ -74,7 +83,19 @@ EOF
 if [ ! -e "$HOME/.tmux.conf" ]; then
     printf 'source-file ~/.tmux.builderbot.conf\n' > "$HOME/.tmux.conf"
 elif ! grep -qF 'tmux.builderbot.conf' "$HOME/.tmux.conf"; then
-    log "dashboard: keeping your ~/.tmux.conf — add 'source-file ~/.tmux.builderbot.conf' to it for the defaults"
+    # An image before this one wrote its settings straight into ~/.tmux.conf.
+    # On a persistent home that copy is still there, still saying `mouse on`,
+    # and it never sources the file we own now — so an upgraded install would
+    # keep the old behaviour forever and no message about it would explain why.
+    # Recognise our own leftovers by their status line and replace them, keeping
+    # a copy. Anything we do not recognise is the operator's and is left alone.
+    if grep -qF "status-right ' builderbot '" "$HOME/.tmux.conf"; then
+        mv -f "$HOME/.tmux.conf" "$HOME/.tmux.conf.builderbot-old"
+        printf 'source-file ~/.tmux.builderbot.conf\n' > "$HOME/.tmux.conf"
+        log "dashboard: replaced an older BuilderBot ~/.tmux.conf with a source-file line (old copy kept as ~/.tmux.conf.builderbot-old)"
+    else
+        log "dashboard: keeping your ~/.tmux.conf — add 'source-file ~/.tmux.builderbot.conf' to it for the defaults"
+    fi
 fi
 
 log "dashboard: http://<host>:${PORT}  (terminal on ${TTYD_PUBLIC_PORT})"
