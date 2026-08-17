@@ -109,22 +109,25 @@ RUN set -eux; \
 # the weekly rebuild is what keeps them current. `ruff` installs via pipx so
 # it is isolated from both the system Python and any project venv.
 #
+# Resolved WITHOUT api.github.com, deliberately: the API allows 60 anonymous
+# calls per hour per IP, and CI builds run from shared Actions egress
+# addresses that have usually spent that budget already — the "latest release"
+# JSON comes back as a rate-limit error, jq reads a null tag, and the build
+# dies on a 404. The releases/latest/download/ endpoint and the /releases/
+# latest redirect carry the same information with no such limit.
+#
 # The point of having them *in the image* rather than only in CI: a session
 # (or a person) can run the same checks CI will run, before the push — that
 # is what `bb lint` does.
 # ---------------------------------------------------------------------------
 RUN set -eux; \
-    fetch_release() { \
-        # fetch_release OWNER/REPO ASSET-TEMPLATE DEST — @VER@ in the template
-        # is replaced with the latest tag, with and without its leading v.
-        tag="$(curl -fsSL "https://api.github.com/repos/$1/releases/latest" | jq -r .tag_name)"; \
-        asset="$(printf '%s' "$2" | sed "s/@VER@/${tag#v}/g; s/@TAG@/${tag}/g")"; \
-        curl -fsSL -o "$3" "https://github.com/$1/releases/download/${tag}/${asset}"; \
-        chmod +x "$3"; \
-    }; \
-    fetch_release hadolint/hadolint "hadolint-linux-x86_64" /usr/local/bin/hadolint; \
-    fetch_release mikefarah/yq "yq_linux_amd64" /usr/local/bin/yq; \
-    tag="$(curl -fsSL https://api.github.com/repos/rhysd/actionlint/releases/latest | jq -r .tag_name)"; \
+    curl -fsSL -o /usr/local/bin/hadolint \
+        https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64; \
+    curl -fsSL -o /usr/local/bin/yq \
+        https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64; \
+    chmod +x /usr/local/bin/hadolint /usr/local/bin/yq; \
+    tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/rhysd/actionlint/releases/latest)"; \
+    tag="${tag##*/}"; \
     curl -fsSL "https://github.com/rhysd/actionlint/releases/download/${tag}/actionlint_${tag#v}_linux_amd64.tar.gz" \
         | tar -xz -C /usr/local/bin actionlint; \
     PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install ruff; \
@@ -231,8 +234,12 @@ RUN set -eux; \
             "system-images;android-${ANDROID_PLATFORM};${ANDROID_SYSTEM_IMAGE_VARIANT}" \
             >/dev/null; \
     fi; \
-    # bundletool for building/installing from .aab bundles
-    bt_ver="$(curl -fsSL https://api.github.com/repos/google/bundletool/releases/latest | jq -r '.tag_name')"; \
+    # bundletool for building/installing from .aab bundles. Version comes from
+    # the /releases/latest redirect, not api.github.com — the API rate-limits
+    # anonymous callers per IP and Actions egress IPs are shared, so a CI
+    # build can 403 where a local one sails through.
+    bt_ver="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/google/bundletool/releases/latest)"; \
+    bt_ver="${bt_ver##*/}"; \
     curl -fsSL -o "${ANDROID_HOME}/bundletool.jar" \
         "https://github.com/google/bundletool/releases/download/${bt_ver}/bundletool-all-${bt_ver}.jar"; \
     printf '#!/bin/sh\nexec java -jar %s/bundletool.jar "$@"\n' "${ANDROID_HOME}" \
@@ -302,8 +309,12 @@ RUN set -eux; \
     esac; \
     version="${RUNNER_VERSION}"; \
     if [ "$version" = "latest" ]; then \
-        version="$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest \
-                   | jq -r .tag_name | sed 's/^v//')"; \
+        # /releases/latest redirect, not api.github.com — anonymous API calls
+        # are rate-limited per IP and shared Actions egress addresses have
+        # usually exhausted the budget, which kills exactly the unattended
+        # weekly rebuild this "latest" exists for.
+        version="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/actions/runner/releases/latest)"; \
+        version="${version##*/}"; version="${version#v}"; \
     fi; \
     echo "installing actions-runner ${version} (${RUNNER_ARCH})"; \
     curl -fsSL -o /tmp/runner.tar.gz \
