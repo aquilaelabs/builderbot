@@ -482,6 +482,10 @@ you open gets its own closable tab above the terminal.
   has is taking turns unobserved. A **shell** tab closes but leaves its
   session running; pick it back up from the Sessions card, or end it there.
   The workspace tab has no ✕.
+- **Tabs are named for where they are.** A terminal reads `sh: <directory>`,
+  following the shell as it `cd`s; hover for the full path. A Claude tab reads
+  `Claude: <project>`. Two terminals in the same directory carry their number
+  so they stay distinguishable.
 - **Drag a tab** by its label to reorder the strip. Works with a mouse or a
   finger.
 - **⇱ on a tab** pins it to the **left** or **right** pane, which splits the
@@ -527,7 +531,8 @@ other projects into the same container.
 
 ### Excluding a project
 
-**Exclude** on a project row blocks Claude sessions for that directory. The
+The **eye** on a project row blocks Claude sessions for that directory — a
+struck-through eye excludes it, a plain eye lets it back in. The
 list lives in `/config/excluded-projects.json`, so it survives restarts and
 image updates, and it is enforced by the terminal launcher rather than the
 page — the ttyd URL is reachable on its own, so a rule only the UI honoured
