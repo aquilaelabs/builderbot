@@ -436,16 +436,41 @@ not the same as better code, and suppressing a finding satisfies that goal too.
 Off by default. When enabled it serves a status page on `8080` and a browser
 terminal on `7681`:
 
-- container uptime, runner registration and listening state
-- every project under `/workspace` with its branch, and one-click **Claude**,
-  **Shell** and **Findings** per project
+- container uptime, and runner state — registered, listening, or **running a
+  job**, with the job's name and how long it has been going. (That is as far
+  as it goes: a runner long-polls for one job at a time and is never told what
+  else is queued, and how far through its own work a job is — tests passed,
+  steps left — is known only to the tool inside the step.)
+- every project under `/workspace` with its branch, and one-click **Claude**
+  and **Shell** per project
+- a rendered **findings report** — the SARIF your scanner drops in `/reports`,
+  grouped by project and rule, with severity counts and CVEs linked to NVD
 - `bb` macros as buttons — doctor, status, logs, emulator control, update
 - live list of tmux sessions, with attach
 
-Every terminal runs inside **tmux**, so closing the tab detaches instead of
-killing the session — a Claude conversation survives a dropped connection or a
-closed laptop, and clicking the same project again reattaches to it rather than
-starting a second one.
+### Tabs and panes
+
+One tab is permanent: **workspace**, a shell at `/workspace`. Everything else
+you open gets its own closable tab above the terminal.
+
+- **Claude** / **Shell** on a project open a terminal tab. Clicking the same
+  button again goes to the tab that is already open rather than opening a
+  second one — one tab per session, and therefore one ✕ per session.
+- **Open findings report** opens a *document* tab, not a terminal. It is a
+  report to read; putting it through a PTY would only make it harder to.
+- **✕ on a tab** closes it *and ends its tmux session*, because a detached
+  session you can no longer see is just a process you have forgotten about.
+  Claude tabs ask first — the transcript is kept, but the conversation stops.
+  The workspace tab has no ✕.
+- **⇱ on a tab** pins it to the **left** or **right** pane, which splits the
+  view. The pin marker on the tab (◧ / ◨) says where it currently is.
+- **✕ on a pane** collapses back to a single pane. It does **not** close the
+  tab or touch its session — the tab owns the session, the pane is only where
+  it was being shown.
+
+Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
+or a reloaded page detaches instead of killing the session. Only the tab's ✕
+ends one.
 
 ```
 ENABLE_DASHBOARD=true

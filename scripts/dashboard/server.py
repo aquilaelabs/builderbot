@@ -76,6 +76,80 @@ PROJECT_MACROS = {
 }
 
 
+CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
+REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
+
+
+def _project_of(uri, known):
+    """Which mounted project a scanner-recorded path belongs to.
+
+    The scanner records where *it* saw the code, which is never where this
+    container mounts it, so the only reliable anchor is a path component that
+    matches a directory in the workspace.
+    """
+    parts = [p for p in uri.replace("\\", "/").split("/") if p]
+    for i, part in enumerate(parts):
+        if part in known:
+            return part, "/".join(parts[i + 1:]) or part
+    return None, "/".join(parts)
+
+
+def parse_sarif(path, known):
+    """SARIF 2.1.0 -> flat findings. Tolerant: a malformed run is skipped, not
+    fatal, because one bad report should not blank the whole page."""
+    try:
+        doc = json.loads(path.read_text())
+    except (OSError, ValueError) as e:
+        return {"file": path.name, "tool": "?", "error": str(e), "findings": []}
+
+    tool_name, rows = "?", []
+    for runinfo in doc.get("runs", []):
+        driver = (runinfo.get("tool") or {}).get("driver") or {}
+        tool_name = driver.get("name") or tool_name
+        rules = {}
+        for r in driver.get("rules") or []:
+            rules[r.get("id")] = {
+                "desc": ((r.get("shortDescription") or {}).get("text")
+                         or (r.get("fullDescription") or {}).get("text") or ""),
+                "help": ((r.get("help") or {}).get("text") or ""),
+                "uri": r.get("helpUri") or "",
+                "level": ((r.get("defaultConfiguration") or {}).get("level") or "warning"),
+            }
+        for res in runinfo.get("results") or []:
+            rid = res.get("ruleId") or "unknown"
+            meta = rules.get(rid, {})
+            msg = ((res.get("message") or {}).get("text") or "")
+            loc = ((res.get("locations") or [{}])[0].get("physicalLocation") or {})
+            uri = ((loc.get("artifactLocation") or {}).get("uri") or "?")
+            line = ((loc.get("region") or {}).get("startLine") or 0)
+            proj, rel = _project_of(uri, known)
+            # CVEs turn up in the rule id (Trivy) or the prose (most others).
+            cves = sorted(set(CVE_RE.findall(" ".join([rid, msg, meta.get("desc", ""),
+                                                       meta.get("help", "")]))))
+            rows.append({
+                "rule": rid,
+                "level": res.get("level") or meta.get("level") or "warning",
+                "desc": meta.get("desc") or msg.split("\n")[0],
+                "message": msg.strip(),
+                "uri": meta.get("uri", ""),
+                "project": proj,
+                "path": rel,
+                "line": line,
+                "cves": cves,
+            })
+    return {"file": path.name, "tool": tool_name, "findings": rows}
+
+
+def findings_payload():
+    known = {p["name"] for p in projects()}
+    if not REPORTS.is_dir():
+        return {"available": False, "reports": [], "projects": sorted(known)}
+    files = sorted(f for f in REPORTS.glob("*.sarif")) + \
+            sorted(f for f in REPORTS.glob("*.sarif.json"))
+    return {"available": True, "projects": sorted(known),
+            "reports": [parse_sarif(f, known) for f in files]}
+
+
 def run(cmd, cwd=None, timeout=120):
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
@@ -99,7 +173,9 @@ def projects():
         branch = None
         if (d / ".git").exists():
             r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"], timeout=10)
-            branch = r["out"].strip() or "(detached)"
+            # `out` carries stderr too, so a broken .git would otherwise put a
+            # `fatal:` line where the branch name goes.
+            branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(unreadable)"
         out.append({"name": d.name, "git": branch,
                     "claude_md": (d / "CLAUDE.md").is_file()})
     return out
@@ -118,9 +194,49 @@ def tmux_sessions():
     return rows
 
 
+def log_path():
+    """Where entrypoint.sh sends the container log — same rules as bb_log_dir."""
+    d = os.environ.get("BB_LOG_DIR") or ("/logs" if Path("/logs").is_dir()
+                                         else "/config/logs")
+    return Path(d) / "builderbot.log"
+
+
+# The runner announces each job on stdout, which lands in the container log:
+#     2026-08-17 02:27:17Z: Running job: tests
+#     2026-08-17 02:29:04Z: Job tests completed with result: Succeeded
+JOB_START = re.compile(r"Running job:\s*(.+?)\s*$")
+JOB_END = re.compile(r"Job\s+(.+?)\s+completed with result:")
+
+
+def current_job():
+    """Name of the job the runner is on, from the last of those two lines.
+
+    Cosmetic only — whether a job is running at all is decided by the worker
+    process, not by this. A rotated or unreadable log costs the name, nothing
+    more.
+    """
+    p = log_path()
+    try:
+        with p.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 65536))       # the tail is enough, and bounded
+            tail = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    for line in reversed(tail.splitlines()):
+        if JOB_END.search(line):
+            return None                          # finished before it started
+        m = JOB_START.search(line)
+        if m:
+            return m.group(1)
+    return None
+
+
 def runner():
     d = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner"))
-    info = {"registered": False, "listening": False, "name": None, "url": None}
+    info = {"registered": False, "listening": False, "busy": False,
+            "job": None, "elapsed": None, "name": None, "url": None}
     cfg = d / ".runner"
     if cfg.is_file():
         info["registered"] = True
@@ -131,6 +247,22 @@ def runner():
         except (ValueError, OSError):
             pass
     info["listening"] = run(["pgrep", "-f", "Runner.Listener"], timeout=10)["code"] == 0
+    # The Listener stays up for the whole of a job and spawns a Worker per job,
+    # so "listening" alone cannot tell idle from busy — which made the dashboard
+    # claim the runner was waiting while it was building.
+    w = run(["pgrep", "-f", "Runner.Worker"], timeout=10)
+    info["busy"] = w["code"] == 0
+    if info["busy"]:
+        info["job"] = current_job()
+        # How long the job has been going. There is no progress to report
+        # beyond this: a runner long-polls for one job at a time and is never
+        # told what else is queued, and what a job *does* — how many tests, how
+        # far in — is known only to the tool running inside the step.
+        pid = w["out"].split()[0] if w["out"].split() else None
+        if pid:
+            e = run(["ps", "-o", "etimes=", "-p", pid], timeout=10)
+            if e["code"] == 0 and e["out"].strip().isdigit():
+                info["elapsed"] = int(e["out"].strip())
     info["enabled"] = os.environ.get("ENABLE_RUNNER", "true").lower() not in ("false", "0", "no")
     return info
 
@@ -150,7 +282,7 @@ def snapshot():
         "sessions": tmux_sessions(),
         "runner": runner(),
         "ttyd_port": TTYD_PUBLIC_PORT,
-        "reports": Path("/reports").is_dir(),
+        "reports": REPORTS.is_dir(),
     }
 
 
@@ -200,6 +332,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.wfile.write(body)
         if self.path.startswith("/api/status"):
             return self._json(snapshot())
+        if self.path.startswith("/api/findings"):
+            return self._json(findings_payload())
         self._json({"error": "not found"}, 404)
 
     def do_POST(self):
@@ -214,11 +348,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "bad request"}, 400)
 
         path = self.path.split("?")[0]
+        if path.startswith("/api/session"):
+            return self._session(req)
         if path.startswith("/api/keys"):
             return self._keys(req)
         if path.startswith("/api/run"):
             return self._run(req)
         self._json({"error": "not found"}, 404)
+
+    def _session(self, req):
+        """Kill a session. Closing a tab that owns a Claude conversation should
+        end it, or detached sessions accumulate invisibly behind a tidy UI."""
+        session = req.get("session", "")
+        if req.get("action") != "kill":
+            return self._json({"error": "unknown action"}, 400)
+        if session not in {s["name"] for s in tmux_sessions()}:
+            return self._json({"error": f"no such session: {session}"}, 400)
+        return self._json(run(["tmux", "kill-session", "-t", session], timeout=10))
 
     def _keys(self, req):
         session, key = req.get("session", ""), req.get("key", "")

@@ -197,6 +197,44 @@ update procedure. Ansible not required.
 Template edits (new paths, changed variables) are done from the container's
 own settings page (click the icon → *Edit*), and survive image updates.
 
+### The container icon (optional, cosmetic)
+
+The template's `Icon` points at `config/icon.png` in this repo. While the repo is
+private that URL answers **404** to Unraid's unauthenticated fetch, and you get
+a placeholder.
+
+You do not have to host the icon anywhere. Unraid keeps two copies of every
+container icon and only downloads when **both** are missing
+(`DockerClient.php`, `getIcon`):
+
+| copy | path | survives a reboot |
+|---|---|---|
+| RAM | `/usr/local/emhttp/state/plugins/dynamix.docker.manager/images/<Name>-icon.png` | no — tmpfs |
+| disk | `/var/lib/docker/unraid/images/<Name>-icon.png` | yes |
+
+So keep the disk copy warm and the download never happens. Container settings →
+**Unraid icon cache** → `/var/lib/docker/unraid/images`, apply, and the
+container writes `BuilderBot-icon.png` there on every start — including right
+after an image update, which is when Unraid clears the cache and re-downloads.
+
+Two things that will silently defeat it:
+
+- **`Icon` must not be empty.** `getIcon()` returns early on an empty URL and
+  never looks at the cache, so a blank field gets the question mark no matter
+  what is on disk. The template ships a URL for exactly this reason; it does
+  not need to resolve.
+- **The filename comes from the container name**, and nothing inside a
+  container can see its own container name. If you renamed this container from
+  `BuilderBot`, set `UNRAID_ICON_NAME` to match.
+
+The one-time equivalent, if you would rather not add a mapping — just redo it
+if you ever recreate `docker.img`:
+
+```bash
+docker cp BuilderBot:/opt/builderbot/icon.png \
+  /var/lib/docker/unraid/images/BuilderBot-icon.png
+```
+
 ### Android emulator (optional)
 
 1. Container settings → **Extra Params**: append ` --device=/dev/kvm`
@@ -212,9 +250,12 @@ own settings page (click the icon → *Edit*), and survive image updates.
    the host side if either collides with something else on the server
 4. Apply, then click the container's **WebUI** link
 
-You get container and runner status, `bb` macros as buttons, and a browser
-terminal with a persistent tmux session per project — one click to open Claude
-in any repo under `/workspace`, and closing the tab detaches rather than kills.
+You get container and runner status, `bb` macros as buttons, a rendered report
+of whatever SARIF your scanner drops in `/reports`, and a browser terminal with
+a persistent tmux session per project. A permanent **workspace** tab sits at
+the left; Claude, Shell and the findings report open as closable tabs beside
+it, and any tab can be pinned to a left or right pane for a side-by-side view.
+A tab's ✕ ends its tmux session; a pane's ✕ only collapses the split.
 
 **Both ports have to be reachable from your browser.** The page is served by
 one and the terminal websocket by the other; the terminal is a separate service

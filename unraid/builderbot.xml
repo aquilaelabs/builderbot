@@ -24,13 +24,15 @@ NOTES
   <Category>Tools: Productivity:</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL/>
-  <!-- Left empty on purpose: Unraid falls back to its own placeholder, which
-       beats the broken image an unreachable URL produces. raw.githubusercontent
-       .com answers 404 for a private repo to Unraid's unauthenticated fetch, so
-       docs/icon.png cannot be linked from here while this repo stays private.
-       If it ever goes public, or the file is copied somewhere public, put that
-       URL here. -->
-  <Icon/>
+  <!-- Unreachable while this repo is private — raw.githubusercontent.com
+       answers 404 to Unraid's unauthenticated fetch — and that is fine. The
+       container seeds Unraid's own icon cache at startup (see the "Unraid icon
+       cache" mapping below), and Unraid only downloads when the cache is
+       empty. This value must still be NON-EMPTY: getIcon() returns early on an
+       empty URL and never consults the cache, so an empty <Icon/> shows the
+       question-mark placeholder however many PNGs are sitting on disk.
+       If the repo ever goes public this starts working on its own. -->
+  <Icon>https://raw.githubusercontent.com/Stencil-Projects/BuilderBot/main/config/icon.png</Icon>
   <ExtraParams>--hostname=builderbot --device=/dev/kvm --runtime=nvidia</ExtraParams>
   <PostArgs/>
   <DonateText/>
@@ -49,6 +51,7 @@ NOTES
   <Config Name="Logs directory (optional override)" Target="/logs" Default="" Mode="rw" Description="Leave empty to keep logs under the Config path in logs/. Set a host path (e.g. an array share like /mnt/user/logs/builderbot) to send the persistent log there instead - the container auto-detects this mount." Type="Path" Display="advanced" Required="false" Mask="false"/>
   <Config Name="Secrets directory (shielded tokens)" Target="/secrets" Default="/mnt/user/appdata/BuilderBot/secrets" Mode="ro" Description="RECOMMENDED: a root-owned host folder (chmod 700) containing builderbot.env with GITHUB_PAT=... lines, plus an ssh/ subfolder of git private keys. Secrets provided this way are never readable by Claude sessions - the runner gets tokens via a root-only helper and ssh keys are served by a root-owned ssh-agent (usable for git push, not extractable). See docs/unraid.md." Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/BuilderBot/secrets</Config>
   <Config Name="Scanner reports (read-only)" Target="/reports" Default="/mnt/user/appdata/scanners/reports" Mode="ro" Description="Optional: the output directory of a static analyser running on the host, e.g. /mnt/user/appdata/scanners/reports. Mounted READ-ONLY and deliberately without the scanner itself, so nothing in this container can run or reconfigure it. Read the reports with: bb findings" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/scanners/reports</Config>
+  <Config Name="Unraid icon cache" Target="/unraid-icons" Default="/var/lib/docker/unraid/images" Mode="rw" Description="Optional, cosmetic: Unraid's own container-icon cache. Mounted here, the container writes BuilderBot-icon.png into it on every start, so the Docker page shows the icon without downloading anything - which is what fails while this repo is private. Unraid only fetches the Icon URL when its cache is empty, and this keeps it warm across reboots and image updates. Set UNRAID_ICON_NAME if you renamed the container. Leave empty to skip; you get Unraid's placeholder icon and nothing else changes." Type="Path" Display="advanced" Required="false" Mask="false">/var/lib/docker/unraid/images</Config>
   <Config Name="Docker socket (OFF by default - root-equivalent!)" Target="/var/run/docker.sock" Default="" Mode="rw" Description="LEAVE EMPTY unless you accept the risk: mounting the host Docker socket lets anything in this container run arbitrary code on the Unraid host as root. Set to /var/run/docker.sock only if you want Claude/CI jobs building images against the host daemon." Type="Path" Display="advanced" Required="false" Mask="false"/>
 
   <!-- ===================== core settings ===================== -->
@@ -105,4 +108,5 @@ NOTES
   <Config Name="EXTRA_PIPX_PACKAGES" Target="EXTRA_PIPX_PACKAGES" Default="" Mode="" Description="Space-separated pipx tools installed at every start" Type="Variable" Display="advanced" Required="false" Mask="false"/>
   <Config Name="PROJECT_BOOTSTRAP" Target="PROJECT_BOOTSTRAP" Default="false" Mode="" Description="Run each project's .builderbot/setup.sh at start" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
   <Config Name="CHOWN_PROJECTS" Target="CHOWN_PROJECTS" Default="false" Mode="" Description="Recursively chown project mounts to PUID:PGID at start" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="UNRAID_ICON_NAME" Target="UNRAID_ICON_NAME" Default="BuilderBot" Mode="" Description="Only matters with the Unraid icon cache mapping. Unraid names the cached icon after the CONTAINER, and nothing inside a container can see its own container name - so if you renamed this container from BuilderBot, put the new name here or the icon lands under the wrong filename and is ignored." Type="Variable" Display="advanced" Required="false" Mask="false">BuilderBot</Config>
 </Container>
