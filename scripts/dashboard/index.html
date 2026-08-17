@@ -224,12 +224,28 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 .tab .lbl{padding:6px 8px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;
   cursor:grab;touch-action:none;user-select:none}
 .tab.held{opacity:.45}
+.card.held{opacity:.6}   /* the long-press pickup state, cards as tabs */
 body.dragging{cursor:grabbing;user-select:none}
 body.dragging .tab .lbl{cursor:grabbing}
 .tab .ic{padding:6px 7px;color:var(--dim);font-size:13px;line-height:1}
 .tab .ic:hover{background:rgba(255,255,255,.09);color:var(--ink)}
 @media(max-width:900px){ .tab button{min-height:var(--tap)} }
 .tabbar .sep{flex:1}
+.tabstrip{display:flex;align-items:stretch}
+.tabstrip .tabbar{flex:1;min-width:0}
+.tscroll{display:none}
+/* On a phone the strip is one row that pages with the arrows — the tabs are
+   drag handles (touch-action:none), so the bar cannot be swipe-scrolled on
+   them and wrapping to more rows would eat the terminal's space. */
+@media(max-width:900px){
+  .tabbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
+    border-radius:0;border-left:0;border-right:0}
+  .tabbar::-webkit-scrollbar{display:none}
+  .tscroll{display:block;flex:0 0 auto;border:1px solid var(--line);
+    background:var(--panel);padding:0 12px;font-size:16px;color:var(--dim)}
+  #tabL{border-radius:8px 0 0 0;border-right:0}
+  #tabR{border-radius:0 8px 0 0;border-left:0}
+}
 
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
   border:1px solid var(--line);border-radius:8px;padding:5px;display:flex;
@@ -245,7 +261,15 @@ body.dragging .tab .lbl{cursor:grabbing}
   background:var(--line);border:1px solid var(--line);border-top:0;
   border-radius:0 0 8px 8px;overflow:hidden}
 .panes.split{grid-template-columns:1fr 1fr}
-@media(max-width:900px){ .panes.split{grid-template-columns:1fr} }
+/* A phone has no room for a split: a split layout shows only its active pane
+   (every tab is still on the strip), and the pin controls that build splits
+   are hidden — the split machinery is desktop's. */
+@media(max-width:900px){
+  .panes.split{grid-template-columns:1fr}
+  .panes.split .pane:not(.active){display:none}
+  .tab [data-pin]{display:none}
+  .pinmenu{display:none}
+}
 .pane{position:relative;background:#000;min-height:0;display:flex;flex-direction:column}
 .pane.hidden{display:none}
 .pane.active{outline:2px solid #2ea043;outline-offset:-2px}
@@ -339,7 +363,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   <span class="spacer"></span>
   <span class="meta" id="uptime"></span>
   <button onclick="refresh()">↻</button>
-  <button id="bCards" title="reset the sidebar cards — default order, all expanded">⟲</button>
+  <button id="bCards" title="reset the sidebar cards — default order, all expanded">▤</button>
 </header>
 
 <div class="switch">
@@ -393,7 +417,11 @@ body.dragging .tab .lbl{cursor:grabbing}
   </div>
 
   <div class="col term">
-    <div class="tabbar" id="tabbar"></div>
+    <div class="tabstrip">
+      <button class="tscroll" id="tabL" title="scroll the tab bar">‹</button>
+      <div class="tabbar" id="tabbar"></div>
+      <button class="tscroll" id="tabR" title="scroll the tab bar">›</button>
+    </div>
     <div class="panes" id="panes">
       <div class="pane active" id="pane0"></div>
       <div class="pane hidden" id="pane1"></div>
@@ -678,9 +706,23 @@ function flip(els, key){
 // element the gesture started on.
 let drag = null, swallowClick = false;
 
+// On touch a drag must be earned: hold still for half a second and the tab
+// lifts (long-press is a pickup, so its release is not a click either).
+// A finger that moves before then was swiping, and the drag is dropped
+// rather than reordering tabs under it. Mouse drags arm immediately.
+const HOLD_MS = 500;
+
 function startDrag(ev, id){
   if (ev.pointerType === "mouse" && ev.button !== 0) return;
-  drag = {id, x0: ev.clientX, y0: ev.clientY, moved: false};
+  drag = {id, x0: ev.clientX, y0: ev.clientY, moved: false,
+          armed: ev.pointerType !== "touch"};
+  if (!drag.armed)
+    drag.timer = setTimeout(() => {
+      if (!drag) return;
+      drag.armed = drag.moved = true;
+      document.body.classList.add("dragging");
+      drawTabs();                       // shows the held state
+    }, HOLD_MS);
   window.addEventListener("pointermove", onDrag);
   window.addEventListener("pointerup", endDrag, {once: true});
   window.addEventListener("pointercancel", endDrag, {once: true});
@@ -701,9 +743,19 @@ function dropIndex(x, y, from){
 
 function onDrag(ev){
   if (!drag) return;
+  const far = Math.hypot(ev.clientX - drag.x0, ev.clientY - drag.y0) >= 6;
+  if (!drag.armed){
+    // Moved before the hold elapsed: a swipe, not a pickup.
+    if (far){
+      clearTimeout(drag.timer);
+      drag = null;
+      window.removeEventListener("pointermove", onDrag);
+    }
+    return;
+  }
   if (!drag.moved){
     // A few pixels of slop, so an ordinary click is not read as a drag.
-    if (Math.hypot(ev.clientX - drag.x0, ev.clientY - drag.y0) < 6) return;
+    if (!far) return;
     drag.moved = true; pinFor = null;
     document.body.classList.add("dragging");
   }
@@ -718,6 +770,7 @@ function onDrag(ev){
 }
 
 function endDrag(){
+  clearTimeout(drag?.timer);
   window.removeEventListener("pointermove", onDrag);
   document.body.classList.remove("dragging");
   const moved = drag?.moved;
@@ -731,12 +784,21 @@ function endDrag(){
   drawTabs();
 }
 
+// Whether drawTabs has painted once: the very first draw is a page opening,
+// not tabs arriving, so it plays no entrances.
+let tabsDrawn = false;
+
 function drawTabs(){
-  // Slide, don't teleport: while a drag is reordering the strip, each tab is
-  // animated from where it was to where it now belongs — across the innerHTML
-  // rebuild, which is why the FLIP is keyed by tab id rather than element.
-  const play = drag?.moved
-    ? flip(() => $("tabbar").querySelectorAll(".tab"), el => el.dataset.id)
+  // Slide, don't teleport — and across the innerHTML rebuild, which is why
+  // everything is keyed by tab id rather than element. Old positions (plus a
+  // clone, for a tab about to vanish) are captured before the rebuild; after
+  // it, survivors slide to their new spot, newcomers pop in, and the departed
+  // fades out as an inert ghost pinned where it was.
+  const prev = tabsDrawn && !noMotion()
+    ? new Map([...$("tabbar").querySelectorAll(".tab")]
+        .filter(el => el.dataset.id)
+        .map(el => [el.dataset.id,
+                    {r: el.getBoundingClientRect(), ghost: el.cloneNode(true)}]))
     : null;
   const cur = panes[active], names = tabLabels();
   const html = tabs.map(t => {
@@ -791,8 +853,45 @@ function drawTabs(){
   $("bKeys").onclick = () => { showKeys = !showKeys; render(); };
   $("bNew").onclick = () => newShell("");
   if (pinFor) placePinMenu();
-  play?.();
+
+  if (prev){
+    const seen = new Set();
+    bar.querySelectorAll(".tab").forEach(el => {
+      seen.add(el.dataset.id);
+      const was = prev.get(el.dataset.id);
+      if (!was){
+        el.animate([{opacity: 0, transform: "scale(.8)"}, {opacity: 1, transform: "none"}],
+                   {duration: 140, easing: "ease"});
+        return;
+      }
+      const now = el.getBoundingClientRect();
+      const dx = was.r.left - now.left, dy = was.r.top - now.top;
+      if (dx || dy)
+        el.animate([{transform: `translate(${dx}px,${dy}px)`}, {transform: "none"}],
+                   {duration: 140, easing: "ease"});
+    });
+    const barR = bar.getBoundingClientRect();
+    for (const [id, was] of prev){
+      if (seen.has(id)) continue;
+      const g = was.ghost;
+      // Inert: no id to collide with the live strip, no events, pinned where
+      // the tab was (scroll included) while it fades.
+      g.removeAttribute("data-id");
+      g.style.cssText = `position:absolute;margin:0;pointer-events:none;`
+        + `left:${was.r.left - barR.left + bar.scrollLeft}px;`
+        + `top:${was.r.top - barR.top + bar.scrollTop}px;width:${was.r.width}px`;
+      bar.appendChild(g);
+      g.animate([{opacity: 1, transform: "none"}, {opacity: 0, transform: "scale(.8)"}],
+                {duration: 140, easing: "ease"}).onfinish = () => g.remove();
+    }
+  }
+  tabsDrawn = true;
 }
+
+// Mobile paging for the one-row strip: each press slides it by most of a
+// screen. The arrows only exist on a phone; desktop wraps instead.
+$("tabL").onclick = () => $("tabbar").scrollBy({left: -$("tabbar").clientWidth * .7, behavior: "smooth"});
+$("tabR").onclick = () => $("tabbar").scrollBy({left:  $("tabbar").clientWidth * .7, behavior: "smooth"});
 
 // A terminal at some directory, always a new one. "" is the workspace root.
 function newShell(proj){
@@ -1115,6 +1214,23 @@ function slideCard(el, closing){
   };
 }
 
+// Grow or shrink a card around what a control just changed inside it — the
+// projects error toggle, the commands cut-off, doctor's detail — with the
+// same height tween as the card-level fold. `mutate` does the actual redraw.
+function slideBody(el, mutate){
+  const card = el.closest(".card");
+  if (noMotion()){ mutate(); return; }
+  const from = card.offsetHeight;
+  card.getAnimations().forEach(a => a.cancel());
+  mutate();
+  const to = card.offsetHeight;
+  if (from === to) return;
+  card.style.overflow = "hidden";
+  card.animate([{height: from + "px"}, {height: to + "px"}],
+               {duration: 180, easing: "ease"})
+      .onfinish = () => card.style.overflow = "";
+}
+
 // The same pointer-based drag as the tab strip, turned vertical: the number
 // of *other* visible cards whose midline is above the pointer is exactly the
 // insertion index. A hidden card (findings without /reports) offers nothing
@@ -1132,7 +1248,17 @@ function cardDropIndex(y, fromKey){
 
 function startCardDrag(ev, key){
   if (ev.pointerType === "mouse" && ev.button !== 0) return;
-  cardDrag = {key, x0: ev.clientX, y0: ev.clientY, moved: false};
+  // Same touch rule as the tab strip: hold half a second to pick the card up
+  // (it dims), and a finger that moves sooner was swiping, not dragging.
+  cardDrag = {key, x0: ev.clientX, y0: ev.clientY, moved: false,
+              armed: ev.pointerType !== "touch"};
+  if (!cardDrag.armed)
+    cardDrag.timer = setTimeout(() => {
+      if (!cardDrag) return;
+      cardDrag.armed = cardDrag.moved = true;
+      document.body.classList.add("dragging");
+      document.querySelector(`.card[data-card="${key}"]`)?.classList.add("held");
+    }, HOLD_MS);
   window.addEventListener("pointermove", onCardDrag);
   window.addEventListener("pointerup", endCardDrag, {once: true});
   window.addEventListener("pointercancel", endCardDrag, {once: true});
@@ -1140,9 +1266,18 @@ function startCardDrag(ev, key){
 
 function onCardDrag(ev){
   if (!cardDrag) return;
+  const far = Math.hypot(ev.clientX - cardDrag.x0, ev.clientY - cardDrag.y0) >= 6;
+  if (!cardDrag.armed){
+    if (far){
+      clearTimeout(cardDrag.timer);
+      cardDrag = null;
+      window.removeEventListener("pointermove", onCardDrag);
+    }
+    return;
+  }
   if (!cardDrag.moved){
     // The same few pixels of slop as a tab drag: a click is not a drag.
-    if (Math.hypot(ev.clientX - cardDrag.x0, ev.clientY - cardDrag.y0) < 6) return;
+    if (!far) return;
     cardDrag.moved = true;
     document.body.classList.add("dragging");
   }
@@ -1158,8 +1293,10 @@ function onCardDrag(ev){
 }
 
 function endCardDrag(){
+  clearTimeout(cardDrag?.timer);
   window.removeEventListener("pointermove", onCardDrag);
   document.body.classList.remove("dragging");
+  document.querySelectorAll(".card.held").forEach(el => el.classList.remove("held"));
   const moved = cardDrag?.moved;
   cardDrag = null;
   if (!moved) return;
@@ -1270,7 +1407,8 @@ function drawProjects(ps){
                  : `${flagged.length} ${flagged.length===1?"project needs":"projects need"} attention — use Show projects with errors`
     }</div>` + togHtml;
     if (flagged.length)
-      $("bAll").onclick = () => { showAllProjects = !showAllProjects; drawProjects(ps); };
+      $("bAll").onclick = () => { showAllProjects = !showAllProjects;
+                                slideBody(el, () => drawProjects(ps)); };
     return;
   }
 
@@ -1307,7 +1445,8 @@ function drawProjects(ps){
         >${p.excluded ? EYE : EYE_OFF}</button>
     </div>`).join("") + togHtml;
   if (flagged.length)
-    $("bAll").onclick = () => { showAllProjects = !showAllProjects; drawProjects(ps); };
+    $("bAll").onclick = () => { showAllProjects = !showAllProjects;
+                                slideBody(el, () => drawProjects(ps)); };
   el.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
     e.preventDefault();
     if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
@@ -1373,7 +1512,8 @@ function drawDoctor(){
      }</div>`;
 }
 
-$("bDocTog").onclick = () => { docOpen = $("doctor").hidden; drawDoctor(); };
+$("bDocTog").onclick = () => { docOpen = $("doctor").hidden;
+                               slideBody($("doctor"), drawDoctor); };
 
 $("bDoctor").onclick = async () => {
   const b = $("bDoctor");
@@ -1439,7 +1579,8 @@ function drawCommands(){
      ? `<button id="bCmds">${showAllCommands ? "Show fewer" : `Show all (${order.length})`}</button>`
      : "");
   if (order.length > COMMANDS_SHOWN)
-    $("bCmds").onclick = () => { showAllCommands = !showAllCommands; drawCommands(); };
+    $("bCmds").onclick = () => { showAllCommands = !showAllCommands;
+                                 slideBody(el, drawCommands); };
   el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
   el.querySelectorAll("[data-tack]").forEach(b => b.onclick = () =>
     setPinned(b.dataset.tack, b.dataset.on === "0"));
@@ -1648,19 +1789,20 @@ function drawSessions(ss){
   // Named exactly as its tab is — the tmux name and the full path are on hover,
   // where the detail belongs.
   const names = sessionLabels();
-  // The pill answers "where is this session's tab", not tmux's attach state.
-  // Attach tracks connected terminals, and the page only keeps a terminal in
-  // a showing pane — so "attached" just restated which tab was selected,
-  // which the reader is already looking at.
+  // The Open button wears where the session's tab is: green when the tab is
+  // on the strip (Open goes to it), plain when it is minimised (Open brings
+  // it back). Not tmux's attach state — that only ever restated which tab
+  // was selected, which the reader is already looking at.
   const tabbed = new Set(tabs.filter(t => t.kind === "term").map(t => sessionOf(t.arg)));
   el.innerHTML = ss.map(s => `
     <div class="row">
       <div class="grow"><span class="name" title="${esc(s.name + (s.cwd ? " — " + s.cwd : ""))}"
         >${stateDot(s.claude)}${esc(names.get(s.name) || s.name)}</span>
-        <span class="pill ${tabbed.has(s.name)?"ok":""}">${tabbed.has(s.name)?"tab bar":"minimised"}</span>
         ${s.claude?.task ? `<div class="sub" title="${esc(s.claude.task)}">${
           s.claude.state === "working" ? "working on" : "done"}: ${esc(s.claude.task)}</div>` : ""}</div>
-      <button data-a="${esc(s.name)}">Open</button>
+      <button class="${tabbed.has(s.name) ? "primary" : ""}" data-a="${esc(s.name)}"
+        title="${tabbed.has(s.name) ? "its tab is on the tab bar — go to it"
+                                    : "minimised — reopen its tab"}">Open</button>
       <button data-k="${esc(s.name)}" title="end this session">✕</button>
     </div>`).join("");
   el.querySelectorAll("[data-a]").forEach(b => b.onclick = () =>
