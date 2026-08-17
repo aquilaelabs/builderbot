@@ -480,8 +480,15 @@ terminal on `7681`:
   start there; **Shell** stays, since that is often how you would fix it
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD.
-  If the scanner re-runs while the report is open, the view reloads itself —
-  the page watches the report files' mtime, so you never triage stale findings
+  Project groups start collapsed — the severity pills on each are the overview,
+  and what you open stays open across reloads. If the scanner re-runs while
+  the report is open, the view reloads itself — the page watches the report
+  files' mtime, so you never triage stale findings. The sidebar card carries
+  the headline: one row per project with its counts by severity, so "whose
+  code, how bad" is answered without opening the report. Both leave out
+  projects that are excluded or have repo errors — those get fixed in the
+  Projects card first — and the report says how many findings that held back
+  rather than quietly shrinking
 - a **Stop / Start** toggle for the runner, showing whichever one applies.
   Stopping waits for GitHub to release the runner's session rather than
   reporting success and leaving a listener behind
