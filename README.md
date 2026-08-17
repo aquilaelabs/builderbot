@@ -436,7 +436,11 @@ not the same as better code, and suppressing a finding satisfies that goal too.
 Off by default. When enabled it serves a status page on `8080` and a browser
 terminal on `7681`:
 
-- container uptime, runner registration and listening state
+- container uptime, and runner state — registered, listening, or **running a
+  job**, with the job's name and how long it has been going. (That is as far
+  as it goes: a runner long-polls for one job at a time and is never told what
+  else is queued, and how far through its own work a job is — tests passed,
+  steps left — is known only to the tool inside the step.)
 - every project under `/workspace` with its branch, and one-click **Claude**
   and **Shell** per project
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,

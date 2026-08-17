@@ -194,9 +194,49 @@ def tmux_sessions():
     return rows
 
 
+def log_path():
+    """Where entrypoint.sh sends the container log — same rules as bb_log_dir."""
+    d = os.environ.get("BB_LOG_DIR") or ("/logs" if Path("/logs").is_dir()
+                                         else "/config/logs")
+    return Path(d) / "builderbot.log"
+
+
+# The runner announces each job on stdout, which lands in the container log:
+#     2026-08-17 02:27:17Z: Running job: tests
+#     2026-08-17 02:29:04Z: Job tests completed with result: Succeeded
+JOB_START = re.compile(r"Running job:\s*(.+?)\s*$")
+JOB_END = re.compile(r"Job\s+(.+?)\s+completed with result:")
+
+
+def current_job():
+    """Name of the job the runner is on, from the last of those two lines.
+
+    Cosmetic only — whether a job is running at all is decided by the worker
+    process, not by this. A rotated or unreadable log costs the name, nothing
+    more.
+    """
+    p = log_path()
+    try:
+        with p.open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - 65536))       # the tail is enough, and bounded
+            tail = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    for line in reversed(tail.splitlines()):
+        if JOB_END.search(line):
+            return None                          # finished before it started
+        m = JOB_START.search(line)
+        if m:
+            return m.group(1)
+    return None
+
+
 def runner():
     d = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner"))
-    info = {"registered": False, "listening": False, "name": None, "url": None}
+    info = {"registered": False, "listening": False, "busy": False,
+            "job": None, "elapsed": None, "name": None, "url": None}
     cfg = d / ".runner"
     if cfg.is_file():
         info["registered"] = True
@@ -207,6 +247,22 @@ def runner():
         except (ValueError, OSError):
             pass
     info["listening"] = run(["pgrep", "-f", "Runner.Listener"], timeout=10)["code"] == 0
+    # The Listener stays up for the whole of a job and spawns a Worker per job,
+    # so "listening" alone cannot tell idle from busy — which made the dashboard
+    # claim the runner was waiting while it was building.
+    w = run(["pgrep", "-f", "Runner.Worker"], timeout=10)
+    info["busy"] = w["code"] == 0
+    if info["busy"]:
+        info["job"] = current_job()
+        # How long the job has been going. There is no progress to report
+        # beyond this: a runner long-polls for one job at a time and is never
+        # told what else is queued, and what a job *does* — how many tests, how
+        # far in — is known only to the tool running inside the step.
+        pid = w["out"].split()[0] if w["out"].split() else None
+        if pid:
+            e = run(["ps", "-o", "etimes=", "-p", pid], timeout=10)
+            if e["code"] == 0 and e["out"].strip().isdigit():
+                info["elapsed"] = int(e["out"].strip())
     info["enabled"] = os.environ.get("ENABLE_RUNNER", "true").lower() not in ("false", "0", "no")
     return info
 
