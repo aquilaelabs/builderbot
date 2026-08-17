@@ -181,6 +181,9 @@ ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 # ---------------------------------------------------------------------------
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 
+# trivy:ignore:DS-0017 — the apt-get update below feeds `playwright install
+# --with-deps`, which runs apt-get install itself in this same layer; the
+# scanner only recognises a literal install and reports the update as alone.
 RUN set -eux; \
     if [ "${INSTALL_PLAYWRIGHT}" != "true" ]; then echo "skipping Playwright"; exit 0; fi; \
     npm install -g --foreground-scripts playwright; \
@@ -301,6 +304,8 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # GitHub Actions runner
 # ---------------------------------------------------------------------------
+# trivy:ignore:DS-0017 — same as Playwright above: the update feeds the
+# runner's own installdependencies.sh, which apt-get installs in this layer.
 RUN set -eux; \
     case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
         amd64) RUNNER_ARCH=x64 ;; \
@@ -367,6 +372,8 @@ RUN set -eux; \
 # loaded shielded keys from /secrets/ssh into the root-owned agent, every
 # session's ssh/git picks them up through this socket. Harmless when no
 # agent is running — ssh falls back to ~/.ssh key files.
+# trivy:ignore:DS-0031 — a socket path, not a secret; the name trips the
+# scanner's credential-shaped-variable heuristic.
 ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 
 # RUNNER_LABELS here must be the full set runner.sh, the template and the docs
@@ -387,5 +394,9 @@ WORKDIR /workspace
 HEALTHCHECK --interval=60s --timeout=10s --start-period=90s --retries=3 \
     CMD ["/opt/builderbot/scripts/healthcheck.sh"]
 
+# trivy:ignore:DS-0002 — no USER on purpose. The entrypoint must start as
+# root to load shielded secrets into a root-owned agent and set up the
+# runner, and only then hands sessions to `builder`; a USER here would
+# break exactly the privilege separation the finding is asking for.
 ENTRYPOINT ["/usr/bin/tini", "--", "/opt/builderbot/scripts/entrypoint.sh"]
 CMD ["supervise"]

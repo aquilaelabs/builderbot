@@ -972,17 +972,29 @@ def findings_counts(ps):
     # keep counting as unattributed here while the report tab, which parses
     # fresh, files it correctly.
     known = {p["name"] for p in ps}
-    key = (reports_mtime(), tuple(sorted(known)))
+    files = []
+    if REPORTS.is_dir():
+        files = sorted(REPORTS.glob("*.sarif")) + \
+            sorted(REPORTS.glob("*.sarif.json"))
+    # Nanosecond mtime plus size, per file: a report parsed mid-write and
+    # finished within the same second must not stay cached as "no findings"
+    # until the next scan.
+    try:
+        stamp = tuple((f.name, f.stat().st_mtime_ns, f.stat().st_size) for f in files)
+    except OSError:
+        stamp = ()
+    key = (stamp, tuple(sorted(known)))
     if _findings_counts["mtime"] != key:
-        per = {}
-        if REPORTS.is_dir():
-            files = sorted(REPORTS.glob("*.sarif")) + \
-                sorted(REPORTS.glob("*.sarif.json"))
-            for f in files:
-                for row in parse_sarif(f, known)["findings"]:
-                    lv = per.setdefault(row["project"] or "", {})
-                    lv[row["level"]] = lv.get(row["level"], 0) + 1
-        _findings_counts.update(mtime=key, projects=per)
+        per, broken = {}, False
+        for f in files:
+            rep = parse_sarif(f, known)
+            broken = broken or bool(rep.get("error"))
+            for row in rep["findings"]:
+                lv = per.setdefault(row["project"] or "", {})
+                lv[row["level"]] = lv.get(row["level"], 0) + 1
+        # A report that failed to parse is not cached: half-written is the
+        # usual reason, and the next poll should read it whole.
+        _findings_counts.update(mtime=None if broken else key, projects=per)
     valid = _valid_projects(ps)
     return {p: lv for p, lv in _findings_counts["projects"].items()
             if not p or p in valid}
