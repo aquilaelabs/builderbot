@@ -24,7 +24,9 @@ bb claude-md
 That compares the environment block above against the template the container
 ships, and changes nothing. If it reports the block differs, run
 `bb claude-md --update` and mention that you did — the update rewrites only the
-marked block and never touches the project notes below the end marker.
+marked block and never touches the project notes below the end marker. (The
+dashboard notices the same drift on its own and offers the update as a link on
+the project's row, so it may already have been done for you.)
 
 Two things about doing it:
 
@@ -46,7 +48,7 @@ recreated on every image update.
 
 | Thing | Where |
 |---|---|
-| This project, including uncommitted work | `/workspace/<project>` → a share on the array |
+| This project, including uncommitted work | `/workspace/<project>` — the projects share is mounted whole at `/workspace`, so every folder in it is here |
 | Your session transcripts and memory files | `~/.claude/` |
 | Claude Code login, shell history, AVDs | `~` (the home volume) |
 | Android system images and platforms | `~/.android/sdk` (symlinked into the SDK) |
@@ -73,9 +75,11 @@ container is about to eat it.
 
 ## Stay in this directory
 
-`/workspace` holds *other projects* as sibling directories. Your working
-directory is this project. Do not read from or write to sibling projects, and
-do not go looking for context in them — if something seems to be missing, ask.
+`/workspace` holds *other projects* as sibling directories — the whole projects
+share is mounted there, so that is every folder in it, not a hand-picked few.
+Your working directory is this project. Do not read from or write to sibling
+projects, and do not go looking for context in them — if something seems to be
+missing, ask.
 
 If this session was started from the dashboard, that is also enforced: the file
 tools are denied every sibling path and the runner's `_work` tree, via a
@@ -205,7 +209,8 @@ images per `ANDROID_SYSTEM_IMAGES`) ·
 `mise` for per-project tool pinning
 
 Check `bb status` for versions and `bb doctor` when something environmental
-looks wrong — it diagnoses auth, connectivity and GPU state in one pass.
+looks wrong — it diagnoses auth, connectivity and GPU state in one pass. Bare
+`bb` lists everything it can do.
 
 The container clock is set from the host's `TZ`, so timestamps you print are
 local time, not UTC. Worth stating explicitly when you quote one.

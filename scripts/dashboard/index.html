@@ -68,6 +68,9 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
 .row .name{font-weight:600}
 .row .sub{color:var(--dim);font:12px/1.4 var(--mono)}
 .row .sub.bad{color:var(--bad)}
+/* A problem the page can fix is a link in the colour of its own warning. */
+.row .sub a.fix{color:inherit;text-decoration:underline;cursor:pointer}
+.row .sub a.fix:hover{color:var(--ink)}
 .row .sub.warn{color:var(--warn)}
 /* Excluded is a decision, not a fault — stated plainly rather than alarming. */
 .row .sub.off{color:var(--dim);font-style:italic}
@@ -917,8 +920,15 @@ function drawProjects(ps){
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}</div>` : ""}
-        ${p.issues.map(i =>
-          `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
+        ${p.issues.map(i => i.action
+          // An issue with a fix that takes no decisions says so, and is the
+          // control that applies it — underlined, because a line you can click
+          // should look like one.
+          ? `<div class="sub ${cls[i.level] || ""}"><a href="#" class="fix"
+               data-fix="${esc(i.action)}" data-proj="${esc(p.name)}"
+               title="runs bb claude-md --update in ${esc(p.name)}"
+               >${esc(i.text)}</a></div>`
+          : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
       ${p.excluded ? "" : `<button class="${live.has("claude-"+p.name) ? "primary" : ""}"
          data-c="${esc(p.name)}"
@@ -932,6 +942,10 @@ function drawProjects(ps){
                             : "exclude — block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? EYE : EYE_OFF}</button>
     </div>`).join("");
+  el.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    if (a.dataset.fix === "claude-md-update") updateClaudeMd(a.dataset.proj, a);
+  });
   el.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
   el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
   el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
@@ -959,13 +973,13 @@ const TACK = `<svg viewBox="0 0 16 16" aria-hidden="true">
            -.8-.5-1.3-1-1.3-1.9V1.6"/>
   <path d="M8 9.2v5.2"/></svg>`;
 
-// Pinned first, alphabetically among themselves; everything else keeps the
-// server's order, which groups the commands by what they act on.
+// Pinned first, then the rest — both in the order `bb help` lists them, which
+// is the order the server sends. Pinning moves a command up; it does not
+// re-sort it into an order the CLI never uses.
 function commandOrder(){
   const all = state?.macros || [];
   const pins = new Set(state?.pinned || []);
-  return [...all.filter(m => pins.has(m.name)).sort((a, b) => a.label.localeCompare(b.label)),
-          ...all.filter(m => !pins.has(m.name))];
+  return [...all.filter(m => pins.has(m.name)), ...all.filter(m => !pins.has(m.name))];
 }
 
 function drawCommands(){
@@ -994,6 +1008,28 @@ function drawCommands(){
   el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
   el.querySelectorAll("[data-tack]").forEach(b => b.onclick = () =>
     setPinned(b.dataset.tack, b.dataset.on === "0"));
+}
+
+// Refresh one project's environment block. The link says what it is doing
+// while it does it: the update is quick but not instant, and a line that looks
+// unchanged invites a second click.
+async function updateClaudeMd(name, link){
+  if (link.dataset.busy) return;
+  link.dataset.busy = "1";
+  const said = link.textContent;
+  link.textContent = `updating ${name}…`;
+  try{
+    const r = await fetch("/api/claude-md", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({name})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); link.textContent = said; link.dataset.busy = ""; return; }
+    notify(`${name}: CLAUDE.md environment block updated — your project notes are untouched`);
+  }catch(e){
+    notify("could not update it: " + e, true);
+    link.textContent = said; link.dataset.busy = "";
+    return;
+  }
+  refresh();                            // the warning goes away on its own
 }
 
 async function setPinned(name, on){

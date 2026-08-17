@@ -18,6 +18,18 @@ is_true() {
     esac
 }
 
+# is_mountpoint PATH — is this path a bind mount from the host?
+#
+# Used to tell a directory this container owns from one that belongs to the
+# server: the projects folder is mounted whole now, so /workspace is somebody's
+# share rather than a scratch directory we made, and changing its ownership is
+# not ours to do.
+is_mountpoint() {
+    local p="${1%/}"
+    [ -n "$p" ] || return 1
+    awk -v p="$p" '$5 == p { found = 1 } END { exit !found }' /proc/self/mountinfo
+}
+
 # run_as_builder CMD... — drop privileges when we happen to be root.
 run_as_builder() {
     if [ "$(id -u)" -eq 0 ]; then

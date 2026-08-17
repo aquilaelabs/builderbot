@@ -39,10 +39,15 @@ NOTES
   <DonateLink/>
   <Requires/>
 
-  <!-- ===================== project mounts ===================== -->
-  <Config Name="MediaReducer project" Target="/workspace/MediaReducer-Dev" Default="/mnt/user/development/MediaReducer-Dev" Mode="rw" Description="First project directory, visible to Claude Code at /workspace/MediaReducer-Dev" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/development/MediaReducer-Dev</Config>
-  <Config Name="MediaReducer-Stage project" Target="/workspace/MediaReducer-Stage" Default="/mnt/user/development/MediaReducer-Stage" Mode="rw" Description="Staging project directory, visible to Claude Code at /workspace/MediaReducer-Stage" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/development/MediaReducer-Stage</Config>
-  <Config Name="FreshBoot project" Target="/workspace/FreshBoot" Default="/mnt/user/development/FreshBoot" Mode="rw" Description="Second project directory, visible to Claude Code at /workspace/FreshBoot" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/development/FreshBoot</Config>
+  <!-- ===================== project mounts =====================
+       One mapping, not one per project. Every subfolder of this path shows up
+       as a project, so adding one is a matter of making a folder rather than
+       editing the container; the dashboard's Projects card reports whatever is
+       wrong with a directory (no git repository, no CLAUDE.md, ownership the
+       container user cannot work with) instead of it silently not appearing.
+       Upgrading from a template with per-project mappings: delete them, or the
+       old mount stays and shadows the same folder inside this one. -->
+  <Config Name="Projects folder" Target="/workspace" Default="/mnt/user/development" Mode="rw" Description="The folder your projects live in. Every subfolder of it becomes a project at /workspace/&lt;name&gt;, visible to Claude Code and listed on the dashboard - add a project by creating a folder here, no container edit needed. Directories with a problem (not a git repository, no CLAUDE.md, wrong ownership) are reported on the dashboard's Projects card under 'Show projects with errors'. Note: the runner's work directory is mounted inside this one at /workspace/_work, so Docker creates an empty _work folder in this share; it is skipped everywhere the projects are listed. If you are upgrading from a template that mapped each project separately, remove those mappings." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/development</Config>
 
   <!-- ===================== persistent state ===================== -->
   <Config Name="Home (Claude login, shell config)" Target="/home/builder" Default="/mnt/user/appdata/BuilderBot/home" Mode="rw" Description="Persists Claude Code credentials, npm globals, AVDs and shell history across image updates" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/BuilderBot/home</Config>

@@ -142,14 +142,24 @@ curl -fsSL \
 Then in the WebUI: **Docker** tab → **Add Container** → in the *Template*
 dropdown pick **builderbot**. You get a form with everything already wired:
 
-* the project paths (`MediaReducer-Dev`, `MediaReducer-Stage`, `FreshBoot`
-  under `/mnt/user/development`) mapped into `/workspace/…`
+* the projects folder (`/mnt/user/development`) mapped to `/workspace` — one
+  mapping for all of them, so every folder in that share is a project and
+  adding one never means editing the container again
 * the appdata paths for home / config / runner work
 * fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), git identity, TZ
 
 Fill in `GITHUB_PAT` (and `GIT_USER_NAME`/`GIT_USER_EMAIL`), leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
 **Apply**. Unraid pulls the image and starts it.
+
+**Already running an older template?** The projects used to be mapped one at a
+time (`/workspace/MediaReducer-Dev`, `/workspace/FreshBoot`, …). Those mappings
+are stored on *your container*, and a template that no longer lists them does
+not remove them — Unraid never applies new template values to a container that
+already exists. Edit the container, **delete each per-project Path**, and add
+one mapping of `/mnt/user/development` → `/workspace`. Leaving both in place
+mounts the same folder twice: the old mapping shadows the identically-named
+folder inside the new one, which works but hides any change to the parent.
 
 ### Give the container time to stop
 
@@ -281,6 +291,12 @@ You get container and runner status, a rendered report of whatever SARIF your
 scanner drops in `/reports`, every `bb` command as a button that types into the
 terminal you are looking at (thumbtack the ones you use to keep them on top),
 and browser terminals backed by tmux.
+
+The Projects card is the list of folders in the projects share, and it says
+what is wrong with each one rather than hiding it: no git repository or
+ownership the container cannot work with in red, no `CLAUDE.md` in amber, and a
+`CLAUDE.md` whose environment block has fallen behind the image as an
+underlined link that updates it on the spot.
 
 A permanent workspace tab sits at the left. **Claude** opens one session per
 project — resumable if a previous conversation exists — and **Shell** opens
@@ -592,9 +608,13 @@ burns through them quickly — if that happens, raise it or grab the files off
 the share before restarting again.
 
 **File ownership.** The container writes as `99:100` (`nobody:users`). If a
-project share is owned differently, fix it once
+project is owned differently, fix that project once
 (`chown -R 99:100 /mnt/user/development/FreshBoot`) or set
-`CHOWN_PROJECTS=true`.
+`CHOWN_PROJECTS=true` to do it for all of them at every start. The container
+never chowns the projects share itself — that folder is yours, and a container
+quietly changing the ownership of a share because it started is a surprise, not
+a repair. It warns in the log if it cannot write there, and the dashboard names
+any project it cannot read, write or enter.
 
 **`/mnt/user` vs `/mnt/cache`.** Mount through `/mnt/user` (the FUSE layer).
 Mixing direct-disk and user-share paths for the same data corrupts files.

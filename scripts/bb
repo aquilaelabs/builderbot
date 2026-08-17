@@ -652,7 +652,10 @@ cmd_doctor() {
     return $ok
 }
 
-case "${1:-status}" in
+# Bare `bb` prints what it can do. It used to run `status`, which is the same
+# wall of tool versions `bb status` gives you — an answer to a question nobody
+# typing `bb` on its own was asking.
+case "${1:-help}" in
     status)   cmd_status ;;
     projects) cmd_projects ;;
     shell)    exec bash -l ;;
