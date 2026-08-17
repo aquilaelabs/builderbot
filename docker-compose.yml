@@ -134,6 +134,12 @@ services:
       # stay in config/logs.
       # - /mnt/user/logs/builderbot:/logs
 
+      # Cosmetic, Unraid only: Unraid's container-icon cache. With this
+      # mounted rw the container drops <name>-icon.png in on every start, and
+      # Unraid stops trying to download an icon it cannot reach — it only
+      # fetches the Icon URL when its cache is empty.
+      # - /var/lib/docker/unraid/images:/unraid-icons
+
       # Recommended for the runner PAT and git ssh keys: a root-owned
       # (chmod 700) folder with builderbot.env (GITHUB_PAT=...) and an ssh/
       # subfolder of private keys. Secrets provided here are shielded from
