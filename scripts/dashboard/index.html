@@ -1460,11 +1460,16 @@ function drawSessions(ss){
   // Named exactly as its tab is — the tmux name and the full path are on hover,
   // where the detail belongs.
   const names = sessionLabels();
+  // The pill answers "where is this session's tab", not tmux's attach state.
+  // Attach tracks connected terminals, and the page only keeps a terminal in
+  // a showing pane — so "attached" just restated which tab was selected,
+  // which the reader is already looking at.
+  const tabbed = new Set(tabs.filter(t => t.kind === "term").map(t => sessionOf(t.arg)));
   el.innerHTML = ss.map(s => `
     <div class="row">
       <div class="grow"><span class="name" title="${esc(s.name + (s.cwd ? " — " + s.cwd : ""))}"
         >${stateDot(s.claude)}${esc(names.get(s.name) || s.name)}</span>
-        <span class="pill ${s.attached?"ok":""}">${s.attached?"attached":"detached"}</span>
+        <span class="pill ${tabbed.has(s.name)?"ok":""}">${tabbed.has(s.name)?"on the tab bar":"minimised"}</span>
         ${s.claude?.task ? `<div class="sub" title="${esc(s.claude.task)}">${
           s.claude.state === "working" ? "working on" : "done"}: ${esc(s.claude.task)}</div>` : ""}</div>
       <button data-a="${esc(s.name)}">Open</button>
@@ -1545,7 +1550,11 @@ async function macro(name, custom){
   refresh();
 }
 
-function render(){ drawTabs(); drawPanes(); drawKeys(); saveLayout(); }
+// The Sessions card redraws with the layout, not just on the status poll: its
+// pills mirror the tab strip, and a minimise would otherwise read as "on the
+// tab bar" for up to a poll interval.
+function render(){ drawTabs(); drawPanes(); drawKeys(); saveLayout();
+                   if (state) drawSessions(state.sessions); }
 
 // ---- layout, shared between browsers ---------------------------------
 // The tab strip lives on the server so a phone picks up what the desktop has
