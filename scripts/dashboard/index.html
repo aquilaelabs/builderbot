@@ -260,6 +260,7 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button data-m="logs">logs</button>
         <button data-m="emu-list">emu list</button>
         <button data-m="emu-start">emu start</button>
+        <button data-m="emu-status">emu status</button>
         <button data-m="emu-stop">emu stop</button>
         <button data-m="update">update claude</button>
       </div>
@@ -970,9 +971,14 @@ async function setExcluded(name, on){
 // session already exists. Map it back when the project is one we know.
 function argForSession(name){
   const known = new Set((state?.projects || []).map(p => p.name));
+  // An exact project match wins, so a project genuinely called "web-2" is not
+  // read as terminal 2 of a project called "web".
   for (const [prefix, arg] of [["claude-", "claude:"], ["shell-", "shell:"]])
     if (name.startsWith(prefix) && known.has(name.slice(prefix.length)))
       return arg + name.slice(prefix.length);
+  // shell-<project>-<n> and shell-<n>, the numbered terminals.
+  const m = /^shell-(?:(.+)-)?(\d+)$/.exec(name);
+  if (m && (!m[1] || known.has(m[1]))) return `sh:${m[2]}:${m[1] || ""}`;
   return name;
 }
 

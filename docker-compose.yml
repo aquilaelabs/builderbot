@@ -51,6 +51,13 @@ services:
       RUNNER_EPHEMERAL: ${RUNNER_EPHEMERAL:-true}
       RUNNER_WORKDIR: /workspace/_work
 
+      # --- shutdown ---------------------------------------------------------
+      # How long a stop may spend deregistering the runner, powering the
+      # emulator down and ending Claude sessions. Docker kills the container
+      # after ITS timeout regardless — pass `docker stop -t` to match, or on
+      # Unraid raise Settings -> Docker -> Docker Stop Timeout.
+      SHUTDOWN_GRACE: ${SHUTDOWN_GRACE:-90}
+
       # --- git identity -----------------------------------------------------
       GIT_USER_NAME: ${GIT_USER_NAME:-Stencil923}
       GIT_USER_EMAIL: ${GIT_USER_EMAIL:-124431934+Stencil923@users.noreply.github.com}
@@ -92,6 +99,9 @@ services:
       # ttyd binds to. The page has to tell the browser where to connect, and
       # port mappings are invisible from inside the container.
       DASHBOARD_TTYD_PUBLIC_PORT: ${DASHBOARD_TTYD_PUBLIC_PORT:-}
+      # Ceiling on open dashboard tabs. Each terminal tab is an iframe running
+      # a full terminal emulator over its own websocket.
+      DASHBOARD_MAX_TABS: ${DASHBOARD_MAX_TABS:-12}
 
       # --- publishing -------------------------------------------------------
       NPM_TOKEN: ${NPM_TOKEN:-}
@@ -106,6 +116,10 @@ services:
       EXTRA_APT_PACKAGES: ${EXTRA_APT_PACKAGES:-}
       EXTRA_NPM_PACKAGES: ${EXTRA_NPM_PACKAGES:-}
       EXTRA_PIPX_PACKAGES: ${EXTRA_PIPX_PACKAGES:-}
+      # Only used with the /unraid-icons mount below: Unraid names the cached
+      # icon after the container, which nothing inside one can observe.
+      UNRAID_ICON_NAME: ${UNRAID_ICON_NAME:-BuilderBot}
+
       PROJECT_BOOTSTRAP: ${PROJECT_BOOTSTRAP:-false}
       CHOWN_PROJECTS: ${CHOWN_PROJECTS:-false}
 

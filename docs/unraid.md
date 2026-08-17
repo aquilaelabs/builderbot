@@ -277,12 +277,19 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
    the host side if either collides with something else on the server
 4. Apply, then click the container's **WebUI** link
 
-You get container and runner status, `bb` macros as buttons, a rendered report
-of whatever SARIF your scanner drops in `/reports`, and a browser terminal with
-a persistent tmux session per project. A permanent **workspace** tab sits at
-the left; Claude, Shell and the findings report open as closable tabs beside
-it, and any tab can be pinned to a left or right pane for a side-by-side view.
-A tab's ✕ ends its tmux session; a pane's ✕ only collapses the split.
+You get container and runner status, a rendered report of whatever SARIF your
+scanner drops in `/reports`, `bb` macros that type into the terminal you are
+looking at, and browser terminals backed by tmux.
+
+A permanent **workspace** tab sits at the left. **Claude** opens one session
+per project — resumable if a previous conversation exists — and **Shell** opens
+another terminal each time you click it. Tabs can be dragged to reorder and
+pinned to a left or right pane for a side-by-side view. Closing a Claude tab
+ends its session; closing a shell tab leaves it running, to be picked up again
+from the Sessions card. A pane's ✕ only collapses the split.
+
+The tab strip is stored on the container rather than in the browser, so a phone
+shows what the desktop has open.
 
 **Both ports have to be reachable from your browser.** The page is served by
 one and the terminal websocket by the other; the terminal is a separate service
