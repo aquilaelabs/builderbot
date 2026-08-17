@@ -302,6 +302,14 @@ an error carries no Claude button, since a session cannot start there.
 
 Selecting text in a shell terminal copies it to your clipboard as you release
 the mouse. Claude tabs keep tmux's mouse mode instead, so they do not.
+Right-click gives you the browser's menu only — tmux's would be drawn
+underneath it — and Alt+right-click still opens tmux's if you want it.
+
+Upgrading from an image older than this one: BuilderBot used to write its tmux
+settings straight into `~/.tmux.conf`, which is on the persistent home volume.
+That copy is replaced on the next start (kept as `~/.tmux.conf.builderbot-old`),
+and the launcher sets mouse mode on each session anyway, so the clipboard
+behaviour does not depend on it.
 
 Below the `bb` commands is a card for your own: **+** takes a title and a list
 of command lines, and the button it makes types them into the terminal in order.

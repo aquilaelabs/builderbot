@@ -74,6 +74,11 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
 .row .sub.warn{color:var(--warn)}
 /* Excluded is a decision, not a fault — stated plainly rather than alarming. */
 .row .sub.off{color:var(--dim);font-style:italic}
+/* An excluded project is greyed out because nothing acts on it. The two
+   controls that still do — Shell, and the eye that lets it back in — keep their
+   weight, or the row would look like it had been switched off entirely. */
+.row.off .name,.row.off .sub{opacity:.55}
+.row.off [data-s],.row.off .eye{opacity:1}
 .grow{flex:1;min-width:120px}
 
 button{background:#232b34;color:var(--ink);border:1px solid var(--line);
@@ -995,7 +1000,10 @@ let showAllProjects = false;
 function drawProjects(ps){
   const el = $("projects"), tog = $("projTog");
   const flagged = ps.filter(isBroken);
-  const shown   = showAllProjects ? ps : ps.filter(p => !isBroken(p));
+  // Excluded last: it is not a problem waiting to be fixed like the rest of
+  // what is folded away here, it is a decision already made.
+  const shown   = (showAllProjects ? ps : ps.filter(p => !isBroken(p)))
+                  .slice().sort((a, b) => (a.excluded ? 1 : 0) - (b.excluded ? 1 : 0));
 
   tog.innerHTML = flagged.length
     ? `<button id="bAll">${showAllProjects ? "Hide" : "Show"} projects with errors (${flagged.length})</button>`
@@ -1014,14 +1022,16 @@ function drawProjects(ps){
   const cls = {error:"bad", warning:"warn", excluded:"off"};
   const live = liveSessions();
   el.innerHTML = shown.map(p => `
-    <div class="row">
+    <div class="row${p.excluded ? " off" : ""}">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}</div>` : ""}
-        ${p.issues.map(i => i.action
+        ${p.issues.map(i => i.action && !p.excluded
           // An issue with a fix that takes no decisions says so, and is the
           // control that applies it — underlined, because a line you can click
-          // should look like one.
+          // should look like one. Not on an excluded project: nothing acts on
+          // one of those until it is let back in, and a link that would refuse
+          // is worse than plain text saying what is wrong.
           ? `<div class="sub ${cls[i.level] || ""}"><a href="#" class="fix"
                data-fix="${esc(i.action)}" data-proj="${esc(p.name)}"
                title="runs bb claude-md ${i.action === "claude-md-init" ? "--init" : "--update"

@@ -527,9 +527,23 @@ with it on, tmux takes the drag and the text only ever reaches a tmux paste
 buffer. The trade is that the wheel no longer scrolls tmux's scrollback there —
 at a prompt it walks shell history instead, and `Ctrl-b [` enters copy mode
 where the wheel scrolls again. **Claude tabs keep mouse mode** and so do not
-copy on select; its interface wants the mouse more than the clipboard. Put
-`set -g mouse on` in `~/.tmux.conf` after the `source-file` line to have the old
-behaviour back everywhere.
+copy on select; its interface wants the mouse more than the clipboard.
+
+The launcher sets this on the session as it starts one, not only in the config
+file, because `~/.tmux.conf` lives on the persistent home: an install upgraded
+from an image that wrote its settings straight into that file would otherwise
+keep `mouse on` forever and nothing would explain why. That old copy is
+recognised and replaced on the next start, with the original kept as
+`~/.tmux.conf.builderbot-old`. Because the setting is applied per session, a
+`set -g mouse on` in your own config no longer overrides it — turn it back on
+where you want it with `Ctrl-b : set mouse on`.
+
+**Right-click gives you one menu, the browser's.** tmux draws its own context
+menu inside the terminal, and the browser's lands on top of it — two menus for
+one click, only one of them dismissable. The browser's cannot be suppressed
+from outside the frame (the terminal is served from its own port), so tmux's is
+unbound. **Alt+right-click** still opens it if you want *Copy Line* and the
+pane commands.
 
 **The tab strip is shared, not per-browser.** It lives on the container, so
 opening the dashboard on a phone shows what the desktop has open, and a change
@@ -613,8 +627,13 @@ would be advice. Specifically, excluding a project:
 - refuses `claude:<project>` at launch, with a message saying why
 - ends any Claude session already running there, rather than taking effect
   "next time"
-- folds the row away behind **Show projects with errors**, where **Include**
-  reverses it
+- folds the row away behind **Show projects with errors**, and puts it at the
+  *bottom* of that list — an exclusion is a decision already made, not a problem
+  waiting for someone
+- greys the row out and takes the click off anything in it. A `no CLAUDE.md —
+  create one` line stays as text, because nothing acts on an excluded project
+  until it is let back in. **Shell** and the **eye** keep their weight: those
+  are how you look at it and how you reverse it
 
 Other projects' sessions were already denied read access to it, the same as to
 any sibling — that comes from the scoping above, not from excluding it.
