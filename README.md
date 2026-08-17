@@ -453,7 +453,9 @@ Off by default. When enabled it serves a status page on `8080` and a browser
 terminal on `7681`. Every sidebar card collapses to its header with a click
 on that header, and dragging a header reorders the cards; both are remembered
 in `/config/cards.json`, so the phone and the desktop agree about the
-arrangement and it survives restarts and image updates. The
+arrangement and it survives restarts and image updates. The **⟲** button in
+the top bar puts it all back: default order — Doctor on top — with every
+card expanded. The
 headers hold nothing but the title and a chevron — every control a card has
 lives in its body. The cards:
 

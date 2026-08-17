@@ -145,7 +145,9 @@ TABS_FILE = STATE / "tabs.json"
 # the data-card keys the page uses. Validated against this list both ways, so
 # the stored file can never hold a card the page would not know how to place.
 CARDS_FILE = STATE / "cards.json"
-CARD_KEYS = ["runner", "projects", "findings", "sessions", "doctor",
+# Doctor first: this order is the default an unwritten (or reset) sidebar
+# gets, and the verdict on the whole box outranks any one card below it.
+CARD_KEYS = ["doctor", "runner", "projects", "findings", "sessions",
              "commands", "custom"]
 
 
