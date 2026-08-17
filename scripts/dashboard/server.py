@@ -193,13 +193,22 @@ def projects():
     for d in sorted(WORKSPACE.iterdir()):
         if not d.is_dir() or d.name == "_work":
             continue
-        branch = None
+        branch, git_ok = None, False
         if (d / ".git").exists():
+            # Asking git rather than trusting the directory's existence: a
+            # half-copied or corrupt .git looks identical from out here, and a
+            # repo git cannot read is not one anything downstream can act on.
+            git_ok = run(["git", "-C", str(d), "rev-parse", "--is-inside-work-tree"],
+                         timeout=10)["out"].strip() == "true"
+        if git_ok:
             r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"], timeout=10)
-            # `out` carries stderr too, so a broken .git would otherwise put a
+            # `out` carries stderr too, so a detached HEAD would otherwise put a
             # `fatal:` line where the branch name goes.
-            branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(unreadable)"
-        out.append({"name": d.name, "git": branch,
+            branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
+        # Every directory is still reported. The dashboard decides what to show,
+        # and SARIF paths are attributed by matching these names — dropping one
+        # here would silently orphan its findings.
+        out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "claude_md": (d / "CLAUDE.md").is_file()})
     return out
 

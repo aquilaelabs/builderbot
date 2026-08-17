@@ -445,7 +445,10 @@ terminal on `7681`:
   through its own work a job is — tests passed, steps left — is known only to
   the tool inside the step.)
 - every project under `/workspace` with its branch, and one-click **Claude**
-  and **Shell** per project
+  and **Shell** per project. Only real git repositories are listed — a
+  directory git cannot read has no branch, no CLAUDE.md and nothing the
+  buttons would act on, so it is never offered. Repositories that have no
+  `CLAUDE.md` yet are folded away behind **Show all**
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD
 - a **Stop / Start** toggle for the runner, showing whichever one applies.

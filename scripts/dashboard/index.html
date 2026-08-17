@@ -50,7 +50,12 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
 
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;flex:0 0 auto}
 .card h2{margin:0;padding:8px 12px;font-size:11px;text-transform:uppercase;
-  letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);font-weight:600}
+  letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);
+  font-weight:600;display:flex;align-items:center;gap:8px;min-height:33px}
+.card h2 span{margin-left:auto}
+.card h2 button{font-size:10px;letter-spacing:.4px;text-transform:uppercase;
+  min-height:22px;padding:3px 8px}
+@media(max-width:900px){ .card h2 button{min-height:var(--tap)} }
 .row{display:flex;align-items:center;gap:8px;padding:7px 10px;
   border-bottom:1px solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
@@ -188,7 +193,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div id="runner"><div class="empty">loading…</div></div>
     </div>
     <div class="card">
-      <h2>Projects</h2>
+      <h2>Projects<span id="projTog"></span></h2>
       <div id="projects"><div class="empty">loading…</div></div>
     </div>
     <div class="card" id="cardFindings" hidden>
@@ -717,14 +722,41 @@ function drawRunner(r){
   el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
 }
 
+// Projects without a CLAUDE.md are hidden behind this. Non-repos are not —
+// they are never listed at all, at any setting.
+let showAllProjects = false;
+
 function drawProjects(ps){
-  const el = $("projects");
-  if (!ps.length){ el.innerHTML = '<div class="empty">nothing mounted under /workspace</div>'; return; }
-  el.innerHTML = ps.map(p => `
+  const el = $("projects"), tog = $("projTog");
+
+  // A directory git cannot read is not a project here. Every button on the row
+  // assumes a repo — a branch to show, a CLAUDE.md to check, a session whose
+  // whole point is working on tracked code — so listing one would only offer
+  // actions that go nowhere.
+  const repos = ps.filter(p => p.git_ok);
+  const hidden = repos.filter(p => !p.claude_md);
+  const shown = showAllProjects ? repos : repos.filter(p => p.claude_md);
+
+  tog.innerHTML = hidden.length
+    ? `<button id="bAll">${showAllProjects
+        ? `Hide ${hidden.length} without CLAUDE.md` : `Show all (${repos.length})`}</button>`
+    : "";
+  if (hidden.length)
+    $("bAll").onclick = () => { showAllProjects = !showAllProjects; drawProjects(ps); };
+
+  if (!shown.length){
+    el.innerHTML = `<div class="empty">${
+      !repos.length ? "no git repositories under /workspace"
+                    : `${hidden.length} ${hidden.length===1?"repository has":"repositories have"} no CLAUDE.md — use Show all`
+    }</div>`;
+    return;
+  }
+
+  el.innerHTML = shown.map(p => `
     <div class="row">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
-        <div class="sub">${p.git ? "git: "+esc(p.git) : "not a git repo"}${p.claude_md ? "" : " · no CLAUDE.md"}</div>
+        <div class="sub">git: ${esc(p.git)}${p.claude_md ? "" : " · no CLAUDE.md"}</div>
       </div>
       <button class="primary" data-c="${esc(p.name)}">Claude</button>
       <button data-s="${esc(p.name)}">Shell</button>
