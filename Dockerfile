@@ -15,6 +15,9 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG NODE_MAJOR=22
 # "latest" resolves the newest actions/runner release at build time.
 ARG RUNNER_VERSION=latest
+# ttyd serves the dashboard's terminal. Ubuntu packages it, but the static
+# release is a single self-contained binary and pins to a known version.
+ARG TTYD_VERSION=1.7.7
 ARG TARGETARCH
 
 # --- Playwright / Android build knobs --------------------------------------
@@ -61,6 +64,7 @@ RUN set -eux; \
         build-essential pkg-config make cmake \
         python3 python3-pip python3-venv python3-dev pipx \
         jq unzip zip xz-utils bzip2 tar rsync \
+        tmux \
         ripgrep fd-find fzf \
         less nano vim tini gosu sudo procps psmisc file \
         iproute2 iputils-ping dnsutils netcat-openbsd socat \
@@ -277,6 +281,20 @@ RUN set -eux; \
 # ---------------------------------------------------------------------------
 # BuilderBot scripts + home skeleton
 # ---------------------------------------------------------------------------
+# ttyd: fetched rather than apt-installed so the version is pinned and the
+# binary is static — nothing to keep in step with the base image.
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; \
+    case "$arch" in \
+        amd64) tarch=x86_64 ;; \
+        arm64) tarch=aarch64 ;; \
+        *) echo "no ttyd build for ${arch}; dashboard terminal unavailable"; exit 0 ;; \
+    esac; \
+    curl -fsSL -o /usr/local/bin/ttyd \
+        "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${tarch}"; \
+    chmod +x /usr/local/bin/ttyd; \
+    ttyd --version
+
 COPY scripts/ /opt/builderbot/scripts/
 COPY config/skel/ /opt/builderbot/skel/
 COPY config/templates/ /opt/builderbot/templates/

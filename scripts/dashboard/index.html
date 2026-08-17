@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BuilderBot</title>
+<style>
+:root{
+  --bg:#14181d; --panel:#1b2027; --line:#2a323c; --ink:#e6edf3;
+  --dim:#8b98a5; --accent:#3fb950; --warn:#d29922; --bad:#f85149;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:12px;padding:10px 16px;
+  background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
+header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
+  box-shadow:0 0 0 3px rgba(63,185,80,.15)}
+.spacer{flex:1}
+.meta{color:var(--dim);font:12px/1.4 var(--mono)}
+main{display:grid;grid-template-columns:340px 1fr;gap:12px;padding:12px;
+  height:calc(100vh - 45px)}
+@media(max-width:900px){main{grid-template-columns:1fr;height:auto}}
+.col{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px}
+.card h2{margin:0;padding:9px 12px;font-size:12px;text-transform:uppercase;
+  letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);
+  font-weight:600}
+.card .body{padding:10px 12px}
+.row{display:flex;align-items:center;gap:8px;padding:7px 12px;
+  border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .name{font-weight:600}
+.row .sub{color:var(--dim);font:12px/1.4 var(--mono)}
+.grow{flex:1;min-width:0}
+button{background:#232b34;color:var(--ink);border:1px solid var(--line);
+  border-radius:6px;padding:5px 9px;font:12px/1 inherit;cursor:pointer;
+  white-space:nowrap}
+button:hover{background:#2b3540;border-color:#3d4a58}
+button.primary{background:#1f6f36;border-color:#2ea043}
+button.primary:hover{background:#248239}
+.macros{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px}
+.pill{font:11px/1 var(--mono);padding:3px 7px;border-radius:99px;
+  border:1px solid var(--line);color:var(--dim)}
+.pill.ok{color:var(--accent);border-color:#22452c}
+.pill.bad{color:var(--bad);border-color:#4d2220}
+.pill.warn{color:var(--warn);border-color:#4a3a15}
+#term{flex:1;min-height:420px;border:1px solid var(--line);border-radius:8px;
+  overflow:hidden;background:#000}
+#term iframe{width:100%;height:100%;border:0;display:block}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px;background:var(--panel);
+  border:1px solid var(--line);border-bottom:0;border-radius:8px 8px 0 0}
+.tabs button.on{background:#1f6f36;border-color:#2ea043}
+pre{margin:0;padding:10px 12px;font:12px/1.45 var(--mono);white-space:pre-wrap;
+  word-break:break-word;max-height:340px;overflow:auto;color:#cbd5e1}
+.empty{color:var(--dim);padding:10px 12px;font-style:italic}
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>BuilderBot</h1>
+  <span class="meta" id="host"></span>
+  <span class="spacer"></span>
+  <span class="meta" id="uptime"></span>
+  <button onclick="refresh()">Refresh</button>
+</header>
+
+<main>
+  <div class="col">
+    <div class="card">
+      <h2>Runner</h2>
+      <div id="runner"><div class="empty">loading…</div></div>
+      <div class="macros">
+        <button onclick="macro('runner-status')">Status</button>
+        <button onclick="macro('runner-restart')">Restart</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Projects</h2>
+      <div id="projects"><div class="empty">loading…</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Sessions</h2>
+      <div id="sessions"><div class="empty">loading…</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Commands</h2>
+      <div class="macros">
+        <button onclick="macro('doctor')">doctor</button>
+        <button onclick="macro('status')">status</button>
+        <button onclick="macro('logs')">logs</button>
+        <button onclick="macro('emu-list')">emu list</button>
+        <button onclick="macro('emu-start')">emu start</button>
+        <button onclick="macro('emu-stop')">emu stop</button>
+        <button onclick="macro('update')">update claude</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Output</h2>
+      <pre id="out">Pick a command.</pre>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="tabs" id="tabs"></div>
+    <div id="term"><iframe id="frame" title="terminal"></iframe></div>
+  </div>
+</main>
+
+<script>
+let state = null, current = null;
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g,
+  c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+// ttyd is a separate service on its own port, reached at the same hostname the
+// dashboard was loaded from — so this keeps working through whatever hostname,
+// IP or reverse proxy the operator actually used.
+const ttyd = arg =>
+  `${location.protocol}//${location.hostname}:${state.ttyd_port}/?arg=${encodeURIComponent(arg)}`;
+
+function open(arg, label){
+  current = label;
+  document.getElementById("frame").src = ttyd(arg);
+  drawTabs();
+}
+
+function drawTabs(){
+  const t = document.getElementById("tabs");
+  const tabs = [["shell", "workspace"]];
+  for (const p of state.projects) tabs.push([`claude:${p.name}`, `claude ${p.name}`]);
+  for (const p of state.projects) tabs.push([`shell:${p.name}`, `sh ${p.name}`]);
+  t.innerHTML = tabs.map(([arg, label]) =>
+    `<button class="${label===current?"on":""}" data-arg="${esc(arg)}" data-label="${esc(label)}">${esc(label)}</button>`
+  ).join("");
+  for (const b of t.querySelectorAll("button"))
+    b.onclick = () => open(b.dataset.arg, b.dataset.label);
+}
+
+function drawRunner(r){
+  const el = document.getElementById("runner");
+  if (!r.enabled) { el.innerHTML = '<div class="empty">disabled (ENABLE_RUNNER=false)</div>'; return; }
+  const cls = r.listening ? "ok" : (r.registered ? "warn" : "bad");
+  const txt = r.listening ? "listening for jobs"
+            : r.registered ? "registered, between jobs" : "not registered";
+  el.innerHTML =
+    `<div class="row"><span class="pill ${cls}">${esc(txt)}</span></div>` +
+    (r.name ? `<div class="row"><span class="sub">${esc(r.name)} → ${esc(r.url||"")}</span></div>` : "");
+}
+
+function drawProjects(ps){
+  const el = document.getElementById("projects");
+  if (!ps.length) { el.innerHTML = '<div class="empty">nothing mounted under /workspace</div>'; return; }
+  el.innerHTML = ps.map(p => `
+    <div class="row">
+      <div class="grow">
+        <div class="name">${esc(p.name)}</div>
+        <div class="sub">${p.git ? "git: "+esc(p.git) : "not a git repo"}${p.claude_md ? "" : " · no CLAUDE.md"}</div>
+      </div>
+      <button class="primary" data-c="${esc(p.name)}">Claude</button>
+      <button data-s="${esc(p.name)}">Shell</button>
+      <button data-f="${esc(p.name)}">Findings</button>
+    </div>`).join("");
+  for (const b of el.querySelectorAll("[data-c]"))
+    b.onclick = () => open(`claude:${b.dataset.c}`, `claude ${b.dataset.c}`);
+  for (const b of el.querySelectorAll("[data-s]"))
+    b.onclick = () => open(`shell:${b.dataset.s}`, `sh ${b.dataset.s}`);
+  for (const b of el.querySelectorAll("[data-f]"))
+    b.onclick = () => macro("findings", b.dataset.f);
+}
+
+function drawSessions(ss){
+  const el = document.getElementById("sessions");
+  if (!ss.length) { el.innerHTML = '<div class="empty">no tmux sessions — nothing is running</div>'; return; }
+  el.innerHTML = ss.map(s => `
+    <div class="row">
+      <div class="grow"><span class="name">${esc(s.name)}</span>
+        <span class="pill ${s.attached?"ok":""}">${s.attached?"attached":"detached"}</span></div>
+      <button data-a="${esc(s.name)}">Attach</button>
+    </div>`).join("");
+  for (const b of el.querySelectorAll("[data-a]"))
+    b.onclick = () => open(b.dataset.a, b.dataset.a);
+}
+
+async function macro(name, project){
+  const out = document.getElementById("out");
+  out.textContent = `running ${name}${project?" · "+project:""}…`;
+  try{
+    const r = await fetch("/api/run", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({macro:name, project})});
+    const j = await r.json();
+    out.textContent = j.error ? "error: "+j.error
+      : `$ ${j.cmd}\n\n${j.out || "(no output)"}${j.code?`\n\n[exit ${j.code}]`:""}`;
+  }catch(e){ out.textContent = "request failed: "+e; }
+  refresh();
+}
+
+async function refresh(){
+  try{
+    const r = await fetch("/api/status");
+    state = await r.json();
+    document.getElementById("dot").style.background = "var(--accent)";
+    document.getElementById("host").textContent = state.host;
+    document.getElementById("uptime").textContent = "up " + state.uptime;
+    drawRunner(state.runner);
+    drawProjects(state.projects);
+    drawSessions(state.sessions);
+    if (!current) open("shell", "workspace"); else drawTabs();
+  }catch(e){
+    document.getElementById("dot").style.background = "var(--bad)";
+  }
+}
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>
