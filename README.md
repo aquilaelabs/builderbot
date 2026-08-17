@@ -308,7 +308,7 @@ bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
-bb runner status | restart
+bb runner status | stop | start | restart
 bb emu start [api] | stop | status | list
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only
@@ -436,15 +436,21 @@ not the same as better code, and suppressing a finding satisfies that goal too.
 Off by default. When enabled it serves a status page on `8080` and a browser
 terminal on `7681`:
 
-- container uptime, and runner state — registered, listening, or **running a
-  job**, with the job's name and how long it has been going. (That is as far
-  as it goes: a runner long-polls for one job at a time and is never told what
-  else is queued, and how far through its own work a job is — tests passed,
-  steps left — is known only to the tool inside the step.)
+- container uptime, and runner state — registered, listening, **running a job**
+  (with the job's name and how long it has been going), or **failing to
+  connect**. That last one matters: a runner retries a rejected connection
+  forever without exiting, so the process being up is not evidence that it is
+  reachable. (Progress within a job is as far as it goes: a runner long-polls
+  for one job at a time and is never told what else is queued, and how far
+  through its own work a job is — tests passed, steps left — is known only to
+  the tool inside the step.)
 - every project under `/workspace` with its branch, and one-click **Claude**
   and **Shell** per project
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD
+- a **Stop / Start** toggle for the runner, showing whichever one applies.
+  Stopping waits for GitHub to release the runner's session rather than
+  reporting success and leaving a listener behind
 - `bb` macros as buttons — doctor, status, logs, emulator control, update
 - live list of tmux sessions, with attach
 
@@ -462,6 +468,8 @@ you open gets its own closable tab above the terminal.
   session you can no longer see is just a process you have forgotten about.
   Claude tabs ask first — the transcript is kept, but the conversation stops.
   The workspace tab has no ✕.
+- **Drag a tab** by its label to reorder the strip. Works with a mouse or a
+  finger.
 - **⇱ on a tab** pins it to the **left** or **right** pane, which splits the
   view. The pin marker on the tab (◧ / ◨) says where it currently is.
 - **✕ on a pane** collapses back to a single pane. It does **not** close the

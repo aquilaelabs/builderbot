@@ -179,6 +179,11 @@ label in its `runs-on` is one the runner has. Four implications:
 - A job stuck in *Waiting for a runner* while the runner shows *Idle* is a
   label mismatch, not a broken runner. Compare the job's `Requested labels:`
   against the list above.
+- `Runner connect error: Error: Conflict` with *A session for this runner
+  already exists* means something else is holding this runner's name — usually
+  a listener left behind by a half-finished restart. It clears when GitHub
+  expires the old session. `bb runner status` says so explicitly; do not
+  re-register to "fix" it, that is what caused it.
 - A push to a *different* repo in the org can be building on this same box
   right now. If something is inexplicably slow, that is a candidate.
 
