@@ -101,8 +101,13 @@ you should say so rather than guessing from a headless emulator.
 If `/reports` exists, a scanner runs on the host and drops SARIF there.
 
 ```bash
-bb findings        # grouped digest, repo-relative paths
+bb findings        # this project's findings, repo-relative paths
+bb findings --all  # every project the report covers
 ```
+
+The scanner may cover several repos in one report; `bb findings` shows only
+this project's and tells you how many it held back. If a count looks wrong,
+check that line before assuming findings are missing.
 
 Read it with `bb findings`, not by opening the SARIF — the raw file is mostly
 metadata and will eat the context you need for the code.

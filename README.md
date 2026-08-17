@@ -309,7 +309,7 @@ bb emu start [api] | stop | status | list
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only
 bb claude-md --init     create one here from the template
-bb findings [PATH] digest scanner SARIF reports (default /reports)
+bb findings        this project's scanner findings (--all for every project)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -398,9 +398,17 @@ reads findings; it does not produce them. If a report looks stale, re-run the
 scanner on the host — there is deliberately no way to do it from in here.
 
 ```bash
-bb findings              # digest every SARIF report under /reports
-bb findings x.sarif      # just one
+bb findings              # this project's findings
+bb findings --all        # every project the report covers
+bb findings x.sarif      # one file rather than all of /reports
 ```
+
+A scanner pointed at a directory of repos writes one report covering all of
+them, so `bb findings` filters to the project you run it from and says how many
+it held back. Reports must be **SARIF** — several scanners default to their own
+JSON and need asking (`--format sarif` for Trivy, `--sarif` for Semgrep);
+anything that is not SARIF is skipped silently, which looks identical to a
+scanner that found nothing.
 
 Raw SARIF is mostly metadata — a few hundred KB of it fills a session's context
 before it reaches the code the findings are about. `bb findings` groups by

@@ -24,7 +24,8 @@ bb — BuilderBot helper
   bb claude-md           is this project's CLAUDE.md environment block current?
   bb claude-md --update  refresh that block, leaving the project section alone
   bb claude-md --init    create a CLAUDE.md here from the shipped template
-  bb findings [PATH]     digest scanner SARIF reports (default: /reports)
+  bb findings [PATH]     digest scanner SARIF findings for this project
+  bb findings --all      ...including findings in other projects' trees
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
   bb logs -p [N]         show a previous boot's log (the log rotates per start)
   bb logs --list         list the kept boot logs, newest first
@@ -319,9 +320,14 @@ cmd_claude_md() {
 # severity then rule, and listing bare locations under one message, keeps the
 # same information at a fraction of the size.
 FINDINGS_JQ='
-def strip_path($p): ($p | split("/")) as $parts
-  | ($parts | index($proj)) as $i
-  | if $i != null then ($parts[($i + 1):] | join("/")) else ($p | ltrimstr("/")) end;
+def parts($p): ($p | ltrimstr("/") | split("/"));
+
+# Everything up to and including the project directory is where the scanner
+# saw the code, not where this container mounts it. Dropping that prefix makes
+# the path openable from the project root.
+def strip_path($p): parts($p) as $ps
+  | ($ps | index($proj)) as $i
+  | if $i != null then ($ps[($i + 1):] | join("/")) else ($ps | join("/")) end;
 
 def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
 
@@ -329,15 +335,29 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
   | (reduce ((.tool.driver.rules // [])[]) as $x
       ({}; .[$x.id] = ($x.defaultConfiguration.level // "warning"))) as $lvl
   | .results[]?
+  | (.locations[0].physicalLocation.artifactLocation.uri // "?") as $uri
   | { level: (.level // $lvl[.ruleId] // "warning"),
       rule:  (.ruleId // "unknown"),
       msg:   ((.message.text // "") | split("\n")[0]),
-      loc:   ( strip_path(.locations[0].physicalLocation.artifactLocation.uri // "?")
+      mine:  ((parts($uri) | index($proj)) != null),
+      # First two components identify the tree a finding came from, which is
+      # what you need when the answer is "that is a different project".
+      tree:  (parts($uri)[0:2] | join("/")),
+      loc:   ( strip_path($uri)
                + ":" + ((.locations[0].physicalLocation.region.startLine // 0) | tostring) ) } ]
-| (length) as $total
-| if $total == 0 then "No findings.\n" else
-  ( "# Findings (\($total))\n"
-  + ( group_by(.level) | sort_by(.[0].level | rank)
+| . as $all
+| (if $scope == "all" then $all else map(select(.mine)) end) as $rows
+| ($rows | length) as $n
+| if ($all | length) == 0 then "No findings.\n"
+  elif $n == 0 then
+    "No findings for \($proj). This report covers: "
+    + (($all | map(.tree) | unique | join(", ")))
+    + "\nRun with --all to see them anyway.\n"
+  else
+  ( "# Findings (\($n))"
+  + (if $scope == "all" then " — all projects in this report\n"
+     else " in \($proj), of \($all | length) in the report — --all for the rest\n" end)
+  + ( $rows | group_by(.level) | sort_by(.[0].level | rank)
       | map( "\n## \(.[0].level) (\(length))\n"
              + ( group_by(.rule) | sort_by(-length)
                  | map( "\n### \(.[0].rule) (\(length))\n\(.[0].msg)\n"
@@ -347,7 +367,16 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
   end'
 
 cmd_findings() {
-    local target="${1:-${FINDINGS_DIR:-/reports}}" proj
+    local target="" scope=mine proj
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -a|--all) scope=all ;;
+            -*) die "unknown option: $1" ;;
+            *)  target="$1" ;;
+        esac
+        shift
+    done
+    target="${target:-${FINDINGS_DIR:-/reports}}"
     command -v jq >/dev/null 2>&1 || die "jq is required for 'bb findings'"
 
     # SARIF paths are recorded relative to wherever the scanner saw the code,
@@ -372,7 +401,7 @@ cmd_findings() {
     local f
     for f in "${files[@]}"; do
         printf '<!-- %s -->\n' "$f"
-        jq -r --arg proj "$proj" "$FINDINGS_JQ" "$f" \
+        jq -r --arg proj "$proj" --arg scope "$scope" "$FINDINGS_JQ" "$f" \
             || warn "could not parse ${f} as SARIF"
     done
 }
