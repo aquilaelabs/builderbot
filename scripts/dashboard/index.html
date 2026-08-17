@@ -83,6 +83,11 @@ button:disabled:hover{background:#232b34}
 button.primary{background:#1f6f36;border-color:#2ea043}
 button.on{background:#1f6f36;border-color:#2ea043}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
+/* Icon-width, so it sits beside Shell rather than wrapping the row. */
+button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
+button.eye:hover{color:var(--ink)}
+button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
+  stroke-width:1.4;stroke-linecap:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
 
 .pill{font:11px/1 var(--mono);padding:3px 7px;border-radius:99px;
@@ -284,7 +289,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 // One permanent workspace tab; everything else is opened and closable. Tabs
 // are separate from panes on purpose: a pane is a viewport, and closing one
 // should not destroy what it was showing.
-let tabs = [{id:"ws", kind:"term", arg:"shell", label:"workspace", fixed:true}];
+let tabs = [{id:"ws", kind:"term", arg:"shell", label:"sh: workspace", fixed:true}];
 let panes = ["ws", null];
 let active = 0;
 let state = null;
@@ -315,6 +320,40 @@ function sessionOf(arg){
 
 const isClaude = t => t.kind === "term" && sessionOf(t.arg).startsWith("claude-");
 const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
+
+// ---- what a tab is called --------------------------------------------
+// Derived at draw time from where the terminal *is*, not from the argument it
+// was opened with — so a `cd` shows up in the strip. The stored label is only
+// the fallback for a session tmux does not know about yet.
+const cwdOf = session => (state?.sessions || []).find(s => s.name === session)?.cwd || "";
+const baseOf = path => path.replace(/\/+$/, "").split("/").pop() || "/";
+
+function tabLabel(t){
+  if (t.kind !== "term") return t.label;
+  const s = sessionOf(t.arg);
+  if (s.startsWith("claude-")) return "Claude: " + s.slice(7);
+  const cwd = cwdOf(s);
+  return cwd ? "sh: " + baseOf(cwd) : t.label;
+}
+
+// The tooltip is the full path, which is the thing a basename loses.
+function tabTitle(t){
+  if (t.kind !== "term") return t.label;
+  return cwdOf(sessionOf(t.arg)) || t.label;
+}
+
+// Two terminals in one directory would otherwise be indistinguishable, so the
+// duplicates — and only the duplicates — carry their terminal number.
+function tabLabels(){
+  const seen = {};
+  tabs.forEach(t => { const l = tabLabel(t); seen[l] = (seen[l] || 0) + 1; });
+  const out = new Map();
+  for (const t of tabs){
+    const l = tabLabel(t), n = /^sh:(\d+):/.exec(t.arg);
+    out.set(t.id, seen[l] > 1 && n ? `${l} ${n[1]}` : l);
+  }
+  return out;
+}
 
 // The next free numbered terminal for a project ("" = the workspace root).
 // Checked against live tmux sessions as well as open tabs, so a tab closed
@@ -413,11 +452,11 @@ async function closeTab(id, ev){
   const claude  = !!session && session.startsWith("claude-");
 
   if (!confirm(
-        claude       ? `Close "${t.label}" and end the Claude session in ${session.slice(7)}?\n\n`
+        claude       ? `Close "${tabLabel(t)}" and end the Claude session in ${session.slice(7)}?\n\n`
                        + `The transcript is kept and can be resumed later, but the conversation stops now.`
-      : session      ? `Close "${t.label}"?\n\nThe terminal keeps running — reopen it from `
+      : session      ? `Close "${tabLabel(t)}"?\n\nThe terminal keeps running — reopen it from `
                        + `Sessions, or close it there to end it for good.`
-      :                `Close "${t.label}"?`))
+      :                `Close "${tabLabel(t)}"?`))
     return;
 
   if (claude){
@@ -545,12 +584,12 @@ function endDrag(){
 }
 
 function drawTabs(){
-  const cur = panes[active];
+  const cur = panes[active], names = tabLabels();
   const html = tabs.map(t => {
     const where = panes[0] === t.id ? "◧" : panes[1] === t.id ? "◨" : "";
     const held = drag?.moved && drag.id === t.id ? " held" : "";
     return `<span class="tab ${t.id===cur?"on":""}${held}" data-id="${esc(t.id)}">
-      <button class="lbl" data-show="${esc(t.id)}" title="drag to reorder">${esc(t.label)}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
+      <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
       <button class="ic" data-pin="${esc(t.id)}" title="pin to a pane">⇱</button>
       ${t.fixed?"":`<button class="ic" data-close="${esc(t.id)}" title="close tab">✕</button>`}
     </span>`;
@@ -584,8 +623,7 @@ function drawTabs(){
 function newShell(proj){
   const arg = nextShell(proj);
   if (!arg){ notify("Too many terminals open for that directory.", true); return; }
-  const n = arg.split(":")[1];
-  openTab({kind:"term", arg, label: proj ? `sh ${proj} ${n}` : `shell ${n}`});
+  openTab({kind:"term", arg, label: `sh: ${proj || "workspace"}`});
 }
 
 // ---- panes -----------------------------------------------------------
@@ -599,7 +637,7 @@ function paintBar(pane, t, i){
   const reload = t.kind === "findings"
     ? `<button class="ic" data-reload="1" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
-  bar.innerHTML = `<span>${esc(t.label)}</span>${reload}${closeBtn}`;
+  bar.innerHTML = `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
   bar.querySelectorAll("[data-cp]").forEach(b =>
     b.onclick = e => closePane(Number(b.dataset.cp), e));
   bar.querySelectorAll("[data-reload]").forEach(b =>
@@ -633,7 +671,7 @@ function drawPanes(){
 
     if (!t){ pane.innerHTML = `<div class="empty-pane">empty</div>`; continue; }
     pane.innerHTML = `<div class="bar"></div>` + (t.kind === "term"
-      ? `<div class="slot"><iframe title="${esc(t.label)}" src="${esc(ttydUrl(t.arg))}"></iframe></div>`
+      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}" src="${esc(ttydUrl(t.arg))}"></iframe></div>`
       : `<div class="doc fx" id="doc${i}"></div>`);
     paintBar(pane, t, i);
     if (t.kind === "findings"){ pane.dataset.rev = String(findingsRev); renderFindingsInto(i); }
@@ -873,10 +911,11 @@ function drawProjects(ps){
                  : p.last_claude ? "no session running — resume or start one"
                  : "start a Claude session here"}">Claude</button>`}
       <button data-s="${esc(p.name)}" title="open another terminal here">Shell</button>
-      <button data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
-        title="${p.excluded ? "allow Claude sessions here again"
-                            : "block Claude sessions for this directory, and keep it blocked"}"
-        >${p.excluded ? "Include" : "Exclude"}</button>
+      <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
+        aria-label="${p.excluded ? "include" : "exclude"}"
+        title="${p.excluded ? "include — allow Claude sessions here again"
+                            : "exclude — block Claude sessions for this directory, and keep it blocked"}"
+        >${p.excluded ? EYE : EYE_OFF}</button>
     </div>`).join("");
   el.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
   el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
@@ -888,6 +927,15 @@ function drawProjects(ps){
   el.closest(".card").querySelectorAll(".resumemenu").forEach(n => n.remove());
   if (resumeFor) placeResumeMenu();
 }
+
+// Each icon shows the ACTION, not the state: a struck-through eye on a visible
+// project means "exclude this", a plain eye on an excluded one means "let it
+// back in".
+const EYE_PATH = `<path d="M1 8s2.7-4.5 7-4.5S15 8 15 8s-2.7 4.5-7 4.5S1 8 1 8z"/>
+  <circle cx="8" cy="8" r="2.1"/>`;
+const EYE = `<svg viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}</svg>`;
+const EYE_OFF = `<svg viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}
+  <path d="M2.5 13.5 13.5 2.5"/></svg>`;
 
 // Which project's resume chooser is open, if any.
 let resumeFor = null;
@@ -921,7 +969,7 @@ function startClaude(name, sessionId){
   if (state) drawProjects(state.projects);
   openTab({kind:"term",
            arg: sessionId ? `claude:${name}:r:${sessionId}` : `claude:${name}`,
-           label:`claude ${name}`});
+           label:`Claude: ${name}`});
 }
 
 function placeResumeMenu(){
@@ -1047,7 +1095,7 @@ async function macro(name){
   focusTab(t.id);
   if (!liveSessions().has(session)){
     // The iframe was only just created; tmux has not registered it yet.
-    notify(`Opening ${t.label} — press the button again once it is up.`);
+    notify(`Opening ${tabLabel(t)} — press the button again once it is up.`);
     return;
   }
   try{
@@ -1056,7 +1104,7 @@ async function macro(name){
       body: JSON.stringify({session, macro:name})});
     const j = await r.json();
     if (j.error) notify(j.error, true);
-    else notify(`${j.sent} → ${t.label}`);
+    else notify(`${j.sent} → ${tabLabel(t)}`);
   }catch(e){ notify("could not reach the dashboard: " + e, true); }
   refresh();
 }

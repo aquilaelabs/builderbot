@@ -281,9 +281,11 @@ You get container and runner status, a rendered report of whatever SARIF your
 scanner drops in `/reports`, `bb` macros that type into the terminal you are
 looking at, and browser terminals backed by tmux.
 
-A permanent **workspace** tab sits at the left. **Claude** opens one session
-per project — resumable if a previous conversation exists — and **Shell** opens
-another terminal each time you click it. Tabs can be dragged to reorder and
+A permanent workspace tab sits at the left. **Claude** opens one session per
+project — resumable if a previous conversation exists — and **Shell** opens
+another terminal each time you click it. Tabs are named for where they are
+(`sh: <directory>`, following a `cd`; `Claude: <project>`), with the full path
+on hover. Tabs can be dragged to reorder and
 pinned to a left or right pane for a side-by-side view. Closing a Claude tab
 ends its session; closing a shell tab leaves it running, to be picked up again
 from the Sessions card. A pane's ✕ only collapses the split.

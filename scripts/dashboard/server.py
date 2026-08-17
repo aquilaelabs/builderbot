@@ -335,16 +335,36 @@ def projects():
     return out
 
 
+def session_cwds():
+    """Session name -> the working directory of its active pane.
+
+    Where a terminal *is* right now, which is not where it was opened: the tab
+    is labelled from this, so a `cd` shows up in the strip.
+    """
+    r = run(["tmux", "list-panes", "-a", "-F",
+             "#{session_name}\t#{pane_active}\t#{pane_current_path}"], timeout=10)
+    out = {}
+    if r["code"] != 0:
+        return out
+    for line in r["out"].splitlines():
+        parts = line.split("\t")
+        if len(parts) == 3 and parts[1] == "1":
+            out[parts[0]] = parts[2]
+    return out
+
+
 def tmux_sessions():
     r = run(["tmux", "list-sessions", "-F", "#{session_name}\t#{session_attached}"],
             timeout=10)
     if r["code"] != 0:
         return []          # no server running yet is the normal empty case
+    cwds = session_cwds()
     rows = []
     for line in r["out"].splitlines():
         if "\t" in line:
             name, attached = line.split("\t", 1)
-            rows.append({"name": name, "attached": attached.strip() not in ("", "0")})
+            rows.append({"name": name, "attached": attached.strip() not in ("", "0"),
+                         "cwd": cwds.get(name, "")})
     return rows
 
 
