@@ -141,6 +141,35 @@ CUSTOM_LINE_MAX = 500           # characters per line
 
 TABS_FILE = STATE / "tabs.json"
 
+# How the sidebar is arranged: card order and which cards are collapsed, by
+# the data-card keys the page uses. Validated against this list both ways, so
+# the stored file can never hold a card the page would not know how to place.
+CARDS_FILE = STATE / "cards.json"
+CARD_KEYS = ["runner", "projects", "findings", "sessions", "doctor",
+             "commands", "custom"]
+
+
+def load_cards():
+    try:
+        v = json.loads(CARDS_FILE.read_text())
+    except (OSError, ValueError):
+        v = {}
+    # Filter before deduping: membership tolerates any junk a hand-edited file
+    # can hold, where hashing it for dict.fromkeys would not.
+    order = list(dict.fromkeys(k for k in (v.get("order") or []) if k in CARD_KEYS))
+    # A card this image knows about that the stored file predates still has to
+    # land somewhere: its default position, not dropped.
+    order += [k for k in CARD_KEYS if k not in order]
+    closed = list(dict.fromkeys(k for k in (v.get("closed") or []) if k in CARD_KEYS))
+    return {"order": order, "closed": closed}
+
+
+def save_cards(v):
+    STATE.mkdir(parents=True, exist_ok=True)
+    tmp = CARDS_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(v, indent=2) + "\n")
+    tmp.replace(CARDS_FILE)
+
 # What a stored tab may contain. Anything else is dropped rather than trusted:
 # this file is written by one browser and handed to every other one, so it is
 # the one place where a bad value could travel between devices.
@@ -969,6 +998,7 @@ def snapshot():
         "macros": [{"name": k, "label": " ".join(v[1:])} for k, v in MACROS.items()],
         "pinned": load_pins(),
         "custom": load_custom(),
+        "cards": load_cards(),
         # The open tabs, so a phone picks up the desktop's layout rather than
         # starting from scratch. Carried in the status poll because it is small
         # and every client is already asking for that every 15s.
@@ -1073,6 +1103,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(req)
         if path.startswith("/api/layout"):
             return self._layout(req)
+        if path.startswith("/api/cards"):
+            return self._cards(req)
         if path.startswith("/api/pin"):
             return self._pin(req)
         if path.startswith("/api/claude-md"):
@@ -1163,6 +1195,20 @@ class Handler(BaseHTTPRequestHandler):
         if not run_doctor():
             return self._json({"error": "doctor is already running"}, 409)
         return self._json(doctor_payload())
+
+    def _cards(self, req):
+        """Store the sidebar card arrangement. Last write wins, like the pins:
+        this only changes on an explicit gesture, so two browsers cannot fight
+        over it the way their fifteen-second layout saves would."""
+        if not isinstance(req.get("order"), list) or not isinstance(req.get("closed"), list):
+            return self._json({"error": "bad request"}, 400)
+        v = {"order": [k for k in req["order"] if k in CARD_KEYS],
+             "closed": [k for k in req["closed"] if k in CARD_KEYS]}
+        try:
+            save_cards(v)
+        except OSError as e:
+            return self._json({"error": f"could not save: {e}"}, 500)
+        return self._json({"cards": load_cards()})
 
     def _pin(self, req):
         """Pin or unpin a command. Names are keys from MACROS, so this file can

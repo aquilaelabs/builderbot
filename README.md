@@ -450,7 +450,12 @@ not the same as better code, and suppressing a finding satisfies that goal too.
 ## Web dashboard
 
 Off by default. When enabled it serves a status page on `8080` and a browser
-terminal on `7681`:
+terminal on `7681`. Every sidebar card collapses to its header with a click
+on that header, and dragging a header reorders the cards; both are remembered
+in `/config/cards.json`, so the phone and the desktop agree about the
+arrangement and it survives restarts and image updates. The
+headers hold nothing but the title and a chevron — every control a card has
+lives in its body. The cards:
 
 - container uptime, and runner state — registered, listening, **running a job**
   (with the job's name and how long it has been going), or **failing to
@@ -495,8 +500,8 @@ terminal on `7681`:
 - every `bb` command as a button, pinnable, typed into the terminal you are
   looking at — and a second card for **your own** command lists
 - live list of tmux sessions, named exactly as their tabs are. Each row says
-  where its tab is — **on the tab bar**, or **minimised** when it has none —
-  and Open brings it back either way.
+  where its tab is — **tab bar**, or **minimised** when it has none — and
+  Open brings it back either way.
   Every Claude session — in this list and on its tab — carries a **state dot**:
   blue and pulsing while it works, amber when it is waiting on you (input, a
   permission decision, or a finished turn), with the task it reported
@@ -506,12 +511,13 @@ terminal on `7681`:
   of the conversation, no extra process
 - a **Doctor** card: `bb doctor`'s checks, run by the server in the background
   every 30 minutes (`DASHBOARD_DOCTOR_INTERVAL` seconds to change that) and
-  re-run on demand with its ↻. The header wears the verdict as a dot — green,
-  amber or red — and a healthy card folds down to just that header and an
-  "all n ok" button that expands it. Anything worse opens the card by itself,
-  even if you folded it away green: failures and warnings are full lines, with
-  the fix hint from `bb doctor`'s own output in the tooltip, while passing
-  checks collapse into green chips
+  re-run on demand with its ↻. Its status row wears the verdict as a dot —
+  green, amber or red — beside an "all n ok" button that unfolds the detail:
+  failures and warnings as full lines, with the fix hint from `bb doctor`'s
+  own output in the tooltip, and passing checks collapsed into green chips.
+  A verdict getting worse unfolds that detail by itself; healing folds it
+  back. Only the detail — collapsing the whole card is your setting, and the
+  verdict never overrides it
 
 ### Tabs and panes
 
@@ -627,8 +633,9 @@ terminal, which is not something a button labelled `bb status` should be able to
 do.
 
 They are listed in `bb help`'s own order, so the card and the CLI read the
-same. The list is longer than the card, so it is cut off at eight with **Show
-all** in the header. The **thumbtack** on each command keeps it above that cut —
+same. The list is longer than the card, so it is cut off at eight with a
+**Show all** button after the cut. The **thumbtack** on each command keeps it
+above that cut —
 pinning moves a command up, it does not re-sort it into an order the CLI never
 uses. Pins live in `/config/pinned-commands.json` — one machine, one operator,
 so a pin made at the desk is there on the phone.

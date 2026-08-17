@@ -58,10 +58,17 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
 .card h2{margin:0;padding:8px 12px;font-size:11px;text-transform:uppercase;
   letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);
   font-weight:600;display:flex;align-items:center;gap:8px;min-height:33px}
-.card h2 span{margin-left:auto}
-.card h2 button{font-size:10px;letter-spacing:.4px;text-transform:uppercase;
-  min-height:22px;padding:3px 8px}
-@media(max-width:900px){ .card h2 button{min-height:var(--tap)} }
+/* The header is two gestures and nothing else: click collapses, drag reorders.
+   Grab cursor and touch-action:none as on the tab strip's drag handles —
+   scrolling the sidebar by touch starts from a card body instead. */
+.side .card h2{cursor:grab;touch-action:none;user-select:none}
+body.dragging .side .card h2{cursor:grabbing}
+.card h2 .chev{margin-left:auto;font-size:10px;transition:transform .15s}
+.card.closed h2 .chev{transform:rotate(-90deg)}
+@media(prefers-reduced-motion:reduce){ .card h2 .chev{transition:none} }
+.card.closed > :not(h2){display:none}
+.card.closed h2{border-bottom:0}   /* no body below it — a border there reads
+                                      as a second card edge */
 .row{display:flex;align-items:center;gap:8px;padding:7px 10px;
   border-bottom:1px solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
@@ -151,26 +158,22 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 
 /* Doctor card: healthy checks collapse into green chips; anything wrong is a
    full-width line, because a failure is for reading and a pass is for
-   counting. A healthy card folds down to just its header, so the verdict
-   moves into a dot there — green, amber or red — where it survives the fold. */
-#docDot{margin:0}   /* the h2's span rule would push it right, and its own
-                       margin-right would double the flex gap */
+   counting. The status row carries the verdict dot, the age and the controls;
+   the detail below it opens and shuts on the verdict, without ever touching
+   the card-level collapse — that setting belongs to the operator. */
+#docDot{margin:0}   /* its own margin-right would double the flex gap */
 .st.ok{background:var(--accent)}
 .st.warn{background:var(--warn)}
 .st.bad{background:var(--bad)}
-.card.folded h2{border-bottom:0}   /* no body below it — a border there reads
-                                      as a second card edge */
+#docBar{display:flex;align-items:center;gap:8px;padding:7px 10px}
+#docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
+#doctor:not([hidden]){border-top:1px solid var(--line)}
 .doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
 .doctor .probs:empty{display:none}
-.doctor .chips{display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px;
-  border-top:1px solid var(--line)}
-.doctor .probs+.chips{border-top:1px solid var(--line)}
-.doctor .probs:empty+.chips{border-top:0}
+.doctor .chips{display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px}
+.doctor .probs:not(:empty)+.chips{border-top:1px solid var(--line)}
 .doctor .chips .pill{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   max-width:100%}
-#docTog{display:flex;align-items:center;gap:8px}
-#docWhen{font:11px/1 var(--mono);color:var(--dim);text-transform:none;
-  letter-spacing:0}
 
 .pill{font:11px/1 var(--mono);padding:3px 7px;border-radius:99px;
   border:1px solid var(--line);color:var(--dim)}
@@ -342,39 +345,46 @@ body.dragging .tab .lbl{cursor:grabbing}
 </div>
 
 <main>
+  <!-- Card headers hold the title and nothing else: the whole header is the
+       collapse control and the drag handle, and every control a card used to
+       keep up there lives in its body now — a button inside a drag handle is
+       a fight over what a press means. -->
   <div class="col side">
-    <div class="card">
+    <div class="card" data-card="runner">
       <h2>Runner</h2>
       <div id="runner"><div class="empty">loading…</div></div>
     </div>
-    <div class="card">
-      <h2>Projects<span id="projTog"></span></h2>
+    <div class="card" data-card="projects">
+      <h2>Projects</h2>
       <div id="projects"><div class="empty">loading…</div></div>
     </div>
-    <div class="card" id="cardFindings" hidden>
+    <div class="card" id="cardFindings" data-card="findings" hidden>
       <h2>Static analysis</h2>
       <div id="findingsSum"></div>
       <div class="macros">
         <button onclick="openFindings()">Open findings report</button>
       </div>
     </div>
-    <div class="card">
+    <div class="card" data-card="sessions">
       <h2>Sessions</h2>
       <div id="sessions"><div class="empty">loading…</div></div>
     </div>
-    <div class="card doctor">
-      <h2><span class="st" id="docDot" hidden></span>Doctor<span id="docTog"
-        ><span id="docWhen"></span
-        ><button id="bDocTog" hidden></button
-        ><button id="bDoctor" title="run bb doctor now">↻</button></span></h2>
+    <div class="card doctor" data-card="doctor">
+      <h2>Doctor</h2>
+      <div id="docBar">
+        <span class="st" id="docDot" hidden></span>
+        <button id="bDocTog" hidden></button>
+        <span id="docWhen"></span>
+        <button id="bDoctor" title="run bb doctor now">↻</button>
+      </div>
       <div id="doctor"><div class="empty">first run pending…</div></div>
     </div>
-    <div class="card">
-      <h2>bb commands<span id="cmdTog"></span></h2>
+    <div class="card" data-card="commands">
+      <h2>bb commands</h2>
       <div class="macros" id="commands"><div class="empty">loading…</div></div>
     </div>
-    <div class="card">
-      <h2>Custom commands<span><button id="bAdd" title="new custom command">+</button></span></h2>
+    <div class="card" data-card="custom">
+      <h2>Custom commands</h2>
       <div class="macros" id="custom"></div>
     </div>
   </div>
@@ -1007,6 +1017,107 @@ function renderFindingsInto(i){
       d.open ? opened.add(d.dataset.proj) : opened.delete(d.dataset.proj)));
 }
 
+// ---- sidebar cards ---------------------------------------------------
+// One rule for every card: the whole header is the collapse control and the
+// drag handle, and holds nothing else. Order and collapsed-state live on the
+// server like the pins do — the phone and the desktop are looking at one
+// machine and should agree about how its dashboard is arranged.
+const CARD_ORDER = ["runner","projects","findings","sessions","doctor","commands","custom"];
+let cards = {order: CARD_ORDER.slice(), closed: []};
+let cardDrag = null;
+
+const cardEls = () => [...document.querySelectorAll(".side .card[data-card]")];
+
+function applyCards(){
+  const side = document.querySelector(".col.side");
+  for (const key of cards.order){
+    const el = side.querySelector(`.card[data-card="${key}"]`);
+    if (el) side.appendChild(el);   // appendChild moves, so this re-sorts in place
+  }
+  cardEls().forEach(el =>
+    el.classList.toggle("closed", cards.closed.includes(el.dataset.card)));
+}
+
+async function saveCards(){
+  try{
+    const r = await fetch("/api/cards", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(cards)});
+    const j = await r.json();
+    if (j.error) notify(j.error, true);
+    else { cards = j.cards; if (state) state.cards = j.cards; applyCards(); }
+  }catch(e){ notify("could not save the card layout: " + e, true); }
+}
+
+function toggleCard(key){
+  const closed = new Set(cards.closed);
+  closed.has(key) ? closed.delete(key) : closed.add(key);
+  cards.closed = [...closed];
+  applyCards();
+  saveCards();
+}
+
+// The same pointer-based drag as the tab strip, turned vertical: the number
+// of *other* visible cards whose midline is above the pointer is exactly the
+// insertion index. A hidden card (findings without /reports) offers nothing
+// to aim at, so it is re-appended after the visible order — the bottom is
+// where it surfaces if it ever appears.
+function cardDropIndex(y, fromKey){
+  let idx = 0;
+  cardEls().forEach(el => {
+    if (el.dataset.card === fromKey || el.hidden) return;
+    const r = el.getBoundingClientRect();
+    if (y > r.top + r.height / 2) idx++;
+  });
+  return idx;
+}
+
+function startCardDrag(ev, key){
+  if (ev.pointerType === "mouse" && ev.button !== 0) return;
+  cardDrag = {key, x0: ev.clientX, y0: ev.clientY, moved: false};
+  window.addEventListener("pointermove", onCardDrag);
+  window.addEventListener("pointerup", endCardDrag, {once: true});
+  window.addEventListener("pointercancel", endCardDrag, {once: true});
+}
+
+function onCardDrag(ev){
+  if (!cardDrag) return;
+  if (!cardDrag.moved){
+    // The same few pixels of slop as a tab drag: a click is not a drag.
+    if (Math.hypot(ev.clientX - cardDrag.x0, ev.clientY - cardDrag.y0) < 6) return;
+    cardDrag.moved = true;
+    document.body.classList.add("dragging");
+  }
+  ev.preventDefault();
+  const vis = cards.order.filter(k => k !== cardDrag.key
+    && !document.querySelector(`.card[data-card="${k}"]`)?.hidden);
+  vis.splice(cardDropIndex(ev.clientY, cardDrag.key), 0, cardDrag.key);
+  const next = [...vis, ...cards.order.filter(k => !vis.includes(k))];
+  if (next.join() !== cards.order.join()){
+    cards.order = next;
+    applyCards();
+  }
+}
+
+function endCardDrag(){
+  window.removeEventListener("pointermove", onCardDrag);
+  document.body.classList.remove("dragging");
+  const moved = cardDrag?.moved;
+  cardDrag = null;
+  if (!moved) return;
+  swallowClick = true;                  // ...and the click ending a drag is not
+  setTimeout(() => swallowClick = false, 0);   //    a request to collapse
+  saveCards();
+}
+
+// Wire every header once. Unlike the tab strip, the cards are static elements
+// that are moved rather than re-created, so nothing here needs re-binding.
+cardEls().forEach(el => {
+  const h = el.querySelector("h2");
+  h.insertAdjacentHTML("beforeend", `<span class="chev">▾</span>`);
+  h.onclick = () => { if (!swallowClick) toggleCard(el.dataset.card); };
+  h.onpointerdown = e => startCardDrag(e, el.dataset.card);
+});
+
 // ---- sidebar ---------------------------------------------------------
 function drawRunner(r){
   const el = $("runner");
@@ -1068,24 +1179,27 @@ const isBroken = p => p.issues.some(i => i.level === "error" || i.level === "exc
 let showAllProjects = false;
 
 function drawProjects(ps){
-  const el = $("projects"), tog = $("projTog");
+  const el = $("projects");
   const flagged = ps.filter(isBroken);
   // Excluded last: it is not a problem waiting to be fixed like the rest of
   // what is folded away here, it is a decision already made.
   const shown   = (showAllProjects ? ps : ps.filter(p => !isBroken(p)))
                   .slice().sort((a, b) => (a.excluded ? 1 : 0) - (b.excluded ? 1 : 0));
 
-  tog.innerHTML = flagged.length
-    ? `<button id="bAll">${showAllProjects ? "Hide" : "Show"} projects with errors (${flagged.length})</button>`
+  // At the foot of the card, not the header: headers hold nothing but the
+  // title, because the whole header is the collapse control and drag handle.
+  const togHtml = flagged.length
+    ? `<div class="macros"><button id="bAll">${showAllProjects ? "Hide" : "Show"
+       } projects with errors (${flagged.length})</button></div>`
     : "";
-  if (flagged.length)
-    $("bAll").onclick = () => { showAllProjects = !showAllProjects; drawProjects(ps); };
 
   if (!shown.length){
     el.innerHTML = `<div class="empty">${
       !ps.length ? "nothing mounted under /workspace"
                  : `${flagged.length} ${flagged.length===1?"project needs":"projects need"} attention — use Show projects with errors`
-    }</div>`;
+    }</div>` + togHtml;
+    if (flagged.length)
+      $("bAll").onclick = () => { showAllProjects = !showAllProjects; drawProjects(ps); };
     return;
   }
 
@@ -1120,7 +1234,9 @@ function drawProjects(ps){
         title="${p.excluded ? "include — allow Claude sessions here again"
                             : "exclude — block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? EYE : EYE_OFF}</button>
-    </div>`).join("");
+    </div>`).join("") + togHtml;
+  if (flagged.length)
+    $("bAll").onclick = () => { showAllProjects = !showAllProjects; drawProjects(ps); };
   el.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
     e.preventDefault();
     if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
@@ -1140,20 +1256,19 @@ function drawProjects(ps){
 // ---- doctor -----------------------------------------------------------
 // bb doctor's verdict, run by the server on a slow loop and on the ↻ button.
 // Failures and warnings are full lines — they are for reading — while passing
-// checks collapse into chips: what a healthy card says is just "all n ok".
-// And a healthy card says it folded: header, dot and count, no body — the
-// details are one click away and were not worth the sidebar space they took.
+// checks collapse into chips: what a healthy status row says is "all n ok",
+// with the detail folded below it. This inner fold is the verdict's to drive;
+// the card-level collapse is the operator's, and neither touches the other.
 let docOpen  = null;   // the operator's toggle; null = follow the verdict
 let docLevel = null;   // last verdict, so a change can override that toggle
 
 function drawDoctor(){
   const el = $("doctor"), d = state?.doctor;
-  const dot = $("docDot"), tog = $("bDocTog"), card = el.closest(".card");
+  const dot = $("docDot"), tog = $("bDocTog");
   $("docWhen").textContent = d?.running ? "running…" : d?.when ? ago(d.when) : "";
   if (!d || !d.when){
     dot.hidden = tog.hidden = true;             // no verdict yet, nothing to fold
     el.hidden = false;
-    card.classList.remove("folded");
     el.innerHTML = `<div class="empty">${d?.running ? "running…" : "first run pending…"}</div>`;
     return;
   }
@@ -1162,9 +1277,10 @@ function drawDoctor(){
   const fine = d.checks.filter(c => c.level === "ok");
   const skip = d.checks.filter(c => c.level === "skip");
 
-  // A changed verdict beats the operator's toggle: a card that turns red must
-  // open even if it was folded away green an hour ago, and one that heals
-  // folds itself back up rather than squatting on the space it no longer earns.
+  // A changed verdict beats the operator's inner toggle: detail that turns
+  // red must open even if it was folded away green an hour ago, and detail
+  // that heals folds itself back up rather than squatting on space it no
+  // longer earns. Only the detail — a collapsed *card* stays collapsed.
   const level = probs.some(c => c.level === "FAIL") ? "bad"
               : probs.length ? "warn" : "ok";
   if (level !== docLevel){ docLevel = level; docOpen = null; }
@@ -1176,7 +1292,6 @@ function drawDoctor(){
                   : level === "ok" ? `all ${fine.length} ok`
                   : `Show (${probs.length})`;
   el.hidden = !open;
-  card.classList.toggle("folded", !open);
   el.innerHTML =
     `<div class="probs">${probs.map(c =>
        `<div class="sub ${c.level === "FAIL" ? "bad" : "warn"}" title="${esc(tip(c))}">${esc(c.text)}</div>`
@@ -1231,15 +1346,9 @@ function commandOrder(){
 }
 
 function drawCommands(){
-  const el = $("commands"), tog = $("cmdTog");
+  const el = $("commands");
   const order = commandOrder(), pins = new Set(state?.pinned || []);
   if (!order.length){ el.innerHTML = `<div class="empty">no commands</div>`; return; }
-
-  tog.innerHTML = order.length > COMMANDS_SHOWN
-    ? `<button id="bCmds">${showAllCommands ? "Show fewer" : `Show all (${order.length})`}</button>`
-    : "";
-  if (order.length > COMMANDS_SHOWN)
-    $("bCmds").onclick = () => { showAllCommands = !showAllCommands; drawCommands(); };
 
   const shown = showAllCommands ? order : order.slice(0, COMMANDS_SHOWN);
   el.innerHTML = shown.map(m => {
@@ -1252,7 +1361,14 @@ function drawCommands(){
         title="${on ? "unpin — let it fall back into the list"
                     : "pin — keep it at the top of this card"}">${TACK}</button>
     </span>`;
-  }).join("");
+  }).join("")
+  // The cut-off toggle sits with the list it cuts, since the header is
+  // reserved for collapsing the whole card.
+  + (order.length > COMMANDS_SHOWN
+     ? `<button id="bCmds">${showAllCommands ? "Show fewer" : `Show all (${order.length})`}</button>`
+     : "");
+  if (order.length > COMMANDS_SHOWN)
+    $("bCmds").onclick = () => { showAllCommands = !showAllCommands; drawCommands(); };
   el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
   el.querySelectorAll("[data-tack]").forEach(b => b.onclick = () =>
     setPinned(b.dataset.tack, b.dataset.on === "0"));
@@ -1292,11 +1408,8 @@ const PENCIL = `<svg viewBox="0 0 16 16" aria-hidden="true">
 
 function drawCustom(){
   const el = $("custom"), list = state?.custom || [];
-  if (!list.length){
-    el.innerHTML = `<div class="empty">none yet — add one with +</div>`;
-    return;
-  }
-  el.innerHTML = list.map(m => {
+  el.innerHTML = (list.length ? "" : `<div class="empty">none yet — add one with +</div>`)
+    + list.map(m => {
     // The full title and what it will run, for the hover: a one-word title is
     // no help six months later when you have forgotten what it does.
     const tip = `${m.title}\n\n${m.lines.join("\n")}`;
@@ -1305,9 +1418,13 @@ function drawCustom(){
       <button class="tack" data-edit="${esc(m.id)}" aria-label="edit"
         title="edit or delete">${PENCIL}</button>
     </span>`;
-  }).join("");
+  }).join("")
+  // "+" is redrawn with the list it adds to — a static button would be wiped
+  // by this very innerHTML — and lives here because the header holds nothing.
+  + `<button id="bAdd" title="new custom command">+</button>`;
   el.querySelectorAll("[data-run]").forEach(b => b.onclick = () => macro(null, b.dataset.run));
   el.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => editCustom(b.dataset.edit));
+  $("bAdd").onclick = () => editCustom(null);
 }
 
 let editing = null;
@@ -1469,7 +1586,7 @@ function drawSessions(ss){
     <div class="row">
       <div class="grow"><span class="name" title="${esc(s.name + (s.cwd ? " — " + s.cwd : ""))}"
         >${stateDot(s.claude)}${esc(names.get(s.name) || s.name)}</span>
-        <span class="pill ${tabbed.has(s.name)?"ok":""}">${tabbed.has(s.name)?"on the tab bar":"minimised"}</span>
+        <span class="pill ${tabbed.has(s.name)?"ok":""}">${tabbed.has(s.name)?"tab bar":"minimised"}</span>
         ${s.claude?.task ? `<div class="sub" title="${esc(s.claude.task)}">${
           s.claude.state === "working" ? "working on" : "done"}: ${esc(s.claude.task)}</div>` : ""}</div>
       <button data-a="${esc(s.name)}">Open</button>
@@ -1628,6 +1745,9 @@ async function refresh(){
     $("host").textContent = state.host;
     $("uptime").textContent = "up " + state.uptime;
     adoptLayout(state.layout);
+    // Not mid-drag: adopting the server's order under a moving pointer would
+    // snap the card out of the operator's hand.
+    if (state.cards && !cardDrag){ cards = state.cards; applyCards(); }
     drawRunner(state.runner);
     drawProjects(state.projects);
     drawSessions(state.sessions);
@@ -1681,7 +1801,6 @@ document.addEventListener("click", e => {
   }
 });
 
-$("bAdd").onclick = () => editCustom(null);
 $("mCancel").onclick = closeEditor;
 $("mSave").onclick = async () => {
   if (await postCustom({action:"save", id: editing,
