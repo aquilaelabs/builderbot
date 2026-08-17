@@ -1,0 +1,9 @@
+# Labels the BuilderBot self-hosted runner carries (see scripts/runner.sh).
+# Declared so actionlint can verify a workflow's runs-on instead of flagging
+# every custom label as unknown — a wrong label here is exactly the "Waiting
+# for a runner" failure the README warns about, and this is the check that
+# catches it before the push.
+self-hosted-runner:
+  labels:
+    - builderbot
+    - unraid

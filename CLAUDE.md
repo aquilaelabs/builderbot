@@ -256,18 +256,25 @@ container.
   shielded PAT. What you *can* run here, with no daemon:
 
   ```bash
-  bash -n scripts/bb scripts/*.sh scripts/startup.d/*.sh scripts/dashboard/bb-tty
+  bb lint            # shellcheck / hadolint / actionlint / compose / XML — same as CI
   python3 -m py_compile scripts/dashboard/server.py   # rm -rf the __pycache__ after
-  python3 -c "import xml.dom.minidom; xml.dom.minidom.parse('unraid/builderbot.xml')"
-  cp .env.example .env && docker compose config >/dev/null   # .env is gitignored
   ```
 
-- **Lint:** CI runs `shellcheck -x -S warning` over the shell scripts and
-  hadolint over the Dockerfile (DL3008/DL3013/DL3016/SC1091 ignored on purpose —
-  a rolling dev image tracks the newest packages rather than pinning them).
-  Neither binary is in this image, so the first you see of a failure is the PR.
-  The shellcheck file list is derived from shebangs, not filenames, so a new
-  script is covered the moment it exists — do not replace that with a name list.
+  If the *installed* `bb` predates the lint subcommand, `bash scripts/bb lint`
+  runs the repo copy — it prints `[skip]` for any tool the running image does
+  not carry yet, rather than passing by omission.
+
+- **Lint:** CI runs shellcheck, hadolint and actionlint; `bb lint` runs the
+  same three (plus compose validation and XML well-formedness) in-container.
+  The shared configs are the contract: `.hadolint.yaml` holds the Dockerfile
+  ignores (DL3008/DL3013/DL3016 — a rolling dev image deliberately tracks the
+  newest packages — and SC1091), `.github/actionlint.yaml` declares the labels
+  this runner carries so a bad `runs-on` fails the lint instead of stranding a
+  job in *Waiting for a runner*. Keep both files in step with runner.sh's
+  `RUNNER_LABELS` and the CI jobs; a rule suppressed in only one place means
+  CI and `bb lint` disagree, which is worse than either answer. The shellcheck
+  file list is derived from shebangs, not filenames, so a new script is covered
+  the moment it exists — do not replace that with a name list.
 - **Conventions:**
   - Bash: `#!/usr/bin/env bash`, `set -euo pipefail`, helpers and `log`/`warn`/
     `die` from `lib/common.sh` rather than bare `echo`.

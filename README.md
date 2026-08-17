@@ -33,11 +33,12 @@ to the same box. New images publish automatically to GHCR on every push to
 | **Python** | 3.12, `uv`, `pipx`, venv |
 | **Java** | OpenJDK 21 |
 | **Playwright** | CLI + chromium/firefox/webkit with system deps, shared at `/opt/pw-browsers` |
-| **Android** | SDK cmdline-tools/platform-tools/build-tools + platform 35, emulator with Google-APIs x86_64 image, adb, `bundletool` |
+| **Android** | SDK cmdline-tools/platform-tools/build-tools + platform 36, emulator with Google-APIs x86_64 image, adb, `bundletool` |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
-| **Search** | ripgrep, fd, fzf, jq |
+| **Search** | ripgrep, fd, fzf, jq, yq |
 | **Build** | build-essential, cmake, pkg-config |
+| **Lint** | shellcheck, hadolint, actionlint, ruff — `bb lint` runs the right ones over a repo |
 | **Media** | ffmpeg, imagemagick |
 | **Runner** | latest `actions/runner`, ephemeral by default |
 | **Versioning** | `mise` for per-project tool pinning (gradle, go, rust — on demand) |
@@ -249,7 +250,7 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
 | `GIT_PAT` | *(empty)* | GitHub **API** auth for `gh` from inside (`gh pr create`). Session-readable by design; not needed if ssh covers your git usage |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create system images and AVDs at startup |
-| `ANDROID_SYSTEM_IMAGES` | `35` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
+| `ANDROID_SYSTEM_IMAGES` | `36` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
 | `ANDROID_SYSTEM_IMAGE_VARIANT` | `google_apis;x86_64` | Image flavour; `default;x86_64` is smaller AOSP, no Google APIs |
 | `ANDROID_AVD_NAME` / `ANDROID_AVD_PREFIX` | *(derived)* / `builderbot` | Override the default AVD, or the `<prefix>-<api>` naming |
 | `ANDROID_EMULATOR_GPU` | `swiftshader_indirect` | Emulator renderer — `swangle_indirect` (faster software) or `host` (needs a GPU) |
@@ -264,6 +265,7 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `ENABLE_DASHBOARD` | `false` | Web dashboard + browser terminal |
 | `DASHBOARD_AUTH` | *(empty)* | `user:password` — **required** when the dashboard is enabled; it will not start otherwise |
 | `DASHBOARD_PORT` / `DASHBOARD_TTYD_PORT` | `8080` / `7681` | Page and terminal ports; both must be published |
+| `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
@@ -322,6 +324,8 @@ bb emu start [api] | stop | status | list
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only
 bb claude-md --init     create one here from the template
+bb lint [path]     lint a repo's infrastructure files: shell scripts,
+                   Dockerfiles, workflows, compose files, XML
 bb findings        this project's scanner findings (--all for every project)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
@@ -369,7 +373,7 @@ in software and will mislead you.
 
 ## Multiple Android versions
 
-The image ships one system image (API 35). To emulate more, list the API levels
+The image ships one system image (API 36). To emulate more, list the API levels
 you want:
 
 ```
@@ -475,13 +479,27 @@ terminal on `7681`:
   or has an error carries **no Claude button at all**, because a session cannot
   start there; **Shell** stays, since that is often how you would fix it
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
-  grouped by project and rule, with severity counts and CVEs linked to NVD
+  grouped by project and rule, with severity counts and CVEs linked to NVD.
+  If the scanner re-runs while the report is open, the view reloads itself —
+  the page watches the report files' mtime, so you never triage stale findings
 - a **Stop / Start** toggle for the runner, showing whichever one applies.
   Stopping waits for GitHub to release the runner's session rather than
   reporting success and leaving a listener behind
 - every `bb` command as a button, pinnable, typed into the terminal you are
   looking at — and a second card for **your own** command lists
-- live list of tmux sessions, named exactly as their tabs are, with attach
+- live list of tmux sessions, named exactly as their tabs are, with attach.
+  Every Claude session — in this list and on its tab — carries a **state dot**:
+  blue and pulsing while it works, amber when it is waiting on you (input, a
+  permission decision, or a finished turn), with the task it reported
+  alongside. That is the phone-glance question answered without opening the
+  terminal: is it still going, or does it need me? The state comes from the
+  terminal title Claude Code itself maintains, read through tmux — no polling
+  of the conversation, no extra process
+- a **Doctor** card: `bb doctor`'s checks, run by the server in the background
+  every 30 minutes (`DASHBOARD_DOCTOR_INTERVAL` seconds to change that) and
+  re-run on demand with its ↻. Passing checks collapse into green chips;
+  failures and warnings are full lines, with the fix hint from `bb doctor`'s
+  own output in the tooltip
 
 ### Tabs and panes
 
@@ -780,11 +798,13 @@ scripts/
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
   startup.d/*.sh                 startup hooks
+  dashboard/                     web dashboard: server.py, index.html, bb-tty
 config/skel/                     home directory skeleton
 config/templates/                project CLAUDE.md template (shipped in the image)
-  scripts/dashboard/               web dashboard: server.py, index.html, bb-tty
 docs/unraid.md                   step-by-step Unraid walkthrough
-.github/workflows/               GHCR publish + shellcheck/hadolint/compose/xml lint
+.hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint
+.github/actionlint.yaml          this runner's labels, for workflow linting
+.github/workflows/               GHCR publish + lint (shellcheck/hadolint/actionlint/compose/xml)
 ```
 
 ## License

@@ -32,11 +32,20 @@ jobs:
       - uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
-          # DL3008/DL3013/DL3016: a rolling dev image deliberately tracks the
-          #   newest apt/pip/npm packages rather than pinning them.
-          # SC1091: shellcheck can't follow `. /etc/os-release`, which only
-          #   exists inside the image being built.
-          ignore: DL3008,DL3013,DL3016,SC1091
+          # Ignores live in .hadolint.yaml, which hadolint picks up on its
+          # own — one config for this job and for `bb lint`, so the two can
+          # never disagree about what a clean Dockerfile is.
+
+  actionlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check workflow files
+        # The runner labels a runs-on may target live in .github/actionlint.yaml,
+        # shared with `bb lint`.
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
 
   compose:
     runs-on: ubuntu-latest

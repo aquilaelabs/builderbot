@@ -560,7 +560,7 @@ Headless works out of the box; there is no display server in the container.
 
 ### Android
 
-The SDK (platform-tools, build-tools, platform 35), JDK 21 and `bundletool`
+The SDK (platform-tools, build-tools, platform 36), JDK 21 and `bundletool`
 are baked in — Gradle projects build with their own wrapper immediately:
 
 ```bash

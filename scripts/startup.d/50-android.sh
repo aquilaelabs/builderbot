@@ -33,7 +33,10 @@ VARIANT="${ANDROID_SYSTEM_IMAGE_VARIANT:-google_apis;x86_64}"
 VARIANT_PATH="$(printf '%s' "$VARIANT" | tr ';' '/')"
 PREFIX="${ANDROID_AVD_PREFIX:-builderbot}"
 
-for api in $(printf '%s' "${ANDROID_SYSTEM_IMAGES:-35}" | tr ',' ' '); do
+# The fallback tracks the platform the image shipped (ANDROID_DEFAULT_API is
+# baked at build time from ANDROID_PLATFORM), so an unset variable means "the
+# level that is already here" rather than a hardcoded number that goes stale.
+for api in $(printf '%s' "${ANDROID_SYSTEM_IMAGES:-${ANDROID_DEFAULT_API:-36}}" | tr ',' ' '); do
     case "$api" in
         ''|*[!0-9]*)
             warn "ANDROID_SYSTEM_IMAGES: '${api}' is not an API level — skipping"

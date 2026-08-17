@@ -28,8 +28,8 @@ ARG INSTALL_ANDROID_EMULATOR=true
 # Bootstrap build of Google's commandline-tools zip; sdkmanager then manages
 # everything else, so this pin only has to exist, not be current.
 ARG ANDROID_CMDLINE_TOOLS_BUILD=11076708
-ARG ANDROID_PLATFORM=35
-ARG ANDROID_BUILD_TOOLS=35.0.0
+ARG ANDROID_PLATFORM=36
+ARG ANDROID_BUILD_TOOLS=36.0.0
 ARG ANDROID_SYSTEM_IMAGE_VARIANT="google_apis;x86_64"
 
 # Several steps below pipe curl into a shell or into gpg. Under the default
@@ -66,8 +66,9 @@ RUN set -eux; \
         jq unzip zip xz-utils bzip2 tar rsync \
         tmux \
         ripgrep fd-find fzf \
-        less nano vim tini gosu sudo procps psmisc file \
+        less nano vim tini gosu sudo procps psmisc file lsof strace tree \
         iproute2 iputils-ping dnsutils netcat-openbsd socat \
+        shellcheck \
         locales tzdata \
         libicu74 libssl3 libkrb5-3 zlib1g liblttng-ust1 \
         sqlite3 imagemagick ffmpeg; \
@@ -99,6 +100,38 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
         nodejs gh docker-ce-cli docker-compose-plugin docker-buildx-plugin; \
     rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Linters for the file types every project here carries: Dockerfiles, GitHub
+# workflows, YAML, Python. shellcheck came from apt above; these three are
+# static single binaries with no Ubuntu package worth having. Resolved to the
+# newest release at build time, same policy as the runner and bundletool —
+# the weekly rebuild is what keeps them current. `ruff` installs via pipx so
+# it is isolated from both the system Python and any project venv.
+#
+# The point of having them *in the image* rather than only in CI: a session
+# (or a person) can run the same checks CI will run, before the push — that
+# is what `bb lint` does.
+# ---------------------------------------------------------------------------
+RUN set -eux; \
+    fetch_release() { \
+        # fetch_release OWNER/REPO ASSET-TEMPLATE DEST — @VER@ in the template
+        # is replaced with the latest tag, with and without its leading v.
+        tag="$(curl -fsSL "https://api.github.com/repos/$1/releases/latest" | jq -r .tag_name)"; \
+        asset="$(printf '%s' "$2" | sed "s/@VER@/${tag#v}/g; s/@TAG@/${tag}/g")"; \
+        curl -fsSL -o "$3" "https://github.com/$1/releases/download/${tag}/${asset}"; \
+        chmod +x "$3"; \
+    }; \
+    fetch_release hadolint/hadolint "hadolint-linux-x86_64" /usr/local/bin/hadolint; \
+    fetch_release mikefarah/yq "yq_linux_amd64" /usr/local/bin/yq; \
+    tag="$(curl -fsSL https://api.github.com/repos/rhysd/actionlint/releases/latest | jq -r .tag_name)"; \
+    curl -fsSL "https://github.com/rhysd/actionlint/releases/download/${tag}/actionlint_${tag#v}_linux_amd64.tar.gz" \
+        | tar -xz -C /usr/local/bin actionlint; \
+    PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install ruff; \
+    hadolint --version; \
+    actionlint --version >/dev/null; \
+    yq --version; \
+    ruff --version
 
 # ---------------------------------------------------------------------------
 # Language/version tooling that lives outside apt: uv (Python) and mise.
@@ -210,6 +243,11 @@ RUN set -eux; \
     "${ANDROID_HOME}/platform-tools/adb" --version | head -1
 
 ENV PATH=${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator
+# What the runtime scripts fall back to when ANDROID_SYSTEM_IMAGES is unset.
+# Derived from the platform this image actually shipped, so a build with a
+# different ANDROID_PLATFORM does not leave `bb emu` defaulting to an API
+# level that is not there.
+ENV ANDROID_DEFAULT_API=${ANDROID_PLATFORM}
 
 # ---------------------------------------------------------------------------
 # Unprivileged user. UID/GID are remapped at startup from PUID/PGID, so the
@@ -320,11 +358,15 @@ RUN set -eux; \
 # agent is running — ssh falls back to ~/.ssh key files.
 ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 
+# RUNNER_LABELS here must be the full set runner.sh, the template and the docs
+# agree on. It used to say builderbot,self-hosted,linux — which silently
+# overrode the richer default in runner.sh for anyone running the image bare,
+# because an ENV always exists and a ${VAR:-fallback} therefore never fires.
 ENV PUID=99 \
     PGID=100 \
     ENABLE_RUNNER=true \
     RUNNER_EPHEMERAL=true \
-    RUNNER_LABELS=builderbot,self-hosted,linux \
+    RUNNER_LABELS=builderbot,self-hosted,linux,x64,unraid \
     RUNNER_WORKDIR=/workspace/_work \
     AUTO_UPDATE_CLAUDE=true \
     CHOWN_HOME=true
@@ -332,7 +374,7 @@ ENV PUID=99 \
 WORKDIR /workspace
 
 HEALTHCHECK --interval=60s --timeout=10s --start-period=90s --retries=3 \
-    CMD /opt/builderbot/scripts/healthcheck.sh
+    CMD ["/opt/builderbot/scripts/healthcheck.sh"]
 
 ENTRYPOINT ["/usr/bin/tini", "--", "/opt/builderbot/scripts/entrypoint.sh"]
 CMD ["supervise"]
