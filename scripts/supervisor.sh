@@ -12,19 +12,119 @@ set -euo pipefail
 
 RUNNER_PID=""
 
+# ---------------------------------------------------------------------------
+# Graceful shutdown
+#
+# `docker stop` gives us SIGTERM and then SIGKILL after a timeout. Unraid always
+# passes that timeout explicitly — DockerClient.php stops a container with
+# `/containers/<id>/stop?t=` DOCKER_TIMEOUT, default **10** — so the container's
+# own --stop-timeout is ignored and ten seconds is all we get out of the box.
+#
+# Everything here is therefore ordered by value-per-second, not by tidiness:
+# record state first because it costs milliseconds, signal everything next
+# because signalling is instant, and only then wait. Whatever we are killed
+# part-way through, the earlier steps already happened.
+# ---------------------------------------------------------------------------
+
+# Which Claude conversations were live, and which transcript each was writing.
+# The transcripts survive on their own; this records that they were *running*,
+# so the dashboard can offer to resume the one you were actually in rather than
+# merely the most recently touched.
+record_sessions() {
+    local out="${DASHBOARD_STATE:-/config}/last-sessions.json"
+    local sess proj dir latest first=1
+    mkdir -p "$(dirname "$out")" 2>/dev/null || return 0
+    {
+        printf '{\n  "stopped_at": %s,\n  "sessions": {' "$(date +%s)"
+        while read -r sess; do
+            [ -n "$sess" ] || continue
+            proj="${sess#claude-}"
+            dir="$WORKSPACE/$proj"
+            latest="$(ls -1t "$HOME/.claude/projects/${dir//\//-}"/*.jsonl 2>/dev/null | head -1 || true)"
+            [ -n "$latest" ] || continue
+            latest="$(basename "$latest" .jsonl)"
+            [ "$first" -eq 1 ] || printf ','
+            first=0
+            printf '\n    "%s": "%s"' "$proj" "$latest"
+        done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^claude-' || true)
+        [ "$first" -eq 1 ] || printf '\n  '
+        printf '}\n}\n'
+    } > "$out.tmp" 2>/dev/null && mv -f "$out.tmp" "$out" 2>/dev/null || true
+}
+
+# The pids each Claude pane is running. tmux reports the pane's pid, which for
+# these sessions is claude itself — it was the session's command.
+claude_pids() {
+    tmux list-panes -a -F '#{session_name} #{pane_pid}' 2>/dev/null \
+        | awk '/^claude-/ {print $2}' || true
+}
+
+# A SIGKILL'd claude still leaves its transcript, which is appended as it goes,
+# but a clean exit closes the turn instead of abandoning it mid-write.
+signal_claude() {
+    local pid
+    while read -r pid; do
+        [ -n "$pid" ] && kill -TERM "$pid" 2>/dev/null || true
+    done < <(claude_pids)
+}
+
+claude_running() { [ -n "$(claude_pids)" ]; }
+
+# The emulator launcher execs qemu; either form means an AVD is live and would
+# be left dirty by a hard kill. Deliberately not `adb devices`, which starts an
+# adb server of its own if none is running.
+emulator_running() { pgrep -f 'qemu-system|/emulator/emulator|emulator64' >/dev/null 2>&1; }
+
 shutdown() {
-    log "shutdown requested"
+    trap '' TERM INT                 # a second stop must not re-enter this
+    local t0 waited grace="${SHUTDOWN_GRACE:-90}"
+    t0=$(date +%s)
+    log "shutdown: stopping cleanly (up to ${grace}s; Unraid's DOCKER_TIMEOUT may cut this short)"
+
+    # --- instant work, before anything can time us out ---------------------
+    record_sessions
+    pkill -TERM -x ttyd 2>/dev/null || true
+    pkill -TERM -f 'dashboard/server\.py' 2>/dev/null || true
+
+    # --- signal every slow thing at once -----------------------------------
+    signal_claude
     if [ -n "$RUNNER_PID" ] && kill -0 "$RUNNER_PID" 2>/dev/null; then
-        log "stopping GitHub Actions runner (pid ${RUNNER_PID})"
+        log "shutdown: draining the Actions runner so it deregisters"
         kill -TERM "$RUNNER_PID" 2>/dev/null || true
-        # Give the runner time to finish its job and deregister itself.
-        local waited=0 limit="${RUNNER_SHUTDOWN_TIMEOUT:-120}"
-        while kill -0 "$RUNNER_PID" 2>/dev/null && [ "$waited" -lt "$limit" ]; do
-            sleep 1
-            waited=$((waited + 1))
-        done
-        kill -KILL "$RUNNER_PID" 2>/dev/null || true
     fi
+    # A killed emulator leaves the AVD dirty and costs a cold boot next time.
+    if emulator_running; then
+        log "shutdown: asking the emulator to power off"
+        ( bb emu stop >/dev/null 2>&1 || true ) &
+    fi
+
+    # --- now wait on them together, not one after another ------------------
+    local runner_up emu_up cl_up
+    while :; do
+        waited=$(( $(date +%s) - t0 ))
+        if [ "$waited" -ge "$grace" ]; then
+            warn "shutdown: ${grace}s budget spent; forcing the rest"
+            break
+        fi
+        kill -0 "$RUNNER_PID" 2>/dev/null && runner_up=1 || runner_up=0
+        emulator_running && emu_up=1 || emu_up=0
+        # Claude gets a shorter leash than the rest: its work is already on
+        # disk, so waiting past this only delays the emulator and the runner.
+        if [ "$waited" -lt "${SHUTDOWN_CLAUDE_GRACE:-10}" ] && claude_running; then
+            cl_up=1
+        else
+            cl_up=0
+        fi
+        if [ "$runner_up" -eq 0 ] && [ "$emu_up" -eq 0 ] && [ "$cl_up" -eq 0 ]; then
+            log "shutdown: everything stopped cleanly after ${waited}s"
+            break
+        fi
+        sleep 1
+    done
+
+    [ -n "$RUNNER_PID" ] && kill -KILL "$RUNNER_PID" 2>/dev/null || true
+    # Last, because it takes the terminals with it — including any this ran in.
+    tmux kill-server 2>/dev/null || true
     log "bye"
     exit 0
 }

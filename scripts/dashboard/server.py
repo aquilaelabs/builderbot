@@ -263,6 +263,7 @@ def projects():
         return out
     uid, gid = os.getuid(), os.getgid()
     excluded = set(load_excludes())
+    stopped = last_stop()
     for d in sorted(WORKSPACE.iterdir()):
         if not d.is_dir() or d.name == "_work":
             continue
@@ -323,7 +324,7 @@ def projects():
                            "text": "excluded — no Claude session can start here"})
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "claude_md": has_md, "excluded": d.name in excluded,
-                    "last_claude": None if d.name in excluded else last_claude(d),
+                    "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     "issues": issues})
     return out
 
@@ -415,7 +416,21 @@ def link_state(lines):
     return True, None                            # nothing logged either way
 
 
-def last_claude(project_dir):
+def last_stop():
+    """What the supervisor recorded on its way down, if anything.
+
+    Written by scripts/supervisor.sh on SIGTERM. Distinguishes "this project
+    has an old transcript lying about" from "this conversation was open when
+    the container stopped", which is the one worth offering to resume.
+    """
+    try:
+        v = json.loads((STATE / "last-sessions.json").read_text())
+        return v.get("sessions") or {}, int(v.get("stopped_at") or 0)
+    except (OSError, ValueError, TypeError):
+        return {}, 0
+
+
+def last_claude(project_dir, name, stopped):
     """The most recent Claude transcript for a working directory, or None.
 
     Used to offer "resume" rather than silently starting a fresh conversation
@@ -430,7 +445,10 @@ def last_claude(project_dir):
     if not files:
         return None
     newest = max(files, key=lambda f: f.stat().st_mtime)
-    return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
+    return {"id": newest.stem, "when": int(newest.stat().st_mtime),
+            # True when this is the conversation that was actually open when
+            # the container was stopped, not merely the last file touched.
+            "was_open": stopped[0].get(name) == newest.stem}
 
 
 def _pidfile_alive(p):

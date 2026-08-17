@@ -151,40 +151,67 @@ Fill in `GITHUB_PAT` (and `GIT_USER_NAME`/`GIT_USER_EMAIL`), leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
 **Apply**. Unraid pulls the image and starts it.
 
+### Give the container time to stop
+
+Stopping from the Docker page sends SIGTERM and then SIGKILL. BuilderBot uses
+that window to deregister the Actions runner, power the emulator down instead
+of yanking it, end Claude sessions cleanly and record which conversation each
+project was in.
+
+**Unraid gives it ten seconds by default, and that is often not enough.**
+Unraid always passes the timeout explicitly when it stops a container —
+`DockerClient.php` calls `/containers/<id>/stop?t=` with `DOCKER_TIMEOUT`,
+default `10` — so the container's own `--stop-timeout` is ignored and nothing
+in Extra Params can change it. The only lever is the Unraid setting:
+
+**Settings → Docker → Docker Stop Timeout** — raise it to **60** or more.
+(Docker only waits as long as it needs to; a container with nothing running
+still stops instantly, so a larger number costs nothing on a quiet box.)
+
+What the extra seconds buy, in the order the container spends them:
+
+| | why it wants the time |
+|---|---|
+| Actions runner | deregisters, instead of leaving a session GitHub holds for a minute or two — which is what makes the next start log `A session for this runner already exists` and retry on Conflict |
+| Emulator | `adb emu kill` powers the AVD down; a hard kill leaves it dirty and costs a cold boot next time |
+| Claude sessions | exit having closed the turn rather than being cut off mid-write |
+
+Recording which conversation was open costs milliseconds and happens first, so
+it survives even a ten-second stop. `SHUTDOWN_GRACE` (default 90) caps how long
+the container will wait in total, if you would rather it gave up sooner.
+
 ### Stopping cleanly before an update
 
 Nothing you care about lives in the container: projects are bind mounts to the
 array, and sessions, memory files, logins and AVDs are all on the home volume.
-Uncommitted work is not at risk from a restart. Still, a tidy shutdown avoids
-two annoyances:
+Uncommitted work is not at risk from a restart.
+
+**The container handles the rest itself** — see *Give the container time to
+stop* above. Stopping it deregisters the runner, powers the emulator down,
+ends Claude sessions cleanly and records which conversation each project was
+in, all on SIGTERM. There is no checklist to run first.
+
+The one thing worth a glance beforehand is whether CI is mid-job, because a
+job killed by the shutdown shows up as a red run on GitHub:
 
 ```bash
-# 1. Exit any Claude session (in the app, or Ctrl-C twice in a terminal).
-#    Transcripts and memory are appended as you go, so at most you lose an
-#    in-flight turn — but a clean exit loses nothing.
-
-# 2. Stop the emulator gracefully if it is running. A hard kill can leave the
-#    AVD in a dirty state that costs you a cold boot later.
-docker exec -it BuilderBot bb emu stop
-
-# 3. Check the runner is not mid-job — a killed job shows up as a CI failure.
 docker exec -it BuilderBot bb runner status
-
-# 4. Stop with a timeout that lets the runner deregister.
-docker stop -t 150 BuilderBot
 ```
 
-**That `-t 150` matters.** The supervisor gives the runner up to
-`RUNNER_SHUTDOWN_TIMEOUT` (120s default) to finish its job and deregister, but
-Docker's own default stop timeout is **10 seconds** — after which it sends
-SIGKILL regardless. A plain `docker stop` therefore cuts the graceful shutdown
-short, leaving a stale registration on GitHub until it times out server-side.
-Unraid's *Check for Updates* button uses the host's configured stop timeout
-(Settings → Docker), not this one, so if you update from the UI and care about
-clean deregistration, stop the container by hand first.
+From a terminal rather than the Unraid UI, pass a timeout — Docker's own
+default is 10 seconds:
 
-The consequence of getting this wrong is cosmetic — a phantom offline runner
-in the repo's runner list — so it is not worth losing sleep over.
+```bash
+docker stop -t 120 BuilderBot
+```
+
+Unraid's Docker page and *Check for Updates* both use the host's configured
+stop timeout (Settings → Docker → Docker Stop Timeout) instead, which is why
+that setting is the one worth raising.
+
+Getting this wrong is recoverable, not fatal: a phantom offline runner in the
+repo's runner list, an AVD that cold-boots next time, and a conversation you
+resume from the dashboard rather than one that closed itself.
 
 ### Updating — the whole point
 

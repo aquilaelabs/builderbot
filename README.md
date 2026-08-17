@@ -237,7 +237,8 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `GITHUB_PAT` | *(empty)* | Runner PAT — prefer the secrets folder; values here are session-visible |
 | `RUNNER_NAME` / `RUNNER_LABELS` / `RUNNER_GROUP` | `builderbot` / `builderbot,self-hosted,linux,x64,unraid` / — | Runner identity |
 | `RUNNER_EPHEMERAL` | `true` | Fresh registration per job |
-| `RUNNER_RESTART_DELAY` / `RUNNER_SHUTDOWN_TIMEOUT` | `5` / `120` | Seconds between re-registrations, and how long a stop waits for a job to finish |
+| `RUNNER_RESTART_DELAY` | `5` | Seconds between re-registrations |
+| `SHUTDOWN_GRACE` | `90` | Seconds a stop may spend deregistering the runner, powering down the emulator and ending Claude sessions. Unraid caps this with its own Docker Stop Timeout (default **10**) — raise that if you want the full drain |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
 | `GIT_PAT` | *(empty)* | GitHub **API** auth for `gh` from inside (`gh pr create`). Session-readable by design; not needed if ssh covers your git usage |
