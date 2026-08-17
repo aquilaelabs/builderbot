@@ -156,13 +156,17 @@ def load_cards():
         v = json.loads(CARDS_FILE.read_text())
     except (OSError, ValueError):
         v = {}
+    if not isinstance(v, dict):         # a hand-edited file is not fatal
+        v = {}
     # Filter before deduping: membership tolerates any junk a hand-edited file
     # can hold, where hashing it for dict.fromkeys would not.
-    order = list(dict.fromkeys(k for k in (v.get("order") or []) if k in CARD_KEYS))
+    order = v.get("order") if isinstance(v.get("order"), list) else []
+    order = list(dict.fromkeys(k for k in order if k in CARD_KEYS))
     # A card this image knows about that the stored file predates still has to
     # land somewhere: its default position, not dropped.
     order += [k for k in CARD_KEYS if k not in order]
-    closed = list(dict.fromkeys(k for k in (v.get("closed") or []) if k in CARD_KEYS))
+    closed = v.get("closed") if isinstance(v.get("closed"), list) else []
+    closed = list(dict.fromkeys(k for k in closed if k in CARD_KEYS))
     return {"order": order, "closed": closed}
 
 
@@ -963,18 +967,22 @@ def findings_counts(ps):
     finding. The cache holds the unfiltered counts: validity can change
     (an exclusion toggled, a permission fixed) without any report changing,
     so the filter runs per call and only the parse is cached."""
-    mtime = reports_mtime()
-    if _findings_counts["mtime"] != mtime:
+    # Keyed on the project names too: attribution matches path components
+    # against them, so a directory that appears between scans would otherwise
+    # keep counting as unattributed here while the report tab, which parses
+    # fresh, files it correctly.
+    known = {p["name"] for p in ps}
+    key = (reports_mtime(), tuple(sorted(known)))
+    if _findings_counts["mtime"] != key:
         per = {}
         if REPORTS.is_dir():
-            known = {p["name"] for p in ps}
             files = sorted(REPORTS.glob("*.sarif")) + \
                 sorted(REPORTS.glob("*.sarif.json"))
             for f in files:
                 for row in parse_sarif(f, known)["findings"]:
                     lv = per.setdefault(row["project"] or "", {})
                     lv[row["level"]] = lv.get(row["level"], 0) + 1
-        _findings_counts.update(mtime=mtime, projects=per)
+        _findings_counts.update(mtime=key, projects=per)
     valid = _valid_projects(ps)
     return {p: lv for p, lv in _findings_counts["projects"].items()
             if not p or p in valid}

@@ -782,7 +782,7 @@ function startDrag(ev, id){
 // dragged tab is spliced out, and it handles a wrapped tab bar for free.
 function dropIndex(x, y, from){
   let idx = 0;
-  [...$("tabbar").querySelectorAll(".tab")].forEach((el, i) => {
+  [...$("tabbar").querySelectorAll(".tab[data-id]")].forEach((el, i) => {
     if (i === from) return;
     const r = el.getBoundingClientRect();
     if (y > r.bottom || (y >= r.top && x > r.left + r.width / 2)) idx++;
@@ -855,6 +855,10 @@ function endDrag(){
 let tabsDrawn = false;
 
 function drawTabs(){
+  // Mid-drag, only re-sort: the status poll renders every fifteen seconds,
+  // and a rebuild here would detach the node a finger is holding (see
+  // reorderTabEls). Labels catch up on the redraw that follows the drop.
+  if (drag){ reorderTabEls(); return; }
   // Slide, don't teleport — and across the innerHTML rebuild, which is why
   // everything is keyed by tab id rather than element. Old positions (plus a
   // clone, for a tab about to vanish) are captured before the rebuild; after
@@ -1243,7 +1247,10 @@ function renderFindingsInto(i){
 // Doctor first: the verdict on the whole box outranks any one card below it.
 const CARD_ORDER = ["doctor","runner","projects","findings","sessions","commands","custom"];
 let cards = {order: CARD_ORDER.slice(), closed: []};
-let cardDrag = null;
+let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
+                                           // the arrangement here: a poll
+                                           // issued before that carries a
+                                           // stale copy and must not win
 
 const cardEls = () => [...document.querySelectorAll(".side .card[data-card]")];
 
@@ -1264,6 +1271,7 @@ function applyCards(animate){
 }
 
 async function saveCards(){
+  cardsChangedAt = performance.now();
   try{
     const r = await fetch("/api/cards", {method:"POST",
       headers:{"Content-Type":"application/json"}, body: JSON.stringify(cards)});
@@ -1310,14 +1318,17 @@ function slideBody(el, mutate){
   const card = el.closest(".card, .mpanel");   // the phone panel hosts these too
   if (!card || noMotion()){ mutate(); return; }
   const from = card.offsetHeight;
-  card.getAnimations().forEach(a => a.cancel());
+  // Only its own kind: cancelling a card-level fold here would swallow the
+  // class write that fold's finish handler was going to make.
+  card.getAnimations().forEach(a => { if (a.id === "body") a.cancel(); });
   mutate();
   const to = card.offsetHeight;
   if (from === to) return;
   card.style.overflow = "hidden";
-  card.animate([{height: from + "px"}, {height: to + "px"}],
-               {duration: 180, easing: "ease"})
-      .onfinish = () => card.style.overflow = "";
+  const anim = card.animate([{height: from + "px"}, {height: to + "px"}],
+                            {duration: 180, easing: "ease"});
+  anim.id = "body";
+  anim.onfinish = () => card.style.overflow = "";
 }
 
 // The same pointer-based drag as the tab strip, turned vertical: the number
@@ -2043,6 +2054,7 @@ function adoptLayout(v){
 }
 
 async function refresh(){
+  const asked = performance.now();
   try{
     const r = await fetch("/api/status");
     if (!r.ok) throw new Error("HTTP " + r.status);
@@ -2053,7 +2065,7 @@ async function refresh(){
     adoptLayout(state.layout);
     // Not mid-drag: adopting the server's order under a moving pointer would
     // snap the card out of the operator's hand.
-    if (state.cards && !cardDrag){ cards = state.cards; applyCards(); }
+    if (state.cards && !cardDrag && asked > cardsChangedAt){ cards = state.cards; applyCards(); }
     drawRunner(state.runner);
     drawProjects(state.projects);
     drawSessions(state.sessions);
