@@ -2,74 +2,137 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
 <title>BuilderBot</title>
 <style>
 :root{
   --bg:#14181d; --panel:#1b2027; --line:#2a323c; --ink:#e6edf3;
   --dim:#8b98a5; --accent:#3fb950; --warn:#d29922; --bad:#f85149;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --tap:38px;                      /* min touch target */
 }
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
-  font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-header{display:flex;align-items:center;gap:12px;padding:10px 16px;
-  background:var(--panel);border-bottom:1px solid var(--line);flex-wrap:wrap}
-header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.2px}
-.dot{width:9px;height:9px;border-radius:50%;background:var(--accent);
-  box-shadow:0 0 0 3px rgba(63,185,80,.15)}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);display:flex;
+  flex-direction:column;overflow:hidden;
+  font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right)
+          env(safe-area-inset-bottom) env(safe-area-inset-left)}
+
+/* Header ------------------------------------------------------------- */
+header{display:flex;align-items:center;gap:10px;padding:8px 12px;
+  background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto}
+header h1{font-size:15px;margin:0;font-weight:600}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--accent);flex:0 0 auto}
 .spacer{flex:1}
-.meta{color:var(--dim);font:12px/1.4 var(--mono)}
-main{display:grid;grid-template-columns:340px 1fr;gap:12px;padding:12px;
-  height:calc(100vh - 45px)}
-@media(max-width:900px){main{grid-template-columns:1fr;height:auto}}
-.col{display:flex;flex-direction:column;gap:12px;min-height:0;overflow:auto}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px}
-.card h2{margin:0;padding:9px 12px;font-size:12px;text-transform:uppercase;
+.meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+@media(max-width:600px){ .meta.host{display:none} }
+
+/* View switch (mobile only) ------------------------------------------ */
+.switch{display:none;gap:6px;padding:6px 12px;background:var(--panel);
+  border-bottom:1px solid var(--line);flex:0 0 auto}
+.switch button{flex:1;min-height:var(--tap)}
+
+/* Layout ------------------------------------------------------------- */
+main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
+  gap:10px;padding:10px}
+.col{display:flex;flex-direction:column;gap:10px;min-height:0}
+.col.side{overflow:auto;-webkit-overflow-scrolling:touch}
+
+@media(max-width:900px){
+  .switch{display:flex}
+  main{grid-template-columns:1fr;padding:8px;gap:8px}
+  /* One pane at a time on a phone: both would be unusable. */
+  body[data-view="terminal"] .col.side{display:none}
+  body[data-view="dash"] .col.term{display:none}
+}
+
+/* Cards -------------------------------------------------------------- */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  flex:0 0 auto}
+.card h2{margin:0;padding:8px 12px;font-size:11px;text-transform:uppercase;
   letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);
   font-weight:600}
-.card .body{padding:10px 12px}
-.row{display:flex;align-items:center;gap:8px;padding:7px 12px;
-  border-bottom:1px solid var(--line)}
+.row{display:flex;align-items:center;gap:8px;padding:7px 10px;
+  border-bottom:1px solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
 .row .name{font-weight:600}
 .row .sub{color:var(--dim);font:12px/1.4 var(--mono)}
-.grow{flex:1;min-width:0}
+.grow{flex:1;min-width:120px}
+
 button{background:#232b34;color:var(--ink);border:1px solid var(--line);
-  border-radius:6px;padding:5px 9px;font:12px/1 inherit;cursor:pointer;
-  white-space:nowrap}
-button:hover{background:#2b3540;border-color:#3d4a58}
+  border-radius:6px;padding:6px 10px;font:12px/1 inherit;cursor:pointer;
+  white-space:nowrap;min-height:30px;touch-action:manipulation;
+  -webkit-tap-highlight-color:transparent}
+button:hover{background:#2b3540}
+button:active{background:#37424f}
 button.primary{background:#1f6f36;border-color:#2ea043}
-button.primary:hover{background:#248239}
-.macros{display:flex;flex-wrap:wrap;gap:6px;padding:10px 12px}
+button.on{background:#1f6f36;border-color:#2ea043}
+.macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
+@media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
+
 .pill{font:11px/1 var(--mono);padding:3px 7px;border-radius:99px;
   border:1px solid var(--line);color:var(--dim)}
 .pill.ok{color:var(--accent);border-color:#22452c}
 .pill.bad{color:var(--bad);border-color:#4d2220}
 .pill.warn{color:var(--warn);border-color:#4a3a15}
-#term{flex:1;min-height:420px;border:1px solid var(--line);border-radius:8px;
-  overflow:hidden;background:#000}
-#term iframe{width:100%;height:100%;border:0;display:block}
-.tabs{display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px;background:var(--panel);
-  border:1px solid var(--line);border-bottom:0;border-radius:8px 8px 0 0}
-.tabs button.on{background:#1f6f36;border-color:#2ea043}
-pre{margin:0;padding:10px 12px;font:12px/1.45 var(--mono);white-space:pre-wrap;
-  word-break:break-word;max-height:340px;overflow:auto;color:#cbd5e1}
-.empty{color:var(--dim);padding:10px 12px;font-style:italic}
+
+pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
+  word-break:break-word;max-height:300px;overflow:auto;color:#cbd5e1}
+.empty{color:var(--dim);padding:9px 11px;font-style:italic}
+
+/* Terminal ----------------------------------------------------------- */
+.col.term{min-height:0}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;padding:7px 8px;background:var(--panel);
+  border:1px solid var(--line);border-radius:8px 8px 0 0;flex:0 0 auto;
+  align-items:center}
+.tabs .sep{flex:1}
+.panes{flex:1;min-height:0;display:grid;gap:6px;grid-template-columns:1fr;
+  background:var(--line);border:1px solid var(--line);border-top:0;
+  border-radius:0 0 8px 8px;overflow:hidden}
+.panes.split{grid-template-columns:1fr 1fr}
+@media(max-width:900px){ .panes.split{grid-template-columns:1fr} }
+.pane{position:relative;background:#000;min-height:0;display:flex}
+.pane.hidden{display:none}
+.pane iframe{flex:1;border:0;display:block;width:100%;height:100%}
+/* The active pane is where the next tab click lands — say so visibly, or
+   clicking a tab in split view looks random. */
+.pane.active::after{content:"";position:absolute;inset:0;pointer-events:none;
+  border:2px solid #2ea043;border-radius:2px}
+.pane .cap{position:absolute;top:0;left:0;z-index:2;font:11px/1 var(--mono);
+  background:rgba(20,24,29,.82);color:var(--dim);padding:4px 7px;
+  border-radius:0 0 6px 0;cursor:pointer}
+
+/* Key bar ------------------------------------------------------------ */
+.keys{flex:0 0 auto;background:var(--panel);border:1px solid var(--line);
+  border-top:0;border-radius:0 0 8px 8px;padding:6px;display:none;
+  gap:5px;flex-wrap:wrap}
+.keys.show{display:flex}
+.keys button{font-family:var(--mono);min-width:40px;min-height:var(--tap);
+  padding:6px 8px;flex:0 0 auto}
+.keys .gap{flex-basis:100%;height:0}
+.panes.haskeys{border-radius:0}
 </style>
 </head>
-<body>
+<body data-view="dash">
 <header>
   <span class="dot" id="dot"></span>
   <h1>BuilderBot</h1>
-  <span class="meta" id="host"></span>
+  <span class="meta host" id="host"></span>
   <span class="spacer"></span>
   <span class="meta" id="uptime"></span>
-  <button onclick="refresh()">Refresh</button>
+  <button onclick="refresh()">↻</button>
 </header>
 
+<div class="switch">
+  <button id="vDash" class="on" onclick="setView('dash')">Dashboard</button>
+  <button id="vTerm" onclick="setView('terminal')">Terminal</button>
+</div>
+
 <main>
-  <div class="col">
+  <div class="col side">
     <div class="card">
       <h2>Runner</h2>
       <div id="runner"><div class="empty">loading…</div></div>
@@ -108,45 +171,154 @@ pre{margin:0;padding:10px 12px;font:12px/1.45 var(--mono);white-space:pre-wrap;
     </div>
   </div>
 
-  <div class="col">
+  <div class="col term">
     <div class="tabs" id="tabs"></div>
-    <div id="term"><iframe id="frame" title="terminal"></iframe></div>
+    <div class="panes" id="panes">
+      <div class="pane active" id="pane0" onclick="setActive(0)">
+        <div class="cap" id="cap0"></div><iframe id="f0" title="terminal 1"></iframe>
+      </div>
+      <div class="pane hidden" id="pane1" onclick="setActive(1)">
+        <div class="cap" id="cap1"></div><iframe id="f1" title="terminal 2"></iframe>
+      </div>
+    </div>
+    <div class="keys" id="keys"></div>
   </div>
 </main>
 
 <script>
-let state = null, current = null;
+"use strict";
+let state = null;
+let panes = [null, null];          // {arg,label} per pane
+let active = 0;
+let split  = false;
+// Phones are where the missing keys hurt; a physical keyboard already has them.
+let showKeys = window.matchMedia("(pointer: coarse)").matches;
 
+const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 
-// ttyd is a separate service on its own port, reached at the same hostname the
-// dashboard was loaded from — so this keeps working through whatever hostname,
-// IP or reverse proxy the operator actually used.
-const ttyd = arg =>
+// Mirror of bb-tty's mapping. The key bar talks to tmux by session name, and
+// the terminal is only an iframe we cannot reach into, so the two have to
+// agree on what a given tab is called.
+const sessionOf = arg =>
+  arg.startsWith("claude:") ? "claude-" + arg.slice(7) :
+  arg.startsWith("shell:")  ? "shell-"  + arg.slice(6) : arg;
+
+const ttydUrl = arg =>
   `${location.protocol}//${location.hostname}:${state.ttyd_port}/?arg=${encodeURIComponent(arg)}`;
 
-function open(arg, label){
-  current = label;
-  document.getElementById("frame").src = ttyd(arg);
+function setView(v){
+  document.body.dataset.view = v;
+  $("vDash").classList.toggle("on", v === "dash");
+  $("vTerm").classList.toggle("on", v === "terminal");
+}
+
+function setActive(i){
+  if (!split) return;
+  active = i;
+  renderPanes();
+}
+
+function openSession(arg, label){
+  panes[active] = {arg, label};
+  renderPanes();
+  drawTabs();
+  // On a phone the terminal lives behind the switch, so opening one should
+  // actually show it rather than silently loading out of view.
+  if (window.matchMedia("(max-width:900px)").matches) setView("terminal");
+}
+
+function toggleSplit(){
+  split = !split;
+  if (split && !panes[1]) panes[1] = {arg:"shell", label:"workspace"};
+  if (!split) active = 0;
+  renderPanes();
   drawTabs();
 }
 
+function toggleKeys(){ showKeys = !showKeys; renderKeys(); drawTabs(); }
+
+function renderPanes(){
+  $("panes").classList.toggle("split", split);
+  $("panes").classList.toggle("haskeys", showKeys);
+  for (let i = 0; i < 2; i++){
+    const pane = $("pane" + i), frame = $("f" + i), cap = $("cap" + i);
+    const want = panes[i];
+    pane.classList.toggle("hidden", i === 1 && !split);
+    pane.classList.toggle("active", split && i === active);
+    if (!want || !state) continue;
+    const url = ttydUrl(want.arg);
+    // Only touch src when it actually changes — reassigning reloads the
+    // iframe, which drops the websocket and re-attaches for no reason.
+    if (frame.dataset.arg !== want.arg){ frame.src = url; frame.dataset.arg = want.arg; }
+    cap.textContent = want.label;
+  }
+  renderKeys();
+}
+
+function tabList(){
+  const t = [["shell", "workspace"]];
+  for (const p of (state?.projects || [])) t.push([`claude:${p.name}`, `claude ${p.name}`]);
+  for (const p of (state?.projects || [])) t.push([`shell:${p.name}`, `sh ${p.name}`]);
+  return t;
+}
+
 function drawTabs(){
-  const t = document.getElementById("tabs");
-  const tabs = [["shell", "workspace"]];
-  for (const p of state.projects) tabs.push([`claude:${p.name}`, `claude ${p.name}`]);
-  for (const p of state.projects) tabs.push([`shell:${p.name}`, `sh ${p.name}`]);
-  t.innerHTML = tabs.map(([arg, label]) =>
-    `<button class="${label===current?"on":""}" data-arg="${esc(arg)}" data-label="${esc(label)}">${esc(label)}</button>`
+  const cur = panes[active]?.arg;
+  const buttons = tabList().map(([arg, label]) =>
+    `<button class="${arg===cur?"on":""}" data-arg="${esc(arg)}" data-label="${esc(label)}">${esc(label)}</button>`
   ).join("");
-  for (const b of t.querySelectorAll("button"))
-    b.onclick = () => open(b.dataset.arg, b.dataset.label);
+  $("tabs").innerHTML = buttons +
+    `<span class="sep"></span>` +
+    `<button id="bKeys" class="${showKeys?"on":""}" title="on-screen keys">⌨</button>` +
+    `<button id="bSplit" class="${split?"on":""}" title="split into two panes">◫</button>`;
+  for (const b of $("tabs").querySelectorAll("[data-arg]"))
+    b.onclick = () => openSession(b.dataset.arg, b.dataset.label);
+  $("bKeys").onclick = toggleKeys;
+  $("bSplit").onclick = toggleSplit;
+}
+
+// Keys an Android keyboard has no way to send, plus characters buried two taps
+// deep. Sent through tmux rather than the iframe: it is cross-origin, so the
+// page cannot put a keystroke into it — but tmux is attached to the same
+// session and can.
+const KEYS = [
+  [["escape","Esc"],["tab","Tab"],["left","←"],["down","↓"],["up","↑"],["right","→"],
+   ["home","Home"],["end","End"],["pgup","PgUp"],["pgdn","PgDn"]],
+  [["ctrl-c","^C"],["ctrl-d","^D"],["ctrl-z","^Z"],["ctrl-l","^L"],["ctrl-r","^R"],
+   ["ctrl-a","^A"],["ctrl-e","^E"],["ctrl-u","^U"],["ctrl-w","^W"],["enter","⏎"]],
+  [["pipe","|"],["tilde","~"],["slash","/"],["backslash","\\"],["dash","-"],
+   ["under","_"],["dollar","$"],["star","*"],["lt","<"],["gt",">"]],
+];
+
+function renderKeys(){
+  const el = $("keys");
+  el.classList.toggle("show", showKeys);
+  if (!showKeys){ el.innerHTML = ""; return; }
+  el.innerHTML = KEYS.map(row =>
+    row.map(([k, label]) => `<button data-k="${esc(k)}">${esc(label)}</button>`).join("")
+  ).join('<span class="gap"></span>');
+  for (const b of el.querySelectorAll("[data-k]")) b.onclick = () => sendKey(b.dataset.k);
+}
+
+async function sendKey(key){
+  const p = panes[active];
+  if (!p) return;
+  try{
+    const r = await fetch("/api/keys", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({session: sessionOf(p.arg), key})});
+    const j = await r.json();
+    // A missing session means nothing is running in that tab yet — say so
+    // instead of letting taps vanish silently.
+    if (j.error) $("out").textContent = "key: " + j.error;
+  }catch(e){ $("out").textContent = "key failed: " + e; }
 }
 
 function drawRunner(r){
-  const el = document.getElementById("runner");
-  if (!r.enabled) { el.innerHTML = '<div class="empty">disabled (ENABLE_RUNNER=false)</div>'; return; }
+  const el = $("runner");
+  if (!r.enabled){ el.innerHTML = '<div class="empty">disabled (ENABLE_RUNNER=false)</div>'; return; }
   const cls = r.listening ? "ok" : (r.registered ? "warn" : "bad");
   const txt = r.listening ? "listening for jobs"
             : r.registered ? "registered, between jobs" : "not registered";
@@ -156,8 +328,8 @@ function drawRunner(r){
 }
 
 function drawProjects(ps){
-  const el = document.getElementById("projects");
-  if (!ps.length) { el.innerHTML = '<div class="empty">nothing mounted under /workspace</div>'; return; }
+  const el = $("projects");
+  if (!ps.length){ el.innerHTML = '<div class="empty">nothing mounted under /workspace</div>'; return; }
   el.innerHTML = ps.map(p => `
     <div class="row">
       <div class="grow">
@@ -169,16 +341,16 @@ function drawProjects(ps){
       <button data-f="${esc(p.name)}">Findings</button>
     </div>`).join("");
   for (const b of el.querySelectorAll("[data-c]"))
-    b.onclick = () => open(`claude:${b.dataset.c}`, `claude ${b.dataset.c}`);
+    b.onclick = () => openSession(`claude:${b.dataset.c}`, `claude ${b.dataset.c}`);
   for (const b of el.querySelectorAll("[data-s]"))
-    b.onclick = () => open(`shell:${b.dataset.s}`, `sh ${b.dataset.s}`);
+    b.onclick = () => openSession(`shell:${b.dataset.s}`, `sh ${b.dataset.s}`);
   for (const b of el.querySelectorAll("[data-f]"))
     b.onclick = () => macro("findings", b.dataset.f);
 }
 
 function drawSessions(ss){
-  const el = document.getElementById("sessions");
-  if (!ss.length) { el.innerHTML = '<div class="empty">no tmux sessions — nothing is running</div>'; return; }
+  const el = $("sessions");
+  if (!ss.length){ el.innerHTML = '<div class="empty">no tmux sessions — nothing is running</div>'; return; }
   el.innerHTML = ss.map(s => `
     <div class="row">
       <div class="grow"><span class="name">${esc(s.name)}</span>
@@ -186,36 +358,39 @@ function drawSessions(ss){
       <button data-a="${esc(s.name)}">Attach</button>
     </div>`).join("");
   for (const b of el.querySelectorAll("[data-a]"))
-    b.onclick = () => open(b.dataset.a, b.dataset.a);
+    b.onclick = () => openSession(b.dataset.a, b.dataset.a);
 }
 
 async function macro(name, project){
-  const out = document.getElementById("out");
-  out.textContent = `running ${name}${project?" · "+project:""}…`;
+  $("out").textContent = `running ${name}${project?" · "+project:""}…`;
+  if (window.matchMedia("(max-width:900px)").matches) setView("dash");
   try{
     const r = await fetch("/api/run", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({macro:name, project})});
     const j = await r.json();
-    out.textContent = j.error ? "error: "+j.error
+    $("out").textContent = j.error ? "error: "+j.error
       : `$ ${j.cmd}\n\n${j.out || "(no output)"}${j.code?`\n\n[exit ${j.code}]`:""}`;
-  }catch(e){ out.textContent = "request failed: "+e; }
+  }catch(e){ $("out").textContent = "request failed: "+e; }
   refresh();
 }
 
 async function refresh(){
   try{
     const r = await fetch("/api/status");
+    if (!r.ok) throw new Error("HTTP " + r.status);
     state = await r.json();
-    document.getElementById("dot").style.background = "var(--accent)";
-    document.getElementById("host").textContent = state.host;
-    document.getElementById("uptime").textContent = "up " + state.uptime;
+    $("dot").style.background = "var(--accent)";
+    $("host").textContent = state.host;
+    $("uptime").textContent = "up " + state.uptime;
     drawRunner(state.runner);
     drawProjects(state.projects);
     drawSessions(state.sessions);
-    if (!current) open("shell", "workspace"); else drawTabs();
+    if (!panes[0]) panes[0] = {arg:"shell", label:"workspace"};
+    renderPanes();
+    drawTabs();
   }catch(e){
-    document.getElementById("dot").style.background = "var(--bad)";
+    $("dot").style.background = "var(--bad)";
   }
 }
 
