@@ -374,10 +374,17 @@ def _pidfile_alive(p):
     """Is the process named by this pidfile still there? A stale file is a no."""
     try:
         pid = int(p.read_text().strip())
-        os.kill(pid, 0)
-        return True
     except (OSError, ValueError):
         return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True         # it exists, we just may not signal it
+    except OSError:
+        return False
+    return True
 
 
 def runner():
@@ -417,7 +424,9 @@ def runner():
         # beyond this: a runner long-polls for one job at a time and is never
         # told what else is queued, and what a job *does* — how many tests, how
         # far in — is known only to the tool running inside the step.
-        pid = w["out"].split()[0] if w["out"].split() else None
+        # `out` merges stderr, so take the first token that is actually a pid
+        # rather than whatever happened to be printed first.
+        pid = next((t for t in w["out"].split() if t.isdigit()), None)
         if pid:
             e = run(["ps", "-o", "etimes=", "-p", pid], timeout=10)
             if e["code"] == 0 and e["out"].strip().isdigit():
@@ -551,7 +560,11 @@ class Handler(BaseHTTPRequestHandler):
         no-op rather than a permanent stale entry.
         """
         name, on = req.get("name", ""), bool(req.get("excluded"))
-        if name not in {d.name for d in WORKSPACE.iterdir() if d.is_dir()}:
+        try:
+            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
+        except OSError:
+            here = set()
+        if name not in here:
             return self._json({"error": f"unknown project: {name}"}, 400)
         names = set(load_excludes())
         names.add(name) if on else names.discard(name)

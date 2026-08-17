@@ -327,9 +327,12 @@ async function closeTab(id, ev){
   // sessions pile up invisibly behind a UI that looks tidy. Claude gets a
   // confirm because ending one throws away a conversation in progress.
   if (t.kind === "term"){
+    // Ask about the resolved tmux session, not the argument. A tab opened from
+    // the Sessions list carries the raw name ("claude-Foo"), and testing the
+    // argument closed a live conversation without asking.
     const session = sessionOf(t.arg);
-    if (t.arg.startsWith("claude:") &&
-        !confirm(`End the Claude session in ${t.arg.slice(7)}?\n\nThe transcript is kept, but the conversation stops.`))
+    if (session.startsWith("claude-") &&
+        !confirm(`End the Claude session in ${session.slice(7)}?\n\nThe transcript is kept, but the conversation stops.`))
       return;
     try{
       await fetch("/api/session", {method:"POST",
@@ -801,6 +804,19 @@ async function setExcluded(name, on){
   refresh();
 }
 
+// A session tmux knows as "claude-Foo" is the same thing the Projects card
+// opens as "claude:Foo". Opening it under the raw name takes bb-tty's fallback
+// branch — a bare shell at /workspace, skipping the project directory, the
+// exclusion check and the scoped settings — which is only invisible while the
+// session already exists. Map it back when the project is one we know.
+function argForSession(name){
+  const known = new Set((state?.projects || []).map(p => p.name));
+  for (const [prefix, arg] of [["claude-", "claude:"], ["shell-", "shell:"]])
+    if (name.startsWith(prefix) && known.has(name.slice(prefix.length)))
+      return arg + name.slice(prefix.length);
+  return name;
+}
+
 function drawSessions(ss){
   const el = $("sessions");
   if (!ss.length){ el.innerHTML = '<div class="empty">no tmux sessions — nothing is running</div>'; return; }
@@ -811,7 +827,7 @@ function drawSessions(ss){
       <button data-a="${esc(s.name)}">Open</button>
     </div>`).join("");
   el.querySelectorAll("[data-a]").forEach(b => b.onclick = () =>
-    openTab({kind:"term", arg:b.dataset.a, label:b.dataset.a}));
+    openTab({kind:"term", arg:argForSession(b.dataset.a), label:b.dataset.a}));
 }
 
 // Which macro is in flight, if any. Stopping the runner waits for a clean
