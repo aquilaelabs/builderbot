@@ -497,9 +497,12 @@ terminal on `7681`:
   of the conversation, no extra process
 - a **Doctor** card: `bb doctor`'s checks, run by the server in the background
   every 30 minutes (`DASHBOARD_DOCTOR_INTERVAL` seconds to change that) and
-  re-run on demand with its ↻. Passing checks collapse into green chips;
-  failures and warnings are full lines, with the fix hint from `bb doctor`'s
-  own output in the tooltip
+  re-run on demand with its ↻. The header wears the verdict as a dot — green,
+  amber or red — and a healthy card folds down to just that header and an
+  "all n ok" button that expands it. Anything worse opens the card by itself,
+  even if you folded it away green: failures and warnings are full lines, with
+  the fix hint from `bb doctor`'s own output in the tooltip, while passing
+  checks collapse into green chips
 
 ### Tabs and panes
 
