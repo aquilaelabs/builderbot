@@ -205,8 +205,22 @@ Do not install these; they are in the image.
 `android sdk` (build-tools, platform-tools, `bundletool`; platforms and system
 images per `ANDROID_SYSTEM_IMAGES`) ·
 `playwright` (chromium/firefox/webkit) · `git`/`git-lfs`/`gh` ·
-`ripgrep`/`fd`/`fzf`/`jq` · `build-essential`/`cmake` · `ffmpeg`/`imagemagick` ·
+`ripgrep`/`fd`/`fzf`/`jq`/`yq` · `build-essential`/`cmake` · `ffmpeg`/`imagemagick` ·
+`shellcheck`/`hadolint`/`actionlint`/`ruff` · `lsof`/`strace`/`tree` ·
 `mise` for per-project tool pinning
+
+Before pushing anything that touches shell scripts, Dockerfiles, workflows,
+compose files or XML, run:
+
+```bash
+bb lint            # lints those files in the current repo, same tools as CI
+```
+
+It checks `runs-on` labels against the labels this runner actually carries, so
+the "Waiting for a runner" label mismatch is caught here instead of on GitHub.
+It does not run the project's own linters (eslint, ruff configs, gradle
+checks) — those have their own configuration; use the project's documented
+commands for them.
 
 Check `bb status` for versions and `bb doctor` when something environmental
 looks wrong — it diagnoses auth, connectivity and GPU state in one pass. Bare

@@ -1,0 +1,12 @@
+# One config for CI and `bb lint`, so the two can never disagree about what a
+# clean Dockerfile is. hadolint loads this file from the directory it runs in.
+#
+# DL3008/DL3013/DL3016: a rolling dev image deliberately tracks the newest
+#   apt/pip/npm packages rather than pinning them.
+# SC1091: shellcheck cannot follow `. /etc/os-release`, which only exists
+#   inside the image being built.
+ignored:
+  - DL3008
+  - DL3013
+  - DL3016
+  - SC1091

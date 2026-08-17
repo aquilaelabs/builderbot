@@ -63,6 +63,7 @@ MACROS = {
     "claude-md":        ["bb", "claude-md"],
     "claude-md-update": ["bb", "claude-md", "--update"],
     "claude-md-init":   ["bb", "claude-md", "--init"],
+    "lint":             ["bb", "lint"],
     "findings":         ["bb", "findings"],
     "findings-all":     ["bb", "findings", "--all"],
     "logs":             ["bb", "logs"],

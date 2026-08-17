@@ -26,6 +26,8 @@ bb — BuilderBot helper
   bb claude-md           is this project's CLAUDE.md environment block current?
   bb claude-md --update  refresh that block, leaving the project section alone
   bb claude-md --init    create a CLAUDE.md here from the shipped template
+  bb lint [PATH]         lint the infrastructure files a repo carries: shell
+                         scripts, Dockerfiles, GitHub workflows, compose, XML
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
@@ -272,7 +274,7 @@ emu_avd() {
         printf '%s' "$ANDROID_AVD_NAME"
         return
     fi
-    first="$(printf '%s' "${ANDROID_SYSTEM_IMAGES:-35}" | tr ',' ' ' | awk '{print $1}')"
+    first="$(printf '%s' "${ANDROID_SYSTEM_IMAGES:-${ANDROID_DEFAULT_API:-36}}" | tr ',' ' ' | awk '{print $1}')"
     if avd_exists "${prefix}-${first}"; then
         printf '%s-%s' "$prefix" "$first"
     else
@@ -303,7 +305,11 @@ cmd_emu() {
                 -gpu "$gpu" \
                 > "$HOME/.android/emulator.log" 2>&1 &
             log "waiting for the device to come up..."
-            adb wait-for-device
+            # Bounded: a crashed emulator otherwise leaves this waiting forever
+            # for a device that is never coming, with the reason sitting unread
+            # in the log the timeout message points at.
+            timeout "${ANDROID_BOOT_TIMEOUT:-180}" adb wait-for-device \
+                || die "device did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s — see ~/.android/emulator.log"
             adb devices
             ;;
         stop)
@@ -313,7 +319,7 @@ cmd_emu() {
             adb devices -l
             ;;
         list)
-            printf 'configured API levels: %s\n' "${ANDROID_SYSTEM_IMAGES:-35}"
+            printf 'configured API levels: %s\n' "${ANDROID_SYSTEM_IMAGES:-${ANDROID_DEFAULT_API:-36}}"
             printf 'default for `bb emu start`: %s\n\n' "$(emu_avd)"
             avdmanager list avd 2>/dev/null \
                 | grep -E 'Name:|Based on:' \
@@ -544,6 +550,172 @@ cmd_findings() {
     done
 }
 
+# Lint the infrastructure files of the repo at PATH (default: here).
+#
+# This is the environment's lint, not the project's: shell scripts, Dockerfiles,
+# workflows, compose files and XML are what every project in this container
+# carries regardless of language, and they are exactly the files whose failures
+# otherwise surface for the first time in a CI run. A project's own linters
+# (eslint, ruff configs, gradle checks) stay the project's business — they have
+# their own configuration and this must not second-guess it.
+#
+# Each check is skipped, visibly, when its tool is missing — an image from
+# before these tools shipped should say so rather than pass by omission.
+cmd_lint() {
+    local root="${1:-$PWD}" rc=0 skipped=0
+    [ -d "$root" ] || die "no such directory: ${root}"
+    cd "$root"
+
+    section() { printf '== %s ==\n' "$1"; }
+    need() { # need TOOL — false (and say so) when it is not installed
+        command -v "$1" >/dev/null 2>&1 && return 0
+        printf '  [skip] %s is not in this image (predates it? update the container)\n' "$1"
+        skipped=1
+        return 1
+    }
+    # Files come from git when this is a repo, so vendored trees a project
+    # ignores (node_modules, build output) are not dragged in; otherwise a
+    # pruned find covers a directory that never got a .git.
+    files() { # files GLOB...
+        if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            git ls-files -z -- "$@" 2>/dev/null
+        else
+            local -a args=() g
+            for g in "$@"; do args+=(-o -path "./$g"); done
+            find . \( -name .git -o -name node_modules -o -name _work \) -prune \
+                -o -type f \( "${args[@]:1}" \) -print0 2>/dev/null
+        fi
+    }
+
+    # Shell scripts, by shebang — the same selection CI's lint workflow makes,
+    # so passing here means passing there.
+    section "shell scripts (shellcheck)"
+    if need shellcheck; then
+        local -a shells=()
+        while IFS= read -r -d '' f; do
+            head -c 64 "$f" 2>/dev/null | head -1 | grep -qE '^#!.*\b(ba)?sh\b' \
+                && shells+=("$f")
+        done < <(files '*')
+        if [ "${#shells[@]}" -eq 0 ]; then
+            echo "  none found"
+        elif shellcheck -x -S warning "${shells[@]}"; then
+            printf '  [ok]   %s script(s) clean\n' "${#shells[@]}"
+        else
+            printf '  [FAIL] shellcheck findings above\n'
+            rc=1
+        fi
+    fi
+
+    section "dockerfiles (hadolint)"
+    if need hadolint; then
+        local -a dfs=() f
+        while IFS= read -r -d '' f; do dfs+=("$f"); done \
+            < <(files 'Dockerfile' '*/Dockerfile' 'Dockerfile.*' '*/Dockerfile.*')
+        if [ "${#dfs[@]}" -eq 0 ]; then
+            echo "  none found"
+        # hadolint reads .hadolint.yaml from the working directory on its own.
+        elif hadolint "${dfs[@]}"; then
+            printf '  [ok]   %s dockerfile(s) clean\n' "${#dfs[@]}"
+        else
+            printf '  [FAIL] hadolint findings above\n'
+            rc=1
+        fi
+    fi
+
+    section "github workflows (actionlint)"
+    if compgen -G '.github/workflows/*.yml' >/dev/null \
+        || compgen -G '.github/workflows/*.yaml' >/dev/null; then
+        if need actionlint; then
+            # A repo that declares its runner's labels wins; otherwise build the
+            # declaration from this container's own RUNNER_LABELS, so runs-on
+            # lines targeting this box are checked against what it really
+            # carries — the "Waiting for a runner" label mismatch, caught here.
+            local -a args=()
+            if [ ! -f .github/actionlint.yaml ] && [ ! -f .github/actionlint.yml ] \
+                && [ -n "${RUNNER_LABELS:-}" ]; then
+                local cfg
+                cfg="$(mktemp)"
+                # shellcheck disable=SC2064 # expand now, not at trap time
+                trap "rm -f '$cfg'" RETURN
+                printf 'self-hosted-runner:\n  labels:\n' > "$cfg"
+                printf '%s\n' "${RUNNER_LABELS//,/$'\n'}" \
+                    | sed 's/^/    - /' >> "$cfg"
+                args+=(-config-file "$cfg")
+            fi
+            # The workflow files are named explicitly: bare `actionlint` walks
+            # up looking for a git repository and refuses a plain directory.
+            local -a wfs=()
+            local wf
+            for wf in .github/workflows/*.yml .github/workflows/*.yaml; do
+                [ -e "$wf" ] && wfs+=("$wf")
+            done
+            if actionlint "${args[@]}" "${wfs[@]}"; then
+                echo "  [ok]   workflows clean"
+            else
+                printf '  [FAIL] actionlint findings above\n'
+                rc=1
+            fi
+        fi
+    else
+        echo "  none found"
+    fi
+
+    section "compose files (docker compose config)"
+    local -a composes=() cf
+    while IFS= read -r -d '' cf; do composes+=("$cf"); done \
+        < <(files 'docker-compose.yml' 'docker-compose.yaml' 'compose.yml' 'compose.yaml')
+    if [ "${#composes[@]}" -eq 0 ]; then
+        echo "  none found"
+    elif need docker; then
+        for cf in "${composes[@]}"; do
+            # Validation only — no daemon involved. An .env.example stands in
+            # for the gitignored .env so required variables interpolate.
+            local -a envarg=()
+            [ -f .env ] || { [ -f .env.example ] && envarg=(--env-file .env.example); }
+            if docker compose "${envarg[@]}" -f "$cf" config -q 2>&1 | sed 's/^/  /'; then
+                printf '  [ok]   %s\n' "$cf"
+            else
+                printf '  [FAIL] %s\n' "$cf"
+                rc=1
+            fi
+        done
+    fi
+
+    section "xml"
+    local -a xmls=() x
+    while IFS= read -r -d '' x; do xmls+=("$x"); done < <(files '*.xml')
+    if [ "${#xmls[@]}" -eq 0 ]; then
+        echo "  none found"
+    else
+        for x in "${xmls[@]}"; do
+            # One line on failure, not a traceback — the line and column are
+            # the useful part.
+            if python3 -c "
+import sys, xml.dom.minidom, xml.parsers.expat
+try:
+    xml.dom.minidom.parse(sys.argv[1])
+except xml.parsers.expat.ExpatError as e:
+    raise SystemExit(f'  {e}')
+" "$x"; then
+                printf '  [ok]   %s\n' "$x"
+            else
+                printf '  [FAIL] %s\n' "$x"
+                rc=1
+            fi
+        done
+    fi
+
+    echo
+    if [ "$rc" -ne 0 ]; then
+        echo "lint: FAILURES above"
+    elif [ "$skipped" -ne 0 ]; then
+        echo "lint: clean, but some checks were skipped"
+    else
+        echo "lint: clean"
+    fi
+    return "$rc"
+}
+
 cmd_doctor() {
     local ok=0
     check() { # check DESCRIPTION COMMAND...
@@ -664,6 +836,7 @@ case "${1:-help}" in
     runner)   shift; cmd_runner "$@" ;;
     emu)      shift; cmd_emu "$@" ;;
     claude-md|claudemd) shift; cmd_claude_md "$@" ;;
+    lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     doctor)   cmd_doctor ;;

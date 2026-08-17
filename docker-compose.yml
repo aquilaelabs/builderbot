@@ -73,7 +73,7 @@ services:
       # (Android 14 through 17). Each is ~2GB, downloaded once and kept on the
       # home volume, so the cost lands on your appdata share rather than the
       # image. Start one with: bb emu start 37
-      ANDROID_SYSTEM_IMAGES: ${ANDROID_SYSTEM_IMAGES:-35}
+      ANDROID_SYSTEM_IMAGES: ${ANDROID_SYSTEM_IMAGES:-36}
       # swiftshader_indirect (default) is software rendering and always works.
       # swangle_indirect is usually faster, still software. host needs a GPU
       # and the nvidia block below.
