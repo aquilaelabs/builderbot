@@ -190,26 +190,64 @@ def projects():
     out = []
     if not WORKSPACE.is_dir():
         return out
+    uid, gid = os.getuid(), os.getgid()
     for d in sorted(WORKSPACE.iterdir()):
         if not d.is_dir() or d.name == "_work":
             continue
+        issues = []
+
+        # Permissions first, and reported even when everything after fails.
+        # A directory this user cannot read also fails the git check below, so
+        # checking git first would file a permissions problem as "not a repo"
+        # and hide it under the rule that never shows those.
+        missing = [n for n, m in (("read", os.R_OK), ("write", os.W_OK), ("enter", os.X_OK))
+                   if not os.access(d, m)]
+        if missing:
+            issues.append({"level": "error",
+                           "text": f"cannot {', '.join(missing)} this directory as "
+                                   f"uid {uid}:{gid} — chown it to PUID:PGID on the host"})
+
+        # Path.is_file() only swallows ENOENT/ENOTDIR/EBADF/ELOOP — EACCES is
+        # re-raised, so an unreadable project directory took out the whole
+        # status endpoint rather than being reported as the one thing wrong.
+        try:
+            has_md = (d / "CLAUDE.md").is_file()
+        except OSError:
+            has_md = False
+
         branch, git_ok = None, False
-        if (d / ".git").exists():
-            # Asking git rather than trusting the directory's existence: a
-            # half-copied or corrupt .git looks identical from out here, and a
-            # repo git cannot read is not one anything downstream can act on.
-            git_ok = run(["git", "-C", str(d), "rev-parse", "--is-inside-work-tree"],
-                         timeout=10)["out"].strip() == "true"
-        if git_ok:
-            r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"], timeout=10)
-            # `out` carries stderr too, so a detached HEAD would otherwise put a
-            # `fatal:` line where the branch name goes.
-            branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
+        if not missing:
+            # An empty directory is the one thing never reported. It is not a
+            # problem to fix — it is a mount point waiting for content, or a
+            # leftover — and flagging it would be noise on every boot.
+            try:
+                if not any(d.iterdir()):
+                    continue
+            except OSError:
+                pass                    # unreadable: covered by `missing` above
+
+            if (d / ".git").exists():
+                # Asking git rather than trusting the directory's existence: a
+                # half-copied or corrupt .git looks identical from out here, and
+                # a repo git cannot read is not one anything can act on.
+                git_ok = run(["git", "-C", str(d), "rev-parse", "--is-inside-work-tree"],
+                             timeout=10)["out"].strip() == "true"
+            if not git_ok:
+                issues.append({"level": "error", "text": "no valid git repository"})
+            else:
+                r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"],
+                        timeout=10)
+                # `out` carries stderr too, so a detached HEAD would otherwise
+                # put a `fatal:` line where the branch name goes.
+                branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
+                if not has_md:
+                    issues.append({"level": "warning", "text": "no CLAUDE.md"})
+
         # Every directory is still reported. The dashboard decides what to show,
         # and SARIF paths are attributed by matching these names — dropping one
         # here would silently orphan its findings.
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
-                    "claude_md": (d / "CLAUDE.md").is_file()})
+                    "claude_md": has_md, "issues": issues})
     return out
 
 

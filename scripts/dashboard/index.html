@@ -61,6 +61,8 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
 .row:last-child{border-bottom:0}
 .row .name{font-weight:600}
 .row .sub{color:var(--dim);font:12px/1.4 var(--mono)}
+.row .sub.bad{color:var(--bad)}
+.row .sub.warn{color:var(--warn)}
 .grow{flex:1;min-width:120px}
 
 button{background:#232b34;color:var(--ink);border:1px solid var(--line);
@@ -722,32 +724,26 @@ function drawRunner(r){
   el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
 }
 
-// Projects without a CLAUDE.md are hidden behind this. Non-repos are not —
-// they are never listed at all, at any setting.
+// Anything with a problem is hidden behind this, and stays reachable. The only
+// thing never listed is an empty directory, which the server drops: it is not a
+// problem to fix but a mount point waiting for content.
 let showAllProjects = false;
 
 function drawProjects(ps){
   const el = $("projects"), tog = $("projTog");
+  const flagged = ps.filter(p => p.issues.length);
+  const shown   = showAllProjects ? ps : ps.filter(p => !p.issues.length);
 
-  // A directory git cannot read is not a project here. Every button on the row
-  // assumes a repo — a branch to show, a CLAUDE.md to check, a session whose
-  // whole point is working on tracked code — so listing one would only offer
-  // actions that go nowhere.
-  const repos = ps.filter(p => p.git_ok);
-  const hidden = repos.filter(p => !p.claude_md);
-  const shown = showAllProjects ? repos : repos.filter(p => p.claude_md);
-
-  tog.innerHTML = hidden.length
-    ? `<button id="bAll">${showAllProjects
-        ? `Hide ${hidden.length} without CLAUDE.md` : `Show all (${repos.length})`}</button>`
+  tog.innerHTML = flagged.length
+    ? `<button id="bAll">${showAllProjects ? "Hide" : "Show"} projects with errors (${flagged.length})</button>`
     : "";
-  if (hidden.length)
+  if (flagged.length)
     $("bAll").onclick = () => { showAllProjects = !showAllProjects; drawProjects(ps); };
 
   if (!shown.length){
     el.innerHTML = `<div class="empty">${
-      !repos.length ? "no git repositories under /workspace"
-                    : `${hidden.length} ${hidden.length===1?"repository has":"repositories have"} no CLAUDE.md — use Show all`
+      !ps.length ? "nothing mounted under /workspace"
+                 : `${flagged.length} ${flagged.length===1?"project needs":"projects need"} attention — use Show projects with errors`
     }</div>`;
     return;
   }
@@ -756,7 +752,9 @@ function drawProjects(ps){
     <div class="row">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
-        <div class="sub">git: ${esc(p.git)}${p.claude_md ? "" : " · no CLAUDE.md"}</div>
+        ${p.git ? `<div class="sub">git: ${esc(p.git)}</div>` : ""}
+        ${p.issues.map(i =>
+          `<div class="sub ${i.level === "error" ? "bad" : "warn"}">${esc(i.text)}</div>`).join("")}
       </div>
       <button class="primary" data-c="${esc(p.name)}">Claude</button>
       <button data-s="${esc(p.name)}">Shell</button>
