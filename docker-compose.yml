@@ -88,6 +88,10 @@ services:
       DASHBOARD_AUTH: ${DASHBOARD_AUTH:-}
       DASHBOARD_PORT: ${DASHBOARD_PORT:-8080}
       DASHBOARD_TTYD_PORT: ${DASHBOARD_TTYD_PORT:-7681}
+      # Set only when the host publishes the terminal on a different port than
+      # ttyd binds to. The page has to tell the browser where to connect, and
+      # port mappings are invisible from inside the container.
+      DASHBOARD_TTYD_PUBLIC_PORT: ${DASHBOARD_TTYD_PUBLIC_PORT:-}
 
       # --- publishing -------------------------------------------------------
       NPM_TOKEN: ${NPM_TOKEN:-}

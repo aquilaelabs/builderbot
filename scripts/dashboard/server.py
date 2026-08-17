@@ -24,6 +24,11 @@ WORKSPACE = Path(os.environ.get("WORKSPACE", "/workspace"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "8080"))
 AUTH = os.environ.get("DASHBOARD_AUTH", "")
 TTYD_PORT = int(os.environ.get("DASHBOARD_TTYD_PORT", "7681"))
+# What the *browser* should connect to. Identical to TTYD_PORT unless the host
+# publishes the terminal on a different port, which nothing inside the
+# container can see — Docker port mappings are invisible from in here. Getting
+# this wrong is quiet: the page loads and only the terminal fails.
+TTYD_PUBLIC_PORT = int(os.environ.get("DASHBOARD_TTYD_PUBLIC_PORT") or TTYD_PORT)
 
 # Every command the UI can run, by name. The UI posts a key from this table and
 # nothing else — no argument passthrough, no shell. A dashboard that accepted a
@@ -123,7 +128,7 @@ def snapshot():
         "projects": projects(),
         "sessions": tmux_sessions(),
         "runner": runner(),
-        "ttyd_port": TTYD_PORT,
+        "ttyd_port": TTYD_PUBLIC_PORT,
         "reports": Path("/reports").is_dir(),
         "emulator": run(["adb", "devices"], timeout=15)["out"].strip(),
     }

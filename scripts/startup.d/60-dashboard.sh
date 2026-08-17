@@ -16,6 +16,10 @@ is_true "${ENABLE_DASHBOARD:-false}" || exit 0
 
 PORT="${DASHBOARD_PORT:-8080}"
 TTYD_PORT="${DASHBOARD_TTYD_PORT:-7681}"
+# The port the browser must reach, which differs from the one ttyd binds to
+# whenever the host publishes it elsewhere. Nothing in here can discover that,
+# so it has to be told.
+TTYD_PUBLIC_PORT="${DASHBOARD_TTYD_PUBLIC_PORT:-$TTYD_PORT}"
 DASH=/opt/builderbot/scripts/dashboard
 
 if [ -z "${DASHBOARD_AUTH:-}" ]; then
@@ -45,7 +49,10 @@ set -g status-right ' builderbot '
 setw -g aggressive-resize on
 EOF
 
-log "dashboard: http://<host>:${PORT}  (terminal on ${TTYD_PORT})"
+log "dashboard: http://<host>:${PORT}  (terminal on ${TTYD_PUBLIC_PORT})"
+if [ "$TTYD_PUBLIC_PORT" != "$TTYD_PORT" ]; then
+    log "dashboard: advertising terminal port ${TTYD_PUBLIC_PORT} to browsers (ttyd binds ${TTYD_PORT})"
+fi
 
 # --url-arg lets the page choose the session; bb-tty validates it. -W makes the
 # terminal writable, which is the entire point, and is why the credential above
@@ -58,6 +65,7 @@ nohup ttyd --port "$TTYD_PORT" --interface 0.0.0.0 \
     >> "$(bb_log_dir)/ttyd.log" 2>&1 &
 
 nohup env DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT="$TTYD_PORT" \
+        DASHBOARD_TTYD_PUBLIC_PORT="$TTYD_PUBLIC_PORT" \
         DASHBOARD_AUTH="$DASHBOARD_AUTH" \
         python3 "$DASH/server.py" \
     >> "$(bb_log_dir)/dashboard.log" 2>&1 &
