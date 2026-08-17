@@ -52,8 +52,8 @@ services:
       RUNNER_WORKDIR: /workspace/_work
 
       # --- git identity -----------------------------------------------------
-      GIT_USER_NAME: ${GIT_USER_NAME:-BuilderBot}
-      GIT_USER_EMAIL: ${GIT_USER_EMAIL:-builderbot@localhost}
+      GIT_USER_NAME: ${GIT_USER_NAME:-Stencil923}
+      GIT_USER_EMAIL: ${GIT_USER_EMAIL:-124431934+Stencil923@users.noreply.github.com}
 
       # --- Android emulator -------------------------------------------------
       # Also uncomment the devices: block below for KVM acceleration.

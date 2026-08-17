@@ -306,6 +306,9 @@ bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
 bb runner status | restart
 bb emu start [api] | stop | status | list
+bb claude-md       is this project's CLAUDE.md environment block current?
+bb claude-md --update   refresh that block only
+bb claude-md --init     create one here from the template
 bb findings [PATH] digest scanner SARIF reports (default /reports)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
@@ -419,12 +422,26 @@ survive an update, that there is no display, or that ssh keys are deliberately
 unreadable. The image ships a template that explains all of it:
 
 ```bash
-cp /opt/builderbot/templates/project-CLAUDE.md /workspace/<project>/CLAUDE.md
+bb claude-md --init      # from the project directory
 ```
 
-Then fill in the project-specific section at the bottom. Claude Code picks up
-`CLAUDE.md` from the project root automatically. If the project already has
-one, append the template's contents instead of overwriting.
+Then fill in the project section at the bottom. Claude Code picks `CLAUDE.md`
+up from the project root automatically.
+
+**Keeping it current.** The environment half of that file goes stale every time
+the container gains a feature, while the project half is the expensive part
+nobody wants to risk. So the template wraps its own content in
+`BUILDERBOT:ENV:BEGIN` / `END` markers, and refreshing is a substitution rather
+than a merge:
+
+```bash
+bb claude-md             # does this copy differ from the image's template?
+bb claude-md --update    # replace just that block
+```
+
+Everything below the end marker is never read, compared or written. A file
+without markers is refused rather than guessed at — merge those once by hand,
+and every refresh after that is mechanical.
 
 ## Playwright, Android, publishing
 

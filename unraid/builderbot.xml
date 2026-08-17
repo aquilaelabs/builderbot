@@ -71,8 +71,8 @@ NOTES
   <Config Name="CLAUDE_CODE_VERSION" Target="CLAUDE_CODE_VERSION" Default="latest" Mode="" Description="Pin a Claude Code version for the startup auto-update" Type="Variable" Display="advanced" Required="false" Mask="false">latest</Config>
 
   <!-- ===================== git identity ===================== -->
-  <Config Name="GIT_USER_NAME" Target="GIT_USER_NAME" Default="BuilderBot" Mode="" Description="git commit author name (set to yours)" Type="Variable" Display="always" Required="false" Mask="false">BuilderBot</Config>
-  <Config Name="GIT_USER_EMAIL" Target="GIT_USER_EMAIL" Default="builderbot@localhost" Mode="" Description="git commit author email (set to yours)" Type="Variable" Display="always" Required="false" Mask="false">builderbot@localhost</Config>
+  <Config Name="GIT_USER_NAME" Target="GIT_USER_NAME" Default="Stencil923" Mode="" Description="git commit author name" Type="Variable" Display="always" Required="false" Mask="false">Stencil923</Config>
+  <Config Name="GIT_USER_EMAIL" Target="GIT_USER_EMAIL" Default="124431934+Stencil923@users.noreply.github.com" Mode="" Description="git commit author email. The GitHub noreply address attributes commits to your profile without publishing a real address, and survives the &quot;block pushes that expose my email&quot; setting." Type="Variable" Display="always" Required="false" Mask="false">124431934+Stencil923@users.noreply.github.com</Config>
 
   <!-- ===================== Android ===================== -->
   <Config Name="ENABLE_ANDROID_EMULATOR" Target="ENABLE_ANDROID_EMULATOR" Default="true" Mode="" Description="Create an AVD per API level in ANDROID_SYSTEM_IMAGES at startup. Needs --device=/dev/kvm in Extra Params (pre-set). Start one with: bb emu start" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
