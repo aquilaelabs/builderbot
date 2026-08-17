@@ -50,12 +50,21 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
 
 .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;flex:0 0 auto}
 .card h2{margin:0;padding:8px 12px;font-size:11px;text-transform:uppercase;
-  letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);font-weight:600}
+  letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);
+  font-weight:600;display:flex;align-items:center;gap:8px;min-height:33px}
+.card h2 span{margin-left:auto}
+.card h2 button{font-size:10px;letter-spacing:.4px;text-transform:uppercase;
+  min-height:22px;padding:3px 8px}
+@media(max-width:900px){ .card h2 button{min-height:var(--tap)} }
 .row{display:flex;align-items:center;gap:8px;padding:7px 10px;
   border-bottom:1px solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
 .row .name{font-weight:600}
 .row .sub{color:var(--dim);font:12px/1.4 var(--mono)}
+.row .sub.bad{color:var(--bad)}
+.row .sub.warn{color:var(--warn)}
+/* Excluded is a decision, not a fault — stated plainly rather than alarming. */
+.row .sub.off{color:var(--dim);font-style:italic}
 .grow{flex:1;min-width:120px}
 
 button{background:#232b34;color:var(--ink);border:1px solid var(--line);
@@ -63,6 +72,8 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
   white-space:nowrap;min-height:30px;touch-action:manipulation;
   -webkit-tap-highlight-color:transparent}
 button:hover{background:#2b3540}
+button:disabled{opacity:.5;cursor:default}
+button:disabled:hover{background:#232b34}
 button.primary{background:#1f6f36;border-color:#2ea043}
 button.on{background:#1f6f36;border-color:#2ea043}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
@@ -78,6 +89,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .spin{width:11px;height:11px;border-radius:50%;flex:0 0 auto;
   border:2px solid #1f3c5d;border-top-color:var(--note);
   animation:spin 900ms linear infinite}
+.spin.bad{border-color:#4d2220;border-top-color:var(--bad)}
+.row code{font:11px/1.5 var(--mono);background:#232b34;padding:1px 5px;
+  border-radius:4px;white-space:nowrap}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){ .spin{animation:none} }
 
@@ -94,7 +108,11 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   border-radius:6px;overflow:hidden;background:#232b34}
 .tab.on{background:#1f6f36;border-color:#2ea043}
 .tab button{border:0;border-radius:0;background:transparent;min-height:28px}
-.tab .lbl{padding:6px 8px;max-width:34vw;overflow:hidden;text-overflow:ellipsis}
+.tab .lbl{padding:6px 8px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;
+  cursor:grab;touch-action:none;user-select:none}
+.tab.held{opacity:.45}
+body.dragging{cursor:grabbing;user-select:none}
+body.dragging .tab .lbl{cursor:grabbing}
 .tab .ic{padding:6px 7px;color:var(--dim);font-size:13px;line-height:1}
 .tab .ic:hover{background:rgba(255,255,255,.09);color:var(--ink)}
 @media(max-width:900px){ .tab button{min-height:var(--tap)} }
@@ -177,13 +195,9 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
     <div class="card">
       <h2>Runner</h2>
       <div id="runner"><div class="empty">loading…</div></div>
-      <div class="macros">
-        <button onclick="macro('runner-status')">Status</button>
-        <button onclick="macro('runner-restart')">Restart</button>
-      </div>
     </div>
     <div class="card">
-      <h2>Projects</h2>
+      <h2>Projects<span id="projTog"></span></h2>
       <div id="projects"><div class="empty">loading…</div></div>
     </div>
     <div class="card" id="cardFindings" hidden>
@@ -269,11 +283,17 @@ function setView(v){
 }
 
 // ---- tabs ------------------------------------------------------------
+// What makes two tabs the same tab. For a terminal it is the tmux session,
+// NOT the argument that produced it: "claude:FreshBoot" from the project list
+// and "claude-FreshBoot" from the session list are different strings naming
+// one session, and letting both exist puts two ✕ buttons on it.
+const identity = t => t.kind === "term" ? "tmux:" + sessionOf(t.arg)
+                                        : t.kind + ":" + t.arg;
+
 // One tab per thing. A second click on Claude/Shell/Findings for something
-// already open is a request to go to it, not to open a duplicate — two tabs on
-// one tmux session would also mean two ✕ buttons killing the same session.
+// already open is a request to go to it, not to open a duplicate.
 function openTab(spec){
-  let t = tabs.find(x => x.kind === spec.kind && x.arg === spec.arg);
+  let t = tabs.find(x => identity(x) === identity(spec));
   if (!t){ t = Object.assign({id:"t" + (++seq)}, spec); tabs.push(t); }
 
   const shown = panes.indexOf(t.id);
@@ -307,9 +327,12 @@ async function closeTab(id, ev){
   // sessions pile up invisibly behind a UI that looks tidy. Claude gets a
   // confirm because ending one throws away a conversation in progress.
   if (t.kind === "term"){
+    // Ask about the resolved tmux session, not the argument. A tab opened from
+    // the Sessions list carries the raw name ("claude-Foo"), and testing the
+    // argument closed a live conversation without asking.
     const session = sessionOf(t.arg);
-    if (t.arg.startsWith("claude:") &&
-        !confirm(`End the Claude session in ${t.arg.slice(7)}?\n\nThe transcript is kept, but the conversation stops.`))
+    if (session.startsWith("claude-") &&
+        !confirm(`End the Claude session in ${session.slice(7)}?\n\nThe transcript is kept, but the conversation stops.`))
       return;
     try{
       await fetch("/api/session", {method:"POST",
@@ -353,23 +376,87 @@ function closePane(idx, ev){
 
 function togglePin(id, ev){
   ev.stopPropagation();
-  if (pinFor === id){ pinFor = null; render(); return; }
-  pinFor = id; render();
-  const menu = $("pinmenu");
-  if (menu){
-    const b = ev.currentTarget.getBoundingClientRect();
-    const bar = $("tabbar").getBoundingClientRect();
-    menu.style.left = Math.max(4, Math.min(b.left - bar.left, bar.width - menu.offsetWidth - 4)) + "px";
-    menu.style.top  = (b.bottom - bar.top + 4) + "px";
+  pinFor = pinFor === id ? null : id;
+  drawTabs();
+}
+
+// Positioning happens in drawTabs, not here, because the tab bar is rebuilt on
+// every status poll: anything measured at click time is gone 15 seconds later.
+function placePinMenu(){
+  const menu = $("pinmenu"), anchor = $("tabbar").querySelector(`.tab[data-id="${pinFor}"]`);
+  if (!menu || !anchor) return;
+  const a = anchor.getBoundingClientRect(), bar = $("tabbar").getBoundingClientRect();
+  menu.style.left = Math.max(4, Math.min(a.left - bar.left,
+                                         bar.width - menu.offsetWidth - 4)) + "px";
+  menu.style.top = (a.bottom - bar.top + 4) + "px";
+}
+
+// ---- drag to reorder -------------------------------------------------
+// Pointer events rather than HTML5 drag-and-drop, which does not exist on
+// touch. Move/up are bound to the window because drawTabs replaces the very
+// element the gesture started on.
+let drag = null, swallowClick = false;
+
+function startDrag(ev, id){
+  if (ev.pointerType === "mouse" && ev.button !== 0) return;
+  drag = {id, x0: ev.clientX, y0: ev.clientY, moved: false};
+  window.addEventListener("pointermove", onDrag);
+  window.addEventListener("pointerup", endDrag, {once: true});
+  window.addEventListener("pointercancel", endDrag, {once: true});
+}
+
+// Where the dragged tab belongs: the number of *other* tabs that come before
+// the pointer in reading order. That is exactly the insertion index once the
+// dragged tab is spliced out, and it handles a wrapped tab bar for free.
+function dropIndex(x, y, from){
+  let idx = 0;
+  [...$("tabbar").querySelectorAll(".tab")].forEach((el, i) => {
+    if (i === from) return;
+    const r = el.getBoundingClientRect();
+    if (y > r.bottom || (y >= r.top && x > r.left + r.width / 2)) idx++;
+  });
+  return idx;
+}
+
+function onDrag(ev){
+  if (!drag) return;
+  if (!drag.moved){
+    // A few pixels of slop, so an ordinary click is not read as a drag.
+    if (Math.hypot(ev.clientX - drag.x0, ev.clientY - drag.y0) < 6) return;
+    drag.moved = true; pinFor = null;
+    document.body.classList.add("dragging");
   }
+  ev.preventDefault();
+  const from = tabs.findIndex(t => t.id === drag.id);
+  if (from < 0) return;
+  const to = dropIndex(ev.clientX, ev.clientY, from);
+  if (to !== from){
+    tabs.splice(to, 0, tabs.splice(from, 1)[0]);
+    drawTabs();
+  }
+}
+
+function endDrag(){
+  window.removeEventListener("pointermove", onDrag);
+  document.body.classList.remove("dragging");
+  const moved = drag?.moved;
+  drag = null;
+  // Redraw ONLY after a real drag. `click` is dispatched after `pointerup`, so
+  // rebuilding the tab bar here would replace the button mid-gesture and the
+  // click would never reach a handler — every tab click silently doing nothing.
+  if (!moved) return;
+  swallowClick = true;                  // ...and the click ending a drag is not
+  setTimeout(() => swallowClick = false, 0);   //    a request to switch tabs
+  drawTabs();
 }
 
 function drawTabs(){
   const cur = panes[active];
   const html = tabs.map(t => {
     const where = panes[0] === t.id ? "◧" : panes[1] === t.id ? "◨" : "";
-    return `<span class="tab ${t.id===cur?"on":""}" data-id="${esc(t.id)}">
-      <button class="lbl" data-show="${esc(t.id)}">${esc(t.label)}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
+    const held = drag?.moved && drag.id === t.id ? " held" : "";
+    return `<span class="tab ${t.id===cur?"on":""}${held}" data-id="${esc(t.id)}">
+      <button class="lbl" data-show="${esc(t.id)}" title="drag to reorder">${esc(t.label)}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
       <button class="ic" data-pin="${esc(t.id)}" title="pin to a pane">⇱</button>
       ${t.fixed?"":`<button class="ic" data-close="${esc(t.id)}" title="close tab">✕</button>`}
     </span>`;
@@ -384,13 +471,16 @@ function drawTabs(){
       </span>` : "");
 
   const bar = $("tabbar");
-  bar.querySelectorAll("[data-show]").forEach(b =>
-    b.onclick = () => focusTab(b.dataset.show));
+  bar.querySelectorAll("[data-show]").forEach(b => {
+    b.onpointerdown = e => startDrag(e, b.dataset.show);
+    b.onclick = () => { if (!swallowClick) focusTab(b.dataset.show); };
+  });
   bar.querySelectorAll("[data-pin]").forEach(b => b.onclick = e => togglePin(b.dataset.pin, e));
   bar.querySelectorAll("[data-close]").forEach(b => b.onclick = e => closeTab(b.dataset.close, e));
   bar.querySelectorAll("[data-l]").forEach(b => b.onclick = e => pinTo(b.dataset.l, 0, e));
   bar.querySelectorAll("[data-r]").forEach(b => b.onclick = e => pinTo(b.dataset.r, 1, e));
   $("bKeys").onclick = () => { showKeys = !showKeys; render(); };
+  if (pinFor) placePinMenu();
 }
 
 // ---- panes -----------------------------------------------------------
@@ -423,9 +513,12 @@ function drawPanes(){
     const same = pane.dataset.tab === (t?.id || "") && pane.dataset.kind === (t?.kind || "");
     if (same && t){
       paintBar(pane, t, i);
-      // A document pane has no live connection to preserve, and its content
-      // changes underneath it once /api/findings answers — so refill it.
-      if (t.kind === "findings") renderFindingsInto(i);
+      // Refill a document pane only when the report itself changed. Doing it
+      // on every status poll would fight the reader for control of the page.
+      if (t.kind === "findings" && pane.dataset.rev !== String(findingsRev)){
+        pane.dataset.rev = String(findingsRev);
+        renderFindingsInto(i);
+      }
       continue;
     }
     if (same) continue;
@@ -438,7 +531,7 @@ function drawPanes(){
       ? `<div class="slot"><iframe title="${esc(t.label)}" src="${esc(ttydUrl(t.arg))}"></iframe></div>`
       : `<div class="doc fx" id="doc${i}"></div>`);
     paintBar(pane, t, i);
-    if (t.kind === "findings") renderFindingsInto(i);
+    if (t.kind === "findings"){ pane.dataset.rev = String(findingsRev); renderFindingsInto(i); }
   }
 }
 
@@ -481,16 +574,26 @@ const LEVEL_ORDER = {error:0, warning:1, note:2, info:2, none:3};
 const levelClass = l => l === "error" ? "bad" : l === "warning" ? "warn"
                       : (l === "note" || l === "info") ? "note" : "";
 
+// Bumped only when the data actually changes. The status poll redraws every
+// 15s, and re-rendering the report on each pass threw away whatever the reader
+// had collapsed — and their scroll position with it.
+let findingsRev = 0;
+
 async function loadFindings(force){
   if (findings && !force) return;
-  findings = {loading:true};
+  findings = {loading:true}; findingsRev++;
   drawPanes();
   try{
     const r = await fetch("/api/findings");
     findings = await r.json();
   }catch(e){ findings = {error:String(e)}; }
+  findingsRev++;
   drawPanes();
 }
+
+// Which project sections the reader has collapsed, kept across re-renders so a
+// reload of the report does not undo their triage.
+const collapsed = new Set();
 
 function renderFindingsInto(i){
   const el = $("doc" + i);
@@ -545,7 +648,8 @@ function renderFindingsInto(i){
     const badges = Object.keys(lv).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
       .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l].length}</span>`).join("");
 
-    html += `<details class="grp" ${proj!=="—"?"open":""}>
+    const shut = collapsed.has(proj) || proj === "—";
+    html += `<details class="grp" data-proj="${esc(proj)}" ${shut?"":"open"}>
       <summary>${esc(proj === "—" ? "unattributed paths" : proj)} ${badges}</summary>`;
 
     const rules = by(rows, "rule");
@@ -578,42 +682,139 @@ function renderFindingsInto(i){
     html += `</details>`;
   }
   el.innerHTML = html;
+  el.querySelectorAll("details[data-proj]").forEach(d =>
+    d.addEventListener("toggle", () =>
+      d.open ? collapsed.delete(d.dataset.proj) : collapsed.add(d.dataset.proj)));
 }
 
 // ---- sidebar ---------------------------------------------------------
 function drawRunner(r){
   const el = $("runner");
   if (!r.enabled){ el.innerHTML = '<div class="empty">disabled (ENABLE_RUNNER=false)</div>'; return; }
-  // busy is checked first: the Listener stays up through a job, so "listening"
-  // is true the whole time one is running and says nothing about idleness.
-  const cls = r.busy ? "note" : r.listening ? "ok" : r.registered ? "warn" : "bad";
-  const txt = r.busy ? (r.job ? `running job: ${r.job}` : "running a job")
+  // Order matters. A Listener process is up while a job runs *and* while the
+  // runner is being refused by GitHub and retrying, so "listening" is the
+  // weakest of the three claims and has to be checked last.
+  const stuck = r.listening && r.connected === false;
+  const cls = stuck  ? "bad"
+            : r.busy ? "note"
+            : r.listening ? "ok" : r.registered ? "warn" : "bad";
+  const txt = stuck  ? "cannot connect — retrying"
+            : r.busy ? (r.job ? `running job: ${r.job}` : "running a job")
             : r.listening ? "listening for jobs"
             : r.registered ? "registered, between jobs" : "not registered";
   el.innerHTML =
     `<div class="row"><span class="pill ${cls}">${esc(txt)}</span>` +
-    (r.busy ? `<span class="spin" title="a job is executing in this container"></span>` : "") +
-    (r.busy && r.elapsed != null ? `<span class="sub">${esc(dur(r.elapsed))}</span>` : "") +
+    ((r.busy || stuck) ? `<span class="spin${stuck?" bad":""}" title="${
+        stuck ? "retrying the connection to GitHub" : "a job is executing in this container"
+      }"></span>` : "") +
+    (r.busy && !stuck && r.elapsed != null ? `<span class="sub">${esc(dur(r.elapsed))}</span>` : "") +
     `</div>` +
-    (r.name ? `<div class="row"><span class="sub">${esc(r.name)} → ${esc(r.url||"")}</span></div>` : "");
+    (stuck ? `<div class="row"><span class="sub">${esc(r.detail || "")}</span></div>
+      <div class="row"><span class="sub">Usually another process holding this
+        runner's name. It clears when GitHub expires the old session; if it
+        does not, check for a stray listener with
+        <code>pgrep -af Runner.Listener</code>.</span></div>` : "") +
+    (r.name ? `<div class="row"><span class="sub">${esc(r.name)} → ${esc(r.url||"")}</span></div>` : "") +
+    // One toggle rather than a Restart that silently means stop-and-start.
+    // Stopping waits for GitHub to release the session, so it is not instant —
+    // the button says so instead of looking wedged.
+    `<div class="macros">${
+      [["runner-status", "Status", ""],
+       r.running ? ["runner-stop", "Stop", ""]
+                 : ["runner-start", "Start", "primary"]
+      ].map(([m, label, cls]) =>
+        `<button class="${cls}" data-m="${m}"${macroBusy ? " disabled" : ""}>${
+          macroBusy === m ? "working…" : label}</button>`).join("")
+    }</div>`;
+  el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
 }
 
+// Anything with a problem is hidden behind this, and stays reachable. The only
+// thing never listed is an empty directory, which the server drops: it is not a
+// problem to fix but a mount point waiting for content.
+let showAllProjects = false;
+
 function drawProjects(ps){
-  const el = $("projects");
-  if (!ps.length){ el.innerHTML = '<div class="empty">nothing mounted under /workspace</div>'; return; }
-  el.innerHTML = ps.map(p => `
+  const el = $("projects"), tog = $("projTog");
+  const flagged = ps.filter(p => p.issues.length);
+  const shown   = showAllProjects ? ps : ps.filter(p => !p.issues.length);
+
+  tog.innerHTML = flagged.length
+    ? `<button id="bAll">${showAllProjects ? "Hide" : "Show"} projects with errors (${flagged.length})</button>`
+    : "";
+  if (flagged.length)
+    $("bAll").onclick = () => { showAllProjects = !showAllProjects; drawProjects(ps); };
+
+  if (!shown.length){
+    el.innerHTML = `<div class="empty">${
+      !ps.length ? "nothing mounted under /workspace"
+                 : `${flagged.length} ${flagged.length===1?"project needs":"projects need"} attention — use Show projects with errors`
+    }</div>`;
+    return;
+  }
+
+  const cls = {error:"bad", warning:"warn", excluded:"off"};
+  el.innerHTML = shown.map(p => `
     <div class="row">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
-        <div class="sub">${p.git ? "git: "+esc(p.git) : "not a git repo"}${p.claude_md ? "" : " · no CLAUDE.md"}</div>
+        ${p.git ? `<div class="sub">git: ${esc(p.git)}</div>` : ""}
+        ${p.issues.map(i =>
+          `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
-      <button class="primary" data-c="${esc(p.name)}">Claude</button>
+      ${p.excluded ? "" : `<button class="primary" data-c="${esc(p.name)}">Claude</button>`}
       <button data-s="${esc(p.name)}">Shell</button>
+      <button data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
+        title="${p.excluded ? "allow Claude sessions here again"
+                            : "block Claude sessions for this directory, and keep it blocked"}"
+        >${p.excluded ? "Include" : "Exclude"}</button>
     </div>`).join("");
   el.querySelectorAll("[data-c]").forEach(b => b.onclick = () =>
     openTab({kind:"term", arg:`claude:${b.dataset.c}`, label:`claude ${b.dataset.c}`}));
   el.querySelectorAll("[data-s]").forEach(b => b.onclick = () =>
     openTab({kind:"term", arg:`shell:${b.dataset.s}`, label:`sh ${b.dataset.s}`}));
+  el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
+    setExcluded(b.dataset.x, b.dataset.on === "1"));
+}
+
+async function setExcluded(name, on){
+  if (on && !confirm(`Exclude ${name}?\n\nNo Claude session will be able to start `
+        + `here, and any running one ends now. A shell is still available, and `
+        + `Include reverses this.`)) return;
+  try{
+    const r = await fetch("/api/exclude", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name, excluded:on})});
+    const j = await r.json();
+    if (j.error){ $("out").textContent = "exclude: " + j.error; return; }
+    // The server ends a running session when excluding; drop its tab too, or
+    // the page keeps offering a terminal onto something that is gone.
+    if (j.killed){
+      const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
+      if (t){
+        tabs = tabs.filter(x => x.id !== t.id);
+        for (let i = 0; i < 2; i++) if (panes[i] === t.id) panes[i] = null;
+        if (panes[0] === null && panes[1] !== null){ panes[0] = panes[1]; panes[1] = null; }
+        if (panes[0] === null) panes[0] = "ws";
+        if (panes[1] === null) active = 0;
+        render();
+      }
+    }
+  }catch(e){ $("out").textContent = "exclude failed: " + e; }
+  refresh();
+}
+
+// A session tmux knows as "claude-Foo" is the same thing the Projects card
+// opens as "claude:Foo". Opening it under the raw name takes bb-tty's fallback
+// branch — a bare shell at /workspace, skipping the project directory, the
+// exclusion check and the scoped settings — which is only invisible while the
+// session already exists. Map it back when the project is one we know.
+function argForSession(name){
+  const known = new Set((state?.projects || []).map(p => p.name));
+  for (const [prefix, arg] of [["claude-", "claude:"], ["shell-", "shell:"]])
+    if (name.startsWith(prefix) && known.has(name.slice(prefix.length)))
+      return arg + name.slice(prefix.length);
+  return name;
 }
 
 function drawSessions(ss){
@@ -626,12 +827,24 @@ function drawSessions(ss){
       <button data-a="${esc(s.name)}">Open</button>
     </div>`).join("");
   el.querySelectorAll("[data-a]").forEach(b => b.onclick = () =>
-    openTab({kind:"term", arg:b.dataset.a, label:b.dataset.a}));
+    openTab({kind:"term", arg:argForSession(b.dataset.a), label:b.dataset.a}));
 }
 
+// Which macro is in flight, if any. Stopping the runner waits for a clean
+// deregistration and can take a minute; a global rather than a per-button flag
+// because the 15s poll redraws the card and would otherwise hand back a live
+// button in the middle of the very operation it started.
+let macroBusy = null;
+
 async function macro(name, project){
+  if (macroBusy){
+    $("out").textContent = `still running ${macroBusy} — wait for it to finish.`;
+    return;
+  }
+  macroBusy = name;
   $("out").textContent = `running ${name}…`;
   if (isPhone()) setView("dash");
+  if (state) drawRunner(state.runner);
   try{
     const r = await fetch("/api/run", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -640,6 +853,7 @@ async function macro(name, project){
     $("out").textContent = j.error ? "error: "+j.error
       : `$ ${j.cmd}\n\n${j.out || "(no output)"}${j.code?`\n\n[exit ${j.code}]`:""}`;
   }catch(e){ $("out").textContent = "request failed: "+e; }
+  macroBusy = null;
   refresh();
 }
 

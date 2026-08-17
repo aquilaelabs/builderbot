@@ -39,6 +39,8 @@ MACROS = {
     "doctor":        ["bb", "doctor"],
     "projects":      ["bb", "projects"],
     "runner-status": ["bb", "runner", "status"],
+    "runner-stop":   ["bb", "runner", "stop"],
+    "runner-start":  ["bb", "runner", "start"],
     "runner-restart":["bb", "runner", "restart"],
     "emu-list":      ["bb", "emu", "list"],
     "emu-start":     ["bb", "emu", "start"],
@@ -76,8 +78,39 @@ PROJECT_MACROS = {
 }
 
 
+# Every request body here is a handful of short JSON fields. Anything larger is
+# a mistake or a probe, and reading it into memory unbounded helps neither.
+MAX_BODY = 64 * 1024
+
 CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
 REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
+
+# Excluded projects live on the /config volume so the list survives the image
+# updates this container is built to expect. bb-tty reads the same file — a
+# rule only the dashboard honoured would be advice, since the terminal URL is
+# reachable on its own.
+STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
+EXCLUDES_FILE = STATE / "excluded-projects.json"
+
+
+def load_excludes():
+    try:
+        v = json.loads(EXCLUDES_FILE.read_text())
+        return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def save_excludes(names):
+    """Write via a temp file in the same directory, then rename.
+
+    bb-tty reads this on every session launch; a half-written file would be a
+    parse error at exactly the moment someone is trying to start work.
+    """
+    STATE.mkdir(parents=True, exist_ok=True)
+    tmp = EXCLUDES_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(sorted(set(names)), indent=2) + "\n")
+    tmp.replace(EXCLUDES_FILE)
 
 
 def _project_of(uri, known):
@@ -94,6 +127,44 @@ def _project_of(uri, known):
     return None, "/".join(parts)
 
 
+def _parse_run(runinfo, known):
+    """One SARIF run -> (tool name, rows)."""
+    driver = (runinfo.get("tool") or {}).get("driver") or {}
+    rules = {}
+    for r in driver.get("rules") or []:
+        rules[r.get("id")] = {
+            "desc": ((r.get("shortDescription") or {}).get("text")
+                     or (r.get("fullDescription") or {}).get("text") or ""),
+            "help": ((r.get("help") or {}).get("text") or ""),
+            "uri": r.get("helpUri") or "",
+            "level": ((r.get("defaultConfiguration") or {}).get("level") or "warning"),
+        }
+    rows = []
+    for res in runinfo.get("results") or []:
+        rid = res.get("ruleId") or "unknown"
+        meta = rules.get(rid, {})
+        msg = ((res.get("message") or {}).get("text") or "")
+        loc = ((res.get("locations") or [{}])[0].get("physicalLocation") or {})
+        uri = ((loc.get("artifactLocation") or {}).get("uri") or "?")
+        line = ((loc.get("region") or {}).get("startLine") or 0)
+        proj, rel = _project_of(uri, known)
+        # CVEs turn up in the rule id (Trivy) or the prose (most others).
+        cves = sorted(set(CVE_RE.findall(" ".join([rid, msg, meta.get("desc", ""),
+                                                   meta.get("help", "")]))))
+        rows.append({
+            "rule": rid,
+            "level": res.get("level") or meta.get("level") or "warning",
+            "desc": meta.get("desc") or msg.split("\n")[0],
+            "message": msg.strip(),
+            "uri": meta.get("uri", ""),
+            "project": proj,
+            "path": rel,
+            "line": line,
+            "cves": cves,
+        })
+    return driver.get("name") or "", rows
+
+
 def parse_sarif(path, known):
     """SARIF 2.1.0 -> flat findings. Tolerant: a malformed run is skipped, not
     fatal, because one bad report should not blank the whole page."""
@@ -102,42 +173,21 @@ def parse_sarif(path, known):
     except (OSError, ValueError) as e:
         return {"file": path.name, "tool": "?", "error": str(e), "findings": []}
 
-    tool_name, rows = "?", []
-    for runinfo in doc.get("runs", []):
-        driver = (runinfo.get("tool") or {}).get("driver") or {}
-        tool_name = driver.get("name") or tool_name
-        rules = {}
-        for r in driver.get("rules") or []:
-            rules[r.get("id")] = {
-                "desc": ((r.get("shortDescription") or {}).get("text")
-                         or (r.get("fullDescription") or {}).get("text") or ""),
-                "help": ((r.get("help") or {}).get("text") or ""),
-                "uri": r.get("helpUri") or "",
-                "level": ((r.get("defaultConfiguration") or {}).get("level") or "warning"),
-            }
-        for res in runinfo.get("results") or []:
-            rid = res.get("ruleId") or "unknown"
-            meta = rules.get(rid, {})
-            msg = ((res.get("message") or {}).get("text") or "")
-            loc = ((res.get("locations") or [{}])[0].get("physicalLocation") or {})
-            uri = ((loc.get("artifactLocation") or {}).get("uri") or "?")
-            line = ((loc.get("region") or {}).get("startLine") or 0)
-            proj, rel = _project_of(uri, known)
-            # CVEs turn up in the rule id (Trivy) or the prose (most others).
-            cves = sorted(set(CVE_RE.findall(" ".join([rid, msg, meta.get("desc", ""),
-                                                       meta.get("help", "")]))))
-            rows.append({
-                "rule": rid,
-                "level": res.get("level") or meta.get("level") or "warning",
-                "desc": meta.get("desc") or msg.split("\n")[0],
-                "message": msg.strip(),
-                "uri": meta.get("uri", ""),
-                "project": proj,
-                "path": rel,
-                "line": line,
-                "cves": cves,
-            })
-    return {"file": path.name, "tool": tool_name, "findings": rows}
+    tools, rows = [], []
+    for runinfo in doc.get("runs") or []:
+        # "Tolerant" has to mean it: SARIF in the wild has arrays where objects
+        # belong, and one such run used to take the whole endpoint down with an
+        # AttributeError rather than being skipped as documented.
+        try:
+            name, got = _parse_run(runinfo, known)
+        except (AttributeError, TypeError, IndexError, KeyError):
+            continue
+        if name and name not in tools:
+            tools.append(name)
+        rows.extend(got)
+    # A file can hold runs from several tools; naming it after the last one seen
+    # was arbitrary.
+    return {"file": path.name, "tool": " + ".join(tools) or "?", "findings": rows}
 
 
 def findings_payload():
@@ -167,17 +217,69 @@ def projects():
     out = []
     if not WORKSPACE.is_dir():
         return out
+    uid, gid = os.getuid(), os.getgid()
+    excluded = set(load_excludes())
     for d in sorted(WORKSPACE.iterdir()):
         if not d.is_dir() or d.name == "_work":
             continue
-        branch = None
-        if (d / ".git").exists():
-            r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"], timeout=10)
-            # `out` carries stderr too, so a broken .git would otherwise put a
-            # `fatal:` line where the branch name goes.
-            branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(unreadable)"
-        out.append({"name": d.name, "git": branch,
-                    "claude_md": (d / "CLAUDE.md").is_file()})
+        issues = []
+
+        # Permissions first, and reported even when everything after fails.
+        # A directory this user cannot read also fails the git check below, so
+        # checking git first would file a permissions problem as "not a repo"
+        # and hide it under the rule that never shows those.
+        missing = [n for n, m in (("read", os.R_OK), ("write", os.W_OK), ("enter", os.X_OK))
+                   if not os.access(d, m)]
+        if missing:
+            issues.append({"level": "error",
+                           "text": f"cannot {', '.join(missing)} this directory as "
+                                   f"uid {uid}:{gid} — chown it to PUID:PGID on the host"})
+
+        # Path.is_file() only swallows ENOENT/ENOTDIR/EBADF/ELOOP — EACCES is
+        # re-raised, so an unreadable project directory took out the whole
+        # status endpoint rather than being reported as the one thing wrong.
+        try:
+            has_md = (d / "CLAUDE.md").is_file()
+        except OSError:
+            has_md = False
+
+        branch, git_ok = None, False
+        if not missing:
+            # An empty directory is the one thing never reported. It is not a
+            # problem to fix — it is a mount point waiting for content, or a
+            # leftover — and flagging it would be noise on every boot.
+            try:
+                if not any(d.iterdir()):
+                    continue
+            except OSError:
+                pass                    # unreadable: covered by `missing` above
+
+            if (d / ".git").exists():
+                # Asking git rather than trusting the directory's existence: a
+                # half-copied or corrupt .git looks identical from out here, and
+                # a repo git cannot read is not one anything can act on.
+                git_ok = run(["git", "-C", str(d), "rev-parse", "--is-inside-work-tree"],
+                             timeout=10)["out"].strip() == "true"
+            if not git_ok:
+                issues.append({"level": "error", "text": "no valid git repository"})
+            else:
+                r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"],
+                        timeout=10)
+                # `out` carries stderr too, so a detached HEAD would otherwise
+                # put a `fatal:` line where the branch name goes.
+                branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(detached)"
+                if not has_md:
+                    issues.append({"level": "warning", "text": "no CLAUDE.md"})
+
+        # Every directory is still reported. The dashboard decides what to show,
+        # and SARIF paths are attributed by matching these names — dropping one
+        # here would silently orphan its findings.
+        if d.name in excluded:
+            issues.append({"level": "excluded",
+                           "text": "excluded — no Claude session can start here"})
+        out.append({"name": d.name, "git": branch, "git_ok": git_ok,
+                    "claude_md": has_md, "excluded": d.name in excluded,
+                    "issues": issues})
     return out
 
 
@@ -207,24 +309,36 @@ def log_path():
 JOB_START = re.compile(r"Running job:\s*(.+?)\s*$")
 JOB_END = re.compile(r"Job\s+(.+?)\s+completed with result:")
 
+# ...and its connection state the same way:
+#     2026-08-17 02:21:32Z: Listening for Jobs
+#     A session for this runner already exists.
+#     2026-08-17 02:38:35Z: Runner connect error: Error: Conflict. Retrying
+#     2026-08-17 02:39:10Z: Runner reconnected.
+LINK_OK = re.compile(r"Listening for Jobs|Runner reconnected")
+LINK_BAD = re.compile(r"Runner connect error:\s*(.*?)\s*(?:Retrying until reconnected\.?)?\s*$")
+SESSION_TAKEN = re.compile(r"A session for this runner already exists")
 
-def current_job():
+
+def log_tail(limit=65536):
+    """Last `limit` bytes of the container log, as lines. Empty if unreadable."""
+    try:
+        with log_path().open("rb") as fh:
+            fh.seek(0, os.SEEK_END)
+            size = fh.tell()
+            fh.seek(max(0, size - limit))       # bounded: this log can be huge
+            return fh.read().decode("utf-8", "replace").splitlines()
+    except OSError:
+        return []
+
+
+def current_job(lines):
     """Name of the job the runner is on, from the last of those two lines.
 
     Cosmetic only — whether a job is running at all is decided by the worker
     process, not by this. A rotated or unreadable log costs the name, nothing
     more.
     """
-    p = log_path()
-    try:
-        with p.open("rb") as fh:
-            fh.seek(0, os.SEEK_END)
-            size = fh.tell()
-            fh.seek(max(0, size - 65536))       # the tail is enough, and bounded
-            tail = fh.read().decode("utf-8", "replace")
-    except OSError:
-        return None
-    for line in reversed(tail.splitlines()):
+    for line in reversed(lines):
         if JOB_END.search(line):
             return None                          # finished before it started
         m = JOB_START.search(line)
@@ -233,9 +347,50 @@ def current_job():
     return None
 
 
+def link_state(lines):
+    """(healthy, detail) for the runner's connection to GitHub.
+
+    A Listener process says the runner is *trying*, not that it succeeded: a
+    rejected connection is retried forever without the process exiting, so
+    pgrep alone reports a green light through an outage. The last connectivity
+    marker in the log is what actually distinguishes the two.
+    """
+    for i in range(len(lines) - 1, -1, -1):
+        line = lines[i]
+        if LINK_OK.search(line):
+            return True, None
+        m = LINK_BAD.search(line)
+        if m:
+            detail = m.group(1).strip(" .") or "connection refused"
+            # "Conflict" on its own means nothing to a reader. The runner
+            # explains it on the preceding line, so look just behind.
+            if any(SESSION_TAKEN.search(x) for x in lines[max(0, i - 5):i]):
+                detail = "a session for this runner already exists"
+            return False, detail
+    return True, None                            # nothing logged either way
+
+
+def _pidfile_alive(p):
+    """Is the process named by this pidfile still there? A stale file is a no."""
+    try:
+        pid = int(p.read_text().strip())
+    except (OSError, ValueError):
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True         # it exists, we just may not signal it
+    except OSError:
+        return False
+    return True
+
+
 def runner():
     d = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner"))
-    info = {"registered": False, "listening": False, "busy": False,
+    info = {"registered": False, "running": False, "listening": False,
+            "busy": False, "connected": True, "detail": None,
             "job": None, "elapsed": None, "name": None, "url": None}
     cfg = d / ".runner"
     if cfg.is_file():
@@ -246,19 +401,32 @@ def runner():
             info["url"] = j.get("gitHubUrl")
         except (ValueError, OSError):
             pass
-    info["listening"] = run(["pgrep", "-f", "Runner.Listener"], timeout=10)["code"] == 0
+    # Path-anchored so the pattern cannot match a command line that merely
+    # names the binary — a grep, or the `pgrep -af Runner.Listener` we suggest.
+    info["listening"] = run(["pgrep", "-f", "/Runner.Listener"], timeout=10)["code"] == 0
+    # The supervisor, which outlives the listener: an ephemeral runner exits
+    # after each job and runner.sh re-registers it. Stopped means *this* is
+    # gone, so it — not the listener — is what the Stop/Start button reflects.
+    # By pidfile, because there is no command-line pattern for runner.sh that
+    # does not also match unrelated processes.
+    info["running"] = info["listening"] or _pidfile_alive(d / ".runner.pid")
     # The Listener stays up for the whole of a job and spawns a Worker per job,
     # so "listening" alone cannot tell idle from busy — which made the dashboard
     # claim the runner was waiting while it was building.
-    w = run(["pgrep", "-f", "Runner.Worker"], timeout=10)
+    w = run(["pgrep", "-f", "/Runner.Worker"], timeout=10)
     info["busy"] = w["code"] == 0
+    lines = log_tail() if info["listening"] else []
+    if info["listening"]:
+        info["connected"], info["detail"] = link_state(lines)
     if info["busy"]:
-        info["job"] = current_job()
+        info["job"] = current_job(lines)
         # How long the job has been going. There is no progress to report
         # beyond this: a runner long-polls for one job at a time and is never
         # told what else is queued, and what a job *does* — how many tests, how
         # far in — is known only to the tool running inside the step.
-        pid = w["out"].split()[0] if w["out"].split() else None
+        # `out` merges stderr, so take the first token that is actually a pid
+        # rather than whatever happened to be printed first.
+        pid = next((t for t in w["out"].split() if t.isdigit()), None)
         if pid:
             e = run(["ps", "-o", "etimes=", "-p", pid], timeout=10)
             if e["code"] == 0 and e["out"].strip().isdigit():
@@ -320,7 +488,28 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _safely(self, fn):
+        """Turn a handler blowing up into a 500 the page can show.
+
+        Without this the exception unwinds past handle_one_request and the
+        connection just closes, which the browser reports as a network error —
+        the one failure mode that looks identical to the container being gone.
+        """
+        try:
+            return fn()
+        except Exception as e:                          # noqa: BLE001 — last resort
+            try:
+                self._json({"error": f"{type(e).__name__}: {e}"}, 500)
+            except OSError:
+                pass                                    # client already left
+
     def do_GET(self):
+        self._safely(self._get)
+
+    def do_POST(self):
+        self._safely(self._post)
+
+    def _get(self):
         if not self._authed():
             return self._deny()
         if self.path.split("?")[0] in ("/", "/index.html"):
@@ -336,18 +525,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(findings_payload())
         self._json({"error": "not found"}, 404)
 
-    def do_POST(self):
+    def _post(self):
         if not self._authed():
             return self._deny()
         # Read the body once, here, rather than in each handler: doing it after
         # dispatch is how the request stream ends up consumed twice or not at all.
         try:
             n = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= n <= MAX_BODY:
+                return self._json({"error": "body too large"}, 413)
             req = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, TypeError):
             return self._json({"error": "bad request"}, 400)
+        if not isinstance(req, dict):
+            return self._json({"error": "bad request"}, 400)
 
         path = self.path.split("?")[0]
+        if path.startswith("/api/exclude"):
+            return self._exclude(req)
         if path.startswith("/api/session"):
             return self._session(req)
         if path.startswith("/api/keys"):
@@ -355,6 +550,37 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/run"):
             return self._run(req)
         self._json({"error": "not found"}, 404)
+
+    def _exclude(self, req):
+        """Add or remove a project from the exclusion list.
+
+        Names are checked against the directories that actually exist, so this
+        cannot be used to write arbitrary strings into a file another script
+        reads — and excluding something that has since been unmounted is a
+        no-op rather than a permanent stale entry.
+        """
+        name, on = req.get("name", ""), bool(req.get("excluded"))
+        try:
+            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
+        except OSError:
+            here = set()
+        if name not in here:
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        names = set(load_excludes())
+        names.add(name) if on else names.discard(name)
+        try:
+            save_excludes(names)
+        except OSError as e:
+            return self._json({"error": f"could not save: {e}"}, 500)
+
+        # An excluded project must not keep a live session running — leaving one
+        # attached would mean the exclusion takes effect only next time, which
+        # is not what a button labelled "exclude" implies.
+        killed = None
+        if on and f"claude-{name}" in {s["name"] for s in tmux_sessions()}:
+            run(["tmux", "kill-session", "-t", f"claude-{name}"], timeout=10)
+            killed = f"claude-{name}"
+        return self._json({"excluded": sorted(names), "killed": killed})
 
     def _session(self, req):
         """Kill a session. Closing a tab that owns a Claude conversation should
@@ -388,7 +614,8 @@ class Handler(BaseHTTPRequestHandler):
             if proj not in names:
                 return self._json({"error": f"unknown project: {proj}"}, 400)
             return self._json(run(PROJECT_MACROS[name], cwd=str(WORKSPACE / proj)))
-        self._json({"error": f"unknown macro: {name}"})
+        self._json({"error": f"unknown macro: {name}"}, 400)
+
 
 def _constant_eq(a, b):
     """Compare without leaking length or position through timing."""

@@ -77,6 +77,12 @@ container is about to eat it.
 directory is this project. Do not read from or write to sibling projects, and
 do not go looking for context in them — if something seems to be missing, ask.
 
+If this session was started from the dashboard, that is also enforced: the file
+tools are denied every sibling path and the runner's `_work` tree, via a
+settings file passed on the command line. A `Read` or `Edit` that comes back
+denied for a path outside this project is that rule, working as intended — not
+a bug to route around with Bash.
+
 ## There is no display
 
 Everything is headless. There is no X server, no window manager, nothing to
@@ -179,6 +185,11 @@ label in its `runs-on` is one the runner has. Four implications:
 - A job stuck in *Waiting for a runner* while the runner shows *Idle* is a
   label mismatch, not a broken runner. Compare the job's `Requested labels:`
   against the list above.
+- `Runner connect error: Error: Conflict` with *A session for this runner
+  already exists* means something else is holding this runner's name — usually
+  a listener left behind by a half-finished restart. It clears when GitHub
+  expires the old session. `bb runner status` says so explicitly; do not
+  re-register to "fix" it, that is what caused it.
 - A push to a *different* repo in the org can be building on this same box
   right now. If something is inexplicably slow, that is a candidate.
 

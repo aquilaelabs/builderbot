@@ -97,6 +97,13 @@ deregister() {
         || warn "could not deregister cleanly; remove the runner in GitHub settings if it lingers"
 }
 
+# Who to signal to stop this runner. A pidfile rather than pattern-matching
+# command lines: `pkill -f runner.sh` also matches anything that merely mentions
+# the string — a grep, an editor, a shell one-liner — and killing one of those
+# instead is both silent and unrelated to runners.
+PIDFILE="${RUNNER_DIR}/.runner.pid"
+printf '%s' "$$" > "$PIDFILE"
+
 RUN_PID=""
 on_term() {
     log "runner: stop signal received"
@@ -106,9 +113,11 @@ on_term() {
         wait "$RUN_PID" 2>/dev/null || true
     fi
     deregister
+    rm -f "$PIDFILE"
     exit 0
 }
 trap on_term TERM INT
+trap 'rm -f "$PIDFILE"' EXIT
 
 mkdir -p "$RUNNER_WORKDIR"
 

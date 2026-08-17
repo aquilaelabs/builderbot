@@ -308,7 +308,7 @@ bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
-bb runner status | restart
+bb runner status | stop | start | restart
 bb emu start [api] | stop | status | list
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only
@@ -436,15 +436,28 @@ not the same as better code, and suppressing a finding satisfies that goal too.
 Off by default. When enabled it serves a status page on `8080` and a browser
 terminal on `7681`:
 
-- container uptime, and runner state — registered, listening, or **running a
-  job**, with the job's name and how long it has been going. (That is as far
-  as it goes: a runner long-polls for one job at a time and is never told what
-  else is queued, and how far through its own work a job is — tests passed,
-  steps left — is known only to the tool inside the step.)
+- container uptime, and runner state — registered, listening, **running a job**
+  (with the job's name and how long it has been going), or **failing to
+  connect**. That last one matters: a runner retries a rejected connection
+  forever without exiting, so the process being up is not evidence that it is
+  reachable. (Progress within a job is as far as it goes: a runner long-polls
+  for one job at a time and is never told what else is queued, and how far
+  through its own work a job is — tests passed, steps left — is known only to
+  the tool inside the step.)
 - every project under `/workspace` with its branch, and one-click **Claude**
-  and **Shell** per project
+  and **Shell** per project. Anything with a problem is folded away behind
+  **Show projects with errors** — in red, a directory the container user
+  cannot read/write/enter (with the `chown` that fixes it) or one holding no
+  valid git repository; in amber, a repo with no `CLAUDE.md` yet. Empty
+  directories are the one thing never listed: a mount point waiting for
+  content is not a fault to report
+- an **Exclude** button per project, which persists across restarts and blocks
+  Claude sessions for that directory — see below
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD
+- a **Stop / Start** toggle for the runner, showing whichever one applies.
+  Stopping waits for GitHub to release the runner's session rather than
+  reporting success and leaving a listener behind
 - `bb` macros as buttons — doctor, status, logs, emulator control, update
 - live list of tmux sessions, with attach
 
@@ -462,6 +475,8 @@ you open gets its own closable tab above the terminal.
   session you can no longer see is just a process you have forgotten about.
   Claude tabs ask first — the transcript is kept, but the conversation stops.
   The workspace tab has no ✕.
+- **Drag a tab** by its label to reorder the strip. Works with a mouse or a
+  finger.
 - **⇱ on a tab** pins it to the **left** or **right** pane, which splits the
   view. The pin marker on the tab (◧ / ◨) says where it currently is.
 - **✕ on a pane** collapses back to a single pane. It does **not** close the
@@ -471,6 +486,41 @@ you open gets its own closable tab above the terminal.
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
 or a reloaded page detaches instead of killing the session. Only the tab's ✕
 ends one.
+
+### Keeping a session in its own project
+
+A Claude session started from the dashboard is launched with a generated
+settings file that denies its file tools access to every *other* project under
+`/workspace`, plus the runner's `_work` checkouts. That file is passed with
+`--settings`, which ranks as a command-line argument — above the project's own
+`.claude/settings.json` and `.claude/settings.local.json` — so a session cannot
+widen its own boundary by editing files in the repo it is working on. Only the
+root-owned managed policy file outranks it.
+
+**This is a guardrail, not a sandbox.** It stops a session wandering into the
+wrong tree by mistake, which is the common failure. It does not contain one
+that goes looking: Bash still reaches the whole filesystem, and no in-process
+permission system changes that. If you need a hard boundary, do not mount the
+other projects into the same container.
+
+### Excluding a project
+
+**Exclude** on a project row blocks Claude sessions for that directory. The
+list lives in `/config/excluded-projects.json`, so it survives restarts and
+image updates, and it is enforced by the terminal launcher rather than the
+page — the ttyd URL is reachable on its own, so a rule only the UI honoured
+would be advice. Specifically, excluding a project:
+
+- refuses `claude:<project>` at launch, with a message saying why
+- ends any Claude session already running there, rather than taking effect
+  "next time"
+- folds the row away behind **Show projects with errors**, where **Include**
+  reverses it
+
+Other projects' sessions were already denied read access to it, the same as to
+any sibling — that comes from the scoping above, not from excluding it.
+
+A shell there is still offered, so you can go and look at what you excluded.
 
 ```
 ENABLE_DASHBOARD=true

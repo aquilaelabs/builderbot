@@ -19,6 +19,68 @@ set -euo pipefail
 
 target="${1:-shell}"
 
+# Projects the operator has excluded. Shared with the dashboard, which writes
+# it; enforced here, because a rule only the UI honours is a suggestion — the
+# ttyd URL is reachable directly.
+EXCLUDES_FILE="${DASHBOARD_STATE:-/config}/excluded-projects.json"
+
+is_excluded() {
+    [ -f "$EXCLUDES_FILE" ] || return 1
+    jq -e --arg n "$1" 'index($n) != null' "$EXCLUDES_FILE" >/dev/null 2>&1
+}
+
+# Every project directory except this one. Excluded by exact path rather than
+# `-not -name "$1"`, because find treats that as a glob: a project called
+# `app[1]` or `web*` would silently exclude its neighbours from the deny list,
+# which is the one direction this must not fail in.
+siblings_of() {
+    find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d \
+        -not -name '_work' -printf '%p\n' 2>/dev/null \
+        | { grep -vxF "$WORKSPACE/$1" || true; }   # sole project: no siblings
+}
+
+# claude_scope PROJECT — write a settings file that walls this session into its
+# own directory, and echo the path.
+#
+# Passed with --settings, which ranks as a command-line argument: above the
+# project's own .claude/settings.json and .claude/settings.local.json, so a
+# session cannot widen its own boundary by editing files in the repo it is
+# working on. Only the managed policy file outranks it, and that is root-owned.
+#
+# This binds the file tools. It is a guardrail against a session wandering into
+# the wrong tree by mistake, not a sandbox: Bash still reaches the filesystem,
+# and the only hard boundary is not mounting the other projects at all.
+claude_scope() {
+    local proj="$1" dir out tmp
+    # One file per project, rewritten each time rather than a fresh temp file:
+    # ttyd runs this script on every browser connection, including a reattach,
+    # so mktemp here would drop a file per page load. Under the cache dir
+    # because it is this user's, not world-writable /tmp.
+    # A per-uid directory rather than a shared /tmp path when HOME is unset,
+    # so this never writes somewhere another user could have prepared.
+    dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
+    dir="${dir:-/tmp/bb-scope-$(id -u)}/builderbot"
+    mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)"; mkdir -p "$dir"; }
+    out="$dir/claude-scope-${proj}.json"
+
+    # Build beside the target and move into place. Writing straight to $out
+    # would leave a truncated file if jq failed, and claude would then be
+    # handed a settings file that is not JSON.
+    tmp="$out.new"
+    if siblings_of "$proj" | jq -R . | jq -s --arg ws "$WORKSPACE" '
+           {permissions: {
+              additionalDirectories: [],
+              deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
+                     + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)"])
+           }}' > "$tmp" && [ -s "$tmp" ]; then
+        mv -f "$tmp" "$out"
+        printf '%s' "$out"
+        return 0
+    fi
+    rm -f "$tmp"
+    return 1
+}
+
 case "$target" in
     shell)
         exec tmux new-session -A -s shell -c "$WORKSPACE"
@@ -36,11 +98,25 @@ case "$target" in
             sleep 10
             exit 1
         fi
+        if is_excluded "$proj"; then
+            echo "'${proj}' is excluded: no Claude session can be started here." >&2
+            echo "Clear it from the dashboard's Projects card to allow one again." >&2
+            sleep 10
+            exit 1
+        fi
+        cmd=(claude --remote-control "$proj")
+        if scope="$(claude_scope "$proj")"; then
+            cmd+=(--settings "$scope")
+        else
+            # Say so rather than starting an unconfined session that looks
+            # identical to a confined one.
+            echo "WARNING: could not build the project scope for '${proj}'." >&2
+            echo "This session is NOT restricted to its own directory." >&2
+        fi
         # -A attaches to the existing session when there is one, so clicking a
         # project twice returns to the same conversation rather than starting a
         # second alongside it.
-        exec tmux new-session -A -s "claude-${proj}" -c "$dir" \
-            claude --remote-control "$proj"
+        exec tmux new-session -A -s "claude-${proj}" -c "$dir" "${cmd[@]}"
         ;;
     shell:*)
         proj="${target#shell:}"
