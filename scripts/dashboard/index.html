@@ -48,7 +48,10 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
   body[data-view="dash"] .col.term{display:none}
 }
 
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;flex:0 0 auto}
+/* position:relative so the resume chooser, which is absolutely positioned and
+   measured against this box, actually lands inside it. */
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  flex:0 0 auto;position:relative}
 .card h2{margin:0;padding:8px 12px;font-size:11px;text-transform:uppercase;
   letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);
   font-weight:600;display:flex;align-items:center;gap:8px;min-height:33px}
@@ -98,6 +101,21 @@ button.on{background:#1f6f36;border-color:#2ea043}
 pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   word-break:break-word;max-height:300px;overflow:auto;color:#cbd5e1}
 .empty{color:var(--dim);padding:9px 11px;font-style:italic}
+
+/* Macros run in the terminal now, so there is no output pane to put a message
+   in. Anything the page needs to say is transient and says it here. */
+#toast{position:fixed;left:50%;transform:translateX(-50%) translateY(-140%);
+  top:10px;z-index:60;max-width:min(560px,92vw);padding:9px 14px;border-radius:8px;
+  background:#232b34;border:1px solid var(--line);color:var(--ink);
+  font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.55);
+  transition:transform .18s ease,opacity .18s ease;opacity:0;pointer-events:none}
+#toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+#toast.bad{border-color:#4d2220;color:var(--bad)}
+@media(prefers-reduced-motion:reduce){ #toast{transition:none} }
+
+.tabbar .newtab{border:1px solid var(--line);border-radius:6px;font-size:15px;
+  line-height:1;padding:5px 9px;color:var(--dim)}
+.tabbar .newtab:hover{color:var(--ink)}
 
 /* Tabs --------------------------------------------------------------- */
 .col.term{min-height:0}
@@ -176,6 +194,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 </style>
 </head>
 <body data-view="dash">
+<div id="toast" role="status" aria-live="polite"></div>
 <header>
   <span class="dot" id="dot"></span>
   <h1>BuilderBot</h1>
@@ -211,20 +230,17 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div id="sessions"><div class="empty">loading…</div></div>
     </div>
     <div class="card">
-      <h2>Commands</h2>
-      <div class="macros">
-        <button onclick="macro('doctor')">doctor</button>
-        <button onclick="macro('status')">status</button>
-        <button onclick="macro('logs')">logs</button>
-        <button onclick="macro('emu-list')">emu list</button>
-        <button onclick="macro('emu-start')">emu start</button>
-        <button onclick="macro('emu-stop')">emu stop</button>
-        <button onclick="macro('update')">update claude</button>
+      <h2>Commands<span class="sub" style="font:11px/1 var(--mono);text-transform:none"
+        >run in the terminal</span></h2>
+      <div class="macros" id="commands">
+        <button data-m="doctor">doctor</button>
+        <button data-m="status">status</button>
+        <button data-m="logs">logs</button>
+        <button data-m="emu-list">emu list</button>
+        <button data-m="emu-start">emu start</button>
+        <button data-m="emu-stop">emu stop</button>
+        <button data-m="update">update claude</button>
       </div>
-    </div>
-    <div class="card">
-      <h2>Output</h2>
-      <pre id="out">Pick a command.</pre>
     </div>
   </div>
 
@@ -260,11 +276,34 @@ const esc = s => String(s ?? "").replace(/[&<>"']/g,
 const tabOf = id => tabs.find(t => t.id === id) || null;
 const isSplit = () => panes[1] !== null;
 
-// Mirrors bb-tty. The key bar and the kill button both address tmux by name,
-// and the terminal is an iframe we cannot reach into, so they must agree.
-const sessionOf = arg =>
-  arg.startsWith("claude:") ? "claude-" + arg.slice(7) :
-  arg.startsWith("shell:")  ? "shell-"  + arg.slice(6) : arg;
+// Mirrors bb-tty. The key bar, the kill button and the macro sender all address
+// tmux by name, and the terminal is an iframe we cannot reach into, so they
+// must agree. A resumed conversation is the same session as a fresh one — the
+// suffix chooses what claude starts with, not which tmux session it lands in.
+function sessionOf(arg){
+  if (arg.startsWith("sh:")){
+    const [, n, proj] = arg.split(":");
+    return proj ? `shell-${proj}-${n}` : `shell-${n}`;
+  }
+  if (arg.startsWith("claude:")) return "claude-" + arg.slice(7).split(":")[0];
+  if (arg.startsWith("shell:"))  return "shell-"  + arg.slice(6);
+  return arg;
+}
+
+const isClaude = t => t.kind === "term" && sessionOf(t.arg).startsWith("claude-");
+const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
+
+// The next free numbered terminal for a project ("" = the workspace root).
+// Checked against live tmux sessions as well as open tabs, so a tab closed
+// without killing its session does not hand the number back out.
+function nextShell(proj){
+  const taken = new Set([...liveSessions(),
+                         ...tabs.filter(t => t.kind === "term").map(t => sessionOf(t.arg))]);
+  const base = proj ? `shell-${proj}` : "shell";
+  for (let n = 1; n <= 99; n++)
+    if (!taken.has(`${base}-${n}`)) return `sh:${n}:${proj}`;
+  return null;
+}
 
 const ttydUrl = arg =>
   `${location.protocol}//${location.hostname}:${state.ttyd_port}/?arg=${encodeURIComponent(arg)}`;
@@ -290,16 +329,32 @@ function setView(v){
 const identity = t => t.kind === "term" ? "tmux:" + sessionOf(t.arg)
                                         : t.kind + ":" + t.arg;
 
-// One tab per thing. A second click on Claude/Shell/Findings for something
-// already open is a request to go to it, not to open a duplicate.
+// One tab per thing. A second click on Claude or Findings for something already
+// open is a request to go to it, not to open a duplicate. Shell tabs are the
+// exception and are always new — each carries its own session name, so they
+// never collide here.
 function openTab(spec){
   let t = tabs.find(x => identity(x) === identity(spec));
-  if (!t){ t = Object.assign({id:"t" + (++seq)}, spec); tabs.push(t); }
-
+  if (!t){
+    if (!roomForTab()) return;
+    t = Object.assign({id:"t" + (++seq)}, spec);
+    tabs.push(t);
+  }
   const shown = panes.indexOf(t.id);
   if (shown === -1) panes[active] = t.id;    // not on screen — put it here
   else active = shown;                       // already on screen — focus it
   show(t);
+}
+
+// Each terminal tab is an iframe running a full xterm.js over its own
+// websocket. Past a point the page stops being usable and the container is
+// carrying sessions nobody is reading, so refuse rather than degrade.
+function roomForTab(){
+  const cap = state?.max_tabs || 12;
+  if (tabs.length < cap) return true;
+  notify(`Tab limit reached (${cap}). Close one first — `
+       + `DASHBOARD_MAX_TABS raises it if this box can take more.`, true);
+  return false;
 }
 
 function focusTab(id){
@@ -323,17 +378,26 @@ async function closeTab(id, ev){
   const t = tabOf(id);
   if (!t || t.fixed) return;
 
-  // A terminal tab owns a tmux session; closing the tab ends it, or detached
-  // sessions pile up invisibly behind a UI that looks tidy. Claude gets a
-  // confirm because ending one throws away a conversation in progress.
-  if (t.kind === "term"){
-    // Ask about the resolved tmux session, not the argument. A tab opened from
-    // the Sessions list carries the raw name ("claude-Foo"), and testing the
-    // argument closed a live conversation without asking.
-    const session = sessionOf(t.arg);
-    if (session.startsWith("claude-") &&
-        !confirm(`End the Claude session in ${session.slice(7)}?\n\nThe transcript is kept, but the conversation stops.`))
-      return;
+  // Every close is confirmed, and the wording says which of two things it is.
+  // A Claude tab ends the conversation, because leaving one running for a tab
+  // nobody has is a model burning turns unobserved. A shell tab leaves its
+  // session alive, to be picked back up from the Sessions card.
+  //
+  // The session is resolved from the tab rather than read off its argument: a
+  // tab opened from the Sessions list carries the raw name ("claude-Foo"), and
+  // testing the argument closed a live conversation without asking.
+  const session = t.kind === "term" ? sessionOf(t.arg) : null;
+  const claude  = !!session && session.startsWith("claude-");
+
+  if (!confirm(
+        claude       ? `Close "${t.label}" and end the Claude session in ${session.slice(7)}?\n\n`
+                       + `The transcript is kept and can be resumed later, but the conversation stops now.`
+      : session      ? `Close "${t.label}"?\n\nThe terminal keeps running — reopen it from `
+                       + `Sessions, or close it there to end it for good.`
+      :                `Close "${t.label}"?`))
+    return;
+
+  if (claude){
     try{
       await fetch("/api/session", {method:"POST",
         headers:{"Content-Type":"application/json"},
@@ -341,12 +405,19 @@ async function closeTab(id, ev){
     }catch(e){ /* already gone is fine */ }
   }
 
+  dropTab(id);
+  refresh();
+}
+
+// Remove a tab and repair the layout: a pane it was in falls back to the other
+// one, and the workspace tab is the floor beneath everything.
+function dropTab(id){
   tabs = tabs.filter(x => x.id !== id);
   for (let i = 0; i < 2; i++) if (panes[i] === id) panes[i] = null;
   if (panes[0] === null && panes[1] !== null){ panes[0] = panes[1]; panes[1] = null; }
   if (panes[0] === null) panes[0] = "ws";
   if (panes[1] === null) active = 0;
-  render(); refresh();
+  render();
 }
 
 function pinTo(id, idx, ev){
@@ -462,7 +533,9 @@ function drawTabs(){
     </span>`;
   }).join("");
 
-  $("tabbar").innerHTML = html +
+  $("tabbar").innerHTML =
+    `<button id="bNew" class="ic newtab" title="new terminal at /workspace">+</button>` +
+    html +
     `<span class="sep"></span>` +
     `<button id="bKeys" class="${showKeys?"on":""}" title="on-screen keys">⌨</button>` +
     (pinFor ? `<span class="pinmenu" id="pinmenu">
@@ -480,7 +553,16 @@ function drawTabs(){
   bar.querySelectorAll("[data-l]").forEach(b => b.onclick = e => pinTo(b.dataset.l, 0, e));
   bar.querySelectorAll("[data-r]").forEach(b => b.onclick = e => pinTo(b.dataset.r, 1, e));
   $("bKeys").onclick = () => { showKeys = !showKeys; render(); };
+  $("bNew").onclick = () => newShell("");
   if (pinFor) placePinMenu();
+}
+
+// A terminal at some directory, always a new one. "" is the workspace root.
+function newShell(proj){
+  const arg = nextShell(proj);
+  if (!arg){ notify("Too many terminals open for that directory.", true); return; }
+  const n = arg.split(":")[1];
+  openTab({kind:"term", arg, label: proj ? `sh ${proj} ${n}` : `shell ${n}`});
 }
 
 // ---- panes -----------------------------------------------------------
@@ -565,8 +647,8 @@ async function sendKey(key){
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({session: sessionOf(t.arg), key})});
     const j = await r.json();
-    if (j.error) $("out").textContent = "key: " + j.error;
-  }catch(e){ $("out").textContent = "key failed: " + e; }
+    if (j.error) notify("key: " + j.error, true);
+  }catch(e){ notify("key failed: " + e, true); }
 }
 
 // ---- findings --------------------------------------------------------
@@ -723,8 +805,7 @@ function drawRunner(r){
        r.running ? ["runner-stop", "Stop", ""]
                  : ["runner-start", "Start", "primary"]
       ].map(([m, label, cls]) =>
-        `<button class="${cls}" data-m="${m}"${macroBusy ? " disabled" : ""}>${
-          macroBusy === m ? "working…" : label}</button>`).join("")
+        `<button class="${cls}" data-m="${m}">${label}</button>`).join("")
     }</div>`;
   el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
 }
@@ -754,6 +835,7 @@ function drawProjects(ps){
   }
 
   const cls = {error:"bad", warning:"warn", excluded:"off"};
+  const live = liveSessions();
   el.innerHTML = shown.map(p => `
     <div class="row">
       <div class="grow">
@@ -762,19 +844,80 @@ function drawProjects(ps){
         ${p.issues.map(i =>
           `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
-      ${p.excluded ? "" : `<button class="primary" data-c="${esc(p.name)}">Claude</button>`}
-      <button data-s="${esc(p.name)}">Shell</button>
+      ${p.excluded ? "" : `<button class="${live.has("claude-"+p.name) ? "primary" : ""}"
+         data-c="${esc(p.name)}"
+         title="${live.has("claude-"+p.name) ? "session running — go to its tab"
+                 : p.last_claude ? "no session running — resume or start one"
+                 : "start a Claude session here"}">Claude</button>`}
+      <button data-s="${esc(p.name)}" title="open another terminal here">Shell</button>
       <button data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
         title="${p.excluded ? "allow Claude sessions here again"
                             : "block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? "Include" : "Exclude"}</button>
     </div>`).join("");
-  el.querySelectorAll("[data-c]").forEach(b => b.onclick = () =>
-    openTab({kind:"term", arg:`claude:${b.dataset.c}`, label:`claude ${b.dataset.c}`}));
-  el.querySelectorAll("[data-s]").forEach(b => b.onclick = () =>
-    openTab({kind:"term", arg:`shell:${b.dataset.s}`, label:`sh ${b.dataset.s}`}));
+  el.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
+  el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
   el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
     setExcluded(b.dataset.x, b.dataset.on === "1"));
+  // The chooser is positioned against the card, so it is a sibling of the list
+  // rather than part of it — replacing the list's innerHTML does not remove it,
+  // and without this they stack up one per draw.
+  el.closest(".card").querySelectorAll(".resumemenu").forEach(n => n.remove());
+  if (resumeFor) placeResumeMenu();
+}
+
+// Which project's resume chooser is open, if any.
+let resumeFor = null;
+
+const ago = s => {
+  const d = Math.max(0, Math.floor(Date.now()/1000) - s);
+  return d < 90 ? "just now"
+       : d < 5400 ? `${Math.round(d/60)} min ago`
+       : d < 172800 ? `${Math.round(d/3600)} h ago`
+       : `${Math.round(d/86400)} days ago`;
+};
+
+// A live session is simply resumed by attaching — its tab is the conversation.
+// The choice only arises when nothing is running but a transcript survives,
+// which is exactly what a container restart leaves behind.
+function openClaude(name, ev){
+  ev?.stopPropagation();
+  const p = (state?.projects || []).find(x => x.name === name);
+  if (liveSessions().has("claude-" + name) || !p?.last_claude){
+    resumeFor = null;
+    return startClaude(name, null);
+  }
+  resumeFor = resumeFor === name ? null : name;
+  drawProjects(state.projects);
+}
+
+function startClaude(name, sessionId){
+  resumeFor = null;
+  // Redraw the card, not just the tabs: the chooser is a child of it and would
+  // otherwise sit there until the next poll, over a choice already made.
+  if (state) drawProjects(state.projects);
+  openTab({kind:"term",
+           arg: sessionId ? `claude:${name}:r:${sessionId}` : `claude:${name}`,
+           label:`claude ${name}`});
+}
+
+function placeResumeMenu(){
+  const p = (state?.projects || []).find(x => x.name === resumeFor);
+  const anchor = $("projects").querySelector(`[data-c="${CSS.escape(resumeFor)}"]`);
+  if (!p?.last_claude || !anchor){ resumeFor = null; return; }
+  const card = anchor.closest(".card");
+  const m = document.createElement("div");
+  m.className = "pinmenu resumemenu";
+  m.id = "resumemenu";
+  m.innerHTML =
+    `<button data-r="1">Resume — ${esc(ago(p.last_claude.when))}</button>` +
+    `<button data-n="1">New conversation</button>`;
+  card.appendChild(m);
+  const a = anchor.getBoundingClientRect(), c = card.getBoundingClientRect();
+  m.style.left = Math.max(4, Math.min(a.left - c.left, c.width - m.offsetWidth - 4)) + "px";
+  m.style.top = (a.bottom - c.top + 4) + "px";
+  m.querySelector("[data-r]").onclick = () => startClaude(p.name, p.last_claude.id);
+  m.querySelector("[data-n]").onclick = () => startClaude(p.name, null);
 }
 
 async function setExcluded(name, on){
@@ -786,21 +929,14 @@ async function setExcluded(name, on){
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({name, excluded:on})});
     const j = await r.json();
-    if (j.error){ $("out").textContent = "exclude: " + j.error; return; }
+    if (j.error){ notify(j.error, true); return; }
     // The server ends a running session when excluding; drop its tab too, or
     // the page keeps offering a terminal onto something that is gone.
     if (j.killed){
-      const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
-      if (t){
-        tabs = tabs.filter(x => x.id !== t.id);
-        for (let i = 0; i < 2; i++) if (panes[i] === t.id) panes[i] = null;
-        if (panes[0] === null && panes[1] !== null){ panes[0] = panes[1]; panes[1] = null; }
-        if (panes[0] === null) panes[0] = "ws";
-        if (panes[1] === null) active = 0;
-        render();
-      }
+      const t = tabs.find(x => x.kind === "term" && !x.fixed && sessionOf(x.arg) === j.killed);
+      if (t) dropTab(t.id);
     }
-  }catch(e){ $("out").textContent = "exclude failed: " + e; }
+  }catch(e){ notify("exclude failed: " + e, true); }
   refresh();
 }
 
@@ -825,39 +961,134 @@ function drawSessions(ss){
       <div class="grow"><span class="name">${esc(s.name)}</span>
         <span class="pill ${s.attached?"ok":""}">${s.attached?"attached":"detached"}</span></div>
       <button data-a="${esc(s.name)}">Open</button>
+      <button data-k="${esc(s.name)}" title="end this session">✕</button>
     </div>`).join("");
   el.querySelectorAll("[data-a]").forEach(b => b.onclick = () =>
     openTab({kind:"term", arg:argForSession(b.dataset.a), label:b.dataset.a}));
+  // Closing a terminal tab leaves its session running, so this is where one
+  // actually gets ended — otherwise they would only ever accumulate.
+  el.querySelectorAll("[data-k]").forEach(b => b.onclick = () => killSession(b.dataset.k));
 }
 
-// Which macro is in flight, if any. Stopping the runner waits for a clean
-// deregistration and can take a minute; a global rather than a per-button flag
-// because the 15s poll redraws the card and would otherwise hand back a live
-// button in the middle of the very operation it started.
-let macroBusy = null;
-
-async function macro(name, project){
-  if (macroBusy){
-    $("out").textContent = `still running ${macroBusy} — wait for it to finish.`;
-    return;
-  }
-  macroBusy = name;
-  $("out").textContent = `running ${name}…`;
-  if (isPhone()) setView("dash");
-  if (state) drawRunner(state.runner);
+async function killSession(name){
+  const claude = name.startsWith("claude-");
+  if (!confirm(claude
+        ? `End the Claude session "${name}"?\n\nThe transcript is kept and can be `
+          + `resumed later, but the conversation stops now.`
+        : `End the session "${name}"?\n\nAnything running in it is terminated.`)) return;
   try{
-    const r = await fetch("/api/run", {method:"POST",
+    const r = await fetch("/api/session", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({macro:name, project})});
+      body: JSON.stringify({action:"kill", session:name})});
     const j = await r.json();
-    $("out").textContent = j.error ? "error: "+j.error
-      : `$ ${j.cmd}\n\n${j.out || "(no output)"}${j.code?`\n\n[exit ${j.code}]`:""}`;
-  }catch(e){ $("out").textContent = "request failed: "+e; }
-  macroBusy = null;
+    if (j.error){ notify(j.error, true); return; }
+    // Its tab, if one is open, is now pointing at nothing.
+    const t = tabs.find(x => x.kind === "term" && !x.fixed && sessionOf(x.arg) === name);
+    if (t) dropTab(t.id);
+    notify(`ended ${name}`);
+  }catch(e){ notify("could not end it: " + e, true); }
   refresh();
 }
 
-function render(){ drawTabs(); drawPanes(); drawKeys(); }
+let toastTimer = null;
+function notify(msg, bad){
+  const el = $("toast");
+  el.textContent = msg;
+  el.classList.toggle("bad", !!bad);
+  el.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove("show"), bad ? 7000 : 4000);
+}
+
+// Where a macro should be typed. The active tab if it is a shell — never a
+// Claude one, where the command would not run at all but be submitted as a
+// prompt — otherwise the workspace terminal, which always exists.
+function macroTarget(){
+  const here = tabOf(panes[active]);
+  if (here && here.kind === "term" && !isClaude(here)) return here;
+  return tabOf("ws");
+}
+
+// Macros run in a terminal rather than reporting into a pane of their own: the
+// output belongs where the operator can scroll it, page it, and follow a
+// `bb runner stop` that takes a minute — none of which a one-shot text box did.
+async function macro(name){
+  const t = macroTarget();
+  const session = sessionOf(t.arg);
+  focusTab(t.id);
+  if (!liveSessions().has(session)){
+    // The iframe was only just created; tmux has not registered it yet.
+    notify(`Opening ${t.label} — press the button again once it is up.`);
+    return;
+  }
+  try{
+    const r = await fetch("/api/send", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({session, macro:name})});
+    const j = await r.json();
+    if (j.error) notify(j.error, true);
+    else notify(`${j.sent} → ${t.label}`);
+  }catch(e){ notify("could not reach the dashboard: " + e, true); }
+  refresh();
+}
+
+function render(){ drawTabs(); drawPanes(); drawKeys(); saveLayout(); }
+
+// ---- layout, shared between browsers ---------------------------------
+// The tab strip lives on the server so a phone picks up what the desktop has
+// open. `myRev` is the revision this client last wrote or adopted; a status
+// poll carrying a different one means another browser changed something.
+let myRev = -1, savePending = false, saveTimer = null, adopting = false;
+
+function layoutNow(){
+  return {tabs: tabs.map(t => ({id:t.id, kind:t.kind, arg:t.arg,
+                                label:t.label, fixed:!!t.fixed})),
+          panes, active};
+}
+
+function saveLayout(){
+  if (adopting) return;                 // echoing back what we were just given
+  const body = JSON.stringify(layoutNow());
+  if (body === lastSaved) return;       // render() runs on every poll
+  lastSaved = body;
+  savePending = true;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try{
+      const r = await fetch("/api/layout", {method:"POST",
+        headers:{"Content-Type":"application/json"}, body});
+      const j = await r.json();
+      if (typeof j.rev === "number") myRev = j.rev;
+    }catch(e){ /* the next change retries */ }
+    savePending = false;
+  }, 400);
+}
+let lastSaved = null;
+
+// Take on a layout another browser wrote. Terminal tabs restore themselves —
+// bb-tty attaches to the session if it is still there and recreates it in the
+// same directory if it is not.
+function adoptLayout(v){
+  if (!v || v.rev === myRev || savePending) return;
+  myRev = v.rev;
+  adopting = true;
+  const restored = v.tabs.filter(t => !t.fixed);
+  tabs = [tabs.find(t => t.fixed) || tabs[0], ...restored];
+  // Ids come back from another browser's counter; keep ours ahead of them so a
+  // tab opened here cannot collide with one opened there.
+  for (const t of restored){
+    const n = parseInt(String(t.id).replace(/^t/, ""), 10);
+    if (Number.isFinite(n) && n > seq) seq = n;
+  }
+  const ids = new Set(tabs.map(t => t.id));
+  panes = [ids.has(v.panes[0]) ? v.panes[0] : tabs[0].id,
+           ids.has(v.panes[1]) ? v.panes[1] : null];
+  if (panes[1] === panes[0]) panes[1] = null;
+  active = panes[1] && v.active === 1 ? 1 : 0;
+  lastSaved = JSON.stringify(layoutNow());
+  render();
+  adopting = false;
+}
 
 async function refresh(){
   try{
@@ -867,6 +1098,7 @@ async function refresh(){
     $("dot").style.background = "var(--accent)";
     $("host").textContent = state.host;
     $("uptime").textContent = "up " + state.uptime;
+    adoptLayout(state.layout);
     drawRunner(state.runner);
     drawProjects(state.projects);
     drawSessions(state.sessions);
@@ -881,11 +1113,19 @@ function openFindings(){
   openTab({kind:"findings", arg:"__findings", label:"findings"});
 }
 
+// Both popup menus dismiss on a click that is neither in them nor on the
+// control that opened them.
 document.addEventListener("click", e => {
   if (pinFor && !e.target.closest(".pinmenu") && !e.target.closest("[data-pin]")){
     pinFor = null; drawTabs();
   }
+  if (resumeFor && !e.target.closest(".resumemenu") && !e.target.closest("[data-c]")){
+    resumeFor = null;
+    if (state) drawProjects(state.projects);
+  }
 });
+
+$("commands").querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
 
 refresh();
 setInterval(refresh, 15000);

@@ -81,12 +81,47 @@ claude_scope() {
     return 1
 }
 
+# bad MESSAGE... — fail visibly. ttyd closes the connection the moment this
+# exits, so without the pause the browser shows an empty terminal and no reason.
+bad() {
+    for line in "$@"; do echo "$line" >&2; done
+    sleep 10
+    exit 1
+}
+
 case "$target" in
     shell)
         exec tmux new-session -A -s shell -c "$WORKSPACE"
         ;;
+
+    # sh:N:PROJECT — an additional numbered terminal, so the Shell button can
+    # open several at once instead of returning to the same one. An empty
+    # PROJECT means the workspace root.
+    sh:*)
+        rest="${target#sh:}"
+        num="${rest%%:*}"
+        proj="${rest#*:}"
+        case "$num" in
+            ''|*[!0-9]*) bad "Invalid terminal number: ${num}" ;;
+        esac
+        if [ -z "$proj" ]; then
+            exec tmux new-session -A -s "shell-${num}" -c "$WORKSPACE"
+        fi
+        dir="$WORKSPACE/$proj"
+        [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
+            || bad "No such project: ${proj}"
+        exec tmux new-session -A -s "shell-${proj}-${num}" -c "$dir"
+        ;;
+
     claude:*)
-        proj="${target#claude:}"
+        rest="${target#claude:}"
+        # claude:PROJECT           — a fresh conversation
+        # claude:PROJECT:r:UUID    — resume that transcript
+        resume=""
+        case "$rest" in
+            *:r:*) resume="${rest##*:r:}"; proj="${rest%%:r:*}" ;;
+            *)     proj="$rest" ;;
+        esac
         dir="$WORKSPACE/$proj"
         # Reject anything that is not a directory sitting directly in the
         # workspace: no traversal, no absolute paths, no invented names.
@@ -95,16 +130,25 @@ case "$target" in
             echo "Available:" >&2
             find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d -not -name '_work' \
                 -printf '  %f\n' >&2
-            sleep 10
-            exit 1
+            bad ""
         fi
         if is_excluded "$proj"; then
-            echo "'${proj}' is excluded: no Claude session can be started here." >&2
-            echo "Clear it from the dashboard's Projects card to allow one again." >&2
-            sleep 10
-            exit 1
+            bad "'${proj}' is excluded: no Claude session can be started here." \
+                "Clear it from the dashboard's Projects card to allow one again."
         fi
         cmd=(claude --remote-control "$proj")
+        if [ -n "$resume" ]; then
+            # Checked against a transcript that actually exists, so a mistyped
+            # URL cannot turn into an argument claude tries to interpret.
+            case "$resume" in
+                *[!0-9a-fA-F-]*|"") bad "Not a session id: ${resume}" ;;
+            esac
+            if [ ! -f "$HOME/.claude/projects/${dir//\//-}/${resume}.jsonl" ]; then
+                bad "No transcript ${resume} for ${proj}." \
+                    "It may have been cleaned up; start a new conversation instead."
+            fi
+            cmd+=(--resume "$resume")
+        fi
         if scope="$(claude_scope "$proj")"; then
             cmd+=(--settings "$scope")
         else
@@ -121,18 +165,15 @@ case "$target" in
     shell:*)
         proj="${target#shell:}"
         dir="$WORKSPACE/$proj"
-        if [ "$proj" != "$(basename -- "$proj")" ] || [ ! -d "$dir" ]; then
-            echo "No such project: ${proj}" >&2
-            sleep 10
-            exit 1
-        fi
+        [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
+            || bad "No such project: ${proj}"
         exec tmux new-session -A -s "shell-${proj}" -c "$dir"
         ;;
     *)
         # A named scratch session. Restricted to characters tmux is happy with
         # so a stray URL cannot produce a session nobody can address again.
         case "$target" in
-            *[!A-Za-z0-9._-]*) echo "Invalid session name: ${target}" >&2; sleep 10; exit 1 ;;
+            *[!A-Za-z0-9._-]*) bad "Invalid session name: ${target}" ;;
         esac
         exec tmux new-session -A -s "$target" -c "$WORKSPACE"
         ;;

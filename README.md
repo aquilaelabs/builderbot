@@ -466,14 +466,20 @@ terminal on `7681`:
 One tab is permanent: **workspace**, a shell at `/workspace`. Everything else
 you open gets its own closable tab above the terminal.
 
-- **Claude** / **Shell** on a project open a terminal tab. Clicking the same
-  button again goes to the tab that is already open rather than opening a
-  second one — one tab per session, and therefore one ✕ per session.
+- **Claude** on a project opens *one* session per project. If it is already
+  running the button is green and takes you to its tab. If it is not but the
+  project has a previous conversation, you are asked whether to **resume** it
+  or start a **new** one — the tmux session dies with a container restart, the
+  transcript does not.
+- **Shell** opens *another* terminal at the project path every time you click
+  it, so you can have several side by side. **+**, at the left of the tab
+  strip, does the same for `/workspace`.
 - **Open findings report** opens a *document* tab, not a terminal. It is a
   report to read; putting it through a PTY would only make it harder to.
-- **✕ on a tab** closes it *and ends its tmux session*, because a detached
-  session you can no longer see is just a process you have forgotten about.
-  Claude tabs ask first — the transcript is kept, but the conversation stops.
+- **✕ on a tab** always asks first, and does one of two things. A **Claude**
+  tab closes *and ends the session* — a model left running for a tab nobody
+  has is taking turns unobserved. A **shell** tab closes but leaves its
+  session running; pick it back up from the Sessions card, or end it there.
   The workspace tab has no ✕.
 - **Drag a tab** by its label to reorder the strip. Works with a mouse or a
   finger.
@@ -484,8 +490,23 @@ you open gets its own closable tab above the terminal.
   it was being shown.
 
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
-or a reloaded page detaches instead of killing the session. Only the tab's ✕
-ends one.
+or a reloaded page detaches instead of killing the session.
+
+**The tab strip is shared, not per-browser.** It lives on the container, so
+opening the dashboard on a phone shows what the desktop has open, and a change
+on either reaches the other within a poll. `DASHBOARD_MAX_TABS` (default 12)
+caps how many can be open at once: each terminal tab is an iframe running a
+full terminal emulator over its own websocket, so the limit is about browser
+memory, not tidiness.
+
+### Commands run in the terminal
+
+The `bb` macro buttons type their command into the terminal you are looking at
+and press Enter, rather than reporting into a box of their own. The output is
+then somewhere you can scroll it, and a slow one like `bb runner stop` is
+watchable while it runs. A macro is never typed into a **Claude** tab — that
+would submit it as a prompt rather than run it — so it goes to the workspace
+terminal instead when a Claude tab has focus.
 
 ### Keeping a session in its own project
 

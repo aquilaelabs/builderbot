@@ -71,11 +71,16 @@ TMUX_LITERALS = {
 }
 
 
-# Macros that take a project as their working directory rather than an argument.
-PROJECT_MACROS = {
-    "findings":  ["bb", "findings"],
-    "claude-md": ["bb", "claude-md"],
-}
+# How many tabs the page will open. Each terminal tab is an iframe running a
+# full xterm.js with its own websocket, so this is a real ceiling on browser
+# memory rather than a tidiness rule — and a phone hits it far earlier than a
+# desktop does.
+MAX_TABS = int(os.environ.get("DASHBOARD_MAX_TABS", "12"))
+
+# Where Claude Code keeps transcripts: one directory per working directory,
+# with the path's slashes turned into dashes, holding one .jsonl per session.
+CLAUDE_PROJECTS = Path(
+    os.environ.get("BUILDER_HOME", str(Path.home()))) / ".claude" / "projects"
 
 
 # Every request body here is a handful of short JSON fields. Anything larger is
@@ -91,6 +96,45 @@ REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 # reachable on its own.
 STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
 EXCLUDES_FILE = STATE / "excluded-projects.json"
+
+
+TABS_FILE = STATE / "tabs.json"
+
+# What a stored tab may contain. Anything else is dropped rather than trusted:
+# this file is written by one browser and handed to every other one, so it is
+# the one place where a bad value could travel between devices.
+TAB_KINDS = {"term", "findings"}
+
+
+def load_layout():
+    try:
+        v = json.loads(TABS_FILE.read_text())
+    except (OSError, ValueError):
+        v = {}
+    tabs = []
+    for t in (v.get("tabs") or [])[:MAX_TABS]:
+        if not isinstance(t, dict) or t.get("kind") not in TAB_KINDS:
+            continue
+        tid, arg, label = t.get("id"), t.get("arg"), t.get("label")
+        if not all(isinstance(x, str) for x in (tid, arg, label)):
+            continue
+        if len(tid) > 32 or len(arg) > 200 or len(label) > 80:
+            continue
+        tabs.append({"id": tid, "kind": t["kind"], "arg": arg, "label": label,
+                     "fixed": bool(t.get("fixed"))})
+    ids = {t["id"] for t in tabs}
+    panes = [p if p in ids else None for p in (v.get("panes") or [None, None])[:2]]
+    while len(panes) < 2:
+        panes.append(None)
+    return {"rev": int(v.get("rev") or 0), "tabs": tabs, "panes": panes,
+            "active": 1 if v.get("active") == 1 and panes[1] else 0}
+
+
+def save_layout(v):
+    STATE.mkdir(parents=True, exist_ok=True)
+    tmp = TABS_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(v, indent=2) + "\n")
+    tmp.replace(TABS_FILE)
 
 
 def load_excludes():
@@ -279,6 +323,7 @@ def projects():
                            "text": "excluded — no Claude session can start here"})
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "claude_md": has_md, "excluded": d.name in excluded,
+                    "last_claude": None if d.name in excluded else last_claude(d),
                     "issues": issues})
     return out
 
@@ -370,6 +415,24 @@ def link_state(lines):
     return True, None                            # nothing logged either way
 
 
+def last_claude(project_dir):
+    """The most recent Claude transcript for a working directory, or None.
+
+    Used to offer "resume" rather than silently starting a fresh conversation
+    in a project that already had one — the tmux session dies with a container
+    restart, but the transcript does not.
+    """
+    d = CLAUDE_PROJECTS / str(project_dir).replace("/", "-")
+    try:
+        files = [f for f in d.glob("*.jsonl") if f.is_file()]
+    except OSError:
+        return None
+    if not files:
+        return None
+    newest = max(files, key=lambda f: f.stat().st_mtime)
+    return {"id": newest.stem, "when": int(newest.stat().st_mtime)}
+
+
 def _pidfile_alive(p):
     """Is the process named by this pidfile still there? A stale file is a no."""
     try:
@@ -451,6 +514,11 @@ def snapshot():
         "runner": runner(),
         "ttyd_port": TTYD_PUBLIC_PORT,
         "reports": REPORTS.is_dir(),
+        "max_tabs": MAX_TABS,
+        # The open tabs, so a phone picks up the desktop's layout rather than
+        # starting from scratch. Carried in the status poll because it is small
+        # and every client is already asking for that every 15s.
+        "layout": load_layout(),
     }
 
 
@@ -547,9 +615,31 @@ class Handler(BaseHTTPRequestHandler):
             return self._session(req)
         if path.startswith("/api/keys"):
             return self._keys(req)
-        if path.startswith("/api/run"):
-            return self._run(req)
+        if path.startswith("/api/send"):
+            return self._send(req)
+        if path.startswith("/api/layout"):
+            return self._layout(req)
         self._json({"error": "not found"}, 404)
+
+    def _layout(self, req):
+        """Store the open tabs, bumping a revision so other clients notice.
+
+        The revision is what keeps two browsers from fighting: each polls, sees
+        a number it did not write, and adopts. Without it they would take turns
+        overwriting each other every fifteen seconds.
+        """
+        cur = load_layout()
+        v = {"rev": cur["rev"] + 1,
+             "tabs": req.get("tabs") or [],
+             "panes": req.get("panes") or [None, None],
+             "active": req.get("active") or 0}
+        try:
+            save_layout(v)
+        except OSError as e:
+            return self._json({"error": f"could not save: {e}"}, 500)
+        # Re-read so the caller gets exactly what every other client will see,
+        # including anything the validator dropped.
+        return self._json(load_layout())
 
     def _exclude(self, req):
         """Add or remove a project from the exclusion list.
@@ -605,16 +695,28 @@ class Handler(BaseHTTPRequestHandler):
                                    TMUX_LITERALS[key]], timeout=10))
         self._json({"error": f"unknown key: {key}"}, 400)
 
-    def _run(self, req):
-        name, proj = req.get("macro", ""), req.get("project")
-        if name in MACROS:
-            return self._json(run(MACROS[name]))
-        if name in PROJECT_MACROS:
-            names = {p["name"] for p in projects()}
-            if proj not in names:
-                return self._json({"error": f"unknown project: {proj}"}, 400)
-            return self._json(run(PROJECT_MACROS[name], cwd=str(WORKSPACE / proj)))
-        self._json({"error": f"unknown macro: {name}"}, 400)
+    def _send(self, req):
+        """Type a macro's command line into a shell session and press Enter.
+
+        Still a name from the fixed table, never a command string — the page
+        cannot ask for anything not listed above, and what lands in the
+        terminal is exactly what the operator would have typed.
+        """
+        session, name = req.get("session", ""), req.get("macro", "")
+        if name not in MACROS:
+            return self._json({"error": f"unknown macro: {name}"}, 400)
+        if session not in {s["name"] for s in tmux_sessions()}:
+            return self._json({"error": f"no such session: {session}"}, 400)
+        # Never into a Claude session: that would not run the command, it would
+        # submit it as a prompt.
+        if session.startswith("claude-"):
+            return self._json({"error": "refusing to type into a Claude session"}, 400)
+        line = shlex.join(MACROS[name])
+        r = run(["tmux", "send-keys", "-t", session, "-l", line], timeout=10)
+        if r["code"] != 0:
+            return self._json(r)
+        return self._json(run(["tmux", "send-keys", "-t", session, "Enter"], timeout=10)
+                          | {"sent": line})
 
 
 def _constant_eq(a, b):
