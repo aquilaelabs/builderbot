@@ -265,6 +265,7 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `DASHBOARD_AUTH` | *(empty)* | `user:password` — **required** when the dashboard is enabled; it will not start otherwise |
 | `DASHBOARD_PORT` / `DASHBOARD_TTYD_PORT` | `8080` / `7681` | Page and terminal ports; both must be published |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
+| `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
 Mounts: the projects folder, three state dirs (`home`, `config`, `work`), and
 three optional ones — `/secrets` (ro, shielded credentials), `/logs`
@@ -497,12 +498,16 @@ you open gets its own closable tab above the terminal.
   strip, does the same for `/workspace`.
 - **Open findings report** opens a *document* tab, not a terminal. It is a
   report to read; putting it through a PTY would only make it harder to.
-- **✕ on a tab** always asks first, and does one of two things. A **Claude**
-  tab closes *and ends the session* — a model left running for a tab nobody
-  has is taking turns unobserved. A **shell** tab closes but leaves its
-  session running; pick it back up from the Sessions card, or end it there.
-  The workspace tab has no ✕. **Middle-clicking** a tab does the same as ✕,
-  the way it does in a browser.
+- **— on a tab minimises it**, and asks nothing. The terminal keeps running
+  and is listed under Sessions, where **Open** brings it back; a **Claude** tab
+  is the same, the conversation carries on without a tab. Nothing is lost, so
+  nothing is asked. **Middle-clicking** a tab does the same, the way it does in
+  a browser. The workspace tab has no button — it is the floor.
+- **✕ appears on the findings tab only**, because a document has no session to
+  keep. It closes without asking too.
+- **Ending a session for good is the ✕ in the Sessions card.** That one asks,
+  because that is where something is actually lost: the shell and everything
+  in it, or the Claude conversation (its transcript is kept and can be resumed).
 - **Tabs are named for where they are.** A terminal reads `sh: <directory>`,
   following the shell as it `cd`s; hover for the full path. A Claude tab reads
   `Claude: <project>`. Two terminals in the same directory carry their number
@@ -517,9 +522,10 @@ you open gets its own closable tab above the terminal.
 
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
 or a reloaded page detaches instead of killing the session. The **Sessions
-card** names them the same way the tabs do — `sh: <directory>`, `Claude:
-<project>` — including the ones whose tab you closed; the tmux name and full
-path are on hover.
+card** is the full list — every terminal and every Claude session, named the way
+the tabs are (`sh: <directory>`, `Claude: <project>`), including the ones you
+minimised; the tmux name and full path are on hover. Document tabs are not
+there, having nothing to keep.
 
 **Selecting in a shell copies it.** Release the mouse and the selection is on
 your system clipboard. That is why tmux's mouse mode is off in shell sessions:
@@ -552,22 +558,39 @@ caps how many can be open at once: each terminal tab is an iframe running a
 full terminal emulator over its own websocket, so the limit is about browser
 memory, not tidiness.
 
-**Shell tabs survive a container restart; Claude tabs do not.** A terminal can
-be put back exactly as it was — the launcher recreates the session in the same
-directory and you carry on. A conversation cannot: it ended with the container,
-and restoring the tab would start a brand new session wearing the old one's
-name. So those tabs are dropped at boot, and the project's **Claude** button
-offers to resume the transcript, which is still on disk.
+**Terminals survive a container restart, scrollback and all.** tmux dies with
+the container, so on the way down the supervisor writes each terminal's
+directory and the last 2000 lines of its screen (`BB_SESSION_HISTORY`) to
+`/config/sessions/`, and a startup hook recreates them there and prints that
+scrollback back in before the shell starts. Minimised terminals come back the
+same way, since they are sessions like any other.
+
+What comes back is the terminal, not what was running in it. A build that was
+halfway through went down with the container — restarting it here would be a
+promise this cannot keep — and the shutdown kills whatever was running before it
+takes the sessions' picture. Sessions are single-pane by construction; if you
+split one inside tmux, only the active pane's contents are kept.
+
+**Claude sessions do not come back.** The conversation ended with the container,
+and a session wearing its old name would be a new one pretending otherwise. Its
+tab is dropped at boot too, and the project's **Claude** button offers to resume
+the transcript, which is still on disk.
 
 ### Commands run in the terminal
 
-Every `bb` command is a button. Clicking one types it into the terminal you are
-looking at and presses Enter, rather than reporting into a box of its own. The
+Every `bb` command is a button. Clicking one clears whatever is half-typed at
+the prompt, types the command into the terminal you are looking at and presses
+Enter, rather than reporting into a box of its own. The
 output is then somewhere you can scroll it, a slow one like `bb runner stop` is
 watchable while it runs, and one that asks a question (`bb login`) or follows
 (`bb logs -f`) behaves exactly as if you had typed it. A command is never typed
 into a **Claude** tab — that would submit it as a prompt rather than run it — so
 it goes to the workspace terminal instead when a Claude tab has focus.
+
+The line is cleared with end-of-line then kill-line, which is readline editing
+rather than a signal: `Ctrl-C` would also interrupt whatever is running in that
+terminal, which is not something a button labelled `bb status` should be able to
+do.
 
 They are listed in `bb help`'s own order, so the card and the CLI read the
 same. The list is longer than the card, so it is cut off at eight with **Show

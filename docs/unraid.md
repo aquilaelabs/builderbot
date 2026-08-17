@@ -324,10 +324,18 @@ pinned to a left or right pane for a side-by-side view. Closing a Claude tab
 ends its session; closing a shell tab leaves it running, to be picked up again
 from the Sessions card. A pane's ✕ only collapses the split.
 
+A tab's **—** minimises it: the terminal keeps running and is listed under
+Sessions, where Open brings it back. The ✕ in the Sessions card is what ends a
+session for good, and it is the only one that asks.
+
 The tab strip is stored on the container rather than in the browser, so a phone
-shows what the desktop has open. Shell tabs come back after a restart of the
-container; Claude tabs do not, because the conversation ended with it — the
-transcript is kept, and the project's Claude button offers to resume it.
+shows what the desktop has open. **Terminals survive a restart of the container**
+— the shutdown saves each one's directory and the last screenful of its
+scrollback under the Config path in `sessions/`, and startup puts them back.
+What was *running* in them does not come back; that went down with the
+container. Claude sessions are not restored either, because the conversation
+ended with it — the transcript is kept, and the project's Claude button offers
+to resume it.
 
 **Both ports have to be reachable from your browser.** The page is served by
 one and the terminal websocket by the other; the terminal is a separate service

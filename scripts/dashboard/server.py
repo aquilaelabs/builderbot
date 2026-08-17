@@ -1104,6 +1104,12 @@ class Handler(BaseHTTPRequestHandler):
         # submit it as a prompt.
         if session.startswith("claude-"):
             return self._json({"error": "refusing to type into a Claude session"}, 400)
+        # Clear whatever was half-typed at the prompt first, or the command
+        # arrives glued to the end of it. End-of-line then kill-line, which is
+        # readline editing and not a signal: Ctrl-C would also interrupt
+        # whatever is running in there, which is not what pressing a button
+        # labelled `bb status` should be able to do.
+        run(["tmux", "send-keys", "-t", session, "C-e", "C-u"], timeout=10)
         # Typed one after another without waiting. That is what happens when a
         # person types ahead too — the tty buffers the input and the shell reads
         # each line when it is ready for one.
