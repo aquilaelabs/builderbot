@@ -5,12 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
 <title>BuilderBot</title>
+<!-- Inline so the browser never asks the server for /favicon.ico — the only
+     404 this page would otherwise produce. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b2027'/%3E%3Cpath d='M9 21l5-10 5 10M11 18h6' stroke='%233fb950' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='23.5' cy='11.5' r='2.5' fill='%233fb950'/%3E%3C/svg%3E">
 <style>
 :root{
   --bg:#14181d; --panel:#1b2027; --line:#2a323c; --ink:#e6edf3;
   --dim:#8b98a5; --accent:#3fb950; --warn:#d29922; --bad:#f85149;
+  --note:#58a6ff;
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
-  --tap:38px;                      /* min touch target */
+  --tap:38px;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -20,7 +24,6 @@ body{margin:0;background:var(--bg);color:var(--ink);display:flex;
   padding:env(safe-area-inset-top) env(safe-area-inset-right)
           env(safe-area-inset-bottom) env(safe-area-inset-left)}
 
-/* Header ------------------------------------------------------------- */
 header{display:flex;align-items:center;gap:10px;padding:8px 12px;
   background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto}
 header h1{font-size:15px;margin:0;font-weight:600}
@@ -30,31 +33,24 @@ header h1{font-size:15px;margin:0;font-weight:600}
   overflow:hidden;text-overflow:ellipsis}
 @media(max-width:600px){ .meta.host{display:none} }
 
-/* View switch (mobile only) ------------------------------------------ */
 .switch{display:none;gap:6px;padding:6px 12px;background:var(--panel);
   border-bottom:1px solid var(--line);flex:0 0 auto}
 .switch button{flex:1;min-height:var(--tap)}
 
-/* Layout ------------------------------------------------------------- */
 main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
   gap:10px;padding:10px}
 .col{display:flex;flex-direction:column;gap:10px;min-height:0}
 .col.side{overflow:auto;-webkit-overflow-scrolling:touch}
-
 @media(max-width:900px){
   .switch{display:flex}
   main{grid-template-columns:1fr;padding:8px;gap:8px}
-  /* One pane at a time on a phone: both would be unusable. */
   body[data-view="terminal"] .col.side{display:none}
   body[data-view="dash"] .col.term{display:none}
 }
 
-/* Cards -------------------------------------------------------------- */
-.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
-  flex:0 0 auto}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;flex:0 0 auto}
 .card h2{margin:0;padding:8px 12px;font-size:11px;text-transform:uppercase;
-  letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);
-  font-weight:600}
+  letter-spacing:.6px;color:var(--dim);border-bottom:1px solid var(--line);font-weight:600}
 .row{display:flex;align-items:center;gap:8px;padding:7px 10px;
   border-bottom:1px solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
@@ -67,7 +63,6 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
   white-space:nowrap;min-height:30px;touch-action:manipulation;
   -webkit-tap-highlight-color:transparent}
 button:hover{background:#2b3540}
-button:active{background:#37424f}
 button.primary{background:#1f6f36;border-color:#2ea043}
 button.on{background:#1f6f36;border-color:#2ea043}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
@@ -78,42 +73,82 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pill.ok{color:var(--accent);border-color:#22452c}
 .pill.bad{color:var(--bad);border-color:#4d2220}
 .pill.warn{color:var(--warn);border-color:#4a3a15}
+.pill.note{color:var(--note);border-color:#1f3c5d}
 
 pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   word-break:break-word;max-height:300px;overflow:auto;color:#cbd5e1}
 .empty{color:var(--dim);padding:9px 11px;font-style:italic}
 
-/* Terminal ----------------------------------------------------------- */
+/* Tabs --------------------------------------------------------------- */
 .col.term{min-height:0}
-.tabs{display:flex;gap:6px;flex-wrap:wrap;padding:7px 8px;background:var(--panel);
+.tabbar{display:flex;gap:5px;flex-wrap:wrap;padding:6px 7px;background:var(--panel);
   border:1px solid var(--line);border-radius:8px 8px 0 0;flex:0 0 auto;
-  align-items:center}
-.tabs .sep{flex:1}
+  align-items:center;position:relative}
+.tab{display:flex;align-items:center;gap:0;border:1px solid var(--line);
+  border-radius:6px;overflow:hidden;background:#232b34}
+.tab.on{background:#1f6f36;border-color:#2ea043}
+.tab button{border:0;border-radius:0;background:transparent;min-height:28px}
+.tab .lbl{padding:6px 8px;max-width:34vw;overflow:hidden;text-overflow:ellipsis}
+.tab .ic{padding:6px 7px;color:var(--dim);font-size:13px;line-height:1}
+.tab .ic:hover{background:rgba(255,255,255,.09);color:var(--ink)}
+@media(max-width:900px){ .tab button{min-height:var(--tap)} }
+.tabbar .sep{flex:1}
+
+.pinmenu{position:absolute;z-index:20;background:var(--panel);
+  border:1px solid var(--line);border-radius:8px;padding:5px;display:flex;
+  gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+.pinmenu button{min-height:var(--tap)}
+
+/* Panes -------------------------------------------------------------- */
 .panes{flex:1;min-height:0;display:grid;gap:6px;grid-template-columns:1fr;
   background:var(--line);border:1px solid var(--line);border-top:0;
   border-radius:0 0 8px 8px;overflow:hidden}
 .panes.split{grid-template-columns:1fr 1fr}
 @media(max-width:900px){ .panes.split{grid-template-columns:1fr} }
-.pane{position:relative;background:#000;min-height:0;display:flex}
+.pane{position:relative;background:#000;min-height:0;display:flex;flex-direction:column}
 .pane.hidden{display:none}
-.pane iframe{flex:1;border:0;display:block;width:100%;height:100%}
-/* The active pane is where the next tab click lands — say so visibly, or
-   clicking a tab in split view looks random. */
-.pane.active::after{content:"";position:absolute;inset:0;pointer-events:none;
-  border:2px solid #2ea043;border-radius:2px}
-.pane .cap{position:absolute;top:0;left:0;z-index:2;font:11px/1 var(--mono);
-  background:rgba(20,24,29,.82);color:var(--dim);padding:4px 7px;
-  border-radius:0 0 6px 0;cursor:pointer}
+.pane.active{outline:2px solid #2ea043;outline-offset:-2px}
+.pane .bar{display:flex;align-items:center;gap:6px;padding:3px 6px;
+  background:rgba(20,24,29,.92);border-bottom:1px solid var(--line);
+  font:11px/1.6 var(--mono);color:var(--dim);flex:0 0 auto}
+.pane .bar .x{margin-left:auto;cursor:pointer;padding:2px 7px;border-radius:4px}
+.pane .bar .x:hover{background:rgba(255,255,255,.1);color:var(--ink)}
+.pane .bar button{min-height:22px;padding:2px 8px;font-size:11px}
+.pane iframe{flex:1;border:0;width:100%;display:block}
+.pane .doc{flex:1;overflow:auto;background:var(--bg);padding:12px;
+  -webkit-overflow-scrolling:touch}
+.pane .slot{flex:1;min-height:0;display:flex}
+.pane .empty-pane{margin:auto;color:var(--dim);font-style:italic}
 
-/* Key bar ------------------------------------------------------------ */
+/* Keys --------------------------------------------------------------- */
 .keys{flex:0 0 auto;background:var(--panel);border:1px solid var(--line);
-  border-top:0;border-radius:0 0 8px 8px;padding:6px;display:none;
-  gap:5px;flex-wrap:wrap}
+  border-top:0;border-radius:0 0 8px 8px;padding:6px;display:none;gap:5px;flex-wrap:wrap}
 .keys.show{display:flex}
-.keys button{font-family:var(--mono);min-width:40px;min-height:var(--tap);
-  padding:6px 8px;flex:0 0 auto}
+.keys button{font-family:var(--mono);min-width:40px;min-height:var(--tap);padding:6px 8px}
 .keys .gap{flex-basis:100%;height:0}
-.panes.haskeys{border-radius:0}
+
+/* Findings view ------------------------------------------------------ */
+.fx h3{margin:0 0 8px;font-size:15px}
+.fx .stats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.fx .grp{border:1px solid var(--line);border-radius:8px;margin-bottom:10px;
+  background:var(--panel);overflow:hidden}
+.fx .grp>summary{padding:9px 11px;cursor:pointer;font-weight:600;
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none}
+.fx .grp>summary::-webkit-details-marker{display:none}
+.fx .grp>summary::before{content:"▸";color:var(--dim);font-size:11px}
+.fx .grp[open]>summary::before{content:"▾"}
+.fx .bust{padding:9px 11px;color:var(--bad);font-weight:600}
+.fx .rule{border-top:1px solid var(--line);padding:9px 11px}
+.fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
+.fx .rule .desc{margin:3px 0 6px}
+.fx .loc{font:12px/1.7 var(--mono);color:#cbd5e1}
+.fx .msg{font:12px/1.5 var(--mono);color:var(--dim);white-space:pre-wrap;
+  margin:5px 0 0;padding-left:9px;border-left:2px solid var(--line)}
+.fx a{color:var(--note)}
+.fx .cve{display:inline-block;font:11px/1 var(--mono);padding:3px 7px;
+  border-radius:99px;border:1px solid #4d2220;color:var(--bad);
+  text-decoration:none;margin:0 4px 4px 0}
+.fx .cve:hover{background:#2a1a1a}
 </style>
 </head>
 <body data-view="dash">
@@ -141,17 +176,20 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
         <button onclick="macro('runner-restart')">Restart</button>
       </div>
     </div>
-
     <div class="card">
       <h2>Projects</h2>
       <div id="projects"><div class="empty">loading…</div></div>
     </div>
-
+    <div class="card" id="cardFindings" hidden>
+      <h2>Static analysis</h2>
+      <div class="macros">
+        <button class="primary" onclick="openFindings()">Open findings report</button>
+      </div>
+    </div>
     <div class="card">
       <h2>Sessions</h2>
       <div id="sessions"><div class="empty">loading…</div></div>
     </div>
-
     <div class="card">
       <h2>Commands</h2>
       <div class="macros">
@@ -164,7 +202,6 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
         <button onclick="macro('update')">update claude</button>
       </div>
     </div>
-
     <div class="card">
       <h2>Output</h2>
       <pre id="out">Pick a command.</pre>
@@ -172,14 +209,10 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   </div>
 
   <div class="col term">
-    <div class="tabs" id="tabs"></div>
+    <div class="tabbar" id="tabbar"></div>
     <div class="panes" id="panes">
-      <div class="pane active" id="pane0" onclick="setActive(0)">
-        <div class="cap" id="cap0"></div><iframe id="f0" title="terminal 1"></iframe>
-      </div>
-      <div class="pane hidden" id="pane1" onclick="setActive(1)">
-        <div class="cap" id="cap1"></div><iframe id="f1" title="terminal 2"></iframe>
-      </div>
+      <div class="pane active" id="pane0"></div>
+      <div class="pane hidden" id="pane1"></div>
     </div>
     <div class="keys" id="keys"></div>
   </div>
@@ -187,20 +220,28 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 
 <script>
 "use strict";
-let state = null;
-let panes = [null, null];          // {arg,label} per pane
+
+// ---- state -----------------------------------------------------------
+// One permanent workspace tab; everything else is opened and closable. Tabs
+// are separate from panes on purpose: a pane is a viewport, and closing one
+// should not destroy what it was showing.
+let tabs = [{id:"ws", kind:"term", arg:"shell", label:"workspace", fixed:true}];
+let panes = ["ws", null];
 let active = 0;
-let split  = false;
-// Phones are where the missing keys hurt; a physical keyboard already has them.
+let state = null;
+let findings = null;
+let pinFor = null;
 let showKeys = window.matchMedia("(pointer: coarse)").matches;
+let seq = 0;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g,
   c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const tabOf = id => tabs.find(t => t.id === id) || null;
+const isSplit = () => panes[1] !== null;
 
-// Mirror of bb-tty's mapping. The key bar talks to tmux by session name, and
-// the terminal is only an iframe we cannot reach into, so the two have to
-// agree on what a given tab is called.
+// Mirrors bb-tty. The key bar and the kill button both address tmux by name,
+// and the terminal is an iframe we cannot reach into, so they must agree.
 const sessionOf = arg =>
   arg.startsWith("claude:") ? "claude-" + arg.slice(7) :
   arg.startsWith("shell:")  ? "shell-"  + arg.slice(6) : arg;
@@ -208,81 +249,189 @@ const sessionOf = arg =>
 const ttydUrl = arg =>
   `${location.protocol}//${location.hostname}:${state.ttyd_port}/?arg=${encodeURIComponent(arg)}`;
 
+const isPhone = () => window.matchMedia("(max-width:900px)").matches;
+
 function setView(v){
   document.body.dataset.view = v;
   $("vDash").classList.toggle("on", v === "dash");
   $("vTerm").classList.toggle("on", v === "terminal");
 }
 
-function setActive(i){
-  if (!split) return;
-  active = i;
-  renderPanes();
+// ---- tabs ------------------------------------------------------------
+// One tab per thing. A second click on Claude/Shell/Findings for something
+// already open is a request to go to it, not to open a duplicate — two tabs on
+// one tmux session would also mean two ✕ buttons killing the same session.
+function openTab(spec){
+  let t = tabs.find(x => x.kind === spec.kind && x.arg === spec.arg);
+  if (!t){ t = Object.assign({id:"t" + (++seq)}, spec); tabs.push(t); }
+
+  const shown = panes.indexOf(t.id);
+  if (shown === -1) panes[active] = t.id;    // not on screen — put it here
+  else active = shown;                       // already on screen — focus it
+  show(t);
 }
 
-function openSession(arg, label){
-  panes[active] = {arg, label};
-  renderPanes();
-  drawTabs();
-  // On a phone the terminal lives behind the switch, so opening one should
-  // actually show it rather than silently loading out of view.
-  if (window.matchMedia("(max-width:900px)").matches) setView("terminal");
+function focusTab(id){
+  const t = tabOf(id);
+  if (!t) return;
+  const shown = panes.indexOf(id);
+  if (shown === -1) panes[active] = id; else active = shown;
+  show(t);
 }
 
-function toggleSplit(){
-  split = !split;
-  if (split && !panes[1]) panes[1] = {arg:"shell", label:"workspace"};
-  if (!split) active = 0;
-  renderPanes();
-  drawTabs();
+// Common tail of "make this tab the one being looked at".
+function show(t){
+  pinFor = null;
+  render();
+  if (isPhone()) setView("terminal");
+  if (t.kind === "findings" && !findings) loadFindings();
 }
 
-function toggleKeys(){ showKeys = !showKeys; renderKeys(); drawTabs(); }
+async function closeTab(id, ev){
+  ev?.stopPropagation();
+  const t = tabOf(id);
+  if (!t || t.fixed) return;
 
-function renderPanes(){
-  $("panes").classList.toggle("split", split);
-  $("panes").classList.toggle("haskeys", showKeys);
-  for (let i = 0; i < 2; i++){
-    const pane = $("pane" + i), frame = $("f" + i), cap = $("cap" + i);
-    const want = panes[i];
-    pane.classList.toggle("hidden", i === 1 && !split);
-    pane.classList.toggle("active", split && i === active);
-    if (!want || !state) continue;
-    const url = ttydUrl(want.arg);
-    // Only touch src when it actually changes — reassigning reloads the
-    // iframe, which drops the websocket and re-attaches for no reason.
-    if (frame.dataset.arg !== want.arg){ frame.src = url; frame.dataset.arg = want.arg; }
-    cap.textContent = want.label;
+  // A terminal tab owns a tmux session; closing the tab ends it, or detached
+  // sessions pile up invisibly behind a UI that looks tidy. Claude gets a
+  // confirm because ending one throws away a conversation in progress.
+  if (t.kind === "term"){
+    const session = sessionOf(t.arg);
+    if (t.arg.startsWith("claude:") &&
+        !confirm(`End the Claude session in ${t.arg.slice(7)}?\n\nThe transcript is kept, but the conversation stops.`))
+      return;
+    try{
+      await fetch("/api/session", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({action:"kill", session})});
+    }catch(e){ /* already gone is fine */ }
   }
-  renderKeys();
+
+  tabs = tabs.filter(x => x.id !== id);
+  for (let i = 0; i < 2; i++) if (panes[i] === id) panes[i] = null;
+  if (panes[0] === null && panes[1] !== null){ panes[0] = panes[1]; panes[1] = null; }
+  if (panes[0] === null) panes[0] = "ws";
+  if (panes[1] === null) active = 0;
+  render(); refresh();
 }
 
-function tabList(){
-  const t = [["shell", "workspace"]];
-  for (const p of (state?.projects || [])) t.push([`claude:${p.name}`, `claude ${p.name}`]);
-  for (const p of (state?.projects || [])) t.push([`shell:${p.name}`, `sh ${p.name}`]);
-  return t;
+function pinTo(id, idx, ev){
+  ev?.stopPropagation();
+  pinFor = null;
+  const other = 1 - idx;
+  if (panes[other] === id){
+    // It is already in the other pane. That pane needs something else or the
+    // tab renders twice — two iframes attaching to one tmux session.
+    const fill = tabs.find(t => t.id !== id)?.id ?? null;
+    if (idx === 1 && fill === null){ render(); return; }  // nothing to sit beside it
+    panes[other] = idx === 1 ? fill : null;
+  }
+  panes[idx] = id;
+  active = idx;
+  render();
+}
+
+// Closing a pane collapses the layout. It must not close the tab — the tab is
+// the thing that owns a session, the pane is only where it was being shown.
+function closePane(idx, ev){
+  ev?.stopPropagation();
+  if (idx === 1){ panes[1] = null; active = 0; }
+  else { panes[0] = panes[1] ?? "ws"; panes[1] = null; active = 0; }
+  render();
+}
+
+function togglePin(id, ev){
+  ev.stopPropagation();
+  if (pinFor === id){ pinFor = null; render(); return; }
+  pinFor = id; render();
+  const menu = $("pinmenu");
+  if (menu){
+    const b = ev.currentTarget.getBoundingClientRect();
+    const bar = $("tabbar").getBoundingClientRect();
+    menu.style.left = Math.max(4, Math.min(b.left - bar.left, bar.width - menu.offsetWidth - 4)) + "px";
+    menu.style.top  = (b.bottom - bar.top + 4) + "px";
+  }
 }
 
 function drawTabs(){
-  const cur = panes[active]?.arg;
-  const buttons = tabList().map(([arg, label]) =>
-    `<button class="${arg===cur?"on":""}" data-arg="${esc(arg)}" data-label="${esc(label)}">${esc(label)}</button>`
-  ).join("");
-  $("tabs").innerHTML = buttons +
+  const cur = panes[active];
+  const html = tabs.map(t => {
+    const where = panes[0] === t.id ? "◧" : panes[1] === t.id ? "◨" : "";
+    return `<span class="tab ${t.id===cur?"on":""}" data-id="${esc(t.id)}">
+      <button class="lbl" data-show="${esc(t.id)}">${esc(t.label)}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
+      <button class="ic" data-pin="${esc(t.id)}" title="pin to a pane">⇱</button>
+      ${t.fixed?"":`<button class="ic" data-close="${esc(t.id)}" title="close tab">✕</button>`}
+    </span>`;
+  }).join("");
+
+  $("tabbar").innerHTML = html +
     `<span class="sep"></span>` +
     `<button id="bKeys" class="${showKeys?"on":""}" title="on-screen keys">⌨</button>` +
-    `<button id="bSplit" class="${split?"on":""}" title="split into two panes">◫</button>`;
-  for (const b of $("tabs").querySelectorAll("[data-arg]"))
-    b.onclick = () => openSession(b.dataset.arg, b.dataset.label);
-  $("bKeys").onclick = toggleKeys;
-  $("bSplit").onclick = toggleSplit;
+    (pinFor ? `<span class="pinmenu" id="pinmenu">
+        <button data-l="${esc(pinFor)}">◧ Left</button>
+        <button data-r="${esc(pinFor)}">◨ Right</button>
+      </span>` : "");
+
+  const bar = $("tabbar");
+  bar.querySelectorAll("[data-show]").forEach(b =>
+    b.onclick = () => focusTab(b.dataset.show));
+  bar.querySelectorAll("[data-pin]").forEach(b => b.onclick = e => togglePin(b.dataset.pin, e));
+  bar.querySelectorAll("[data-close]").forEach(b => b.onclick = e => closeTab(b.dataset.close, e));
+  bar.querySelectorAll("[data-l]").forEach(b => b.onclick = e => pinTo(b.dataset.l, 0, e));
+  bar.querySelectorAll("[data-r]").forEach(b => b.onclick = e => pinTo(b.dataset.r, 1, e));
+  $("bKeys").onclick = () => { showKeys = !showKeys; render(); };
 }
 
-// Keys an Android keyboard has no way to send, plus characters buried two taps
-// deep. Sent through tmux rather than the iframe: it is cross-origin, so the
-// page cannot put a keystroke into it — but tmux is attached to the same
-// session and can.
+// ---- panes -----------------------------------------------------------
+// The pane's title bar is redrawn on every pass — it is cheap, and its close
+// button only exists while the layout is split. The pane *body* is left alone
+// whenever the same tab is still in it, because rebuilding it would reload the
+// iframe and drop a live terminal for no reason.
+function paintBar(pane, t, i){
+  const closeBtn = isSplit()
+    ? `<span class="x" data-cp="${i}" title="close this pane">✕</span>` : "";
+  const reload = t.kind === "findings"
+    ? `<button class="ic" data-reload="1" style="margin-left:8px">reload</button>` : "";
+  const bar = pane.querySelector(".bar");
+  bar.innerHTML = `<span>${esc(t.label)}</span>${reload}${closeBtn}`;
+  bar.querySelectorAll("[data-cp]").forEach(b =>
+    b.onclick = e => closePane(Number(b.dataset.cp), e));
+  bar.querySelectorAll("[data-reload]").forEach(b =>
+    b.onclick = e => { e.stopPropagation(); loadFindings(true); });
+}
+
+function drawPanes(){
+  $("panes").classList.toggle("split", isSplit());
+  for (let i = 0; i < 2; i++){
+    const pane = $("pane" + i);
+    pane.classList.toggle("hidden", i === 1 && !isSplit());
+    pane.classList.toggle("active", isSplit() && i === active);
+    if (i === 1 && !isSplit()) continue;
+
+    const t = tabOf(panes[i]);
+    const same = pane.dataset.tab === (t?.id || "") && pane.dataset.kind === (t?.kind || "");
+    if (same && t){
+      paintBar(pane, t, i);
+      // A document pane has no live connection to preserve, and its content
+      // changes underneath it once /api/findings answers — so refill it.
+      if (t.kind === "findings") renderFindingsInto(i);
+      continue;
+    }
+    if (same) continue;
+
+    pane.dataset.tab = t?.id || ""; pane.dataset.kind = t?.kind || "";
+    pane.onclick = () => { if (isSplit()){ active = i; render(); } };
+
+    if (!t){ pane.innerHTML = `<div class="empty-pane">empty</div>`; continue; }
+    pane.innerHTML = `<div class="bar"></div>` + (t.kind === "term"
+      ? `<div class="slot"><iframe title="${esc(t.label)}" src="${esc(ttydUrl(t.arg))}"></iframe></div>`
+      : `<div class="doc fx" id="doc${i}"></div>`);
+    paintBar(pane, t, i);
+    if (t.kind === "findings") renderFindingsInto(i);
+  }
+}
+
+// ---- keys ------------------------------------------------------------
 const KEYS = [
   [["escape","Esc"],["tab","Tab"],["left","←"],["down","↓"],["up","↑"],["right","→"],
    ["home","Home"],["end","End"],["pgup","PgUp"],["pgdn","PgDn"]],
@@ -292,38 +441,142 @@ const KEYS = [
    ["under","_"],["dollar","$"],["star","*"],["lt","<"],["gt",">"]],
 ];
 
-function renderKeys(){
+function drawKeys(){
   const el = $("keys");
-  el.classList.toggle("show", showKeys);
-  if (!showKeys){ el.innerHTML = ""; return; }
-  el.innerHTML = KEYS.map(row =>
-    row.map(([k, label]) => `<button data-k="${esc(k)}">${esc(label)}</button>`).join("")
+  const t = tabOf(panes[active]);
+  const on = showKeys && t?.kind === "term";     // pointless over a document
+  el.classList.toggle("show", on);
+  if (!on){ el.innerHTML = ""; return; }
+  el.innerHTML = KEYS.map(r =>
+    r.map(([k,l]) => `<button data-k="${esc(k)}">${esc(l)}</button>`).join("")
   ).join('<span class="gap"></span>');
-  for (const b of el.querySelectorAll("[data-k]")) b.onclick = () => sendKey(b.dataset.k);
+  el.querySelectorAll("[data-k]").forEach(b => b.onclick = () => sendKey(b.dataset.k));
 }
 
 async function sendKey(key){
-  const p = panes[active];
-  if (!p) return;
+  const t = tabOf(panes[active]);
+  if (!t || t.kind !== "term") return;
   try{
     const r = await fetch("/api/keys", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({session: sessionOf(p.arg), key})});
+      body: JSON.stringify({session: sessionOf(t.arg), key})});
     const j = await r.json();
-    // A missing session means nothing is running in that tab yet — say so
-    // instead of letting taps vanish silently.
     if (j.error) $("out").textContent = "key: " + j.error;
   }catch(e){ $("out").textContent = "key failed: " + e; }
 }
 
+// ---- findings --------------------------------------------------------
+const LEVEL_ORDER = {error:0, warning:1, note:2, info:2, none:3};
+const levelClass = l => l === "error" ? "bad" : l === "warning" ? "warn"
+                      : (l === "note" || l === "info") ? "note" : "";
+
+async function loadFindings(force){
+  if (findings && !force) return;
+  findings = {loading:true};
+  drawPanes();
+  try{
+    const r = await fetch("/api/findings");
+    findings = await r.json();
+  }catch(e){ findings = {error:String(e)}; }
+  drawPanes();
+}
+
+function renderFindingsInto(i){
+  const el = $("doc" + i);
+  if (!el) return;
+  if (!findings || findings.loading){ el.innerHTML = `<div class="empty">loading…</div>`; return; }
+  if (findings.error){ el.innerHTML = `<div class="empty">${esc(findings.error)}</div>`; return; }
+  if (!findings.available){
+    el.innerHTML = `<div class="empty">No /reports mount. Point the container's
+      scanner-reports path at your scanner's output directory.</div>`; return;
+  }
+
+  const all = [];
+  for (const rep of findings.reports)
+    for (const f of rep.findings) all.push(Object.assign({tool: rep.tool}, f));
+  const errs = findings.reports.filter(r => r.error);
+
+  if (!all.length){
+    el.innerHTML = `<h3>No findings</h3>
+      <p class="empty">Reports parsed: ${findings.reports.map(r=>esc(r.file)).join(", ") || "none"}.
+      Remember an absent project has not necessarily passed — SARIF records
+      findings, not coverage.</p>` + errs.map(r =>
+        `<div class="empty">${esc(r.file)}: ${esc(r.error)}</div>`).join("");
+    return;
+  }
+
+  const by = (rows, k) => rows.reduce((m,x) => ((m[x[k] ?? "—"] ??= []).push(x), m), {});
+  const counts = by(all, "level");
+  const stat = Object.keys(counts).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
+    .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${counts[l].length}</span>`).join("");
+
+  const cveCount = new Set(all.flatMap(f => f.cves)).size;
+  const projects = by(all, "project");
+
+  // One report per tool is the common case, but a tool can write several and
+  // an unparsed one has no name at all — so dedupe and drop the unknowns.
+  const tools = [...new Set(findings.reports.map(r => r.tool).filter(t => t && t !== "?"))];
+
+  let html = `<h3>Findings (${all.length})</h3><div class="stats">${stat}
+    <span class="pill">${Object.keys(projects).length} projects</span>
+    ${cveCount ? `<span class="pill bad">${cveCount} CVEs</span>` : ""}
+    ${tools.length ? `<span class="pill">${esc(tools.join(" · "))}</span>` : ""}
+  </div>`;
+
+  html += errs.map(r =>
+    `<div class="grp bust">${esc(r.file)} could not be parsed: ${esc(r.error)}</div>`
+  ).join("");
+
+  const projNames = Object.keys(projects).sort((a,b) => (a==="—")-(b==="—") || a.localeCompare(b));
+  for (const proj of projNames){
+    const rows = projects[proj];
+    const lv = by(rows, "level");
+    const badges = Object.keys(lv).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
+      .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l].length}</span>`).join("");
+
+    html += `<details class="grp" ${proj!=="—"?"open":""}>
+      <summary>${esc(proj === "—" ? "unattributed paths" : proj)} ${badges}</summary>`;
+
+    const rules = by(rows, "rule");
+    // Worst hit first, so a rule that fires at two levels is labelled by the
+    // one that matters rather than by whichever the scanner happened to emit.
+    for (const k of Object.keys(rules))
+      rules[k].sort((a,b) => (LEVEL_ORDER[a.level]??9)-(LEVEL_ORDER[b.level]??9));
+    const order = Object.keys(rules).sort((a,b) =>
+      (LEVEL_ORDER[rules[a][0].level]??9)-(LEVEL_ORDER[rules[b][0].level]??9)
+      || rules[b].length - rules[a].length);
+
+    for (const rid of order){
+      const hits = rules[rid];
+      const f = hits[0];
+      const cves = [...new Set(hits.flatMap(h => h.cves))];
+      html += `<div class="rule">
+        <div class="rid">
+          <span class="pill ${levelClass(f.level)}">${esc(f.level)}</span>
+          ${f.uri ? `<a href="${esc(f.uri)}" target="_blank" rel="noopener">${esc(rid)}</a>`
+                  : esc(rid)} · ${hits.length}
+        </div>
+        <div class="desc">${esc(f.desc || "(no description)")}</div>
+        ${cves.map(c => `<a class="cve" target="_blank" rel="noopener"
+            href="https://nvd.nist.gov/vuln/detail/${esc(c)}">${esc(c)}</a>`).join("")}
+        <div>${hits.map(h => `<div class="loc">${esc(h.path)}:${h.line}</div>`).join("")}</div>
+        ${f.message && f.message !== f.desc
+            ? `<div class="msg">${esc(f.message.slice(0, 600))}</div>` : ""}
+      </div>`;
+    }
+    html += `</details>`;
+  }
+  el.innerHTML = html;
+}
+
+// ---- sidebar ---------------------------------------------------------
 function drawRunner(r){
   const el = $("runner");
   if (!r.enabled){ el.innerHTML = '<div class="empty">disabled (ENABLE_RUNNER=false)</div>'; return; }
   const cls = r.listening ? "ok" : (r.registered ? "warn" : "bad");
   const txt = r.listening ? "listening for jobs"
             : r.registered ? "registered, between jobs" : "not registered";
-  el.innerHTML =
-    `<div class="row"><span class="pill ${cls}">${esc(txt)}</span></div>` +
+  el.innerHTML = `<div class="row"><span class="pill ${cls}">${esc(txt)}</span></div>` +
     (r.name ? `<div class="row"><span class="sub">${esc(r.name)} → ${esc(r.url||"")}</span></div>` : "");
 }
 
@@ -338,14 +591,11 @@ function drawProjects(ps){
       </div>
       <button class="primary" data-c="${esc(p.name)}">Claude</button>
       <button data-s="${esc(p.name)}">Shell</button>
-      <button data-f="${esc(p.name)}">Findings</button>
     </div>`).join("");
-  for (const b of el.querySelectorAll("[data-c]"))
-    b.onclick = () => openSession(`claude:${b.dataset.c}`, `claude ${b.dataset.c}`);
-  for (const b of el.querySelectorAll("[data-s]"))
-    b.onclick = () => openSession(`shell:${b.dataset.s}`, `sh ${b.dataset.s}`);
-  for (const b of el.querySelectorAll("[data-f]"))
-    b.onclick = () => macro("findings", b.dataset.f);
+  el.querySelectorAll("[data-c]").forEach(b => b.onclick = () =>
+    openTab({kind:"term", arg:`claude:${b.dataset.c}`, label:`claude ${b.dataset.c}`}));
+  el.querySelectorAll("[data-s]").forEach(b => b.onclick = () =>
+    openTab({kind:"term", arg:`shell:${b.dataset.s}`, label:`sh ${b.dataset.s}`}));
 }
 
 function drawSessions(ss){
@@ -355,15 +605,15 @@ function drawSessions(ss){
     <div class="row">
       <div class="grow"><span class="name">${esc(s.name)}</span>
         <span class="pill ${s.attached?"ok":""}">${s.attached?"attached":"detached"}</span></div>
-      <button data-a="${esc(s.name)}">Attach</button>
+      <button data-a="${esc(s.name)}">Open</button>
     </div>`).join("");
-  for (const b of el.querySelectorAll("[data-a]"))
-    b.onclick = () => openSession(b.dataset.a, b.dataset.a);
+  el.querySelectorAll("[data-a]").forEach(b => b.onclick = () =>
+    openTab({kind:"term", arg:b.dataset.a, label:b.dataset.a}));
 }
 
 async function macro(name, project){
-  $("out").textContent = `running ${name}${project?" · "+project:""}…`;
-  if (window.matchMedia("(max-width:900px)").matches) setView("dash");
+  $("out").textContent = `running ${name}…`;
+  if (isPhone()) setView("dash");
   try{
     const r = await fetch("/api/run", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -374,6 +624,8 @@ async function macro(name, project){
   }catch(e){ $("out").textContent = "request failed: "+e; }
   refresh();
 }
+
+function render(){ drawTabs(); drawPanes(); drawKeys(); }
 
 async function refresh(){
   try{
@@ -386,13 +638,22 @@ async function refresh(){
     drawRunner(state.runner);
     drawProjects(state.projects);
     drawSessions(state.sessions);
-    if (!panes[0]) panes[0] = {arg:"shell", label:"workspace"};
-    renderPanes();
-    drawTabs();
-  }catch(e){
-    $("dot").style.background = "var(--bad)";
-  }
+    $("cardFindings").hidden = !state.reports;
+    render();
+  }catch(e){ $("dot").style.background = "var(--bad)"; }
 }
+
+// Findings opens as a document tab, not a terminal — it is a report to read,
+// and piping it through a PTY would only make it harder to.
+function openFindings(){
+  openTab({kind:"findings", arg:"__findings", label:"findings"});
+}
+
+document.addEventListener("click", e => {
+  if (pinFor && !e.target.closest(".pinmenu") && !e.target.closest("[data-pin]")){
+    pinFor = null; drawTabs();
+  }
+});
 
 refresh();
 setInterval(refresh, 15000);

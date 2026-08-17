@@ -76,6 +76,80 @@ PROJECT_MACROS = {
 }
 
 
+CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
+REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
+
+
+def _project_of(uri, known):
+    """Which mounted project a scanner-recorded path belongs to.
+
+    The scanner records where *it* saw the code, which is never where this
+    container mounts it, so the only reliable anchor is a path component that
+    matches a directory in the workspace.
+    """
+    parts = [p for p in uri.replace("\\", "/").split("/") if p]
+    for i, part in enumerate(parts):
+        if part in known:
+            return part, "/".join(parts[i + 1:]) or part
+    return None, "/".join(parts)
+
+
+def parse_sarif(path, known):
+    """SARIF 2.1.0 -> flat findings. Tolerant: a malformed run is skipped, not
+    fatal, because one bad report should not blank the whole page."""
+    try:
+        doc = json.loads(path.read_text())
+    except (OSError, ValueError) as e:
+        return {"file": path.name, "tool": "?", "error": str(e), "findings": []}
+
+    tool_name, rows = "?", []
+    for runinfo in doc.get("runs", []):
+        driver = (runinfo.get("tool") or {}).get("driver") or {}
+        tool_name = driver.get("name") or tool_name
+        rules = {}
+        for r in driver.get("rules") or []:
+            rules[r.get("id")] = {
+                "desc": ((r.get("shortDescription") or {}).get("text")
+                         or (r.get("fullDescription") or {}).get("text") or ""),
+                "help": ((r.get("help") or {}).get("text") or ""),
+                "uri": r.get("helpUri") or "",
+                "level": ((r.get("defaultConfiguration") or {}).get("level") or "warning"),
+            }
+        for res in runinfo.get("results") or []:
+            rid = res.get("ruleId") or "unknown"
+            meta = rules.get(rid, {})
+            msg = ((res.get("message") or {}).get("text") or "")
+            loc = ((res.get("locations") or [{}])[0].get("physicalLocation") or {})
+            uri = ((loc.get("artifactLocation") or {}).get("uri") or "?")
+            line = ((loc.get("region") or {}).get("startLine") or 0)
+            proj, rel = _project_of(uri, known)
+            # CVEs turn up in the rule id (Trivy) or the prose (most others).
+            cves = sorted(set(CVE_RE.findall(" ".join([rid, msg, meta.get("desc", ""),
+                                                       meta.get("help", "")]))))
+            rows.append({
+                "rule": rid,
+                "level": res.get("level") or meta.get("level") or "warning",
+                "desc": meta.get("desc") or msg.split("\n")[0],
+                "message": msg.strip(),
+                "uri": meta.get("uri", ""),
+                "project": proj,
+                "path": rel,
+                "line": line,
+                "cves": cves,
+            })
+    return {"file": path.name, "tool": tool_name, "findings": rows}
+
+
+def findings_payload():
+    known = {p["name"] for p in projects()}
+    if not REPORTS.is_dir():
+        return {"available": False, "reports": [], "projects": sorted(known)}
+    files = sorted(f for f in REPORTS.glob("*.sarif")) + \
+            sorted(f for f in REPORTS.glob("*.sarif.json"))
+    return {"available": True, "projects": sorted(known),
+            "reports": [parse_sarif(f, known) for f in files]}
+
+
 def run(cmd, cwd=None, timeout=120):
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
@@ -99,7 +173,9 @@ def projects():
         branch = None
         if (d / ".git").exists():
             r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"], timeout=10)
-            branch = r["out"].strip() or "(detached)"
+            # `out` carries stderr too, so a broken .git would otherwise put a
+            # `fatal:` line where the branch name goes.
+            branch = (r["out"].strip() or "(detached)") if r["code"] == 0 else "(unreadable)"
         out.append({"name": d.name, "git": branch,
                     "claude_md": (d / "CLAUDE.md").is_file()})
     return out
@@ -150,7 +226,7 @@ def snapshot():
         "sessions": tmux_sessions(),
         "runner": runner(),
         "ttyd_port": TTYD_PUBLIC_PORT,
-        "reports": Path("/reports").is_dir(),
+        "reports": REPORTS.is_dir(),
     }
 
 
@@ -200,6 +276,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.wfile.write(body)
         if self.path.startswith("/api/status"):
             return self._json(snapshot())
+        if self.path.startswith("/api/findings"):
+            return self._json(findings_payload())
         self._json({"error": "not found"}, 404)
 
     def do_POST(self):
@@ -214,11 +292,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "bad request"}, 400)
 
         path = self.path.split("?")[0]
+        if path.startswith("/api/session"):
+            return self._session(req)
         if path.startswith("/api/keys"):
             return self._keys(req)
         if path.startswith("/api/run"):
             return self._run(req)
         self._json({"error": "not found"}, 404)
+
+    def _session(self, req):
+        """Kill a session. Closing a tab that owns a Claude conversation should
+        end it, or detached sessions accumulate invisibly behind a tidy UI."""
+        session = req.get("session", "")
+        if req.get("action") != "kill":
+            return self._json({"error": "unknown action"}, 400)
+        if session not in {s["name"] for s in tmux_sessions()}:
+            return self._json({"error": f"no such session: {session}"}, 400)
+        return self._json(run(["tmux", "kill-session", "-t", session], timeout=10))
 
     def _keys(self, req):
         session, key = req.get("session", ""), req.get("key", "")

@@ -212,9 +212,12 @@ own settings page (click the icon → *Edit*), and survive image updates.
    the host side if either collides with something else on the server
 4. Apply, then click the container's **WebUI** link
 
-You get container and runner status, `bb` macros as buttons, and a browser
-terminal with a persistent tmux session per project — one click to open Claude
-in any repo under `/workspace`, and closing the tab detaches rather than kills.
+You get container and runner status, `bb` macros as buttons, a rendered report
+of whatever SARIF your scanner drops in `/reports`, and a browser terminal with
+a persistent tmux session per project. A permanent **workspace** tab sits at
+the left; Claude, Shell and the findings report open as closable tabs beside
+it, and any tab can be pinned to a left or right pane for a side-by-side view.
+A tab's ✕ ends its tmux session; a pane's ✕ only collapses the split.
 
 **Both ports have to be reachable from your browser.** The page is served by
 one and the terminal websocket by the other; the terminal is a separate service
