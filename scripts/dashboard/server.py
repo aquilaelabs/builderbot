@@ -35,21 +35,34 @@ TTYD_PUBLIC_PORT = int(os.environ.get("DASHBOARD_TTYD_PUBLIC_PORT") or TTYD_PORT
 # command string would be a remote shell with extra steps, and there is already
 # a real terminal one port over for anything not listed here.
 #
-# One entry per button. Deliberately not a superset of what `bb` can do: an
-# entry the page never sends is a line nothing exercises, and the terminal is
-# one click away for everything else.
+# This is `bb`'s whole command surface, in the order the card lists it. Commands
+# that prompt or follow (`login`, `logs -f`) are fine here because a macro is
+# typed into the real terminal rather than captured — the operator answers the
+# prompt or presses Ctrl-C exactly as if they had typed it. The one command left
+# out is `bb shell`, which from a terminal only nests a second shell inside the
+# one it was typed into.
 MACROS = {
-    "status":        ["bb", "status"],
-    "doctor":        ["bb", "doctor"],
-    "runner-status": ["bb", "runner", "status"],
-    "runner-stop":   ["bb", "runner", "stop"],
-    "runner-start":  ["bb", "runner", "start"],
-    "emu-list":      ["bb", "emu", "list"],
-    "emu-start":     ["bb", "emu", "start"],
-    "emu-stop":      ["bb", "emu", "stop"],
-    "emu-status":    ["bb", "emu", "status"],
-    "logs":          ["bb", "logs", "200"],
-    "update":        ["bb", "update"],
+    "status":           ["bb", "status"],
+    "doctor":           ["bb", "doctor"],
+    "projects":         ["bb", "projects"],
+    "logs":             ["bb", "logs", "200"],
+    "logs-follow":      ["bb", "logs", "-f"],
+    "logs-list":        ["bb", "logs", "--list"],
+    "runner-status":    ["bb", "runner", "status"],
+    "runner-stop":      ["bb", "runner", "stop"],
+    "runner-start":     ["bb", "runner", "start"],
+    "runner-restart":   ["bb", "runner", "restart"],
+    "emu-list":         ["bb", "emu", "list"],
+    "emu-start":        ["bb", "emu", "start"],
+    "emu-status":       ["bb", "emu", "status"],
+    "emu-stop":         ["bb", "emu", "stop"],
+    "claude-md":        ["bb", "claude-md"],
+    "claude-md-update": ["bb", "claude-md", "--update"],
+    "claude-md-init":   ["bb", "claude-md", "--init"],
+    "findings":         ["bb", "findings"],
+    "findings-all":     ["bb", "findings", "--all"],
+    "update":           ["bb", "update"],
+    "login":            ["bb", "login"],
 }
 
 # Keys an Android keyboard has no way to send. Names on the left are what the
@@ -99,6 +112,11 @@ REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
 EXCLUDES_FILE = STATE / "excluded-projects.json"
 
+# Which commands the operator keeps at the top of the card. Stored beside the
+# other state for the same reason the tab strip is: this is one machine with one
+# operator, and a pin made on the desktop should be there on the phone.
+PINS_FILE = STATE / "pinned-commands.json"
+
 
 TABS_FILE = STATE / "tabs.json"
 
@@ -139,8 +157,81 @@ def load_layout():
 def save_layout(v):
     STATE.mkdir(parents=True, exist_ok=True)
     tmp = TABS_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(v, indent=2) + "\n")
+    tmp.write_text(json.dumps(v | {"boot": boot_id()}, indent=2) + "\n")
     tmp.replace(TABS_FILE)
+
+
+def boot_id():
+    """An identifier for this run of the container.
+
+    PID 1 is the container's init, so when it changes the container was
+    restarted. Pairing its start time with the host's boot time keeps the value
+    from repeating across a host reboot. Restarting only the dashboard leaves
+    both untouched, which is the distinction this is for.
+
+    An unreadable /proc gives "", which compares equal to nothing and so is
+    treated as "cannot tell" by the one caller that acts on a difference.
+    """
+    try:
+        start = Path("/proc/1/stat").read_text().rsplit(")", 1)[1].split()[19]
+        btime = next(l for l in Path("/proc/stat").read_text().splitlines()
+                     if l.startswith("btime "))
+        return f"{btime.split()[1]}.{start}"
+    except (OSError, IndexError, StopIteration):
+        return ""
+
+
+def prune_claude_tabs():
+    """Drop Claude tabs left over from a previous run of the container.
+
+    A shell tab survives a restart because it can: bb-tty recreates the session
+    in the same directory and the operator carries on. A Claude tab cannot — the
+    conversation ended with the container, and restoring the tab would start a
+    brand new session wearing the old one's name. The transcript is still on
+    disk, so the project's Claude button offers to resume it; that is a decision
+    to make, not one to make silently at boot.
+
+    Called once at startup. The revision is bumped so a browser left open across
+    the restart adopts the pruned strip instead of saving its stale tabs back.
+    """
+    try:
+        stored = json.loads(TABS_FILE.read_text())
+    except (OSError, ValueError):
+        return
+    here = boot_id()
+    if not here or stored.get("boot") == here:
+        return
+    v = load_layout()
+    kept = [t for t in v["tabs"] if not t["arg"].startswith("claude:")]
+    if len(kept) == len(v["tabs"]):
+        save_layout(v)                  # nothing to drop; just stamp this boot
+        return
+    ids = {t["id"] for t in kept}
+    panes = [p if p in ids else None for p in v["panes"]]
+    if panes[0] is None:
+        panes = [panes[1], None]
+    try:
+        save_layout({"rev": v["rev"] + 1, "tabs": kept, "panes": panes,
+                     "active": 1 if panes[1] else 0})
+    except OSError:
+        pass                            # a read-only /config is not fatal here
+
+
+def load_pins():
+    try:
+        v = json.loads(PINS_FILE.read_text())
+    except (OSError, ValueError):
+        return []
+    if not isinstance(v, list):
+        return []
+    return sorted({x for x in v if isinstance(x, str) and x in MACROS})
+
+
+def save_pins(names):
+    STATE.mkdir(parents=True, exist_ok=True)
+    tmp = PINS_FILE.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(sorted(set(names)), indent=2) + "\n")
+    tmp.replace(PINS_FILE)
 
 
 def load_excludes():
@@ -270,7 +361,17 @@ def projects():
     uid, gid = os.getuid(), os.getgid()
     excluded = set(load_excludes())
     stopped = last_stop()
-    for d in sorted(WORKSPACE.iterdir()):
+    try:
+        here = sorted(WORKSPACE.iterdir())
+    except OSError:
+        # A workspace this user cannot list is a mount to fix, not a reason for
+        # the runner card and the terminal to stop working too.
+        return [{"name": str(WORKSPACE), "git": None, "excluded": False,
+                 "last_claude": None,
+                 "issues": [{"level": "error",
+                             "text": f"cannot list this directory as uid {uid}:{gid}"
+                                     " — chown it to PUID:PGID on the host"}]}]
+    for d in here:
         if not d.is_dir() or d.name == "_work":
             continue
         issues = []
@@ -560,6 +661,11 @@ def snapshot():
         "ttyd_port": TTYD_PUBLIC_PORT,
         "reports": REPORTS.is_dir(),
         "max_tabs": MAX_TABS,
+        # The command list is built from the table above rather than spelled out
+        # again in the page, so a command added here appears as a button and one
+        # removed cannot leave a button that posts a name the server rejects.
+        "macros": [{"name": k, "label": " ".join(v[1:])} for k, v in MACROS.items()],
+        "pinned": load_pins(),
         # The open tabs, so a phone picks up the desktop's layout rather than
         # starting from scratch. Carried in the status poll because it is small
         # and every client is already asking for that every 15s.
@@ -664,7 +770,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(req)
         if path.startswith("/api/layout"):
             return self._layout(req)
+        if path.startswith("/api/pin"):
+            return self._pin(req)
         self._json({"error": "not found"}, 404)
+
+    def _pin(self, req):
+        """Pin or unpin a command. Names are keys from MACROS, so this file can
+        never grow an entry the card would not know what to do with."""
+        name, on = req.get("name", ""), bool(req.get("pinned"))
+        if name not in MACROS:
+            return self._json({"error": f"unknown macro: {name}"}, 400)
+        names = set(load_pins())
+        names.add(name) if on else names.discard(name)
+        try:
+            save_pins(names)
+        except OSError as e:
+            return self._json({"error": f"could not save: {e}"}, 500)
+        return self._json({"pinned": sorted(names)})
 
     def _layout(self, req):
         """Store the open tabs, bumping a revision so other clients notice.
@@ -777,6 +899,7 @@ def main():
             "This serves a terminal into a container holding your ssh agent and\n"
             "source trees; it will not start unauthenticated."
         )
+    prune_claude_tabs()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 
 

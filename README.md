@@ -452,14 +452,15 @@ terminal on `7681`:
   valid git repository; in amber, a repo with no `CLAUDE.md` yet. Empty
   directories are the one thing never listed: a mount point waiting for
   content is not a fault to report
-- an **Exclude** button per project, which persists across restarts and blocks
-  Claude sessions for that directory — see below
+- an **eye** per project, which excludes it: persists across restarts and
+  blocks Claude sessions for that directory — see below
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD
 - a **Stop / Start** toggle for the runner, showing whichever one applies.
   Stopping waits for GitHub to release the runner's session rather than
   reporting success and leaving a listener behind
-- `bb` macros as buttons — doctor, status, logs, emulator control, update
+- every `bb` command as a button, pinnable, typed into the terminal you are
+  looking at
 - live list of tmux sessions, with attach
 
 ### Tabs and panes
@@ -481,7 +482,8 @@ you open gets its own closable tab above the terminal.
   tab closes *and ends the session* — a model left running for a tab nobody
   has is taking turns unobserved. A **shell** tab closes but leaves its
   session running; pick it back up from the Sessions card, or end it there.
-  The workspace tab has no ✕.
+  The workspace tab has no ✕. **Middle-clicking** a tab does the same as ✕,
+  the way it does in a browser.
 - **Tabs are named for where they are.** A terminal reads `sh: <directory>`,
   following the shell as it `cd`s; hover for the full path. A Claude tab reads
   `Claude: <project>`. Two terminals in the same directory carry their number
@@ -504,14 +506,31 @@ caps how many can be open at once: each terminal tab is an iframe running a
 full terminal emulator over its own websocket, so the limit is about browser
 memory, not tidiness.
 
+**Shell tabs survive a container restart; Claude tabs do not.** A terminal can
+be put back exactly as it was — the launcher recreates the session in the same
+directory and you carry on. A conversation cannot: it ended with the container,
+and restoring the tab would start a brand new session wearing the old one's
+name. So those tabs are dropped at boot, and the project's **Claude** button
+offers to resume the transcript, which is still on disk.
+
 ### Commands run in the terminal
 
-The `bb` macro buttons type their command into the terminal you are looking at
-and press Enter, rather than reporting into a box of their own. The output is
-then somewhere you can scroll it, and a slow one like `bb runner stop` is
-watchable while it runs. A macro is never typed into a **Claude** tab — that
-would submit it as a prompt rather than run it — so it goes to the workspace
-terminal instead when a Claude tab has focus.
+Every `bb` command is a button. Clicking one types it into the terminal you are
+looking at and presses Enter, rather than reporting into a box of its own. The
+output is then somewhere you can scroll it, a slow one like `bb runner stop` is
+watchable while it runs, and one that asks a question (`bb login`) or follows
+(`bb logs -f`) behaves exactly as if you had typed it. A command is never typed
+into a **Claude** tab — that would submit it as a prompt rather than run it — so
+it goes to the workspace terminal instead when a Claude tab has focus.
+
+The list is longer than the card, so it is cut off at eight with **Show all**
+underneath. The **thumbtack** on each command keeps it above that cut; pinned
+commands sort alphabetically among themselves, and the rest keep their grouped
+order. Pins live in `/config/pinned-commands.json` — one machine, one operator,
+so a pin made at the desk is there on the phone.
+
+`bb shell` is the one command with no button: from a terminal it only opens a
+second shell inside the one you typed it into.
 
 ### Keeping a session in its own project
 
@@ -569,8 +588,9 @@ service on its own port rather than proxied through the page, because relaying
 a PTY websocket by hand is the kind of code that works until it deadlocks.
 
 The dashboard's own API only runs commands from a fixed list — it takes a macro
-name, never a command string. Anything not on that list belongs in the
-terminal, which is one port away and honest about being a shell.
+name, never a command string, and the list is `bb`'s own commands rather than
+anything the page can compose. Anything not on it belongs in the terminal,
+which is one port away and honest about being a shell.
 
 ## Telling a project's sessions about this environment
 

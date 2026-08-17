@@ -83,6 +83,20 @@ button:disabled:hover{background:#232b34}
 button.primary{background:#1f6f36;border-color:#2ea043}
 button.on{background:#1f6f36;border-color:#2ea043}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
+/* A command and its thumbtack are one control with two halves, so the tack
+   cannot be mistaken for a command of its own. */
+.cmd{display:inline-flex;align-items:stretch;border:1px solid var(--line);
+  border-radius:6px;overflow:hidden;background:#232b34}
+.cmd button{border:0;border-radius:0;background:transparent;min-height:28px}
+.cmd button:hover{background:#2b3540}
+.cmd .tack{padding:4px 6px;color:#4b5563;border-left:1px solid var(--line);
+  display:inline-flex;align-items:center}
+.cmd .tack:hover{color:var(--ink)}
+.cmd .tack.on{color:var(--accent)}
+.cmd .tack svg{width:13px;height:13px;display:block;fill:none;stroke:currentColor;
+  stroke-width:1.4;stroke-linejoin:round;stroke-linecap:round}
+.cmd .tack.on svg{fill:currentColor}
+@media(max-width:900px){ .cmd button{min-height:var(--tap)} }
 /* Icon-width, so it sits beside Shell rather than wrapping the row. */
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
 button.eye:hover{color:var(--ink)}
@@ -257,18 +271,8 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div id="sessions"><div class="empty">loading…</div></div>
     </div>
     <div class="card">
-      <h2>Commands<span class="sub" style="font:11px/1 var(--mono);text-transform:none"
-        >run in the terminal</span></h2>
-      <div class="macros" id="commands">
-        <button data-m="doctor">doctor</button>
-        <button data-m="status">status</button>
-        <button data-m="logs">logs</button>
-        <button data-m="emu-list">emu list</button>
-        <button data-m="emu-start">emu start</button>
-        <button data-m="emu-status">emu status</button>
-        <button data-m="emu-stop">emu stop</button>
-        <button data-m="update">update claude</button>
-      </div>
+      <h2>Commands<span id="cmdTog"></span></h2>
+      <div class="macros" id="commands"><div class="empty">loading…</div></div>
     </div>
   </div>
 
@@ -610,6 +614,17 @@ function drawTabs(){
     b.onpointerdown = e => startDrag(e, b.dataset.show);
     b.onclick = () => { if (!swallowClick) focusTab(b.dataset.show); };
   });
+  // Middle-click closes, the way a browser tab does. `click` never fires for
+  // button 1 and pointerdown would arm the autoscroll cursor first, so this is
+  // auxclick with the default suppressed.
+  bar.querySelectorAll(".tab").forEach(el => {
+    el.onpointerdown = e => { if (e.button === 1) e.preventDefault(); };
+    el.onauxclick = e => {
+      if (e.button !== 1) return;
+      e.preventDefault();
+      closeTab(el.dataset.id, e);
+    };
+  });
   bar.querySelectorAll("[data-pin]").forEach(b => b.onclick = e => togglePin(b.dataset.pin, e));
   bar.querySelectorAll("[data-close]").forEach(b => b.onclick = e => closeTab(b.dataset.close, e));
   bar.querySelectorAll("[data-l]").forEach(b => b.onclick = e => pinTo(b.dataset.l, 0, e));
@@ -928,6 +943,73 @@ function drawProjects(ps){
   if (resumeFor) placeResumeMenu();
 }
 
+// ---- commands ---------------------------------------------------------
+// Every `bb` command is listed, which is more than fits a sidebar card, so the
+// list is cut off and the ones an operator actually uses are pinned above the
+// cut. Pins live on the server with the rest of the state — the phone and the
+// desktop are looking at one machine and should agree about it.
+const COMMANDS_SHOWN = 8;
+let showAllCommands = false;
+
+// Side-view thumbtack: cap, body, needle. Filled when pinned, so the state
+// reads at a glance without a second icon to learn.
+const TACK = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M5 1.6h6"/>
+  <path d="M6.4 1.6v4.1c0 .9-.5 1.4-1.3 1.9-.7.5-1.2 1-1.2 1.6h8.2c0-.6-.5-1.1-1.2-1.6
+           -.8-.5-1.3-1-1.3-1.9V1.6"/>
+  <path d="M8 9.2v5.2"/></svg>`;
+
+// Pinned first, alphabetically among themselves; everything else keeps the
+// server's order, which groups the commands by what they act on.
+function commandOrder(){
+  const all = state?.macros || [];
+  const pins = new Set(state?.pinned || []);
+  return [...all.filter(m => pins.has(m.name)).sort((a, b) => a.label.localeCompare(b.label)),
+          ...all.filter(m => !pins.has(m.name))];
+}
+
+function drawCommands(){
+  const el = $("commands"), tog = $("cmdTog");
+  const order = commandOrder(), pins = new Set(state?.pinned || []);
+  if (!order.length){ el.innerHTML = `<div class="empty">no commands</div>`; return; }
+
+  tog.innerHTML = order.length > COMMANDS_SHOWN
+    ? `<button id="bCmds">${showAllCommands ? "Show fewer" : `Show all (${order.length})`}</button>`
+    : "";
+  if (order.length > COMMANDS_SHOWN)
+    $("bCmds").onclick = () => { showAllCommands = !showAllCommands; drawCommands(); };
+
+  const shown = showAllCommands ? order : order.slice(0, COMMANDS_SHOWN);
+  el.innerHTML = shown.map(m => {
+    const on = pins.has(m.name);
+    return `<span class="cmd">
+      <button data-m="${esc(m.name)}" title="bb ${esc(m.label)} — runs in the terminal"
+        >${esc(m.label)}</button>
+      <button class="tack${on ? " on" : ""}" data-tack="${esc(m.name)}"
+        data-on="${on ? "1" : "0"}" aria-label="${on ? "unpin" : "pin"}"
+        title="${on ? "unpin — let it fall back into the list"
+                    : "pin — keep it at the top of this card"}">${TACK}</button>
+    </span>`;
+  }).join("");
+  el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
+  el.querySelectorAll("[data-tack]").forEach(b => b.onclick = () =>
+    setPinned(b.dataset.tack, b.dataset.on === "0"));
+}
+
+async function setPinned(name, on){
+  try{
+    const r = await fetch("/api/pin", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name, pinned:on})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+    // The server's answer is the truth, so two browsers cannot disagree about
+    // what is pinned until the next poll.
+    if (state) state.pinned = j.pinned;
+    drawCommands();
+  }catch(e){ notify("could not save the pin: " + e, true); }
+}
+
 // Each icon shows the ACTION, not the state: a struck-through eye on a visible
 // project means "exclude this", a plain eye on an excluded one means "let it
 // back in".
@@ -1179,6 +1261,7 @@ async function refresh(){
     drawRunner(state.runner);
     drawProjects(state.projects);
     drawSessions(state.sessions);
+    drawCommands();
     $("cardFindings").hidden = !state.reports;
     render();
   }catch(e){ $("dot").classList.add("off"); }
@@ -1201,8 +1284,6 @@ document.addEventListener("click", e => {
     if (state) drawProjects(state.projects);
   }
 });
-
-$("commands").querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
 
 refresh();
 setInterval(refresh, 15000);
