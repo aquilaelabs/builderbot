@@ -165,7 +165,9 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 .st.ok{background:var(--accent)}
 .st.warn{background:var(--warn)}
 .st.bad{background:var(--bad)}
-#docBar{display:flex;align-items:center;gap:8px;padding:7px 10px}
+/* Styled by class, not id: an id's display:flex would outrank the class-based
+   .card.closed rule that hides every body row when the card is folded. */
+.doctor .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
 #docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
 #doctor:not([hidden]){border-top:1px solid var(--line)}
 .doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
@@ -337,6 +339,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   <span class="spacer"></span>
   <span class="meta" id="uptime"></span>
   <button onclick="refresh()">↻</button>
+  <button id="bCards" title="reset the sidebar cards — default order, all expanded">⟲</button>
 </header>
 
 <div class="switch">
@@ -350,6 +353,16 @@ body.dragging .tab .lbl{cursor:grabbing}
        keep up there lives in its body now — a button inside a drag handle is
        a fight over what a press means. -->
   <div class="col side">
+    <div class="card doctor" data-card="doctor">
+      <h2>Doctor</h2>
+      <div id="docBar" class="docbar">
+        <span class="st" id="docDot" hidden></span>
+        <button id="bDocTog" hidden></button>
+        <span id="docWhen"></span>
+        <button id="bDoctor" title="run bb doctor now">↻</button>
+      </div>
+      <div id="doctor"><div class="empty">first run pending…</div></div>
+    </div>
     <div class="card" data-card="runner">
       <h2>Runner</h2>
       <div id="runner"><div class="empty">loading…</div></div>
@@ -368,16 +381,6 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="card" data-card="sessions">
       <h2>Sessions</h2>
       <div id="sessions"><div class="empty">loading…</div></div>
-    </div>
-    <div class="card doctor" data-card="doctor">
-      <h2>Doctor</h2>
-      <div id="docBar">
-        <span class="st" id="docDot" hidden></span>
-        <button id="bDocTog" hidden></button>
-        <span id="docWhen"></span>
-        <button id="bDoctor" title="run bb doctor now">↻</button>
-      </div>
-      <div id="doctor"><div class="empty">first run pending…</div></div>
     </div>
     <div class="card" data-card="commands">
       <h2>bb commands</h2>
@@ -649,6 +652,26 @@ function placePinMenu(){
   menu.style.top = (a.bottom - bar.top + 4) + "px";
 }
 
+// ---- motion ----------------------------------------------------------
+// FLIP, for both reorder surfaces: measure where the keyed elements sit,
+// let the caller do the (instant) DOM reorder, then play each element from
+// its old spot to its new one. The transform tween is what the eye follows.
+const noMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function flip(els, key){
+  if (noMotion()) return () => {};
+  const before = new Map([...els()].map(el => [key(el), el.getBoundingClientRect()]));
+  return () => [...els()].forEach(el => {
+    const a = before.get(key(el));
+    if (!a) return;
+    const b = el.getBoundingClientRect();
+    const dx = a.left - b.left, dy = a.top - b.top;
+    if (dx || dy)
+      el.animate([{transform: `translate(${dx}px,${dy}px)`}, {transform: "none"}],
+                 {duration: 140, easing: "ease"});
+  });
+}
+
 // ---- drag to reorder -------------------------------------------------
 // Pointer events rather than HTML5 drag-and-drop, which does not exist on
 // touch. Move/up are bound to the window because drawTabs replaces the very
@@ -709,6 +732,12 @@ function endDrag(){
 }
 
 function drawTabs(){
+  // Slide, don't teleport: while a drag is reordering the strip, each tab is
+  // animated from where it was to where it now belongs — across the innerHTML
+  // rebuild, which is why the FLIP is keyed by tab id rather than element.
+  const play = drag?.moved
+    ? flip(() => $("tabbar").querySelectorAll(".tab"), el => el.dataset.id)
+    : null;
   const cur = panes[active], names = tabLabels();
   const html = tabs.map(t => {
     const where = panes[0] === t.id ? "◧" : panes[1] === t.id ? "◨" : "";
@@ -762,6 +791,7 @@ function drawTabs(){
   $("bKeys").onclick = () => { showKeys = !showKeys; render(); };
   $("bNew").onclick = () => newShell("");
   if (pinFor) placePinMenu();
+  play?.();
 }
 
 // A terminal at some directory, always a new one. "" is the workspace root.
@@ -1022,20 +1052,27 @@ function renderFindingsInto(i){
 // drag handle, and holds nothing else. Order and collapsed-state live on the
 // server like the pins do — the phone and the desktop are looking at one
 // machine and should agree about how its dashboard is arranged.
-const CARD_ORDER = ["runner","projects","findings","sessions","doctor","commands","custom"];
+// Doctor first: the verdict on the whole box outranks any one card below it.
+const CARD_ORDER = ["doctor","runner","projects","findings","sessions","commands","custom"];
 let cards = {order: CARD_ORDER.slice(), closed: []};
 let cardDrag = null;
 
 const cardEls = () => [...document.querySelectorAll(".side .card[data-card]")];
 
-function applyCards(){
+function applyCards(animate){
   const side = document.querySelector(".col.side");
+  const play = animate ? flip(cardEls, el => el.dataset.card) : null;
   for (const key of cards.order){
     const el = side.querySelector(`.card[data-card="${key}"]`);
     if (el) side.appendChild(el);   // appendChild moves, so this re-sorts in place
   }
-  cardEls().forEach(el =>
-    el.classList.toggle("closed", cards.closed.includes(el.dataset.card)));
+  // A card mid-fold is left to its animation's own finish handler — snapping
+  // the class on under it would cut the tween short.
+  cardEls().forEach(el => {
+    if (!el.getAnimations().length)
+      el.classList.toggle("closed", cards.closed.includes(el.dataset.card));
+  });
+  play?.();
 }
 
 async function saveCards(){
@@ -1049,11 +1086,33 @@ async function saveCards(){
 }
 
 function toggleCard(key){
-  const closed = new Set(cards.closed);
-  closed.has(key) ? closed.delete(key) : closed.add(key);
-  cards.closed = [...closed];
-  applyCards();
+  const el = document.querySelector(`.card[data-card="${key}"]`);
+  const closing = !cards.closed.includes(key);
+  cards.closed = closing ? [...cards.closed, key] : cards.closed.filter(k => k !== key);
+  slideCard(el, closing);
   saveCards();
+}
+
+// The fold is a height tween between the card's two real sizes, with the
+// class flipped at whichever end keeps the body visible while it moves —
+// on open before the tween, on close after it. Height is real layout, so
+// the cards below ride along frame by frame instead of jumping.
+function slideCard(el, closing){
+  if (noMotion()){ el.classList.toggle("closed", closing); return; }
+  const from = el.offsetHeight;         // current frame, if one is mid-tween
+  // A second click mid-tween reverses from wherever the card is now; the old
+  // animation is cancelled un-finished so its class write never lands.
+  el.getAnimations().forEach(a => a.cancel());
+  el.classList.toggle("closed", closing);
+  const to = el.offsetHeight;
+  if (closing) el.classList.remove("closed");
+  el.style.overflow = "hidden";
+  const anim = el.animate([{height: from + "px"}, {height: to + "px"}],
+                          {duration: 180, easing: "ease"});
+  anim.onfinish = () => {
+    if (closing) el.classList.add("closed");
+    el.style.overflow = "";
+  };
 }
 
 // The same pointer-based drag as the tab strip, turned vertical: the number
@@ -1094,7 +1153,7 @@ function onCardDrag(ev){
   const next = [...vis, ...cards.order.filter(k => !vis.includes(k))];
   if (next.join() !== cards.order.join()){
     cards.order = next;
-    applyCards();
+    applyCards(true);                   // the displaced cards slide, not jump
   }
 }
 
@@ -1117,6 +1176,18 @@ cardEls().forEach(el => {
   h.onclick = () => { if (!swallowClick) toggleCard(el.dataset.card); };
   h.onpointerdown = e => startCardDrag(e, el.dataset.card);
 });
+
+// The header's undo-everything: back to the default order, everything open.
+// Confirmed because an arrangement is minutes of fiddling and one stray tap.
+$("bCards").onclick = () => {
+  if (!confirm("Reset the sidebar cards to their default order, all expanded?")) return;
+  const shut = cards.closed.slice();
+  cards = {order: CARD_ORDER.slice(), closed: []};
+  // Folded cards unfold with the same tween as a click; the rest slide home.
+  shut.forEach(k => slideCard(document.querySelector(`.card[data-card="${k}"]`), false));
+  applyCards(true);
+  saveCards();
+};
 
 // ---- sidebar ---------------------------------------------------------
 function drawRunner(r){
