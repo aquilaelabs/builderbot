@@ -203,6 +203,29 @@ own settings page (click the icon → *Edit*), and survive image updates.
 2. Set `ENABLE_ANDROID_EMULATOR` to `true`
 3. Apply, then: `docker exec -it BuilderBot bb emu start`
 
+### Web dashboard (optional)
+
+1. Container settings → **ENABLE_DASHBOARD** → `true`
+2. **DASHBOARD_AUTH** → `you:a-real-password` — the dashboard will not start
+   without this, and says so in the log
+3. The two port mappings (`8080` and `7681`) are already in the template; change
+   the host side if either collides with something else on the server
+4. Apply, then click the container's **WebUI** link
+
+You get container and runner status, `bb` macros as buttons, and a browser
+terminal with a persistent tmux session per project — one click to open Claude
+in any repo under `/workspace`, and closing the tab detaches rather than kills.
+
+**Both ports have to be reachable from your browser.** The page is served by
+one and the terminal websocket by the other; the terminal is a separate service
+rather than something the page proxies.
+
+**On the credential.** This is the same class of decision as the Docker socket.
+The terminal is a writable shell inside a container that holds your loaded
+ssh-agent and read-write mounts of every project, so anyone reaching it can
+push to your repos. On a trusted LAN with a real password that is a reasonable
+trade; exposed to the internet it is not, and no password makes it one.
+
 ### Static analysis reports (optional)
 
 Running a scanner on the host? Give the container its **output** and nothing

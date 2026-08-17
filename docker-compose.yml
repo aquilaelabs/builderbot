@@ -79,6 +79,16 @@ services:
       NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-all}
 
+      # --- web dashboard ----------------------------------------------------
+      # Status page plus a browser terminal. DASHBOARD_AUTH is not optional:
+      # this serves an interactive shell into a container holding a loaded
+      # ssh-agent and read-write mounts of every project, so it refuses to
+      # start without a credential rather than defaulting to open.
+      ENABLE_DASHBOARD: ${ENABLE_DASHBOARD:-false}
+      DASHBOARD_AUTH: ${DASHBOARD_AUTH:-}
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-8080}
+      DASHBOARD_TTYD_PORT: ${DASHBOARD_TTYD_PORT:-7681}
+
       # --- publishing -------------------------------------------------------
       NPM_TOKEN: ${NPM_TOKEN:-}
 
@@ -150,6 +160,12 @@ services:
     #         - driver: nvidia
     #           count: all
     #           capabilities: [gpu]
+
+    # Web dashboard + browser terminal. Both ports are needed: the page is
+    # served by one and the terminal websocket by the other.
+    # ports:
+    #   - "8080:8080"
+    #   - "7681:7681"
 
     # Uncomment to reach the emulator's adb from other machines on your LAN
     # (e.g. Android Studio on your desktop: adb connect tower:5555).

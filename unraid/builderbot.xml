@@ -22,6 +22,7 @@ NOTES
 - The Docker socket mapping is OFF by default: mounting it gives the container root-equivalent control of the Unraid host. Fill in the socket path only if you accept that and want docker build/compose available inside.
   </Overview>
   <Category>Tools: Productivity:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
   <TemplateURL/>
   <!-- Left empty on purpose: Unraid falls back to its own placeholder, which
        beats the broken image an unreachable URL produces. raw.githubusercontent
@@ -82,6 +83,14 @@ NOTES
   <!-- ===================== nvidia gpu ===================== -->
   <Config Name="NVIDIA_VISIBLE_DEVICES" Target="NVIDIA_VISIBLE_DEVICES" Default="all" Mode="" Description="Nvidia GPU UUID. Requires the Nvidia-Driver plugin and --runtime=nvidia in Extra Params. all is fine for a single card; with several, paste the UUID from Settings - Nvidia-Driver (e.g. GPU-7f326d12-d4c8-4011-9db1-36c47710daf6)." Type="Variable" Display="advanced" Required="false" Mask="false">all</Config>
   <Config Name="NVIDIA_DRIVER_CAPABILITIES" Target="NVIDIA_DRIVER_CAPABILITIES" Default="all" Mode="" Description="Only applies with --runtime=nvidia in Extra Params. Leave at all: the runtime default (compute,utility) injects CUDA but no GL/EGL/Vulkan, so hardware rendering fails while nvidia-smi still looks healthy." Type="Variable" Display="advanced" Required="false" Mask="false">all</Config>
+
+  <!-- ===================== web dashboard ===================== -->
+  <Config Name="ENABLE_DASHBOARD" Target="ENABLE_DASHBOARD" Default="true" Mode="" Description="Web dashboard: container and runner status, bb macro buttons, and a browser terminal with a persistent tmux session per project. Needs DASHBOARD_AUTH set or it will not start." Type="Variable" Display="always" Required="false" Mask="false">true</Config>
+  <Config Name="DASHBOARD_AUTH" Target="DASHBOARD_AUTH" Default="" Mode="" Description="REQUIRED when the dashboard is enabled, as user:password. The dashboard serves a writable shell inside this container, which holds your loaded ssh-agent and read-write mounts of every project - so treat this credential as equivalent to those. With it empty the dashboard refuses to start and says so in the log." Type="Variable" Display="always" Required="false" Mask="true"/>
+  <Config Name="Dashboard port" Target="8080" Default="8080" Mode="tcp" Description="Web UI for the dashboard page." Type="Port" Display="always" Required="false" Mask="false">8080</Config>
+  <Config Name="Dashboard terminal port" Target="7681" Default="7681" Mode="tcp" Description="Terminal websocket (ttyd). The dashboard page needs this reachable from your browser as well - it is a second port, not an internal one." Type="Port" Display="always" Required="false" Mask="false">7681</Config>
+  <Config Name="DASHBOARD_PORT" Target="DASHBOARD_PORT" Default="8080" Mode="" Description="Must match the Dashboard port mapping above." Type="Variable" Display="advanced" Required="false" Mask="false">8080</Config>
+  <Config Name="DASHBOARD_TTYD_PORT" Target="DASHBOARD_TTYD_PORT" Default="7681" Mode="" Description="Must match the Dashboard terminal port mapping above." Type="Variable" Display="advanced" Required="false" Mask="false">7681</Config>
 
   <!-- ===================== publishing ===================== -->
   <Config Name="NPM_TOKEN" Target="NPM_TOKEN" Default="" Mode="" Description="Optional: auth token for npm publish to registry.npmjs.org" Type="Variable" Display="advanced" Required="false" Mask="true"/>

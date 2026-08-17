@@ -162,6 +162,7 @@ Everything else has sane defaults — full reference below.
 | Want | Do |
 |---|---|
 | Android emulator | On by default; needs `--device=/dev/kvm` (pre-set in the template). Then `bb emu start` |
+| Web dashboard | Set `ENABLE_DASHBOARD=true` **and** `DASHBOARD_AUTH=user:pass`, map ports 8080/7681 — see [Web dashboard](#web-dashboard) |
 | NVIDIA GPU | `--runtime=nvidia` is pre-set; add the Nvidia-Driver plugin and keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
@@ -253,6 +254,9 @@ freshness rebuild. Unraid's *Check for Updates* flips the container to
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `BB_LOG_DIR` | *(auto)* | Log location override; normally use the `/logs` mount instead |
+| `ENABLE_DASHBOARD` | `false` | Web dashboard + browser terminal |
+| `DASHBOARD_AUTH` | *(empty)* | `user:password` — **required** when the dashboard is enabled; it will not start otherwise |
+| `DASHBOARD_PORT` / `DASHBOARD_TTYD_PORT` | `8080` / `7681` | Page and terminal ports; both must be published |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 
 Mounts: two project dirs, three state dirs (`home`, `config`, `work`), and
@@ -427,6 +431,41 @@ is deliberate, whether a SHA1 is for dedup rather than security. Asking Claude
 to fix everything and re-scan unattended optimises for a clean report, which is
 not the same as better code, and suppressing a finding satisfies that goal too.
 
+## Web dashboard
+
+Off by default. When enabled it serves a status page on `8080` and a browser
+terminal on `7681`:
+
+- container uptime, runner registration and listening state
+- every project under `/workspace` with its branch, and one-click **Claude**,
+  **Shell** and **Findings** per project
+- `bb` macros as buttons — doctor, status, logs, emulator control, update
+- live list of tmux sessions, with attach
+
+Every terminal runs inside **tmux**, so closing the tab detaches instead of
+killing the session — a Claude conversation survives a dropped connection or a
+closed laptop, and clicking the same project again reattaches to it rather than
+starting a second one.
+
+```
+ENABLE_DASHBOARD=true
+DASHBOARD_AUTH=you:a-real-password
+```
+
+**`DASHBOARD_AUTH` is mandatory and the dashboard refuses to start without
+it.** What it publishes is a writable shell inside a container holding a loaded
+ssh-agent and read-write mounts of every project — so that credential is worth
+as much as the ssh keys are. It is not a convenience toggle; treat it like the
+Docker socket mount.
+
+Both ports must be reachable from your browser. The terminal is a separate
+service on its own port rather than proxied through the page, because relaying
+a PTY websocket by hand is the kind of code that works until it deadlocks.
+
+The dashboard's own API only runs commands from a fixed list — it takes a macro
+name, never a command string. Anything not on that list belongs in the
+terminal, which is one port away and honest about being a shell.
+
 ## Telling a project's sessions about this environment
 
 A Claude session started in `/workspace/<project>` sees the project, not the
@@ -505,6 +544,7 @@ scripts/
   startup.d/*.sh                 startup hooks
 config/skel/                     home directory skeleton
 config/templates/                project CLAUDE.md template (shipped in the image)
+  scripts/dashboard/               web dashboard: server.py, index.html, bb-tty
 docs/unraid.md                   step-by-step Unraid walkthrough
 .github/workflows/               GHCR publish + shellcheck/hadolint/compose/xml lint
 ```

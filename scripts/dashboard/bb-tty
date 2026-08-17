@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# The command ttyd runs for every browser connection.
+#
+# ttyd is started with --url-arg, so the browser controls this script's only
+# argument via ?arg=... That argument is attacker-controlled in the sense that
+# matters: it never reaches a shell (ttyd execs directly), and a project name
+# is checked against the directories that actually exist rather than trusted as
+# a path. Anyone reaching this is already authenticated and already entitled to
+# a shell, so the goal is not privilege containment — it is making a mistyped
+# URL fail cleanly instead of starting something surprising.
+#
+# Everything runs inside tmux so a closed browser tab detaches rather than
+# kills. A Claude session surviving a dropped connection is the entire reason
+# this is not a bare shell.
+#
+set -euo pipefail
+. /opt/builderbot/scripts/lib/common.sh
+
+target="${1:-shell}"
+
+case "$target" in
+    shell)
+        exec tmux new-session -A -s shell -c "$WORKSPACE"
+        ;;
+    claude:*)
+        proj="${target#claude:}"
+        dir="$WORKSPACE/$proj"
+        # Reject anything that is not a directory sitting directly in the
+        # workspace: no traversal, no absolute paths, no invented names.
+        if [ "$proj" != "$(basename -- "$proj")" ] || [ ! -d "$dir" ]; then
+            echo "No such project: ${proj}" >&2
+            echo "Available:" >&2
+            find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d -not -name '_work' \
+                -printf '  %f\n' >&2
+            sleep 10
+            exit 1
+        fi
+        # -A attaches to the existing session when there is one, so clicking a
+        # project twice returns to the same conversation rather than starting a
+        # second alongside it.
+        exec tmux new-session -A -s "claude-${proj}" -c "$dir" \
+            claude --remote-control "$proj"
+        ;;
+    shell:*)
+        proj="${target#shell:}"
+        dir="$WORKSPACE/$proj"
+        if [ "$proj" != "$(basename -- "$proj")" ] || [ ! -d "$dir" ]; then
+            echo "No such project: ${proj}" >&2
+            sleep 10
+            exit 1
+        fi
+        exec tmux new-session -A -s "shell-${proj}" -c "$dir"
+        ;;
+    *)
+        # A named scratch session. Restricted to characters tmux is happy with
+        # so a stray URL cannot produce a session nobody can address again.
+        case "$target" in
+            *[!A-Za-z0-9._-]*) echo "Invalid session name: ${target}" >&2; sleep 10; exit 1 ;;
+        esac
+        exec tmux new-session -A -s "$target" -c "$WORKSPACE"
+        ;;
+esac
