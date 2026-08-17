@@ -1,15 +1,37 @@
 name: build image
 
+# A 40-minute hosted build bills against the plan's included minutes, so it
+# runs only when something the image is actually built FROM changes: the
+# allowlist below is exactly the Dockerfile's COPY sources plus the build
+# definition itself. This used to be a paths-ignore, which charged a full
+# build for every change to a workflow, dashboard doc or lint config that
+# could not have altered the image.
 on:
   push:
     branches: ["main"]
-    paths-ignore: ["**.md", "docs/**", "unraid/**", "docker-compose.yml", ".env.example"]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "scripts/**"
+      - "config/**"
+      - ".github/workflows/build-image.yml"
   pull_request:
-    paths-ignore: ["**.md", "docs/**", "unraid/**", "docker-compose.yml", ".env.example"]
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "scripts/**"
+      - "config/**"
+      - ".github/workflows/build-image.yml"
   schedule:
     # Weekly rebuild so the base image, Claude Code and the runner stay fresh.
     - cron: "0 6 * * 1"
   workflow_dispatch:
+
+# Pushing twice to a PR queued two 40-minute builds; only the newest result
+# means anything, so cancel the superseded one.
+concurrency:
+  group: build-image-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   REGISTRY: ghcr.io

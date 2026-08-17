@@ -6,58 +6,83 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A superseded push's lint result is worthless — cancel it rather than make
+# the (single) self-hosted runner work through the backlog serially.
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  shellcheck:
-    runs-on: ubuntu-latest
+  lint:
+    # The BuilderBot container itself, not ubuntu-latest: self-hosted minutes
+    # are free where hosted ones bill against the plan, and the image bakes
+    # the same linters `bb lint` uses — so this job also proves, on every
+    # push, that the runner picks up jobs and carries its advertised
+    # toolchain. One job rather than one per tool because a single runner
+    # serves jobs serially; splitting only adds queueing.
+    runs-on: [self-hosted, builderbot]
     steps:
       - uses: actions/checkout@v4
-      - name: Install shellcheck
-        run: sudo apt-get update && sudo apt-get install -y shellcheck
-      - name: Check shell scripts
+
+      - name: Ensure linters
+        # The container the runner lives in can lag this repo: the PR that
+        # first ADDS a tool to the image lints before any image carrying the
+        # tool exists, and a stale container may not have updated yet. Fetch
+        # whatever is missing into the job's temp dir — never skip a check
+        # because the tool is absent, that is a pass by omission.
+        run: |
+          mkdir -p "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/bin:$PATH"
+          command -v shellcheck >/dev/null || \
+            curl -fsSL https://github.com/koalaman/shellcheck/releases/download/stable/shellcheck-stable.linux.x86_64.tar.xz \
+              | tar -xJ --strip-components=1 -C "$RUNNER_TEMP/bin" shellcheck-stable/shellcheck
+          command -v hadolint >/dev/null || {
+            curl -fsSL -o "$RUNNER_TEMP/bin/hadolint" \
+              https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64
+            chmod +x "$RUNNER_TEMP/bin/hadolint"
+          }
+          command -v actionlint >/dev/null || {
+            # Tag via the /releases/latest redirect, not api.github.com —
+            # anonymous API calls rate-limit per IP.
+            tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/rhysd/actionlint/releases/latest)"
+            tag="${tag##*/}"
+            curl -fsSL "https://github.com/rhysd/actionlint/releases/download/${tag}/actionlint_${tag#v}_linux_amd64.tar.gz" \
+              | tar -xz -C "$RUNNER_TEMP/bin" actionlint
+          }
+          shellcheck --version | sed -n 2p
+          hadolint --version
+          actionlint --version
+
+      - name: Shell scripts
         run: |
           # Selected by shebang rather than by name. The list used to be a
-          # hand-maintained enumeration of extensions and filenames, which fails
-          # in the one direction that matters: an extensionless script added
-          # later is simply never checked, and nothing says so. That is how
-          # scripts/dashboard/bb-tty — which validates a browser-supplied
+          # hand-maintained enumeration of extensions and filenames, which
+          # fails in the one direction that matters: an extensionless script
+          # added later is simply never checked, and nothing says so. That is
+          # how scripts/dashboard/bb-tty — which validates a browser-supplied
           # argument — went unlinted. A shebang cannot be forgotten.
           mapfile -t files < <(find scripts -type f -exec grep -lE '^#!.*\b(ba)?sh\b' {} + | sort)
           printf 'checking %s\n' "${files[@]}"
           shellcheck -x -S warning "${files[@]}"
 
-  hadolint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: Dockerfile
-          # Ignores live in .hadolint.yaml, which hadolint picks up on its
-          # own — one config for this job and for `bb lint`, so the two can
-          # never disagree about what a clean Dockerfile is.
+      - name: Dockerfile
+        # Ignores live in .hadolint.yaml, which hadolint picks up on its own —
+        # one config for this job and for `bb lint`, so the two can never
+        # disagree about what a clean Dockerfile is.
+        run: hadolint Dockerfile
 
-  actionlint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check workflow files
+      - name: Workflows
         # The runner labels a runs-on may target live in .github/actionlint.yaml,
         # shared with `bb lint`.
-        run: |
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
-          ./actionlint -color
+        run: actionlint -color
 
-  compose:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Validate docker-compose.yml
+      - name: Compose file and Unraid template
         run: |
-          cp .env.example .env
-          docker compose config >/dev/null
+          # --env-file rather than cp .env.example .env: config is daemonless
+          # and this leaves no .env behind in the runner's work directory.
+          docker compose --env-file .env.example config -q
           echo "compose file is valid"
-      - name: Validate Unraid template XML
-        run: |
           python3 - <<'EOF'
           import xml.dom.minidom
           xml.dom.minidom.parse("unraid/builderbot.xml")
