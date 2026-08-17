@@ -71,6 +71,9 @@ cmd_status() {
         else
             echo "  state: starting up or between jobs"
         fi
+    elif runner_pid >/dev/null; then
+        # Ephemeral gap, not an outage — see the same case in cmd_runner.
+        echo "  re-registering — a job just finished, back in seconds"
     else
         echo "  not registered (ENABLE_RUNNER=${ENABLE_RUNNER:-true})"
     fi
@@ -225,6 +228,13 @@ cmd_runner() {
         status)
             if [ -f "${RUNNER_DIR}/.runner" ]; then
                 cat "${RUNNER_DIR}/.runner"
+            elif runner_pid >/dev/null; then
+                # An ephemeral registration is single-use: the runner
+                # deregisters after every job and the supervisor re-registers
+                # it moments later. Unregistered with the supervisor up is the
+                # healthy between-jobs path, not an outage.
+                echo "re-registering — an ephemeral runner deregisters after each job;"
+                echo "the supervisor is up and a fresh registration lands in seconds"
             else
                 echo "not registered"
             fi
