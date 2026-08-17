@@ -151,7 +151,15 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 
 /* Doctor card: healthy checks collapse into green chips; anything wrong is a
    full-width line, because a failure is for reading and a pass is for
-   counting. */
+   counting. A healthy card folds down to just its header, so the verdict
+   moves into a dot there — green, amber or red — where it survives the fold. */
+#docDot{margin:0}   /* the h2's span rule would push it right, and its own
+                       margin-right would double the flex gap */
+.st.ok{background:var(--accent)}
+.st.warn{background:var(--warn)}
+.st.bad{background:var(--bad)}
+.card.folded h2{border-bottom:0}   /* no body below it — a border there reads
+                                      as a second card edge */
 .doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
 .doctor .probs:empty{display:none}
 .doctor .chips{display:flex;flex-wrap:wrap;gap:5px;padding:7px 10px;
@@ -345,8 +353,9 @@ body.dragging .tab .lbl{cursor:grabbing}
     </div>
     <div class="card" id="cardFindings" hidden>
       <h2>Static analysis</h2>
+      <div id="findingsSum"></div>
       <div class="macros">
-        <button class="primary" onclick="openFindings()">Open findings report</button>
+        <button onclick="openFindings()">Open findings report</button>
       </div>
     </div>
     <div class="card">
@@ -354,7 +363,9 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div id="sessions"><div class="empty">loading…</div></div>
     </div>
     <div class="card doctor">
-      <h2>Doctor<span id="docTog"><span id="docWhen"></span
+      <h2><span class="st" id="docDot" hidden></span>Doctor<span id="docTog"
+        ><span id="docWhen"></span
+        ><button id="bDocTog" hidden></button
         ><button id="bDoctor" title="run bb doctor now">↻</button></span></h2>
       <div id="doctor"><div class="empty">first run pending…</div></div>
     </div>
@@ -893,9 +904,10 @@ async function loadFindings(force){
   drawPanes();
 }
 
-// Which project sections the reader has collapsed, kept across re-renders so a
-// reload of the report does not undo their triage.
-const collapsed = new Set();
+// Every project section starts collapsed — the summary line of pills is the
+// overview, and the reader opens what they mean to triage. Which sections they
+// have opened is kept across re-renders so a reload does not undo it.
+const opened = new Set();
 
 function renderFindingsInto(i){
   const el = $("doc" + i);
@@ -916,7 +928,10 @@ function renderFindingsInto(i){
     el.innerHTML = `<h3>No findings</h3>
       <p class="empty">Reports parsed: ${findings.reports.map(r=>esc(r.file)).join(", ") || "none"}.
       Remember an absent project has not necessarily passed — SARIF records
-      findings, not coverage.</p>` + errs.map(r =>
+      findings, not coverage.${findings.hidden
+        ? ` ${findings.hidden} finding${findings.hidden===1?"":"s"} in excluded
+           or broken projects ${findings.hidden===1?"is":"are"} not shown.` : ""}</p>`
+      + errs.map(r =>
         `<div class="empty">${esc(r.file)}: ${esc(r.error)}</div>`).join("");
     return;
   }
@@ -937,6 +952,9 @@ function renderFindingsInto(i){
     <span class="pill">${Object.keys(projects).length} projects</span>
     ${cveCount ? `<span class="pill bad">${cveCount} CVEs</span>` : ""}
     ${tools.length ? `<span class="pill">${esc(tools.join(" · "))}</span>` : ""}
+    ${findings.hidden ? `<span class="pill" title="findings in projects that are
+      excluded or have repo errors — fix or un-exclude the project to see them"
+      >${findings.hidden} hidden</span>` : ""}
   </div>`;
 
   html += errs.map(r =>
@@ -950,7 +968,7 @@ function renderFindingsInto(i){
     const badges = Object.keys(lv).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
       .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l].length}</span>`).join("");
 
-    const shut = collapsed.has(proj) || proj === "—";
+    const shut = !opened.has(proj);
     html += `<details class="grp" data-proj="${esc(proj)}" ${shut?"":"open"}>
       <summary>${esc(proj === "—" ? "unattributed paths" : proj)} ${badges}</summary>`;
 
@@ -986,7 +1004,7 @@ function renderFindingsInto(i){
   el.innerHTML = html;
   el.querySelectorAll("details[data-proj]").forEach(d =>
     d.addEventListener("toggle", () =>
-      d.open ? collapsed.delete(d.dataset.proj) : collapsed.add(d.dataset.proj)));
+      d.open ? opened.add(d.dataset.proj) : opened.delete(d.dataset.proj)));
 }
 
 // ---- sidebar ---------------------------------------------------------
@@ -1123,10 +1141,19 @@ function drawProjects(ps){
 // bb doctor's verdict, run by the server on a slow loop and on the ↻ button.
 // Failures and warnings are full lines — they are for reading — while passing
 // checks collapse into chips: what a healthy card says is just "all n ok".
+// And a healthy card says it folded: header, dot and count, no body — the
+// details are one click away and were not worth the sidebar space they took.
+let docOpen  = null;   // the operator's toggle; null = follow the verdict
+let docLevel = null;   // last verdict, so a change can override that toggle
+
 function drawDoctor(){
   const el = $("doctor"), d = state?.doctor;
+  const dot = $("docDot"), tog = $("bDocTog"), card = el.closest(".card");
   $("docWhen").textContent = d?.running ? "running…" : d?.when ? ago(d.when) : "";
   if (!d || !d.when){
+    dot.hidden = tog.hidden = true;             // no verdict yet, nothing to fold
+    el.hidden = false;
+    card.classList.remove("folded");
     el.innerHTML = `<div class="empty">${d?.running ? "running…" : "first run pending…"}</div>`;
     return;
   }
@@ -1134,6 +1161,22 @@ function drawDoctor(){
   const probs = d.checks.filter(c => c.level === "FAIL" || c.level === "warn");
   const fine = d.checks.filter(c => c.level === "ok");
   const skip = d.checks.filter(c => c.level === "skip");
+
+  // A changed verdict beats the operator's toggle: a card that turns red must
+  // open even if it was folded away green an hour ago, and one that heals
+  // folds itself back up rather than squatting on the space it no longer earns.
+  const level = probs.some(c => c.level === "FAIL") ? "bad"
+              : probs.length ? "warn" : "ok";
+  if (level !== docLevel){ docLevel = level; docOpen = null; }
+  const open = docOpen ?? (level !== "ok");
+  dot.hidden = false;
+  dot.className = "st " + level;
+  tog.hidden = false;
+  tog.textContent = open ? "Hide"
+                  : level === "ok" ? `all ${fine.length} ok`
+                  : `Show (${probs.length})`;
+  el.hidden = !open;
+  card.classList.toggle("folded", !open);
   el.innerHTML =
     `<div class="probs">${probs.map(c =>
        `<div class="sub ${c.level === "FAIL" ? "bad" : "warn"}" title="${esc(tip(c))}">${esc(c.text)}</div>`
@@ -1143,6 +1186,8 @@ function drawDoctor(){
        skip.map(c => `<span class="pill" title="${esc(tip(c))}">${esc(c.text)}</span>`).join("")
      }</div>`;
 }
+
+$("bDocTog").onclick = () => { docOpen = $("doctor").hidden; drawDoctor(); };
 
 $("bDoctor").onclick = async () => {
   const b = $("bDoctor");
@@ -1581,6 +1626,7 @@ async function refresh(){
     drawCustom();
     drawDoctor();
     $("cardFindings").hidden = !state.reports;
+    drawFindingsSum(state.findings_counts || {});
     // A scan re-ran on the host: refresh any open findings view to match.
     if (findings && !findings.loading && findingsMtime !== null
         && state.reports_mtime !== findingsMtime
@@ -1594,6 +1640,24 @@ async function refresh(){
 // and piping it through a PTY would only make it harder to.
 function openFindings(){
   openTab({kind:"findings", arg:"__findings", label:"findings"});
+}
+
+// The card's per-project headline: which project, how many, how bad — so
+// "is anything on fire, and whose" is answered without opening the report.
+// Same level pills the report itself leads with; "" is the scanner seeing a
+// directory this workspace does not mount, shown rather than hidden because
+// a finding with a bad path is still a finding.
+function drawFindingsSum(per){
+  const el = $("findingsSum");
+  const names = Object.keys(per).sort((a,b) => (a==="")-(b==="") || a.localeCompare(b));
+  el.innerHTML = names.length ? names.map(p => {
+    const lv = per[p];
+    const pills = Object.keys(lv).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
+      .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l]}</span>`).join("");
+    return `<div class="row"><div class="grow name">${esc(p || "unattributed paths")}</div>${pills}</div>`;
+  }).join("")
+  : `<div class="empty">no findings in the current reports — which is not the
+     same as every project passing; SARIF records findings, not coverage</div>`;
 }
 
 // Both popup menus dismiss on a click that is neither in them nor on the

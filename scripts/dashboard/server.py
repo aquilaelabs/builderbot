@@ -411,14 +411,38 @@ def parse_sarif(path, known):
     return {"file": path.name, "tool": " + ".join(tools) or "?", "findings": rows}
 
 
+def _valid_projects(ps):
+    """The projects whose findings are worth surfacing: not excluded, and no
+    error-level issue. A repo that is broken or deliberately shut out gets
+    triaged in the Projects card first — its findings would only pad the
+    numbers for code nobody can currently work on."""
+    return {p["name"] for p in ps
+            if not p["excluded"]
+            and not any(i["level"] == "error" for i in p["issues"])}
+
+
 def findings_payload():
-    known = {p["name"] for p in projects()}
+    ps = projects()
+    known = {p["name"] for p in ps}
     if not REPORTS.is_dir():
         return {"available": False, "reports": [], "projects": sorted(known)}
     files = sorted(f for f in REPORTS.glob("*.sarif")) + \
             sorted(f for f in REPORTS.glob("*.sarif.json"))
+    # Attribution still uses every directory name — filtering the *names*
+    # would misfile an excluded project's findings as unattributed. The rows
+    # are dropped after attribution, and counted: a report that quietly
+    # shrinks reads as "covered everything" when it did not.
+    valid = _valid_projects(ps)
+    reports, hidden = [], 0
+    for f in files:
+        rep = parse_sarif(f, known)
+        keep = [r for r in rep["findings"]
+                if r["project"] is None or r["project"] in valid]
+        hidden += len(rep["findings"]) - len(keep)
+        rep["findings"] = keep
+        reports.append(rep)
     return {"available": True, "projects": sorted(known),
-            "reports": [parse_sarif(f, known) for f in files]}
+            "hidden": hidden, "reports": reports}
 
 
 def run(cmd, cwd=None, timeout=120):
@@ -893,16 +917,50 @@ def reports_mtime():
         return 0
 
 
+# The sidebar card wants per-project headline numbers without every client
+# fetching and parsing the full reports, so the totals ride the status poll —
+# cached on report mtime, because the SARIF can run to megabytes and the poll
+# arrives every 15 seconds.
+_findings_counts = {"mtime": -1, "projects": {}}
+
+
+def findings_counts(ps):
+    """{project: {level: count}} across every report, valid projects only —
+    same rule as findings_payload. An unattributed path (the scanner saw a
+    directory this workspace does not mount) counts under "", which the
+    client labels rather than hiding — a finding with a bad path is still a
+    finding. The cache holds the unfiltered counts: validity can change
+    (an exclusion toggled, a permission fixed) without any report changing,
+    so the filter runs per call and only the parse is cached."""
+    mtime = reports_mtime()
+    if _findings_counts["mtime"] != mtime:
+        per = {}
+        if REPORTS.is_dir():
+            known = {p["name"] for p in ps}
+            files = sorted(REPORTS.glob("*.sarif")) + \
+                sorted(REPORTS.glob("*.sarif.json"))
+            for f in files:
+                for row in parse_sarif(f, known)["findings"]:
+                    lv = per.setdefault(row["project"] or "", {})
+                    lv[row["level"]] = lv.get(row["level"], 0) + 1
+        _findings_counts.update(mtime=mtime, projects=per)
+    valid = _valid_projects(ps)
+    return {p: lv for p, lv in _findings_counts["projects"].items()
+            if not p or p in valid}
+
+
 def snapshot():
+    ps = projects()
     return {
         "host": os.uname().nodename,
         "uptime": uptime(),
-        "projects": projects(),
+        "projects": ps,
         "sessions": tmux_sessions(),
         "runner": runner(),
         "ttyd_port": TTYD_PUBLIC_PORT,
         "reports": REPORTS.is_dir(),
         "reports_mtime": reports_mtime(),
+        "findings_counts": findings_counts(ps),
         "doctor": doctor_payload(),
         "max_tabs": MAX_TABS,
         # The command list is built from the table above rather than spelled out

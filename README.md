@@ -480,8 +480,15 @@ terminal on `7681`:
   start there; **Shell** stays, since that is often how you would fix it
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD.
-  If the scanner re-runs while the report is open, the view reloads itself —
-  the page watches the report files' mtime, so you never triage stale findings
+  Project groups start collapsed — the severity pills on each are the overview,
+  and what you open stays open across reloads. If the scanner re-runs while
+  the report is open, the view reloads itself — the page watches the report
+  files' mtime, so you never triage stale findings. The sidebar card carries
+  the headline: one row per project with its counts by severity, so "whose
+  code, how bad" is answered without opening the report. Both leave out
+  projects that are excluded or have repo errors — those get fixed in the
+  Projects card first — and the report says how many findings that held back
+  rather than quietly shrinking
 - a **Stop / Start** toggle for the runner, showing whichever one applies.
   Stopping waits for GitHub to release the runner's session rather than
   reporting success and leaving a listener behind
@@ -497,9 +504,12 @@ terminal on `7681`:
   of the conversation, no extra process
 - a **Doctor** card: `bb doctor`'s checks, run by the server in the background
   every 30 minutes (`DASHBOARD_DOCTOR_INTERVAL` seconds to change that) and
-  re-run on demand with its ↻. Passing checks collapse into green chips;
-  failures and warnings are full lines, with the fix hint from `bb doctor`'s
-  own output in the tooltip
+  re-run on demand with its ↻. The header wears the verdict as a dot — green,
+  amber or red — and a healthy card folds down to just that header and an
+  "all n ok" button that expands it. Anything worse opens the card by itself,
+  even if you folded it away green: failures and warnings are full lines, with
+  the fix hint from `bb doctor`'s own output in the tooltip, while passing
+  checks collapse into green chips
 
 ### Tabs and panes
 
