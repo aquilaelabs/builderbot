@@ -16,8 +16,9 @@ Helper CLI inside:       docker exec -it BuilderBot bb status
 
 NOTES
 - The image is a private GHCR package: run `docker login ghcr.io` on the Unraid host once (and persist it via the go file) or the pull will fail. See docs/unraid.md in the repo.
-- For the Android emulator, add  --device=/dev/kvm  to Extra Params and set ENABLE_ANDROID_EMULATOR to true.
-- For an NVIDIA GPU, install the Nvidia-Driver plugin from Apps (needs Unraid 6.9+), add  --runtime=nvidia  to Extra Params, and leave NVIDIA_DRIVER_CAPABILITIES at "all" — the runtime default gives you CUDA but no GL/EGL/Vulkan, which fails in a way that still looks healthy in nvidia-smi. Confirm with: docker exec -it BuilderBot bb doctor
+- Extra Params ship as  --hostname=builderbot --device=/dev/kvm --runtime=nvidia  because that is the host this template was written for. BOTH OF THOSE FAIL THE CONTAINER OUTRIGHT ON HARDWARE THAT LACKS THEM - docker refuses to start with "unknown or invalid runtime name: nvidia", or "no such file or directory" for /dev/kvm. If your server has no NVIDIA GPU, or virtualisation is off, delete the matching flag from Extra Params before hitting Apply.
+- --runtime=nvidia also needs the Nvidia-Driver plugin from Apps (Unraid 6.9+). Leave NVIDIA_DRIVER_CAPABILITIES at "all": the runtime default gives you CUDA but no GL/EGL/Vulkan, which fails in a way that still looks healthy in nvidia-smi. Confirm with: docker exec -it BuilderBot bb doctor
+- The Android emulator is ON by default and needs the /dev/kvm device above. Set ENABLE_ANDROID_EMULATOR to false for a pure workstation; nothing starts automatically either way (use: bb emu start).
 - The Docker socket mapping is OFF by default: mounting it gives the container root-equivalent control of the Unraid host. Fill in the socket path only if you accept that and want docker build/compose available inside.
   </Overview>
   <Category>Tools: Productivity:</Category>
@@ -29,7 +30,7 @@ NOTES
        If it ever goes public, or the file is copied somewhere public, put that
        URL here. -->
   <Icon/>
-  <ExtraParams>--hostname=builderbot</ExtraParams>
+  <ExtraParams>--hostname=builderbot --device=/dev/kvm --runtime=nvidia</ExtraParams>
   <PostArgs/>
   <DonateText/>
   <DonateLink/>
@@ -45,12 +46,12 @@ NOTES
   <Config Name="Config (custom startup hooks)" Target="/config" Default="/mnt/user/appdata/BuilderBot/config" Mode="rw" Description="Drop your own *.sh files into startup.d/ here to run them at container start" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/BuilderBot/config</Config>
   <Config Name="Runner work directory" Target="/workspace/_work" Default="/mnt/user/appdata/BuilderBot/work" Mode="rw" Description="Where GitHub Actions jobs check out code" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/BuilderBot/work</Config>
   <Config Name="Logs directory (optional override)" Target="/logs" Default="" Mode="rw" Description="Leave empty to keep logs under the Config path in logs/. Set a host path (e.g. an array share like /mnt/user/logs/builderbot) to send the persistent log there instead - the container auto-detects this mount." Type="Path" Display="advanced" Required="false" Mask="false"/>
-  <Config Name="Secrets directory (shielded tokens)" Target="/secrets" Default="" Mode="ro" Description="RECOMMENDED: a root-owned host folder (chmod 700) containing builderbot.env with GITHUB_PAT=... lines, plus an ssh/ subfolder of git private keys. Secrets provided this way are never readable by Claude sessions - the runner gets tokens via a root-only helper and ssh keys are served by a root-owned ssh-agent (usable for git push, not extractable). See docs/unraid.md." Type="Path" Display="always" Required="false" Mask="false"/>
-  <Config Name="Scanner reports (read-only)" Target="/reports" Default="" Mode="ro" Description="Optional: the output directory of a static analyser running on the host, e.g. /mnt/user/appdata/scanners/reports. Mounted READ-ONLY and deliberately without the scanner itself, so nothing in this container can run or reconfigure it. Read the reports with: bb findings" Type="Path" Display="always" Required="false" Mask="false"/>
+  <Config Name="Secrets directory (shielded tokens)" Target="/secrets" Default="/mnt/user/appdata/BuilderBot/secrets" Mode="ro" Description="RECOMMENDED: a root-owned host folder (chmod 700) containing builderbot.env with GITHUB_PAT=... lines, plus an ssh/ subfolder of git private keys. Secrets provided this way are never readable by Claude sessions - the runner gets tokens via a root-only helper and ssh keys are served by a root-owned ssh-agent (usable for git push, not extractable). See docs/unraid.md." Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/BuilderBot/secrets</Config>
+  <Config Name="Scanner reports (read-only)" Target="/reports" Default="/mnt/user/appdata/scanners/reports" Mode="ro" Description="Optional: the output directory of a static analyser running on the host, e.g. /mnt/user/appdata/scanners/reports. Mounted READ-ONLY and deliberately without the scanner itself, so nothing in this container can run or reconfigure it. Read the reports with: bb findings" Type="Path" Display="always" Required="false" Mask="false">/mnt/user/appdata/scanners/reports</Config>
   <Config Name="Docker socket (OFF by default - root-equivalent!)" Target="/var/run/docker.sock" Default="" Mode="rw" Description="LEAVE EMPTY unless you accept the risk: mounting the host Docker socket lets anything in this container run arbitrary code on the Unraid host as root. Set to /var/run/docker.sock only if you want Claude/CI jobs building images against the host daemon." Type="Path" Display="advanced" Required="false" Mask="false"/>
 
   <!-- ===================== core settings ===================== -->
-  <Config Name="TZ" Target="TZ" Default="America/New_York" Mode="" Description="Container timezone" Type="Variable" Display="always" Required="true" Mask="false">America/New_York</Config>
+  <Config Name="TZ" Target="TZ" Default="America/Phoenix" Mode="" Description="Container timezone" Type="Variable" Display="always" Required="true" Mask="false">America/Phoenix</Config>
   <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="File-owner uid (99 = Unraid's nobody)" Type="Variable" Display="advanced" Required="true" Mask="false">99</Config>
   <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="File-owner gid (100 = Unraid's users)" Type="Variable" Display="advanced" Required="true" Mask="false">100</Config>
 
@@ -59,7 +60,7 @@ NOTES
   <Config Name="AUTO_UPDATE_CLAUDE" Target="AUTO_UPDATE_CLAUDE" Default="true" Mode="" Description="Update Claude Code on every container start" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
 
   <!-- ===================== GitHub Actions runner ===================== -->
-  <Config Name="GITHUB_URL" Target="GITHUB_URL" Default="https://github.com/Stencil-Projects/BuilderBot" Mode="" Description="Repo URL (https://github.com/OWNER/REPO) or org URL (https://github.com/ORG) the runner registers with" Type="Variable" Display="always" Required="false" Mask="false">https://github.com/Stencil-Projects/BuilderBot</Config>
+  <Config Name="GITHUB_URL" Target="GITHUB_URL" Default="https://github.com/Stencil-Projects" Mode="" Description="Org URL (https://github.com/ORG) serves every repo in the org and needs the PAT permission Organization - Self-hosted runners: R/W. A repo URL (https://github.com/OWNER/REPO) serves one repo and needs Repository - Administration: R/W instead." Type="Variable" Display="always" Required="false" Mask="false">https://github.com/Stencil-Projects</Config>
   <Config Name="GITHUB_PAT" Target="GITHUB_PAT" Default="" Mode="" Description="Fine-grained PAT with Administration read+write on the target repo. NOTE: any variable set here is visible to processes inside the container (including Claude sessions) - prefer the Secrets directory mount for shielding. Values are always redacted from logs either way." Type="Variable" Display="always" Required="false" Mask="true"/>
   <Config Name="ENABLE_RUNNER" Target="ENABLE_RUNNER" Default="true" Mode="" Description="Set false to run as a pure Claude workstation" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
   <Config Name="GIT_PAT (for git/gh inside)" Target="GIT_PAT" Default="" Mode="" Description="Token used for git clone/push and the gh CLI inside the container. Unlike GITHUB_PAT this is intentionally readable by sessions - any credential git can use, a session can read - so scope it to repository Contents (read/write) only, NOT Administration. Claude already has read/write on the mounted working trees, so this grants no new reach. Alternative: use a shielded ssh key in /secrets/ssh." Type="Variable" Display="always" Required="false" Mask="true"/>
@@ -70,11 +71,11 @@ NOTES
   <Config Name="CLAUDE_CODE_VERSION" Target="CLAUDE_CODE_VERSION" Default="latest" Mode="" Description="Pin a Claude Code version for the startup auto-update" Type="Variable" Display="advanced" Required="false" Mask="false">latest</Config>
 
   <!-- ===================== git identity ===================== -->
-  <Config Name="GIT_USER_NAME" Target="GIT_USER_NAME" Default="BuilderBot" Mode="" Description="git commit author name (set to yours)" Type="Variable" Display="always" Required="false" Mask="false">BuilderBot</Config>
-  <Config Name="GIT_USER_EMAIL" Target="GIT_USER_EMAIL" Default="builderbot@localhost" Mode="" Description="git commit author email (set to yours)" Type="Variable" Display="always" Required="false" Mask="false">builderbot@localhost</Config>
+  <Config Name="GIT_USER_NAME" Target="GIT_USER_NAME" Default="Stencil923" Mode="" Description="git commit author name" Type="Variable" Display="always" Required="false" Mask="false">Stencil923</Config>
+  <Config Name="GIT_USER_EMAIL" Target="GIT_USER_EMAIL" Default="124431934+Stencil923@users.noreply.github.com" Mode="" Description="git commit author email. The GitHub noreply address attributes commits to your profile without publishing a real address, and survives the &quot;block pushes that expose my email&quot; setting." Type="Variable" Display="always" Required="false" Mask="false">124431934+Stencil923@users.noreply.github.com</Config>
 
   <!-- ===================== Android ===================== -->
-  <Config Name="ENABLE_ANDROID_EMULATOR" Target="ENABLE_ANDROID_EMULATOR" Default="false" Mode="" Description="Create the default AVD at startup. Also add --device=/dev/kvm to Extra Params. Start with: bb emu start" Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+  <Config Name="ENABLE_ANDROID_EMULATOR" Target="ENABLE_ANDROID_EMULATOR" Default="true" Mode="" Description="Create an AVD per API level in ANDROID_SYSTEM_IMAGES at startup. Needs --device=/dev/kvm in Extra Params (pre-set). Start one with: bb emu start" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
   <Config Name="ANDROID_SYSTEM_IMAGES" Target="ANDROID_SYSTEM_IMAGES" Default="35" Mode="" Description="Comma-separated API levels to keep an emulator image and AVD for, e.g. 34,35,36,37 for Android 14 through 17. Budget ~2GB each on the appdata share - downloaded once, kept across image updates. AVDs are named builderbot-&lt;api&gt;; boot one with: bb emu start 37" Type="Variable" Display="advanced" Required="false" Mask="false">35</Config>
   <Config Name="ANDROID_EMULATOR_GPU" Target="ANDROID_EMULATOR_GPU" Default="swiftshader_indirect" Mode="" Description="Emulator renderer. swiftshader_indirect (default) is software and always works; swangle_indirect is software but usually faster; host needs an NVIDIA GPU passed through." Type="Variable" Display="advanced" Required="false" Mask="false">swiftshader_indirect</Config>
 

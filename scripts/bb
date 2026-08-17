@@ -21,6 +21,9 @@ bb — BuilderBot helper
   bb emu stop            shut the emulator down
   bb emu status          adb devices
   bb emu list            configured API levels and the AVDs that exist
+  bb claude-md           is this project's CLAUDE.md environment block current?
+  bb claude-md --update  refresh that block, leaving the project section alone
+  bb claude-md --init    create a CLAUDE.md here from the shipped template
   bb findings [PATH]     digest scanner SARIF reports (default: /reports)
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
   bb logs -p [N]         show a previous boot's log (the log rotates per start)
@@ -224,6 +227,86 @@ cmd_logs() {
     fi
 }
 
+TEMPLATE_MD=/opt/builderbot/templates/project-CLAUDE.md
+ENV_BEGIN='<!-- BUILDERBOT:ENV:BEGIN -->'
+ENV_END='<!-- BUILDERBOT:ENV:END -->'
+
+# Print the marked environment block of a file, markers included.
+md_block() { awk -v b="$ENV_BEGIN" -v e="$ENV_END" \
+    'index($0,b){f=1} f{print} index($0,e){exit}' "$1"; }
+
+# Keep a project's CLAUDE.md environment section in step with the image.
+#
+# The block is delimited so refreshing it is a substitution rather than a
+# judgement call: everything below the end marker is the project's own and is
+# never read, compared or written. That is the whole point — the environment
+# notes go stale every time the container gains a feature, and the project
+# notes are the expensive part nobody wants to risk.
+cmd_claude_md() {
+    local mode=check target=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --update) mode=update ;;
+            --init)   mode=init ;;
+            --check)  mode=check ;;
+            -*) die "unknown option: $1" ;;
+            *)  target="$1" ;;
+        esac
+        shift
+    done
+    target="${target:-$PWD/CLAUDE.md}"
+    [ -f "$TEMPLATE_MD" ] || die "no template at ${TEMPLATE_MD} — is this an older image?"
+
+    if [ ! -f "$target" ]; then
+        if [ "$mode" = init ]; then
+            cp "$TEMPLATE_MD" "$target"
+            log "created ${target} — fill in the project section below the end marker"
+            return 0
+        fi
+        die "no ${target}. Create one with: bb claude-md --init"
+    fi
+
+    if ! grep -qF "$ENV_BEGIN" "$target" || ! grep -qF "$ENV_END" "$target"; then
+        warn "${target} has no BUILDERBOT:ENV markers"
+        warn "It predates them, so which part is environment and which is yours"
+        warn "cannot be determined safely. Merge once by hand — or ask Claude to —"
+        warn "putting the block from ${TEMPLATE_MD} above your project section."
+        return 1
+    fi
+
+    local tmp_new tmp_cur
+    tmp_new="$(mktemp)"; tmp_cur="$(mktemp)"
+    # shellcheck disable=SC2064 # expand the paths now, not at trap time
+    trap "rm -f '$tmp_new' '$tmp_cur'" RETURN
+    md_block "$TEMPLATE_MD" > "$tmp_new"
+    md_block "$target"      > "$tmp_cur"
+
+    if cmp -s "$tmp_new" "$tmp_cur"; then
+        log "${target}: environment block is current"
+        return 0
+    fi
+
+    if [ "$mode" != update ]; then
+        log "${target}: environment block differs from the image's template"
+        diff -u --label "$target" --label "$TEMPLATE_MD" "$tmp_cur" "$tmp_new" || true
+        log "refresh just that block with: bb claude-md --update"
+        return 0
+    fi
+
+    local out; out="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$tmp_new' '$tmp_cur' '$out'" RETURN
+    awk -v b="$ENV_BEGIN" -v e="$ENV_END" -v repl="$tmp_new" '
+        index($0,b) { while ((getline line < repl) > 0) print line; skip=1; next }
+        index($0,e) { skip=0; next }
+        !skip       { print }
+    ' "$target" > "$out"
+
+    grep -qF "$ENV_END" "$out" || die "refused to write: the result lost its end marker"
+    cat "$out" > "$target"
+    log "${target}: environment block updated; your project section is untouched"
+}
+
 # Reduce a SARIF report to grouped markdown.
 #
 # This reads scan output and nothing else. The scanner itself lives outside the
@@ -410,6 +493,7 @@ case "${1:-status}" in
     login)    cmd_login ;;
     runner)   shift; cmd_runner "$@" ;;
     emu)      shift; cmd_emu "$@" ;;
+    claude-md|claudemd) shift; cmd_claude_md "$@" ;;
     findings) shift; cmd_findings "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     doctor)   cmd_doctor ;;

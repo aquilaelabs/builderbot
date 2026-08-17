@@ -149,14 +149,20 @@ Required / usually touched:
 | `ANTHROPIC_API_KEY` | Leave **empty** for Claude subscription login (step 7); set only for API-key billing |
 | `ENABLE_RUNNER` | `true` unless you want a pure workstation |
 
+**The template's Extra Params default to `--hostname=builderbot --device=/dev/kvm
+--runtime=nvidia`**, matching the server it was written for. Both device flags
+make Docker refuse to start the container on hardware that lacks them, with an
+error that does not obviously point back here — so drop whichever does not apply
+before your first Apply.
+
 Everything else has sane defaults — full reference below.
 
 ### 6. Optional features
 
 | Want | Do |
 |---|---|
-| Android emulator | Extra Params: `--device=/dev/kvm`, set `ENABLE_ANDROID_EMULATOR=true`; then `bb emu start` |
-| NVIDIA GPU | Nvidia-Driver plugin + Extra Params: `--runtime=nvidia`, keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
+| Android emulator | On by default; needs `--device=/dev/kvm` (pre-set in the template). Then `bb emu start` |
+| NVIDIA GPU | `--runtime=nvidia` is pre-set; add the Nvidia-Driver plugin and keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
 | Docker builds inside (CI jobs, Claude) | Fill the **Docker socket** path field — **off by default; this is root-equivalent on the host**, read the warning in the docs first |
@@ -300,6 +306,9 @@ bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
 bb runner status | restart
 bb emu start [api] | stop | status | list
+bb claude-md       is this project's CLAUDE.md environment block current?
+bb claude-md --update   refresh that block only
+bb claude-md --init     create one here from the template
 bb findings [PATH] digest scanner SARIF reports (default /reports)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
@@ -413,12 +422,26 @@ survive an update, that there is no display, or that ssh keys are deliberately
 unreadable. The image ships a template that explains all of it:
 
 ```bash
-cp /opt/builderbot/templates/project-CLAUDE.md /workspace/<project>/CLAUDE.md
+bb claude-md --init      # from the project directory
 ```
 
-Then fill in the project-specific section at the bottom. Claude Code picks up
-`CLAUDE.md` from the project root automatically. If the project already has
-one, append the template's contents instead of overwriting.
+Then fill in the project section at the bottom. Claude Code picks `CLAUDE.md`
+up from the project root automatically.
+
+**Keeping it current.** The environment half of that file goes stale every time
+the container gains a feature, while the project half is the expensive part
+nobody wants to risk. So the template wraps its own content in
+`BUILDERBOT:ENV:BEGIN` / `END` markers, and refreshing is a substitution rather
+than a merge:
+
+```bash
+bb claude-md             # does this copy differ from the image's template?
+bb claude-md --update    # replace just that block
+```
+
+Everything below the end marker is never read, compared or written. A file
+without markers is refused rather than guessed at — merge those once by hand,
+and every refresh after that is mechanical.
 
 ## Playwright, Android, publishing
 

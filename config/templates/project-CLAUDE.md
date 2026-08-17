@@ -1,12 +1,12 @@
 # Working inside BuilderBot
 
-> Template. Copy to the root of a project mounted in BuilderBot as `CLAUDE.md`
-> (or append to an existing one), then delete the sections that do not apply
-> and fill in the project-specific part at the bottom.
->
-> ```bash
-> cp /opt/builderbot/templates/project-CLAUDE.md /workspace/<project>/CLAUDE.md
-> ```
+<!-- BUILDERBOT:ENV:BEGIN -->
+<!-- Everything between these markers is generated from BuilderBot's shipped
+     template and is safe to replace wholesale:
+         bb claude-md            # is this copy current?
+         bb claude-md --update   # refresh just this block
+     Your project's own notes live BELOW the end marker and are never touched.
+     Edits inside this block are lost on the next --update; put them below. -->
 
 You are running inside **BuilderBot**, a long-lived container on an Unraid
 server. It is a Claude Code workstation, a self-hosted GitHub Actions runner, a
@@ -133,9 +133,10 @@ only when the finding is genuinely a false positive, and say why.
 ## CI runs on this same box
 
 The self-hosted runner executes jobs in this container, under
-`/workspace/_work`. It carries the labels
+`/workspace/_work`. It is registered at the **organisation** level, so it serves
+every repo in the org, not just this one. It carries the labels
 `builderbot,self-hosted,linux,x64,unraid`, and a workflow matches only if every
-label in its `runs-on` is one the runner has. Three implications:
+label in its `runs-on` is one the runner has. Four implications:
 
 - The toolchain CI sees is the toolchain you see. If a build works here it
   should work in CI, and if you needed an undocumented step, CI needs it too.
@@ -144,6 +145,8 @@ label in its `runs-on` is one the runner has. Three implications:
 - A job stuck in *Waiting for a runner* while the runner shows *Idle* is a
   label mismatch, not a broken runner. Compare the job's `Requested labels:`
   against the list above.
+- A push to a *different* repo in the org can be building on this same box
+  right now. If something is inexplicably slow, that is a candidate.
 
 ## Toolchain already present
 
@@ -159,6 +162,9 @@ images per `ANDROID_SYSTEM_IMAGES`) ·
 Check `bb status` for versions and `bb doctor` when something environmental
 looks wrong — it diagnoses auth, connectivity and GPU state in one pass.
 
+The container clock is set from the host's `TZ`, so timestamps you print are
+local time, not UTC. Worth stating explicitly when you quote one.
+
 The container's own log rotates on every start, which is worth knowing when
 something broke across a restart:
 
@@ -167,6 +173,8 @@ bb logs            # this boot
 bb logs -p         # the previous boot
 bb logs --list     # what is kept
 ```
+
+<!-- BUILDERBOT:ENV:END -->
 
 ---
 
