@@ -109,6 +109,11 @@ The scanner may cover several repos in one report; `bb findings` shows only
 this project's and tells you how many it held back. If a count looks wrong,
 check that line before assuming findings are missing.
 
+**An empty result is not a clean bill of health.** SARIF records findings, not
+coverage, so "scanned and found nothing" and "never scanned" are byte-identical
+in the report. If this project is absent, say that it does not appear in the
+report — not that it passed.
+
 Read it with `bb findings`, not by opening the SARIF — the raw file is mostly
 metadata and will eat the context you need for the code.
 

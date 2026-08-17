@@ -410,6 +410,11 @@ JSON and need asking (`--format sarif` for Trivy, `--sarif` for Semgrep);
 anything that is not SARIF is skipped silently, which looks identical to a
 scanner that found nothing.
 
+For the same reason, a project missing from a report has not necessarily
+passed: SARIF carries findings, not coverage. If you need to know a tree was
+actually walked, keep the scanner's own stdout — `semgrep` and `trivy` both
+print file counts that the report itself does not preserve.
+
 Raw SARIF is mostly metadata — a few hundred KB of it fills a session's context
 before it reaches the code the findings are about. `bb findings` groups by
 severity and rule, prints each message once with the locations under it, and
