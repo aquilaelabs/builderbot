@@ -492,8 +492,8 @@ function openTab(spec){
 function roomForTab(){
   const cap = state?.max_tabs || 12;
   if (tabs.length < cap) return true;
-  notify(`Tab limit reached (${cap}). Close one first — `
-       + `DASHBOARD_MAX_TABS raises it if this box can take more.`, true);
+  notify(`Tab limit reached (${cap}). Minimise one first — it keeps running. `
+       + `DASHBOARD_MAX_TABS raises the limit if this box can take more.`, true);
   return false;
 }
 
@@ -513,38 +513,14 @@ function show(t){
   if (t.kind === "findings" && !findings) loadFindings();
 }
 
-async function closeTab(id, ev){
+// Take a tab off the strip. Nothing is destroyed and nothing is asked: a
+// terminal keeps running and is listed under Sessions, a document is a view of
+// a file on disk. Ending a session for good is the ✕ in the Sessions card,
+// which is where a question is worth asking because something is actually lost.
+function hideTab(id, ev){
   ev?.stopPropagation();
   const t = tabOf(id);
   if (!t || t.fixed) return;
-
-  // Every close is confirmed, and the wording says which of two things it is.
-  // A Claude tab ends the conversation, because leaving one running for a tab
-  // nobody has is a model burning turns unobserved. A shell tab leaves its
-  // session alive, to be picked back up from the Sessions card.
-  //
-  // The session is resolved from the tab rather than read off its argument: a
-  // tab opened from the Sessions list carries the raw name ("claude-Foo"), and
-  // testing the argument closed a live conversation without asking.
-  const session = t.kind === "term" ? sessionOf(t.arg) : null;
-  const claude  = !!session && session.startsWith("claude-");
-
-  if (!confirm(
-        claude       ? `Close "${tabLabel(t)}" and end the Claude session in ${session.slice(7)}?\n\n`
-                       + `The transcript is kept and can be resumed later, but the conversation stops now.`
-      : session      ? `Close "${tabLabel(t)}"?\n\nThe terminal keeps running — reopen it from `
-                       + `Sessions, or close it there to end it for good.`
-      :                `Close "${tabLabel(t)}"?`))
-    return;
-
-  if (claude){
-    try{
-      await fetch("/api/session", {method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({action:"kill", session})});
-    }catch(e){ /* already gone is fine */ }
-  }
-
   dropTab(id);
   refresh();
 }
@@ -669,7 +645,14 @@ function drawTabs(){
     return `<span class="tab ${t.id===cur?"on":""}${held}" data-id="${esc(t.id)}">
       <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
       <button class="ic" data-pin="${esc(t.id)}" title="pin to a pane">⇱</button>
-      ${t.fixed?"":`<button class="ic" data-close="${esc(t.id)}" title="close tab">✕</button>`}
+      ${t.fixed ? ""
+        // A terminal is minimised, not closed: it keeps running and is listed
+        // under Sessions. A document has nothing to keep, so its ✕ means what
+        // it says. Neither asks — nothing is lost either way.
+        : t.kind === "term"
+          ? `<button class="ic" data-min="${esc(t.id)}"
+               title="minimise — the terminal keeps running, reopen it from Sessions">—</button>`
+          : `<button class="ic" data-close="${esc(t.id)}" title="close">✕</button>`}
     </span>`;
   }).join("");
 
@@ -688,19 +671,20 @@ function drawTabs(){
     b.onpointerdown = e => startDrag(e, b.dataset.show);
     b.onclick = () => { if (!swallowClick) focusTab(b.dataset.show); };
   });
-  // Middle-click closes, the way a browser tab does. `click` never fires for
-  // button 1 and pointerdown would arm the autoscroll cursor first, so this is
-  // auxclick with the default suppressed.
+  // Middle-click does the same as the tab's own button, the way a browser tab
+  // does. `click` never fires for button 1 and pointerdown would arm the
+  // autoscroll cursor first, so this is auxclick with the default suppressed.
   bar.querySelectorAll(".tab").forEach(el => {
     el.onpointerdown = e => { if (e.button === 1) e.preventDefault(); };
     el.onauxclick = e => {
       if (e.button !== 1) return;
       e.preventDefault();
-      closeTab(el.dataset.id, e);
+      hideTab(el.dataset.id, e);
     };
   });
   bar.querySelectorAll("[data-pin]").forEach(b => b.onclick = e => togglePin(b.dataset.pin, e));
-  bar.querySelectorAll("[data-close]").forEach(b => b.onclick = e => closeTab(b.dataset.close, e));
+  bar.querySelectorAll("[data-min]").forEach(b => b.onclick = e => hideTab(b.dataset.min, e));
+  bar.querySelectorAll("[data-close]").forEach(b => b.onclick = e => hideTab(b.dataset.close, e));
   bar.querySelectorAll("[data-l]").forEach(b => b.onclick = e => pinTo(b.dataset.l, 0, e));
   bar.querySelectorAll("[data-r]").forEach(b => b.onclick = e => pinTo(b.dataset.r, 1, e));
   $("bKeys").onclick = () => { showKeys = !showKeys; render(); };

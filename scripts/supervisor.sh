@@ -52,6 +52,48 @@ record_sessions() {
     } > "$out.tmp" 2>/dev/null && mv -f "$out.tmp" "$out" 2>/dev/null || true
 }
 
+# Save the terminal sessions so the next boot can put them back.
+#
+# What is saved is the shell, not what was running in it: the directory it was
+# in and what had been printed there. Processes go down with the container —
+# that is what a restart is — and pretending otherwise by restarting them would
+# be a different and much worse promise.
+#
+# Claude sessions are deliberately not saved. A conversation ended with the
+# container; recreating its terminal would produce a new session wearing the old
+# one's name, which is exactly the confusion the tab pruning already avoids.
+SESSION_DIR="${DASHBOARD_STATE:-/config}/sessions"
+SESSION_LINES="${BB_SESSION_HISTORY:-2000}"
+
+save_sessions() {
+    local name dir first=1 out="$SESSION_DIR/index.json"
+    mkdir -p "$SESSION_DIR" 2>/dev/null || return 0
+    # Anything from a previous boot that is not saved again below is stale.
+    rm -f "$SESSION_DIR"/*.hist 2>/dev/null || true
+    {
+        printf '['
+        while read -r name dir; do
+            [ -n "$name" ] || continue
+            case "$name" in claude-*) continue ;; esac
+            # The names bb-tty makes are all of this shape; anything else is not
+            # ours to write into a filename.
+            case "$name" in *[!A-Za-z0-9._-]*) continue ;; esac
+            [ -d "$dir" ] || dir="$WORKSPACE"
+            # -e keeps the colours, so a restored terminal looks like the one
+            # that was there rather than a flat transcript of it.
+            tmux capture-pane -p -e -S "-${SESSION_LINES}" -t "$name" \
+                > "$SESSION_DIR/${name}.hist" 2>/dev/null || true
+            [ "$first" -eq 1 ] || printf ','
+            first=0
+            printf '\n  {"name": "%s", "cwd": "%s"}' "$name" "$dir"
+        done < <(tmux list-panes -a -F '#{session_name} #{pane_current_path}' 2>/dev/null \
+                 | sort -u -k1,1 || true)
+        [ "$first" -eq 1 ] || printf '\n'
+        printf ']\n'
+    } > "$out.tmp" 2>/dev/null && mv -f "$out.tmp" "$out" 2>/dev/null || true
+    log "shutdown: saved $(grep -c '"name"' "$out" 2>/dev/null || echo 0) terminal sessions"
+}
+
 # The pids each Claude pane is running. tmux reports the pane's pid, which for
 # these sessions is claude itself — it was the session's command.
 claude_pids() {
@@ -83,6 +125,7 @@ shutdown() {
 
     # --- instant work, before anything can time us out ---------------------
     record_sessions
+    save_sessions
     pkill -TERM -x ttyd 2>/dev/null || true
     pkill -TERM -f 'dashboard/server\.py' 2>/dev/null || true
 
