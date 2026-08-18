@@ -82,15 +82,18 @@ await phone.waitForSelector('#bKeys', { state: 'attached' });
 ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && await phone.$eval('#bKeys', el => getComputedStyle(el).display === 'none'),
    'phone shows the bottom bar and hides the strip ⌨');
 await phone.click('#mSessions');
-ok(await phone.$eval('#sespanel', el => el.classList.contains('show')), 'Sessions opens its panel');
+ok(await phone.$eval('#sespanel', el => el.classList.contains('show') && el.getAnimations().length > 0),
+   'Sessions opens its panel with a slide');
 await phone.click('#mMacros');
-ok(!(await phone.$eval('#sespanel', el => el.classList.contains('show'))) && await phone.$eval('#macpanel', el => el.classList.contains('show')),
-   'Commands closes it and opens the macros');
+// the close is a slide now: the class drops when the tween lands
+await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('show'));
+ok(await phone.$eval('#macpanel', el => el.classList.contains('show')), 'Commands closes it and opens the macros');
 ok(await phone.$eval('#commands', el => el.parentElement.id === 'mpCmd' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
 ok(await phone.$eval('.tab [data-pin]', el => getComputedStyle(el).display === 'none'), 'pin buttons hidden on a phone');
 // Claude on a project with a transcript opens the Resume/New chooser — which
 // must be visible on a phone (it once shared the hidden pin menu's class).
 await phone.evaluate(() => setView('dash'));
+ok(await phone.$eval('.col.side', el => el.getAnimations().length > 0), 'the view slides across the switch');
 await phone.click('#projects [data-c="alpha"]');
 ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
    'phone: Claude on a project with history shows the Resume/New chooser');
