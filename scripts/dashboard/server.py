@@ -11,11 +11,13 @@ proxying a PTY websocket through a hand-written server is exactly the kind of
 code that looks fine until it deadlocks.
 """
 import base64
+import contextlib
 import json
 import os
 import re
 import shlex
 import subprocess
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -146,6 +148,41 @@ CARD_KEYS = ["doctor", "runner", "projects", "findings", "sessions",
              "commands", "custom"]
 
 
+# Every state file is written the same way: to a temp file in the same
+# directory, then renamed over the real one, so a reader — including bb-tty,
+# which parses the exclusion list on every session launch — never sees half
+# a file. The temp name is unique per call. It used to be a fixed
+# "<name>.json.tmp", and this is a threading server: two saves landing
+# together (a slow poll and the page's debounced follow-up save were enough)
+# each opened the SAME temp file, the second truncating what the first was
+# writing, and whichever renamed first published a torn file. A reader in
+# that window got a parse error, which load_layout() reports as "no layout
+# yet" — and a page that hears that saves its default strip over the real
+# one and then, holding the revision it just wrote, ignores the server
+# until the next change. Mode 644 because mkstemp gives 600 and the files
+# were world-readable before.
+def write_json(path, obj):
+    STATE.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(json.dumps(obj, indent=2) + "\n")
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
+# One lock for every read-modify-write of a state file. The revision the
+# layout carries is what lets two browsers share a strip without fighting;
+# two saves reading the same file and both stamping rev+1 handed both pages
+# the same number, and each then took the other's writes for its own and
+# skipped them. Coarse on purpose: these are tiny files and rare writes.
+_state_lock = threading.Lock()
+
+
 def load_cards():
     try:
         v = json.loads(CARDS_FILE.read_text())
@@ -166,10 +203,7 @@ def load_cards():
 
 
 def save_cards(v):
-    STATE.mkdir(parents=True, exist_ok=True)
-    tmp = CARDS_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(v, indent=2) + "\n")
-    tmp.replace(CARDS_FILE)
+    write_json(CARDS_FILE, v)
 
 # What a stored tab may contain. Anything else is dropped rather than trusted:
 # this file is written by one browser and handed to every other one, so it is
@@ -206,10 +240,7 @@ def load_layout():
 
 
 def save_layout(v):
-    STATE.mkdir(parents=True, exist_ok=True)
-    tmp = TABS_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(v | {"boot": boot_id()}, indent=2) + "\n")
-    tmp.replace(TABS_FILE)
+    write_json(TABS_FILE, v | {"boot": boot_id()})
 
 
 def boot_id():
@@ -311,10 +342,7 @@ def load_custom():
 
 
 def save_custom(macros):
-    STATE.mkdir(parents=True, exist_ok=True)
-    tmp = CUSTOM_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(macros, indent=2) + "\n")
-    tmp.replace(CUSTOM_FILE)
+    write_json(CUSTOM_FILE, macros)
 
 
 def clean_lines(body):
@@ -338,10 +366,7 @@ def clean_lines(body):
 
 
 def save_pins(names):
-    STATE.mkdir(parents=True, exist_ok=True)
-    tmp = PINS_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(sorted(set(names)), indent=2) + "\n")
-    tmp.replace(PINS_FILE)
+    write_json(PINS_FILE, sorted(set(names)))
 
 
 def load_excludes():
@@ -353,15 +378,7 @@ def load_excludes():
 
 
 def save_excludes(names):
-    """Write via a temp file in the same directory, then rename.
-
-    bb-tty reads this on every session launch; a half-written file would be a
-    parse error at exactly the moment someone is trying to start work.
-    """
-    STATE.mkdir(parents=True, exist_ok=True)
-    tmp = EXCLUDES_FILE.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(sorted(set(names)), indent=2) + "\n")
-    tmp.replace(EXCLUDES_FILE)
+    write_json(EXCLUDES_FILE, sorted(set(names)))
 
 
 def _project_of(uri, known):
@@ -1141,6 +1158,10 @@ class Handler(BaseHTTPRequestHandler):
         addressable by something this server chose.
         """
         action = req.get("action")
+        with _state_lock:                   # read, edit, write — one at a time
+            return self._custom_edit(req, action)
+
+    def _custom_edit(self, req, action):
         macros = load_custom()
         if action == "delete":
             mid = req.get("id")
@@ -1234,12 +1255,13 @@ class Handler(BaseHTTPRequestHandler):
         name, on = req.get("name", ""), bool(req.get("pinned"))
         if name not in MACROS:
             return self._json({"error": f"unknown macro: {name}"}, 400)
-        names = set(load_pins())
-        names.add(name) if on else names.discard(name)
-        try:
-            save_pins(names)
-        except OSError as e:
-            return self._json({"error": f"could not save: {e}"}, 500)
+        with _state_lock:
+            names = set(load_pins())
+            names.add(name) if on else names.discard(name)
+            try:
+                save_pins(names)
+            except OSError as e:
+                return self._json({"error": f"could not save: {e}"}, 500)
         return self._json({"pinned": sorted(names)})
 
     def _layout(self, req):
@@ -1249,18 +1271,19 @@ class Handler(BaseHTTPRequestHandler):
         a number it did not write, and adopts. Without it they would take turns
         overwriting each other every fifteen seconds.
         """
-        cur = load_layout()
-        v = {"rev": cur["rev"] + 1,
-             "tabs": req.get("tabs") or [],
-             "panes": req.get("panes") or [None, None],
-             "active": req.get("active") or 0}
-        try:
-            save_layout(v)
-        except OSError as e:
-            return self._json({"error": f"could not save: {e}"}, 500)
-        # Re-read so the caller gets exactly what every other client will see,
-        # including anything the validator dropped.
-        return self._json(load_layout())
+        with _state_lock:
+            cur = load_layout()
+            v = {"rev": cur["rev"] + 1,
+                 "tabs": req.get("tabs") or [],
+                 "panes": req.get("panes") or [None, None],
+                 "active": req.get("active") or 0}
+            try:
+                save_layout(v)
+            except OSError as e:
+                return self._json({"error": f"could not save: {e}"}, 500)
+            # Re-read so the caller gets exactly what every other client will
+            # see, including anything the validator dropped.
+            return self._json(load_layout())
 
     def _exclude(self, req):
         """Add or remove a project from the exclusion list.
@@ -1277,12 +1300,13 @@ class Handler(BaseHTTPRequestHandler):
             here = set()
         if name not in here:
             return self._json({"error": f"unknown project: {name}"}, 400)
-        names = set(load_excludes())
-        names.add(name) if on else names.discard(name)
-        try:
-            save_excludes(names)
-        except OSError as e:
-            return self._json({"error": f"could not save: {e}"}, 500)
+        with _state_lock:
+            names = set(load_excludes())
+            names.add(name) if on else names.discard(name)
+            try:
+                save_excludes(names)
+            except OSError as e:
+                return self._json({"error": f"could not save: {e}"}, 500)
 
         # An excluded project must not keep a live session running — leaving one
         # attached would mean the exclusion takes effect only next time, which
