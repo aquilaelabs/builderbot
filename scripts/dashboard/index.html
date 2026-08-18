@@ -65,9 +65,8 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
    the card up (see the touchmove listener). No callout: the same hold would
    otherwise raise the platform's long-press menu. */
 .side .card h2{cursor:grab;touch-action:manipulation;user-select:none;
-  -webkit-touch-callout:none;transition:color .15s ease}
+  -webkit-user-select:none;-webkit-touch-callout:none;transition:color .15s ease}
 /* The whole header is a control, so it answers the pointer like one. */
-.side .card h2:hover{color:var(--ink)}
 body.dragging .side .card h2{cursor:grabbing}
 /* Finger-sized where a finger is what presses it: the header is the collapse
    control, and the header-row buttons (refresh, reset, doctor) were 30px. */
@@ -85,14 +84,14 @@ body.dragging .side .card h2{cursor:grabbing}
 .row{display:flex;align-items:center;gap:8px;padding:7px 10px;
   border-bottom:1px solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
-.row .name{font-weight:600}
+/* A directory name can be one long unbroken token; it wraps rather than
+   handing the whole sidebar a sideways scroll. */
+.row .name{font-weight:600;overflow-wrap:anywhere}
 .row .name.go{cursor:pointer}
-.row .name.go:hover{text-decoration:underline}
-.row .sub{color:var(--dim);font:12px/1.4 var(--mono)}
+.row .sub{color:var(--dim);font:12px/1.4 var(--mono);overflow-wrap:anywhere}
 .row .sub.bad{color:var(--bad)}
 /* A problem the page can fix is a link in the colour of its own warning. */
 .row .sub a.fix{color:inherit;text-decoration:underline;cursor:pointer}
-.row .sub a.fix:hover{color:var(--ink)}
 .row .sub.warn{color:var(--warn)}
 /* Excluded is a decision, not a fault — stated plainly rather than alarming. */
 .row .sub.off{color:var(--dim);font-style:italic}
@@ -107,7 +106,30 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
   border-radius:6px;padding:6px 10px;font:12px/1 inherit;cursor:pointer;
   white-space:nowrap;min-height:30px;touch-action:manipulation;
   -webkit-tap-highlight-color:transparent}
-button:hover{background:#2b3540}
+/* Hover, only where there is a pointer that hovers. On a touch screen a tap
+   leaves the element in :hover until the next tap somewhere else — a card
+   header stayed bright after collapsing it, a key stayed lit after ^C, the
+   bar button held its lighter grey — and with the tap highlight turned off
+   that stuck state was the only thing left over from the touch. Placed here,
+   ahead of button.primary/.on and .tab button, which share button:hover's
+   specificity and win only by coming later. */
+@media(hover:hover){
+  .side .card h2:hover{color:var(--ink)}
+  .row .name.go:hover{text-decoration:underline}
+  .row .sub a.fix:hover{color:var(--ink)}
+  button:hover{background:#2b3540}
+  button:disabled:hover{background:#232b34}
+  .cmd button:hover{background:#2b3540}
+  .cmd .tack:hover{color:var(--ink)}
+  button.eye:hover{color:var(--ink)}
+  .tabbar .newtab:hover{color:var(--ink)}
+  .tab .ic:hover{background:rgba(255,255,255,.09);color:var(--ink)}
+  .pane .bar .x:hover{background:rgba(255,255,255,.1);color:var(--ink)}
+  .fx .grp>summary:hover{background:#232b34}
+  .fx .cve:hover{background:#2a1a1a}
+  .tscroll:disabled:hover{background:var(--panel)}
+}
+
 /* Hover states fade rather than snap. Background, border and colour cover
    every button variant on the page; the disabled fade rides on opacity. */
 button,.pane .bar .x,.tab .ic{transition:background-color .15s ease,
@@ -116,7 +138,6 @@ button,.pane .bar .x,.tab .ic{transition:background-color .15s ease,
   button,.pane .bar .x,.tab .ic{transition:none}
 }
 button:disabled{opacity:.5;cursor:default}
-button:disabled:hover{background:#232b34}
 button.primary{background:#1f6f36;border-color:#2ea043}
 button.on{background:#1f6f36;border-color:#2ea043}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
@@ -125,10 +146,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .cmd{display:inline-flex;align-items:stretch;border:1px solid var(--line);
   border-radius:6px;overflow:hidden;background:#232b34}
 .cmd button{border:0;border-radius:0;background:transparent;min-height:28px}
-.cmd button:hover{background:#2b3540}
 .cmd .tack{padding:4px 6px;color:#4b5563;border-left:1px solid var(--line);
   display:inline-flex;align-items:center}
-.cmd .tack:hover{color:var(--ink)}
 .cmd .tack.on{color:var(--accent)}
 .cmd .tack svg{width:13px;height:13px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linejoin:round;stroke-linecap:round}
@@ -141,7 +160,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* The editor. A dialog rather than a card of its own: it is a detour, and it
    should hand the page back when it is done. */
 #modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);
-  display:flex;align-items:center;justify-content:center;padding:16px}
+  display:flex;align-items:safe center;justify-content:center;padding:16px;
+  overflow:auto}   /* a soft keyboard can leave less height than the box */
 #modal[hidden]{display:none}
 #modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   width:min(520px,100%);max-height:90vh;overflow:auto;
@@ -155,6 +175,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
   color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 9px;
   font:13px/1.5 var(--mono)}
 #modal textarea{min-height:132px;resize:vertical;white-space:pre}
+/* 16px on a phone: iOS Safari zooms the page into any smaller field on
+   focus, and this fixed layout has no way to zoom back out. */
+@media(max-width:900px){ #modal input,#modal textarea{font-size:16px} }
 #modal input:focus,#modal textarea:focus{outline:2px solid #2f4d6d;outline-offset:-1px}
 #modal .hint{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-top:6px}
 #modal .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line)}
@@ -162,7 +185,6 @@ button.on{background:#1f6f36;border-color:#2ea043}
 #modal .danger{color:var(--bad);border-color:#4d2220}
 /* Icon-width, so it sits beside Shell rather than wrapping the row. */
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
-button.eye:hover{color:var(--ink)}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
@@ -222,7 +244,9 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 /* Macros run in the terminal now, so there is no output pane to put a message
    in. Anything the page needs to say is transient and says it here. */
 #toast{position:fixed;left:50%;transform:translateX(-50%) translateY(-140%);
-  top:10px;z-index:60;max-width:min(560px,92vw);padding:9px 14px;border-radius:8px;
+  top:calc(10px + env(safe-area-inset-top));z-index:80;   /* over the editor: its
+                            save errors are shown here */
+  max-width:min(560px,92vw);padding:9px 14px;border-radius:8px;overflow-wrap:anywhere;
   background:#232b34;border:1px solid var(--line);color:var(--ink);
   font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.55);
   transition:transform .18s ease,opacity .18s ease;opacity:0;pointer-events:none}
@@ -232,7 +256,6 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 
 .tabbar .newtab{border:1px solid var(--line);border-radius:6px;font-size:15px;
   line-height:1;padding:5px 9px;color:var(--dim)}
-.tabbar .newtab:hover{color:var(--ink)}
 
 /* Tabs --------------------------------------------------------------- */
 /* min-width:0 matters: a grid item's min-content width is the whole nowrap
@@ -245,14 +268,17 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   border-radius:6px;overflow:hidden;background:#232b34}
 .tab.on{background:#1f6f36;border-color:#2ea043}
 .tab button{border:0;border-radius:0;background:transparent;min-height:28px}
+/* The tab and the command chip clip their contents, which would clip the
+   focus ring off a button inside; drawn inside the edge instead. */
+.tab button:focus-visible,.cmd button:focus-visible{outline-offset:-2px}
 .tab .lbl{padding:6px 8px;max-width:34vw;overflow:hidden;text-overflow:ellipsis;
-  cursor:grab;touch-action:manipulation;user-select:none;-webkit-touch-callout:none}
+  cursor:grab;touch-action:manipulation;user-select:none;-webkit-user-select:none;
+  -webkit-touch-callout:none}
 .tab.held{opacity:.45}
 .card.held{opacity:.6}   /* the long-press pickup state, cards as tabs */
-body.dragging{cursor:grabbing;user-select:none}
+body.dragging{cursor:grabbing;user-select:none;-webkit-user-select:none}
 body.dragging .tab .lbl{cursor:grabbing}
 .tab .ic{padding:6px 7px;color:var(--dim);font-size:13px;line-height:1}
-.tab .ic:hover{background:rgba(255,255,255,.09);color:var(--ink)}
 @media(max-width:900px){ .tab button{min-height:var(--tap)} }
 .tabbar .sep{flex:1}
 .tabstrip{display:flex;align-items:stretch}
@@ -269,7 +295,7 @@ body.dragging .tab .lbl{cursor:grabbing}
     background:var(--panel);padding:0 12px;font-size:16px;color:var(--dim)}
   /* Greyed at the end it cannot go past — and both greyed when the strip
      fits, which is how the arrows say there is nothing to page. */
-  .tscroll:disabled,.tscroll:disabled:hover{background:var(--panel);opacity:.35}
+  .tscroll:disabled{background:var(--panel);opacity:.35}
   #tabL{border-radius:8px 0 0 0;border-right:0}
   #tabR{border-radius:0 8px 0 0;border-left:0}
 }
@@ -307,7 +333,6 @@ body.dragging .tab .lbl{cursor:grabbing}
   background:rgba(20,24,29,.92);border-bottom:1px solid var(--line);
   font:11px/1.6 var(--mono);color:var(--dim);flex:0 0 auto}
 .pane .bar .x{margin-left:auto;cursor:pointer;padding:2px 7px;border-radius:4px}
-.pane .bar .x:hover{background:rgba(255,255,255,.1);color:var(--ink)}
 .pane .bar button{min-height:22px;padding:2px 8px;font-size:11px}
 .pane iframe{flex:1;border:0;width:100%;display:block}
 .pane .doc{flex:1;overflow:auto;background:var(--bg);padding:12px;
@@ -338,8 +363,15 @@ body.dragging .tab .lbl{cursor:grabbing}
   .mobar button{flex:1;min-height:var(--tap)}
   .mobar button.on{background:#1f6f36;border-color:#2ea043}
   .keys,.panes{border-radius:0}   /* the bar below them owns the bottom corners */
-  .mpanel.show{display:block;flex:0 0 auto;max-height:45vh;overflow:auto;
+  /* flex-shrink 1, unlike the strip and the bar: on a phone held sideways
+     the fixed chrome plus a flyout can be taller than the screen, and since
+     the body cannot scroll, whatever overflowed was simply gone — the bar
+     included, with no way to close what had opened. The flyout scrolls
+     inside itself instead, and the terminal keeps a strip of screen. */
+  .mpanel.show{display:block;flex:0 1 auto;max-height:45vh;overflow:auto;
     background:var(--panel);border:1px solid var(--line);border-top:0}
+  .keys.show{flex:0 1 auto;overflow:auto;max-height:45vh}
+  .panes{min-height:90px}
   /* Mid-slide a flyout is an overlay pinned above the bottom bar (bottom set
      inline to the bar's height), so the terminal under it holds still until
      the slide lands and the panel drops back into the flow. */
@@ -358,7 +390,6 @@ body.dragging .tab .lbl{cursor:grabbing}
 .fx .grp>summary{padding:9px 11px;cursor:pointer;font-weight:600;
   display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none;
   transition:background-color .15s ease}
-.fx .grp>summary:hover{background:#232b34}
 .fx .grp>summary::-webkit-details-marker{display:none}
 .fx .grp>summary::before{content:"▸";color:var(--dim);font-size:11px}
 .fx .grp[open]>summary::before{content:"▾"}
@@ -366,14 +397,15 @@ body.dragging .tab .lbl{cursor:grabbing}
 .fx .rule{border-top:1px solid var(--line);padding:9px 11px}
 .fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
 .fx .rule .desc{margin:3px 0 6px}
-.fx .loc{font:12px/1.7 var(--mono);color:#cbd5e1}
+.fx .loc{font:12px/1.7 var(--mono);color:#cbd5e1;overflow-wrap:anywhere}
 .fx .msg{font:12px/1.5 var(--mono);color:var(--dim);white-space:pre-wrap;
-  margin:5px 0 0;padding-left:9px;border-left:2px solid var(--line)}
+  margin:5px 0 0;padding-left:9px;border-left:2px solid var(--line);
+  overflow-wrap:anywhere}
+.fx .rule .desc{overflow-wrap:anywhere}
 .fx a{color:var(--note)}
 .fx .cve{display:inline-block;font:11px/1 var(--mono);padding:3px 7px;
   border-radius:99px;border:1px solid #4d2220;color:var(--bad);
   text-decoration:none;margin:0 4px 4px 0}
-.fx .cve:hover{background:#2a1a1a}
 </style>
 </head>
 <body data-view="dash">
@@ -530,15 +562,27 @@ const isSplit = () => panes[1] !== null;
 // tmux by name, and the terminal is an iframe we cannot reach into, so they
 // must agree. A resumed conversation is the same session as a fresh one — the
 // suffix chooses what claude starts with, not which tmux session it lands in.
+//
+// tmux rewrites `.` and `:` in a session name to `_` without saying so, and
+// bb-tty makes the same substitution on purpose (see start() there), so a
+// project called `example.com` runs as `claude-example_com`. Every name
+// derived from a project name here goes through tmuxName(), or the kill,
+// keys and macro requests would name a session that never existed.
+const tmuxName = s => s.replace(/[.:]/g, "_");
 function sessionOf(arg){
   if (arg.startsWith("sh:")){
     const [, n, proj] = arg.split(":");
-    return proj ? `shell-${proj}-${n}` : `shell-${n}`;
+    return tmuxName(proj ? `shell-${proj}-${n}` : `shell-${n}`);
   }
-  if (arg.startsWith("claude:")) return "claude-" + arg.slice(7).split(":")[0];
-  if (arg.startsWith("shell:"))  return "shell-"  + arg.slice(6);
+  if (arg.startsWith("claude:")) return tmuxName("claude-" + arg.slice(7).split(":")[0]);
+  if (arg.startsWith("shell:"))  return tmuxName("shell-"  + arg.slice(6));
   return arg;
 }
+// The project a session name was made from, when it is one we know: the
+// tmux name is not always the project name (see tmuxName), so labels and
+// reopen-by-name look it up rather than slicing the prefix off.
+const projFor = n =>
+  (state?.projects || []).find(p => tmuxName(p.name) === n)?.name ?? null;
 
 const isClaude = t => t.kind === "term" && sessionOf(t.arg).startsWith("claude-");
 const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
@@ -570,7 +614,7 @@ const baseOf = path => path.replace(/\/+$/, "").split("/").pop() || "/";
 // — and only the duplicates — carry a number.
 function sessionLabels(){
   const list = (state?.sessions || []);
-  const of = s => s.name.startsWith("claude-") ? "Claude: " + s.name.slice(7)
+  const of = s => s.name.startsWith("claude-") ? "Claude: " + (projFor(s.name.slice(7)) ?? s.name.slice(7))
            : s.cwd ? "sh: " + baseOf(s.cwd)
            : "sh: " + s.name;
   const total = {};
@@ -610,7 +654,7 @@ function tabLabels(){
 function nextShell(proj){
   const taken = new Set([...liveSessions(),
                          ...tabs.filter(t => t.kind === "term").map(t => sessionOf(t.arg))]);
-  const base = proj ? `shell-${proj}` : "shell";
+  const base = tmuxName(proj ? `shell-${proj}` : "shell");
   for (let n = 1; n <= 99; n++)
     if (!taken.has(`${base}-${n}`)) return `sh:${n}:${proj}`;
   return null;
@@ -649,8 +693,9 @@ function setView(v){
        .onfinish = () => main.style.overflowX = "";
   }
   // The strip was display:none while the dashboard was in front, so nothing
-  // drawn then could scroll it — bring the tab just opened into view now.
-  if (v === "terminal") revealActiveTab();
+  // drawn then could scroll it — bring the tab just opened into view now,
+  // and re-judge the arrows, which measured a zero-width strip until now.
+  if (v === "terminal"){ revealActiveTab(); updateArrows(); }
 }
 // A phone reload lands on the side it left; the attribute is set directly so
 // the first paint is not an entrance animation.
@@ -681,6 +726,14 @@ function openTab(spec){
     if (!roomForTab()) return;
     t = Object.assign({id:"t" + (++seq)}, spec);
     tabs.push(t);
+  } else if (t.kind === "term" && t.arg !== spec.arg
+             && !liveSessions().has(sessionOf(t.arg))){
+    // Same session, different argument, and the session is gone: the new
+    // argument is the one that decides what starts — Resume on a tab whose
+    // claude has exited must carry the transcript id, not the old fresh-
+    // conversation arg the tab was opened with. A live session keeps its
+    // tab's arg: reloading the frame would only re-attach to it anyway.
+    t.arg = spec.arg;
   }
   const shown = panes.indexOf(t.id);
   if (shown === -1) panes[active] = t.id;    // not on screen — put it here
@@ -746,6 +799,7 @@ function hideTab(id, ev){
 // one, then to whatever tab is still open, then to nothing — which drawPanes
 // renders as a placeholder rather than this function preventing.
 function dropTab(id){
+  if (pinFor === id) pinFor = null;    // its menu would otherwise outlive it
   tabs = tabs.filter(x => x.id !== id);
   for (let i = 0; i < 2; i++) if (panes[i] === id) panes[i] = null;
   if (panes[0] === null && panes[1] !== null){ panes[0] = panes[1]; panes[1] = null; }
@@ -757,6 +811,7 @@ function dropTab(id){
 function pinTo(id, idx, ev){
   ev?.stopPropagation();
   pinFor = null;
+  if (!tabOf(id)){ render(); return; }   // the tab went while its menu was open
   const other = 1 - idx;
   if (panes[other] === id){
     // It is already in the other pane. That pane needs something else or the
@@ -995,6 +1050,7 @@ function drawTabs(){
   // and a rebuild here would detach the node a finger is holding (see
   // reorderTabEls). Labels catch up on the redraw that follows the drop.
   if (drag){ reorderTabEls(); return; }
+  if (pinFor && !tabOf(pinFor)) pinFor = null;   // its tab went (another browser's layout, a kill)
   const cur = panes[active], names = tabLabels();
   const html = tabs.map(t => {
     // Only a split has sides worth marking; a lone pane is just "the screen".
@@ -1138,8 +1194,8 @@ function revealActiveTab(){
 
 // Mobile paging for the one-row strip: each press slides it by most of a
 // screen. The arrows only exist on a phone; desktop wraps instead.
-$("tabL").onclick = () => $("tabbar").scrollBy({left: -$("tabbar").clientWidth * .7, behavior: "smooth"});
-$("tabR").onclick = () => $("tabbar").scrollBy({left:  $("tabbar").clientWidth * .7, behavior: "smooth"});
+$("tabL").onclick = () => $("tabbar").scrollBy({left: -$("tabbar").clientWidth * .7, behavior: noMotion() ? "instant" : "smooth"});
+$("tabR").onclick = () => $("tabbar").scrollBy({left:  $("tabbar").clientWidth * .7, behavior: noMotion() ? "instant" : "smooth"});
 function updateArrows(){
   const bar = $("tabbar");
   $("tabL").disabled = bar.scrollLeft <= 1;
@@ -1174,15 +1230,28 @@ function paintBar(pane, t, i){
 }
 
 function drawPanes(){
+  if (!state) return;    // nothing to point a frame at until the first poll
   $("panes").classList.toggle("split", isSplit());
   for (let i = 0; i < 2; i++){
     const pane = $("pane" + i);
     pane.classList.toggle("hidden", i === 1 && !isSplit());
     pane.classList.toggle("active", isSplit() && i === active);
-    if (i === 1 && !isSplit()) continue;
+    if (i === 1 && !isSplit()){
+      // Emptied, not just hidden: a hidden frame is still a live tmux client
+      // — a second one on a session that has a visible tab (the size fight
+      // pinTo works to avoid), and one that reattachTerminals would reload,
+      // recreating a session that had since been ended.
+      if (pane.dataset.tab){ pane.innerHTML = ""; pane.dataset.tab = pane.dataset.kind = pane.dataset.arg = ""; }
+      continue;
+    }
 
     const t = tabOf(panes[i]);
-    const same = pane.dataset.tab === (t?.id || "") && pane.dataset.kind === (t?.kind || "");
+    // Arg included: two browsers minting the same id for different things
+    // inside one poll (their counters were equal), or a dead session's tab
+    // taking a resume arg, must rebuild the frame — id and kind alone said
+    // "same" and left the old terminal showing under the new name.
+    const same = pane.dataset.tab === (t?.id || "") && pane.dataset.kind === (t?.kind || "")
+              && pane.dataset.arg === (t?.arg || "");
     if (same && t){
       paintBar(pane, t, i);
       // Refill a document pane only when the report itself changed. Doing it
@@ -1195,7 +1264,7 @@ function drawPanes(){
     }
     if (same) continue;
 
-    pane.dataset.tab = t?.id || ""; pane.dataset.kind = t?.kind || "";
+    pane.dataset.tab = t?.id || ""; pane.dataset.kind = t?.kind || ""; pane.dataset.arg = t?.arg || "";
     pane.onclick = () => { if (isSplit()){ active = i; render(); } };
 
     if (!t){ pane.innerHTML = `<div class="empty-pane">no tab here — “+” opens a terminal, Sessions reopens a running one</div>`; continue; }
@@ -1879,14 +1948,14 @@ function drawProjects(ps){
                >${esc(i.text)}</a></div>`
           : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
-      ${isBroken(p) ? "" : `<button class="${live.has("claude-"+p.name) ? "primary" : ""}"
+      ${isBroken(p) ? "" : `<button class="${live.has(tmuxName("claude-"+p.name)) ? "primary" : ""}"
          data-c="${esc(p.name)}"
-         title="${live.has("claude-"+p.name) ? "session running — go to its tab"
+         title="${live.has(tmuxName("claude-"+p.name)) ? "session running — go to its tab"
                  : p.last_claude ? "no session running — resume or start one"
                  : "start a Claude session here"}">${
            // The same working/waiting dot the tab wears, so a phone showing
            // the dashboard still answers "is it waiting on me?" per project.
-           stateDot(claudeOf("claude-" + p.name))}Claude</button>`}
+           stateDot(claudeOf(tmuxName("claude-" + p.name)))}Claude</button>`}
       <button data-s="${esc(p.name)}" title="open another terminal here">Shell</button>
       <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
         aria-label="${p.excluded ? "include" : "exclude"}"
@@ -2161,7 +2230,7 @@ const ago = s => {
 function openClaude(name, ev){
   ev?.stopPropagation();
   const p = (state?.projects || []).find(x => x.name === name);
-  if (liveSessions().has("claude-" + name) || !p?.last_claude){
+  if (liveSessions().has(tmuxName("claude-" + name)) || !p?.last_claude){
     resumeFor = null;
     return startClaude(name, null);
   }
@@ -2225,15 +2294,19 @@ async function setExcluded(name, on){
 // exclusion check and the scoped settings — which is only invisible while the
 // session already exists. Map it back when the project is one we know.
 function argForSession(name){
-  const known = new Set((state?.projects || []).map(p => p.name));
-  // An exact project match wins, so a project genuinely called "web-2" is not
-  // read as terminal 2 of a project called "web".
-  for (const [prefix, arg] of [["claude-", "claude:"], ["shell-", "shell:"]])
-    if (name.startsWith(prefix) && known.has(name.slice(prefix.length)))
-      return arg + name.slice(prefix.length);
+  // Matched through tmuxName (a session's name is the project's with `.` and
+  // `:` rewritten), and by exact project first, so a project genuinely called
+  // "web-2" is not read as terminal 2 of a project called "web".
+  for (const [prefix, arg] of [["claude-", "claude:"], ["shell-", "shell:"]]){
+    const p = name.startsWith(prefix) ? projFor(name.slice(prefix.length)) : null;
+    if (p) return arg + p;
+  }
   // shell-<project>-<n> and shell-<n>, the numbered terminals.
   const m = /^shell-(?:(.+)-)?(\d+)$/.exec(name);
-  if (m && (!m[1] || known.has(m[1]))) return `sh:${m[2]}:${m[1] || ""}`;
+  if (m){
+    const p = m[1] ? projFor(m[1]) : "";
+    if (p !== null) return `sh:${m[2]}:${p}`;
+  }
   return name;
 }
 
@@ -2273,8 +2346,8 @@ function drawSessions(ss){
   if (!fresh) return;
   // On a phone the list is a flyout over the terminal, and picking a session
   // is a request to look at it — the flyout gets out of the way.
-  const goTo = name => { if (isPhone()) showSessions = false;
-                         openTab({kind:"term", arg:argForSession(name), label:name}); };
+  const goTo = name => { if (isPhone()){ showSessions = false; drawKeys(); }   // even if the
+                         openTab({kind:"term", arg:argForSession(name), label:name}); };  // tab cap refuses
   el.querySelectorAll("[data-a]").forEach(b => b.onclick = () => goTo(b.dataset.a));
   el.querySelectorAll("[data-go]").forEach(n => n.onclick = () => goTo(n.dataset.go));
   el.querySelectorAll("[data-min]").forEach(b => b.onclick = () => hideTab(b.dataset.min));
@@ -2393,6 +2466,12 @@ function layoutNow(){
 
 function saveLayout(){
   if (adopting) return;                 // echoing back what we were just given
+  // Nor before the first status has arrived: this page has not yet been told
+  // what the strip is, and saving its built-in default now (a bottom-bar tap
+  // on a phone that came back on the terminal view is enough to render)
+  // would overwrite the real one — and then, holding that revision, ignore
+  // the server's copy of what it just destroyed.
+  if (!state) return;
   const body = JSON.stringify(layoutNow());
   if (body === lastSaved) return;       // render() runs on every poll
   lastSaved = body;
@@ -2412,22 +2491,40 @@ async function pushLayout(){
   if (pushing) return;
   pushing = true;
   const body = lastSaved;
+  let ok = false;
   try{
     const r = await fetch("/api/layout", {method:"POST",
       headers:{"Content-Type":"application/json"}, body});
     const j = await r.json();
-    if (typeof j.rev === "number") myRev = j.rev;
-  }catch(e){ /* the next change retries */ }
+    if (typeof j.rev === "number"){ myRev = j.rev; ok = true; }
+  }catch(e){ /* below */ }
   pushing = false;
   if (lastSaved !== body) pushLayout();
-  else savePending = false;
+  else if (ok) savePending = false;
+  else {
+    // Not saved. Forget that it was, so the next render (the poll, within
+    // fifteen seconds) tries again — a change silently kept local would be
+    // overwritten by the other browser's next write. Not retried right here:
+    // a server that is down would be hammered.
+    lastSaved = null; savePending = false;
+  }
 }
 
 // Take on a layout another browser wrote. Terminal tabs restore themselves —
 // bb-tty attaches to the session if it is still there and recreates it in the
 // same directory if it is not.
 function adoptLayout(v){
-  if (!v || v.rev === myRev || savePending) return;
+  // Only a revision NEWER than the one this page holds. A poll the server
+  // answered just before our push landed arrives carrying the strip as it
+  // was before the change — one revision behind, and by then savePending is
+  // already false. Under a plain "different revision" test that stale copy
+  // was adopted: the tab just minimised came back, and a killed session's
+  // tab was rebuilt, which recreated the session. Revisions only go up.
+  if (!v || v.rev <= myRev || savePending) return;
+  // Not under a moving pointer either: the strip is re-sorted in place while
+  // a tab is held, and swapping the array underneath would drop it one slot
+  // off from where the finger is.
+  if (drag) return;
   // Revision 0 with nothing in it is a server that has never been written to,
   // not an operator who closed every tab — keep the default strip rather than
   // adopting the void. A strip the operator deliberately emptied was saved,
@@ -2451,8 +2548,8 @@ function adoptLayout(v){
   if (panes[1] === panes[0]) panes[1] = null;
   active = panes[1] && v.active === 1 ? 1 : 0;
   lastSaved = JSON.stringify(layoutNow());
-  render();
-  adopting = false;
+  try{ render(); } finally{ adopting = false; }   // a draw error must not
+                                                  // leave saves suppressed
 }
 
 async function refresh(){
