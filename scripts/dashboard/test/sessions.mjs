@@ -1,0 +1,87 @@
+// Sessions card and its relationship to the tab strip: name goes to the tab,
+// the button minimises/closes/opens, attached pill and pane glyphs, tooltips,
+// macros only on shell tabs, middle-click ends a session, findings tab
+// behaviour, and the phone's bottom bar.
+import { launch, newPage, ok, done, URL } from './lib.mjs';
+
+const browser = await launch();
+const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
+await page.goto(URL);
+await page.waitForFunction(() => document.querySelectorAll('#sessions .row').length >= 2, { timeout: 40000 });
+const row = n => page.locator('#sessions .row', { has: page.locator(`[data-go="${n}"]`) });
+const btn = n => row(n).locator('button').first();
+
+ok((await btn('shell-9').textContent()).trim() === 'Open', 'minimised session shows Open');
+await row('shell-9').locator('[data-go]').click();
+await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
+ok((await btn('shell-9').textContent()).trim() === 'Minimise' && await btn('shell-9').evaluate(b => b.classList.contains('primary')),
+   'clicking the name opens the tab; button becomes green Minimise');
+ok(await page.evaluate(() => sessionOf(tabOf(panes[0]).arg) === 'shell-9'), '...and goes to it');
+ok((await row('shell-9').locator('.pill.att').textContent()).trim() === 'attached', 'attached pill, no glyph while unsplit');
+ok(await page.$eval('.tab.on .lbl', el => !el.textContent.includes('◧')), 'no pane glyph on the tab while unsplit');
+ok((await row('shell-9').locator('[data-go]').getAttribute('title')) === await page.$eval('.tab.on .lbl', el => el.title),
+   'session tooltip equals the tab tooltip');
+await btn('shell-9').click();
+await page.waitForFunction(() => !tabs.some(t => sessionOf(t.arg) === 'shell-9'));
+ok((await btn('shell-9').textContent()).trim() === 'Open', 'Minimise takes the tab away');
+
+await row('shell-9').locator('[data-go]').click();
+await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
+await page.evaluate(() => pinTo(tabs.find(x => sessionOf(x.arg) === 'shell-9').id, 1));
+ok((await row('shell-9').locator('.pill.att').textContent()).trim().startsWith('◨'), 'split: pane glyph on the pill');
+ok(await page.$$eval('.tab .lbl', els => els.some(e => e.textContent.includes('◧')) && els.some(e => e.textContent.includes('◨'))), 'split: tabs carry glyphs');
+await page.evaluate(() => closePane(1));
+
+await row('claude-alpha').locator('[data-go]').click();
+await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'claude-alpha'));
+ok((await btn('claude-alpha').textContent()).trim() === 'Close', 'claude session on the strip shows Close');
+ok(await page.$eval('#commands [data-m]', b => b.disabled) && await page.$eval('#runner [data-m]', b => b.disabled), 'macros greyed on a Claude tab');
+const nd = page.dialogs.length;
+await btn('claude-alpha').click();
+await page.waitForFunction(() => !document.querySelector('[data-go="claude-alpha"]'), { timeout: 15000 });
+ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Claude'), 'Close asked first, then ended the session');
+
+await page.click('#cardFindings .macros button');
+await page.waitForSelector('details[data-proj="alpha"]');
+await page.click('details[data-proj="alpha"] summary');
+ok(await page.$eval('details[data-proj="alpha"]', d => d.getAnimations().length > 0 && d.open), 'findings group animates open');
+await page.waitForFunction(() => document.querySelector('details[data-proj="alpha"]').getAnimations().length === 0);
+ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros greyed on the findings tab');
+ok(await page.$$eval('.stats .pill', ps => ps.some(p => p.textContent.trim() === '2 hidden')), 'report says how many findings it held back');
+await page.click('#cardFindings .macros button');
+ok(await page.$eval('details[data-proj="alpha"]', d => d.open), 'reopening the report keeps the expanded group');
+// The layout save is debounced; reload only once the server has the tab.
+await page.waitForFunction(async () =>
+  (await (await fetch('/api/status')).json()).layout.tabs.some(t => t.kind === 'findings'), { timeout: 15000 });
+await page.reload();
+await page.waitForFunction(() => document.querySelector('details[data-proj]') !== null, { timeout: 30000 });
+ok(true, 'a findings tab restored from the layout loads itself');
+
+await page.evaluate(() => focusTab(tabs.find(t => sessionOf(t.arg) === 'shell-9').id));
+ok(await page.$eval('#commands [data-m]', b => !b.disabled), 'macros live on a shell tab');
+const nd2 = page.dialogs.length;
+const tb = await (await page.$('.tab.on')).boundingBox();
+await page.mouse.click(tb.x + 20, tb.y + 12, { button: 'middle' });
+await page.waitForFunction(() => !document.querySelector('[data-go="shell-9"]'), { timeout: 15000 });
+ok(page.dialogs.length === nd2 + 1, 'middle-click asks, then ends the session and its tab');
+
+const phone = await newPage(browser, { viewport: { width: 400, height: 800 } });
+await phone.goto(URL);
+await phone.waitForFunction(() => document.getElementById('sessions').parentElement.id === 'mpSessions', { timeout: 30000 });
+await phone.evaluate(() => setView('terminal'));
+await phone.waitForSelector('#bKeys', { state: 'attached' });
+ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && await phone.$eval('#bKeys', el => getComputedStyle(el).display === 'none'),
+   'phone shows the bottom bar and hides the strip ⌨');
+await phone.click('#mSessions');
+ok(await phone.$eval('#sespanel', el => el.classList.contains('show')), 'Sessions opens its panel');
+await phone.click('#mMacros');
+ok(!(await phone.$eval('#sespanel', el => el.classList.contains('show'))) && await phone.$eval('#macpanel', el => el.classList.contains('show')),
+   'Commands closes it and opens the macros');
+ok(await phone.$eval('#commands', el => el.parentElement.id === 'mpCmd' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
+ok(await phone.$eval('.tab [data-pin]', el => getComputedStyle(el).display === 'none'), 'pin buttons hidden on a phone');
+ok(await phone.$eval('#tabL', el => getComputedStyle(el).display !== 'none') && await phone.$eval('#tabbar', el => getComputedStyle(el).flexWrap === 'nowrap'),
+   'strip is one row with scroll arrows');
+await phone.close();
+
+ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+await done(browser);
