@@ -79,6 +79,15 @@ ok(!(await phone.$eval('#sespanel', el => el.classList.contains('show'))) && awa
    'Commands closes it and opens the macros');
 ok(await phone.$eval('#commands', el => el.parentElement.id === 'mpCmd' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
 ok(await phone.$eval('.tab [data-pin]', el => getComputedStyle(el).display === 'none'), 'pin buttons hidden on a phone');
+// Claude on a project with a transcript opens the Resume/New chooser — which
+// must be visible on a phone (it once shared the hidden pin menu's class).
+await phone.evaluate(() => setView('dash'));
+await phone.click('#projects [data-c="alpha"]');
+ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
+   'phone: Claude on a project with history shows the Resume/New chooser');
+await phone.click('.resumemenu [data-n]');
+await phone.waitForFunction(() => tabs.some(t => t.arg === 'claude:alpha') && document.body.dataset.view === 'terminal');
+ok(true, 'phone: New conversation opens the Claude tab and switches to the terminal');
 ok(await phone.$eval('#tabL', el => getComputedStyle(el).display !== 'none') && await phone.$eval('#tabbar', el => getComputedStyle(el).flexWrap === 'nowrap'),
    'strip is one row with scroll arrows');
 await phone.close();
