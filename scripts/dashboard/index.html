@@ -77,6 +77,8 @@ body.dragging .side .card h2{cursor:grabbing}
   border-bottom:1px solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
 .row .name{font-weight:600}
+.row .name.go{cursor:pointer}
+.row .name.go:hover{text-decoration:underline}
 .row .sub{color:var(--dim);font:12px/1.4 var(--mono)}
 .row .sub.bad{color:var(--bad)}
 /* A problem the page can fix is a link in the colour of its own warning. */
@@ -306,7 +308,9 @@ body.dragging .tab .lbl{cursor:grabbing}
 .mobar,.mpanel{display:none}
 @media(max-width:900px){
   .tabbar #bKeys,.tabbar .sep{display:none}
-  .card[data-card="commands"],.card[data-card="custom"]{display:none}
+  .card[data-card="commands"],.card[data-card="custom"],
+  .card[data-card="sessions"]{display:none}
+  .pill.att{display:none}   /* one pane on a phone: nothing to say */
   .mobar{display:flex;gap:6px;padding:6px;flex:0 0 auto;background:var(--panel);
     border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}
   .mobar button{flex:1;min-height:var(--tap)}
@@ -457,9 +461,11 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="lab">bb commands</div><div id="mpCmd"></div>
       <div class="lab">custom commands</div><div id="mpCustom"></div>
     </div>
+    <div class="mpanel" id="sespanel"><div id="mpSessions"></div></div>
     <div class="mobar" id="mobar">
       <button id="mKeys">⌨ Keys</button>
       <button id="mMacros">» Commands</button>
+      <button id="mSessions">☰ Sessions</button>
     </div>
   </div>
 </main>
@@ -646,6 +652,21 @@ function show(t){
   render();
   if (isPhone()) setView("terminal");
   if (t.kind === "findings" && !findings) loadFindings();
+  refreshSoon();      // a just-opened terminal's session appears in Sessions
+}
+
+// The status poll is every fifteen seconds, which is the right cadence for
+// watching and the wrong one for feedback: a terminal opened here should show
+// up under Sessions when it exists, not up to a quarter-minute later. Actions
+// that change something the poll reports call this — one refresh now, and two
+// more shortly after, because a session takes a moment to exist after its
+// iframe is created (bb-tty makes it on the terminal's connection). Timers
+// are collapsed so a burst of clicks is one burst of polls.
+let soonTimers = [];
+function refreshSoon(){
+  soonTimers.forEach(clearTimeout);
+  refresh();
+  soonTimers = [1500, 4000].map(ms => setTimeout(refresh, ms));
 }
 
 // Take a tab off the strip. Nothing is destroyed and nothing is asked: a
@@ -872,7 +893,8 @@ function drawTabs(){
     : null;
   const cur = panes[active], names = tabLabels();
   const html = tabs.map(t => {
-    const where = panes[0] === t.id ? "◧" : panes[1] === t.id ? "◨" : "";
+    // Only a split has sides worth marking; a lone pane is just "the screen".
+    const where = !isSplit() ? "" : panes[0] === t.id ? "◧" : panes[1] === t.id ? "◨" : "";
     const held = drag?.moved && drag.id === t.id ? " held" : "";
     return `<span class="tab ${t.id===cur?"on":""}${held}" data-id="${esc(t.id)}">
       <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
@@ -904,15 +926,18 @@ function drawTabs(){
     b.onpointerdown = e => startDrag(e, b.dataset.show);
     b.onclick = () => { if (!swallowClick) focusTab(b.dataset.show); };
   });
-  // Middle-click does the same as the tab's own button, the way a browser tab
-  // does. `click` never fires for button 1 and pointerdown would arm the
-  // autoscroll cursor first, so this is auxclick with the default suppressed.
-  bar.querySelectorAll(".tab").forEach(el => {
+  // Middle-click closes for good, the way a browser tab does: a terminal's
+  // session ends with it (after the same confirmation the Sessions ✕ asks),
+  // a document just goes. `click` never fires for button 1 and pointerdown
+  // would arm the autoscroll cursor first, so this is auxclick with the
+  // default suppressed.
+  bar.querySelectorAll(".tab[data-id]").forEach(el => {
     el.onpointerdown = e => { if (e.button === 1) e.preventDefault(); };
     el.onauxclick = e => {
       if (e.button !== 1) return;
       e.preventDefault();
-      hideTab(el.dataset.id, e);
+      const t = tabOf(el.dataset.id);
+      if (t?.kind === "term") killSession(sessionOf(t.arg)); else hideTab(el.dataset.id, e);
     };
   });
   bar.querySelectorAll("[data-pin]").forEach(b => b.onclick = e => togglePin(b.dataset.pin, e));
@@ -1020,10 +1045,15 @@ function drawPanes(){
       // its own port and so counts as a cross-origin frame. Claude tabs are
       // left without it — they keep tmux's mouse mode, where a drag never
       // becomes a browser selection in the first place.
-      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}"></iframe></div>`
+      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="refreshSoon()"></iframe></div>`
       : `<div class="doc fx" id="doc${i}"></div>`);
     paintBar(pane, t, i);
-    if (t.kind === "findings"){ pane.dataset.rev = String(findingsRev); renderFindingsInto(i); }
+    if (t.kind === "findings"){
+      pane.dataset.rev = String(findingsRev); renderFindingsInto(i);
+      // A findings tab restored from the saved layout has no one calling
+      // loadFindings for it — it sat on "loading…" until something else did.
+      if (!findings) loadFindings();
+    }
   }
 }
 
@@ -1064,20 +1094,29 @@ const KEYS = [
 // #custom elements, moved between their cards and this panel as the viewport
 // crosses the phone breakpoint: one DOM, one set of handlers, no second copy
 // to drift. Desktop never shows the panel, so nothing moves there.
-let showMacros = false;
+let showMacros = false, showSessions = false;
 
 function placeMacros(){
   const phone = isPhone();
-  const cmdHome = phone ? $("mpCmd")    : document.querySelector('.card[data-card="commands"]');
-  const cusHome = phone ? $("mpCustom") : document.querySelector('.card[data-card="custom"]');
-  if ($("commands").parentElement !== cmdHome) cmdHome.appendChild($("commands"));
-  if ($("custom").parentElement   !== cusHome) cusHome.appendChild($("custom"));
+  for (const [id, mp] of [["commands", "mpCmd"], ["custom", "mpCustom"], ["sessions", "mpSessions"]]){
+    const home = phone ? $(mp) : document.querySelector(`.card[data-card="${id}"]`);
+    if ($(id).parentElement !== home) home.appendChild($(id));
+  }
 }
 placeMacros();
 window.matchMedia("(max-width:900px)").addEventListener("change", () => { placeMacros(); render(); });
 
-$("mKeys").onclick   = () => { showKeys = !showKeys;     if (showKeys)   showMacros = false; render(); };
-$("mMacros").onclick = () => { showMacros = !showMacros; if (showMacros) showKeys   = false; render(); };
+// One panel at a time on the phone: opening any of the three closes the others.
+function mobPanel(which){
+  const on = {keys: showKeys, macros: showMacros, sessions: showSessions}[which];
+  showKeys = which === "keys" ? !on : false;
+  showMacros = which === "macros" ? !on : false;
+  showSessions = which === "sessions" ? !on : false;
+  render();
+}
+$("mKeys").onclick     = () => mobPanel("keys");
+$("mMacros").onclick   = () => mobPanel("macros");
+$("mSessions").onclick = () => mobPanel("sessions");
 
 function drawKeys(){
   const el = $("keys");
@@ -1087,6 +1126,8 @@ function drawKeys(){
   $("mKeys").classList.toggle("on", on);
   $("mMacros").classList.toggle("on", showMacros);
   $("macpanel").classList.toggle("show", showMacros);
+  $("mSessions").classList.toggle("on", showSessions);
+  $("sespanel").classList.toggle("show", showSessions);
   if (!on){ el.innerHTML = ""; return; }
   el.innerHTML = KEYS.map(r =>
     r.map(([k,l]) => `<button data-k="${esc(k)}">${esc(l)}</button>`).join("")
@@ -1234,9 +1275,23 @@ function renderFindingsInto(i){
     html += `</details>`;
   }
   el.innerHTML = html;
-  el.querySelectorAll("details[data-proj]").forEach(d =>
+  el.querySelectorAll("details[data-proj]").forEach(d => {
     d.addEventListener("toggle", () =>
-      d.open ? opened.add(d.dataset.proj) : opened.delete(d.dataset.proj)));
+      d.open ? opened.add(d.dataset.proj) : opened.delete(d.dataset.proj));
+    // The same height tween the sidebar cards fold with: closing keeps the
+    // body visible while it shrinks and flips `open` at the end.
+    d.querySelector("summary").onclick = e => {
+      e.preventDefault();
+      if (noMotion()){ d.open = !d.open; return; }
+      const closing = d.open, from = d.offsetHeight;
+      d.getAnimations().forEach(a => a.cancel());
+      d.open = true;
+      const to = closing ? d.querySelector("summary").offsetHeight : d.offsetHeight;
+      d.style.overflow = "hidden";
+      d.animate([{height: from + "px"}, {height: to + "px"}], {duration: 180, easing: "ease"})
+       .onfinish = () => { d.style.overflow = ""; if (closing) d.open = false; };
+    };
+  });
 }
 
 // ---- sidebar cards ---------------------------------------------------
@@ -1477,7 +1532,7 @@ function drawRunner(r){
       ].map(([m, label, cls]) =>
         `<button class="${cls}" data-m="${m}">${label}</button>`).join("")
     }</div>`;
-  el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
+  wireMacros(el);
 }
 
 // What gets folded away is what the button says: projects with an *error*, and
@@ -1685,7 +1740,7 @@ function drawCommands(){
   if (order.length > COMMANDS_SHOWN)
     $("bCmds").onclick = () => { showAllCommands = !showAllCommands;
                                  slideBody(el, drawCommands); };
-  el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => macro(b.dataset.m));
+  wireMacros(el);
   el.querySelectorAll("[data-tack]").forEach(b => b.onclick = () =>
     setPinned(b.dataset.tack, b.dataset.on === "0"));
 }
@@ -1738,7 +1793,7 @@ function drawCustom(){
   // "+" is redrawn with the list it adds to — a static button would be wiped
   // by this very innerHTML — and lives here because the header holds nothing.
   + `<button id="bAdd" title="new custom command">+</button>`;
-  el.querySelectorAll("[data-run]").forEach(b => b.onclick = () => macro(null, b.dataset.run));
+  wireMacros(el);
   el.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => editCustom(b.dataset.edit));
   $("bAdd").onclick = () => editCustom(null);
 }
@@ -1893,24 +1948,37 @@ function drawSessions(ss){
   // Named exactly as its tab is — the tmux name and the full path are on hover,
   // where the detail belongs.
   const names = sessionLabels();
-  // The Open button wears where the session's tab is: green when the tab is
-  // on the strip (Open goes to it), plain when it is minimised (Open brings
-  // it back). Not tmux's attach state — that only ever restated which tab
-  // was selected, which the reader is already looking at.
-  const tabbed = new Set(tabs.filter(t => t.kind === "term").map(t => sessionOf(t.arg)));
-  el.innerHTML = ss.map(s => `
+  // The name is the way to a session's tab — click it and you are there,
+  // reopened first if it was minimised. The button beside it does the other
+  // thing: green when the tab is on the strip, and then it puts the tab away
+  // (Minimise for a shell; Close for a Claude session, which asks first, the
+  // way the ✕ does, because that one ends the conversation); plain "Open"
+  // when there is no tab. The pill says whether the session is on screen
+  // right now, and in which pane when the view is split.
+  const tabFor = new Map(tabs.filter(t => t.kind === "term").map(t => [sessionOf(t.arg), t]));
+  el.innerHTML = ss.map(s => {
+    const t = tabFor.get(s.name);
+    const claude = s.name.startsWith("claude-");
+    const shownAt = t ? panes.indexOf(t.id) : -1;
+    const pill = shownAt === -1 ? ""
+      : `<span class="pill ok att">${isSplit() ? (shownAt === 0 ? "◧ " : "◨ ") : ""}attached</span>`;
+    const tip = tabTitle(t || {kind:"term", arg: argForSession(s.name), label: s.name});
+    return `
     <div class="row">
-      <div class="grow"><span class="name" title="${esc(s.name + (s.cwd ? " — " + s.cwd : ""))}"
-        >${stateDot(s.claude)}${esc(names.get(s.name) || s.name)}</span>
+      <div class="grow"><span class="name go" data-go="${esc(s.name)}" title="${esc(tip)}"
+        >${stateDot(s.claude)}${esc(names.get(s.name) || s.name)}</span> ${pill}
         ${s.claude?.task ? `<div class="sub" title="${esc(s.claude.task)}">${
           s.claude.state === "working" ? "working on" : "done"}: ${esc(s.claude.task)}</div>` : ""}</div>
-      <button class="${tabbed.has(s.name) ? "primary" : ""}" data-a="${esc(s.name)}"
-        title="${tabbed.has(s.name) ? "its tab is on the tab bar — go to it"
-                                    : "minimised — reopen its tab"}">Open</button>
+      ${t ? (claude
+          ? `<button class="primary" data-k="${esc(s.name)}" title="end this Claude session — asks first">Close</button>`
+          : `<button class="primary" data-min="${esc(t.id)}" title="take its tab off the strip — it keeps running">Minimise</button>`)
+          : `<button data-a="${esc(s.name)}" title="reopen its tab">Open</button>`}
       <button data-k="${esc(s.name)}" title="end this session">✕</button>
-    </div>`).join("");
-  el.querySelectorAll("[data-a]").forEach(b => b.onclick = () =>
-    openTab({kind:"term", arg:argForSession(b.dataset.a), label:b.dataset.a}));
+    </div>`; }).join("");
+  const goTo = name => openTab({kind:"term", arg:argForSession(name), label:name});
+  el.querySelectorAll("[data-a]").forEach(b => b.onclick = () => goTo(b.dataset.a));
+  el.querySelectorAll("[data-go]").forEach(n => n.onclick = () => goTo(n.dataset.go));
+  el.querySelectorAll("[data-min]").forEach(b => b.onclick = () => hideTab(b.dataset.min));
   // Closing a terminal tab leaves its session running, so this is where one
   // actually gets ended — otherwise they would only ever accumulate.
   el.querySelectorAll("[data-k]").forEach(b => b.onclick = () => killSession(b.dataset.k));
@@ -1952,8 +2020,21 @@ function notify(msg, bad){
 // is closable now, so the caller opens a terminal instead of assuming one.
 function macroTarget(){
   const here = tabOf(panes[active]);
-  if (here && here.kind === "term" && !isClaude(here)) return here;
-  return tabs.find(t => t.kind === "term" && !isClaude(t)) || null;
+  return here && here.kind === "term" && !isClaude(here) ? here : null;
+}
+// Every macro button — the runner card's, the bb card's, the custom ones —
+// greys out when the tab being looked at is not a plain shell: a Claude tab
+// would take the command as a prompt, a document has nowhere to type, and
+// quietly targeting some other tab was a surprise. With no tab at all they
+// stay live: pressing one opens a terminal.
+const macrosLive = () => !!macroTarget() || !tabOf(panes[active]);
+function wireMacros(el){
+  const live = macrosLive();
+  el.querySelectorAll("[data-m],[data-run]").forEach(b => {
+    b.disabled = !live;
+    if (!live) b.title = "commands run in a shell tab — switch to one";
+    b.onclick = () => b.dataset.m ? macro(b.dataset.m) : macro(null, b.dataset.run);
+  });
 }
 
 // Macros run in a terminal rather than reporting into a pane of their own: the
@@ -1962,6 +2043,7 @@ function macroTarget(){
 async function macro(name, custom){
   const t = macroTarget();
   if (!t){
+    if (tabOf(panes[active])) return;    // greyed out; a stray tap does nothing
     newShell("");
     notify("Opening a terminal — press the button again once it is up.");
     return;
@@ -1988,7 +2070,8 @@ async function macro(name, custom){
 // pills mirror the tab strip, and a minimise would otherwise read as "on the
 // tab bar" for up to a poll interval.
 function render(){ drawTabs(); drawPanes(); drawKeys(); saveLayout();
-                   if (state) drawSessions(state.sessions); }
+                   if (state){ drawSessions(state.sessions); drawRunner(state.runner);
+                               drawCommands(); drawCustom(); } }
 
 // ---- layout, shared between browsers ---------------------------------
 // The tab strip lives on the server so a phone picks up what the desktop has
