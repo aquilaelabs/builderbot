@@ -911,6 +911,9 @@ function drawTabs(){
     </span>`;
   }).join("");
 
+  // Ghosts mid-fade ride across the rebuild: they are inert clones, and a
+  // status poll landing during the 140ms would otherwise cut the fade short.
+  const ghosts = [...$("tabbar").querySelectorAll(".tab:not([data-id])")];
   $("tabbar").innerHTML =
     `<button id="bNew" class="ic newtab" title="new terminal at /workspace">+</button>` +
     html +
@@ -922,6 +925,7 @@ function drawTabs(){
       </span>` : "");
 
   const bar = $("tabbar");
+  ghosts.forEach(g => bar.appendChild(g));
   bar.querySelectorAll("[data-show]").forEach(b => {
     b.onpointerdown = e => startDrag(e, b.dataset.show);
     b.onclick = () => { if (!swallowClick) focusTab(b.dataset.show); };

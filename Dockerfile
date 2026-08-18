@@ -47,12 +47,20 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # container env rather than in the shell profile, because that profile is
 # guarded on an interactive shell and a Claude session's commands are not one.
 # Deliberately NOT disabling `npm audit` — that one is a real signal.
+# PYTHONDONTWRITEBYTECODE: a session that runs `python3 -m py_compile` (or any
+# script) in a mounted project should not leave __pycache__ litter in the
+# repo. NODE_PATH: the image's global modules — Playwright above all — resolve
+# from a `require()` in any directory, instead of every session symlinking
+# them into a scratch node_modules first. (ESM `import` ignores NODE_PATH;
+# use createRequire, as scripts/dashboard/test/lib.mjs does.)
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     TZ=Etc/UTC \
     NPM_CONFIG_FUND=false \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    NODE_PATH=/usr/lib/node_modules \
     BUILDER_HOME=/home/builder \
     WORKSPACE=/workspace \
     RUNNER_DIR=/opt/actions-runner \
@@ -196,6 +204,13 @@ RUN set -eux; \
     apt-get update; \
     playwright install --with-deps chromium firefox webkit; \
     chmod -R a+rwX "${PLAYWRIGHT_BROWSERS_PATH}"; \
+    # A stable path to the Chromium binary. The revisioned directory
+    # (chromium-1234/chrome-linux64/chrome) changes with every Playwright
+    # release, and the project CLAUDE.md template has long told sessions to
+    # launch with executablePath /opt/pw-browsers/chromium — a promise the
+    # image did not keep until this symlink.
+    ln -sfn "$(find "${PLAYWRIGHT_BROWSERS_PATH}" -path '*/chromium-*/chrome-linux*/chrome' -type f | head -1)" \
+        "${PLAYWRIGHT_BROWSERS_PATH}/chromium"; \
     npm cache clean --force; \
     rm -rf /var/lib/apt/lists/*; \
     playwright --version

@@ -331,6 +331,12 @@ bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
 bb doctor          check everything that usually goes wrong
+
+# developing BuilderBot itself, from inside it
+bb dashboard test  browser-test the dashboard from this checkout, isolated
+bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reverts)
+bb drift           what this checkout changed that the container is not serving
+bb shot URL [FILE] headless screenshot of a page
 ```
 
 The dashboard's Commands card is this same list in this same order.
@@ -640,7 +646,7 @@ the transcript, which is still on disk.
 
 ### Commands run in the terminal
 
-Every `bb` command is a button. Clicking one clears whatever is half-typed at
+The `bb` commands worth a button are buttons. Clicking one clears whatever is half-typed at
 the prompt, types the command into the terminal you are looking at and presses
 Enter, rather than reporting into a box of its own. The
 output is then somewhere you can scroll it, a slow one like `bb runner stop` is
@@ -655,17 +661,21 @@ terminal, which is not something a button labelled `bb status` should be able to
 do.
 
 They are listed in `bb help`'s own order, so the card and the CLI read the
-same. The list is longer than the card, so it is cut off at eight with a
-**Show all** button after the cut. The **thumbtack** on each command keeps it
-above that cut —
-pinning moves a command up, it does not re-sort it into an order the CLI never
-uses. Pins live in `/config/pinned-commands.json` — one machine, one operator,
-so a pin made at the desk is there on the phone.
+same. If the list outgrows the card it is cut off at eight with a **Show all**
+button after the cut. The **thumbtack** on each command keeps it above that
+cut — pinning moves a command up, it does not re-sort it into an order the CLI
+never uses. Pins live in `/config/pinned-commands.json` — one machine, one
+operator, so a pin made at the desk is there on the phone.
 
-Two rules about what is *not* there: nothing but `bb`, and nothing that needs an
-argument to mean anything — a button is never a half-written command line.
-Between them that leaves out exactly one command, `bb shell`, which from a
-terminal only opens a second shell inside the one you typed it into.
+What is *not* there is most of `bb`, on purpose. Nothing that needs an argument
+(`bb shot URL`) — a button is never a half-written command line. Nothing a card
+already does better: the Projects card lists projects and offers the CLAUDE.md
+fixes on each row, the Doctor card runs doctor, the findings report beats
+`bb findings`, and the Runner card has the runner's own controls. And nothing
+that only means anything from a checkout of the BuilderBot repo (`bb drift`,
+`bb dashboard dev`) — those are for sessions developing the container. What is
+left is what an operator actually reaches for from a terminal: status, update,
+login, the emulator, lint, and the logs.
 
 ### Your own commands
 
@@ -844,6 +854,7 @@ scripts/
   lib/common.sh                  shared shell helpers
   startup.d/*.sh                 startup hooks
   dashboard/                     web dashboard: server.py, index.html, bb-tty
+    test/                        its Playwright suite — `bb dashboard test`, isolated
 config/skel/                     home directory skeleton
 config/templates/                project CLAUDE.md template (shipped in the image)
 docs/unraid.md                   step-by-step Unraid walkthrough
