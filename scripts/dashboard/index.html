@@ -99,6 +99,13 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
   white-space:nowrap;min-height:30px;touch-action:manipulation;
   -webkit-tap-highlight-color:transparent}
 button:hover{background:#2b3540}
+/* Hover states fade rather than snap. Background, border and colour cover
+   every button variant on the page; the disabled fade rides on opacity. */
+button,.pane .bar .x,.tab .ic{transition:background-color .15s ease,
+  border-color .15s ease,color .15s ease,opacity .15s ease}
+@media(prefers-reduced-motion:reduce){
+  button,.pane .bar .x,.tab .ic{transition:none}
+}
 button:disabled{opacity:.5;cursor:default}
 button:disabled:hover{background:#232b34}
 button.primary{background:#1f6f36;border-color:#2ea043}
@@ -600,9 +607,23 @@ const dur = s =>
              `${Math.floor(s/3600)}h ${Math.floor(s%3600/60)}m`;
 
 function setView(v){
+  const prev = document.body.dataset.view;
   document.body.dataset.view = v;
   $("vDash").classList.toggle("on", v === "dash");
   $("vTerm").classList.toggle("on", v === "terminal");
+  // The switch reads left-to-right (Dashboard | Terminal), so the incoming
+  // view slides in from its own side. The outgoing one is display:none the
+  // moment the attribute flips — only the entrance can be animated — and
+  // main clips the overshoot so the page never grows a horizontal scrollbar.
+  if (prev && prev !== v && isPhone() && !noMotion()){
+    const col = document.querySelector(v === "dash" ? ".col.side" : ".col.term");
+    const main = document.querySelector("main");
+    main.style.overflowX = "hidden";
+    col.animate([{transform: `translateX(${v === "terminal" ? "" : "-"}100%)`},
+                 {transform: "none"}],
+                {duration: 220, easing: "ease"})
+       .onfinish = () => main.style.overflowX = "";
+  }
 }
 
 // ---- tabs ------------------------------------------------------------
@@ -1083,7 +1104,28 @@ function nudgeTerminals(){
   nudgeTimer = setTimeout(() => frames.forEach(f => f.style.width = ""), 60);
 }
 
-document.addEventListener("visibilitychange", () => { if (!document.hidden) nudgeTerminals(); });
+// Reconnecting a dropped terminal. ttyd auto-reconnects on its own — except
+// on a phone, which freezes the whole page while it is backgrounded (so
+// ttyd's timer never fires) and often restores it from the back/forward cache
+// with the socket already dead, showing ttyd's "reconnect" prompt. The
+// terminal is a cross-origin iframe we cannot reach into, but reloading it is
+// lossless: tmux holds the session and its scrollback on the server, so the
+// reload reattaches exactly where it was.
+let hiddenAt = 0;
+function reattachTerminals(){
+  document.querySelectorAll(".pane iframe").forEach(f => { f.src = f.src; });
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden){ hiddenAt = Date.now(); return; }
+  // Only after long enough that the socket was really dropped — a quick glance
+  // away keeps it, and reloading then would flash the terminal for nothing.
+  // Gated to touch devices: a desktop page is throttled, not frozen, so ttyd
+  // heals it without a reload, and a desktop reload on every alt-tab is noise.
+  if (isPhone() && hiddenAt && Date.now() - hiddenAt > 3000) reattachTerminals();
+  nudgeTerminals();
+});
+// A back/forward-cache restore always resumes with a dead socket, phone or not.
+window.addEventListener("pageshow", e => { if (e.persisted) reattachTerminals(); });
 window.addEventListener("focus", nudgeTerminals);
 
 // ---- keys ------------------------------------------------------------
@@ -1125,17 +1167,42 @@ $("mKeys").onclick     = () => mobPanel("keys");
 $("mMacros").onclick   = () => mobPanel("macros");
 $("mSessions").onclick = () => mobPanel("sessions");
 
+// Slide a bottom flyout open or shut on a phone instead of popping it.
+// display:none is not animatable, so the class flips at whichever end keeps
+// the panel visible while its height tweens — the card fold's shape. State is
+// tracked on the element, not read from the class: the class stays on while a
+// close is still tweening, and every render passes through here.
+function slidePanel(el, show){
+  const was = el.dataset.shown === "1";
+  el.dataset.shown = show ? "1" : "0";
+  if (was === show) return;
+  el.getAnimations().forEach(a => a.cancel());
+  if (noMotion() || !isPhone()){
+    el.classList.toggle("show", show);
+    return;
+  }
+  el.classList.add("show");
+  const h = el.offsetHeight;
+  el.style.overflow = "hidden";
+  const anim = el.animate(show ? [{height: "0px"}, {height: h + "px"}]
+                               : [{height: h + "px"}, {height: "0px"}],
+                          {duration: 200, easing: "ease"});
+  anim.onfinish = () => { el.style.overflow = ""; if (!show) el.classList.remove("show"); };
+}
+
 function drawKeys(){
   const el = $("keys");
   const t = tabOf(panes[active]);
   const on = showKeys && t?.kind === "term";     // pointless over a document
-  el.classList.toggle("show", on);
+  slidePanel(el, on);
   $("mKeys").classList.toggle("on", on);
   $("mMacros").classList.toggle("on", showMacros);
-  $("macpanel").classList.toggle("show", showMacros);
+  slidePanel($("macpanel"), showMacros);
   $("mSessions").classList.toggle("on", showSessions);
-  $("sespanel").classList.toggle("show", showSessions);
-  if (!on){ el.innerHTML = ""; return; }
+  slidePanel($("sespanel"), showSessions);
+  // Content is kept while a close tweens shut — emptying it mid-slide would
+  // collapse an already-shrinking box to nothing.
+  if (!on) return;
   el.innerHTML = KEYS.map(r =>
     r.map(([k,l]) => `<button data-k="${esc(k)}">${esc(l)}</button>`).join("")
   ).join('<span class="gap"></span>');

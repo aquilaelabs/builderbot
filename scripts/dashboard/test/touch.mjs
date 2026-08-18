@@ -25,6 +25,8 @@ ok((await side()) === 0, '...without scrolling');
 
 await page.evaluate(() => { for (let i = 0; i < 4; i++) newShell(''); setView('terminal'); });
 await page.waitForFunction(() => { const b = document.getElementById('tabbar'); return b.scrollWidth > b.clientWidth + 50; });
+// let the view-switch slide land before measuring where anything is
+await page.waitForFunction(() => document.querySelector('.col.term').getAnimations().length === 0);
 const ids0 = await page.$$eval('.tab[data-id]', ts => ts.map(t => t.dataset.id));
 let lb = await (await page.$(`.tab[data-id="${ids0[1]}"] .lbl`)).boundingBox();
 await finger(page, lb.x + 20, lb.y + 15, lb.x - 200, lb.y + 15, 0);
