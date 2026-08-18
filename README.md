@@ -580,18 +580,27 @@ a placeholder, and **+** starts over.
   half a second first — the tab dims to say it is picked up; a finger that
   moves sooner is swiping, and on a phone that swipe scrolls the strip.
 - **⇱ on a tab** pins it to the **left** or **right** pane, which splits the
-  view. Once split, each tab on screen carries ◧ or ◨ for the pane it is in.
+  view. Once split, each tab on screen carries ◧ or ◨ for the pane it is in,
+  and clicking into either terminal makes its pane the active one — the one
+  the keys and the commands go to.
 - **✕ on a pane** collapses back to a single pane. It does **not** close the
   tab or touch its session — the tab owns the session, the pane is only where
   it was being shown.
 - **On a phone** there is no split: the pin buttons are hidden and only the
   active pane is shown — a split made at the desk is still there when you get
   back to it. The strip stays one row — swipe it, or page it with the **‹ ›**
-  arrows — instead of wrapping, so the terminal keeps its screen space. Under
-  the terminal sit three buttons, **Keys**, **Commands** and **Sessions**: the
-  on-screen keys, the `bb` and custom command macros, and the session list —
-  which on a phone live here rather than in dashboard cards (those three cards
-  are hidden there). One panel at a time — there is not the height for two.
+  arrows (greyed at the end you cannot page past) — instead of wrapping, so
+  the terminal keeps its screen space; a tab you open is scrolled into view.
+  Under the terminal sit three buttons, **Keys**, **Commands** and
+  **Sessions**: the on-screen keys, the `bb` and custom command macros, and
+  the session list — which on a phone live here rather than in dashboard
+  cards (those three cards are hidden there). One flyout at a time — there is
+  not the height for two — and a flyout that has done its job gets out of the
+  way: picking a session or sending a command closes it. Which of the two
+  views, Dashboard or Terminal, a phone was on is remembered across a reload,
+  and while the dashboard is in front the **Terminal** switch carries the
+  worst Claude state — amber if a session is waiting on you, blue if they are
+  all working — as does each project's Claude button.
 
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
 or a reloaded page detaches instead of killing the session. The **Sessions

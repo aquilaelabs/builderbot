@@ -4,6 +4,7 @@
 // lines, exiting non-zero on any failure.
 import { createRequire } from 'module';
 import { writeFileSync, readFileSync } from 'fs';
+import { execFileSync } from 'child_process';
 // require, not import: ESM resolution ignores NODE_PATH, and the image's
 // Playwright is a global install (/usr/lib/node_modules), not a dependency
 // of this directory. CJS resolution honours NODE_PATH, which run.sh sets.
@@ -44,6 +45,17 @@ export async function newPage(browser, opts = {}){
 // Flip the stub `bb doctor` between the ok and failing fixtures.
 export const doctorFixture = name =>
   writeFileSync(`${DIR}/doctor.txt`, readFileSync(`${DIR}/doctor-${name}.txt`));
+
+// A throwaway tmux session for a test that has ended the fixture ones. Only
+// on the harness's private server: run.sh unsets TMUX and points TMUX_TMPDIR
+// at its scratch dir, and this refuses to run unless both are so — a client
+// inside a tmux session ignores TMUX_TMPDIR and would create (and later, the
+// cleanup would kill) on the real server.
+export function tmuxNew(name){
+  if (process.env.TMUX || !process.env.TMUX_TMPDIR)
+    throw new Error('tmuxNew: not on the private tmux server — refusing');
+  execFileSync('tmux', ['new-session', '-d', '-s', name, '-c', '/tmp']);
+}
 
 // Wait until the page has its first doctor verdict — the last thing to land
 // on a fresh instance, so a good "page is ready" marker.

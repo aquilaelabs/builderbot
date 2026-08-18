@@ -65,8 +65,17 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:340px 1fr;
    the card up (see the touchmove listener). No callout: the same hold would
    otherwise raise the platform's long-press menu. */
 .side .card h2{cursor:grab;touch-action:manipulation;user-select:none;
-  -webkit-touch-callout:none}
+  -webkit-touch-callout:none;transition:color .15s ease}
+/* The whole header is a control, so it answers the pointer like one. */
+.side .card h2:hover{color:var(--ink)}
 body.dragging .side .card h2{cursor:grabbing}
+/* Finger-sized where a finger is what presses it: the header is the collapse
+   control, and the header-row buttons (refresh, reset, doctor) were 30px. */
+@media(max-width:900px){
+  .card h2{min-height:40px}
+  header button,.docbar button{min-height:var(--tap);min-width:var(--tap)}
+  .pane .bar button{min-height:30px}
+}
 .card h2 .chev{margin-left:auto;font-size:10px;transition:transform .15s}
 .card.closed h2 .chev{transform:rotate(-90deg)}
 @media(prefers-reduced-motion:reduce){ .card h2 .chev{transition:none} }
@@ -258,6 +267,9 @@ body.dragging .tab .lbl{cursor:grabbing}
   .tab{flex:0 0 auto}   /* overflow and scroll, rather than squeeze to fit */
   .tscroll{display:block;flex:0 0 auto;border:1px solid var(--line);
     background:var(--panel);padding:0 12px;font-size:16px;color:var(--dim)}
+  /* Greyed at the end it cannot go past — and both greyed when the strip
+     fits, which is how the arrows say there is nothing to page. */
+  .tscroll:disabled,.tscroll:disabled:hover{background:var(--panel);opacity:.35}
   #tabL{border-radius:8px 0 0 0;border-right:0}
   #tabR{border-radius:0 8px 0 0;border-left:0}
 }
@@ -344,7 +356,9 @@ body.dragging .tab .lbl{cursor:grabbing}
 .fx .grp{border:1px solid var(--line);border-radius:8px;margin-bottom:10px;
   background:var(--panel);overflow:hidden}
 .fx .grp>summary{padding:9px 11px;cursor:pointer;font-weight:600;
-  display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none}
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none;
+  transition:background-color .15s ease}
+.fx .grp>summary:hover{background:#232b34}
 .fx .grp>summary::-webkit-details-marker{display:none}
 .fx .grp>summary::before{content:"▸";color:var(--dim);font-size:11px}
 .fx .grp[open]>summary::before{content:"▾"}
@@ -408,7 +422,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   <span class="meta host" id="host"></span>
   <span class="spacer"></span>
   <span class="meta" id="uptime"></span>
-  <button onclick="refresh()">↻</button>
+  <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" title="reset the sidebar cards — default order, all expanded">▤</button>
 </header>
 
@@ -617,6 +631,10 @@ function setView(v){
   document.body.dataset.view = v;
   $("vDash").classList.toggle("on", v === "dash");
   $("vTerm").classList.toggle("on", v === "terminal");
+  // Per device, not on the server: which side of the switch a phone was
+  // looking at is about that phone, and a reload (or a tab the browser
+  // evicted overnight) should come back to the same side.
+  try{ localStorage.setItem("bb.view", v); }catch(e){ /* private mode */ }
   // The switch reads left-to-right (Dashboard | Terminal), so the incoming
   // view slides in from its own side. The outgoing one is display:none the
   // moment the attribute flips — only the entrance can be animated — and
@@ -629,6 +647,19 @@ function setView(v){
                  {transform: "none"}],
                 {duration: 220, easing: "ease"})
        .onfinish = () => main.style.overflowX = "";
+  }
+  // The strip was display:none while the dashboard was in front, so nothing
+  // drawn then could scroll it — bring the tab just opened into view now.
+  if (v === "terminal") revealActiveTab();
+}
+// A phone reload lands on the side it left; the attribute is set directly so
+// the first paint is not an entrance animation.
+if (isPhone()){
+  let v = null;
+  try{ v = localStorage.getItem("bb.view"); }catch(e){ /* private mode */ }
+  if (v === "terminal"){
+    document.body.dataset.view = v;
+    $("vDash").classList.remove("on"); $("vTerm").classList.add("on");
   }
 }
 
@@ -814,18 +845,47 @@ document.addEventListener("contextmenu", e => {
 
 function startDrag(ev, id){
   if (ev.pointerType === "mouse" && ev.button !== 0) return;
-  drag = {id, x0: ev.clientX, y0: ev.clientY, moved: false,
-          armed: ev.pointerType !== "touch"};
+  drag = {id, x0: ev.clientX, y0: ev.clientY, x: ev.clientX, y: ev.clientY,
+          moved: false, armed: ev.pointerType !== "touch"};
   if (!drag.armed)
     drag.timer = setTimeout(() => {
       if (!drag) return;
       drag.armed = drag.moved = true;
       document.body.classList.add("dragging");
       holdTab(id);
+      edgeScroll();
     }, HOLD_MS);
   window.addEventListener("pointermove", onDrag);
-  window.addEventListener("pointerup", endDrag, {once: true});
-  window.addEventListener("pointercancel", endDrag, {once: true});
+  window.addEventListener("pointerup", endDrag);
+  window.addEventListener("pointercancel", endDrag);
+}
+
+// While something is picked up and held near the edge of its scroller, the
+// scroller creeps in that direction, so a drop can reach what is off screen
+// — the sidebar on a phone once it has a few cards open, the one-row tab
+// strip. A held pointer sends no more move events, so this is a frame loop,
+// not a move handler; it re-runs the drop step with the last known position
+// because the items have moved under a stationary pointer. Speed scales with
+// how deep into the 48px margin the pointer sits.
+let edgeRaf = 0;
+function edgeScroll(){
+  cancelAnimationFrame(edgeRaf);
+  const tick = () => {
+    edgeRaf = 0;
+    if (drag?.armed && drag.moved){
+      const bar = $("tabbar"), r = bar.getBoundingClientRect(), m = 48;
+      const v = drag.x < r.left + m ? drag.x - (r.left + m)
+              : drag.x > r.right - m ? drag.x - (r.right - m) : 0;
+      if (v && bar.scrollWidth > bar.clientWidth){ bar.scrollLeft += v / 4; placeTab(); }
+    } else if (cardDrag?.armed && cardDrag.moved){
+      const side = document.querySelector(".col.side"), r = side.getBoundingClientRect(), m = 48;
+      const v = cardDrag.y < r.top + m ? cardDrag.y - (r.top + m)
+              : cardDrag.y > r.bottom - m ? cardDrag.y - (r.bottom - m) : 0;
+      if (v && side.scrollHeight > side.clientHeight){ side.scrollTop += v / 4; placeCard(); }
+    } else return;
+    edgeRaf = requestAnimationFrame(tick);
+  };
+  edgeRaf = requestAnimationFrame(tick);
 }
 
 // Where the dragged tab belongs: the number of *other* tabs that come before
@@ -843,14 +903,11 @@ function dropIndex(x, y, from){
 
 function onDrag(ev){
   if (!drag) return;
+  drag.x = ev.clientX; drag.y = ev.clientY;
   const far = Math.hypot(ev.clientX - drag.x0, ev.clientY - drag.y0) >= 6;
   if (!drag.armed){
     // Moved before the hold elapsed: a swipe, not a pickup.
-    if (far){
-      clearTimeout(drag.timer);
-      drag = null;
-      window.removeEventListener("pointermove", onDrag);
-    }
+    if (far) endDrag();
     return;
   }
   if (!drag.moved){
@@ -859,11 +916,19 @@ function onDrag(ev){
     drag.moved = true; pinFor = null;
     document.body.classList.add("dragging");
     holdTab(drag.id);
+    edgeScroll();
   }
   ev.preventDefault();
+  placeTab();
+}
+
+// The drop step: put the held tab where the pointer says, and slide the
+// others out of its way. Called per move, and per frame while the strip is
+// creeping under a held pointer.
+function placeTab(){
   const from = tabs.findIndex(t => t.id === drag.id);
   if (from < 0) return;
-  const to = dropIndex(ev.clientX, ev.clientY, from);
+  const to = dropIndex(drag.x, drag.y, from);
   if (to !== from){
     tabs.splice(to, 0, tabs.splice(from, 1)[0]);
     reorderTabEls();
@@ -889,6 +954,8 @@ function reorderTabEls(){
 function endDrag(){
   clearTimeout(drag?.timer);
   window.removeEventListener("pointermove", onDrag);
+  window.removeEventListener("pointerup", endDrag);
+  window.removeEventListener("pointercancel", endDrag);
   document.body.classList.remove("dragging");
   const moved = drag?.moved;
   drag = null;
@@ -899,28 +966,35 @@ function endDrag(){
   swallowClick = true;                  // ...and the click ending a drag is not
   setTimeout(() => swallowClick = false, 0);   //    a request to switch tabs
   drawTabs();
+  // Saved now, not on the next poll: the other browser's next write would
+  // otherwise arrive first and put the strip back the way it was.
+  saveLayout();
 }
 
 // Whether drawTabs has painted once: the very first draw is a page opening,
 // not tabs arriving, so it plays no entrances.
-let tabsDrawn = false;
+let tabsDrawn = false, lastCur = null;
+
+// Rebuild-if-changed, for every list this page redraws on the poll. The poll
+// is every fifteen seconds and nearly always says the same thing; replacing
+// identical markup anyway dropped :hover under a resting pointer, reset a
+// link mid-"updating…", and made every card blink for nothing. Markup is
+// compared as a string — cheap, since it was just built — and only a
+// difference touches the DOM. Returns whether it did, for the callers that
+// bind handlers or animate only on a real change.
+const painted = new WeakMap();
+function paint(el, html){
+  if (painted.get(el) === html) return false;
+  painted.set(el, html);
+  el.innerHTML = html;
+  return true;
+}
 
 function drawTabs(){
   // Mid-drag, only re-sort: the status poll renders every fifteen seconds,
   // and a rebuild here would detach the node a finger is holding (see
   // reorderTabEls). Labels catch up on the redraw that follows the drop.
   if (drag){ reorderTabEls(); return; }
-  // Slide, don't teleport — and across the innerHTML rebuild, which is why
-  // everything is keyed by tab id rather than element. Old positions (plus a
-  // clone, for a tab about to vanish) are captured before the rebuild; after
-  // it, survivors slide to their new spot, newcomers pop in, and the departed
-  // fades out as an inert ghost pinned where it was.
-  const prev = tabsDrawn && !noMotion()
-    ? new Map([...$("tabbar").querySelectorAll(".tab")]
-        .filter(el => el.dataset.id)
-        .map(el => [el.dataset.id,
-                    {r: el.getBoundingClientRect(), ghost: el.cloneNode(true)}]))
-    : null;
   const cur = panes[active], names = tabLabels();
   const html = tabs.map(t => {
     // Only a split has sides worth marking; a lone pane is just "the screen".
@@ -941,10 +1015,8 @@ function drawTabs(){
     </span>`;
   }).join("");
 
-  // Ghosts mid-fade ride across the rebuild: they are inert clones, and a
-  // status poll landing during the 140ms would otherwise cut the fade short.
-  const ghosts = [...$("tabbar").querySelectorAll(".tab:not([data-id])")];
-  $("tabbar").innerHTML =
+  const bar = $("tabbar");
+  const full =
     `<button id="bNew" class="ic newtab" title="new terminal at /workspace">+</button>` +
     html +
     `<span class="sep"></span>` +
@@ -953,8 +1025,30 @@ function drawTabs(){
         <button data-l="${esc(pinFor)}">◧ Left</button>
         <button data-r="${esc(pinFor)}">◨ Right</button>
       </span>` : "");
+  // Same strip as last time: the poll, mostly. Nothing to rebuild or slide;
+  // ghosts already fading finish on their own.
+  if (painted.get(bar) === full){ finishTabs(cur); return; }
+  painted.set(bar, full);
 
-  const bar = $("tabbar");
+  // Slide, don't teleport — and across the innerHTML rebuild, which is why
+  // everything is keyed by tab id rather than element. Old positions (plus a
+  // clone, for a tab about to vanish) are captured before the rebuild; after
+  // it, survivors slide to their new spot, newcomers pop in, and the departed
+  // fades out as an inert ghost pinned where it was. Not while the strip is
+  // display:none (a phone showing the dashboard): every rect is zero there,
+  // and a ghost pinned at zero would surface at the strip's left edge if the
+  // terminal view came forward inside the fade.
+  const prev = tabsDrawn && !noMotion() && rendered(bar)
+    ? new Map([...bar.querySelectorAll(".tab")]
+        .filter(el => el.dataset.id)
+        .map(el => [el.dataset.id,
+                    {r: el.getBoundingClientRect(), ghost: el.cloneNode(true)}]))
+    : null;
+
+  // Ghosts mid-fade ride across the rebuild: they are inert clones, and a
+  // status poll landing during the 140ms would otherwise cut the fade short.
+  const ghosts = [...bar.querySelectorAll(".tab:not([data-id])")];
+  bar.innerHTML = full;
   ghosts.forEach(g => bar.appendChild(g));
   bar.querySelectorAll("[data-show]").forEach(b => {
     b.onpointerdown = e => startDrag(e, b.dataset.show);
@@ -1015,12 +1109,44 @@ function drawTabs(){
     }
   }
   tabsDrawn = true;
+  finishTabs(cur);
+}
+
+// The tail every drawTabs shares, rebuilt or not: on a phone the strip is
+// one scrolling row, and a tab that just became active is brought into view
+// — once, when it changes, so a strip the operator swiped away to look at
+// something else is not snapped back by the next poll.
+function finishTabs(cur){
+  // A drag dropped where it started rebuilds nothing, so the pickup dim is
+  // taken off here rather than by the rebuild that no longer happens.
+  if (!drag) $("tabbar").querySelectorAll(".tab.held").forEach(el => el.classList.remove("held"));
+  if (cur !== lastCur){ lastCur = cur; revealActiveTab(); }
+  updateArrows();
+}
+
+// By offsets, not scrollIntoView: that would also scroll every ancestor it
+// could, and mid view-switch the column is translated off screen — the
+// browser would drag `main` sideways to chase it and wreck the slide.
+function revealActiveTab(){
+  const bar = $("tabbar"), on = bar.querySelector(".tab.on");
+  if (!on || bar.scrollWidth <= bar.clientWidth + 1) return;
+  const l = on.offsetLeft, r = l + on.offsetWidth, w = bar.clientWidth;
+  const to = l < bar.scrollLeft + 8 ? l - 8
+           : r > bar.scrollLeft + w - 8 ? r - w + 8 : null;
+  if (to !== null) bar.scrollTo({left: to, behavior: noMotion() ? "instant" : "smooth"});
 }
 
 // Mobile paging for the one-row strip: each press slides it by most of a
 // screen. The arrows only exist on a phone; desktop wraps instead.
 $("tabL").onclick = () => $("tabbar").scrollBy({left: -$("tabbar").clientWidth * .7, behavior: "smooth"});
 $("tabR").onclick = () => $("tabbar").scrollBy({left:  $("tabbar").clientWidth * .7, behavior: "smooth"});
+function updateArrows(){
+  const bar = $("tabbar");
+  $("tabL").disabled = bar.scrollLeft <= 1;
+  $("tabR").disabled = bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 1;
+}
+$("tabbar").addEventListener("scroll", updateArrows, {passive: true});
+window.addEventListener("resize", updateArrows);
 
 // A terminal at some directory, always a new one. "" is the workspace root.
 function newShell(proj){
@@ -1134,6 +1260,18 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("pageshow", e => { if (e.persisted) reattachTerminals(); });
 window.addEventListener("focus", nudgeTerminals);
 
+// Which pane of a split is active decides where the keys and the commands
+// go, and clicking into a terminal is the natural way to say "this one" —
+// but a click inside a cross-origin iframe never reaches this page. What
+// does reach it is the window losing focus to that iframe, and the iframe
+// is then the active element: that is the click, one step removed.
+window.addEventListener("blur", () => {
+  const f = document.activeElement;
+  if (!isSplit() || f?.tagName !== "IFRAME") return;
+  const i = f.closest(".pane")?.id === "pane1" ? 1 : 0;
+  if (i !== active){ active = i; render(); }
+});
+
 // ---- keys ------------------------------------------------------------
 const KEYS = [
   [["escape","Esc"],["tab","Tab"],["left","←"],["down","↓"],["up","↑"],["right","→"],
@@ -1184,47 +1322,76 @@ $("mSessions").onclick = () => mobPanel("sessions");
 // snaps taller at once), slide down, then hide. State is tracked on the
 // element, not read from the class: the class stays on while a close is
 // still tweening, and every render passes through here.
-function slidePanel(el, show){
+//
+// Returns a promise for the moment the slide lands (null when there was no
+// slide). `swap` is that promise from another panel opening in the same
+// render: a panel closing to make way for it does not slide down at all —
+// it stays put, in the flow, under the new one growing over it, and is
+// simply gone when the new one lands. Two slides at once looked like a
+// collision, and closing first would have resized the terminal twice.
+function slidePanel(el, show, swap){
   const was = el.dataset.shown === "1";
   el.dataset.shown = show ? "1" : "0";
-  if (was === show) return;
-  el.getAnimations().forEach(a => a.cancel());
+  if (was === show) return null;
+  // Interrupted mid-slide, the next slide starts from the height the panel
+  // is at, not from one end — the second tap on a flyout reverses it.
+  const running = el.getAnimations();
+  const mid = running.length ? el.getBoundingClientRect().height : null;
+  running.forEach(a => a.cancel());
+  const settle = () => { el.style.overflow = ""; el.style.bottom = ""; el.classList.remove("sliding"); };
   if (noMotion() || !isPhone()){
-    el.classList.remove("sliding"); el.style.bottom = "";
-    el.classList.toggle("show", show);
-    return;
+    settle(); el.classList.toggle("show", show);
+    return null;
+  }
+  if (!show && swap){
+    settle();                                   // full height, in the flow
+    swap.then(() => { if (el.dataset.shown === "0") el.classList.remove("show"); });
+    return null;
   }
   el.classList.add("show", "sliding");
   el.style.bottom = $("mobar").offsetHeight + "px";   // pinned just above the bar
   const h = el.offsetHeight;
   el.style.overflow = "hidden";
-  const anim = el.animate(show ? [{height: "0px"}, {height: h + "px"}]
-                               : [{height: h + "px"}, {height: "0px"}],
+  const anim = el.animate(show ? [{height: (mid ?? 0) + "px"}, {height: h + "px"}]
+                               : [{height: (mid ?? h) + "px"}, {height: "0px"}],
                           {duration: 200, easing: "ease"});
-  anim.onfinish = () => {
-    el.style.overflow = ""; el.style.bottom = "";
-    el.classList.remove("sliding");           // back into the flow: the snap
-    if (!show) el.classList.remove("show");
-  };
+  return new Promise(res => {
+    anim.onfinish = () => {
+      settle();                                 // back into the flow: the snap
+      if (!show) el.classList.remove("show");
+      res();
+    };
+    // Cancelled by a newer slide: whoever is waiting must not wait forever,
+    // and must not act either — the newer slide owns the panel now.
+    anim.oncancel = () => res();
+  });
 }
 
 function drawKeys(){
   const el = $("keys");
   const t = tabOf(panes[active]);
-  const on = showKeys && t?.kind === "term";     // pointless over a document
-  slidePanel(el, on);
-  $("mKeys").classList.toggle("on", on);
+  const term = t?.kind === "term";
+  const on = showKeys && term;                   // pointless over a document
+  // Content first, then the slide: the slide measures the panel, and the
+  // first open used to measure it empty and land twelve pixels tall.
+  if (on && paint(el, KEYS.map(r =>
+      r.map(([k,l]) => `<button data-k="${esc(k)}">${esc(l)}</button>`).join("")
+    ).join('<span class="gap"></span>')))
+    el.querySelectorAll("[data-k]").forEach(b => b.onclick = () => sendKey(b.dataset.k));
+  // Content is otherwise kept while a close tweens shut — emptying it
+  // mid-slide would collapse an already-shrinking box to nothing.
+  const mk = $("mKeys");
+  mk.classList.toggle("on", on);
+  mk.disabled = !term;                           // a dead-looking toggle over a
+  mk.title = term ? "" : "keys go to a terminal — this tab is a document";   //   document said nothing
   $("mMacros").classList.toggle("on", showMacros);
-  slidePanel($("macpanel"), showMacros);
   $("mSessions").classList.toggle("on", showSessions);
-  slidePanel($("sespanel"), showSessions);
-  // Content is kept while a close tweens shut — emptying it mid-slide would
-  // collapse an already-shrinking box to nothing.
-  if (!on) return;
-  el.innerHTML = KEYS.map(r =>
-    r.map(([k,l]) => `<button data-k="${esc(k)}">${esc(l)}</button>`).join("")
-  ).join('<span class="gap"></span>');
-  el.querySelectorAll("[data-k]").forEach(b => b.onclick = () => sendKey(b.dataset.k));
+  // One panel at a time: whichever is opening slides, and any that is
+  // closing in the same breath swaps out under it (see slidePanel).
+  const want = [[el, on], [$("macpanel"), showMacros], [$("sespanel"), showSessions]];
+  const opener = want.find(([p, s]) => s && p.dataset.shown !== "1");
+  const landed = opener ? slidePanel(opener[0], true) : null;
+  for (const [p, s] of want) if (p !== opener?.[0]) slidePanel(p, s, landed);
 }
 
 async function sendKey(key){
@@ -1417,6 +1584,25 @@ function applyCards(animate){
   play?.();
 }
 
+// Take on the arrangement another browser saved: a card it folded folds
+// here with the same tween, one it moved slides to its place. The very first
+// poll is the page finding out how things are, not a change, and lands
+// instantly — a fold-up of every closed card on load would be theatre.
+let cardsSynced = false;
+function adoptCards(next){
+  const prev = cards;
+  cards = next;
+  const reorder = prev.order.join() !== cards.order.join();
+  if (cardsSynced && !noMotion())
+    cardEls().forEach(el => {
+      const k = el.dataset.card, shut = cards.closed.includes(k);
+      if (shut !== prev.closed.includes(k) && rendered(el) && !el.getAnimations().length)
+        slideCard(el, shut);
+    });
+  applyCards(cardsSynced && reorder);
+  cardsSynced = true;
+}
+
 async function saveCards(){
   cardsChangedAt = performance.now();
   try{
@@ -1501,7 +1687,7 @@ function startCardDrag(ev, key){
   if (ev.pointerType === "mouse" && ev.button !== 0) return;
   // Same touch rule as the tab strip: hold half a second to pick the card up
   // (it dims), and a finger that moves sooner was swiping, not dragging.
-  cardDrag = {key, x0: ev.clientX, y0: ev.clientY, moved: false,
+  cardDrag = {key, x0: ev.clientX, y0: ev.clientY, y: ev.clientY, moved: false,
               armed: ev.pointerType !== "touch"};
   if (!cardDrag.armed)
     cardDrag.timer = setTimeout(() => {
@@ -1509,21 +1695,19 @@ function startCardDrag(ev, key){
       cardDrag.armed = cardDrag.moved = true;
       document.body.classList.add("dragging");
       document.querySelector(`.card[data-card="${key}"]`)?.classList.add("held");
+      edgeScroll();
     }, HOLD_MS);
   window.addEventListener("pointermove", onCardDrag);
-  window.addEventListener("pointerup", endCardDrag, {once: true});
-  window.addEventListener("pointercancel", endCardDrag, {once: true});
+  window.addEventListener("pointerup", endCardDrag);
+  window.addEventListener("pointercancel", endCardDrag);
 }
 
 function onCardDrag(ev){
   if (!cardDrag) return;
+  cardDrag.y = ev.clientY;
   const far = Math.hypot(ev.clientX - cardDrag.x0, ev.clientY - cardDrag.y0) >= 6;
   if (!cardDrag.armed){
-    if (far){
-      clearTimeout(cardDrag.timer);
-      cardDrag = null;
-      window.removeEventListener("pointermove", onCardDrag);
-    }
+    if (far) endCardDrag();
     return;
   }
   if (!cardDrag.moved){
@@ -1531,11 +1715,18 @@ function onCardDrag(ev){
     if (!far) return;
     cardDrag.moved = true;
     document.body.classList.add("dragging");
+    edgeScroll();
   }
   ev.preventDefault();
+  placeCard();
+}
+
+// The drop step for cards — per move, and per frame while the sidebar creeps
+// under a pointer held at its edge (edgeScroll).
+function placeCard(){
   const vis = cards.order.filter(k => k !== cardDrag.key
     && rendered(document.querySelector(`.card[data-card="${k}"]`)));
-  vis.splice(cardDropIndex(ev.clientY, cardDrag.key), 0, cardDrag.key);
+  vis.splice(cardDropIndex(cardDrag.y, cardDrag.key), 0, cardDrag.key);
   const next = [...vis, ...cards.order.filter(k => !vis.includes(k))];
   if (next.join() !== cards.order.join()){
     cards.order = next;
@@ -1546,6 +1737,8 @@ function onCardDrag(ev){
 function endCardDrag(){
   clearTimeout(cardDrag?.timer);
   window.removeEventListener("pointermove", onCardDrag);
+  window.removeEventListener("pointerup", endCardDrag);
+  window.removeEventListener("pointercancel", endCardDrag);
   document.body.classList.remove("dragging");
   document.querySelectorAll(".card.held").forEach(el => el.classList.remove("held"));
   const moved = cardDrag?.moved;
@@ -1580,7 +1773,7 @@ $("bCards").onclick = () => {
 // ---- sidebar ---------------------------------------------------------
 function drawRunner(r){
   const el = $("runner");
-  if (!r.enabled){ el.innerHTML = '<div class="empty">disabled (ENABLE_RUNNER=false)</div>'; return; }
+  if (!r.enabled){ paint(el, '<div class="empty">disabled (ENABLE_RUNNER=false)</div>'); return; }
   // Order matters. A Listener process is up while a job runs *and* while the
   // runner is being refused by GitHub and retrying, so "listening" is the
   // weakest of the three claims and has to be checked last.
@@ -1601,7 +1794,7 @@ function drawRunner(r){
             : r.listening ? "listening for jobs"
             : r.registered ? "registered, between jobs"
             : r.running ? "re-registering — a job just finished" : "not registered";
-  el.innerHTML =
+  paint(el,
     `<div class="row"><span class="pill ${cls}">${esc(txt)}</span>` +
     ((r.busy || stuck) ? `<span class="spin${stuck?" bad":""}" title="${
         stuck ? "retrying the connection to GitHub" : "a job is executing in this container"
@@ -1623,7 +1816,7 @@ function drawRunner(r){
                  : ["runner-start", "Start", "primary"]
       ].map(([m, label, cls]) =>
         `<button class="${cls}" data-m="${m}">${label}</button>`).join("")
-    }</div>`;
+    }</div>`);
   wireMacros(el);
 }
 
@@ -1653,19 +1846,22 @@ function drawProjects(ps){
     : "";
 
   if (!shown.length){
-    el.innerHTML = `<div class="empty">${
+    // state.projects at click time, not the `ps` this draw was given: the
+    // handler outlives the draw now that unchanged markup is kept.
+    if (paint(el, `<div class="empty">${
       !ps.length ? "nothing mounted under /workspace"
                  : `${flagged.length} ${flagged.length===1?"project needs":"projects need"} attention — use Show projects with errors`
-    }</div>` + togHtml;
-    if (flagged.length)
+    }</div>` + togHtml) && flagged.length)
       $("bAll").onclick = () => { showAllProjects = !showAllProjects;
-                                slideBody(el, () => drawProjects(ps)); };
+                                slideBody(el, () => drawProjects(state?.projects || ps)); };
     return;
   }
 
   const cls = {error:"bad", warning:"warn", excluded:"off"};
   const live = liveSessions();
-  el.innerHTML = shown.map(p => `
+  // Handlers bind on a real change only; an unchanged card keeps its
+  // elements, and their handlers, from last time.
+  if (paint(el, shown.map(p => `
     <div class="row${p.excluded ? " off" : ""}">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
@@ -1687,26 +1883,30 @@ function drawProjects(ps){
          data-c="${esc(p.name)}"
          title="${live.has("claude-"+p.name) ? "session running — go to its tab"
                  : p.last_claude ? "no session running — resume or start one"
-                 : "start a Claude session here"}">Claude</button>`}
+                 : "start a Claude session here"}">${
+           // The same working/waiting dot the tab wears, so a phone showing
+           // the dashboard still answers "is it waiting on me?" per project.
+           stateDot(claudeOf("claude-" + p.name))}Claude</button>`}
       <button data-s="${esc(p.name)}" title="open another terminal here">Shell</button>
       <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
         aria-label="${p.excluded ? "include" : "exclude"}"
         title="${p.excluded ? "include — allow Claude sessions here again"
                             : "exclude — block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? EYE : EYE_OFF}</button>
-    </div>`).join("") + togHtml;
-  if (flagged.length)
-    $("bAll").onclick = () => { showAllProjects = !showAllProjects;
-                                slideBody(el, () => drawProjects(ps)); };
-  el.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
-    e.preventDefault();
-    if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
-    if (a.dataset.fix === "claude-md-init")   claudeMd(a.dataset.proj, "init", a);
-  });
-  el.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
-  el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
-  el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
-    setExcluded(b.dataset.x, b.dataset.on === "1"));
+    </div>`).join("") + togHtml)){
+    if (flagged.length)
+      $("bAll").onclick = () => { showAllProjects = !showAllProjects;
+                                  slideBody(el, () => drawProjects(state?.projects || ps)); };
+    el.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
+      e.preventDefault();
+      if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
+      if (a.dataset.fix === "claude-md-init")   claudeMd(a.dataset.proj, "init", a);
+    });
+    el.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
+    el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
+    el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
+      setExcluded(b.dataset.x, b.dataset.on === "1"));
+  }
   // The chooser is positioned against the card, so it is a sibling of the list
   // rather than part of it — replacing the list's innerHTML does not remove it,
   // and without this they stack up one per draw.
@@ -1730,7 +1930,7 @@ function drawDoctor(){
   if (!d || !d.when){
     dot.hidden = tog.hidden = true;             // no verdict yet, nothing to fold
     el.hidden = false;
-    el.innerHTML = `<div class="empty">${d?.running ? "running…" : "first run pending…"}</div>`;
+    paint(el, `<div class="empty">${d?.running ? "running…" : "first run pending…"}</div>`);
     return;
   }
   const tip = c => c.text + (c.detail ? "\n\n" + c.detail : "");
@@ -1753,14 +1953,14 @@ function drawDoctor(){
                   : level === "ok" ? `all ${fine.length} ok`
                   : `Show (${probs.length})`;
   el.hidden = !open;
-  el.innerHTML =
+  paint(el,
     `<div class="probs">${probs.map(c =>
        `<div class="sub ${c.level === "FAIL" ? "bad" : "warn"}" title="${esc(tip(c))}">${esc(c.text)}</div>`
      ).join("")}</div>` +
     `<div class="chips">${
        fine.map(c => `<span class="pill ok" title="${esc(tip(c))}">${esc(c.text)}</span>`).join("") +
        skip.map(c => `<span class="pill" title="${esc(tip(c))}">${esc(c.text)}</span>`).join("")
-     }</div>`;
+     }</div>`);
 }
 
 $("bDocTog").onclick = () => { docOpen = $("doctor").hidden;
@@ -1810,10 +2010,10 @@ function commandOrder(){
 function drawCommands(){
   const el = $("commands");
   const order = commandOrder(), pins = new Set(state?.pinned || []);
-  if (!order.length){ el.innerHTML = `<div class="empty">no commands</div>`; return; }
+  if (!order.length){ paint(el, `<div class="empty">no commands</div>`); return; }
 
   const shown = showAllCommands ? order : order.slice(0, COMMANDS_SHOWN);
-  el.innerHTML = shown.map(m => {
+  const fresh = paint(el, shown.map(m => {
     const on = pins.has(m.name);
     return `<span class="cmd">
       <button data-m="${esc(m.name)}" title="bb ${esc(m.label)} — runs in the terminal"
@@ -1828,11 +2028,13 @@ function drawCommands(){
   // reserved for collapsing the whole card.
   + (order.length > COMMANDS_SHOWN
      ? `<button id="bCmds">${showAllCommands ? "Show fewer" : `Show all (${order.length})`}</button>`
-     : "");
+     : ""));
+  wireMacros(el);                       // live-or-greyed depends on the active
+                                        // tab, not the markup: always re-done
+  if (!fresh) return;
   if (order.length > COMMANDS_SHOWN)
     $("bCmds").onclick = () => { showAllCommands = !showAllCommands;
                                  slideBody(el, drawCommands); };
-  wireMacros(el);
   el.querySelectorAll("[data-tack]").forEach(b => b.onclick = () =>
     setPinned(b.dataset.tack, b.dataset.on === "0"));
 }
@@ -1871,7 +2073,7 @@ const PENCIL = `<svg viewBox="0 0 16 16" aria-hidden="true">
 
 function drawCustom(){
   const el = $("custom"), list = state?.custom || [];
-  el.innerHTML = (list.length ? "" : `<div class="empty">none yet — add one with +</div>`)
+  const fresh = paint(el, (list.length ? "" : `<div class="empty">none yet — add one with +</div>`)
     + list.map(m => {
     // The full title and what it will run, for the hover: a one-word title is
     // no help six months later when you have forgotten what it does.
@@ -1884,8 +2086,9 @@ function drawCustom(){
   }).join("")
   // "+" is redrawn with the list it adds to — a static button would be wiped
   // by this very innerHTML — and lives here because the header holds nothing.
-  + `<button id="bAdd" title="new custom command">+</button>`;
+  + `<button id="bAdd" title="new custom command">+</button>`);
   wireMacros(el);
+  if (!fresh) return;
   el.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => editCustom(b.dataset.edit));
   $("bAdd").onclick = () => editCustom(null);
 }
@@ -2036,7 +2239,7 @@ function argForSession(name){
 
 function drawSessions(ss){
   const el = $("sessions");
-  if (!ss.length){ el.innerHTML = '<div class="empty">no tmux sessions — nothing is running</div>'; return; }
+  if (!ss.length){ paint(el, '<div class="empty">no tmux sessions — nothing is running</div>'); return; }
   // Named exactly as its tab is — the tmux name and the full path are on hover,
   // where the detail belongs.
   const names = sessionLabels();
@@ -2048,7 +2251,7 @@ function drawSessions(ss){
   // when there is no tab. The pill says whether the session is on screen
   // right now, and in which pane when the view is split.
   const tabFor = new Map(tabs.filter(t => t.kind === "term").map(t => [sessionOf(t.arg), t]));
-  el.innerHTML = ss.map(s => {
+  const fresh = paint(el, ss.map(s => {
     const t = tabFor.get(s.name);
     const claude = s.name.startsWith("claude-");
     const shownAt = t ? panes.indexOf(t.id) : -1;
@@ -2066,8 +2269,12 @@ function drawSessions(ss){
           : `<button class="primary" data-min="${esc(t.id)}" title="take its tab off the strip — it keeps running">Minimise</button>`)
           : `<button data-a="${esc(s.name)}" title="reopen its tab">Open</button>`}
       <button data-k="${esc(s.name)}" title="end this session">✕</button>
-    </div>`; }).join("");
-  const goTo = name => openTab({kind:"term", arg:argForSession(name), label:name});
+    </div>`; }).join(""));
+  if (!fresh) return;
+  // On a phone the list is a flyout over the terminal, and picking a session
+  // is a request to look at it — the flyout gets out of the way.
+  const goTo = name => { if (isPhone()) showSessions = false;
+                         openTab({kind:"term", arg:argForSession(name), label:name}); };
   el.querySelectorAll("[data-a]").forEach(b => b.onclick = () => goTo(b.dataset.a));
   el.querySelectorAll("[data-go]").forEach(n => n.onclick = () => goTo(n.dataset.go));
   el.querySelectorAll("[data-min]").forEach(b => b.onclick = () => hideTab(b.dataset.min));
@@ -2124,9 +2331,14 @@ function wireMacros(el){
   const live = macrosLive();
   el.querySelectorAll("[data-m],[data-run]").forEach(b => {
     b.disabled = !live;
-    if (!live) b.title = tabOf(panes[active])
-      ? "commands run in a shell tab — switch to one"
-      : "commands run in a shell tab — open one (+ or a project's Shell)";
+    // The button's own tooltip is kept aside the first time through, so it
+    // comes back when the button does — the markup is no longer rebuilt on
+    // every pass, so nothing else would restore it.
+    if (!("tip" in b.dataset)) b.dataset.tip = b.title;
+    b.title = live ? b.dataset.tip
+      : tabOf(panes[active])
+        ? "commands run in a shell tab — switch to one"
+        : "commands run in a shell tab — open one (+ or a project's Shell)";
     b.onclick = () => b.dataset.m ? macro(b.dataset.m) : macro(null, b.dataset.run);
   });
 }
@@ -2150,7 +2362,12 @@ async function macro(name, custom){
       body: JSON.stringify(custom ? {session, custom} : {session, macro:name})});
     const j = await r.json();
     if (j.error) notify(j.error, true);
-    else notify(`${j.sent} → ${tabLabel(t)}`);
+    else {
+      notify(`${j.sent} → ${tabLabel(t)}`);
+      // The phone's Commands flyout covers half the terminal, and the output
+      // is what the tap was for: it slides away once the command is in.
+      if (isPhone() && showMacros){ showMacros = false; drawKeys(); }
+    }
   }catch(e){ notify("could not reach the dashboard: " + e, true); }
   refresh();
 }
@@ -2181,17 +2398,30 @@ function saveLayout(){
   lastSaved = body;
   savePending = true;
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    try{
-      const r = await fetch("/api/layout", {method:"POST",
-        headers:{"Content-Type":"application/json"}, body});
-      const j = await r.json();
-      if (typeof j.rev === "number") myRev = j.rev;
-    }catch(e){ /* the next change retries */ }
-    savePending = false;
-  }, 400);
+  saveTimer = setTimeout(pushLayout, 400);
 }
-let lastSaved = null;
+let lastSaved = null, pushing = false;
+
+// One save on the wire at a time. Two in flight could land in either order,
+// and the older strip arriving second would be stored under the newer
+// revision — which this page would then hold, and so never take the fix
+// back from the server. A change made while one is out is sent when it
+// lands, newest state only; savePending stays up throughout so a poll in
+// between does not adopt what is about to be overwritten.
+async function pushLayout(){
+  if (pushing) return;
+  pushing = true;
+  const body = lastSaved;
+  try{
+    const r = await fetch("/api/layout", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body});
+    const j = await r.json();
+    if (typeof j.rev === "number") myRev = j.rev;
+  }catch(e){ /* the next change retries */ }
+  pushing = false;
+  if (lastSaved !== body) pushLayout();
+  else savePending = false;
+}
 
 // Take on a layout another browser wrote. Terminal tabs restore themselves —
 // bb-tty attaches to the session if it is still there and recreates it in the
@@ -2237,7 +2467,14 @@ async function refresh(){
     adoptLayout(state.layout);
     // Not mid-drag: adopting the server's order under a moving pointer would
     // snap the card out of the operator's hand.
-    if (state.cards && !cardDrag && asked > cardsChangedAt){ cards = state.cards; applyCards(); }
+    if (state.cards && !cardDrag && asked > cardsChangedAt) adoptCards(state.cards);
+    // The phone-glance answer while the dashboard is in front: the Terminal
+    // switch carries the worst Claude state — amber if any session is
+    // waiting on you, blue if they are all busy — since the Sessions list
+    // itself is a flyout on the terminal side there.
+    const cs = state.sessions.map(s => s.claude).filter(Boolean);
+    const glance = cs.find(c => c.state === "waiting") || cs.find(c => c.state === "working");
+    $("vTerm").innerHTML = stateDot(glance || null) + "Terminal";
     drawRunner(state.runner);
     drawProjects(state.projects);
     drawSessions(state.sessions);
@@ -2252,7 +2489,12 @@ async function refresh(){
         && tabs.some(t => t.kind === "findings"))
       loadFindings(true);
     render();
-  }catch(e){ $("dot").classList.add("off"); }
+  }catch(e){
+    // The light goes red either way; the console says whether the box was
+    // unreachable or this page tripped over its own data.
+    console.error("refresh:", e);
+    $("dot").classList.add("off");
+  }
 }
 
 // Findings opens as a document tab, not a terminal — it is a report to read,
@@ -2269,14 +2511,14 @@ function openFindings(){
 function drawFindingsSum(per){
   const el = $("findingsSum");
   const names = Object.keys(per).sort((a,b) => (a==="")-(b==="") || a.localeCompare(b));
-  el.innerHTML = names.length ? names.map(p => {
+  paint(el, names.length ? names.map(p => {
     const lv = per[p];
     const pills = Object.keys(lv).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
       .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l]}</span>`).join("");
     return `<div class="row"><div class="grow name">${esc(p || "unattributed paths")}</div>${pills}</div>`;
   }).join("")
   : `<div class="empty">no findings in the current reports — which is not the
-     same as every project passing; SARIF records findings, not coverage</div>`;
+     same as every project passing; SARIF records findings, not coverage</div>`);
 }
 
 // Both popup menus dismiss on a click that is neither in them nor on the
@@ -2306,7 +2548,10 @@ $("mDelete").onclick = async () => {
 $("modal").onclick = e => { if (e.target.id === "modal") closeEditor(); };
 $("mName").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("mSave").click(); } };
 document.addEventListener("keydown", e => {
-  if (e.key === "Escape" && !$("modal").hidden) closeEditor();
+  if (e.key !== "Escape") return;
+  if (!$("modal").hidden) closeEditor();
+  if (pinFor){ pinFor = null; drawTabs(); }
+  if (resumeFor){ resumeFor = null; if (state) drawProjects(state.projects); }
 });
 
 refresh();
