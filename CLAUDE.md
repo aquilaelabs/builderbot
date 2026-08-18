@@ -320,6 +320,12 @@ container.
   CI and `bb lint` disagree, which is worse than either answer. The shellcheck
   file list is derived from shebangs, not filenames, so a new script is covered
   the moment it exists — do not replace that with a name list.
+- **Credentials here are what they are.** The operator uses SSH deploy keys
+  and opens PRs from their own desktop; `GIT_PAT` is unset on purpose, not by
+  oversight, so `gh` API calls will not work and a session should not keep
+  suggesting a token to fix that. Push the branch, print the PR link, move on.
+  If reading a CI run's log would help, say what you would look for and let
+  the operator fetch it.
 - **Conventions:**
   - Bash: `#!/usr/bin/env bash`, `set -euo pipefail`, helpers and `log`/`warn`/
     `die` from `lib/common.sh` rather than bare `echo`.

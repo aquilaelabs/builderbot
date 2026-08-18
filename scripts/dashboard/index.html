@@ -276,7 +276,10 @@ body.dragging .tab .lbl{cursor:grabbing}
   .panes.split{grid-template-columns:1fr}
   .panes.split .pane:not(.active){display:none}
   .tab [data-pin]{display:none}
-  .pinmenu{display:none}
+  /* The pane chooser only — by id. The Resume/New chooser under a Claude
+     button shares the .pinmenu class, and hiding by class once made that
+     button look dead on a phone whenever a project had a transcript. */
+  #pinmenu{display:none}
 }
 .pane{position:relative;background:#000;min-height:0;display:flex;flex-direction:column}
 .pane.hidden{display:none}

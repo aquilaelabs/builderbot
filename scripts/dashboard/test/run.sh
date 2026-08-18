@@ -74,6 +74,10 @@ mkdir -p "$S"/{ws,reports,state,bin}
     && for d in alpha beta gamma delta; do echo x > "$d/README.md"; done \
     && for d in alpha beta delta; do git init -q "$d"; done )
 echo '["delta"]' > "$S/state/excluded-projects.json"
+# alpha has a previous Claude conversation, so its Claude button offers the
+# Resume / New chooser rather than starting straight away.
+mkdir -p "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)"
+echo '{}' > "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)/abc123.jsonl"
 cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
 # Stub: deterministic `bb doctor`, everything else a cheap no-op.
@@ -108,7 +112,7 @@ fresh() {
 fresh
 
 # ---- server ----------------------------------------------------------------
-env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 \
+env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" PATH="$S/bin:$PATH" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
