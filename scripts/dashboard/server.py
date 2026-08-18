@@ -37,43 +37,38 @@ TTYD_PUBLIC_PORT = int(os.environ.get("DASHBOARD_TTYD_PUBLIC_PORT") or TTYD_PORT
 # command string would be a remote shell with extra steps, and there is already
 # a real terminal one port over for anything not listed here.
 #
-# This is `bb`'s command surface, in `bb help`'s own order — the card is the
-# same list in the same sequence, so what you learn from one you can find in the
-# other. Commands that prompt or follow (`login`, `logs -f`) belong here because
-# a macro is typed into the real terminal rather than captured: the operator
-# answers the prompt or presses Ctrl-C exactly as if they had typed it.
+# In `bb help`'s order. Commands that prompt or follow (`login`, `logs -f`)
+# belong here because a macro is typed into the real terminal rather than
+# captured: the operator answers the prompt or presses Ctrl-C exactly as if
+# they had typed it.
 #
-# Two rules about what is NOT here. Nothing but `bb` — anything else belongs in
-# the terminal, which is one click away. And nothing that needs an argument to
-# mean anything: every entry below is a command that does the right thing typed
-# exactly as it stands, so a button is never a half-written command line. That
-# leaves out `bb shell`, which from a terminal only nests a second shell inside
-# the one it was typed into.
+# What is NOT here, and why. Nothing but `bb` — anything else belongs in the
+# terminal, one click away. Nothing that needs an argument to mean anything
+# (`bb shot URL`): a button is never a half-written command line. Nothing a
+# card already does better: the Projects card lists projects and offers the
+# CLAUDE.md fixes per row, the Doctor card runs doctor, the findings report
+# beats `bb findings` on every count. And nothing that only means anything
+# from a checkout of this repo (`bb drift`, `bb dashboard dev`) — those are
+# for sessions developing the container, not for the operator's dashboard.
+# The runner controls stay because the Runner card sends them, but they are
+# not repeated in the bb commands card (CARD_HIDDEN below).
 MACROS = {
     "status":           ["bb", "status"],
-    "projects":         ["bb", "projects"],
     "update":           ["bb", "update"],
     "login":            ["bb", "login"],
     "runner-status":    ["bb", "runner", "status"],
     "runner-stop":      ["bb", "runner", "stop"],
     "runner-start":     ["bb", "runner", "start"],
-    "runner-restart":   ["bb", "runner", "restart"],
     "emu-start":        ["bb", "emu", "start"],
     "emu-stop":         ["bb", "emu", "stop"],
     "emu-status":       ["bb", "emu", "status"],
     "emu-list":         ["bb", "emu", "list"],
-    "claude-md":        ["bb", "claude-md"],
-    "claude-md-update": ["bb", "claude-md", "--update"],
-    "claude-md-init":   ["bb", "claude-md", "--init"],
     "lint":             ["bb", "lint"],
-    "findings":         ["bb", "findings"],
-    "findings-all":     ["bb", "findings", "--all"],
     "logs":             ["bb", "logs"],
     "logs-follow":      ["bb", "logs", "-f"],
-    "logs-prev":        ["bb", "logs", "-p"],
-    "logs-list":        ["bb", "logs", "--list"],
-    "doctor":           ["bb", "doctor"],
 }
+# Sendable, but not listed in the bb commands card: another card owns them.
+CARD_HIDDEN = {"runner-status", "runner-stop", "runner-start"}
 
 # Keys an Android keyboard has no way to send. Names on the left are what the
 # page posts; values are tmux key names. A table rather than passthrough for the
@@ -1017,7 +1012,8 @@ def snapshot():
         # The command list is built from the table above rather than spelled out
         # again in the page, so a command added here appears as a button and one
         # removed cannot leave a button that posts a name the server rejects.
-        "macros": [{"name": k, "label": " ".join(v[1:])} for k, v in MACROS.items()],
+        "macros": [{"name": k, "label": " ".join(v[1:])}
+                   for k, v in MACROS.items() if k not in CARD_HIDDEN],
         "pinned": load_pins(),
         "custom": load_custom(),
         "cards": load_cards(),
