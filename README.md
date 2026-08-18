@@ -331,6 +331,12 @@ bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
 bb doctor          check everything that usually goes wrong
+
+# developing BuilderBot itself, from inside it
+bb dashboard test  browser-test the dashboard from this checkout, isolated
+bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reverts)
+bb drift           what this checkout changed that the container is not serving
+bb shot URL [FILE] headless screenshot of a page
 ```
 
 The dashboard's Commands card is this same list in this same order.
@@ -844,6 +850,7 @@ scripts/
   lib/common.sh                  shared shell helpers
   startup.d/*.sh                 startup hooks
   dashboard/                     web dashboard: server.py, index.html, bb-tty
+    test/                        its Playwright suite — `bb dashboard test`, isolated
 config/skel/                     home directory skeleton
 config/templates/                project CLAUDE.md template (shipped in the image)
 docs/unraid.md                   step-by-step Unraid walkthrough

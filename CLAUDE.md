@@ -95,7 +95,12 @@ show a GUI on.
 - **Playwright** — browsers are pre-installed at `/opt/pw-browsers` and
   configured via `PLAYWRIGHT_BROWSERS_PATH`. Run headless. Never run
   `playwright install`; if a project pins a different version, launch with
-  `executablePath: '/opt/pw-browsers/chromium'`.
+  `executablePath: '/opt/pw-browsers/chromium'` (a stable symlink to the
+  image's Chromium). The image's Playwright is a global module: `require()`
+  finds it from any directory via `NODE_PATH`; ESM `import` does not honour
+  that, so use `createRequire(import.meta.url)('playwright')`.
+- **`bb shot URL [FILE]`** — headless screenshot of any page, for showing the
+  user visual state.
 - **Screenshots** are the way to show the user visual state — save to a file
   and surface the path.
 
@@ -267,19 +272,39 @@ container.
   image would take down the runner that has to build the fix. Locally,
   `docker compose build` needs the host Docker socket, which is not mounted by
   default; `bb doctor` says whether it is.
-- **Test:** there is no test suite. Verification is the lint workflow, plus the
-  manual **runner smoke test** (Actions → Run workflow) that proves this runner
-  picks up jobs, carries the toolchain it advertises, and cannot see the
-  shielded PAT. What you *can* run here, with no daemon:
+- **Test:** the dashboard has a browser suite; the rest is verified by the lint
+  workflow plus the manual **runner smoke test** (Actions → Run workflow) that
+  proves this runner picks up jobs, carries the toolchain it advertises, and
+  cannot see the shielded PAT. What you *can* run here, with no daemon:
 
   ```bash
-  bb lint            # shellcheck / hadolint / actionlint / compose / XML — same as CI
-  python3 -m py_compile scripts/dashboard/server.py   # rm -rf the __pycache__ after
+  bb lint                       # shellcheck / hadolint / actionlint / compose / XML — same as CI
+  bb dashboard test [cards]     # Playwright suite in scripts/dashboard/test/, isolated (see below)
+  python3 -m py_compile scripts/dashboard/server.py
   ```
 
-  If the *installed* `bb` predates the lint subcommand, `bash scripts/bb lint`
-  runs the repo copy — it prints `[skip]` for any tool the running image does
-  not carry yet, rather than passing by omission.
+  The dashboard suite runs the checkout's `server.py` on a spare port with a
+  scratch state dir, fake projects and a **private tmux server** — it cannot
+  touch the live dashboard, and CI runs it on this runner for any push that
+  changes `scripts/dashboard/`. **Add to it when you change the dashboard**;
+  the pattern in `lib.mjs` (real touch via CDP, dialogs recorded, console
+  errors collected) is the one to follow. Never write ad-hoc harnesses that
+  create tmux sessions: inside a tmux session the client ignores
+  `TMUX_TMPDIR`, and a throwaway session lands on — or a cleanup kills — the
+  real server. The harness unsets `TMUX` and verifies its socket first.
+
+  If the *installed* `bb` predates a subcommand, `bash scripts/bb <cmd>` runs
+  the repo copy — it prints `[skip]` for any tool the running image does not
+  carry yet, rather than passing by omission.
+
+- **Seeing a change without a rebuild:** `bb drift` lists what this checkout
+  has changed that the running container is not serving. For the dashboard
+  specifically, `bb dashboard dev` restarts the live dashboard from
+  `./scripts/dashboard` (same port and credential; lasts until the container
+  restarts; `--off` reverts) — so a dashboard change can be looked at in the
+  browser without a 40-minute image build. `bb shot URL [FILE]` takes a
+  headless screenshot to show the operator; it reads `DASHBOARD_AUTH` from
+  the environment for the dashboard's own pages.
 
 - **Lint:** CI runs shellcheck, hadolint and actionlint — on *this* runner,
   where minutes are free and the image already carries the tools (the job

@@ -95,7 +95,12 @@ show a GUI on.
 - **Playwright** — browsers are pre-installed at `/opt/pw-browsers` and
   configured via `PLAYWRIGHT_BROWSERS_PATH`. Run headless. Never run
   `playwright install`; if a project pins a different version, launch with
-  `executablePath: '/opt/pw-browsers/chromium'`.
+  `executablePath: '/opt/pw-browsers/chromium'` (a stable symlink to the
+  image's Chromium). The image's Playwright is a global module: `require()`
+  finds it from any directory via `NODE_PATH`; ESM `import` does not honour
+  that, so use `createRequire(import.meta.url)('playwright')`.
+- **`bb shot URL [FILE]`** — headless screenshot of any page, for showing the
+  user visual state.
 - **Screenshots** are the way to show the user visual state — save to a file
   and surface the path.
 

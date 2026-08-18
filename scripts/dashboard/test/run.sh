@@ -30,7 +30,8 @@ DASH="$(dirname "$HERE")"
 export NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}"
 node -e "require.resolve('playwright')" 2>/dev/null \
     || { log "[skip] playwright is not installed in this image"; exit 0; }
-CHROME="$(ls -d /opt/pw-browsers/chromium-*/chrome-linux*/chrome 2>/dev/null | head -1 || true)"
+CHROME=/opt/pw-browsers/chromium          # the image's stable symlink, or an older image's revisioned path
+[ -x "$CHROME" ] || CHROME="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1 || true)"
 [ -x "${CHROME:-}" ] || { log "[skip] no Playwright chromium under /opt/pw-browsers"; exit 0; }
 command -v tmux >/dev/null || { log "[skip] tmux is not installed"; exit 0; }
 
@@ -123,7 +124,8 @@ if [ $# -gt 0 ]; then
     tests=()
     for t in "$@"; do tests+=("$HERE/${t%.mjs}.mjs"); done
 else
-    mapfile -t tests < <(ls "$HERE"/*.mjs | grep -v '/lib\.mjs$')
+    tests=()
+    for t in "$HERE"/*.mjs; do [ "$(basename "$t")" = lib.mjs ] || tests+=("$t"); done
 fi
 rc=0
 for t in "${tests[@]}"; do

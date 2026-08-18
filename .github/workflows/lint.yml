@@ -77,6 +77,21 @@ jobs:
         # shared with `bb lint`.
         run: actionlint -color
 
+      - name: Dashboard browser tests
+        # The dashboard's Playwright suite, against an isolated instance on
+        # a spare port with a private tmux server — nothing it does can reach
+        # the live dashboard this runner's container is also serving. Runs
+        # here because the image already carries Playwright and Chromium;
+        # the harness reports [skip] on an image that predates them rather
+        # than passing by omission. Only worth running when it could have
+        # changed, so it is skipped for pushes that leave the dashboard alone.
+        run: |
+          if git diff --quiet "${{ github.event.before || 'HEAD~1' }}" HEAD -- scripts/dashboard 2>/dev/null \
+             && [ "${{ github.event_name }}" != workflow_dispatch ]; then
+            echo "dashboard unchanged — skipping browser tests"; exit 0
+          fi
+          bash scripts/dashboard/test/run.sh
+
       - name: Compose file and Unraid template
         run: |
           # --env-file rather than cp .env.example .env: config is daemonless

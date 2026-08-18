@@ -34,6 +34,15 @@ bb — BuilderBot helper
   bb logs -p [N]         show a previous boot's log (the log rotates per start)
   bb logs --list         list the kept boot logs, newest first
   bb doctor              check the things that usually go wrong
+
+  Developing BuilderBot itself (this repo is the container's source):
+  bb dashboard test [F]  browser-test the dashboard from this checkout, isolated
+  bb dashboard dev [DIR] serve the live dashboard from DIR (default: ./scripts/dashboard)
+  bb dashboard dev --off ...and put the image's copy back
+  bb dashboard status    which copy of the dashboard is serving right now
+  bb drift [REPO]        which files this checkout changed that the running
+                         container is not serving yet
+  bb shot URL [FILE]     headless screenshot of a page (basic auth via --auth)
 EOF
 }
 
@@ -726,6 +735,145 @@ except xml.parsers.expat.ExpatError as e:
     return "$rc"
 }
 
+# ---- developing the container from inside it -----------------------------
+# This repo IS the container's source, and the thing every session trips over
+# first is that editing a file here changes nothing until an image is built
+# and the container updated. These commands shorten that loop where it can be
+# shortened — the dashboard is one Python file and one HTML file, nothing to
+# compile — and say plainly what is and is not live where it cannot.
+
+# The dashboard server process, by PID. Anchored on the script path so a
+# shell whose command line merely mentions the dashboard is never matched —
+# an unanchored pkill here once killed the real dashboard and, another time,
+# the very shell that ran it.
+dashboard_pid() {
+    pgrep -f '^python3 [^ ]*/dashboard/server\.py$' 2>/dev/null | head -1
+}
+
+# The directory the running dashboard was started from, read off its command
+# line — so "which copy is live" is a fact, not a guess from a marker file.
+dashboard_dir() {
+    local pid; pid="$(dashboard_pid)" || true
+    [ -n "$pid" ] || return 1
+    tr '\0' ' ' < "/proc/$pid/cmdline" | sed -E 's#^python3 (.*)/server\.py *$#\1#'
+}
+
+cmd_dashboard() {
+    local sub="${1:-status}"; shift || true
+    case "$sub" in
+        test)
+            # The repo's harness, not the image's: the point is to test the
+            # checkout you are editing. Falls back to the installed copy for a
+            # bare `bb dashboard test` outside a checkout.
+            local here="${BB_REPO:-$PWD}/scripts/dashboard/test/run.sh"
+            [ -x "$here" ] || here=/opt/builderbot/scripts/dashboard/test/run.sh
+            [ -x "$here" ] || die "no dashboard test harness at $here"
+            exec bash "$here" "$@"
+            ;;
+        dev)
+            local dir="${1:-$PWD/scripts/dashboard}" pid env_pid
+            if [ "$dir" = "--off" ]; then dir=/opt/builderbot/scripts/dashboard; fi
+            dir="$(cd "$dir" 2>/dev/null && pwd)" || die "no such directory: ${1:-$PWD/scripts/dashboard}"
+            [ -f "$dir/server.py" ] && [ -f "$dir/index.html" ] \
+                || die "$dir does not hold a dashboard (server.py + index.html)"
+            pid="$(dashboard_pid)" || true
+            [ -n "$pid" ] || die "the dashboard is not running (ENABLE_DASHBOARD / DASHBOARD_AUTH?) — nothing to swap"
+            env_pid="$pid"
+            if [ "$(dashboard_dir)" = "$dir" ]; then
+                log "dashboard: already serving from $dir"; return 0
+            fi
+            # Same environment the running one has — port, terminal port,
+            # credential — read from the process, never printed. Only the
+            # script changes.
+            local envs=()
+            while IFS= read -r -d '' kv; do
+                case "$kv" in DASHBOARD_*=*|WORKSPACE=*|FINDINGS_DIR=*|BUILDER_HOME=*|BB_LOG_DIR=*) envs+=("$kv") ;; esac
+            done < "/proc/$env_pid/environ"
+            kill "$pid"
+            for _ in $(seq 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
+            kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
+            nohup env "${envs[@]}" python3 "$dir/server.py" >> "$(bb_log_dir)/dashboard.log" 2>&1 &
+            sleep 1
+            [ -n "$(dashboard_pid)" ] || die "the new dashboard did not stay up — see $(bb_log_dir)/dashboard.log"
+            log "dashboard: now serving from $dir (pid $(dashboard_pid))"
+            log "this lasts until the container restarts; 'bb dashboard dev --off' puts the image's copy back"
+            ;;
+        status)
+            local d; d="$(dashboard_dir)" || { echo "dashboard: not running"; return 0; }
+            if [ "$d" = /opt/builderbot/scripts/dashboard ]; then
+                echo "dashboard: serving the image's copy ($d)"
+            else
+                echo "dashboard: serving a DEV copy from $d — 'bb dashboard dev --off' reverts"
+            fi
+            ;;
+        *) die "usage: bb dashboard test|dev|status" ;;
+    esac
+}
+
+# bb drift — what this checkout has changed that the running container is
+# not serving. Compares the image's /opt/builderbot/scripts and the shipped
+# templates against the repo's, file by file. Answers the question every
+# session asks itself after editing anything here.
+cmd_drift() {
+    local repo="${1:-$PWD}" n=0
+    [ -d "$repo/scripts" ] || die "$repo does not look like the BuilderBot checkout (no scripts/)"
+    local pairs=("$repo/scripts:/opt/builderbot/scripts"
+                 "$repo/config/templates:/opt/builderbot/templates")
+    for pair in "${pairs[@]}"; do
+        local src="${pair%%:*}" live="${pair##*:}"
+        [ -d "$live" ] || { echo "  (no $live in this image)"; continue; }
+        while IFS= read -r line; do
+            n=$((n+1)); echo "  $line"
+        done < <(diff -rq --exclude='__pycache__' --exclude='test' "$src" "$live" 2>/dev/null \
+                 | sed -E "s#^Files $src/(.*) and $live/.* differ#changed: \1#; \
+                           s#^Only in $src/?(.*): (.*)#new here: \1/\2#; \
+                           s#^Only in $live/?(.*): (.*)#only in image: \1/\2#; s#: /#: #")
+    done
+    if [ "$n" = 0 ]; then
+        echo "no drift: the running container is serving what this checkout holds"
+    else
+        echo "$n file(s) differ — the running container is NOT serving these; a change is live"
+        echo "only after CI builds a new image and the container updates (or 'bb dashboard dev' for the dashboard)"
+    fi
+    if d="$(dashboard_dir 2>/dev/null)" && [ "$d" != /opt/builderbot/scripts/dashboard ]; then
+        echo "dashboard: serving a dev copy from $d"
+    fi
+}
+
+# bb shot — a headless screenshot, for showing the operator visual state
+# from a box with no display. Playwright's Chromium from the image.
+cmd_shot() {
+    local auth="${DASHBOARD_AUTH:-}" width=1280 height=800 url="" out=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --auth) auth="$2"; shift 2 ;;
+            --size) width="${2%x*}"; height="${2#*x}"; shift 2 ;;
+            -*) die "unknown option: $1" ;;
+            *) if [ -z "$url" ]; then url="$1"; else out="$1"; fi; shift ;;
+        esac
+    done
+    [ -n "$url" ] || die "usage: bb shot URL [FILE] [--auth user:pass] [--size WxH]"
+    out="${out:-shot-$(date +%H%M%S).png}"
+    local chrome
+    chrome=/opt/pw-browsers/chromium          # the image's stable symlink...
+    [ -x "$chrome" ] || chrome="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
+    [ -x "${chrome:-}" ] || die "no Playwright chromium under /opt/pw-browsers"   # ...or an older image's revisioned path
+    NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - "$url" "$out" "$auth" "$width" "$height" "$chrome" <<'EOF'
+const { chromium } = require("playwright");
+const [url, out, auth, w, h, exe] = process.argv.slice(2);
+(async () => {
+  const b = await chromium.launch({ executablePath: exe });
+  const [username, password] = auth.includes(":") ? auth.split(/:(.*)/) : [null, null];
+  const p = await b.newPage({ viewport: { width: +w, height: +h },
+                              ...(username ? { httpCredentials: { username, password } } : {}) });
+  await p.goto(url, { waitUntil: "networkidle" }).catch(() => {});
+  await p.screenshot({ path: out, fullPage: false });
+  await b.close();
+  console.log(out);
+})().catch(e => { console.error(String(e)); process.exit(1); });
+EOF
+}
+
 cmd_doctor() {
     local ok=0
     check() { # check DESCRIPTION COMMAND...
@@ -850,6 +998,9 @@ case "${1:-help}" in
     findings) shift; cmd_findings "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     doctor)   cmd_doctor ;;
+    dashboard) shift; cmd_dashboard "$@" ;;
+    drift)    shift; cmd_drift "$@" ;;
+    shot)     shift; cmd_shot "$@" ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;
 esac
