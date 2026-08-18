@@ -328,6 +328,12 @@ body.dragging .tab .lbl{cursor:grabbing}
   .keys,.panes{border-radius:0}   /* the bar below them owns the bottom corners */
   .mpanel.show{display:block;flex:0 0 auto;max-height:45vh;overflow:auto;
     background:var(--panel);border:1px solid var(--line);border-top:0}
+  /* Mid-slide a flyout is an overlay pinned above the bottom bar (bottom set
+     inline to the bar's height), so the terminal under it holds still until
+     the slide lands and the panel drops back into the flow. */
+  .col.term{position:relative}
+  .keys.sliding,.mpanel.sliding{position:absolute;left:0;right:0;z-index:5;
+    box-shadow:0 -6px 18px rgba(0,0,0,.35)}
   .mpanel .lab{font-size:10px;text-transform:uppercase;letter-spacing:.6px;
     color:var(--dim);padding:8px 10px 0}
 }
@@ -1168,26 +1174,38 @@ $("mMacros").onclick   = () => mobPanel("macros");
 $("mSessions").onclick = () => mobPanel("sessions");
 
 // Slide a bottom flyout open or shut on a phone instead of popping it.
-// display:none is not animatable, so the class flips at whichever end keeps
-// the panel visible while its height tweens — the card fold's shape. State is
-// tracked on the element, not read from the class: the class stays on while a
-// close is still tweening, and every render passes through here.
+//
+// The slide happens as an OVERLAY: for its duration the panel is taken out
+// of the flow and pinned above the bottom bar, growing (or shrinking) over
+// the terminal, and only when it lands is it put back into the flow — so the
+// terminal resizes once, in a single step, instead of the iframe reflowing
+// and refitting on every frame of the tween underneath it. Opening: overlay,
+// slide up, then snap the terminal shorter. Closing: overlay (the terminal
+// snaps taller at once), slide down, then hide. State is tracked on the
+// element, not read from the class: the class stays on while a close is
+// still tweening, and every render passes through here.
 function slidePanel(el, show){
   const was = el.dataset.shown === "1";
   el.dataset.shown = show ? "1" : "0";
   if (was === show) return;
   el.getAnimations().forEach(a => a.cancel());
   if (noMotion() || !isPhone()){
+    el.classList.remove("sliding"); el.style.bottom = "";
     el.classList.toggle("show", show);
     return;
   }
-  el.classList.add("show");
+  el.classList.add("show", "sliding");
+  el.style.bottom = $("mobar").offsetHeight + "px";   // pinned just above the bar
   const h = el.offsetHeight;
   el.style.overflow = "hidden";
   const anim = el.animate(show ? [{height: "0px"}, {height: h + "px"}]
                                : [{height: h + "px"}, {height: "0px"}],
                           {duration: 200, easing: "ease"});
-  anim.onfinish = () => { el.style.overflow = ""; if (!show) el.classList.remove("show"); };
+  anim.onfinish = () => {
+    el.style.overflow = ""; el.style.bottom = "";
+    el.classList.remove("sliding");           // back into the flow: the snap
+    if (!show) el.classList.remove("show");
+  };
 }
 
 function drawKeys(){
