@@ -503,10 +503,17 @@ lives in its body. The cards:
   Stopping waits for GitHub to release the runner's session rather than
   reporting success and leaving a listener behind
 - every `bb` command as a button, pinnable, typed into the terminal you are
-  looking at — and a second card for **your own** command lists
-- live list of tmux sessions, named exactly as their tabs are. Each row's
-  **Open** button wears where its tab is: green when the tab is on the tab
-  bar (Open goes to it), plain when it is minimised (Open brings it back).
+  looking at — and a second card for **your own** command lists. Every such
+  button greys out while the tab on screen is a Claude session or a document:
+  commands only ever go to a plain shell, never quietly to some other tab
+- live list of tmux sessions, named exactly as their tabs are, with the same
+  hover text the tabs carry. **Click the name** to go to its tab, reopening
+  it first if it was minimised. The button beside it does the other thing:
+  **Open** when the tab is minimised; when the tab is on the bar it turns
+  green and reads **Minimise** for a shell, or **Close** for a Claude session
+  — which asks first, because that ends the conversation. An **attached** pill
+  marks the sessions on screen right now, with ◧/◨ saying which pane when
+  the view is split.
   Every Claude session — in this list and on its tab — carries a **state dot**:
   blue and pulsing while it works, amber when it is waiting on you (input, a
   permission decision, or a finished turn), with the task it reported
@@ -544,8 +551,9 @@ a placeholder, and **+** starts over.
 - **— on a tab minimises it**, and asks nothing. The terminal keeps running
   and is listed under Sessions, where **Open** brings it back; a **Claude** tab
   is the same, the conversation carries on without a tab. Nothing is lost, so
-  nothing is asked. **Middle-clicking** a tab does the same, the way it does in
-  a browser.
+  nothing is asked. **Middle-clicking** a terminal tab is the stronger thing,
+  the way it is in a browser: it ends the session — after the same question
+  the Sessions ✕ asks — and closes the tab with it.
 - **✕ appears on the findings tab only**, because a document has no session to
   keep. It closes without asking too.
 - **Ending a session for good is the ✕ in the Sessions card.** That one asks,
@@ -561,7 +569,7 @@ a placeholder, and **+** starts over.
   half a second first — the tab dims to say it is picked up; a finger that
   moves sooner is swiping, and on a phone that swipe scrolls the strip.
 - **⇱ on a tab** pins it to the **left** or **right** pane, which splits the
-  view. The pin marker on the tab (◧ / ◨) says where it currently is.
+  view. Once split, each tab on screen carries ◧ or ◨ for the pane it is in.
 - **✕ on a pane** collapses back to a single pane. It does **not** close the
   tab or touch its session — the tab owns the session, the pane is only where
   it was being shown.
@@ -569,10 +577,10 @@ a placeholder, and **+** starts over.
   active pane is shown — a split made at the desk is still there when you get
   back to it. The strip stays one row — swipe it, or page it with the **‹ ›**
   arrows — instead of wrapping, so the terminal keeps its screen space. Under
-  the terminal sit two buttons, **Keys** and **Commands**: the on-screen keys,
-  and the `bb` and custom command macros, which on a phone live here rather
-  than in dashboard cards (those two cards are hidden there). One panel at a
-  time — there is not the height for both.
+  the terminal sit three buttons, **Keys**, **Commands** and **Sessions**: the
+  on-screen keys, the `bb` and custom command macros, and the session list —
+  which on a phone live here rather than in dashboard cards (those three cards
+  are hidden there). One panel at a time — there is not the height for two.
 
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
 or a reloaded page detaches instead of killing the session. The **Sessions
