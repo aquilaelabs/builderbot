@@ -67,6 +67,12 @@ try {
 
 await page.evaluate(() => focusTab(tabs.find(t => sessionOf(t.arg) === 'shell-9').id));
 ok(await page.$eval('#commands [data-m]', b => !b.disabled), 'macros live on a shell tab');
+// no tabs at all → greyed too, with a tooltip saying to open a shell
+await page.evaluate(() => { const keep = tabs.slice(); keep.forEach(t => dropTab(t.id)); });
+ok(await page.$eval('#commands [data-m]', b => b.disabled && /open one/.test(b.title))
+   && await page.$eval('#runner [data-m]', b => b.disabled), 'macros greyed with no tab open');
+await page.evaluate(() => openTab({kind:"term", arg: argForSession('shell-9'), label:'shell-9'}));
+await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
 
 // A back/forward-cache restore (persisted pageshow) reloads the terminal
 // iframe so a dead socket reconnects instead of sitting on ttyd's prompt.
