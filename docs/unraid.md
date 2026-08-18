@@ -225,11 +225,13 @@ resume from the dashboard rather than one that closed itself.
 
 ### Updating — the whole point
 
-CI publishes a fresh `:latest` on every push to `main` and on a weekly
-schedule. On the **Docker** tab, Unraid's *Check for Updates* compares your
-running image's digest against GHCR and flips the container to
-**update ready** — click it and you're on the new build. That's the entire
-update procedure. Ansible not required.
+CI publishes a fresh `:latest` for any push to `main` that changes what the
+image is built from, and on a weekly schedule. On the **Docker** tab, Unraid's
+*Check for Updates* compares your running image's digest against GHCR and flips
+the container to **update ready** — click it and you're on the new build.
+That's the entire update procedure. Ansible not required. Most updates pull
+only the layers that changed; the Monday build is rebuilt from scratch on
+purpose (that is the one that refreshes packages) and pulls everything.
 
 Template edits (new paths, changed variables) are done from the container's
 own settings page (click the icon → *Edit*), and survive image updates.
@@ -315,18 +317,20 @@ Below the `bb` commands is a card for your own: **+** takes a title and a list
 of command lines, and the button it makes types them into the terminal in order.
 They are kept in `/config`, so they survive updates.
 
-A permanent workspace tab sits at the left. **Claude** opens one session per
-project — resumable if a previous conversation exists — and **Shell** opens
-another terminal each time you click it. Tabs are named for where they are
-(`sh: <directory>`, following a `cd`; `Claude: <project>`), with the full path
-on hover. Tabs can be dragged to reorder and
-pinned to a left or right pane for a side-by-side view. Closing a Claude tab
-ends its session; closing a shell tab leaves it running, to be picked up again
-from the Sessions card. A pane's ✕ only collapses the split.
+The page starts with one workspace tab; every tab, that one included, can be
+minimised. **Claude** opens one session per project — resumable if a previous
+conversation exists — and **Shell** opens another terminal each time you click
+it. Tabs are named for where they are (`sh: <directory>`, following a `cd`;
+`Claude: <project>`), with the full path on hover. Tabs can be dragged to
+reorder (on a phone, hold for half a second first) and pinned to a left or
+right pane for a side-by-side view. A pane's ✕ only collapses the split.
 
-A tab's **—** minimises it: the terminal keeps running and is listed under
-Sessions, where Open brings it back. The ✕ in the Sessions card is what ends a
-session for good, and it is the only one that asks.
+A tab's **—** minimises it: the terminal or Claude session keeps running and is
+listed under Sessions, where clicking the name brings its tab back. Ending a
+session for good is the ✕ in the Sessions card (or a middle-click on its tab),
+and that is the only thing that asks. The sidebar cards collapse on a click of
+their header and can be dragged into any order; the ▤ button in the top bar
+resets them.
 
 The tab strip is stored on the container rather than in the browser, so a phone
 shows what the desktop has open. **Terminals survive a restart of the container**

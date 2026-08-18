@@ -21,8 +21,9 @@ in.
 
 The container starts, runs its install/setup hooks, registers the runner, and
 stays up. You `docker exec` into it to use Claude Code; GitHub sends CI jobs
-to the same box. New images publish automatically to GHCR on every push to
-`main`, so updating is Unraid's one-click **update ready** flow.
+to the same box. New images publish automatically to GHCR whenever a push to
+`main` changes what the image is built from (plus a weekly refresh), so
+updating is Unraid's one-click **update ready** flow.
 
 ## What's in the image
 
@@ -223,9 +224,12 @@ project is not hidden but reported: no git repository or the wrong ownership in
 red, no `CLAUDE.md` in amber, both behind **Show projects with errors**. Only
 empty directories, hidden ones and the runner's `_work` are left out.
 
-**Updating**: CI publishes `:latest` on every push to `main` + a weekly
-freshness rebuild. Unraid's *Check for Updates* flips the container to
-**update ready** — click it. Rollback = point the Repository field at a
+**Updating**: CI publishes `:latest` for any push to `main` that touches the
+image's inputs (Dockerfile, `scripts/`, `config/`) + a weekly freshness
+rebuild. Unraid's *Check for Updates* flips the container to **update ready**
+— click it. Builds seed their layer cache from the previous `:latest`, so a
+scripts-only change is a small pull; the Monday rebuild is uncached on purpose
+and is always the big one. Rollback = point the Repository field at a
 `sha-<commit>` tag. Compose: `docker compose pull && docker compose up -d`.
 
 ---
@@ -335,6 +339,7 @@ bb doctor          check everything that usually goes wrong
 # developing BuilderBot itself, from inside it
 bb dashboard test  browser-test the dashboard from this checkout, isolated
 bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reverts)
+bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
 bb shot URL [FILE] headless screenshot of a page
 ```
@@ -860,7 +865,8 @@ config/templates/                project CLAUDE.md template (shipped in the imag
 docs/unraid.md                   step-by-step Unraid walkthrough
 .hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint
 .github/actionlint.yaml          this runner's labels, for workflow linting
-.github/workflows/               GHCR publish + lint (shellcheck/hadolint/actionlint/compose/xml)
+.github/workflows/               GHCR publish (hosted, cached from :latest); lint + dashboard
+                                 browser tests (on this runner); runner smoke test (manual)
 ```
 
 ## License
