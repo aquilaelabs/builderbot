@@ -59,6 +59,15 @@ ok(true, 'a findings tab restored from the layout loads itself');
 
 await page.evaluate(() => focusTab(tabs.find(t => sessionOf(t.arg) === 'shell-9').id));
 ok(await page.$eval('#commands [data-m]', b => !b.disabled), 'macros live on a shell tab');
+
+// A back/forward-cache restore (persisted pageshow) reloads the terminal
+// iframe so a dead socket reconnects instead of sitting on ttyd's prompt.
+await page.waitForSelector('.pane iframe');
+await page.evaluate(() => { window.__loads = 0;
+  document.querySelector('.pane iframe').addEventListener('load', () => window.__loads++); });
+await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
+await page.waitForFunction(() => window.__loads > 0, { timeout: 10000 });
+ok(true, 'a bfcache restore reloads the terminal iframe to reconnect it');
 const nd2 = page.dialogs.length;
 const tb = await (await page.$('.tab.on')).boundingBox();
 await page.mouse.click(tb.x + 20, tb.y + 12, { button: 'middle' });

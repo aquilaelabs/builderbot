@@ -105,11 +105,16 @@ fi
 
 # --url-arg lets the page choose the session; bb-tty validates it. -W makes the
 # terminal writable, which is the entire point, and is why the credential above
-# is not optional.
+# is not optional. `-t reconnect=5` shortens ttyd's own auto-reconnect after a
+# dropped socket from its 10s default — it heals a desktop blip on its own.
+# It does NOT cover a phone, whose browser freezes the page's timers while it
+# is backgrounded so the reconnect never fires; the dashboard reloads the
+# terminal iframe on return for that (reattaching tmux, losslessly).
 nohup ttyd --port "$TTYD_PORT" --interface 0.0.0.0 \
         --credential "$DASHBOARD_AUTH" \
         --url-arg --writable \
         --max-clients 16 \
+        -t reconnect=5 \
         "$DASH/bb-tty" \
     >> "$(bb_log_dir)/ttyd.log" 2>&1 &
 

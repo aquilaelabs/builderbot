@@ -1083,7 +1083,28 @@ function nudgeTerminals(){
   nudgeTimer = setTimeout(() => frames.forEach(f => f.style.width = ""), 60);
 }
 
-document.addEventListener("visibilitychange", () => { if (!document.hidden) nudgeTerminals(); });
+// Reconnecting a dropped terminal. ttyd auto-reconnects on its own — except
+// on a phone, which freezes the whole page while it is backgrounded (so
+// ttyd's timer never fires) and often restores it from the back/forward cache
+// with the socket already dead, showing ttyd's "reconnect" prompt. The
+// terminal is a cross-origin iframe we cannot reach into, but reloading it is
+// lossless: tmux holds the session and its scrollback on the server, so the
+// reload reattaches exactly where it was.
+let hiddenAt = 0;
+function reattachTerminals(){
+  document.querySelectorAll(".pane iframe").forEach(f => { f.src = f.src; });
+}
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden){ hiddenAt = Date.now(); return; }
+  // Only after long enough that the socket was really dropped — a quick glance
+  // away keeps it, and reloading then would flash the terminal for nothing.
+  // Gated to touch devices: a desktop page is throttled, not frozen, so ttyd
+  // heals it without a reload, and a desktop reload on every alt-tab is noise.
+  if (isPhone() && hiddenAt && Date.now() - hiddenAt > 3000) reattachTerminals();
+  nudgeTerminals();
+});
+// A back/forward-cache restore always resumes with a dead socket, phone or not.
+window.addEventListener("pageshow", e => { if (e.persisted) reattachTerminals(); });
 window.addEventListener("focus", nudgeTerminals);
 
 // ---- keys ------------------------------------------------------------
