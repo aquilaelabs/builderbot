@@ -2106,25 +2106,27 @@ function notify(msg, bad){
   toastTimer = setTimeout(() => el.classList.remove("show"), bad ? 7000 : 4000);
 }
 
-// Where a macro should be typed. The active tab if it is a shell — never a
-// Claude one, where the command would not run at all but be submitted as a
-// prompt — otherwise any open shell tab. There may be none: the workspace tab
-// is closable now, so the caller opens a terminal instead of assuming one.
+// Where a macro should be typed: the tab being looked at, and only if it is a
+// plain shell. Never a Claude one, where the command would not run at all but
+// be submitted as a prompt; never some other tab the operator is not looking
+// at; and null when there is nothing suitable, which greys the buttons out.
 function macroTarget(){
   const here = tabOf(panes[active]);
   return here && here.kind === "term" && !isClaude(here) ? here : null;
 }
 // Every macro button — the runner card's, the bb card's, the custom ones —
-// greys out when the tab being looked at is not a plain shell: a Claude tab
-// would take the command as a prompt, a document has nowhere to type, and
-// quietly targeting some other tab was a surprise. With no tab at all they
-// stay live: pressing one opens a terminal.
-const macrosLive = () => !!macroTarget() || !tabOf(panes[active]);
+// greys out unless the tab being looked at is a plain shell: a Claude tab
+// would take the command as a prompt, a document has nowhere to type, no
+// tab has nowhere at all, and quietly targeting (or opening) some other tab
+// was a surprise. The button says where to go instead.
+const macrosLive = () => !!macroTarget();
 function wireMacros(el){
   const live = macrosLive();
   el.querySelectorAll("[data-m],[data-run]").forEach(b => {
     b.disabled = !live;
-    if (!live) b.title = "commands run in a shell tab — switch to one";
+    if (!live) b.title = tabOf(panes[active])
+      ? "commands run in a shell tab — switch to one"
+      : "commands run in a shell tab — open one (+ or a project's Shell)";
     b.onclick = () => b.dataset.m ? macro(b.dataset.m) : macro(null, b.dataset.run);
   });
 }
@@ -2134,12 +2136,7 @@ function wireMacros(el){
 // `bb runner stop` that takes a minute — none of which a one-shot text box did.
 async function macro(name, custom){
   const t = macroTarget();
-  if (!t){
-    if (tabOf(panes[active])) return;    // greyed out; a stray tap does nothing
-    newShell("");
-    notify("Opening a terminal — press the button again once it is up.");
-    return;
-  }
+  if (!t) return;                        // greyed out; a stray tap does nothing
   const session = sessionOf(t.arg);
   focusTab(t.id);
   if (!liveSessions().has(session)){

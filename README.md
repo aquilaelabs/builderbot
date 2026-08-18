@@ -656,9 +656,11 @@ the prompt, types the command into the terminal you are looking at and presses
 Enter, rather than reporting into a box of its own. The
 output is then somewhere you can scroll it, a slow one like `bb runner stop` is
 watchable while it runs, and one that asks a question (`bb login`) or follows
-(`bb logs -f`) behaves exactly as if you had typed it. A command is never typed
-into a **Claude** tab — that would submit it as a prompt rather than run it — so
-it goes to the workspace terminal instead when a Claude tab has focus.
+(`bb logs -f`) behaves exactly as if you had typed it. A command only ever goes
+to the tab you are looking at, and only if that is a plain shell: with a
+**Claude** tab in front (it would submit the command as a prompt), a document,
+or no tab at all, every command button is greyed out and its hover text says
+where to go — never quietly typed into some other terminal.
 
 The line is cleared with end-of-line then kill-line, which is readline editing
 rather than a signal: `Ctrl-C` would also interrupt whatever is running in that
