@@ -343,6 +343,13 @@ container.
   - Persistence is the recurring design constraint: `/opt` is discarded on every
     image update, the home and `/config` volumes are not. New state has to pick
     a side, and the comment should say which and why.
+  - Layer order is a cost. Builds seed from the previous `:latest`, so a
+    Dockerfile change invalidates every layer *below* it — and the host then
+    re-downloads all of them. A runtime-only `ENV`/`ARG` belongs at the **end**
+    of the Dockerfile, not in the top block, unless a build step needs it;
+    two env vars added to the top block once turned a two-line change into a
+    full multi-gigabyte pull. The weekly Monday build is uncached by design and
+    is always a full pull.
   - Secrets never reach a log unredacted — the entrypoint builds
     `/run/builderbot/redact.sed` from both token shapes and literal values, and
     everything the container prints goes through it.
