@@ -216,8 +216,16 @@ def load_layout():
         v = json.loads(TABS_FILE.read_text())
     except (OSError, ValueError):
         v = {}
+    # Shape-checked field by field, not trusted: this runs inside every status
+    # poll and once at startup (prune_claude_tabs), so a file holding
+    # `"tabs": 5` — a hand edit, or a client that posted junk before the
+    # handler checked — must read as "no layout", not raise and take the
+    # whole dashboard down with a 500 per poll and a crash at the next boot.
+    if not isinstance(v, dict):
+        v = {}
     tabs, ids = [], set()
-    for t in (v.get("tabs") or [])[:MAX_TABS]:
+    stored = v.get("tabs") if isinstance(v.get("tabs"), list) else []
+    for t in stored[:MAX_TABS]:
         if not isinstance(t, dict) or t.get("kind") not in TAB_KINDS:
             continue
         tid, arg, label = t.get("id"), t.get("arg"), t.get("label")
@@ -232,10 +240,13 @@ def load_layout():
         ids.add(tid)
         tabs.append({"id": tid, "kind": t["kind"], "arg": arg, "label": label,
                      "fixed": bool(t.get("fixed"))})
-    panes = [p if p in ids else None for p in (v.get("panes") or [None, None])[:2]]
+    stored = v.get("panes") if isinstance(v.get("panes"), list) else []
+    panes = [p if isinstance(p, str) and p in ids else None for p in stored[:2]]
     while len(panes) < 2:
         panes.append(None)
-    return {"rev": int(v.get("rev") or 0), "tabs": tabs, "panes": panes,
+    rev = v.get("rev")
+    return {"rev": rev if isinstance(rev, int) and rev >= 0 else 0,
+            "tabs": tabs, "panes": panes,
             "active": 1 if v.get("active") == 1 and panes[1] else 0}
 
 
@@ -699,6 +710,19 @@ def claude_state(title):
     if not title.startswith(SPINNER_GLYPHS + ("✳",)) or task == "Claude Code":
         task = ""
     return ("working" if working else "waiting"), task
+
+
+def tmux_name(s):
+    """What tmux will actually call a session asked for under this name.
+
+    tmux rewrites `.` and `:` in a session name to `_` (they are its target
+    syntax) and says nothing. A project called `example.com` therefore runs
+    as `claude-example_com`, and every place that derives the session name
+    from the project name — here, bb-tty, the page — has to make the same
+    substitution, or the kill / keys / macro paths look for a session that
+    was never called that.
+    """
+    return re.sub(r"[.:]", "_", s)
 
 
 def tmux_sessions():
@@ -1271,12 +1295,17 @@ class Handler(BaseHTTPRequestHandler):
         a number it did not write, and adopts. Without it they would take turns
         overwriting each other every fifteen seconds.
         """
+        # The lists are validated entry by entry when read back, but they have
+        # to BE lists: a stored non-list is what load_layout would otherwise
+        # have to survive on every poll from then on.
+        if not isinstance(req.get("tabs", []), list) or not isinstance(req.get("panes", []), list):
+            return self._json({"error": "bad request"}, 400)
         with _state_lock:
             cur = load_layout()
             v = {"rev": cur["rev"] + 1,
                  "tabs": req.get("tabs") or [],
                  "panes": req.get("panes") or [None, None],
-                 "active": req.get("active") or 0}
+                 "active": 1 if req.get("active") == 1 else 0}
             try:
                 save_layout(v)
             except OSError as e:
@@ -1312,9 +1341,10 @@ class Handler(BaseHTTPRequestHandler):
         # attached would mean the exclusion takes effect only next time, which
         # is not what a button labelled "exclude" implies.
         killed = None
-        if on and f"claude-{name}" in {s["name"] for s in tmux_sessions()}:
-            run(["tmux", "kill-session", "-t", f"claude-{name}"], timeout=10)
-            killed = f"claude-{name}"
+        sess = tmux_name(f"claude-{name}")
+        if on and sess in {s["name"] for s in tmux_sessions()}:
+            run(["tmux", "kill-session", "-t", sess], timeout=10)
+            killed = sess
         return self._json({"excluded": sorted(names), "killed": killed})
 
     def _session(self, req):
@@ -1336,7 +1366,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(run(["tmux", "send-keys", "-t", session,
                                    TMUX_KEYS[key]], timeout=10))
         if key in TMUX_LITERALS:
-            return self._json(run(["tmux", "send-keys", "-t", session, "-l",
+            return self._json(run(["tmux", "send-keys", "-t", session, "-l", "--",
                                    TMUX_LITERALS[key]], timeout=10))
         self._json({"error": f"unknown key: {key}"}, 400)
 
@@ -1375,7 +1405,11 @@ class Handler(BaseHTTPRequestHandler):
         # person types ahead too — the tty buffers the input and the shell reads
         # each line when it is ready for one.
         for line in lines:
-            r = run(["tmux", "send-keys", "-t", session, "-l", line], timeout=10)
+            # `--`: a line that starts with a dash ("-la", "--version") is
+            # otherwise read by tmux as flags and refused as "unknown flag",
+            # after the prompt has already been cleared — a macro that just
+            # silently did nothing.
+            r = run(["tmux", "send-keys", "-t", session, "-l", "--", line], timeout=10)
             if r["code"] != 0:
                 return self._json(r)
             r = run(["tmux", "send-keys", "-t", session, "Enter"], timeout=10)

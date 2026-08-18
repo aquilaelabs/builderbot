@@ -42,6 +42,16 @@ await btn('claude-alpha').click();
 await page.waitForFunction(() => !document.querySelector('[data-go="claude-alpha"]'), { timeout: 15000 });
 ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Claude'), 'Close asked first, then ended the session');
 
+// The session is gone; a tab still pointing at it takes a Resume's argument
+// so the transcript id reaches the terminal, and the frame is rebuilt for it.
+await page.evaluate(() => openTab({kind:'term', arg:'claude:alpha', label:'Claude: alpha'}));
+await page.evaluate(() => openTab({kind:'term', arg:'claude:alpha:r:abc123', label:'Claude: alpha'}));
+ok(await page.evaluate(() => tabs.filter(t => sessionOf(t.arg) === 'claude-alpha').length === 1
+     && tabs.find(t => sessionOf(t.arg) === 'claude-alpha').arg === 'claude:alpha:r:abc123'
+     && document.querySelector('#pane0 iframe').src.includes(encodeURIComponent('claude:alpha:r:abc123'))),
+   'Resume on a dead session\'s tab carries the transcript id into the frame');
+await page.evaluate(() => hideTab(tabs.find(t => sessionOf(t.arg) === 'claude-alpha').id));
+
 await page.click('#cardFindings .macros button');
 await page.waitForSelector('details[data-proj="alpha"]');
 await page.click('details[data-proj="alpha"] summary');
@@ -80,6 +90,25 @@ ok(await page.$eval('#commands [data-m]', b => b.disabled && /open one/.test(b.t
    && await page.$eval('#runner [data-m]', b => b.disabled), 'macros greyed with no tab open');
 await page.evaluate(() => openTab({kind:"term", arg: argForSession('shell-9'), label:'shell-9'}));
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
+
+// A project with a dot in its name: tmux stores its session as claude-ep_silon,
+// and the page must still label it, reopen it and let the server end it.
+tmuxNew('claude-ep_silon');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
+ok((await page.$eval('#sessions [data-go="claude-ep_silon"]', el => el.textContent.trim())) === 'Claude: ep.silon', 'dotted project: session labelled by its project name');
+ok(await page.$eval('#projects [data-c="ep.silon"]', b => b.classList.contains('primary')), 'dotted project: Claude button knows the session is running');
+await page.click('#sessions [data-go="claude-ep_silon"]');
+await page.waitForFunction(() => tabs.some(t => t.arg === 'claude:ep.silon'));
+ok(true, 'dotted project: reopening from Sessions maps back to claude:ep.silon');
+ok(await page.evaluate(() => sessionOf('claude:ep.silon') === 'claude-ep_silon' && sessionOf('sh:2:ep.silon') === 'shell-ep_silon-2'), 'sessionOf applies the tmux rewrite');
+const ndx = page.dialogs.length;
+await page.click('#projects [data-x="ep.silon"]');            // exclude: asks, then the server ends the session
+await page.waitForFunction(() => !document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
+ok(page.dialogs.length === ndx + 1 && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))),
+   'dotted project: excluding it ends the session and drops its tab');
+await page.evaluate(() => setExcluded('ep.silon', false));    // include again (its row is folded away now)
+await page.waitForFunction(() => document.querySelector('#projects [data-c="ep.silon"]'), { timeout: 15000 });
 
 // A back/forward-cache restore (persisted pageshow) reloads the terminal
 // iframe so a dead socket reconnects instead of sitting on ttyd's prompt.
@@ -195,6 +224,21 @@ await phone.waitForFunction(() => document.body.dataset.view === 'terminal', { t
 ok(true, 'a phone reload lands back on the terminal view');
 ok(phone.errors.length === 0, `phone: zero console errors${phone.errors.length ? ' — ' + phone.errors.join(' | ') : ''}`);
 await phone.close();
+
+// A phone held sideways: a flyout must not push the bottom bar off the
+// screen — it gives way, and the terminal keeps a strip.
+const land = await newPage(browser, { viewport: { width: 844, height: 390 } });
+await land.goto(URL);
+await land.waitForFunction(() => state !== null, { timeout: 30000 });
+await land.evaluate(() => { setView('terminal'); mobPanel('macros'); });
+await land.waitForFunction(() => document.getElementById('macpanel').classList.contains('show') && !document.getElementById('macpanel').classList.contains('sliding'));
+const fit = await land.evaluate(() => ({ bar: document.getElementById('mobar').getBoundingClientRect().bottom, panes: document.getElementById('panes').offsetHeight }));
+ok(fit.bar <= 390 && fit.panes >= 90, `landscape: the bar stays on screen with a flyout open (bar bottom ${Math.round(fit.bar)}px, terminal ${fit.panes}px)`);
+await land.evaluate(() => mobPanel('keys'));
+await land.waitForFunction(() => document.getElementById('keys').classList.contains('show') && !document.getElementById('keys').classList.contains('sliding'));
+const fit2 = await land.evaluate(() => ({ bar: document.getElementById('mobar').getBoundingClientRect().bottom, panes: document.getElementById('panes').offsetHeight }));
+ok(fit2.bar <= 390 && fit2.panes >= 90, `landscape: same with the keys (bar bottom ${Math.round(fit2.bar)}px, terminal ${fit2.panes}px)`);
+await land.close();
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

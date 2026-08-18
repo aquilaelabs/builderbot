@@ -70,9 +70,11 @@ cleanup() {
 
 # ---- fixtures --------------------------------------------------------------
 mkdir -p "$S"/{ws,reports,state,bin}
-( cd "$S/ws" && mkdir -p alpha beta gamma delta \
-    && for d in alpha beta gamma delta; do echo x > "$d/README.md"; done \
-    && for d in alpha beta delta; do git init -q "$d"; done )
+# ep.silon: a project whose name tmux would rewrite in a session name (`.` →
+# `_`), so the page, the server and bb-tty have to agree on the substitution.
+( cd "$S/ws" && mkdir -p alpha beta gamma delta ep.silon \
+    && for d in alpha beta gamma delta ep.silon; do echo x > "$d/README.md"; done \
+    && for d in alpha beta delta ep.silon; do git init -q "$d"; done )
 echo '["delta"]' > "$S/state/excluded-projects.json"
 # alpha has a previous Claude conversation, so its Claude button offers the
 # Resume / New chooser rather than starting straight away.
@@ -104,6 +106,7 @@ EOF
 # must not hand that state to the next.
 fresh() {
     rm -f "$S/state/tabs.json" "$S/state/cards.json"
+    echo '["delta"]' > "$S/state/excluded-projects.json"   # a test that excludes must not hand that on
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
     for n in shell-9 claude-alpha; do
         tmux has-session -t "$n" 2>/dev/null || tmux new-session -d -s "$n" -c /tmp

@@ -99,6 +99,13 @@ bad() {
 # said, which is what a behaviour the page promises has to do.
 start() {
     local s="$1" dir="$2"; shift 2
+    # tmux rewrites `.` and `:` in a session name to `_` (they are its target
+    # syntax) without saying so, so a project called `example.com` would run
+    # as `claude-example_com` while everything addressing it by the name it
+    # asked for — the page's kill/keys/macros, the server's exclude — missed.
+    # The substitution is made here, on purpose, and mirrored by tmux_name()
+    # in server.py and tmuxName() in index.html: three places, one rule.
+    s="${s//[.:]/_}"
     # -A -d creates it if it is missing and attaches to it if it is not, without
     # attaching yet — race-free where has-session followed by new-session is not.
     tmux new-session -A -d -s "$s" -c "$dir" "$@"

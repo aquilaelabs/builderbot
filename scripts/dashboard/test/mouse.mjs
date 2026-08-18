@@ -54,6 +54,22 @@ ok(await page.evaluate(() => active === 1), 'focus into the right pane\'s termin
 await page.evaluate(() => { document.querySelector('#pane0 iframe').focus(); window.dispatchEvent(new Event('blur')); });
 ok(await page.evaluate(() => active === 0), '...and back to the left');
 await page.evaluate(() => closePane(1));
+ok(await page.$eval('#pane1', p => !p.querySelector('iframe') && !p.dataset.tab), 'unsplitting empties the hidden pane (no orphan terminal client)');
+
+// A stale poll — one revision behind what this page already wrote — must
+// not be adopted, or the tab just removed would come back.
+const stale = await page.evaluate(() => {
+  const before = tabs.map(t => t.id).join();
+  adoptLayout({ rev: myRev - 1, tabs: [{id:'zz', kind:'term', arg:'shell', label:'x'}], panes:['zz', null], active: 0 });
+  return tabs.map(t => t.id).join() === before && myRev >= 0;
+});
+ok(stale, 'a layout one revision behind is ignored');
+
+// A pin menu whose tab is minimised goes with it.
+await page.evaluate(() => togglePin(tabs[0].id, new Event('click')));
+ok(await page.$('#pinmenu') !== null, 'pin menu opens');
+await page.evaluate(() => hideTab(tabs[0].id));
+ok(await page.$('#pinmenu') === null && await page.evaluate(() => pinFor === null), 'minimising its tab closes the pin menu');
 
 // A card another browser folded folds here with the tween, on the poll.
 await page.evaluate(async () => { const c = JSON.parse(JSON.stringify(cards)); c.closed.push('runner');
