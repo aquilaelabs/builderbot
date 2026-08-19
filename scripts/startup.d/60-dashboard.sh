@@ -67,6 +67,16 @@ set -g history-limit 50000
 # the source-file line to have the old behaviour back everywhere.
 set -g mouse off
 
+# PgUp at a prompt scrolls back: it enters copy mode a page up, PgDn pages
+# forward, and copy mode ends by itself the moment you are back at the bottom
+# (-e), so there is no mode to remember. Inside a full-screen program (less,
+# vim) the key stays the program's. This is also how a phone scrolls: a
+# finger drag reaches nothing in the browser terminal (tmux holds the
+# alternate screen and xterm.js only turns WHEEL events into anything tmux
+# sees), and the dashboard's on-screen PgUp/PgDn make the same decision
+# server-side, since send-keys bypasses this table.
+bind -n PPage if-shell -F '#{alternate_on}' 'send-keys PPage' 'copy-mode -eu'
+
 # tmux's right-click menu is drawn in the terminal, underneath the browser's
 # context menu, which covers it. The browser's cannot be suppressed from
 # outside the frame, so the one we control is the one that goes.
