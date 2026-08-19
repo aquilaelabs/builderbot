@@ -78,16 +78,54 @@ ok(await page.$('.pkglog') !== null, 'the progress log appears');
 ok(await page.$$eval('.doc .pkg input', is => is.every(i => !i.checked)),
    'a finished job clears the selection it consumed');
 
-// ---- remove one --------------------------------------------------------
+// ---- versions and updates ----------------------------------------------
+// Nothing claims to be current until something asks: every probe behind this
+// costs a network round trip, so an unchecked row says nothing at all.
+ok(await page.$$eval('.doc .pkg .upd', us => us.length === 0),
+   'no update claims before a check');
+await page.click('.doc [data-pkg="check"]');
+await page.waitForFunction(() => document.querySelector('.doc .pkg .upd') !== null,
+                           { timeout: 30000 });
+const upd = await page.$$eval('.doc .pkg', ls => ls
+  .filter(l => l.querySelector('.upd'))
+  .map(l => l.querySelector('input').value));
+ok(upd.length === 1 && upd[0] === 'flutter',
+   'the check marks exactly the package whose upstream moved');
+ok(await page.$eval('.doc .pkg input[value="android:emulator"]', i => i.disabled),
+   'installed and current: the tick is dead, there is nothing to do');
+ok(!(await page.$eval('.doc .pkg input[value="flutter"]', i => i.disabled)),
+   '...but an update brings its tick back');
+ok(!(await page.$eval('.doc .pkg input[value="swift"]', i => i.disabled)),
+   'and something not installed at all is always tickable');
+ok((await page.$eval('.doc .pkg .upd', el => el.textContent)).includes('→ 2.0'),
+   '...and says which version it would move to');
+ok((await page.$$eval('.doc .pkg .nm .pill', ps => ps.map(p => p.textContent)))
+     .some(t => t === '1.0'), 'installed versions appear beside the sizes');
+// Update runs like the others: a job, a log, and the ticks it consumed.
 await page.check('.doc .pkg input[value="flutter"]');
-await page.click('.doc [data-pkg="remove"]');
+await page.click('.doc [data-pkg="install"]');
+await page.waitForFunction(() => (document.querySelector('.pkglog')?.textContent || '').includes('updated flutter'),
+                           { timeout: 30000 });
+ok(true, 'Install selected updates a package that is already installed');
+ok(await page.$$eval('.doc [data-pkg]', bs => bs.every(b => b.textContent.indexOf('Remove') < 0)),
+   'there is no bulk remove button to mis-click');
+
+// ---- uninstall is per row, and asks ------------------------------------
+ok(await page.$$eval('.doc .pkg', ls => ls.filter(l => l.querySelector('[data-rm]')).length) === 2,
+   'every installed package carries its own uninstall control');
+ok(await page.$('.doc .pkg:not(:has([data-rm])) [data-rm]') === null,
+   '...and packages that are not installed do not');
+const nd = page.dialogs.length;
+await page.click('.doc [data-rm="android:emulator"]');
+ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Uninstall'),
+   'uninstalling asks first');
 await page.waitForFunction(() => [...document.querySelectorAll('.doc .where')]
   .filter(w => w.classList.contains('on')).length === 1, { timeout: 30000 });
 list = await rows();
-ok(!list.find(r => r.name === 'flutter').installed
-   && list.find(r => r.name === 'android:emulator').installed,
+ok(!list.find(r => r.name === 'android:emulator').installed
+   && list.find(r => r.name === 'flutter').installed,
    'removing the ticked one leaves the other alone');
-ok(!existsSync(`${DIR}/sdk/flutter`), '...and it is gone from disk');
+ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
 
 // ---- what the endpoint refuses ----------------------------------------
 const post = body => page.evaluate(async b => {

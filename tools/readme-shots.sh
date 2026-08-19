@@ -162,7 +162,9 @@ shot() { bash "$REPO/scripts/bb" shot "$@" --auth "$AUTH" --wait 4000; }
 # blank, at doubled font metrics, under deviceScaleFactor 2 in headless
 # Chromium — found by taking these very screenshots. The phone dashboard
 # view hides the terminal column, so it alone gets the crisp 2x.
-shot "$BASE/"               "$OUT/dashboard.png"       --size 1440x900 --scale 1
+# Tall enough to reach the toolchain cards: the sidebar has nine of them now,
+# and a 900px frame cut off the ones this README spends paragraphs on.
+shot "$BASE/"               "$OUT/dashboard.png"       --size 1440x1180 --scale 1
 shot "$BASE/?view=dash"     "$OUT/phone-dashboard.png" --size 390x844 --scale 2 --resize 780
 shot "$BASE/?view=terminal" "$OUT/phone-terminal.png"  --size 390x844 --scale 1
 log "wrote $OUT/{dashboard,phone-dashboard,phone-terminal}.png"

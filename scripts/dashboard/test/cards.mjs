@@ -48,6 +48,15 @@ const rows = await page.$$eval('#findingsSum .row', rs => rs.map(r => r.querySel
 ok(rows.join(',') === 'alpha,beta', `findings card lists valid projects only (${rows.join(',')})`);
 ok(!(await page.$eval('#cardFindings .macros button', el => el.classList.contains('primary'))), 'report button is not green');
 
+// .bbignore hides a directory from the card entirely — not listed, not
+// counted, not folded away under "projects with errors" either.
+const names = await page.$$eval('#projects .name', ns => ns.map(n => n.textContent.trim()));
+ok(!names.includes('toolstore'), 'a directory carrying .bbignore is not a project');
+await page.click('#projects #bAll');
+const all = await page.$$eval('#projects .name', ns => ns.map(n => n.textContent.trim()));
+await page.click('#projects #bAll');
+ok(!all.includes('toolstore'), '...not even with the error rows shown');
+
 // drag: reorder + slide + persistence; the click ending a drag is not a toggle
 const hb = await (await page.$('.card[data-card="runner"] h2')).boundingBox();
 const top = await (await page.$('.side .card[data-card]')).boundingBox();

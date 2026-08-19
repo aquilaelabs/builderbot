@@ -994,6 +994,12 @@ def _github_remote(remotes):
     return False
 
 
+# A directory holding this file is not a project: not listed, not offered a
+# Claude session, not counted. Written by the container into its own paths
+# under the projects share, and by hand for anything else.
+IGNORE_MARKER = ".bbignore"
+
+
 def projects():
     out = []
     uid, gid = os.getuid(), os.getgid()
@@ -1019,7 +1025,17 @@ def projects():
         # directories are not projects either: the whole projects folder is
         # mounted now, so this list would otherwise open with the share's own
         # furniture (.Recycle.Bin and friends) presented as things to fix.
-        if not d.is_dir() or d.name == "_work" or d.name.startswith("."):
+        #
+        # .bbignore is the general form of the same idea, and the one thing
+        # here an operator can drive: a directory holding that file is not a
+        # project and is not listed. The container drops it into any path of
+        # its own that lands inside the projects share — the SDK share, when
+        # someone maps it under /mnt/user/development — and anyone can create
+        # one by hand for a directory they would rather not see. It hides;
+        # excluding a project is the thing that *blocks*, and that is a
+        # different control with a different guarantee.
+        if (not d.is_dir() or d.name == "_work" or d.name.startswith(".")
+                or (d / IGNORE_MARKER).exists()):
             continue
         issues = []
 
@@ -1452,16 +1468,38 @@ PACKAGES = [
     {"name": "android:cmake", "label": "Android CMake", "size": "~200 MB",
      "probe": "android:cmake",
      "about": "The CMake the NDK's build system uses."},
-    {"name": "tizen", "label": "Tizen (manual)", "size": "instructions",
-     "probe": "tizen",
-     "about": "Galaxy Watch and Samsung TV. Samsung ships a GUI installer, so "
-              "this prints the steps rather than pretending to automate them."},
+    {"name": "go", "label": "Go", "size": "~250 MB", "probe": "go",
+     "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with "
+              "GOOS and GOARCH — no extra toolchain, no target to install."},
+    {"name": "rust", "label": "Rust", "size": "~700 MB", "probe": "rust",
+     "about": "rustup, cargo and the stable toolchain, kept in one directory. "
+              "A Windows target needs a linker as well: gcc-mingw-w64 via "
+              "EXTRA_APT_PACKAGES, or zig plus cargo-zigbuild."},
+    {"name": "zig", "label": "Zig", "size": "~300 MB", "probe": "zig",
+     "about": "A C and C++ cross-compiler as much as a language: `zig cc "
+              "-target x86_64-windows-gnu` turns this box into a Windows "
+              "toolchain, and it links for Rust too."},
+    {"name": "android:playstore", "label": "Android image: Play Store",
+     "size": "~2 GB", "probe": "android-image:google_apis_playstore",
+     "about": "A system image with the Play Store, for testing anything that "
+              "depends on Google Play services. Pixel-style — Samsung, Oppo "
+              "and the rest ship no emulator images at all."},
+    {"name": "android:tv", "label": "Android image: TV", "size": "~2 GB",
+     "probe": "android-image:android-tv",
+     "about": "Android TV, for a leanback-layout build."},
+    {"name": "android:wear", "label": "Android image: Wear OS", "size": "~1.5 GB",
+     "probe": "android-image:android-wear",
+     "about": "Wear OS, which is what modern Galaxy and Pixel watches run."},
 ]
 
 # One install at a time, in a worker thread, because these are minutes long
 # and megabytes wide: a request that waited for them would time out, and two
 # at once would fight over the same sdkmanager lock.
 _pkg_lock = threading.Lock()
+# What `bb sdk check` last reported: {name: {installed, latest, status}}.
+# Filled only when asked — every probe in it reaches the network, so doing it
+# on the fifteen-second poll would be a background service nobody requested.
+_pkg_versions = {}
 _pkg_job = {"running": False, "queue": [], "current": "", "action": "",
             "log": [], "done": [], "failed": []}
 _sdk_root_cache = []
@@ -1491,18 +1529,36 @@ def _pkg_path(probe):
     Resolved rather than assumed: the android directories are symlinks into
     the share, and the whole point of the card is showing where a thing
     actually landed."""
-    if probe.startswith("android:"):
-        p = Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / probe.split(":", 1)[1]
+    if probe.startswith("android-image:"):
+        # A system-image flavour, not a package directory: they all live under
+        # system-images/android-NN/<kind>/, so "is a TV image installed" is a
+        # question about the kind, not about the tree existing. Sharing one
+        # probe made every flavour claim to be installed the moment any image
+        # was — the reassuring wrong answer again.
+        kind = probe.split(":", 1)[1]
+        base = Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / "system-images"
+        cands = []
+        try:
+            cands = sorted(d / kind for d in base.iterdir() if d.is_dir())
+        except OSError:
+            pass
+    elif probe.startswith("android:"):
+        cands = [Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / probe.split(":", 1)[1]]
     else:
         root = sdk_root_path()
-        if not root:
-            return ""
-        p = Path(root) / probe
-    try:
-        if p.is_dir() and any(p.iterdir()):
-            return str(p.resolve())
-    except OSError:
-        pass
+        # The share first, then the home volume — anything installed before a
+        # share was mapped lives there, and calling it uninstalled while 8GB
+        # of it sits on disk is how this went wrong once already.
+        home = Path(os.environ.get("BUILDER_HOME", str(Path.home()))) / ".sdk"
+        cands = [Path(root) / probe] if root else []
+        if str(home) != root:
+            cands.append(home / probe)
+    for p in cands:
+        try:
+            if p.is_dir() and any(p.iterdir()):
+                return str(p.resolve())
+        except OSError:
+            continue
     return ""
 
 
@@ -1510,8 +1566,11 @@ def packages_payload():
     items = []
     for p in PACKAGES:
         path = _pkg_path(p["probe"])
+        v = _pkg_versions.get(p["name"], {})
         items.append({**{k: p[k] for k in ("name", "label", "size", "about")},
-                      "installed": bool(path), "path": path})
+                      "installed": bool(path), "path": path,
+                      "version": v.get("installed", ""), "latest": v.get("latest", ""),
+                      "state": v.get("status", "")})
     with _pkg_lock:
         job = {k: (list(v) if isinstance(v, list) else v)
                for k, v in _pkg_job.items()}
@@ -1534,11 +1593,13 @@ def is_mount(path):
 
 
 def _pkg_worker():
-    """Run the queued installs one at a time, keeping a tail of the output.
+    """Run the queued work one item at a time, keeping a tail of the output.
 
-    Everything it can do is `bb sdk install|remove <name>` for a name that
-    came out of PACKAGES — the page posts an index into the table, never a
-    command, which is the same rule the macro buttons follow.
+    Everything it can do is `bb sdk <verb> <name>` for a name that came out of
+    PACKAGES — the page posts an index into the table, never a command, which
+    is the same rule the macro buttons follow. The verb is decided here rather
+    than by the page: "install" on something already present means update it,
+    and one button that does the obvious thing beats two that need explaining.
     """
     while True:
         with _pkg_lock:
@@ -1549,11 +1610,25 @@ def _pkg_worker():
             name = _pkg_job["queue"].pop(0)
             action = _pkg_job["action"]
             _pkg_job["current"] = name
-            _pkg_job["log"].append(f"$ bb sdk {action} {name}")
-        r = run([BB, "sdk", action, name], timeout=3600)
+        verb = action
+        if action == "install":
+            probe = next((p["probe"] for p in PACKAGES if p["name"] == name), name)
+            verb = "update" if _pkg_path(probe) else "install"
         with _pkg_lock:
-            tail = [ln for ln in r["out"].splitlines() if ln.strip()][-12:]
-            _pkg_job["log"].extend(tail)
+            _pkg_job["log"].append(f"$ bb sdk {verb} {name}")
+        r = run([BB, "sdk", verb, name], timeout=3600)
+        with _pkg_lock:
+            if action == "check":
+                # TSV out: name, installed, latest, status.
+                for ln in r["out"].splitlines():
+                    f = ln.rstrip().split("\t")
+                    if len(f) == 4:
+                        _pkg_versions[f[0]] = {"installed": f[1], "latest": f[2],
+                                               "status": f[3]}
+                _pkg_job["log"].append(f"{name}: {_pkg_versions.get(name, {}).get('status', '?')}")
+            else:
+                tail = [ln for ln in r["out"].splitlines() if ln.strip()][-12:]
+                _pkg_job["log"].extend(tail)
             _pkg_job["log"] = _pkg_job["log"][-60:]
             (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
 
@@ -2236,10 +2311,14 @@ class Handler(BaseHTTPRequestHandler):
         rule every other executing endpoint here follows.
         """
         action = req.get("action")
-        if action not in ("install", "remove"):
+        if action not in ("install", "remove", "update", "check"):
             return self._json({"error": "unknown action"}, 400)
         known = {p["name"] for p in PACKAGES}
         names = [n for n in (req.get("names") or []) if n in known]
+        # Checking is about everything, not a selection: the question it
+        # answers is "is any of this out of date".
+        if action == "check" and not names:
+            names = [p["name"] for p in PACKAGES if _pkg_path(p["probe"])]
         if not names:
             return self._json({"error": "nothing selected"}, 400)
         with _pkg_lock:

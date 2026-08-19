@@ -82,6 +82,10 @@ Your working directory is this project. Do not read from or write to sibling
 projects, and do not go looking for context in them — if something seems to be
 missing, ask.
 
+A sibling directory holding a `.bbignore` file is not a project at all — it is
+the container's own storage (the SDK share) or something the operator chose to
+hide. Leave those alone too.
+
 If this session was started from the dashboard, that is also enforced: the file
 tools are denied every sibling path and the runner's `_work` tree, via a
 settings file passed on the command line. A `Read` or `Edit` that comes back
@@ -125,10 +129,12 @@ tool is missing, and check before reaching for a system package manager —
 the thing you want may be one `bb sdk install` away, or already installed
 somewhere PATH does not look until the next shell.
 
-If a project needs one that is not there, **say so and offer the command
-rather than running it**. These are gigabytes each and the disk is the
-operator's to spend — the same rule as Android API levels. From the
-dashboard, the Tools tab does it with checkboxes.
+If a project needs one that is not there, **say so and ask** — you cannot
+install it yourself. `bb sdk install` refuses to run from a session and tells
+you to hand the decision back: these are gigabytes on someone else's disk.
+The operator does it from the dashboard's Tools tab (Additional packages),
+where the checkboxes and the uninstall controls live, or by running the
+command you offer them.
 
 Installing one is not a reason to edit this file: `bb sdk` is the source of
 truth, and it is accurate the moment something lands.

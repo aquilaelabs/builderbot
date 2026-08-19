@@ -309,6 +309,11 @@ Warnings stay in the list in amber, because they are asking for something: no
 `CLAUDE.md`, or one whose environment block has fallen behind the image. Both
 are underlined links that fix themselves in place. A row that is excluded or has
 an error carries no Claude button, since a session cannot start there.
+A directory with a `.bbignore` file in it is not treated as a project — the
+container marks its own paths that way (the SDK share, if you put it inside
+the projects share, as the default does), and you can drop the same file into
+anything you would rather the card ignored.
+
 **New project…** at the foot of the card creates one — a fresh local repo built
 from the name and description you give it, or a clone of a GitHub repository
 the container's deploy key or PAT can already reach, which needs only the URL:
@@ -613,8 +618,10 @@ adb devices
 bb emu stop
 ```
 
-AVDs persist in the home volume. Need more platforms?
-`sdkmanager --install "platforms;android-34"` just works.
+AVDs persist in the home volume; the images and platforms themselves live on
+the SDK share, so an image update never re-downloads them. Need more
+platforms? `bb sdk install android:"platforms;android-34"`, or tick it in the
+dashboard's Tools tab.
 
 ### Publishing packages
 

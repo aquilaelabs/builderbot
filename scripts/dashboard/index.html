@@ -195,6 +195,12 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
 .pkg .where.on{color:var(--accent)}
+.pkg .upd{color:var(--warn)}
+/* Installed and current: the row is done, and says so by fading its tick
+   rather than by disappearing — knowing a thing is there is the point. */
+.pkg.done input{opacity:.35}
+.pkg .rm{flex:0 0 auto;align-self:center;color:var(--dim)}
+@media(hover:hover){ .pkg .rm:hover{color:var(--bad);border-color:#4d2220} }
 @media(hover:hover){ .pkg:hover{background:#1b222b} }
 .pkglog{margin:0 12px 12px;padding:9px 10px;background:#0d1117;
   border:1px solid var(--line);border-radius:6px;color:var(--dim);
@@ -2440,15 +2446,38 @@ async function loadPackages(){
   drawPanes();
 }
 
+// A trash can, for the one control that is per-row: uninstalling is about
+// a particular package, never a selection, and a bulk Remove button beside a
+// bulk Install was one mis-click away from being expensive.
+const BIN = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M2.8 4.3h10.4"/><path d="M6.4 4.3V2.9h3.2v1.4"/>
+  <path d="M4.2 4.3l.7 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.7-8.3"/>
+  <path d="M6.8 6.8v4"/><path d="M9.2 6.8v4"/></svg>`;
+
 function pkgRow(p){
-  return `<label class="pkg">
-    <input type="checkbox" value="${esc(p.name)}"${pkgTicked.has(p.name) ? " checked" : ""}>
+  // A tick means "do something to this". Something installed and current has
+  // nothing to do, so its box is dead until a check finds an update — which
+  // is also why Install is the only verb here: on a row with an update it
+  // updates, and the operator never has to know which button to reach for.
+  const upToDate = p.installed && p.state !== "update";
+  const ver = p.version && p.version !== "-" ? ` <span class="pill">${esc(p.version)}</span>` : "";
+  const upd = p.state === "update"
+    ? `<span class="sub upd">update available${p.latest && p.latest !== "-"
+         && p.latest !== p.version ? `: ${esc(p.version)} → ${esc(p.latest)}` : ""
+       } — tick it and press Install selected</span>`
+    : "";
+  return `<label class="pkg${upToDate ? " done" : ""}">
+    <input type="checkbox" value="${esc(p.name)}"${pkgTicked.has(p.name) ? " checked" : ""}${
+      upToDate ? ` disabled title="installed and up to date — nothing to do until a check finds an update"` : ""}>
     <span class="grow">
-      <span class="nm">${esc(p.label)} <span class="pill">${esc(p.size)}</span></span>
+      <span class="nm">${esc(p.label)} <span class="pill">${esc(p.size)}</span>${ver}</span>
       <span class="sub">${esc(p.about)}</span>
       <span class="sub where${p.installed ? " on" : ""}">${
         p.installed ? "installed at " + esc(p.path) : "not installed"}</span>
+      ${upd}
     </span>
+    ${p.installed ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"
+       title="uninstall ${esc(p.label)}">${BIN}</button>` : ""}
   </label>`;
 }
 
@@ -2474,9 +2503,10 @@ function renderPackagesInto(i){
     <div class="pkgs">${(d.items || []).map(pkgRow).join("")}</div>
     <div class="macros">
       <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
-        busy && job.action === "install" ? `Installing ${esc(job.current || "")}…` : "Install selected"}</button>
-      <button data-pkg="remove"${busy ? " disabled" : ""}>${
-        busy && job.action === "remove" ? `Removing ${esc(job.current || "")}…` : "Remove selected"}</button>
+        busy && job.action === "install" ? `Working on ${esc(job.current || "")}…` : "Install selected"}</button>
+      <button data-pkg="check"${busy ? " disabled" : ""}>${
+        busy && job.action === "check" ? `Checking ${esc(job.current || "")}…`
+        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
     </div>
     ${lines.length ? `<pre class="pkglog">${esc(lines.join("\n"))}${
       busy ? "" : `\n— finished: ${(job.done || []).length} ok${
@@ -2486,6 +2516,14 @@ function renderPackagesInto(i){
     b.checked ? pkgTicked.add(b.value) : pkgTicked.delete(b.value);
   });
   el.querySelectorAll("[data-pkg]").forEach(b => b.onclick = () => pkgAct(b.dataset.pkg));
+  el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
+    // Inside a <label>, so the click would otherwise toggle the checkbox on
+    // its way past.
+    e.preventDefault(); e.stopPropagation();
+    const name = b.dataset.rm;
+    if (confirm(`Uninstall ${name}? The files are deleted; installing it again re-downloads them.`))
+      pkgAct("remove", [name]);
+  });
 
   // Poll only while something is running: this list is a filesystem walk, not
   // something to ask for every two seconds forever.
@@ -2494,20 +2532,21 @@ function renderPackagesInto(i){
   else if ((job.done || []).length) refresh();
 }
 
-async function pkgAct(action){
-  const names = [...pkgTicked];
-  if (!names.length) return notify("tick something first", true);
-  // Tizen's install only prints instructions, and removing what was never
-  // installed is not a thing — say so rather than queueing a no-op.
-  if (action === "remove" && names.includes("tizen"))
-    return notify("tizen is a manual install — nothing here to remove", true);
+async function pkgAct(action, only){
+  const names = only || [...pkgTicked];
+  // "Check for updates" asks about everything installed — the question is
+  // whether anything is out of date, not whether one ticked thing is.
+  if (!names.length && action !== "check") return notify("tick something first", true);
+  if (action === "install") pkgTicked.clear();   // the selection is spent
   try{
     const r = await fetch("/api/packages", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({action, names})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
-    notify(`${action === "install" ? "installing" : "removing"} ${names.length} package(s) — this can take minutes`);
+    notify(action === "check"
+      ? "checking versions — each one asks its own upstream"
+      : `${action}: ${names.length} package(s) — this can take minutes`);
     loadPackages();
   }catch(e){ notify("could not start: " + e, true); }
 }

@@ -369,7 +369,7 @@ bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
 bb favicon SVG [DIR]  favicon set (ico + touch icon) from one mark
-bb sdk             SDKs kept outside the image: status, install, migrate
+bb sdk             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
 The dashboard's Commands card is this same list in this same order.
@@ -449,11 +449,42 @@ persists, but mixes 30GB of system images in with your shell history.
 
 ```bash
 bb sdk                     # what is installed, where, and how much room is left
-bb sdk install flutter     # or: dotnet · swift · tizen (instructions) · android:<pkg>
+bb sdk install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
+bb sdk install android:tv         # or wear · playstore · ndk · cmake · emulator
 bb sdk install android:"system-images;android-35;google_apis;x86_64"
+bb sdk check               # installed vs current, per toolchain
+bb sdk update flutter      # each the way its own tooling expects
 bb sdk remove flutter
 bb sdk env                 # the PATH lines; new shells get them automatically
 ```
+
+**Nothing installs, updates or removes itself, and no session can do it for
+you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in
+the environment — that variable is in everything a Claude session runs and in
+nothing the dashboard runs — and tells the session to ask instead. It is a
+guardrail rather than a boundary (a session has a shell, and could call
+`sdkmanager` directly), and it says how the human at the keyboard overrides
+it: `env -u CLAUDECODE bb sdk install …`.
+
+In the tab, one button does it: **Install selected** installs what is not
+there and updates what is, so there is no second verb to choose between. A
+package that is installed and current has a **dead checkbox** — there is
+nothing to do to it — and gets its tick back the moment a check finds an
+update, shown in amber as `installed → available`. Uninstalling is a **bin
+icon on the row itself**, with a confirmation, because it is about one
+package and a bulk Remove button beside a bulk Install was one mis-click from
+being expensive.
+
+**Update checking is a question, not a background service.** Each answer costs
+a network round trip to a different upstream — the Flutter branch head, the
+.NET installer's own dry run, Swift's release redirect, the browser revisions
+Playwright's module wants, sdkmanager's update table — so nothing is checked
+until `bb sdk check` or the tab's **Check for updates** asks. An unchecked
+row says nothing rather than implying it is current. Updates then run through
+each toolchain's own mechanism rather than a delete-and-reinstall: Flutter
+moves to the branch head, .NET installs the current LTS beside what is there,
+sdkmanager updates its packages, and Swift and the browsers fetch the version
+they now want.
 
 **Moving the share later is a host-side job.** The container knows one
 location — whatever `/sdk` is mapped to — so relocating that directory on the
@@ -473,12 +504,15 @@ anywhere else.
 
 | Toolchain | Size | What it gets you |
 |---|---|---|
+| `go` | ~250MB | Windows, macOS, Linux and ARM binaries from here — `GOOS=windows go build`, no target to install |
+| `rust` | ~700MB | rustup, cargo and the stable toolchain in one directory |
+| `zig` | ~300MB | A C/C++ cross-compiler: `zig cc -target x86_64-windows-gnu` makes this box a Windows toolchain |
 | Android packages | 2GB per API level | Platforms, build-tools, emulator, system images |
 | `playwright` | ~1.3GB | Chromium, Firefox and WebKit — installed on first boot, since `bb shot` and the dashboard's tests need them |
 | `flutter` | ~1.3GB | Flutter + the bundled Dart SDK; builds Android APKs here |
 | `dotnet` | ~4GB | .NET SDK plus the `maui-android` workload |
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
-| `tizen` | manual | Galaxy Watch / Samsung TV — Samsung ships a GUI installer, so `bb sdk install tizen` prints the steps rather than pretending |
+| `tizen` | manual | Samsung TVs, signage and appliances. No headless installer exists, so `bb sdk install tizen` prints the steps and is not in the dashboard's list — everything there installs |
 
 **From the dashboard.** The sidebar's **Tools** card holds **Additional
 packages…**, which opens as a **tab** the way the findings report does: a list of
@@ -490,6 +524,36 @@ you work, and the work itself is a background job on the container, so the
 list keeps reporting progress instead of hanging on a request that would take
 four minutes to answer. The page only ever posts names the server offered it
 — the same rule the command buttons follow.
+
+**Building for Windows, from here.** Three of those cross-compile without a
+Windows machine anywhere: Go does it with `GOOS=windows GOARCH=amd64 go
+build`, Zig with `zig cc -target x86_64-windows-gnu` (a C and C++
+cross-compiler that happens to ship with a language), and .NET with `dotnet
+publish -r win-x64 --self-contained`. All three were verified on this box —
+`file` says *PE32+ executable, for MS Windows*. Rust needs one more piece: a
+linker, either `EXTRA_APT_PACKAGES=gcc-mingw-w64` or `cargo-zigbuild` on top
+of Zig. What none of them give you is a Windows *GUI* toolchain — WPF, WinUI
+and MSIX packaging need Windows itself.
+
+**Tizen is Samsung's, and where it runs decides whether you care.** TVs,
+signage and appliances still run it and Samsung still ships it — that is the
+reason to install it. Watches are not: Galaxy Watch moved to Wear OS with the
+Watch 4 in 2021, so a watch app is `bb sdk install android:wear`. Phones ended
+in 2017. There is no headless installer, so it is a CLI pointer rather than a
+row in the dashboard's list, where everything installs.
+
+**Android, and which vendor you are targeting.** One SDK covers all of them:
+Samsung, Pixel, Oppo, OnePlus, Xiaomi. There is no per-vendor SDK to install
+and no vendor emulator image to download — Samsung's Galaxy skins are
+cosmetic, and the vendor libraries (Samsung IAP or Health, Oppo/Xiaomi push)
+are Gradle dependencies a project declares, not toolchains a container holds.
+What genuinely differs is the *system image* you emulate against, which is
+why those are catalog entries: Google APIs (the default, Pixel-shaped), Play
+Store images for anything that needs Play services, plus Android TV and Wear
+OS — the last being what modern Galaxy and Pixel watches actually run. Real
+Samsung or Oppo hardware is a `adb connect` away over the network, and
+Samsung's Remote Test Lab rents you real devices, but neither is something to
+install here.
 
 **iOS is not on this list and cannot be.** Xcode and the iOS SDK are macOS-only
 and licensed to Apple hardware; no Linux container can host them. For web and
@@ -638,6 +702,12 @@ lives in its body. The cards:
   runner's `_work` are skipped outright, and empty
   directories are never listed either: a mount point waiting for
   content is not a fault to report.
+  A directory holding a **`.bbignore`** file is not a project and is not
+  listed — the container writes one into any path of its own that lands in
+  the projects share (the SDK share, if you map it under
+  `/mnt/user/development`), and you can create one by hand for anything else
+  you would rather not see. It *hides*; the eye below **blocks**, which is a
+  different promise.
   At the foot of the card, **New project…** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *About this project*, which
   becomes the project section of a freshly built `CLAUDE.md` (environment
@@ -672,9 +742,11 @@ lives in its body. The cards:
   The name is one path segment and the URL must be one of GitHub's two
   address shapes — `git clone` accepts transports a web form should never
   reach, so anything else is refused server-side rather than passed along
-- **Tools**: **Additional packages…**, which installs or removes SDKs and
-  toolchains on the [SDK share](#sdks-live-outside-the-image) — checkboxes,
-  sizes, and the install path of everything already there
+- **Tools**: **Additional packages…**, which opens the installer as a tab —
+  every toolchain on the [SDK share](#sdks-live-outside-the-image) with its
+  size, its installed version, its path, and an amber line when a check finds
+  a newer one. Ticks are for things there is something to do to; uninstalling
+  is a bin on the row
 - an **eye** per project, which excludes it: persists across restarts and
   blocks Claude sessions for that directory — see below. A row that is excluded
   or has an error carries **no Claude button at all**, because a session cannot
