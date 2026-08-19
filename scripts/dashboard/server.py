@@ -310,7 +310,7 @@ TABS_FILE = STATE / "tabs.json"
 CARDS_FILE = STATE / "cards.json"
 # Doctor first: this order is the default an unwritten (or reset) sidebar
 # gets, and the verdict on the whole box outranks any one card below it.
-CARD_KEYS = ["doctor", "runner", "projects", "findings", "sessions",
+CARD_KEYS = ["doctor", "runner", "projects", "tools", "findings", "sessions",
              "linux", "commands", "git", "custom"]
 
 
@@ -361,8 +361,13 @@ def load_cards():
     order = v.get("order") if isinstance(v.get("order"), list) else []
     order = list(dict.fromkeys(k for k in order if k in CARD_KEYS))
     # A card this image knows about that the stored file predates still has to
-    # land somewhere: its default position, not dropped.
-    order += [k for k in CARD_KEYS if k not in order]
+    # land somewhere, and "its default position" means exactly that: inserted
+    # where CARD_KEYS puts it, not appended. Appending is how a new card
+    # arrived at the bottom of an existing sidebar and looked misplaced until
+    # somebody hit reset.
+    for i, k in enumerate(CARD_KEYS):
+        if k not in order:
+            order.insert(min(i, len(order)), k)
     closed = v.get("closed") if isinstance(v.get("closed"), list) else []
     closed = list(dict.fromkeys(k for k in closed if k in CARD_KEYS))
     return {"order": order, "closed": closed}

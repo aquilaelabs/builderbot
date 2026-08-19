@@ -648,16 +648,21 @@ body.dragging .tab .lbl{cursor:grabbing}
       <h2>Projects</h2>
       <div id="projects"><div class="empty">loading…</div></div>
     </div>
-    <!-- Tools: the scanner's report when there is one, and the packages
-         this container can install. data-card stays "findings" — it is the
-         key the saved card order is written under, and renaming it would
-         reset everyone's sidebar to say a heading changed. -->
-    <div class="card" id="cardFindings" data-card="findings">
+    <!-- What this container can install. Its own card rather than a corner
+         of the findings one: a scanner report and a package manager answer
+         different questions, and only one of them depends on /reports being
+         mounted. -->
+    <div class="card" data-card="tools">
       <h2>Tools</h2>
+      <div class="macros">
+        <button id="bPkgs" onclick="openPackages()">Additional packages…</button>
+      </div>
+    </div>
+    <div class="card" id="cardFindings" data-card="findings" hidden>
+      <h2>Static analysis</h2>
       <div id="findingsSum"></div>
       <div class="macros">
-        <button id="bFindings" onclick="openFindings()" hidden>Open findings report</button>
-        <button id="bPkgs" onclick="openPackages()">Additional packages…</button>
+        <button id="bFindings" onclick="openFindings()">Open findings report</button>
       </div>
     </div>
     <div class="card" data-card="sessions">
@@ -1829,7 +1834,7 @@ function renderFindingsInto(i){
 // server like the pins do — the phone and the desktop are looking at one
 // machine and should agree about how its dashboard is arranged.
 // Doctor first: the verdict on the whole box outranks any one card below it.
-const CARD_ORDER = ["doctor","runner","projects","findings","sessions","linux","commands","git","custom"];
+const CARD_ORDER = ["doctor","runner","projects","tools","findings","sessions","linux","commands","git","custom"];
 let cards = {order: CARD_ORDER.slice(), closed: []};
 let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
                                            // the arrangement here: a poll
@@ -3136,10 +3141,7 @@ async function refresh(){
     drawGit();
     drawCustom();
     drawDoctor();
-    // The card itself is always there now — it holds the package manager as
-    // well — so only the report half tracks whether a scan exists.
-    $("bFindings").hidden = !state.reports;
-    $("findingsSum").hidden = !state.reports;
+    $("cardFindings").hidden = !state.reports;
     drawFindingsSum(state.findings_counts || {});
     // A scan re-ran on the host: refresh any open findings view to match.
     if (findings && !findings.loading && findingsMtime !== null

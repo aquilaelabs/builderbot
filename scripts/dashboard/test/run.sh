@@ -14,9 +14,9 @@
 #   bb dashboard test            # every *.mjs in this directory
 #   bb dashboard test cards      # just cards.mjs
 #
-# Playwright and Chromium come from the image (/usr/lib/node_modules and
-# /opt/pw-browsers); on an image that predates either, the run reports [skip]
-# rather than passing by omission.
+# Playwright comes from the image (/usr/lib/node_modules); the browsers live
+# on the SDK share and are found the way bb finds them. Missing either, the
+# run reports [skip] rather than passing by omission.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DASH="$(dirname "$HERE")"
@@ -30,8 +30,12 @@ DASH="$(dirname "$HERE")"
 export NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}"
 node -e "require.resolve('playwright')" 2>/dev/null \
     || { log "[skip] playwright is not installed in this image"; exit 0; }
-CHROME=/opt/pw-browsers/chromium          # the image's stable symlink, or an older image's revisioned path
-[ -x "$CHROME" ] || CHROME="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1 || true)"
+# The same search bb uses: the browsers live on the SDK share now, and the
+# /opt path is a symlink that only exists once the startup hook has run.
+# The checkout's bb, not the one on PATH: this harness tests this tree, and
+# the installed copy is whatever the running image shipped — which may not
+# know the flag yet.
+CHROME="$(bash "$DASH/../bb" shot --print-chromium 2>/dev/null || true)"
 [ -x "${CHROME:-}" ] || { log "[skip] no Playwright chromium — install it with: bb sdk install playwright"; exit 0; }
 command -v tmux >/dev/null || { log "[skip] tmux is not installed"; exit 0; }
 

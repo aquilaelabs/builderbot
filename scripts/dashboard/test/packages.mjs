@@ -1,9 +1,10 @@
-// The Tools card and its package manager: the card carries both the findings
-// report and the packages `bb sdk` can install, and Additional packages opens
-// as a document TAB beside the report — installing an SDK runs for minutes,
-// so it belongs on the strip rather than in a dialog to dismiss. The
-// harness's bb stub makes and removes directories rather than downloading
-// gigabytes, so the whole round trip runs in a second.
+// The Tools card and its package manager. Its own card, above the findings
+// one: a package manager and a scanner report answer different questions,
+// and only the report depends on /reports existing. Additional packages
+// opens as a document TAB — installing an SDK runs for minutes, so it
+// belongs on the strip rather than in a dialog to dismiss. The harness's bb
+// stub makes and removes directories rather than downloading gigabytes, so
+// the whole round trip runs in a second.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { existsSync } from 'node:fs';
 
@@ -14,10 +15,17 @@ await ready(page);
 
 // ---- the card ----------------------------------------------------------
 // The heading carries a chevron alongside its text, so match the text only.
-ok((await page.$eval('.card[data-card="findings"] h2', h => h.textContent.trim())).startsWith('Tools'),
-   'the findings card is the Tools card now');
-ok(await page.$eval('#bFindings', b => !b.hidden) && await page.$eval('#bPkgs', b => !b.hidden),
-   'it keeps the findings button and gains the packages one');
+ok((await page.$eval('.card[data-card="tools"] h2', h => h.textContent.trim())).startsWith('Tools'),
+   'Tools is a card of its own');
+ok((await page.$eval('.card[data-card="findings"] h2', h => h.textContent.trim())).startsWith('Static analysis'),
+   '...and the findings card is still the findings card');
+ok(await page.$$eval('.side .card[data-card]', cs => {
+     const k = cs.map(c => c.dataset.card);
+     return k.indexOf('tools') >= 0 && k.indexOf('tools') < k.indexOf('findings');
+   }), 'Tools sits above it');
+ok(await page.$eval('.card[data-card="tools"] #bPkgs', b => !b.hidden)
+   && await page.$eval('.card[data-card="findings"] #bFindings', b => !b.hidden),
+   'each card carries its own button');
 
 // ---- the tab -----------------------------------------------------------
 await page.click('#bPkgs');
