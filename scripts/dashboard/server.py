@@ -1490,10 +1490,6 @@ PACKAGES = [
     {"name": "android:wear", "label": "Android image: Wear OS", "size": "~1.5 GB",
      "probe": "android-image:android-wear",
      "about": "Wear OS, which is what modern Galaxy and Pixel watches run."},
-    {"name": "tizen", "label": "Tizen (manual)", "size": "instructions",
-     "probe": "tizen",
-     "about": "Galaxy Watch and Samsung TV. Samsung ships a GUI installer, so "
-              "this prints the steps rather than pretending to automate them."},
 ]
 
 # One install at a time, in a worker thread, because these are minutes long

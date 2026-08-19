@@ -1103,7 +1103,7 @@ EOF
 # Each recipe unpacks into its own directory under the root and is undone by
 # deleting that directory — no system packages, nothing outside the root, so
 # `bb sdk remove` is a plain rm and a container rebuild changes nothing.
-SDK_TOOLCHAINS="android playwright flutter dotnet swift go rust zig tizen"
+SDK_TOOLCHAINS="android playwright flutter dotnet swift go rust zig"
 
 sdk_dir() { printf '%s/%s' "$(sdk_root)" "$1"; }
 
@@ -1591,21 +1591,27 @@ print(d[v]["x86_64-linux"]["tarball"])' 2>/dev/null)"
             log "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb sdk install zig + cargo-zigbuild"
             ;;
         tizen)
-            # Samsung's own installer is a GUI Java bundle; only the CLI
-            # distribution can be unpacked without a display, and only some
-            # versions publish one. Left as an explicit instruction rather
-            # than an automation that would hang a headless box.
+            # Not in the dashboard's catalog: everything there installs, and
+            # this cannot. Kept here because the question keeps coming up and
+            # the honest answer has two halves.
             cat <<'EOF'
-Tizen (Galaxy Watch, Samsung TV) has no headless installer worth automating:
-Samsung ships a GUI Java bundle. To put it on the SDK share by hand:
+Tizen is Samsung's OS, and where it runs decides whether you want it:
 
-  1. Download the Ubuntu "CLI" package from
+  TVs, signage and appliances   alive and current — Samsung ships Tizen on
+                                every smart TV, and licenses it to other TV
+                                makers. This is the reason to install it.
+  Watches                       over. Samsung moved Galaxy Watch to Wear OS
+                                with the Watch 4 in 2021, so for a watch app:
+                                    bb sdk install android:wear
+  Phones                        discontinued in 2017.
+
+There is no headless installer worth automating — Samsung ships a GUI Java
+bundle — so putting it on the SDK share is a manual job:
+
+  1. Download the Ubuntu package from
      https://developer.tizen.org/development/tizen-studio/download
   2. Install it with its --accept-license flag into  $(bb sdk root)/tizen
   3. bb sdk env   — picks up tools/ide/bin (tizen) and tools (sdb)
-
-Newer Galaxy Watches run Wear OS, which needs no Tizen at all:
-  bb sdk install android:"system-images;android-34;android-wear;x86"
 EOF
             ;;
         *) die "unknown toolchain: ${what} (${SDK_TOOLCHAINS// /, }, or android:<package>)" ;;

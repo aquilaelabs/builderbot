@@ -512,7 +512,7 @@ anywhere else.
 | `flutter` | ~1.3GB | Flutter + the bundled Dart SDK; builds Android APKs here |
 | `dotnet` | ~4GB | .NET SDK plus the `maui-android` workload |
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
-| `tizen` | manual | Galaxy Watch / Samsung TV — Samsung ships a GUI installer, so `bb sdk install tizen` prints the steps rather than pretending |
+| `tizen` | manual | Samsung TVs, signage and appliances. No headless installer exists, so `bb sdk install tizen` prints the steps and is not in the dashboard's list — everything there installs |
 
 **From the dashboard.** The sidebar's **Tools** card holds **Additional
 packages…**, which opens as a **tab** the way the findings report does: a list of
@@ -534,6 +534,13 @@ publish -r win-x64 --self-contained`. All three were verified on this box —
 linker, either `EXTRA_APT_PACKAGES=gcc-mingw-w64` or `cargo-zigbuild` on top
 of Zig. What none of them give you is a Windows *GUI* toolchain — WPF, WinUI
 and MSIX packaging need Windows itself.
+
+**Tizen is Samsung's, and where it runs decides whether you care.** TVs,
+signage and appliances still run it and Samsung still ships it — that is the
+reason to install it. Watches are not: Galaxy Watch moved to Wear OS with the
+Watch 4 in 2021, so a watch app is `bb sdk install android:wear`. Phones ended
+in 2017. There is no headless installer, so it is a CLI pointer rather than a
+row in the dashboard's list, where everything installs.
 
 **Android, and which vendor you are targeting.** One SDK covers all of them:
 Samsung, Pixel, Oppo, OnePlus, Xiaomi. There is no per-vendor SDK to install
