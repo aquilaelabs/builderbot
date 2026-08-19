@@ -332,19 +332,46 @@ seed_home() {
 
 # The Android SDK lives in the image at /opt, so anything sdkmanager installs
 # at runtime is thrown away by the next image update — and with a weekly
-# rebuild that means re-downloading gigabytes of system images on a schedule.
-# Move the expensive, purely-downloaded parts of the tree onto the home volume
-# and symlink them back into place. Tools and build-tools stay in the image, so
-# updates still deliver them.
+# rebuild that means re-downloading gigabytes on a schedule. Every directory
+# that is purely downloaded content moves out to a store that persists and is
+# symlinked back into place, so sdkmanager, Gradle and Android Studio all
+# install to the store without knowing it.
+#
+# Which store: the SDK share when one is mapped, the home volume otherwise.
+# The choice is made per directory, and deliberately conservative — a
+# directory that already holds gigabytes on the home volume keeps pointing
+# there until `bb sdk migrate` moves it, because silently retargeting the
+# link would make an existing 30GB library vanish from every tool that uses
+# it. New directories, and empty ones, go straight to the share.
 persist_android_downloads() {
     local sdk="${ANDROID_HOME:-/opt/android-sdk}"
-    local base="$BUILDER_HOME/.android/sdk"
-    local sub store dir name adopted=0
+    local legacy="$BUILDER_HOME/.android/sdk"
+    local home_root="$BUILDER_HOME/.sdk"
+    local share; share="$(sdk_root)/android"
+    local sub store cand dir name adopted=0 nudge=0
 
     [ -d "$sdk" ] || return 0
+    mkdir -p "$share" 2>/dev/null || true
 
-    for sub in system-images platforms; do
-        store="$base/$sub"
+    # build-tools and the emulator join the list the moment they stop being
+    # baked into the image: they are downloads like any other, and the
+    # emulator alone is 800MB of every pull.
+    for sub in system-images platforms build-tools emulator ndk cmake \
+               extras add-ons sources skins; do
+        # Candidates in priority order: the share, the home volume's own SDK
+        # root (where packages land when no share is mapped), and the
+        # pre-SDK-root location. The first that actually holds packages wins,
+        # so a library that exists is never hidden behind an empty directory
+        # somewhere else — which is the one failure mode that matters here,
+        # because "hidden" looks exactly like "gone" to Gradle.
+        store=""
+        for cand in "$share/$sub" "$home_root/android/$sub" "$legacy/$sub"; do
+            if [ -d "$cand" ] && [ -n "$(ls -A "$cand" 2>/dev/null)" ]; then
+                store="$cand"; break
+            fi
+        done
+        [ -n "$store" ] || store="$share/$sub"   # nothing anywhere yet
+        [ "$store" = "$share/$sub" ] || nudge=1
         mkdir -p "$store"
 
         # Adopt whatever the image shipped before replacing the directory, or
@@ -373,10 +400,16 @@ persist_android_downloads() {
     done
 
     if [ "$adopted" -eq 1 ]; then
-        log "android sdk downloads persist at ${base}"
+        log "android sdk downloads persist outside the image"
+    fi
+    if [ "$nudge" -eq 1 ] && [ "$share" != "${legacy}" ]; then
+        log "some android packages still live on the home volume; move them to"
+        log "the SDK share with: bb sdk migrate"
     fi
 
-    chown -R "$PUID:$PGID" "$base" 2>/dev/null || true
+    chown -R "$PUID:$PGID" "$share" 2>/dev/null || true
+    [ -d "$legacy" ] && chown -R "$PUID:$PGID" "$legacy" 2>/dev/null || true
+    return 0
 }
 
 run_hooks() {

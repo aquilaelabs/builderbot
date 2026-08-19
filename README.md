@@ -55,7 +55,7 @@ private tmux server and photographs it with `bb shot` — the pattern the
 | **Python** | 3.12, `uv`, `pipx`, venv |
 | **Java** | OpenJDK 21 |
 | **Playwright** | CLI + chromium/firefox/webkit with system deps, shared at `/opt/pw-browsers` |
-| **Android** | SDK cmdline-tools/platform-tools/build-tools + platform 36, emulator with Google-APIs x86_64 image, adb, `bundletool` |
+| **Android** | SDK cmdline-tools (`sdkmanager`), platform-tools (`adb`), `bundletool`. Platforms, build-tools, the emulator and system images install to the [SDK share](#sdks-live-outside-the-image), not the image |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
 | **Search** | ripgrep, fd, fzf, jq, yq |
@@ -65,8 +65,10 @@ private tmux server and photographs it with `bb shot` — the pattern the
 | **Runner** | latest `actions/runner`, ephemeral by default |
 | **Versioning** | `mise` for per-project tool pinning (gradle, go, rust — on demand) |
 
-Slimmer builds: `--build-arg INSTALL_PLAYWRIGHT=false`, `INSTALL_ANDROID=false`,
-`INSTALL_ANDROID_EMULATOR=false`.
+Slimmer builds: `--build-arg INSTALL_PLAYWRIGHT=false`, `INSTALL_ANDROID=false`.
+The heavyweight toolchains — Flutter, .NET, Swift, extra Android packages —
+are never in the image at all; `bb sdk install` puts them on a share that an
+update cannot touch. See [SDKs live outside the image](#sdks-live-outside-the-image).
 
 ---
 
@@ -274,6 +276,7 @@ and is always the big one. Rollback = point the Repository field at a
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
 | `GIT_PAT` | *(empty)* | GitHub **API** auth for `gh` from inside (`gh pr create`). Session-readable by design; not needed if ssh covers your git usage |
+| `SDK_ROOT` | `/sdk` | Where downloadable SDKs are kept — see [SDKs live outside the image](#sdks-live-outside-the-image). Falls back to the home volume when no share is mapped |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create system images and AVDs at startup |
 | `ANDROID_SYSTEM_IMAGES` | `36` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
 | `ANDROID_SYSTEM_IMAGE_VARIANT` | `google_apis;x86_64` | Image flavor; `default;x86_64` is smaller AOSP, no Google APIs |
@@ -365,6 +368,7 @@ bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
 bb favicon SVG [DIR]  favicon set (ico + touch icon) from one mark
+bb sdk             SDKs kept outside the image: status, install, migrate
 ```
 
 The dashboard's Commands card is this same list in this same order.
@@ -428,6 +432,55 @@ rather than watching it, `dumpsys gfxinfo <pkg> framestats` gives real
 per-frame timestamps under any renderer; `screenrecord` caps out around 10fps
 in software and will mislead you.
 
+## SDKs live outside the image
+
+The image carries what it takes to *bootstrap* a toolchain, not the toolchain
+itself: `sdkmanager`, `adb`, `bundletool` — about 170MB. Everything large and
+merely downloadable is installed at runtime into the **SDK share**, mapped at
+`/sdk` (Unraid default `/mnt/user/development/SDK`).
+
+The reason is arithmetic. `/opt` is discarded and rebuilt on every image
+update, and the update is weekly, so a package baked into the image is
+re-downloaded forever: the Android emulator alone is 800MB, a system image
+about 2GB. On the share they are downloaded once and the update walks past
+them. Map no share and everything falls back to the home volume — which also
+persists, but mixes 30GB of system images in with your shell history.
+
+```bash
+bb sdk                     # what is installed, where, and how much room is left
+bb sdk install flutter     # or: dotnet · swift · tizen (instructions) · android:<pkg>
+bb sdk install android:"system-images;android-35;google_apis;x86_64"
+bb sdk remove flutter
+bb sdk migrate             # move packages already on the home volume to the share
+bb sdk env                 # the PATH lines; new shells get them automatically
+```
+
+Android needs no PATH help — `ANDROID_HOME` still points at
+`/opt/android-sdk`, whose package directories are symlinks into the share, so
+Gradle, Android Studio and `sdkmanager` install and find things exactly where
+they always did. The other toolchains land in their own directory under the
+share and are put on `PATH` by a generated `env.sh` that every shell sources;
+`bb sdk remove` is `rm -rf` of one directory, because nothing was installed
+anywhere else.
+
+| Toolchain | Size | What it gets you |
+|---|---|---|
+| Android packages | 2GB per API level | Platforms, build-tools, emulator, system images |
+| `flutter` | ~1.3GB | Flutter + the bundled Dart SDK; builds Android APKs here |
+| `dotnet` | ~4GB | .NET SDK plus the `maui-android` workload |
+| `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
+| `tizen` | manual | Galaxy Watch / Samsung TV — Samsung ships a GUI installer, so `bb sdk install tizen` prints the steps rather than pretending |
+
+**iOS is not on this list and cannot be.** Xcode and the iOS SDK are macOS-only
+and licensed to Apple hardware; no Linux container can host them. For web and
+PWA work the answer is already installed — Playwright's WebKit is Safari's
+engine, with iPhone device profiles. For a native iOS build you need a Mac.
+
+**The first boot after an update is not free.** A container whose share is
+empty installs the Android baseline (platform + build-tools, a few hundred MB)
+on first start, and the emulator the first time `ENABLE_ANDROID_EMULATOR=true`
+asks for it. That happens once; from then on updates cost nothing.
+
 ## Multiple Android versions
 
 The image ships one system image (API 36). To emulate more, list the API levels
@@ -450,12 +503,13 @@ bb emu stop
 As of 2026 the supported range is **34–37** (Android 14 through 17). API 33 and
 below stopped receiving security patches in March 2026.
 
-**Where the space goes.** System images and platforms are symlinked onto the
-home volume, so each level is downloaded **once** and survives image updates —
-without that, a weekly `:latest` rebuild would re-fetch every one of them. The
-cost lands on your appdata share instead of the image: budget roughly **2 GB per
-API level**. If that is tight, `ANDROID_SYSTEM_IMAGE_VARIANT=default;x86_64`
-gets you smaller AOSP images at the price of the Google APIs.
+**Where the space goes.** Nothing downloadable lives in the image: platforms,
+build-tools, the emulator and the system images are all installed into the
+[SDK share](#sdks-live-outside-the-image) and symlinked back into
+`/opt/android-sdk`, so each is downloaded **once** and a weekly `:latest`
+rebuild re-fetches none of them. Budget roughly **2 GB per API level**. If that
+is tight, `ANDROID_SYSTEM_IMAGE_VARIANT=default;x86_64` gets you smaller AOSP
+images at the price of the Google APIs.
 
 Two practical limits: an Android 17 phone AVD wants **4 GB of RAM minimum**, and
 `bb emu` runs one emulator at a time — this is for testing across versions in

@@ -29,6 +29,8 @@ ARG TARGETARCH
 # Set INSTALL_* to "false" for a slimmer image without that toolchain.
 ARG INSTALL_PLAYWRIGHT=true
 ARG INSTALL_ANDROID=true
+# Kept for compatibility with existing build commands: the emulator is a
+# runtime install now, so this only seeds ENABLE_ANDROID_EMULATOR's default.
 ARG INSTALL_ANDROID_EMULATOR=true
 # Bootstrap build of Google's commandline-tools zip; sdkmanager then manages
 # everything else, so this pin only has to exist, not be current.
@@ -219,10 +221,15 @@ RUN set -eux; \
 # Android SDK: cmdline-tools, platform-tools, build-tools, one platform, and
 # (by default) the emulator with a Google-APIs x86_64 system image.
 #
-# The SDK lives in the image so a fresh pull is ready to build APKs/AABs with
-# zero setup; AVDs live in ~/.android on the persistent home volume. The tree
-# is left world-writable so `sdkmanager --install` works at runtime for any
-# extra platforms a project needs.
+# Only the bootstrap lives in the image: cmdline-tools (sdkmanager), the
+# platform-tools (adb) and bundletool — about 170MB. Everything downloadable
+# on top of that — platforms, build-tools, the 800MB emulator, system images
+# — is installed at runtime into the SDK root, which is a mounted share or
+# the home volume, and is symlinked back into this tree. That is the whole
+# point: /opt is discarded on every image update, so a package baked in here
+# is re-downloaded weekly forever, while one on the share is downloaded once.
+# The startup hook installs the baseline on first boot; `bb sdk` manages the
+# rest. The tree is left world-writable so sdkmanager can write to it.
 # ---------------------------------------------------------------------------
 ENV ANDROID_HOME=/opt/android-sdk \
     ANDROID_SDK_ROOT=/opt/android-sdk
@@ -247,17 +254,10 @@ RUN set -eux; \
     # `yes` dies of SIGPIPE when sdkmanager stops reading — expected, and not
     # a failure, hence the || true inside the pipeline's first stage.
     (yes || true) | "$sdkm" --licenses >/dev/null; \
-    "$sdkm" --install \
-        "platform-tools" \
-        "platforms;android-${ANDROID_PLATFORM}" \
-        "build-tools;${ANDROID_BUILD_TOOLS}" \
-        >/dev/null; \
-    if [ "${INSTALL_ANDROID_EMULATOR}" = "true" ]; then \
-        "$sdkm" --install \
-            "emulator" \
-            "system-images;android-${ANDROID_PLATFORM};${ANDROID_SYSTEM_IMAGE_VARIANT}" \
-            >/dev/null; \
-    fi; \
+    # platform-tools only: adb has to work before anything else can, and it
+    # is 22MB. The platform and build-tools the baseline needs are installed
+    # on first boot, onto the share, by scripts/startup.d/50-android.sh.
+    "$sdkm" --install "platform-tools" >/dev/null; \
     # bundletool for building/installing from .aab bundles. Version comes from
     # the /releases/latest redirect, not api.github.com — the API rate-limits
     # anonymous callers per IP and Actions egress IPs are shared, so a CI
@@ -403,6 +403,14 @@ ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 # agree on. It used to say builderbot,self-hosted,linux — which silently
 # overrode the richer default in runner.sh for anyone running the image bare,
 # because an ENV always exists and a ${VAR:-fallback} therefore never fires.
+# The Android baseline the first boot installs onto the SDK share, and where
+# that share is. Runtime-only, so they live down here: an ENV in the top
+# block invalidates every layer below it, and the host then re-pulls the lot.
+ENV ANDROID_BASELINE_PLATFORM=${ANDROID_PLATFORM} \
+    ANDROID_BASELINE_BUILD_TOOLS=${ANDROID_BUILD_TOOLS} \
+    ANDROID_BASELINE_EMULATOR=${INSTALL_ANDROID_EMULATOR} \
+    SDK_ROOT=/sdk
+
 ENV PUID=99 \
     PGID=100 \
     ENABLE_RUNNER=true \

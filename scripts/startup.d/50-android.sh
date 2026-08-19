@@ -15,13 +15,35 @@ set -euo pipefail
 
 command -v sdkmanager >/dev/null 2>&1 || exit 0
 
-log "android sdk: ${ANDROID_HOME:-?}"
+log "android sdk: ${ANDROID_HOME:-?} (packages under $(sdk_root)/android)"
+
+# The image carries only sdkmanager and adb now, so the platform and
+# build-tools a project needs are installed here — once, onto the SDK store,
+# where the next image update will find them still sitting. A container that
+# has them already does nothing at all.
+baseline_api="${ANDROID_BASELINE_PLATFORM:-${ANDROID_DEFAULT_API:-36}}"
+if [ ! -d "${ANDROID_HOME}/platforms/android-${baseline_api}" ]; then
+    log "installing the android ${baseline_api} baseline — downloaded once, kept outside the image"
+    sdkmanager --install "platforms;android-${baseline_api}" >/dev/null 2>&1 \
+        || warn "could not install platforms;android-${baseline_api}"
+fi
+if [ -n "${ANDROID_BASELINE_BUILD_TOOLS:-}" ] \
+   && [ ! -d "${ANDROID_HOME}/build-tools/${ANDROID_BASELINE_BUILD_TOOLS}" ]; then
+    sdkmanager --install "build-tools;${ANDROID_BASELINE_BUILD_TOOLS}" >/dev/null 2>&1 \
+        || warn "could not install build-tools;${ANDROID_BASELINE_BUILD_TOOLS}"
+fi
 
 is_true "${ENABLE_ANDROID_EMULATOR:-false}" || exit 0
 
+# The emulator is 800MB and is no longer in the image either. Fetched on the
+# first boot that asks for it, and never again.
 if ! command -v emulator >/dev/null 2>&1; then
-    warn "ENABLE_ANDROID_EMULATOR=true but this image was built without the emulator"
-    exit 0
+    log "installing the android emulator — 800MB, downloaded once, kept outside the image"
+    if ! sdkmanager --install emulator >/dev/null 2>&1; then
+        warn "could not install the emulator package"
+        exit 0
+    fi
+    hash -r
 fi
 
 if [ ! -e /dev/kvm ]; then

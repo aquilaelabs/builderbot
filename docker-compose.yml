@@ -66,6 +66,11 @@ services:
       GIT_USER_NAME: ${GIT_USER_NAME:-Stencil923}
       GIT_USER_EMAIL: ${GIT_USER_EMAIL:-124431934+Stencil923@users.noreply.github.com}
 
+      # --- SDK share --------------------------------------------------------
+      # Where the downloadable toolchains live inside the container; pairs
+      # with the /sdk volume below.
+      SDK_ROOT: ${SDK_ROOT:-/sdk}
+
       # --- Android emulator -------------------------------------------------
       # Also uncomment the devices: block below for KVM acceleration.
       ENABLE_ANDROID_EMULATOR: ${ENABLE_ANDROID_EMULATOR:-false}
@@ -137,6 +142,13 @@ services:
       # ownership the container user cannot work with) is reported on the
       # dashboard rather than silently not showing up.
       - ${WORKSPACE_PATH:-/mnt/user/development}:/workspace
+
+      # --- the SDK share ----------------------------------------------------
+      # Android platforms, build-tools, the 800MB emulator and the multi-GB
+      # system images, plus any toolchain `bb sdk install` adds. Outside the
+      # image on purpose: the container is rebuilt on every update, this is
+      # not, so nothing here is ever downloaded twice.
+      - ${SDK_PATH:-/mnt/user/development/SDK}:/sdk
 
       # --- persistent container state --------------------------------------
       # Claude Code login, shell history, npm globals, runner registration.
