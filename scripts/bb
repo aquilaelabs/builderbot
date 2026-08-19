@@ -1723,7 +1723,11 @@ sdk_install() {
             # place from here, which a tarball cannot do, and the clone is the
             # form its own tooling expects.
             log "cloning flutter (stable) into ${d}"
-            git clone --depth 1 -b stable https://github.com/flutter/flutter.git "$d"
+            # --progress: git prints none unless stderr is a terminal, and this
+            # runs from the dashboard's job runner where it is a pipe. Without
+            # it the largest download in this recipe is silent, and the tab sat
+            # on whatever number git's remote had last mentioned.
+            git clone --progress --depth 1 -b stable https://github.com/flutter/flutter.git "$d"
             git config --global --add safe.directory "$d"
             log "warming the toolchain (downloads the bundled dart sdk)"
             "$d/bin/flutter" --version
