@@ -190,6 +190,14 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+.modal select{width:100%;box-sizing:border-box;background:#161b22;color:var(--ink);
+  border:1px solid var(--line);border-radius:6px;padding:8px 9px;
+  font:13px/1.5 var(--mono)}
+@media(max-width:900px){ .modal select{font-size:16px} }
+/* The public key: one unbroken base64 line nobody should read, only copy. */
+#pPub{margin-top:8px;min-height:0;white-space:pre;overflow-x:auto;resize:none;
+  font-size:11px;color:var(--dim)}
+#pCopy{margin-top:6px}
 /* Icon-width, so it sits beside Shell rather than wrapping the row. */
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
@@ -470,6 +478,23 @@ body.dragging .tab .lbl{cursor:grabbing}
         or PAT that can already reach it; private repos need that set up first.
         The directory takes the repository's name, and a CLAUDE.md is drafted
         from its README and build files (kept as-is if it already has one).</div>
+    </div>
+    <!-- Deploy keys: the shielded agent's public halves, straight from
+         ssh-add -L. Picking one makes the server write the .pub selector and
+         the per-repo ssh alias itself — the by-hand step this replaces — and
+         shows the public key so it can be added on GitHub's deploy-key page.
+         The private halves stay where they are: unreadable. -->
+    <div class="field" id="pKeyField" hidden>
+      <label for="pKey">Deploy key</label>
+      <select id="pKey"></select>
+      <div class="hint">For a private repo with its own deploy key. Pick the
+        key and the container side is handled for you — the clone (and every
+        later push) offers exactly this key. GitHub's side still needs the
+        public key below under the repo's Settings → Deploy keys.</div>
+      <div id="pPubWrap" hidden>
+        <textarea id="pPub" readonly rows="3" aria-label="public key"></textarea>
+        <button id="pCopy" type="button">Copy public key</button>
+      </div>
     </div>
     <div class="field" id="pAboutField">
       <label for="pAbout">About this project</label>
@@ -2244,28 +2269,57 @@ function closeEditor(){ $("modal").hidden = true; editing = null; }
 // round-trip, and keeps the dialog open on failure so nothing typed is lost.
 let pMode = "init";
 
+let pKeys = [];                          // the agent's public keys, per open
+
 function pSeg(){
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
   // A clone asks for the URL and nothing else — the repository knows its own
   // name, and the server drafts the CLAUDE.md notes from the code it fetched.
+  // The deploy-key picker appears only when the agent actually holds keys:
+  // an empty dropdown would be a question with no answers.
   $("pUrlField").hidden = pMode !== "clone";
+  $("pKeyField").hidden = pMode !== "clone" || !pKeys.length;
   $("pNameField").hidden = $("pAboutField").hidden = pMode === "clone";
 }
 
+function pShowKey(){
+  const k = pKeys.find(k => k.name === $("pKey").value);
+  $("pPubWrap").hidden = !k;
+  if (k) $("pPub").value = k.pub;
+}
+
 function openNewProject(){
-  pMode = "init"; pSeg();
+  pMode = "init"; pKeys = []; pSeg();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
-  $("pErrWrap").hidden = true;
+  $("pErrWrap").hidden = $("pPubWrap").hidden = true;
   $("pCreate").disabled = false; $("pCreate").textContent = "Create";
   $("pmodal").hidden = false;
   $("pName").focus();
+  // Fetched per open, not cached: keys change when the container restarts
+  // with a new /secrets/ssh, and a stale list here would offer a key the
+  // agent no longer holds.
+  fetch("/api/pubkeys").then(r => r.json()).then(j => {
+    pKeys = j.keys || [];
+    $("pKey").innerHTML = `<option value="">none — public repo, or the container's default access</option>`
+      + pKeys.map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join("");
+    pShowKey(); pSeg();
+  }).catch(() => {});
 }
 
 function closeNewProject(){ $("pmodal").hidden = true; }
 
 $("pLocal").onclick = () => { pMode = "init"; pSeg(); };
 $("pClone").onclick = () => { pMode = "clone"; pSeg(); if (!$("pUrl").value) $("pUrl").focus(); };
+$("pKey").onchange = pShowKey;
+$("pCopy").onclick = async () => {
+  // clipboard API needs a secure context; plain-http access to the dashboard
+  // falls back to the selection route, which works everywhere a click does.
+  const pub = $("pPub").value;
+  try { await navigator.clipboard.writeText(pub); }
+  catch { $("pPub").select(); document.execCommand("copy"); }
+  notify("public key copied — paste it under the repo's Settings → Deploy keys");
+};
 $("pCancel").onclick = closeNewProject;
 $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 for (const f of ["pName", "pUrl"])
@@ -2283,7 +2337,8 @@ $("pCreate").onclick = async () => {
   try{
     const r = await fetch("/api/create", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, mode: pMode, url, about: $("pAbout").value})});
+      body: JSON.stringify({name, mode: pMode, url, about: $("pAbout").value,
+                            key: pMode === "clone" ? $("pKey").value : ""})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return fail(j.error || `create failed (HTTP ${r.status})`);
     closeNewProject();

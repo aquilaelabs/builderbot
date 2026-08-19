@@ -78,9 +78,48 @@ for (const name of ['../oops', 'a/b', '.hidden', '_work', 'a b', ''])
      `name refused: ${name || '(empty)'}`);
 ok(await post({ name: 'q2', mode: 'sideways' }) === 400, 'unknown mode refused');
 
-// The refusals above are answered with 400s on purpose, and the browser logs
-// each one as a failed resource — those lines are the test passing, not a
-// fault. Anything else is still a failure.
-const errs = page.errors.filter(e => !e.includes('status of 400'));
+// ---- deploy keys -------------------------------------------------------
+// The harness agent holds one throwaway key. The endpoint lists its public
+// half; the dialog offers it; picking it for a clone writes the .pub selector
+// and the per-repo alias into the scratch home. The clone itself then fails —
+// the alias resolves against the real HOME's ssh config, which has never
+// heard of it — which is exactly what makes this test offline-safe: the
+// container-side writes all happen before git runs.
+const keys = await page.evaluate(async () =>
+  (await (await fetch('/api/pubkeys')).json()).keys);
+ok(keys.length === 1 && keys[0].name === 'github_testkey'
+   && keys[0].pub.startsWith('ssh-ed25519 '),
+   'the agent key is listed with its public half');
+
+await page.click('#bNewProj');
+await page.click('#pClone');
+await page.waitForFunction(() => !document.getElementById('pKeyField').hidden);
+ok(await page.$eval('#pPubWrap', el => el.hidden), 'no key picked, no key shown');
+await page.selectOption('#pKey', 'github_testkey');
+ok(await page.$eval('#pPub', el => el.value.startsWith('ssh-ed25519 ')),
+   'picking the key shows its public half to copy to GitHub');
+
+await page.fill('#pUrl', 'https://github.com/owner/kproj');
+await page.click('#pCreate');
+await page.waitForFunction(() =>
+  !document.getElementById('pErrWrap').hidden, { timeout: 60000 });
+ok(await page.$eval('#pmodal', el => !el.hidden),
+   'the failed clone reports in place');
+ok(!existsSync(`${DIR}/ws/kproj`), '...and leaves no directory');
+const pub = readFileSync(`${DIR}/home/.ssh/bb_github_testkey.pub`, 'utf8');
+ok(pub.trim() === keys[0].pub, 'the .pub selector was written from the agent, not the request');
+const cfg = readFileSync(`${DIR}/home/.ssh/config`, 'utf8');
+ok(cfg.includes('Host bb-github_testkey') && cfg.includes('IdentitiesOnly yes')
+   && cfg.includes(`${DIR}/home/.ssh/bb_github_testkey.pub`),
+   'the per-repo alias names the .pub and pins IdentitiesOnly');
+ok(await post({ mode: 'clone', url: 'https://github.com/owner/kproj',
+                key: 'no_such_key' }) === 400, 'an unknown key name is refused');
+await page.click('#pCancel');
+
+// The refusals above are answered with 400s on purpose — and the deploy-key
+// clone is made to fail with a 500 — and the browser logs each as a failed
+// resource. Those lines are the tests passing, not a fault. Anything else is
+// still a failure.
+const errs = page.errors.filter(e => !/status of (400|500)/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ' — ' + errs.join(' | ') : ''}`);
 await done(browser);

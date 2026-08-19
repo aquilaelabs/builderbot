@@ -484,6 +484,17 @@ readable by any session, so it cannot be copied out of the container. (Keys
 placed in `~/.ssh` instead keep working too — that's the simple, unshielded
 option.)
 
+With several deploy keys loaded, one per private repo, ssh needs telling
+which key belongs to which repo — that used to mean hand-writing a
+`~/.ssh/config` alias and copying the `.pub` in as a selector. The
+dashboard's **New project…** clone form now does that side for you: it
+lists the loaded keys (their public halves, straight from the agent), and
+picking one writes the selector and alias and clones through them — the
+same picker also shows the public key to paste into the repo's
+**Settings → Deploy keys** on GitHub. Adding a *new* key is still the
+host-side flow above: drop the private key in `secrets/ssh/` and restart
+the container so the agent picks it up.
+
 **You never need a sudo password to manage any of this** — and a password
 field would actually punch a hole in the model (it would have to live
 somewhere Claude could read). Administration happens from the Unraid side,

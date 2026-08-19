@@ -674,6 +674,76 @@ def describe_repo(dest):
     return "\n\n".join(parts)
 
 
+# The builder user's ssh directory. Overridable through BUILDER_HOME for the
+# same reason CLAUDE_PROJECTS is: the tests point it at a scratch home, and
+# nothing they write may land in the real one.
+SSH_DIR = Path(os.environ.get("BUILDER_HOME", str(Path.home()))) / ".ssh"
+
+
+def agent_keys():
+    """[{name, pub}] for every key the shielded agent holds.
+
+    ssh-add -L prints the *public* halves — the one part of a shielded key
+    that is meant to be shown around. The name is the key's comment (the
+    filename it was loaded from), sanitized to the same charset as a project
+    name because it becomes a filename and a host alias here. A key whose
+    comment does not survive that is skipped, not mangled: it cannot be
+    addressed unambiguously, and these names face the operator.
+    """
+    r = run(["ssh-add", "-L"], timeout=10)
+    if r["code"] != 0:
+        return []                         # no agent, or an empty one
+    keys = []
+    for line in r["out"].splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 2 or not parts[0].startswith(("ssh-", "ecdsa-", "sk-")):
+            continue
+        name = os.path.basename(parts[2].strip()) if len(parts) > 2 else ""
+        if PROJECT_NAME.fullmatch(name) and name not in {k["name"] for k in keys}:
+            keys.append({"name": name, "pub": line.strip()})
+    return keys
+
+
+def ensure_deploy_alias(name, pub):
+    """A per-repo ssh alias for one agent key, created idempotently; returns
+    the alias.
+
+    Why an alias at all: deploy keys are scoped to a single repository, and
+    ssh offers every agent key in order — GitHub authenticates the first
+    valid one and then refuses the repo it does not belong to. The fix is
+    IdentitiesOnly plus an IdentityFile naming the *public* half, which acts
+    purely as a selector for the agent key (the private half stays shielded).
+
+    Everything written lives in a namespace of our own — bb_<name>.pub and
+    Host bb-<name> — so a .pub or an alias the operator maintains by hand is
+    never touched, and rewriting ours is always safe.
+    """
+    alias = f"bb-{name}"
+    SSH_DIR.mkdir(mode=0o700, exist_ok=True)
+    pub_path = SSH_DIR / f"bb_{name}.pub"
+    try:
+        current = pub_path.read_text()
+    except OSError:
+        current = None
+    if current != pub + "\n":
+        pub_path.write_text(pub + "\n")
+    cfg = SSH_DIR / "config"
+    marker = f"# builderbot:deploy-key:{name}"
+    try:
+        have = cfg.read_text()
+    except OSError:
+        have = ""
+    if marker not in have:
+        block = (f"\n{marker}\nHost {alias}\n"
+                 f"    HostName github.com\n"
+                 f"    IdentityFile {pub_path}\n"
+                 f"    IdentitiesOnly yes\n")
+        with open(cfg, "a") as f:
+            f.write(block)
+        os.chmod(cfg, 0o600)
+    return alias
+
+
 def projects():
     out = []
     uid, gid = os.getuid(), os.getgid()
@@ -1247,6 +1317,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(snapshot())
         if self.path.startswith("/api/findings"):
             return self._json(findings_payload())
+        if self.path.startswith("/api/pubkeys"):
+            # The shielded agent's public halves, for the New project dialog:
+            # picking one selects it for the clone, and showing it is how the
+            # operator gets it onto GitHub's deploy-key page in the first
+            # place. Public keys are the shareable part — nothing here can
+            # reach the private material, by construction.
+            return self._json({"keys": agent_keys()})
         self._json({"error": "not found"}, 404)
 
     def _post(self):
@@ -1360,6 +1437,26 @@ class Handler(BaseHTTPRequestHandler):
             name = re.split(r"[/:]", url.rstrip("/"))[-1]
             name = name[:-4] if name.endswith(".git") else name
             about = ""
+            # An optional deploy key, by name. The name is only ever matched
+            # against what the agent actually holds — nothing from the request
+            # is written into a file or a config line; the matched key's own
+            # public line is. When one is chosen the clone goes through a
+            # per-repo alias (see ensure_deploy_alias for why), which also
+            # leaves the remote pointing at that alias, so pushes keep using
+            # the right key without anyone re-doing this by hand.
+            keyname = (req.get("key") or "").strip()
+            if keyname:
+                match = next((k for k in agent_keys()
+                              if k["name"] == keyname), None)
+                if match is None:
+                    return self._json({"error": f"the agent holds no key "
+                                                f"named {keyname}"}, 400)
+                alias = ensure_deploy_alias(match["name"], match["pub"])
+                path = re.sub(r"^(https://github\.com/|git@github\.com:|"
+                              r"ssh://git@github\.com/)", "", url)
+                path = path.rstrip("/")
+                path = path[:-4] if path.endswith(".git") else path
+                url = f"git@{alias}:{path}.git"
         else:
             name = (req.get("name") or "").strip()
             about = (req.get("about") or "").strip()

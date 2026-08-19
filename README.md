@@ -505,10 +505,19 @@ lives in its body. The cards:
   section is drafted from the repo itself (the README's opening paragraph,
   plus build/test commands read off marker files like `package.json`,
   `gradlew`, `Cargo.toml`), marked as a draft for a session to verify. A
-  repo that already carries a `CLAUDE.md` keeps its own. The name is one
-  path segment and the URL must be one of GitHub's two address shapes —
-  `git clone` accepts transports a web form should never reach, so anything
-  else is refused server-side rather than passed along
+  repo that already carries a `CLAUDE.md` keeps its own.
+  For a private repo with its own deploy key, a **Deploy key** picker lists
+  what the shielded agent holds (public halves only, via `ssh-add -L`) and
+  shows the selected key for copying into the repo's GitHub deploy-key page.
+  Picking one makes the server handle the container side that used to be
+  manual: it writes the `.pub` selector and an `IdentitiesOnly` ssh alias
+  (`bb-<key>`, in a namespace of its own so hand-maintained config is never
+  touched) and clones through the alias — which the remote then keeps, so
+  later pushes offer the right key too. Only the matched agent key's own
+  public line is ever written; nothing from the request is.
+  The name is one path segment and the URL must be one of GitHub's two
+  address shapes — `git clone` accepts transports a web form should never
+  reach, so anything else is refused server-side rather than passed along
 - an **eye** per project, which excludes it: persists across restarts and
   blocks Claude sessions for that directory — see below. A row that is excluded
   or has an error carries **no Claude button at all**, because a session cannot
