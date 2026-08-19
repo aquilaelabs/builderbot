@@ -80,6 +80,42 @@ ok(await page.$('.pkglog') !== null, 'the progress log appears');
 ok(await page.$$eval('.doc .pkg input', is => is.every(i => !i.checked)),
    'a finished job clears the selection it consumed');
 
+// ---- what a row says while the job is on it -----------------------------
+// "installed at /sdk/flutter" used to appear the moment the download created
+// that directory — every probe calls a non-empty directory installed, and
+// during an install that is exactly what a half-finished one is. The row the
+// job is working on says what it is doing instead, with the percentage its
+// output last reported.
+const during = (job) => page.evaluate(j => {
+  const saved = packages.job;
+  packages.job = {running: true, queue: [], log: [], done: [], failed: [], ...j};
+  pkgRev++; drawPanes();
+  const row = [...document.querySelectorAll('.doc .pkg')]
+    .find(l => l.querySelector('input').value === 'flutter');
+  const out = { text: row.querySelector('.prog')?.textContent.trim(),
+                width: row.querySelector('.prog .bar i')?.style.width,
+                where: row.querySelector('.where')?.textContent.trim() || null };
+  packages.job = saved; pkgRev++; drawPanes();
+  clearTimeout(pkgPoll);      // the fake state must not outlive this check
+  return out;
+}, job);
+
+let d = await during({ action: 'install', current: 'flutter',
+                       progress: { name: 'flutter', phase: 'downloading', pct: 42 } });
+ok(d.text === 'downloading 42%' && d.width === '42%' && d.where === null,
+   'the row being installed shows the download percentage, not a path');
+d = await during({ action: 'install', current: 'flutter',
+                   progress: { name: 'flutter', phase: 'installing', pct: 90 } });
+ok(d.text === 'installing 90%' && d.width === '90%',
+   '...and switches to the install percentage when the output does');
+d = await during({ action: 'install', current: 'flutter', progress: null });
+ok(d.text === 'working…' && d.width === '0%',
+   '...and says something honest before any percentage has arrived');
+d = await during({ action: 'remove', current: 'flutter', progress: null });
+ok(d.text === 'removing…', 'a removal says so on the row it is removing');
+ok((await page.$$eval('.doc .pkg .where', ws => ws.length)) > 0,
+   'and the paths come back when the job is over');
+
 // ---- versions and updates ----------------------------------------------
 // The installed version is local knowledge and shows without being asked;
 // whether something newer exists is a network question, and until it is asked

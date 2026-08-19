@@ -194,6 +194,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
 .pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
+.pkg .prog{display:flex;align-items:center;gap:8px;color:var(--accent);font-family:var(--mono)}
+.pkg .prog .bar{flex:0 0 110px;height:5px;border-radius:99px;background:#233040;overflow:hidden}
+.pkg .prog .bar i{display:block;height:100%;background:var(--accent);transition:width .4s}
 .pkg .where.on{color:var(--accent)}
 .pkg .upd{color:var(--warn)}
 /* Installed and current: the row is done, and says so by fading its tick
@@ -2462,7 +2465,7 @@ const BIN = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M4.2 4.3l.7 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.7-8.3"/>
   <path d="M6.8 6.8v4"/><path d="M9.2 6.8v4"/></svg>`;
 
-function pkgRow(p, busy){
+function pkgRow(p, busy, job){
   // A tick means "do something to this". Something installed and current has
   // nothing to do, so its box is dead until a check finds an update — which
   // is also why Install is the only verb here: on a row with an update it
@@ -2483,6 +2486,19 @@ function pkgRow(p, busy){
   const upd = p.state === "update"
     ? `<span class="sub upd">update available — tick it and press Install selected</span>`
     : "";
+  // The row the job is on says what it is doing, in place of where it lives.
+  // "installed at /sdk/playwright" appeared the moment the download created
+  // that directory, which is the first second of a four-minute job: every
+  // probe here calls a non-empty directory installed, and during an install
+  // that is exactly what a half-finished one is.
+  const mine = !!(job && job.running && job.current === p.name);
+  const pr = mine && job.progress && job.progress.name === p.name ? job.progress : null;
+  const doing = job && job.action === "remove" ? "removing"
+              : job && job.action === "check" ? "checking"
+              : pr && pr.phase ? pr.phase : "working";
+  const pct = pr && pr.pct != null ? pr.pct : null;
+  const prog = `<span class="sub prog"><span class="bar"><i style="width:${
+    pct == null ? 0 : pct}%"></i></span>${esc(doing)}${pct == null ? "…" : ` ${pct}%`}</span>`;
   return `<label class="pkg${upToDate ? " done" : ""}">
     <input type="checkbox" value="${esc(p.name)}"${pkgTicked.has(p.name) ? " checked" : ""}${
       upToDate ? ` disabled title="installed and up to date — nothing to do until a check finds an update"` : ""}>
@@ -2491,8 +2507,8 @@ function pkgRow(p, busy){
         p.measured ? "measured on disk" : "approximate download size"
       }">${esc(p.size)}</span>${ver}${next}</span>
       <span class="sub">${esc(p.about)}</span>
-      <span class="sub where${p.installed ? " on" : ""}">${
-        p.installed ? "installed at " + esc(p.path) : "not installed"}</span>
+      ${mine ? prog : `<span class="sub where${p.installed ? " on" : ""}">${
+        p.installed ? "installed at " + esc(p.path) : "not installed"}</span>`}
       ${upd}
     </span>
     ${p.installed ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
@@ -2526,7 +2542,7 @@ function renderPackagesInto(i){
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
       : "The SDK root could not be determined; this image may predate <code>bb sdk</code>."}</div>
-    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy)).join("")}</div>
+    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy, job)).join("")}</div>
     <div class="macros">
       <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
         busy && job.action === "install" ? `Working on ${esc(job.current || "")}…` : "Install selected"}</button>
@@ -2554,7 +2570,9 @@ function renderPackagesInto(i){
   // Poll only while something is running: this list is a filesystem walk, not
   // something to ask for every two seconds forever.
   clearTimeout(pkgPoll);
-  if (busy) pkgPoll = setTimeout(loadPackages, 2000);
+  // A second, not two: this poll is now what moves the progress bar, and at
+  // two seconds a download that takes four ticks looks like it is stuck.
+  if (busy) pkgPoll = setTimeout(loadPackages, 1000);
   else if ((job.done || []).length) refresh();
 }
 

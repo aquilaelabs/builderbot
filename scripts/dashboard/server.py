@@ -1511,7 +1511,7 @@ _pkg_lock = threading.Lock()
 # on the fifteen-second poll would be a background service nobody requested.
 _pkg_versions = {}
 _pkg_job = {"running": False, "queue": [], "current": "", "action": "",
-            "log": [], "done": [], "failed": []}
+            "log": [], "done": [], "failed": [], "progress": None}
 _sdk_root_cache = []
 
 
@@ -1691,7 +1691,7 @@ def packages_payload():
                       "latest": v.get("latest", ""),
                       "state": v.get("status", "")})
     with _pkg_lock:
-        job = {k: (list(v) if isinstance(v, list) else v)
+        job = {k: (list(v) if isinstance(v, list) else dict(v) if isinstance(v, dict) else v)
                for k, v in _pkg_job.items()}
     return {"root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
@@ -1714,8 +1714,80 @@ def is_mount(path):
 
 # A progress-bar frame: sdkmanager redraws one with carriage returns, so a
 # naive tail of its output is twelve identical `[====] 40% Fetch remote
-# repository...` lines and none of the reason anything went wrong.
-_PROGRESS_FRAME = re.compile(r"^\[[=\s]*\]\s*\d+%")
+# repository...` lines and none of the reason anything went wrong. Playwright
+# draws its own with box characters, which is the same problem in a different
+# alphabet.
+_PROGRESS_FRAME = re.compile(r"^(\[[=\s]*\]\s*\d+%|\|[\u25a0\s]*\|\s*\d+%)")
+
+_PCT = re.compile(r"(\d{1,3})\s*%")
+# Whichever of these a line mentions decides the phase. Order matters: a line
+# that says "Unzipping" during a download step is past downloading.
+_PHASES = ((re.compile(r"unzip|extract|instal|resolving deltas|checking out", re.I), "installing"),
+           (re.compile(r"download|fetch|receiv|clon", re.I), "downloading"))
+
+
+def _progress_of(line, phase):
+    """(phase, percent) for one line of a tool's output.
+
+    Deliberately generic. Every recipe here draws its own bar — playwright's
+    `|====| 40% of 102 MiB`, sdkmanager's `[====] 40% Downloading`, git's
+    `Receiving objects: 45%` — and a parser per tool would rot with the next
+    release of any of them. A percentage is a percentage; the phase carries
+    over from whichever keyword was last seen, because the bar line itself
+    usually does not repeat it."""
+    for rx, name in _PHASES:
+        if rx.search(line):
+            phase = name
+            break
+    m = _PCT.search(line)
+    pct = int(m.group(1)) if m else None
+    return phase, (pct if pct is not None and 0 <= pct <= 100 else None)
+
+
+def run_streamed(cmd, on_line, timeout=3600):
+    """run(), but each line reaches a callback as it arrives.
+
+    These jobs take minutes and spend them drawing progress; run() returns
+    only once the command is finished, which is why the tab could show a log
+    and never a percentage. Read with os.read rather than a line iterator,
+    because those bars are carriage-return redraws rather than lines and a
+    buffered reader would sit on them until the process exited."""
+    try:
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, bufsize=0)
+    except OSError as e:
+        return {"code": 127, "out": str(e)}
+    out, buf = [], b""
+    sel = selectors.DefaultSelector()
+    sel.register(p.stdout, selectors.EVENT_READ)
+    deadline = time.monotonic() + timeout
+
+    def emit(raw):
+        ln = raw.decode("utf-8", "replace").rstrip()
+        if ln:
+            out.append(ln)
+            on_line(ln)
+
+    while True:
+        if time.monotonic() > deadline:
+            p.kill()
+            out.append(f"timed out after {timeout}s")
+            break
+        if not sel.select(timeout=1.0):
+            continue
+        chunk = os.read(p.stdout.fileno(), 65536)
+        if not chunk:
+            break
+        buf += chunk
+        parts = re.split(rb"[\r\n]", buf)
+        buf = parts.pop()
+        for raw in parts:
+            emit(raw)
+    if buf:
+        emit(buf)
+    sel.close()
+    p.stdout.close()
+    return {"code": p.wait(), "out": "\n".join(out)}
 
 
 def _job_tail(out, keep=16):
@@ -1738,17 +1810,33 @@ def _pkg_worker():
             if not _pkg_job["queue"]:
                 _pkg_job["running"] = False
                 _pkg_job["current"] = ""
+                _pkg_job["progress"] = None
                 return
             name = _pkg_job["queue"].pop(0)
             action = _pkg_job["action"]
             _pkg_job["current"] = name
+            _pkg_job["progress"] = None      # this item's, not the last one's
         verb = action
         if action == "install":
             probe = next((p["probe"] for p in PACKAGES if p["name"] == name), name)
             verb = "update" if _pkg_path(probe) else "install"
         with _pkg_lock:
             _pkg_job["log"].append(f"$ bb sdk {verb} {name}")
-        r = run([BB, "sdk", verb, name], timeout=3600)
+
+        def watch(line, _name=name):
+            with _pkg_lock:
+                cur = _pkg_job["progress"] or {}
+                phase, pct = _progress_of(line, cur.get("phase"))
+                if phase is None:
+                    return                    # nothing has said what it is doing yet
+                if pct is None:
+                    # No number on this line: keep the one we had — unless the
+                    # phase has moved on, in which case the old count is about
+                    # something that already finished.
+                    pct = cur.get("pct") if phase == cur.get("phase") else None
+                _pkg_job["progress"] = {"name": _name, "phase": phase, "pct": pct}
+
+        r = run_streamed([BB, "sdk", verb, name], watch, timeout=3600)
         with _pkg_lock:
             if action == "check":
                 # TSV out: name, installed, latest, status.
@@ -1768,6 +1856,7 @@ def _pkg_worker():
                     _pkg_job["log"].append(f"{name}: {verb} failed (exit {r['code']})")
             _pkg_job["log"] = _pkg_job["log"][-60:]
             (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
+            _pkg_job["progress"] = None
         if action in ("install", "remove", "update"):
             _pkg_local["key"] = None      # whatever just happened moved a version
             _pkg_sized_at[0] = 0.0        # ...and changed what is on the disk
@@ -2467,7 +2556,7 @@ class Handler(BaseHTTPRequestHandler):
             if _pkg_job["running"]:
                 return self._json({"error": "an install is already running"}, 409)
             _pkg_job.update(running=True, queue=list(names), action=action,
-                            current="", log=[], done=[], failed=[])
+                            current="", log=[], done=[], failed=[], progress=None)
         threading.Thread(target=_pkg_worker, daemon=True).start()
         return self._json({"ok": True, "queued": names})
 
