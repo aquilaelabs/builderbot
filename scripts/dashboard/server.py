@@ -1885,8 +1885,19 @@ def _pkg_worker():
                 seen = bool(cur.get("seen")) or pct is not None
                 phase = ("downloading" if pct is not None
                          else "installing" if seen else "starting")
-                _pkg_job["progress"] = {"name": _name, "pct": pct,
-                                        "phase": phase, "seen": seen}
+                # Every tenth of a download, into the log. The bar shows what
+                # a job reported *now*; this shows what it reported at all,
+                # which is the difference between "the bar is broken" and
+                # "the tool said 17% and then said nothing for four minutes".
+                # There was no way to tell those apart from a screenshot, and
+                # I spent a long time guessing wrong about which it was.
+                mark = cur.get("mark")
+                if pct is not None and (mark is None or pct // 10 != mark):
+                    mark = pct // 10
+                    _pkg_job["log"].append(f"  … downloading {pct}%")
+                    _pkg_job["log"] = _pkg_job["log"][-60:]
+                _pkg_job["progress"] = {"name": _name, "pct": pct, "phase": phase,
+                                        "seen": seen, "mark": mark}
 
         r = run_streamed([BB, "sdk", verb, name], watch, timeout=3600)
         with _pkg_lock:

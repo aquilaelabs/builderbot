@@ -196,14 +196,20 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
 .pkg .prog{display:flex;align-items:center;gap:8px;color:var(--accent);
   font-family:var(--mono);overflow-wrap:anywhere}
-/* The bar takes the width the row has, rather than a fixed 110px: at that
-   size a download at 19% is a twenty-pixel sliver next to the number, and the
-   number is where the eye goes — it read as an empty bar for the whole of
-   every install. No transition, because the row is rebuilt on every poll and
-   a fresh element has nothing to animate from. */
-.pkg .prog .bar{flex:1 1 auto;min-width:60px;height:7px;border-radius:99px;
+/* The fill is an absolutely-positioned box scaled along X, not a width in per
+   cent, because a percentage here has no reliable basis to resolve against:
+   the track is a flex item sized by flex resolution, and a percentage width
+   inside one of those may fall back to auto — a fill that paints the whole
+   bar. A phone did exactly that while a headless browser measured the
+   fraction asked for, which is how this survived three rounds of me testing
+   the wrong thing. inset:0 gives the fill a box that is definite by
+   construction, and scaleX is paint rather than layout. No transition: the
+   row is rebuilt on every poll and a fresh element has nothing to animate
+   from. */
+.pkg .prog .bar{position:relative;flex:0 0 120px;height:7px;border-radius:99px;
   background:#233040;overflow:hidden}
-.pkg .prog .bar i{display:block;height:100%;background:var(--accent)}
+.pkg .prog .bar i{position:absolute;inset:0;background:var(--accent);
+  transform-origin:left center}
 /* Not flex, for the state that is a word rather than a bar: as a flex
    container the word and the dots were two items with the row's gap between
    them, and the third dot wrapped onto its own line. */
@@ -2544,7 +2550,8 @@ function pkgRow(p, busy, job){
   // pretending by naming whichever component it happens to be unpacking.
   const pct = pr && pr.pct != null ? pr.pct : null;
   const prog = pct != null
-    ? `<span class="sub prog"><span class="bar"><i style="width:${pct}%"></i></span>downloading ${pct}%</span>`
+    ? `<span class="sub prog"><span class="bar"><i style="transform:scaleX(${
+        pct / 100})"></i></span>downloading ${pct}%</span>`
     : `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(pkgDots)}</span></span>`;
   return `<label class="pkg${upToDate ? " done" : ""}">
     <input type="checkbox" value="${esc(p.name)}"${

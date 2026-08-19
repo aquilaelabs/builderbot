@@ -112,10 +112,13 @@ const during = (job) => page.evaluate(j => {
 
 let d = await during({ action: 'install', current: 'flutter',
                        progress: { name: 'flutter', pct: 42, phase: 'downloading' } });
-ok(d.text === 'downloading 42%' && d.width === '42%' && d.where === null,
+ok(d.text === 'downloading 42%' && d.where === null,
    'the row being installed shows the download percentage, not a path');
-ok(d.fillW > 40 && d.fillW < d.barW * 0.5 && d.barW > 150,
-   `...and the bar is wide enough to read it off (${d.fillW}px of ${d.barW}px)`);
+// Measured, not read off the style attribute: how the fill is drawn is an
+// implementation detail and has changed twice, but the fraction it covers is
+// the thing being promised.
+ok(Math.abs(100 * d.fillW / d.barW - 42) <= 2,
+   `...and the bar is filled to the fraction it claims (${d.fillW}px of ${d.barW}px)`);
 // Mid-install the directory exists, so every probe calls it installed. The row
 // must not wear any of the furniture that means "this is here" — a half-written
 // NDK showed a ticked box, an uninstall bin and the version "installed".
@@ -252,6 +255,12 @@ ok(filled.length === 4 && filled.every((w, i) => i === 0 || w > filled[i - 1]),
 const said = [...new Set(labels.filter(Boolean))];
 ok(['8', '31', '66', '100'].every(n => said.some(t => t === `downloading ${n}%`)),
    `...and the row counts up with it (${said.join(' | ')})`);
+// The log keeps what the bar cannot: every tenth of the download, so that
+// afterwards it is possible to tell a bar that failed to move from a tool
+// that reported once and went quiet.
+const logged = await page.$eval('.pkglog', el => el.textContent);
+ok(['8%', '31%', '66%', '100%'].every(n => logged.includes(`… downloading ${n}`)),
+   'and the log keeps every tenth of it for afterwards');
 await page.waitForFunction(() => packages?.job && !packages.job.running, { timeout: 30000 });
 // Put it back the way it was found: what follows counts installed packages,
 // and a third one left lying around here is how this file first went red.
