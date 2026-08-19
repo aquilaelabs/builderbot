@@ -285,8 +285,10 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 1. Container settings → **ENABLE_DASHBOARD** → `true`
 2. **DASHBOARD_AUTH** → `you:a-real-password` — the dashboard will not start
    without this, and says so in the log
-3. The two port mappings (`8080` and `7681`) are already in the template; change
-   the host side if either collides with something else on the server
+3. The port mapping (`8080`) is already in the template; change the host
+   side if it collides with something else on the server. Terminals ride the
+   same port, behind the same sign-in — a login page with a 30-day cookie,
+   not the browser's credentials prompt, and only asked once
 4. Apply, then click the container's **WebUI** link
 
 You get container and runner status, a rendered report of whatever SARIF your

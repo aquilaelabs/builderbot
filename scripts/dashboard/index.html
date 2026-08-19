@@ -18,7 +18,12 @@
   --bg:#14181d; --panel:#1b2027; --line:#2a323c; --ink:#e6edf3;
   --dim:#8b98a5; --accent:#3fb950; --warn:#d29922; --bad:#f85149;
   --note:#58a6ff;
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  /* The tail matters on Android: none of the named desktop faces exist
+     there, and bare `monospace` lets Chrome and Firefox each pick their own
+     default — the same page in two fonts. Roboto/Noto/Droid Mono are what
+     Android devices actually carry. */
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",
+         "Noto Sans Mono","Droid Sans Mono",monospace;
   --tap:38px;
 }
 *{box-sizing:border-box}
@@ -759,8 +764,10 @@ function nextShell(proj){
   return null;
 }
 
-const ttydUrl = arg =>
-  `${location.protocol}//${location.hostname}:${state.ttyd_port}/?arg=${encodeURIComponent(arg)}`;
+// Same origin, not ttyd's own port: the server proxies /term to ttyd, so the
+// one sign-in that opened this page covers every terminal too — no second
+// credential prompt, and no second port for the router to publish.
+const ttydUrl = arg => `/term/?arg=${encodeURIComponent(arg)}`;
 
 const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 
@@ -2885,6 +2892,9 @@ async function refresh(){
   const asked = performance.now();
   try{
     const r = await fetch("/api/status");
+    // Signed out (the cookie expired, or the secret rotated): go to the
+    // login page rather than showing a dead dashboard with a red dot.
+    if (r.status === 401){ location.href = "/login?next=%2F"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     state = await r.json();
     $("dot").classList.remove("off");

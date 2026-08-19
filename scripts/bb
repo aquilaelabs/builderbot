@@ -910,10 +910,16 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, ...urls] = process.argv.s
 (async () => {
   const b = await chromium.launch({ executablePath: exe });
   const [username, password] = auth.includes(":") ? auth.split(/:(.*)/) : [null, null];
+  // Credentials go both ways: httpCredentials answers a server that
+  // challenges, the preemptive Authorization header satisfies one that
+  // deliberately never does (the dashboard, whose challenge-free 401s are
+  // what keep browsers from popping their own dialog).
   const ctx = await b.newContext({
     viewport: { width: +w, height: +h },
     deviceScaleFactor: +scale,
-    ...(username ? { httpCredentials: { username, password } } : {}) });
+    ...(username ? { httpCredentials: { username, password },
+                     extraHTTPHeaders: { Authorization: "Basic "
+                       + Buffer.from(auth).toString("base64") } } : {}) });
   const p = await ctx.newPage();
   const taken = new Set();
   for (const url of urls) {
