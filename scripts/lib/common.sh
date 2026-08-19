@@ -44,11 +44,17 @@ is_mountpoint() {
 # operator's own directory rather than a place to put 30GB.
 sdk_root() {
     local root="${SDK_ROOT:-/sdk}"
-    # Writable is the real test, not existence: an unmapped /sdk is a plain
-    # directory in the image, which persists nothing.
-    if [ -d "$root" ] && [ -w "$root" ] && is_mountpoint "$root"; then
-        printf '%s' "$root"
-        return 0
+    if [ -d "$root" ] && [ -w "$root" ]; then
+        # /sdk is the image's own default and exists in the image whether or
+        # not anybody mapped a share there, so it has to prove it is a mount
+        # before anything large is written to it. Any other path is one the
+        # operator chose — a subdirectory of another share, say — and is
+        # taken at its word; silently ignoring it and using the home volume
+        # instead is the behaviour this branch exists to avoid.
+        if [ "$root" != /sdk ] || is_mountpoint "$root"; then
+            printf '%s' "$root"
+            return 0
+        fi
     fi
     printf '%s' "${BUILDER_HOME:-${HOME:-/home/builder}}/.sdk"
 }

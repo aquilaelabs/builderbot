@@ -919,7 +919,7 @@ URLs need their scheme (http:// or https://)"
     local chrome
     chrome=/opt/pw-browsers/chromium          # the image's stable symlink...
     [ -x "$chrome" ] || chrome="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
-    [ -x "${chrome:-}" ] || die "no Playwright chromium under /opt/pw-browsers"   # ...or an older image's revisioned path
+    [ -x "${chrome:-}" ] || die "no Playwright chromium under /opt/pw-browsers — the browsers live on the SDK share now; install them with: bb sdk install playwright"   # ...or an older image's revisioned path
     local files
     files="$(NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
@@ -1013,7 +1013,7 @@ cmd_favicon() {
     local chrome
     chrome=/opt/pw-browsers/chromium
     [ -x "$chrome" ] || chrome="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
-    [ -x "${chrome:-}" ] || die "no Playwright chromium under /opt/pw-browsers"
+    [ -x "${chrome:-}" ] || die "no Playwright chromium under /opt/pw-browsers — the browsers live on the SDK share now; install them with: bb sdk install playwright"
 
     local tmp
     tmp="$(mktemp -d)"
@@ -1106,22 +1106,24 @@ sdk_status() {
     local probe="$root"; [ -d "$probe" ] || probe="$(dirname "$probe")"
     printf '  %-14s %s free\n' "space" "$(df -h "$probe" 2>/dev/null | awk 'NR==2{print $4}')"
     printf '\n== toolchains ==\n'
-    local t d ver
+    # Paths, not sizes: `du` on these walks tens of GB — a system-image tree
+    # alone took this command from instant to seven seconds — and the size of
+    # a toolchain is a question for `du` on the day you ask it, not something
+    # to pay for on every status.
+    local t d
     for t in $SDK_TOOLCHAINS; do
         d="$(sdk_dir "$t")"
         if [ "$t" = android ]; then
             # Android is the one that also lives in the image: the bootstrap
             # tools ship there, the packages are what moved out.
-            printf '  %-8s %-9s %s\n' android \
-                "$(du -sh "$d" 2>/dev/null | cut -f1 || echo -)" \
-                "$(command -v sdkmanager >/dev/null && echo 'sdkmanager ready' || echo 'no cmdline-tools')"
+            printf '  %-11s %s\n' android \
+                "$(command -v sdkmanager >/dev/null && printf 'sdkmanager ready — packages in %s' "$d" || echo 'no cmdline-tools')"
             continue
         fi
         if sdk_have "$root" "$t"; then
-            ver="$(du -sh "$d" 2>/dev/null | cut -f1)"
-            printf '  %-8s %-9s installed\n' "$t" "$ver"
+            printf '  %-11s %s\n' "$t" "$d"
         else
-            printf '  %-8s %-9s not installed — bb sdk install %s\n' "$t" "-" "$t"
+            printf '  %-11s not installed — bb sdk install %s\n' "$t" "$t"
         fi
     done
     printf '\n== android packages ==\n'

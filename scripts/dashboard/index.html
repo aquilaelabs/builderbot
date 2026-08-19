@@ -2455,6 +2455,10 @@ function renderPackagesInto(i){
   if (d.error){ el.innerHTML = `<div class="empty">could not read the package list: ${esc(d.error)}</div>`; return; }
 
   const job = d.job || {}, busy = !!job.running;
+  // A finished package loses its tick: the selection was spent on the job
+  // that just ran, and leaving it ticked means the next click — which might
+  // be Remove — acts on something the operator already dealt with.
+  if (!busy) for (const n of job.done || []) pkgTicked.delete(n);
   const lines = (job.log || []).slice(-14);
   el.innerHTML = `
     <div class="pkghead">${d.root

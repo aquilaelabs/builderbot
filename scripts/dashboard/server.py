@@ -34,12 +34,10 @@ HERE = Path(__file__).resolve().parent
 WORKSPACE = Path(os.environ.get("WORKSPACE", "/workspace"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "8080"))
 AUTH = os.environ.get("DASHBOARD_AUTH", "")
+# Loopback only: the browser reaches terminals through this server's own
+# /term proxy, so there is no second port for the page to be told about —
+# which is what DASHBOARD_TTYD_PUBLIC_PORT used to exist for.
 TTYD_PORT = int(os.environ.get("DASHBOARD_TTYD_PORT", "7681"))
-# What the *browser* should connect to. Identical to TTYD_PORT unless the host
-# publishes the terminal on a different port, which nothing inside the
-# container can see — Docker port mappings are invisible from in here. Getting
-# this wrong is quiet: the page loads and only the terminal fails.
-TTYD_PUBLIC_PORT = int(os.environ.get("DASHBOARD_TTYD_PUBLIC_PORT") or TTYD_PORT)
 
 # ---- one login for everything ---------------------------------------------
 # The browser used to be asked twice — once by this server, once by ttyd on
@@ -1640,7 +1638,6 @@ def snapshot():
         "projects": ps,
         "sessions": sessions,
         "runner": runner(),
-        "ttyd_port": TTYD_PUBLIC_PORT,
         "reports": REPORTS.is_dir(),
         "reports_mtime": reports_mtime(),
         "findings_counts": findings_counts(ps),

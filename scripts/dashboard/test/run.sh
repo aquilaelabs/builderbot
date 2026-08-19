@@ -32,7 +32,7 @@ node -e "require.resolve('playwright')" 2>/dev/null \
     || { log "[skip] playwright is not installed in this image"; exit 0; }
 CHROME=/opt/pw-browsers/chromium          # the image's stable symlink, or an older image's revisioned path
 [ -x "$CHROME" ] || CHROME="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1 || true)"
-[ -x "${CHROME:-}" ] || { log "[skip] no Playwright chromium under /opt/pw-browsers"; exit 0; }
+[ -x "${CHROME:-}" ] || { log "[skip] no Playwright chromium — install it with: bb sdk install playwright"; exit 0; }
 command -v tmux >/dev/null || { log "[skip] tmux is not installed"; exit 0; }
 
 PORT="${DASHBOARD_TEST_PORT:-8093}"

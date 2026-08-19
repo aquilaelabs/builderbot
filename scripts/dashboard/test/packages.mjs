@@ -43,6 +43,12 @@ ok((await page.$eval('.pkghead', el => el.textContent)).includes(`${DIR}/sdk`),
 // ---- install two, watch them land --------------------------------------
 await page.check('.doc .pkg input[value="flutter"]');
 await page.check('.doc .pkg input[value="android:emulator"]');
+// The ticks live outside the DOM, so a redraw — one arrives every two
+// seconds while a job runs — must not quietly clear the selection.
+await page.evaluate(() => loadPackages());
+await page.waitForFunction(() => document.querySelectorAll('.doc .pkg').length > 0);
+ok(await page.$$eval('.doc .pkg input:checked', is => is.length === 2),
+   'a redraw keeps what was ticked');
 await page.click('.doc [data-pkg="install"]');
 await page.waitForFunction(() => [...document.querySelectorAll('.doc .where')]
   .filter(w => w.classList.contains('on')).length === 2, { timeout: 30000 });
@@ -58,11 +64,14 @@ ok(existsSync(`${DIR}/sdk/flutter`) && existsSync(`${DIR}/androidsdk/emulator`),
 ok(await page.$('.pkglog') !== null, 'the progress log appears');
 // The ticks are the operator's, and a poll every two seconds must not
 // quietly clear them mid-install.
-ok(await page.$eval('.doc .pkg input[value="flutter"]', i => i.checked),
-   'a redraw keeps what was ticked');
+
+// A finished install lets go of its ticks, so the next click cannot act on
+// what was just dealt with — Remove especially.
+ok(await page.$$eval('.doc .pkg input', is => is.every(i => !i.checked)),
+   'a finished job clears the selection it consumed');
 
 // ---- remove one --------------------------------------------------------
-await page.uncheck('.doc .pkg input[value="android:emulator"]');
+await page.check('.doc .pkg input[value="flutter"]');
 await page.click('.doc [data-pkg="remove"]');
 await page.waitForFunction(() => [...document.querySelectorAll('.doc .where')]
   .filter(w => w.classList.contains('on')).length === 1, { timeout: 30000 });
