@@ -618,8 +618,10 @@ adb devices
 bb emu stop
 ```
 
-AVDs persist in the home volume. Need more platforms?
-`sdkmanager --install "platforms;android-34"` just works.
+AVDs persist in the home volume; the images and platforms themselves live on
+the SDK share, so an image update never re-downloads them. Need more
+platforms? `bb sdk install android:"platforms;android-34"`, or tick it in the
+dashboard's Tools tab.
 
 ### Publishing packages
 

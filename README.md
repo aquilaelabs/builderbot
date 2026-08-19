@@ -369,7 +369,7 @@ bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
 bb favicon SVG [DIR]  favicon set (ico + touch icon) from one mark
-bb sdk             SDKs kept outside the image: status, install, migrate
+bb sdk             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
 The dashboard's Commands card is this same list in this same order.
@@ -708,9 +708,11 @@ lives in its body. The cards:
   The name is one path segment and the URL must be one of GitHub's two
   address shapes — `git clone` accepts transports a web form should never
   reach, so anything else is refused server-side rather than passed along
-- **Tools**: **Additional packages…**, which installs or removes SDKs and
-  toolchains on the [SDK share](#sdks-live-outside-the-image) — checkboxes,
-  sizes, and the install path of everything already there
+- **Tools**: **Additional packages…**, which opens the installer as a tab —
+  every toolchain on the [SDK share](#sdks-live-outside-the-image) with its
+  size, its installed version, its path, and an amber line when a check finds
+  a newer one. Ticks are for things there is something to do to; uninstalling
+  is a bin on the row
 - an **eye** per project, which excludes it: persists across restarts and
   blocks Claude sessions for that directory — see below. A row that is excluded
   or has an error carries **no Claude button at all**, because a session cannot
