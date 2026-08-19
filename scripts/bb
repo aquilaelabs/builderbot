@@ -896,7 +896,7 @@ find_chromium() {
         [ -n "$base" ] && [ -d "$base" ] || continue
         exe="$base/chromium"
         [ -x "$exe" ] && { printf '%s' "$exe"; return 0; }
-        exe="$(find "$base" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
+        exe="$(find -L "$base" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
         [ -n "$exe" ] && [ -x "$exe" ] && { printf '%s' "$exe"; return 0; }
     done
     die "no Playwright chromium found — install the browsers with: bb sdk install playwright"
@@ -1295,6 +1295,26 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
             ;;
         android:*)
             local pkg="${what#android:}"
+            local kind; kind="$(sdk_android_kind "$pkg" || true)"
+            if [ -n "$kind" ]; then
+                # An image flavour: what is installed is an API level, and
+                # sdkmanager's update table is what says whether that image
+                # itself has a newer revision. A *newer API level* is not an
+                # update — those sit side by side — so it is not reported as
+                # one.
+                d="$(sdk_android_image_dir "$kind")"
+                [ -n "$d" ] || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
+                inst="$(basename "$(dirname "$d")")"
+                if timeout 120 sdkmanager --list 2>/dev/null | sed -n '/Available Updates/,$p' \
+                   | grep -q "system-images;${inst};${kind}"; then
+                    latest="newer"; status=update
+                else
+                    latest="$inst"
+                fi
+                printf '%s\t%s\t%s\t%s\n' "$what" "$inst" "$latest" \
+                    "$([ "$status" = update ] && echo update || echo current)"
+                return 0
+            fi
             d="${ANDROID_HOME:-/opt/android-sdk}/$pkg"
             # Non-empty, not merely present: every one of these is a symlink
             # onto the store, and the store has a directory per package kind
@@ -1401,6 +1421,35 @@ If you ARE the operator at this keyboard: env -u CLAUDECODE bb sdk $*"
 # image update would throw it away and re-download it. Nothing warns about
 # this; the directory simply stops being a link. Checked after every install,
 # which is the only moment it can happen.
+# The sdkmanager "kind" behind a device-flavour name, or nothing.
+#
+# tv/wear/playstore/atd are shapes of system image, not packages: the real
+# name carries an API level, so every path that touches one has to resolve it.
+# Install did, and check and remove did not — which made `bb sdk check
+# android:tv` answer "absent" for an image that was sitting right there, and
+# would have handed `sdkmanager --uninstall tv` to a tool that has no such
+# package.
+sdk_android_kind() {
+    case "$1" in
+        tv)        printf 'android-tv' ;;
+        wear)      printf 'android-wear' ;;
+        playstore) printf 'google_apis_playstore' ;;
+        atd)       printf 'google_atd' ;;
+        *)         return 1 ;;
+    esac
+}
+
+# sdk_android_image_dir KIND — the installed system image of that kind, if any.
+sdk_android_image_dir() {
+    # -L, because every package directory under ANDROID_HOME is a symlink onto
+    # the SDK share and find does not descend into a symlinked starting point:
+    # without it this searched the link itself, found nothing, and reported an
+    # installed image as absent while the dashboard — which resolves paths
+    # rather than walking them — said otherwise.
+    find -L "${ANDROID_HOME:-/opt/android-sdk}/system-images" -maxdepth 2 -type d \
+        -name "$1" 2>/dev/null | sort -V | tail -1
+}
+
 sdk_relink_android() {
     local store sub src
     store="$(sdk_dir android)"
@@ -1433,18 +1482,10 @@ sdk_install() {
             local pkg="${what#android:}"
             case "$pkg" in
                 tv|wear|playstore|atd)
-                    # Device flavours rather than package names: pick the
-                    # newest system image of that kind instead of making the
-                    # operator know which API levels ship one. The Google-APIs
-                    # phone images come from ANDROID_SYSTEM_IMAGES; these are
-                    # the shapes it does not cover.
-                    local kind
-                    case "$pkg" in
-                        tv)        kind='android-tv' ;;
-                        wear)      kind='android-wear' ;;
-                        playstore) kind='google_apis_playstore' ;;
-                        atd)       kind='google_atd' ;;
-                    esac
+                    # A shape of system image, not a package name: pick the
+                    # newest of that kind rather than making the operator know
+                    # which API levels ship one.
+                    local kind; kind="$(sdk_android_kind "$pkg")"
                     pkg="$(sdkmanager --list 2>/dev/null | tr -d ' ' | cut -d'|' -f1 \
                            | grep -E "^system-images;android-[0-9]+;${kind};x86_64$" \
                            | sort -V | tail -1)"
@@ -1627,6 +1668,20 @@ sdk_remove() {
         android:*)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
             local pkg="${what#android:}" v
+            local kind; kind="$(sdk_android_kind "$pkg" || true)"
+            if [ -n "$kind" ]; then
+                local dir api abi
+                for dir in "${ANDROID_HOME:-/opt/android-sdk}/system-images"/*/"$kind"; do
+                    [ -d "$dir" ] || continue
+                    api="$(basename "$(dirname "$dir")")"
+                    for abi in "$dir"/*/; do
+                        [ -d "$abi" ] || continue
+                        log "removing system-images;${api};${kind};$(basename "$abi")"
+                        sdkmanager --uninstall "system-images;${api};${kind};$(basename "$abi")"
+                    done
+                done
+                return 0
+            fi
             case "$pkg" in
                 ndk|cmake)
                     # Versioned the same way going out: uninstall every version
