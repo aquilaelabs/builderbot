@@ -931,9 +931,12 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, ...urls] = process.argv.s
       // counter only for two URLs that share a path (e.g. differing query).
       const u = new URL(url);
       // No leading dash or dot: "/?view=x" would otherwise slug to
-      // "-view-x.png", which convert then parses as an option.
-      const s = (u.pathname + u.search).replace(/^\/+|\/+$/g, "")
-        .replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "") || "index";
+      // "-view-x.png", which convert then parses as an option. Capped at 80
+      // because a long query string made a filename longer than the 255 a
+      // filesystem takes, and the whole run died on ENAMETOOLONG.
+      const s = ((u.pathname + u.search).replace(/^\/+|\/+$/g, "")
+        .replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+/, "") || "index")
+        .slice(0, 80);
       let name = s, n = 2;
       while (taken.has(name)) name = `${s}-${n++}`;
       taken.add(name);
