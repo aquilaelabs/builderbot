@@ -157,32 +157,39 @@ button.on{background:#1f6f36;border-color:#2ea043}
    the card keeps its shape and the full text lives in the tooltip. */
 .cmd .run{max-width:190px;overflow:hidden;text-overflow:ellipsis;display:block}
 
-/* The editor. A dialog rather than a card of its own: it is a detour, and it
-   should hand the page back when it is done. */
-#modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);
+/* The dialogs — the command editor and the new-project form. Dialogs rather
+   than cards of their own: each is a detour, and should hand the page back
+   when it is done. */
+.modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);
   display:flex;align-items:safe center;justify-content:center;padding:16px;
   overflow:auto}   /* a soft keyboard can leave less height than the box */
-#modal[hidden]{display:none}
-#modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
+.modal[hidden]{display:none}
+.modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
-#modal h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
+.modal h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
   font:600 13px/1.2 system-ui,sans-serif;letter-spacing:.3px;text-transform:uppercase}
-#modal .field{padding:11px 14px}
-#modal label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
+.modal .field{padding:11px 14px}
+.modal label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
   margin-bottom:5px}
-#modal input,#modal textarea{width:100%;box-sizing:border-box;background:#161b22;
+.modal input,.modal textarea{width:100%;box-sizing:border-box;background:#161b22;
   color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 9px;
   font:13px/1.5 var(--mono)}
-#modal textarea{min-height:132px;resize:vertical;white-space:pre}
+.modal textarea{min-height:132px;resize:vertical;white-space:pre}
 /* 16px on a phone: iOS Safari zooms the page into any smaller field on
    focus, and this fixed layout has no way to zoom back out. */
-@media(max-width:900px){ #modal input,#modal textarea{font-size:16px} }
-#modal input:focus,#modal textarea:focus{outline:2px solid #2f4d6d;outline-offset:-1px}
-#modal .hint{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-top:6px}
-#modal .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line)}
-#modal .foot .sp{flex:1}
-#modal .danger{color:var(--bad);border-color:#4d2220}
+@media(max-width:900px){ .modal input,.modal textarea{font-size:16px} }
+.modal input:focus,.modal textarea:focus{outline:2px solid #2f4d6d;outline-offset:-1px}
+.modal .hint{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-top:6px}
+.modal .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line)}
+.modal .foot .sp{flex:1}
+.modal .danger{color:var(--bad);border-color:#4d2220}
+/* Two-way choice as two buttons, not radios: one tap on a phone, and the
+   green .on state is the same vocabulary as everything else on the page. */
+.modal .pseg{display:flex;gap:8px}
+.modal .pseg button{flex:1;min-height:var(--tap)}
+/* pre-wrap: a failed clone reports with git's own message, which has lines. */
+.modal .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
 /* Icon-width, so it sits beside Shell rather than wrapping the row. */
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
@@ -410,7 +417,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 </head>
 <body data-view="dash">
 <div id="toast" role="status" aria-live="polite"></div>
-<div id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
+<div id="modal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
   <div class="box">
     <h3 id="mTitle">New custom command</h3>
     <div class="field">
@@ -430,6 +437,46 @@ body.dragging .tab .lbl{cursor:grabbing}
       <button id="mCancel">Cancel</button>
       <span class="sp"></span>
       <button id="mDelete" class="danger" hidden>Delete</button>
+    </div>
+  </div>
+</div>
+<!-- New project. The name and the URL are validated again server-side; the
+     form's job is a fast answer, the server's is the real one. -->
+<div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
+  <div class="box">
+    <h3 id="pTitle">New project</h3>
+    <div class="field">
+      <label for="pName">Name</label>
+      <input id="pName" maxlength="64" autocomplete="off" spellcheck="false"
+             placeholder="e.g. my-app">
+      <div class="hint">Becomes the directory under /workspace. Letters, digits,
+        dots, dashes, underscores.</div>
+    </div>
+    <div class="field">
+      <label id="pSrcLabel">Source</label>
+      <div class="pseg" role="group" aria-labelledby="pSrcLabel">
+        <button id="pLocal" class="on" type="button">New local repo</button>
+        <button id="pClone" type="button">Clone from GitHub</button>
+      </div>
+    </div>
+    <div class="field" id="pUrlField" hidden>
+      <label for="pUrl">Repository</label>
+      <input id="pUrl" autocomplete="off" spellcheck="false"
+             placeholder="git@github.com:owner/repo.git">
+      <div class="hint">Fetched with the container's own access — a deploy key
+        or PAT that can already reach it. Private repos need that set up first.</div>
+    </div>
+    <div class="field">
+      <label for="pAbout">About this project</label>
+      <textarea id="pAbout" spellcheck="false"
+                placeholder="What it is, how to build and test it — anything a new session should know."></textarea>
+      <div class="hint">Written into the new CLAUDE.md, below the environment
+        block. A cloned repo that already has a CLAUDE.md keeps its own.</div>
+    </div>
+    <div class="field" id="pErrWrap" hidden><div class="hint bad" id="pErr"></div></div>
+    <div class="foot">
+      <button id="pCreate" class="primary">Create</button>
+      <button id="pCancel">Cancel</button>
     </div>
   </div>
 </div>
@@ -1909,10 +1956,13 @@ function drawProjects(ps){
 
   // At the foot of the card, not the header: headers hold nothing but the
   // title, because the whole header is the collapse control and drag handle.
-  const togHtml = flagged.length
-    ? `<div class="macros"><button id="bAll">${showAllProjects ? "Hide" : "Show"
-       } projects with errors (${flagged.length})</button></div>`
-    : "";
+  // New project lives here too — present even when the list is empty, since
+  // an empty workspace is exactly where it is needed most.
+  const togHtml = `<div class="macros"><button id="bNewProj"
+       title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach">New project…</button>${
+       flagged.length
+       ? `<button id="bAll">${showAllProjects ? "Hide" : "Show"
+          } projects with errors (${flagged.length})</button>` : ""}</div>`;
 
   if (!shown.length){
     // state.projects at click time, not the `ps` this draw was given: the
@@ -1920,9 +1970,12 @@ function drawProjects(ps){
     if (paint(el, `<div class="empty">${
       !ps.length ? "nothing mounted under /workspace"
                  : `${flagged.length} ${flagged.length===1?"project needs":"projects need"} attention — use Show projects with errors`
-    }</div>` + togHtml) && flagged.length)
-      $("bAll").onclick = () => { showAllProjects = !showAllProjects;
-                                slideBody(el, () => drawProjects(state?.projects || ps)); };
+    }</div>` + togHtml)){
+      $("bNewProj").onclick = openNewProject;
+      if (flagged.length)
+        $("bAll").onclick = () => { showAllProjects = !showAllProjects;
+                                  slideBody(el, () => drawProjects(state?.projects || ps)); };
+    }
     return;
   }
 
@@ -1963,6 +2016,7 @@ function drawProjects(ps){
                             : "exclude — block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? EYE : EYE_OFF}</button>
     </div>`).join("") + togHtml)){
+    $("bNewProj").onclick = openNewProject;
     if (flagged.length)
       $("bAll").onclick = () => { showAllProjects = !showAllProjects;
                                   slideBody(el, () => drawProjects(state?.projects || ps)); };
@@ -2177,6 +2231,64 @@ function editCustom(id){
 }
 
 function closeEditor(){ $("modal").hidden = true; editing = null; }
+
+// ---- new project -------------------------------------------------------
+// The form for /api/create: a name, a source (fresh repo or GitHub clone),
+// and free-text notes that seed the CLAUDE.md's project section. The server
+// re-validates everything; this side only catches the obvious before a
+// round-trip, and keeps the dialog open on failure so nothing typed is lost.
+let pMode = "init";
+
+function pSeg(){
+  $("pLocal").classList.toggle("on", pMode === "init");
+  $("pClone").classList.toggle("on", pMode === "clone");
+  $("pUrlField").hidden = pMode !== "clone";
+}
+
+function openNewProject(){
+  pMode = "init"; pSeg();
+  $("pName").value = $("pUrl").value = $("pAbout").value = "";
+  $("pErrWrap").hidden = true;
+  $("pCreate").disabled = false; $("pCreate").textContent = "Create";
+  $("pmodal").hidden = false;
+  $("pName").focus();
+}
+
+function closeNewProject(){ $("pmodal").hidden = true; }
+
+$("pLocal").onclick = () => { pMode = "init"; pSeg(); };
+$("pClone").onclick = () => { pMode = "clone"; pSeg(); if (!$("pUrl").value) $("pUrl").focus(); };
+$("pCancel").onclick = closeNewProject;
+$("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
+for (const f of ["pName", "pUrl"])
+  $(f).onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("pCreate").click(); } };
+
+$("pCreate").onclick = async () => {
+  const name = $("pName").value.trim(), url = $("pUrl").value.trim();
+  const fail = m => { $("pErr").textContent = m; $("pErrWrap").hidden = false; };
+  if (!name) return fail("a name is required");
+  if (pMode === "clone" && !url) return fail("a repository address is required");
+  $("pErrWrap").hidden = true;
+  const b = $("pCreate");
+  b.disabled = true;
+  b.textContent = pMode === "clone" ? "Cloning…" : "Creating…";
+  try{
+    const r = await fetch("/api/create", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name, mode: pMode, url, about: $("pAbout").value})});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return fail(j.error || `create failed (HTTP ${r.status})`);
+    closeNewProject();
+    notify(`${name} created — ${j.note || "ready"}`);
+    refresh();                          // the new row, without waiting a poll
+  }catch(e){
+    // The request may still be running server-side (a big clone outlives a
+    // dropped connection), so say to look rather than to blindly retry.
+    fail("lost the connection while creating — check the Projects card before trying again");
+  }finally{
+    b.disabled = false; b.textContent = "Create";
+  }
+};
 
 async function postCustom(body){
   try{
@@ -2647,6 +2759,7 @@ $("mName").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("mSa
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (!$("modal").hidden) closeEditor();
+  if (!$("pmodal").hidden) closeNewProject();
   if (pinFor){ pinFor = null; drawTabs(); }
   if (resumeFor){ resumeFor = null; if (state) drawProjects(state.projects); }
 });

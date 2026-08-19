@@ -494,7 +494,17 @@ lives in its body. The cards:
   project says so instead of quietly not appearing. Hidden directories and the
   runner's `_work` are skipped outright, and empty
   directories are never listed either: a mount point waiting for
-  content is not a fault to report
+  content is not a fault to report.
+  At the foot of the card, **New project…** creates one: a name, a source —
+  a fresh local repo (`git init`), or a clone of a GitHub repository fetched
+  with the container's own access, meaning a deploy key or PAT that can
+  already reach it — and a free-text *About this project*, which becomes the
+  project section of a freshly built `CLAUDE.md` (environment block from the
+  image's template, your notes below the end marker). A cloned repo that
+  already has a `CLAUDE.md` keeps its own, and the notes are not written.
+  The name is one path segment and the URL must be one of GitHub's two
+  address shapes — `git clone` accepts transports a web form should never
+  reach, so anything else is refused server-side rather than passed along
 - an **eye** per project, which excludes it: persists across restarts and
   blocks Claude sessions for that directory — see below. A row that is excluded
   or has an error carries **no Claude button at all**, because a session cannot

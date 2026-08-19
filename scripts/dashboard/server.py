@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -503,10 +504,10 @@ def findings_payload():
             "hidden": hidden, "reports": reports}
 
 
-def run(cmd, cwd=None, timeout=120):
+def run(cmd, cwd=None, timeout=120, env=None):
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                           timeout=timeout)
+                           timeout=timeout, env=env)
         return {"cmd": shlex.join(cmd), "code": p.returncode,
                 "out": (p.stdout or "") + (p.stderr or "")}
     except subprocess.TimeoutExpired:
@@ -559,6 +560,44 @@ def md_state(path):
     if have is None:
         return "unmarked"
     return "current" if have == want else "stale"
+
+
+# What a new project may be called, and where a clone may come from. The name
+# becomes a directory under /workspace and part of a tmux session name, so it
+# gets the strictest charset of the two — one path segment, starting with a
+# letter or digit, which also rules out `_work`, dotfiles and `..`. The URL is
+# one of GitHub's address shapes and nothing else: `git clone` accepts
+# transports a browser form must never reach (`ext::` runs commands), so
+# anything unrecognized is refused rather than passed along.
+PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
+GITHUB_URL = re.compile(
+    r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)"
+    r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*?(?:\.git)?/?")
+
+# One creation at a time. Not _state_lock: a clone can take minutes, and
+# holding the state lock that long would stall every layout save behind it.
+_create_lock = threading.Lock()
+
+
+def build_claude_md(about):
+    """A new project's CLAUDE.md: the shipped template, with the section below
+    the end marker replaced by the operator's own notes when they gave any.
+
+    The same file `bb claude-md --init` copies; building it here as well means
+    the notes land in one write instead of a copy the operator then has to
+    edit. No notes → the template verbatim, placeholder section and all.
+    """
+    try:
+        text = TEMPLATE_MD.read_text()
+    except OSError:
+        return None                      # no template: older image, say so
+    if not about:
+        return text
+    i = text.find(ENV_END)
+    if i < 0:
+        return text                      # unmarked template: nothing to split on
+    head = text[:i + len(ENV_END)]
+    return head + "\n\n---\n\n## About this project\n\n" + about.rstrip() + "\n"
 
 
 def projects():
@@ -1168,6 +1207,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._pin(req)
         if path.startswith("/api/claude-md"):
             return self._claude_md(req)
+        if path.startswith("/api/create"):
+            return self._create(req)
         if path.startswith("/api/custom"):
             return self._custom(req)
         if path.startswith("/api/doctor"):
@@ -1214,6 +1255,81 @@ class Handler(BaseHTTPRequestHandler):
         except OSError as e:
             return self._json({"error": f"could not save: {e}"}, 500)
         return self._json({"custom": load_custom()})
+
+    def _create(self, req):
+        """Create a project under /workspace: a fresh local repo, or a clone
+        of a GitHub repository the container's credentials can already reach.
+
+        The name is validated before it becomes a path and the URL before it
+        becomes an argument — see PROJECT_NAME and GITHUB_URL for why both are
+        allow-lists. The clone runs with prompts disabled so missing access
+        fails with git's own message instead of hanging a request forever on a
+        username prompt nobody can answer.
+
+        mkdir is the claim: it is atomic, so two requests racing on one name
+        get one directory and one clean "already exists". On failure the
+        directory this request just made is removed — never one that was
+        already there, which is the FileExistsError branch returning first.
+        """
+        name = (req.get("name") or "").strip()
+        mode = req.get("mode")
+        about = (req.get("about") or "").strip()
+        if mode not in ("init", "clone"):
+            return self._json({"error": "unknown mode"}, 400)
+        if not PROJECT_NAME.fullmatch(name):
+            return self._json({"error": "a project name is one path segment: "
+                               "letters, digits, dots, dashes, underscores, "
+                               "starting with a letter or digit"}, 400)
+        url = (req.get("url") or "").strip()
+        if mode == "clone" and not GITHUB_URL.fullmatch(url):
+            return self._json({"error": "not a GitHub repository address — use "
+                               "https://github.com/owner/repo or "
+                               "git@github.com:owner/repo.git"}, 400)
+        dest = WORKSPACE / name
+        with _create_lock:
+            try:
+                dest.mkdir()
+            except FileExistsError:
+                return self._json({"error": f"{name} already exists in the "
+                                            "workspace"}, 400)
+            except OSError as e:
+                return self._json({"error": f"cannot create {name}: {e}"}, 500)
+            if mode == "clone":
+                # BatchMode so a key the agent does not hold fails instead of
+                # prompting; accept-new because the first contact with github.com
+                # on a fresh home volume is expected, not an attack to refuse.
+                env = dict(os.environ, GIT_TERMINAL_PROMPT="0",
+                           GIT_SSH_COMMAND="ssh -o BatchMode=yes "
+                                           "-o StrictHostKeyChecking=accept-new")
+                r = run(["git", "clone", "--", url, str(dest)],
+                        timeout=600, env=env)
+            else:
+                r = run(["git", "init", "-b", "main", str(dest)], timeout=30)
+            if r["code"] != 0:
+                shutil.rmtree(dest, ignore_errors=True)   # made a moment ago
+                return self._json({"error": r["out"].strip()[-2000:]
+                                            or f"git {mode} failed"}, 500)
+
+            # The CLAUDE.md the operator's notes were for. A cloned repo that
+            # already carries one keeps it — the notes are shown back in the
+            # response instead of silently discarded.
+            md = dest / "CLAUDE.md"
+            if md.is_file():
+                note = "kept the repository's own CLAUDE.md"
+                if about:
+                    note += " — your notes were not written into it"
+            else:
+                body = build_claude_md(about)
+                if body is None:
+                    note = "no CLAUDE.md template in this image; none written"
+                else:
+                    try:
+                        md.write_text(body)
+                        note = ("CLAUDE.md created from your notes" if about
+                                else "CLAUDE.md created from the template")
+                    except OSError as e:
+                        note = f"could not write CLAUDE.md: {e}"
+        return self._json({"ok": True, "name": name, "note": note})
 
     def _claude_md(self, req):
         """Create or refresh one project's CLAUDE.md.
