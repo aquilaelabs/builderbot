@@ -514,7 +514,18 @@ lives in its body. The cards:
   (`bb-<key>`, in a namespace of its own so hand-maintained config is never
   touched) and clones through the alias — which the remote then keeps, so
   later pushes offer the right key too. Only the matched agent key's own
-  public line is ever written; nothing from the request is.
+  public line is ever written; nothing from the request is. With a PAT
+  configured (`GIT_PAT`, or `gh auth login`) the key is optional even for
+  private repos — gh answers for plain https remotes.
+  A local repo with **no remote at all** wears a chain icon beside its eye:
+  **link to GitHub**. It asks the same two questions as a clone — URL and
+  deploy key — sets `origin`, and pushes the current branch, but **only into
+  an empty repository**: `git ls-remote` must come back with no refs first,
+  so linking can never write over existing work. Without a PAT a deploy key
+  is required (a push has to authenticate somehow); with one, the key is
+  optional and a URL that does not exist yet is created for you via
+  `gh repo create` — always private, and only after GitHub itself has
+  answered "not found"
   The name is one path segment and the URL must be one of GitHub's two
   address shapes — `git clone` accepts transports a web form should never
   reach, so anything else is refused server-side rather than passed along

@@ -704,6 +704,25 @@ def agent_keys():
     return keys
 
 
+def gh_authed():
+    """Whether git-over-https can authenticate — i.e. a PAT is wired up.
+
+    Asked of gh rather than the environment, because gh is what actually
+    answers the credential prompt (`gh auth setup-git` at startup): this is
+    true exactly when an https remote will work, whichever of GIT_PAT,
+    GITHUB_PAT or a manual `gh auth login` made it so. `gh auth token` is
+    offline and instant; `gh auth status` phones home.
+    """
+    return run(["gh", "auth", "token"], timeout=10)["code"] == 0
+
+
+def repo_path(url):
+    """owner/repo from an already-validated GitHub URL."""
+    path = re.sub(r"^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)",
+                  "", url).rstrip("/")
+    return path[:-4] if path.endswith(".git") else path
+
+
 def ensure_deploy_alias(name, pub):
     """A per-repo ssh alias for one agent key, created idempotently; returns
     the alias.
@@ -792,7 +811,10 @@ def projects():
         except OSError:
             has_md = False
 
-        branch, git_ok = None, False
+        # linked defaults to True, not False: it gates an offered action (the
+        # link-to-GitHub button), and a project this loop could not examine
+        # must get no offer rather than a broken one.
+        branch, git_ok, linked = None, False, True
         if not missing:
             # An empty directory is the one thing never reported. It is not a
             # problem to fix — it is a mount point waiting for content, or a
@@ -812,6 +834,12 @@ def projects():
             if not git_ok:
                 issues.append({"level": "error", "text": "no valid git repository"})
             else:
+                # Asked of git, not read out of .git/config: a worktree or a
+                # submodule keeps its config elsewhere, and `linked` drives a
+                # visible control (the link-to-GitHub button), so a wrong guess
+                # here offers an action that cannot work.
+                linked = bool(run(["git", "-C", str(d), "remote"],
+                                  timeout=10)["out"].strip())
                 r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"],
                         timeout=10)
                 # `out` carries stderr too, so a detached HEAD would otherwise
@@ -840,6 +868,7 @@ def projects():
             issues.append({"level": "excluded",
                            "text": "excluded — no Claude session can start here"})
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
+                    "linked": linked,
                     "claude_md": has_md, "excluded": d.name in excluded,
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     "issues": issues})
@@ -1322,8 +1351,10 @@ class Handler(BaseHTTPRequestHandler):
             # picking one selects it for the clone, and showing it is how the
             # operator gets it onto GitHub's deploy-key page in the first
             # place. Public keys are the shareable part — nothing here can
-            # reach the private material, by construction.
-            return self._json({"keys": agent_keys()})
+            # reach the private material, by construction. `pat` rides along
+            # so the dialogs can say whether a deploy key is optional (a PAT
+            # covers https) or the only way a push can authenticate.
+            return self._json({"keys": agent_keys(), "pat": gh_authed()})
         self._json({"error": "not found"}, 404)
 
     def _post(self):
@@ -1360,6 +1391,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._claude_md(req)
         if path.startswith("/api/create"):
             return self._create(req)
+        if path.startswith("/api/link"):
+            return self._link(req)
         if path.startswith("/api/custom"):
             return self._custom(req)
         if path.startswith("/api/doctor"):
@@ -1452,11 +1485,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": f"the agent holds no key "
                                                 f"named {keyname}"}, 400)
                 alias = ensure_deploy_alias(match["name"], match["pub"])
-                path = re.sub(r"^(https://github\.com/|git@github\.com:|"
-                              r"ssh://git@github\.com/)", "", url)
-                path = path.rstrip("/")
-                path = path[:-4] if path.endswith(".git") else path
-                url = f"git@{alias}:{path}.git"
+                url = f"git@{alias}:{repo_path(url)}.git"
         else:
             name = (req.get("name") or "").strip()
             about = (req.get("about") or "").strip()
@@ -1512,6 +1541,100 @@ class Handler(BaseHTTPRequestHandler):
                     except OSError as e:
                         note = f"could not write CLAUDE.md: {e}"
         return self._json({"ok": True, "name": name, "note": note})
+
+    def _link(self, req):
+        """Point an existing local repo at an *empty* GitHub repository and
+        push what it has.
+
+        Empty-only is the safety property: `git ls-remote` must come back
+        with no refs before anything is pushed, so this can never write over
+        a repository that already holds work. The one thing it will create is
+        a repo that does not exist at all — PAT path only, always private —
+        because "not found" from GitHub is the one answer that proves there
+        is nothing there to harm.
+
+        Auth mirrors the clone: a picked deploy key means an ssh alias, no
+        key means the PAT answers for https — and with neither, this refuses
+        up front instead of letting the push discover it.
+
+        There is no lock around check-then-add: two racing links resolve at
+        `git remote add`, which refuses a duplicate origin, and the loser's
+        error says exactly that.
+        """
+        name = (req.get("name") or "").strip()
+        url = (req.get("url") or "").strip()
+        keyname = (req.get("key") or "").strip()
+        try:
+            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
+        except OSError:
+            here = set()
+        if name not in here:
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        dest = str(WORKSPACE / name)
+        if run(["git", "-C", dest, "rev-parse", "--is-inside-work-tree"],
+               timeout=10)["out"].strip() != "true":
+            return self._json({"error": f"{name} is not a git repository"}, 400)
+        if run(["git", "-C", dest, "remote"], timeout=10)["out"].strip():
+            return self._json({"error": f"{name} already has a remote"}, 400)
+        if not GITHUB_URL.fullmatch(url):
+            return self._json({"error": "not a GitHub repository address — use "
+                               "https://github.com/owner/repo or "
+                               "git@github.com:owner/repo.git"}, 400)
+        path = repo_path(url)
+        pat = gh_authed()
+        if keyname:
+            match = next((k for k in agent_keys() if k["name"] == keyname), None)
+            if match is None:
+                return self._json({"error": f"the agent holds no key named "
+                                            f"{keyname}"}, 400)
+            remote = f"git@{ensure_deploy_alias(match['name'], match['pub'])}:{path}.git"
+        elif pat:
+            # Plain https: gh's credential helper (wired at startup) answers
+            # for it, so nothing secret lands in .git/config.
+            remote = f"https://github.com/{path}.git"
+        else:
+            return self._json({"error": "no PAT is configured and no deploy key "
+                               "was picked — a push needs one of the two"}, 400)
+
+        env = dict(os.environ, GIT_TERMINAL_PROMPT="0",
+                   GIT_SSH_COMMAND="ssh -o BatchMode=yes "
+                                   "-o StrictHostKeyChecking=accept-new")
+        created = ""
+        r = run(["git", "ls-remote", "--", remote], timeout=60, env=env)
+        if r["code"] != 0:
+            if pat and "not found" in r["out"].lower():
+                c = run(["gh", "repo", "create", path, "--private"], timeout=60)
+                if c["code"] != 0:
+                    return self._json({"error": c["out"].strip()[-2000:]
+                                                or "gh repo create failed"}, 500)
+                created = f"created {path} on GitHub (private); "
+            else:
+                return self._json({"error": r["out"].strip()[-2000:]
+                                            or "cannot reach that repository"}, 500)
+        elif r["out"].strip():
+            return self._json({"error": "that repository is not empty — linking "
+                               "only targets empty repositories, so nothing can "
+                               "be overwritten"}, 400)
+
+        a = run(["git", "-C", dest, "remote", "add", "origin", remote], timeout=10)
+        if a["code"] != 0:
+            return self._json({"error": a["out"].strip() or "remote add failed"}, 500)
+        if run(["git", "-C", dest, "rev-parse", "-q", "--verify", "HEAD"],
+               timeout=10)["code"] != 0:
+            return self._json({"ok": True, "name": name,
+                               "note": created + "remote set — nothing committed "
+                                                 "yet, so nothing was pushed"})
+        p = run(["git", "-C", dest, "push", "-u", "origin", "HEAD"],
+                timeout=300, env=env)
+        if p["code"] != 0:
+            # The remote stays: it is correct configuration, and the push is
+            # the retryable part — from here or from any shell.
+            return self._json({"error": created + "the remote was set, but the "
+                               "push failed:\n" + p["out"].strip()[-2000:]}, 500)
+        branch = run(["git", "-C", dest, "symbolic-ref", "--short", "-q", "HEAD"],
+                     timeout=10)["out"].strip() or "HEAD"
+        return self._json({"ok": True, "name": name,
+                           "note": f"{created}pushed {branch}"})
 
     def _claude_md(self, req):
         """Create or refresh one project's CLAUDE.md.

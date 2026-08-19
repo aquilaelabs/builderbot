@@ -495,6 +495,11 @@ same picker also shows the public key to paste into the repo's
 host-side flow above: drop the private key in `secrets/ssh/` and restart
 the container so the agent picks it up.
 
+The same picker appears when **linking** a local repo to GitHub (the chain
+icon on a project row that has no remote): pick the key, or none if a PAT
+is configured. Linking only ever targets an *empty* GitHub repository —
+and with a PAT, one that does not exist yet is created for you, private.
+
 **You never need a sudo password to manage any of this** — and a password
 field would actually punch a hole in the model (it would have to live
 somewhere Claude could read). Administration happens from the Unraid side,

@@ -58,11 +58,11 @@ ok(md.indexOf('A widget frobnicator') > marker,
 // ---- the allow-lists ---------------------------------------------------
 // Straight at the API: git accepts transports (ext:: runs commands) that must
 // never get past the server, whatever the page's own form checks.
-const post = body => page.evaluate(async b => {
-  const r = await fetch('/api/create', { method: 'POST',
+const post = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
+  const r = await fetch(u, { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
   return r.status;
-}, body);
+}, [body, api]);
 for (const url of ['https://evil.example/owner/repo', 'ext::sh -c id',
                    'file:///etc', 'https://github.com/owner-only',
                    'git@github.com:owner/repo extra'])
@@ -115,6 +115,49 @@ ok(cfg.includes('Host bb-github_testkey') && cfg.includes('IdentitiesOnly yes')
 ok(await post({ mode: 'clone', url: 'https://github.com/owner/kproj',
                 key: 'no_such_key' }) === 400, 'an unknown key name is refused');
 await page.click('#pCancel');
+
+// ---- link to GitHub ----------------------------------------------------
+// alpha has a remote, beta does not: the chain button shows on exactly the
+// unlinked one. The dialog is the clone form's third mode — URL and key only.
+// With the stub gh (never authenticated) a key is mandatory, and the attempt
+// stops at the unresolvable bb- alias, before any remote is added — the
+// success path needs a live GitHub and stays a manual test, like the clone's.
+ok(await page.$('#projects [data-l="beta"]') !== null
+   && await page.$('#projects [data-l="alpha"]') === null,
+   'the link button shows only on a repo with no remote');
+await page.click('#projects [data-l="beta"]');
+ok(await page.$eval('#pTitle', el => el.textContent === 'Link beta to GitHub'),
+   'the dialog names the project it is linking');
+ok(await page.$eval('#pSrcField', el => el.hidden)
+   && await page.$eval('#pNameField', el => el.hidden)
+   && await page.$eval('#pAboutField', el => el.hidden)
+   && await page.$eval('#pUrlField', el => !el.hidden),
+   'link mode asks for the URL and key only');
+await page.fill('#pUrl', 'git@github.com:owner/beta-remote.git');
+await page.click('#pCreate');
+ok(await page.$eval('#pErr', el => el.textContent.includes('deploy key')),
+   'no PAT and no key picked is refused before the round-trip');
+await page.waitForFunction(() => !document.getElementById('pKeyField').hidden);
+await page.selectOption('#pKey', 'github_testkey');
+await page.click('#pCreate');
+await page.waitForFunction(() => !document.getElementById('pErrWrap').hidden
+  || document.getElementById('pmodal').hidden, { timeout: 60000 });
+ok(await page.$eval('#pmodal', el => !el.hidden), 'the failed link reports in place');
+ok(!readFileSync(`${DIR}/ws/beta/.git/config`, 'utf8').includes('[remote'),
+   '...and no remote was added — the check comes before the configuration');
+await page.click('#pCancel');
+ok(await post({ name: 'alpha', url: 'https://github.com/owner/alpha',
+                key: 'github_testkey' }, '/api/link') === 400,
+   'a repo that already has a remote is refused');
+ok(await post({ name: 'gamma', url: 'https://github.com/owner/gamma',
+                key: 'github_testkey' }, '/api/link') === 400,
+   'a directory that is not a git repository is refused');
+ok(await post({ name: 'nosuch', url: 'https://github.com/owner/x',
+                key: 'github_testkey' }, '/api/link') === 400,
+   'an unknown project is refused');
+ok(await post({ name: 'beta', url: 'https://github.com/owner/beta' },
+              '/api/link') === 400,
+   'no PAT and no key is refused server-side too');
 
 // The refusals above are answered with 400s on purpose — and the deploy-key
 // clone is made to fail with a 500 — and the browser logs each as a failed

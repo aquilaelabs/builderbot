@@ -76,7 +76,10 @@ mkdir -p "$S"/{ws,reports,state,bin}
 # `_`), so the page, the server and bb-tty have to agree on the substitution.
 ( cd "$S/ws" && mkdir -p alpha beta gamma delta ep.silon \
     && for d in alpha beta gamma delta ep.silon; do echo x > "$d/README.md"; done \
-    && for d in alpha beta delta ep.silon; do git init -q "$d"; done )
+    && for d in alpha beta delta ep.silon; do git init -q "$d"; done \
+    && git -C alpha remote add origin git@github.com:owner/alpha.git )
+    # alpha is linked, beta is not: the link-to-GitHub button must show on
+    # exactly one of them.
 echo '["delta"]' > "$S/state/excluded-projects.json"
 # alpha has a previous Claude conversation, so its Claude button offers the
 # Resume / New chooser rather than starting straight away.
@@ -96,6 +99,10 @@ if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
 exit 0
 EOF
 chmod +x "$S/bin/bb"
+# Stub gh: always unauthenticated, so `pat` is deterministically false — the
+# real gh would answer from the operator's own login state.
+printf '#!/usr/bin/env bash\nexit 1\n' > "$S/bin/gh"
+chmod +x "$S/bin/gh"
 printf '  [ok]   claude on PATH\n  [ok]   github reachable\n  [ok]   disk space\n  [skip] gpu (no device)\n' > "$S/doctor-ok.txt"
 { cat "$S/doctor-ok.txt"; echo '  [warn] clock skew 3s'; echo '  [FAIL] runner offline'; } > "$S/doctor-fail.txt"
 cp "$S/doctor-ok.txt" "$S/doctor.txt"
