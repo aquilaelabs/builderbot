@@ -82,10 +82,6 @@ Your working directory is this project. Do not read from or write to sibling
 projects, and do not go looking for context in them — if something seems to be
 missing, ask.
 
-A sibling directory holding a `.bbignore` file is not a project at all — it is
-the container's own storage (the SDK share) or something the operator chose to
-hide. Leave those alone too.
-
 If this session was started from the dashboard, that is also enforced: the file
 tools are denied every sibling path and the runner's `_work` tree, via a
 settings file passed on the command line. A `Read` or `Edit` that comes back

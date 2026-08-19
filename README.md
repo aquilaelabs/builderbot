@@ -449,11 +449,24 @@ persists, but mixes 30GB of system images in with your shell history.
 
 ```bash
 bb sdk                     # what is installed, where, and how much room is left
-bb sdk install flutter     # or: dotnet · swift · tizen (instructions) · android:<pkg>
+bb sdk install flutter     # or: playwright · dotnet · swift · tizen · android:<pkg>
 bb sdk install android:"system-images;android-35;google_apis;x86_64"
+bb sdk check               # installed vs current, per toolchain
+bb sdk update flutter      # each the way its own tooling expects
 bb sdk remove flutter
 bb sdk env                 # the PATH lines; new shells get them automatically
 ```
+
+**Update checking is a question, not a background service.** Each answer costs
+a network round trip to a different upstream — the Flutter branch head, the
+.NET installer's own dry run, Swift's release redirect, the browser revisions
+Playwright's module wants, sdkmanager's update table — so nothing is checked
+until `bb sdk check` or the tab's **Check for updates** asks. An unchecked
+row says nothing rather than implying it is current. Updates then run through
+each toolchain's own mechanism rather than a delete-and-reinstall: Flutter
+moves to the branch head, .NET installs the current LTS beside what is there,
+sdkmanager updates its packages, and Swift and the browsers fetch the version
+they now want.
 
 **Moving the share later is a host-side job.** The container knows one
 location — whatever `/sdk` is mapped to — so relocating that directory on the

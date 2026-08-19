@@ -1478,6 +1478,10 @@ PACKAGES = [
 # and megabytes wide: a request that waited for them would time out, and two
 # at once would fight over the same sdkmanager lock.
 _pkg_lock = threading.Lock()
+# What `bb sdk check` last reported: {name: {installed, latest, status}}.
+# Filled only when asked — every probe in it reaches the network, so doing it
+# on the fifteen-second poll would be a background service nobody requested.
+_pkg_versions = {}
 _pkg_job = {"running": False, "queue": [], "current": "", "action": "",
             "log": [], "done": [], "failed": []}
 _sdk_root_cache = []
@@ -1508,17 +1512,22 @@ def _pkg_path(probe):
     the share, and the whole point of the card is showing where a thing
     actually landed."""
     if probe.startswith("android:"):
-        p = Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / probe.split(":", 1)[1]
+        cands = [Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / probe.split(":", 1)[1]]
     else:
         root = sdk_root_path()
-        if not root:
-            return ""
-        p = Path(root) / probe
-    try:
-        if p.is_dir() and any(p.iterdir()):
-            return str(p.resolve())
-    except OSError:
-        pass
+        # The share first, then the home volume — anything installed before a
+        # share was mapped lives there, and calling it uninstalled while 8GB
+        # of it sits on disk is how this went wrong once already.
+        home = Path(os.environ.get("BUILDER_HOME", str(Path.home()))) / ".sdk"
+        cands = [Path(root) / probe] if root else []
+        if str(home) != root:
+            cands.append(home / probe)
+    for p in cands:
+        try:
+            if p.is_dir() and any(p.iterdir()):
+                return str(p.resolve())
+        except OSError:
+            continue
     return ""
 
 
@@ -1526,8 +1535,11 @@ def packages_payload():
     items = []
     for p in PACKAGES:
         path = _pkg_path(p["probe"])
+        v = _pkg_versions.get(p["name"], {})
         items.append({**{k: p[k] for k in ("name", "label", "size", "about")},
-                      "installed": bool(path), "path": path})
+                      "installed": bool(path), "path": path,
+                      "version": v.get("installed", ""), "latest": v.get("latest", ""),
+                      "state": v.get("status", "")})
     with _pkg_lock:
         job = {k: (list(v) if isinstance(v, list) else v)
                for k, v in _pkg_job.items()}
@@ -1568,8 +1580,17 @@ def _pkg_worker():
             _pkg_job["log"].append(f"$ bb sdk {action} {name}")
         r = run([BB, "sdk", action, name], timeout=3600)
         with _pkg_lock:
-            tail = [ln for ln in r["out"].splitlines() if ln.strip()][-12:]
-            _pkg_job["log"].extend(tail)
+            if action == "check":
+                # TSV out: name, installed, latest, status.
+                for ln in r["out"].splitlines():
+                    f = ln.rstrip().split("\t")
+                    if len(f) == 4:
+                        _pkg_versions[f[0]] = {"installed": f[1], "latest": f[2],
+                                               "status": f[3]}
+                _pkg_job["log"].append(f"{name}: {_pkg_versions.get(name, {}).get('status', '?')}")
+            else:
+                tail = [ln for ln in r["out"].splitlines() if ln.strip()][-12:]
+                _pkg_job["log"].extend(tail)
             _pkg_job["log"] = _pkg_job["log"][-60:]
             (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
 
@@ -2252,10 +2273,14 @@ class Handler(BaseHTTPRequestHandler):
         rule every other executing endpoint here follows.
         """
         action = req.get("action")
-        if action not in ("install", "remove"):
+        if action not in ("install", "remove", "update", "check"):
             return self._json({"error": "unknown action"}, 400)
         known = {p["name"] for p in PACKAGES}
         names = [n for n in (req.get("names") or []) if n in known]
+        # Checking is about everything, not a selection: the question it
+        # answers is "is any of this out of date".
+        if action == "check" and not names:
+            names = [p["name"] for p in PACKAGES if _pkg_path(p["probe"])]
         if not names:
             return self._json({"error": "nothing selected"}, 400)
         with _pkg_lock:

@@ -195,6 +195,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
 .pkg .where.on{color:var(--accent)}
+.pkg .upd{color:var(--warn)}
 @media(hover:hover){ .pkg:hover{background:#1b222b} }
 .pkglog{margin:0 12px 12px;padding:9px 10px;background:#0d1117;
   border:1px solid var(--line);border-radius:6px;color:var(--dim);
@@ -2441,13 +2442,22 @@ async function loadPackages(){
 }
 
 function pkgRow(p){
+  // The version line only appears once something has asked: these answers
+  // cost a network round trip each, so an unchecked package says nothing
+  // rather than implying it is current.
+  const ver = p.version && p.version !== "-" ? ` <span class="pill">${esc(p.version)}</span>` : "";
+  const upd = p.state === "update"
+    ? `<span class="sub upd">update available${p.latest && p.latest !== "-"
+         && p.latest !== p.version ? " → " + esc(p.latest) : ""} — tick it and press Update</span>`
+    : "";
   return `<label class="pkg">
     <input type="checkbox" value="${esc(p.name)}"${pkgTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
-      <span class="nm">${esc(p.label)} <span class="pill">${esc(p.size)}</span></span>
+      <span class="nm">${esc(p.label)} <span class="pill">${esc(p.size)}</span>${ver}</span>
       <span class="sub">${esc(p.about)}</span>
       <span class="sub where${p.installed ? " on" : ""}">${
         p.installed ? "installed at " + esc(p.path) : "not installed"}</span>
+      ${upd}
     </span>
   </label>`;
 }
@@ -2475,8 +2485,12 @@ function renderPackagesInto(i){
     <div class="macros">
       <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
         busy && job.action === "install" ? `Installing ${esc(job.current || "")}…` : "Install selected"}</button>
+      <button data-pkg="update"${busy ? " disabled" : ""}>${
+        busy && job.action === "update" ? `Updating ${esc(job.current || "")}…` : "Update selected"}</button>
       <button data-pkg="remove"${busy ? " disabled" : ""}>${
         busy && job.action === "remove" ? `Removing ${esc(job.current || "")}…` : "Remove selected"}</button>
+      <button data-pkg="check"${busy ? " disabled" : ""}>${
+        busy && job.action === "check" ? `Checking ${esc(job.current || "")}…` : "Check for updates"}</button>
     </div>
     ${lines.length ? `<pre class="pkglog">${esc(lines.join("\n"))}${
       busy ? "" : `\n— finished: ${(job.done || []).length} ok${
@@ -2496,7 +2510,9 @@ function renderPackagesInto(i){
 
 async function pkgAct(action){
   const names = [...pkgTicked];
-  if (!names.length) return notify("tick something first", true);
+  // "Check for updates" asks about everything installed — the question is
+  // whether anything is out of date, not whether one ticked thing is.
+  if (!names.length && action !== "check") return notify("tick something first", true);
   // Tizen's install only prints instructions, and removing what was never
   // installed is not a thing — say so rather than queueing a no-op.
   if (action === "remove" && names.includes("tizen"))
@@ -2507,7 +2523,9 @@ async function pkgAct(action){
       body: JSON.stringify({action, names})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
-    notify(`${action === "install" ? "installing" : "removing"} ${names.length} package(s) — this can take minutes`);
+    notify(action === "check"
+      ? "checking versions — each one asks its own upstream"
+      : `${action}: ${names.length} package(s) — this can take minutes`);
     loadPackages();
   }catch(e){ notify("could not start: " + e, true); }
 }

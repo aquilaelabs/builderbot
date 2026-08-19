@@ -64,6 +64,27 @@ sdk_have() {
     [ -d "$1/$2" ] && [ -n "$(ls -A "$1/$2" 2>/dev/null)" ]
 }
 
+# sdk_find NAME — where a toolchain actually is: the share if it holds it,
+# otherwise the home volume's root, otherwise nothing.
+#
+# The two can both be real. Anything installed before a share was mapped sits
+# on the home volume, and mapping one must not make it vanish — which it did:
+# PATH lost three toolchains and the dashboard called them uninstalled while
+# 8GB of them sat on disk. Same rule the Android package directories follow,
+# for the same reason: a thing that exists is never hidden behind an empty
+# directory somewhere else. Installs still go to the share; this is only
+# about finding what is already there.
+sdk_find() {
+    local name="$1" root fallback
+    root="$(sdk_root)"
+    fallback="${BUILDER_HOME:-${HOME:-/home/builder}}/.sdk"
+    if sdk_have "$root" "$name"; then printf '%s/%s' "$root" "$name"; return 0; fi
+    if [ "$fallback" != "$root" ] && sdk_have "$fallback" "$name"; then
+        printf '%s/%s' "$fallback" "$name"; return 0
+    fi
+    return 1
+}
+
 # run_as_builder CMD... — drop privileges when we happen to be root.
 run_as_builder() {
     if [ "$(id -u)" -eq 0 ]; then

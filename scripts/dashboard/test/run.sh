@@ -112,6 +112,12 @@ if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
 if [ "${1:-}" = sdk ]; then
     case "${2:-}" in
         root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
+        check)   # one line per name: installed, latest, status
+                 case "$3" in
+                     flutter) printf '%s\t1.0\t2.0\tupdate\n' "$3" ;;
+                     *)       printf '%s\t1.0\t1.0\tcurrent\n' "$3" ;;
+                 esac ;;
+        update)  printf 'updated %s\n' "$3" ;;
         install|remove)
                  name="${3#android:}"
                  if [ "$name" != "$3" ]; then d="${ANDROID_HOME:?}/$name"
