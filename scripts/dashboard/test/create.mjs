@@ -32,6 +32,11 @@ ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local brings the 
 await page.click('#pCreate');
 ok(await page.$eval('#pErr', el => el.textContent.includes('name')),
    'an empty name is refused in place');
+// ...and does not outlive a mode switch, where it would sit over a form
+// that no longer asks for a name.
+await page.click('#pClone');
+ok(await page.$eval('#pErrWrap', el => el.hidden), 'switching modes clears the stale error');
+await page.click('#pLocal');
 await page.fill('#pName', 'alpha');
 await page.click('#pCreate');
 await page.waitForFunction(() =>
@@ -58,11 +63,11 @@ ok(md.indexOf('A widget frobnicator') > marker,
 // ---- the allow-lists ---------------------------------------------------
 // Straight at the API: git accepts transports (ext:: runs commands) that must
 // never get past the server, whatever the page's own form checks.
-const post = body => page.evaluate(async b => {
-  const r = await fetch('/api/create', { method: 'POST',
+const post = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
+  const r = await fetch(u, { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
   return r.status;
-}, body);
+}, [body, api]);
 for (const url of ['https://evil.example/owner/repo', 'ext::sh -c id',
                    'file:///etc', 'https://github.com/owner-only',
                    'git@github.com:owner/repo extra'])
@@ -78,9 +83,96 @@ for (const name of ['../oops', 'a/b', '.hidden', '_work', 'a b', ''])
      `name refused: ${name || '(empty)'}`);
 ok(await post({ name: 'q2', mode: 'sideways' }) === 400, 'unknown mode refused');
 
-// The refusals above are answered with 400s on purpose, and the browser logs
-// each one as a failed resource — those lines are the test passing, not a
-// fault. Anything else is still a failure.
-const errs = page.errors.filter(e => !e.includes('status of 400'));
+// ---- deploy keys -------------------------------------------------------
+// The harness agent holds one throwaway key. The endpoint lists its public
+// half; the dialog offers it; picking it for a clone writes the .pub selector
+// and the per-repo alias into the scratch home. The clone itself then fails —
+// the alias resolves against the real HOME's ssh config, which has never
+// heard of it — which is exactly what makes this test offline-safe: the
+// container-side writes all happen before git runs.
+const keys = await page.evaluate(async () =>
+  (await (await fetch('/api/pubkeys')).json()).keys);
+ok(keys.length === 1 && keys[0].name === 'github_testkey'
+   && keys[0].pub.startsWith('ssh-ed25519 '),
+   'the agent key is listed with its public half');
+
+await page.click('#bNewProj');
+await page.click('#pClone');
+await page.waitForFunction(() => !document.getElementById('pKeyField').hidden);
+ok(await page.$eval('#pPubWrap', el => el.hidden), 'no key picked, no key shown');
+await page.selectOption('#pKey', 'github_testkey');
+ok(await page.$eval('#pPub', el => el.value.startsWith('ssh-ed25519 ')),
+   'picking the key shows its public half to copy to GitHub');
+
+await page.fill('#pUrl', 'https://github.com/owner/kproj');
+await page.click('#pCreate');
+await page.waitForFunction(() =>
+  !document.getElementById('pErrWrap').hidden, { timeout: 60000 });
+ok(await page.$eval('#pmodal', el => !el.hidden),
+   'the failed clone reports in place');
+ok(!existsSync(`${DIR}/ws/kproj`), '...and leaves no directory');
+const pub = readFileSync(`${DIR}/home/.ssh/bb_github_testkey.pub`, 'utf8');
+ok(pub.trim() === keys[0].pub, 'the .pub selector was written from the agent, not the request');
+const cfg = readFileSync(`${DIR}/home/.ssh/config`, 'utf8');
+ok(cfg.includes('Host bb-github_testkey') && cfg.includes('IdentitiesOnly yes')
+   && cfg.includes(`${DIR}/home/.ssh/bb_github_testkey.pub`),
+   'the per-repo alias names the .pub and pins IdentitiesOnly');
+ok(await post({ mode: 'clone', url: 'https://github.com/owner/kproj',
+                key: 'no_such_key' }) === 400, 'an unknown key name is refused');
+await page.click('#pCancel');
+
+// ---- link to GitHub ----------------------------------------------------
+// alpha has a remote, beta does not: the chain button shows on exactly the
+// unlinked one. The dialog is the clone form's third mode — URL and key only.
+// With the stub gh (never authenticated) a key is mandatory, and the attempt
+// stops at the unresolvable bb- alias, before any remote is added — the
+// success path needs a live GitHub and stays a manual test, like the clone's.
+ok(await page.$('#projects [data-l="beta"]') !== null
+   && await page.$('#projects [data-l="alpha"]') === null,
+   'the link button shows only on a repo with no remote');
+await page.click('#projects [data-l="beta"]');
+ok(await page.$eval('#pTitle', el => el.textContent === 'Link beta to GitHub'),
+   'the dialog names the project it is linking');
+// The deploy-key pick from the clone flow above must not ride along into
+// this open — the select starts empty and repopulates from a fresh fetch.
+await page.waitForFunction(() => document.querySelectorAll('#pKey option').length > 1);
+ok(await page.$eval('#pKey', el => el.value === ''),
+   'a new open starts with no key selected, whatever the last one picked');
+ok(await page.$eval('#pSrcField', el => el.hidden)
+   && await page.$eval('#pNameField', el => el.hidden)
+   && await page.$eval('#pAboutField', el => el.hidden)
+   && await page.$eval('#pUrlField', el => !el.hidden),
+   'link mode asks for the URL and key only');
+await page.fill('#pUrl', 'git@github.com:owner/beta-remote.git');
+await page.click('#pCreate');
+ok(await page.$eval('#pErr', el => el.textContent.includes('deploy key')),
+   'no PAT and no key picked is refused before the round-trip');
+await page.waitForFunction(() => !document.getElementById('pKeyField').hidden);
+await page.selectOption('#pKey', 'github_testkey');
+await page.click('#pCreate');
+await page.waitForFunction(() => !document.getElementById('pErrWrap').hidden
+  || document.getElementById('pmodal').hidden, { timeout: 60000 });
+ok(await page.$eval('#pmodal', el => !el.hidden), 'the failed link reports in place');
+ok(!readFileSync(`${DIR}/ws/beta/.git/config`, 'utf8').includes('[remote'),
+   '...and no remote was added — the check comes before the configuration');
+await page.click('#pCancel');
+ok(await post({ name: 'alpha', url: 'https://github.com/owner/alpha',
+                key: 'github_testkey' }, '/api/link') === 400,
+   'a repo that already has a remote is refused');
+ok(await post({ name: 'gamma', url: 'https://github.com/owner/gamma',
+                key: 'github_testkey' }, '/api/link') === 400,
+   'a directory that is not a git repository is refused');
+ok(await post({ name: 'nosuch', url: 'https://github.com/owner/x',
+                key: 'github_testkey' }, '/api/link') === 400,
+   'an unknown project is refused');
+ok(await post({ name: 'beta', url: 'https://github.com/owner/beta' },
+              '/api/link') === 400,
+   'no PAT and no key is refused server-side too');
+
+// The refusals above are answered with 400s on purpose — and the deploy-key
+// clone is made to fail with a 500 — and the browser logs each as a failed
+// resource. Those lines are the tests passing, not a fault. Anything else is
+// still a failure.
+const errs = page.errors.filter(e => !/status of (400|500)/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ' — ' + errs.join(' | ') : ''}`);
 await done(browser);

@@ -58,8 +58,10 @@ case "$sock" in
 esac
 trap 'cleanup' EXIT
 pid=""
+agent_pid=""
 cleanup() {
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
+    [ -n "$agent_pid" ] && kill "$agent_pid" 2>/dev/null || true
     # The private server only — guarded again, because this is the line that
     # once took the real one down.
     case "$(tmux display-message -p '#{socket_path}' 2>/dev/null)" in
@@ -74,12 +76,22 @@ mkdir -p "$S"/{ws,reports,state,bin}
 # `_`), so the page, the server and bb-tty have to agree on the substitution.
 ( cd "$S/ws" && mkdir -p alpha beta gamma delta ep.silon \
     && for d in alpha beta gamma delta ep.silon; do echo x > "$d/README.md"; done \
-    && for d in alpha beta delta ep.silon; do git init -q "$d"; done )
+    && for d in alpha beta delta ep.silon; do git init -q "$d"; done \
+    && git -C alpha remote add origin git@github.com:owner/alpha.git )
+    # alpha is linked, beta is not: the link-to-GitHub button must show on
+    # exactly one of them.
 echo '["delta"]' > "$S/state/excluded-projects.json"
 # alpha has a previous Claude conversation, so its Claude button offers the
 # Resume / New chooser rather than starting straight away.
 mkdir -p "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)"
 echo '{}' > "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)/abc123.jsonl"
+# A scratch ssh-agent holding one throwaway key, so the deploy-key endpoint
+# has something deterministic to list. Its socket replaces the real agent's in
+# the server's environment — the tests must see this key and no operator key.
+ssh-keygen -q -t ed25519 -N '' -C github_testkey -f "$S/testkey"
+ssh-agent -a "$S/ssh-agent.sock" > "$S/agent.env"
+agent_pid="$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p' "$S/agent.env")"
+SSH_AUTH_SOCK="$S/ssh-agent.sock" ssh-add -q "$S/testkey" 2>/dev/null
 cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
 # Stub: deterministic `bb doctor`, everything else a cheap no-op.
@@ -87,6 +99,10 @@ if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
 exit 0
 EOF
 chmod +x "$S/bin/bb"
+# Stub gh: always unauthenticated, so `pat` is deterministically false — the
+# real gh would answer from the operator's own login state.
+printf '#!/usr/bin/env bash\nexit 1\n' > "$S/bin/gh"
+chmod +x "$S/bin/gh"
 printf '  [ok]   claude on PATH\n  [ok]   github reachable\n  [ok]   disk space\n  [skip] gpu (no device)\n' > "$S/doctor-ok.txt"
 { cat "$S/doctor-ok.txt"; echo '  [warn] clock skew 3s'; echo '  [FAIL] runner offline'; } > "$S/doctor-fail.txt"
 cp "$S/doctor-ok.txt" "$S/doctor.txt"
@@ -112,6 +128,7 @@ fresh() {
     find "$S/ws" -maxdepth 1 -mindepth 1 -type d \
         ! -name alpha ! -name beta ! -name gamma ! -name delta ! -name ep.silon \
         -exec rm -rf {} +
+    rm -rf "$S/home/.ssh"           # deploy-key selectors a test wrote
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
     for n in shell-9 claude-alpha; do
         tmux has-session -t "$n" 2>/dev/null || tmux new-session -d -s "$n" -c /tmp
@@ -122,6 +139,7 @@ fresh
 # ---- server ----------------------------------------------------------------
 env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     TEMPLATE_MD="$DASH/../../config/templates/project-CLAUDE.md" \
+    SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" PATH="$S/bin:$PATH" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &

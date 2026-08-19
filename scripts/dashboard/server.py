@@ -504,17 +504,25 @@ def findings_payload():
             "hidden": hidden, "reports": reports}
 
 
-def run(cmd, cwd=None, timeout=120, env=None):
+def run(cmd, cwd=None, timeout=120, env=None, split_err=False):
+    # split_err=True keeps stdout in `out` and stderr in `err`, for the one
+    # caller class that must not mistake a warning for real output (the
+    # ls-remote emptiness check: ssh's first-contact "Permanently added ..."
+    # note lands on stderr and made an empty repo look non-empty). The
+    # default stays combined, which is what every log-oriented caller wants.
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                            timeout=timeout, env=env)
+        out, err = p.stdout or "", p.stderr or ""
+        if not split_err:
+            out, err = out + err, ""
         return {"cmd": shlex.join(cmd), "code": p.returncode,
-                "out": (p.stdout or "") + (p.stderr or "")}
+                "out": out, "err": err}
     except subprocess.TimeoutExpired:
         return {"cmd": shlex.join(cmd), "code": 124,
-                "out": f"timed out after {timeout}s"}
+                "out": f"timed out after {timeout}s", "err": ""}
     except FileNotFoundError as e:
-        return {"cmd": shlex.join(cmd), "code": 127, "out": str(e)}
+        return {"cmd": shlex.join(cmd), "code": 127, "out": str(e), "err": ""}
 
 
 # Where the image keeps the CLAUDE.md the environment block is copied from.
@@ -616,10 +624,16 @@ def _readme_intro(dest):
             return None
         out = []
         for para in text.split("\n\n"):
-            para = para.strip()
-            if not para or para.startswith(("#", "<", "![", "[![", "---", "=")):
+            # Filtered line by line, not paragraph by paragraph: the most
+            # common README opens "# Title\nprose" with no blank line
+            # between, and skipping that whole block threw away the prose
+            # with the heading.
+            lines = [l for l in para.splitlines()
+                     if l.strip() and not l.lstrip().startswith(
+                         ("#", "<", "![", "[![", "---", "=", "|", "```", ">"))]
+            if not lines:
                 continue
-            out.append(re.sub(r"\s+", " ", para))
+            out.append(re.sub(r"\s+", " ", " ".join(lines)).strip())
             if sum(map(len, out)) > 400:
                 break
         return " ".join(out)[:600] or None
@@ -674,6 +688,108 @@ def describe_repo(dest):
     return "\n\n".join(parts)
 
 
+# The builder user's ssh directory. Overridable through BUILDER_HOME for the
+# same reason CLAUDE_PROJECTS is: the tests point it at a scratch home, and
+# nothing they write may land in the real one.
+SSH_DIR = Path(os.environ.get("BUILDER_HOME", str(Path.home()))) / ".ssh"
+
+
+def agent_keys():
+    """[{name, pub}] for every key the shielded agent holds.
+
+    ssh-add -L prints the *public* halves — the one part of a shielded key
+    that is meant to be shown around. The name is the key's comment (the
+    filename it was loaded from), sanitized to the same charset as a project
+    name because it becomes a filename and a host alias here. A key whose
+    comment does not survive that is skipped, not mangled: it cannot be
+    addressed unambiguously, and these names face the operator.
+    """
+    r = run(["ssh-add", "-L"], timeout=10)
+    if r["code"] != 0:
+        return []                         # no agent, or an empty one
+    keys = []
+    for line in r["out"].splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 2 or not parts[0].startswith(("ssh-", "ecdsa-", "sk-")):
+            continue
+        name = os.path.basename(parts[2].strip()) if len(parts) > 2 else ""
+        if PROJECT_NAME.fullmatch(name) and name not in {k["name"] for k in keys}:
+            keys.append({"name": name, "pub": line.strip()})
+    return keys
+
+
+def gh_authed():
+    """Whether git-over-https can authenticate — i.e. a PAT is wired up.
+
+    Asked of gh rather than the environment, because gh is what actually
+    answers the credential prompt (`gh auth setup-git` at startup): this is
+    true exactly when an https remote will work, whichever of GIT_PAT,
+    GITHUB_PAT or a manual `gh auth login` made it so. `gh auth token` is
+    offline and instant; `gh auth status` phones home.
+    """
+    return run(["gh", "auth", "token"], timeout=10)["code"] == 0
+
+
+def repo_path(url):
+    """owner/repo from an already-validated GitHub URL."""
+    path = re.sub(r"^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)",
+                  "", url).rstrip("/")
+    return path[:-4] if path.endswith(".git") else path
+
+
+def ensure_deploy_alias(name, pub):
+    """A per-repo ssh alias for one agent key, created idempotently; returns
+    the alias.
+
+    Why an alias at all: deploy keys are scoped to a single repository, and
+    ssh offers every agent key in order — GitHub authenticates the first
+    valid one and then refuses the repo it does not belong to. The fix is
+    IdentitiesOnly plus an IdentityFile naming the *public* half, which acts
+    purely as a selector for the agent key (the private half stays shielded).
+
+    Everything written lives in a namespace of our own — bb_<name>.pub and
+    Host bb-<name> — so a .pub or an alias the operator maintains by hand is
+    never touched, and rewriting ours is always safe.
+
+    The lock makes the check-then-append on ~/.ssh/config actually atomic:
+    two concurrent requests using the same key would otherwise both miss the
+    marker and both append the block. ssh would still behave (first match
+    wins), but "idempotent" should not mean "single-threaded".
+    """
+    alias = f"bb-{name}"
+    with _ssh_lock:
+        return _ensure_deploy_alias(alias, name, pub)
+
+
+_ssh_lock = threading.Lock()
+
+
+def _ensure_deploy_alias(alias, name, pub):
+    SSH_DIR.mkdir(mode=0o700, exist_ok=True)
+    pub_path = SSH_DIR / f"bb_{name}.pub"
+    try:
+        current = pub_path.read_text()
+    except OSError:
+        current = None
+    if current != pub + "\n":
+        pub_path.write_text(pub + "\n")
+    cfg = SSH_DIR / "config"
+    marker = f"# builderbot:deploy-key:{name}"
+    try:
+        have = cfg.read_text()
+    except OSError:
+        have = ""
+    if marker not in have:
+        block = (f"\n{marker}\nHost {alias}\n"
+                 f"    HostName github.com\n"
+                 f"    IdentityFile {pub_path}\n"
+                 f"    IdentitiesOnly yes\n")
+        with open(cfg, "a") as f:
+            f.write(block)
+        os.chmod(cfg, 0o600)
+    return alias
+
+
 def projects():
     out = []
     uid, gid = os.getuid(), os.getgid()
@@ -722,7 +838,10 @@ def projects():
         except OSError:
             has_md = False
 
-        branch, git_ok = None, False
+        # linked defaults to True, not False: it gates an offered action (the
+        # link-to-GitHub button), and a project this loop could not examine
+        # must get no offer rather than a broken one.
+        branch, git_ok, linked = None, False, True
         if not missing:
             # An empty directory is the one thing never reported. It is not a
             # problem to fix — it is a mount point waiting for content, or a
@@ -742,6 +861,12 @@ def projects():
             if not git_ok:
                 issues.append({"level": "error", "text": "no valid git repository"})
             else:
+                # Asked of git, not read out of .git/config: a worktree or a
+                # submodule keeps its config elsewhere, and `linked` drives a
+                # visible control (the link-to-GitHub button), so a wrong guess
+                # here offers an action that cannot work.
+                linked = bool(run(["git", "-C", str(d), "remote"],
+                                  timeout=10)["out"].strip())
                 r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"],
                         timeout=10)
                 # `out` carries stderr too, so a detached HEAD would otherwise
@@ -770,6 +895,7 @@ def projects():
             issues.append({"level": "excluded",
                            "text": "excluded — no Claude session can start here"})
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
+                    "linked": linked,
                     "claude_md": has_md, "excluded": d.name in excluded,
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     "issues": issues})
@@ -1247,6 +1373,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(snapshot())
         if self.path.startswith("/api/findings"):
             return self._json(findings_payload())
+        if self.path.startswith("/api/pubkeys"):
+            # The shielded agent's public halves, for the New project dialog:
+            # picking one selects it for the clone, and showing it is how the
+            # operator gets it onto GitHub's deploy-key page in the first
+            # place. Public keys are the shareable part — nothing here can
+            # reach the private material, by construction. `pat` rides along
+            # so the dialogs can say whether a deploy key is optional (a PAT
+            # covers https) or the only way a push can authenticate.
+            return self._json({"keys": agent_keys(), "pat": gh_authed()})
         self._json({"error": "not found"}, 404)
 
     def _post(self):
@@ -1283,6 +1418,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._claude_md(req)
         if path.startswith("/api/create"):
             return self._create(req)
+        if path.startswith("/api/link"):
+            return self._link(req)
         if path.startswith("/api/custom"):
             return self._custom(req)
         if path.startswith("/api/doctor"):
@@ -1360,6 +1497,22 @@ class Handler(BaseHTTPRequestHandler):
             name = re.split(r"[/:]", url.rstrip("/"))[-1]
             name = name[:-4] if name.endswith(".git") else name
             about = ""
+            # An optional deploy key, by name. The name is only ever matched
+            # against what the agent actually holds — nothing from the request
+            # is written into a file or a config line; the matched key's own
+            # public line is. When one is chosen the clone goes through a
+            # per-repo alias (see ensure_deploy_alias for why), which also
+            # leaves the remote pointing at that alias, so pushes keep using
+            # the right key without anyone re-doing this by hand.
+            keyname = (req.get("key") or "").strip()
+            if keyname:
+                match = next((k for k in agent_keys()
+                              if k["name"] == keyname), None)
+                if match is None:
+                    return self._json({"error": f"the agent holds no key "
+                                                f"named {keyname}"}, 400)
+                alias = ensure_deploy_alias(match["name"], match["pub"])
+                url = f"git@{alias}:{repo_path(url)}.git"
         else:
             name = (req.get("name") or "").strip()
             about = (req.get("about") or "").strip()
@@ -1415,6 +1568,115 @@ class Handler(BaseHTTPRequestHandler):
                     except OSError as e:
                         note = f"could not write CLAUDE.md: {e}"
         return self._json({"ok": True, "name": name, "note": note})
+
+    def _link(self, req):
+        """Point an existing local repo at an *empty* GitHub repository and
+        push what it has.
+
+        Empty-only is the safety property: `git ls-remote` must come back
+        with no refs before anything is pushed, so this can never write over
+        a repository that already holds work. The one thing it will create is
+        a repo that does not exist at all — PAT path only, always private —
+        because "not found" from GitHub is the one answer that proves there
+        is nothing there to harm.
+
+        Auth mirrors the clone: a picked deploy key means an ssh alias, no
+        key means the PAT answers for https — and with neither, this refuses
+        up front instead of letting the push discover it.
+
+        There is no lock around check-then-add: two racing links resolve at
+        `git remote add`, which refuses a duplicate origin, and the loser's
+        error says exactly that.
+        """
+        name = (req.get("name") or "").strip()
+        url = (req.get("url") or "").strip()
+        keyname = (req.get("key") or "").strip()
+        try:
+            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
+        except OSError:
+            here = set()
+        if name not in here:
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        dest = str(WORKSPACE / name)
+        if run(["git", "-C", dest, "rev-parse", "--is-inside-work-tree"],
+               timeout=10)["out"].strip() != "true":
+            return self._json({"error": f"{name} is not a git repository"}, 400)
+        if run(["git", "-C", dest, "remote"], timeout=10)["out"].strip():
+            return self._json({"error": f"{name} already has a remote"}, 400)
+        if not GITHUB_URL.fullmatch(url):
+            return self._json({"error": "not a GitHub repository address — use "
+                               "https://github.com/owner/repo or "
+                               "git@github.com:owner/repo.git"}, 400)
+        path = repo_path(url)
+        pat = gh_authed()
+        if keyname:
+            match = next((k for k in agent_keys() if k["name"] == keyname), None)
+            if match is None:
+                return self._json({"error": f"the agent holds no key named "
+                                            f"{keyname}"}, 400)
+            remote = f"git@{ensure_deploy_alias(match['name'], match['pub'])}:{path}.git"
+        elif pat:
+            # Plain https: gh's credential helper (wired at startup) answers
+            # for it, so nothing secret lands in .git/config.
+            remote = f"https://github.com/{path}.git"
+        else:
+            return self._json({"error": "no PAT is configured and no deploy key "
+                               "was picked — a push needs one of the two"}, 400)
+
+        env = dict(os.environ, GIT_TERMINAL_PROMPT="0",
+                   GIT_SSH_COMMAND="ssh -o BatchMode=yes "
+                                   "-o StrictHostKeyChecking=accept-new")
+        created = ""
+        # split_err: emptiness is judged on stdout alone. ssh's first-contact
+        # "Permanently added github.com ..." note arrives on stderr with exit
+        # 0, and combined it made a genuinely empty repository look occupied.
+        r = run(["git", "ls-remote", "--", remote], timeout=60, env=env,
+                split_err=True)
+        if r["code"] != 0:
+            blame = (r["err"] + r["out"]).strip()
+            if "not found" in blame.lower() and keyname:
+                # Creating it here would not help: a brand-new repo has no
+                # deploy keys, so the push over this alias still fails — and
+                # a retry would then trip over the half-done state. Say what
+                # the fix actually is instead.
+                return self._json({"error": "GitHub reports the repository as "
+                                   "not found over ssh. Create it (empty) on "
+                                   "GitHub and add this deploy key to it first"
+                                   + (", or leave the key on none to use the "
+                                      "PAT" if pat else "") + "."}, 400)
+            if "not found" in blame.lower() and pat:
+                c = run(["gh", "repo", "create", path, "--private"], timeout=60)
+                if c["code"] != 0:
+                    return self._json({"error": c["out"].strip()[-2000:]
+                                                or "gh repo create failed"}, 500)
+                created = f"created {path} on GitHub (private); "
+            else:
+                return self._json({"error": blame[-2000:]
+                                            or "cannot reach that repository"}, 500)
+        elif r["out"].strip():
+            return self._json({"error": "that repository is not empty — linking "
+                               "only targets empty repositories, so nothing can "
+                               "be overwritten"}, 400)
+
+        a = run(["git", "-C", dest, "remote", "add", "origin", remote], timeout=10)
+        if a["code"] != 0:
+            return self._json({"error": a["out"].strip() or "remote add failed"}, 500)
+        if run(["git", "-C", dest, "rev-parse", "-q", "--verify", "HEAD"],
+               timeout=10)["code"] != 0:
+            return self._json({"ok": True, "name": name,
+                               "note": created + "remote set — nothing committed "
+                                                 "yet, so nothing was pushed"})
+        p = run(["git", "-C", dest, "push", "-u", "origin", "HEAD"],
+                timeout=300, env=env)
+        if p["code"] != 0:
+            # The remote stays: it is correct configuration, and the push is
+            # the retryable part — from here or from any shell.
+            return self._json({"error": created + "the remote was set, but the "
+                               "push failed:\n" + p["out"].strip()[-2000:]}, 500)
+        branch = run(["git", "-C", dest, "symbolic-ref", "--short", "-q", "HEAD"],
+                     timeout=10)["out"].strip() or "HEAD"
+        return self._json({"ok": True, "name": name,
+                           "note": f"{created}pushed {branch}"})
 
     def _claude_md(self, req):
         """Create or refresh one project's CLAUDE.md.

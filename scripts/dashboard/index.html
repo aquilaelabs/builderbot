@@ -190,6 +190,14 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+.modal select{width:100%;box-sizing:border-box;background:#161b22;color:var(--ink);
+  border:1px solid var(--line);border-radius:6px;padding:8px 9px;
+  font:13px/1.5 var(--mono)}
+@media(max-width:900px){ .modal select{font-size:16px} }
+/* The public key: one unbroken base64 line nobody should read, only copy. */
+#pPub{margin-top:8px;min-height:0;white-space:pre;overflow-x:auto;resize:none;
+  font-size:11px;color:var(--dim)}
+#pCopy{margin-top:6px}
 /* Icon-width, so it sits beside Shell rather than wrapping the row. */
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
@@ -445,7 +453,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
-    <div class="field">
+    <div class="field" id="pSrcField">
       <label id="pSrcLabel">Source</label>
       <div class="pseg" role="group" aria-labelledby="pSrcLabel">
         <button id="pLocal" class="on" type="button">New local repo</button>
@@ -466,10 +474,21 @@ body.dragging .tab .lbl{cursor:grabbing}
       <label for="pUrl">Repository</label>
       <input id="pUrl" autocomplete="off" spellcheck="false"
              placeholder="git@github.com:owner/repo.git">
-      <div class="hint">Fetched with the container's own access — a deploy key
-        or PAT that can already reach it; private repos need that set up first.
-        The directory takes the repository's name, and a CLAUDE.md is drafted
-        from its README and build files (kept as-is if it already has one).</div>
+      <div class="hint" id="pUrlHint"></div>
+    </div>
+    <!-- Deploy keys: the shielded agent's public halves, straight from
+         ssh-add -L. Picking one makes the server write the .pub selector and
+         the per-repo ssh alias itself — the by-hand step this replaces — and
+         shows the public key so it can be added on GitHub's deploy-key page.
+         The private halves stay where they are: unreadable. -->
+    <div class="field" id="pKeyField" hidden>
+      <label for="pKey">Deploy key</label>
+      <select id="pKey"></select>
+      <div class="hint" id="pKeyHint"></div>
+      <div id="pPubWrap" hidden>
+        <textarea id="pPub" readonly rows="3" aria-label="public key"></textarea>
+        <button id="pCopy" type="button">Copy public key</button>
+      </div>
     </div>
     <div class="field" id="pAboutField">
       <label for="pAbout">About this project</label>
@@ -2015,6 +2034,10 @@ function drawProjects(ps){
            // the dashboard still answers "is it waiting on me?" per project.
            stateDot(claudeOf(tmuxName("claude-" + p.name)))}Claude</button>`}
       <button data-s="${esc(p.name)}" title="open another terminal here">Shell</button>
+      ${p.git_ok && !p.linked && !isBroken(p)
+        ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
+             title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
+        : ""}
       <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
         aria-label="${p.excluded ? "include" : "exclude"}"
         title="${p.excluded ? "include — allow Claude sessions here again"
@@ -2032,6 +2055,7 @@ function drawProjects(ps){
     });
     el.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
     el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
+    el.querySelectorAll("[data-l]").forEach(b => b.onclick = () => openLinkProject(b.dataset.l));
     el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
       setExcluded(b.dataset.x, b.dataset.on === "1"));
   }
@@ -2237,64 +2261,171 @@ function editCustom(id){
 
 function closeEditor(){ $("modal").hidden = true; editing = null; }
 
-// ---- new project -------------------------------------------------------
-// The form for /api/create: a name, a source (fresh repo or GitHub clone),
-// and free-text notes that seed the CLAUDE.md's project section. The server
-// re-validates everything; this side only catches the obvious before a
-// round-trip, and keeps the dialog open on failure so nothing typed is lost.
+// ---- new project / link to GitHub --------------------------------------
+// One dialog, three modes, one table. `init` and `clone` feed /api/create;
+// `link` points an existing repo at an empty GitHub one via /api/link. The
+// table is the whole difference between the modes — which fields show, what
+// the button says, where it posts — so a new mode is a row, not a hunt
+// through branches. The server re-validates everything; this side only
+// catches the obvious before a round-trip, and keeps the dialog open on
+// failure so nothing typed is lost.
+const PMODES = {
+  init:  { title: () => "New project", btn: "Create",
+           fields: ["pSrcField", "pNameField", "pAboutField"] },
+  clone: { title: () => "New project", btn: "Create",
+           fields: ["pSrcField", "pUrlField", "pKeyField"] },
+  link:  { title: () => `Link ${pLink} to GitHub`, btn: "Link",
+           fields: ["pUrlField", "pKeyField"] },
+};
 let pMode = "init";
+let pLink = null;                        // the project being linked, if any
+let pKeys = [];                          // the agent's public keys, per open
+let pPat = false;                        // can https push authenticate (gh)?
 
-function pSeg(){
+function pDraw(){
+  const m = PMODES[pMode];
+  $("pTitle").textContent = m.title();
+  $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
-  // A clone asks for the URL and nothing else — the repository knows its own
-  // name, and the server drafts the CLAUDE.md notes from the code it fetched.
-  $("pUrlField").hidden = pMode !== "clone";
-  $("pNameField").hidden = $("pAboutField").hidden = pMode === "clone";
+  for (const f of ["pSrcField", "pNameField", "pUrlField", "pKeyField", "pAboutField"])
+    $(f).hidden = !m.fields.includes(f);
+  // The deploy-key picker only appears when the agent actually holds keys:
+  // an empty dropdown would be a question with no answers.
+  if (!pKeys.length) $("pKeyField").hidden = true;
+  $("pUrlHint").textContent = pMode === "link"
+    ? `An empty repository on GitHub to push ${pLink} to — linking never `
+      + `touches a repo that already has commits.`
+      + (pPat ? " One that does not exist yet is created for you, private." : "")
+    : "Fetched with the container's own access — a deploy key or PAT that can "
+      + "already reach it; private repos need that set up first. The directory "
+      + "takes the repository's name, and a CLAUDE.md is drafted from its "
+      + "README and build files (kept as-is if it already has one).";
+  $("pKeyHint").textContent =
+    (pMode === "link"
+      ? "The key the push (and every later one) will offer. "
+      : "For a private repo with its own deploy key. Pick the key and the "
+        + "container side is handled for you — the clone (and every later "
+        + "push) offers exactly this key. ")
+    + "GitHub's side still needs the public key below under the repo's "
+    + "Settings → Deploy keys. "
+    + (pPat ? "A PAT is configured, so leaving this on none works too."
+            : pMode === "link" ? "No PAT is configured, so a key is required here."
+            : "");
 }
 
-function openNewProject(){
-  pMode = "init"; pSeg();
+function pShowKey(){
+  const k = pKeys.find(k => k.name === $("pKey").value);
+  $("pPubWrap").hidden = !k;
+  if (k) $("pPub").value = k.pub;
+}
+
+// Each open is a generation; closing bumps it too. Everything asynchronous —
+// the pubkeys response, a slow clone's outcome — checks the generation before
+// touching the dialog, so a request from a closed dialog can neither shut the
+// one the operator just reopened nor write its error where the wrong flow
+// will wear it. The outcome itself still surfaces, as a toast.
+let pGen = 0;
+let pFetch = null;                       // this open's /api/pubkeys, parsed
+
+function pOpen(mode, focus){
+  const gen = ++pGen;
+  pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
-  $("pErrWrap").hidden = true;
-  $("pCreate").disabled = false; $("pCreate").textContent = "Create";
+  // The select is emptied, not left as-is: a key picked during a previous
+  // open must not ride along invisibly into this one's submit.
+  $("pKey").innerHTML = "";
+  $("pErrWrap").hidden = $("pPubWrap").hidden = true;
+  $("pCreate").disabled = false; $("pCreate").textContent = PMODES[mode].btn;
   $("pmodal").hidden = false;
-  $("pName").focus();
+  $(focus).focus();
+  // Fetched per open, not cached: keys change when the container restarts
+  // with a new /secrets/ssh, and a stale list here would offer a key the
+  // agent no longer holds. The submit handler awaits pFetch directly, so an
+  // early Create still judges auth on the real answer, not the defaults.
+  pFetch = fetch("/api/pubkeys").then(r => r.json()).catch(() => null);
+  pFetch.then(j => {
+    if (gen !== pGen || !j) return;
+    pKeys = j.keys || []; pPat = !!j.pat;
+    $("pKey").innerHTML = `<option value="">none — ${pPat
+        ? "authenticate with the configured PAT"
+        : "public repo, or the container's default access"}</option>`
+      + pKeys.map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join("");
+    pShowKey(); pDraw();
+  });
 }
 
-function closeNewProject(){ $("pmodal").hidden = true; }
+function openNewProject(){ pLink = null; pOpen("init", "pName"); }
+function openLinkProject(name){ pLink = name; pOpen("link", "pUrl"); }
 
-$("pLocal").onclick = () => { pMode = "init"; pSeg(); };
-$("pClone").onclick = () => { pMode = "clone"; pSeg(); if (!$("pUrl").value) $("pUrl").focus(); };
+function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
+
+// A stale error must not survive a mode switch — "a name is required" makes
+// no sense over a form that no longer asks for one.
+$("pLocal").onclick = () => { pMode = "init"; $("pErrWrap").hidden = true; pDraw(); };
+$("pClone").onclick = () => { pMode = "clone"; $("pErrWrap").hidden = true; pDraw(); if (!$("pUrl").value) $("pUrl").focus(); };
+$("pKey").onchange = pShowKey;
+$("pCopy").onclick = async () => {
+  // clipboard API needs a secure context; plain-http access to the dashboard
+  // falls back to the selection route, which works everywhere a click does.
+  const pub = $("pPub").value;
+  try { await navigator.clipboard.writeText(pub); }
+  catch { $("pPub").select(); document.execCommand("copy"); }
+  notify("public key copied — paste it under the repo's Settings → Deploy keys");
+};
 $("pCancel").onclick = closeNewProject;
 $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 for (const f of ["pName", "pUrl"])
   $(f).onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("pCreate").click(); } };
 
 $("pCreate").onclick = async () => {
+  // Captured at the click: the dialog can be closed, reopened and switched
+  // to another mode while this request runs, and everything below must keep
+  // talking about the flow the operator actually submitted.
+  const mode = pMode, linkName = pLink, gen = pGen;
   const name = $("pName").value.trim(), url = $("pUrl").value.trim();
-  const fail = m => { $("pErr").textContent = m; $("pErrWrap").hidden = false; };
-  if (pMode === "clone"){ if (!url) return fail("a repository address is required"); }
-  else if (!name) return fail("a name is required");
+  const key = $("pKey").value;          // "" until this open's fetch offered any
+  const fail = m => gen === pGen
+    ? ($("pErr").textContent = m, $("pErrWrap").hidden = false)
+    : notify(`${mode === "link" ? linkName : name || mode}: ${m}`, true);
+  if (mode === "init"){ if (!name) return fail("a name is required"); }
+  else if (!url) return fail("a repository address is required");
   $("pErrWrap").hidden = true;
   const b = $("pCreate");
   b.disabled = true;
-  b.textContent = pMode === "clone" ? "Cloning…" : "Creating…";
+  b.textContent = { init: "Creating…", clone: "Cloning…", link: "Linking…" }[mode];
   try{
-    const r = await fetch("/api/create", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, mode: pMode, url, about: $("pAbout").value})});
+    // A push has to authenticate somehow; catching this before the round-trip
+    // spares typing a URL into a flow that cannot finish. Judged on the
+    // pubkeys answer itself — awaited, so an early Create is not judged on
+    // the pre-fetch defaults. (The server refuses it too; this is just the
+    // earlier of the two answers.)
+    if (mode === "link" && !key){
+      const auth = await pFetch;
+      if (!(auth && auth.pat))
+        return fail((auth && auth.keys || []).length
+          ? "no PAT is configured — pick a deploy key"
+          : "no PAT is configured and the agent holds no deploy keys — set GIT_PAT, or add a key to /secrets/ssh and restart the container");
+    }
+    const r = mode === "link"
+      ? await fetch("/api/link", {method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({name: linkName, url, key})})
+      : await fetch("/api/create", {method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({name, mode, url, about: $("pAbout").value,
+                                key: mode === "clone" ? key : ""})});
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) return fail(j.error || `create failed (HTTP ${r.status})`);
-    closeNewProject();
-    notify(`${j.name || name} created — ${j.note || "ready"}`);
-    refresh();                          // the new row, without waiting a poll
+    if (!r.ok) return fail(j.error || `${mode} failed (HTTP ${r.status})`);
+    if (gen === pGen) closeNewProject();
+    notify(`${j.name || name || linkName} ${mode === "link" ? "linked" : "created"} — ${j.note || "ready"}`);
+    refresh();                          // the new state, without waiting a poll
   }catch(e){
-    // The request may still be running server-side (a big clone outlives a
-    // dropped connection), so say to look rather than to blindly retry.
-    fail("lost the connection while creating — check the Projects card before trying again");
+    // The request may still be running server-side (a big clone or push
+    // outlives a dropped connection), so say to look rather than blindly retry.
+    fail("lost the connection — check the Projects card before trying again");
   }finally{
-    b.disabled = false; b.textContent = "Create";
+    if (gen === pGen){ b.disabled = false; b.textContent = PMODES[pMode].btn; }
   }
 };
 
@@ -2332,6 +2463,12 @@ const EYE_PATH = `<path d="M1 8s2.7-4.5 7-4.5S15 8 15 8s-2.7 4.5-7 4.5S1 8 1 8z"
 const EYE = `<svg viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}</svg>`;
 const EYE_OFF = `<svg viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}
   <path d="M2.5 13.5 13.5 2.5"/></svg>`;
+// A chain link, for a repo with no remote: the action is "link this to
+// GitHub", and it disappears once the repo has anywhere to push to.
+const LINK = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M6.7 9.3 9.3 6.7"/>
+  <path d="M7.5 4.9 9.2 3.2a2.6 2.6 0 0 1 3.6 3.6L11.1 8.5"/>
+  <path d="M8.5 11.1 6.8 12.8a2.6 2.6 0 0 1-3.6-3.6L4.9 7.5"/></svg>`;
 
 // Which project's resume chooser is open, if any.
 let resumeFor = null;
