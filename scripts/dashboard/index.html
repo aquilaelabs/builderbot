@@ -128,6 +128,11 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
   .row .name.go:hover{text-decoration:underline}
   .row .sub a.fix:hover{color:var(--ink)}
   button:hover{background:#2b3540}
+  /* The green buttons kept their color through button:hover (their own rules
+     come later and win) — which meant no hover at all. A lighter green and a
+     brighter border are their version of the same lift. */
+  button.primary:hover,button.on:hover{background:#26853f;border-color:#3fb950}
+  .modal .danger:hover{background:#3a1d1b}
   button:disabled:hover{background:#232b34}
   .cmd button:hover{background:#2b3540}
   .cmd .tack:hover{color:var(--ink)}
@@ -141,9 +146,15 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
 }
 
 /* Hover states fade rather than snap. Background, border and color cover
-   every button variant on the page; the disabled fade rides on opacity. */
+   every button variant on the page; the disabled fade rides on opacity;
+   transform and filter carry the press, so releasing eases back too. */
 button,.pane .bar .x,.tab .ic{transition:background-color .15s ease,
-  border-color .15s ease,color .15s ease,opacity .15s ease}
+  border-color .15s ease,color .15s ease,opacity .15s ease,
+  transform .1s ease,filter .1s ease}
+/* Every button presses the same way: a one-pixel dip and a dim, mouse or
+   finger alike. :not(:disabled) so a dead button stays visibly inert. */
+button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
+  transform:translateY(1px);filter:brightness(.82)}
 @media(prefers-reduced-motion:reduce){
   button,.pane .bar .x,.tab .ic{transition:none}
 }
@@ -220,10 +231,12 @@ button.on{background:#1f6f36;border-color:#2ea043}
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
-/* The header's sign-out: an icon drawn to the same box as its glyph
-   neighbors (↻ ▤), same stroke voice as the eye and chain icons. */
-#bOut svg.out{width:15px;height:15px;display:block;margin:auto;fill:none;
-  stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+/* The header's icon buttons — the broom (reset) and the sign-out door —
+   drawn to the same box as the ↻ glyph, same stroke voice as the eye and
+   chain icons. */
+#bOut svg.out,#bCards svg.out{width:15px;height:15px;display:block;margin:auto;
+  fill:none;stroke:currentColor;stroke-width:1.4;
+  stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
 
 /* What a Claude session is doing, at a glance. Blue matches the runner card's
@@ -548,7 +561,14 @@ body.dragging .tab .lbl{cursor:grabbing}
   <span class="spacer"></span>
   <span class="meta" id="uptime"></span>
   <button onclick="refresh()" title="refresh now">↻</button>
-  <button id="bCards" title="reset the sidebar cards — default order, all expanded">▤</button>
+  <button id="bCards" aria-label="reset the sidebar cards"
+          title="reset the sidebar cards — default order, all expanded">
+    <svg class="out" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M13.5 2.5 8.5 7.5"/>
+      <path d="M8.5 7.5c-2.4 0-4.6 1.1-6 3l2.5 2.5c1.9-1.4 3.5-3.1 3.5-5.5z"/>
+      <path d="M6.6 9.4 5 12.4"/>
+    </svg>
+  </button>
   <!-- Sign out clears the session cookie via /logout. A browser signed in
        with cached basic auth has nothing to clear and comes straight back —
        that cache is the browser's own, and only it can forget it. -->
@@ -2388,6 +2408,23 @@ function pDraw(){
             : "");
 }
 
+// The source picker moves like the Dashboard | Terminal switch: the incoming
+// fields slide in from the chosen tab's side (local is the left tab, clone
+// the right), same 220ms ease, same reduced-motion gate — one vocabulary for
+// every two-tab switch on the page. Scaled to the dialog: a few pixels, not
+// a viewport, because the fields swap inside a box that is not moving.
+function pSlide(){
+  if (noMotion()) return;
+  const dx = pMode === "clone" ? "18px" : "-18px";
+  for (const f of PMODES[pMode].fields){
+    const el = $(f);
+    if (f !== "pSrcField" && !el.hidden)
+      el.animate([{transform: `translateX(${dx})`, opacity: 0},
+                  {transform: "none", opacity: 1}],
+                 {duration: 220, easing: "ease"});
+  }
+}
+
 function pShowKey(){
   const k = pKeys.find(k => k.name === $("pKey").value);
   $("pPubWrap").hidden = !k;
@@ -2436,8 +2473,11 @@ function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
 
 // A stale error must not survive a mode switch — "a name is required" makes
 // no sense over a form that no longer asks for one.
-$("pLocal").onclick = () => { pMode = "init"; $("pErrWrap").hidden = true; pDraw(); };
-$("pClone").onclick = () => { pMode = "clone"; $("pErrWrap").hidden = true; pDraw(); if (!$("pUrl").value) $("pUrl").focus(); };
+$("pLocal").onclick = () => { if (pMode === "init") return;
+  pMode = "init"; $("pErrWrap").hidden = true; pDraw(); pSlide(); };
+$("pClone").onclick = () => { if (pMode === "clone") return;
+  pMode = "clone"; $("pErrWrap").hidden = true; pDraw(); pSlide();
+  if (!$("pUrl").value) $("pUrl").focus(); };
 $("pKey").onchange = pShowKey;
 $("pCopy").onclick = async () => {
   // clipboard API needs a secure context; plain-http access to the dashboard
