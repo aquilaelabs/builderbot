@@ -835,7 +835,13 @@ cmd_dashboard() {
             kill "$pid"
             for _ in $(seq 20); do kill -0 "$pid" 2>/dev/null || break; sleep 0.25; done
             kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
-            nohup env "${envs[@]}" python3 "$dir/server.py" >> "$(bb_log_dir)/dashboard.log" 2>&1 &
+            # -u CLAUDECODE: this subcommand is usually run *by* a Claude
+            # session, and `env` without -i hands the child everything the
+            # caller has. The dashboard inheriting that variable makes its own
+            # Install button refuse, quoting a message that tells the operator
+            # to use the dashboard.
+            nohup env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT "${envs[@]}" \
+                python3 "$dir/server.py" >> "$(bb_log_dir)/dashboard.log" 2>&1 &
             sleep 1
             [ -n "$(dashboard_pid)" ] || die "the new dashboard did not stay up — see $(bb_log_dir)/dashboard.log"
             log "dashboard: now serving from $dir (pid $(dashboard_pid))"
@@ -1648,6 +1654,9 @@ sdk_install() {
     local what="${1:-}" root; root="$(sdk_root)"
     [ -n "$what" ] || die "usage: bb sdk install android:<pkg>|playwright|flutter|dotnet|swift|go|rust|zig|tizen"
     mkdir -p "$root"
+    # Installing it is the other half of the answer to "did you mean to remove
+    # this": whatever a startup hook was told to leave alone, it may have back.
+    rm -f "$(sdk_removed_marker "$what")"
     case "$what" in
         android:*)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
@@ -1832,7 +1841,14 @@ EOF
 
 sdk_remove() {
     sdk_operator_only remove "$@"
-    local what="${1:-}" d
+    local what="${1:-}" d marker
+    # Written first, so an uninstall that dies half way still counts as one
+    # having been asked for — a hook re-fetching 1.3GB behind a failed removal
+    # is the surprise this exists to stop.
+    if [ -n "$what" ]; then
+        marker="$(sdk_removed_marker "$what")"
+        mkdir -p "$(dirname "$marker")" 2>/dev/null && : > "$marker" || true
+    fi
     case "$what" in
         flutter|dotnet|swift|tizen|playwright|go|rust|zig) d="$(sdk_find "$what")" \
             || die "${what} is not installed" ;;

@@ -74,6 +74,19 @@ sdk_have() {
 # for the same reason: a thing that exists is never hidden behind an empty
 # directory somewhere else. Installs still go to the share; this is only
 # about finding what is already there.
+# A package the operator deliberately removed.
+#
+# Two startup hooks fetch things on a fresh share — the browsers, the
+# emulator — because a container that comes up "ready" with `bb shot` broken
+# is worse than a slow first boot. But a fresh share and a share somebody just
+# cleared look identical, so an uninstall used to last until the next restart
+# and no further. This is how the intent outlives it: `bb sdk remove` leaves a
+# marker, `bb sdk install` clears it, and a hook that finds one keeps its
+# hands off. On the share, because an image update must not forget it.
+sdk_removed_marker() {
+    printf '%s/.removed/%s' "$(sdk_root)" "$(printf '%s' "$1" | tr ':/' '--')"
+}
+
 sdk_find() {
     local name="$1" root fallback
     root="$(sdk_root)"

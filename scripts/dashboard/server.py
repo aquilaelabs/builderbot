@@ -674,6 +674,16 @@ def findings_payload():
             "hidden": hidden, "reports": reports}
 
 
+# `bb sdk install|update|remove` refuses when CLAUDECODE is set, and the
+# message it prints tells the session to ask the operator to use this page.
+# So this page must never carry that variable — and it can: `bb dashboard dev`
+# is normally run *by* a session, and the server it starts inherits whatever
+# that session had. One line here, rather than trusting every launcher to
+# remember, because the failure looks like the dashboard refusing to obey the
+# operator and quoting its own name as the workaround.
+os.environ.pop("CLAUDECODE", None)
+
+
 def run(cmd, cwd=None, timeout=120, env=None, split_err=False):
     # split_err=True keeps stdout in `out` and stderr in `err`, for the one
     # caller class that must not mistake a warning for real output (the
@@ -1446,7 +1456,7 @@ def doctor_payload():
 # are symlinks into the share) and to the SDK root for everything else.
 PACKAGES = [
     {"name": "playwright", "label": "Playwright browsers", "size": "~1.3 GB",
-     "probe": "playwright", "baseline": True,
+     "probe": "playwright",
      "about": "Chromium, Firefox and WebKit. The image carries Playwright "
               "itself and the system libraries; these are the browser bundles "
               "bb shot and the dashboard's own tests drive."},
@@ -1459,7 +1469,7 @@ PACKAGES = [
      "about": "The Swift toolchain for Linux: shared logic, server-side Swift, "
               "and compiling packages. Not an iOS SDK."},
     {"name": "android:emulator", "label": "Android emulator", "size": "~800 MB",
-     "probe": "android:emulator", "baseline": True,
+     "probe": "android:emulator",
      "about": "The emulator binary. System images are per API level and come "
               "from ANDROID_SYSTEM_IMAGES."},
     {"name": "android:ndk", "label": "Android NDK", "size": "~3 GB",
@@ -1669,12 +1679,6 @@ def packages_payload():
         kb = _pkg_sizes.get(p["name"]) if path else None
         items.append({**{k: p[k] for k in ("name", "label", "about")},
                       "installed": bool(path), "path": path,
-                      # A startup hook reinstalls this one when it is missing,
-                      # so removing it holds only until the next restart. The
-                      # row has to say so — an operator who uninstalls
-                      # something and finds it back after a reboot is entitled
-                      # to have been told.
-                      "baseline": p.get("baseline", False),
                       # The estimate until there is a measurement, and the
                       # measurement from then on — flagged, because "~4 GB"
                       # and "4.1 GB" mean quite different things.

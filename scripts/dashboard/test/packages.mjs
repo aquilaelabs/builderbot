@@ -49,14 +49,6 @@ ok(await page.$$eval('.doc .pkg .nm .pill', ps => ps.every(p => p.textContent.st
    '...so every size is the catalog estimate, and no row claims a version');
 ok((await page.$eval('.pkghead', el => el.textContent)).includes(`${DIR}/sdk`),
    'it says which root things are installed into');
-// A startup hook reinstalls two of these when they are missing, so removing
-// one holds until the next restart. Saying so is the difference between a
-// design and a surprise.
-ok(await page.$$eval('.doc .pkg', ls => {
-     const said = n => ls.find(l => l.querySelector('input').value === n)
-       ?.textContent.includes('a restart brings it back');
-     return said('playwright') && said('android:emulator') && !said('flutter');
-   }), 'the rows a restart reinstalls say so, and only those');
 
 // ---- install two, watch them land --------------------------------------
 await page.check('.doc .pkg input[value="flutter"]');
