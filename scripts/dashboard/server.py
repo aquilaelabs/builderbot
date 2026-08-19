@@ -114,7 +114,7 @@ REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 
 # Excluded projects live on the /config volume so the list survives the image
 # updates this container is built to expect. bb-tty reads the same file — a
-# rule only the dashboard honoured would be advice, since the terminal URL is
+# rule only the dashboard honored would be advice, since the terminal URL is
 # reachable on its own.
 STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
 EXCLUDES_FILE = STATE / "excluded-projects.json"
@@ -667,7 +667,7 @@ def session_cwds():
     """Session name -> {cwd, title} of its active pane.
 
     cwd is where a terminal *is* right now, which is not where it was opened:
-    the tab is labelled from this, so a `cd` shows up in the strip. The pane
+    the tab is labeled from this, so a `cd` shows up in the strip. The pane
     title rides along because for Claude sessions it is a status report —
     see claude_state below.
     """
@@ -1339,7 +1339,7 @@ class Handler(BaseHTTPRequestHandler):
 
         # An excluded project must not keep a live session running — leaving one
         # attached would mean the exclusion takes effect only next time, which
-        # is not what a button labelled "exclude" implies.
+        # is not what a button labeled "exclude" implies.
         killed = None
         sess = tmux_name(f"claude-{name}")
         if on and sess in {s["name"] for s in tmux_sessions()}:
@@ -1418,7 +1418,7 @@ class Handler(BaseHTTPRequestHandler):
         # arrives glued to the end of it. End-of-line then kill-line, which is
         # readline editing and not a signal: Ctrl-C would also interrupt
         # whatever is running in there, which is not what pressing a button
-        # labelled `bb status` should be able to do.
+        # labeled `bb status` should be able to do.
         run(["tmux", "send-keys", "-t", session, "C-e", "C-u"], timeout=10)
         # Typed one after another without waiting. That is what happens when a
         # person types ahead too — the tty buffers the input and the shell reads

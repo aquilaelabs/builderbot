@@ -311,21 +311,21 @@ Upgrading from an image older than this one: BuilderBot used to write its tmux
 settings straight into `~/.tmux.conf`, which is on the persistent home volume.
 That copy is replaced on the next start (kept as `~/.tmux.conf.builderbot-old`),
 and the launcher sets mouse mode on each session anyway, so the clipboard
-behaviour does not depend on it.
+behavior does not depend on it.
 
 Below the `bb` commands is a card for your own: **+** takes a title and a list
 of command lines, and the button it makes types them into the terminal in order.
 They are kept in `/config`, so they survive updates.
 
 The page starts with one workspace tab; every tab, that one included, can be
-minimised. **Claude** opens one session per project — resumable if a previous
+minimized. **Claude** opens one session per project — resumable if a previous
 conversation exists — and **Shell** opens another terminal each time you click
 it. Tabs are named for where they are (`sh: <directory>`, following a `cd`;
 `Claude: <project>`), with the full path on hover. Tabs can be dragged to
 reorder (on a phone, hold for half a second first) and pinned to a left or
 right pane for a side-by-side view. A pane's ✕ only collapses the split.
 
-A tab's **—** minimises it: the terminal or Claude session keeps running and is
+A tab's **—** minimizes it: the terminal or Claude session keeps running and is
 listed under Sessions, where clicking the name brings its tab back. Ending a
 session for good is the ✕ in the Sessions card (or a middle-click on its tab),
 and that is the only thing that asks. The sidebar cards collapse on a click of

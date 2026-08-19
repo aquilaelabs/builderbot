@@ -90,12 +90,12 @@ body.dragging .side .card h2{cursor:grabbing}
 .row .name.go{cursor:pointer}
 .row .sub{color:var(--dim);font:12px/1.4 var(--mono);overflow-wrap:anywhere}
 .row .sub.bad{color:var(--bad)}
-/* A problem the page can fix is a link in the colour of its own warning. */
+/* A problem the page can fix is a link in the color of its own warning. */
 .row .sub a.fix{color:inherit;text-decoration:underline;cursor:pointer}
 .row .sub.warn{color:var(--warn)}
 /* Excluded is a decision, not a fault — stated plainly rather than alarming. */
 .row .sub.off{color:var(--dim);font-style:italic}
-/* An excluded project is greyed out because nothing acts on it. The two
+/* An excluded project is grayed out because nothing acts on it. The two
    controls that still do — Shell, and the eye that lets it back in — keep their
    weight, or the row would look like it had been switched off entirely. */
 .row.off .name,.row.off .sub{opacity:.55}
@@ -109,7 +109,7 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
 /* Hover, only where there is a pointer that hovers. On a touch screen a tap
    leaves the element in :hover until the next tap somewhere else — a card
    header stayed bright after collapsing it, a key stayed lit after ^C, the
-   bar button held its lighter grey — and with the tap highlight turned off
+   bar button held its lighter gray — and with the tap highlight turned off
    that stuck state was the only thing left over from the touch. Placed here,
    ahead of button.primary/.on and .tab button, which share button:hover's
    specificity and win only by coming later. */
@@ -130,7 +130,7 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
   .tscroll:disabled:hover{background:var(--panel)}
 }
 
-/* Hover states fade rather than snap. Background, border and colour cover
+/* Hover states fade rather than snap. Background, border and color cover
    every button variant on the page; the disabled fade rides on opacity. */
 button,.pane .bar .x,.tab .ic{transition:background-color .15s ease,
   border-color .15s ease,color .15s ease,opacity .15s ease}
@@ -190,7 +190,7 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
 
 /* What a Claude session is doing, at a glance. Blue matches the runner card's
-   "busy" spinner — work in progress — and amber is the colour this page
+   "busy" spinner — work in progress — and amber is the color this page
    already uses for "wants a decision from you". Never green: a session
    waiting for input on an active (green) tab would vanish into it. */
 .st{display:inline-block;width:8px;height:8px;border-radius:50%;flex:0 0 auto;
@@ -293,7 +293,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   .tab{flex:0 0 auto}   /* overflow and scroll, rather than squeeze to fit */
   .tscroll{display:block;flex:0 0 auto;border:1px solid var(--line);
     background:var(--panel);padding:0 12px;font-size:16px;color:var(--dim)}
-  /* Greyed at the end it cannot go past — and both greyed when the strip
+  /* Grayed at the end it cannot go past — and both grayed when the strip
      fits, which is how the arrows say there is nothing to page. */
   .tscroll:disabled{background:var(--panel);opacity:.35}
   #tabL{border-radius:8px 0 0 0;border-right:0}
@@ -537,7 +537,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 
 // ---- state -----------------------------------------------------------
 // The workspace tab is only the default the page starts with, not a fixture:
-// every tab can be minimised, and killing a session from the Sessions card
+// every tab can be minimized, and killing a session from the Sessions card
 // takes its tab with it — the workspace one included, which used to be
 // unclosable and so sat pointing at a dead session. An empty strip is legal;
 // the pane renders a placeholder and "+" starts over. Tabs are separate from
@@ -747,7 +747,7 @@ function openTab(spec){
 function roomForTab(){
   const cap = state?.max_tabs || 12;
   if (tabs.length < cap) return true;
-  notify(`Tab limit reached (${cap}). Minimise one first — it keeps running. `
+  notify(`Tab limit reached (${cap}). Minimize one first — it keeps running. `
        + `DASHBOARD_MAX_TABS raises the limit if this box can take more.`, true);
   return false;
 }
@@ -1060,13 +1060,13 @@ function drawTabs(){
       <button class="lbl" data-show="${esc(t.id)}" title="${esc(tabTitle(t))}">${isClaude(t) ? stateDot(claudeOf(sessionOf(t.arg))) : ""}${esc(names.get(t.id))}${where?` <span style="opacity:.7">${where}</span>`:""}</button>
       <button class="ic" data-pin="${esc(t.id)}" title="pin to a pane">⇱</button>
       ${
-        // A terminal is minimised, not closed: it keeps running and is listed
+        // A terminal is minimized, not closed: it keeps running and is listed
         // under Sessions — the workspace tab the same as any other. A document
         // has nothing to keep, so its ✕ means what it says. Neither asks —
         // nothing is lost either way.
         t.kind === "term"
           ? `<button class="ic" data-min="${esc(t.id)}"
-               title="minimise — the terminal keeps running, reopen it from Sessions">—</button>`
+               title="minimize — the terminal keeps running, reopen it from Sessions">—</button>`
           : `<button class="ic" data-close="${esc(t.id)}" title="close">✕</button>`}
     </span>`;
   }).join("");
@@ -1430,7 +1430,7 @@ function slidePanel(el, show, swap){
       if (!show) el.classList.remove("show");
       res();
     };
-    // Cancelled by a newer slide: whoever is waiting must not wait forever,
+    // Canceled by a newer slide: whoever is waiting must not wait forever,
     // and must not act either — the newer slide owns the panel now.
     anim.oncancel = () => res();
   });
@@ -1574,7 +1574,7 @@ function renderFindingsInto(i){
       <summary>${esc(proj === "—" ? "unattributed paths" : proj)} ${badges}</summary>`;
 
     const rules = by(rows, "rule");
-    // Worst hit first, so a rule that fires at two levels is labelled by the
+    // Worst hit first, so a rule that fires at two levels is labeled by the
     // one that matters rather than by whichever the scanner happened to emit.
     for (const k of Object.keys(rules))
       rules[k].sort((a,b) => (LEVEL_ORDER[a.level]??9)-(LEVEL_ORDER[b.level]??9));
@@ -1699,7 +1699,7 @@ function slideCard(el, closing){
   if (noMotion()){ el.classList.toggle("closed", closing); return; }
   const from = el.offsetHeight;         // current frame, if one is mid-tween
   // A second click mid-tween reverses from wherever the card is now; the old
-  // animation is cancelled un-finished so its class write never lands.
+  // animation is canceled un-finished so its class write never lands.
   el.getAnimations().forEach(a => a.cancel());
   el.classList.toggle("closed", closing);
   const to = el.offsetHeight;
@@ -1720,7 +1720,7 @@ function slideBody(el, mutate){
   const card = el.closest(".card, .mpanel");   // the phone panel hosts these too
   if (!card || noMotion()){ mutate(); return; }
   const from = card.offsetHeight;
-  // Only its own kind: cancelling a card-level fold here would swallow the
+  // Only its own kind: canceling a card-level fold here would swallow the
   // class write that fold's finish handler was going to make.
   card.getAnimations().forEach(a => { if (a.id === "body") a.cancel(); });
   mutate();
@@ -2098,7 +2098,7 @@ function drawCommands(){
   + (order.length > COMMANDS_SHOWN
      ? `<button id="bCmds">${showAllCommands ? "Show fewer" : `Show all (${order.length})`}</button>`
      : ""));
-  wireMacros(el);                       // live-or-greyed depends on the active
+  wireMacros(el);                       // live-or-grayed depends on the active
                                         // tab, not the markup: always re-done
   if (!fresh) return;
   if (order.length > COMMANDS_SHOWN)
@@ -2317,9 +2317,9 @@ function drawSessions(ss){
   // where the detail belongs.
   const names = sessionLabels();
   // The name is the way to a session's tab — click it and you are there,
-  // reopened first if it was minimised. The button beside it does the other
+  // reopened first if it was minimized. The button beside it does the other
   // thing: green when the tab is on the strip, and then it puts the tab away
-  // (Minimise for a shell; Close for a Claude session, which asks first, the
+  // (Minimize for a shell; Close for a Claude session, which asks first, the
   // way the ✕ does, because that one ends the conversation); plain "Open"
   // when there is no tab. The pill says whether the session is on screen
   // right now, and in which pane when the view is split.
@@ -2339,7 +2339,7 @@ function drawSessions(ss){
           s.claude.state === "working" ? "working on" : "done"}: ${esc(s.claude.task)}</div>` : ""}</div>
       ${t ? (claude
           ? `<button class="primary" data-k="${esc(s.name)}" title="end this Claude session — asks first">Close</button>`
-          : `<button class="primary" data-min="${esc(t.id)}" title="take its tab off the strip — it keeps running">Minimise</button>`)
+          : `<button class="primary" data-min="${esc(t.id)}" title="take its tab off the strip — it keeps running">Minimize</button>`)
           : `<button data-a="${esc(s.name)}" title="reopen its tab">Open</button>`}
       <button data-k="${esc(s.name)}" title="end this session">✕</button>
     </div>`; }).join(""));
@@ -2389,13 +2389,13 @@ function notify(msg, bad){
 // Where a macro should be typed: the tab being looked at, and only if it is a
 // plain shell. Never a Claude one, where the command would not run at all but
 // be submitted as a prompt; never some other tab the operator is not looking
-// at; and null when there is nothing suitable, which greys the buttons out.
+// at; and null when there is nothing suitable, which grays the buttons out.
 function macroTarget(){
   const here = tabOf(panes[active]);
   return here && here.kind === "term" && !isClaude(here) ? here : null;
 }
 // Every macro button — the runner card's, the bb card's, the custom ones —
-// greys out unless the tab being looked at is a plain shell: a Claude tab
+// grays out unless the tab being looked at is a plain shell: a Claude tab
 // would take the command as a prompt, a document has nowhere to type, no
 // tab has nowhere at all, and quietly targeting (or opening) some other tab
 // was a surprise. The button says where to go instead.
@@ -2421,7 +2421,7 @@ function wireMacros(el){
 // `bb runner stop` that takes a minute — none of which a one-shot text box did.
 async function macro(name, custom){
   const t = macroTarget();
-  if (!t) return;                        // greyed out; a stray tap does nothing
+  if (!t) return;                        // grayed out; a stray tap does nothing
   const session = sessionOf(t.arg);
   focusTab(t.id);
   if (!liveSessions().has(session)){
@@ -2446,7 +2446,7 @@ async function macro(name, custom){
 }
 
 // The Sessions card redraws with the layout, not just on the status poll: its
-// pills mirror the tab strip, and a minimise would otherwise read as "on the
+// pills mirror the tab strip, and a minimize would otherwise read as "on the
 // tab bar" for up to a poll interval.
 function render(){ drawTabs(); drawPanes(); drawKeys(); saveLayout();
                    if (state){ drawSessions(state.sessions); drawRunner(state.runner);
@@ -2518,7 +2518,7 @@ function adoptLayout(v){
   // answered just before our push landed arrives carrying the strip as it
   // was before the change — one revision behind, and by then savePending is
   // already false. Under a plain "different revision" test that stale copy
-  // was adopted: the tab just minimised came back, and a killed session's
+  // was adopted: the tab just minimized came back, and a killed session's
   // tab was rebuilt, which recreated the session. Revisions only go up.
   if (!v || v.rev <= myRev || savePending) return;
   // Not under a moving pointer either: the strip is re-sorted in place while

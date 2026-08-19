@@ -22,7 +22,7 @@ RUNNER_PID=""
 #
 # Everything here is therefore ordered by value-per-second, not by tidiness:
 # record state first because it costs milliseconds, signal everything next
-# because signalling is instant, and only then wait. Whatever we are killed
+# because signaling is instant, and only then wait. Whatever we are killed
 # part-way through, the earlier steps already happened.
 # ---------------------------------------------------------------------------
 
@@ -79,7 +79,7 @@ save_sessions() {
             # ours to write into a filename.
             case "$name" in *[!A-Za-z0-9._-]*) continue ;; esac
             [ -d "$dir" ] || dir="$WORKSPACE"
-            # -e keeps the colours, so a restored terminal looks like the one
+            # -e keeps the colors, so a restored terminal looks like the one
             # that was there rather than a flat transcript of it.
             tmux capture-pane -p -e -S "-${SESSION_LINES}" -t "$name" \
                 > "$SESSION_DIR/${name}.hist" 2>/dev/null || true

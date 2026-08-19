@@ -12,7 +12,7 @@ export PATH="$HOME/.npm-global/bin:$HOME/.local/bin:$PATH"
 export EDITOR="${EDITOR:-nano}"
 export WORKSPACE="${WORKSPACE:-/workspace}"
 
-# Colour prompt: user@builderbot:cwd$
+# Color prompt: user@builderbot:cwd$
 PS1='\[\033[01;32m\]\u@builderbot\[\033[00m\]:\[\033[01;34m\]\w\[\033[00m\]\$ '
 
 alias ll='ls -alFh --color=auto'

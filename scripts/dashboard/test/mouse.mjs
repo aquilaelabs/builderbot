@@ -28,7 +28,7 @@ ok(true, 'the new order reaches the server within a second');
 await page.click(`.tab[data-id="${ids0[1]}"] .lbl`);
 ok(await page.evaluate(() => panes[0]) === ids0[1], 'a plain click still switches tabs');
 await page.click(`.tab[data-id="${ids0[1]}"] [data-min]`);
-ok(await page.$$eval('.tab:not([data-id])', gs => gs.length === 1), 'a minimised tab leaves a fading ghost');
+ok(await page.$$eval('.tab:not([data-id])', gs => gs.length === 1), 'a minimized tab leaves a fading ghost');
 await page.waitForFunction(() => document.querySelectorAll('.tab:not([data-id])').length === 0);
 await page.click('#bKeys');
 ok(await page.$eval('#keys', el => el.classList.contains('show')), 'strip ⌨ toggles the keys on desktop');
@@ -65,11 +65,11 @@ const stale = await page.evaluate(() => {
 });
 ok(stale, 'a layout one revision behind is ignored');
 
-// A pin menu whose tab is minimised goes with it.
+// A pin menu whose tab is minimized goes with it.
 await page.evaluate(() => togglePin(tabs[0].id, new Event('click')));
 ok(await page.$('#pinmenu') !== null, 'pin menu opens');
 await page.evaluate(() => hideTab(tabs[0].id));
-ok(await page.$('#pinmenu') === null && await page.evaluate(() => pinFor === null), 'minimising its tab closes the pin menu');
+ok(await page.$('#pinmenu') === null && await page.evaluate(() => pinFor === null), 'minimizing its tab closes the pin menu');
 
 // A card another browser folded folds here with the tween, on the poll.
 await page.evaluate(async () => { const c = JSON.parse(JSON.stringify(cards)); c.closed.push('runner');

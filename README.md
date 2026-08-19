@@ -255,7 +255,7 @@ and is always the big one. Rollback = point the Repository field at a
 | `GIT_PAT` | *(empty)* | GitHub **API** auth for `gh` from inside (`gh pr create`). Session-readable by design; not needed if ssh covers your git usage |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create system images and AVDs at startup |
 | `ANDROID_SYSTEM_IMAGES` | `36` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
-| `ANDROID_SYSTEM_IMAGE_VARIANT` | `google_apis;x86_64` | Image flavour; `default;x86_64` is smaller AOSP, no Google APIs |
+| `ANDROID_SYSTEM_IMAGE_VARIANT` | `google_apis;x86_64` | Image flavor; `default;x86_64` is smaller AOSP, no Google APIs |
 | `ANDROID_AVD_NAME` / `ANDROID_AVD_PREFIX` | *(derived)* / `builderbot` | Override the default AVD, or the `<prefix>-<api>` naming |
 | `ANDROID_EMULATOR_GPU` | `swiftshader_indirect` | Emulator renderer — `swangle_indirect` (faster software) or `host` (needs a GPU) |
 | `NVIDIA_VISIBLE_DEVICES` | `all` | Only with `--runtime=nvidia`; GPU UUID when you have more than one card |
@@ -453,9 +453,9 @@ rewrites the scanner's paths to be repo-relative so they can be opened
 directly. Run it from the project directory; the current directory name is what
 gets stripped from the recorded paths (override with `FINDINGS_PROJECT`).
 
-**Review the diffs.** Findings need judgement about intent — whether a `|safe`
+**Review the diffs.** Findings need judgment about intent — whether a `|safe`
 is deliberate, whether a SHA1 is for dedup rather than security. Asking Claude
-to fix everything and re-scan unattended optimises for a clean report, which is
+to fix everything and re-scan unattended optimizes for a clean report, which is
 not the same as better code, and suppressing a finding satisfies that goal too.
 
 ## Web dashboard
@@ -515,13 +515,13 @@ lives in its body. The cards:
   reporting success and leaving a listener behind
 - every `bb` command as a button, pinnable, typed into the terminal you are
   looking at — and a second card for **your own** command lists. Every such
-  button greys out while the tab on screen is a Claude session or a document:
+  button grays out while the tab on screen is a Claude session or a document:
   commands only ever go to a plain shell, never quietly to some other tab
 - live list of tmux sessions, named exactly as their tabs are, with the same
   hover text the tabs carry. **Click the name** to go to its tab, reopening
-  it first if it was minimised. The button beside it does the other thing:
-  **Open** when the tab is minimised; when the tab is on the bar it turns
-  green and reads **Minimise** for a shell, or **Close** for a Claude session
+  it first if it was minimized. The button beside it does the other thing:
+  **Open** when the tab is minimized; when the tab is on the bar it turns
+  green and reads **Minimize** for a shell, or **Close** for a Claude session
   — which asks first, because that ends the conversation. An **attached** pill
   marks the sessions on screen right now, with ◧/◨ saying which pane when
   the view is split.
@@ -546,7 +546,7 @@ lives in its body. The cards:
 
 The page starts with one tab — **workspace**, a shell at `/workspace` — and
 everything you open gets its own tab above the terminal. Every tab, the
-workspace one included, can be minimised or closed; an empty strip just shows
+workspace one included, can be minimized or closed; an empty strip just shows
 a placeholder, and **+** starts over.
 
 - **Claude** on a project opens *one* session per project. If it is already
@@ -559,7 +559,7 @@ a placeholder, and **+** starts over.
   strip, does the same for `/workspace`.
 - **Open findings report** opens a *document* tab, not a terminal. It is a
   report to read; putting it through a PTY would only make it harder to.
-- **— on a tab minimises it**, and asks nothing. The terminal keeps running
+- **— on a tab minimizes it**, and asks nothing. The terminal keeps running
   and is listed under Sessions, where **Open** brings it back; a **Claude** tab
   is the same, the conversation carries on without a tab. Nothing is lost, so
   nothing is asked. **Middle-clicking** a terminal tab is the stronger thing,
@@ -589,7 +589,7 @@ a placeholder, and **+** starts over.
 - **On a phone** there is no split: the pin buttons are hidden and only the
   active pane is shown — a split made at the desk is still there when you get
   back to it. The strip stays one row — swipe it, or page it with the **‹ ›**
-  arrows (greyed at the end you cannot page past) — instead of wrapping, so
+  arrows (grayed at the end you cannot page past) — instead of wrapping, so
   the terminal keeps its screen space; a tab you open is scrolled into view.
   Under the terminal sit three buttons, **Keys**, **Commands** and
   **Sessions**: the on-screen keys, the `bb` and custom command macros, and
@@ -606,7 +606,7 @@ Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
 or a reloaded page detaches instead of killing the session. The **Sessions
 card** is the full list — every terminal and every Claude session, named the way
 the tabs are (`sh: <directory>`, `Claude: <project>`), including the ones you
-minimised; the tmux name and full path are on hover. Document tabs are not
+minimized; the tmux name and full path are on hover. Document tabs are not
 there, having nothing to keep.
 
 **Selecting in a shell copies it.** Release the mouse and the selection is on
@@ -630,7 +630,7 @@ The launcher sets this on the session as it starts one, not only in the config
 file, because `~/.tmux.conf` lives on the persistent home: an install upgraded
 from an image that wrote its settings straight into that file would otherwise
 keep `mouse on` forever and nothing would explain why. That old copy is
-recognised and replaced on the next start, with the original kept as
+recognized and replaced on the next start, with the original kept as
 `~/.tmux.conf.builderbot-old`. Because the setting is applied per session, a
 `set -g mouse on` in your own config no longer overrides it — turn it back on
 where you want it with `Ctrl-b : set mouse on`.
@@ -653,7 +653,7 @@ memory, not tidiness.
 the container, so on the way down the supervisor writes each terminal's
 directory and the last 2000 lines of its screen (`BB_SESSION_HISTORY`) to
 `/config/sessions/`, and a startup hook recreates them there and prints that
-scrollback back in before the shell starts. Minimised terminals come back the
+scrollback back in before the shell starts. Minimized terminals come back the
 same way, since they are sessions like any other.
 
 What comes back is the terminal, not what was running in it. A build that was
@@ -677,12 +677,12 @@ watchable while it runs, and one that asks a question (`bb login`) or follows
 (`bb logs -f`) behaves exactly as if you had typed it. A command only ever goes
 to the tab you are looking at, and only if that is a plain shell: with a
 **Claude** tab in front (it would submit the command as a prompt), a document,
-or no tab at all, every command button is greyed out and its hover text says
+or no tab at all, every command button is grayed out and its hover text says
 where to go — never quietly typed into some other terminal.
 
 The line is cleared with end-of-line then kill-line, which is readline editing
 rather than a signal: `Ctrl-C` would also interrupt whatever is running in that
-terminal, which is not something a button labelled `bb status` should be able to
+terminal, which is not something a button labeled `bb status` should be able to
 do.
 
 They are listed in `bb help`'s own order, so the card and the CLI read the
@@ -742,7 +742,7 @@ The **eye** on a project row blocks Claude sessions for that directory — a
 struck-through eye excludes it, a plain eye lets it back in. The
 list lives in `/config/excluded-projects.json`, so it survives restarts and
 image updates, and it is enforced by the terminal launcher rather than the
-page — the ttyd URL is reachable on its own, so a rule only the UI honoured
+page — the ttyd URL is reachable on its own, so a rule only the UI honored
 would be advice. Specifically, excluding a project:
 
 - refuses `claude:<project>` at launch, with a message saying why
@@ -751,7 +751,7 @@ would be advice. Specifically, excluding a project:
 - folds the row away behind **Show projects with errors**, and puts it at the
   *bottom* of that list — an exclusion is a decision already made, not a problem
   waiting for someone
-- greys the row out and takes the click off anything in it. A `no CLAUDE.md —
+- grays the row out and takes the click off anything in it. A `no CLAUDE.md —
   create one` line stays as text, because nothing acts on an excluded project
   until it is let back in. **Shell** and the **eye** keep their weight: those
   are how you look at it and how you reverse it

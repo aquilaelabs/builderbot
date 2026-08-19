@@ -102,7 +102,7 @@ doc = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "testscan", "ru
 open(sys.argv[1], "w").write(json.dumps(doc))
 EOF
 # Each test file starts from the same place: an unwritten layout and both
-# throwaway sessions present — a file that minimises tabs or ends a session
+# throwaway sessions present — a file that minimizes tabs or ends a session
 # must not hand that state to the next.
 fresh() {
     rm -f "$S/state/tabs.json" "$S/state/cards.json"

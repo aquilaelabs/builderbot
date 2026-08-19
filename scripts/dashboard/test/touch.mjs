@@ -1,4 +1,4 @@
-// Real touch through Chromium's gesture recogniser: a quick swipe on a card
+// Real touch through Chromium's gesture recognizer: a quick swipe on a card
 // header or tab label scrolls, a half-second hold then move drags — and never
 // the other way round.
 import { launch, newPage, ok, done, finger, sleep, URL } from './lib.mjs';
