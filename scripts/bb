@@ -1649,14 +1649,39 @@ sdk_relink_android() {
     done
 }
 
+# What this run created, so that a failure can undo it.
+#
+# Every probe here calls a non-empty directory installed, which is precisely
+# what a download interrupted half way leaves behind: the tab says installed,
+# `bb sdk check` agrees, and the first thing to actually use it fails in some
+# stranger way. Only ever set to a directory this run made — an install onto
+# an existing one is a repair, and deleting what was already working because
+# the repair failed would be worse than the failure.
+SDK_PARTIAL=""
+sdk_mark_partial() {
+    local d="$1"
+    if [ -L "$d" ]; then d="$(readlink -f "$d")"; fi
+    if [ ! -d "$d" ] || [ -z "$(ls -A "$d" 2>/dev/null)" ]; then SDK_PARTIAL="$d"; fi
+}
+sdk_install_cleanup() {
+    local rc=$?
+    if [ "$rc" = 0 ] || [ -z "${SDK_PARTIAL:-}" ]; then return 0; fi
+    warn "install failed (exit ${rc}) — removing the partial ${SDK_PARTIAL}"
+    rm -rf "${SDK_PARTIAL:?}"
+    SDK_PARTIAL=""
+    # Android packages leave a record of the operation behind as well, and a
+    # stale one blocks every later install and uninstall of that package.
+    sdk_relink_android >/dev/null 2>&1 || true
+}
+
 sdk_install() {
     sdk_operator_only install "$@"
     local what="${1:-}" root; root="$(sdk_root)"
     [ -n "$what" ] || die "usage: bb sdk install android:<pkg>|playwright|flutter|dotnet|swift|go|rust|zig|tizen"
     mkdir -p "$root"
-    # Installing it is the other half of the answer to "did you mean to remove
-    # this": whatever a startup hook was told to leave alone, it may have back.
-    rm -f "$(sdk_removed_marker "$what")"
+    # EXIT rather than RETURN: a failing step here reaches `die`, which exits
+    # the process, and a RETURN trap never fires on that path.
+    trap sdk_install_cleanup EXIT
     case "$what" in
         android:*)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
@@ -1685,12 +1710,14 @@ sdk_install() {
             # without sdkmanager knowing anything about it.
             log "installing ${pkg} — into $(sdk_dir android)"
             sdk_android_clear_stale_installer "$pkg"
+            sdk_mark_partial "$(sdk_android_pkg_dir "$pkg")"
             sdkmanager --install "$pkg"
             sdk_android_list_forget
             sdk_relink_android
             ;;
         flutter)
             local d; d="$(sdk_dir flutter)"
+            sdk_mark_partial "$d"
             [ -d "$d" ] && die "flutter is already installed at ${d} (bb sdk remove flutter first)"
             # The stable branch as a shallow clone: Flutter upgrades itself in
             # place from here, which a tarball cannot do, and the clone is the
@@ -1704,6 +1731,7 @@ sdk_install() {
             ;;
         dotnet)
             local d; d="$(sdk_dir dotnet)"
+            sdk_mark_partial "$d"
             log "installing the .NET SDK into ${d}"
             sdk_fetch https://dot.net/v1/dotnet-install.sh /tmp/dotnet-install.sh
             bash /tmp/dotnet-install.sh --channel LTS --install-dir "$d" --no-path
@@ -1716,6 +1744,7 @@ sdk_install() {
             ;;
         swift)
             local d; d="$(sdk_dir swift)"
+            sdk_mark_partial "$d"
             [ -d "$d" ] && die "swift is already installed at ${d} (bb sdk remove swift first)"
             # The release tarball, not swiftly: swiftly is the nicer installer
             # right up until you ask where it put things — it honors its own
@@ -1750,6 +1779,7 @@ sdk_install() {
             # The browsers, not the module: the module is an npm global in the
             # image, these are 1.3GB of bundles that only ever get downloaded.
             local d; d="$(sdk_dir playwright)"
+            sdk_mark_partial "$d"
             command -v playwright >/dev/null 2>&1 || die "playwright is not in this image"
             mkdir -p "$d"
             log "installing chromium, firefox and webkit into ${d}"
@@ -1761,6 +1791,7 @@ sdk_install() {
             ;;
         go)
             local d; d="$(sdk_dir go)"
+            sdk_mark_partial "$d"
             [ -d "$d" ] && die "go is already installed at ${d}"
             local v; v="$(timeout 30 curl -fsS 'https://go.dev/VERSION?m=text' | head -1)"
             case "$v" in go*) ;; *) die "could not resolve the current go release" ;; esac
@@ -1774,6 +1805,7 @@ sdk_install() {
             ;;
         zig)
             local d; d="$(sdk_dir zig)"
+            sdk_mark_partial "$d"
             [ -d "$d" ] && die "zig is already installed at ${d}"
             # Zig publishes an index of every release with its tarball URL,
             # which beats guessing a filename whose shape changes between
@@ -1795,6 +1827,7 @@ print(d[v]["x86_64-linux"]["tarball"])' 2>/dev/null)"
             ;;
         rust)
             local d; d="$(sdk_dir rust)"
+            sdk_mark_partial "$d"
             [ -d "$d" ] && die "rust is already installed at ${d}"
             log "installing rust into ${d}"
             mkdir -p "$d"
@@ -1837,6 +1870,11 @@ EOF
             ;;
         *) die "unknown toolchain: ${what} (${SDK_TOOLCHAINS// /, }, or android:<package>)" ;;
     esac
+    SDK_PARTIAL=""
+    # Cleared here rather than up front: an install that fails leaves the
+    # package absent, and a marker cleared on the way in would have let the
+    # next restart quietly fetch what the operator had removed.
+    rm -f "$(sdk_removed_marker "$what")"
 }
 
 sdk_remove() {

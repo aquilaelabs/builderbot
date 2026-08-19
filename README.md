@@ -486,6 +486,17 @@ Uninstalling is a **bin icon on the row itself**, with a confirmation,
 because it is about one package and a bulk Remove button beside a bulk
 Install was one mis-click from being expensive.
 
+**A row says what it is doing while it does it.** The percentage under the
+description is scraped from whatever the recipe is printing — Playwright's
+download bar, sdkmanager's, git's `Receiving objects` — and switches from
+`downloading` to `installing` when the output does. Until then a row that is
+mid-install said *"installed at /sdk/flutter"*, because every probe here
+calls a non-empty directory installed and that is precisely what a download
+in progress leaves behind. For the same reason an install that fails removes
+what it created, so a half-fetched toolchain does not sit there looking
+ready. A failed *repair* of something already installed leaves it alone —
+only a directory this run made is a directory this run may delete.
+
 **Two different questions, two different costs.** What version is installed
 is local knowledge — a directory name, or `flutter --version` — so it is on
 every row from the moment the tab opens, cached until something is installed.
