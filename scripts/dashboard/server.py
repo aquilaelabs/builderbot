@@ -1671,8 +1671,18 @@ def human_kb(kb):
 
 def packages_payload():
     items = []
-    local = local_versions()
-    _size_refresh()
+    with _pkg_lock:
+        busy = _pkg_job["running"]
+    # Nothing is probed while a job runs. The package being installed has a
+    # directory that is filling up, and every probe here reads a non-empty
+    # directory as a finished install: a half-written NDK reported itself
+    # version "installed" at 1.2GB of what turned out to be a 3.3GB tree.
+    # Both were true of the moment and false about the package. The worker
+    # invalidates these caches when it finishes, so the first draw afterwards
+    # is a fresh reading.
+    local = _pkg_local["versions"] if busy else local_versions()
+    if not busy:
+        _size_refresh()
     for p in PACKAGES:
         path = _pkg_path(p["probe"])
         v = _pkg_versions.get(p["name"], {})
@@ -1762,6 +1772,12 @@ def _progress_of(line):
     sideways, and that is a component list nobody reading a package manager
     asked for.
     """
+    # bb's own log lines are narration about what is *about* to happen, and
+    # they say "installing" before a download has started. Letting them set the
+    # state is how a row announced installing and only then produced a download
+    # bar, which is backwards from what is actually going on.
+    if line.startswith("[builderbot]"):
+        return None, False
     m = _CURL_ROW.match(line)
     if m:
         return int(m.group(1)), True
@@ -1857,10 +1873,20 @@ def _pkg_worker():
 
         def watch(line, _name=name):
             with _pkg_lock:
+                cur = _pkg_job["progress"] or {}
                 pct, said = _progress_of(line)
                 if not said:
                     return                    # a frame with no number in it
-                _pkg_job["progress"] = {"name": _name, "pct": pct}
+                # Three states in order: starting, downloading, installing.
+                # Installing is only reachable once a download has reported at
+                # least once — before that, output is a tool clearing its
+                # throat (sdkmanager loading its repositories, git listing
+                # refs), and calling that "installing" put the last step first.
+                seen = bool(cur.get("seen")) or pct is not None
+                phase = ("downloading" if pct is not None
+                         else "installing" if seen else "starting")
+                _pkg_job["progress"] = {"name": _name, "pct": pct,
+                                        "phase": phase, "seen": seen}
 
         r = run_streamed([BB, "sdk", verb, name], watch, timeout=3600)
         with _pkg_lock:

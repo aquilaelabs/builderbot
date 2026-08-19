@@ -96,9 +96,14 @@ const during = (job) => page.evaluate(j => {
   pkgRev++; drawPanes();
   const row = [...document.querySelectorAll('.doc .pkg')]
     .find(l => l.querySelector('input').value === 'flutter');
+  const bar = row.querySelector('.prog .bar'), fill = row.querySelector('.prog .bar i');
   const out = { text: row.querySelector('.prog')?.textContent.trim(),
-                width: row.querySelector('.prog .bar i')?.style.width,
-                bar: !!row.querySelector('.prog .bar'),
+                width: fill?.style.width,
+                barW: bar ? Math.round(bar.getBoundingClientRect().width) : 0,
+                fillW: fill ? Math.round(fill.getBoundingClientRect().width) : 0,
+                bar: !!bar,
+                ticked: !!row.querySelector('input:checked'),
+                bin: !!row.querySelector('[data-rm]'),
                 where: row.querySelector('.where')?.textContent.trim() || null };
   packages.job = saved; pkgRev++; drawPanes();
   clearTimeout(pkgPoll);      // the fake state must not outlive this check
@@ -106,19 +111,26 @@ const during = (job) => page.evaluate(j => {
 }, job);
 
 let d = await during({ action: 'install', current: 'flutter',
-                       progress: { name: 'flutter', pct: 42 } });
+                       progress: { name: 'flutter', pct: 42, phase: 'downloading' } });
 ok(d.text === 'downloading 42%' && d.width === '42%' && d.where === null,
    'the row being installed shows the download percentage, not a path');
+ok(d.fillW > 40 && d.fillW < d.barW * 0.5 && d.barW > 150,
+   `...and the bar is wide enough to read it off (${d.fillW}px of ${d.barW}px)`);
+// Mid-install the directory exists, so every probe calls it installed. The row
+// must not wear any of the furniture that means "this is here" — a half-written
+// NDK showed a ticked box, an uninstall bin and the version "installed".
+ok(!d.ticked && !d.bin,
+   '...and carries no ticked box or uninstall control while it is being written');
+d = await during({ action: 'install', current: 'flutter', progress: null });
+ok(d.text.startsWith('starting'),
+   'before the tool has said anything, the row says starting — not installing');
 // Past the download there is no honest denominator, so the row stops
 // pretending: no bar, no number, and no naming of whichever component is
 // being unpacked — one of those ran off the side of a phone.
 d = await during({ action: 'install', current: 'flutter',
-                   progress: { name: 'flutter', pct: null } });
+                   progress: { name: 'flutter', pct: null, phase: 'installing', seen: true } });
 ok(d.text.startsWith('installing') && !d.bar,
    '...and once installing, says so without a bar or a percentage');
-d = await during({ action: 'install', current: 'flutter', progress: null });
-ok(d.text.startsWith('installing') && !d.bar,
-   '...same before anything at all has been reported');
 d = await during({ action: 'remove', current: 'flutter', progress: null });
 ok(d.text.startsWith('removing'), 'a removal says so on the row it is removing');
 // The dots are ticked by a timer, so a redraw must not reset them.
@@ -210,6 +222,42 @@ await page.waitForFunction(() => (document.querySelector('.pkglog')?.textContent
 ok(true, 'Install selected updates a package that is already installed');
 ok(await page.$$eval('.doc [data-pkg]', bs => bs.every(b => b.textContent.indexOf('Remove') < 0)),
    'there is no bulk remove button to mis-click');
+
+// ---- the bar, through the real path ------------------------------------
+// Set by hand the bar renders at any width asked of it; the question this
+// answers is whether a running job's numbers actually reach it. The stub's
+// `go` install draws a carriage-return bar over two seconds, so the widths
+// sampled here come through streaming, the parser, the payload and the poll.
+await page.check('.doc .pkg input[value="go"]');
+await page.click('.doc [data-pkg="install"]');
+const widths = [], labels = [];
+for (let i = 0; i < 12; i++){
+  const s = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.doc .pkg')]
+      .find(l => l.querySelector('input').value === 'go');
+    const f = row?.querySelector('.prog .bar i');
+    return { w: f ? Math.round(f.getBoundingClientRect().width) : null,
+             t: row?.querySelector('.prog')?.textContent.trim() || null };
+  });
+  widths.push(s.w); labels.push(s.t);
+  await new Promise(r => setTimeout(r, 250));
+}
+// Four distinct widths, because the stub reports four percentages and every
+// one of them should land. The poll IS the frame rate of this bar: at one
+// second it caught 8 and 66 and missed 31 and 100, which on a download that
+// finishes quickly is a single frame and reads as a bar that never moves.
+const filled = [...new Set(widths.filter(w => w))];
+ok(filled.length === 4 && filled.every((w, i) => i === 0 || w > filled[i - 1]),
+   `the bar fills, hitting every percentage reported (${widths.join(' ')})`);
+const said = [...new Set(labels.filter(Boolean))];
+ok(['8', '31', '66', '100'].every(n => said.some(t => t === `downloading ${n}%`)),
+   `...and the row counts up with it (${said.join(' | ')})`);
+await page.waitForFunction(() => packages?.job && !packages.job.running, { timeout: 30000 });
+// Put it back the way it was found: what follows counts installed packages,
+// and a third one left lying around here is how this file first went red.
+await page.evaluate(() => pkgAct('remove', ['go']));
+await page.waitForFunction(() => packages?.job && !packages.job.running
+  && !(packages.items || []).find(i => i.name === 'go')?.installed, { timeout: 30000 });
 
 // ---- uninstall is per row, and asks ------------------------------------
 ok(await page.$$eval('.doc .pkg', ls => ls.filter(l => l.querySelector('[data-rm]')).length) === 2,

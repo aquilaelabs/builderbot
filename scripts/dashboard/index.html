@@ -196,8 +196,14 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
 .pkg .prog{display:flex;align-items:center;gap:8px;color:var(--accent);
   font-family:var(--mono);overflow-wrap:anywhere}
-.pkg .prog .bar{flex:0 0 110px;height:5px;border-radius:99px;background:#233040;overflow:hidden}
-.pkg .prog .bar i{display:block;height:100%;background:var(--accent);transition:width .4s}
+/* The bar takes the width the row has, rather than a fixed 110px: at that
+   size a download at 19% is a twenty-pixel sliver next to the number, and the
+   number is where the eye goes — it read as an empty bar for the whole of
+   every install. No transition, because the row is rebuilt on every poll and
+   a fresh element has nothing to animate from. */
+.pkg .prog .bar{flex:1 1 auto;min-width:60px;height:7px;border-radius:99px;
+  background:#233040;overflow:hidden}
+.pkg .prog .bar i{display:block;height:100%;background:var(--accent)}
 /* Not flex, for the state that is a word rather than a bar: as a flex
    container the word and the dots were two items with the row's gap between
    them, and the third dot wrapped onto its own line. */
@@ -2502,11 +2508,16 @@ const BIN = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.8 6.8v4"/><path d="M9.2 6.8v4"/></svg>`;
 
 function pkgRow(p, busy, job){
+  // The row the job is on. Mid-install its directory exists and every probe
+  // here calls a non-empty directory installed, so it wears none of the
+  // furniture that means "this is here": no ticked box, no uninstall control,
+  // no path — it says what it is doing instead.
+  const mine = !!(job && job.running && job.current === p.name);
   // A tick means "do something to this". Something installed and current has
   // nothing to do, so its box is dead until a check finds an update — which
   // is also why Install is the only verb here: on a row with an update it
   // updates, and the operator never has to know which button to reach for.
-  const upToDate = p.installed && p.state !== "update";
+  const upToDate = !mine && p.installed && p.state !== "update";
   // Three versions can be on a row and only ever two at once: what is
   // installed, what an update would move it to, and — on a row that has never
   // been installed — what Install would fetch. Only the middle one is yellow,
@@ -2522,16 +2533,11 @@ function pkgRow(p, busy, job){
   const upd = p.state === "update"
     ? `<span class="sub upd">update available — tick it and press Install selected</span>`
     : "";
-  // The row the job is on says what it is doing, in place of where it lives.
-  // "installed at /sdk/playwright" appeared the moment the download created
-  // that directory, which is the first second of a four-minute job: every
-  // probe here calls a non-empty directory installed, and during an install
-  // that is exactly what a half-finished one is.
-  const mine = !!(job && job.running && job.current === p.name);
   const pr = mine && job.progress && job.progress.name === p.name ? job.progress : null;
   const doing = job && job.action === "remove" ? "removing"
               : job && job.action === "check" ? "checking"
-              : "installing";
+              : pr && pr.phase ? pr.phase        // starting → installing
+              : "starting";
   // Two states, and only two. A download can say how far along it is, so it
   // gets a bar and a number; everything after it cannot — there is no honest
   // denominator for "installing" — so it says so and animates, rather than
@@ -2553,7 +2559,7 @@ function pkgRow(p, busy, job){
         p.installed ? "installed at " + esc(p.path) : "not installed"}</span>`}
       ${upd}
     </span>
-    ${p.installed ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
+    ${p.installed && !mine ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
       busy ? ` disabled title="another package operation is running"`
            : ` title="uninstall ${esc(p.label)}"`}>${BIN}</button>` : ""}
   </label>`;
@@ -2612,9 +2618,13 @@ function renderPackagesInto(i){
   // Poll only while something is running: this list is a filesystem walk, not
   // something to ask for every two seconds forever.
   clearTimeout(pkgPoll);
-  // A second, not two: this poll is now what moves the progress bar, and at
-  // two seconds a download that takes four ticks looks like it is stuck.
-  if (busy) pkgPoll = setTimeout(loadPackages, 1000);
+  // Twice a second, because this poll IS the progress bar. Each one reads
+  // whatever line the job had reached, so the frame rate of the bar is the
+  // poll rate: at one second a download reporting eight, thirty-one, sixty-six
+  // and a hundred showed two of those four, which is a bar that jumps once and
+  // otherwise sits still. The request is a cached dict — nothing is probed
+  // while a job runs — so the cost of asking more often is a round trip.
+  if (busy) pkgPoll = setTimeout(loadPackages, 500);
   if (busy && !pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
   if (!busy && pkgDotsTimer){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; }
   else if ((job.done || []).length) refresh();
