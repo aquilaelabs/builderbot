@@ -3,7 +3,7 @@
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behaviour, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
-import { launch, newPage, ok, done, sleep, tmuxNew, URL } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, tmuxNew, tmuxFmt, URL } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -18,6 +18,13 @@ await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'))
 ok((await btn('shell-9').textContent()).trim() === 'Minimise' && await btn('shell-9').evaluate(b => b.classList.contains('primary')),
    'clicking the name opens the tab; button becomes green Minimise');
 ok(await page.evaluate(() => sessionOf(tabOf(panes[0]).arg) === 'shell-9'), '...and goes to it');
+// PgUp from the keys row is how a finger scrolls: at a prompt it enters copy
+// mode a page up; PgDn pages back and copy mode ends itself at the bottom.
+await page.evaluate(() => sendKey('pgup'));
+await page.waitForFunction(() => true); await sleep(300);
+ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '1', 'PgUp at a prompt enters copy mode (scrolls back)');
+await page.evaluate(() => sendKey('pgdn')); await sleep(300);
+ok(tmuxFmt('shell-9', '#{pane_in_mode}') === '0', 'PgDn back at the bottom leaves copy mode by itself');
 ok((await row('shell-9').locator('.pill.att').textContent()).trim() === 'attached', 'attached pill, no glyph while unsplit');
 ok(await page.$eval('.tab.on .lbl', el => !el.textContent.includes('◧')), 'no pane glyph on the tab while unsplit');
 ok((await row('shell-9').locator('[data-go]').getAttribute('title')) === await page.$eval('.tab.on .lbl', el => el.title),

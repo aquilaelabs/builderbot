@@ -56,6 +56,12 @@ export function tmuxNew(name){
     throw new Error('tmuxNew: not on the private tmux server — refusing');
   execFileSync('tmux', ['new-session', '-d', '-s', name, '-c', '/tmp']);
 }
+// A tmux format string evaluated against a session on that same private server.
+export function tmuxFmt(name, fmt){
+  if (process.env.TMUX || !process.env.TMUX_TMPDIR)
+    throw new Error('tmuxFmt: not on the private tmux server — refusing');
+  return execFileSync('tmux', ['display-message', '-p', '-t', name, fmt]).toString().trim();
+}
 
 // Wait until the page has its first doctor verdict — the last thing to land
 // on a fresh instance, so a good "page is ready" marker.

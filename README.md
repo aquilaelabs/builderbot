@@ -613,9 +613,18 @@ there, having nothing to keep.
 your system clipboard. That is why tmux's mouse mode is off in shell sessions:
 with it on, tmux takes the drag and the text only ever reaches a tmux paste
 buffer. The trade is that the wheel no longer scrolls tmux's scrollback there —
-at a prompt it walks shell history instead, and `Ctrl-b [` enters copy mode
-where the wheel scrolls again. **Claude tabs keep mouse mode** and so do not
-copy on select; its interface wants the mouse more than the clipboard.
+at a prompt it walks shell history instead. **Claude tabs keep mouse mode** and
+so do not copy on select; its interface wants the mouse more than the
+clipboard, and the wheel scrolls its output.
+
+**Scrolling back is PgUp.** At a prompt, PgUp enters tmux copy mode a page up
+and PgDn pages forward; copy mode ends by itself the moment you are back at
+the bottom, so there is nothing to remember (`Ctrl-b [` still works, and `q`
+still leaves). Inside a full-screen program the key is the program's. That is
+also how a **phone** scrolls, with the PgUp/PgDn keys in the ⌨ Keys row: a
+finger drag in the terminal reaches nothing, because tmux holds the alternate
+screen and the browser terminal only turns wheel events into something tmux
+can see — in either kind of tab.
 
 The launcher sets this on the session as it starts one, not only in the config
 file, because `~/.tmux.conf` lives on the persistent home: an install upgraded

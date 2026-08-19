@@ -1362,6 +1362,25 @@ class Handler(BaseHTTPRequestHandler):
         # Only sessions that currently exist — never an arbitrary -t argument.
         if session not in {s["name"] for s in tmux_sessions()}:
             return self._json({"error": f"no such session: {session}"}, 400)
+        # Paging is how a finger scrolls: a drag reaches nothing (the terminal
+        # sits on tmux's alternate screen, and xterm.js turns only wheel events
+        # into anything tmux sees), so PgUp at a prompt enters copy mode a page
+        # up and PgDn pages back, copy mode ending by itself at the bottom
+        # (-e). The tmux config binds a real keyboard's PgUp the same way, but
+        # send-keys goes straight to the pane, past the key table that binding
+        # lives in — so the same decision is made here, as commands. Inside a
+        # full-screen program (less, vim) the key is the program's.
+        if key in ("pgup", "pgdn"):
+            flags = run(["tmux", "display-message", "-p", "-t", session,
+                         "#{alternate_on} #{pane_in_mode}"], timeout=10)
+            alt, mode = (flags["out"].split() + ["0", "0"])[:2]
+            if key == "pgup":
+                cmd = ["send-keys", "-t", session, "PPage"] if alt == "1" \
+                    else ["copy-mode", "-eu", "-t", session]
+            else:
+                cmd = ["send-keys", "-t", session, "-X", "page-down"] if mode == "1" \
+                    else ["send-keys", "-t", session, "NPage"]
+            return self._json(run(["tmux", *cmd], timeout=10))
         if key in TMUX_KEYS:
             return self._json(run(["tmux", "send-keys", "-t", session,
                                    TMUX_KEYS[key]], timeout=10))
