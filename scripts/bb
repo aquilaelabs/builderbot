@@ -861,6 +861,25 @@ cmd_drift() {
     fi
 }
 
+# Where Chromium actually is, in the order the answers can be trusted:
+# PLAYWRIGHT_BROWSERS_PATH (what the image sets and any project honours), then
+# the SDK share directly, then the historical /opt path. Resolved rather than
+# hardcoded because the browsers moved out of the image: the /opt entry is a
+# symlink the startup hook makes, and a hook that could not make it — /opt is
+# root-owned — used to leave every screenshot command dead with the bytes
+# sitting right there on the share.
+find_chromium() {
+    local base exe
+    for base in "${PLAYWRIGHT_BROWSERS_PATH:-}" "$(sdk_root)/playwright" /opt/pw-browsers; do
+        [ -n "$base" ] && [ -d "$base" ] || continue
+        exe="$base/chromium"
+        [ -x "$exe" ] && { printf '%s' "$exe"; return 0; }
+        exe="$(find "$base" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
+        [ -n "$exe" ] && [ -x "$exe" ] && { printf '%s' "$exe"; return 0; }
+    done
+    die "no Playwright chromium found — install the browsers with: bb sdk install playwright"
+}
+
 # bb shot — headless screenshots, for showing the operator visual state from
 # a box with no display. Playwright's Chromium from the image.
 #
@@ -876,6 +895,9 @@ cmd_drift() {
 cmd_shot() {
     local auth="${DASHBOARD_AUTH:-}" width=1280 height=800 scale=1 wait=0
     local full=0 resize="" out="" mode=file urls=()
+    # Used by the test harness, which needs the same answer this does and
+    # should not re-implement the search to get it.
+    if [ "${1:-}" = --print-chromium ]; then find_chromium; printf '\n'; return 0; fi
     while [ $# -gt 0 ]; do
         case "$1" in
             --auth)   auth="$2"; shift 2 ;;
@@ -916,10 +938,7 @@ URLs need their scheme (http:// or https://)"
         out="${out:-shot-$(date +%H%M%S).png}"
     fi
 
-    local chrome
-    chrome=/opt/pw-browsers/chromium          # the image's stable symlink...
-    [ -x "$chrome" ] || chrome="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
-    [ -x "${chrome:-}" ] || die "no Playwright chromium under /opt/pw-browsers — the browsers live on the SDK share now; install them with: bb sdk install playwright"   # ...or an older image's revisioned path
+    local chrome; chrome="$(find_chromium)"
     local files
     files="$(NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
@@ -1010,10 +1029,7 @@ cmd_favicon() {
     out="${out:-.}"
     mkdir -p "$out"
     command -v convert >/dev/null 2>&1 || die "imagemagick's convert is required"
-    local chrome
-    chrome=/opt/pw-browsers/chromium
-    [ -x "$chrome" ] || chrome="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
-    [ -x "${chrome:-}" ] || die "no Playwright chromium under /opt/pw-browsers — the browsers live on the SDK share now; install them with: bb sdk install playwright"
+    local chrome; chrome="$(find_chromium)"
 
     local tmp
     tmp="$(mktemp -d)"

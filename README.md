@@ -480,9 +480,8 @@ anywhere else.
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
 | `tizen` | manual | Galaxy Watch / Samsung TV — Samsung ships a GUI installer, so `bb sdk install tizen` prints the steps rather than pretending |
 
-**From the dashboard.** The sidebar's **Tools** card — the one that shows the
-scanner's findings — has an **Additional packages…** button beside **Open
-findings report**. It opens as a **tab**, like the report does: a list of
+**From the dashboard.** The sidebar's **Tools** card holds **Additional
+packages…**, which opens as a **tab** the way the findings report does: a list of
 everything above with a checkbox each, the size it will take, and, once
 installed, the path it actually landed on. Tick several and install or remove
 them in one go. A tab rather than a dialog because an install runs for
@@ -673,10 +672,9 @@ lives in its body. The cards:
   The name is one path segment and the URL must be one of GitHub's two
   address shapes — `git clone` accepts transports a web form should never
   reach, so anything else is refused server-side rather than passed along
-- **Tools**: the scanner's report (when `/reports` is mounted) and
-  **Additional packages…**, which installs or removes SDKs and toolchains on
-  the [SDK share](#sdks-live-outside-the-image) — checkboxes, sizes, and the
-  install path of everything already there
+- **Tools**: **Additional packages…**, which installs or removes SDKs and
+  toolchains on the [SDK share](#sdks-live-outside-the-image) — checkboxes,
+  sizes, and the install path of everything already there
 - an **eye** per project, which excludes it: persists across restarts and
   blocks Claude sessions for that directory — see below. A row that is excluded
   or has an error carries **no Claude button at all**, because a session cannot

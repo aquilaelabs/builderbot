@@ -12,6 +12,13 @@
 # names that path. It is a symlink into the share now; nothing that used it
 # has to know.
 #
+# .root.sh, and not by preference: /opt is root-owned and mode 755, so the
+# builder user can write *inside* a directory the image created there but
+# cannot create one. The first version of this hook ran as builder, its
+# `ln -sfn` into /opt failed, `set -e` took the rest of the hook with it, and
+# a container came up with no browsers at all. The download itself still runs
+# as builder, so nothing lands owned by root.
+#
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
 
@@ -20,6 +27,7 @@ BROWSERS="${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"
 STORE="$(sdk_root)/playwright"
 
 mkdir -p "$STORE" 2>/dev/null || { warn "cannot write ${STORE}; leaving browsers in the image"; exit 0; }
+chown "$PUID:$PGID" "$STORE" 2>/dev/null || true
 
 # An image that still ships browsers (or a session that installed some into
 # the real directory) is adopted rather than discarded — the bytes are
