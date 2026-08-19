@@ -511,7 +511,7 @@ API, and the browser terminals, which are proxied under `/term` so one
 sign-in covers them all. Signing in is a login page that sets a 30-day
 cookie — a real form, so password managers work — not the browser's own
 credentials dialog, and there is no second prompt for the terminal port
-because there is no second port. `/logout` signs out. Every sidebar card collapses to its header with a click
+because there is no second port. The sign-out button beside ↻ and ▤ in the header ends the session (`/logout` does the same). Every sidebar card collapses to its header with a click
 on that header, and dragging a header reorders the cards; both are remembered
 in `/config/cards.json`, so the phone and the desktop agree about the
 arrangement and it survives restarts and image updates. The **▤** button in

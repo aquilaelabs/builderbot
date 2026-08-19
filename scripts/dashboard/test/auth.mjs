@@ -69,6 +69,18 @@ ok(!page2.url().includes('login'), 'the form signs a fresh browser in');
 await page2.reload();
 await page2.waitForFunction(() => document.getElementById('projects') !== null, { timeout: 20000 });
 ok(true, '...and the cookie survives a reload');
+// The header's sign-out button: drawn to its neighbors' size, and it really
+// ends the session — landing on the login page and staying out.
+ok(await page2.$eval('#bOut', b => {
+  const r = b.getBoundingClientRect();
+  const c = document.getElementById('bCards').getBoundingClientRect();
+  return Math.abs(r.height - c.height) < 2 && Math.abs(r.width - c.width) < 8;
+}), "sign out sits in the header at its neighbors' size");
+await page2.click('#bOut');
+await page2.waitForURL('**/login**');
+await page2.goto(URL);
+await page2.waitForURL('**/login**');
+ok(true, 'the sign-out button ends the session for real');
 await ctx2.close();
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
