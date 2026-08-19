@@ -1,8 +1,9 @@
 // The Tools card and its package manager: the card carries both the findings
-// report and the packages `bb sdk` can install, the modal lists what is
-// installed and where, and ticking rows installs or removes them through a
-// server-side job. The harness's bb stub makes and removes directories rather
-// than downloading gigabytes, so the whole round trip runs in a second.
+// report and the packages `bb sdk` can install, and Additional packages opens
+// as a document TAB beside the report — installing an SDK runs for minutes,
+// so it belongs on the strip rather than in a dialog to dismiss. The
+// harness's bb stub makes and removes directories rather than downloading
+// gigabytes, so the whole round trip runs in a second.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { existsSync } from 'node:fs';
 
@@ -18,27 +19,32 @@ ok((await page.$eval('.card[data-card="findings"] h2', h => h.textContent.trim()
 ok(await page.$eval('#bFindings', b => !b.hidden) && await page.$eval('#bPkgs', b => !b.hidden),
    'it keeps the findings button and gains the packages one');
 
-// ---- the modal ---------------------------------------------------------
+// ---- the tab -----------------------------------------------------------
 await page.click('#bPkgs');
-await page.waitForFunction(() => document.querySelectorAll('#pkgList .pkg').length > 0);
-const rows = () => page.$$eval('#pkgList .pkg', ls => ls.map(l => ({
+await page.waitForFunction(() => document.querySelectorAll('.doc .pkg').length > 0);
+ok(await page.evaluate(() => tabs.some(t => t.kind === 'packages')
+     && tabOf(panes[active])?.kind === 'packages'),
+   'Additional packages opens a tab, and lands on it');
+ok(await page.$eval('.pane .bar [data-reload]', b => b.dataset.reload) === 'packages',
+   'the pane bar offers a reload, like the findings report');
+const rows = () => page.$$eval('.doc .pkg', ls => ls.map(l => ({
   name: l.querySelector('input').value,
   installed: l.querySelector('.where').classList.contains('on'),
   where: l.querySelector('.where').textContent.trim(),
 })));
 let list = await rows();
 ok(list.length >= 6 && list.some(r => r.name === 'flutter') && list.some(r => r.name === 'android:emulator'),
-   'the modal lists the toolchains and the android packages');
+   'the tab lists the toolchains and the android packages');
 ok(list.every(r => !r.installed) && list.every(r => r.where === 'not installed'),
    'a scratch root starts with nothing installed');
-ok((await page.$eval('#pkgWhere', el => el.textContent)).includes(`${DIR}/sdk`),
+ok((await page.$eval('.pkghead', el => el.textContent)).includes(`${DIR}/sdk`),
    'it says which root things are installed into');
 
 // ---- install two, watch them land --------------------------------------
-await page.check('#pkgList input[value="flutter"]');
-await page.check('#pkgList input[value="android:emulator"]');
-await page.click('#pkgInstall');
-await page.waitForFunction(() => [...document.querySelectorAll('#pkgList .where')]
+await page.check('.doc .pkg input[value="flutter"]');
+await page.check('.doc .pkg input[value="android:emulator"]');
+await page.click('.doc [data-pkg="install"]');
+await page.waitForFunction(() => [...document.querySelectorAll('.doc .where')]
   .filter(w => w.classList.contains('on')).length === 2, { timeout: 30000 });
 list = await rows();
 const flutter = list.find(r => r.name === 'flutter');
@@ -49,12 +55,16 @@ ok(emu.installed && emu.where.includes(`${DIR}/androidsdk/emulator`),
    'an android package resolves to its place in the SDK tree');
 ok(existsSync(`${DIR}/sdk/flutter`) && existsSync(`${DIR}/androidsdk/emulator`),
    '...and both really exist on disk');
-ok(!(await page.$eval('#pkgLogWrap', el => el.hidden)), 'the progress log appears');
+ok(await page.$('.pkglog') !== null, 'the progress log appears');
+// The ticks are the operator's, and a poll every two seconds must not
+// quietly clear them mid-install.
+ok(await page.$eval('.doc .pkg input[value="flutter"]', i => i.checked),
+   'a redraw keeps what was ticked');
 
 // ---- remove one --------------------------------------------------------
-await page.uncheck('#pkgList input[value="android:emulator"]');
-await page.click('#pkgRemove');
-await page.waitForFunction(() => [...document.querySelectorAll('#pkgList .where')]
+await page.uncheck('.doc .pkg input[value="android:emulator"]');
+await page.click('.doc [data-pkg="remove"]');
+await page.waitForFunction(() => [...document.querySelectorAll('.doc .where')]
   .filter(w => w.classList.contains('on')).length === 1, { timeout: 30000 });
 list = await rows();
 ok(!list.find(r => r.name === 'flutter').installed
@@ -73,8 +83,13 @@ ok(await post({ action: 'install', names: ['flutter; rm -rf /'] }) === 400,
 ok(await post({ action: 'install', names: [] }) === 400, 'an empty selection is refused');
 ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown action is refused');
 
-await page.click('#pkgClose');
-ok(await page.$eval('#pkgmodal', el => el.hidden), 'Close closes it');
+// It is a tab like any other: minimizing it leaves the strip, and the saved
+// layout brings it back with its own data rather than an empty pane.
+await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'packages').id));
+ok(await page.evaluate(() => !tabs.some(t => t.kind === 'packages')), 'the tab minimizes away');
+await page.click('#bPkgs');
+await page.waitForFunction(() => document.querySelectorAll('.doc .pkg').length > 0);
+ok(true, 'and reopens from the card');
 
 const errs = page.errors.filter(e => !/status of 400/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ' — ' + errs.join(' | ') : ''}`);

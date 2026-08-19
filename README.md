@@ -473,13 +473,15 @@ anywhere else.
 
 **From the dashboard.** The sidebar's **Tools** card — the one that shows the
 scanner's findings — has an **Additional packages…** button beside **Open
-findings report**. It opens a list of everything above with a checkbox each,
-the size it will take, and, once installed, the path it actually landed on.
-Tick several and install or remove them in one go; the work runs as a
-background job on the container, so the modal keeps reporting progress
-instead of hanging on a request that would take four minutes to answer. The
-page only ever posts names the server offered it — the same rule the command
-buttons follow.
+findings report**. It opens as a **tab**, like the report does: a list of
+everything above with a checkbox each, the size it will take, and, once
+installed, the path it actually landed on. Tick several and install or remove
+them in one go. A tab rather than a dialog because an install runs for
+minutes — it can sit on the strip, be pinned to a pane, or be minimized while
+you work, and the work itself is a background job on the container, so the
+list keeps reporting progress instead of hanging on a request that would take
+four minutes to answer. The page only ever posts names the server offered it
+— the same rule the command buttons follow.
 
 **iOS is not on this list and cannot be.** Xcode and the iOS SDK are macOS-only
 and licensed to Apple hardware; no Linux container can host them. For web and

@@ -179,16 +179,29 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* One package: a checkbox that owns the whole row (label wraps it), the
    size beside the name, and the resolved install path underneath — the
    question "where did that actually go" is the one this card exists for. */
-.modal .pkg{display:flex;gap:9px;align-items:flex-start;padding:8px 0;margin:0;
+/* The packages document. One row per package: a checkbox that owns the whole
+   row (the label wraps it), the size beside the name, and the resolved
+   install path underneath — "where did that actually go" is the question a
+   share full of SDKs invites. */
+.pkghead{padding:10px 12px;color:var(--dim);font:12px/1.5 system-ui,sans-serif;
+  border-bottom:1px solid var(--line)}
+.pkghead code{font-family:var(--mono);color:var(--ink)}
+.pkgs{padding:0 12px}
+.pkg{display:flex;gap:10px;align-items:flex-start;padding:10px 0;margin:0;
   border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)}
-.modal .pkg:last-child{border-bottom:0}
-.modal .pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto;
-  accent-color:#2ea043}
-.modal .pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
-.modal .pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
-.modal .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
-.modal .pkg .where.on{color:var(--accent)}
-@media(hover:hover){ .modal .pkg:hover{background:#1b222b} }
+.pkg:last-child{border-bottom:0}
+.pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto;accent-color:#2ea043}
+.pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
+.pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
+.pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
+.pkg .where.on{color:var(--accent)}
+@media(hover:hover){ .pkg:hover{background:#1b222b} }
+.pkglog{margin:0 12px 12px;padding:9px 10px;background:#0d1117;
+  border:1px solid var(--line);border-radius:6px;color:var(--dim);
+  font:11px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;
+  max-height:220px;overflow:auto}
+/* Bigger tap targets where a finger is doing the ticking. */
+@media(max-width:900px){ .pkg{padding:13px 0} .pkg input{width:20px;height:20px} }
 #pkgLog{min-height:0;font-size:11px;white-space:pre-wrap;color:var(--dim)}
 /* A project row's controls move as one block: four buttons that wrapped one
    at a time left a lone eye stranded under the name (the link chain made
@@ -508,28 +521,6 @@ body.dragging .tab .lbl{cursor:grabbing}
     </div>
   </div>
 </div>
-<!-- Additional packages: the toolchains bb sdk can put on the SDK share.
-     The list, the sizes and what counts as installed all come from the
-     server — the page only ever posts names it was given. -->
-<div id="pkgmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pkgTitle">
-  <div class="box">
-    <h3 id="pkgTitle">Additional packages</h3>
-    <div class="field">
-      <div class="hint" id="pkgWhere"></div>
-    </div>
-    <div class="field"><div id="pkgList"><div class="empty">loading…</div></div></div>
-    <div class="field" id="pkgLogWrap" hidden>
-      <label for="pkgLog">Progress</label>
-      <textarea id="pkgLog" readonly rows="6" spellcheck="false"></textarea>
-    </div>
-    <div class="foot">
-      <button id="pkgInstall" class="primary">Install selected</button>
-      <button id="pkgRemove" class="danger">Remove selected</button>
-      <span class="sp"></span>
-      <button id="pkgClose">Close</button>
-    </div>
-  </div>
-</div>
 <!-- New project. The name and the URL are validated again server-side; the
      form's job is a fast answer, the server's is the real one. -->
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
@@ -666,7 +657,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div id="findingsSum"></div>
       <div class="macros">
         <button id="bFindings" onclick="openFindings()" hidden>Open findings report</button>
-        <button id="bPkgs">Additional packages…</button>
+        <button id="bPkgs" onclick="openPackages()">Additional packages…</button>
       </div>
     </div>
     <div class="card" data-card="sessions">
@@ -963,6 +954,7 @@ function show(t){
   render();
   if (isPhone()) setView("terminal");
   if (t.kind === "findings" && !findings) loadFindings();
+  if (t.kind === "packages") loadPackages();
   refreshSoon();      // a just-opened terminal's session appears in Sessions
 }
 
@@ -1416,14 +1408,15 @@ function newShell(proj){
 function paintBar(pane, t, i){
   const closeBtn = isSplit()
     ? `<span class="x" data-cp="${i}" title="close this pane">✕</span>` : "";
-  const reload = t.kind === "findings"
-    ? `<button class="ic" data-reload="1" style="margin-left:8px">reload</button>` : "";
+  const reload = (t.kind === "findings" || t.kind === "packages")
+    ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
   bar.innerHTML = `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
   bar.querySelectorAll("[data-cp]").forEach(b =>
     b.onclick = e => closePane(Number(b.dataset.cp), e));
   bar.querySelectorAll("[data-reload]").forEach(b =>
-    b.onclick = e => { e.stopPropagation(); loadFindings(true); });
+    b.onclick = e => { e.stopPropagation();
+      if (b.dataset.reload === "packages") loadPackages(); else loadFindings(true); });
 }
 
 function drawPanes(){
@@ -1457,6 +1450,10 @@ function drawPanes(){
         pane.dataset.rev = String(findingsRev);
         renderFindingsInto(i);
       }
+      if (t.kind === "packages" && pane.dataset.rev !== String(pkgRev)){
+        pane.dataset.rev = String(pkgRev);
+        renderPackagesInto(i);
+      }
       continue;
     }
     if (same) continue;
@@ -1479,6 +1476,10 @@ function drawPanes(){
       // A findings tab restored from the saved layout has no one calling
       // loadFindings for it — it sat on "loading…" until something else did.
       if (!findings) loadFindings();
+    }
+    if (t.kind === "packages"){
+      pane.dataset.rev = String(pkgRev); renderPackagesInto(i);
+      if (!packages) loadPackages();      // same, for a restored packages tab
     }
   }
 }
@@ -2410,15 +2411,33 @@ function editCustom(id){
 function closeEditor(){ $("modal").hidden = true; editing = null; }
 
 // ---- additional packages -----------------------------------------------
-// The Tools card's package manager: what bb sdk can install, what is already
-// there and where it landed. Installs are minutes long, so the server queues
-// them in a worker and this polls — the modal stays open and honest about
-// what is happening rather than freezing on a request that cannot return.
-let pkgPoll = null;
+// The Tools card's other half, opened as a document tab beside the findings
+// report rather than a dialog: installing an SDK is not a detour to dismiss,
+// it is a thing to leave open for the several minutes it runs — and a tab can
+// be pinned to a pane, minimized, or left on the strip while you work.
+//
+// Installs are queued by the server and polled from here, so the list keeps
+// reporting progress instead of freezing on a request that cannot return.
+let packages = null, pkgRev = 0, pkgPoll = null;
+const pkgTicked = new Set();     // survives a redraw; a poll must not untick
+
+function openPackages(){
+  openTab({kind:"packages", arg:"__packages", label:"packages"});
+}
+
+async function loadPackages(){
+  try{
+    const r = await fetch("/api/packages");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    packages = await r.json();
+  }catch(e){ packages = {error: String(e)}; }
+  pkgRev++;
+  drawPanes();
+}
 
 function pkgRow(p){
   return `<label class="pkg">
-    <input type="checkbox" value="${esc(p.name)}"${p.name === "tizen" ? " data-manual=\"1\"" : ""}>
+    <input type="checkbox" value="${esc(p.name)}"${pkgTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
       <span class="nm">${esc(p.label)} <span class="pill">${esc(p.size)}</span></span>
       <span class="sub">${esc(p.about)}</span>
@@ -2428,65 +2447,49 @@ function pkgRow(p){
   </label>`;
 }
 
-function drawPackages(d){
-  $("pkgWhere").textContent = d.root
-    ? (d.shared
-        ? `Installed into ${d.root} — a mapped share, so an image update never re-downloads them.`
-        : `Installed into ${d.root} — the home volume. Map an SDK share to keep them out of it.`)
-    : "The SDK root could not be determined; this image may predate `bb sdk`.";
-  // Keeping the ticks across a poll: a five-minute install must not quietly
-  // clear what the operator selected next.
-  const ticked = new Set([...$("pkgList").querySelectorAll("input:checked")].map(i => i.value));
-  $("pkgList").innerHTML = d.items.map(pkgRow).join("") || `<div class="empty">nothing to offer</div>`;
-  for (const i of $("pkgList").querySelectorAll("input"))
-    if (ticked.has(i.value)) i.checked = true;
+function renderPackagesInto(i){
+  const el = $("doc" + i);
+  if (!el) return;
+  const d = packages;
+  if (!d){ el.innerHTML = `<div class="empty">loading…</div>`; return; }
+  if (d.error){ el.innerHTML = `<div class="empty">could not read the package list: ${esc(d.error)}</div>`; return; }
 
-  const job = d.job || {};
-  const busy = !!job.running;
-  $("pkgInstall").disabled = $("pkgRemove").disabled = busy;
-  $("pkgInstall").textContent = busy && job.action === "install"
-    ? `Installing ${job.current || ""}…`.trim() : "Install selected";
-  $("pkgRemove").textContent = busy && job.action === "remove"
-    ? `Removing ${job.current || ""}…`.trim() : "Remove selected";
-  const lines = (job.log || []).slice(-12);
-  $("pkgLogWrap").hidden = !lines.length;
-  if (lines.length){
-    const done = (job.done || []).length, failed = (job.failed || []).length;
-    $("pkgLog").value = lines.join("\n")
-      + (busy ? "" : `\n— finished: ${done} ok${failed ? `, ${failed} failed` : ""}`);
-    $("pkgLog").scrollTop = $("pkgLog").scrollHeight;
-  }
-  // Poll only while something is running, and stop the moment it is not:
-  // this list is a filesystem walk, not something to ask for every second
-  // forever.
+  const job = d.job || {}, busy = !!job.running;
+  const lines = (job.log || []).slice(-14);
+  el.innerHTML = `
+    <div class="pkghead">${d.root
+      ? (d.shared
+          ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
+          : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
+      : "The SDK root could not be determined; this image may predate <code>bb sdk</code>."}</div>
+    <div class="pkgs">${(d.items || []).map(pkgRow).join("")}</div>
+    <div class="macros">
+      <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
+        busy && job.action === "install" ? `Installing ${esc(job.current || "")}…` : "Install selected"}</button>
+      <button data-pkg="remove"${busy ? " disabled" : ""}>${
+        busy && job.action === "remove" ? `Removing ${esc(job.current || "")}…` : "Remove selected"}</button>
+    </div>
+    ${lines.length ? `<pre class="pkglog">${esc(lines.join("\n"))}${
+      busy ? "" : `\n— finished: ${(job.done || []).length} ok${
+        (job.failed || []).length ? `, ${job.failed.length} failed` : ""}`}</pre>` : ""}`;
+
+  el.querySelectorAll(".pkg input").forEach(b => b.onchange = () => {
+    b.checked ? pkgTicked.add(b.value) : pkgTicked.delete(b.value);
+  });
+  el.querySelectorAll("[data-pkg]").forEach(b => b.onclick = () => pkgAct(b.dataset.pkg));
+
+  // Poll only while something is running: this list is a filesystem walk, not
+  // something to ask for every two seconds forever.
   clearTimeout(pkgPoll);
-  if (busy && !$("pkgmodal").hidden) pkgPoll = setTimeout(loadPackages, 2000);
-  else if (!busy && (job.done || []).length) refresh();
+  if (busy) pkgPoll = setTimeout(loadPackages, 2000);
+  else if ((job.done || []).length) refresh();
 }
-
-async function loadPackages(){
-  try{
-    const r = await fetch("/api/packages");
-    if (!r.ok) throw new Error("HTTP " + r.status);
-    drawPackages(await r.json());
-  }catch(e){
-    $("pkgList").innerHTML = `<div class="empty">could not read the package list: ${esc(String(e))}</div>`;
-  }
-}
-
-function openPackages(){
-  $("pkgmodal").hidden = false;
-  $("pkgList").innerHTML = `<div class="empty">loading…</div>`;
-  $("pkgLogWrap").hidden = true;
-  loadPackages();
-}
-function closePackages(){ clearTimeout(pkgPoll); $("pkgmodal").hidden = true; }
 
 async function pkgAct(action){
-  const names = [...$("pkgList").querySelectorAll("input:checked")].map(i => i.value);
+  const names = [...pkgTicked];
   if (!names.length) return notify("tick something first", true);
-  // Tizen's "install" only prints instructions, and removing what was never
-  // installed is not a thing — say so here rather than queueing a no-op.
+  // Tizen's install only prints instructions, and removing what was never
+  // installed is not a thing — say so rather than queueing a no-op.
   if (action === "remove" && names.includes("tizen"))
     return notify("tizen is a manual install — nothing here to remove", true);
   try{
@@ -2499,12 +2502,6 @@ async function pkgAct(action){
     loadPackages();
   }catch(e){ notify("could not start: " + e, true); }
 }
-
-$("bPkgs").onclick = openPackages;
-$("pkgClose").onclick = closePackages;
-$("pkgmodal").onclick = e => { if (e.target.id === "pkgmodal") closePackages(); };
-$("pkgInstall").onclick = () => pkgAct("install");
-$("pkgRemove").onclick = () => pkgAct("remove");
 
 // ---- new project / link to GitHub --------------------------------------
 // One dialog, three modes, one table. `init` and `clone` feed /api/create;
@@ -3234,7 +3231,6 @@ document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (!$("modal").hidden) closeEditor();
   if (!$("pmodal").hidden) closeNewProject();
-  if (!$("pkgmodal").hidden) closePackages();
   if (pinFor){ pinFor = null; drawTabs(); }
   if (resumeFor){ resumeFor = null; if (state) drawProjects(state.projects); }
 });
