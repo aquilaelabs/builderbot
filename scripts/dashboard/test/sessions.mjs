@@ -3,7 +3,7 @@
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
-import { launch, newPage, ok, done, sleep, tmuxNew, tmuxFmt, URL } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, tmuxNew, tmuxFmt, URL, DIR } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -39,6 +39,35 @@ await page.evaluate(() => pinTo(tabs.find(x => sessionOf(x.arg) === 'shell-9').i
 ok((await row('shell-9').locator('.pill.att').textContent()).trim().startsWith('◨'), 'split: pane glyph on the pill');
 ok(await page.$$eval('.tab .lbl', els => els.some(e => e.textContent.includes('◧')) && els.some(e => e.textContent.includes('◨'))), 'split: tabs carry glyphs');
 await page.evaluate(() => closePane(1));
+
+// ---- the git/GitHub card ghosts against the shell's directory ----------
+// shell-9 lives in /tmp; alpha has a GitHub remote; ep.silon's remote is
+// GitLab — so between the three shells every ghosting state appears, and the
+// dotted name proves the cwd-to-project mapping survives tmux's rename.
+tmuxNew('shell-alpha', `${DIR}/ws/alpha`);
+tmuxNew('shell-ep_silon', `${DIR}/ws/ep.silon`);
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => state.sessions.some(s => s.name === 'shell-ep_silon'));
+const gitBtn = () => page.$eval('#git [data-m="git-status"]', b => ({ dis: b.disabled, tip: b.title }));
+const ghBtn  = () => page.$eval('#git [data-m="gh-prs"]', b => ({ dis: b.disabled, tip: b.title }));
+await row('shell-9').locator('[data-go]').click();
+await page.waitForFunction(() => sessionOf(tabOf(panes[active])?.arg || '') === 'shell-9');
+ok(!(await page.$eval('#linux [data-m]', b => b.disabled)), 'linux commands live on any shell');
+let g = await gitBtn(), h = await ghBtn();
+ok(g.dis && g.tip.includes('not a git repository'), 'outside a repo the git commands ghost, saying why');
+ok(h.dis, '...and the gh commands with them');
+await row('shell-alpha').locator('[data-go]').click();
+await page.waitForFunction(() => sessionOf(tabOf(panes[active])?.arg || '') === 'shell-alpha');
+g = await gitBtn(); h = await ghBtn();
+ok(!g.dis && !h.dis, 'in a GitHub-remoted repo, git and gh commands are both live');
+await row('shell-ep_silon').locator('[data-go]').click();
+await page.waitForFunction(() => sessionOf(tabOf(panes[active])?.arg || '') === 'shell-ep_silon');
+g = await gitBtn(); h = await ghBtn();
+ok(!g.dis, 'a repo with a non-GitHub remote keeps its git commands');
+ok(h.dis && h.tip.includes('no GitHub remote'), '...but the gh ones ghost, saying why');
+// Tidy the strip for the sections below: these two tabs were this block's.
+await page.evaluate(() => { for (const s of ['shell-alpha', 'shell-ep_silon']){
+  const t = tabs.find(x => sessionOf(x.arg) === s); if (t) hideTab(t.id); } });
 
 await row('claude-alpha').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'claude-alpha'));

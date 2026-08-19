@@ -748,6 +748,18 @@ that only means anything from a checkout of the BuilderBot repo (`bb drift`,
 left is what an operator actually reaches for from a terminal: status, update,
 login, the emulator, lint, and the logs.
 
+Two more command cards flank the `bb` one, following the same rules. **Linux
+commands** is the general toolkit — `ls -lah`, disk usage here and per mount,
+memory, the biggest processes, listening ports — live on any shell tab. **Git
+& GitHub** shows its commands verbatim (`git status`, log, diff, branches,
+fetch, pull; `gh pr list`, `gh run list`, …) and ghosts against the directory
+the active shell is *in*, not just whether it is a shell: outside a git
+repository the whole card grays out, and in a repository whose remotes do not
+include GitHub, just the `gh` half does — the hover text says which it is.
+The verdict follows a `cd` on the next status poll, and the ghosting only
+reflects the repo; `gh` itself still needs its own auth (`GIT_PAT` or
+`gh auth login`) to answer.
+
 ### Your own commands
 
 The **Custom commands** card starts empty with a **+**. It takes a title and a
