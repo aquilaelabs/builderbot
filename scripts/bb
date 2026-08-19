@@ -1247,6 +1247,7 @@ sdk_check() {
 # bb sdk update NAME — bring an installed toolchain up to date, each the way
 # its own tooling expects rather than by deleting and starting again.
 sdk_update() {
+    sdk_operator_only update "$@"
     local what="${1:-}" d
     case "$what" in
         flutter)
@@ -1281,7 +1282,28 @@ sdk_update() {
     esac
 }
 
+# Installing an SDK is the operator's call, not a session's.
+#
+# CLAUDECODE is in the environment of anything a Claude session runs, and
+# absent from the dashboard's, which is the whole distinction: these are
+# gigabytes on somebody else's disk, and the decision belongs to the person
+# who pays for it. The CLAUDE.md template has always said "offer the command,
+# do not run it" — this is that rule with teeth.
+#
+# It is a guardrail, not a boundary: a session has a shell and could call
+# sdkmanager directly. The point is to make the right thing easy and the
+# wrong thing deliberate, and the message says exactly how to override it for
+# the human who is holding the keyboard.
+sdk_operator_only() {
+    [ -n "${CLAUDECODE:-}" ] || return 0
+    die "installing SDKs is the operator's decision, and this is a Claude session.
+Ask them to do it from the dashboard's Tools tab (Additional packages), or to
+run: bb sdk $*
+If you ARE the operator at this keyboard: env -u CLAUDECODE bb sdk $*"
+}
+
 sdk_install() {
+    sdk_operator_only install "$@"
     local what="${1:-}" root; root="$(sdk_root)"
     [ -n "$what" ] || die "usage: bb sdk install android:<package>|playwright|flutter|dotnet|swift|tizen"
     mkdir -p "$root"
@@ -1400,6 +1422,7 @@ EOF
 }
 
 sdk_remove() {
+    sdk_operator_only remove "$@"
     local what="${1:-}" d
     case "$what" in
         flutter|dotnet|swift|tizen|playwright) d="$(sdk_find "$what")" \

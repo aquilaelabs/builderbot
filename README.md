@@ -457,6 +457,23 @@ bb sdk remove flutter
 bb sdk env                 # the PATH lines; new shells get them automatically
 ```
 
+**Nothing installs, updates or removes itself, and no session can do it for
+you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in
+the environment — that variable is in everything a Claude session runs and in
+nothing the dashboard runs — and tells the session to ask instead. It is a
+guardrail rather than a boundary (a session has a shell, and could call
+`sdkmanager` directly), and it says how the human at the keyboard overrides
+it: `env -u CLAUDECODE bb sdk install …`.
+
+In the tab, one button does it: **Install selected** installs what is not
+there and updates what is, so there is no second verb to choose between. A
+package that is installed and current has a **dead checkbox** — there is
+nothing to do to it — and gets its tick back the moment a check finds an
+update, shown in amber as `installed → available`. Uninstalling is a **bin
+icon on the row itself**, with a confirmation, because it is about one
+package and a bulk Remove button beside a bulk Install was one mis-click from
+being expensive.
+
 **Update checking is a question, not a background service.** Each answer costs
 a network round trip to a different upstream — the Flutter branch head, the
 .NET installer's own dry run, Swift's release redirect, the browser revisions

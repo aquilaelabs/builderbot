@@ -1562,11 +1562,13 @@ def is_mount(path):
 
 
 def _pkg_worker():
-    """Run the queued installs one at a time, keeping a tail of the output.
+    """Run the queued work one item at a time, keeping a tail of the output.
 
-    Everything it can do is `bb sdk install|remove <name>` for a name that
-    came out of PACKAGES — the page posts an index into the table, never a
-    command, which is the same rule the macro buttons follow.
+    Everything it can do is `bb sdk <verb> <name>` for a name that came out of
+    PACKAGES — the page posts an index into the table, never a command, which
+    is the same rule the macro buttons follow. The verb is decided here rather
+    than by the page: "install" on something already present means update it,
+    and one button that does the obvious thing beats two that need explaining.
     """
     while True:
         with _pkg_lock:
@@ -1577,8 +1579,13 @@ def _pkg_worker():
             name = _pkg_job["queue"].pop(0)
             action = _pkg_job["action"]
             _pkg_job["current"] = name
-            _pkg_job["log"].append(f"$ bb sdk {action} {name}")
-        r = run([BB, "sdk", action, name], timeout=3600)
+        verb = action
+        if action == "install":
+            probe = next((p["probe"] for p in PACKAGES if p["name"] == name), name)
+            verb = "update" if _pkg_path(probe) else "install"
+        with _pkg_lock:
+            _pkg_job["log"].append(f"$ bb sdk {verb} {name}")
+        r = run([BB, "sdk", verb, name], timeout=3600)
         with _pkg_lock:
             if action == "check":
                 # TSV out: name, installed, latest, status.
