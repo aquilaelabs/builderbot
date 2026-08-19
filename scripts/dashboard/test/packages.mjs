@@ -94,7 +94,7 @@ const during = (job) => page.evaluate(j => {
     .find(l => l.querySelector('input').value === 'flutter');
   const out = { text: row.querySelector('.prog')?.textContent.trim(),
                 width: row.querySelector('.prog .bar i')?.style.width,
-                idle: !!row.querySelector('.prog .bar.idle'),
+                bar: !!row.querySelector('.prog .bar'),
                 where: row.querySelector('.where')?.textContent.trim() || null };
   packages.job = saved; pkgRev++; drawPanes();
   clearTimeout(pkgPoll);      // the fake state must not outlive this check
@@ -105,20 +105,36 @@ let d = await during({ action: 'install', current: 'flutter',
                        progress: { name: 'flutter', phase: 'downloading', pct: 42 } });
 ok(d.text === 'downloading 42%' && d.width === '42%' && d.where === null,
    'the row being installed shows the download percentage, not a path');
+// Past the download there is no honest denominator, so the row stops
+// pretending: no bar, no number, and no naming of whichever component is
+// being unpacked — one of those ran off the side of a phone.
 d = await during({ action: 'install', current: 'flutter',
                    progress: { name: 'flutter', phase: 'installing', pct: 90 } });
-ok(d.text === 'installing 90%' && d.width === '90%',
-   '...and switches to the install percentage when the output does');
-d = await during({ action: 'install', current: 'flutter',
-                   progress: { name: 'flutter', phase: 'installing', pct: null,
-                               note: 'Building flutter tool...' } });
-ok(d.text === 'Building flutter tool...' && d.idle,
-   '...and shows the line the tool printed when there is no number to show');
+ok(d.text.startsWith('installing') && !d.bar,
+   '...and once installing, says so without a bar or a percentage');
 d = await during({ action: 'install', current: 'flutter', progress: null });
-ok(d.text === 'working…' && d.idle,
-   '...and says something honest before anything at all has arrived');
+ok(d.text.startsWith('installing') && !d.bar,
+   '...same before anything at all has been reported');
 d = await during({ action: 'remove', current: 'flutter', progress: null });
-ok(d.text === 'removing…', 'a removal says so on the row it is removing');
+ok(d.text.startsWith('removing'), 'a removal says so on the row it is removing');
+// The dots are ticked by a timer, so a redraw must not reset them.
+const dots = await page.evaluate(async () => {
+  const saved = packages.job;
+  packages.job = {running: true, queue: [], log: [], done: [], failed: [],
+                  action: 'install', current: 'flutter', progress: null};
+  pkgRev++; drawPanes();
+  const read = () => document.querySelector('.pkg .prog .dots')?.textContent ?? null;
+  const first = read();
+  await new Promise(r => setTimeout(r, 900));
+  const later = read();
+  pkgRev++; drawPanes();                      // a redraw, mid-animation
+  const after = read();
+  packages.job = saved; pkgRev++; drawPanes();
+  clearTimeout(pkgPoll); clearInterval(pkgDotsTimer); pkgDotsTimer = null;
+  return { first, later, after };
+});
+ok(dots.later !== dots.first && dots.after === dots.later,
+   '...and the ellipsis animates, and a redraw does not reset it');
 ok((await page.$$eval('.doc .pkg .where', ws => ws.length)) > 0,
    'and the paths come back when the job is over');
 
