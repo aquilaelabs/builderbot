@@ -2462,7 +2462,7 @@ const BIN = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M4.2 4.3l.7 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.7-8.3"/>
   <path d="M6.8 6.8v4"/><path d="M9.2 6.8v4"/></svg>`;
 
-function pkgRow(p){
+function pkgRow(p, busy){
   // A tick means "do something to this". Something installed and current has
   // nothing to do, so its box is dead until a check finds an update — which
   // is also why Install is the only verb here: on a row with an update it
@@ -2495,8 +2495,9 @@ function pkgRow(p){
         p.installed ? "installed at " + esc(p.path) : "not installed"}</span>
       ${upd}
     </span>
-    ${p.installed ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"
-       title="uninstall ${esc(p.label)}">${BIN}</button>` : ""}
+    ${p.installed ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
+      busy ? ` disabled title="another package operation is running"`
+           : ` title="uninstall ${esc(p.label)}"`}>${BIN}</button>` : ""}
   </label>`;
 }
 
@@ -2525,7 +2526,7 @@ function renderPackagesInto(i){
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
       : "The SDK root could not be determined; this image may predate <code>bb sdk</code>."}</div>
-    <div class="pkgs">${(d.items || []).map(pkgRow).join("")}</div>
+    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy)).join("")}</div>
     <div class="macros">
       <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
         busy && job.action === "install" ? `Working on ${esc(job.current || "")}…` : "Install selected"}</button>
@@ -2558,6 +2559,11 @@ function renderPackagesInto(i){
 }
 
 async function pkgAct(action, only){
+  // One at a time, and the server enforces it with a 409 — so the buttons go
+  // dead rather than letting a click earn an error message. Installs are
+  // minutes long and share one sdkmanager lock; a queue that outlived them
+  // would have to survive a page reload to mean anything, and this does not.
+  if (packages?.job?.running) return notify("a package operation is already running", true);
   // "Check for updates" asks about every row, ticked or not: the question is
   // whether anything is out of date and what the rest would install, not
   // whether one ticked thing is. Sending the selection made it answer for

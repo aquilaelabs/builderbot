@@ -1702,6 +1702,18 @@ def is_mount(path):
         return False
 
 
+# A progress-bar frame: sdkmanager redraws one with carriage returns, so a
+# naive tail of its output is twelve identical `[====] 40% Fetch remote
+# repository...` lines and none of the reason anything went wrong.
+_PROGRESS_FRAME = re.compile(r"^\[[=\s]*\]\s*\d+%")
+
+
+def _job_tail(out, keep=16):
+    """The useful end of a command's output — the frames dropped."""
+    lines = [ln.strip() for ln in out.splitlines()]
+    return [ln for ln in lines if ln and not _PROGRESS_FRAME.match(ln)][-keep:]
+
+
 def _pkg_worker():
     """Run the queued work one item at a time, keeping a tail of the output.
 
@@ -1737,8 +1749,13 @@ def _pkg_worker():
                                                "status": f[3]}
                 _pkg_job["log"].append(f"{name}: {_pkg_versions.get(name, {}).get('status', '?')}")
             else:
-                tail = [ln for ln in r["out"].splitlines() if ln.strip()][-12:]
-                _pkg_job["log"].extend(tail)
+                _pkg_job["log"].extend(_job_tail(r["out"]))
+                if r["code"] != 0:
+                    # The exit code, in words, because the output above may not
+                    # say anything: a killed sdkmanager prints nothing at all
+                    # and a tail of progress bars reads exactly like a run that
+                    # simply stopped. 137 is the OOM killer, 124 a timeout.
+                    _pkg_job["log"].append(f"{name}: {verb} failed (exit {r['code']})")
             _pkg_job["log"] = _pkg_job["log"][-60:]
             (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
         if action in ("install", "remove", "update"):

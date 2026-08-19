@@ -1591,16 +1591,28 @@ sdk_relink_android() {
     for sub in system-images platforms build-tools emulator ndk cmake \
                extras add-ons sources skins; do
         src="${ANDROID_HOME:-/opt/android-sdk}/$sub"
-        [ -d "$src" ] && [ ! -L "$src" ] || continue
-        log "relinking ${sub} onto the SDK store — sdkmanager replaced the link"
+        if [ -L "$src" ]; then continue; fi           # already onto the store
         mkdir -p "$store"
-        if [ -d "$store/$sub" ] && [ -z "$(ls -A "$store/$sub" 2>/dev/null)" ]; then
-            rmdir "$store/$sub"
-        fi
-        if [ -e "$store/$sub" ]; then
-            cp -a "$src/." "$store/$sub/" && rm -rf "$src"
+        if [ -d "$src" ]; then
+            log "relinking ${sub} onto the SDK store — sdkmanager replaced the link"
+            if [ -d "$store/$sub" ] && [ -z "$(ls -A "$store/$sub" 2>/dev/null)" ]; then
+                rmdir "$store/$sub"
+            fi
+            if [ -e "$store/$sub" ]; then
+                cp -a "$src/." "$store/$sub/" && rm -rf "$src"
+            else
+                mv "$src" "$store/$sub"
+            fi
+        elif [ ! -e "$src" ]; then
+            # Gone entirely, which is what an uninstall leaves behind: the
+            # package directory here IS the link, so sdkmanager deletes it.
+            # Left missing, the next install would create a real directory in
+            # its place and put gigabytes inside the image instead of on the
+            # share — quietly, and only noticed at the next image update.
+            log "restoring the ${sub} link — an uninstall removed it"
+            mkdir -p "$store/$sub"
         else
-            mv "$src" "$store/$sub"
+            continue                                  # a file, not a package
         fi
         ln -sfn "$store/$sub" "$src"
     done
@@ -1814,6 +1826,7 @@ sdk_remove() {
                         sdkmanager --uninstall "system-images;${api};${kind};$(basename "$abi")"
                     done
                 done
+                sdk_relink_android
                 return 0
             fi
             case "$pkg" in
@@ -1826,9 +1839,26 @@ sdk_remove() {
                         log "removing ${pkg};$(basename "$v")"
                         sdkmanager --uninstall "${pkg};$(basename "$v")"
                     done
+                    sdk_relink_android
                     return 0 ;;
             esac
+            # A top-level package whose directory under ANDROID_HOME is one of
+            # our symlinks — the emulator is the only one in the catalog — is
+            # deleted by sdkmanager as *the link*, leaving the payload sitting
+            # on the share: 820MB reported as removed and still spent. So
+            # resolve where it really lives before asking, and clear that.
+            # (ndk, cmake, platforms and the system images are directories
+            # *below* a link, so sdkmanager deletes the real bytes itself.)
+            local store=""
+            if [ -L "${ANDROID_HOME:-/opt/android-sdk}/$pkg" ]; then
+                store="$(readlink -f "${ANDROID_HOME:-/opt/android-sdk}/$pkg")"
+            fi
             sdkmanager --uninstall "$pkg"
+            if [ -n "$store" ] && [ -d "$store" ] && [ -n "$(ls -A "$store" 2>/dev/null)" ]; then
+                log "clearing ${store} — sdkmanager removed the link, not the files"
+                rm -rf "${store:?}"
+            fi
+            sdk_relink_android
             return 0 ;;
         *) die "usage: bb sdk remove playwright|flutter|dotnet|swift|tizen|android:<package>" ;;
     esac
