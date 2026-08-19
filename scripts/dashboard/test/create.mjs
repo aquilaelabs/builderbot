@@ -28,6 +28,17 @@ ok(await page.$eval('#pNameField', el => el.hidden)
    'clone mode asks for nothing but the URL — name and notes come from the repo');
 await page.click('#pLocal');
 ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local brings the name field back');
+// Both tabs put the cursor in their own first field. Only clone used to,
+// so switching back left focus on a hidden input — which on a phone drops
+// focus to the body and closes the keyboard.
+ok(await page.evaluate(() => document.activeElement.id) === 'pName',
+   'switching to local focuses the name field');
+await page.click('#pClone');
+ok(await page.evaluate(() => document.activeElement.id) === 'pUrl',
+   '...and switching to clone focuses the URL field');
+await page.click('#pLocal');
+ok(await page.evaluate(() => document.activeElement.id) === 'pName',
+   '...every time, not just the first');
 
 // Refusals keep the dialog open with the reason in place — nothing typed is
 // lost to a mistake.

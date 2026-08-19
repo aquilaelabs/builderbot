@@ -2377,11 +2377,11 @@ function closeEditor(){ $("modal").hidden = true; editing = null; }
 // catches the obvious before a round-trip, and keeps the dialog open on
 // failure so nothing typed is lost.
 const PMODES = {
-  init:  { title: () => "New project", btn: "Create",
+  init:  { title: () => "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pAboutField"] },
-  clone: { title: () => "New project", btn: "Create",
+  clone: { title: () => "New project", btn: "Create", focus: "pUrl",
            fields: ["pSrcField", "pUrlField", "pKeyField"] },
-  link:  { title: () => `Link ${pLink} to GitHub`, btn: "Link",
+  link:  { title: () => `Link ${pLink} to GitHub`, btn: "Link", focus: "pUrl",
            fields: ["pUrlField", "pKeyField"] },
 };
 let pMode = "init";
@@ -2438,6 +2438,13 @@ function pSlide(){
   }
 }
 
+// The cursor goes to the mode's own first field, on open and on every tab
+// switch. Both directions, unconditionally: only the clone tab used to do
+// it, so switching back to New local repo left focus on a field that had
+// just been hidden — focus fell to the body and a phone's keyboard slid
+// away mid-thought.
+function pFocus(){ $(PMODES[pMode].focus).focus(); }
+
 function pShowKey(){
   const k = pKeys.find(k => k.name === $("pKey").value);
   $("pPubWrap").hidden = !k;
@@ -2452,7 +2459,7 @@ function pShowKey(){
 let pGen = 0;
 let pFetch = null;                       // this open's /api/pubkeys, parsed
 
-function pOpen(mode, focus){
+function pOpen(mode){
   const gen = ++pGen;
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
@@ -2462,7 +2469,7 @@ function pOpen(mode, focus){
   $("pErrWrap").hidden = $("pPubWrap").hidden = true;
   $("pCreate").disabled = false; $("pCreate").textContent = PMODES[mode].btn;
   $("pmodal").hidden = false;
-  $(focus).focus();
+  pFocus();
   // Fetched per open, not cached: keys change when the container restarts
   // with a new /secrets/ssh, and a stale list here would offer a key the
   // agent no longer holds. The submit handler awaits pFetch directly, so an
@@ -2479,18 +2486,17 @@ function pOpen(mode, focus){
   });
 }
 
-function openNewProject(){ pLink = null; pOpen("init", "pName"); }
-function openLinkProject(name){ pLink = name; pOpen("link", "pUrl"); }
+function openNewProject(){ pLink = null; pOpen("init"); }
+function openLinkProject(name){ pLink = name; pOpen("link"); }
 
 function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
 
 // A stale error must not survive a mode switch — "a name is required" makes
 // no sense over a form that no longer asks for one.
-$("pLocal").onclick = () => { if (pMode === "init") return;
-  pMode = "init"; $("pErrWrap").hidden = true; pDraw(); pSlide(); };
-$("pClone").onclick = () => { if (pMode === "clone") return;
-  pMode = "clone"; $("pErrWrap").hidden = true; pDraw(); pSlide();
-  if (!$("pUrl").value) $("pUrl").focus(); };
+const pSwitch = m => { if (pMode === m) return;
+  pMode = m; $("pErrWrap").hidden = true; pDraw(); pSlide(); pFocus(); };
+$("pLocal").onclick = () => pSwitch("init");
+$("pClone").onclick = () => pSwitch("clone");
 $("pKey").onchange = pShowKey;
 $("pCopy").onclick = async () => {
   // clipboard API needs a secure context; plain-http access to the dashboard
