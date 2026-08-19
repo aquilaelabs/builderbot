@@ -446,32 +446,37 @@ body.dragging .tab .lbl{cursor:grabbing}
   <div class="box">
     <h3 id="pTitle">New project</h3>
     <div class="field">
-      <label for="pName">Name</label>
-      <input id="pName" maxlength="64" autocomplete="off" spellcheck="false"
-             placeholder="e.g. my-app">
-      <div class="hint">Becomes the directory under /workspace. Letters, digits,
-        dots, dashes, underscores.</div>
-    </div>
-    <div class="field">
       <label id="pSrcLabel">Source</label>
       <div class="pseg" role="group" aria-labelledby="pSrcLabel">
         <button id="pLocal" class="on" type="button">New local repo</button>
         <button id="pClone" type="button">Clone from GitHub</button>
       </div>
     </div>
+    <!-- A clone is not asked for a name or a description: the URL already
+         carries the name, and the notes are drafted from the repository's own
+         README and build files after the clone lands. -->
+    <div class="field" id="pNameField">
+      <label for="pName">Name</label>
+      <input id="pName" maxlength="100" autocomplete="off" spellcheck="false"
+             placeholder="e.g. my-app">
+      <div class="hint">Becomes the directory under /workspace. Letters, digits,
+        dots, dashes, underscores.</div>
+    </div>
     <div class="field" id="pUrlField" hidden>
       <label for="pUrl">Repository</label>
       <input id="pUrl" autocomplete="off" spellcheck="false"
              placeholder="git@github.com:owner/repo.git">
       <div class="hint">Fetched with the container's own access — a deploy key
-        or PAT that can already reach it. Private repos need that set up first.</div>
+        or PAT that can already reach it; private repos need that set up first.
+        The directory takes the repository's name, and a CLAUDE.md is drafted
+        from its README and build files (kept as-is if it already has one).</div>
     </div>
-    <div class="field">
+    <div class="field" id="pAboutField">
       <label for="pAbout">About this project</label>
       <textarea id="pAbout" spellcheck="false"
                 placeholder="What it is, how to build and test it — anything a new session should know."></textarea>
       <div class="hint">Written into the new CLAUDE.md, below the environment
-        block. A cloned repo that already has a CLAUDE.md keeps its own.</div>
+        block.</div>
     </div>
     <div class="field" id="pErrWrap" hidden><div class="hint bad" id="pErr"></div></div>
     <div class="foot">
@@ -2242,7 +2247,10 @@ let pMode = "init";
 function pSeg(){
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
+  // A clone asks for the URL and nothing else — the repository knows its own
+  // name, and the server drafts the CLAUDE.md notes from the code it fetched.
   $("pUrlField").hidden = pMode !== "clone";
+  $("pNameField").hidden = $("pAboutField").hidden = pMode === "clone";
 }
 
 function openNewProject(){
@@ -2266,8 +2274,8 @@ for (const f of ["pName", "pUrl"])
 $("pCreate").onclick = async () => {
   const name = $("pName").value.trim(), url = $("pUrl").value.trim();
   const fail = m => { $("pErr").textContent = m; $("pErrWrap").hidden = false; };
-  if (!name) return fail("a name is required");
-  if (pMode === "clone" && !url) return fail("a repository address is required");
+  if (pMode === "clone"){ if (!url) return fail("a repository address is required"); }
+  else if (!name) return fail("a name is required");
   $("pErrWrap").hidden = true;
   const b = $("pCreate");
   b.disabled = true;
@@ -2279,7 +2287,7 @@ $("pCreate").onclick = async () => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return fail(j.error || `create failed (HTTP ${r.status})`);
     closeNewProject();
-    notify(`${name} created — ${j.note || "ready"}`);
+    notify(`${j.name || name} created — ${j.note || "ready"}`);
     refresh();                          // the new row, without waiting a poll
   }catch(e){
     // The request may still be running server-side (a big clone outlives a

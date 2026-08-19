@@ -301,9 +301,11 @@ Warnings stay in the list in amber, because they are asking for something: no
 `CLAUDE.md`, or one whose environment block has fallen behind the image. Both
 are underlined links that fix themselves in place. A row that is excluded or has
 an error carries no Claude button, since a session cannot start there.
-**New project…** at the foot of the card creates one — a fresh local repo or a
-clone of a GitHub repository the container's deploy key or PAT can already
-reach — and builds its `CLAUDE.md` from the details you give it.
+**New project…** at the foot of the card creates one — a fresh local repo built
+from the name and description you give it, or a clone of a GitHub repository
+the container's deploy key or PAT can already reach, which needs only the URL:
+the name comes from the repository and the `CLAUDE.md` is drafted from its own
+README and build files.
 
 Selecting text in a shell terminal copies it to your clipboard as you release
 the mouse. Claude tabs keep tmux's mouse mode instead, so they do not.

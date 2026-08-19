@@ -21,7 +21,11 @@ await page.click('#pClone');
 ok(await page.$eval('#pUrlField', el => !el.hidden)
    && await page.$eval('#pClone', b => b.classList.contains('on')),
    'clone mode shows the URL field and takes the green');
+ok(await page.$eval('#pNameField', el => el.hidden)
+   && await page.$eval('#pAboutField', el => el.hidden),
+   'clone mode asks for nothing but the URL — name and notes come from the repo');
 await page.click('#pLocal');
+ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local brings the name field back');
 
 // Refusals keep the dialog open with the reason in place — nothing typed is
 // lost to a mistake.
@@ -62,8 +66,13 @@ const post = body => page.evaluate(async b => {
 for (const url of ['https://evil.example/owner/repo', 'ext::sh -c id',
                    'file:///etc', 'https://github.com/owner-only',
                    'git@github.com:owner/repo extra'])
-  ok(await post({ name: 'q1', mode: 'clone', url }) === 400, `clone refused: ${url}`);
-ok(!existsSync(`${DIR}/ws/q1`), 'a refused clone leaves no directory behind');
+  ok(await post({ mode: 'clone', url }) === 400, `clone refused: ${url}`);
+ok(!existsSync(`${DIR}/ws/repo`), 'a refused clone leaves no directory behind');
+// The name comes off the URL, not the request — proven without touching the
+// network: a URL naming a repo that already exists here is refused by the
+// mkdir claim before git ever runs.
+for (const url of ['https://github.com/owner/alpha', 'git@github.com:owner/alpha.git'])
+  ok(await post({ mode: 'clone', url }) === 400, `derived name collides, refused: ${url}`);
 for (const name of ['../oops', 'a/b', '.hidden', '_work', 'a b', ''])
   ok(await post({ name, mode: 'init' }) === 400,
      `name refused: ${name || '(empty)'}`);
