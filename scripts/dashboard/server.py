@@ -1562,14 +1562,39 @@ def _pkg_path(probe):
     return ""
 
 
+# The installed versions, cached against the set of installed paths: reading
+# them costs a couple of seconds across every toolchain (dotnet and swift are
+# slow to say their own name), and they cannot change while nothing is being
+# installed. Re-read when that set does.
+_pkg_local = {"key": None, "versions": {}}
+
+
+def local_versions():
+    key = tuple(sorted((p["name"], _pkg_path(p["probe"])) for p in PACKAGES))
+    if _pkg_local["key"] == key:
+        return _pkg_local["versions"]
+    out = {}
+    r = run([BB, "sdk", "versions"], timeout=180)
+    for ln in r["out"].splitlines():
+        f = ln.rstrip().split("\t")
+        if len(f) == 4 and f[1] not in ("", "-"):
+            out[f[0]] = f[1]
+    _pkg_local.update(key=key, versions=out)
+    return out
+
+
 def packages_payload():
     items = []
+    local = local_versions()
     for p in PACKAGES:
         path = _pkg_path(p["probe"])
         v = _pkg_versions.get(p["name"], {})
         items.append({**{k: p[k] for k in ("name", "label", "size", "about")},
                       "installed": bool(path), "path": path,
-                      "version": v.get("installed", ""), "latest": v.get("latest", ""),
+                      # The version is local knowledge and always shown; the
+                      # state is only ever what a check said.
+                      "version": v.get("installed") or local.get(p["name"], ""),
+                      "latest": v.get("latest", ""),
                       "state": v.get("status", "")})
     with _pkg_lock:
         job = {k: (list(v) if isinstance(v, list) else v)
@@ -1622,7 +1647,7 @@ def _pkg_worker():
                 # TSV out: name, installed, latest, status.
                 for ln in r["out"].splitlines():
                     f = ln.rstrip().split("\t")
-                    if len(f) == 4:
+                    if len(f) == 4 and f[3] != "local":
                         _pkg_versions[f[0]] = {"installed": f[1], "latest": f[2],
                                                "status": f[3]}
                 _pkg_job["log"].append(f"{name}: {_pkg_versions.get(name, {}).get('status', '?')}")
@@ -1631,6 +1656,8 @@ def _pkg_worker():
                 _pkg_job["log"].extend(tail)
             _pkg_job["log"] = _pkg_job["log"][-60:]
             (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
+        if action in ("install", "remove", "update"):
+            _pkg_local["key"] = None      # whatever just happened moved a version
 
 
 def _doctor_loop():

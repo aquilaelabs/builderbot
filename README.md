@@ -452,7 +452,8 @@ bb sdk                     # what is installed, where, and how much room is left
 bb sdk install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
 bb sdk install android:tv         # or wear · playstore · ndk · cmake · emulator
 bb sdk install android:"system-images;android-35;google_apis;x86_64"
-bb sdk check               # installed vs current, per toolchain
+bb sdk versions            # what is installed, asking nobody
+bb sdk check               # ...and whether anything newer exists
 bb sdk update flutter      # each the way its own tooling expects
 bb sdk remove flutter
 bb sdk env                 # the PATH lines; new shells get them automatically
@@ -474,6 +475,12 @@ update, shown in amber as `installed → available`. Uninstalling is a **bin
 icon on the row itself**, with a confirmation, because it is about one
 package and a bulk Remove button beside a bulk Install was one mis-click from
 being expensive.
+
+**Two different questions, two different costs.** What version is installed
+is local knowledge — a directory name, or `flutter --version` — so it is on
+every row from the moment the tab opens, cached until something is installed.
+Whether a newer one exists is a network round trip to a different upstream
+per toolchain, so that one waits to be asked.
 
 **Update checking is a question, not a background service.** Each answer costs
 a network round trip to a different upstream — the Flutter branch head, the

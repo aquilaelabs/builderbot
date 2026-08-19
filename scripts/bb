@@ -1215,7 +1215,11 @@ sdk_fetch() {
 # answer says "unknown" rather than guessing "current", because a wrong
 # "current" is the one answer nobody would check.
 sdk_check_one() {
-    local what="$1" d inst="-" latest="-" status=unknown
+    local what="$1" local_only="${2:-}" d inst="-" latest="-" status=unknown
+    # local_only: answer "what is installed" without asking anybody. That
+    # half is a directory read or a --version away, and it is what the
+    # package list wants on every draw; the other half is five network round
+    # trips and belongs behind a button.
     case "$what" in
         flutter)
             d="$(sdk_find flutter)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
@@ -1223,15 +1227,17 @@ sdk_check_one() {
             # our HEAD is the branch head, and ls-remote answers it without
             # fetching an object.
             inst="$(git -C "$d" rev-parse --short=8 HEAD 2>/dev/null || echo -)"
-            latest="$(timeout 30 git -C "$d" ls-remote origin refs/heads/stable 2>/dev/null | cut -c1-8)"
+            [ -n "$local_only" ] || latest="$(timeout 30 git -C "$d" ls-remote origin refs/heads/stable 2>/dev/null | cut -c1-8)"
             [ -n "$latest" ] || latest="-"
             ;;
         swift)
             d="$(sdk_find swift)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
             inst="$("$d/usr/bin/swift" --version 2>/dev/null | sed -n 's/.*Swift version \([0-9.]*\).*/\1/p' | head -1)"
-            latest="$(timeout 30 curl -fsSLI -o /dev/null -w '%{url_effective}' \
-                      https://github.com/swiftlang/swift/releases/latest 2>/dev/null)"
-            latest="${latest##*/swift-}"; latest="${latest%-RELEASE}"
+            if [ -z "$local_only" ]; then
+                latest="$(timeout 30 curl -fsSLI -o /dev/null -w '%{url_effective}' \
+                          https://github.com/swiftlang/swift/releases/latest 2>/dev/null)"
+                latest="${latest##*/swift-}"; latest="${latest%-RELEASE}"
+            fi
             case "$latest" in ''|*[!0-9.]*) latest="-" ;; esac
             ;;
         dotnet)
@@ -1241,7 +1247,7 @@ sdk_check_one() {
             # ask it rather than parsing a release feed that changes shape.
             # The dry-run echoes the exact invocation it would make, version
             # and all — a more stable thing to read than the payload URL.
-            latest="$(timeout 60 bash -c 'curl -fsSL https://dot.net/v1/dotnet-install.sh \
+            [ -n "$local_only" ] || latest="$(timeout 60 bash -c 'curl -fsSL https://dot.net/v1/dotnet-install.sh \
                       | bash -s -- --channel LTS --dry-run' 2>/dev/null \
                       | sed -n 's/.*--version "\([^"]*\)".*/\1/p' | head -1)"
             [ -n "$latest" ] || latest="-"
@@ -1249,13 +1255,13 @@ sdk_check_one() {
         go)
             d="$(sdk_find go)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
             inst="$("$d/bin/go" version 2>/dev/null | awk '{print $3}')"
-            latest="$(timeout 30 curl -fsS 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)"
+            [ -n "$local_only" ] || latest="$(timeout 30 curl -fsS 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)"
             [ -n "$latest" ] || latest="-"
             ;;
         zig)
             d="$(sdk_find zig)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
             inst="$("$d/zig" version 2>/dev/null | head -1)"
-            latest="$(timeout 30 curl -fsS https://ziglang.org/download/index.json 2>/dev/null \
+            [ -n "$local_only" ] || latest="$(timeout 30 curl -fsS https://ziglang.org/download/index.json 2>/dev/null \
                       | python3 -c 'import json,sys
 d = json.load(sys.stdin)
 print(next(k for k in d if k != "master"))' 2>/dev/null)"
@@ -1266,8 +1272,8 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
             inst="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" "$d/cargo/bin/rustc" --version 2>/dev/null | awk '{print $2}')"
             # rustup already knows how to ask; its answer names the version it
             # would move to, which is the only interesting half.
-            local line
-            line="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" timeout 60 \
+            local line=""
+            [ -n "$local_only" ] || line="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" timeout 60 \
                     "$d/cargo/bin/rustup" check 2>/dev/null | grep -i 'stable' | head -1)"
             # Lower case, and a colon rather than an arrow:
             #   stable-x86_64-unknown-linux-gnu - up to date: 1.97.1 (...)
@@ -1286,7 +1292,7 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
             # names the directories it would use. Present means current.
             local want missing=0
             inst="$(basename "$(find "$d" -maxdepth 1 -name 'chromium-*' | head -1)" 2>/dev/null)"
-            for want in $(PLAYWRIGHT_BROWSERS_PATH="$d" timeout 60 playwright install --dry-run \
+            for want in $([ -n "$local_only" ] || PLAYWRIGHT_BROWSERS_PATH="$d" timeout 60 playwright install --dry-run \
                           chromium firefox webkit 2>/dev/null \
                           | sed -n 's/.*Install location: *//p'); do
                 [ -d "$want" ] || missing=1
@@ -1305,12 +1311,13 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
                 d="$(sdk_android_image_dir "$kind")"
                 [ -n "$d" ] || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
                 inst="$(basename "$(dirname "$d")")"
-                if timeout 120 sdkmanager --list 2>/dev/null | sed -n '/Available Updates/,$p' \
+                if [ -z "$local_only" ] && timeout 120 sdkmanager --list 2>/dev/null | sed -n '/Available Updates/,$p' \
                    | grep -q "system-images;${inst};${kind}"; then
                     latest="newer"; status=update
                 else
                     latest="$inst"
                 fi
+                [ -n "$local_only" ] && { printf '%s\t%s\t-\tlocal\n' "$what" "$inst"; return 0; }
                 printf '%s\t%s\t%s\t%s\n' "$what" "$inst" "$latest" \
                     "$([ "$status" = update ] && echo update || echo current)"
                 return 0
@@ -1339,6 +1346,13 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
         *) printf '%s\t-\t-\tunknown\n' "$what"; return 0 ;;
     esac
     [ -n "$inst" ] || inst="-"
+    # A local probe knows what is installed and nothing about what exists
+    # elsewhere, so it must not answer the other question. "current" from a
+    # directory listing would be a claim nobody checked.
+    if [ -n "$local_only" ]; then
+        printf '%s\t%s\t-\tlocal\n' "$what" "$inst"
+        return 0
+    fi
     if [ "$status" = unknown ]; then
         if [ "$inst" = "-" ] || [ "$latest" = "-" ]; then status=unknown
         elif [ "$inst" = "$latest" ]; then status=current
@@ -1346,6 +1360,14 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
         fi
     fi
     printf '%s\t%s\t%s\t%s\n' "$what" "$inst" "$latest" "$status"
+}
+
+# bb sdk versions — installed versions only, nothing asked of the network.
+sdk_versions() {
+    local names="$*"
+    [ -n "$names" ] || names="playwright flutter dotnet swift go rust zig android:emulator android:ndk android:cmake android:tv android:wear android:playstore"
+    local n
+    for n in $names; do sdk_check_one "$n" local; done
 }
 
 sdk_check() {
@@ -1710,10 +1732,11 @@ cmd_sdk() {
         env)        sdk_env_snippet ;;
         install)    sdk_install "$@"; sdk_write_env ;;
         check)      sdk_check "$@" ;;
+        versions)   sdk_versions "$@" ;;
         relink)     sdk_relink_android ;;
         update)     sdk_update "$@"; sdk_write_env ;;
         remove)     sdk_remove "$@"; sdk_write_env ;;
-        *) die "usage: bb sdk [status|root|env|check|relink|install X|update X|remove X]" ;;
+        *) die "usage: bb sdk [status|root|env|versions|check|relink|install X|update X|remove X]" ;;
     esac
 }
 

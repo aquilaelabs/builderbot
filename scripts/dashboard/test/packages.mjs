@@ -79,8 +79,11 @@ ok(await page.$$eval('.doc .pkg input', is => is.every(i => !i.checked)),
    'a finished job clears the selection it consumed');
 
 // ---- versions and updates ----------------------------------------------
-// Nothing claims to be current until something asks: every probe behind this
-// costs a network round trip, so an unchecked row says nothing at all.
+// The installed version is local knowledge and shows without being asked;
+// whether something newer exists is a network question, and until it is asked
+// no row claims anything.
+ok((await page.$$eval('.doc .pkg .nm .pill', ps => ps.map(p => p.textContent)))
+     .some(t => t === '1.0'), 'installed versions show without a check');
 ok(await page.$$eval('.doc .pkg .upd', us => us.length === 0),
    'no update claims before a check');
 await page.click('.doc [data-pkg="check"]');
@@ -99,8 +102,6 @@ ok(!(await page.$eval('.doc .pkg input[value="swift"]', i => i.disabled)),
    'and something not installed at all is always tickable');
 ok((await page.$eval('.doc .pkg .upd', el => el.textContent)).includes('→ 2.0'),
    '...and says which version it would move to');
-ok((await page.$$eval('.doc .pkg .nm .pill', ps => ps.map(p => p.textContent)))
-     .some(t => t === '1.0'), 'installed versions appear beside the sizes');
 // Update runs like the others: a job, a log, and the ticks it consumed.
 await page.check('.doc .pkg input[value="flutter"]');
 await page.click('.doc [data-pkg="install"]');

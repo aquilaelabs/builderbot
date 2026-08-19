@@ -112,6 +112,11 @@ if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
 if [ "${1:-}" = sdk ]; then
     case "${2:-}" in
         root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
+        versions) # local only: installed version, no upstream asked. Called
+                  # with no names by the server, which wants the lot.
+                 for n in ${3:-playwright flutter dotnet swift go rust zig android:emulator}; do
+                     printf '%s\t1.0\t-\tlocal\n' "$n"
+                 done ;;
         check)   # one line per name: installed, latest, status
                  case "$3" in
                      flutter) printf '%s\t1.0\t2.0\tupdate\n' "$3" ;;
