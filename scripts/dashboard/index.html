@@ -194,14 +194,15 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
 .pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
-.pkg .prog{display:flex;align-items:center;gap:8px;color:var(--accent);font-family:var(--mono)}
+.pkg .prog{display:flex;align-items:center;gap:8px;color:var(--accent);
+  font-family:var(--mono);overflow-wrap:anywhere}
 .pkg .prog .bar{flex:0 0 110px;height:5px;border-radius:99px;background:#233040;overflow:hidden}
 .pkg .prog .bar i{display:block;height:100%;background:var(--accent);transition:width .4s}
-/* No number to show: a dim full bar rather than a fake sweep. The row is
-   redrawn every second, which restarts any animation on it — and a bar that
-   stutters once a second looks more broken than one that simply waits. The
-   live part is the line of output beside it. */
-.pkg .prog .bar.idle i{width:100%;background:#2b3d52}
+/* The ellipsis is ticked by a timer rather than a CSS animation: the row is
+   rebuilt every second while a job runs, which restarts any animation on it,
+   and dots that stutter once a second read as broken. The timer writes into
+   the span, and a rebuild renders whatever count it is on. */
+.pkg .prog .dots{display:inline-block;width:1.4em;text-align:left}
 .pkg .where.on{color:var(--accent)}
 .pkg .upd{color:var(--warn)}
 /* Installed and current: the row is done, and says so by fading its tick
@@ -2462,6 +2463,17 @@ async function loadPackages(){
   drawPanes();
 }
 
+// The animated ellipsis. One counter for the tab, ticked on its own timer and
+// written straight into the spans, so the once-a-second redraw neither
+// restarts it nor resets it — a rebuild simply renders the count it is on.
+let pkgDots = 0, pkgDotsTimer = null;
+function pkgTickDots(){
+  const spans = document.querySelectorAll(".pkg .prog .dots");
+  if (!spans.length){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; return; }
+  pkgDots = (pkgDots + 1) % 4;
+  spans.forEach(e => e.textContent = ".".repeat(pkgDots));
+}
+
 // A trash can, for the one control that is per-row: uninstalling is about
 // a particular package, never a selection, and a bulk Remove button beside a
 // bulk Install was one mis-click away from being expensive.
@@ -2500,16 +2512,15 @@ function pkgRow(p, busy, job){
   const pr = mine && job.progress && job.progress.name === p.name ? job.progress : null;
   const doing = job && job.action === "remove" ? "removing"
               : job && job.action === "check" ? "checking"
-              : pr && pr.phase ? pr.phase : "working";
-  const pct = pr && pr.pct != null ? pr.pct : null;
-  // With a number, the bar tells the story. Without one, the last line the
-  // tool printed does — "Building flutter tool…" is the honest answer for the
-  // several minutes a flutter install spends printing no numbers at all.
-  const label = pct != null ? `${doing} ${pct}%`
-              : pr && pr.note ? pr.note
-              : `${doing}…`;
-  const prog = `<span class="sub prog"><span class="bar${pct == null ? " idle" : ""}"><i style="width:${
-    pct == null ? 100 : pct}%"></i></span>${esc(label)}</span>`;
+              : "installing";
+  // Two states, and only two. A download can say how far along it is, so it
+  // gets a bar and a number; everything after it cannot — there is no honest
+  // denominator for "installing" — so it says so and animates, rather than
+  // pretending by naming whichever component it happens to be unpacking.
+  const pct = pr && pr.phase === "downloading" && pr.pct != null ? pr.pct : null;
+  const prog = pct != null
+    ? `<span class="sub prog"><span class="bar"><i style="width:${pct}%"></i></span>downloading ${pct}%</span>`
+    : `<span class="sub prog">${esc(doing)}<span class="dots">${".".repeat(pkgDots)}</span></span>`;
   return `<label class="pkg${upToDate ? " done" : ""}">
     <input type="checkbox" value="${esc(p.name)}"${pkgTicked.has(p.name) ? " checked" : ""}${
       upToDate ? ` disabled title="installed and up to date — nothing to do until a check finds an update"` : ""}>
@@ -2584,6 +2595,8 @@ function renderPackagesInto(i){
   // A second, not two: this poll is now what moves the progress bar, and at
   // two seconds a download that takes four ticks looks like it is stuck.
   if (busy) pkgPoll = setTimeout(loadPackages, 1000);
+  if (busy && !pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
+  if (!busy && pkgDotsTimer){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; }
   else if ((job.done || []).length) refresh();
 }
 

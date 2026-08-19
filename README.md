@@ -486,14 +486,14 @@ Uninstalling is a **bin icon on the row itself**, with a confirmation,
 because it is about one package and a bulk Remove button beside a bulk
 Install was one mis-click from being expensive.
 
-**A row says what it is doing while it does it.** The percentage under the
-description is scraped from whatever the recipe is printing — Playwright's
-download bar, sdkmanager's, git's `Receiving objects`, curl's table — and
-switches from `downloading` to `installing` when the output does. Where a
-step prints no numbers at all, the row shows the line it last printed
-instead: `Building flutter tool…` is the honest answer for the several
-minutes a Flutter install spends there, and a percentage left over from the
-download before it is not. Until then a row that is
+**A row says what it is doing while it does it**, in two states and only two.
+A download can say how far along it is, so it gets a bar and a percentage,
+scraped from whatever the recipe happens to print — Playwright's bar,
+sdkmanager's, git's `Receiving objects`, curl's meter in either of its
+formats. Everything after the download cannot: there is no honest denominator
+for "installing", so the row says `installing` with a ticking ellipsis rather
+than naming whichever component it is unpacking. A percentage left over from
+the download before it would be worse than either. Until then a row that is
 mid-install said *"installed at /sdk/flutter"*, because every probe here
 calls a non-empty directory installed and that is precisely what a download
 in progress leaves behind. For the same reason an install that fails removes

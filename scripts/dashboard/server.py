@@ -1719,7 +1719,9 @@ def is_mount(path):
 # alphabet.
 _PROGRESS_FRAME = re.compile(r"^(\[[=\s]*\]\s*\d+%|\|[\u25a0\s]*\|\s*\d+%)")
 
-_PCT = re.compile(r"(\d{1,3})\s*%")
+# The decimal matters: on "100.0%" a bare \d{1,3} match lands on the 0 after
+# the point and reports nought percent for a finished download.
+_PCT = re.compile(r"(\d{1,3})(?:\.\d+)?\s*%")
 # curl's default meter is a table, not a bar, and its first column is the
 # percentage — flutter fetches its 227MB Dart SDK through one, so without this
 # the longest download in the catalog reports nothing at all. Matched on the
@@ -1734,15 +1736,8 @@ _PHASES = ((re.compile(r"unzip|extract|instal|build|compil|resolv|warming|checki
             "downloading"))
 
 
-def _short(line):
-    """One line of tool output, fit to a row."""
-    line = re.sub(r"^\[builderbot\]\s*", "", line.strip())
-    line = re.sub(r"\s+", " ", line)
-    return line[:60] + ("…" if len(line) > 60 else "")
-
-
 def _progress_of(line, phase):
-    """(phase, percent, note) for one line of a tool's output.
+    """(phase, percent, prose) for one line of a tool's output.
 
     Deliberately generic. Every recipe here draws its own bar — playwright's
     `|====| 40% of 102 MiB`, sdkmanager's `[====] 40% Downloading`, git's
@@ -1751,16 +1746,21 @@ def _progress_of(line, phase):
     over from whichever keyword was last seen, because the bar line itself
     usually does not repeat it.
 
-    Exactly one of percent and note comes back set. A line of prose means the
-    bar it followed is finished, and the number that bar reached is no longer
-    true of anything — a flutter install froze on "downloading 100%" for the
-    whole of `Building flutter tool…`, which is most of the install, because
-    the last number seen was kept until another one arrived."""
+    `prose` marks a line that is words rather than a bar, which is how a
+    finished number gets retired: the bar it followed is over, and the figure
+    it reached is no longer true of anything. A flutter install froze on
+    "downloading 100%" for the whole of `Building flutter tool…` — most of the
+    install — because the last number seen was kept until another arrived.
+
+    What those words say is not reported. A row showed "Installing pack
+    Microsoft.NETCore.App.Runtime.Mono.android-arm64" and pushed the page
+    sideways, and that is a component list nobody reading a package manager
+    wants: how far along a download is, and then that it is installing."""
     m = _CURL_ROW.match(line)
     if m:
         # Always a download: curl is only ever fetching here, whatever the
         # line before it happened to call the step.
-        return "downloading", int(m.group(1)), None
+        return "downloading", int(m.group(1)), False
     frame = bool(_PROGRESS_FRAME.match(line))
     for rx, name in _PHASES:
         if rx.search(line):
@@ -1771,10 +1771,8 @@ def _progress_of(line, phase):
     if pct is not None and not 0 <= pct <= 100:
         pct = None
     if pct is not None:
-        return phase, pct, None
-    if not frame and re.search(r"[A-Za-z]", line):
-        return phase, None, _short(line)
-    return phase, None, None
+        return phase, pct, False
+    return phase, None, bool(not frame and re.search(r"[A-Za-z]", line))
 
 
 def run_streamed(cmd, on_line, timeout=3600):
@@ -1859,11 +1857,11 @@ def _pkg_worker():
         def watch(line, _name=name):
             with _pkg_lock:
                 cur = _pkg_job["progress"] or {}
-                phase, pct, note = _progress_of(line, cur.get("phase"))
-                if pct is None and note is None:
+                phase, pct, prose = _progress_of(line, cur.get("phase"))
+                if pct is None and not prose:
                     return                    # a frame with no number in it
                 _pkg_job["progress"] = {"name": _name, "phase": phase or "working",
-                                        "pct": pct, "note": note}
+                                        "pct": pct}
 
         r = run_streamed([BB, "sdk", verb, name], watch, timeout=3600)
         with _pkg_lock:
