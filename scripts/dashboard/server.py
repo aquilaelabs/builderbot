@@ -1426,6 +1426,11 @@ def doctor_payload():
 # `probe` is relative to ANDROID_HOME for android packages (whose directories
 # are symlinks into the share) and to the SDK root for everything else.
 PACKAGES = [
+    {"name": "playwright", "label": "Playwright browsers", "size": "~1.3 GB",
+     "probe": "playwright",
+     "about": "Chromium, Firefox and WebKit. The image carries Playwright "
+              "itself and the system libraries; these are the browser bundles "
+              "bb shot and the dashboard's own tests drive."},
     {"name": "flutter", "label": "Flutter", "size": "~1.3 GB", "probe": "flutter",
      "about": "Flutter with the bundled Dart SDK. Builds Android APKs here; "
               "the iOS half of a Flutter app still needs a Mac."},

@@ -1051,7 +1051,7 @@ EOF
 # Each recipe unpacks into its own directory under the root and is undone by
 # deleting that directory — no system packages, nothing outside the root, so
 # `bb sdk remove` is a plain rm and a container rebuild changes nothing.
-SDK_TOOLCHAINS="android flutter dotnet swift tizen"
+SDK_TOOLCHAINS="android playwright flutter dotnet swift tizen"
 
 sdk_dir() { printf '%s/%s' "$(sdk_root)" "$1"; }
 
@@ -1126,7 +1126,7 @@ sdk_fetch() {
 
 sdk_install() {
     local what="${1:-}" root; root="$(sdk_root)"
-    [ -n "$what" ] || die "usage: bb sdk install android:<package>|flutter|dotnet|swift|tizen"
+    [ -n "$what" ] || die "usage: bb sdk install android:<package>|playwright|flutter|dotnet|swift|tizen"
     mkdir -p "$root"
     case "$what" in
         android:*)
@@ -1207,6 +1207,19 @@ sdk_install() {
             "$d/usr/bin/swift" --version | head -1
             log "swift ready — new shells pick it up; this one: eval \"\$(bb sdk env)\""
             ;;
+        playwright)
+            # The browsers, not the module: the module is an npm global in the
+            # image, these are 1.3GB of bundles that only ever get downloaded.
+            local d; d="$(sdk_dir playwright)"
+            command -v playwright >/dev/null 2>&1 || die "playwright is not in this image"
+            mkdir -p "$d"
+            log "installing chromium, firefox and webkit into ${d}"
+            PLAYWRIGHT_BROWSERS_PATH="$d" playwright install chromium firefox webkit
+            local exe
+            exe="$(find "$d" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
+            [ -n "$exe" ] && ln -sfn "$exe" "$d/chromium"
+            log "browsers ready at ${d}"
+            ;;
         tizen)
             # Samsung's own installer is a GUI Java bundle; only the CLI
             # distribution can be unpacked without a display, and only some
@@ -1232,7 +1245,7 @@ EOF
 sdk_remove() {
     local what="${1:-}" d
     case "$what" in
-        flutter|dotnet|swift|tizen) d="$(sdk_dir "$what")" ;;
+        flutter|dotnet|swift|tizen|playwright) d="$(sdk_dir "$what")" ;;
         android:*)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
             local pkg="${what#android:}" v
@@ -1250,7 +1263,7 @@ sdk_remove() {
             esac
             sdkmanager --uninstall "$pkg"
             return 0 ;;
-        *) die "usage: bb sdk remove flutter|dotnet|swift|tizen|android:<package>" ;;
+        *) die "usage: bb sdk remove playwright|flutter|dotnet|swift|tizen|android:<package>" ;;
     esac
     [ -d "$d" ] || die "${what} is not installed"
     log "removing ${d}"

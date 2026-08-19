@@ -51,15 +51,16 @@ recreated on every image update.
 | This project, including uncommitted work | `/workspace/<project>` — the projects share is mounted whole at `/workspace`, so every folder in it is here |
 | Your session transcripts and memory files | `~/.claude/` |
 | Claude Code login, shell history, AVDs | `~` (the home volume) |
-| Android system images and platforms | `~/.android/sdk` (symlinked into the SDK) |
+| SDKs and toolchains — Android packages, Playwright browsers, Flutter/.NET/Swift | the SDK share at `/sdk`, symlinked into place. `bb sdk` lists and installs them |
 | Gradle / npm / pip caches | `~/.gradle`, `~/.npm`, … |
 
 **Does not survive** — anything written outside those paths:
 
 - `/tmp`, `/var`, and the rest of the root filesystem
-- `/opt` — including the Android SDK's tools and build-tools. The two
-  expensive subdirectories (`system-images/`, `platforms/`) are symlinked to
-  the home volume and *do* persist; everything else there comes from the image
+- `/opt` — but most of what looks like it lives there is a symlink onto the
+  SDK share and *does* persist: the Android packages, the Playwright browsers,
+  anything `bb sdk install` put there. What actually comes from the image is
+  the bootstrap — `sdkmanager`, `adb`, the CLI tools
 - System packages installed ad hoc with `apt-get install`
 - Running processes, including the emulator and any dev server
 
@@ -92,11 +93,13 @@ a bug to route around with Bash.
 Everything is headless. There is no X server, no window manager, nothing to
 show a GUI on.
 
-- **Playwright** — browsers are pre-installed at `/opt/pw-browsers` and
-  configured via `PLAYWRIGHT_BROWSERS_PATH`. Run headless. Never run
-  `playwright install`; if a project pins a different version, launch with
-  `executablePath: '/opt/pw-browsers/chromium'` (a stable symlink to the
-  image's Chromium). The image's Playwright is a global module: `require()`
+- **Playwright** — browsers live at `/opt/pw-browsers`, which is a symlink
+  onto the SDK share (they are 1.3GB of download, so the image does not carry
+  them); `PLAYWRIGHT_BROWSERS_PATH` still points there. Run headless. You do
+  not need `playwright install` — the container installs them on first boot
+  and `bb sdk install playwright` repairs them — and if a project pins a
+  different version, launch with `executablePath: '/opt/pw-browsers/chromium'`
+  (a stable symlink to the current Chromium). The image's Playwright is a global module: `require()`
   finds it from any directory via `NODE_PATH`; ESM `import` does not honor
   that, so use `createRequire(import.meta.url)('playwright')`.
 - **`bb shot URL... [FILE|DIR]`** — headless screenshot(s) of any pages, for

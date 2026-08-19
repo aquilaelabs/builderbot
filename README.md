@@ -54,7 +54,7 @@ private tmux server and photographs it with `bb shot` — the pattern the
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
 | **Java** | OpenJDK 21 |
-| **Playwright** | CLI + chromium/firefox/webkit with system deps, shared at `/opt/pw-browsers` |
+| **Playwright** | CLI + the system deps; the browsers themselves install to the [SDK share](#sdks-live-outside-the-image) and appear at `/opt/pw-browsers` |
 | **Android** | SDK cmdline-tools (`sdkmanager`), platform-tools (`adb`), `bundletool`. Platforms, build-tools, the emulator and system images install to the [SDK share](#sdks-live-outside-the-image), not the image |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
@@ -466,6 +466,7 @@ anywhere else.
 | Toolchain | Size | What it gets you |
 |---|---|---|
 | Android packages | 2GB per API level | Platforms, build-tools, emulator, system images |
+| `playwright` | ~1.3GB | Chromium, Firefox and WebKit — installed on first boot, since `bb shot` and the dashboard's tests need them |
 | `flutter` | ~1.3GB | Flutter + the bundled Dart SDK; builds Android APKs here |
 | `dotnet` | ~4GB | .NET SDK plus the `maui-android` workload |
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
@@ -488,10 +489,21 @@ and licensed to Apple hardware; no Linux container can host them. For web and
 PWA work the answer is already installed — Playwright's WebKit is Safari's
 engine, with iPhone device profiles. For a native iOS build you need a Mac.
 
+**What stays in the image, and why.** Anything apt installs (the JDK,
+ffmpeg, imagemagick, build-essential) integrates with the system and cannot
+live on a share. So do the small CLI tools `bb lint` promises — shellcheck,
+hadolint, actionlint — and the Android bootstrap, `sdkmanager` and `adb`,
+which is what installs everything else. Playwright's *module* and its system
+libraries stay; only the browser bundles move. The Actions runner stays too:
+it is what this container is for, its version is part of what an image
+pins, and CI that had to wait for a 666MB download before its first job
+would be a worse trade than the megabytes are worth.
+
 **The first boot after an update is not free.** A container whose share is
 empty installs the Android baseline (platform + build-tools, a few hundred MB)
-on first start, and the emulator the first time `ENABLE_ANDROID_EMULATOR=true`
-asks for it. That happens once; from then on updates cost nothing.
+and the Playwright browsers (~1.3GB) on first start, and the emulator the
+first time `ENABLE_ANDROID_EMULATOR=true` asks for it. That happens once per
+share; from then on updates cost nothing.
 
 ## Multiple Android versions
 

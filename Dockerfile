@@ -187,32 +187,32 @@ RUN set -eux; \
 ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
 
 # ---------------------------------------------------------------------------
-# Playwright + browsers (chromium, firefox, webkit), shared system-wide.
+# Playwright: the module and the system libraries here, the browsers on the
+# SDK share.
 #
-# PLAYWRIGHT_BROWSERS_PATH makes every project's playwright resolve browsers
-# from the same directory instead of per-project caches; the dir is left
-# world-writable so a project pinning a different playwright version can
-# `npx playwright install` its own revisions into it at runtime.
+# The three browsers are 1.3GB of pure download — the largest thing left that
+# /opt would throw away on every image update — so `install-deps` (apt
+# packages, which have to be in the image because they integrate with the
+# system) is split from `install` (the browser bundles, which do not). The
+# startup hook fetches those into the share on first boot and symlinks
+# PLAYWRIGHT_BROWSERS_PATH at them, so every path the image has always
+# promised — /opt/pw-browsers/chromium above all — still resolves.
+#
+# The env var keeps its value for the same reason: every project's playwright,
+# the dashboard's tests and `bb shot` name that directory, and it is now a
+# link rather than a directory.
 # ---------------------------------------------------------------------------
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 
-# DS-0017 suppressed: the apt-get update below feeds `playwright install
-# --with-deps`, which runs apt-get install itself in this same layer; the
+# DS-0017 suppressed: the apt-get update below feeds `playwright
+# install-deps`, which runs apt-get install itself in this same layer; the
 # scanner only recognizes a literal install and reports the update as alone.
 #trivy:ignore:AVD-DS-0017
 RUN set -eux; \
     if [ "${INSTALL_PLAYWRIGHT}" != "true" ]; then echo "skipping Playwright"; exit 0; fi; \
     npm install -g --foreground-scripts playwright; \
     apt-get update; \
-    playwright install --with-deps chromium firefox webkit; \
-    chmod -R a+rwX "${PLAYWRIGHT_BROWSERS_PATH}"; \
-    # A stable path to the Chromium binary. The revisioned directory
-    # (chromium-1234/chrome-linux64/chrome) changes with every Playwright
-    # release, and the project CLAUDE.md template has long told sessions to
-    # launch with executablePath /opt/pw-browsers/chromium — a promise the
-    # image did not keep until this symlink.
-    ln -sfn "$(find "${PLAYWRIGHT_BROWSERS_PATH}" -path '*/chromium-*/chrome-linux*/chrome' -type f | head -1)" \
-        "${PLAYWRIGHT_BROWSERS_PATH}/chromium"; \
+    playwright install-deps chromium firefox webkit; \
     npm cache clean --force; \
     rm -rf /var/lib/apt/lists/*; \
     playwright --version
