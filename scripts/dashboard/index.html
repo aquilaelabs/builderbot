@@ -2618,9 +2618,13 @@ function renderPackagesInto(i){
   // Poll only while something is running: this list is a filesystem walk, not
   // something to ask for every two seconds forever.
   clearTimeout(pkgPoll);
-  // A second, not two: this poll is now what moves the progress bar, and at
-  // two seconds a download that takes four ticks looks like it is stuck.
-  if (busy) pkgPoll = setTimeout(loadPackages, 1000);
+  // Twice a second, because this poll IS the progress bar. Each one reads
+  // whatever line the job had reached, so the frame rate of the bar is the
+  // poll rate: at one second a download reporting eight, thirty-one, sixty-six
+  // and a hundred showed two of those four, which is a bar that jumps once and
+  // otherwise sits still. The request is a cached dict — nothing is probed
+  // while a job runs — so the cost of asking more often is a round trip.
+  if (busy) pkgPoll = setTimeout(loadPackages, 500);
   if (busy && !pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
   if (!busy && pkgDotsTimer){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; }
   else if ((job.done || []).length) refresh();

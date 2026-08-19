@@ -223,6 +223,42 @@ ok(true, 'Install selected updates a package that is already installed');
 ok(await page.$$eval('.doc [data-pkg]', bs => bs.every(b => b.textContent.indexOf('Remove') < 0)),
    'there is no bulk remove button to mis-click');
 
+// ---- the bar, through the real path ------------------------------------
+// Set by hand the bar renders at any width asked of it; the question this
+// answers is whether a running job's numbers actually reach it. The stub's
+// `go` install draws a carriage-return bar over two seconds, so the widths
+// sampled here come through streaming, the parser, the payload and the poll.
+await page.check('.doc .pkg input[value="go"]');
+await page.click('.doc [data-pkg="install"]');
+const widths = [], labels = [];
+for (let i = 0; i < 12; i++){
+  const s = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.doc .pkg')]
+      .find(l => l.querySelector('input').value === 'go');
+    const f = row?.querySelector('.prog .bar i');
+    return { w: f ? Math.round(f.getBoundingClientRect().width) : null,
+             t: row?.querySelector('.prog')?.textContent.trim() || null };
+  });
+  widths.push(s.w); labels.push(s.t);
+  await new Promise(r => setTimeout(r, 250));
+}
+// Four distinct widths, because the stub reports four percentages and every
+// one of them should land. The poll IS the frame rate of this bar: at one
+// second it caught 8 and 66 and missed 31 and 100, which on a download that
+// finishes quickly is a single frame and reads as a bar that never moves.
+const filled = [...new Set(widths.filter(w => w))];
+ok(filled.length === 4 && filled.every((w, i) => i === 0 || w > filled[i - 1]),
+   `the bar fills, hitting every percentage reported (${widths.join(' ')})`);
+const said = [...new Set(labels.filter(Boolean))];
+ok(['8', '31', '66', '100'].every(n => said.some(t => t === `downloading ${n}%`)),
+   `...and the row counts up with it (${said.join(' | ')})`);
+await page.waitForFunction(() => packages?.job && !packages.job.running, { timeout: 30000 });
+// Put it back the way it was found: what follows counts installed packages,
+// and a third one left lying around here is how this file first went red.
+await page.evaluate(() => pkgAct('remove', ['go']));
+await page.waitForFunction(() => packages?.job && !packages.job.running
+  && !(packages.items || []).find(i => i.name === 'go')?.installed, { timeout: 30000 });
+
 // ---- uninstall is per row, and asks ------------------------------------
 ok(await page.$$eval('.doc .pkg', ls => ls.filter(l => l.querySelector('[data-rm]')).length) === 2,
    'every installed package carries its own uninstall control');

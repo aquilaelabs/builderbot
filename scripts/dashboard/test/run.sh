@@ -136,7 +136,20 @@ if [ "${1:-}" = sdk ]; then
         update)  printf 'updated %s\n' "$3" ;;
         install|remove)
                  d="$(_d "$3")"
-                 if [ "${2}" = install ]; then mkdir -p "$d" && : > "$d/marker"
+                 if [ "${2}" = install ]; then
+                     # One package takes its time and draws a bar, with the
+                     # carriage returns a real tool uses, so a test can watch
+                     # the progress reach the row through the whole path:
+                     # streamed output, parser, payload, poll, render. Every
+                     # other package installs instantly, as before.
+                     if [ "$3" = go ]; then
+                         printf 'Downloading go.tar.gz from https://example\n'
+                         for pct in 8 31 66 100; do
+                             printf '[====] %s%% Downloading go.tar.gz\r' "$pct"; sleep 0.5
+                         done
+                         printf '\nUnzipping...\n'; sleep 0.4
+                     fi
+                     mkdir -p "$d" && : > "$d/marker"
                  else rm -rf "$d"; fi
                  printf '%sed %s\n' "${2%e}" "$3" ;;
     esac
