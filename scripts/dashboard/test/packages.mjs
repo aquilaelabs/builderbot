@@ -77,8 +77,12 @@ ok(await page.$('.pkglog') !== null, 'the progress log appears');
 
 // A finished install lets go of its ticks, so the next click cannot act on
 // what was just dealt with — Remove especially.
-ok(await page.$$eval('.doc .pkg input', is => is.every(i => !i.checked)),
+// Enabled boxes only: an installed-and-current row is ticked on purpose now,
+// and that tick is a statement about the package rather than a selection.
+ok(await page.$$eval('.doc .pkg input:not(:disabled)', is => is.every(i => !i.checked)),
    'a finished job clears the selection it consumed');
+ok(await page.$$eval('.doc .pkg input:disabled', is => is.length > 0 && is.every(i => i.checked)),
+   '...and what is installed and current shows a ticked box that cannot be changed');
 
 // ---- what a row says while the job is on it -----------------------------
 // "installed at /sdk/flutter" used to appear the moment the download created
