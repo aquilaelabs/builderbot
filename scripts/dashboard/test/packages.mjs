@@ -154,6 +154,16 @@ ok(await page.$$eval('.doc .pkg', ls => ls.filter(l => l.querySelector('[data-rm
    'every installed package carries its own uninstall control');
 ok(await page.$('.doc .pkg:not(:has([data-rm])) [data-rm]') === null,
    '...and packages that are not installed do not');
+// One operation at a time — the server answers a second with a 409 — so the
+// controls go dead while one runs rather than letting a click earn an error.
+// The bin icons were the gap: only the two big buttons were being disabled.
+await page.evaluate(() => { packages.job.running = true; pkgRev++; drawPanes(); });
+ok(await page.$$eval('.doc [data-rm]', bs => bs.length > 0 && bs.every(b => b.disabled))
+   && await page.$$eval('.doc [data-pkg]', bs => bs.every(b => b.disabled)),
+   'while a job runs, every install and uninstall control is ghosted');
+await page.evaluate(() => { packages.job.running = false; pkgRev++; drawPanes(); });
+ok(await page.$$eval('.doc [data-rm]', bs => bs.every(b => !b.disabled)),
+   '...and live again when it finishes');
 const nd = page.dialogs.length;
 await page.click('.doc [data-rm="android:emulator"]');
 ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Uninstall'),
