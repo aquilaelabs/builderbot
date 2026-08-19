@@ -100,11 +100,24 @@ LOGIN_HTML = """<!doctype html>
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
-  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+  /* dvh, not vh: on a phone `vh` resolves against the LARGE viewport — the
+     page as it would be with the URL bar retracted — so min-height:100vh
+     made the body taller than the visible area and the page scrolled to
+     reach nothing. dvh tracks the bar as it comes and goes; vh stays first
+     as the fallback for browsers that do not know dvh.
+     `safe center` keeps the top of the card reachable if a soft keyboard
+     ever leaves less room than the card needs, the same rule the
+     dashboard's own dialogs use. */
+  body{margin:0;min-height:100vh;min-height:100dvh;padding:16px;
+    box-sizing:border-box;
+    display:flex;align-items:safe center;justify-content:center;
     background:#0d1117;color:#e6edf3;
     font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
-  form{background:#161b22;border:1px solid #30363d;border-radius:10px;
-    padding:28px;width:min(340px,calc(100vw - 48px));
+  /* border-box, or the padding and border are added to the width: the card
+     wanted 398px on a 390px phone, flex shrank it to exactly the viewport,
+     and it sat edge to edge looking far bigger than it is. */
+  form{box-sizing:border-box;background:#161b22;border:1px solid #30363d;
+    border-radius:10px;padding:28px;width:min(340px,100%);
     display:flex;flex-direction:column;gap:12px}
   h1{margin:0 0 6px;font-size:18px;display:flex;align-items:center;gap:10px}
   h1 svg{width:28px;height:28px;color:#3fb950}
