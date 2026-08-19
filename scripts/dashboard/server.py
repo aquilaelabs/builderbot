@@ -1417,6 +1417,139 @@ def doctor_payload():
         return {k: _doctor[k] for k in ("when", "checks", "failed", "running")}
 
 
+# ---- additional packages ---------------------------------------------------
+# The toolchains `bb sdk` can put on the SDK share, as the Tools card offers
+# them. The names on the left are the contract with bb: each is exactly what
+# `bb sdk install <name>` takes, and the recipes live there — this table is
+# only how they are described and where their installed copy is looked for.
+#
+# `probe` is relative to ANDROID_HOME for android packages (whose directories
+# are symlinks into the share) and to the SDK root for everything else.
+PACKAGES = [
+    {"name": "flutter", "label": "Flutter", "size": "~1.3 GB", "probe": "flutter",
+     "about": "Flutter with the bundled Dart SDK. Builds Android APKs here; "
+              "the iOS half of a Flutter app still needs a Mac."},
+    {"name": "dotnet", "label": ".NET + MAUI", "size": "~4 GB", "probe": "dotnet",
+     "about": "The .NET SDK plus the maui-android workload — Android apps from C#."},
+    {"name": "swift", "label": "Swift", "size": "~3 GB", "probe": "swift",
+     "about": "The Swift toolchain for Linux: shared logic, server-side Swift, "
+              "and compiling packages. Not an iOS SDK."},
+    {"name": "android:emulator", "label": "Android emulator", "size": "~800 MB",
+     "probe": "android:emulator",
+     "about": "The emulator binary. System images are per API level and come "
+              "from ANDROID_SYSTEM_IMAGES."},
+    {"name": "android:ndk", "label": "Android NDK", "size": "~3 GB",
+     "probe": "android:ndk",
+     "about": "Native development kit, for C and C++ inside an Android app."},
+    {"name": "android:cmake", "label": "Android CMake", "size": "~200 MB",
+     "probe": "android:cmake",
+     "about": "The CMake the NDK's build system uses."},
+    {"name": "tizen", "label": "Tizen (manual)", "size": "instructions",
+     "probe": "tizen",
+     "about": "Galaxy Watch and Samsung TV. Samsung ships a GUI installer, so "
+              "this prints the steps rather than pretending to automate them."},
+]
+
+# One install at a time, in a worker thread, because these are minutes long
+# and megabytes wide: a request that waited for them would time out, and two
+# at once would fight over the same sdkmanager lock.
+_pkg_lock = threading.Lock()
+_pkg_job = {"running": False, "queue": [], "current": "", "action": "",
+            "log": [], "done": [], "failed": []}
+_sdk_root_cache = []
+
+
+# The bb that ships with this server.py: /opt/builderbot/scripts/bb in the
+# image, the checkout's copy under `bb dashboard dev`. Same relative position
+# either way, and it keeps the pair in step — a page offering a subcommand
+# the bb beside it does not have would be a button that cannot work.
+# BB_BIN exists for the test harness, which points it at a stub: the suite
+# must be able to drive install and remove without downloading gigabytes.
+BB = os.environ.get("BB_BIN") or str(HERE.parent / "bb")
+
+
+def sdk_root_path():
+    """Where bb decided the SDK root is — asked once, since it cannot change
+    without a container restart."""
+    if not _sdk_root_cache:
+        r = run([BB, "sdk", "root"], timeout=15)
+        _sdk_root_cache.append(r["out"].strip() if r["code"] == 0 else "")
+    return _sdk_root_cache[0]
+
+
+def _pkg_path(probe):
+    """The directory a package occupies, or "" when it is not installed.
+
+    Resolved rather than assumed: the android directories are symlinks into
+    the share, and the whole point of the card is showing where a thing
+    actually landed."""
+    if probe.startswith("android:"):
+        p = Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / probe.split(":", 1)[1]
+    else:
+        root = sdk_root_path()
+        if not root:
+            return ""
+        p = Path(root) / probe
+    try:
+        if p.is_dir() and any(p.iterdir()):
+            return str(p.resolve())
+    except OSError:
+        pass
+    return ""
+
+
+def packages_payload():
+    items = []
+    for p in PACKAGES:
+        path = _pkg_path(p["probe"])
+        items.append({**{k: p[k] for k in ("name", "label", "size", "about")},
+                      "installed": bool(path), "path": path})
+    with _pkg_lock:
+        job = {k: (list(v) if isinstance(v, list) else v)
+               for k, v in _pkg_job.items()}
+    return {"root": sdk_root_path(),
+            "shared": is_mount(sdk_root_path()),
+            "items": items, "job": job}
+
+
+def is_mount(path):
+    """Whether the SDK root is a mapped share rather than a directory on the
+    home volume — the difference between "kept outside the image" and "kept
+    alongside everything else"."""
+    if not path:
+        return False
+    try:
+        with open("/proc/self/mountinfo") as f:
+            return any(line.split()[4] == path for line in f)
+    except OSError:
+        return False
+
+
+def _pkg_worker():
+    """Run the queued installs one at a time, keeping a tail of the output.
+
+    Everything it can do is `bb sdk install|remove <name>` for a name that
+    came out of PACKAGES — the page posts an index into the table, never a
+    command, which is the same rule the macro buttons follow.
+    """
+    while True:
+        with _pkg_lock:
+            if not _pkg_job["queue"]:
+                _pkg_job["running"] = False
+                _pkg_job["current"] = ""
+                return
+            name = _pkg_job["queue"].pop(0)
+            action = _pkg_job["action"]
+            _pkg_job["current"] = name
+            _pkg_job["log"].append(f"$ bb sdk {action} {name}")
+        r = run([BB, "sdk", action, name], timeout=3600)
+        with _pkg_lock:
+            tail = [ln for ln in r["out"].splitlines() if ln.strip()][-12:]
+            _pkg_job["log"].extend(tail)
+            _pkg_job["log"] = _pkg_job["log"][-60:]
+            (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
+
+
 def _doctor_loop():
     while True:
         run_doctor()
@@ -1777,6 +1910,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(snapshot())
         if self.path.startswith("/api/findings"):
             return self._json(findings_payload())
+        if self.path.startswith("/api/packages"):
+            return self._json(packages_payload())
         if self.path.startswith("/api/pubkeys"):
             # The shielded agent's public halves, for the New project dialog:
             # picking one selects it for the clone, and showing it is how the
@@ -1826,6 +1961,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._create(req)
         if path.startswith("/api/link"):
             return self._link(req)
+        if path.startswith("/api/packages"):
+            return self._packages(req)
         if path.startswith("/api/custom"):
             return self._custom(req)
         if path.startswith("/api/doctor"):
@@ -2083,6 +2220,28 @@ class Handler(BaseHTTPRequestHandler):
                      timeout=10)["out"].strip() or "HEAD"
         return self._json({"ok": True, "name": name,
                            "note": f"{created}pushed {branch}"})
+
+    def _packages(self, req):
+        """Queue installs or removals of the packages the Tools card offers.
+
+        Names are checked against PACKAGES rather than passed through: what
+        reaches a command line is a string this server chose, which is the
+        rule every other executing endpoint here follows.
+        """
+        action = req.get("action")
+        if action not in ("install", "remove"):
+            return self._json({"error": "unknown action"}, 400)
+        known = {p["name"] for p in PACKAGES}
+        names = [n for n in (req.get("names") or []) if n in known]
+        if not names:
+            return self._json({"error": "nothing selected"}, 400)
+        with _pkg_lock:
+            if _pkg_job["running"]:
+                return self._json({"error": "an install is already running"}, 409)
+            _pkg_job.update(running=True, queue=list(names), action=action,
+                            current="", log=[], done=[], failed=[])
+        threading.Thread(target=_pkg_worker, daemon=True).start()
+        return self._json({"ok": True, "queued": names})
 
     def _claude_md(self, req):
         """Create or refresh one project's CLAUDE.md.

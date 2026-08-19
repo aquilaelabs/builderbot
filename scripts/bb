@@ -4,7 +4,12 @@
 #
 set -euo pipefail
 
-. /opt/builderbot/scripts/lib/common.sh
+# The library next to this script, not a fixed /opt path: identical in the
+# image (both live in /opt/builderbot/scripts), and it means a dry-run from a
+# checkout uses that checkout's library instead of silently mixing new
+# commands with the installed image's older helpers.
+# shellcheck source=lib/common.sh
+. "$(dirname "$(readlink -f "$0")")/lib/common.sh"
 
 usage() {
     cat <<'EOF'
@@ -1126,11 +1131,24 @@ sdk_install() {
     case "$what" in
         android:*)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
+            local pkg="${what#android:}"
+            case "$pkg" in
+                ndk|cmake)
+                    # These ship as versioned packages (ndk;27.x, cmake;3.22.1)
+                    # and a bare name installs nothing. The newest is what a
+                    # project wants unless it pins one, resolved from what the
+                    # repository actually offers rather than from a table here
+                    # that would go stale within a release.
+                    pkg="$(sdkmanager --list 2>/dev/null | tr -d ' ' | cut -d'|' -f1 \
+                           | grep -E "^${pkg};[0-9]" | sort -V | tail -1)"
+                    [ -n "$pkg" ] || die "could not find a ${what#android:} package to install"
+                    ;;
+            esac
             # Straight through to sdkmanager: ANDROID_HOME's package
             # directories are symlinks into the root, so this lands there
             # without sdkmanager knowing anything about it.
-            log "installing ${what#android:} — into $(sdk_dir android)"
-            sdkmanager --install "${what#android:}"
+            log "installing ${pkg} — into $(sdk_dir android)"
+            sdkmanager --install "$pkg"
             ;;
         flutter)
             local d; d="$(sdk_dir flutter)"
@@ -1217,7 +1235,20 @@ sdk_remove() {
         flutter|dotnet|swift|tizen) d="$(sdk_dir "$what")" ;;
         android:*)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
-            sdkmanager --uninstall "${what#android:}"
+            local pkg="${what#android:}" v
+            case "$pkg" in
+                ndk|cmake)
+                    # Versioned the same way going out: uninstall every version
+                    # that is actually present, from the directory rather than
+                    # from a guess about which one was installed.
+                    for v in "${ANDROID_HOME:-/opt/android-sdk}/$pkg"/*/; do
+                        [ -d "$v" ] || continue
+                        log "removing ${pkg};$(basename "$v")"
+                        sdkmanager --uninstall "${pkg};$(basename "$v")"
+                    done
+                    return 0 ;;
+            esac
+            sdkmanager --uninstall "$pkg"
             return 0 ;;
         *) die "usage: bb sdk remove flutter|dotnet|swift|tizen|android:<package>" ;;
     esac

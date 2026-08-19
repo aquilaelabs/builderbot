@@ -471,6 +471,16 @@ anywhere else.
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |
 | `tizen` | manual | Galaxy Watch / Samsung TV — Samsung ships a GUI installer, so `bb sdk install tizen` prints the steps rather than pretending |
 
+**From the dashboard.** The sidebar's **Tools** card — the one that shows the
+scanner's findings — has an **Additional packages…** button beside **Open
+findings report**. It opens a list of everything above with a checkbox each,
+the size it will take, and, once installed, the path it actually landed on.
+Tick several and install or remove them in one go; the work runs as a
+background job on the container, so the modal keeps reporting progress
+instead of hanging on a request that would take four minutes to answer. The
+page only ever posts names the server offered it — the same rule the command
+buttons follow.
+
 **iOS is not on this list and cannot be.** Xcode and the iOS SDK are macOS-only
 and licensed to Apple hardware; no Linux container can host them. For web and
 PWA work the answer is already installed — Playwright's WebKit is Safari's
@@ -633,6 +643,10 @@ lives in its body. The cards:
   The name is one path segment and the URL must be one of GitHub's two
   address shapes — `git clone` accepts transports a web form should never
   reach, so anything else is refused server-side rather than passed along
+- **Tools**: the scanner's report (when `/reports` is mounted) and
+  **Additional packages…**, which installs or removes SDKs and toolchains on
+  the [SDK share](#sdks-live-outside-the-image) — checkboxes, sizes, and the
+  install path of everything already there
 - an **eye** per project, which excludes it: persists across restarts and
   blocks Claude sessions for that directory — see below. A row that is excluded
   or has an error carries **no Claude button at all**, because a session cannot
