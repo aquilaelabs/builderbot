@@ -32,6 +32,11 @@ ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local brings the 
 await page.click('#pCreate');
 ok(await page.$eval('#pErr', el => el.textContent.includes('name')),
    'an empty name is refused in place');
+// ...and does not outlive a mode switch, where it would sit over a form
+// that no longer asks for a name.
+await page.click('#pClone');
+ok(await page.$eval('#pErrWrap', el => el.hidden), 'switching modes clears the stale error');
+await page.click('#pLocal');
 await page.fill('#pName', 'alpha');
 await page.click('#pCreate');
 await page.waitForFunction(() =>
@@ -128,6 +133,11 @@ ok(await page.$('#projects [data-l="beta"]') !== null
 await page.click('#projects [data-l="beta"]');
 ok(await page.$eval('#pTitle', el => el.textContent === 'Link beta to GitHub'),
    'the dialog names the project it is linking');
+// The deploy-key pick from the clone flow above must not ride along into
+// this open — the select starts empty and repopulates from a fresh fetch.
+await page.waitForFunction(() => document.querySelectorAll('#pKey option').length > 1);
+ok(await page.$eval('#pKey', el => el.value === ''),
+   'a new open starts with no key selected, whatever the last one picked');
 ok(await page.$eval('#pSrcField', el => el.hidden)
    && await page.$eval('#pNameField', el => el.hidden)
    && await page.$eval('#pAboutField', el => el.hidden)

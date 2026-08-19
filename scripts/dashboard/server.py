@@ -504,17 +504,25 @@ def findings_payload():
             "hidden": hidden, "reports": reports}
 
 
-def run(cmd, cwd=None, timeout=120, env=None):
+def run(cmd, cwd=None, timeout=120, env=None, split_err=False):
+    # split_err=True keeps stdout in `out` and stderr in `err`, for the one
+    # caller class that must not mistake a warning for real output (the
+    # ls-remote emptiness check: ssh's first-contact "Permanently added ..."
+    # note lands on stderr and made an empty repo look non-empty). The
+    # default stays combined, which is what every log-oriented caller wants.
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
                            timeout=timeout, env=env)
+        out, err = p.stdout or "", p.stderr or ""
+        if not split_err:
+            out, err = out + err, ""
         return {"cmd": shlex.join(cmd), "code": p.returncode,
-                "out": (p.stdout or "") + (p.stderr or "")}
+                "out": out, "err": err}
     except subprocess.TimeoutExpired:
         return {"cmd": shlex.join(cmd), "code": 124,
-                "out": f"timed out after {timeout}s"}
+                "out": f"timed out after {timeout}s", "err": ""}
     except FileNotFoundError as e:
-        return {"cmd": shlex.join(cmd), "code": 127, "out": str(e)}
+        return {"cmd": shlex.join(cmd), "code": 127, "out": str(e), "err": ""}
 
 
 # Where the image keeps the CLAUDE.md the environment block is copied from.
@@ -616,10 +624,16 @@ def _readme_intro(dest):
             return None
         out = []
         for para in text.split("\n\n"):
-            para = para.strip()
-            if not para or para.startswith(("#", "<", "![", "[![", "---", "=")):
+            # Filtered line by line, not paragraph by paragraph: the most
+            # common README opens "# Title\nprose" with no blank line
+            # between, and skipping that whole block threw away the prose
+            # with the heading.
+            lines = [l for l in para.splitlines()
+                     if l.strip() and not l.lstrip().startswith(
+                         ("#", "<", "![", "[![", "---", "=", "|", "```", ">"))]
+            if not lines:
                 continue
-            out.append(re.sub(r"\s+", " ", para))
+            out.append(re.sub(r"\s+", " ", " ".join(lines)).strip())
             if sum(map(len, out)) > 400:
                 break
         return " ".join(out)[:600] or None
@@ -736,8 +750,21 @@ def ensure_deploy_alias(name, pub):
     Everything written lives in a namespace of our own — bb_<name>.pub and
     Host bb-<name> — so a .pub or an alias the operator maintains by hand is
     never touched, and rewriting ours is always safe.
+
+    The lock makes the check-then-append on ~/.ssh/config actually atomic:
+    two concurrent requests using the same key would otherwise both miss the
+    marker and both append the block. ssh would still behave (first match
+    wins), but "idempotent" should not mean "single-threaded".
     """
     alias = f"bb-{name}"
+    with _ssh_lock:
+        return _ensure_deploy_alias(alias, name, pub)
+
+
+_ssh_lock = threading.Lock()
+
+
+def _ensure_deploy_alias(alias, name, pub):
     SSH_DIR.mkdir(mode=0o700, exist_ok=True)
     pub_path = SSH_DIR / f"bb_{name}.pub"
     try:
@@ -1600,16 +1627,31 @@ class Handler(BaseHTTPRequestHandler):
                    GIT_SSH_COMMAND="ssh -o BatchMode=yes "
                                    "-o StrictHostKeyChecking=accept-new")
         created = ""
-        r = run(["git", "ls-remote", "--", remote], timeout=60, env=env)
+        # split_err: emptiness is judged on stdout alone. ssh's first-contact
+        # "Permanently added github.com ..." note arrives on stderr with exit
+        # 0, and combined it made a genuinely empty repository look occupied.
+        r = run(["git", "ls-remote", "--", remote], timeout=60, env=env,
+                split_err=True)
         if r["code"] != 0:
-            if pat and "not found" in r["out"].lower():
+            blame = (r["err"] + r["out"]).strip()
+            if "not found" in blame.lower() and keyname:
+                # Creating it here would not help: a brand-new repo has no
+                # deploy keys, so the push over this alias still fails — and
+                # a retry would then trip over the half-done state. Say what
+                # the fix actually is instead.
+                return self._json({"error": "GitHub reports the repository as "
+                                   "not found over ssh. Create it (empty) on "
+                                   "GitHub and add this deploy key to it first"
+                                   + (", or leave the key on none to use the "
+                                      "PAT" if pat else "") + "."}, 400)
+            if "not found" in blame.lower() and pat:
                 c = run(["gh", "repo", "create", path, "--private"], timeout=60)
                 if c["code"] != 0:
                     return self._json({"error": c["out"].strip()[-2000:]
                                                 or "gh repo create failed"}, 500)
                 created = f"created {path} on GitHub (private); "
             else:
-                return self._json({"error": r["out"].strip()[-2000:]
+                return self._json({"error": blame[-2000:]
                                             or "cannot reach that repository"}, 500)
         elif r["out"].strip():
             return self._json({"error": "that repository is not empty — linking "

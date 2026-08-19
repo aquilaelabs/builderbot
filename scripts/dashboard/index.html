@@ -2320,33 +2320,50 @@ function pShowKey(){
   if (k) $("pPub").value = k.pub;
 }
 
+// Each open is a generation; closing bumps it too. Everything asynchronous —
+// the pubkeys response, a slow clone's outcome — checks the generation before
+// touching the dialog, so a request from a closed dialog can neither shut the
+// one the operator just reopened nor write its error where the wrong flow
+// will wear it. The outcome itself still surfaces, as a toast.
+let pGen = 0;
+let pFetch = null;                       // this open's /api/pubkeys, parsed
+
 function pOpen(mode, focus){
+  const gen = ++pGen;
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
+  // The select is emptied, not left as-is: a key picked during a previous
+  // open must not ride along invisibly into this one's submit.
+  $("pKey").innerHTML = "";
   $("pErrWrap").hidden = $("pPubWrap").hidden = true;
   $("pCreate").disabled = false; $("pCreate").textContent = PMODES[mode].btn;
   $("pmodal").hidden = false;
   $(focus).focus();
   // Fetched per open, not cached: keys change when the container restarts
   // with a new /secrets/ssh, and a stale list here would offer a key the
-  // agent no longer holds.
-  fetch("/api/pubkeys").then(r => r.json()).then(j => {
+  // agent no longer holds. The submit handler awaits pFetch directly, so an
+  // early Create still judges auth on the real answer, not the defaults.
+  pFetch = fetch("/api/pubkeys").then(r => r.json()).catch(() => null);
+  pFetch.then(j => {
+    if (gen !== pGen || !j) return;
     pKeys = j.keys || []; pPat = !!j.pat;
     $("pKey").innerHTML = `<option value="">none — ${pPat
         ? "authenticate with the configured PAT"
         : "public repo, or the container's default access"}</option>`
       + pKeys.map(k => `<option value="${esc(k.name)}">${esc(k.name)}</option>`).join("");
     pShowKey(); pDraw();
-  }).catch(() => {});
+  });
 }
 
 function openNewProject(){ pLink = null; pOpen("init", "pName"); }
 function openLinkProject(name){ pLink = name; pOpen("link", "pUrl"); }
 
-function closeNewProject(){ $("pmodal").hidden = true; }
+function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
 
-$("pLocal").onclick = () => { pMode = "init"; pDraw(); };
-$("pClone").onclick = () => { pMode = "clone"; pDraw(); if (!$("pUrl").value) $("pUrl").focus(); };
+// A stale error must not survive a mode switch — "a name is required" makes
+// no sense over a form that no longer asks for one.
+$("pLocal").onclick = () => { pMode = "init"; $("pErrWrap").hidden = true; pDraw(); };
+$("pClone").onclick = () => { pMode = "clone"; $("pErrWrap").hidden = true; pDraw(); if (!$("pUrl").value) $("pUrl").focus(); };
 $("pKey").onchange = pShowKey;
 $("pCopy").onclick = async () => {
   // clipboard API needs a secure context; plain-http access to the dashboard
@@ -2362,40 +2379,53 @@ for (const f of ["pName", "pUrl"])
   $(f).onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("pCreate").click(); } };
 
 $("pCreate").onclick = async () => {
+  // Captured at the click: the dialog can be closed, reopened and switched
+  // to another mode while this request runs, and everything below must keep
+  // talking about the flow the operator actually submitted.
+  const mode = pMode, linkName = pLink, gen = pGen;
   const name = $("pName").value.trim(), url = $("pUrl").value.trim();
-  const key = $("pKey").value;
-  const fail = m => { $("pErr").textContent = m; $("pErrWrap").hidden = false; };
-  if (pMode === "init"){ if (!name) return fail("a name is required"); }
+  const key = $("pKey").value;          // "" until this open's fetch offered any
+  const fail = m => gen === pGen
+    ? ($("pErr").textContent = m, $("pErrWrap").hidden = false)
+    : notify(`${mode === "link" ? linkName : name || mode}: ${m}`, true);
+  if (mode === "init"){ if (!name) return fail("a name is required"); }
   else if (!url) return fail("a repository address is required");
-  // A push has to authenticate somehow; catching this before the round-trip
-  // spares typing a URL into a flow that cannot finish. (The server refuses
-  // it too — this is just the earlier of the two answers.)
-  if (pMode === "link" && !pPat && !key)
-    return fail("no PAT is configured — pick a deploy key");
   $("pErrWrap").hidden = true;
   const b = $("pCreate");
   b.disabled = true;
-  b.textContent = { init: "Creating…", clone: "Cloning…", link: "Linking…" }[pMode];
+  b.textContent = { init: "Creating…", clone: "Cloning…", link: "Linking…" }[mode];
   try{
-    const r = pMode === "link"
+    // A push has to authenticate somehow; catching this before the round-trip
+    // spares typing a URL into a flow that cannot finish. Judged on the
+    // pubkeys answer itself — awaited, so an early Create is not judged on
+    // the pre-fetch defaults. (The server refuses it too; this is just the
+    // earlier of the two answers.)
+    if (mode === "link" && !key){
+      const auth = await pFetch;
+      if (!(auth && auth.pat))
+        return fail((auth && auth.keys || []).length
+          ? "no PAT is configured — pick a deploy key"
+          : "no PAT is configured and the agent holds no deploy keys — set GIT_PAT, or add a key to /secrets/ssh and restart the container");
+    }
+    const r = mode === "link"
       ? await fetch("/api/link", {method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({name: pLink, url, key})})
+          body: JSON.stringify({name: linkName, url, key})})
       : await fetch("/api/create", {method:"POST",
           headers:{"Content-Type":"application/json"},
-          body: JSON.stringify({name, mode: pMode, url, about: $("pAbout").value,
-                                key: pMode === "clone" ? key : ""})});
+          body: JSON.stringify({name, mode, url, about: $("pAbout").value,
+                                key: mode === "clone" ? key : ""})});
     const j = await r.json().catch(() => ({}));
-    if (!r.ok) return fail(j.error || `${pMode} failed (HTTP ${r.status})`);
-    closeNewProject();
-    notify(`${j.name || name} ${pMode === "link" ? "linked" : "created"} — ${j.note || "ready"}`);
+    if (!r.ok) return fail(j.error || `${mode} failed (HTTP ${r.status})`);
+    if (gen === pGen) closeNewProject();
+    notify(`${j.name || name || linkName} ${mode === "link" ? "linked" : "created"} — ${j.note || "ready"}`);
     refresh();                          // the new state, without waiting a poll
   }catch(e){
     // The request may still be running server-side (a big clone or push
     // outlives a dropped connection), so say to look rather than blindly retry.
     fail("lost the connection — check the Projects card before trying again");
   }finally{
-    b.disabled = false; b.textContent = PMODES[pMode].btn;
+    if (gen === pGen){ b.disabled = false; b.textContent = PMODES[pMode].btn; }
   }
 };
 
