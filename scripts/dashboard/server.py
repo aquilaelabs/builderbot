@@ -1730,49 +1730,50 @@ _PCT = re.compile(r"(\d{1,3})(?:\.\d+)?\s*%")
 _CURL_ROW = re.compile(r"^\s*(\d{1,3})\s+[\d.]+[KMGT]?\s+\d{1,3}\s+.*\d+:\d\d:\d\d")
 # Whichever of these a line mentions decides the phase. Order matters: a line
 # that says "Unzipping" during a download step is past downloading.
-_PHASES = ((re.compile(r"unzip|extract|instal|build|compil|resolv|warming|checking out", re.I),
-            "installing"),
-           (re.compile(r"download|fetch|receiv|clon|enumerat|counting objects|compressing objects", re.I),
-            "downloading"))
+# A line announcing an install step rather than a transfer. Judged per line
+# and never carried forward, which is the whole fix: our own log says
+# "installing swift 6.3.3 into /sdk/swift" before the download starts, and a
+# phase that carried called the entire 1GB transfer after it an install — so
+# Swift and .NET appeared to skip downloading altogether.
+_INSTALLY = re.compile(r"unzip|extract|instal|build|compil|resolv|warming|checking out", re.I)
 
 
-def _progress_of(line, phase):
-    """(phase, percent, prose) for one line of a tool's output.
+def _progress_of(line):
+    """(percent, said_something) for one line of a tool's output.
 
-    Deliberately generic. Every recipe here draws its own bar — playwright's
-    `|====| 40% of 102 MiB`, sdkmanager's `[====] 40% Downloading`, git's
-    `Receiving objects: 45%` — and a parser per tool would rot with the next
-    release of any of them. A percentage is a percentage; the phase carries
-    over from whichever keyword was last seen, because the bar line itself
-    usually does not repeat it.
+    A percent comes back only for a line that carries one and is not
+    announcing an install step, because the two states this drives are
+    "downloading, with a number" and "installing" — there is no honest
+    denominator for the second, so it does not get one.
 
-    `prose` marks a line that is words rather than a bar, which is how a
-    finished number gets retired: the bar it followed is over, and the figure
-    it reached is no longer true of anything. A flutter install froze on
-    "downloading 100%" for the whole of `Building flutter tool…` — most of the
-    install — because the last number seen was kept until another arrived.
+    Deliberately generic about where the number comes from. Every recipe here
+    draws its own bar — playwright's `|====| 40% of 102 MiB`, sdkmanager's
+    `[====] 40% Downloading`, git's `Receiving objects: 45%`, curl's meter in
+    either of its two formats — and a parser per tool would rot with the next
+    release of any of them.
 
-    What those words say is not reported. A row showed "Installing pack
+    `said_something` covers words as well as numbers, and is what retires a
+    finished download's figure: prose after a bar means the bar is over, and
+    the number it reached is no longer true of anything. A flutter install
+    froze on "downloading 100%" for the whole of `Building flutter tool…`
+    because the last number seen was kept until another one arrived. What the
+    words actually say is not reported — a row showed "Installing pack
     Microsoft.NETCore.App.Runtime.Mono.android-arm64" and pushed the page
     sideways, and that is a component list nobody reading a package manager
-    wants: how far along a download is, and then that it is installing."""
+    asked for.
+    """
     m = _CURL_ROW.match(line)
     if m:
-        # Always a download: curl is only ever fetching here, whatever the
-        # line before it happened to call the step.
-        return "downloading", int(m.group(1)), False
-    frame = bool(_PROGRESS_FRAME.match(line))
-    for rx, name in _PHASES:
-        if rx.search(line):
-            phase = name
-            break
+        return int(m.group(1)), True
+    if _INSTALLY.search(line):
+        return None, True
     m = _PCT.search(line)
-    pct = int(m.group(1)) if m else None
-    if pct is not None and not 0 <= pct <= 100:
-        pct = None
-    if pct is not None:
-        return phase, pct, False
-    return phase, None, bool(not frame and re.search(r"[A-Za-z]", line))
+    if m:
+        pct = int(m.group(1))
+        if 0 <= pct <= 100:
+            return pct, True
+    return None, bool(re.search(r"[A-Za-z]", line)
+                      and not _PROGRESS_FRAME.match(line))
 
 
 def run_streamed(cmd, on_line, timeout=3600):
@@ -1856,12 +1857,10 @@ def _pkg_worker():
 
         def watch(line, _name=name):
             with _pkg_lock:
-                cur = _pkg_job["progress"] or {}
-                phase, pct, prose = _progress_of(line, cur.get("phase"))
-                if pct is None and not prose:
+                pct, said = _progress_of(line)
+                if not said:
                     return                    # a frame with no number in it
-                _pkg_job["progress"] = {"name": _name, "phase": phase or "working",
-                                        "pct": pct}
+                _pkg_job["progress"] = {"name": _name, "pct": pct}
 
         r = run_streamed([BB, "sdk", verb, name], watch, timeout=3600)
         with _pkg_lock:

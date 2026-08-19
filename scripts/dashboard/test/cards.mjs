@@ -37,8 +37,11 @@ doctorFixture('ok');
 await page.evaluate(() => document.getElementById('bDoctor').onclick());
 await page.waitForFunction(() => document.getElementById('docDot').className.includes('ok'));
 
-// projects: errors toggle at the foot; slides the card
-ok(await page.$eval('#projects #bAll', el => el.textContent.includes('projects with errors (2)')), 'errors toggle inside the projects card');
+// projects: fold-away toggle at the foot; slides the card. It names what it
+// is hiding rather than calling all of it errors — gamma has no git, delta was
+// excluded on purpose, and those are not the same kind of thing.
+ok(await page.$eval('#projects #bAll', el => el.textContent.trim()) === 'Show Excluded (1) / Error (1)',
+   'the toggle says what it is hiding, by kind');
 await page.click('#projects #bAll');
 ok(await page.$eval('#projects', el => el.closest('.card').getAnimations().length > 0), 'in-card toggle slides the card');
 await page.click('#projects #bAll');
@@ -49,7 +52,7 @@ ok(rows.join(',') === 'alpha,beta', `findings card lists valid projects only (${
 ok(!(await page.$eval('#cardFindings .macros button', el => el.classList.contains('primary'))), 'report button is not green');
 
 // .bbignore hides a directory from the card entirely — not listed, not
-// counted, not folded away under "projects with errors" either.
+// counted, not folded away under the Excluded/Error toggle either.
 const names = await page.$$eval('#projects .name', ns => ns.map(n => n.textContent.trim()));
 ok(!names.includes('toolstore'), 'a directory carrying .bbignore is not a project');
 await page.click('#projects #bAll');
