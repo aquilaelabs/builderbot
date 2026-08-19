@@ -25,6 +25,27 @@ to the same box. New images publish automatically to GHCR whenever a push to
 `main` changes what the image is built from (plus a weekly refresh), so
 updating is Unraid's one-click **update ready** flow.
 
+## What it looks like
+
+The [dashboard](#web-dashboard): projects, sessions, findings and the runner
+on one side, real terminals on the other — the same page on a phone, where
+the two sides become a switch.
+
+![The dashboard on a desktop](docs/screenshots/dashboard.png)
+
+<p>
+  <img src="docs/screenshots/phone-dashboard.png" width="290"
+       alt="The dashboard side on a phone">
+  &nbsp;
+  <img src="docs/screenshots/phone-terminal.png" width="290"
+       alt="The terminal side on a phone, with the tab strip and bottom bar">
+</p>
+
+(Staged data. The pictures regenerate with `bash tools/readme-shots.sh`,
+which boots the checkout's dashboard against an invented workspace on a
+private tmux server and photographs it with `bb shot` — the pattern the
+[`bb` helper section](#the-bb-helper) preaches, practiced.)
+
 ## What's in the image
 
 | | |
@@ -163,7 +184,7 @@ Everything else has sane defaults — full reference below.
 | Want | Do |
 |---|---|
 | Android emulator | On by default; needs `--device=/dev/kvm` (pre-set in the template). Then `bb emu start` |
-| Web dashboard | Set `ENABLE_DASHBOARD=true` **and** `DASHBOARD_AUTH=user:pass`, map ports 8080/7681 — see [Web dashboard](#web-dashboard) |
+| Web dashboard | Set `ENABLE_DASHBOARD=true` **and** `DASHBOARD_AUTH=user:pass`, map port 8080 — see [Web dashboard](#web-dashboard) |
 | NVIDIA GPU | `--runtime=nvidia` is pre-set; add the Nvidia-Driver plugin and keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
@@ -268,7 +289,8 @@ and is always the big one. Rollback = point the Repository field at a
 | `BB_LOG_DIR` | *(auto)* | Log location override; normally use the `/logs` mount instead |
 | `ENABLE_DASHBOARD` | `false` | Web dashboard + browser terminal |
 | `DASHBOARD_AUTH` | *(empty)* | `user:password` — **required** when the dashboard is enabled; it will not start otherwise |
-| `DASHBOARD_PORT` / `DASHBOARD_TTYD_PORT` | `8080` / `7681` | Page and terminal ports; both must be published |
+| `DASHBOARD_PORT` | `8080` | The one published port: page, API and terminals (proxied under `/term`) |
+| `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
@@ -484,8 +506,12 @@ not the same as better code, and suppressing a finding satisfies that goal too.
 
 ## Web dashboard
 
-Off by default. When enabled it serves a status page on `8080` and a browser
-terminal on `7681`. Every sidebar card collapses to its header with a click
+Off by default. When enabled it serves everything on `8080`: the page, the
+API, and the browser terminals, which are proxied under `/term` so one
+sign-in covers them all. Signing in is a login page that sets a 30-day
+cookie — a real form, so password managers work — not the browser's own
+credentials dialog, and there is no second prompt for the terminal port
+because there is no second port. The sign-out button beside ↻ and ▤ in the header ends the session (`/logout` does the same). Every sidebar card collapses to its header with a click
 on that header, and dragging a header reorders the cards; both are remembered
 in `/config/cards.json`, so the phone and the desktop agree about the
 arrangement and it survives restarts and image updates. The **▤** button in
@@ -842,13 +868,18 @@ ssh-agent and read-write mounts of every project — so that credential is worth
 as much as the ssh keys are. It is not a convenience toggle; treat it like the
 Docker socket mount.
 
-Both ports must be reachable from your browser. If you remap the **host** side
-of the terminal port, set `DASHBOARD_TTYD_PUBLIC_PORT` to that host port —
-the page has to tell the browser where to connect and cannot see Docker's port
-mappings from inside. The failure is quiet: the page loads and only the
-terminal fails. The terminal is a separate
-service on its own port rather than proxied through the page, because relaying
-a PTY websocket by hand is the kind of code that works until it deadlocks.
+Only the dashboard port is published. ttyd binds the loopback and the
+dashboard relays `/term` to it — an earlier revision kept the terminal on its
+own published port to avoid hand-relaying a PTY websocket, but the price was
+the browser asking for credentials twice and a second port on the router, and
+the relay that buys that back is deliberately dumb: after checking the
+session it splices the two sockets byte for byte and never parses a frame.
+Credentials are checked in one place either way — the cookie or basic auth
+this server already verifies; the old `DASHBOARD_TTYD_PUBLIC_PORT` knob is
+gone with the second port that needed it. curl and scripts can skip the
+login page entirely: basic auth is honored preemptively on every request
+(`curl -u user:pass ...`), there is just no `WWW-Authenticate` challenge —
+that header is exactly what made browsers pop their own dialog.
 
 The dashboard's own API runs commands from a fixed list — it takes a macro name,
 never a command string, and the list is `bb`'s own commands rather than anything

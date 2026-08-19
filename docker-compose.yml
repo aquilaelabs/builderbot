@@ -98,11 +98,11 @@ services:
       ENABLE_DASHBOARD: ${ENABLE_DASHBOARD:-false}
       DASHBOARD_AUTH: ${DASHBOARD_AUTH:-}
       DASHBOARD_PORT: ${DASHBOARD_PORT:-8080}
+      # Loopback only: the browser reaches terminals through the dashboard
+      # port under /term, behind the same single sign-in, so this port is
+      # never published. (DASHBOARD_TTYD_PUBLIC_PORT is gone with the second
+      # port that needed it.)
       DASHBOARD_TTYD_PORT: ${DASHBOARD_TTYD_PORT:-7681}
-      # Set only when the host publishes the terminal on a different port than
-      # ttyd binds to. The page has to tell the browser where to connect, and
-      # port mappings are invisible from inside the container.
-      DASHBOARD_TTYD_PUBLIC_PORT: ${DASHBOARD_TTYD_PUBLIC_PORT:-}
       # Ceiling on open dashboard tabs. Each terminal tab is an iframe running
       # a full terminal emulator over its own websocket.
       DASHBOARD_MAX_TABS: ${DASHBOARD_MAX_TABS:-12}
@@ -194,11 +194,10 @@ services:
     #           count: all
     #           capabilities: [gpu]
 
-    # Web dashboard + browser terminal. Both ports are needed: the page is
-    # served by one and the terminal websocket by the other.
+    # Web dashboard + browser terminals, one port: terminals are proxied
+    # through it under /term, behind the same sign-in.
     # ports:
     #   - "8080:8080"
-    #   - "7681:7681"
 
     # Uncomment to reach the emulator's adb from other machines on your LAN
     # (e.g. Android Studio on your desktop: adb connect tower:5555).

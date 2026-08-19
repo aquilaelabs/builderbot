@@ -67,6 +67,14 @@ await page.waitForFunction(() => document.querySelector('.side .card[data-card]'
   && !document.querySelector('.side .card.closed'));
 ok(true, 'reset restores default order and expands everything');
 
+// The findings report preloads in idle time when a report exists and no
+// findings tab is open — so the first click renders from cache instead of
+// starting its fetch on the tap.
+await page.waitForFunction(() => typeof findings !== 'undefined'
+  && findings && !findings.loading && !findings.error, { timeout: 10000 });
+ok(await page.evaluate(() => !tabs.some(t => t.kind === 'findings')),
+   'the findings report is warmed before any findings tab exists');
+
 // The favicon set: served by the allow-list, linked from the head. Sizes and
 // content types matter — a wrong type is a globe in the tab, silently.
 const fav = await page.evaluate(async () => {

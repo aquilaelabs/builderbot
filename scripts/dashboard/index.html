@@ -10,6 +10,17 @@
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script>
+  // The first status fetch starts here, while the browser still has ~150KB
+  // of inline script below to parse — by the time refresh() asks, the answer
+  // is usually in flight or landed. An explicit promise the first refresh()
+  // consumes exactly once, NOT <link rel="preload" as="fetch">: a preloaded
+  // response sits in a cache that any LATER same-URL fetch may claim, and
+  // this page re-fetches /api/status every fifteen seconds — one poll
+  // eventually inherited the page-load-era snapshot of the shared layout and
+  // saved it over the real one. Found by the suite, kept as a warning.
+  const preStatus = fetch("/api/status");
+</script>
 <!-- Inline so the browser never asks the server for /favicon.ico — the only
      404 this page would otherwise produce. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b2027'/%3E%3Cg fill='%233fb950'%3E%3Crect x='4' y='8.5' width='24' height='17' rx='5.5'/%3E%3Crect x='15' y='3.5' width='2' height='6' rx='1'/%3E%3Ccircle cx='16' cy='3' r='2.3'/%3E%3C/g%3E%3Cg fill='%231b2027'%3E%3Ccircle cx='11.4' cy='15.4' r='2.1'/%3E%3Ccircle cx='20.6' cy='15.4' r='2.1'/%3E%3Crect x='10.6' y='19.6' width='10.8' height='2.6' rx='1.3'/%3E%3C/g%3E%3C/svg%3E">
@@ -18,7 +29,12 @@
   --bg:#14181d; --panel:#1b2027; --line:#2a323c; --ink:#e6edf3;
   --dim:#8b98a5; --accent:#3fb950; --warn:#d29922; --bad:#f85149;
   --note:#58a6ff;
-  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  /* The tail matters on Android: none of the named desktop faces exist
+     there, and bare `monospace` lets Chrome and Firefox each pick their own
+     default — the same page in two fonts. Roboto/Noto/Droid Mono are what
+     Android devices actually carry. */
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",
+         "Noto Sans Mono","Droid Sans Mono",monospace;
   --tap:38px;
 }
 *{box-sizing:border-box}
@@ -123,6 +139,11 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
   .row .name.go:hover{text-decoration:underline}
   .row .sub a.fix:hover{color:var(--ink)}
   button:hover{background:#2b3540}
+  /* The green buttons kept their color through button:hover (their own rules
+     come later and win) — which meant no hover at all. A lighter green and a
+     brighter border are their version of the same lift. */
+  button.primary:hover,button.on:hover{background:#26853f;border-color:#3fb950}
+  .modal .danger:hover{background:#3a1d1b}
   button:disabled:hover{background:#232b34}
   .cmd button:hover{background:#2b3540}
   .cmd .tack:hover{color:var(--ink)}
@@ -136,9 +157,15 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
 }
 
 /* Hover states fade rather than snap. Background, border and color cover
-   every button variant on the page; the disabled fade rides on opacity. */
+   every button variant on the page; the disabled fade rides on opacity;
+   transform and filter carry the press, so releasing eases back too. */
 button,.pane .bar .x,.tab .ic{transition:background-color .15s ease,
-  border-color .15s ease,color .15s ease,opacity .15s ease}
+  border-color .15s ease,color .15s ease,opacity .15s ease,
+  transform .1s ease,filter .1s ease}
+/* Every button presses the same way: a one-pixel dip and a dim, mouse or
+   finger alike. :not(:disabled) so a dead button stays visibly inert. */
+button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
+  transform:translateY(1px);filter:brightness(.82)}
 @media(prefers-reduced-motion:reduce){
   button,.pane .bar .x,.tab .ic{transition:none}
 }
@@ -149,6 +176,11 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* The Linux and git cards show commands verbatim; mono keeps them readable
    as commands, and slightly smaller keeps the pipelines on one line. */
 #linux button,#git button{font-family:var(--mono);font-size:12px}
+/* A project row's controls move as one block: four buttons that wrapped one
+   at a time left a lone eye stranded under the name (the link chain made
+   four possible). Together they either fit beside the name or drop below it
+   whole, which reads as a layout, not an accident. */
+.row .acts{display:flex;gap:6px;align-items:center;margin-left:auto}
 /* A command and its thumbtack are one control with two halves, so the tack
    cannot be mistaken for a command of its own. */
 .cmd{display:inline-flex;align-items:stretch;border:1px solid var(--line);
@@ -210,6 +242,12 @@ button.on{background:#1f6f36;border-color:#2ea043}
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
+/* The header's icon buttons — the broom (reset) and the sign-out door —
+   drawn to the same box as the ↻ glyph, same stroke voice as the eye and
+   chain icons. */
+#bOut svg.out,#bCards svg.out{width:15px;height:15px;display:block;margin:auto;
+  fill:none;stroke:currentColor;stroke-width:1.4;
+  stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
 
 /* What a Claude session is doing, at a glance. Blue matches the runner card's
@@ -534,7 +572,24 @@ body.dragging .tab .lbl{cursor:grabbing}
   <span class="spacer"></span>
   <span class="meta" id="uptime"></span>
   <button onclick="refresh()" title="refresh now">↻</button>
-  <button id="bCards" title="reset the sidebar cards — default order, all expanded">▤</button>
+  <button id="bCards" aria-label="reset the sidebar cards"
+          title="reset the sidebar cards — default order, all expanded">
+    <svg class="out" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M13.5 2.5 8.5 7.5"/>
+      <path d="M8.5 7.5c-2.4 0-4.6 1.1-6 3l2.5 2.5c1.9-1.4 3.5-3.1 3.5-5.5z"/>
+      <path d="M6.6 9.4 5 12.4"/>
+    </svg>
+  </button>
+  <!-- Sign out clears the session cookie via /logout. A browser signed in
+       with cached basic auth has nothing to clear and comes straight back —
+       that cache is the browser's own, and only it can forget it. -->
+  <button id="bOut" aria-label="sign out" title="sign out — back to the login page">
+    <svg class="out" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M6.5 2.5h-2.4a1.6 1.6 0 0 0-1.6 1.6v7.8a1.6 1.6 0 0 0 1.6 1.6h2.4"/>
+      <path d="M10.6 11.1 13.7 8l-3.1-3.1"/>
+      <path d="M13.4 8H6.2"/>
+    </svg>
+  </button>
 </header>
 
 <div class="switch">
@@ -754,8 +809,10 @@ function nextShell(proj){
   return null;
 }
 
-const ttydUrl = arg =>
-  `${location.protocol}//${location.hostname}:${state.ttyd_port}/?arg=${encodeURIComponent(arg)}`;
+// Same origin, not ttyd's own port: the server proxies /term to ttyd, so the
+// one sign-in that opened this page covers every terminal too — no second
+// credential prompt, and no second port for the router to publish.
+const ttydUrl = arg => `/term/?arg=${encodeURIComponent(arg)}`;
 
 const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 
@@ -792,10 +849,14 @@ function setView(v){
   if (v === "terminal"){ revealActiveTab(); updateArrows(); }
 }
 // A phone reload lands on the side it left; the attribute is set directly so
-// the first paint is not an entrance animation.
+// the first paint is not an entrance animation. ?view= outranks the memory:
+// it is how something that can only speak URLs — bb shot, a bookmark — asks
+// for a particular side, and a request beats a habit.
 if (isPhone()){
   let v = null;
   try{ v = localStorage.getItem("bb.view"); }catch(e){ /* private mode */ }
+  const qv = new URLSearchParams(location.search).get("view");
+  if (qv === "terminal" || qv === "dash") v = qv;
   if (v === "terminal"){
     document.body.dataset.view = v;
     $("vDash").classList.remove("on"); $("vTerm").classList.add("on");
@@ -815,6 +876,7 @@ const identity = t => t.kind === "term" ? "tmux:" + sessionOf(t.arg)
 // exception and are always new — each carries its own session name, so they
 // never collide here.
 function openTab(spec){
+
   let t = tabs.find(x => identity(x) === identity(spec));
   if (!t){
     if (!roomForTab()) return;
@@ -1587,6 +1649,7 @@ let findingsRev = 0;
 // timer would fight the reader for the page (their collapsed sections do
 // survive, but their scroll position does not).
 let findingsMtime = null;
+let findingsWarming = false;   // an idle warm-up fetch is out
 
 async function loadFindings(force){
   if (findings && !force) return;
@@ -1925,6 +1988,7 @@ cardEls().forEach(el => {
 
 // The header's undo-everything: back to the default order, everything open.
 // Confirmed because an arrangement is minutes of fiddling and one stray tap.
+$("bOut").onclick = () => { location.href = "/logout"; };
 $("bCards").onclick = () => {
   if (!confirm("Reset the sidebar cards to their default order, all expanded?")) return;
   const shut = cards.closed.slice();
@@ -2050,6 +2114,7 @@ function drawProjects(ps){
                >${esc(i.text)}</a></div>`
           : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
+      <span class="acts">
       ${isBroken(p) ? "" : `<button class="${live.has(tmuxName("claude-"+p.name)) ? "primary" : ""}"
          data-c="${esc(p.name)}"
          title="${live.has(tmuxName("claude-"+p.name)) ? "session running — go to its tab"
@@ -2068,6 +2133,7 @@ function drawProjects(ps){
         title="${p.excluded ? "include — allow Claude sessions here again"
                             : "exclude — block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? EYE : EYE_OFF}</button>
+      </span>
     </div>`).join("") + togHtml)){
     $("bNewProj").onclick = openNewProject;
     if (flagged.length)
@@ -2355,6 +2421,23 @@ function pDraw(){
             : "");
 }
 
+// The source picker moves like the Dashboard | Terminal switch: the incoming
+// fields slide in from the chosen tab's side (local is the left tab, clone
+// the right), same 220ms ease, same reduced-motion gate — one vocabulary for
+// every two-tab switch on the page. Scaled to the dialog: a few pixels, not
+// a viewport, because the fields swap inside a box that is not moving.
+function pSlide(){
+  if (noMotion()) return;
+  const dx = pMode === "clone" ? "18px" : "-18px";
+  for (const f of PMODES[pMode].fields){
+    const el = $(f);
+    if (f !== "pSrcField" && !el.hidden)
+      el.animate([{transform: `translateX(${dx})`, opacity: 0},
+                  {transform: "none", opacity: 1}],
+                 {duration: 220, easing: "ease"});
+  }
+}
+
 function pShowKey(){
   const k = pKeys.find(k => k.name === $("pKey").value);
   $("pPubWrap").hidden = !k;
@@ -2403,8 +2486,11 @@ function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
 
 // A stale error must not survive a mode switch — "a name is required" makes
 // no sense over a form that no longer asks for one.
-$("pLocal").onclick = () => { pMode = "init"; $("pErrWrap").hidden = true; pDraw(); };
-$("pClone").onclick = () => { pMode = "clone"; $("pErrWrap").hidden = true; pDraw(); if (!$("pUrl").value) $("pUrl").focus(); };
+$("pLocal").onclick = () => { if (pMode === "init") return;
+  pMode = "init"; $("pErrWrap").hidden = true; pDraw(); pSlide(); };
+$("pClone").onclick = () => { if (pMode === "clone") return;
+  pMode = "clone"; $("pErrWrap").hidden = true; pDraw(); pSlide();
+  if (!$("pUrl").value) $("pUrl").focus(); };
 $("pKey").onchange = pShowKey;
 $("pCopy").onclick = async () => {
   // clipboard API needs a secure context; plain-http access to the dashboard
@@ -2832,6 +2918,7 @@ async function pushLayout(){
 // bb-tty attaches to the session if it is still there and recreates it in the
 // same directory if it is not.
 function adoptLayout(v){
+
   // Only a revision NEWER than the one this page holds. A poll the server
   // answered just before our push landed arrives carrying the strip as it
   // was before the change — one revision behind, and by then savePending is
@@ -2870,10 +2957,16 @@ function adoptLayout(v){
                                                   // leave saves suppressed
 }
 
+let preStatusUsed = false;                // the head's early fetch: once only
+
 async function refresh(){
   const asked = performance.now();
   try{
-    const r = await fetch("/api/status");
+    const r = preStatusUsed ? await fetch("/api/status")
+                            : (preStatusUsed = true, await preStatus);
+    // Signed out (the cookie expired, or the secret rotated): go to the
+    // login page rather than showing a dead dashboard with a red dot.
+    if (r.status === 401){ location.href = "/login?next=%2F"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     state = await r.json();
     $("dot").classList.remove("off");
@@ -2905,6 +2998,32 @@ async function refresh(){
         && state.reports_mtime !== findingsMtime
         && tabs.some(t => t.kind === "findings"))
       loadFindings(true);
+    // The complement, as a preload: when a report exists but no findings tab
+    // is open, warm the cache in idle time — first ever, and again when the
+    // scan re-ran — so opening the report renders instantly instead of
+    // starting its fetch on the click. Deliberately NOT loadFindings(): that
+    // sets the shared loading state, stamps findingsMtime early and redraws
+    // panes, and running it from an idle callback means doing all that at an
+    // arbitrary moment in whatever else the page is mid-way through — a
+    // first version did exactly that and the suite caught it interfering.
+    // This fetches into a local, then installs the result only if the world
+    // still looks like it did when the fetch left: no tab opened meanwhile,
+    // nothing else loaded, same scan. Anything else, the answer is dropped —
+    // a wasted fetch is nothing; a fight over shared state is not.
+    else if (state.reports && !findingsWarming
+             && !tabs.some(t => t.kind === "findings")
+             && !(findings && findings.loading)
+             && (!findings || findingsMtime !== state.reports_mtime)){
+      findingsWarming = true;
+      const mt = state.reports_mtime;
+      (window.requestIdleCallback || (f => setTimeout(f, 1500)))(() =>
+        fetch("/api/findings").then(r => r.json()).then(j => {
+          if (!findings && state?.reports_mtime === mt
+              && !tabs.some(t => t.kind === "findings")){
+            findings = j; findingsMtime = mt; findingsRev++;
+          }
+        }).catch(() => {}).finally(() => { findingsWarming = false; }));
+    }
     render();
   }catch(e){
     // The light goes red either way; the console says whether the box was

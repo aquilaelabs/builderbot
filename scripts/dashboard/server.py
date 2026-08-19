@@ -12,15 +12,21 @@ code that looks fine until it deadlocks.
 """
 import base64
 import contextlib
+import gzip
+import hashlib
+import hmac
 import json
 import os
 import re
+import selectors
 import shlex
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
 import time
+import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -34,6 +40,108 @@ TTYD_PORT = int(os.environ.get("DASHBOARD_TTYD_PORT", "7681"))
 # container can see — Docker port mappings are invisible from in here. Getting
 # this wrong is quiet: the page loads and only the terminal fails.
 TTYD_PUBLIC_PORT = int(os.environ.get("DASHBOARD_TTYD_PUBLIC_PORT") or TTYD_PORT)
+
+# ---- one login for everything ---------------------------------------------
+# The browser used to be asked twice — once by this server, once by ttyd on
+# its own port, each with the built-in credentials dialog. The terminals are
+# proxied under /term on this origin now, so a single sign-in on a real login
+# page covers both, and ttyd's port no longer needs to be published at all.
+#
+# The cookie is a signed expiry, not a server-side session: the secret lives
+# on the /config volume, so a container update does not log every phone out,
+# and there is no session table to grow, lock, or clean. Basic auth still
+# works on every request — curl, bb shot and the tests send it preemptively —
+# but no response carries a WWW-Authenticate challenge any more, because the
+# challenge is precisely what made browsers pop their own dialog.
+SESSION_DAYS = 30
+STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
+
+
+def _session_secret():
+    p = STATE / "dashboard-secret"
+    try:
+        s = p.read_bytes()
+        if len(s) >= 32:
+            return s
+    except OSError:
+        pass
+    s = os.urandom(32)
+    fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "wb") as f:
+        f.write(s)
+    return s
+
+
+SECRET = _session_secret()
+
+
+def make_token():
+    exp = str(int(time.time()) + SESSION_DAYS * 86400)
+    return exp + "." + hmac.new(SECRET, exp.encode(), hashlib.sha256).hexdigest()
+
+
+def token_ok(tok):
+    exp, _, sig = tok.partition(".")
+    if not exp.isdigit() or int(exp) < time.time():
+        return False
+    want = hmac.new(SECRET, exp.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(sig, want)
+
+
+# The landing page. Same palette as the dashboard, one job: turn a credential
+# into the cookie. autocomplete names are the standard ones so password
+# managers offer to fill and to save — the thing the browser dialog never did
+# well on a phone.
+LOGIN_HTML = """<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>BuilderBot — sign in</title>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<style>
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+    background:#0d1117;color:#e6edf3;
+    font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  form{background:#161b22;border:1px solid #30363d;border-radius:10px;
+    padding:28px;width:min(340px,calc(100vw - 48px));
+    display:flex;flex-direction:column;gap:12px}
+  h1{margin:0 0 6px;font-size:18px;display:flex;align-items:center;gap:10px}
+  h1 svg{width:28px;height:28px;color:#3fb950}
+  label{font-size:12px;color:#8b98a5}
+  input{background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:6px;
+    padding:10px;font-size:16px}
+  input:focus{outline:2px solid #2f4d6d;outline-offset:-1px}
+  button{margin-top:6px;background:#1f6f36;border:1px solid #2ea043;color:#e6edf3;
+    border-radius:6px;padding:10px;font-size:15px;cursor:pointer}
+  .err{color:#f85149;font-size:13px;margin:0}
+</style></head><body>
+<form method="post" action="/login">
+  <h1><svg viewBox="0 0 32 32" aria-hidden="true"><mask id="m">
+    <rect width="32" height="32" fill="#000"/>
+    <rect x="4" y="8.5" width="24" height="17" rx="5.5" fill="#fff"/>
+    <rect x="15" y="3.5" width="2" height="6" rx="1" fill="#fff"/>
+    <circle cx="16" cy="3" r="2.3" fill="#fff"/>
+    <circle cx="11.4" cy="15.4" r="2.1" fill="#000"/>
+    <circle cx="20.6" cy="15.4" r="2.1" fill="#000"/>
+    <rect x="10.6" y="19.6" width="10.8" height="2.6" rx="1.3" fill="#000"/>
+  </mask><rect width="32" height="32" fill="currentColor" mask="url(#m)"/></svg>
+  BuilderBot</h1>
+  <!--ERR-->
+  <input type="hidden" name="next" value="/">
+  <label for="u">Username</label>
+  <input id="u" name="username" autocomplete="username" autocapitalize="none" required>
+  <label for="p">Password</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <button type="submit">Sign in</button>
+</form>
+<script>
+  const n = new URLSearchParams(location.search).get("next");
+  if (n && n.startsWith("/") && !n.startsWith("//"))
+    document.querySelector('[name=next]').value = n;
+</script>
+</body></html>
+"""
 
 # Every command the UI can run, by name. The UI posts a key from this table and
 # nothing else — no argument passthrough, no shell. A dashboard that accepted a
@@ -151,8 +259,7 @@ REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 # updates this container is built to expect. bb-tty reads the same file — a
 # rule only the dashboard honored would be advice, since the terminal URL is
 # reachable on its own.
-STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
-EXCLUDES_FILE = STATE / "excluded-projects.json"
+EXCLUDES_FILE = STATE / "excluded-projects.json"   # STATE is set up top
 
 # Which commands the operator keeps at the top of the card. Stored beside the
 # other state for the same reason the tab strip is: this is one machine with one
@@ -1408,26 +1515,164 @@ class Handler(BaseHTTPRequestHandler):
         if not AUTH:
             return False                    # startup refuses this case anyway
         hdr = self.headers.get("Authorization", "")
-        if not hdr.startswith("Basic "):
-            return False
-        try:
-            given = base64.b64decode(hdr[6:]).decode("utf-8", "replace")
-        except (ValueError, UnicodeDecodeError):
-            return False
-        # Compare the whole "user:pass" so a correct username with a wrong
-        # password is indistinguishable from both being wrong.
-        return _constant_eq(given, AUTH)
+        if hdr.startswith("Basic "):
+            try:
+                given = base64.b64decode(hdr[6:]).decode("utf-8", "replace")
+            except (ValueError, UnicodeDecodeError):
+                return False
+            # Compare the whole "user:pass" so a correct username with a wrong
+            # password is indistinguishable from both being wrong.
+            return _constant_eq(given, AUTH)
+        for part in self.headers.get("Cookie", "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "bb_session" and token_ok(v.strip()):
+                return True
+        return False
 
     def _deny(self):
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", 'Basic realm="BuilderBot"')
+        """Not signed in. A person gets the login page, code gets a plain
+        401 — never a WWW-Authenticate challenge, which is what summons the
+        browser's own dialog. Anything fetching /api/ is the page's JS (or
+        curl), and both handle a 401 better than a redirect-to-HTML."""
+        if self.path.split("?")[0].startswith("/api/"):
+            return self._json({"error": "not signed in"}, 401)
+        nxt = urllib.parse.quote(self.path, safe="/?=&")
+        self.send_response(302)
+        self.send_header("Location", f"/login?next={nxt}")
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _login_page(self, error=""):
+        err = f'<p class="err">{error}</p>' if error else ""
+        body = LOGIN_HTML.replace("<!--ERR-->", err).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _login_post(self):
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= n <= MAX_BODY:
+                return self._json({"error": "body too large"}, 413)
+            form = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "replace"))
+        except (ValueError, TypeError):
+            return self._json({"error": "bad request"}, 400)
+        given = (form.get("username", [""])[0] + ":" + form.get("password", [""])[0])
+        if not (AUTH and _constant_eq(given, AUTH)):
+            # A beat of delay, so guessing costs something; the message does
+            # not say which half was wrong for the same reason _authed's
+            # comparison does not.
+            time.sleep(0.5)
+            return self._login_page("Wrong username or password.")
+        nxt = form.get("next", ["/"])[0]
+        if not nxt.startswith("/") or nxt.startswith("//"):
+            nxt = "/"
+        self.send_response(303)
+        self.send_header("Location", nxt)
+        self.send_header("Set-Cookie",
+                         f"bb_session={make_token()}; Path=/; "
+                         f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _logout(self):
+        self.send_response(302)
+        self.send_header("Location", "/login")
+        self.send_header("Set-Cookie",
+                         "bb_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def _term_proxy(self):
+        """Everything under /term, relayed byte-for-byte to ttyd on the
+        loopback — websockets included.
+
+        This is what makes one login cover the terminals: the browser only
+        ever talks to this origin, so the session cookie (or basic auth)
+        checked before this call is the whole story, and ttyd's own port
+        stays unpublished. The /term prefix is stripped because ttyd's
+        client asks for everything relative to the page, so the same relay
+        serves an old image's ttyd (rooted at /, with its own credential —
+        injected here, never from the browser) and the new loopback-only
+        one alike.
+
+        For a websocket the handshake is forwarded and then the two sockets
+        are spliced until either side closes. The client sends nothing
+        between its request and the 101, so the handler's buffered reader
+        holds no stray bytes when the splice takes over the raw socket. A
+        plain request instead gets Connection: close upstream, which turns
+        "relay until EOF" into the complete response.
+        """
+        rest = self.path[len("/term"):]
+        if not rest or rest.startswith("?"):
+            # ttyd's client resolves "token" and "ws" against the page URL,
+            # so the page must live under a trailing slash.
+            self.send_response(302)
+            self.send_header("Location", "/term/" + rest)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        try:
+            up = socket.create_connection(("127.0.0.1", TTYD_PORT), timeout=5)
+        except OSError:
+            return self._json({"error": "the terminal server is not running"}, 502)
+        ws = "upgrade" in self.headers.get("Connection", "").lower()
+        lines = [f"{self.command} {rest} HTTP/1.1"]
+        for k, v in self.headers.items():
+            if k.lower() in ("authorization", "cookie", "connection", "keep-alive"):
+                continue
+            lines.append(f"{k}: {v}")
+        lines.append("Connection: " + (self.headers.get("Connection", "Upgrade")
+                                       if ws else "close"))
+        lines.append("Authorization: Basic "
+                     + base64.b64encode(AUTH.encode()).decode())
+        self.close_connection = True
+        down = self.connection
+        sel = selectors.DefaultSelector()
+        try:
+            up.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+            self.wfile.flush()
+            sel.register(up, selectors.EVENT_READ, down)
+            sel.register(down, selectors.EVENT_READ, up)
+            while True:
+                for key, _ in sel.select():
+                    data = key.fileobj.recv(65536)
+                    if not data:
+                        return
+                    key.data.sendall(data)
+        except OSError:
+            pass                          # either side hung up mid-relay
+        finally:
+            sel.close()
+            up.close()
+
+    def _gzip(self, body):
+        """The body, compressed when the client takes gzip and it pays.
+
+        The page is ~150KB of inline everything and the status snapshot a
+        phone polls every fifteen seconds is tens of KB of JSON — both shrink
+        by roughly four fifths. Below ~1400 bytes (one MTU) the header
+        shuffle costs more than it saves, so small answers go as they are.
+        """
+        if (len(body) >= 1400
+                and "gzip" in self.headers.get("Accept-Encoding", "")):
+            return gzip.compress(body, 6), True
+        return body, False
+
     def _json(self, obj, code=200):
-        body = json.dumps(obj).encode()
+        body, zipped = self._gzip(json.dumps(obj).encode())
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        # no-store, declared rather than assumed: preloading /api/status made
+        # it cache-eligible, and a reload that revived a stale layout snapshot
+        # from the browser cache then overwrote the real one on the next save.
+        # State answers are for right now, never for later.
+        self.send_header("Cache-Control", "no-store")
+        if zipped:
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -1464,12 +1709,21 @@ class Handler(BaseHTTPRequestHandler):
     }
 
     def _get(self):
+        path = self.path.split("?")[0]
+        if path == "/login":
+            return self._login_page()
+        if path == "/logout":
+            return self._logout()
         if not self._authed():
             return self._deny()
+        if path == "/term" or path.startswith("/term/"):
+            return self._term_proxy()
         if self.path.split("?")[0] in ("/", "/index.html"):
-            body = (HERE / "index.html").read_bytes()
+            body, zipped = self._gzip((HERE / "index.html").read_bytes())
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            if zipped:
+                self.send_header("Content-Encoding", "gzip")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             return self.wfile.write(body)
@@ -1503,6 +1757,8 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
     def _post(self):
+        if self.path.split("?")[0] == "/login":
+            return self._login_post()
         if not self._authed():
             return self._deny()
         # Read the body once, here, rather than in each handler: doing it after

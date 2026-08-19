@@ -33,10 +33,22 @@ export const launch = () => chromium.launch({ executablePath: CHROME });
 // and dialogs auto-accepted (recorded on page.dialogs) — the confirmations
 // are part of what the tests check.
 export async function newPage(browser, opts = {}){
-  const ctx = await browser.newContext({ httpCredentials: CREDS, ...opts });
+  // The Authorization header is sent preemptively: the server answers 401
+  // without a WWW-Authenticate challenge now (the challenge is what popped
+  // the browser dialog), and httpCredentials alone only reacts to one.
+  const ctx = await browser.newContext({
+    httpCredentials: CREDS,
+    extraHTTPHeaders: { Authorization: 'Basic '
+      + Buffer.from(`${CREDS.username}:${CREDS.password}`).toString('base64') },
+    ...opts });
   const page = await ctx.newPage();
   page.errors = []; page.dialogs = [];
-  page.on('console', m => { if (m.type() === 'error') page.errors.push(m.text()); });
+  // The harness runs no ttyd, so every terminal iframe's /term request 502s
+  // by design — same-origin now, which puts it in the page console where the
+  // old dead-port fetch never appeared. Filtered here, not per test: it is a
+  // property of the harness, not of any one scenario.
+  page.on('console', m => { if (m.type() === 'error'
+    && !(m.location()?.url || '').includes('/term')) page.errors.push(m.text()); });
   page.on('pageerror', e => page.errors.push(String(e)));
   page.on('dialog', d => { page.dialogs.push(d.message()); d.accept(); });
   return page;
@@ -61,6 +73,27 @@ export function tmuxFmt(name, fmt){
   if (process.env.TMUX || !process.env.TMUX_TMPDIR)
     throw new Error('tmuxFmt: not on the private tmux server — refusing');
   return execFileSync('tmux', ['display-message', '-p', '-t', name, fmt]).toString().trim();
+}
+
+// Poll the server from node until the stored layout satisfies pred — for
+// tests that must not proceed (usually into a reload) before a debounced
+// save has actually landed. NOT page.waitForFunction with an async
+// predicate: an async function returns a Promise, a Promise is truthy, and
+// that wait resolves instantly. Two tests guarded reloads with exactly that
+// no-op, and passed only while their other waits happened to outlast the
+// 400ms save debounce — the findings preload made a page fast enough to
+// reload inside the window, and the pending save died with it.
+export async function layoutSettled(pred, ms = 15000){
+  const auth = { Authorization: 'Basic '
+    + Buffer.from(`${CREDS.username}:${CREDS.password}`).toString('base64') };
+  const t0 = Date.now();
+  for (;;){
+    const l = (await (await fetch(URL + 'api/status', { headers: auth })).json()).layout;
+    if (pred(l)) return l;
+    if (Date.now() - t0 > ms)
+      throw new Error('layout never settled: ' + JSON.stringify(l));
+    await sleep(200);
+  }
 }
 
 // Wait until the page has its first doctor verdict — the last thing to land

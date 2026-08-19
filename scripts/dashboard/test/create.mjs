@@ -21,6 +21,8 @@ await page.click('#pClone');
 ok(await page.$eval('#pUrlField', el => !el.hidden)
    && await page.$eval('#pClone', b => b.classList.contains('on')),
    'clone mode shows the URL field and takes the green');
+ok(await page.$eval('#pUrlField', el => el.getAnimations().length > 0),
+   '...sliding in from its tab\'s side, like the view switch');
 ok(await page.$eval('#pNameField', el => el.hidden)
    && await page.$eval('#pAboutField', el => el.hidden),
    'clone mode asks for nothing but the URL — name and notes come from the repo');

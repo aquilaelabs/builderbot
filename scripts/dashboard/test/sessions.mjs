@@ -3,7 +3,7 @@
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
-import { launch, newPage, ok, done, sleep, tmuxNew, tmuxFmt, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, tmuxNew, tmuxFmt, layoutSettled, URL, DIR } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -97,9 +97,8 @@ ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros grayed on th
 ok(await page.$$eval('.stats .pill', ps => ps.some(p => p.textContent.trim() === '2 hidden')), 'report says how many findings it held back');
 await page.click('#cardFindings .macros button');
 ok(await page.$eval('details[data-proj="alpha"]', d => d.open), 'reopening the report keeps the expanded group');
-// The layout save is debounced; reload only once the server has the tab.
-await page.waitForFunction(async () =>
-  (await (await fetch('/api/status')).json()).layout.tabs.some(t => t.kind === 'findings'), { timeout: 15000 });
+// The save is debounced; reload only once the server truly has the tab.
+await layoutSettled(l => l.tabs.some(t => t.kind === 'findings'));
 await page.reload();
 try {
   await page.waitForFunction(() => document.querySelector('details[data-proj]') !== null, { timeout: 30000 });
@@ -258,6 +257,11 @@ await phone.evaluate(() => setView('terminal'));
 await phone.reload();
 await phone.waitForFunction(() => document.body.dataset.view === 'terminal', { timeout: 20000 });
 ok(true, 'a phone reload lands back on the terminal view');
+// ...unless the URL says otherwise: ?view= is how something that can only
+// speak URLs (bb shot, a bookmark) asks for a side, and it beats the memory.
+await phone.goto(URL + '?view=dash');
+await phone.waitForFunction(() => document.body.dataset.view === 'dash', { timeout: 20000 });
+ok(true, '?view= overrides the remembered side');
 ok(phone.errors.length === 0, `phone: zero console errors${phone.errors.length ? ' — ' + phone.errors.join(' | ') : ''}`);
 await phone.close();
 
