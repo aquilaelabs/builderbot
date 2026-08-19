@@ -96,9 +96,14 @@ const during = (job) => page.evaluate(j => {
   pkgRev++; drawPanes();
   const row = [...document.querySelectorAll('.doc .pkg')]
     .find(l => l.querySelector('input').value === 'flutter');
+  const bar = row.querySelector('.prog .bar'), fill = row.querySelector('.prog .bar i');
   const out = { text: row.querySelector('.prog')?.textContent.trim(),
-                width: row.querySelector('.prog .bar i')?.style.width,
-                bar: !!row.querySelector('.prog .bar'),
+                width: fill?.style.width,
+                barW: bar ? Math.round(bar.getBoundingClientRect().width) : 0,
+                fillW: fill ? Math.round(fill.getBoundingClientRect().width) : 0,
+                bar: !!bar,
+                ticked: !!row.querySelector('input:checked'),
+                bin: !!row.querySelector('[data-rm]'),
                 where: row.querySelector('.where')?.textContent.trim() || null };
   packages.job = saved; pkgRev++; drawPanes();
   clearTimeout(pkgPoll);      // the fake state must not outlive this check
@@ -106,19 +111,26 @@ const during = (job) => page.evaluate(j => {
 }, job);
 
 let d = await during({ action: 'install', current: 'flutter',
-                       progress: { name: 'flutter', pct: 42 } });
+                       progress: { name: 'flutter', pct: 42, phase: 'downloading' } });
 ok(d.text === 'downloading 42%' && d.width === '42%' && d.where === null,
    'the row being installed shows the download percentage, not a path');
+ok(d.fillW > 40 && d.fillW < d.barW * 0.5 && d.barW > 150,
+   `...and the bar is wide enough to read it off (${d.fillW}px of ${d.barW}px)`);
+// Mid-install the directory exists, so every probe calls it installed. The row
+// must not wear any of the furniture that means "this is here" — a half-written
+// NDK showed a ticked box, an uninstall bin and the version "installed".
+ok(!d.ticked && !d.bin,
+   '...and carries no ticked box or uninstall control while it is being written');
+d = await during({ action: 'install', current: 'flutter', progress: null });
+ok(d.text.startsWith('starting'),
+   'before the tool has said anything, the row says starting — not installing');
 // Past the download there is no honest denominator, so the row stops
 // pretending: no bar, no number, and no naming of whichever component is
 // being unpacked — one of those ran off the side of a phone.
 d = await during({ action: 'install', current: 'flutter',
-                   progress: { name: 'flutter', pct: null } });
+                   progress: { name: 'flutter', pct: null, phase: 'installing', seen: true } });
 ok(d.text.startsWith('installing') && !d.bar,
    '...and once installing, says so without a bar or a percentage');
-d = await during({ action: 'install', current: 'flutter', progress: null });
-ok(d.text.startsWith('installing') && !d.bar,
-   '...same before anything at all has been reported');
 d = await during({ action: 'remove', current: 'flutter', progress: null });
 ok(d.text.startsWith('removing'), 'a removal says so on the row it is removing');
 // The dots are ticked by a timer, so a redraw must not reset them.
