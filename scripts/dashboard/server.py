@@ -58,6 +58,14 @@ STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
 
 
 def _session_secret():
+    """The key the session cookie is signed with, kept on the state volume.
+
+    Every other read of that volume degrades rather than raises, and this one
+    has to as well: it runs at import, so a /config that is missing or
+    read-only took the whole dashboard down at startup — where the honest
+    outcome is a dashboard that runs and forgets its sessions on restart.
+    Basic auth is unaffected either way.
+    """
     p = STATE / "dashboard-secret"
     try:
         s = p.read_bytes()
@@ -66,9 +74,14 @@ def _session_secret():
     except OSError:
         pass
     s = os.urandom(32)
-    fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "wb") as f:
-        f.write(s)
+    try:
+        STATE.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as f:
+            f.write(s)
+    except OSError as e:
+        print(f"dashboard: cannot keep the session secret in {STATE} ({e}); "
+              "sign-ins will not survive a restart", flush=True)
     return s
 
 
@@ -1632,6 +1645,12 @@ class Handler(BaseHTTPRequestHandler):
             up = socket.create_connection(("127.0.0.1", TTYD_PORT), timeout=5)
         except OSError:
             return self._json({"error": "the terminal server is not running"}, 502)
+        # The connect timeout must not become a *relay* timeout: it stays on
+        # the socket, and a sendall that blocks longer than it — a big paste
+        # into a busy terminal, a slow reader — would raise and drop a live
+        # websocket. Reads are safe either way (select says readable first),
+        # writes are not. Blocking with no deadline is what a splice wants.
+        up.settimeout(None)
         ws = "upgrade" in self.headers.get("Connection", "").lower()
         lines = [f"{self.command} {rest} HTTP/1.1"]
         for k, v in self.headers.items():
