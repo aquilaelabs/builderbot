@@ -102,11 +102,16 @@ doc = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "testscan", "ru
 open(sys.argv[1], "w").write(json.dumps(doc))
 EOF
 # Each test file starts from the same place: an unwritten layout and both
-# throwaway sessions present — a file that minimises tabs or ends a session
+# throwaway sessions present — a file that minimizes tabs or ends a session
 # must not hand that state to the next.
 fresh() {
     rm -f "$S/state/tabs.json" "$S/state/cards.json"
     echo '["delta"]' > "$S/state/excluded-projects.json"   # a test that excludes must not hand that on
+    # Projects a test created through /api/create go too — anything that is
+    # not one of the five fixtures. Scoped to $S, like every rm in this file.
+    find "$S/ws" -maxdepth 1 -mindepth 1 -type d \
+        ! -name alpha ! -name beta ! -name gamma ! -name delta ! -name ep.silon \
+        -exec rm -rf {} +
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
     for n in shell-9 claude-alpha; do
         tmux has-session -t "$n" 2>/dev/null || tmux new-session -d -s "$n" -c /tmp
@@ -116,6 +121,7 @@ fresh
 
 # ---- server ----------------------------------------------------------------
 env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
+    TEMPLATE_MD="$DASH/../../config/templates/project-CLAUDE.md" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" PATH="$S/bin:$PATH" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &

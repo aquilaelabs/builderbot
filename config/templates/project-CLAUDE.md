@@ -97,7 +97,7 @@ show a GUI on.
   `playwright install`; if a project pins a different version, launch with
   `executablePath: '/opt/pw-browsers/chromium'` (a stable symlink to the
   image's Chromium). The image's Playwright is a global module: `require()`
-  finds it from any directory via `NODE_PATH`; ESM `import` does not honour
+  finds it from any directory via `NODE_PATH`; ESM `import` does not honor
   that, so use `createRequire(import.meta.url)('playwright')`.
 - **`bb shot URL [FILE]`** — headless screenshot of any page, for showing the
   user visual state.
@@ -161,7 +161,7 @@ installed, deliberately. If findings look stale, say so and let the user re-run
 it on the host; do not try to install a scanner to work around it.
 
 Treat findings as claims to evaluate, not a queue to clear. Whether a `|safe`
-is deliberate or a SHA1 is for dedup rather than security is a judgement about
+is deliberate or a SHA1 is for dedup rather than security is a judgment about
 intent — check the surrounding code and say what you concluded. Suppressing a
 rule makes the report clean without making the code better, so propose that
 only when the finding is genuinely a false positive, and say why.
@@ -182,7 +182,7 @@ only when the finding is genuinely a false positive, and say why.
 ## CI runs on this same box
 
 The self-hosted runner executes jobs in this container, under
-`/workspace/_work`. It is registered at the **organisation** level, so it serves
+`/workspace/_work`. It is registered at the **organization** level, so it serves
 every repo in the org, not just this one. It carries the labels
 `builderbot,self-hosted,linux,x64,unraid`, and a workflow matches only if every
 label in its `runs-on` is one the runner has. Four implications:

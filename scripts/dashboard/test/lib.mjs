@@ -7,7 +7,7 @@ import { writeFileSync, readFileSync } from 'fs';
 import { execFileSync } from 'child_process';
 // require, not import: ESM resolution ignores NODE_PATH, and the image's
 // Playwright is a global install (/usr/lib/node_modules), not a dependency
-// of this directory. CJS resolution honours NODE_PATH, which run.sh sets.
+// of this directory. CJS resolution honors NODE_PATH, which run.sh sets.
 const { chromium } = createRequire(import.meta.url)('playwright');
 
 export const URL = process.env.DASHBOARD_TEST_URL || 'http://127.0.0.1:8093/';
@@ -70,7 +70,7 @@ export const ready = page => page.waitForFunction(() => {
   return d && !d.hidden && d.className.includes('ok');
 }, { timeout: 40000 });
 
-// A real touch gesture through Chromium's gesture recogniser (not synthetic
+// A real touch gesture through Chromium's gesture recognizer (not synthetic
 // pointer events): down at (x,y), optional hold, glide to (x2,y2), lift.
 export async function finger(page, x, y, x2, y2, holdMs){
   const cdp = await page.context().newCDPSession(page);

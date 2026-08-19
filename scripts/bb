@@ -397,7 +397,7 @@ md_block() { awk -v b="$ENV_BEGIN" -v e="$ENV_END" \
 # Keep a project's CLAUDE.md environment section in step with the image.
 #
 # The block is delimited so refreshing it is a substitution rather than a
-# judgement call: everything below the end marker is the project's own and is
+# judgment call: everything below the end marker is the project's own and is
 # never read, compared or written. That is the whole point — the environment
 # notes go stale every time the container gains a feature, and the project
 # notes are the expensive part nobody wants to risk.

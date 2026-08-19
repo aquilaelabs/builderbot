@@ -1,7 +1,7 @@
 // Sessions card and its relationship to the tab strip: name goes to the tab,
-// the button minimises/closes/opens, attached pill and pane glyphs, tooltips,
+// the button minimizes/closes/opens, attached pill and pane glyphs, tooltips,
 // macros only on shell tabs, middle-click ends a session, findings tab
-// behaviour, and the phone's bottom bar: flyout slides and swaps, the strip
+// behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
 import { launch, newPage, ok, done, sleep, tmuxNew, tmuxFmt, URL } from './lib.mjs';
 
@@ -12,11 +12,11 @@ await page.waitForFunction(() => document.querySelectorAll('#sessions .row').len
 const row = n => page.locator('#sessions .row', { has: page.locator(`[data-go="${n}"]`) });
 const btn = n => row(n).locator('button').first();
 
-ok((await btn('shell-9').textContent()).trim() === 'Open', 'minimised session shows Open');
+ok((await btn('shell-9').textContent()).trim() === 'Open', 'minimized session shows Open');
 await row('shell-9').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
-ok((await btn('shell-9').textContent()).trim() === 'Minimise' && await btn('shell-9').evaluate(b => b.classList.contains('primary')),
-   'clicking the name opens the tab; button becomes green Minimise');
+ok((await btn('shell-9').textContent()).trim() === 'Minimize' && await btn('shell-9').evaluate(b => b.classList.contains('primary')),
+   'clicking the name opens the tab; button becomes green Minimize');
 ok(await page.evaluate(() => sessionOf(tabOf(panes[0]).arg) === 'shell-9'), '...and goes to it');
 // PgUp from the keys row is how a finger scrolls: at a prompt it enters copy
 // mode a page up; PgDn pages back and copy mode ends itself at the bottom.
@@ -31,7 +31,7 @@ ok((await row('shell-9').locator('[data-go]').getAttribute('title')) === await p
    'session tooltip equals the tab tooltip');
 await btn('shell-9').click();
 await page.waitForFunction(() => !tabs.some(t => sessionOf(t.arg) === 'shell-9'));
-ok((await btn('shell-9').textContent()).trim() === 'Open', 'Minimise takes the tab away');
+ok((await btn('shell-9').textContent()).trim() === 'Open', 'Minimize takes the tab away');
 
 await row('shell-9').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
@@ -43,7 +43,7 @@ await page.evaluate(() => closePane(1));
 await row('claude-alpha').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'claude-alpha'));
 ok((await btn('claude-alpha').textContent()).trim() === 'Close', 'claude session on the strip shows Close');
-ok(await page.$eval('#commands [data-m]', b => b.disabled) && await page.$eval('#runner [data-m]', b => b.disabled), 'macros greyed on a Claude tab');
+ok(await page.$eval('#commands [data-m]', b => b.disabled) && await page.$eval('#runner [data-m]', b => b.disabled), 'macros grayed on a Claude tab');
 const nd = page.dialogs.length;
 await btn('claude-alpha').click();
 await page.waitForFunction(() => !document.querySelector('[data-go="claude-alpha"]'), { timeout: 15000 });
@@ -64,7 +64,7 @@ await page.waitForSelector('details[data-proj="alpha"]');
 await page.click('details[data-proj="alpha"] summary');
 ok(await page.$eval('details[data-proj="alpha"]', d => d.getAnimations().length > 0 && d.open), 'findings group animates open');
 await page.waitForFunction(() => document.querySelector('details[data-proj="alpha"]').getAnimations().length === 0);
-ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros greyed on the findings tab');
+ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros grayed on the findings tab');
 ok(await page.$$eval('.stats .pill', ps => ps.some(p => p.textContent.trim() === '2 hidden')), 'report says how many findings it held back');
 await page.click('#cardFindings .macros button');
 ok(await page.$eval('details[data-proj="alpha"]', d => d.open), 'reopening the report keeps the expanded group');
@@ -91,10 +91,10 @@ await page.evaluate(() => { if (!tabs.some(t => sessionOf(t.arg) === 'shell-9'))
   openTab({kind:"term", arg: argForSession('shell-9'), label:'shell-9'}); });
 await page.evaluate(() => focusTab(tabs.find(t => sessionOf(t.arg) === 'shell-9').id));
 ok(await page.$eval('#commands [data-m]', b => !b.disabled), 'macros live on a shell tab');
-// no tabs at all → greyed too, with a tooltip saying to open a shell
+// no tabs at all → grayed too, with a tooltip saying to open a shell
 await page.evaluate(() => { const keep = tabs.slice(); keep.forEach(t => dropTab(t.id)); });
 ok(await page.$eval('#commands [data-m]', b => b.disabled && /open one/.test(b.title))
-   && await page.$eval('#runner [data-m]', b => b.disabled), 'macros greyed with no tab open');
+   && await page.$eval('#runner [data-m]', b => b.disabled), 'macros grayed with no tab open');
 await page.evaluate(() => openTab({kind:"term", arg: argForSession('shell-9'), label:'shell-9'}));
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
 
@@ -103,7 +103,7 @@ await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'))
 tmuxNew('claude-ep_silon');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
-ok((await page.$eval('#sessions [data-go="claude-ep_silon"]', el => el.textContent.trim())) === 'Claude: ep.silon', 'dotted project: session labelled by its project name');
+ok((await page.$eval('#sessions [data-go="claude-ep_silon"]', el => el.textContent.trim())) === 'Claude: ep.silon', 'dotted project: session labeled by its project name');
 ok(await page.$eval('#projects [data-c="ep.silon"]', b => b.classList.contains('primary')), 'dotted project: Claude button knows the session is running');
 await page.click('#sessions [data-go="claude-ep_silon"]');
 await page.waitForFunction(() => tabs.some(t => t.arg === 'claude:ep.silon'));
@@ -210,7 +210,7 @@ await phone.waitForFunction(() => tabOf(panes[active])?.kind === 'findings');
 ok(await phone.$eval('#mKeys', b => b.disabled && /document/.test(b.title)), 'Keys is disabled over a document tab');
 
 // Opening a tab that sits off the end of the strip scrolls it into view, and
-// the arrows grey at the ends they cannot go past.
+// the arrows gray at the ends they cannot go past.
 await phone.evaluate(() => { for (let i = 0; i < 6; i++) newShell(''); });
 await phone.waitForFunction(() => { const b = document.getElementById('tabbar'); return b.scrollWidth > b.clientWidth + 50; });
 await phone.evaluate(() => { document.getElementById('tabbar').scrollTo({left: 0, behavior: 'instant'}); focusTab(tabs[0].id); });
@@ -219,10 +219,10 @@ await phone.waitForFunction(() => { const b = document.getElementById('tabbar'),
   return t.offsetLeft + t.offsetWidth <= b.scrollLeft + b.clientWidth + 1; }, { timeout: 5000 });
 ok(true, 'focusing a tab off the end of the strip scrolls it into view');
 await phone.waitForFunction(() => document.getElementById('tabR').disabled, { timeout: 5000 });   // the smooth scroll lands
-ok(await phone.$eval('#tabL', b => !b.disabled), 'at the right end › is greyed and ‹ is live');
+ok(await phone.$eval('#tabL', b => !b.disabled), 'at the right end › is grayed and ‹ is live');
 await phone.evaluate(() => { document.getElementById('tabbar').scrollTo({left: 0, behavior: 'instant'}); });
 await phone.waitForFunction(() => document.getElementById('tabL').disabled);
-ok(await phone.$eval('#tabR', b => !b.disabled), 'at the left end ‹ is greyed and › is live');
+ok(await phone.$eval('#tabR', b => !b.disabled), 'at the left end ‹ is grayed and › is live');
 
 // The view a phone was on comes back after a reload.
 await phone.evaluate(() => setView('terminal'));

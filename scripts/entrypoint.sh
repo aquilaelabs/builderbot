@@ -407,7 +407,7 @@ run_hooks() {
     done
 }
 
-# Build the command that main() will exec, honouring the container CMD.
+# Build the command that main() will exec, honoring the container CMD.
 resolve_command() {
     case "${1:-supervise}" in
         supervise) printf '%s\0' /opt/builderbot/scripts/supervisor.sh ;;

@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import tempfile
 import threading
@@ -114,7 +115,7 @@ REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 
 # Excluded projects live on the /config volume so the list survives the image
 # updates this container is built to expect. bb-tty reads the same file — a
-# rule only the dashboard honoured would be advice, since the terminal URL is
+# rule only the dashboard honored would be advice, since the terminal URL is
 # reachable on its own.
 STATE = Path(os.environ.get("DASHBOARD_STATE", "/config"))
 EXCLUDES_FILE = STATE / "excluded-projects.json"
@@ -503,10 +504,10 @@ def findings_payload():
             "hidden": hidden, "reports": reports}
 
 
-def run(cmd, cwd=None, timeout=120):
+def run(cmd, cwd=None, timeout=120, env=None):
     try:
         p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                           timeout=timeout)
+                           timeout=timeout, env=env)
         return {"cmd": shlex.join(cmd), "code": p.returncode,
                 "out": (p.stdout or "") + (p.stderr or "")}
     except subprocess.TimeoutExpired:
@@ -559,6 +560,118 @@ def md_state(path):
     if have is None:
         return "unmarked"
     return "current" if have == want else "stale"
+
+
+# What a new project may be called, and where a clone may come from. The name
+# becomes a directory under /workspace and part of a tmux session name, so it
+# gets the strictest charset of the two — one path segment, starting with a
+# letter or digit, which also rules out `_work`, dotfiles and `..`. The URL is
+# one of GitHub's address shapes and nothing else: `git clone` accepts
+# transports a browser form must never reach (`ext::` runs commands), so
+# anything unrecognized is refused rather than passed along.
+PROJECT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # GitHub caps repos at 100
+GITHUB_URL = re.compile(
+    r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)"
+    r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*?(?:\.git)?/?")
+
+# One creation at a time. Not _state_lock: a clone can take minutes, and
+# holding the state lock that long would stall every layout save behind it.
+_create_lock = threading.Lock()
+
+
+def build_claude_md(about):
+    """A new project's CLAUDE.md: the shipped template, with the section below
+    the end marker replaced by the operator's own notes when they gave any.
+
+    The same file `bb claude-md --init` copies; building it here as well means
+    the notes land in one write instead of a copy the operator then has to
+    edit. No notes → the template verbatim, placeholder section and all.
+    """
+    try:
+        text = TEMPLATE_MD.read_text()
+    except OSError:
+        return None                      # no template: older image, say so
+    if not about:
+        return text
+    i = text.find(ENV_END)
+    if i < 0:
+        return text                      # unmarked template: nothing to split on
+    head = text[:i + len(ENV_END)]
+    return head + "\n\n---\n\n## About this project\n\n" + about.rstrip() + "\n"
+
+
+def _readme_intro(dest):
+    """The first prose paragraph of the repo's README, or None.
+
+    Headings, badges and raw HTML are skipped — the first thing most READMEs
+    hold is a wall of shields, and a CLAUDE.md that opens with badge markup
+    describes the README, not the project."""
+    for name in ("README.md", "README.rst", "README.txt", "README"):
+        p = dest / name
+        if not p.is_file():
+            continue
+        try:
+            text = p.read_text(errors="replace")
+        except OSError:
+            return None
+        out = []
+        for para in text.split("\n\n"):
+            para = para.strip()
+            if not para or para.startswith(("#", "<", "![", "[![", "---", "=")):
+                continue
+            out.append(re.sub(r"\s+", " ", para))
+            if sum(map(len, out)) > 400:
+                break
+        return " ".join(out)[:600] or None
+    return None
+
+
+def _build_hints(dest):
+    """Build/test commands read off the tree's own marker files.
+
+    Heuristics, deliberately shallow: the point is a first draft that names
+    the toolchain, not a build system parser. Wrong guesses are cheap here —
+    the section carries a note saying to verify it."""
+    hints = []
+    try:
+        scripts = (json.loads((dest / "package.json").read_text())
+                   .get("scripts") or {})
+        hints += [f"- **{k}:** `npm run {k}`"
+                  for k in ("build", "test", "lint", "dev") if k in scripts]
+    except (OSError, ValueError):
+        pass
+    if (dest / "gradlew").is_file():
+        hints += ["- **Build:** `./gradlew build`"
+                  + (" — `./gradlew assembleDebug` for an APK"
+                     if (dest / "app").is_dir() else ""),
+                  "- **Test:** `./gradlew test`"]
+    if (dest / "Cargo.toml").is_file():
+        hints += ["- **Build:** `cargo build`", "- **Test:** `cargo test`"]
+    if (dest / "go.mod").is_file():
+        hints += ["- **Build:** `go build ./...`", "- **Test:** `go test ./...`"]
+    if (dest / "pyproject.toml").is_file():
+        hints.append("- **Python:** `pyproject.toml` present — `uv pip install -e .`"
+                     + ("; `pytest`" if (dest / "tests").is_dir() else ""))
+    if (dest / "Makefile").is_file():
+        hints.append("- **Make:** a `Makefile` is present — see its targets")
+    return hints
+
+
+def describe_repo(dest):
+    """A drafted project section for a repo that arrived without a CLAUDE.md:
+    the README's own first paragraph, plus whatever the marker files say about
+    building it. None when the tree says nothing — the template's placeholder
+    section is more honest than an empty guess."""
+    parts = [p for p in (_readme_intro(dest),) if p]
+    hints = _build_hints(dest)
+    if hints:
+        parts.append("What the tree suggests:\n\n" + "\n".join(hints))
+    if not parts:
+        return None
+    parts.append("<!-- Drafted automatically at clone time from the repository's "
+                 "own files. Have a session verify this against the code and "
+                 "flesh it out. -->")
+    return "\n\n".join(parts)
 
 
 def projects():
@@ -667,7 +780,7 @@ def session_cwds():
     """Session name -> {cwd, title} of its active pane.
 
     cwd is where a terminal *is* right now, which is not where it was opened:
-    the tab is labelled from this, so a `cd` shows up in the strip. The pane
+    the tab is labeled from this, so a `cd` shows up in the strip. The pane
     title rides along because for Claude sessions it is a status report —
     see claude_state below.
     """
@@ -1168,6 +1281,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._pin(req)
         if path.startswith("/api/claude-md"):
             return self._claude_md(req)
+        if path.startswith("/api/create"):
+            return self._create(req)
         if path.startswith("/api/custom"):
             return self._custom(req)
         if path.startswith("/api/doctor"):
@@ -1214,6 +1329,92 @@ class Handler(BaseHTTPRequestHandler):
         except OSError as e:
             return self._json({"error": f"could not save: {e}"}, 500)
         return self._json({"custom": load_custom()})
+
+    def _create(self, req):
+        """Create a project under /workspace: a fresh local repo, or a clone
+        of a GitHub repository the container's credentials can already reach.
+
+        The name is validated before it becomes a path and the URL before it
+        becomes an argument — see PROJECT_NAME and GITHUB_URL for why both are
+        allow-lists. The clone runs with prompts disabled so missing access
+        fails with git's own message instead of hanging a request forever on a
+        username prompt nobody can answer.
+
+        mkdir is the claim: it is atomic, so two requests racing on one name
+        get one directory and one clean "already exists". On failure the
+        directory this request just made is removed — never one that was
+        already there, which is the FileExistsError branch returning first.
+        """
+        mode = req.get("mode")
+        if mode not in ("init", "clone"):
+            return self._json({"error": "unknown mode"}, 400)
+        url = (req.get("url") or "").strip()
+        if mode == "clone":
+            if not GITHUB_URL.fullmatch(url):
+                return self._json({"error": "not a GitHub repository address — "
+                                   "use https://github.com/owner/repo or "
+                                   "git@github.com:owner/repo.git"}, 400)
+            # The repository already knows its name; asking again would just
+            # invite a second spelling of the same thing. Notes are not asked
+            # for either — they are drafted from the code after the clone.
+            name = re.split(r"[/:]", url.rstrip("/"))[-1]
+            name = name[:-4] if name.endswith(".git") else name
+            about = ""
+        else:
+            name = (req.get("name") or "").strip()
+            about = (req.get("about") or "").strip()
+        if not PROJECT_NAME.fullmatch(name):
+            return self._json({"error": "a project name is one path segment: "
+                               "letters, digits, dots, dashes, underscores, "
+                               "starting with a letter or digit"}, 400)
+        dest = WORKSPACE / name
+        with _create_lock:
+            try:
+                dest.mkdir()
+            except FileExistsError:
+                return self._json({"error": f"{name} already exists in the "
+                                            "workspace"}, 400)
+            except OSError as e:
+                return self._json({"error": f"cannot create {name}: {e}"}, 500)
+            if mode == "clone":
+                # BatchMode so a key the agent does not hold fails instead of
+                # prompting; accept-new because the first contact with github.com
+                # on a fresh home volume is expected, not an attack to refuse.
+                env = dict(os.environ, GIT_TERMINAL_PROMPT="0",
+                           GIT_SSH_COMMAND="ssh -o BatchMode=yes "
+                                           "-o StrictHostKeyChecking=accept-new")
+                r = run(["git", "clone", "--", url, str(dest)],
+                        timeout=600, env=env)
+            else:
+                r = run(["git", "init", "-b", "main", str(dest)], timeout=30)
+            if r["code"] != 0:
+                shutil.rmtree(dest, ignore_errors=True)   # made a moment ago
+                return self._json({"error": r["out"].strip()[-2000:]
+                                            or f"git {mode} failed"}, 500)
+
+            # The CLAUDE.md. A cloned repo that already carries one keeps it;
+            # one that does not gets a draft read out of its own files — the
+            # README's opening and whatever the marker files say about
+            # building it. A fresh local repo gets the operator's notes.
+            md = dest / "CLAUDE.md"
+            if md.is_file():
+                note = "kept the repository's own CLAUDE.md"
+            else:
+                if mode == "clone":
+                    about = describe_repo(dest) or ""
+                body = build_claude_md(about)
+                if body is None:
+                    note = "no CLAUDE.md template in this image; none written"
+                else:
+                    try:
+                        md.write_text(body)
+                        note = (("CLAUDE.md drafted from the repository's own files"
+                                 if mode == "clone" else
+                                 "CLAUDE.md created from your notes") if about
+                                else "CLAUDE.md created from the template")
+                    except OSError as e:
+                        note = f"could not write CLAUDE.md: {e}"
+        return self._json({"ok": True, "name": name, "note": note})
 
     def _claude_md(self, req):
         """Create or refresh one project's CLAUDE.md.
@@ -1339,7 +1540,7 @@ class Handler(BaseHTTPRequestHandler):
 
         # An excluded project must not keep a live session running — leaving one
         # attached would mean the exclusion takes effect only next time, which
-        # is not what a button labelled "exclude" implies.
+        # is not what a button labeled "exclude" implies.
         killed = None
         sess = tmux_name(f"claude-{name}")
         if on and sess in {s["name"] for s in tmux_sessions()}:
@@ -1418,7 +1619,7 @@ class Handler(BaseHTTPRequestHandler):
         # arrives glued to the end of it. End-of-line then kill-line, which is
         # readline editing and not a signal: Ctrl-C would also interrupt
         # whatever is running in there, which is not what pressing a button
-        # labelled `bb status` should be able to do.
+        # labeled `bb status` should be able to do.
         run(["tmux", "send-keys", "-t", session, "C-e", "C-u"], timeout=10)
         # Typed one after another without waiting. That is what happens when a
         # person types ahead too — the tty buffers the input and the shell reads

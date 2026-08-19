@@ -4,7 +4,7 @@
 #
 # A terminal in the dashboard is a tmux session, and tmux dies with the
 # container — so without this, restarting means every terminal you had open is
-# gone, including the ones you had minimised out of the tab strip. The shutdown
+# gone, including the ones you had minimized out of the tab strip. The shutdown
 # writes each session's directory and the last screenful of its scrollback; this
 # recreates the session there and prints that scrollback back into it before the
 # shell starts, which is the same trick tmux-resurrect uses.

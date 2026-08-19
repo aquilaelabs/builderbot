@@ -301,6 +301,11 @@ Warnings stay in the list in amber, because they are asking for something: no
 `CLAUDE.md`, or one whose environment block has fallen behind the image. Both
 are underlined links that fix themselves in place. A row that is excluded or has
 an error carries no Claude button, since a session cannot start there.
+**New project…** at the foot of the card creates one — a fresh local repo built
+from the name and description you give it, or a clone of a GitHub repository
+the container's deploy key or PAT can already reach, which needs only the URL:
+the name comes from the repository and the `CLAUDE.md` is drafted from its own
+README and build files.
 
 Selecting text in a shell terminal copies it to your clipboard as you release
 the mouse. Claude tabs keep tmux's mouse mode instead, so they do not.
@@ -311,21 +316,21 @@ Upgrading from an image older than this one: BuilderBot used to write its tmux
 settings straight into `~/.tmux.conf`, which is on the persistent home volume.
 That copy is replaced on the next start (kept as `~/.tmux.conf.builderbot-old`),
 and the launcher sets mouse mode on each session anyway, so the clipboard
-behaviour does not depend on it.
+behavior does not depend on it.
 
 Below the `bb` commands is a card for your own: **+** takes a title and a list
 of command lines, and the button it makes types them into the terminal in order.
 They are kept in `/config`, so they survive updates.
 
 The page starts with one workspace tab; every tab, that one included, can be
-minimised. **Claude** opens one session per project — resumable if a previous
+minimized. **Claude** opens one session per project — resumable if a previous
 conversation exists — and **Shell** opens another terminal each time you click
 it. Tabs are named for where they are (`sh: <directory>`, following a `cd`;
 `Claude: <project>`), with the full path on hover. Tabs can be dragged to
 reorder (on a phone, hold for half a second first) and pinned to a left or
 right pane for a side-by-side view. A pane's ✕ only collapses the split.
 
-A tab's **—** minimises it: the terminal or Claude session keeps running and is
+A tab's **—** minimizes it: the terminal or Claude session keeps running and is
 listed under Sessions, where clicking the name brings its tab back. Ending a
 session for good is the ✕ in the Sessions card (or a middle-click on its tab),
 and that is the only thing that asks. The sidebar cards collapse on a click of

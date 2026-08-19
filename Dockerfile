@@ -196,7 +196,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/opt/pw-browsers
 
 # DS-0017 suppressed: the apt-get update below feeds `playwright install
 # --with-deps`, which runs apt-get install itself in this same layer; the
-# scanner only recognises a literal install and reports the update as alone.
+# scanner only recognizes a literal install and reports the update as alone.
 #trivy:ignore:AVD-DS-0017
 RUN set -eux; \
     if [ "${INSTALL_PLAYWRIGHT}" != "true" ]; then echo "skipping Playwright"; exit 0; fi; \
