@@ -77,9 +77,12 @@ mkdir -p "$S"/{ws,reports,state,bin}
 ( cd "$S/ws" && mkdir -p alpha beta gamma delta ep.silon \
     && for d in alpha beta gamma delta ep.silon; do echo x > "$d/README.md"; done \
     && for d in alpha beta delta ep.silon; do git init -q "$d"; done \
-    && git -C alpha remote add origin git@github.com:owner/alpha.git )
-    # alpha is linked, beta is not: the link-to-GitHub button must show on
-    # exactly one of them.
+    && git -C alpha remote add origin git@github.com:owner/alpha.git \
+    && git -C ep.silon remote add origin https://gitlab.example/eps.git )
+    # alpha is linked to GitHub and beta to nothing — the link-to-GitHub
+    # button must show on exactly one of them. ep.silon is linked to a
+    # non-GitHub remote: still "linked", but the GitHub command card must
+    # ghost there all the same.
 echo '["delta"]' > "$S/state/excluded-projects.json"
 # alpha has a previous Claude conversation, so its Claude button offers the
 # Resume / New chooser rather than starting straight away.

@@ -318,9 +318,13 @@ That copy is replaced on the next start (kept as `~/.tmux.conf.builderbot-old`),
 and the launcher sets mouse mode on each session anyway, so the clipboard
 behavior does not depend on it.
 
-Below the `bb` commands is a card for your own: **+** takes a title and a list
-of command lines, and the button it makes types them into the terminal in order.
-They are kept in `/config`, so they survive updates.
+The `bb` commands card sits between two more: **Linux commands** (disk,
+memory, processes, ports — live on any shell) above it, and **Git & GitHub**
+below, which grays out when the active shell's directory is not a git
+repository — and grays just its `gh` half when the repo has no GitHub remote.
+Last comes a card for your own: **+** takes a title and a list of command
+lines, and the button it makes types them into the terminal in order. They
+are kept in `/config`, so they survive updates.
 
 The page starts with one workspace tab; every tab, that one included, can be
 minimized. **Claude** opens one session per project — resumable if a previous

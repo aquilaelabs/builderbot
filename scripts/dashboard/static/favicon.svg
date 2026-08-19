@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The header's robot mark (index.html, #bb-mask), as a standalone file
+       the favicon assets are generated from:
+           bb favicon scripts/dashboard/static/favicon.svg scripts/dashboard/static/
+       Same geometry as the header; fixed accent green rather than
+       currentColor, because a browser tab has no text color to inherit. -->
+  <mask id="m">
+    <rect width="32" height="32" fill="#000"/>
+    <rect x="4" y="8.5" width="24" height="17" rx="5.5" fill="#fff"/>
+    <rect x="15" y="3.5" width="2" height="6" rx="1" fill="#fff"/>
+    <circle cx="16" cy="3" r="2.3" fill="#fff"/>
+    <circle cx="11.4" cy="15.4" r="2.1" fill="#000"/>
+    <circle cx="20.6" cy="15.4" r="2.1" fill="#000"/>
+    <rect x="10.6" y="19.6" width="10.8" height="2.6" rx="1.3" fill="#000"/>
+  </mask>
+  <rect width="32" height="32" fill="#3fb950" mask="url(#m)"/>
+</svg>

@@ -43,6 +43,7 @@ bb — BuilderBot helper
   bb drift [REPO]        which files this checkout changed that the running
                          container is not serving yet
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
+  bb favicon SVG [DIR]   favicon.ico (16-256) + apple-touch-icon.png + favicon.svg from one mark
 EOF
 }
 
@@ -948,6 +949,81 @@ EOF
     printf '%s\n' "$files"
 }
 
+# bb favicon — one SVG mark in, the favicon set a web app actually needs out:
+# favicon.ico carrying every small size in one file (the bare /favicon.ico
+# request browsers make on their own has no way to ask for a particular one),
+# apple-touch-icon.png at 180 for iOS home screens, and the SVG copied
+# alongside for browsers that prefer vector.
+#
+# Rasterized by Playwright's Chromium, packed by ImageMagick — that split
+# because the image's ImageMagick writes ICO but carries no SVG delegate,
+# and Chromium renders any SVG exactly the way a browser tab will show it.
+# The mark itself stays the project's own; this is only the packaging every
+# project would otherwise re-learn. (Generalized from the private tool
+# MediaReducer grew for this, minus its PIL dependency, which the container
+# python does not carry.)
+cmd_favicon() {
+    local svg="" out="" bg=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --bg) bg="$2"; shift 2 ;;
+            -*) die "unknown option: $1" ;;
+            *) if [ -z "$svg" ]; then svg="$1"; else out="$1"; fi; shift ;;
+        esac
+    done
+    [ -n "$svg" ] || die "usage: bb favicon LOGO.svg [OUTDIR] [--bg COLOR]"
+    [ -f "$svg" ] || die "no such file: $svg"
+    # Only ever an argv to convert, but a color is a name or #hex, and saying
+    # so beats handing ImageMagick something to be confused by.
+    case "$bg" in *[!#A-Za-z0-9]*) die "--bg takes a CSS color name or #hex" ;; esac
+    out="${out:-.}"
+    mkdir -p "$out"
+    command -v convert >/dev/null 2>&1 || die "imagemagick's convert is required"
+    local chrome
+    chrome=/opt/pw-browsers/chromium
+    [ -x "$chrome" ] || chrome="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
+    [ -x "${chrome:-}" ] || die "no Playwright chromium under /opt/pw-browsers"
+
+    local tmp
+    tmp="$(mktemp -d)"
+    # shellcheck disable=SC2064 # expand the path now, not at trap time
+    trap "rm -rf '$tmp'" RETURN
+    # A page that is nothing but the mark, edge to edge: Chromium sizes the
+    # SVG to the viewport, so the one file serves every raster size.
+    {
+        printf '<!doctype html><style>html,body{margin:0;height:100%%}svg{display:block;width:100vw;height:100vh}</style>\n'
+        cat "$svg"
+    } > "$tmp/mark.html"
+    NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - "$chrome" "$tmp" <<'EOF'
+const { chromium } = require("playwright");
+const [exe, tmp] = process.argv.slice(2);
+(async () => {
+  const b = await chromium.launch({ executablePath: exe });
+  for (const px of [16, 32, 48, 64, 128, 180, 256]) {
+    const p = await b.newPage({ viewport: { width: px, height: px } });
+    await p.goto(`file://${tmp}/mark.html`);
+    await p.screenshot({ path: `${tmp}/${px}.png`, omitBackground: true });
+    await p.close();
+  }
+  await b.close();
+})().catch(e => { console.error(String(e)); process.exit(1); });
+EOF
+    convert "$tmp/16.png" "$tmp/32.png" "$tmp/48.png" "$tmp/64.png" \
+            "$tmp/128.png" "$tmp/256.png" "$out/favicon.ico"
+    if [ -n "$bg" ]; then
+        # iOS composites the touch icon onto black when it is transparent;
+        # --bg flattens it onto the color the caller actually wants.
+        convert "$tmp/180.png" -background "$bg" -flatten "$out/apple-touch-icon.png"
+    else
+        cp "$tmp/180.png" "$out/apple-touch-icon.png"
+    fi
+    # Copied unless it already IS the output — regenerating in place is the
+    # normal workflow and cp would fail on the self-copy.
+    [ "$(readlink -f "$svg")" = "$(readlink -f "$out/favicon.svg")" ] \
+        || cp "$svg" "$out/favicon.svg"
+    log "wrote ${out}/favicon.ico (16-256), apple-touch-icon.png (180), favicon.svg"
+}
+
 cmd_doctor() {
     local ok=0
     check() { # check DESCRIPTION COMMAND...
@@ -1075,6 +1151,7 @@ case "${1:-help}" in
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;
     shot)     shift; cmd_shot "$@" ;;
+    favicon)  shift; cmd_favicon "$@" ;;
     -h|--help|help) usage ;;
     *) usage; exit 1 ;;
 esac

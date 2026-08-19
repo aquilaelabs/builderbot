@@ -73,6 +73,40 @@ MACROS = {
 # Sendable, but not listed in the bb commands card: another card owns them.
 CARD_HIDDEN = {"runner-status", "runner-stop", "runner-start"}
 
+# The Linux and git/GitHub cards. Strings typed into the shell as-is — not
+# argv lists like MACROS, because half of these are pipelines and shlex.join
+# would quote the pipe into a literal. Still a table, for the same reason as
+# MACROS: send-keys will happily type anything, so the page only ever names
+# an entry. The label the card shows IS the command — these are buttons for
+# things an operator would type, so hiding the text would only add mystery.
+LINUX_MACROS = {
+    "lx-ls":    "ls -lah",
+    "lx-du":    "du -sh * | sort -rh | head -20",
+    "lx-df":    "df -h /workspace /config ~",
+    "lx-free":  "free -h",
+    "lx-ps":    "ps aux --sort=-%mem | head -15",
+    "lx-ports": "lsof -nP -iTCP -sTCP:LISTEN",
+}
+GIT_MACROS = {
+    "git-status": "git status",
+    "git-log":    "git log --oneline --graph --decorate -15",
+    "git-diff":   "git diff",
+    "git-stat":   "git diff --stat",
+    "git-branch": "git branch -av",
+    "git-stash":  "git stash list",
+    "git-fetch":  "git fetch --all --prune",
+    "git-pull":   "git pull",
+}
+# Ghosted separately from the git ones: they need the shell's repo to have a
+# GitHub remote, not just to be a repo.
+GH_MACROS = {
+    "gh-prs":    "gh pr list",
+    "gh-status": "gh pr status",
+    "gh-runs":   "gh run list --limit 10",
+    "gh-issues": "gh issue list",
+}
+SHELL_MACROS = {**LINUX_MACROS, **GIT_MACROS, **GH_MACROS}
+
 # Keys an Android keyboard has no way to send. Names on the left are what the
 # page posts; values are tmux key names. A table rather than passthrough for the
 # same reason as MACROS — `send-keys` will happily type anything it is given.
@@ -146,7 +180,7 @@ CARDS_FILE = STATE / "cards.json"
 # Doctor first: this order is the default an unwritten (or reset) sidebar
 # gets, and the verdict on the whole box outranks any one card below it.
 CARD_KEYS = ["doctor", "runner", "projects", "findings", "sessions",
-             "commands", "custom"]
+             "linux", "commands", "git", "custom"]
 
 
 # Every state file is written the same way: to a temp file in the same
@@ -790,6 +824,40 @@ def _ensure_deploy_alias(alias, name, pub):
     return alias
 
 
+def _github_remote(remotes):
+    """Whether any of `git remote -v`'s lines points at GitHub — ssh host
+    aliases included.
+
+    The literal string only covers remotes written as github.com. The
+    standard multi-deploy-key setup — including the bb- aliases this
+    dashboard's own clone and link flows write — hides the real host behind
+    a ~/.ssh/config Host alias, and this box's own repos are addressed that
+    way. `ssh -G` resolves an alias to its HostName from the config alone,
+    no network involved. Hosts are charset-checked (and must not start with
+    a dash) before reaching an argv.
+    """
+    if "github.com" in remotes:
+        return True
+    hosts = set()
+    for line in remotes.splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        url = parts[1]
+        if "://" in url:                     # ssh://git@host/... — https etc.
+            m = re.match(r"ssh://(?:[^@/]+@)?([A-Za-z0-9][A-Za-z0-9._-]*)", url)
+        else:                                # scp form: git@host:path
+            m = re.match(r"(?:[^@:/]+@)?([A-Za-z0-9][A-Za-z0-9._-]*):", url)
+        if m:
+            hosts.add(m.group(1))
+    for h in hosts:
+        r = run(["ssh", "-G", h], timeout=10)
+        if r["code"] == 0 and any(l.strip() == "hostname github.com"
+                                  for l in r["out"].splitlines()):
+            return True
+    return False
+
+
 def projects():
     out = []
     uid, gid = os.getuid(), os.getgid()
@@ -838,10 +906,11 @@ def projects():
         except OSError:
             has_md = False
 
-        # linked defaults to True, not False: it gates an offered action (the
-        # link-to-GitHub button), and a project this loop could not examine
-        # must get no offer rather than a broken one.
-        branch, git_ok, linked = None, False, True
+        # linked defaults to True and github to False: each gates an offered
+        # action (the link-to-GitHub button; the GitHub command buttons), and
+        # a project this loop could not examine must get no offer rather than
+        # a broken one — which is the opposite default for the two.
+        branch, git_ok, linked, github = None, False, True, False
         if not missing:
             # An empty directory is the one thing never reported. It is not a
             # problem to fix — it is a mount point waiting for content, or a
@@ -862,11 +931,15 @@ def projects():
                 issues.append({"level": "error", "text": "no valid git repository"})
             else:
                 # Asked of git, not read out of .git/config: a worktree or a
-                # submodule keeps its config elsewhere, and `linked` drives a
-                # visible control (the link-to-GitHub button), so a wrong guess
-                # here offers an action that cannot work.
-                linked = bool(run(["git", "-C", str(d), "remote"],
-                                  timeout=10)["out"].strip())
+                # submodule keeps its config elsewhere, and both flags drive
+                # visible controls (the link-to-GitHub button; the GitHub
+                # command card's ghosting), so a wrong guess here offers an
+                # action that cannot work. -v for the URLs, which is what
+                # tells a GitHub remote from any other.
+                remotes = run(["git", "-C", str(d), "remote", "-v"],
+                              timeout=10)["out"]
+                linked = bool(remotes.strip())
+                github = linked and _github_remote(remotes)
                 r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"],
                         timeout=10)
                 # `out` carries stderr too, so a detached HEAD would otherwise
@@ -895,7 +968,7 @@ def projects():
             issues.append({"level": "excluded",
                            "text": "excluded — no Claude session can start here"})
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
-                    "linked": linked,
+                    "linked": linked, "github": github,
                     "claude_md": has_md, "excluded": d.name in excluded,
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     "issues": issues})
@@ -1277,11 +1350,24 @@ def findings_counts(ps):
 
 def snapshot():
     ps = projects()
+    sessions = tmux_sessions()
+    # Each shell's git context, resolved here where WORKSPACE is known: the
+    # git/GitHub command cards ghost against the directory the active shell
+    # is actually in, and matching a cwd to a project is this server's
+    # knowledge, not something the page should re-derive from path strings.
+    by_name = {p["name"]: p for p in ps}
+    for s in sessions:
+        cwd = s.get("cwd", "")
+        top = cwd[len(str(WORKSPACE)) + 1:].split("/")[0] \
+            if cwd.startswith(str(WORKSPACE) + "/") else ""
+        p = by_name.get(top)
+        s["git"] = bool(p and p["git_ok"])
+        s["github"] = bool(p and p.get("github"))
     return {
         "host": os.uname().nodename,
         "uptime": uptime(),
         "projects": ps,
-        "sessions": tmux_sessions(),
+        "sessions": sessions,
         "runner": runner(),
         "ttyd_port": TTYD_PUBLIC_PORT,
         "reports": REPORTS.is_dir(),
@@ -1294,6 +1380,14 @@ def snapshot():
         # removed cannot leave a button that posts a name the server rejects.
         "macros": [{"name": k, "label": " ".join(v[1:])}
                    for k, v in MACROS.items() if k not in CARD_HIDDEN],
+        # The Linux and git/GitHub cards, from their tables for the same
+        # reason as macros above. `need` is what the button requires of the
+        # active shell's directory; the page ghosts accordingly.
+        "linux": [{"name": k, "label": v} for k, v in LINUX_MACROS.items()],
+        "gitcmds": [{"name": k, "label": v, "need": "git"}
+                    for k, v in GIT_MACROS.items()]
+                   + [{"name": k, "label": v, "need": "github"}
+                      for k, v in GH_MACROS.items()],
         "pinned": load_pins(),
         "custom": load_custom(),
         "cards": load_cards(),
@@ -1359,6 +1453,16 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self._safely(self._post)
 
+    # The favicon set, generated by `bb favicon` from static/favicon.svg (the
+    # header robot as a standalone file) and committed. An allow-list by full
+    # path — the same shape as everything else the page can ask for — so this
+    # never grows into a general file server by accident.
+    FAVICONS = {
+        "/favicon.ico": ("favicon.ico", "image/x-icon"),
+        "/favicon.svg": ("favicon.svg", "image/svg+xml"),
+        "/apple-touch-icon.png": ("apple-touch-icon.png", "image/png"),
+    }
+
     def _get(self):
         if not self._authed():
             return self._deny()
@@ -1367,6 +1471,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            return self.wfile.write(body)
+        if fav := self.FAVICONS.get(self.path.split("?")[0]):
+            name, ctype = fav
+            try:
+                body = (HERE / "static" / name).read_bytes()
+            except OSError:              # a checkout that predates the assets
+                return self._json({"error": "not found"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            # A day: the icon changes when the image does, and a stale tab
+            # icon for a day is invisible next to re-fetching it every poll.
+            self.send_header("Cache-Control", "public, max-age=86400")
             self.end_headers()
             return self.wfile.write(body)
         if self.path.startswith("/api/status"):
@@ -1868,9 +1986,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": f"unknown custom command: {cid}"}, 400)
             lines = m["lines"]
         else:
-            if name not in MACROS:
+            if name in MACROS:
+                lines = [shlex.join(MACROS[name])]
+            elif name in SHELL_MACROS:
+                lines = [SHELL_MACROS[name]]
+            else:
                 return self._json({"error": f"unknown macro: {name}"}, 400)
-            lines = [shlex.join(MACROS[name])]
         if session not in {s["name"] for s in tmux_sessions()}:
             return self._json({"error": f"no such session: {session}"}, 400)
         # Never into a Claude session: that would not run the command, it would
