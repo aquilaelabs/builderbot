@@ -1336,7 +1336,7 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
             [ -n "$inst" ] || inst="installed"
             # sdkmanager prints an Available Updates table, and prints nothing
             # under it when there is nothing to do.
-            if timeout 120 sdkmanager --list 2>/dev/null \
+            if [ -z "$local_only" ] && timeout 120 sdkmanager --list 2>/dev/null \
                | sed -n '/Available Updates/,$p' | grep -qE "^ *${pkg}(;|  *\|)"; then
                 latest="newer"; status=update
             else
