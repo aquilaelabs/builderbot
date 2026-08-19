@@ -824,6 +824,40 @@ def _ensure_deploy_alias(alias, name, pub):
     return alias
 
 
+def _github_remote(remotes):
+    """Whether any of `git remote -v`'s lines points at GitHub — ssh host
+    aliases included.
+
+    The literal string only covers remotes written as github.com. The
+    standard multi-deploy-key setup — including the bb- aliases this
+    dashboard's own clone and link flows write — hides the real host behind
+    a ~/.ssh/config Host alias, and this box's own repos are addressed that
+    way. `ssh -G` resolves an alias to its HostName from the config alone,
+    no network involved. Hosts are charset-checked (and must not start with
+    a dash) before reaching an argv.
+    """
+    if "github.com" in remotes:
+        return True
+    hosts = set()
+    for line in remotes.splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        url = parts[1]
+        if "://" in url:                     # ssh://git@host/... — https etc.
+            m = re.match(r"ssh://(?:[^@/]+@)?([A-Za-z0-9][A-Za-z0-9._-]*)", url)
+        else:                                # scp form: git@host:path
+            m = re.match(r"(?:[^@:/]+@)?([A-Za-z0-9][A-Za-z0-9._-]*):", url)
+        if m:
+            hosts.add(m.group(1))
+    for h in hosts:
+        r = run(["ssh", "-G", h], timeout=10)
+        if r["code"] == 0 and any(l.strip() == "hostname github.com"
+                                  for l in r["out"].splitlines()):
+            return True
+    return False
+
+
 def projects():
     out = []
     uid, gid = os.getuid(), os.getgid()
@@ -905,7 +939,7 @@ def projects():
                 remotes = run(["git", "-C", str(d), "remote", "-v"],
                               timeout=10)["out"]
                 linked = bool(remotes.strip())
-                github = "github.com" in remotes
+                github = linked and _github_remote(remotes)
                 r = run(["git", "-C", str(d), "symbolic-ref", "--short", "-q", "HEAD"],
                         timeout=10)
                 # `out` carries stderr too, so a detached HEAD would otherwise
