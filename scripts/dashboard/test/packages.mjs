@@ -102,14 +102,14 @@ const during = (job) => page.evaluate(j => {
 }, job);
 
 let d = await during({ action: 'install', current: 'flutter',
-                       progress: { name: 'flutter', phase: 'downloading', pct: 42 } });
+                       progress: { name: 'flutter', pct: 42 } });
 ok(d.text === 'downloading 42%' && d.width === '42%' && d.where === null,
    'the row being installed shows the download percentage, not a path');
 // Past the download there is no honest denominator, so the row stops
 // pretending: no bar, no number, and no naming of whichever component is
 // being unpacked — one of those ran off the side of a phone.
 d = await during({ action: 'install', current: 'flutter',
-                   progress: { name: 'flutter', phase: 'installing', pct: 90 } });
+                   progress: { name: 'flutter', pct: null } });
 ok(d.text.startsWith('installing') && !d.bar,
    '...and once installing, says so without a bar or a percentage');
 d = await during({ action: 'install', current: 'flutter', progress: null });
