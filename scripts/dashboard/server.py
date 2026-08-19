@@ -1446,7 +1446,7 @@ def doctor_payload():
 # are symlinks into the share) and to the SDK root for everything else.
 PACKAGES = [
     {"name": "playwright", "label": "Playwright browsers", "size": "~1.3 GB",
-     "probe": "playwright",
+     "probe": "playwright", "baseline": True,
      "about": "Chromium, Firefox and WebKit. The image carries Playwright "
               "itself and the system libraries; these are the browser bundles "
               "bb shot and the dashboard's own tests drive."},
@@ -1459,7 +1459,7 @@ PACKAGES = [
      "about": "The Swift toolchain for Linux: shared logic, server-side Swift, "
               "and compiling packages. Not an iOS SDK."},
     {"name": "android:emulator", "label": "Android emulator", "size": "~800 MB",
-     "probe": "android:emulator",
+     "probe": "android:emulator", "baseline": True,
      "about": "The emulator binary. System images are per API level and come "
               "from ANDROID_SYSTEM_IMAGES."},
     {"name": "android:ndk", "label": "Android NDK", "size": "~3 GB",
@@ -1669,6 +1669,12 @@ def packages_payload():
         kb = _pkg_sizes.get(p["name"]) if path else None
         items.append({**{k: p[k] for k in ("name", "label", "about")},
                       "installed": bool(path), "path": path,
+                      # A startup hook reinstalls this one when it is missing,
+                      # so removing it holds only until the next restart. The
+                      # row has to say so — an operator who uninstalls
+                      # something and finds it back after a reboot is entitled
+                      # to have been told.
+                      "baseline": p.get("baseline", False),
                       # The estimate until there is a measurement, and the
                       # measurement from then on — flagged, because "~4 GB"
                       # and "4.1 GB" mean quite different things.

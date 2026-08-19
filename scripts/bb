@@ -1585,6 +1585,31 @@ sdk_android_image_dir() {
         -name "$1" 2>/dev/null | sort -V | tail -1
 }
 
+# sdkmanager records an operation in progress in <package>/.installer/, in a
+# file naming a working directory under $ANDROID_HOME/.temp. That record
+# outlives the operation: a container restart, or a package moved onto the
+# share by relink, leaves it pointing at a directory that is gone — and every
+# later install or uninstall of that package then fails with `"Uninstall
+# Android Emulator v.37.1.11" failed` and exit 1 and nothing else. It cost an
+# afternoon to find, because the failure names neither the file nor the path.
+#
+# Cleared only when what it names is really missing. A record pointing at a
+# directory that exists means something genuinely is mid-flight, and that is
+# the one case where sdkmanager is right to refuse.
+sdk_android_pkg_dir() {
+    printf '%s/%s' "${ANDROID_HOME:-/opt/android-sdk}" "$(printf '%s' "$1" | tr ';' '/')"
+}
+sdk_android_clear_stale_installer() {
+    local dir data path
+    dir="$(sdk_android_pkg_dir "$1")"
+    data="$dir/.installer/.installData"
+    [ -f "$data" ] || return 0
+    path="$(sed -n 's/^path=//p' "$data" | head -1)"
+    if [ -n "$path" ] && [ -e "$path" ]; then return 0; fi
+    log "clearing stale installer state in ${dir} — it points at ${path:-nothing}, which is gone"
+    rm -rf "${dir:?}/.installer"
+}
+
 sdk_relink_android() {
     local store sub src
     store="$(sdk_dir android)"
@@ -1650,6 +1675,7 @@ sdk_install() {
             # directories are symlinks into the root, so this lands there
             # without sdkmanager knowing anything about it.
             log "installing ${pkg} — into $(sdk_dir android)"
+            sdk_android_clear_stale_installer "$pkg"
             sdkmanager --install "$pkg"
             sdk_android_list_forget
             sdk_relink_android
@@ -1823,6 +1849,7 @@ sdk_remove() {
                     for abi in "$dir"/*/; do
                         [ -d "$abi" ] || continue
                         log "removing system-images;${api};${kind};$(basename "$abi")"
+                        sdk_android_clear_stale_installer "system-images;${api};${kind};$(basename "$abi")"
                         sdkmanager --uninstall "system-images;${api};${kind};$(basename "$abi")"
                     done
                 done
@@ -1837,6 +1864,7 @@ sdk_remove() {
                     for v in "${ANDROID_HOME:-/opt/android-sdk}/$pkg"/*/; do
                         [ -d "$v" ] || continue
                         log "removing ${pkg};$(basename "$v")"
+                        sdk_android_clear_stale_installer "${pkg};$(basename "$v")"
                         sdkmanager --uninstall "${pkg};$(basename "$v")"
                     done
                     sdk_relink_android
@@ -1853,6 +1881,7 @@ sdk_remove() {
             if [ -L "${ANDROID_HOME:-/opt/android-sdk}/$pkg" ]; then
                 store="$(readlink -f "${ANDROID_HOME:-/opt/android-sdk}/$pkg")"
             fi
+            sdk_android_clear_stale_installer "$pkg"
             sdkmanager --uninstall "$pkg"
             if [ -n "$store" ] && [ -d "$store" ] && [ -n "$(ls -A "$store" 2>/dev/null)" ]; then
                 log "clearing ${store} — sdkmanager removed the link, not the files"

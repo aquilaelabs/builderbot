@@ -2493,6 +2493,8 @@ function pkgRow(p, busy){
       <span class="sub">${esc(p.about)}</span>
       <span class="sub where${p.installed ? " on" : ""}">${
         p.installed ? "installed at " + esc(p.path) : "not installed"}</span>
+      ${!p.installed && p.baseline
+        ? `<span class="sub">the container installs this at boot — a restart brings it back</span>` : ""}
       ${upd}
     </span>
     ${p.installed ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
