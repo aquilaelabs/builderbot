@@ -340,9 +340,10 @@ seed_home() {
 # Which store: the SDK share when one is mapped, the home volume otherwise.
 # The choice is made per directory, and deliberately conservative — a
 # directory that already holds gigabytes on the home volume keeps pointing
-# there until `bb sdk migrate` moves it, because silently retargeting the
-# link would make an existing 30GB library vanish from every tool that uses
-# it. New directories, and empty ones, go straight to the share.
+# there, because silently retargeting the link would make an existing 30GB
+# library vanish from every tool that uses it. New directories, and empty
+# ones, go straight to the share. Consolidating the two is a host-side move
+# of the folder, which needs no cooperation from in here.
 persist_android_downloads() {
     local sdk="${ANDROID_HOME:-/opt/android-sdk}"
     local legacy="$BUILDER_HOME/.android/sdk"
@@ -403,8 +404,14 @@ persist_android_downloads() {
         log "android sdk downloads persist outside the image"
     fi
     if [ "$nudge" -eq 1 ] && [ "$share" != "${legacy}" ]; then
-        log "some android packages still live on the home volume; move them to"
-        log "the SDK share with: bb sdk migrate"
+        # Nothing is broken — the links point at the packages wherever they
+        # are — so this is information, not an instruction. Moving them is a
+        # host-side `mv` into the SDK share and a restart; the container has
+        # no better way to do it than the operator does, and doing tens of GB
+        # of copying from in here without being asked would be worse.
+        log "some SDK packages still live on the home volume rather than the share."
+        log "They work as they are. To consolidate: stop the container, move"
+        log "them into the SDK share on the host, and start it again."
     fi
 
     chown -R "$PUID:$PGID" "$share" 2>/dev/null || true

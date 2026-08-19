@@ -49,7 +49,7 @@ bb — BuilderBot helper
                          container is not serving yet
   bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
   bb favicon SVG [DIR]   favicon.ico (16-256) + apple-touch-icon.png + favicon.svg from one mark
-  bb sdk                 SDKs kept outside the image: status, install X, remove X, migrate
+  bb sdk                 SDKs kept outside the image: status, install X, remove X
 EOF
 }
 
@@ -77,6 +77,20 @@ cmd_status() {
     version adb    adb --version
     version pw     playwright --version
     printf '  %-8s %s\n' runner "$(cat "${RUNNER_DIR}/.runner-version" 2>/dev/null || echo '-')"
+    echo
+    # What is installed beyond the image, and where. Here rather than only in
+    # `bb sdk` because this is the command a session runs first, and "is
+    # flutter on this box" should not need a second guess.
+    echo "== sdk =="
+    local root have=""
+    root="$(sdk_root)"
+    for t in $SDK_TOOLCHAINS; do
+        [ "$t" = android ] && continue
+        sdk_have "$root" "$t" && have="${have:+$have }$t"
+    done
+    printf '  %-8s %s%s\n' root "$root" \
+        "$(is_mountpoint "$root" && printf ' (share)' || printf ' (home volume)')"
+    printf '  %-8s %s\n' installed "${have:-none — see: bb sdk}"
     echo
     echo "== runner =="
     if [ -f "${RUNNER_DIR}/.runner" ]; then
@@ -1270,67 +1284,6 @@ sdk_remove() {
     rm -rf "$d"
 }
 
-# Move the android packages that predate the SDK share off the home volume.
-# Deliberately a command rather than a boot-time action: it is tens of GB of
-# copying, and the operator should choose the moment and watch it happen.
-sdk_migrate() {
-    local legacy="${BUILDER_HOME:-$HOME}/.android/sdk"
-    local share; share="$(sdk_root)/android"
-    local sdk="${ANDROID_HOME:-/opt/android-sdk}"
-    local sub moved=0
-
-    # Refusing rather than warning: with no share mapped the destination IS
-    # the source, so this would shuffle tens of GB from one home-volume
-    # directory to another and call it progress. (Found by running it.)
-    is_mountpoint "$(sdk_root)" || die \
-        "no SDK share is mapped, so there is nowhere to migrate to.
-Map one at /sdk (Unraid: the SDK share path; compose: the /sdk volume) and
-run this again. Packages are already outside the image either way — on the
-home volume at $(sdk_root)."
-    mkdir -p "$share"
-
-    local home_root="${BUILDER_HOME:-$HOME}/.sdk"
-    for sub in "$legacy"/*/ "$home_root"/android/*/; do
-        [ -d "$sub" ] || continue
-        local name; name="$(basename "$sub")"
-        [ -n "$(ls -A "$sub" 2>/dev/null)" ] || continue
-        if [ -d "$share/$name" ] && [ -n "$(ls -A "$share/$name" 2>/dev/null)" ]; then
-            warn "${name}: already on the share — leaving the home copy alone"
-            continue
-        fi
-        log "moving ${name} ($(du -sh "$sub" 2>/dev/null | cut -f1)) to ${share}/${name}"
-        # mv first: within one filesystem it is instant, and across two it
-        # copies then unlinks, which is the same thing more slowly.
-        if mv "$sub" "$share/$name"; then
-            moved=1
-            ln -sfn "$share/$name" "$sdk/$name" 2>/dev/null || true
-        else
-            warn "could not move ${name} — left where it was"
-        fi
-    done
-
-    # The other toolchains live in the root itself, not under android/, and
-    # an install made before the share was mapped sits on the home volume.
-    local fallback="${BUILDER_HOME:-$HOME}/.sdk" t
-    if [ "$fallback" != "$(sdk_root)" ]; then
-        for t in $SDK_TOOLCHAINS; do
-            [ "$t" = android ] && continue
-            [ -d "$fallback/$t" ] || continue
-            if [ -d "$(sdk_dir "$t")" ]; then
-                warn "${t}: already on the share — leaving the home copy alone"
-                continue
-            fi
-            log "moving ${t} ($(du -sh "$fallback/$t" 2>/dev/null | cut -f1)) to $(sdk_dir "$t")"
-            mv "$fallback/$t" "$(sdk_dir "$t")" && moved=1 \
-                || warn "could not move ${t} — left where it was"
-        done
-    fi
-
-    [ "$moved" = 1 ] && log "migrated. The links in ${sdk} now point at the share." \
-                     || log "nothing needed moving."
-    log "restart the container to re-link everything cleanly: it is idempotent."
-}
-
 cmd_sdk() {
     local sub="${1:-status}"; shift || true
     case "$sub" in
@@ -1339,8 +1292,7 @@ cmd_sdk() {
         env)        sdk_env_snippet ;;
         install)    sdk_install "$@" ;;
         remove)     sdk_remove "$@" ;;
-        migrate)    sdk_migrate ;;
-        *) die "usage: bb sdk [status|root|env|install X|remove X|migrate]" ;;
+        *) die "usage: bb sdk [status|root|env|install X|remove X]" ;;
     esac
 }
 

@@ -451,9 +451,16 @@ bb sdk                     # what is installed, where, and how much room is left
 bb sdk install flutter     # or: dotnet · swift · tizen (instructions) · android:<pkg>
 bb sdk install android:"system-images;android-35;google_apis;x86_64"
 bb sdk remove flutter
-bb sdk migrate             # move packages already on the home volume to the share
 bb sdk env                 # the PATH lines; new shells get them automatically
 ```
+
+**Moving the share later is a host-side job.** The container knows one
+location — whatever `/sdk` is mapped to — so relocating that directory on the
+server and re-pointing the mapping is invisible from inside: stop the
+container, move the folder, start it again. There is deliberately no command
+for it. (Packages left on the home volume from an older image keep working
+where they are: the startup wiring points at whichever location actually
+holds them, and says so.)
 
 Android needs no PATH help — `ANDROID_HOME` still points at
 `/opt/android-sdk`, whose package directories are symlinks into the share, so

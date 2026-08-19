@@ -109,6 +109,30 @@ show a GUI on.
 - **Screenshots** are the way to show the user visual state — save to a file
   and surface the path.
 
+## Toolchains beyond the image
+
+The image is a bootstrap, not a toolbox. The heavy toolchains — Flutter, the
+.NET SDK, Swift, the Android emulator and its system images, the Playwright
+browsers — live on a share outside it, so which of them exist on *this*
+container is a runtime fact, not something to infer from this file:
+
+```bash
+bb sdk            # what is installed, where each one lives, and what is not
+```
+
+`bb status` prints the same summary in two lines. Check before concluding a
+tool is missing, and check before reaching for a system package manager —
+the thing you want may be one `bb sdk install` away, or already installed
+somewhere PATH does not look until the next shell.
+
+If a project needs one that is not there, **say so and offer the command
+rather than running it**. These are gigabytes each and the disk is the
+operator's to spend — the same rule as Android API levels. From the
+dashboard, the Tools tab does it with checkboxes.
+
+Installing one is not a reason to edit this file: `bb sdk` is the source of
+truth, and it is accurate the moment something lands.
+
 ## Android
 
 Only relevant if this is an Android project.
