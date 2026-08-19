@@ -471,16 +471,26 @@ In the tab, one button does it: **Install selected** installs what is not
 there and updates what is, so there is no second verb to choose between. A
 package that is installed and current has a **dead checkbox** — there is
 nothing to do to it — and gets its tick back the moment a check finds an
-update, shown in amber as `installed → available`. Uninstalling is a **bin
-icon on the row itself**, with a confirmation, because it is about one
-package and a bulk Remove button beside a bulk Install was one mis-click from
-being expensive.
+update, with the version it would move to in amber beside the installed one.
+Uninstalling is a **bin icon on the row itself**, with a confirmation,
+because it is about one package and a bulk Remove button beside a bulk
+Install was one mis-click from being expensive.
 
 **Two different questions, two different costs.** What version is installed
 is local knowledge — a directory name, or `flutter --version` — so it is on
 every row from the moment the tab opens, cached until something is installed.
 Whether a newer one exists is a network round trip to a different upstream
-per toolchain, so that one waits to be asked.
+per toolchain, so that one waits to be asked. A check answers for the rows
+that are *not* installed too: the version there is what Install would fetch,
+plainly rather than in amber, since nothing about it is news.
+
+**The size is an estimate until it is a measurement.** Every row carries one:
+the catalog's `~3 GB` before installation, which is what the download costs,
+and the real `du` figure afterwards, which is not the same number and grows
+(a pub cache, a .NET workload, an NDK that unpacks bigger than it ships).
+Hover a size to see which one you are reading. Measuring walks the tree, so
+it happens on a worker rather than in the request — the first draw after an
+install carries the estimate and the real number arrives a moment later.
 
 **Update checking is a question, not a background service.** Each answer costs
 a network round trip to a different upstream — the Flutter branch head, the

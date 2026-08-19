@@ -2436,12 +2436,20 @@ function openPackages(){
   openTab({kind:"packages", arg:"__packages", label:"packages"});
 }
 
+// The sizes are measured by a worker on the server, so the first draw after
+// an install (or after a restart) carries the catalog's estimates and the
+// real numbers land a moment later. One follow-up ask while that is true —
+// not a poll: the flag clears when the measurement finishes, and nothing else
+// on this tab changes on its own.
+let pkgSizeTimer = null;
 async function loadPackages(){
   try{
     const r = await fetch("/api/packages");
     if (!r.ok) throw new Error("HTTP " + r.status);
     packages = await r.json();
   }catch(e){ packages = {error: String(e)}; }
+  clearTimeout(pkgSizeTimer); pkgSizeTimer = null;
+  if (packages && packages.sizing) pkgSizeTimer = setTimeout(loadPackages, 1500);
   pkgRev++;
   drawPanes();
 }
@@ -2460,17 +2468,28 @@ function pkgRow(p){
   // is also why Install is the only verb here: on a row with an update it
   // updates, and the operator never has to know which button to reach for.
   const upToDate = p.installed && p.state !== "update";
-  const ver = p.version && p.version !== "-" ? ` <span class="pill">${esc(p.version)}</span>` : "";
+  // Three versions can be on a row and only ever two at once: what is
+  // installed, what an update would move it to, and — on a row that has never
+  // been installed — what Install would fetch. Only the middle one is yellow,
+  // because only it is news; a version on an absent row is just a fact about
+  // the shelf, and coloring six of them amber would be crying wolf.
+  const ver = p.version && p.version !== "-"
+    ? ` <span class="pill" title="installed">${esc(p.version)}</span>` : "";
+  const next = p.latest && p.latest !== "-" && p.latest !== p.version
+    ? (p.installed
+        ? ` <span class="pill warn" title="update available">→ ${esc(p.latest)}</span>`
+        : ` <span class="pill" title="what Install selected would fetch">${esc(p.latest)}</span>`)
+    : "";
   const upd = p.state === "update"
-    ? `<span class="sub upd">update available${p.latest && p.latest !== "-"
-         && p.latest !== p.version ? `: ${esc(p.version)} → ${esc(p.latest)}` : ""
-       } — tick it and press Install selected</span>`
+    ? `<span class="sub upd">update available — tick it and press Install selected</span>`
     : "";
   return `<label class="pkg${upToDate ? " done" : ""}">
     <input type="checkbox" value="${esc(p.name)}"${pkgTicked.has(p.name) ? " checked" : ""}${
       upToDate ? ` disabled title="installed and up to date — nothing to do until a check finds an update"` : ""}>
     <span class="grow">
-      <span class="nm">${esc(p.label)} <span class="pill">${esc(p.size)}</span>${ver}</span>
+      <span class="nm">${esc(p.label)} <span class="pill" title="${
+        p.measured ? "measured on disk" : "approximate download size"
+      }">${esc(p.size)}</span>${ver}${next}</span>
       <span class="sub">${esc(p.about)}</span>
       <span class="sub where${p.installed ? " on" : ""}">${
         p.installed ? "installed at " + esc(p.path) : "not installed"}</span>
@@ -2492,7 +2511,13 @@ function renderPackagesInto(i){
   // A finished package loses its tick: the selection was spent on the job
   // that just ran, and leaving it ticked means the next click — which might
   // be Remove — acts on something the operator already dealt with.
-  if (!busy) for (const n of job.done || []) pkgTicked.delete(n);
+  //
+  // Except a check, which spends nothing: it asks about every row whether or
+  // not anything is ticked, so treating its results as consumed selection
+  // cleared a tick the operator had just placed — press check, and the thing
+  // you were about to install quietly unticked itself.
+  if (!busy && job.action !== "check")
+    for (const n of job.done || []) pkgTicked.delete(n);
   const lines = (job.log || []).slice(-14);
   el.innerHTML = `
     <div class="pkghead">${d.root
@@ -2533,9 +2558,11 @@ function renderPackagesInto(i){
 }
 
 async function pkgAct(action, only){
-  const names = only || [...pkgTicked];
-  // "Check for updates" asks about everything installed — the question is
-  // whether anything is out of date, not whether one ticked thing is.
+  // "Check for updates" asks about every row, ticked or not: the question is
+  // whether anything is out of date and what the rest would install, not
+  // whether one ticked thing is. Sending the selection made it answer for
+  // that one package and leave the others showing yesterday's answer.
+  const names = only || (action === "check" ? [] : [...pkgTicked]);
   if (!names.length && action !== "check") return notify("tick something first", true);
   if (action === "install") pkgTicked.clear();   // the selection is spent
   try{
