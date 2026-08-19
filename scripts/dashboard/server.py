@@ -674,6 +674,16 @@ def findings_payload():
             "hidden": hidden, "reports": reports}
 
 
+# `bb sdk install|update|remove` refuses when CLAUDECODE is set, and the
+# message it prints tells the session to ask the operator to use this page.
+# So this page must never carry that variable — and it can: `bb dashboard dev`
+# is normally run *by* a session, and the server it starts inherits whatever
+# that session had. One line here, rather than trusting every launcher to
+# remember, because the failure looks like the dashboard refusing to obey the
+# operator and quoting its own name as the workaround.
+os.environ.pop("CLAUDECODE", None)
+
+
 def run(cmd, cwd=None, timeout=120, env=None, split_err=False):
     # split_err=True keeps stdout in `out` and stderr in `err`, for the one
     # caller class that must not mistake a warning for real output (the

@@ -53,7 +53,14 @@ relink_chromium() {
 # First boot on an empty share: fetch them. Synchronous and loud, like the
 # Android baseline — it happens once per share, and a container that comes up
 # "ready" while `bb shot` cannot work would be worse than a slow start.
-if ! find -L "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | grep -q .; then
+#
+# Unless they were removed on purpose. A fresh share and one somebody just
+# cleared look exactly alike from here, so without the marker an uninstall
+# lasted until the next restart and no further — which is not an uninstall.
+if [ -e "$(sdk_removed_marker playwright)" ]; then
+    log "playwright browsers: removed by the operator — leaving them out"
+    log "  put them back with: bb sdk install playwright"
+elif ! find -L "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | grep -q .; then
     log "installing playwright browsers into ${STORE} (~1.3GB, once — updates will not re-download them)"
     if run_as_builder env PLAYWRIGHT_BROWSERS_PATH="$STORE" \
            playwright install chromium firefox webkit >/dev/null 2>&1; then

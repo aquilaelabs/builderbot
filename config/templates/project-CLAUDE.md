@@ -100,9 +100,11 @@ show a GUI on.
 - **Playwright** — browsers live at `/opt/pw-browsers`, which is a symlink
   onto the SDK share (they are 1.3GB of download, so the image does not carry
   them); `PLAYWRIGHT_BROWSERS_PATH` still points there. Run headless. You do
-  not need `playwright install` — the container installs them on first boot
-  and `bb sdk install playwright` repairs them — and if a project pins a
-  different version, launch with `executablePath: '/opt/pw-browsers/chromium'`
+  not need `playwright install` — the container installs them on the first
+  boot of a fresh share, and `bb sdk install playwright` repairs them (if the
+  operator removed them deliberately, boot leaves them out and says so) — and
+  if a project pins a different version, launch with
+  `executablePath: '/opt/pw-browsers/chromium'`
   (a stable symlink to the current Chromium). The image's Playwright is a global module: `require()`
   finds it from any directory via `NODE_PATH`; ESM `import` does not honor
   that, so use `createRequire(import.meta.url)('playwright')`.

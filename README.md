@@ -461,11 +461,21 @@ bb sdk env                 # the PATH lines; new shells get them automatically
 
 **Nothing installs, updates or removes itself, and no session can do it for
 you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in
-the environment — that variable is in everything a Claude session runs and in
-nothing the dashboard runs — and tells the session to ask instead. It is a
-guardrail rather than a boundary (a session has a shell, and could call
-`sdkmanager` directly), and it says how the human at the keyboard overrides
-it: `env -u CLAUDECODE bb sdk install …`.
+the environment — that variable is in everything a Claude session runs, and
+the dashboard drops it at startup precisely so that this page is never
+mistaken for one — and tells the session to ask instead. It is a guardrail
+rather than a boundary (a session has a shell, and could call `sdkmanager`
+directly), and it says how the human at the keyboard overrides it:
+`env -u CLAUDECODE bb sdk install …`.
+
+**A removal sticks.** Two things are fetched on the first boot of a fresh
+share — the Playwright browsers and, with `ENABLE_ANDROID_EMULATOR`, the
+emulator — because a container that comes up "ready" with `bb shot` broken is
+worse than a slow first start. A share somebody has just cleared looks
+identical to a fresh one from a startup hook, so `bb sdk remove` leaves a
+marker under `.removed/` on the share and the hooks respect it; installing
+the package again clears it. Without that, an uninstall lasted until the next
+restart, which is not an uninstall.
 
 In the tab, one button does it: **Install selected** installs what is not
 there and updates what is, so there is no second verb to choose between. A
@@ -525,7 +535,7 @@ anywhere else.
 | `rust` | ~700MB | rustup, cargo and the stable toolchain in one directory |
 | `zig` | ~300MB | A C/C++ cross-compiler: `zig cc -target x86_64-windows-gnu` makes this box a Windows toolchain |
 | Android packages | 2GB per API level | Platforms, build-tools, emulator, system images |
-| `playwright` | ~1.3GB | Chromium, Firefox and WebKit — installed on first boot, since `bb shot` and the dashboard's tests need them |
+| `playwright` | ~1.3GB | Chromium, Firefox and WebKit — fetched on a fresh share, since `bb shot` and the dashboard's tests need them; removing it stays removed |
 | `flutter` | ~1.3GB | Flutter + the bundled Dart SDK; builds Android APKs here |
 | `dotnet` | ~4GB | .NET SDK plus the `maui-android` workload |
 | `swift` | ~3GB | The Swift toolchain, for shared logic and server-side code |

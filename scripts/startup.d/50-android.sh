@@ -36,8 +36,14 @@ fi
 is_true "${ENABLE_ANDROID_EMULATOR:-false}" || exit 0
 
 # The emulator is 800MB and is no longer in the image either. Fetched on the
-# first boot that asks for it, and never again.
-if ! command -v emulator >/dev/null 2>&1; then
+# first boot that asks for it, and never again — nor after the operator has
+# taken it out, which ENABLE_ANDROID_EMULATOR being true does not override:
+# the variable says this container wants an emulator, the marker says a person
+# removed this package, and the more specific instruction wins.
+if [ -e "$(sdk_removed_marker android:emulator)" ]; then
+    warn "the android emulator package was removed by the operator — bb emu will not work"
+    warn "  put it back with: bb sdk install android:emulator"
+elif ! command -v emulator >/dev/null 2>&1; then
     log "installing the android emulator — 800MB, downloaded once, kept outside the image"
     if ! sdkmanager --install emulator >/dev/null 2>&1; then
         warn "could not install the emulator package"
