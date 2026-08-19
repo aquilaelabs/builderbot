@@ -346,7 +346,6 @@ seed_home() {
 # of the folder, which needs no cooperation from in here.
 persist_android_downloads() {
     local sdk="${ANDROID_HOME:-/opt/android-sdk}"
-    local legacy="$BUILDER_HOME/.android/sdk"
     local home_root="$BUILDER_HOME/.sdk"
     local share; share="$(sdk_root)/android"
     local sub store cand dir name adopted=0 nudge=0
@@ -359,14 +358,13 @@ persist_android_downloads() {
     # emulator alone is 800MB of every pull.
     for sub in system-images platforms build-tools emulator ndk cmake \
                extras add-ons sources skins; do
-        # Candidates in priority order: the share, the home volume's own SDK
-        # root (where packages land when no share is mapped), and the
-        # pre-SDK-root location. The first that actually holds packages wins,
-        # so a library that exists is never hidden behind an empty directory
-        # somewhere else — which is the one failure mode that matters here,
+        # The share first, then the home volume's own SDK root (where packages
+        # land when no share is mapped). Whichever actually holds packages
+        # wins, so a library that exists is never hidden behind an empty
+        # directory somewhere else — the one failure mode that matters here,
         # because "hidden" looks exactly like "gone" to Gradle.
         store=""
-        for cand in "$share/$sub" "$home_root/android/$sub" "$legacy/$sub"; do
+        for cand in "$share/$sub" "$home_root/android/$sub"; do
             if [ -d "$cand" ] && [ -n "$(ls -A "$cand" 2>/dev/null)" ]; then
                 store="$cand"; break
             fi
@@ -403,7 +401,7 @@ persist_android_downloads() {
     if [ "$adopted" -eq 1 ]; then
         log "android sdk downloads persist outside the image"
     fi
-    if [ "$nudge" -eq 1 ] && [ "$share" != "${legacy}" ]; then
+    if [ "$nudge" -eq 1 ]; then
         # Nothing is broken — the links point at the packages wherever they
         # are — so this is information, not an instruction. Moving them is a
         # host-side `mv` into the SDK share and a restart; the container has
@@ -415,7 +413,6 @@ persist_android_downloads() {
     fi
 
     chown -R "$PUID:$PGID" "$share" 2>/dev/null || true
-    [ -d "$legacy" ] && chown -R "$PUID:$PGID" "$legacy" 2>/dev/null || true
     return 0
 }
 

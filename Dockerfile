@@ -29,9 +29,6 @@ ARG TARGETARCH
 # Set INSTALL_* to "false" for a slimmer image without that toolchain.
 ARG INSTALL_PLAYWRIGHT=true
 ARG INSTALL_ANDROID=true
-# Kept for compatibility with existing build commands: the emulator is a
-# runtime install now, so this only seeds ENABLE_ANDROID_EMULATOR's default.
-ARG INSTALL_ANDROID_EMULATOR=true
 # Bootstrap build of Google's commandline-tools zip; sdkmanager then manages
 # everything else, so this pin only has to exist, not be current.
 ARG ANDROID_CMDLINE_TOOLS_BUILD=11076708
@@ -408,7 +405,6 @@ ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 # block invalidates every layer below it, and the host then re-pulls the lot.
 ENV ANDROID_BASELINE_PLATFORM=${ANDROID_PLATFORM} \
     ANDROID_BASELINE_BUILD_TOOLS=${ANDROID_BUILD_TOOLS} \
-    ANDROID_BASELINE_EMULATOR=${INSTALL_ANDROID_EMULATOR} \
     SDK_ROOT=/sdk
 
 ENV PUID=99 \

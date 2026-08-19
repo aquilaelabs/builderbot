@@ -514,8 +514,8 @@ share; from then on updates cost nothing.
 
 ## Multiple Android versions
 
-The image ships one system image (API 36). To emulate more, list the API levels
-you want:
+No system image is in the image — the first boot installs the baseline onto
+the SDK share. To emulate more levels, list the ones you want:
 
 ```
 ANDROID_SYSTEM_IMAGES=34,35,36,37

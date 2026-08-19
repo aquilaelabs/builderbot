@@ -75,9 +75,9 @@ services:
       # Also uncomment the devices: block below for KVM acceleration.
       ENABLE_ANDROID_EMULATOR: ${ENABLE_ANDROID_EMULATOR:-false}
       # API levels to keep an emulator image + AVD for, e.g. "34,35,36,37"
-      # (Android 14 through 17). Each is ~2GB, downloaded once and kept on the
-      # home volume, so the cost lands on your appdata share rather than the
-      # image. Start one with: bb emu start 37
+      # (Android 14 through 17). Each is ~2GB, downloaded once onto the SDK
+      # share below, so an image update never re-fetches them.
+      # Start one with: bb emu start 37
       ANDROID_SYSTEM_IMAGES: ${ANDROID_SYSTEM_IMAGES:-36}
       # swiftshader_indirect (default) is software rendering and always works.
       # swangle_indirect is usually faster, still software. host needs a GPU

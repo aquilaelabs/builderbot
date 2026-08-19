@@ -286,11 +286,11 @@ is the environment.
 
 The consequence you hit first: **editing a file here does not change the
 running container.** `bb` on your PATH is `/opt/builderbot/scripts/bb` from the
-image, not `scripts/bb` in this tree, and every script sources
-`/opt/builderbot/scripts/lib/common.sh` by absolute path. You can dry-run a repo
-copy (`bash scripts/bb status`) but it will pull in the *installed* library, so
-a change is only really live after CI builds a new image and Unraid updates the
-container.
+image, not `scripts/bb` in this tree. `bash scripts/bb <cmd>` dry-runs the
+checkout properly — it sources the library next to itself, so a new helper in
+`lib/common.sh` is there — but the startup hooks and the dashboard still source
+`/opt` by absolute path, and nothing is really live until CI builds a new image
+and Unraid updates the container.
 
 - **Build:** the image, and nothing else. `.github/workflows/build-image.yml`
   builds and pushes `ghcr.io/stencil-projects/builderbot` on pushes to `main`
@@ -323,17 +323,20 @@ container.
   real server. The harness unsets `TMUX` and verifies its socket first.
 
   If the *installed* `bb` predates a subcommand, `bash scripts/bb <cmd>` runs
-  the repo copy — it prints `[skip]` for any tool the running image does not
-  carry yet, rather than passing by omission.
+  the repo copy — and `bb lint` prints `[skip]` for any tool the running image
+  does not carry yet, rather than passing by omission. The dashboard's server
+  resolves `bb` as the copy beside it, so `bb dashboard dev` exercises the
+  checkout's subcommands too.
 
 - **Seeing a change without a rebuild:** `bb drift` lists what this checkout
   has changed that the running container is not serving. For the dashboard
   specifically, `bb dashboard dev` restarts the live dashboard from
   `./scripts/dashboard` (same port and credential; lasts until the container
   restarts; `--off` reverts) — so a dashboard change can be looked at in the
-  browser without a 40-minute image build. `bb shot URL [FILE]` takes a
-  headless screenshot to show the operator; it reads `DASHBOARD_AUTH` from
-  the environment for the dashboard's own pages.
+  browser without a 40-minute image build. `bb shot URL... [FILE|DIR]` takes
+  headless screenshots to show the operator; it reads `DASHBOARD_AUTH` from
+  the environment for the dashboard's own pages. `tools/readme-shots.sh`
+  regenerates the README's screenshots from a staged instance.
 
 - **Lint:** CI runs shellcheck, hadolint and actionlint — on *this* runner,
   where minutes are free and the image already carries the tools (the job
@@ -364,20 +367,24 @@ container.
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
     `index.html` is one file of vanilla JS and CSS. No framework, no build step.
   - Anything the web UI can execute is a table lookup (`MACROS`, `TMUX_KEYS`,
-    `TMUX_LITERALS`) rather than a command string, and `bb-tty` validates its one
+    `TMUX_LITERALS`, `PACKAGES`) rather than a command string, and `bb-tty` validates its one
     URL argument against directories that actually exist. New surface keeps that
     shape — the terminal is one port over for anything else.
   - A new setting lands in five places: `.env.example`, `docker-compose.yml`,
     `unraid/builderbot.xml`, the configuration reference in `README.md`, and
-    `docs/unraid.md` when it needs host-side setup. The README is the
+    `docs/unraid.md` when it needs host-side setup. A setting that stops being
+    read gets removed from all five in the same change — `DASHBOARD_TTYD_PUBLIC_PORT`
+    outlived its code in three files. The README is the
     documentation surface and is expected to move with behavior.
   - The environment block every *other* project gets comes from
     `config/templates/project-CLAUDE.md`. That file is the source of truth;
     this repo's own copy above the end marker is just its output, so edit the
     template and let `bb claude-md --update` propagate it.
   - Persistence is the recurring design constraint: `/opt` is discarded on every
-    image update, the home and `/config` volumes are not. New state has to pick
-    a side, and the comment should say which and why.
+    image update, the home, `/config` and SDK volumes are not. New state has to
+    pick a side, and the comment should say which and why. Anything large and
+    merely *downloadable* belongs on the SDK share via `bb sdk`, never in the
+    image — that is what keeps a weekly rebuild from re-shipping gigabytes.
   - Layer order is a cost. Builds seed from the previous `:latest`, so a
     Dockerfile change invalidates every layer *below* it — and the host then
     re-downloads all of them. A runtime-only `ENV`/`ARG` belongs at the **end**
