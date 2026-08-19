@@ -75,6 +75,27 @@ export function tmuxFmt(name, fmt){
   return execFileSync('tmux', ['display-message', '-p', '-t', name, fmt]).toString().trim();
 }
 
+// Poll the server from node until the stored layout satisfies pred — for
+// tests that must not proceed (usually into a reload) before a debounced
+// save has actually landed. NOT page.waitForFunction with an async
+// predicate: an async function returns a Promise, a Promise is truthy, and
+// that wait resolves instantly. Two tests guarded reloads with exactly that
+// no-op, and passed only while their other waits happened to outlast the
+// 400ms save debounce — the findings preload made a page fast enough to
+// reload inside the window, and the pending save died with it.
+export async function layoutSettled(pred, ms = 15000){
+  const auth = { Authorization: 'Basic '
+    + Buffer.from(`${CREDS.username}:${CREDS.password}`).toString('base64') };
+  const t0 = Date.now();
+  for (;;){
+    const l = (await (await fetch(URL + 'api/status', { headers: auth })).json()).layout;
+    if (pred(l)) return l;
+    if (Date.now() - t0 > ms)
+      throw new Error('layout never settled: ' + JSON.stringify(l));
+    await sleep(200);
+  }
+}
+
 // Wait until the page has its first doctor verdict — the last thing to land
 // on a fresh instance, so a good "page is ready" marker.
 export const ready = page => page.waitForFunction(() => {

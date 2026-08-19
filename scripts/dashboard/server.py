@@ -12,6 +12,7 @@ code that looks fine until it deadlocks.
 """
 import base64
 import contextlib
+import gzip
 import hashlib
 import hmac
 import json
@@ -1648,10 +1649,30 @@ class Handler(BaseHTTPRequestHandler):
             sel.close()
             up.close()
 
+    def _gzip(self, body):
+        """The body, compressed when the client takes gzip and it pays.
+
+        The page is ~150KB of inline everything and the status snapshot a
+        phone polls every fifteen seconds is tens of KB of JSON — both shrink
+        by roughly four fifths. Below ~1400 bytes (one MTU) the header
+        shuffle costs more than it saves, so small answers go as they are.
+        """
+        if (len(body) >= 1400
+                and "gzip" in self.headers.get("Accept-Encoding", "")):
+            return gzip.compress(body, 6), True
+        return body, False
+
     def _json(self, obj, code=200):
-        body = json.dumps(obj).encode()
+        body, zipped = self._gzip(json.dumps(obj).encode())
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        # no-store, declared rather than assumed: preloading /api/status made
+        # it cache-eligible, and a reload that revived a stale layout snapshot
+        # from the browser cache then overwrote the real one on the next save.
+        # State answers are for right now, never for later.
+        self.send_header("Cache-Control", "no-store")
+        if zipped:
+            self.send_header("Content-Encoding", "gzip")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -1698,9 +1719,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/term" or path.startswith("/term/"):
             return self._term_proxy()
         if self.path.split("?")[0] in ("/", "/index.html"):
-            body = (HERE / "index.html").read_bytes()
+            body, zipped = self._gzip((HERE / "index.html").read_bytes())
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            if zipped:
+                self.send_header("Content-Encoding", "gzip")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             return self.wfile.write(body)

@@ -48,6 +48,17 @@ ok(r.headers.get('location') === '/', 'a protocol-relative next is not followed'
 r = await bare('/logout', { headers: { Cookie: cookie } });
 ok(/Max-Age=0/.test(r.headers.get('set-cookie') || ''), 'logout clears the cookie');
 
+// Big answers travel gzipped when the client takes it — the page and the
+// status snapshot a phone polls every 15s — and small ones as they are.
+const AUTHH = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+r = await bare('/api/status', { headers: { ...AUTHH, 'Accept-Encoding': 'gzip' } });
+ok(r.headers.get('content-encoding') === 'gzip', 'the status snapshot travels gzipped');
+r = await bare('/', { headers: { ...AUTHH, 'Accept-Encoding': 'gzip' } });
+ok(r.headers.get('content-encoding') === 'gzip'
+   && +r.headers.get('content-length') < 80000, 'the page travels gzipped, at a fraction of its size');
+r = await bare('/api/status', { headers: { ...AUTHH, 'Accept-Encoding': 'identity' } });
+ok(!r.headers.get('content-encoding'), 'a client that cannot take gzip gets plain bytes');
+
 // A browser with preemptive basic auth (bb shot, curl -u, these tests) still
 // works exactly as before — the whole page, no login step.
 const browser = await launch();

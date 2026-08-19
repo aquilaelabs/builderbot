@@ -1,6 +1,6 @@
 // Desktop mouse: tab drag reorders in place with a slide, the click ending a
 // drag does not switch tabs, a plain click does, tab enter/exit animations.
-import { launch, newPage, ok, done, URL } from './lib.mjs';
+import { launch, newPage, ok, done, layoutSettled, URL } from './lib.mjs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -22,8 +22,8 @@ ok((await page.$$eval('.tab[data-id]', ts => ts.map(t => t.dataset.id)))[0] === 
 ok(mid.held && mid.anims, 'dragged tab shows held; displaced tabs slide');
 ok(await page.evaluate(() => panes[0]) === activeBefore, 'the click ending the drag did not switch tabs');
 // The drop saves straight away (debounced 400ms), not on the 15s poll.
-await page.waitForFunction(async () =>
-  (await (await fetch('/api/status')).json()).layout.tabs[0]?.id === document.querySelector('.tab[data-id]').dataset.id, { timeout: 4000 });
+const topId = await page.$eval('.tab[data-id]', t => t.dataset.id);
+await layoutSettled(l => l.tabs[0]?.id === topId, 4000);
 ok(true, 'the new order reaches the server within a second');
 await page.click(`.tab[data-id="${ids0[1]}"] .lbl`);
 ok(await page.evaluate(() => panes[0]) === ids0[1], 'a plain click still switches tabs');

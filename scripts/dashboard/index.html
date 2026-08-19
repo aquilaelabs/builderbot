@@ -10,6 +10,17 @@
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<script>
+  // The first status fetch starts here, while the browser still has ~150KB
+  // of inline script below to parse — by the time refresh() asks, the answer
+  // is usually in flight or landed. An explicit promise the first refresh()
+  // consumes exactly once, NOT <link rel="preload" as="fetch">: a preloaded
+  // response sits in a cache that any LATER same-URL fetch may claim, and
+  // this page re-fetches /api/status every fifteen seconds — one poll
+  // eventually inherited the page-load-era snapshot of the shared layout and
+  // saved it over the real one. Found by the suite, kept as a warning.
+  const preStatus = fetch("/api/status");
+</script>
 <!-- Inline so the browser never asks the server for /favicon.ico — the only
      404 this page would otherwise produce. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b2027'/%3E%3Cg fill='%233fb950'%3E%3Crect x='4' y='8.5' width='24' height='17' rx='5.5'/%3E%3Crect x='15' y='3.5' width='2' height='6' rx='1'/%3E%3Ccircle cx='16' cy='3' r='2.3'/%3E%3C/g%3E%3Cg fill='%231b2027'%3E%3Ccircle cx='11.4' cy='15.4' r='2.1'/%3E%3Ccircle cx='20.6' cy='15.4' r='2.1'/%3E%3Crect x='10.6' y='19.6' width='10.8' height='2.6' rx='1.3'/%3E%3C/g%3E%3C/svg%3E">
@@ -865,6 +876,7 @@ const identity = t => t.kind === "term" ? "tmux:" + sessionOf(t.arg)
 // exception and are always new — each carries its own session name, so they
 // never collide here.
 function openTab(spec){
+
   let t = tabs.find(x => identity(x) === identity(spec));
   if (!t){
     if (!roomForTab()) return;
@@ -1637,6 +1649,7 @@ let findingsRev = 0;
 // timer would fight the reader for the page (their collapsed sections do
 // survive, but their scroll position does not).
 let findingsMtime = null;
+let findingsWarming = false;   // an idle warm-up fetch is out
 
 async function loadFindings(force){
   if (findings && !force) return;
@@ -2905,6 +2918,7 @@ async function pushLayout(){
 // bb-tty attaches to the session if it is still there and recreates it in the
 // same directory if it is not.
 function adoptLayout(v){
+
   // Only a revision NEWER than the one this page holds. A poll the server
   // answered just before our push landed arrives carrying the strip as it
   // was before the change — one revision behind, and by then savePending is
@@ -2943,10 +2957,13 @@ function adoptLayout(v){
                                                   // leave saves suppressed
 }
 
+let preStatusUsed = false;                // the head's early fetch: once only
+
 async function refresh(){
   const asked = performance.now();
   try{
-    const r = await fetch("/api/status");
+    const r = preStatusUsed ? await fetch("/api/status")
+                            : (preStatusUsed = true, await preStatus);
     // Signed out (the cookie expired, or the secret rotated): go to the
     // login page rather than showing a dead dashboard with a red dot.
     if (r.status === 401){ location.href = "/login?next=%2F"; return; }
@@ -2981,6 +2998,32 @@ async function refresh(){
         && state.reports_mtime !== findingsMtime
         && tabs.some(t => t.kind === "findings"))
       loadFindings(true);
+    // The complement, as a preload: when a report exists but no findings tab
+    // is open, warm the cache in idle time — first ever, and again when the
+    // scan re-ran — so opening the report renders instantly instead of
+    // starting its fetch on the click. Deliberately NOT loadFindings(): that
+    // sets the shared loading state, stamps findingsMtime early and redraws
+    // panes, and running it from an idle callback means doing all that at an
+    // arbitrary moment in whatever else the page is mid-way through — a
+    // first version did exactly that and the suite caught it interfering.
+    // This fetches into a local, then installs the result only if the world
+    // still looks like it did when the fetch left: no tab opened meanwhile,
+    // nothing else loaded, same scan. Anything else, the answer is dropped —
+    // a wasted fetch is nothing; a fight over shared state is not.
+    else if (state.reports && !findingsWarming
+             && !tabs.some(t => t.kind === "findings")
+             && !(findings && findings.loading)
+             && (!findings || findingsMtime !== state.reports_mtime)){
+      findingsWarming = true;
+      const mt = state.reports_mtime;
+      (window.requestIdleCallback || (f => setTimeout(f, 1500)))(() =>
+        fetch("/api/findings").then(r => r.json()).then(j => {
+          if (!findings && state?.reports_mtime === mt
+              && !tabs.some(t => t.kind === "findings")){
+            findings = j; findingsMtime = mt; findingsRev++;
+          }
+        }).catch(() => {}).finally(() => { findingsWarming = false; }));
+    }
     render();
   }catch(e){
     // The light goes red either way; the console says whether the box was
