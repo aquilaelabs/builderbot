@@ -1110,6 +1110,24 @@ sdk_env_snippet() {
     fi
 }
 
+# Rewrite the file every shell sources, so a toolchain installed a minute ago
+# is on PATH in the next terminal rather than after the next container
+# restart. The startup hook writes the same file from the same generator;
+# this is the other half — installs happen at runtime, and until now only
+# boot noticed them.
+sdk_write_env() {
+    local root file tmp
+    root="$(sdk_root)"
+    [ -d "$root" ] && [ -w "$root" ] || return 0
+    file="$root/env.sh"
+    tmp="$file.new.$$"
+    if sdk_env_snippet > "$tmp" 2>/dev/null; then
+        mv -f "$tmp" "$file"
+    else
+        rm -f "$tmp"
+    fi
+}
+
 sdk_status() {
     local root; root="$(sdk_root)"
     printf '== sdk root ==\n'
@@ -1212,7 +1230,14 @@ sdk_check_one() {
         android:*)
             local pkg="${what#android:}"
             d="${ANDROID_HOME:-/opt/android-sdk}/$pkg"
-            [ -d "$d" ] || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
+            # Non-empty, not merely present: every one of these is a symlink
+            # onto the store, and the store has a directory per package kind
+            # whether or not anything was installed into it. `-d` alone called
+            # an empty ndk directory "installed and current", which is exactly
+            # the reassuring answer nobody re-checks. The dashboard has always
+            # asked the harder question; this brings the CLI into line.
+            [ -d "$d" ] && [ -n "$(ls -A "$d" 2>/dev/null)" ] \
+                || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
             inst="$(timeout 120 sdkmanager --list_installed 2>/dev/null \
                     | awk -F'|' -v p="$pkg" '$1 ~ "^ *"p"(;|  *$)" {gsub(/ /,"",$2); print $2; exit}')"
             [ -n "$inst" ] || inst="installed"
@@ -1302,6 +1327,35 @@ run: bb sdk $*
 If you ARE the operator at this keyboard: env -u CLAUDECODE bb sdk $*"
 }
 
+# Put back any package directory sdkmanager turned into a real directory.
+#
+# It does not write through a symlink for every package: installing the
+# emulator replaced ANDROID_HOME/emulator — a link onto the share — with a
+# real directory, which put 821MB back inside the image layer where the next
+# image update would throw it away and re-download it. Nothing warns about
+# this; the directory simply stops being a link. Checked after every install,
+# which is the only moment it can happen.
+sdk_relink_android() {
+    local store sub src
+    store="$(sdk_dir android)"
+    for sub in system-images platforms build-tools emulator ndk cmake \
+               extras add-ons sources skins; do
+        src="${ANDROID_HOME:-/opt/android-sdk}/$sub"
+        [ -d "$src" ] && [ ! -L "$src" ] || continue
+        log "relinking ${sub} onto the SDK store — sdkmanager replaced the link"
+        mkdir -p "$store"
+        if [ -d "$store/$sub" ] && [ -z "$(ls -A "$store/$sub" 2>/dev/null)" ]; then
+            rmdir "$store/$sub"
+        fi
+        if [ -e "$store/$sub" ]; then
+            cp -a "$src/." "$store/$sub/" && rm -rf "$src"
+        else
+            mv "$src" "$store/$sub"
+        fi
+        ln -sfn "$store/$sub" "$src"
+    done
+}
+
 sdk_install() {
     sdk_operator_only install "$@"
     local what="${1:-}" root; root="$(sdk_root)"
@@ -1328,6 +1382,7 @@ sdk_install() {
             # without sdkmanager knowing anything about it.
             log "installing ${pkg} — into $(sdk_dir android)"
             sdkmanager --install "$pkg"
+            sdk_relink_android
             ;;
         flutter)
             local d; d="$(sdk_dir flutter)"
@@ -1456,11 +1511,12 @@ cmd_sdk() {
         status|"")  sdk_status ;;
         root)       printf '%s\n' "$(sdk_root)" ;;
         env)        sdk_env_snippet ;;
-        install)    sdk_install "$@" ;;
+        install)    sdk_install "$@"; sdk_write_env ;;
         check)      sdk_check "$@" ;;
-        update)     sdk_update "$@" ;;
-        remove)     sdk_remove "$@" ;;
-        *) die "usage: bb sdk [status|root|env|check|install X|update X|remove X]" ;;
+        relink)     sdk_relink_android ;;
+        update)     sdk_update "$@"; sdk_write_env ;;
+        remove)     sdk_remove "$@"; sdk_write_env ;;
+        *) die "usage: bb sdk [status|root|env|check|relink|install X|update X|remove X]" ;;
     esac
 }
 

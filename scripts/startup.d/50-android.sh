@@ -3,9 +3,9 @@
 # Android: report the SDK, then make sure every API level in
 # ANDROID_SYSTEM_IMAGES has a system image, a matching platform, and an AVD.
 #
-# The entrypoint symlinks system-images/ and platforms/ onto the home volume,
-# so each level is downloaded once and survives image updates. Without that
-# this hook would re-fetch gigabytes on every rebuild.
+# The entrypoint symlinks the package directories onto the SDK share, so each
+# level is downloaded once and survives image updates. Without that this hook
+# would re-fetch gigabytes on every rebuild.
 #
 # The emulator is started on demand with `bb emu start`, never automatically —
 # it holds a few GB of RAM.
@@ -43,6 +43,10 @@ if ! command -v emulator >/dev/null 2>&1; then
         warn "could not install the emulator package"
         exit 0
     fi
+    # sdkmanager replaces the symlink with a real directory for some packages
+    # — the emulator among them — which would leave 821MB inside the image
+    # layer for the next update to discard. bb puts it back.
+    bb sdk relink >/dev/null 2>&1 || true
     hash -r
 fi
 
@@ -69,11 +73,12 @@ for api in $(printf '%s' "${ANDROID_SYSTEM_IMAGES:-${ANDROID_DEFAULT_API:-36}}" 
     avd="${PREFIX}-${api}"
 
     if [ ! -d "${ANDROID_HOME}/system-images/android-${api}/${VARIANT_PATH}" ]; then
-        log "installing ${pkg} — a couple of GB, downloaded once and kept on the home volume"
+        log "installing ${pkg} — a couple of GB, downloaded once and kept on the SDK share"
         if ! sdkmanager --install "$pkg" >/dev/null 2>&1; then
             warn "could not install ${pkg} — check that API ${api} ships a '${VARIANT}' image"
             continue
         fi
+        bb sdk relink >/dev/null 2>&1 || true
     fi
 
     # Cheap next to the system image, and you generally want to compile against
