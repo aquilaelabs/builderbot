@@ -106,6 +106,12 @@ Create the appdata directories:
 ```bash
 mkdir -p /mnt/user/appdata/BuilderBot/{home,config/startup.d,work}
 chown -R 99:100 /mnt/user/appdata/BuilderBot
+
+# The SDK share: Android platforms/emulator/system images and any toolchain
+# you install later. On a normal share rather than appdata — it is bulk data,
+# it is not written constantly, and keeping it out of the image is the point.
+mkdir -p /mnt/user/development/SDK
+chown 99:100 /mnt/user/development/SDK
 ```
 
 ---

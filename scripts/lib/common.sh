@@ -30,6 +30,40 @@ is_mountpoint() {
     awk -v p="$p" '$5 == p { found = 1 } END { exit !found }' /proc/self/mountinfo
 }
 
+# sdk_root — where downloadable SDKs live.
+#
+# The image is the wrong home for them: /opt is discarded on every update, so
+# anything installed there is downloaded again on a weekly schedule, and the
+# packages are large enough (a system image is a couple of GB, the emulator
+# 800MB) for that to be the dominant cost of an update. A mounted share keeps
+# them outside the image entirely — installed once, kept forever, shared by
+# every toolchain that can be told where to unpack.
+#
+# SDK_ROOT is that share, /sdk by default. Without one — nobody mapped it —
+# this falls back to the home volume, which also persists but is the
+# operator's own directory rather than a place to put 30GB.
+sdk_root() {
+    local root="${SDK_ROOT:-/sdk}"
+    if [ -d "$root" ] && [ -w "$root" ]; then
+        # /sdk is the image's own default and exists in the image whether or
+        # not anybody mapped a share there, so it has to prove it is a mount
+        # before anything large is written to it. Any other path is one the
+        # operator chose — a subdirectory of another share, say — and is
+        # taken at its word; silently ignoring it and using the home volume
+        # instead is the behaviour this branch exists to avoid.
+        if [ "$root" != /sdk ] || is_mountpoint "$root"; then
+            printf '%s' "$root"
+            return 0
+        fi
+    fi
+    printf '%s' "${BUILDER_HOME:-${HOME:-/home/builder}}/.sdk"
+}
+
+# sdk_have ROOT NAME — is a toolchain installed under the SDK root?
+sdk_have() {
+    [ -d "$1/$2" ] && [ -n "$(ls -A "$1/$2" 2>/dev/null)" ]
+}
+
 # run_as_builder CMD... — drop privileges when we happen to be root.
 run_as_builder() {
     if [ "$(id -u)" -eq 0 ]; then

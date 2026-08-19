@@ -32,7 +32,7 @@ node -e "require.resolve('playwright')" 2>/dev/null \
     || { log "[skip] playwright is not installed in this image"; exit 0; }
 CHROME=/opt/pw-browsers/chromium          # the image's stable symlink, or an older image's revisioned path
 [ -x "$CHROME" ] || CHROME="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1 || true)"
-[ -x "${CHROME:-}" ] || { log "[skip] no Playwright chromium under /opt/pw-browsers"; exit 0; }
+[ -x "${CHROME:-}" ] || { log "[skip] no Playwright chromium — install it with: bb sdk install playwright"; exit 0; }
 command -v tmux >/dev/null || { log "[skip] tmux is not installed"; exit 0; }
 
 PORT="${DASHBOARD_TEST_PORT:-8093}"
@@ -71,7 +71,7 @@ cleanup() {
 }
 
 # ---- fixtures --------------------------------------------------------------
-mkdir -p "$S"/{ws,reports,state,bin}
+mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk}
 # ep.silon: a project whose name tmux would rewrite in a session name (`.` →
 # `_`), so the page, the server and bb-tty have to agree on the substitution.
 ( cd "$S/ws" && mkdir -p alpha beta gamma delta ep.silon \
@@ -97,8 +97,22 @@ agent_pid="$(sed -n 's/^SSH_AGENT_PID=\([0-9]*\);.*/\1/p' "$S/agent.env")"
 SSH_AUTH_SOCK="$S/ssh-agent.sock" ssh-add -q "$S/testkey" 2>/dev/null
 cat > "$S/bin/bb" <<'EOF'
 #!/usr/bin/env bash
-# Stub: deterministic `bb doctor`, everything else a cheap no-op.
+# Stub: deterministic `bb doctor`, and an `bb sdk` that makes and removes
+# directories instead of downloading gigabytes — enough for the Tools card to
+# watch a package appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
+if [ "${1:-}" = sdk ]; then
+    case "${2:-}" in
+        root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
+        install|remove)
+                 name="${3#android:}"
+                 if [ "$name" != "$3" ]; then d="${ANDROID_HOME:?}/$name"
+                 else d="${SDK_TEST_ROOT:?}/$name"; fi
+                 if [ "${2}" = install ]; then mkdir -p "$d" && : > "$d/marker"
+                 else rm -rf "$d"; fi
+                 printf '%sed %s\n' "${2%e}" "$3" ;;
+    esac
+fi
 exit 0
 EOF
 chmod +x "$S/bin/bb"
@@ -132,6 +146,7 @@ fresh() {
         ! -name alpha ! -name beta ! -name gamma ! -name delta ! -name ep.silon \
         -exec rm -rf {} +
     rm -rf "$S/home/.ssh"           # deploy-key selectors a test wrote
+    rm -rf "$S/sdk" "$S/androidsdk"; mkdir -p "$S/sdk" "$S/androidsdk"
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
     for n in shell-9 claude-alpha; do
         tmux has-session -t "$n" 2>/dev/null || tmux new-session -d -s "$n" -c /tmp
@@ -142,6 +157,7 @@ fresh
 # ---- server ----------------------------------------------------------------
 env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     TEMPLATE_MD="$DASH/../../config/templates/project-CLAUDE.md" \
+    BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" PATH="$S/bin:$PATH" \

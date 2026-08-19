@@ -176,6 +176,33 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* The Linux and git cards show commands verbatim; mono keeps them readable
    as commands, and slightly smaller keeps the pipelines on one line. */
 #linux button,#git button{font-family:var(--mono);font-size:12px}
+/* One package: a checkbox that owns the whole row (label wraps it), the
+   size beside the name, and the resolved install path underneath — the
+   question "where did that actually go" is the one this card exists for. */
+/* The packages document. One row per package: a checkbox that owns the whole
+   row (the label wraps it), the size beside the name, and the resolved
+   install path underneath — "where did that actually go" is the question a
+   share full of SDKs invites. */
+.pkghead{padding:10px 12px;color:var(--dim);font:12px/1.5 system-ui,sans-serif;
+  border-bottom:1px solid var(--line)}
+.pkghead code{font-family:var(--mono);color:var(--ink)}
+.pkgs{padding:0 12px}
+.pkg{display:flex;gap:10px;align-items:flex-start;padding:10px 0;margin:0;
+  border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)}
+.pkg:last-child{border-bottom:0}
+.pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto;accent-color:#2ea043}
+.pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
+.pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
+.pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
+.pkg .where.on{color:var(--accent)}
+@media(hover:hover){ .pkg:hover{background:#1b222b} }
+.pkglog{margin:0 12px 12px;padding:9px 10px;background:#0d1117;
+  border:1px solid var(--line);border-radius:6px;color:var(--dim);
+  font:11px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;
+  max-height:220px;overflow:auto}
+/* Bigger tap targets where a finger is doing the ticking. */
+@media(max-width:900px){ .pkg{padding:13px 0} .pkg input{width:20px;height:20px} }
+#pkgLog{min-height:0;font-size:11px;white-space:pre-wrap;color:var(--dim)}
 /* A project row's controls move as one block: four buttons that wrapped one
    at a time left a lone eye stranded under the name (the link chain made
    four possible). Together they either fit beside the name or drop below it
@@ -621,11 +648,16 @@ body.dragging .tab .lbl{cursor:grabbing}
       <h2>Projects</h2>
       <div id="projects"><div class="empty">loading…</div></div>
     </div>
-    <div class="card" id="cardFindings" data-card="findings" hidden>
-      <h2>Static analysis</h2>
+    <!-- Tools: the scanner's report when there is one, and the packages
+         this container can install. data-card stays "findings" — it is the
+         key the saved card order is written under, and renaming it would
+         reset everyone's sidebar to say a heading changed. -->
+    <div class="card" id="cardFindings" data-card="findings">
+      <h2>Tools</h2>
       <div id="findingsSum"></div>
       <div class="macros">
-        <button onclick="openFindings()">Open findings report</button>
+        <button id="bFindings" onclick="openFindings()" hidden>Open findings report</button>
+        <button id="bPkgs" onclick="openPackages()">Additional packages…</button>
       </div>
     </div>
     <div class="card" data-card="sessions">
@@ -922,6 +954,7 @@ function show(t){
   render();
   if (isPhone()) setView("terminal");
   if (t.kind === "findings" && !findings) loadFindings();
+  if (t.kind === "packages") loadPackages();
   refreshSoon();      // a just-opened terminal's session appears in Sessions
 }
 
@@ -1375,14 +1408,15 @@ function newShell(proj){
 function paintBar(pane, t, i){
   const closeBtn = isSplit()
     ? `<span class="x" data-cp="${i}" title="close this pane">✕</span>` : "";
-  const reload = t.kind === "findings"
-    ? `<button class="ic" data-reload="1" style="margin-left:8px">reload</button>` : "";
+  const reload = (t.kind === "findings" || t.kind === "packages")
+    ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
   bar.innerHTML = `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
   bar.querySelectorAll("[data-cp]").forEach(b =>
     b.onclick = e => closePane(Number(b.dataset.cp), e));
   bar.querySelectorAll("[data-reload]").forEach(b =>
-    b.onclick = e => { e.stopPropagation(); loadFindings(true); });
+    b.onclick = e => { e.stopPropagation();
+      if (b.dataset.reload === "packages") loadPackages(); else loadFindings(true); });
 }
 
 function drawPanes(){
@@ -1416,6 +1450,10 @@ function drawPanes(){
         pane.dataset.rev = String(findingsRev);
         renderFindingsInto(i);
       }
+      if (t.kind === "packages" && pane.dataset.rev !== String(pkgRev)){
+        pane.dataset.rev = String(pkgRev);
+        renderPackagesInto(i);
+      }
       continue;
     }
     if (same) continue;
@@ -1438,6 +1476,10 @@ function drawPanes(){
       // A findings tab restored from the saved layout has no one calling
       // loadFindings for it — it sat on "loading…" until something else did.
       if (!findings) loadFindings();
+    }
+    if (t.kind === "packages"){
+      pane.dataset.rev = String(pkgRev); renderPackagesInto(i);
+      if (!packages) loadPackages();      // same, for a restored packages tab
     }
   }
 }
@@ -2368,6 +2410,103 @@ function editCustom(id){
 
 function closeEditor(){ $("modal").hidden = true; editing = null; }
 
+// ---- additional packages -----------------------------------------------
+// The Tools card's other half, opened as a document tab beside the findings
+// report rather than a dialog: installing an SDK is not a detour to dismiss,
+// it is a thing to leave open for the several minutes it runs — and a tab can
+// be pinned to a pane, minimized, or left on the strip while you work.
+//
+// Installs are queued by the server and polled from here, so the list keeps
+// reporting progress instead of freezing on a request that cannot return.
+let packages = null, pkgRev = 0, pkgPoll = null;
+const pkgTicked = new Set();     // survives a redraw; a poll must not untick
+
+function openPackages(){
+  openTab({kind:"packages", arg:"__packages", label:"packages"});
+}
+
+async function loadPackages(){
+  try{
+    const r = await fetch("/api/packages");
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    packages = await r.json();
+  }catch(e){ packages = {error: String(e)}; }
+  pkgRev++;
+  drawPanes();
+}
+
+function pkgRow(p){
+  return `<label class="pkg">
+    <input type="checkbox" value="${esc(p.name)}"${pkgTicked.has(p.name) ? " checked" : ""}>
+    <span class="grow">
+      <span class="nm">${esc(p.label)} <span class="pill">${esc(p.size)}</span></span>
+      <span class="sub">${esc(p.about)}</span>
+      <span class="sub where${p.installed ? " on" : ""}">${
+        p.installed ? "installed at " + esc(p.path) : "not installed"}</span>
+    </span>
+  </label>`;
+}
+
+function renderPackagesInto(i){
+  const el = $("doc" + i);
+  if (!el) return;
+  const d = packages;
+  if (!d){ el.innerHTML = `<div class="empty">loading…</div>`; return; }
+  if (d.error){ el.innerHTML = `<div class="empty">could not read the package list: ${esc(d.error)}</div>`; return; }
+
+  const job = d.job || {}, busy = !!job.running;
+  // A finished package loses its tick: the selection was spent on the job
+  // that just ran, and leaving it ticked means the next click — which might
+  // be Remove — acts on something the operator already dealt with.
+  if (!busy) for (const n of job.done || []) pkgTicked.delete(n);
+  const lines = (job.log || []).slice(-14);
+  el.innerHTML = `
+    <div class="pkghead">${d.root
+      ? (d.shared
+          ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
+          : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
+      : "The SDK root could not be determined; this image may predate <code>bb sdk</code>."}</div>
+    <div class="pkgs">${(d.items || []).map(pkgRow).join("")}</div>
+    <div class="macros">
+      <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
+        busy && job.action === "install" ? `Installing ${esc(job.current || "")}…` : "Install selected"}</button>
+      <button data-pkg="remove"${busy ? " disabled" : ""}>${
+        busy && job.action === "remove" ? `Removing ${esc(job.current || "")}…` : "Remove selected"}</button>
+    </div>
+    ${lines.length ? `<pre class="pkglog">${esc(lines.join("\n"))}${
+      busy ? "" : `\n— finished: ${(job.done || []).length} ok${
+        (job.failed || []).length ? `, ${job.failed.length} failed` : ""}`}</pre>` : ""}`;
+
+  el.querySelectorAll(".pkg input").forEach(b => b.onchange = () => {
+    b.checked ? pkgTicked.add(b.value) : pkgTicked.delete(b.value);
+  });
+  el.querySelectorAll("[data-pkg]").forEach(b => b.onclick = () => pkgAct(b.dataset.pkg));
+
+  // Poll only while something is running: this list is a filesystem walk, not
+  // something to ask for every two seconds forever.
+  clearTimeout(pkgPoll);
+  if (busy) pkgPoll = setTimeout(loadPackages, 2000);
+  else if ((job.done || []).length) refresh();
+}
+
+async function pkgAct(action){
+  const names = [...pkgTicked];
+  if (!names.length) return notify("tick something first", true);
+  // Tizen's install only prints instructions, and removing what was never
+  // installed is not a thing — say so rather than queueing a no-op.
+  if (action === "remove" && names.includes("tizen"))
+    return notify("tizen is a manual install — nothing here to remove", true);
+  try{
+    const r = await fetch("/api/packages", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({action, names})});
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
+    notify(`${action === "install" ? "installing" : "removing"} ${names.length} package(s) — this can take minutes`);
+    loadPackages();
+  }catch(e){ notify("could not start: " + e, true); }
+}
+
 // ---- new project / link to GitHub --------------------------------------
 // One dialog, three modes, one table. `init` and `clone` feed /api/create;
 // `link` points an existing repo at an empty GitHub one via /api/link. The
@@ -2997,7 +3136,10 @@ async function refresh(){
     drawGit();
     drawCustom();
     drawDoctor();
-    $("cardFindings").hidden = !state.reports;
+    // The card itself is always there now — it holds the package manager as
+    // well — so only the report half tracks whether a scan exists.
+    $("bFindings").hidden = !state.reports;
+    $("findingsSum").hidden = !state.reports;
     drawFindingsSum(state.findings_counts || {});
     // A scan re-ran on the host: refresh any open findings view to match.
     if (findings && !findings.loading && findingsMtime !== null

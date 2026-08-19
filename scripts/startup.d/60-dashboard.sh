@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #
-# Web dashboard: a status page on DASHBOARD_PORT and a terminal on
-# DASHBOARD_TTYD_PORT.
+# Web dashboard: the page, its API and the browser terminals, all on
+# DASHBOARD_PORT. ttyd binds the loopback and is reached through the
+# dashboard's own /term proxy, so there is one port and one sign-in.
 #
 # Off unless ENABLE_DASHBOARD is true, and it refuses to start without
 # DASHBOARD_AUTH. That refusal is the point: this serves an interactive shell
@@ -16,10 +17,6 @@ is_true "${ENABLE_DASHBOARD:-false}" || exit 0
 
 PORT="${DASHBOARD_PORT:-8080}"
 TTYD_PORT="${DASHBOARD_TTYD_PORT:-7681}"
-# The port the browser must reach, which differs from the one ttyd binds to
-# whenever the host publishes it elsewhere. Nothing in here can discover that,
-# so it has to be told.
-TTYD_PUBLIC_PORT="${DASHBOARD_TTYD_PUBLIC_PORT:-$TTYD_PORT}"
 DASH=/opt/builderbot/scripts/dashboard
 
 if [ -z "${DASHBOARD_AUTH:-}" ]; then
@@ -108,10 +105,8 @@ elif ! grep -qF 'tmux.builderbot.conf' "$HOME/.tmux.conf"; then
     fi
 fi
 
-log "dashboard: http://<host>:${PORT}  (terminal on ${TTYD_PUBLIC_PORT})"
-if [ "$TTYD_PUBLIC_PORT" != "$TTYD_PORT" ]; then
-    log "dashboard: advertising terminal port ${TTYD_PUBLIC_PORT} to browsers (ttyd binds ${TTYD_PORT})"
-fi
+# One port to publish: terminals are proxied under /term on this one.
+log "dashboard: http://<host>:${PORT}  (terminals proxied at /term; ttyd binds 127.0.0.1:${TTYD_PORT})"
 
 # --url-arg lets the page choose the session; bb-tty validates it. -W makes
 # the terminal writable, which is the entire point. `-t reconnect=5` shortens
@@ -134,7 +129,6 @@ nohup ttyd --port "$TTYD_PORT" --interface 127.0.0.1 \
     >> "$(bb_log_dir)/ttyd.log" 2>&1 &
 
 nohup env DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT="$TTYD_PORT" \
-        DASHBOARD_TTYD_PUBLIC_PORT="$TTYD_PUBLIC_PORT" \
         DASHBOARD_AUTH="$DASHBOARD_AUTH" \
         python3 "$DASH/server.py" \
     >> "$(bb_log_dir)/dashboard.log" 2>&1 &

@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+#
+# Playwright's browsers live on the SDK share, not in the image.
+#
+# They are 1.3GB of pure download and /opt is discarded on every image
+# update, so baking them in meant re-fetching them weekly forever. The image
+# keeps the module and the system libraries — apt packages that have to be
+# there — and the bundles come here.
+#
+# PLAYWRIGHT_BROWSERS_PATH still says /opt/pw-browsers, because everything
+# from `bb shot` to the dashboard's tests to the project CLAUDE.md template
+# names that path. It is a symlink into the share now; nothing that used it
+# has to know.
+#
+set -euo pipefail
+. /opt/builderbot/scripts/lib/common.sh
+
+command -v playwright >/dev/null 2>&1 || exit 0
+BROWSERS="${PLAYWRIGHT_BROWSERS_PATH:-/opt/pw-browsers}"
+STORE="$(sdk_root)/playwright"
+
+mkdir -p "$STORE" 2>/dev/null || { warn "cannot write ${STORE}; leaving browsers in the image"; exit 0; }
+
+# An image that still ships browsers (or a session that installed some into
+# the real directory) is adopted rather than discarded — the bytes are
+# already here, and downloading them again to prove a point would be silly.
+if [ -d "$BROWSERS" ] && [ ! -L "$BROWSERS" ]; then
+    if [ -n "$(ls -A "$BROWSERS" 2>/dev/null)" ] && [ -z "$(ls -A "$STORE" 2>/dev/null)" ]; then
+        log "moving playwright browsers onto ${STORE} — once, then updates stop re-downloading them"
+        cp -a "$BROWSERS/." "$STORE/" 2>/dev/null || true
+    fi
+    rm -rf "${BROWSERS:?}"
+fi
+ln -sfn "$STORE" "$BROWSERS"
+
+# A stable path to Chromium: the revisioned directory changes with every
+# Playwright release, and the CLAUDE.md template has long told sessions to
+# launch with executablePath /opt/pw-browsers/chromium.
+relink_chromium() {
+    local exe
+    exe="$(find "$STORE" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
+    [ -n "$exe" ] && ln -sfn "$exe" "$STORE/chromium"
+}
+
+# First boot on an empty share: fetch them. Synchronous and loud, like the
+# Android baseline — it happens once per share, and a container that comes up
+# "ready" while `bb shot` cannot work would be worse than a slow start.
+if ! find "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | grep -q .; then
+    log "installing playwright browsers into ${STORE} (~1.3GB, once — updates will not re-download them)"
+    if run_as_builder env PLAYWRIGHT_BROWSERS_PATH="$STORE" \
+           playwright install chromium firefox webkit >/dev/null 2>&1; then
+        log "playwright browsers ready"
+    else
+        warn "could not install the playwright browsers — bb shot and the dashboard"
+        warn "tests will not work until: bb sdk install playwright"
+    fi
+fi
+
+relink_chromium
+chown -R "$PUID:$PGID" "$STORE" 2>/dev/null || true
+chmod -R a+rwX "$STORE" 2>/dev/null || true

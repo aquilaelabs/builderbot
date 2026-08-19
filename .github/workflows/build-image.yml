@@ -48,11 +48,18 @@ jobs:
       - uses: actions/checkout@v5
 
       # The hosted runner ships ~25GB of toolchains this build never uses
-      # (dotnet, the runner's own Android SDK, GHC, CodeQL). This image is
+      # (dotnet, the runner's own Android SDK, GHC, CodeQL). This image was
       # large enough that the export phase ran the disk dry at "exporting
       # layers" — silently, because a full disk kills the step before it can
       # say why. Reclaim the space first, and print the number so the next
       # capacity failure is a figure in the log rather than a mystery.
+      #
+      # The image has since lost ~2.9GB compressed to the SDK share, which is
+      # headroom rather than a reason to stop: this step costs seconds, and
+      # what it protects against gives no error message. Note also that the
+      # paths below are the RUNNER's preinstalled toolchains, unrelated to
+      # what this image installs — /usr/local/lib/android is GitHub's Android
+      # SDK, several GB, and is worth deleting no matter what we ship.
       - name: Reclaim runner disk
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
@@ -103,9 +110,13 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Inline cache, not the GHA cache. The GHA quota is 10GB per repo
-          # and this image's layers alone exceed it, so every build's cache
+          # and this image's layers alone exceeded it, so every build's cache
           # export evicted the previous build's entry: all of the cost, none
-          # of the hits. Inline embeds the cache metadata in the pushed image
+          # of the hits. A smaller image would now fit, but there is nothing
+          # to go back for: this is a single-stage build, so every layer
+          # worth caching ends up in the published image — which is precisely
+          # what inline caches — and `mode=max`'s advantage, keeping
+          # intermediate layers that never ship, does not exist here. Inline embeds the cache metadata in the pushed image
           # itself — no separate store, nothing to evict — and seeding from
           # :latest lets an unchanged prefix of the Dockerfile reuse the
           # previous build's layers digest-for-digest. That reuse is also

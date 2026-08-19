@@ -12,7 +12,8 @@
 #   RUNNER_LABELS       Comma-separated labels.
 #   RUNNER_GROUP        Runner group (org-level runners).
 #   RUNNER_EPHEMERAL    true (default) = fresh registration per job.
-#   RUNNER_WORKDIR      Where jobs check code out.
+#   RUNNER_WORKDIR      Where jobs check code out, and where their toolchains
+#                       (_tool), action copies and diagnostics live.
 #
 set -euo pipefail
 
@@ -120,6 +121,17 @@ trap on_term TERM INT
 trap 'rm -f "$PIDFILE"' EXIT
 
 mkdir -p "$RUNNER_WORKDIR"
+
+# CI's toolchains stay CI's. `actions/setup-node` and friends unpack into the
+# runner's tool cache, which defaults to a directory under the work volume —
+# stated here rather than relied upon, because the alternative people reach
+# for is pointing it at whatever other toolchain store the box has, and the
+# two must not mix: this one is the runner's, versioned by whatever a
+# workflow asks for, and the SDK share is the operator's, versioned by what
+# they installed. Overridable, since it is an export of a default.
+export RUNNER_TOOL_CACHE="${RUNNER_TOOL_CACHE:-$RUNNER_WORKDIR/_tool}"
+export AGENT_TOOLSDIRECTORY="$RUNNER_TOOL_CACHE"
+mkdir -p "$RUNNER_TOOL_CACHE"
 
 # The runner writes its diagnostic logs to $RUNNER_DIR/_diag, which lives in
 # the ephemeral container layer. Point it at the persistent work volume so

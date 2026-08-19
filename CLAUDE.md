@@ -51,15 +51,16 @@ recreated on every image update.
 | This project, including uncommitted work | `/workspace/<project>` — the projects share is mounted whole at `/workspace`, so every folder in it is here |
 | Your session transcripts and memory files | `~/.claude/` |
 | Claude Code login, shell history, AVDs | `~` (the home volume) |
-| Android system images and platforms | `~/.android/sdk` (symlinked into the SDK) |
+| SDKs and toolchains — Android packages, Playwright browsers, Flutter/.NET/Swift | the SDK share at `/sdk`, symlinked into place. `bb sdk` lists and installs them |
 | Gradle / npm / pip caches | `~/.gradle`, `~/.npm`, … |
 
 **Does not survive** — anything written outside those paths:
 
 - `/tmp`, `/var`, and the rest of the root filesystem
-- `/opt` — including the Android SDK's tools and build-tools. The two
-  expensive subdirectories (`system-images/`, `platforms/`) are symlinked to
-  the home volume and *do* persist; everything else there comes from the image
+- `/opt` — but most of what looks like it lives there is a symlink onto the
+  SDK share and *does* persist: the Android packages, the Playwright browsers,
+  anything `bb sdk install` put there. What actually comes from the image is
+  the bootstrap — `sdkmanager`, `adb`, the CLI tools
 - System packages installed ad hoc with `apt-get install`
 - Running processes, including the emulator and any dev server
 
@@ -92,11 +93,13 @@ a bug to route around with Bash.
 Everything is headless. There is no X server, no window manager, nothing to
 show a GUI on.
 
-- **Playwright** — browsers are pre-installed at `/opt/pw-browsers` and
-  configured via `PLAYWRIGHT_BROWSERS_PATH`. Run headless. Never run
-  `playwright install`; if a project pins a different version, launch with
-  `executablePath: '/opt/pw-browsers/chromium'` (a stable symlink to the
-  image's Chromium). The image's Playwright is a global module: `require()`
+- **Playwright** — browsers live at `/opt/pw-browsers`, which is a symlink
+  onto the SDK share (they are 1.3GB of download, so the image does not carry
+  them); `PLAYWRIGHT_BROWSERS_PATH` still points there. Run headless. You do
+  not need `playwright install` — the container installs them on first boot
+  and `bb sdk install playwright` repairs them — and if a project pins a
+  different version, launch with `executablePath: '/opt/pw-browsers/chromium'`
+  (a stable symlink to the current Chromium). The image's Playwright is a global module: `require()`
   finds it from any directory via `NODE_PATH`; ESM `import` does not honor
   that, so use `createRequire(import.meta.url)('playwright')`.
 - **`bb shot URL... [FILE|DIR]`** — headless screenshot(s) of any pages, for
@@ -105,6 +108,30 @@ show a GUI on.
   boot the app and end with one `bb shot` line, not carry its own Playwright.
 - **Screenshots** are the way to show the user visual state — save to a file
   and surface the path.
+
+## Toolchains beyond the image
+
+The image is a bootstrap, not a toolbox. The heavy toolchains — Flutter, the
+.NET SDK, Swift, the Android emulator and its system images, the Playwright
+browsers — live on a share outside it, so which of them exist on *this*
+container is a runtime fact, not something to infer from this file:
+
+```bash
+bb sdk            # what is installed, where each one lives, and what is not
+```
+
+`bb status` prints the same summary in two lines. Check before concluding a
+tool is missing, and check before reaching for a system package manager —
+the thing you want may be one `bb sdk install` away, or already installed
+somewhere PATH does not look until the next shell.
+
+If a project needs one that is not there, **say so and offer the command
+rather than running it**. These are gigabytes each and the disk is the
+operator's to spend — the same rule as Android API levels. From the
+dashboard, the Tools tab does it with checkboxes.
+
+Installing one is not a reason to edit this file: `bb sdk` is the source of
+truth, and it is accurate the moment something lands.
 
 ## Android
 
@@ -259,11 +286,11 @@ is the environment.
 
 The consequence you hit first: **editing a file here does not change the
 running container.** `bb` on your PATH is `/opt/builderbot/scripts/bb` from the
-image, not `scripts/bb` in this tree, and every script sources
-`/opt/builderbot/scripts/lib/common.sh` by absolute path. You can dry-run a repo
-copy (`bash scripts/bb status`) but it will pull in the *installed* library, so
-a change is only really live after CI builds a new image and Unraid updates the
-container.
+image, not `scripts/bb` in this tree. `bash scripts/bb <cmd>` dry-runs the
+checkout properly — it sources the library next to itself, so a new helper in
+`lib/common.sh` is there — but the startup hooks and the dashboard still source
+`/opt` by absolute path, and nothing is really live until CI builds a new image
+and Unraid updates the container.
 
 - **Build:** the image, and nothing else. `.github/workflows/build-image.yml`
   builds and pushes `ghcr.io/stencil-projects/builderbot` on pushes to `main`
@@ -296,17 +323,20 @@ container.
   real server. The harness unsets `TMUX` and verifies its socket first.
 
   If the *installed* `bb` predates a subcommand, `bash scripts/bb <cmd>` runs
-  the repo copy — it prints `[skip]` for any tool the running image does not
-  carry yet, rather than passing by omission.
+  the repo copy — and `bb lint` prints `[skip]` for any tool the running image
+  does not carry yet, rather than passing by omission. The dashboard's server
+  resolves `bb` as the copy beside it, so `bb dashboard dev` exercises the
+  checkout's subcommands too.
 
 - **Seeing a change without a rebuild:** `bb drift` lists what this checkout
   has changed that the running container is not serving. For the dashboard
   specifically, `bb dashboard dev` restarts the live dashboard from
   `./scripts/dashboard` (same port and credential; lasts until the container
   restarts; `--off` reverts) — so a dashboard change can be looked at in the
-  browser without a 40-minute image build. `bb shot URL [FILE]` takes a
-  headless screenshot to show the operator; it reads `DASHBOARD_AUTH` from
-  the environment for the dashboard's own pages.
+  browser without a 40-minute image build. `bb shot URL... [FILE|DIR]` takes
+  headless screenshots to show the operator; it reads `DASHBOARD_AUTH` from
+  the environment for the dashboard's own pages. `tools/readme-shots.sh`
+  regenerates the README's screenshots from a staged instance.
 
 - **Lint:** CI runs shellcheck, hadolint and actionlint — on *this* runner,
   where minutes are free and the image already carries the tools (the job
@@ -337,20 +367,24 @@ container.
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
     `index.html` is one file of vanilla JS and CSS. No framework, no build step.
   - Anything the web UI can execute is a table lookup (`MACROS`, `TMUX_KEYS`,
-    `TMUX_LITERALS`) rather than a command string, and `bb-tty` validates its one
+    `TMUX_LITERALS`, `PACKAGES`) rather than a command string, and `bb-tty` validates its one
     URL argument against directories that actually exist. New surface keeps that
     shape — the terminal is one port over for anything else.
   - A new setting lands in five places: `.env.example`, `docker-compose.yml`,
     `unraid/builderbot.xml`, the configuration reference in `README.md`, and
-    `docs/unraid.md` when it needs host-side setup. The README is the
+    `docs/unraid.md` when it needs host-side setup. A setting that stops being
+    read gets removed from all five in the same change — `DASHBOARD_TTYD_PUBLIC_PORT`
+    outlived its code in three files. The README is the
     documentation surface and is expected to move with behavior.
   - The environment block every *other* project gets comes from
     `config/templates/project-CLAUDE.md`. That file is the source of truth;
     this repo's own copy above the end marker is just its output, so edit the
     template and let `bb claude-md --update` propagate it.
   - Persistence is the recurring design constraint: `/opt` is discarded on every
-    image update, the home and `/config` volumes are not. New state has to pick
-    a side, and the comment should say which and why.
+    image update, the home, `/config` and SDK volumes are not. New state has to
+    pick a side, and the comment should say which and why. Anything large and
+    merely *downloadable* belongs on the SDK share via `bb sdk`, never in the
+    image — that is what keeps a weekly rebuild from re-shipping gigabytes.
   - Layer order is a cost. Builds seed from the previous `:latest`, so a
     Dockerfile change invalidates every layer *below* it — and the host then
     re-downloads all of them. A runtime-only `ENV`/`ARG` belongs at the **end**
