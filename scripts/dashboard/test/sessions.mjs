@@ -258,6 +258,11 @@ await phone.evaluate(() => setView('terminal'));
 await phone.reload();
 await phone.waitForFunction(() => document.body.dataset.view === 'terminal', { timeout: 20000 });
 ok(true, 'a phone reload lands back on the terminal view');
+// ...unless the URL says otherwise: ?view= is how something that can only
+// speak URLs (bb shot, a bookmark) asks for a side, and it beats the memory.
+await phone.goto(URL + '?view=dash');
+await phone.waitForFunction(() => document.body.dataset.view === 'dash', { timeout: 20000 });
+ok(true, '?view= overrides the remembered side');
 ok(phone.errors.length === 0, `phone: zero console errors${phone.errors.length ? ' — ' + phone.errors.join(' | ') : ''}`);
 await phone.close();
 

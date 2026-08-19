@@ -149,6 +149,11 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* The Linux and git cards show commands verbatim; mono keeps them readable
    as commands, and slightly smaller keeps the pipelines on one line. */
 #linux button,#git button{font-family:var(--mono);font-size:12px}
+/* A project row's controls move as one block: four buttons that wrapped one
+   at a time left a lone eye stranded under the name (the link chain made
+   four possible). Together they either fit beside the name or drop below it
+   whole, which reads as a layout, not an accident. */
+.row .acts{display:flex;gap:6px;align-items:center;margin-left:auto}
 /* A command and its thumbtack are one control with two halves, so the tack
    cannot be mistaken for a command of its own. */
 .cmd{display:inline-flex;align-items:stretch;border:1px solid var(--line);
@@ -792,10 +797,14 @@ function setView(v){
   if (v === "terminal"){ revealActiveTab(); updateArrows(); }
 }
 // A phone reload lands on the side it left; the attribute is set directly so
-// the first paint is not an entrance animation.
+// the first paint is not an entrance animation. ?view= outranks the memory:
+// it is how something that can only speak URLs — bb shot, a bookmark — asks
+// for a particular side, and a request beats a habit.
 if (isPhone()){
   let v = null;
   try{ v = localStorage.getItem("bb.view"); }catch(e){ /* private mode */ }
+  const qv = new URLSearchParams(location.search).get("view");
+  if (qv === "terminal" || qv === "dash") v = qv;
   if (v === "terminal"){
     document.body.dataset.view = v;
     $("vDash").classList.remove("on"); $("vTerm").classList.add("on");
@@ -2050,6 +2059,7 @@ function drawProjects(ps){
                >${esc(i.text)}</a></div>`
           : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
+      <span class="acts">
       ${isBroken(p) ? "" : `<button class="${live.has(tmuxName("claude-"+p.name)) ? "primary" : ""}"
          data-c="${esc(p.name)}"
          title="${live.has(tmuxName("claude-"+p.name)) ? "session running — go to its tab"
@@ -2068,6 +2078,7 @@ function drawProjects(ps){
         title="${p.excluded ? "include — allow Claude sessions here again"
                             : "exclude — block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? EYE : EYE_OFF}</button>
+      </span>
     </div>`).join("") + togHtml)){
     $("bNewProj").onclick = openNewProject;
     if (flagged.length)

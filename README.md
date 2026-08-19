@@ -25,6 +25,27 @@ to the same box. New images publish automatically to GHCR whenever a push to
 `main` changes what the image is built from (plus a weekly refresh), so
 updating is Unraid's one-click **update ready** flow.
 
+## What it looks like
+
+The [dashboard](#web-dashboard): projects, sessions, findings and the runner
+on one side, real terminals on the other — the same page on a phone, where
+the two sides become a switch.
+
+![The dashboard on a desktop](docs/screenshots/dashboard.png)
+
+<p>
+  <img src="docs/screenshots/phone-dashboard.png" width="290"
+       alt="The dashboard side on a phone">
+  &nbsp;
+  <img src="docs/screenshots/phone-terminal.png" width="290"
+       alt="The terminal side on a phone, with the tab strip and bottom bar">
+</p>
+
+(Staged data. The pictures regenerate with `bash tools/readme-shots.sh`,
+which boots the checkout's dashboard against an invented workspace on a
+private tmux server and photographs it with `bb shot` — the pattern the
+[`bb` helper section](#the-bb-helper) preaches, practiced.)
+
 ## What's in the image
 
 | | |
