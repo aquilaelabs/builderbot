@@ -42,7 +42,7 @@ bb — BuilderBot helper
   bb dashboard status    which copy of the dashboard is serving right now
   bb drift [REPO]        which files this checkout changed that the running
                          container is not serving yet
-  bb shot URL [FILE]     headless screenshot of a page (basic auth via --auth)
+  bb shot URL... [FILE|DIR]  headless screenshot(s): --full --scale N --wait MS --resize W, auth via --auth
 EOF
 }
 
@@ -840,38 +840,112 @@ cmd_drift() {
     fi
 }
 
-# bb shot — a headless screenshot, for showing the operator visual state
-# from a box with no display. Playwright's Chromium from the image.
+# bb shot — headless screenshots, for showing the operator visual state from
+# a box with no display. Playwright's Chromium from the image.
+#
+# One URL keeps the old shape (bb shot URL [FILE]). Several URLs share one
+# browser and land in a directory, each named from its path (/ -> index.png).
+# --full and --scale exist because README screenshots need the whole page at
+# 2x — capabilities MediaReducer's tools/screenshots grew privately before
+# this subsumed them; --resize is the imagemagick downscale that keeps those
+# PNGs repo-sized; --wait absorbs pages whose async fetches settle after
+# networkidle, because a screenshot of a spinner is not a screenshot of the
+# page. The intended split: a project's own script boots its app into a
+# photogenic state, then ends with one bb shot line.
 cmd_shot() {
-    local auth="${DASHBOARD_AUTH:-}" width=1280 height=800 url="" out=""
+    local auth="${DASHBOARD_AUTH:-}" width=1280 height=800 scale=1 wait=0
+    local full=0 resize="" out="" mode=file urls=()
     while [ $# -gt 0 ]; do
         case "$1" in
-            --auth) auth="$2"; shift 2 ;;
-            --size) width="${2%x*}"; height="${2#*x}"; shift 2 ;;
+            --auth)   auth="$2"; shift 2 ;;
+            --size)   width="${2%x*}"; height="${2#*x}"; shift 2 ;;
+            --scale)  scale="$2"; shift 2 ;;
+            --wait)   wait="$2"; shift 2 ;;
+            --resize) resize="${2%x}"; shift 2 ;;
+            --full)   full=1; shift ;;
             -*) die "unknown option: $1" ;;
-            *) if [ -z "$url" ]; then url="$1"; else out="$1"; fi; shift ;;
+            *) case "$1" in
+                   # Scheme-tagged, because page.goto needs one anyway: a bare
+                   # host:port would produce a blank shot, so it is refused
+                   # here where the message can say why.
+                   http://*|https://*) urls+=("$1") ;;
+                   *) [ -z "$out" ] || die "two outputs given: ${out} and $1"
+                      out="$1" ;;
+               esac; shift ;;
         esac
     done
-    [ -n "$url" ] || die "usage: bb shot URL [FILE] [--auth user:pass] [--size WxH]"
-    out="${out:-shot-$(date +%H%M%S).png}"
+    [ "${#urls[@]}" -gt 0 ] || die \
+        "usage: bb shot URL... [FILE|DIR] [--auth user:pass] [--size WxH] [--full] [--scale N] [--wait MS] [--resize W]
+URLs need their scheme (http:// or https://)"
+    case "${width}${height}${scale}${wait}${resize}" in
+        *[!0-9]*) die "--size WxH, --scale N, --wait MS and --resize W take whole numbers" ;;
+    esac
+    if [ -n "$resize" ] && ! command -v convert >/dev/null 2>&1; then
+        die "--resize needs imagemagick's convert"
+    fi
+
+    # One output name only fits one shot; with several URLs (or a trailing
+    # slash, or an existing directory) the output is a directory and the
+    # names come from the URLs.
+    if [ "${#urls[@]}" -gt 1 ]; then
+        mode=dir; out="${out:-.}"; mkdir -p "$out"
+    elif [ -n "$out" ] && { [ -d "$out" ] || [ "${out%/}" != "$out" ]; }; then
+        mode=dir; mkdir -p "$out"
+    else
+        out="${out:-shot-$(date +%H%M%S).png}"
+    fi
+
     local chrome
     chrome=/opt/pw-browsers/chromium          # the image's stable symlink...
     [ -x "$chrome" ] || chrome="$(find /opt/pw-browsers -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
     [ -x "${chrome:-}" ] || die "no Playwright chromium under /opt/pw-browsers"   # ...or an older image's revisioned path
-    NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - "$url" "$out" "$auth" "$width" "$height" "$chrome" <<'EOF'
+    local files
+    files="$(NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - \
+        "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
+        "$mode" "$out" "${urls[@]}" <<'EOF'
 const { chromium } = require("playwright");
-const [url, out, auth, w, h, exe] = process.argv.slice(2);
+const path = require("path");
+const [exe, auth, w, h, scale, wait, full, mode, dest, ...urls] = process.argv.slice(2);
 (async () => {
   const b = await chromium.launch({ executablePath: exe });
   const [username, password] = auth.includes(":") ? auth.split(/:(.*)/) : [null, null];
-  const p = await b.newPage({ viewport: { width: +w, height: +h },
-                              ...(username ? { httpCredentials: { username, password } } : {}) });
-  await p.goto(url, { waitUntil: "networkidle" }).catch(() => {});
-  await p.screenshot({ path: out, fullPage: false });
+  const ctx = await b.newContext({
+    viewport: { width: +w, height: +h },
+    deviceScaleFactor: +scale,
+    ...(username ? { httpCredentials: { username, password } } : {}) });
+  const p = await ctx.newPage();
+  const taken = new Set();
+  for (const url of urls) {
+    await p.goto(url, { waitUntil: "networkidle" }).catch(() => {});
+    if (+wait) await p.waitForTimeout(+wait);
+    let out = dest;
+    if (mode === "dir") {
+      // Named from the path so reruns overwrite their own shots — with a
+      // counter only for two URLs that share a path (e.g. differing query).
+      const u = new URL(url);
+      const s = (u.pathname + u.search).replace(/^\/+|\/+$/g, "")
+        .replace(/[^A-Za-z0-9._-]+/g, "-") || "index";
+      let name = s, n = 2;
+      while (taken.has(name)) name = `${s}-${n++}`;
+      taken.add(name);
+      out = path.join(dest, name + ".png");
+    }
+    await p.screenshot({ path: out, fullPage: full === "1" });
+    console.log(out);
+  }
   await b.close();
-  console.log(out);
 })().catch(e => { console.error(String(e)); process.exit(1); });
 EOF
+)"
+    if [ -n "$resize" ]; then
+        # In place: the full-size original is scaffolding, the downscale is
+        # the deliverable — keeping both would double the repo cost the flag
+        # exists to avoid. -strip drops metadata for the same reason.
+        while IFS= read -r f; do
+            [ -n "$f" ] && convert "$f" -resize "${resize}x" -strip "$f"
+        done <<< "$files"
+    fi
+    printf '%s\n' "$files"
 }
 
 cmd_doctor() {

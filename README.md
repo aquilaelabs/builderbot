@@ -341,10 +341,22 @@ bb dashboard test  browser-test the dashboard from this checkout, isolated
 bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reverts)
 bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
-bb shot URL [FILE] headless screenshot of a page
+bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
 ```
 
 The dashboard's Commands card is this same list in this same order.
+
+`bb shot` is the container's camera: one URL with an optional output file
+keeps the simple shape, several URLs share one browser and land in a
+directory named from their paths (`/` → `index.png`). For README-quality
+captures it takes `--full` (whole page, not just the viewport), `--scale 2`
+(2x pixels, crisp in GitHub's column), `--wait MS` (pages whose async
+fetches settle after networkidle), and `--resize W` (imagemagick downscale,
+in place, so full-size originals never land in a repo). `--auth user:pass`
+defaults to `DASHBOARD_AUTH`. The intended split for a project's docs
+screenshots: the project keeps a script that boots its app into a
+photogenic state — staged data, ready-wait — and ends with one `bb shot`
+line; the Playwright plumbing lives here, once.
 
 `claude` and `bb` re-exec as `builder` automatically — `docker exec` lands
 as root, which would break your saved login and file ownership. A bare

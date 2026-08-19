@@ -99,8 +99,10 @@ show a GUI on.
   image's Chromium). The image's Playwright is a global module: `require()`
   finds it from any directory via `NODE_PATH`; ESM `import` does not honor
   that, so use `createRequire(import.meta.url)('playwright')`.
-- **`bb shot URL [FILE]`** — headless screenshot of any page, for showing the
-  user visual state.
+- **`bb shot URL... [FILE|DIR]`** — headless screenshot(s) of any pages, for
+  showing the user visual state. Takes `--full`, `--scale N`, `--wait MS`,
+  `--resize W` for README-quality captures — a docs-screenshot script should
+  boot the app and end with one `bb shot` line, not carry its own Playwright.
 - **Screenshots** are the way to show the user visual state — save to a file
   and surface the path.
 
