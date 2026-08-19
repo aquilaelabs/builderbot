@@ -87,6 +87,10 @@ mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk}
     # button must show on exactly one of them. ep.silon is linked to a
     # non-GitHub remote: still "linked", but the GitHub command card must
     # ghost there all the same.
+# A directory that carries the marker: the container writes one into paths of
+# its own that land in the projects share, and an operator can write one by
+# hand. Either way it is not a project.
+mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
 echo '["delta"]' > "$S/state/excluded-projects.json"
 # alpha has a previous Claude conversation, so its Claude button offers the
 # Resume / New chooser rather than starting straight away.
@@ -148,7 +152,7 @@ fresh() {
     # not one of the five fixtures. Scoped to $S, like every rm in this file.
     find "$S/ws" -maxdepth 1 -mindepth 1 -type d \
         ! -name alpha ! -name beta ! -name gamma ! -name delta ! -name ep.silon \
-        -exec rm -rf {} +
+        ! -name toolstore -exec rm -rf {} +
     rm -rf "$S/home/.ssh"           # deploy-key selectors a test wrote
     rm -rf "$S/sdk" "$S/androidsdk"; mkdir -p "$S/sdk" "$S/androidsdk"
     cp "$S/doctor-ok.txt" "$S/doctor.txt"

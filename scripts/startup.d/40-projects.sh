@@ -16,6 +16,10 @@ shopt -s nullglob
 for dir in "$WORKSPACE"/*/; do
     name="$(basename "$dir")"
     [ "$name" = "_work" ] && continue
+    # Same rule the dashboard applies: a directory holding .bbignore is not a
+    # project. Two places, one meaning — a log that disagreed with the card
+    # would be worse than either.
+    [ -e "${dir}.bbignore" ] && continue
 
     if [ -d "$dir/.git" ]; then
         log "project: ${name} (branch $(git_branch "$dir"))"

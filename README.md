@@ -638,6 +638,12 @@ lives in its body. The cards:
   runner's `_work` are skipped outright, and empty
   directories are never listed either: a mount point waiting for
   content is not a fault to report.
+  A directory holding a **`.bbignore`** file is not a project and is not
+  listed — the container writes one into any path of its own that lands in
+  the projects share (the SDK share, if you map it under
+  `/mnt/user/development`), and you can create one by hand for anything else
+  you would rather not see. It *hides*; the eye below **blocks**, which is a
+  different promise.
   At the foot of the card, **New project…** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *About this project*, which
   becomes the project section of a freshly built `CLAUDE.md` (environment

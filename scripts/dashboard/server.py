@@ -994,6 +994,12 @@ def _github_remote(remotes):
     return False
 
 
+# A directory holding this file is not a project: not listed, not offered a
+# Claude session, not counted. Written by the container into its own paths
+# under the projects share, and by hand for anything else.
+IGNORE_MARKER = ".bbignore"
+
+
 def projects():
     out = []
     uid, gid = os.getuid(), os.getgid()
@@ -1019,7 +1025,17 @@ def projects():
         # directories are not projects either: the whole projects folder is
         # mounted now, so this list would otherwise open with the share's own
         # furniture (.Recycle.Bin and friends) presented as things to fix.
-        if not d.is_dir() or d.name == "_work" or d.name.startswith("."):
+        #
+        # .bbignore is the general form of the same idea, and the one thing
+        # here an operator can drive: a directory holding that file is not a
+        # project and is not listed. The container drops it into any path of
+        # its own that lands inside the projects share — the SDK share, when
+        # someone maps it under /mnt/user/development — and anyone can create
+        # one by hand for a directory they would rather not see. It hides;
+        # excluding a project is the thing that *blocks*, and that is a
+        # different control with a different guarantee.
+        if (not d.is_dir() or d.name == "_work" or d.name.startswith(".")
+                or (d / IGNORE_MARKER).exists()):
             continue
         issues = []
 
