@@ -276,7 +276,8 @@ and is always the big one. Rollback = point the Repository field at a
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
 | `GIT_PAT` | *(empty)* | GitHub **API** auth for `gh` from inside (`gh pr create`). Session-readable by design; not needed if ssh covers your git usage |
-| `SDK_ROOT` | `/sdk` | Where downloadable SDKs are kept — see [SDKs live outside the image](#sdks-live-outside-the-image). Falls back to the home volume when no share is mapped |
+| `SDK_ROOT` | `/sdk` | Where the SDKs *you* install are kept — see [SDKs live outside the image](#sdks-live-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: the runner keeps its own toolchains under `RUNNER_WORKDIR` |
+| `RUNNER_WORKDIR` | `/workspace/_work` | Everything the runner owns: job checkouts, the `_tool` cache `actions/setup-*` fills, cached actions, and `_diag` logs. Mapped to `appdata/BuilderBot/work` by the template |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create system images and AVDs at startup |
 | `ANDROID_SYSTEM_IMAGES` | `36` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
 | `ANDROID_SYSTEM_IMAGE_VARIANT` | `google_apis;x86_64` | Image flavor; `default;x86_64` is smaller AOSP, no Google APIs |
@@ -495,6 +496,14 @@ four minutes to answer. The page only ever posts names the server offered it
 and licensed to Apple hardware; no Linux container can host them. For web and
 PWA work the answer is already installed — Playwright's WebKit is Safari's
 engine, with iPhone device profiles. For a native iOS build you need a Mac.
+
+**CI's toolchains are not these.** A workflow that runs `actions/setup-node`
+downloads its own copy into the runner's tool cache under `RUNNER_WORKDIR`
+(`_work/_tool`), versioned by whatever that workflow asked for. The SDK share
+is the other thing entirely: what you installed, versioned by when you
+installed it. They are kept apart on purpose — a workflow bumping a version
+must not move the ground under a Claude session — and `_work` can be emptied
+whenever no job is running, at the cost of re-downloading on the next run.
 
 **What stays in the image, and why.** Anything apt installs (the JDK,
 ffmpeg, imagemagick, build-essential) integrates with the system and cannot
