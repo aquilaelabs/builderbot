@@ -67,5 +67,20 @@ await page.waitForFunction(() => document.querySelector('.side .card[data-card]'
   && !document.querySelector('.side .card.closed'));
 ok(true, 'reset restores default order and expands everything');
 
+// The favicon set: served by the allow-list, linked from the head. Sizes and
+// content types matter — a wrong type is a globe in the tab, silently.
+const fav = await page.evaluate(async () => {
+  const get = async u => { const r = await fetch(u);
+    return [r.status, r.headers.get('content-type'), (await r.arrayBuffer()).byteLength]; };
+  return { ico: await get('/favicon.ico'), svg: await get('/favicon.svg'),
+           touch: await get('/apple-touch-icon.png'),
+           links: [...document.querySelectorAll('link[rel*="icon"]')].map(l => l.getAttribute('href')) };
+});
+ok(fav.ico[0] === 200 && fav.ico[1] === 'image/x-icon' && fav.ico[2] > 1000, 'favicon.ico is served');
+ok(fav.svg[0] === 200 && fav.svg[1] === 'image/svg+xml', 'favicon.svg is served');
+ok(fav.touch[0] === 200 && fav.touch[1] === 'image/png', 'apple-touch-icon is served');
+ok(fav.links.includes('/favicon.svg') && fav.links.includes('/favicon.ico')
+   && fav.links.includes('/apple-touch-icon.png'), 'the head links all three');
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

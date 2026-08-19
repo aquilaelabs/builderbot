@@ -342,6 +342,7 @@ bb dashboard dev   serve the live dashboard from ./scripts/dashboard (--off reve
 bb dashboard status  which copy of the dashboard is serving
 bb drift           what this checkout changed that the container is not serving
 bb shot URL... [FILE|DIR]  headless screenshot(s) of pages
+bb favicon SVG [DIR]  favicon set (ico + touch icon) from one mark
 ```
 
 The dashboard's Commands card is this same list in this same order.
@@ -357,6 +358,17 @@ defaults to `DASHBOARD_AUTH`. The intended split for a project's docs
 screenshots: the project keeps a script that boots its app into a
 photogenic state — staged data, ready-wait — and ends with one `bb shot`
 line; the Playwright plumbing lives here, once.
+
+`bb favicon LOGO.svg [DIR]` is the same idea for a web app's icon: the
+project supplies its mark as one SVG, and out come `favicon.ico` holding
+every small size in one file (the bare `/favicon.ico` request browsers make
+cannot ask for a particular one), `apple-touch-icon.png` at 180 for iOS
+(`--bg COLOR` flattens it — iOS composites transparency onto black), and
+the SVG copied alongside for browsers that prefer vector. Chromium
+rasterizes (the image's ImageMagick has no SVG delegate; a browser engine
+renders exactly what a tab will show) and ImageMagick packs the `.ico`.
+The dashboard's own tab icon is this command's output, from
+`scripts/dashboard/static/favicon.svg`.
 
 `claude` and `bb` re-exec as `builder` automatically — `docker exec` lands
 as root, which would break your saved login and file ownership. A bare
