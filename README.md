@@ -488,8 +488,12 @@ Install was one mis-click from being expensive.
 
 **A row says what it is doing while it does it.** The percentage under the
 description is scraped from whatever the recipe is printing — Playwright's
-download bar, sdkmanager's, git's `Receiving objects` — and switches from
-`downloading` to `installing` when the output does. Until then a row that is
+download bar, sdkmanager's, git's `Receiving objects`, curl's table — and
+switches from `downloading` to `installing` when the output does. Where a
+step prints no numbers at all, the row shows the line it last printed
+instead: `Building flutter tool…` is the honest answer for the several
+minutes a Flutter install spends there, and a percentage left over from the
+download before it is not. Until then a row that is
 mid-install said *"installed at /sdk/flutter"*, because every probe here
 calls a non-empty directory installed and that is precisely what a download
 in progress leaves behind. For the same reason an install that fails removes

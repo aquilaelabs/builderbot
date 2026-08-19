@@ -1720,28 +1720,61 @@ def is_mount(path):
 _PROGRESS_FRAME = re.compile(r"^(\[[=\s]*\]\s*\d+%|\|[\u25a0\s]*\|\s*\d+%)")
 
 _PCT = re.compile(r"(\d{1,3})\s*%")
+# curl's default meter is a table, not a bar, and its first column is the
+# percentage — flutter fetches its 227MB Dart SDK through one, so without this
+# the longest download in the catalog reports nothing at all. Matched on the
+# whole shape (numeric columns, then the three h:mm:ss times) rather than the
+# leading number, which on its own would match half the output of anything.
+_CURL_ROW = re.compile(r"^\s*(\d{1,3})\s+[\d.]+[KMGT]?\s+\d{1,3}\s+.*\d+:\d\d:\d\d")
 # Whichever of these a line mentions decides the phase. Order matters: a line
 # that says "Unzipping" during a download step is past downloading.
-_PHASES = ((re.compile(r"unzip|extract|instal|resolving deltas|checking out", re.I), "installing"),
-           (re.compile(r"download|fetch|receiv|clon", re.I), "downloading"))
+_PHASES = ((re.compile(r"unzip|extract|instal|build|compil|resolv|warming|checking out", re.I),
+            "installing"),
+           (re.compile(r"download|fetch|receiv|clon|enumerat|counting objects|compressing objects", re.I),
+            "downloading"))
+
+
+def _short(line):
+    """One line of tool output, fit to a row."""
+    line = re.sub(r"^\[builderbot\]\s*", "", line.strip())
+    line = re.sub(r"\s+", " ", line)
+    return line[:60] + ("…" if len(line) > 60 else "")
 
 
 def _progress_of(line, phase):
-    """(phase, percent) for one line of a tool's output.
+    """(phase, percent, note) for one line of a tool's output.
 
     Deliberately generic. Every recipe here draws its own bar — playwright's
     `|====| 40% of 102 MiB`, sdkmanager's `[====] 40% Downloading`, git's
     `Receiving objects: 45%` — and a parser per tool would rot with the next
     release of any of them. A percentage is a percentage; the phase carries
     over from whichever keyword was last seen, because the bar line itself
-    usually does not repeat it."""
+    usually does not repeat it.
+
+    Exactly one of percent and note comes back set. A line of prose means the
+    bar it followed is finished, and the number that bar reached is no longer
+    true of anything — a flutter install froze on "downloading 100%" for the
+    whole of `Building flutter tool…`, which is most of the install, because
+    the last number seen was kept until another one arrived."""
+    m = _CURL_ROW.match(line)
+    if m:
+        # Always a download: curl is only ever fetching here, whatever the
+        # line before it happened to call the step.
+        return "downloading", int(m.group(1)), None
+    frame = bool(_PROGRESS_FRAME.match(line))
     for rx, name in _PHASES:
         if rx.search(line):
             phase = name
             break
     m = _PCT.search(line)
     pct = int(m.group(1)) if m else None
-    return phase, (pct if pct is not None and 0 <= pct <= 100 else None)
+    if pct is not None and not 0 <= pct <= 100:
+        pct = None
+    if pct is not None:
+        return phase, pct, None
+    if not frame and re.search(r"[A-Za-z]", line):
+        return phase, None, _short(line)
+    return phase, None, None
 
 
 def run_streamed(cmd, on_line, timeout=3600):
@@ -1826,15 +1859,11 @@ def _pkg_worker():
         def watch(line, _name=name):
             with _pkg_lock:
                 cur = _pkg_job["progress"] or {}
-                phase, pct = _progress_of(line, cur.get("phase"))
-                if phase is None:
-                    return                    # nothing has said what it is doing yet
-                if pct is None:
-                    # No number on this line: keep the one we had — unless the
-                    # phase has moved on, in which case the old count is about
-                    # something that already finished.
-                    pct = cur.get("pct") if phase == cur.get("phase") else None
-                _pkg_job["progress"] = {"name": _name, "phase": phase, "pct": pct}
+                phase, pct, note = _progress_of(line, cur.get("phase"))
+                if pct is None and note is None:
+                    return                    # a frame with no number in it
+                _pkg_job["progress"] = {"name": _name, "phase": phase or "working",
+                                        "pct": pct, "note": note}
 
         r = run_streamed([BB, "sdk", verb, name], watch, timeout=3600)
         with _pkg_lock:

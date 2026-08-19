@@ -94,6 +94,7 @@ const during = (job) => page.evaluate(j => {
     .find(l => l.querySelector('input').value === 'flutter');
   const out = { text: row.querySelector('.prog')?.textContent.trim(),
                 width: row.querySelector('.prog .bar i')?.style.width,
+                idle: !!row.querySelector('.prog .bar.idle'),
                 where: row.querySelector('.where')?.textContent.trim() || null };
   packages.job = saved; pkgRev++; drawPanes();
   clearTimeout(pkgPoll);      // the fake state must not outlive this check
@@ -108,9 +109,14 @@ d = await during({ action: 'install', current: 'flutter',
                    progress: { name: 'flutter', phase: 'installing', pct: 90 } });
 ok(d.text === 'installing 90%' && d.width === '90%',
    '...and switches to the install percentage when the output does');
+d = await during({ action: 'install', current: 'flutter',
+                   progress: { name: 'flutter', phase: 'installing', pct: null,
+                               note: 'Building flutter tool...' } });
+ok(d.text === 'Building flutter tool...' && d.idle,
+   '...and shows the line the tool printed when there is no number to show');
 d = await during({ action: 'install', current: 'flutter', progress: null });
-ok(d.text === 'working…' && d.width === '0%',
-   '...and says something honest before any percentage has arrived');
+ok(d.text === 'working…' && d.idle,
+   '...and says something honest before anything at all has arrived');
 d = await during({ action: 'remove', current: 'flutter', progress: null });
 ok(d.text === 'removing…', 'a removal says so on the row it is removing');
 ok((await page.$$eval('.doc .pkg .where', ws => ws.length)) > 0,
