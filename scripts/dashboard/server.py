@@ -1523,12 +1523,8 @@ def sdk_root_path():
     return _sdk_root_cache[0]
 
 
-def _pkg_path(probe):
-    """The directory a package occupies, or "" when it is not installed.
-
-    Resolved rather than assumed: the android directories are symlinks into
-    the share, and the whole point of the card is showing where a thing
-    actually landed."""
+def _pkg_cands(probe):
+    """Where a package could be, in the order worth looking."""
     if probe.startswith("android-image:"):
         # A system-image flavour, not a package directory: they all live under
         # system-images/android-NN/<kind>/, so "is a TV image installed" is a
@@ -1553,29 +1549,143 @@ def _pkg_path(probe):
         cands = [Path(root) / probe] if root else []
         if str(home) != root:
             cands.append(home / probe)
-    for p in cands:
+    return cands
+
+
+def _pkg_paths(probe):
+    """Every directory a package actually occupies.
+
+    Resolved rather than assumed: the android directories are symlinks into
+    the share, and the whole point of the card is showing where a thing
+    actually landed.
+
+    Usually one. A system-image flavour is the exception — it can be installed
+    at several API levels at once, all of them real directories and all of
+    them its footprint — which is why this returns a list and the size adds
+    them up."""
+    out = []
+    for p in _pkg_cands(probe):
         try:
             if p.is_dir() and any(p.iterdir()):
-                return str(p.resolve())
+                out.append(str(p.resolve()))
         except OSError:
             continue
-    return ""
+        # The share and the home volume are two places to look for one
+        # installation, not two installations to add together.
+        if out and not probe.startswith("android-image:"):
+            break
+    return out
+
+
+def _pkg_path(probe):
+    """The directory a package occupies, or "" when it is not installed."""
+    paths = _pkg_paths(probe)
+    return paths[0] if paths else ""
+
+
+# The installed versions, cached against the set of installed paths: reading
+# them costs a couple of seconds across every toolchain (dotnet and swift are
+# slow to say their own name), and they cannot change while nothing is being
+# installed. Re-read when that set does.
+_pkg_local = {"key": None, "versions": {}}
+
+
+def local_versions():
+    key = tuple(sorted((p["name"], _pkg_path(p["probe"])) for p in PACKAGES))
+    if _pkg_local["key"] == key:
+        return _pkg_local["versions"]
+    out = {}
+    r = run([BB, "sdk", "versions"], timeout=180)
+    for ln in r["out"].splitlines():
+        f = ln.rstrip().split("\t")
+        if len(f) == 4 and f[1] not in ("", "-"):
+            out[f[0]] = f[1]
+    _pkg_local.update(key=key, versions=out)
+    return out
+
+
+# Measured sizes in KB, {name: kb}. The catalog's "~3 GB" is a download
+# estimate written by hand; once something is on disk there is a real number,
+# and it is not the estimate — a toolchain grows after installation (a pub
+# cache, a .NET workload, an NDK unpacked bigger than it shipped).
+#
+# du walks the tree to get it, which is instant on a warm share and seconds on
+# a cold one (a system-image tree here is 30GB), so it never runs on a request
+# thread: the payload serves the last measurement and says whether one is in
+# flight, and the page asks again shortly when it is. Re-measured on a TTL
+# rather than cached forever, because "it grew" is exactly what this is for.
+PKG_SIZE_TTL = 120
+_pkg_sizes = {}
+_pkg_sized_at = [0.0]
+_pkg_sizing = [False]
+
+
+def _measure_sizes():
+    out = {}
+    for p in PACKAGES:
+        total, answered = 0, False
+        for path in _pkg_paths(p["probe"]):
+            r = run(["du", "-sk", path], timeout=300)
+            head = r["out"].split("\t")[0].strip() if r["code"] == 0 else ""
+            if head.isdigit():
+                total += int(head)
+                answered = True
+        # `answered`, not a non-zero total: du rounds a nearly-empty tree to
+        # 0 KB on some filesystems, and "0 KB" is a measurement while a du
+        # that failed is not one. Falling back to the estimate on a zero would
+        # quietly show the catalog's guess for something that is on the disk.
+        if answered:
+            out[p["name"]] = total
+    _pkg_sizes.clear()
+    _pkg_sizes.update(out)
+    _pkg_sized_at[0] = time.monotonic()
+    _pkg_sizing[0] = False
+
+
+def _size_refresh():
+    """Kick a measurement if what we have is older than the TTL. One at a
+    time: du on thirteen trees twice over would fight itself for the disk."""
+    if _pkg_sizing[0] or time.monotonic() - _pkg_sized_at[0] < PKG_SIZE_TTL:
+        return
+    _pkg_sizing[0] = True
+    threading.Thread(target=_measure_sizes, daemon=True).start()
+
+
+def human_kb(kb):
+    if kb >= 1024 * 1024:
+        return f"{kb / 1048576:.1f} GB"
+    if kb >= 1024:
+        return f"{kb / 1024:.0f} MB"
+    return f"{kb} KB"
 
 
 def packages_payload():
     items = []
+    local = local_versions()
+    _size_refresh()
     for p in PACKAGES:
         path = _pkg_path(p["probe"])
         v = _pkg_versions.get(p["name"], {})
-        items.append({**{k: p[k] for k in ("name", "label", "size", "about")},
+        kb = _pkg_sizes.get(p["name"]) if path else None
+        items.append({**{k: p[k] for k in ("name", "label", "about")},
                       "installed": bool(path), "path": path,
-                      "version": v.get("installed", ""), "latest": v.get("latest", ""),
+                      # The estimate until there is a measurement, and the
+                      # measurement from then on — flagged, because "~4 GB"
+                      # and "4.1 GB" mean quite different things.
+                      "size": human_kb(kb) if kb is not None else p["size"],
+                      "measured": kb is not None,
+                      # The version is local knowledge and always shown; the
+                      # state, and what it would move to, are only ever what a
+                      # check said.
+                      "version": v.get("installed") or local.get(p["name"], ""),
+                      "latest": v.get("latest", ""),
                       "state": v.get("status", "")})
     with _pkg_lock:
         job = {k: (list(v) if isinstance(v, list) else v)
                for k, v in _pkg_job.items()}
     return {"root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
+            "sizing": _pkg_sizing[0],
             "items": items, "job": job}
 
 
@@ -1622,7 +1732,7 @@ def _pkg_worker():
                 # TSV out: name, installed, latest, status.
                 for ln in r["out"].splitlines():
                     f = ln.rstrip().split("\t")
-                    if len(f) == 4:
+                    if len(f) == 4 and f[3] != "local":
                         _pkg_versions[f[0]] = {"installed": f[1], "latest": f[2],
                                                "status": f[3]}
                 _pkg_job["log"].append(f"{name}: {_pkg_versions.get(name, {}).get('status', '?')}")
@@ -1631,6 +1741,9 @@ def _pkg_worker():
                 _pkg_job["log"].extend(tail)
             _pkg_job["log"] = _pkg_job["log"][-60:]
             (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
+        if action in ("install", "remove", "update"):
+            _pkg_local["key"] = None      # whatever just happened moved a version
+            _pkg_sized_at[0] = 0.0        # ...and changed what is on the disk
 
 
 def _doctor_loop():
@@ -2316,9 +2429,11 @@ class Handler(BaseHTTPRequestHandler):
         known = {p["name"] for p in PACKAGES}
         names = [n for n in (req.get("names") or []) if n in known]
         # Checking is about everything, not a selection: the question it
-        # answers is "is any of this out of date".
+        # answers is "is any of this out of date, and what would the rest of
+        # it install". The uninstalled rows are half the reason to press it —
+        # a version you can read before spending the gigabytes.
         if action == "check" and not names:
-            names = [p["name"] for p in PACKAGES if _pkg_path(p["probe"])]
+            names = [p["name"] for p in PACKAGES]
         if not names:
             return self._json({"error": "nothing selected"}, 400)
         with _pkg_lock:

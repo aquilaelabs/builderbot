@@ -46,14 +46,14 @@ ln -sfn "$STORE" "$BROWSERS"
 # launch with executablePath /opt/pw-browsers/chromium.
 relink_chromium() {
     local exe
-    exe="$(find "$STORE" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
+    exe="$(find -L "$STORE" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
     [ -n "$exe" ] && ln -sfn "$exe" "$STORE/chromium"
 }
 
 # First boot on an empty share: fetch them. Synchronous and loud, like the
 # Android baseline — it happens once per share, and a container that comes up
 # "ready" while `bb shot` cannot work would be worse than a slow start.
-if ! find "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | grep -q .; then
+if ! find -L "$STORE" -path '*/chrome-linux*/chrome' -type f 2>/dev/null | grep -q .; then
     log "installing playwright browsers into ${STORE} (~1.3GB, once — updates will not re-download them)"
     if run_as_builder env PLAYWRIGHT_BROWSERS_PATH="$STORE" \
            playwright install chromium firefox webkit >/dev/null 2>&1; then

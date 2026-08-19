@@ -17,7 +17,7 @@
 #
 # It hides. It does not block: excluding a project is the control that stops
 # sessions starting there, and it is enforced in bb-tty because a rule only
-# the UI honours is a suggestion. This is housekeeping, not a boundary.
+# the UI honors is a suggestion. This is housekeeping, not a boundary.
 #
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh

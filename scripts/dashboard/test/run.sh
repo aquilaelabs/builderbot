@@ -110,18 +110,32 @@ cat > "$S/bin/bb" <<'EOF'
 # watch a package appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
 if [ "${1:-}" = sdk ]; then
+    # Where this stub pretends a package lives. Shared by every verb, so
+    # check and versions answer for what install and remove actually did —
+    # a stub that claimed 1.0 for everything let a bug through where the page
+    # showed an installed version on a row that had nothing installed.
+    _d() {
+        local n="${1#android:}"
+        if [ "$n" != "$1" ]; then printf '%s/%s' "${ANDROID_HOME:?}" "$n"
+        else printf '%s/%s' "${SDK_TEST_ROOT:?}" "$n"; fi
+    }
     case "${2:-}" in
         root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
-        check)   # one line per name: installed, latest, status
-                 case "$3" in
-                     flutter) printf '%s\t1.0\t2.0\tupdate\n' "$3" ;;
-                     *)       printf '%s\t1.0\t1.0\tcurrent\n' "$3" ;;
-                 esac ;;
+        versions) # local only: installed version, no upstream asked. Called
+                  # with no names by the server, which wants the lot.
+                 for n in ${3:-playwright flutter dotnet swift go rust zig android:emulator}; do
+                     if [ -d "$(_d "$n")" ]; then printf '%s\t1.0\t-\tlocal\n' "$n"
+                     else printf '%s\t-\t-\tabsent\n' "$n"; fi
+                 done ;;
+        check)   # one line per name: installed, latest, status. Absent rows
+                 # answer too — what they would install is the other half of
+                 # what the button is for.
+                 if [ ! -d "$(_d "$3")" ];  then printf '%s\t-\t9.9\tabsent\n' "$3"
+                 elif [ "$3" = flutter ];   then printf '%s\t1.0\t2.0\tupdate\n' "$3"
+                 else                            printf '%s\t1.0\t1.0\tcurrent\n' "$3"; fi ;;
         update)  printf 'updated %s\n' "$3" ;;
         install|remove)
-                 name="${3#android:}"
-                 if [ "$name" != "$3" ]; then d="${ANDROID_HOME:?}/$name"
-                 else d="${SDK_TEST_ROOT:?}/$name"; fi
+                 d="$(_d "$3")"
                  if [ "${2}" = install ]; then mkdir -p "$d" && : > "$d/marker"
                  else rm -rf "$d"; fi
                  printf '%sed %s\n' "${2%e}" "$3" ;;

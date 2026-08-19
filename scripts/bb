@@ -884,7 +884,7 @@ cmd_drift() {
 }
 
 # Where Chromium actually is, in the order the answers can be trusted:
-# PLAYWRIGHT_BROWSERS_PATH (what the image sets and any project honours), then
+# PLAYWRIGHT_BROWSERS_PATH (what the image sets and any project honors), then
 # the SDK share directly, then the historical /opt path. Resolved rather than
 # hardcoded because the browsers moved out of the image: the /opt entry is a
 # symlink the startup hook makes, and a hook that could not make it — /opt is
@@ -896,7 +896,7 @@ find_chromium() {
         [ -n "$base" ] && [ -d "$base" ] || continue
         exe="$base/chromium"
         [ -x "$exe" ] && { printf '%s' "$exe"; return 0; }
-        exe="$(find "$base" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
+        exe="$(find -L "$base" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
         [ -n "$exe" ] && [ -x "$exe" ] && { printf '%s' "$exe"; return 0; }
     done
     die "no Playwright chromium found — install the browsers with: bb sdk install playwright"
@@ -1105,6 +1105,13 @@ EOF
 # `bb sdk remove` is a plain rm and a container rebuild changes nothing.
 SDK_TOOLCHAINS="android playwright flutter dotnet swift go rust zig"
 
+# What `bb sdk check` and `bb sdk versions` answer for when asked for nothing
+# in particular: the dashboard's catalog, so the CLI and the Tools tab cover
+# the same ground. android is absent — it is the bootstrap in the image, not
+# a package — and its installable pieces are named individually.
+SDK_CHECKABLE="playwright flutter dotnet swift go rust zig
+android:emulator android:ndk android:cmake android:tv android:wear android:playstore"
+
 sdk_dir() { printf '%s/%s' "$(sdk_root)" "$1"; }
 
 # The PATH additions for whatever is installed, regenerated on demand rather
@@ -1207,120 +1214,260 @@ sdk_fetch() {
     curl -fL --progress-bar -o "$2" "$1"
 }
 
+# sdkmanager --list is a network round trip wrapped in a JVM start, and a full
+# check asks it once per android package — six of them in the dashboard's
+# catalog, which was six identical two-second waits.
+#
+# Cached in a file rather than a variable because every caller reads it inside
+# $(...), where an assignment dies with the subshell; and shared between
+# processes rather than kept per-run because the dashboard checks by running
+# `bb sdk check <name>` once per package, so a per-process memo would still
+# have asked six times. Two minutes is long enough for one sweep to ask once
+# and short enough that pressing "check for updates" again means what it says.
+SDK_LIST_CACHE_TTL=120
+sdk_android_list() {
+    local f="${TMPDIR:-/tmp}/bb-sdk-list.cache" age
+    if [ -s "$f" ]; then
+        age=$(( $(date +%s) - $(stat -c %Y "$f" 2>/dev/null || echo 0) ))
+        if [ "$age" -lt "$SDK_LIST_CACHE_TTL" ]; then cat "$f"; return 0; fi
+    fi
+    # Written aside and moved into place, so a reader never sees half a table,
+    # and nothing is printed at all when sdkmanager cannot answer — a stale
+    # snapshot would be a wrong answer to the one question this is asked for.
+    if timeout 120 sdkmanager --list 2>/dev/null > "$f.$$"; then
+        mv -f "$f.$$" "$f"; cat "$f"
+    else
+        rm -f "$f.$$"
+    fi
+}
+# After anything that changes what is installed: the table is a statement
+# about both halves, and the installed half just moved.
+sdk_android_list_forget() { rm -f "${TMPDIR:-/tmp}/bb-sdk-list.cache"; }
+
+# The newest package sdkmanager offers for a bare name, as `id<TAB>version`.
+# ndk and cmake ship as versioned ids (ndk;30.0.15729638) and a bare name
+# installs nothing, so both the installer and the version check have to
+# resolve one — from what the repository offers rather than from a table here
+# that would go stale within a release. One function, so the version a row
+# promises is by construction the one an install lands.
+#
+# Release candidates are skipped when anything stable is on offer: the NDK
+# publishes them into the same channel, marked only in the version column
+# ("30.0.15729638 rc2"), so sorting on the id alone would have installed one
+# without ever saying so.
+sdk_android_newest() {
+    local pkg="$1" all stable
+    all="$(sdk_android_list | sed -n '/Available Packages/,$p' \
+           | awk -F'|' -v p="$pkg" '
+               { id=$1; v=$2; gsub(/^ +| +$/,"",id); gsub(/^ +| +$/,"",v) }
+               id ~ ("^" p "(;[0-9][^;]*)?$") { print id "\t" v }' | sort -V)"
+    stable="$(printf '%s\n' "$all" | grep -viE '(rc|beta|alpha|preview)[0-9]*$' || true)"
+    if [ -n "$stable" ]; then all="$stable"; fi
+    printf '%s\n' "$all" | tail -1
+}
+
 # bb sdk check [NAME...] — what is installed, and whether it is current.
 #
 # One TSV line per toolchain: name, installed, latest, status. Every probe is
-# bounded by a timeout — three of them reach the network, and a package list
+# bounded by a timeout — most of them reach the network, and a package list
 # that hangs would take the dashboard's job with it — and a probe that cannot
 # answer says "unknown" rather than guessing "current", because a wrong
 # "current" is the one answer nobody would check.
+#
+# Upstream is asked for absent packages too. "What would this install" and
+# "what is upstream" are the same question, and the row that has never been
+# installed is exactly where somebody wants the answer before spending the
+# gigabytes; those come back as `-  <version>  absent`.
 sdk_check_one() {
-    local what="$1" d inst="-" latest="-" status=unknown
+    local what="$1" local_only="${2:-}" d inst="-" latest="-" status=unknown
+    # local_only: answer "what is installed" without asking anybody. That
+    # half is a directory read or a --version away, and it is what the
+    # package list wants on every draw; the other half is a round trip to a
+    # different service per toolchain and belongs behind a button.
     case "$what" in
         flutter)
-            d="$(sdk_find flutter)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
+            d="$(sdk_find flutter)" || d=""
             # A git clone on the stable branch: the honest question is whether
             # our HEAD is the branch head, and ls-remote answers it without
-            # fetching an object.
-            inst="$(git -C "$d" rev-parse --short=8 HEAD 2>/dev/null || echo -)"
-            latest="$(timeout 30 git -C "$d" ls-remote origin refs/heads/stable 2>/dev/null | cut -c1-8)"
+            # fetching an object. Against the clone's origin when there is a
+            # clone and against the upstream URL when there is not — the same
+            # answer either way, and the second form is what lets a row that
+            # has never been installed say what it would get.
+            [ -z "$d" ] || inst="$(git -C "$d" rev-parse --short=8 HEAD 2>/dev/null || echo -)"
+            if [ -z "$local_only" ]; then
+                if [ -n "$d" ]; then
+                    latest="$(timeout 30 git -C "$d" ls-remote origin refs/heads/stable 2>/dev/null | cut -c1-8)"
+                else
+                    latest="$(timeout 30 git ls-remote https://github.com/flutter/flutter.git refs/heads/stable 2>/dev/null | cut -c1-8)"
+                fi
+            fi
             [ -n "$latest" ] || latest="-"
             ;;
         swift)
-            d="$(sdk_find swift)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
-            inst="$("$d/usr/bin/swift" --version 2>/dev/null | sed -n 's/.*Swift version \([0-9.]*\).*/\1/p' | head -1)"
-            latest="$(timeout 30 curl -fsSLI -o /dev/null -w '%{url_effective}' \
-                      https://github.com/swiftlang/swift/releases/latest 2>/dev/null)"
-            latest="${latest##*/swift-}"; latest="${latest%-RELEASE}"
+            d="$(sdk_find swift)" || d=""
+            [ -z "$d" ] || inst="$("$d/usr/bin/swift" --version 2>/dev/null | sed -n 's/.*Swift version \([0-9.]*\).*/\1/p' | head -1)"
+            if [ -z "$local_only" ]; then
+                latest="$(timeout 30 curl -fsSLI -o /dev/null -w '%{url_effective}' \
+                          https://github.com/swiftlang/swift/releases/latest 2>/dev/null)"
+                latest="${latest##*/swift-}"; latest="${latest%-RELEASE}"
+            fi
             case "$latest" in ''|*[!0-9.]*) latest="-" ;; esac
             ;;
         dotnet)
-            d="$(sdk_find dotnet)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
-            inst="$("$d/dotnet" --list-sdks 2>/dev/null | tail -1 | awk '{print $1}')"
+            d="$(sdk_find dotnet)" || d=""
+            [ -z "$d" ] || inst="$("$d/dotnet" --list-sdks 2>/dev/null | tail -1 | awk '{print $1}')"
             # The installer itself knows what the channel currently holds, so
             # ask it rather than parsing a release feed that changes shape.
             # The dry-run echoes the exact invocation it would make, version
-            # and all — a more stable thing to read than the payload URL.
-            latest="$(timeout 60 bash -c 'curl -fsSL https://dot.net/v1/dotnet-install.sh \
+            # and all — a more stable thing to read than the payload URL — and
+            # it needs nothing installed to say so.
+            [ -n "$local_only" ] || latest="$(timeout 60 bash -c 'curl -fsSL https://dot.net/v1/dotnet-install.sh \
                       | bash -s -- --channel LTS --dry-run' 2>/dev/null \
                       | sed -n 's/.*--version "\([^"]*\)".*/\1/p' | head -1)"
             [ -n "$latest" ] || latest="-"
             ;;
         go)
-            d="$(sdk_find go)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
-            inst="$("$d/bin/go" version 2>/dev/null | awk '{print $3}')"
-            latest="$(timeout 30 curl -fsS 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)"
+            d="$(sdk_find go)" || d=""
+            [ -z "$d" ] || inst="$("$d/bin/go" version 2>/dev/null | awk '{print $3}')"
+            [ -n "$local_only" ] || latest="$(timeout 30 curl -fsS 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)"
             [ -n "$latest" ] || latest="-"
             ;;
         zig)
-            d="$(sdk_find zig)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
-            inst="$("$d/zig" version 2>/dev/null | head -1)"
-            latest="$(timeout 30 curl -fsS https://ziglang.org/download/index.json 2>/dev/null \
+            d="$(sdk_find zig)" || d=""
+            [ -z "$d" ] || inst="$("$d/zig" version 2>/dev/null | head -1)"
+            [ -n "$local_only" ] || latest="$(timeout 30 curl -fsS https://ziglang.org/download/index.json 2>/dev/null \
                       | python3 -c 'import json,sys
 d = json.load(sys.stdin)
 print(next(k for k in d if k != "master"))' 2>/dev/null)"
             [ -n "$latest" ] || latest="-"
             ;;
         rust)
-            d="$(sdk_find rust)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
-            inst="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" "$d/cargo/bin/rustc" --version 2>/dev/null | awk '{print $2}')"
-            # rustup already knows how to ask; its answer names the version it
-            # would move to, which is the only interesting half.
-            local line
-            line="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" timeout 60 \
-                    "$d/cargo/bin/rustup" check 2>/dev/null | grep -i 'stable' | head -1)"
-            # Lower case, and a colon rather than an arrow:
-            #   stable-x86_64-unknown-linux-gnu - up to date: 1.97.1 (...)
-            #   stable-x86_64-unknown-linux-gnu - update available: 1.97.1 -> 1.98.0
-            case "$line" in
-                *"up to date"*)      latest="$inst" ;;
-                *"update available"*)
-                    latest="$(printf '%s' "$line" | sed -n 's/.*-> *\([0-9][0-9.]*\).*/\1/p')"
-                    [ -n "$latest" ] || latest="newer" ;;
-                *) latest="-" ;;
-            esac
+            d="$(sdk_find rust)" || d=""
+            [ -z "$d" ] || inst="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" "$d/cargo/bin/rustc" --version 2>/dev/null | awk '{print $2}')"
+            if [ -z "$local_only" ] && [ -n "$d" ]; then
+                # rustup already knows how to ask; its answer names the
+                # version it would move to, which is the only interesting half.
+                local line=""
+                line="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" timeout 60 \
+                        "$d/cargo/bin/rustup" check 2>/dev/null | grep -i 'stable' | head -1)"
+                # Lower case, and a colon rather than an arrow:
+                #   stable-x86_64-unknown-linux-gnu - up to date: 1.97.1 (...)
+                #   stable-x86_64-unknown-linux-gnu - update available: 1.97.1 -> 1.98.0
+                case "$line" in
+                    *"up to date"*)      latest="$inst" ;;
+                    *"update available"*)
+                        latest="$(printf '%s' "$line" | sed -n 's/.*-> *\([0-9][0-9.]*\).*/\1/p')"
+                        [ -n "$latest" ] || latest="newer" ;;
+                    *) latest="-" ;;
+                esac
+            elif [ -z "$local_only" ]; then
+                # No rustup here to ask, so ask GitHub: the release tags are
+                # the same numbers rustc reports.
+                latest="$(timeout 30 curl -fsSLI -o /dev/null -w '%{url_effective}' \
+                          https://github.com/rust-lang/rust/releases/latest 2>/dev/null)"
+                latest="${latest##*/}"
+                case "$latest" in ''|*[!0-9.]*) latest="-" ;; esac
+            fi
             ;;
         playwright)
-            d="$(sdk_find playwright)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
+            d="$(sdk_find playwright)" || d=""
             # The module decides which browser revisions it wants; --dry-run
-            # names the directories it would use. Present means current.
-            local want missing=0
-            inst="$(basename "$(find "$d" -maxdepth 1 -name 'chromium-*' | head -1)" 2>/dev/null)"
-            for want in $(PLAYWRIGHT_BROWSERS_PATH="$d" timeout 60 playwright install --dry-run \
-                          chromium firefox webkit 2>/dev/null \
-                          | sed -n 's/.*Install location: *//p'); do
-                [ -d "$want" ] || missing=1
-            done
-            latest="$([ "$missing" = 1 ] && echo 'newer revisions' || echo "$inst")"
+            # names the directories it would use, and names them whether or
+            # not any of them exist. So one probe answers both shapes of the
+            # question: for an installed set, every directory present means
+            # current; for an absent one, the chromium revision it names is
+            # what an install would land.
+            local want missing=0 rev="" base
+            [ -z "$d" ] || inst="$(basename "$(find "$d" -maxdepth 1 -name 'chromium-*' | head -1)" 2>/dev/null)"
+            if [ -z "$local_only" ]; then
+                for want in $(PLAYWRIGHT_BROWSERS_PATH="${d:-$(sdk_dir playwright)}" timeout 60 \
+                              playwright install --dry-run chromium firefox webkit 2>/dev/null \
+                              | sed -n 's/.*Install location: *//p'); do
+                    base="$(basename "$want")"
+                    case "$base" in chromium-*) rev="$base" ;; esac
+                    [ -d "$want" ] || missing=1
+                done
+                if [ -z "$d" ]; then latest="${rev:--}"
+                elif [ "$missing" = 1 ]; then latest="newer revisions"
+                else latest="$inst"
+                fi
+            fi
             ;;
         android:*)
             local pkg="${what#android:}"
-            d="${ANDROID_HOME:-/opt/android-sdk}/$pkg"
-            # Non-empty, not merely present: every one of these is a symlink
-            # onto the store, and the store has a directory per package kind
-            # whether or not anything was installed into it. `-d` alone called
-            # an empty ndk directory "installed and current", which is exactly
-            # the reassuring answer nobody re-checks. The dashboard has always
-            # asked the harder question; this brings the CLI into line.
-            [ -d "$d" ] && [ -n "$(ls -A "$d" 2>/dev/null)" ] \
-                || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
-            inst="$(timeout 120 sdkmanager --list_installed 2>/dev/null \
-                    | awk -F'|' -v p="$pkg" '$1 ~ "^ *"p"(;|  *$)" {gsub(/ /,"",$2); print $2; exit}')"
-            [ -n "$inst" ] || inst="installed"
-            # sdkmanager prints an Available Updates table, and prints nothing
-            # under it when there is nothing to do.
-            if timeout 120 sdkmanager --list 2>/dev/null \
-               | sed -n '/Available Updates/,$p' | grep -qE "^ *${pkg}(;|  *\|)"; then
-                latest="newer"; status=update
+            local kind; kind="$(sdk_android_kind "$pkg" || true)"
+            if [ -n "$kind" ]; then
+                # An image flavour: what is installed is an API level, and
+                # sdkmanager's update table is what says whether that image
+                # itself has a newer revision. A *newer API level* is not an
+                # update — those sit side by side — so it is not reported as
+                # one. On a flavour that is absent, the API level a fresh
+                # install would pick is the useful answer instead.
+                d="$(sdk_android_image_dir "$kind")"
+                [ -z "$d" ] || inst="$(basename "$(dirname "$d")")"
+                if [ -z "$local_only" ] && [ -n "$d" ]; then
+                    if sdk_android_list | sed -n '/Available Updates/,$p' \
+                       | grep -q "system-images;${inst};${kind}"; then
+                        latest="newer"; status=update
+                    else
+                        latest="$inst"
+                    fi
+                elif [ -z "$local_only" ]; then
+                    latest="$(sdk_android_list | sed -n '/Available Packages/,$p' | tr -d ' ' | cut -d'|' -f1 \
+                              | grep -E "^system-images;android-[0-9]+;${kind};x86_64$" \
+                              | sort -V | tail -1 | cut -d';' -f2)"
+                    [ -n "$latest" ] || latest="-"
+                fi
             else
-                latest="$inst"
+                # Non-empty, not merely present: every one of these is a
+                # symlink onto the store, and the store has a directory per
+                # package kind whether or not anything was installed into it.
+                # `-d` alone called an empty ndk directory "installed and
+                # current", which is exactly the reassuring answer nobody
+                # re-checks.
+                d="${ANDROID_HOME:-/opt/android-sdk}/$pkg"
+                if [ -d "$d" ] && [ -n "$(ls -A "$d" 2>/dev/null)" ]; then
+                    # Trimmed, not stripped of spaces: the version column
+                    # is where a release candidate says so ("30.0.15729638
+                    # rc2"), and squeezing it out hid that.
+                    inst="$(timeout 120 sdkmanager --list_installed 2>/dev/null \
+                            | awk -F'|' -v p="$pkg" '$1 ~ "^ *"p"(;|  *$)" {v=$2; gsub(/^ +| +$/,"",v); print v; exit}')"
+                    [ -n "$inst" ] || inst="installed"
+                fi
+                if [ -z "$local_only" ] && [ "$inst" != "-" ]; then
+                    # sdkmanager prints an Available Updates table, and prints
+                    # nothing under it when there is nothing to do.
+                    if sdk_android_list | sed -n '/Available Updates/,$p' \
+                       | grep -qE "^ *${pkg}(;|  *\|)"; then
+                        latest="newer"; status=update
+                    else
+                        latest="$inst"
+                    fi
+                elif [ -z "$local_only" ]; then
+                    # Absent: whatever an install would resolve to, asked the
+                    # same way the installer asks.
+                    latest="$(sdk_android_newest "$pkg" | cut -f2)"
+                    [ -n "$latest" ] || latest="-"
+                fi
             fi
             ;;
         *) printf '%s\t-\t-\tunknown\n' "$what"; return 0 ;;
     esac
     [ -n "$inst" ] || inst="-"
+    # A local probe knows what is installed and nothing about what exists
+    # elsewhere, so it must not answer the other question. "current" from a
+    # directory listing would be a claim nobody checked.
+    if [ -n "$local_only" ]; then
+        if [ "$inst" = "-" ]; then
+            printf '%s\t-\t-\tabsent\n' "$what"
+        else
+            printf '%s\t%s\t-\tlocal\n' "$what" "$inst"
+        fi
+        return 0
+    fi
     if [ "$status" = unknown ]; then
-        if [ "$inst" = "-" ] || [ "$latest" = "-" ]; then status=unknown
+        if [ "$inst" = "-" ]; then status=absent
+        elif [ "$latest" = "-" ]; then status=unknown
         elif [ "$inst" = "$latest" ]; then status=current
         else status=update
         fi
@@ -1328,9 +1475,17 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
     printf '%s\t%s\t%s\t%s\n' "$what" "$inst" "$latest" "$status"
 }
 
+# bb sdk versions — installed versions only, nothing asked of the network.
+sdk_versions() {
+    local names="$*"
+    [ -n "$names" ] || names="$SDK_CHECKABLE"
+    local n
+    for n in $names; do sdk_check_one "$n" local; done
+}
+
 sdk_check() {
     local names="$*"
-    [ -n "$names" ] || names="playwright flutter dotnet swift go rust zig android:emulator android:ndk android:cmake"
+    [ -n "$names" ] || names="$SDK_CHECKABLE"
     local n
     for n in $names; do sdk_check_one "$n"; done
 }
@@ -1401,6 +1556,35 @@ If you ARE the operator at this keyboard: env -u CLAUDECODE bb sdk $*"
 # image update would throw it away and re-download it. Nothing warns about
 # this; the directory simply stops being a link. Checked after every install,
 # which is the only moment it can happen.
+# The sdkmanager "kind" behind a device-flavour name, or nothing.
+#
+# tv/wear/playstore/atd are shapes of system image, not packages: the real
+# name carries an API level, so every path that touches one has to resolve it.
+# Install did, and check and remove did not — which made `bb sdk check
+# android:tv` answer "absent" for an image that was sitting right there, and
+# would have handed `sdkmanager --uninstall tv` to a tool that has no such
+# package.
+sdk_android_kind() {
+    case "$1" in
+        tv)        printf 'android-tv' ;;
+        wear)      printf 'android-wear' ;;
+        playstore) printf 'google_apis_playstore' ;;
+        atd)       printf 'google_atd' ;;
+        *)         return 1 ;;
+    esac
+}
+
+# sdk_android_image_dir KIND — the installed system image of that kind, if any.
+sdk_android_image_dir() {
+    # -L, because every package directory under ANDROID_HOME is a symlink onto
+    # the SDK share and find does not descend into a symlinked starting point:
+    # without it this searched the link itself, found nothing, and reported an
+    # installed image as absent while the dashboard — which resolves paths
+    # rather than walking them — said otherwise.
+    find -L "${ANDROID_HOME:-/opt/android-sdk}/system-images" -maxdepth 2 -type d \
+        -name "$1" 2>/dev/null | sort -V | tail -1
+}
+
 sdk_relink_android() {
     local store sub src
     store="$(sdk_dir android)"
@@ -1433,31 +1617,20 @@ sdk_install() {
             local pkg="${what#android:}"
             case "$pkg" in
                 tv|wear|playstore|atd)
-                    # Device flavours rather than package names: pick the
-                    # newest system image of that kind instead of making the
-                    # operator know which API levels ship one. The Google-APIs
-                    # phone images come from ANDROID_SYSTEM_IMAGES; these are
-                    # the shapes it does not cover.
-                    local kind
-                    case "$pkg" in
-                        tv)        kind='android-tv' ;;
-                        wear)      kind='android-wear' ;;
-                        playstore) kind='google_apis_playstore' ;;
-                        atd)       kind='google_atd' ;;
-                    esac
-                    pkg="$(sdkmanager --list 2>/dev/null | tr -d ' ' | cut -d'|' -f1 \
+                    # A shape of system image, not a package name: pick the
+                    # newest of that kind rather than making the operator know
+                    # which API levels ship one.
+                    local kind; kind="$(sdk_android_kind "$pkg")"
+                    pkg="$(sdk_android_list | sed -n '/Available Packages/,$p' | tr -d ' ' | cut -d'|' -f1 \
                            | grep -E "^system-images;android-[0-9]+;${kind};x86_64$" \
                            | sort -V | tail -1)"
                     [ -n "$pkg" ] || die "no ${kind} system image is available"
                     ;;
                 ndk|cmake)
-                    # These ship as versioned packages (ndk;27.x, cmake;3.22.1)
-                    # and a bare name installs nothing. The newest is what a
-                    # project wants unless it pins one, resolved from what the
-                    # repository actually offers rather than from a table here
-                    # that would go stale within a release.
-                    pkg="$(sdkmanager --list 2>/dev/null | tr -d ' ' | cut -d'|' -f1 \
-                           | grep -E "^${pkg};[0-9]" | sort -V | tail -1)"
+                    # Versioned package ids, resolved by the same helper the
+                    # Tools tab quotes a version from — so what it promised is
+                    # what lands here.
+                    pkg="$(sdk_android_newest "$pkg" | cut -f1)"
                     [ -n "$pkg" ] || die "could not find a ${what#android:} package to install"
                     ;;
             esac
@@ -1466,6 +1639,7 @@ sdk_install() {
             # without sdkmanager knowing anything about it.
             log "installing ${pkg} — into $(sdk_dir android)"
             sdkmanager --install "$pkg"
+            sdk_android_list_forget
             sdk_relink_android
             ;;
         flutter)
@@ -1497,7 +1671,7 @@ sdk_install() {
             local d; d="$(sdk_dir swift)"
             [ -d "$d" ] && die "swift is already installed at ${d} (bb sdk remove swift first)"
             # The release tarball, not swiftly: swiftly is the nicer installer
-            # right up until you ask where it put things — it honours its own
+            # right up until you ask where it put things — it honors its own
             # home dir for configuration but unpacks toolchains under
             # XDG_DATA_HOME, which put 3.3GB on the home volume while claiming
             # to install to the share. A tarball unpacks exactly where it is
@@ -1627,6 +1801,21 @@ sdk_remove() {
         android:*)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
             local pkg="${what#android:}" v
+            local kind; kind="$(sdk_android_kind "$pkg" || true)"
+            sdk_android_list_forget
+            if [ -n "$kind" ]; then
+                local dir api abi
+                for dir in "${ANDROID_HOME:-/opt/android-sdk}/system-images"/*/"$kind"; do
+                    [ -d "$dir" ] || continue
+                    api="$(basename "$(dirname "$dir")")"
+                    for abi in "$dir"/*/; do
+                        [ -d "$abi" ] || continue
+                        log "removing system-images;${api};${kind};$(basename "$abi")"
+                        sdkmanager --uninstall "system-images;${api};${kind};$(basename "$abi")"
+                    done
+                done
+                return 0
+            fi
             case "$pkg" in
                 ndk|cmake)
                     # Versioned the same way going out: uninstall every version
@@ -1655,10 +1844,11 @@ cmd_sdk() {
         env)        sdk_env_snippet ;;
         install)    sdk_install "$@"; sdk_write_env ;;
         check)      sdk_check "$@" ;;
+        versions)   sdk_versions "$@" ;;
         relink)     sdk_relink_android ;;
         update)     sdk_update "$@"; sdk_write_env ;;
         remove)     sdk_remove "$@"; sdk_write_env ;;
-        *) die "usage: bb sdk [status|root|env|check|relink|install X|update X|remove X]" ;;
+        *) die "usage: bb sdk [status|root|env|versions|check|relink|install X|update X|remove X]" ;;
     esac
 }
 

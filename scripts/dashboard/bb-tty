@@ -174,8 +174,11 @@ case "$target" in
         if [ "$proj" != "$(basename -- "$proj")" ] || [ ! -d "$dir" ]; then
             echo "No such project: ${proj}" >&2
             echo "Available:" >&2
+            # Same rule the dashboard lists by: a directory holding
+            # .bbignore is not a project, so offering it here as one would
+            # only send someone back to a name that will be refused again.
             find "$WORKSPACE" -maxdepth 1 -mindepth 1 -type d -not -name '_work' \
-                -printf '  %f\n' >&2
+                -not -exec test -e '{}/.bbignore' ';' -printf '  %f\n' >&2
             bad ""
         fi
         if is_excluded "$proj"; then

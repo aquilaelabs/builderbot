@@ -50,7 +50,7 @@ sdk_root() {
         # before anything large is written to it. Any other path is one the
         # operator chose — a subdirectory of another share, say — and is
         # taken at its word; silently ignoring it and using the home volume
-        # instead is the behaviour this branch exists to avoid.
+        # instead is the behavior this branch exists to avoid.
         if [ "$root" != /sdk ] || is_mountpoint "$root"; then
             printf '%s' "$root"
             return 0

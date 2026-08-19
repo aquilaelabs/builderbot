@@ -45,6 +45,8 @@ ok(list.length >= 6 && list.some(r => r.name === 'flutter') && list.some(r => r.
    'the tab lists the toolchains and the android packages');
 ok(list.every(r => !r.installed) && list.every(r => r.where === 'not installed'),
    'a scratch root starts with nothing installed');
+ok(await page.$$eval('.doc .pkg .nm .pill', ps => ps.every(p => p.textContent.startsWith('~'))),
+   '...so every size is the catalog estimate, and no row claims a version');
 ok((await page.$eval('.pkghead', el => el.textContent)).includes(`${DIR}/sdk`),
    'it says which root things are installed into');
 
@@ -79,13 +81,44 @@ ok(await page.$$eval('.doc .pkg input', is => is.every(i => !i.checked)),
    'a finished job clears the selection it consumed');
 
 // ---- versions and updates ----------------------------------------------
-// Nothing claims to be current until something asks: every probe behind this
-// costs a network round trip, so an unchecked row says nothing at all.
+// The installed version is local knowledge and shows without being asked;
+// whether something newer exists is a network question, and until it is asked
+// no row claims anything.
+ok((await page.$$eval('.doc .pkg .nm .pill', ps => ps.map(p => p.textContent)))
+     .some(t => t === '1.0'), 'installed versions show without a check');
 ok(await page.$$eval('.doc .pkg .upd', us => us.length === 0),
    'no update claims before a check');
+// The estimate is a number somebody typed into the catalog; once the thing is
+// on disk there is a real one, measured by a worker and arriving a moment
+// after the row does.
+const pill = (name, n = 0) => page.$$eval('.doc .pkg', (ls, [v, i]) => {
+  const l = ls.find(x => x.querySelector('input').value === v);
+  const ps = l ? l.querySelectorAll('.nm .pill') : [];
+  return ps[i] ? { text: ps[i].textContent, title: ps[i].title } : null;
+}, [name, n]);
+await page.waitForFunction(() => {
+  const l = [...document.querySelectorAll('.doc .pkg')]
+    .find(x => x.querySelector('input').value === 'flutter');
+  return l && /measured/.test(l.querySelector('.nm .pill').title);
+}, { timeout: 30000 });
+ok(!(await pill('flutter')).text.startsWith('~'),
+   'an installed package shows what it takes on disk, not the catalog estimate');
+ok((await pill('swift')).text.startsWith('~')
+   && /approximate/.test((await pill('swift')).title),
+   '...and one that is not installed still shows the estimate, marked as one');
+// A check spends no selection — it asks about every row regardless — so
+// whatever was ticked before it must survive it.
+await page.check('.doc .pkg input[value="swift"]');
 await page.click('.doc [data-pkg="check"]');
-await page.waitForFunction(() => document.querySelector('.doc .pkg .upd') !== null,
+// The whole catalog, not just what is installed, so wait for the job to end
+// rather than for the first row to answer — asserting on a package further
+// down the list while its check was still queued passed only by luck.
+await page.waitForFunction(() => packages?.job && !packages.job.running
+                             && document.querySelector('.doc .pkg .upd') !== null,
                            { timeout: 30000 });
+ok(await page.$eval('.doc .pkg input[value="swift"]', i => i.checked),
+   'a check leaves the selection alone — it consumed nothing');
+await page.uncheck('.doc .pkg input[value="swift"]');
 const upd = await page.$$eval('.doc .pkg', ls => ls
   .filter(l => l.querySelector('.upd'))
   .map(l => l.querySelector('input').value));
@@ -97,10 +130,16 @@ ok(!(await page.$eval('.doc .pkg input[value="flutter"]', i => i.disabled)),
    '...but an update brings its tick back');
 ok(!(await page.$eval('.doc .pkg input[value="swift"]', i => i.disabled)),
    'and something not installed at all is always tickable');
-ok((await page.$eval('.doc .pkg .upd', el => el.textContent)).includes('→ 2.0'),
-   '...and says which version it would move to');
-ok((await page.$$eval('.doc .pkg .nm .pill', ps => ps.map(p => p.textContent)))
-     .some(t => t === '1.0'), 'installed versions appear beside the sizes');
+ok((await pill('flutter', 2)).text === '→ 2.0'
+   && (await pill('flutter', 2)).title === 'update available',
+   '...and the version it would move to is on the row, in the update color');
+ok((await pill('swift', 1)).text === '9.9'
+   && /would fetch/.test((await pill('swift', 1)).title),
+   'a package that has never been installed says what Install would fetch');
+ok(await page.$$eval('.doc .pkg', ls => ls
+     .filter(l => l.querySelector('input').value === 'swift')
+     .every(l => l.querySelectorAll('.nm .pill.warn').length === 0)),
+   '...and says it plainly: only an actual update is amber');
 // Update runs like the others: a job, a log, and the ticks it consumed.
 await page.check('.doc .pkg input[value="flutter"]');
 await page.click('.doc [data-pkg="install"]');
