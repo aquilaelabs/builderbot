@@ -1468,6 +1468,28 @@ PACKAGES = [
     {"name": "android:cmake", "label": "Android CMake", "size": "~200 MB",
      "probe": "android:cmake",
      "about": "The CMake the NDK's build system uses."},
+    {"name": "go", "label": "Go", "size": "~250 MB", "probe": "go",
+     "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with "
+              "GOOS and GOARCH — no extra toolchain, no target to install."},
+    {"name": "rust", "label": "Rust", "size": "~700 MB", "probe": "rust",
+     "about": "rustup, cargo and the stable toolchain, kept in one directory. "
+              "A Windows target needs a linker as well: gcc-mingw-w64 via "
+              "EXTRA_APT_PACKAGES, or zig plus cargo-zigbuild."},
+    {"name": "zig", "label": "Zig", "size": "~300 MB", "probe": "zig",
+     "about": "A C and C++ cross-compiler as much as a language: `zig cc "
+              "-target x86_64-windows-gnu` turns this box into a Windows "
+              "toolchain, and it links for Rust too."},
+    {"name": "android:playstore", "label": "Android image: Play Store",
+     "size": "~2 GB", "probe": "android-image:google_apis_playstore",
+     "about": "A system image with the Play Store, for testing anything that "
+              "depends on Google Play services. Pixel-style — Samsung, Oppo "
+              "and the rest ship no emulator images at all."},
+    {"name": "android:tv", "label": "Android image: TV", "size": "~2 GB",
+     "probe": "android-image:android-tv",
+     "about": "Android TV, for a leanback-layout build."},
+    {"name": "android:wear", "label": "Android image: Wear OS", "size": "~1.5 GB",
+     "probe": "android-image:android-wear",
+     "about": "Wear OS, which is what modern Galaxy and Pixel watches run."},
     {"name": "tizen", "label": "Tizen (manual)", "size": "instructions",
      "probe": "tizen",
      "about": "Galaxy Watch and Samsung TV. Samsung ships a GUI installer, so "
@@ -1511,7 +1533,20 @@ def _pkg_path(probe):
     Resolved rather than assumed: the android directories are symlinks into
     the share, and the whole point of the card is showing where a thing
     actually landed."""
-    if probe.startswith("android:"):
+    if probe.startswith("android-image:"):
+        # A system-image flavour, not a package directory: they all live under
+        # system-images/android-NN/<kind>/, so "is a TV image installed" is a
+        # question about the kind, not about the tree existing. Sharing one
+        # probe made every flavour claim to be installed the moment any image
+        # was — the reassuring wrong answer again.
+        kind = probe.split(":", 1)[1]
+        base = Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / "system-images"
+        cands = []
+        try:
+            cands = sorted(d / kind for d in base.iterdir() if d.is_dir())
+        except OSError:
+            pass
+    elif probe.startswith("android:"):
         cands = [Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / probe.split(":", 1)[1]]
     else:
         root = sdk_root_path()

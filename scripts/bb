@@ -745,6 +745,28 @@ except xml.parsers.expat.ExpatError as e:
         done
     fi
 
+    # Only where both halves exist, which is this repo: `bb help` and the
+    # README's command list are two copies of one thing, and the copy nobody
+    # runs is the one that goes stale — `bb sdk migrate` outlived its code in
+    # the README because nothing compared them.
+    if [ -f scripts/bb ] && [ -f README.md ] && grep -q '^bb status ' README.md; then
+        section "docs (bb help vs README)"
+        local missing extra
+        missing="$(comm -23 \
+            <(sed -n 's/^  bb \([a-z-]*\).*/\1/p' scripts/bb | sort -u) \
+            <(sed -n 's/^bb \([a-z-]*\).*/\1/p' README.md | sort -u))"
+        extra="$(comm -13 \
+            <(sed -n 's/^  bb \([a-z-]*\).*/\1/p' scripts/bb | sort -u) \
+            <(sed -n 's/^bb \([a-z-]*\).*/\1/p' README.md | sort -u))"
+        if [ -z "$missing" ] && [ -z "$extra" ]; then
+            echo "  [ok]   every command in bb help is in the README, and back"
+        else
+            [ -n "$missing" ] && printf '  [FAIL] in bb help, missing from README: %s\n' "$(echo "$missing" | tr '\n' ' ')"
+            [ -n "$extra" ] && printf '  [FAIL] in README, not a bb command: %s\n' "$(echo "$extra" | tr '\n' ' ')"
+            rc=1
+        fi
+    fi
+
     echo
     if [ "$rc" -ne 0 ]; then
         echo "lint: FAILURES above"
@@ -1081,7 +1103,7 @@ EOF
 # Each recipe unpacks into its own directory under the root and is undone by
 # deleting that directory — no system packages, nothing outside the root, so
 # `bb sdk remove` is a plain rm and a container rebuild changes nothing.
-SDK_TOOLCHAINS="android playwright flutter dotnet swift tizen"
+SDK_TOOLCHAINS="android playwright flutter dotnet swift go rust zig tizen"
 
 sdk_dir() { printf '%s/%s' "$(sdk_root)" "$1"; }
 
@@ -1099,6 +1121,16 @@ sdk_env_snippet() {
     fi
     if d="$(sdk_find swift)"; then
         printf 'export PATH="%s/usr/bin:$PATH"\n' "$d"
+    fi
+    if d="$(sdk_find go)"; then
+        printf 'export PATH="%s/bin:$PATH"\n' "$d"
+    fi
+    if d="$(sdk_find zig)"; then
+        printf 'export PATH="%s:$PATH"\n' "$d"
+    fi
+    if d="$(sdk_find rust)"; then
+        printf 'export RUSTUP_HOME="%s/rustup"\nexport CARGO_HOME="%s/cargo"\n' "$d" "$d"
+        printf 'export PATH="$CARGO_HOME/bin:$PATH"\n'
     fi
     # Flutter needs to be told where the Android SDK is when ANDROID_HOME is
     # not already in the environment of whatever spawned it.
@@ -1214,6 +1246,40 @@ sdk_check_one() {
                       | sed -n 's/.*--version "\([^"]*\)".*/\1/p' | head -1)"
             [ -n "$latest" ] || latest="-"
             ;;
+        go)
+            d="$(sdk_find go)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
+            inst="$("$d/bin/go" version 2>/dev/null | awk '{print $3}')"
+            latest="$(timeout 30 curl -fsS 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)"
+            [ -n "$latest" ] || latest="-"
+            ;;
+        zig)
+            d="$(sdk_find zig)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
+            inst="$("$d/zig" version 2>/dev/null | head -1)"
+            latest="$(timeout 30 curl -fsS https://ziglang.org/download/index.json 2>/dev/null \
+                      | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+print(next(k for k in d if k != "master"))' 2>/dev/null)"
+            [ -n "$latest" ] || latest="-"
+            ;;
+        rust)
+            d="$(sdk_find rust)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
+            inst="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" "$d/cargo/bin/rustc" --version 2>/dev/null | awk '{print $2}')"
+            # rustup already knows how to ask; its answer names the version it
+            # would move to, which is the only interesting half.
+            local line
+            line="$(RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" timeout 60 \
+                    "$d/cargo/bin/rustup" check 2>/dev/null | grep -i 'stable' | head -1)"
+            # Lower case, and a colon rather than an arrow:
+            #   stable-x86_64-unknown-linux-gnu - up to date: 1.97.1 (...)
+            #   stable-x86_64-unknown-linux-gnu - update available: 1.97.1 -> 1.98.0
+            case "$line" in
+                *"up to date"*)      latest="$inst" ;;
+                *"update available"*)
+                    latest="$(printf '%s' "$line" | sed -n 's/.*-> *\([0-9][0-9.]*\).*/\1/p')"
+                    [ -n "$latest" ] || latest="newer" ;;
+                *) latest="-" ;;
+            esac
+            ;;
         playwright)
             d="$(sdk_find playwright)" || { printf '%s\t-\t-\tabsent\n' "$what"; return 0; }
             # The module decides which browser revisions it wants; --dry-run
@@ -1264,7 +1330,7 @@ sdk_check_one() {
 
 sdk_check() {
     local names="$*"
-    [ -n "$names" ] || names="playwright flutter dotnet swift android:emulator android:ndk android:cmake"
+    [ -n "$names" ] || names="playwright flutter dotnet swift go rust zig android:emulator android:ndk android:cmake"
     local n
     for n in $names; do sdk_check_one "$n"; done
 }
@@ -1359,13 +1425,31 @@ sdk_relink_android() {
 sdk_install() {
     sdk_operator_only install "$@"
     local what="${1:-}" root; root="$(sdk_root)"
-    [ -n "$what" ] || die "usage: bb sdk install android:<package>|playwright|flutter|dotnet|swift|tizen"
+    [ -n "$what" ] || die "usage: bb sdk install android:<pkg>|playwright|flutter|dotnet|swift|go|rust|zig|tizen"
     mkdir -p "$root"
     case "$what" in
         android:*)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
             local pkg="${what#android:}"
             case "$pkg" in
+                tv|wear|playstore|atd)
+                    # Device flavours rather than package names: pick the
+                    # newest system image of that kind instead of making the
+                    # operator know which API levels ship one. The Google-APIs
+                    # phone images come from ANDROID_SYSTEM_IMAGES; these are
+                    # the shapes it does not cover.
+                    local kind
+                    case "$pkg" in
+                        tv)        kind='android-tv' ;;
+                        wear)      kind='android-wear' ;;
+                        playstore) kind='google_apis_playstore' ;;
+                        atd)       kind='google_atd' ;;
+                    esac
+                    pkg="$(sdkmanager --list 2>/dev/null | tr -d ' ' | cut -d'|' -f1 \
+                           | grep -E "^system-images;android-[0-9]+;${kind};x86_64$" \
+                           | sort -V | tail -1)"
+                    [ -n "$pkg" ] || die "no ${kind} system image is available"
+                    ;;
                 ndk|cmake)
                     # These ship as versioned packages (ndk;27.x, cmake;3.22.1)
                     # and a bare name installs nothing. The newest is what a
@@ -1454,6 +1538,58 @@ sdk_install() {
             [ -n "$exe" ] && ln -sfn "$exe" "$d/chromium"
             log "browsers ready at ${d}"
             ;;
+        go)
+            local d; d="$(sdk_dir go)"
+            [ -d "$d" ] && die "go is already installed at ${d}"
+            local v; v="$(timeout 30 curl -fsS 'https://go.dev/VERSION?m=text' | head -1)"
+            case "$v" in go*) ;; *) die "could not resolve the current go release" ;; esac
+            log "installing ${v} into ${d} — GOOS=windows and friends cross-compile from here"
+            mkdir -p "$d"
+            sdk_fetch "https://go.dev/dl/${v}.linux-amd64.tar.gz" /tmp/go.tgz \
+                || { rm -rf "$d" /tmp/go.tgz; die "could not download ${v}"; }
+            tar -xzf /tmp/go.tgz -C "$d" --strip-components=1
+            rm -f /tmp/go.tgz
+            "$d/bin/go" version
+            ;;
+        zig)
+            local d; d="$(sdk_dir zig)"
+            [ -d "$d" ] && die "zig is already installed at ${d}"
+            # Zig publishes an index of every release with its tarball URL,
+            # which beats guessing a filename whose shape changes between
+            # versions.
+            local url
+            url="$(timeout 30 curl -fsS https://ziglang.org/download/index.json \
+                   | python3 -c 'import json,sys
+d = json.load(sys.stdin)
+v = next(k for k in d if k != "master")
+print(d[v]["x86_64-linux"]["tarball"])' 2>/dev/null)"
+            [ -n "$url" ] || die "could not resolve the current zig release"
+            log "installing zig into ${d} — a C/C++ cross-compiler as much as a language"
+            mkdir -p "$d"
+            sdk_fetch "$url" /tmp/zig.tar.xz \
+                || { rm -rf "$d" /tmp/zig.tar.xz; die "could not download ${url}"; }
+            tar -xf /tmp/zig.tar.xz -C "$d" --strip-components=1
+            rm -f /tmp/zig.tar.xz
+            "$d/zig" version
+            ;;
+        rust)
+            local d; d="$(sdk_dir rust)"
+            [ -d "$d" ] && die "rust is already installed at ${d}"
+            log "installing rust into ${d}"
+            mkdir -p "$d"
+            sdk_fetch https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init \
+                /tmp/rustup-init || { rm -rf "$d"; die "could not download rustup"; }
+            chmod +x /tmp/rustup-init
+            # Both homes inside the toolchain directory, so removing rust is
+            # removing one directory — rustup would otherwise scatter it
+            # across ~/.rustup and ~/.cargo on the home volume.
+            RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" \
+                /tmp/rustup-init -y --no-modify-path --profile minimal
+            rm -f /tmp/rustup-init
+            RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" "$d/cargo/bin/rustc" --version
+            log "a Windows target also needs a linker: rustup target add x86_64-pc-windows-gnu,"
+            log "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb sdk install zig + cargo-zigbuild"
+            ;;
         tizen)
             # Samsung's own installer is a GUI Java bundle; only the CLI
             # distribution can be unpacked without a display, and only some
@@ -1480,7 +1616,7 @@ sdk_remove() {
     sdk_operator_only remove "$@"
     local what="${1:-}" d
     case "$what" in
-        flutter|dotnet|swift|tizen|playwright) d="$(sdk_find "$what")" \
+        flutter|dotnet|swift|tizen|playwright|go|rust|zig) d="$(sdk_find "$what")" \
             || die "${what} is not installed" ;;
         android:*)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"

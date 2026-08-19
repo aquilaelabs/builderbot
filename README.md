@@ -449,7 +449,8 @@ persists, but mixes 30GB of system images in with your shell history.
 
 ```bash
 bb sdk                     # what is installed, where, and how much room is left
-bb sdk install flutter     # or: playwright · dotnet · swift · tizen · android:<pkg>
+bb sdk install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
+bb sdk install android:tv         # or wear · playstore · ndk · cmake · emulator
 bb sdk install android:"system-images;android-35;google_apis;x86_64"
 bb sdk check               # installed vs current, per toolchain
 bb sdk update flutter      # each the way its own tooling expects
@@ -503,6 +504,9 @@ anywhere else.
 
 | Toolchain | Size | What it gets you |
 |---|---|---|
+| `go` | ~250MB | Windows, macOS, Linux and ARM binaries from here — `GOOS=windows go build`, no target to install |
+| `rust` | ~700MB | rustup, cargo and the stable toolchain in one directory |
+| `zig` | ~300MB | A C/C++ cross-compiler: `zig cc -target x86_64-windows-gnu` makes this box a Windows toolchain |
 | Android packages | 2GB per API level | Platforms, build-tools, emulator, system images |
 | `playwright` | ~1.3GB | Chromium, Firefox and WebKit — installed on first boot, since `bb shot` and the dashboard's tests need them |
 | `flutter` | ~1.3GB | Flutter + the bundled Dart SDK; builds Android APKs here |
@@ -520,6 +524,29 @@ you work, and the work itself is a background job on the container, so the
 list keeps reporting progress instead of hanging on a request that would take
 four minutes to answer. The page only ever posts names the server offered it
 — the same rule the command buttons follow.
+
+**Building for Windows, from here.** Three of those cross-compile without a
+Windows machine anywhere: Go does it with `GOOS=windows GOARCH=amd64 go
+build`, Zig with `zig cc -target x86_64-windows-gnu` (a C and C++
+cross-compiler that happens to ship with a language), and .NET with `dotnet
+publish -r win-x64 --self-contained`. All three were verified on this box —
+`file` says *PE32+ executable, for MS Windows*. Rust needs one more piece: a
+linker, either `EXTRA_APT_PACKAGES=gcc-mingw-w64` or `cargo-zigbuild` on top
+of Zig. What none of them give you is a Windows *GUI* toolchain — WPF, WinUI
+and MSIX packaging need Windows itself.
+
+**Android, and which vendor you are targeting.** One SDK covers all of them:
+Samsung, Pixel, Oppo, OnePlus, Xiaomi. There is no per-vendor SDK to install
+and no vendor emulator image to download — Samsung's Galaxy skins are
+cosmetic, and the vendor libraries (Samsung IAP or Health, Oppo/Xiaomi push)
+are Gradle dependencies a project declares, not toolchains a container holds.
+What genuinely differs is the *system image* you emulate against, which is
+why those are catalog entries: Google APIs (the default, Pixel-shaped), Play
+Store images for anything that needs Play services, plus Android TV and Wear
+OS — the last being what modern Galaxy and Pixel watches actually run. Real
+Samsung or Oppo hardware is a `adb connect` away over the network, and
+Samsung's Remote Test Lab rents you real devices, but neither is something to
+install here.
 
 **iOS is not on this list and cannot be.** Xcode and the iOS SDK are macOS-only
 and licensed to Apple hardware; no Linux container can host them. For web and
