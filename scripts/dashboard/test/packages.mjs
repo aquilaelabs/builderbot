@@ -127,8 +127,12 @@ ok(!d.ticked && !d.bin,
 d = await during({ action: 'remove', current: 'flutter' });
 ok(d.text.startsWith('removing') && !d.bar,
    'a removal says removing, and gets no bar either');
+// A check writes nothing, so the row it is on keeps its path and its controls
+// — stripping each in turn made the tab churn through a check that, once a
+// day, nobody asked for.
 d = await during({ action: 'check', current: 'flutter' });
-ok(d.text.startsWith('checking') && !d.bar, 'a check says checking');
+ok(d.text === undefined && d.where !== null,
+   'a check leaves the row it is reading exactly as it was');
 ok((await page.$$eval('.doc .pkg .where', ws => ws.length)) > 0,
    'and the paths come back when the job is over');
 // The dots are ticked by a timer, so a redraw must not reset them.
@@ -298,6 +302,21 @@ const post = body => page.evaluate(async b => {
 ok(await post({ action: 'install', names: ['flutter; rm -rf /'] }) === 400,
    'a name that is not in the catalog is refused');
 ok(await post({ action: 'install', names: [] }) === 400, 'an empty selection is refused');
+// A second job is refused while one runs. The message names which one — the
+// version check that runs by itself once a day says so, rather than claiming
+// an install nobody started — though only the daily one is "auto"; a check
+// somebody pressed is as much theirs as an install.
+const clash = await page.evaluate(async () => {
+  const go = b => fetch('/api/packages', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  await go({ action: 'check', names: [] });
+  const r = await go({ action: 'install', names: ['swift'] });
+  const j = await r.json().catch(() => ({}));
+  return { status: r.status, error: j.error || '' };
+});
+ok(clash.status === 409 && /already running/.test(clash.error),
+   `...and a second job while one runs is refused (${clash.error})`);
+await page.waitForFunction(() => packages?.job && !packages.job.running, { timeout: 30000 });
 ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown action is refused');
 
 // It is a tab like any other: minimizing it leaves the strip, and the saved
@@ -317,6 +336,8 @@ await page.waitForFunction(() => document.querySelectorAll('.doc .pkg').length >
 ok(await page.evaluate(() => tabs.some(t => t.kind === 'packages')),
    '...and survives a reload, the way the findings tab does');
 
-const errs = page.errors.filter(e => !/status of 400/.test(e));
+// 400s and 409s are asked for on purpose above; the browser logs a failed
+// fetch either way.
+const errs = page.errors.filter(e => !/status of (400|409)/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ' — ' + errs.join(' | ') : ''}`);
 await done(browser);

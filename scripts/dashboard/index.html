@@ -2506,11 +2506,17 @@ const BIN = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.8 6.8v4"/><path d="M9.2 6.8v4"/></svg>`;
 
 function pkgRow(p, busy, job){
-  // The row the job is on. Mid-install its directory exists and every probe
-  // here calls a non-empty directory installed, so it wears none of the
+  // The row the job is *writing*. Mid-install its directory exists and every
+  // probe here calls a non-empty directory installed, so it wears none of the
   // furniture that means "this is here": no ticked box, no uninstall control,
   // no path — it says what it is doing instead.
-  const mine = !!(job && job.running && job.current === p.name);
+  //
+  // A check is not writing. It reads thirteen upstreams and changes nothing on
+  // disk, so stripping each row in turn as it passed made the whole tab churn
+  // for the eight seconds of a check — including the one that now runs by
+  // itself once a day, where nobody asked for anything at all.
+  const mine = !!(job && job.running && job.action !== "check"
+                  && job.current === p.name);
   // A tick means "do something to this". Something installed and current has
   // nothing to do, so its box is dead until a check finds an update — which
   // is also why Install is the only verb here: on a row with an update it

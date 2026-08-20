@@ -1527,7 +1527,7 @@ _pkg_lock = threading.Lock()
 # and reloaded from disk at startup, so what it found outlives this process.
 _pkg_versions, _pkg_checked = load_versions()
 _pkg_job = {"running": False, "queue": [], "current": "", "action": "",
-            "log": [], "done": [], "failed": []}
+            "log": [], "done": [], "failed": [], "auto": False}
 _sdk_root_cache = []
 
 
@@ -1767,6 +1767,13 @@ def _pkg_worker():
     while True:
         with _pkg_lock:
             if not _pkg_job["queue"]:
+                # Stored once the whole check is done rather than after each
+                # package: thirteen rewrites of the same file, each a temp file
+                # and a rename, to record one answer at a time.
+                if _pkg_job["action"] == "check":
+                    globals()["_pkg_checked"] = int(time.time())
+                    write_json(VERSIONS_FILE, {"at": _pkg_checked,
+                                               "items": _pkg_versions})
                 _pkg_job["running"] = False
                 _pkg_job["current"] = ""
                 return
@@ -1797,8 +1804,6 @@ def _pkg_worker():
                         _pkg_versions[f[0]] = {"installed": f[1], "latest": f[2],
                                                "status": f[3]}
                 _pkg_job["log"].append(f"{name}: {_pkg_versions.get(name, {}).get('status', '?')}")
-                globals()["_pkg_checked"] = int(time.time())
-                write_json(VERSIONS_FILE, {"at": _pkg_checked, "items": _pkg_versions})
             else:
                 _pkg_job["log"].extend(_job_tail(r["out"]))
                 if r["code"] != 0:
@@ -1814,13 +1819,13 @@ def _pkg_worker():
             _pkg_sized_at[0] = 0.0        # ...and changed what is on the disk
 
 
-def start_pkg_job(action, names):
+def start_pkg_job(action, names, auto=False):
     """Queue a package job, unless one is already going. False if it is."""
     with _pkg_lock:
         if _pkg_job["running"]:
             return False
         _pkg_job.update(running=True, queue=list(names), action=action,
-                        current="", log=[], done=[], failed=[])
+                        current="", log=[], done=[], failed=[], auto=auto)
     threading.Thread(target=_pkg_worker, daemon=True).start()
     return True
 
@@ -1834,7 +1839,10 @@ def start_pkg_job(action, names):
 # for anything the operator started — a check that queued itself behind an
 # install would hold the tab hostage — and tries again later.
 PKG_CHECK_EVERY = 86400
-PKG_CHECK_DELAY = int(os.environ.get("PKG_CHECK_DELAY", "45"))
+# Late enough that the startup hooks have finished. 50-android.sh can be
+# running sdkmanager when the dashboard comes up, and two of those on one SDK
+# root is a fight over the same lock.
+PKG_CHECK_DELAY = int(os.environ.get("PKG_CHECK_DELAY", "180"))
 PKG_AUTOCHECK = os.environ.get("PKG_AUTOCHECK", "1") != "0"
 
 
@@ -1843,7 +1851,7 @@ def _versions_loop():
     due = 0                       # the first pass always checks: a container
     while True:                   # that has just come up gets fresh answers
         if PACKAGES and time.time() >= due and not _pkg_job["running"]:
-            if start_pkg_job("check", [p["name"] for p in PACKAGES]):
+            if start_pkg_job("check", [p["name"] for p in PACKAGES], auto=True):
                 due = time.time() + PKG_CHECK_EVERY
         time.sleep(300)
 
@@ -2539,7 +2547,12 @@ class Handler(BaseHTTPRequestHandler):
         if not names:
             return self._json({"error": "nothing selected"}, 400)
         if not start_pkg_job(action, names):
-            return self._json({"error": "an install is already running"}, 409)
+            # Which one, because the automatic version check holds the queue
+            # too and being told "an install is already running" when nobody
+            # started an install is the kind of answer that wastes an evening.
+            return self._json({"error": "a version check is running — try again in a moment"
+                               if _pkg_job.get("auto")
+                               else "an install is already running"}, 409)
         return self._json({"ok": True, "queued": names})
 
     def _claude_md(self, req):
