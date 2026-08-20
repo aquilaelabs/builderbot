@@ -314,10 +314,15 @@ def installed_images(refresh=True):
     r = run([BB, "sdk", "images"], timeout=300)
     if r["code"] == 0:
         for line in r["out"].splitlines():
-            f = line.rstrip().split("\t")
-            if len(f) == 4 and f[0].startswith("system-images;") and f[3].isdigit():
+            f = line.rstrip("\n").split("\t")
+            if len(f) >= 4 and f[0].startswith("system-images;") and f[3].isdigit():
                 rows.append({"id": f[0], "api": f[1], "kind": f[2],
-                             "size": human_kb(int(f[3]))})
+                             "size": human_kb(int(f[3])),
+                             # Which AVDs are built on it. An image nothing
+                             # names is one that can go; an image an AVD names
+                             # is one that AVD cannot boot without.
+                             "avds": [a for a in (f[4].split(",") if len(f) > 4 else [])
+                                      if a]})
     _images.update(at=time.monotonic(), rows=rows)
     return rows
 

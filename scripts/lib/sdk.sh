@@ -1023,17 +1023,39 @@ sdk_remove() {
 # them one at a time. One TSV line each — id, API level, flavor, size — so
 # the tab can offer to remove the ones nobody is using. Forty-four gigabytes of
 # them accumulated here before there was any way to see them.
+# Which AVDs are built on a given image. An AVD names one exactly — a line
+# like `image.sysdir.1=system-images/android-36/google_apis/x86_64/` — and
+# will not boot without it, which is the difference between an image that is
+# spare and one that something depends on. Two flavors at the same API level
+# are not interchangeable here: an AVD asking for google_apis does not accept
+# google_apis_playstore, however alike they look on the shelf.
+sdk_avd_users() {
+    local home="${ANDROID_AVD_HOME:-$HOME/.android/avd}" cfg dir want="$1"
+    [ -d "$home" ] || return 0
+    for cfg in "$home"/*.avd/config.ini; do
+        [ -f "$cfg" ] || continue
+        # Spaces around the = are allowed: avdmanager writes them, the
+        # emulator's own rewrites do not, and both turn up in one directory.
+        dir="$(sed -n 's|^[[:space:]]*image\.sysdir\.1[[:space:]]*=[[:space:]]*||p' "$cfg" | head -1)"
+        dir="${dir%/}"
+        [ "$(printf '%s' "$dir" | tr '/' ';')" = "$want" ] || continue
+        printf '%s\n' "$(basename "$(dirname "$cfg")" .avd)"
+    done
+}
+
 sdk_images() {
-    local base d api kind abi
+    local base d api kind abi id users
     base="${ANDROID_HOME:-/opt/android-sdk}/system-images"
     [ -d "$base" ] || return 0
     while IFS= read -r d; do
         [ -n "$(ls -A "$d" 2>/dev/null)" ] || continue
         abi="$(basename "$d")"; kind="$(basename "$(dirname "$d")")"
         api="$(basename "$(dirname "$(dirname "$d")")")"
-        printf '%s\t%s\t%s\t%s\n' \
-            "system-images;${api};${kind};${abi}" "$api" "$kind" \
-            "$(du -sk "$d" 2>/dev/null | cut -f1)"
+        id="system-images;${api};${kind};${abi}"
+        users="$(sdk_avd_users "$id" | paste -sd, -)"
+        printf '%s\t%s\t%s\t%s\t%s\n' \
+            "$id" "$api" "$kind" \
+            "$(du -sk "$d" 2>/dev/null | cut -f1)" "$users"
     done < <(find -L "$base" -mindepth 3 -maxdepth 3 -type d 2>/dev/null | sort -V)
 }
 

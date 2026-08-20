@@ -183,11 +183,16 @@ button.on{background:#1f6f36;border-color:#2ea043}
    row (the label wraps it), the size beside the name, and the resolved
    install path underneath — "where did that actually go" is the question a
    share full of SDKs invites. */
-.pkghead{padding:10px 12px;color:var(--dim);font:12px/1.5 system-ui,sans-serif;
-  border-bottom:1px solid var(--line)}
+/* Inset to the same 12px the rows are, so the rule under a section heading
+   starts and ends where the rules between rows do — a divider one step wider
+   than the ones below it reads as a mistake, because it is one. The vertical
+   padding matches a row's too, so every rule on the page has the same air
+   above and below it. */
+.pkghead{margin:0 12px;padding:13px 0;color:var(--dim);
+  font:12px/1.5 system-ui,sans-serif;border-bottom:1px solid var(--line)}
 .pkghead code{font-family:var(--mono);color:var(--ink)}
 .pkgs{padding:0 12px}
-.pkg{display:flex;gap:10px;align-items:flex-start;padding:10px 0;margin:0;
+.pkg{display:flex;gap:10px;align-items:flex-start;padding:13px 0;margin:0;
   border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)}
 .pkg:last-child{border-bottom:0}
 .pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto;accent-color:#2ea043}
@@ -198,6 +203,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg.img{padding-left:26px}
 .imghead{margin-top:18px}
 .pkg .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
+/* An image nothing is built on: said, but quietly. It is the answer to "can
+   this go", not a warning. */
+.pkg .sub.dim{opacity:.6}
 /* How old the version answers are, beside the button that refreshes them:
    they survive a restart now, and a number with no date on it is the kind of
    thing that quietly goes stale. */
@@ -230,7 +238,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
    wide as its longest option unless told otherwise, and
    "API 36-ext19 · 1.8 GB" was pushing the whole tab wider than the screen,
    which clipped every paragraph on it. */
-.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:2px 12px 12px}
+.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:13px 12px}
 .imgadd select{flex:1 1 190px;min-width:0;background:#161b22;color:var(--ink);
   border:1px solid var(--line);border-radius:6px;padding:6px 8px;
   font:12px/1.3 inherit;min-height:var(--tap)}
@@ -246,8 +254,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .macros .pkgworking{flex:1 1 100%}
 @media(max-width:900px){ .imgadd select{font-size:16px} }
 /* Bigger tap targets where a finger is doing the ticking. */
-@media(max-width:900px){ .pkg{padding:13px 0} .pkg input{width:20px;height:20px} }
-#pkgLog{min-height:0;font-size:11px;white-space:pre-wrap;color:var(--dim)}
+@media(max-width:900px){ .pkg input{width:20px;height:20px} }
 /* A project row's controls move as one block: four buttons that wrapped one
    at a time left a lone eye stranded under the name (the link chain made
    four possible). Together they either fit beside the name or drop below it
@@ -2962,11 +2969,20 @@ function imgAdder(d, busy){
 }
 
 function imgRow(im, busy){
+  // Which AVDs are built on it, because that is the question anybody asking
+  // "can this go?" is really asking. An AVD names one image exactly, and two
+  // flavors at the same API level are not interchangeable: one asking for
+  // google_apis will not boot on google_apis_playstore, alike as they look.
+  const avds = (im.avds || []).length
+    ? `<span class="sub">${im.avds.length === 1 ? "AVD" : "AVDs"}: ${
+        esc(im.avds.join(", "))}</span>`
+    : `<span class="sub dim">no AVD uses it</span>`;
   return `<label class="pkg img">
     <span class="grow">
       <span class="nm">${esc(im.api)} <span class="pill">${esc(im.kind)}</span>
         <span class="pill">${esc(im.size)}</span></span>
       <span class="sub where on">installed at ${esc(im.id)}</span>
+      ${avds}
     </span>
     <button class="eye rm" data-rmimg="${esc(im.id)}" aria-label="remove ${esc(im.id)}"${
       busy ? ` disabled title="another package operation is running"`
@@ -3039,7 +3055,10 @@ function renderPackagesInto(i){
   el.querySelectorAll("[data-rmimg]").forEach(b => b.onclick = e => {
     e.preventDefault(); e.stopPropagation();
     const id = b.dataset.rmimg;
-    if (confirm(`Remove ${id}? The emulator can no longer boot that image until it is installed again.`))
+    const users = (packages?.images || []).find(im => im.id === id)?.avds || [];
+    if (confirm(`Remove ${id}?\n\n${users.length
+      ? `${users.join(", ")} ${users.length === 1 ? "is" : "are"} built on it and will not boot until it is installed again.`
+      : "No AVD is built on it."}`))
       pkgAct("remove", ["android:" + id]);
   });
   el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
