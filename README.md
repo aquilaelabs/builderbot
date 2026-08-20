@@ -459,6 +459,14 @@ bb sdk remove flutter
 bb sdk env                 # the PATH lines; new shells get them automatically
 ```
 
+**The catalog is a file, not a list in the code.**
+[`config/packages.json`](config/packages.json) holds every row the tab renders
+— name, label, rough size, where it lands, what it is for — and both the
+dashboard and `bb sdk` read it, so adding one is a single edit. What it cannot
+hold is the recipe: each of these installs differently (a git clone, a
+tarball, `sdkmanager`, `rustup`, a vendor's shell script), so a new package is
+an entry there plus a branch in `bb`'s `sdk_install`.
+
 **Nothing installs, updates or removes itself, and no session can do it for
 you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in
 the environment — that variable is in everything a Claude session runs, and
@@ -486,32 +494,32 @@ Uninstalling is a **bin icon on the row itself**, with a confirmation,
 because it is about one package and a bulk Remove button beside a bulk
 Install was one mis-click from being expensive.
 
-**A row says what it is doing while it does it**: a bar and a percentage
-while it is downloading — scraped from whatever the recipe prints:
-Playwright's bar, sdkmanager's, git's `Receiving objects`, curl's meter in
-either of its formats — and `installing` with a ticking ellipsis after that.
-The bar belongs to the download only. sdkmanager counts a single fraction
-across the whole operation and changes the label part way through, so for a
-system image the meter reads about 30% when the download is done and the rest
-of the count belongs to the unzip; that number is real but it is not a
-download, so the row does not quote it. For the same reason a percentage that
-stops moving is retired after a few seconds rather than left standing. The
-job log keeps every tenth of a job's progress, which is what tells you
-afterwards whether a bar failed to move or a tool stopped reporting. Until then a row that is
-mid-install said *"installed at /sdk/flutter"*, because every probe here
-calls a non-empty directory installed and that is precisely what a download
-in progress leaves behind. For the same reason an install that fails removes
-what it created, so a half-fetched toolchain does not sit there looking
-ready. A failed *repair* of something already installed leaves it alone —
-only a directory this run made is a directory this run may delete.
+**A row says what it is doing, and not how far along it is.** `installing`
+with a ticking ellipsis for the whole of an install, `removing` for a removal.
+There was a percentage and a bar here, scraped from whatever each recipe
+printed, and it was retired: every one of them meters differently and several
+mislead by accident. sdkmanager counts a single fraction across a whole
+operation, changes the label part way through, and parks it in the fifties for
+the minutes it spends writing a system image. `playwright install` fetches five
+bundles and meters each from zero. rustup prints no percentages at all down a
+pipe. A row relaying any of that faithfully still read as a bar that had
+broken, so the honest answer is the one that does not pretend to a
+denominator. The full output of every job goes to the log under the buttons,
+which is where to look when "it is working" is not enough.
 
 **Two different questions, two different costs.** What version is installed
 is local knowledge — a directory name, or `flutter --version` — so it is on
 every row from the moment the tab opens, cached until something is installed.
 Whether a newer one exists is a network round trip to a different upstream
-per toolchain, so that one waits to be asked. A check answers for the rows
+per toolchain, so that one is a slow background errand rather than something
+the poll does: once a minute or so after the container comes up, and once a
+day after that. **Check for updates** asks again on demand, and either way the
+answers are what the rows show. A check answers for the rows
 that are *not* installed too: the version there is what Install would fetch,
-plainly rather than in amber, since nothing about it is news.
+plainly rather than in amber, since nothing about it is news. What a check
+found is kept on the state volume and dated on the page — those answers cost
+a round trip each and do not go stale quickly, and holding them only in
+memory meant a restart wiped every version the tab had been told.
 
 **The size is an estimate until it is a measurement.** Every row carries one:
 the catalog's `~3 GB` before installation, which is what the download costs,

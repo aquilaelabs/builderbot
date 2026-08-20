@@ -1112,11 +1112,21 @@ EOF
 SDK_TOOLCHAINS="android playwright flutter dotnet swift go rust zig"
 
 # What `bb sdk check` and `bb sdk versions` answer for when asked for nothing
-# in particular: the dashboard's catalog, so the CLI and the Tools tab cover
-# the same ground. android is absent — it is the bootstrap in the image, not
-# a package — and its installable pieces are named individually.
-SDK_CHECKABLE="playwright flutter dotnet swift go rust zig
-android:emulator android:ndk android:cmake android:tv android:wear android:playstore"
+# in particular: the same catalog the dashboard renders, read from the file
+# rather than repeated here, so adding a package is one edit and not two that
+# can drift. config/packages.json sits at the same place relative to this
+# script in the image and in a checkout.
+sdk_checkable() {
+    local f names; f="$(dirname "$(readlink -f "$0")")/../config/packages.json"
+    [ -f "$f" ] || die "no package catalog at ${f} — is this an older image?"
+    names="$(python3 -c 'import json,sys
+print(" ".join(p["name"] for p in json.load(open(sys.argv[1]))["packages"]))' "$f" 2>/dev/null)"
+    # Empty means the file is there and unreadable, which is worth saying:
+    # returning nothing quietly turns `bb sdk check` into a command that
+    # succeeds and does nothing at all.
+    [ -n "$names" ] || die "could not read the package catalog at ${f}"
+    printf '%s' "$names"
+}
 
 sdk_dir() { printf '%s/%s' "$(sdk_root)" "$1"; }
 
@@ -1484,14 +1494,14 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
 # bb sdk versions — installed versions only, nothing asked of the network.
 sdk_versions() {
     local names="$*"
-    [ -n "$names" ] || names="$SDK_CHECKABLE"
+    [ -n "$names" ] || names="$(sdk_checkable)"
     local n
     for n in $names; do sdk_check_one "$n" local; done
 }
 
 sdk_check() {
     local names="$*"
-    [ -n "$names" ] || names="$SDK_CHECKABLE"
+    [ -n "$names" ] || names="$(sdk_checkable)"
     local n
     for n in $names; do sdk_check_one "$n"; done
 }

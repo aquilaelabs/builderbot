@@ -194,25 +194,13 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
 .pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
-.pkg .prog{display:flex;align-items:center;gap:8px;color:var(--accent);
-  font-family:var(--mono);overflow-wrap:anywhere}
-/* The fill is an absolutely-positioned box scaled along X, not a width in per
-   cent, because a percentage here has no reliable basis to resolve against:
-   the track is a flex item sized by flex resolution, and a percentage width
-   inside one of those may fall back to auto — a fill that paints the whole
-   bar. A phone did exactly that while a headless browser measured the
-   fraction asked for, which is how this survived three rounds of me testing
-   the wrong thing. inset:0 gives the fill a box that is definite by
-   construction, and scaleX is paint rather than layout. No transition: the
-   row is rebuilt on every poll and a fresh element has nothing to animate
-   from. */
-.pkg .prog .bar{position:relative;flex:0 0 120px;height:7px;border-radius:99px;
-  background:#233040;overflow:hidden}
-.pkg .prog .bar i{position:absolute;inset:0;background:var(--accent);
-  transform-origin:left center}
-/* Not flex, for the state that is a word rather than a bar: as a flex
-   container the word and the dots were two items with the row's gap between
-   them, and the third dot wrapped onto its own line. */
+.pkg .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
+/* How old the version answers are, beside the button that refreshes them:
+   they survive a restart now, and a number with no date on it is the kind of
+   thing that quietly goes stale. */
+.pkgwhen{align-self:center;color:var(--dim);font:11px system-ui,sans-serif}
+/* A word and an ellipsis, never a bar — no percentage is read out of a
+   job any more, so there is nothing for one to show. */
 .pkg .prog.plain{display:block}
 /* The ellipsis is ticked by a timer rather than a CSS animation: the row is
    rebuilt every second while a job runs, which restarts any animation on it,
@@ -2518,11 +2506,17 @@ const BIN = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.8 6.8v4"/><path d="M9.2 6.8v4"/></svg>`;
 
 function pkgRow(p, busy, job){
-  // The row the job is on. Mid-install its directory exists and every probe
-  // here calls a non-empty directory installed, so it wears none of the
+  // The row the job is *writing*. Mid-install its directory exists and every
+  // probe here calls a non-empty directory installed, so it wears none of the
   // furniture that means "this is here": no ticked box, no uninstall control,
   // no path — it says what it is doing instead.
-  const mine = !!(job && job.running && job.current === p.name);
+  //
+  // A check is not writing. It reads thirteen upstreams and changes nothing on
+  // disk, so stripping each row in turn as it passed made the whole tab churn
+  // for the eight seconds of a check — including the one that now runs by
+  // itself once a day, where nobody asked for anything at all.
+  const mine = !!(job && job.running && job.action !== "check"
+                  && job.current === p.name);
   // A tick means "do something to this". Something installed and current has
   // nothing to do, so its box is dead until a check finds an update — which
   // is also why Install is the only verb here: on a row with an update it
@@ -2543,25 +2537,17 @@ function pkgRow(p, busy, job){
   const upd = p.state === "update"
     ? `<span class="sub upd">update available — tick it and press Install selected</span>`
     : "";
-  const pr = mine && job.progress && job.progress.name === p.name ? job.progress : null;
+  // One word and an ellipsis, for as long as it takes. No percentage is read
+  // out of a job at all: every recipe meters differently and several mislead
+  // by accident — sdkmanager counts one fraction across a whole operation and
+  // parks it for minutes, playwright meters five files from zero apiece,
+  // rustup reports nothing at all down a pipe — and a row relaying any of
+  // that faithfully still read as a bar that had broken. The log keeps the
+  // output for anyone who wants to know more than "it is working".
   const doing = job && job.action === "remove" ? "removing"
-              : job && job.action === "check" ? "checking"
-              : pr && pr.phase ? pr.phase        // starting → installing
-              : "starting";
-  // The bar belongs to a download during an install, and to nothing else —
-  // the operator's call. A removal gets the word and the dots however much
-  // sdkmanager decides to count while it works. sdkmanager counts one fraction across the whole operation,
-  // so for an android image the download half tops out around thirty on that
-  // meter and the rest of the count belongs to the unzip; quoting that rest
-  // put "installing 55%" on the row, which is exactly what was asked to never
-  // happen. The number is real but it is not a download, so once the step
-  // stops saying downloading the row is words and dots.
-  const pct = job && job.action === "install" && pr && pr.pct != null
-              && pr.phase === "downloading" ? pr.pct : null;
-  const prog = pct != null
-    ? `<span class="sub prog"><span class="bar"><i style="transform:scaleX(${
-        pct / 100})"></i></span>${esc(doing)} ${pct}%</span>`
-    : `<span class="sub prog plain">${esc(doing)}<span class="dots">${".".repeat(pkgDots)}</span></span>`;
+              : job && job.action === "check" ? "checking" : "installing";
+  const prog = `<span class="sub prog plain">${esc(doing)}<span class="dots">${
+    ".".repeat(pkgDots)}</span></span>`;
   return `<label class="pkg${upToDate ? " done" : ""}">
     <input type="checkbox" value="${esc(p.name)}"${
       upToDate ? ` checked disabled title="installed and up to date — nothing to do until a check finds an update"`
@@ -2612,7 +2598,8 @@ function renderPackagesInto(i){
         busy && job.action === "install" ? `Working on ${esc(job.current || "")}…` : "Install selected"}</button>
       <button data-pkg="check"${busy ? " disabled" : ""}>${
         busy && job.action === "check" ? `Checking ${esc(job.current || "")}…`
-        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
+        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>${
+      d.checked ? `<span class="sub pkgwhen">versions checked ${ago(d.checked)}</span>` : ""}
     </div>
     ${lines.length ? `<pre class="pkglog">${esc(lines.join("\n"))}${
       busy ? "" : `\n— finished: ${(job.done || []).length} ok${

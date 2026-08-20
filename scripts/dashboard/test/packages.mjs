@@ -6,7 +6,7 @@
 // stub makes and removes directories rather than downloading gigabytes, so
 // the whole round trip runs in a second.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
@@ -51,6 +51,13 @@ ok(await page.$$eval('.doc .pkg .nm .pill', ps => ps.every(p => p.textContent.st
    '...so every size is the catalog estimate, and no row claims a version');
 ok((await page.$eval('.pkghead', el => el.textContent)).includes(`${DIR}/sdk`),
    'it says which root things are installed into');
+// The catalog is a file in the repository, not a list in the server: adding a
+// package should be an edit somebody can make without reading python.
+const catalog = JSON.parse(                     // URL here is the dashboard's
+  readFileSync(`${import.meta.dirname}/../../../config/packages.json`, 'utf8'));
+ok(catalog.packages.length === list.length
+   && catalog.packages.every(c => list.some(r => r.name === c.name)),
+   `the tab renders the catalog from config/packages.json (${catalog.packages.length} entries)`);
 
 // ---- install two, watch them land --------------------------------------
 await page.check('.doc .pkg input[value="flutter"]');
@@ -88,23 +95,19 @@ ok(await page.$$eval('.doc .pkg input:disabled', is => is.length > 0 && is.every
    '...and what is installed and current shows a ticked box that cannot be changed');
 
 // ---- what a row says while the job is on it -----------------------------
-// "installed at /sdk/flutter" used to appear the moment the download created
-// that directory — every probe calls a non-empty directory installed, and
-// during an install that is exactly what a half-finished one is. The row the
-// job is working on says what it is doing instead, with the percentage its
-// output last reported.
+// One word and an ellipsis, for the whole of a job. No percentage is read out
+// of the output any more: every recipe meters differently and several mislead
+// by accident, and a row relaying any of it faithfully still read as broken.
+// "installed at /sdk/flutter" also used to appear the moment the download
+// created that directory, which is the first second of a four-minute job.
 const during = (job) => page.evaluate(j => {
   const saved = packages.job;
   packages.job = {running: true, queue: [], log: [], done: [], failed: [], ...j};
   pkgRev++; drawPanes();
   const row = [...document.querySelectorAll('.doc .pkg')]
     .find(l => l.querySelector('input').value === 'flutter');
-  const bar = row.querySelector('.prog .bar'), fill = row.querySelector('.prog .bar i');
   const out = { text: row.querySelector('.prog')?.textContent.trim(),
-                width: fill?.style.width,
-                barW: bar ? Math.round(bar.getBoundingClientRect().width) : 0,
-                fillW: fill ? Math.round(fill.getBoundingClientRect().width) : 0,
-                bar: !!bar,
+                bar: !!row.querySelector('.prog .bar'),
                 ticked: !!row.querySelector('input:checked'),
                 bin: !!row.querySelector('[data-rm]'),
                 where: row.querySelector('.where')?.textContent.trim() || null };
@@ -113,53 +116,30 @@ const during = (job) => page.evaluate(j => {
   return out;
 }, job);
 
-let d = await during({ action: 'install', current: 'flutter',
-                       progress: { name: 'flutter', pct: 42, phase: 'downloading' } });
-ok(d.text === 'downloading 42%' && d.where === null,
-   'the row being installed shows the download percentage, not a path');
-// Measured, not read off the style attribute: how the fill is drawn is an
-// implementation detail and has changed twice, but the fraction it covers is
-// the thing being promised.
-ok(Math.abs(100 * d.fillW / d.barW - 42) <= 2,
-   `...and the bar is filled to the fraction it claims (${d.fillW}px of ${d.barW}px)`);
+let d = await during({ action: 'install', current: 'flutter' });
+ok(d.text.startsWith('installing') && !d.bar && d.where === null,
+   'the row being installed says installing, with no bar and no path');
 // Mid-install the directory exists, so every probe calls it installed. The row
 // must not wear any of the furniture that means "this is here" — a half-written
 // NDK showed a ticked box, an uninstall bin and the version "installed".
 ok(!d.ticked && !d.bin,
    '...and carries no ticked box or uninstall control while it is being written');
-d = await during({ action: 'install', current: 'flutter', progress: null });
-ok(d.text.startsWith('starting'),
-   'before the tool has said anything, the row says starting — not installing');
-// Past the download there is no honest denominator, so the row stops
-// pretending: no bar, no number, and no naming of whichever component is
-// being unpacked — one of those ran off the side of a phone.
-// The bar is the download's and nobody else's: sdkmanager keeps counting
-// through its unzip on the same meter, and quoting that put "installing 55%"
-// on a row — which the operator has asked, twice, never to see. A number on
-// an installing step is dropped, not shown.
-d = await during({ action: 'install', current: 'flutter',
-                   progress: { name: 'flutter', pct: 70, phase: 'installing', seen: true } });
-ok(d.text.startsWith('installing') && !d.bar,
-   '...and a number on an installing step is not quoted as one');
-d = await during({ action: 'install', current: 'flutter',
-                   progress: { name: 'flutter', pct: null, phase: 'installing', seen: true } });
-ok(d.text.startsWith('installing') && !d.bar,
-   '...while one with no number to give says so and animates');
-// A number that has stopped moving is retired by the server, so the row falls
-// back to the same ellipsis: sdkmanager parks its fraction at about 55% for
-// the whole of writing a system image, and a bar sitting there reads as stuck.
-d = await during({ action: 'remove', current: 'flutter', progress: null });
-ok(d.text.startsWith('removing'), 'a removal says so on the row it is removing');
-// ...and never with a bar, however much sdkmanager counts on its way out.
-d = await during({ action: 'remove', current: 'flutter',
-                   progress: { name: 'flutter', pct: 40, phase: 'downloading', seen: true } });
+d = await during({ action: 'remove', current: 'flutter' });
 ok(d.text.startsWith('removing') && !d.bar,
-   '...and an uninstall gets no progress bar even when the tool offers one');
+   'a removal says removing, and gets no bar either');
+// A check writes nothing, so the row it is on keeps its path and its controls
+// — stripping each in turn made the tab churn through a check that, once a
+// day, nobody asked for.
+d = await during({ action: 'check', current: 'flutter' });
+ok(d.text === undefined && d.where !== null,
+   'a check leaves the row it is reading exactly as it was');
+ok((await page.$$eval('.doc .pkg .where', ws => ws.length)) > 0,
+   'and the paths come back when the job is over');
 // The dots are ticked by a timer, so a redraw must not reset them.
 const dots = await page.evaluate(async () => {
   const saved = packages.job;
   packages.job = {running: true, queue: [], log: [], done: [], failed: [],
-                  action: 'install', current: 'flutter', progress: null};
+                  action: 'install', current: 'flutter'};
   pkgRev++; drawPanes();
   const read = () => document.querySelector('.pkg .prog .dots')?.textContent ?? null;
   const first = read();
@@ -173,8 +153,6 @@ const dots = await page.evaluate(async () => {
 });
 ok(dots.later !== dots.first && dots.after === dots.later,
    '...and the ellipsis animates, and a redraw does not reset it');
-ok((await page.$$eval('.doc .pkg .where', ws => ws.length)) > 0,
-   'and the paths come back when the job is over');
 
 // ---- versions and updates ----------------------------------------------
 // The installed version is local knowledge and shows without being asked;
@@ -232,6 +210,14 @@ ok((await pill('flutter', 2)).text === '→ 2.0'
 ok((await pill('swift', 1)).text === '9.9'
    && /would fetch/.test((await pill('swift', 1)).title),
    'a package that has never been installed says what Install would fetch');
+// The answers cost a network round trip each, so they are kept on the state
+// volume — a dashboard restart used to wipe every version the tab had been
+// told — and dated, because a number with no date on it goes quietly stale.
+ok(/versions checked/.test(await page.$eval('.doc .macros', el => el.textContent)),
+   '...and the tab says how old the answers are');
+const stored = JSON.parse(readFileSync(`${DIR}/state/pkg-versions.json`, 'utf8'));
+ok(stored.at > 0 && stored.items.flutter.status === 'update',
+   '...and they are on disk, to outlive the process that asked');
 ok(await page.$$eval('.doc .pkg', ls => ls
      .filter(l => l.querySelector('input').value === 'swift')
      .every(l => l.querySelectorAll('.nm .pill.warn').length === 0)),
@@ -245,57 +231,29 @@ ok(true, 'Install selected updates a package that is already installed');
 ok(await page.$$eval('.doc [data-pkg]', bs => bs.every(b => b.textContent.indexOf('Remove') < 0)),
    'there is no bulk remove button to mis-click');
 
-// ---- the bar, through the real path ------------------------------------
-// Set by hand the bar renders at any width asked of it; the question this
-// answers is whether a running job's numbers actually reach it. The stub's
-// `go` install draws a carriage-return bar over two seconds, so the widths
-// sampled here come through streaming, the parser, the payload and the poll.
+// ---- a long job, through the real path ---------------------------------
+// The stub's `go` install draws a carriage-return progress bar over several
+// seconds. None of it should reach the row: the point of this tab is that a
+// job says what it is doing and nothing else, however much the tool underneath
+// is counting.
 await page.check('.doc .pkg input[value="go"]');
 await page.click('.doc [data-pkg="install"]');
-const widths = [], labels = [], bars = [];
-for (let i = 0; i < 26; i++){
+const seen = new Set(), bars = [];
+for (let i = 0; i < 20; i++){
   const s = await page.evaluate(() => {
     const row = [...document.querySelectorAll('.doc .pkg')]
       .find(l => l.querySelector('input').value === 'go');
-    const f = row?.querySelector('.prog .bar i');
-    return { w: f ? Math.round(f.getBoundingClientRect().width) : null,
-             t: row?.querySelector('.prog')?.textContent.trim() || null,
+    return { t: row?.querySelector('.prog')?.textContent.trim() || null,
              bar: !!row?.querySelector('.prog .bar'),
              running: !!packages?.job?.running };
   });
-  widths.push(s.w); labels.push(s.t); bars.push(s.bar && s.running ? 1 : s.running ? 0 : null);
+  if (s.running && s.t) { seen.add(s.t.replace(/\.+$/, '')); bars.push(s.bar); }
   await new Promise(r => setTimeout(r, 250));
 }
-// Four distinct widths, because the stub reports four percentages and every
-// one of them should land. The poll IS the frame rate of this bar: at one
-// second it caught 8 and 66 and missed 31 and 100, which on a download that
-// finishes quickly is a single frame and reads as a bar that never moves.
-const said = [...new Set(labels.filter(Boolean))];
-ok(['8', '31', '66', '100'].every(n => said.some(t => t === `downloading ${n}%`)),
-   `the row counts the download the whole way up (${said.join(' | ')})`);
-// "info: downloading installer" is rustup's opening line, and the substring
-// that matches install is inside the noun. Reading it as an install made the
-// row say installing from the first second of a rust install to the last.
-ok(/^(starting|downloading)/.test(labels.find(Boolean) || ""),
-   `...and never claims to be installing before it has downloaded (${labels.find(Boolean)})`);
-const dl = widths.filter((w, i) => w && /^downloading/.test(labels[i] || ""));
-ok(dl.length > 1 && dl[dl.length - 1] > dl[0],
-   `...and the bar fills with it (${widths.join(' ')})`);
-// Once the step stops saying downloading, the row is words and dots — no
-// number, however real, because it is no longer a download percentage.
-ok(!said.some(t => /installing \d/.test(t)),
-   '...and never wears a percentage once it is installing');
-// The log keeps what the bar cannot: every tenth of the download, so that
-// afterwards it is possible to tell a bar that failed to move from a tool
-// that reported once and went quiet.
-const logged = await page.$eval('.pkglog', el => el.textContent);
-ok(['8%', '31%', '66%', '100%'].every(n => logged.includes(`… downloading ${n}`)),
-   'and the log keeps every tenth of it for afterwards');
-// The stub parks at 66% for three seconds, as sdkmanager parks at about 55%
-// for the whole of writing a system image. A bar that has not moved is
-// telling nobody anything, so it goes and the ellipsis takes over.
-ok(bars.some(b => b === 0) && bars.some(b => b === 1),
-   `...and a number that stops moving is retired mid-job (${bars.map(b => b === null ? '-' : b).join('')})`);
+ok(seen.size === 1 && seen.has('installing'),
+   `a running install only ever says installing (${[...seen].join(' | ')})`);
+ok(bars.length > 1 && bars.every(b => !b),
+   `...and never draws a bar (${bars.length} samples)`);
 await page.waitForFunction(() => packages?.job && !packages.job.running, { timeout: 30000 });
 // Put it back the way it was found: what follows counts installed packages,
 // and a third one left lying around here is how this file first went red.
@@ -344,6 +302,21 @@ const post = body => page.evaluate(async b => {
 ok(await post({ action: 'install', names: ['flutter; rm -rf /'] }) === 400,
    'a name that is not in the catalog is refused');
 ok(await post({ action: 'install', names: [] }) === 400, 'an empty selection is refused');
+// A second job is refused while one runs. The message names which one — the
+// version check that runs by itself once a day says so, rather than claiming
+// an install nobody started — though only the daily one is "auto"; a check
+// somebody pressed is as much theirs as an install.
+const clash = await page.evaluate(async () => {
+  const go = b => fetch('/api/packages', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  await go({ action: 'check', names: [] });
+  const r = await go({ action: 'install', names: ['swift'] });
+  const j = await r.json().catch(() => ({}));
+  return { status: r.status, error: j.error || '' };
+});
+ok(clash.status === 409 && /already running/.test(clash.error),
+   `...and a second job while one runs is refused (${clash.error})`);
+await page.waitForFunction(() => packages?.job && !packages.job.running, { timeout: 30000 });
 ok(await post({ action: 'sudo', names: ['flutter'] }) === 400, 'an unknown action is refused');
 
 // It is a tab like any other: minimizing it leaves the strip, and the saved
@@ -353,7 +326,18 @@ ok(await page.evaluate(() => !tabs.some(t => t.kind === 'packages')), 'the tab m
 await page.click('#bPkgs');
 await page.waitForFunction(() => document.querySelectorAll('.doc .pkg').length > 0);
 ok(true, 'and reopens from the card');
+// The strip lives on the server and is handed to every browser, so a tab kind
+// the store does not recognise is dropped on every read — which is why this
+// one came back from a reload, or a container restart, missing.
+await page.reload();
+await ready(page);
+await page.waitForFunction(() => document.querySelectorAll('.doc .pkg').length > 0,
+                           { timeout: 30000 });
+ok(await page.evaluate(() => tabs.some(t => t.kind === 'packages')),
+   '...and survives a reload, the way the findings tab does');
 
-const errs = page.errors.filter(e => !/status of 400/.test(e));
+// 400s and 409s are asked for on purpose above; the browser logs a failed
+// fetch either way.
+const errs = page.errors.filter(e => !/status of (400|409)/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ' — ' + errs.join(' | ') : ''}`);
 await done(browser);
