@@ -2544,13 +2544,14 @@ function pkgRow(p, busy, job){
               : job && job.action === "check" ? "checking"
               : pr && pr.phase ? pr.phase        // starting → installing
               : "starting";
-  // A bar whenever the job reports a number, whatever step it is on, and a
-  // word with an ellipsis when it does not. Not "a bar for downloads only":
-  // sdkmanager counts one fraction across a whole operation and changes the
-  // label part way through, so a system image reached about thirty per cent
-  // under Downloading and finished under Unzipping — and dropping the number
-  // at the label change made it look like the bar had given up half way.
-  const pct = pr && pr.pct != null ? pr.pct : null;
+  // The bar belongs to the download and to nothing else — the operator's
+  // call, twice. sdkmanager counts one fraction across the whole operation,
+  // so for an android image the download half tops out around thirty on that
+  // meter and the rest of the count belongs to the unzip; quoting that rest
+  // put "installing 55%" on the row, which is exactly what was asked to never
+  // happen. The number is real but it is not a download, so once the step
+  // stops saying downloading the row is words and dots.
+  const pct = pr && pr.pct != null && pr.phase === "downloading" ? pr.pct : null;
   const prog = pct != null
     ? `<span class="sub prog"><span class="bar"><i style="transform:scaleX(${
         pct / 100})"></i></span>${esc(doing)} ${pct}%</span>`
