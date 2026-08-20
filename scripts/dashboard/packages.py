@@ -95,7 +95,7 @@ def load_versions():
         if not all(isinstance(row.get(k), str) for k in ("installed", "latest", "status")):
             continue
         out[name] = {k: row[k][:64] for k in ("installed", "latest", "status")}
-        if isinstance(row.get("bytes"), str) and row["bytes"].isdigit():
+        if isinstance(row.get("bytes"), str) and row["bytes"].lstrip("~").isdigit():
             out[name]["bytes"] = row["bytes"][:20]
     sizes = {}
     for name, kb in (v.get("sizes") or {}).items():
@@ -328,8 +328,10 @@ def payload():
         elif dl:
             # The download, not the footprint: a gigabyte of Swift unpacks to
             # three. Said as a download, so it does not read as one.
-            size = human_kb(int(dl) // 1024) + " download"
-            origin = "the size of the download, from upstream"
+            about = dl.startswith("~")
+            size = ("~" if about else "") + human_kb(int(dl.lstrip("~")) // 1024) + " download"
+            origin = ("an approximation — a git clone has no size to ask for"
+                      if about else "the size of the download, from upstream")
         else:
             origin = ""
         items.append({**{k: p[k] for k in ("name", "label", "about")},
@@ -442,7 +444,10 @@ def _pkg_worker():
                         # the payload. It is not the footprint — a gigabyte of
                         # Swift unpacks to three — so it is only ever used for
                         # a package this box has never had.
-                        if len(f) > 4 and f[4].isdigit():
+                        # A leading tilde is the catalog saying this one is
+                        # an approximation rather than a measurement, and it
+                        # travels all the way to the row.
+                        if len(f) > 4 and f[4].lstrip("~").isdigit():
                             row["bytes"] = f[4]
                         _pkg_versions[f[0]] = row
                 _pkg_job["log"].append(f"{name}: {_pkg_versions.get(name, {}).get('status', '?')}")

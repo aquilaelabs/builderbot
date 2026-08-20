@@ -2579,16 +2579,18 @@ function renderPackagesInto(i){
   if (d.error){ el.innerHTML = `<div class="empty">could not read the package list: ${esc(d.error)}</div>`; return; }
 
   const job = d.job || {}, busy = !!job.running;
-  // A finished package loses its tick: the selection was spent on the job
-  // that just ran, and leaving it ticked means the next click — which might
-  // be Remove — acts on something the operator already dealt with.
+  // A finished package loses its tick — whether it worked or not. One that
+  // worked wears the permanent tick of a package that is installed; one that
+  // failed should not still be selected, because the next click might be
+  // Remove and it was never there. Until then the tick stays put: through a
+  // job, a ticked box says which packages this job is for.
   //
   // Except a check, which spends nothing: it asks about every row whether or
   // not anything is ticked, so treating its results as consumed selection
   // cleared a tick the operator had just placed — press check, and the thing
   // you were about to install quietly unticked itself.
   if (!busy && job.action !== "check")
-    for (const n of job.done || []) pkgTicked.delete(n);
+    for (const n of [...(job.done || []), ...(job.failed || [])]) pkgTicked.delete(n);
   const lines = (job.log || []).slice(-14);
   el.innerHTML = `
     <div class="pkghead">${d.root
@@ -2652,7 +2654,9 @@ async function pkgAct(action, only){
   // that one package and leave the others showing yesterday's answer.
   const names = only || (action === "check" ? [] : [...pkgTicked]);
   if (!names.length && action !== "check") return notify("tick something first", true);
-  if (action === "install") pkgTicked.clear();   // the selection is spent
+  // The ticks stay: a package being installed reads as chosen, and the boxes
+  // are ghosted anyway. What happens to them afterwards is decided by how it
+  // went — installed rows carry their own tick, failed ones let go of it.
   try{
     const r = await fetch("/api/packages", {method:"POST",
       headers:{"Content-Type":"application/json"},

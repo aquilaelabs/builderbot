@@ -91,6 +91,22 @@ ok(await page.$('.pkglog') !== null, 'the progress log appears');
 // and that tick is a statement about the package rather than a selection.
 ok(await page.$$eval('.doc .pkg input:not(:disabled)', is => is.every(i => !i.checked)),
    'a finished job clears the selection it consumed');
+// ...but only when it is finished. Through the job the tick stays put, which
+// is what says which packages the job is for.
+const held = await page.evaluate(() => {
+  const saved = packages.job;
+  pkgTicked.add('swift');
+  packages.job = {running: true, action: 'install', current: 'swift',
+                  queue: [], log: [], done: [], failed: []};
+  pkgRev++; drawPanes();
+  const box = document.querySelector('.doc .pkg input[value="swift"]');
+  const out = { checked: box.checked, ghosted: box.disabled };
+  pkgTicked.delete('swift');
+  packages.job = saved; pkgRev++; drawPanes(); clearTimeout(pkgPoll);
+  return out;
+});
+ok(held.checked && held.ghosted,
+   '...while a package being installed stays ticked, and ghosted with it');
 ok(await page.$$eval('.doc .pkg input:disabled', is => is.length > 0 && is.every(i => i.checked)),
    '...and what is installed and current shows a ticked box that cannot be changed');
 

@@ -499,9 +499,23 @@ package id an install would resolve to: the index's newest Play Store image is
 an `android-CANARY` build nobody installs, and the emulator appears twice,
 once stable and once on the dev channel.
 
-Two cannot be asked at all. A git clone has no content length, and `rustup`
-picks its components as it goes, so Flutter and Rust show no size until this
-box has installed them once — after which they show what they actually took.
+None of this is a scrape. Every document these resolvers read is one the
+vendor's own installer reads — `sdkmanager`'s package index, `rustup`'s
+channel manifest, Zig's release index, Go's version file — and the two GitHub
+lookups deliberately use the `releases/latest` redirect rather than the API,
+which is what rate-limits anonymous callers by IP. Requests carry a
+`builderbot-sdk` User-Agent, there are no retries and no parallel fetching,
+and a check runs at most a few times a day. What it costs is about 1.8MB,
+cached for fifteen minutes in `/tmp` so that the thirteen separate processes
+of one check share the four hundred kilobytes of package index that three of
+them need.
+
+Rust answers a fourth way: its channel manifest names an archive per
+component, and the three a minimal profile installs add up to what `rustup` is
+about to fetch. Only Flutter cannot be asked at all — a git clone has no
+content length — so it carries the one approximation in the catalog, marked
+with a `~` everywhere it appears and replaced by a measurement the moment the
+package has been installed here once.
 
 **Nothing installs, updates or removes itself, and no session can do it for
 you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in
