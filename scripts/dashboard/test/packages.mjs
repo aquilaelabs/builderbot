@@ -276,10 +276,24 @@ ok(await page.$('.doc .pkg:not(:has([data-rm])) [data-rm]') === null,
 // The bin icons were the gap: only the two big buttons were being disabled.
 await page.evaluate(() => { packages.job.running = true; pkgRev++; drawPanes(); });
 ok(await page.$$eval('.doc [data-rm]', bs => bs.length > 0 && bs.every(b => b.disabled))
-   && await page.$$eval('.doc [data-pkg]', bs => bs.every(b => b.disabled)),
-   'while a job runs, every install and uninstall control is ghosted');
+   && await page.$$eval('.doc [data-pkg]', bs => bs.every(b => b.disabled))
+   && await page.$$eval('.doc .pkg input', is => is.length > 0 && is.every(i => i.disabled)),
+   'while a job runs, every button and every checkbox is ghosted');
+// A check the operator did not start still has to reach the page, or the
+// buttons stay live and a click earns "a version check is running" for an
+// operation nobody could see. The button says which job is in the way.
+const checking = await page.evaluate(() => {
+  const was = packages.job.action;
+  packages.job.action = 'check'; pkgRev++; drawPanes();
+  const t = document.querySelector('.doc [data-pkg="check"]').textContent;
+  packages.job.action = was; pkgRev++; drawPanes(); clearTimeout(pkgPoll);
+  return t;
+});
+ok(/^Checking for updates/.test(checking),
+   `...and the check button says what it is doing (${checking.trim()})`);
 await page.evaluate(() => { packages.job.running = false; pkgRev++; drawPanes(); });
-ok(await page.$$eval('.doc [data-rm]', bs => bs.every(b => !b.disabled)),
+ok(await page.$$eval('.doc [data-rm]', bs => bs.every(b => !b.disabled))
+   && await page.$$eval('.doc .pkg input:not(:disabled)', is => is.length > 0),
    '...and live again when it finishes');
 const nd = page.dialogs.length;
 await page.click('.doc [data-rm="android:emulator"]');

@@ -207,7 +207,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
    and dots that stutter once a second read as broken. The timer writes into
    the span, and a rebuild renders whatever count it is on. Width held at
    three characters so the line does not twitch as they come and go. */
-.pkg .prog .dots{display:inline-block;width:3ch;text-align:left;white-space:pre}
+/* The row's and the button's alike: three characters of reserved width so the
+   line does not twitch as the dots come and go. */
+.doc .dots{display:inline-block;width:3ch;text-align:left;white-space:pre}
 .pkg .where.on{color:var(--accent)}
 .pkg .upd{color:var(--warn)}
 /* Installed and current: the row is done, and says so with a ticked box that
@@ -2491,7 +2493,7 @@ async function loadPackages(){
 // restarts it nor resets it — a rebuild simply renders the count it is on.
 let pkgDots = 0, pkgDotsTimer = null;
 function pkgTickDots(){
-  const spans = document.querySelectorAll(".pkg .prog .dots");
+  const spans = document.querySelectorAll(".doc .dots");
   if (!spans.length){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; return; }
   pkgDots = (pkgDots + 1) % 4;
   spans.forEach(e => e.textContent = ".".repeat(pkgDots));
@@ -2551,7 +2553,7 @@ function pkgRow(p, busy, job){
   const prog = `<span class="sub prog plain">${esc(doing)}<span class="dots">${
     ".".repeat(pkgDots)}</span></span>`;
   return `<label class="pkg${upToDate ? " done" : ""}">
-    <input type="checkbox" value="${esc(p.name)}"${
+    <input type="checkbox" value="${esc(p.name)}"${busy ? " disabled" : ""}${
       upToDate ? ` checked disabled title="installed and up to date — nothing to do until a check finds an update"`
                : pkgTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
@@ -2599,7 +2601,8 @@ function renderPackagesInto(i){
       <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
         busy && job.action === "install" ? `Working on ${esc(job.current || "")}…` : "Install selected"}</button>
       <button data-pkg="check"${busy ? " disabled" : ""}>${
-        busy && job.action === "check" ? `Checking ${esc(job.current || "")}…`
+        busy && job.action === "check"
+          ? `Checking for updates<span class="dots">${".".repeat(pkgDots)}</span>`
         : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>${
       d.checked ? `<span class="sub pkgwhen">versions checked ${ago(d.checked)}</span>` : ""}
     </div>
@@ -2623,13 +2626,15 @@ function renderPackagesInto(i){
   // Poll only while something is running: this list is a filesystem walk, not
   // something to ask for every two seconds forever.
   clearTimeout(pkgPoll);
-  // Twice a second, because this poll IS the progress bar. Each one reads
-  // whatever line the job had reached, so the frame rate of the bar is the
-  // poll rate: at one second a download reporting eight, thirty-one, sixty-six
-  // and a hundred showed two of those four, which is a bar that jumps once and
-  // otherwise sits still. The request is a cached dict — nothing is probed
-  // while a job runs — so the cost of asking more often is a round trip.
-  if (busy) pkgPoll = setTimeout(loadPackages, 500);
+  // Kept looking at, even when nothing is happening: the version check runs
+  // by itself once a day, and a tab that only polled during a job it started
+  // never learned about one it did not — so the buttons stayed live and a
+  // click earned "a version check is running" instead of being ghosted out of
+  // the way. The idle rate is slow because the answer rarely changes; the busy
+  // one is quick because the job's own state is what it is showing. Either way
+  // the request is a cached dict, and it stops when the tab is not on screen:
+  // nothing reschedules it but a draw.
+  pkgPoll = setTimeout(loadPackages, busy ? 500 : 8000);
   if (busy && !pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
   if (!busy && pkgDotsTimer){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; }
   else if ((job.done || []).length) refresh();
