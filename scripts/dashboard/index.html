@@ -769,7 +769,11 @@ let active = 0;
 let state = null;
 let findings = null;
 let pinFor = null;
-let showKeys = window.matchMedia("(pointer: coarse)").matches;
+// Shut, on every device. A touch device is where the on-screen keys are most
+// useful and also where they cost the most room — opening one over the
+// terminal before anybody asked meant arriving at a phone with half the
+// screen already spent. The ⌨ button is right there.
+let showKeys = false;
 let seq = 0;
 
 const $ = id => document.getElementById(id);
@@ -2544,14 +2548,16 @@ function pkgRow(p, busy, job){
               : job && job.action === "check" ? "checking"
               : pr && pr.phase ? pr.phase        // starting → installing
               : "starting";
-  // The bar belongs to the download and to nothing else — the operator's
-  // call, twice. sdkmanager counts one fraction across the whole operation,
+  // The bar belongs to a download during an install, and to nothing else —
+  // the operator's call. A removal gets the word and the dots however much
+  // sdkmanager decides to count while it works. sdkmanager counts one fraction across the whole operation,
   // so for an android image the download half tops out around thirty on that
   // meter and the rest of the count belongs to the unzip; quoting that rest
   // put "installing 55%" on the row, which is exactly what was asked to never
   // happen. The number is real but it is not a download, so once the step
   // stops saying downloading the row is words and dots.
-  const pct = pr && pr.pct != null && pr.phase === "downloading" ? pr.pct : null;
+  const pct = job && job.action === "install" && pr && pr.pct != null
+              && pr.phase === "downloading" ? pr.pct : null;
   const prog = pct != null
     ? `<span class="sub prog"><span class="bar"><i style="transform:scaleX(${
         pct / 100})"></i></span>${esc(doing)} ${pct}%</span>`
