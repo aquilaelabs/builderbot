@@ -1887,20 +1887,22 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"not a project: {name}"}, 400)
         act = req.get("action", "")
         live = [s["name"] for s in tmux_sessions()]
-        if act == "tell":
-            # The explicit "save" — edits are written as they are made, and
-            # this is the separate act of spending a line of the conversation
-            # to say so. Silent when nothing is running: the next session reads
-            # the list at startup anyway, which is the ordinary path.
-            r = todo.announce(name, "todo", live)
+        if act in ("tell", "save"):
+            # Two Saves, one difference: whether a line of the conversation is
+            # spent saying so. Both settle the panel — the plain one is "I have
+            # seen this, do not nag me", which is the right answer while a
+            # session is mid-task or when there is none.
+            told = False
+            if act == "tell":
+                told = bool(todo.announce(name, todo.unsaved(name), live).get("sent"))
             todo.mark_told(name)
-            return self._json({"ok": True, "told": bool(r.get("sent"))}
+            return self._json({"ok": True, "told": told}
                               | self._todo_state(name, live))
         if act == "add":
             r = todo.add(name, req.get("text", ""), steps=req.get("steps") or ())
         elif act == "send":
             r = todo.send(name, req.get("id"), req.get("step"), live,
-                          also_told=bool(req.get("tell")))
+                          also_told=todo.unsaved(name) if req.get("tell") else False)
             if r.get("sent") and req.get("tell"):
                 todo.mark_told(name)
         elif act == "done":
@@ -1955,7 +1957,7 @@ class Handler(BaseHTTPRequestHandler):
         # edit marks the same flag the list does, and the one button spends the
         # one line telling a session about all of it.
         if not r.get("error") and act in ("save", "delete"):
-            todo.mark_unsaved(proj)
+            todo.mark_unsaved(proj, "memory")
         return self._json(r, 400 if r.get("error") else 200)
 
     def _custom(self, req):

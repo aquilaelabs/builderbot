@@ -88,21 +88,41 @@ def save(d):
     write_json(FILE, d)
 
 
+# The two things in the panel that can move. Tracked apart so that the line
+# spent telling a session can say which of them did — "something changed" is a
+# sentence that makes somebody go and look at both.
+KINDS = ("todo", "memory")
+
+
 def unsaved(project):
-    """Has this list moved since a session was last told about it?
+    """What has moved here since a session was last told, by kind.
 
     Edits are written the moment they are made — a phone that dies half way
     through tidying a list must not lose it — but telling the session is a
     separate act, because every telling costs a line in a conversation. So the
     two are tracked apart: the file is always current, and this says whether
-    anybody has been told.
+    anybody has been told, and about what.
     """
     with _lock:
-        return bool(load().get("unsaved", {}).get(project))
+        got = load().get("unsaved", {}).get(project)
+    return _kinds(got)
 
 
-def _touch(d, project, on=True):
-    d.setdefault("unsaved", {})[project] = bool(on)
+def _kinds(got):
+    """Normalize a stored flag. It used to be one boolean for the whole
+    project, from before the message said which half had moved."""
+    if isinstance(got, dict):
+        return {k: bool(got.get(k)) for k in KINDS}
+    return {"todo": bool(got), "memory": False}
+
+
+def _touch(d, project, kind="todo", on=True):
+    cur = _kinds(d.setdefault("unsaved", {}).get(project))
+    if kind is None:
+        cur = dict.fromkeys(KINDS, bool(on))
+    else:
+        cur[kind] = bool(on)
+    d["unsaved"][project] = cur
 
 
 def _prune(rows):
@@ -409,8 +429,8 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
     # One message, not two. Saving the list and sending a step both want to
     # say something, and two lines racing into the same input box is how the
     # second one ends up appended to the first. So the note rides along.
-    line = text + ("  (I also changed the to-do list — `bb todo` if you need it.)"
-                   if also_told else "")
+    extra = changed_line(also_told) if isinstance(also_told, dict) else ""
+    line = text + (f"  (Also: {extra[0].lower()}{extra[1:]})" if extra else "")
     r = tell(tmux_name("claude-" + project), line, sessions)
     if r.get("error") or not r.get("sent"):
         return r
@@ -427,24 +447,45 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
     return {"ok": True, "sent": True, "text": text}
 
 
-# What a session is told when the list or the memories changed underneath it.
-# Deliberately not an instruction: the operator edits the list while a session
-# is mid-task all the time, and a session that downed tools to go and read it
-# every time would be worse than one that never read it at all.
-CHANGED = ("The shared to-do list for this project just changed — run `bb todo` "
-           "to see it and keep it in mind, but carry on with what you are doing "
-           "unless I ask for one of those.")
-MEM_CHANGED = ("My notes about how you work here just changed — re-read them "
-               "with `cat ~/.claude/projects/$(pwd | tr / -)/memory/*.md` and "
-               "keep them in mind, but carry on with what you are doing.")
+# What a session is told when something underneath it moved, and which half.
+# Naming the half is the point: "something changed" sends somebody to look at
+# both, and one of the two is a directory of files.
+#
+# Deliberately not an instruction either way. The operator edits these while a
+# session is mid-task all the time, and a session that downed tools to go and
+# read them every time would be worse than one that never read them at all.
+LOOK = {
+    "todo": "the shared to-do list for this project (`bb todo`)",
+    "memory": ("my notes about how you work here "
+               "(`cat ~/.claude/projects/$(pwd | tr / -)/memory/*.md`)"),
+}
 
 
-def mark_unsaved(project):
-    """Something else about this project moved — a memory, say — and the one
-    Save button covers all of it."""
+def changed_line(kinds):
+    """One sentence naming what moved, or empty when nothing did.
+
+    Built rather than picked from three: the verb belongs once at the end, and
+    "X changed and Y changed" is what a template that cannot count reads like.
+    """
+    which = [k for k in KINDS if kinds.get(k)]
+    if not which:
+        return ""
+    if len(which) == 1:
+        subject = LOOK[which[0]][0].upper() + LOOK[which[0]][1:]
+        them = "it"
+    else:
+        subject = "Both " + " and ".join(LOOK[k] for k in which)
+        them = "them"
+    return (f"{subject} just changed — keep {them} in mind, but carry on with "
+            "what you are doing unless I ask for one of those.")
+
+
+def mark_unsaved(project, kind="todo"):
+    """Something in the panel moved. The Save buttons cover all of it, and the
+    kind is what lets the message name which half."""
     with _lock:
         d = load()
-        _touch(d, project, True)
+        _touch(d, project, kind, True)
         save(d)
     return {"ok": True}
 
@@ -452,24 +493,24 @@ def mark_unsaved(project):
 def mark_told(project):
     with _lock:
         d = load()
-        _touch(d, project, False)
+        _touch(d, project, None, False)
         save(d)
     return {"ok": True}
 
 
-def announce(project, what, sessions=()):
-    """Tell a running session that the list (or the memories) moved.
+def announce(project, kinds, sessions=()):
+    """Tell a running session what moved underneath it.
 
-    Best effort and quiet about it: nothing here is worth interrupting a task
-    over, and a session that is not running simply reads the new list the next
-    time it starts, which is the ordinary path.
+    Best effort and quiet about it: a session that is not running simply reads
+    the new list the next time it starts, which is the ordinary path.
     """
-    if tell is None or tmux_name is None:
+    line = changed_line(kinds if isinstance(kinds, dict) else {kinds: True})
+    if not line or tell is None or tmux_name is None:
         return {"ok": True, "sent": False}
     session = tmux_name("claude-" + project)
     if session not in set(sessions):
         return {"ok": True, "sent": False}
-    return tell(session, CHANGED if what == "todo" else MEM_CHANGED, sessions)
+    return tell(session, line, sessions)
 
 
 def prompt(project):
