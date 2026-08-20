@@ -34,7 +34,12 @@ import sys
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CATALOG = os.path.join(HERE, "..", "..", "config", "packages.json")
+# BB_PACKAGES_JSON points this at another catalog. It exists so the install
+# machinery can be exercised against a fake one — five recipes fetched from
+# file:// URLs prove the fetching, unpacking, environment and verify steps
+# without spending gigabytes or touching the real SDK root.
+CATALOG = os.environ.get("BB_PACKAGES_JSON") or os.path.join(
+    HERE, "..", "..", "config", "packages.json")
 TIMEOUT = 30
 # Some of these hosts hand a bare urllib a different answer, or none: go.dev
 # serves the plain version file happily, github's release redirect does not
@@ -63,11 +68,22 @@ def package(name):
 
 
 def dig(obj, path):
-    """A dotted path into nested dicts, or None."""
+    """A dotted path into nested dicts and lists, or None.
+
+    A number walks into a list — source.then.0.run is the first follow-up step
+    — which is not decoration: without it the .NET recipe's workload step
+    resolved to nothing and quietly did not run, leaving a plain SDK behind
+    where a MAUI one was asked for.
+    """
     for part in path.split("."):
-        if not isinstance(obj, dict) or part not in obj:
+        if isinstance(obj, list):
+            if not part.isdigit() or int(part) >= len(obj):
+                return None
+            obj = obj[int(part)]
+        elif isinstance(obj, dict) and part in obj:
+            obj = obj[part]
+        else:
             return None
-        obj = obj[part]
     return obj
 
 
@@ -172,6 +188,8 @@ def download_urls(pkg):
         return [url] if url and src.get("kind") == "tarball" else []
     if spec.get("resolver") != "command-urls":
         die(f"{pkg['name']}: unknown download resolver {spec.get('resolver')!r}")
+    if not spec.get("run") or not spec.get("match"):
+        die(f"{pkg['name']}: a command-urls download needs both run and match")
     env = dict(os.environ, **{k: str(v) for k, v in (spec.get("env") or {}).items()})
     try:
         out = subprocess.run(spec["run"], capture_output=True, text=True,
@@ -187,8 +205,9 @@ def size_of(pkg):
     for url in download_urls(pkg):
         try:
             total += content_length(url)
-        except Exception:                 # noqa: BLE001 - one unreachable
-            return ""                     # mirror, and the total is a lie
+        except Exception:  # noqa: BLE001
+            # One unreachable mirror and the total is a lie, so say nothing.
+            return ""
     return str(total) if total else ""
 
 

@@ -1411,7 +1411,7 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
             ;;
         android:*)
             local pkg="${what#android:}"
-            local kind; kind="$(sdk_android_kind "$pkg" || true)"
+            local kind; kind="$(sdk_meta field "$what" source.image)"
             if [ -n "$kind" ]; then
                 # An image flavour: what is installed is an API level, and
                 # sdkmanager's update table is what says whether that image
@@ -1576,24 +1576,6 @@ If you ARE the operator at this keyboard: env -u CLAUDECODE bb sdk $*"
 # image update would throw it away and re-download it. Nothing warns about
 # this; the directory simply stops being a link. Checked after every install,
 # which is the only moment it can happen.
-# The sdkmanager "kind" behind a device-flavour name, or nothing.
-#
-# tv/wear/playstore/atd are shapes of system image, not packages: the real
-# name carries an API level, so every path that touches one has to resolve it.
-# Install did, and check and remove did not — which made `bb sdk check
-# android:tv` answer "absent" for an image that was sitting right there, and
-# would have handed `sdkmanager --uninstall tv` to a tool that has no such
-# package.
-sdk_android_kind() {
-    case "$1" in
-        tv)        printf 'android-tv' ;;
-        wear)      printf 'android-wear' ;;
-        playstore) printf 'google_apis_playstore' ;;
-        atd)       printf 'google_atd' ;;
-        *)         return 1 ;;
-    esac
-}
-
 # sdk_android_image_dir KIND — the installed system image of that kind, if any.
 sdk_android_image_dir() {
     # -L, because every package directory under ANDROID_HOME is a symlink onto
@@ -1795,7 +1777,7 @@ sdk_install_tarball() {
     version="${rest%%	*}"; url="${rest#*	}"
     [ -n "$url" ] || die "could not resolve a download URL for ${what}"
     strip="$(sdk_meta field "$what" source.strip)"; strip="${strip:-0}"
-    log "installing ${what} ${version} into ${d}"
+    log "installing ${what}${version:+ }${version} into ${d}"
     mkdir -p "$d"
     tmp="$(mktemp "${TMPDIR:-/tmp}/bb-${what}.XXXXXX")"
     sdk_fetch "$url" "$tmp" || { rm -f "$tmp"; die "could not download ${url}"; }
@@ -1913,7 +1895,14 @@ sdk_install_verify() {
     sdk_meta_into cmd argv "$what" source.verify "dir=$d" "version=$version"
     [ "${#cmd[@]}" != 0 ] || return 0
     sdk_meta_into env env "$what" source.env "dir=$d"
-    env "${env[@]}" "${cmd[@]}" | head -1 || die "${what} installed but ${cmd[0]} does not run"
+    # Captured rather than piped into head: a pipeline reports head's exit
+    # status, so a verify that failed would have read as passing, and closing
+    # the pipe early can kill the producer with SIGPIPE, which pipefail then
+    # reports as a failure that never happened.
+    local out
+    out="$(env "${env[@]}" "${cmd[@]}" 2>&1)" \
+        || die "${what} installed but ${cmd[0]} does not run: ${out}"
+    printf '%s\n' "${out%%$'\n'*}"
 }
 
 sdk_install() {
@@ -1982,24 +1971,37 @@ sdk_remove() {
         marker="$(sdk_removed_marker "$what")"
         mkdir -p "$(dirname "$marker")" 2>/dev/null && : > "$marker" || true
     fi
-    case "$what" in
-        flutter|dotnet|swift|tizen|playwright|go|rust|zig) d="$(sdk_find "$what")" \
-            || die "${what} is not installed" ;;
-        android:*)
+    # What the catalog says it is, so that adding a package really is one edit:
+    # a list of names repeated here is a package that installs and will not
+    # come off again.
+    local kind; kind="$(sdk_meta field "$what" source.kind 2>/dev/null)" || kind=""
+    if [ -z "$kind" ]; then
+        # tizen is not in the catalog — nothing there can install it — but it
+        # is a directory on the share like any other, so it comes off like one.
+        [ "$what" = tizen ] || die "unknown package: ${what} (bb sdk list names them)"
+    fi
+    if [ "$kind" != sdkmanager ]; then
+        d="$(sdk_find "$what")" || die "${what} is not installed"
+        log "removing ${d}"
+        rm -rf "$d"
+        return 0
+    fi
+    case "$kind" in
+        sdkmanager)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
-            local pkg="${what#android:}" v
-            local kind; kind="$(sdk_android_kind "$pkg" || true)"
+            local pkg="${what#android:}" v image
+            image="$(sdk_meta field "$what" source.image)"
             sdk_android_list_forget
-            if [ -n "$kind" ]; then
+            if [ -n "$image" ]; then
                 local dir api abi
-                for dir in "${ANDROID_HOME:-/opt/android-sdk}/system-images"/*/"$kind"; do
+                for dir in "${ANDROID_HOME:-/opt/android-sdk}/system-images"/*/"$image"; do
                     [ -d "$dir" ] || continue
                     api="$(basename "$(dirname "$dir")")"
                     for abi in "$dir"/*/; do
                         [ -d "$abi" ] || continue
-                        log "removing system-images;${api};${kind};$(basename "$abi")"
-                        sdk_android_clear_stale_installer "system-images;${api};${kind};$(basename "$abi")"
-                        sdkmanager --uninstall "system-images;${api};${kind};$(basename "$abi")"
+                        log "removing system-images;${api};${image};$(basename "$abi")"
+                        sdk_android_clear_stale_installer "system-images;${api};${image};$(basename "$abi")"
+                        sdkmanager --uninstall "system-images;${api};${image};$(basename "$abi")"
                     done
                     # The flavour directory is left behind by the uninstall,
                     # empty, and an empty directory with the right name is what
@@ -2009,8 +2011,7 @@ sdk_remove() {
                 sdk_relink_android
                 return 0
             fi
-            case "$pkg" in
-                ndk|cmake)
+            if [ -n "$(sdk_meta field "$what" source.versioned)" ]; then
                     # Versioned the same way going out: uninstall every version
                     # that is actually present, from the directory rather than
                     # from a guess about which one was installed.
@@ -2021,8 +2022,8 @@ sdk_remove() {
                         sdkmanager --uninstall "${pkg};$(basename "$v")"
                     done
                     sdk_relink_android
-                    return 0 ;;
-            esac
+                    return 0
+            fi
             # A top-level package whose directory under ANDROID_HOME is one of
             # our symlinks — the emulator is the only one in the catalog — is
             # deleted by sdkmanager as *the link*, leaving the payload sitting
@@ -2042,10 +2043,7 @@ sdk_remove() {
             fi
             sdk_relink_android
             return 0 ;;
-        *) die "usage: bb sdk remove playwright|flutter|dotnet|swift|tizen|android:<package>" ;;
     esac
-    log "removing ${d}"
-    rm -rf "$d"
 }
 
 cmd_sdk() {
