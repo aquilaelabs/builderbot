@@ -489,15 +489,19 @@ installed — measured, and remembered after it is removed — and before that
 what an install would *download*, which is a different number and is labelled
 as one: Swift arrives as a gigabyte and unpacks to three.
 
-Upstream is asked for that download figure rather than guessed at. Where the
-catalog's URL is the payload, its `Content-Length` is the answer; where it is
-not, a `download` block names a dry run to execute and a pattern to match the
-URLs out of, which is how Playwright's five bundles and the .NET archive get
-counted. Both are catalog entries, so a package that can be asked the same way
-needs no code. Some cannot be asked — a git clone has no content length,
-rustup picks its components as it goes, `sdkmanager` keeps sizes in an index
-this does not read — and those rows show no size until the box has installed
-them once.
+Upstream is asked for that download figure rather than guessed at, three ways,
+all of them catalog entries. Where the catalog's URL is the payload, its
+`Content-Length` is the answer. Where it is not, a `download` block names a
+dry run to execute and a pattern to match URLs out of — that is how
+Playwright's five bundles and the .NET archive get counted. And the Android
+packages come from `sdkmanager`'s own repository index, looked up by the exact
+package id an install would resolve to: the index's newest Play Store image is
+an `android-CANARY` build nobody installs, and the emulator appears twice,
+once stable and once on the dev channel.
+
+Two cannot be asked at all. A git clone has no content length, and `rustup`
+picks its components as it goes, so Flutter and Rust show no size until this
+box has installed them once — after which they show what they actually took.
 
 **Nothing installs, updates or removes itself, and no session can do it for
 you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in

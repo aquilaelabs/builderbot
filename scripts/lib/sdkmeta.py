@@ -32,6 +32,7 @@ import re
 import subprocess
 import sys
 import urllib.request
+import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # BB_PACKAGES_JSON points this at another catalog. It exists so the install
@@ -186,6 +187,8 @@ def download_urls(pkg):
     if spec is None:
         _, url = resolve(pkg)
         return [url] if url and src.get("kind") == "tarball" else []
+    if spec.get("resolver") == "android-repo":
+        return []                     # handled by size_of, which needs the id
     if spec.get("resolver") != "command-urls":
         die(f"{pkg['name']}: unknown download resolver {spec.get('resolver')!r}")
     if not spec.get("run") or not spec.get("match"):
@@ -199,8 +202,56 @@ def download_urls(pkg):
     return re.findall(spec["match"], out)
 
 
-def size_of(pkg):
+def _revision(pkg_el):
+    rev = pkg_el.find("revision")
+    if rev is None:
+        return ()
+    return tuple(int(x.text) if (x.text or "").isdigit() else 0 for x in rev)
+
+
+def android_size(spec, pkg_id):
+    """The size sdkmanager's own repository index gives for exactly this id.
+
+    sdkmanager will not say what a package weighs, but the index it reads does
+    — and that index is the only place an android download size exists before
+    the download. Looked up by the id bb resolved rather than by picking the
+    newest entry: the index's newest playstore image is an android-CANARY
+    build nobody is installing, and the emulator appears twice, once stable
+    and once on the dev channel, sixteen megabytes apart.
+    """
+    best = None
+    for url in spec.get("xml") or []:
+        try:
+            root = ET.fromstring(get(url, decode=False))
+        except Exception:  # noqa: BLE001 - one index missing is not fatal
+            continue
+        channels = {c.get("id"): (c.text or "") for c in root if c.tag.endswith("channel")}
+        for el in root:
+            if not el.tag.endswith("remotePackage") or el.get("path") != pkg_id:
+                continue
+            ref = el.find("channelRef")
+            channel = channels.get(ref.get("ref"), "") if ref is not None else "stable"
+            if channel and channel != "stable":
+                continue
+            for a in el.iter():
+                if not a.tag.endswith("archive"):
+                    continue
+                host, arch = a.findtext("host-os"), a.findtext("host-arch")
+                if host not in (None, "linux") or arch not in (None, "x64", "x86_64"):
+                    continue
+                size = a.findtext("complete/size") or ""
+                if size.isdigit():
+                    here = (_revision(el), int(size))
+                    if best is None or here[0] > best[0]:
+                        best = here
+    return best[1] if best else 0
+
+
+def size_of(pkg, pkg_id=""):
     """What an install would download, in bytes, or empty when unknowable."""
+    spec = (pkg.get("source") or {}).get("download") or {}
+    if spec.get("resolver") == "android-repo":
+        return str(android_size(spec, pkg_id)) if pkg_id else ""
     total = 0
     for url in download_urls(pkg):
         try:
@@ -250,7 +301,10 @@ def main(argv):
         print(f"{version}\t{url}")
 
     elif op == "size":
-        print(size_of(pkg))
+        # An optional package id, for the recipes whose size lives in an index
+        # keyed by one — bb resolves it, so that the id asked about here is
+        # exactly the id that would be installed.
+        print(size_of(pkg, argv[2] if len(argv) > 2 else ""))
 
     else:
         die(f"unknown operation {op!r}")
