@@ -382,14 +382,53 @@ await page.waitForFunction(o => JSON.stringify([...document.querySelectorAll(
 const now = await order();
 ok(now.indexOf(was[0]) === 1 && now.indexOf(was[1]) === 0,
    'an item moves down past the one below it');
-ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.stringify(now),
-   '...and the file is the order on screen — nothing is sorted on the way out');
+// Reordering is the one edit held back: everything else here is a decision
+// and is written as it is made, but arranging is a draft you are in the
+// middle of, and closing on a half-done shuffle must leave the order alone.
+ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.stringify(was),
+   '...on screen only — the file still has the order it started with');
+ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+   '...and both Saves are armed, because there is something to commit');
+
+// Cancelling the mode puts it back, and never touched the file.
+page.dialogs = [];
+await page.click('#todoOrder');
+await page.waitForFunction(o => JSON.stringify([...document.querySelectorAll(
+  '#todoList .grp .todo[data-step="-1"] .txt')].map(t => t.textContent.slice(0, 14)))
+  === JSON.stringify(o), was, { timeout: 10000 });
+ok(page.dialogs.some(d => /Discard the reordering/.test(d)),
+   'leaving the mode with a shuffle in hand asks before dropping it');
+ok(JSON.stringify(await order()) === JSON.stringify(was),
+   '...and puts the order back');
+
+// Do it again and keep it this time.
+await page.click('#todoOrder');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo .mv').length > 0);
+await page.click(`#todoList .todo[data-id="${firstId}"][data-step="-1"] .mv[data-dir="1"]`);
+await page.waitForFunction(o => JSON.stringify([...document.querySelectorAll(
+  '#todoList .grp .todo[data-step="-1"] .txt')].map(t => t.textContent.slice(0, 14)))
+  !== JSON.stringify(o), was, { timeout: 10000 });
+await page.click('#todoSaveQuiet');
+await page.waitForFunction(() => {
+  const b = document.getElementById('todoSaveQuiet');
+  return b.textContent !== 'Saving…' && b.disabled; }, { timeout: 15000 });
+const kept = await order();
+ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.stringify(kept)
+   && JSON.stringify(kept) !== JSON.stringify(was),
+   'Save is what writes it — and the file is then the order on screen');
+page.dialogs = [];
+await page.click('#todoOrder');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo .mv').length === 0);
+ok(page.dialogs.length === 0,
+   '...and leaving the mode with nothing pending asks nothing');
 
 // A step that has gone does not move, and nothing moves above it.
 await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: true });
 await page.evaluate(() => loadTodo(memGen));
 await page.waitForFunction(() => document.querySelector(
   '#todoList .todo.step')?.classList.contains('sent'), { timeout: 10000 });
+await page.click('#todoOrder');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo .mv').length > 0);
 ok(await page.$eval(`#todoList .todo[data-id="${plainId}"][data-step="0"] .mv`,
      b => b.disabled),
    'a crossed step is pinned: the past of a plan does not shuffle');
@@ -427,6 +466,32 @@ await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on
 await page.click('#todoOrder');
 await page.waitForFunction(() => document.getElementById('todoAsk').checkVisibility());
 ok(true, 'and the send controls come back');
+await page.evaluate(() => loadTodo(memGen));
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0);
+
+// ---- the number on the row ----------------------------------------------
+// It counts what the panel counts: things still to hand over. It used to
+// count "not done", and nothing in the panel sets done — so crossing a whole
+// list off left the badge exactly where it was.
+const badge = () => page.$eval(`${row('alpha')} [data-m]`,
+  b => b.querySelector('i')?.textContent || '0');
+// A plain one of its own, because everything left on this list by now is a
+// group or already crossed — and crossing a group's title is not something
+// the panel offers, nor would it settle one: its steps carry that.
+const counted = await post({ action: 'add', project: 'alpha', text: 'one to count' });
+const anyId = String(counted.body.item.id);
+await page.evaluate(() => refresh());
+const before = Number(await badge());
+ok(before > 0, `the row carries a count (${before})`);
+await post({ action: 'cross', project: 'alpha', id: Number(anyId), on: true });
+await page.evaluate(() => refresh());
+await page.waitForFunction(n => Number(document.querySelector(
+  '#projects .row:has(.name) [data-m] i')?.textContent || 0) !== n, before,
+  { timeout: 15000 });
+ok(Number(await badge()) === before - 1,
+   '...and crossing one off takes it down, which is the whole point of a badge');
+await post({ action: 'remove', project: 'alpha', id: Number(anyId) });
+await page.evaluate(() => refresh());
 
 // ---- two Saves, and what the line says ----------------------------------
 // The difference between them is whether a line of anybody's conversation is

@@ -141,7 +141,15 @@ cmd_update() {
 }
 
 cmd_login() {
-    claude /login || claude
+    # `claude auth login` is the flow built for this and does not leave a
+    # session behind afterwards. The older path — start a session and use its
+    # slash command — is the fallback for an image whose claude predates the
+    # subcommand, which is exactly the case a first-time setup can be in.
+    if claude auth --help >/dev/null 2>&1; then
+        claude auth login
+    else
+        claude /login || claude
+    fi
 }
 
 RUNNER_PIDFILE="${RUNNER_DIR}/.runner.pid"

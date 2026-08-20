@@ -829,6 +829,20 @@ on a header is never a misfire. The
 headers hold nothing but the title and a chevron — every control a card has
 lives in its body. The cards:
 
+- **who this container is signed in to Claude as**, under the doctor verdict,
+  with the action attached: **Sign out** when it is signed in, **Sign in** when
+  it is not. Signing in opens a *terminal* rather than pretending to be one
+  click — the flow is a URL to open in a browser and a code pasted back, so it
+  needs somewhere to type. Signing out is one command with no conversation in
+  it, so it is a button, and it asks first because every session here stops
+  working. **It is dead while any Claude session is running** and names the
+  ones in the way; the server refuses it too, since a page can be fifteen
+  seconds behind the answer. And with the container signed out, **every
+  project's Claude button goes dead with it** — as does the terminal URL
+  behind them, which refuses with the way in rather than letting a session
+  start and die on Claude's own error. On a claude too old to have `auth status` the row simply is not
+  there: not knowing is not the same as being signed out, and offering to sign
+  somebody out of nothing is worse than offering nothing
 - container uptime, and runner state — registered, listening, **running a job**
   (with the job's name and how long it has been going), or **failing to
   connect**. That last one matters: a runner retries a rejected connection
@@ -910,7 +924,9 @@ lives in its body. The cards:
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
   is a bin on the row
-- a **checklist** per project, carrying how much is still to do here. It opens
+- a **checklist** per project, carrying how much is still to hand over here —
+  the same number the panel shows, refreshed with every poll and again the
+  moment you open it. It opens
   the [shared to-do list](#the-shared-to-do-list) — the one surface here that
   both you and a session write — with what Claude remembers folded away
   beneath it.
@@ -1100,6 +1116,14 @@ crossed ones stay the block every other rule reads them as. The order on
 screen is the order in the file — nothing is sorted on the way out, so a list
 you arranged stays arranged and a ticked item fades where it is rather than
 jumping to the bottom.
+
+**Reordering is the one edit held back until Save.** Everything else here is a
+decision — ticked, crossed, dropped — and is written the moment it is made, so
+that a phone dying half way through tidying a list loses nothing. Arranging is
+not a decision; it is something you are in the middle of. So the moves live in
+the page until you save them, leaving the mode puts the order back, and closing
+the panel on a half-done shuffle leaves the list alone. Both are asked about
+first, since an arrangement is work.
 
 **Editing the list or the memories tells the running session**, in one line, to
 go and read them and carry on — not to drop what it is doing. A list edited

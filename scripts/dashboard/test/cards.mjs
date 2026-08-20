@@ -1,7 +1,8 @@
 // Sidebar cards: universal collapse with a height tween, header-only
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
-import { launch, newPage, ok, done, ready, doctorFixture, URL } from './lib.mjs';
+import { launch, newPage, ok, done, ready, doctorFixture, tmuxKill, URL, DIR } from './lib.mjs';
+import { writeFileSync, readFileSync } from 'node:fs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -101,6 +102,71 @@ ok(fav.svg[0] === 200 && fav.svg[1] === 'image/svg+xml', 'favicon.svg is served'
 ok(fav.touch[0] === 200 && fav.touch[1] === 'image/png', 'apple-touch-icon is served');
 ok(fav.links.includes('/favicon.svg') && fav.links.includes('/favicon.ico')
    && fav.links.includes('/apple-touch-icon.png'), 'the head links all three');
+
+// ---- signing in and out ------------------------------------------------
+// The first thing to get right on a new box, and the last place anybody would
+// think to look for it on a command line. Driven against a stub claude: the
+// real one would sign this container out for good.
+await page.waitForSelector('#docAuth:not([hidden])', { timeout: 25000 });
+ok((await page.$eval('#docAuth', e => e.textContent)).includes('tester@example.com'),
+   'the doctor card says who this container is signed in as');
+ok(await page.$('#bSignOut') !== null && await page.$('#bSignIn') === null,
+   '...and offers the way out, not the way in');
+
+// Not while a conversation is running: signing out pulls the ground from
+// under every session on the box. The fixture has one.
+ok(await page.$eval('#bSignOut', b => b.disabled)
+   && (await page.$eval('#bSignOut', b => b.title)).includes('claude-alpha'),
+   'signing out is dead while a Claude session is running, and says which');
+const blocked = await page.evaluate(async () => {
+  const r = await fetch('/api/signout', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  return r.status;
+});
+ok(blocked === 409,
+   '...and the server refuses it too, because a page can be fifteen seconds stale');
+page.errors = [];
+
+tmuxKill('claude-alpha');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => !document.getElementById('bSignOut')?.disabled,
+                           { timeout: 25000 });
+ok(true, 'with the last one ended, it comes alive');
+
+// Signed out: the offer flips, and signing in opens a terminal, because the
+// flow is a URL to open and a code to paste back.
+writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-out.json`));
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
+                           { timeout: 25000 });
+ok(await page.$('#bSignOut') === null
+   && (await page.$eval('#docAuth', e => e.textContent)).includes('not signed in'),
+   'signed out, it says so where the verdict is and offers the way in');
+// ...and nothing offers to start a conversation that cannot start.
+ok(await page.$$eval('#projects [data-c]', bs => bs.length > 0 && bs.every(b => b.disabled)),
+   '...and every project\'s Claude button goes with it');
+const tabsBefore = await page.$$eval('.tab[data-id]', t => t.length);
+await page.click('#bSignIn');
+await page.waitForFunction(n => document.querySelectorAll('.tab[data-id]').length > n,
+                           tabsBefore, { timeout: 15000 });
+ok(await page.evaluate(() => tabs.some(t => t.arg === 'login')),
+   '...which opens a terminal for it rather than pretending it is one click');
+
+// And back: the stub's logout rewrites its own fixture, so this proves the
+// button reaches the command without going near anybody's credentials.
+writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => document.getElementById('bSignOut') !== null,
+                           { timeout: 25000 });
+page.dialogs = [];
+await page.click('#bSignOut');
+await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
+                           { timeout: 25000 });
+ok(page.dialogs.some(d => /Sign this container out/.test(d)),
+   'signing out asks first — every session here stops working');
+ok(JSON.parse(readFileSync(`${DIR}/auth.json`, 'utf8')).loggedIn === false,
+   '...and really runs it');
+writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

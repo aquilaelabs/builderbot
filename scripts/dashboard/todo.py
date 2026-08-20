@@ -145,10 +145,18 @@ def items(project):
 
 
 def counts():
-    """{project: open count} for the project rows."""
+    """{project: how much is still to do} for the project rows.
+
+    The same number the panel shows, which is what makes the badge worth
+    glancing at: an item with nothing left to hand over does not count, and
+    neither does one a session marked finished. Counting "not done" instead
+    meant crossing a whole list off changed nothing on the row — because
+    nothing in the panel sets done; it sets sent.
+    """
     with _lock:
         d = load()
-    return {p: sum(1 for r in _prune(rows) if not r.get("done"))
+    return {p: sum(1 for r in _prune(rows)
+                   if not r.get("done") and next_step(r) is not None)
             for p, rows in d["projects"].items()}
 
 
