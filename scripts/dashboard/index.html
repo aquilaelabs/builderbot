@@ -517,11 +517,12 @@ body.dragging .tab .lbl{cursor:grabbing}
 /* An opaque cover over the frame until the terminal is really there.
    The frame's own background (below) is enough in Chromium, and is not in
    Firefox on Android, which paints its white document canvas over it anyway —
-   so the only thing that holds in every engine is something on top. It stays
-   a beat past the load event, because the white arrives *after* load: that is
-   when the document exists and is still transparent, waiting for xterm. */
+   so the only thing that holds in every engine is something on top. It covers
+   the window before the frame has a document to dress, and comes off a frame
+   after it has one — see unveil(), which closes the gap rather than waiting
+   it out. */
 .slot .veil{position:absolute;inset:0;background:#2b2b2b;pointer-events:none;
-  transition:opacity .15s linear}
+  transition:opacity .12s linear}
 .slot .veil.gone{opacity:0}
 .pane .empty-pane{margin:auto;color:var(--dim);font-style:italic}
 
@@ -1558,23 +1559,54 @@ function paintBar(pane, t, i){
       if (b.dataset.reload === "packages") loadPackages(); else loadFindings(true); });
 }
 
-// Uncover a terminal once it has had time to paint itself.
+// Uncover a terminal the moment there is nothing white left to see.
 //
-// The delay is the whole point: the frame's load event fires when its document
-// is there, which is before xterm has drawn anything into it, and that gap is
-// what the browser fills with white. Measured against a throttled connection,
-// the terminal lands within a few hundred milliseconds of load — so the cover
-// lifts after that, and what the eye sees is the pane's own colour turning
-// into a terminal.
-const VEIL_HOLD = 350;
+// The flash was never the terminal being slow. The frame's load event fires
+// when its document exists, and ttyd's stylesheet dresses `.xterm-viewport`
+// and nothing above it — `body,html{height:100%;margin:0}` and no colour at
+// all. A document with no background of its own is a transparent canvas, and
+// a transparent canvas is what a browser paints white; Firefox on Android
+// does it over whatever the iframe element underneath is set to.
+//
+// So rather than cover that window for a guessed number of milliseconds, this
+// closes it: /term is proxied through this server, the frame is same-origin,
+// and one inline style on its <html> gives it the pane's own colour. There is
+// then no white to hide, and the cover comes off on the next frame.
+//
+// The cover stays, for the two moments this cannot reach: before load, when
+// there is no document to dress, and the case where the frame will not answer
+// at all — a proxy error page on an opaque origin, or an engine that decides
+// the origins differ. That is what the clock below is for. It is the
+// backstop, not the mechanism.
+const VEIL_MAX  = 400;                 // longest it will ever stay
+const VEIL_FADE = 120;                 // matches the CSS transition
+const PANE_BG   = "#2b2b2b";           // the same colour as .pane iframe
+
+// Give a terminal frame's document a background of its own. True if it took,
+// null if the frame cannot be reached — which is the only case the clock is
+// still needed for.
+function dressFrame(frame){
+  try {
+    const d = frame.contentDocument;
+    if (!d || !d.documentElement) return null;
+    d.documentElement.style.background = PANE_BG;
+    return true;
+  } catch { return null; }
+}
+
 function unveil(frame){
   refreshSoon();                       // a new terminal appears under Sessions
   const veil = frame.parentElement?.querySelector(".veil");
   if (!veil) return;
-  setTimeout(() => {
+  const lift = () => {
+    if (!veil.isConnected) return;     // the pane was replaced under us
     veil.classList.add("gone");
-    setTimeout(() => veil.remove(), 400);
-  }, VEIL_HOLD);
+    setTimeout(() => veil.remove(), VEIL_FADE + 60);
+  };
+  // One frame's grace either way: after dressing it, so the colour is on the
+  // screen before the cover over it goes.
+  if (dressFrame(frame) === null) setTimeout(lift, VEIL_MAX);
+  else requestAnimationFrame(lift);
 }
 
 function drawPanes(){
