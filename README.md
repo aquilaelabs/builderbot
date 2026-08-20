@@ -1045,11 +1045,28 @@ to its next step either way; without it, a step you handled yourself would
 block every step behind it. A session is told which of the two happened, since
 "already sent to a session" would be a lie about a line nobody sent.
 
-Steps carry both controls too, so a plan can be corrected mid-flight: cross one
-off or drop it, and the one behind it becomes the step that can go. Dropping a
-whole item asks first, because its steps go with it; dropping a single step
-does not, because the strike beside it is the reversible answer and a
-confirmation on every tap of a list being tidied is a tax.
+**A plan is edited at its edge.** Inside a group the strike is offered on
+exactly two rows — the last crossed step, to put it back, and the next one
+along, to cross it — so crossing step two moves the strike off step one and on
+to step three. The bin sits at the head of the queue: only the first step, and
+the item's own row. Both rules exist for the same reason as the send order —
+anything else leaves a plan in a state its order was supposed to prevent.
+**Deleting always asks; crossing out never does**, because one is recoverable
+by pressing the same button again and the other is not.
+
+**Edits are written immediately; telling the session is separate.** A phone
+that dies half way through tidying a list must not lose it, but every telling
+costs a line of somebody's conversation — so the two are apart. **Save & tell
+the session** appears once the list has moved, and spends that line. There is
+no way to make a session read something without sending it a message: no IPC
+into a running Claude, so the only door is its input box.
+
+Which is why **sending a step folds the two together**. The arrow asks first,
+offers to save your other changes in the same breath, and then does four
+things: the line goes, the step is crossed off, the panel closes and you land
+in that session's tab. The "I also changed the list" note rides on the *same
+message* as the step rather than chasing it — two lines into one input box is
+how the second ends up glued to the first.
 
 **An item can be an ordered group of steps** — `bb todo add "rework the picker"
 --step "widen the select" --step "then re-measure it"`. Only the next unsent

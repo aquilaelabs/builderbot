@@ -223,7 +223,15 @@ rather than assuming you were asked.
 
 If the list or these notes change while you are working, you will be told in
 one line. Read them when it is relevant and carry on — a change to the list is
-not a request to drop what you are doing.
+not a request to drop what you are doing. That line costs the operator a
+message, so it is sent when they press Save rather than on every edit; do not
+expect to hear about every change, and re-read with `bb todo` if what you are
+about to do depends on it.
+
+A step arriving as a message *is* a request: the operator sent it deliberately,
+and the panel closed and put them in this tab to read the answer. Sometimes it
+carries a note that the list changed as well — that half is context, the step
+is the ask.
 
 Keep it short and keep it real. Thirty open items is the hard ceiling, and it
 is a working list rather than an issue tracker: one line, plainly worded, no

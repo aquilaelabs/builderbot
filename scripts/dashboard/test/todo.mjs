@@ -82,14 +82,41 @@ ok(items.filter(i => i.claude).length === 1,
 // testable: a shell echoes what is typed into it, which is the exact property
 // notify.py uses to decide that Enter is safe.
 ok(items.every(i => i.can), 'with a session running, the arrows are live');
+// Sending asks first, because it does four things at once and they are all
+// what you wanted or none of them were.
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
-await page.waitForFunction(id => document.querySelector(`#todoList .todo[data-id="${id}"]`)
-  ?.classList.contains('sent'), mine.id, { timeout: 15000 });
+await page.waitForFunction(() => !document.getElementById('todoAsk').hidden);
+ok((await page.$eval('#todoAskWhat', e => e.textContent)).includes('delete a project'),
+   'the arrow asks first, naming the line it would send');
+ok(!await page.$eval('#todoAlsoWrap', e => e.hidden),
+   '...and offers to save the rest, because the list has changes nobody was told about');
+await page.click('#todoNo');
+ok(await page.$eval('#todoAsk', e => e.hidden), 'Cancel backs out of it');
+ok(!read().projects.alpha.find(r => String(r.id) === mine.id).sent,
+   '...having sent nothing');
+
+await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
+await page.waitForFunction(() => !document.getElementById('todoAsk').hidden);
+await page.click('#todoGo');
+// Four things: the line goes, the step is crossed, the panel closes and the
+// session's tab opens. The panel closing is what this waits on.
+await page.waitForFunction(() => document.getElementById('memModal').hidden,
+                           { timeout: 20000 });
 ok(read().projects.alpha.find(r => String(r.id) === mine.id).sent > 0,
-   'sending one marks it sent — the record is what was handed over');
+   'sending crosses it off — the record is what was handed over');
 const pane = tmuxCapture('claude-alpha');
 ok(pane.includes('delete a project from the dashboard'),
    '...because it really went into the session');
+ok(pane.includes('I also changed the to-do list'),
+   '...with the note about the other changes on the same line, not racing it');
+ok(read().unsaved?.alpha === false,
+   '...and the list counts as told, since it was told');
+ok(await page.$$eval('.tab', ts => ts.some(t => /Claude: alpha/.test(t.textContent))),
+   '...and it put the session\'s tab on the strip');
+
+// Back in, for the rest.
+await page.click(`${row('alpha')} [data-m]`);
+await page.waitForSelector('#todoList .todo', { timeout: 20000 });
 items = await open();
 const still = items.find(i => i.id === mine.id);
 ok(still.sent && still.can,
@@ -137,7 +164,8 @@ ok(!g.can, 'a group\'s own line sends nothing — its steps are the work');
 ok(s1.can && !s2.can,
    'only the next step in line can be sent; the one after it is dead');
 
-await page.click(`#todoList .todo[data-id="${s1.id}"][data-step="0"] .go`);
+await post({ action: 'send', project: 'alpha', id: Number(s1.id), step: 0 });
+await page.evaluate(() => loadTodo(memGen));
 await page.waitForFunction(id => document.querySelector(
   `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
   s1.id, { timeout: 15000 });
@@ -173,6 +201,14 @@ items = await open();
 ok(!items.find(i => i.text === 'then re-measure it').can,
    'with both steps back open, only the first can go again');
 
+// The strike is offered at the edge of the plan and nowhere else: the last
+// crossed step, to put it back, and the next one along, to cross it.
+const strikes = () => page.$$eval('#todoList .todo',
+  ts => ts.filter(t => t.querySelector('.x')).map(t => t.dataset.step));
+ok(JSON.stringify(await strikes()) === JSON.stringify(['0', '-1', '-1']),
+   `nothing crossed yet: only the first step offers a strike (${
+     JSON.stringify(await strikes())})`);
+
 await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .x`);
 await page.waitForFunction(id => document.querySelector(
   `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
@@ -182,6 +218,8 @@ ok(items.find(i => i.text === 'widen the select').sent,
    'the strike icon crosses a step off without sending it');
 ok(items.find(i => i.text === 'then re-measure it').can,
    '...and the next one in the group becomes the one that can go');
+ok(JSON.stringify(await strikes()) === JSON.stringify(['0', '1', '-1', '-1']),
+   '...and the strike moves with it: the one crossed, and the one after');
 const byHand = execFileSync(BB, ['todo', '--prompt'],
   { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
@@ -196,7 +234,16 @@ items = await open();
 ok(!items.find(i => i.text === 'then re-measure it').can,
    'the same icon puts it back, and the group closes up behind it');
 
+// The bin sits at the head of the queue: things come off a plan from the
+// front, and the item's own row always has one.
+const bins = () => page.$$eval('#todoList .todo',
+  ts => ts.filter(t => t.querySelector('.rm')).map(t => t.dataset.step));
+ok(JSON.stringify(await bins()) === JSON.stringify(['-1', '0', '-1', '-1']),
+   `only the first step and the items themselves can be dropped (${
+     JSON.stringify(await bins())})`);
+
 // ---- dropping one step out of a plan -----------------------------------
+page.dialogs = [];
 await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .rm`);
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo[data-step="0"]').length === 1
   && document.querySelectorAll('#todoList .todo[data-step="1"]').length === 0,
@@ -209,6 +256,8 @@ ok(items.find(i => i.text === 'then re-measure it').can,
    '...and what was behind it becomes the next in line');
 ok(read().projects.alpha.find(r => r.text === 'rework the picker').steps.length === 1,
    '...leaving the rest of the plan intact');
+ok(page.dialogs.some(d => /Drop/.test(d)),
+   '...and it asked first, the way every deletion here does');
 
 // ---- where the tags sit ------------------------------------------------
 ok(await page.$eval('#todoList .todo .body',

@@ -61,14 +61,32 @@ def load():
         with open(FILE) as f:
             d = json.load(f)
         if isinstance(d, dict) and isinstance(d.get("projects"), dict):
+            d.setdefault("unsaved", {})
             return d
     except (OSError, ValueError):
         pass
-    return {"projects": {}}
+    return {"projects": {}, "unsaved": {}}
 
 
 def save(d):
     write_json(FILE, d)
+
+
+def unsaved(project):
+    """Has this list moved since a session was last told about it?
+
+    Edits are written the moment they are made — a phone that dies half way
+    through tidying a list must not lose it — but telling the session is a
+    separate act, because every telling costs a line in a conversation. So the
+    two are tracked apart: the file is always current, and this says whether
+    anybody has been told.
+    """
+    with _lock:
+        return bool(load().get("unsaved", {}).get(project))
+
+
+def _touch(d, project, on=True):
+    d.setdefault("unsaved", {})[project] = bool(on)
 
 
 def _prune(rows):
@@ -134,6 +152,7 @@ def add(project, text, by="you", steps=()):
                "steps": [{"text": x, "sent": 0} for x in steps]}
         rows.append(row)
         d["projects"][project] = rows
+        _touch(d, project)
         save(d)
     return {"ok": True, "item": row}
 
@@ -155,6 +174,7 @@ def _edit(project, item_id, change):
             return {"error": "no such item"}
         out = change(row, rows)
         d["projects"][project] = rows
+        _touch(d, project)
         save(d)
     return out
 
@@ -236,6 +256,7 @@ def clear_done(project):
         d = load()
         rows = [r for r in (d["projects"].get(project) or []) if not r.get("done")]
         d["projects"][project] = rows
+        _touch(d, project)
         save(d)
     return {"ok": True}
 
@@ -256,7 +277,7 @@ def next_step(row):
     return None
 
 
-def send(project, item_id, step=None, sessions=()):
+def send(project, item_id, step=None, sessions=(), also_told=False):
     """Hand one step to the running Claude session and mark it sent.
 
     Marked only when it actually went: a line left sitting in the input box
@@ -302,7 +323,12 @@ def send(project, item_id, step=None, sessions=()):
         text = steps[step]["text"]
     else:
         text = row["text"]
-    r = tell(tmux_name("claude-" + project), text, sessions)
+    # One message, not two. Saving the list and sending a step both want to
+    # say something, and two lines racing into the same input box is how the
+    # second one ends up appended to the first. So the note rides along.
+    line = text + ("  (I also changed the to-do list — `bb todo` if you need it.)"
+                   if also_told else "")
+    r = tell(tmux_name("claude-" + project), line, sessions)
     if r.get("error") or not r.get("sent"):
         return r
     with _lock:
@@ -328,6 +354,14 @@ CHANGED = ("The shared to-do list for this project just changed — run `bb todo
 MEM_CHANGED = ("My notes about how you work here just changed — re-read them "
                "with `cat ~/.claude/projects/$(pwd | tr / -)/memory/*.md` and "
                "keep them in mind, but carry on with what you are doing.")
+
+
+def mark_told(project):
+    with _lock:
+        d = load()
+        _touch(d, project, False)
+        save(d)
+    return {"ok": True}
 
 
 def announce(project, what, sessions=()):
