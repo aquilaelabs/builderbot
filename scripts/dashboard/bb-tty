@@ -259,9 +259,23 @@ case "$target" in
     login)
         # Signing in is interactive — a URL to open in a browser and a code to
         # paste back — so it needs a terminal, not a button that posts
-        # something and reports a result. The session dies with the flow,
-        # which is how the page notices it is over.
-        start "login" "$WORKSPACE" bb login
+        # something and reports a result.
+        #
+        # Always a new flow: a finished one leaves a session that `-A` would
+        # attach to, so pressing Sign in again handed back the terminal the
+        # last attempt had already finished with — a dead rectangle that
+        # swallows whatever is typed into it.
+        tmux kill-session -t login 2>/dev/null || true
+        # And the pane holds afterwards. A flow that ends — signed in, refused,
+        # or exited straight away on an image whose claude cannot do it — used
+        # to take its terminal with it, leaving a blank tab and nothing to read
+        # about why. The line says which it was; the next Sign in clears it.
+        start "login" "$WORKSPACE" bash -c '
+            bb login; s=$?
+            [ "$s" = 0 ] && printf "\n[sign-in finished]\n" \
+                         || printf "\n[sign-in exited with status %s]\n" "$s"
+            printf "[press enter to close this terminal]\n"
+            read -r _'
         ;;
     *)
         # A named scratch session. Restricted to characters tmux is happy with

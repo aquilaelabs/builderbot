@@ -835,7 +835,10 @@ lives in its body. The cards:
   click — the flow is a URL to open in a browser and a code pasted back, so it
   needs somewhere to type. Signing out is one command with no conversation in
   it, so it is a button, and it asks first because every session here stops
-  working. **It is dead while any Claude session is running** and names the
+  working. **Sign in starts a new flow every time it is pressed**, and the
+  terminal it opens stays put when the flow ends, saying how it went: a code
+  expires, an attempt gets abandoned, and the button that starts one has to be
+  able to start another. **It is dead while any Claude session is running** and names the
   ones in the way; the server refuses it too, since a page can be fifteen
   seconds behind the answer. And with the container signed out, **every
   project's Claude button goes dead with it** — as does the terminal URL
@@ -1193,7 +1196,11 @@ Ticked items stay a week, then go.
   all working — as does each project's Claude button.
 
 Every terminal runs inside **tmux**, so a dropped connection, a closed laptop
-or a reloaded page detaches instead of killing the session. The **Sessions
+or a reloaded page detaches instead of killing the session. Coming back to a
+backgrounded page reconnects **the terminal you are looking at** — the three
+kept alive behind it reconnect when you switch to them, because reloading all
+of them at once is several hundred kilobytes of terminal emulator apiece and a
+phone spent its first seconds back doing exactly that. The **Sessions
 card** is the full list — every terminal and every Claude session, named the way
 the tabs are (`sh: <directory>`, `Claude: <project>`), including the ones you
 minimized; the tmux name and full path are on hover. Document tabs are not
