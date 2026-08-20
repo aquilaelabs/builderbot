@@ -1298,7 +1298,9 @@ function drawTabs(){
     `<button id="bNew" class="ic newtab" title="new terminal at /workspace">+</button>` +
     html +
     `<span class="sep"></span>` +
-    `<button id="bKeys" class="${showKeys?"on":""}" title="on-screen keys">⌨</button>` +
+    `<button id="bKeys" class="${showKeys?"on":""}"${
+        isShellTab(tabOf(panes[active])) ? "" : " disabled"
+      } title="on-screen keys — a shell tab only">⌨</button>` +
     (pinFor ? `<span class="pinmenu" id="pinmenu">
         <button data-l="${esc(pinFor)}">◧ Left</button>
         <button data-r="${esc(pinFor)}">◨ Right</button>
@@ -1669,11 +1671,17 @@ function slidePanel(el, show, swap){
   });
 }
 
+// A shell tab, and not a Claude one. Both are terminals, but the keys and the
+// macros are for driving a shell: over Claude they type into a conversation
+// that has its own idea of what a keystroke means, and over a document there
+// is nothing to type into at all.
+const isShellTab = t => t?.kind === "term" && !t.arg.startsWith("claude:");
+
 function drawKeys(){
   const el = $("keys");
   const t = tabOf(panes[active]);
-  const term = t?.kind === "term";
-  const on = showKeys && term;                   // pointless over a document
+  const term = isShellTab(t);
+  const on = showKeys && term;                   // pointless anywhere else
   // Content first, then the slide: the slide measures the panel, and the
   // first open used to measure it empty and land twelve pixels tall.
   if (on && paint(el, KEYS.map(r =>
@@ -1684,13 +1692,18 @@ function drawKeys(){
   // mid-slide would collapse an already-shrinking box to nothing.
   const mk = $("mKeys");
   mk.classList.toggle("on", on);
-  mk.disabled = !term;                           // a dead-looking toggle over a
-  mk.title = term ? "" : "keys go to a terminal — this tab is a document";   //   document said nothing
-  $("mMacros").classList.toggle("on", showMacros);
+  mk.disabled = !term;                           // a dead-looking toggle said
+  mk.title = term ? "" : "keys go to a shell — this tab is not one";  // nothing on its own
+  const mm = $("mMacros");
+  mm.classList.toggle("on", showMacros);
+  mm.disabled = !term;
+  mm.title = term ? "" : "commands run in a shell — this tab is not one";
   $("mSessions").classList.toggle("on", showSessions);
   // One panel at a time: whichever is opening slides, and any that is
   // closing in the same breath swaps out under it (see slidePanel).
-  const want = [[el, on], [$("macpanel"), showMacros], [$("sespanel"), showSessions]];
+  // Commands closes with the keys when the tab underneath is not a shell: a
+  // flyout of things to type, over something that cannot be typed into.
+  const want = [[el, on], [$("macpanel"), showMacros && term], [$("sespanel"), showSessions]];
   const opener = want.find(([p, s]) => s && p.dataset.shown !== "1");
   const landed = opener ? slidePanel(opener[0], true) : null;
   for (const [p, s] of want) if (p !== opener?.[0]) slidePanel(p, s, landed);
