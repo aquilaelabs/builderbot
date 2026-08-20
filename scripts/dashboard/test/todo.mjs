@@ -384,6 +384,8 @@ ok(now.indexOf(was[0]) === 1 && now.indexOf(was[1]) === 0,
    'an item moves down past the one below it');
 ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.stringify(now),
    '...and the file is the order on screen — nothing is sorted on the way out');
+ok((read().unsaved?.alpha || {}).todo === true,
+   '...and a move counts as a change, so the Saves have something to do');
 
 // A step that has gone does not move, and nothing moves above it.
 await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: true });
