@@ -26,11 +26,13 @@ Usage (all output is plain, and empty means "not set"):
     sdkmeta.py resolve NAME                 -> version <TAB> url
     sdkmeta.py size    NAME                 -> bytes of the download, if knowable
 """
+import hashlib
 import json
 import os
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -94,10 +96,52 @@ def fill(text, subs):
     return text
 
 
+# Documents fetched while resolving, kept briefly on disk.
+#
+# A check asks about thirteen packages in thirteen separate processes, and
+# several of them want the same file: sdkmanager's package index answers for
+# the emulator, the NDK and CMake alike, which is four hundred kilobytes
+# fetched three times over. Anything upstream publishes as a catalogue changes
+# on the order of days, so a few minutes of reuse costs nothing in accuracy
+# and takes a check from 2.7MB to about half that.
+#
+# It is a cache and not a store: /tmp is cleared on every container start, and
+# a missing or stale entry simply means fetching again.
+CACHE_DIR = os.path.join(os.environ.get("TMPDIR", "/tmp"), "bb-sdkmeta-cache")
+CACHE_TTL = int(os.environ.get("BB_SDK_CACHE_TTL", "900"))
+
+
+def _cached(key, produce):
+    """produce()'s bytes, remembered for CACHE_TTL by key."""
+    if CACHE_TTL <= 0:
+        return produce()
+    path = os.path.join(CACHE_DIR, hashlib.sha256(key.encode()).hexdigest()[:32])
+    try:
+        if time.time() - os.path.getmtime(path) < CACHE_TTL:
+            with open(path, "rb") as f:
+                return f.read()
+    except OSError:
+        pass
+    body = produce()
+    try:
+        os.makedirs(CACHE_DIR, exist_ok=True)
+        # Written aside and moved, so a reader never sees half a document.
+        tmp = f"{path}.{os.getpid()}"
+        with open(tmp, "wb") as f:
+            f.write(body)
+        os.replace(tmp, path)
+    except OSError:
+        pass
+    return body
+
+
 def get(url, decode=True):
-    req = urllib.request.Request(url, headers=UA)
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        body = r.read()
+    def fetch():
+        req = urllib.request.Request(url, headers=UA)
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            return r.read()
+
+    body = _cached("GET " + url, fetch)
     return body.decode("utf-8", "replace") if decode else body
 
 
@@ -206,11 +250,17 @@ def download_urls(pkg):
     if not spec.get("run") or not spec.get("match"):
         die(f"{pkg['name']}: a command-urls download needs both run and match")
     env = dict(os.environ, **{k: str(v) for k, v in (spec.get("env") or {}).items()})
-    try:
-        out = subprocess.run(spec["run"], capture_output=True, text=True,
-                             timeout=120, env=env).stdout
-    except (OSError, subprocess.SubprocessError):
-        return []
+    # Cached like a fetched document, and for the same reason: the .NET dry run
+    # downloads and executes a vendor script, and it was being run twice per
+    # check — once to learn the version, once to learn the size.
+    def dry_run():
+        try:
+            return subprocess.run(spec["run"], capture_output=True,
+                                  timeout=120, env=env).stdout
+        except (OSError, subprocess.SubprocessError):
+            return b""
+
+    out = _cached("RUN " + "\x00".join(spec["run"]), dry_run).decode("utf-8", "replace")
     return re.findall(spec["match"], out)
 
 

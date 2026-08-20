@@ -499,6 +499,17 @@ package id an install would resolve to: the index's newest Play Store image is
 an `android-CANARY` build nobody installs, and the emulator appears twice,
 once stable and once on the dev channel.
 
+None of this is a scrape. Every document these resolvers read is one the
+vendor's own installer reads — `sdkmanager`'s package index, `rustup`'s
+channel manifest, Zig's release index, Go's version file — and the two GitHub
+lookups deliberately use the `releases/latest` redirect rather than the API,
+which is what rate-limits anonymous callers by IP. Requests carry a
+`builderbot-sdk` User-Agent, there are no retries and no parallel fetching,
+and a check runs at most a few times a day. What it costs is about 1.8MB,
+cached for fifteen minutes in `/tmp` so that the thirteen separate processes
+of one check share the four hundred kilobytes of package index that three of
+them need.
+
 Rust answers a fourth way: its channel manifest names an archive per
 component, and the three a minimal profile installs add up to what `rustup` is
 about to fetch. Only Flutter cannot be asked at all — a git clone has no
