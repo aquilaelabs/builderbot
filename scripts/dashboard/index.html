@@ -313,6 +313,33 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
 
+/* ---- the shared to-do list -------------------------------------------- */
+.todoadd{display:flex;gap:8px}
+.todoadd input{flex:1 1 auto;min-width:0}
+.todoadd button{flex:0 0 auto;min-height:var(--tap)}
+.todo{display:flex;gap:9px;align-items:flex-start;padding:9px 0;
+  border-bottom:1px solid var(--line)}
+.todo:last-child{border-bottom:0}
+.todo input[type=checkbox]{margin:2px 0 0;width:18px;height:18px;flex:0 0 auto;
+  accent-color:#2ea043;cursor:pointer}
+.todo .txt{flex:1;min-width:0;font:13px/1.45 system-ui,sans-serif;
+  overflow-wrap:anywhere;cursor:text}
+.todo.done .txt{color:var(--dim);text-decoration:line-through}
+/* Items a session raised, marked so the operator can see what was flagged at
+   them rather than by them — the reason the list exists at all. */
+.todo .who{flex:0 0 auto;font:600 10px/1 system-ui,sans-serif;text-transform:uppercase;
+  letter-spacing:.4px;padding:3px 5px;border-radius:4px;border:1px solid #38294a;
+  color:#b79ae0;white-space:nowrap;margin-top:1px}
+.todo .rm{flex:0 0 auto;align-self:flex-start;color:var(--dim)}
+@media(hover:hover){ .todo .rm:hover{color:var(--bad);border-color:#4d2220} }
+#memFold>summary{cursor:pointer;color:var(--dim);
+  font:12px/1.5 system-ui,sans-serif;padding:11px 14px;list-style:none;
+  border-top:1px solid var(--line)}
+#memFold>summary::-webkit-details-marker{display:none}
+#memFold>summary::before{content:"▸ ";font-size:11px}
+#memFold[open]>summary::before{content:"▾ "}
+#memFold>.field{padding-top:0}
+
 /* ---- the memory book ------------------------------------------------- */
 /* One <details> per memory: collapsed it is the summary line Claude wrote for
    itself, opened it is the file. Native disclosure rather than a toggle of
@@ -660,10 +687,25 @@ body.dragging .tab .lbl{cursor:grabbing}
      asked after the tab has been closed. -->
 <div id="memModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="memTitle">
   <div class="box wide">
-    <h3 id="memTitle">Memory</h3>
+    <h3 id="memTitle">To do</h3>
+    <!-- The shared list. Both sides write it, which is what makes it worth a
+         panel: everything else here is one-way. Its open items are appended to
+         every Claude session the dashboard starts, so an item added on Tuesday
+         is read on Thursday without anybody remembering to mention it. -->
     <div class="field">
-      <div class="hint" id="memWhere"></div>
+      <div class="todoadd">
+        <input id="todoText" maxlength="500" autocomplete="off"
+               placeholder="something to do here">
+        <button id="todoAdd" class="primary" type="button">Add</button>
+      </div>
+      <div class="hint" id="todoHint"></div>
     </div>
+    <div class="field" id="todoField"><div id="todoList"></div></div>
+    <!-- What Claude remembers, folded away: it is a handful of files nobody
+         edits, and the reason it is on screen at all is that it is the one
+         input to a session nobody would otherwise ever see. -->
+    <details id="memFold" class="field">
+      <summary id="memWhere">what Claude remembers here</summary>
     <div class="mdrift" id="memDrift"></div>
     <div class="field">
       <label for="memIndex">Index — loaded into every session started here</label>
@@ -675,11 +717,12 @@ body.dragging .tab .lbl{cursor:grabbing}
       <label id="memCount">Memories</label>
       <div id="memList"></div>
     </div>
+    </details>
     <div class="foot">
-      <button id="memSave" class="primary" type="button">Save changes</button>
+      <button id="memSave" type="button">Save memory changes</button>
       <span class="sp"></span>
       <button id="memNote" type="button" hidden>Tell the session</button>
-      <button id="memClose" type="button">Close</button>
+      <button id="memClose" class="primary" type="button">Close</button>
     </div>
   </div>
 </div>
@@ -2530,12 +2573,12 @@ function drawProjects(ps){
         ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
              title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
         : ""}
-      ${isBroken(p) ? "" : `<button class="eye${p.memories ? "" : " none"}"
-         data-m="${esc(p.name)}" aria-label="memory"
-         title="${p.memories
-                  ? `${p.memories} ${p.memories === 1 ? "memory" : "memories"} — what Claude has written down about this project`
-                  : "no memories yet — what Claude writes down about this project appears here"}"
-         >${BOOK}${p.memories ? `<i>${p.memories}</i>` : ""}</button>`}
+      ${isBroken(p) ? "" : `<button class="eye${p.todo ? "" : " none"}"
+         data-m="${esc(p.name)}" aria-label="to do"
+         title="${p.todo
+                  ? `${p.todo} still to do here — and what Claude remembers, below it`
+                  : "nothing to do here yet — and what Claude remembers, below it"}"
+         >${BOOK}${p.todo ? `<i>${p.todo}</i>` : ""}</button>`}
       <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
         aria-label="${p.excluded ? "include" : "exclude"}"
         title="${p.excluded ? "include — allow Claude sessions here again"
@@ -3256,19 +3299,93 @@ function openLinkProject(name){ pLink = name; pOpen("link"); }
 // it was told about, which is what keeps the one free-text file write in the
 // dashboard from being a way to write anywhere.
 
-let memProj = null;      // which project's book is open
+let memHasSession = false;   // is there a live session to hand a note to?
+let memProj = null;      // which project's panel is open
 let memGen  = 0;         // bumped on close, so a slow load cannot repaint it
 
 async function openMemory(name){
   memProj = name;
   const gen = ++memGen;
-  $("memTitle").textContent = "Memory — " + name;
-  $("memWhere").textContent = "loading…";
+  $("memTitle").textContent = "To do — " + name;
+  $("memWhere").textContent = "what Claude remembers here";
   $("memDrift").innerHTML = $("memList").innerHTML = "";
   $("memIndex").value = "";
   $("memNote").hidden = true;
+  $("memFold").open = false;
+  $("memSave").hidden = $("memNote").hidden = true;
+  $("todoText").value = "";
+  $("todoList").innerHTML = `<div class="hint">loading…</div>`;
   $("memModal").hidden = false;
-  await loadMemory(gen);
+  $("todoText").focus();
+  await Promise.all([loadTodo(gen), loadMemory(gen)]);
+}
+
+// ---- the shared to-do list ---------------------------------------------
+// Both sides write it: the operator here, a session through `bb todo`. Its
+// open items are appended to every Claude session bb-tty starts, which is why
+// something noticed mid-task and left undone survives the conversation.
+
+async function loadTodo(gen){
+  let j;
+  try{
+    const r = await fetch("/api/todo?project=" + encodeURIComponent(memProj));
+    j = await r.json();
+  }catch(e){ j = {error: String(e)}; }
+  if (gen !== memGen) return;
+  drawTodo(j);
+}
+
+function drawTodo(j){
+  if (j.error){ $("todoList").innerHTML = `<div class="hint bad">${esc(j.error)}</div>`; return; }
+  const rows = j.items || [];
+  const open = rows.filter(r => !r.done).length;
+  $("todoHint").textContent = rows.length
+    ? `${open} open — the open ones are put in front of every Claude session started here`
+    : "Nothing yet. What goes here is read at the start of every Claude session in this project.";
+  $("todoField").hidden = !rows.length;
+  $("todoList").innerHTML = rows.map(r => `
+    <div class="todo${r.done ? " done" : ""}" data-id="${r.id}">
+      <input type="checkbox"${r.done ? " checked" : ""} aria-label="done">
+      <span class="txt" role="textbox" tabindex="0">${esc(r.text)}</span>
+      ${r.by === "claude" ? `<span class="who" title="Claude put this here">claude</span>` : ""}
+      <button class="eye rm" type="button" aria-label="drop it"
+        title="take it off the list">${BIN}</button>
+    </div>`).join("");
+  $("todoList").querySelectorAll(".todo").forEach(row => {
+    const id = Number(row.dataset.id);
+    row.querySelector("input").onchange = e =>
+      postTodo({action: "done", id, done: e.target.checked});
+    row.querySelector(".rm").onclick = () => postTodo({action: "remove", id});
+    // Click the text to reword it. A prompt rather than an inline editor: this
+    // is a one-line note, and an editor that has to be saved is a second step
+    // for something that takes one.
+    row.querySelector(".txt").onclick = () => {
+      const was = row.querySelector(".txt").textContent;
+      const now = prompt("Reword it:", was);
+      if (now !== null && now.trim() && now !== was)
+        postTodo({action: "edit", id, text: now});
+    };
+  });
+}
+
+async function postTodo(body){
+  try{
+    const r = await fetch("/api/todo", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({project: memProj, ...body})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return null; }
+    drawTodo(j);
+    refresh();                            // the row's count moved
+    return j;
+  }catch(e){ notify("could not reach the server: " + e, true); return null; }
+}
+
+async function addTodo(){
+  const t = $("todoText");
+  if (!t.value.trim()) return;
+  if (await postTodo({action: "add", text: t.value})) t.value = "";
+  t.focus();
 }
 
 function closeMemory(){ memGen++; memProj = null; $("memModal").hidden = true; }
@@ -3280,21 +3397,23 @@ async function loadMemory(gen){
     j = await r.json();
   }catch(e){ j = {error: String(e)}; }
   if (gen !== memGen) return;              // closed, or reopened elsewhere
-  if (j.error){ $("memWhere").textContent = j.error; return; }
+  if (j.error){ $("memWhere").textContent = "memory: " + j.error; return; }
   drawMemory(j);
 }
 
 function drawMemory(j){
   const n = j.memories.length;
-  $("memWhere").textContent = j.exists
-    ? `${n || "no"} ${n === 1 ? "memory" : "memories"} in ${j.dir}`
-    : `nothing written yet — memories would live in ${j.dir}`;
+  $("memWhere").textContent = j.exists && n
+    ? `what Claude remembers here — ${n} ${n === 1 ? "memory" : "memories"}`
+    : "what Claude remembers here — nothing yet";
+  $("memWhere").title = j.dir;
   $("memIndex").value = j.index;
   $("memIndex").dataset.was = j.index;
   $("memDrift").innerHTML = j.issues.map(i => `<div>${esc(i.text)}</div>`).join("");
   // The note is offered only when there is a session to put it in, and says
   // what it will do: the text is typed, not sent. See memory.py's notify().
-  $("memNote").hidden = !j.session;
+  memHasSession = !!j.session;
+  $("memNote").hidden = !j.session || !$("memFold").open;
   $("memNote").title = "type a note into " + (j.session || "") +
     " asking it to re-read these — you press Enter there to send it";
   $("memCount").textContent = n ? "Memories — newest first" : "Memories";
@@ -3400,6 +3519,16 @@ $("pCopy").onclick = async () => {
 $("pCancel").onclick = closeNewProject;
 $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 
+// The memory controls belong to the fold, not to the panel: with it closed
+// the footer is one button, which is what a panel about a to-do list should
+// end with.
+$("memFold").ontoggle = () => {
+  const open = $("memFold").open;
+  $("memSave").hidden = !open;
+  $("memNote").hidden = !open || !memHasSession;
+};
+$("todoAdd").onclick = addTodo;
+$("todoText").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); addTodo(); } };
 $("memClose").onclick = closeMemory;
 $("memSave").onclick  = saveMemory;
 $("memNote").onclick  = noteMemory;
@@ -3511,12 +3640,13 @@ const LINK = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M7.5 4.9 9.2 3.2a2.6 2.6 0 0 1 3.6 3.6L11.1 8.5"/>
   <path d="M8.5 11.1 6.8 12.8a2.6 2.6 0 0 1-3.6-3.6L4.9 7.5"/></svg>`;
 
-// A closed book, for the memory a project has accumulated. Not an open one:
-// the icon is the thing you press to open it.
+// A ticked list, for the project's to-do. The panel behind it also holds what
+// Claude remembers here, folded away — but the number worth putting on a row
+// is how much is still to do, not how many memories exist.
 const BOOK = `<svg viewBox="0 0 16 16" aria-hidden="true">
-  <path d="M3.4 2.2h7.3a1.6 1.6 0 0 1 1.6 1.6v9.9a1.2 1.2 0 0 0-1.2-1.2H3.4z"/>
-  <path d="M3.4 2.2a1.2 1.2 0 0 0-1.2 1.2v9.9a1.2 1.2 0 0 1 1.2-1.2"/>
-  <path d="M5.2 5.4h4"/><path d="M5.2 7.7h4"/></svg>`;
+  <path d="M2.4 4.6 3.6 5.8 5.8 3.4"/><path d="M7.8 4.6h6"/>
+  <path d="M2.4 8.6 3.6 9.8 5.8 7.4"/><path d="M7.8 8.6h6"/>
+  <path d="M2.6 12.6h1.6"/><path d="M7.8 12.6h6"/></svg>`;
 
 // The one project job — a clone or a first push — and the poll that watches
 // it. It lives on the server, so a page opened halfway through picks it up

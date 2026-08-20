@@ -172,6 +172,46 @@ consequence worth internalizing:
 Judging whether a duration *feels* right is a question for real hardware, and
 you should say so rather than guessing from a headless emulator.
 
+## The shared to-do list
+
+This project has one, and it is the only thing here that both you and the
+operator write.
+
+```bash
+bb todo                      # what is on it
+bb todo add "..."            # put something on it
+bb todo done N               # tick one off; undone N, rm N, clear
+```
+
+**The open items are already in your context.** They were appended to this
+session's prompt when it started, so there is nothing to go and read at the
+top of a conversation, and nothing to recite back — the operator can see the
+list; they are looking at the same one.
+
+The half that needs saying is the writing.
+
+**When you notice something worth doing and it is out of scope for what you
+are on, put it on the list.** Not only in your reply. A reply is read once,
+in a scroll of other text, at the end of a task the operator is already
+finished thinking about; the list is read at the start of every conversation
+after it. "I flagged that last week" is worth nothing if it went past in a
+paragraph. This is the operator's own reason for the list existing:
+
+> sometimes you mention things and I forget that you did
+
+So: say it in the reply *and* add it. Items you add are marked as yours, so
+the operator can see what you raised and sweep it if they disagree.
+
+**Tick things off as you finish them**, including items you did not add.
+A list that only grows is one that stops being read.
+
+Keep it short and keep it real. Thirty open items is the hard ceiling, and it
+is a working list rather than an issue tracker: one line, plainly worded, no
+duplicates of something already there. Anything that turns out to be a durable
+rule rather than a task belongs somewhere stronger — a note in this file, a
+comment where the code is, or a test that fails when it regresses — and should
+come off the list once it lands there.
+
 ## Static analysis findings
 
 If `/reports` exists, a scanner runs on the host and drops SARIF there.

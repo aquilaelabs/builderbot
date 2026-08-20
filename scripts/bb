@@ -37,6 +37,7 @@ bb — BuilderBot helper
   bb claude-md --init    create a CLAUDE.md here from the shipped template
   bb lint [PATH]         lint the infrastructure files a repo carries: shell
                          scripts, Dockerfiles, GitHub workflows, compose, XML
+  bb todo                this project's shared to-do list (add/done/rm)
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
@@ -411,7 +412,12 @@ cmd_logs() {
     fi
 }
 
-TEMPLATE_MD=/opt/builderbot/templates/project-CLAUDE.md
+# Overridable for one reason: developing the template itself. `bb claude-md`
+# compares a project against the image's copy, which is right everywhere except
+# in a checkout of this repo, where the template being edited is the one under
+# config/templates. The dashboard's server has had the same override for the
+# same reason (its tests point it at a checkout).
+TEMPLATE_MD="${TEMPLATE_MD:-/opt/builderbot/templates/project-CLAUDE.md}"
 ENV_BEGIN='<!-- BUILDERBOT:ENV:BEGIN -->'
 ENV_END='<!-- BUILDERBOT:ENV:END -->'
 
@@ -553,6 +559,97 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
                  | join("") ) )
       | join("") ) )
   end'
+
+# The shared to-do list, from a session's side. Same file the dashboard writes
+# (/config/todos.json) and the same module reads it — one implementation, so a
+# list edited from a phone and a list edited from a terminal cannot disagree.
+#
+# The project is the directory this is run in, not an argument: a session is
+# already in its project, and asking it to name one is asking it to get one
+# wrong.
+cmd_todo() {
+    local py
+    py="$(dirname "$(readlink -f "$0")")/dashboard/todo.py"
+    [ -f "$py" ] || die "todo.py is missing from this image"
+    local proj="${BB_TODO_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        local here; here="$(pwd -P)"
+        case "$here" in
+            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
+            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
+        esac
+    fi
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
+import importlib.util, json, sys
+
+spec = importlib.util.spec_from_file_location("todo", sys.argv[1])
+todo = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(todo)
+
+
+def write_json(path, obj):
+    """Atomic, like the server's: a half-written list is read at every session
+    start after it, which is a worse outcome than a failed write."""
+    import os
+    tmp = str(path) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=1)
+    os.replace(tmp, path)
+
+
+import os
+todo.configure(write_json=write_json,
+               state=os.environ.get("DASHBOARD_STATE", "/config"))
+
+proj, argv = sys.argv[2], sys.argv[3:]
+op = argv[0] if argv else "list"
+rest = argv[1:]
+
+
+def show():
+    rows = todo.items(proj)
+    if not rows:
+        print(f"nothing on {proj}'s list")
+        return
+    for r in rows:
+        mark = "x" if r.get("done") else " "
+        who = " (claude)" if r.get("by") == "claude" else ""
+        print(f"  [{mark}] {r['id']:>2}  {r['text']}{who}")
+
+
+def bail(r):
+    if r.get("error"):
+        print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr)
+        sys.exit(1)
+
+
+if op in ("list", "ls"):
+    show()
+elif op == "--prompt":
+    sys.stdout.write(todo.prompt(proj))
+elif op == "add":
+    text = " ".join(rest).strip()
+    r = todo.add(proj, text, by="claude"); bail(r)
+    print(f"added {r['item']['id']}: {r['item']['text']}")
+elif op in ("done", "undone"):
+    if not rest:
+        print("usage: bb todo done <n>", file=sys.stderr); sys.exit(1)
+    r = todo.set_done(proj, rest[0], op == "done"); bail(r)
+    print(f"{'done' if op == 'done' else 'reopened'} {rest[0]}")
+elif op in ("rm", "remove"):
+    if not rest:
+        print("usage: bb todo rm <n>", file=sys.stderr); sys.exit(1)
+    r = todo.remove(proj, rest[0]); bail(r)
+    print(f"removed {rest[0]}")
+elif op == "clear":
+    todo.clear_done(proj)
+    print("cleared the ticked items")
+else:
+    print("usage: bb todo [list|add TEXT|done N|undone N|rm N|clear]",
+          file=sys.stderr)
+    sys.exit(1)
+PY
+}
 
 cmd_findings() {
     local target="" scope=mine proj
@@ -1226,6 +1323,7 @@ case "${1:-help}" in
     claude-md|claudemd) shift; cmd_claude_md "$@" ;;
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
+    todo)     shift; cmd_todo "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;
