@@ -519,6 +519,17 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 #docAuth .sub{color:var(--dim);font:12px/1.4 var(--mono);overflow-wrap:anywhere}
 #docAuth .sub.bad{color:var(--bad)}
 #docAuth .grow{flex:1;min-width:0}
+#docAuth a.grow{color:var(--accent);text-decoration:underline}
+/* The code field. A phone can paste into this, which is the whole reason it
+   is here rather than in the terminal — and it takes the row's full width,
+   because a hundred characters beside a button is four visible ones. */
+#docAuth{flex-wrap:wrap}
+.codebox{display:flex;gap:8px;flex:1 1 100%}
+.codebox input{flex:1;min-width:0;background:#161b22;color:var(--ink);
+  border:1px solid var(--line);border-radius:6px;padding:7px 9px;
+  font:12px/1.4 var(--mono);min-height:var(--tap)}
+.codebox button{flex:0 0 auto;min-height:var(--tap)}
+@media(max-width:900px){ .codebox input{font-size:16px} }
 .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
 .doctor .docbar+.docbar{border-top:1px solid var(--line)}
 #docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
@@ -2783,9 +2794,38 @@ function pJobWire(){
 // the first thing to get right on a new box, and the last place anybody would
 // think to look for it on the command line.
 function drawAuth(){
-  const el = $("docAuth"), a = state?.claude_auth;
+  const el = $("docAuth"), a = state?.claude_auth, lg = state?.login;
   if (!a || a.unknown){ el.hidden = true; return; }
   el.hidden = false;
+  // A sign-in is in progress: the two things it needs are a link that can be
+  // tapped and somewhere to put the code. Neither is a terminal's strong
+  // suit on a phone — a wrapped URL cannot be selected and a paste into a
+  // canvas silently does not arrive, leaving the Enter after it to hand the
+  // flow an empty code and earn a 400 that reads like the code was wrong.
+  if (lg?.running){
+    // Sign in stays, and stays meaning what it meant: start over. A code that
+    // has expired, a page closed on the way back, a wrong account — the way
+    // out of all of them is a fresh flow, and it must not be hidden behind
+    // the field for the code of the flow that went wrong.
+    if (paint(el, `
+      ${lg.url ? `<a class="sub grow" href="${esc(lg.url)}" target="_blank"
+           rel="noopener">open the sign-in page ↗</a>`
+                : `<span class="sub grow">starting the sign-in…</span>`}
+      <button id="bSignIn" title="start the sign-in again — the code from the
+        one before it will not be accepted">Start over</button>
+      <div class="codebox">
+        <input id="authCode" autocomplete="off" spellcheck="false"
+               autocapitalize="none" placeholder="paste the code here">
+        <button id="bAuthCode" class="primary" type="button">Send</button>
+      </div>`)){
+      $("bSignIn").onclick = signIn;
+      $("bAuthCode").onclick = sendCode;
+      $("authCode").onkeydown = e => {
+        if (e.key === "Enter"){ e.preventDefault(); sendCode(); }
+      };
+    }
+    return;
+  }
   const busy = claudeSessions();
   if (paint(el, a.signed_in
     ? `<span class="sub grow" title="claude auth status">signed in${
@@ -2848,6 +2888,25 @@ function pruneSignIn(){
 function reloadFrameOf(id){
   const f = document.querySelector(`.pane .slot[data-key^="${CSS.escape(id)}|"] iframe`);
   if (f) f.src = f.src;
+}
+
+// The code from the browser, typed into the sign-in terminal for you. See the
+// server's _login_code: the two steps a phone is worst at are the two this
+// takes off it.
+async function sendCode(){
+  const f = $("authCode"), b = $("bAuthCode");
+  const code = f.value.trim();
+  if (!code) return f.focus();
+  b.disabled = true; b.textContent = "Sending…";
+  try{
+    const r = await fetch("/api/login-code", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({code})});
+    const j = await r.json();
+    if (j.error) notify(j.error, true);
+    else { f.value = ""; notify("sent — watch the sign-in terminal"); }
+  }catch(e){ notify("could not reach the server: " + e, true); }
+  b.disabled = false; b.textContent = "Send";
+  refresh();
 }
 
 async function signOut(){

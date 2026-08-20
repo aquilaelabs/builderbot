@@ -214,5 +214,48 @@ ok(JSON.parse(readFileSync(`${DIR}/auth.json`, 'utf8')).loggedIn === false,
    '...and really runs it');
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 
+// ---- the sign-in, watched from outside the terminal --------------------
+// A phone pasting a hundred characters into a canvas terminal is where this
+// falls over: the paste silently does not arrive, the Enter after it does,
+// and the flow exchanges an empty code for a 400 that reads like the code was
+// wrong. So the URL comes out of the pane to be tapped, and the code goes in
+// through a text field. Driven against a stand-in flow — the real one needs a
+// browser and somebody's account.
+const CODE = `${DIR}/logincode.txt`;
+tmuxNew('login', '/tmp', ['bash', '-c',
+  `printf 'If the browser did not open, visit: `
+  + `https://claude.com/cai/oauth/authorize?code=true&state=abc\n'; `
+  + `printf 'Paste code here if prompted > '; read -r c; printf '%s' "$c" > ${CODE}; sleep 30`]);
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => document.getElementById('authCode') !== null,
+                           { timeout: 25000 });
+ok((await page.$eval('#docAuth a', a => a.href)).includes('oauth/authorize'),
+   'while signing in, the card carries the link out of the terminal, tappable');
+ok(await page.$eval('#docAuth a', a => a.target === '_blank'),
+   '...opening away from the dashboard, not over it');
+
+// A code that is not one never reaches a terminal.
+const junk = await page.evaluate(async () => {
+  const r = await fetch('/api/login-code', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: 'not a code' }) });
+  return r.status;
+});
+ok(junk === 400, 'a code with a space in it is refused before it goes anywhere');
+page.errors = [];
+
+await page.fill('#authCode', 'abcd1234efgh5678#state-9');
+await page.click('#bAuthCode');
+await page.waitForFunction(() => document.getElementById('authCode')?.value === '',
+                           { timeout: 15000 });
+await new Promise(r => setTimeout(r, 600));
+ok(readFileSync(CODE, 'utf8') === 'abcd1234efgh5678#state-9',
+   '...and a real one arrives whole, with the Enter behind it');
+tmuxKill('login');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => document.getElementById('authCode') === null,
+                           { timeout: 25000 });
+ok(true, 'and the field goes when the sign-in does');
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

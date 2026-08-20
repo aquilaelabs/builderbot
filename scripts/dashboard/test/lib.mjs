@@ -63,10 +63,10 @@ export const doctorFixture = name =>
 // at its scratch dir, and this refuses to run unless both are so — a client
 // inside a tmux session ignores TMUX_TMPDIR and would create (and later, the
 // cleanup would kill) on the real server.
-export function tmuxNew(name, dir = '/tmp'){
+export function tmuxNew(name, dir = '/tmp', cmd = []){
   if (process.env.TMUX || !process.env.TMUX_TMPDIR)
     throw new Error('tmuxNew: not on the private tmux server — refusing');
-  execFileSync('tmux', ['new-session', '-d', '-s', name, '-c', dir]);
+  execFileSync('tmux', ['new-session', '-d', '-s', name, '-c', dir, ...cmd]);
 }
 // What a pane on that private server currently shows. For checking that
 // something was typed into a session without being submitted — the screen is

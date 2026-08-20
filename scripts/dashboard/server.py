@@ -1414,6 +1414,36 @@ def claude_auth():
     return state
 
 
+# The sign-in flow, watched from outside it. A phone pasting a hundred
+# characters into a canvas terminal is where this falls over — the paste
+# silently does not arrive, the Enter after it does, and the flow exchanges an
+# empty code for a 400 that reads like the code was wrong. So the URL comes
+# out of the pane to be tapped, and the code goes in through a text field,
+# which is a thing phones are good at.
+LOGIN_SESSION = "login"
+AUTH_URL = re.compile(r"https://(?:claude\.com|console\.anthropic\.com|"
+                      r"platform\.claude\.com)/\S+")
+# What an OAuth code can be made of. Never a free-text line into a terminal.
+LOGIN_CODE = re.compile(r"[A-Za-z0-9._~#-]{8,512}")
+
+
+def login_state(live):
+    """{running, url} for the sign-in terminal, if one is open.
+
+    Handed the session list rather than asking for its own: this runs on every
+    status poll, and a second `tmux list-sessions` per poll is latency paid by
+    every card on the page for a terminal that is almost never open.
+    """
+    if LOGIN_SESSION not in set(live):
+        return {"running": False}
+    # -J: the URL is longer than any pane is wide, and what is on screen is
+    # one line wrapped. Unjoined, the regex gets the first eighty characters
+    # of it and a link that goes nowhere.
+    r = run(["tmux", "capture-pane", "-p", "-J", "-t", LOGIN_SESSION], timeout=10)
+    m = AUTH_URL.search(r["out"] if r["code"] == 0 else "")
+    return {"running": True, "url": m.group(0) if m else ""}
+
+
 def doctor_payload():
     with _doctor_lock:
         return {k: _doctor[k] for k in ("when", "checks", "failed", "running")}
@@ -1554,6 +1584,7 @@ def snapshot():
         "findings_counts": findings_counts(ps),
         "doctor": doctor_payload(),
         "claude_auth": claude_auth(),
+        "login": login_state([s["name"] for s in sessions]),
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
         "project_job": projects.job(),
@@ -1907,7 +1938,25 @@ class Handler(BaseHTTPRequestHandler):
             return self._doctor(req)
         if path.startswith("/api/signout"):
             return self._signout(req)
+        if path.startswith("/api/login-code"):
+            return self._login_code(req)
         self._json({"error": "not found"}, 404)
+
+    def _login_code(self, req):
+        """Hand the code from the browser to the sign-in terminal.
+
+        Shape-checked before it goes anywhere near a terminal — the same rule
+        every executing surface here follows — and only ever into the session
+        this dashboard opened for the flow.
+        """
+        code = (req.get("code") or "").strip()
+        if not LOGIN_CODE.fullmatch(code):
+            return self._json({"error": "that does not look like a code — copy "
+                                        "the whole of it, including anything "
+                                        "after a #"}, 400)
+        live = [s["name"] for s in tmux_sessions()]
+        r = notify.send_line(LOGIN_SESSION, code, live)
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _signout(self, req):
         """Sign this container out of Claude.
