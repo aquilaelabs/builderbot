@@ -1479,9 +1479,9 @@ def load_packages():
         if not isinstance(r, dict):
             continue
         if not all(isinstance(r.get(k), str) and r.get(k)
-                   for k in ("name", "label", "size", "probe", "about")):
+                   for k in ("name", "label", "probe", "about")):
             continue
-        out.append({k: r[k] for k in ("name", "label", "size", "probe", "about")})
+        out.append({k: r[k] for k in ("name", "label", "probe", "about")})
     return out
 
 
@@ -1500,9 +1500,9 @@ def load_versions():
     try:
         v = json.loads(VERSIONS_FILE.read_text())
     except (OSError, ValueError):
-        return {}, 0
+        return {}, 0, {}
     if not isinstance(v, dict) or not isinstance(v.get("items"), dict):
-        return {}, 0
+        return {}, 0, {}
     known = {p["name"] for p in PACKAGES}
     out = {}
     for name, row in v["items"].items():
@@ -1513,8 +1513,14 @@ def load_versions():
         if not all(isinstance(row.get(k), str) for k in ("installed", "latest", "status")):
             continue
         out[name] = {k: row[k][:64] for k in ("installed", "latest", "status")}
+        if isinstance(row.get("bytes"), str) and row["bytes"].isdigit():
+            out[name]["bytes"] = row["bytes"][:20]
+    sizes = {}
+    for name, kb in (v.get("sizes") or {}).items():
+        if name in known and isinstance(kb, int) and kb >= 0:
+            sizes[name] = kb
     at = v.get("at")
-    return out, at if isinstance(at, int) and at > 0 else 0
+    return out, at if isinstance(at, int) and at > 0 else 0, sizes
 
 
 # One install at a time, in a worker thread, because these are minutes long
@@ -1525,7 +1531,11 @@ _pkg_lock = threading.Lock()
 # Filled only when asked — every probe in it reaches the network, so doing it
 # on the fifteen-second poll would be a background service nobody requested —
 # and reloaded from disk at startup, so what it found outlives this process.
-_pkg_versions, _pkg_checked = load_versions()
+# ...and what it last weighed on disk, which is the honest answer to "how big
+# is this" for a package that has been installed here before — better than any
+# number typed into a file, and better than the download, which for Swift is a
+# gigabyte that unpacks to three.
+_pkg_versions, _pkg_checked, _pkg_remembered = load_versions()
 _pkg_job = {"running": False, "queue": [], "current": "", "action": "",
             "log": [], "done": [], "failed": [], "auto": False}
 _sdk_root_cache = []
@@ -1648,6 +1658,11 @@ _pkg_sized_at = [0.0]
 _pkg_sizing = [False]
 
 
+def save_versions():
+    write_json(VERSIONS_FILE, {"at": _pkg_checked, "items": _pkg_versions,
+                               "sizes": _pkg_remembered})
+
+
 def _measure_sizes():
     out = {}
     for p in PACKAGES:
@@ -1666,6 +1681,11 @@ def _measure_sizes():
             out[p["name"]] = total
     _pkg_sizes.clear()
     _pkg_sizes.update(out)
+    # Remembered past the removal: having installed a thing once is how this
+    # box knows what it costs, and that knowledge should outlive it.
+    if out:
+        _pkg_remembered.update(out)
+        save_versions()
     _pkg_sized_at[0] = time.monotonic()
     _pkg_sizing[0] = False
 
@@ -1704,14 +1724,29 @@ def packages_payload():
     for p in PACKAGES:
         path = _pkg_path(p["probe"])
         v = _pkg_versions.get(p["name"], {})
+        # Where a size comes from, in order of how much it is worth: what it
+        # takes on this disk now, what it took the last time it was here, and
+        # — for a package this box has never had — what the download weighs.
+        # Nothing is typed into the catalog, because a number typed there is
+        # wrong the next time upstream ships.
         kb = _pkg_sizes.get(p["name"]) if path else None
+        origin = "measured on disk"
+        if kb is None:
+            kb = _pkg_remembered.get(p["name"])
+            origin = "measured the last time it was installed"
+        size, dl = "", v.get("bytes")
+        if kb is not None:
+            size = human_kb(kb)
+        elif dl:
+            # The download, not the footprint: a gigabyte of Swift unpacks to
+            # three. Said as a download, so it does not read as one.
+            size = human_kb(int(dl) // 1024) + " download"
+            origin = "the size of the download, from upstream"
+        else:
+            origin = ""
         items.append({**{k: p[k] for k in ("name", "label", "about")},
                       "installed": bool(path), "path": path,
-                      # The estimate until there is a measurement, and the
-                      # measurement from then on — flagged, because "~4 GB"
-                      # and "4.1 GB" mean quite different things.
-                      "size": human_kb(kb) if kb is not None else p["size"],
-                      "measured": kb is not None,
+                      "size": size, "size_from": origin,
                       # The version is local knowledge and always shown; the
                       # state, and what it would move to, are only ever what a
                       # check said.
@@ -1772,8 +1807,7 @@ def _pkg_worker():
                 # and a rename, to record one answer at a time.
                 if _pkg_job["action"] == "check":
                     globals()["_pkg_checked"] = int(time.time())
-                    write_json(VERSIONS_FILE, {"at": _pkg_checked,
-                                               "items": _pkg_versions})
+                    save_versions()
                 _pkg_job["running"] = False
                 _pkg_job["current"] = ""
                 return
@@ -1800,9 +1834,15 @@ def _pkg_worker():
                 # TSV out: name, installed, latest, status.
                 for ln in r["out"].splitlines():
                     f = ln.rstrip().split("\t")
-                    if len(f) == 4 and f[3] != "local":
-                        _pkg_versions[f[0]] = {"installed": f[1], "latest": f[2],
-                                               "status": f[3]}
+                    if len(f) >= 4 and f[3] != "local":
+                        row = {"installed": f[1], "latest": f[2], "status": f[3]}
+                        # The download, when the catalog names a URL that is
+                        # the payload. It is not the footprint — a gigabyte of
+                        # Swift unpacks to three — so it is only ever used for
+                        # a package this box has never had.
+                        if len(f) > 4 and f[4].isdigit():
+                            row["bytes"] = f[4]
+                        _pkg_versions[f[0]] = row
                 _pkg_job["log"].append(f"{name}: {_pkg_versions.get(name, {}).get('status', '?')}")
             else:
                 _pkg_job["log"].extend(_job_tail(r["out"]))

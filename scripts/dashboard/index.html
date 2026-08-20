@@ -2553,9 +2553,9 @@ function pkgRow(p, busy, job){
       upToDate ? ` checked disabled title="installed and up to date — nothing to do until a check finds an update"`
                : pkgTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
-      <span class="nm">${esc(p.label)} <span class="pill" title="${
-        p.measured ? "measured on disk" : "approximate download size"
-      }">${esc(p.size)}</span>${ver}${next}</span>
+      <span class="nm">${esc(p.label)}${p.size
+        ? ` <span class="pill" title="${esc(p.size_from)}">${esc(p.size)}</span>` : ""
+      }${ver}${next}</span>
       <span class="sub">${esc(p.about)}</span>
       ${mine ? prog : `<span class="sub where${p.installed ? " on" : ""}">${
         p.installed ? "installed at " + esc(p.path) : "not installed"}</span>`}

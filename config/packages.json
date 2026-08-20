@@ -1,109 +1,269 @@
 {
   "_comment": [
-    "The catalog the dashboard's Tools tab renders and `bb sdk check` walks.",
-    "Adding a package here puts it on the page; it still needs a recipe in",
-    "scripts/bb's sdk_install, because every one of these installs differently",
-    "— a git clone, a tarball, sdkmanager, rustup, a vendor's shell script —",
-    "and that is the part no table can hold.",
+    "Everything the container needs in order to offer, fetch and install a package.",
+    "The dashboard's Tools tab renders it and `bb sdk` acts on it; adding a package",
+    "here is the whole job, as long as it fits one of the five kinds below.",
     "",
-    "name   what bb sdk install/remove is called with.",
-    "probe  where it lands, so the page can tell installed from not:",
-    "       a bare name is a directory under the SDK root, android:<pkg> is a",
-    "       package directory under ANDROID_HOME, and android-image:<kind> is",
-    "       a system image flavour, which may exist at several API levels.",
-    "size   the download, roughly. Replaced by a measurement once installed."
+    "  name     what `bb sdk install|remove` is called with.",
+    "  probe    where it lands, so the page can tell installed from not: a bare",
+    "           name is a directory under the SDK root, android:<pkg> a package",
+    "           directory under ANDROID_HOME, android-image:<kind> a system image",
+    "           flavour, which may exist at several API levels at once.",
+    "  source   how to get it. {dir} is the install directory, {version} whatever",
+    "           the version resolver returned, {script} a downloaded installer.",
+    "",
+    "  kind: tarball      resolve a version, fetch source.url, unpack with strip.",
+    "        script       fetch source.url and run it with the given args and env.",
+    "        git          shallow-clone a branch; the tool then updates in place.",
+    "        command      run something already in the image, pointed at {dir}.",
+    "        sdkmanager   an android package, or an image flavour by kind.",
+    "",
+    "  fresh_only   refuse when the directory already exists, for the recipes that",
+    "               unpack rather than merge.",
+    "  verify       run after installing, so a broken unpack fails the install",
+    "               rather than waiting to fail the first time somebody uses it.",
+    "",
+    "There is no size here on purpose. A size typed into a file is wrong the next",
+    "time upstream ships: what a package weighs is measured from the disk once it",
+    "is installed, remembered after it is removed, and read from the download's",
+    "own Content-Length before that when the URL is the payload itself."
   ],
   "packages": [
     {
       "name": "playwright",
       "label": "Playwright browsers",
-      "size": "~1.3 GB",
       "probe": "playwright",
-      "about": "Chromium, Firefox and WebKit. The image carries Playwright itself and the system libraries; these are the browser bundles bb shot and the dashboard's own tests drive."
+      "about": "Chromium, Firefox and WebKit. The image carries Playwright itself and the system libraries; these are the browser bundles bb shot and the dashboard's own tests drive.",
+      "source": {
+        "kind": "command",
+        "requires": "playwright",
+        "run": [
+          "playwright",
+          "install",
+          "chromium",
+          "firefox",
+          "webkit"
+        ],
+        "env": {
+          "PLAYWRIGHT_BROWSERS_PATH": "{dir}"
+        },
+        "link": {
+          "find": "*/chromium-*/chrome-linux*/chrome",
+          "as": "{dir}/chromium"
+        }
+      }
     },
     {
       "name": "flutter",
       "label": "Flutter",
-      "size": "~1.3 GB",
       "probe": "flutter",
-      "about": "Flutter with the bundled Dart SDK. Builds Android APKs here; the iOS half of a Flutter app still needs a Mac."
+      "about": "Flutter with the bundled Dart SDK. Builds Android APKs here; the iOS half of a Flutter app still needs a Mac.",
+      "source": {
+        "kind": "git",
+        "url": "https://github.com/flutter/flutter.git",
+        "branch": "stable",
+        "depth": 1,
+        "safe_directory": true,
+        "fresh_only": true,
+        "warm": [
+          "{dir}/bin/flutter",
+          "--version"
+        ],
+        "warm_note": "warming the toolchain (downloads the bundled dart sdk)"
+      }
     },
     {
       "name": "dotnet",
       "label": ".NET + MAUI",
-      "size": "~4 GB",
       "probe": "dotnet",
-      "about": "The .NET SDK plus the maui-android workload — Android apps from C#."
+      "about": "The .NET SDK plus the maui-android workload — Android apps from C#.",
+      "source": {
+        "kind": "script",
+        "url": "https://dot.net/v1/dotnet-install.sh",
+        "run": [
+          "bash",
+          "{script}",
+          "--channel",
+          "LTS",
+          "--install-dir",
+          "{dir}",
+          "--no-path"
+        ],
+        "then": [
+          {
+            "note": "adding the maui-android workload (android targets from C#)",
+            "run": [
+              "{dir}/dotnet",
+              "workload",
+              "install",
+              "maui-android",
+              "--skip-sign-check"
+            ],
+            "env": {
+              "DOTNET_ROOT": "{dir}",
+              "DOTNET_CLI_TELEMETRY_OPTOUT": "1"
+            },
+            "optional": "the maui-android workload failed; the plain SDK is still installed"
+          }
+        ]
+      }
     },
     {
       "name": "swift",
       "label": "Swift",
-      "size": "~3 GB",
       "probe": "swift",
-      "about": "The Swift toolchain for Linux: shared logic, server-side Swift, and compiling packages. Not an iOS SDK."
+      "about": "The Swift toolchain for Linux: shared logic, server-side Swift, and compiling packages. Not an iOS SDK.",
+      "source": {
+        "kind": "tarball",
+        "fresh_only": true,
+        "version": {
+          "resolver": "github-release",
+          "repo": "swiftlang/swift",
+          "trim_prefix": "swift-",
+          "trim_suffix": "-RELEASE",
+          "numeric": true
+        },
+        "url": "https://download.swift.org/swift-{version}-release/ubuntu2404/swift-{version}-RELEASE/swift-{version}-RELEASE-ubuntu24.04.tar.gz",
+        "strip": 1,
+        "verify": [
+          "{dir}/usr/bin/swift",
+          "--version"
+        ]
+      }
     },
     {
       "name": "android:emulator",
       "label": "Android emulator",
-      "size": "~800 MB",
       "probe": "android:emulator",
-      "about": "The emulator binary. System images are per API level and come from ANDROID_SYSTEM_IMAGES."
+      "about": "The emulator binary. System images are per API level and come from ANDROID_SYSTEM_IMAGES.",
+      "source": {
+        "kind": "sdkmanager",
+        "package": "emulator"
+      }
     },
     {
       "name": "android:ndk",
       "label": "Android NDK",
-      "size": "~3 GB",
       "probe": "android:ndk",
-      "about": "Native development kit, for C and C++ inside an Android app."
+      "about": "Native development kit, for C and C++ inside an Android app.",
+      "source": {
+        "kind": "sdkmanager",
+        "package": "ndk",
+        "versioned": true
+      }
     },
     {
       "name": "android:cmake",
       "label": "Android CMake",
-      "size": "~100 MB",
       "probe": "android:cmake",
-      "about": "The CMake the NDK's build system uses."
+      "about": "The CMake the NDK's build system uses.",
+      "source": {
+        "kind": "sdkmanager",
+        "package": "cmake",
+        "versioned": true
+      }
     },
     {
       "name": "go",
       "label": "Go",
-      "size": "~250 MB",
       "probe": "go",
-      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH — no extra toolchain, no target to install."
+      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH — no extra toolchain, no target to install.",
+      "source": {
+        "kind": "tarball",
+        "fresh_only": true,
+        "version": {
+          "resolver": "text",
+          "url": "https://go.dev/VERSION?m=text",
+          "expect_prefix": "go"
+        },
+        "url": "https://go.dev/dl/{version}.linux-amd64.tar.gz",
+        "strip": 1,
+        "verify": [
+          "{dir}/bin/go",
+          "version"
+        ]
+      }
     },
     {
       "name": "rust",
       "label": "Rust",
-      "size": "~700 MB",
       "probe": "rust",
-      "about": "rustup, cargo and the stable toolchain, kept in one directory. A Windows target needs a linker as well: gcc-mingw-w64 via EXTRA_APT_PACKAGES, or zig plus cargo-zigbuild."
+      "about": "rustup, cargo and the stable toolchain, kept in one directory. A Windows target needs a linker as well: gcc-mingw-w64 via EXTRA_APT_PACKAGES, or zig plus cargo-zigbuild.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "chmod": true,
+        "url": "https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init",
+        "run": [
+          "{script}",
+          "-y",
+          "--no-modify-path",
+          "--profile",
+          "minimal"
+        ],
+        "env": {
+          "RUSTUP_HOME": "{dir}/rustup",
+          "CARGO_HOME": "{dir}/cargo"
+        },
+        "verify": [
+          "{dir}/cargo/bin/rustc",
+          "--version"
+        ],
+        "after": [
+          "a Windows target also needs a linker: rustup target add x86_64-pc-windows-gnu,",
+          "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb sdk install zig + cargo-zigbuild"
+        ]
+      }
     },
     {
       "name": "zig",
       "label": "Zig",
-      "size": "~300 MB",
       "probe": "zig",
-      "about": "A C and C++ cross-compiler as much as a language: `zig cc -target x86_64-windows-gnu` turns this box into a Windows toolchain, and it links for Rust too."
+      "about": "A C and C++ cross-compiler as much as a language: `zig cc -target x86_64-windows-gnu` turns this box into a Windows toolchain, and it links for Rust too.",
+      "source": {
+        "kind": "tarball",
+        "fresh_only": true,
+        "version": {
+          "resolver": "zig-index",
+          "url": "https://ziglang.org/download/index.json",
+          "asset": "x86_64-linux"
+        },
+        "strip": 1,
+        "verify": [
+          "{dir}/zig",
+          "version"
+        ]
+      }
     },
     {
       "name": "android:playstore",
       "label": "Android image: Play Store",
-      "size": "~2 GB",
       "probe": "android-image:google_apis_playstore",
-      "about": "A system image with the Play Store, for testing anything that depends on Google Play services. Pixel-style — Samsung, Oppo and the rest ship no emulator images at all."
+      "about": "A system image with the Play Store, for testing anything that depends on Google Play services. Pixel-style — Samsung, Oppo and the rest ship no emulator images at all.",
+      "source": {
+        "kind": "sdkmanager",
+        "image": "google_apis_playstore"
+      }
     },
     {
       "name": "android:tv",
       "label": "Android image: TV",
-      "size": "~8 GB",
       "probe": "android-image:android-tv",
-      "about": "Android TV, for a leanback-layout build."
+      "about": "Android TV, for a leanback-layout build.",
+      "source": {
+        "kind": "sdkmanager",
+        "image": "android-tv"
+      }
     },
     {
       "name": "android:wear",
       "label": "Android image: Wear OS",
-      "size": "~1.5 GB",
       "probe": "android-image:android-wear",
-      "about": "Wear OS, which is what modern Galaxy and Pixel watches run."
+      "about": "Wear OS, which is what modern Galaxy and Pixel watches run.",
+      "source": {
+        "kind": "sdkmanager",
+        "image": "android-wear"
+      }
     }
   ]
 }

@@ -452,6 +452,8 @@ bb sdk                     # what is installed, where, and how much room is left
 bb sdk install flutter     # or: playwright · dotnet · swift · go · rust · zig · android:<pkg>
 bb sdk install android:tv         # or wear · playstore · ndk · cmake · emulator
 bb sdk install android:"system-images;android-35;google_apis;x86_64"
+bb sdk list                # every package the catalog offers
+bb sdk plan swift          # what installing it would fetch and run, exactly
 bb sdk versions            # what is installed, asking nobody
 bb sdk check               # ...and whether anything newer exists
 bb sdk update flutter      # each the way its own tooling expects
@@ -459,13 +461,36 @@ bb sdk remove flutter
 bb sdk env                 # the PATH lines; new shells get them automatically
 ```
 
-**The catalog is a file, not a list in the code.**
-[`config/packages.json`](config/packages.json) holds every row the tab renders
-— name, label, rough size, where it lands, what it is for — and both the
-dashboard and `bb sdk` read it, so adding one is a single edit. What it cannot
-hold is the recipe: each of these installs differently (a git clone, a
-tarball, `sdkmanager`, `rustup`, a vendor's shell script), so a new package is
-an entry there plus a branch in `bb`'s `sdk_install`.
+**The recipes are a file, not code.**
+[`config/packages.json`](config/packages.json) holds everything the container
+needs in order to offer, fetch and install a package: the URL, the branch, the
+installer's arguments, the environment it wants, how many directory levels to
+strip out of the archive, what to run afterwards to prove it worked. Both the
+dashboard and `bb sdk` read it, so adding a package is one edit — as long as
+it fits one of five shapes:
+
+| kind | what it does |
+|---|---|
+| `tarball` | resolve a version, fetch the archive, unpack it |
+| `script` | fetch a vendor installer and run it with the given arguments |
+| `git` | shallow-clone a branch, for a tool that then updates itself |
+| `command` | run something already in the image, pointed at the directory |
+| `sdkmanager` | an Android package, or an image flavour by kind |
+
+The shapes stay in `bb` because they are genuinely different jobs, and a
+table that could express all five would be a programming language. **`bb sdk
+plan <package>`** prints what a recipe resolves to — version, URL, the exact
+commands — without downloading anything, which is how a catalog edit gets
+checked before it is trusted.
+
+**No size is written down anywhere.** A size typed into a file is wrong the
+next time upstream ships, so a row shows what the package takes on this disk
+once it is installed, what it took the last time it was installed after that,
+and — for one this box has never had, where the catalog's URL is the payload
+itself — what the download weighs, from its own `Content-Length`. Where none
+of those is known the row says nothing rather than guessing. The download and
+the footprint are different numbers and the row says which it is showing:
+Swift arrives as a gigabyte and unpacks to three.
 
 **Nothing installs, updates or removes itself, and no session can do it for
 you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in
