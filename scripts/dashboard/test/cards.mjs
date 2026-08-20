@@ -1,7 +1,8 @@
 // Sidebar cards: universal collapse with a height tween, header-only
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
-import { launch, newPage, ok, done, ready, doctorFixture, tmuxKill, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, doctorFixture, tmuxNew, tmuxKill, tmuxFmt,
+         URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync } from 'node:fs';
 
 const browser = await launch();
@@ -152,18 +153,50 @@ await page.waitForFunction(n => document.querySelectorAll('.tab[data-id]').lengt
 ok(await page.evaluate(() => tabs.some(t => t.arg === 'login')),
    '...which opens a terminal for it rather than pretending it is one click');
 
-// And pressing it again starts another flow. The first one ends with its
-// session — that is how the page notices it is over — leaving the tab holding
-// a terminal with nothing behind it; focusing that and stopping is how the
-// button became a no-op that swallowed everything typed into it.
+// There is no ttyd here, so the terminal itself never connects: the session
+// the flow would run in is made by hand, which is all the page ever sees of it.
+// Asked for the name back, not merely for the command to succeed: tmux's
+// display-message answers 0 with an empty line for a target that is gone.
+const alive = n => { try { return tmuxFmt(n, '#{session_name}') === n; } catch { return false; } };
+tmuxNew('login', '/tmp');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => tabs.some(t => t.arg === 'login' && t.seen), null,
+                           { timeout: 25000 });
+ok((await page.$$eval('.tab .lbl', ls => ls.map(l => l.textContent.trim())))
+     .includes('Claude sign-in'),
+   '...named for the flow it runs, not the directory it happens to sit in');
+ok((await page.$$eval('#sessions .name', ns => ns.map(n => n.textContent.trim())))
+     .includes('Claude sign-in'),
+   '...and the sessions list calls it what the tab does');
+
+// And pressing it again starts another flow — which means ending the one that
+// is there. Connecting does not: bb-tty attaches to a sign-in session rather
+// than replacing it, because ttyd remakes a dropped socket, a phone remakes
+// one coming back to the page, and a second browser on the same layout opens
+// the same terminal — and a restart in any of those threw away the code the
+// person had just gone to fetch. The decision to start over is this button's.
 let relogins = 0;
 page.on('framenavigated', f => { if (f.url().includes('arg=login')) relogins++; });
 await page.click('#bSignIn');
 await page.waitForFunction(() => true);
 await new Promise(r => setTimeout(r, 1500));
-ok(relogins >= 1, '...and pressing it again starts another, not the finished one');
+ok(!alive('login'), 'pressing it again ends the flow that was there');
+ok(relogins >= 1, '...and reloads the terminal onto a new one');
 ok(await page.$$eval('.tab[data-id]', t => t.length) === tabsBefore + 1,
    '...in the tab it already has, rather than a second one');
+
+// The flow ends with its session — the last line says to press enter, and
+// that is what pressing it does — and the tab goes with it, rather than
+// staying as a dead rectangle that swallows whatever is typed into it.
+tmuxNew('login', '/tmp');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => tabs.some(t => t.arg === 'login' && t.seen), null,
+                           { timeout: 25000 });
+tmuxKill('login');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => !tabs.some(t => t.arg === 'login'), null,
+                           { timeout: 25000 });
+ok(true, 'when the flow is over, its tab closes itself');
 
 // And back: the stub's logout rewrites its own fixture, so this proves the
 // button reaches the command without going near anybody's credentials.

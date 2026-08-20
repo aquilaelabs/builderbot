@@ -2250,8 +2250,14 @@ class Handler(BaseHTTPRequestHandler):
         session = req.get("session", "")
         if req.get("action") != "kill":
             return self._json({"error": "unknown action"}, 400)
+        # Already gone is already ended. The check is here so an arbitrary name
+        # never becomes a `-t` argument, which holds either way — nothing runs
+        # for a name that is not a live session. Answering with an error
+        # instead made the caller that wants a clean slate (Sign in, which ends
+        # the sign-in terminal before starting a new flow) report a failure for
+        # the ordinary case of there being nothing to end.
         if session not in {s["name"] for s in tmux_sessions()}:
-            return self._json({"error": f"no such session: {session}"}, 400)
+            return self._json({"code": 0, "out": "", "err": "", "gone": True})
         return self._json(run(["tmux", "kill-session", "-t", session], timeout=10))
 
     def _keys(self, req):

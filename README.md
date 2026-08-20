@@ -835,10 +835,15 @@ lives in its body. The cards:
   click — the flow is a URL to open in a browser and a code pasted back, so it
   needs somewhere to type. Signing out is one command with no conversation in
   it, so it is a button, and it asks first because every session here stops
-  working. **Sign in starts a new flow every time it is pressed**, and the
-  terminal it opens stays put when the flow ends, saying how it went: a code
-  expires, an attempt gets abandoned, and the button that starts one has to be
-  able to start another. **It is dead while any Claude session is running** and names the
+  working. **Sign in starts a new flow every time it is pressed** — it ends the
+  terminal that is there and reloads onto a fresh one — because a code expires
+  and an attempt gets abandoned, and the button that starts one has to be able
+  to start another. Only when it is pressed, though: a dropped socket, a phone
+  coming back to the page, and a second browser opening the same tab all
+  *reattach*, so the code you left to fetch is still being pasted into the run
+  that issued the URL. The terminal holds after the flow ends and says how it
+  went; the last line invites you to press enter, and that closes the terminal
+  and its tab together. **It is dead while any Claude session is running** and names the
   ones in the way; the server refuses it too, since a page can be fifteen
   seconds behind the answer. And with the container signed out, **every
   project's Claude button goes dead with it** — as does the terminal URL
