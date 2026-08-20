@@ -300,7 +300,7 @@ _images = {"at": 0.0, "rows": []}
 IMAGES_TTL = 300
 
 
-def installed_images():
+def installed_images(refresh=True):
     """One row per android system image actually installed here.
 
     Not catalog packages: which exist depends on what has been installed, and
@@ -308,8 +308,15 @@ def installed_images():
     them one at a time. They accumulate — several API levels' worth were on
     this box, most of them for versions nobody had configured in months — and
     until now the tab could neither show nor remove one.
+
+    refresh=False serves what is cached without going back to disk, which is
+    what a running job wants: the tree is being written to and a size read
+    from it mid-install describes the moment rather than the package. The
+    first version of this returned nothing at all while a job ran, and since
+    the section is only rebuilt when the tab redraws, the images stayed gone
+    afterwards until something unrelated forced one.
     """
-    if time.monotonic() - _images["at"] < IMAGES_TTL:
+    if not refresh or time.monotonic() - _images["at"] < IMAGES_TTL:
         return _images["rows"]
     rows = []
     r = run([BB, "sdk", "images"], timeout=300)
@@ -384,7 +391,7 @@ def payload():
     with _pkg_lock:
         job = {k: (list(v) if isinstance(v, list) else v)
                for k, v in _pkg_job.items()}
-    return {"images": [] if busy else installed_images(),
+    return {"images": installed_images(refresh=not busy),
             "root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
             "checked": _pkg_checked,

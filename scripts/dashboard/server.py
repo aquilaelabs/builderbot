@@ -1145,6 +1145,9 @@ def projects():
                     "linked": linked, "github": github,
                     "claude_md": has_md, "excluded": d.name in excluded,
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
+                    # What Claude remembers here. On the row because a memory
+                    # nobody knows about is the one that goes wrong quietly.
+                    "memories": memory.count(d.name),
                     "issues": issues})
     return out
 
@@ -1465,6 +1468,14 @@ def doctor_payload():
 import packages                                                  # noqa: E402
 
 packages.configure(run=run, write_json=write_json, state=STATE)
+
+# ---- the memory book -------------------------------------------------------
+# What Claude remembers about each project, read and edited from the projects
+# card. Same arrangement as packages above: its own file, handed what it needs.
+import memory                                                    # noqa: E402
+
+memory.configure(run=run, workspace=WORKSPACE,
+                 claude_projects=CLAUDE_PROJECTS, tmux_name=tmux_name)
 
 
 def _doctor_loop():
@@ -1828,6 +1839,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(findings_payload())
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
+        if self.path.startswith("/api/memory"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            got = memory.payload(q.get("project", [""])[0],
+                                 [s["name"] for s in tmux_sessions()])
+            return self._json(got if got is not None
+                              else {"error": "not a project"}, 400 if got is None else 200)
         if self.path.startswith("/api/pubkeys"):
             # The shielded agent's public halves, for the New project dialog:
             # picking one selects it for the clone, and showing it is how the
@@ -1879,11 +1896,36 @@ class Handler(BaseHTTPRequestHandler):
             return self._link(req)
         if path.startswith("/api/packages"):
             return self._packages(req)
+        if path.startswith("/api/memory"):
+            return self._memory(req)
         if path.startswith("/api/custom"):
             return self._custom(req)
         if path.startswith("/api/doctor"):
             return self._doctor(req)
         self._json({"error": "not found"}, 404)
+
+    def _memory(self, req):
+        """Edit, delete, or point a running session at this project's memories.
+
+        Every path here is memory.py's; this only picks which one. The project
+        and file names go through untouched because that module is the thing
+        that checks them against what is on disk — doing it in two places is
+        how the two answers drift apart.
+        """
+        act = req.get("action", "")
+        proj, file = req.get("project", ""), req.get("file", "")
+        if act == "save":
+            text = req.get("text", "")
+            if not isinstance(text, str):
+                return self._json({"error": "bad request"}, 400)
+            r = memory.save(proj, file, text)
+        elif act == "delete":
+            r = memory.delete(proj, file)
+        elif act == "notify":
+            r = memory.notify(proj, [s["name"] for s in tmux_sessions()])
+        else:
+            return self._json({"error": f"unknown action: {act}"}, 400)
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _custom(self, req):
         """Save or delete one of the operator's own command lists.

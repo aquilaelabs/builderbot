@@ -857,6 +857,27 @@ lives in its body. The cards:
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
   is a bin on the row
+- a **book** per project, carrying the number of memories Claude has written
+  about it. Claude Code keeps those in `~/.claude/projects/<slug>/memory/`:
+  one markdown file per fact, plus a `MEMORY.md` index that is loaded into
+  every session started there. Everything else a session is told is
+  reviewable — `CLAUDE.md` through a pull request, the transcript on screen —
+  but a memory writes itself and is never read back, so a wrong one steers
+  every later session invisibly. The book opens them: each memory folded to
+  the summary line Claude wrote for itself (name, type, when), unfolding to
+  the whole file in an editor, with **Forget this** to delete one — which
+  takes its line out of the index too, since a pointer to a file that is gone
+  is worse than no pointer. Drift between the index and the files is called
+  out in amber both ways: a line naming a file that is not there, and a file
+  no line names. It is on the project row rather than in a Claude tab on
+  purpose — *why did it do that?* is usually asked after the tab is closed.
+  **Edits land for the next session**, the same rule `bb claude-md` follows:
+  the index is read at startup, and a running session is holding what it read
+  then. When a session for that project *is* running, **Tell the session**
+  types a note asking it to re-read them into that pane — and stops there,
+  without pressing Enter. "Waiting for input" covers a session at its prompt
+  and one holding a permission dialog alike, and a blind Enter into the
+  second would answer it; you press it yourself once you can see the screen
 - an **eye** per project, which excludes it: persists across restarts and
   blocks Claude sessions for that directory — see below. A row that is excluded
   or has an error carries **no Claude button at all**, because a session cannot
@@ -1261,6 +1282,7 @@ scripts/
   startup.d/*.sh                 startup hooks
   dashboard/                     web dashboard: server.py, index.html, bb-tty
     packages.py                  everything behind the Tools tab: catalog, sizes, the job worker
+    memory.py                    everything behind the memory book: what Claude remembers per project
     test/                        its Playwright suite — `bb dashboard test`, isolated
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
