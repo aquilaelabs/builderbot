@@ -14,6 +14,7 @@ a package name written into it.
 import json
 import os
 import re
+import signal
 import threading
 import time
 from pathlib import Path
@@ -64,6 +65,10 @@ def load_packages():
                    for k in ("name", "label", "probe", "about")):
             continue
         out.append({k: r[k] for k in ("name", "label", "probe", "about")})
+    # Sorted here rather than trusted from the file, so a package added at the
+    # end of the catalog still lands where somebody would look for it. Leading
+    # punctuation is ignored: ".NET" belongs under N, not above everything.
+    out.sort(key=lambda p: re.sub(r"^[^0-9a-z]+", "", p["label"].lower()))
     return out
 
 
@@ -119,7 +124,7 @@ _pkg_lock = threading.Lock()
 # gigabyte that unpacks to three.
 _pkg_versions, _pkg_checked, _pkg_remembered = {}, 0, {}
 _pkg_job = {"running": False, "queue": [], "current": "", "action": "",
-            "log": [], "done": [], "failed": [], "auto": False}
+            "log": [], "done": [], "failed": [], "auto": False, "aborting": False}
 _sdk_root_cache = []
 
 
@@ -425,6 +430,9 @@ def _pkg_worker():
         with _pkg_lock:
             _pkg_job["log"].append(f"$ bb sdk {verb} {name}")
 
+        # The child, so that an abort can reach it. bb's own EXIT trap removes
+        # whatever the install had created, which is why this kills the process
+        # rather than tearing the directory out from under it.
         # Nothing is read out of the output beyond the log. Every recipe
         # meters differently and several mislead by accident — one fraction
         # across a whole operation, a count that parks for minutes, five files
@@ -432,7 +440,7 @@ def _pkg_worker():
         # "installer" — and a row reporting any of it faithfully still read as
         # broken. The row says what it is doing and animates; the output goes
         # to the log, where it can be read afterwards.
-        r = run([BB, "sdk", verb, name], timeout=3600)
+        r = run([BB, "sdk", verb, name], timeout=3600, register=_hold_child)
         with _pkg_lock:
             if action == "check":
                 # TSV out: name, installed, latest, status.
@@ -473,13 +481,51 @@ def _pkg_worker():
                 save_versions()
 
 
+# The process a job is running right now, so that Abort has something to
+# interrupt. A list rather than a value because it is written from the worker
+# thread and read from a request thread.
+_pkg_child = [None]
+
+
+def _hold_child(proc):
+    with _pkg_lock:
+        _pkg_child[0] = proc
+
+
+def abort_job():
+    """Stop the running job after the package it is on.
+
+    The queue is emptied so nothing further starts, and the child is asked to
+    stop: bb removes the half-installed directory on its way out, which is the
+    same cleanup a failed install gets, because a killed install and a failed
+    one leave exactly the same mess. Everything already installed stays — the
+    abort is for the rest of the queue, not for undoing what worked.
+    """
+    with _pkg_lock:
+        if not _pkg_job["running"]:
+            return False
+        _pkg_job["queue"] = []
+        _pkg_job["aborting"] = True
+        _pkg_job["log"].append("— aborted; finishing the current package and stopping")
+        proc = _pkg_child[0]
+    if proc is not None:
+        try:
+            # The group, not the process: bb is waiting on a curl or a tar, and
+            # killing only the shell leaves the download running.
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except (OSError, ProcessLookupError):
+            pass                       # it finished between the check and here
+    return True
+
+
 def start_job(action, names, auto=False):
     """Queue a package job, unless one is already going. False if it is."""
     with _pkg_lock:
         if _pkg_job["running"]:
             return False
         _pkg_job.update(running=True, queue=list(names), action=action,
-                        current="", log=[], done=[], failed=[], auto=auto)
+                        current="", log=[], done=[], failed=[], auto=auto,
+                        aborting=False)
     threading.Thread(target=_pkg_worker, daemon=True).start()
     return True
 

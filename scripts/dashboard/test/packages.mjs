@@ -292,7 +292,9 @@ ok(await page.$('.doc .pkg:not(:has([data-rm])) [data-rm]') === null,
 // The bin icons were the gap: only the two big buttons were being disabled.
 await page.evaluate(() => { packages.job.running = true; pkgRev++; drawPanes(); });
 ok(await page.$$eval('.doc [data-rm]', bs => bs.length > 0 && bs.every(b => b.disabled))
-   && await page.$$eval('.doc [data-pkg]', bs => bs.every(b => b.disabled))
+   // Abort excluded: it is the one control that has to work while a job runs.
+   && await page.$$eval('.doc [data-pkg]:not([data-pkg="abort"])', bs => bs.every(b => b.disabled))
+   && await page.$$eval('.doc [data-pkg="abort"]', bs => bs.length === 1 && !bs[0].disabled)
    && await page.$$eval('.doc .pkg input', is => is.length > 0 && is.every(i => i.disabled)),
    'while a job runs, every button and every checkbox is ghosted');
 // A check the operator did not start still has to reach the page, or the
