@@ -486,27 +486,18 @@ Uninstalling is a **bin icon on the row itself**, with a confirmation,
 because it is about one package and a bulk Remove button beside a bulk
 Install was one mis-click from being expensive.
 
-**A row says what it is doing while it does it**: a bar and a percentage
-while it is downloading — scraped from whatever the recipe prints:
-Playwright's bar, sdkmanager's, git's `Receiving objects`, curl's meter in
-either of its formats — and `installing` with a ticking ellipsis after that.
-The bar belongs to the download only. sdkmanager counts a single fraction
-across the whole operation and changes the label part way through, so for a
-system image the meter reads about 30% when the download is done and the rest
-of the count belongs to the unzip; that number is real but it is not a
-download, so the row does not quote it. For the same reason a percentage that
-stops moving is retired after a few seconds rather than left standing, and a
-percentage that drops a long way is a new file rather than a bar losing its
-place — `playwright install` fetches five bundles and meters each from zero,
-so the row says which one it is on. The
-job log keeps every tenth of a job's progress, which is what tells you
-afterwards whether a bar failed to move or a tool stopped reporting. Until then a row that is
-mid-install said *"installed at /sdk/flutter"*, because every probe here
-calls a non-empty directory installed and that is precisely what a download
-in progress leaves behind. For the same reason an install that fails removes
-what it created, so a half-fetched toolchain does not sit there looking
-ready. A failed *repair* of something already installed leaves it alone —
-only a directory this run made is a directory this run may delete.
+**A row says what it is doing, and not how far along it is.** `installing`
+with a ticking ellipsis for the whole of an install, `removing` for a removal.
+There was a percentage and a bar here, scraped from whatever each recipe
+printed, and it was retired: every one of them meters differently and several
+mislead by accident. sdkmanager counts a single fraction across a whole
+operation, changes the label part way through, and parks it in the fifties for
+the minutes it spends writing a system image. `playwright install` fetches five
+bundles and meters each from zero. rustup prints no percentages at all down a
+pipe. A row relaying any of that faithfully still read as a bar that had
+broken, so the honest answer is the one that does not pretend to a
+denominator. The full output of every job goes to the log under the buttons,
+which is where to look when "it is working" is not enough.
 
 **Two different questions, two different costs.** What version is installed
 is local knowledge — a directory name, or `flutter --version` — so it is on

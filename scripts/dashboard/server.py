@@ -1511,7 +1511,7 @@ _pkg_lock = threading.Lock()
 # on the fifteen-second poll would be a background service nobody requested.
 _pkg_versions = {}
 _pkg_job = {"running": False, "queue": [], "current": "", "action": "",
-            "log": [], "done": [], "failed": [], "progress": None}
+            "log": [], "done": [], "failed": []}
 _sdk_root_cache = []
 
 
@@ -1626,14 +1626,6 @@ def local_versions():
 # rather than cached forever, because "it grew" is exactly what this is for.
 # How long a percentage may sit unchanged before the row stops quoting it.
 #
-# sdkmanager's fraction covers a whole operation and is not linear in time:
-# unzipping a system image parks it at about 55% while it writes one enormous
-# file, then jumps to 100. A bar that has not moved in this long is telling
-# the operator nothing that the ellipsis does not tell them more honestly, and
-# "stuck at 55%" is what it reads as.
-# Overridable only so the tests can drive a stall in a couple of seconds
-# rather than fifteen.
-PKG_STALL = int(os.environ.get("PKG_STALL_SECONDS", "15"))
 PKG_SIZE_TTL = 120
 _pkg_sizes = {}
 _pkg_sized_at = [0.0]
@@ -1711,14 +1703,8 @@ def packages_payload():
                       "latest": v.get("latest", ""),
                       "state": v.get("status", "")})
     with _pkg_lock:
-        job = {k: (list(v) if isinstance(v, list) else dict(v) if isinstance(v, dict) else v)
+        job = {k: (list(v) if isinstance(v, list) else v)
                for k, v in _pkg_job.items()}
-    # Decided here rather than when the line arrived, because a stall is the
-    # absence of lines: nothing new will come along to retire the number.
-    pr = job.get("progress")
-    if (pr and pr.get("pct") is not None and pr.get("at") is not None
-            and time.monotonic() - pr["at"] > PKG_STALL):
-        job["progress"] = {**pr, "pct": None, "stalled": True}
     return {"root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
             "sizing": _pkg_sizing[0],
@@ -1738,133 +1724,14 @@ def is_mount(path):
         return False
 
 
-# A progress-bar frame: sdkmanager redraws one with carriage returns, so a
-# naive tail of its output is twelve identical `[====] 40% Fetch remote
-# repository...` lines and none of the reason anything went wrong. Playwright
-# draws its own with box characters, which is the same problem in a different
-# alphabet.
+# A progress-bar frame, dropped from the log tail. Nothing reads these for
+# meaning any more; they are simply noise that would otherwise fill the sixteen
+# lines kept from a job, since sdkmanager redraws its bar with carriage returns
+# and playwright draws its own with box characters.
 _PROGRESS_FRAME = re.compile(r"^(\[[=\s]*\]\s*\d+%|\|[\u25a0\s]*\|\s*\d+%)")
 
 # The decimal matters: on "100.0%" a bare \d{1,3} match lands on the 0 after
 # the point and reports nought percent for a finished download.
-_PCT = re.compile(r"(\d{1,3})(?:\.\d+)?\s*%")
-# curl's default meter is a table, not a bar, and its first column is the
-# percentage — flutter fetches its 227MB Dart SDK through one, so without this
-# the longest download in the catalog reports nothing at all. Matched on the
-# whole shape (numeric columns, then the three h:mm:ss times) rather than the
-# leading number, which on its own would match half the output of anything.
-_CURL_ROW = re.compile(r"^\s*(\d{1,3})\s+[\d.]+[KMGT]?\s+\d{1,3}\s+.*\d+:\d\d:\d\d")
-# Whichever of these a line mentions decides the phase. Order matters: a line
-# that says "Unzipping" during a download step is past downloading.
-# A line announcing an install step rather than a transfer. Judged per line
-# and never carried forward, which is the whole fix: our own log says
-# "installing swift 6.3.3 into /sdk/swift" before the download starts, and a
-# phase that carried called the entire 1GB transfer after it an install — so
-# Swift and .NET appeared to skip downloading altogether.
-_INSTALLY = re.compile(r"unzip|extract|instal|build|compil|resolv|warming|checking out", re.I)
-# ...unless the same line says it is fetching something, which wins. rustup
-# opens with "info: downloading installer", where the word that decides the
-# step is the first one and the substring that matched is inside the noun. A
-# row that called that an install then said "installing" for the whole of the
-# download that followed.
-_DOWNLOADY = re.compile(r"download|fetch|receiv|transferr|cloning", re.I)
-
-
-def _progress_of(line):
-    """(percent, step, said_something) for one line of a tool's output.
-
-    A percentage is reported whatever step the line names, because for at
-    least one tool here the step is not the unit of progress. sdkmanager
-    counts one fraction across the whole operation and changes the label as it
-    goes — its own --list output runs "25% Loading local repository", "25%
-    Fetch remote repository", then on to 100% — so an install counts to about
-    thirty under Downloading and finishes the rest under Unzipping. Dropping
-    the number when the label stopped saying download is what made a system
-    image crawl to half and then appear to give up and skip to installing.
-
-    Deliberately generic about where the number comes from. Every recipe here
-    draws its own bar — playwright's `|====| 40% of 102 MiB`, sdkmanager's
-    `[====] 40% Downloading`, git's `Receiving objects: 45%`, curl's meter in
-    either of its two formats — and a parser per tool would rot with the next
-    release of any of them.
-
-    `said_something` covers words as well as numbers, and is what retires a
-    finished download's figure: prose after a bar means the bar is over, and
-    the number it reached is no longer true of anything. A flutter install
-    froze on "downloading 100%" for the whole of `Building flutter tool…`
-    because the last number seen was kept until another one arrived. What the
-    words actually say is not reported — a row showed "Installing pack
-    Microsoft.NETCore.App.Runtime.Mono.android-arm64" and pushed the page
-    sideways, and that is a component list nobody reading a package manager
-    asked for.
-    """
-    # bb's own log lines are narration about what is *about* to happen, and
-    # they say "installing" before a download has started. Letting them set the
-    # state is how a row announced installing and only then produced a download
-    # bar, which is backwards from what is actually going on.
-    if line.startswith("[builderbot]"):
-        return None, None, False
-    m = _CURL_ROW.match(line)
-    if m:
-        return int(m.group(1)), "downloading", True
-    step = ("downloading" if _DOWNLOADY.search(line)
-            else "installing" if _INSTALLY.search(line) else None)
-    m = _PCT.search(line)
-    pct = int(m.group(1)) if m else None
-    if pct is not None and not 0 <= pct <= 100:
-        pct = None
-    if pct is not None:
-        return pct, step, True
-    return None, step, bool(re.search(r"[A-Za-z]", line)
-                            and not _PROGRESS_FRAME.match(line))
-
-
-def run_streamed(cmd, on_line, timeout=3600):
-    """run(), but each line reaches a callback as it arrives.
-
-    These jobs take minutes and spend them drawing progress; run() returns
-    only once the command is finished, which is why the tab could show a log
-    and never a percentage. Read with os.read rather than a line iterator,
-    because those bars are carriage-return redraws rather than lines and a
-    buffered reader would sit on them until the process exited."""
-    try:
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT, bufsize=0)
-    except OSError as e:
-        return {"code": 127, "out": str(e)}
-    out, buf = [], b""
-    sel = selectors.DefaultSelector()
-    sel.register(p.stdout, selectors.EVENT_READ)
-    deadline = time.monotonic() + timeout
-
-    def emit(raw):
-        ln = raw.decode("utf-8", "replace").rstrip()
-        if ln:
-            out.append(ln)
-            on_line(ln)
-
-    while True:
-        if time.monotonic() > deadline:
-            p.kill()
-            out.append(f"timed out after {timeout}s")
-            break
-        if not sel.select(timeout=1.0):
-            continue
-        chunk = os.read(p.stdout.fileno(), 65536)
-        if not chunk:
-            break
-        buf += chunk
-        parts = re.split(rb"[\r\n]", buf)
-        buf = parts.pop()
-        for raw in parts:
-            emit(raw)
-    if buf:
-        emit(buf)
-    sel.close()
-    p.stdout.close()
-    return {"code": p.wait(), "out": "\n".join(out)}
-
-
 def _job_tail(out, keep=16):
     """The useful end of a command's output — the frames dropped."""
     lines = [ln.strip() for ln in out.splitlines()]
@@ -1885,12 +1752,10 @@ def _pkg_worker():
             if not _pkg_job["queue"]:
                 _pkg_job["running"] = False
                 _pkg_job["current"] = ""
-                _pkg_job["progress"] = None
                 return
             name = _pkg_job["queue"].pop(0)
             action = _pkg_job["action"]
             _pkg_job["current"] = name
-            _pkg_job["progress"] = None      # this item's, not the last one's
         verb = action
         if action == "install":
             probe = next((p["probe"] for p in PACKAGES if p["name"] == name), name)
@@ -1898,58 +1763,14 @@ def _pkg_worker():
         with _pkg_lock:
             _pkg_job["log"].append(f"$ bb sdk {verb} {name}")
 
-        def watch(line, _name=name):
-            with _pkg_lock:
-                cur = _pkg_job["progress"] or {}
-                pct, step, said = _progress_of(line)
-                if not said:
-                    return                    # a frame with no number in it
-                # Three states in order: starting, downloading, installing.
-                # Installing is only reachable once something has reported a
-                # number, or the line says so itself — before that, output is a
-                # tool clearing its throat (sdkmanager loading its
-                # repositories, git listing refs), and calling that
-                # "installing" put the last step first.
-                seen = bool(cur.get("seen")) or pct is not None
-                # What the line said it was doing, if it said; else a number
-                # means a download; else, once anything has reported at all,
-                # whatever is happening is the install.
-                phase = (step
-                         or ("downloading" if pct is not None
-                             else "installing" if seen else "starting"))
-                # Every tenth of a download, into the log. The bar shows what
-                # a job reported *now*; this shows what it reported at all,
-                # which is the difference between "the bar is broken" and
-                # "the tool said 17% and then said nothing for four minutes".
-                # There was no way to tell those apart from a screenshot, and
-                # I spent a long time guessing wrong about which it was.
-                # A percentage that drops a long way is a new file, not a
-                # bar giving up: `playwright install` fetches five bundles and
-                # meters each from zero, so the row restarted five times with
-                # nothing to say why. More than twenty-five points down is a
-                # restart; less is a meter jittering.
-                part = cur.get("part") or 0
-                if pct is not None and (part == 0
-                                        or (cur.get("pct") is not None
-                                            and pct < cur["pct"] - 25)):
-                    part += 1
-                mark = cur.get("mark")
-                if pct is not None and (mark is None or pct // 10 != mark
-                                        or part != (cur.get("part") or 0)):
-                    mark = pct // 10
-                    where = f" (file {part})" if part > 1 else ""
-                    _pkg_job["log"].append(f"  … {phase} {pct}%{where}")
-                    _pkg_job["log"] = _pkg_job["log"][-60:]
-                # When the number last meant something new, so that a reader
-                # can tell a bar that is moving from one that has parked.
-                at = cur.get("at")
-                if pct is not None and pct != cur.get("pct"):
-                    at = time.monotonic()
-                _pkg_job["progress"] = {"name": _name, "pct": pct, "phase": phase,
-                                        "seen": seen, "mark": mark, "at": at,
-                                        "part": part}
-
-        r = run_streamed([BB, "sdk", verb, name], watch, timeout=3600)
+        # Nothing is read out of the output beyond the log. Every recipe
+        # meters differently and several mislead by accident — one fraction
+        # across a whole operation, a count that parks for minutes, five files
+        # metered from zero apiece, the word "download" sitting inside the noun
+        # "installer" — and a row reporting any of it faithfully still read as
+        # broken. The row says what it is doing and animates; the output goes
+        # to the log, where it can be read afterwards.
+        r = run([BB, "sdk", verb, name], timeout=3600)
         with _pkg_lock:
             if action == "check":
                 # TSV out: name, installed, latest, status.
@@ -1969,7 +1790,6 @@ def _pkg_worker():
                     _pkg_job["log"].append(f"{name}: {verb} failed (exit {r['code']})")
             _pkg_job["log"] = _pkg_job["log"][-60:]
             (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
-            _pkg_job["progress"] = None
         if action in ("install", "remove", "update"):
             _pkg_local["key"] = None      # whatever just happened moved a version
             _pkg_sized_at[0] = 0.0        # ...and changed what is on the disk
@@ -2669,7 +2489,7 @@ class Handler(BaseHTTPRequestHandler):
             if _pkg_job["running"]:
                 return self._json({"error": "an install is already running"}, 409)
             _pkg_job.update(running=True, queue=list(names), action=action,
-                            current="", log=[], done=[], failed=[], progress=None)
+                            current="", log=[], done=[], failed=[])
         threading.Thread(target=_pkg_worker, daemon=True).start()
         return self._json({"ok": True, "queued": names})
 
