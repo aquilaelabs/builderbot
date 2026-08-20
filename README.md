@@ -544,6 +544,12 @@ Uninstalling is a **bin icon on the row itself**, with a confirmation,
 because it is about one package and a bulk Remove button beside a bulk
 Install was one mis-click from being expensive.
 
+**A job can be stopped.** **Abort** empties the queue and interrupts the
+package being worked on — the whole process group, so the download it is
+waiting on goes too — and `bb` removes the half-installed directory on its way
+out, the same cleanup a failed install gets. Everything already installed
+stays; the abort is for the rest of the queue, not for undoing what worked.
+
 **A row says what it is doing, and not how far along it is.** `installing`
 with a ticking ellipsis for the whole of an install, `removing` for a removal.
 There was a percentage and a bar here, scraped from whatever each recipe

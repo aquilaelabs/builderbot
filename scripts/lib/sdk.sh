@@ -589,6 +589,23 @@ sdk_mark_partial() {
     if [ -L "$d" ]; then d="$(readlink -f "$d")"; fi
     if [ ! -d "$d" ] || [ -z "$(ls -A "$d" 2>/dev/null)" ]; then SDK_PARTIAL="$d"; fi
 }
+# Interrupted rather than failed: the dashboard's Abort sends the whole
+# process group a TERM, so the download dies with it. Handled explicitly
+# because bash runs its EXIT trap on a signal with $? still zero — the
+# cleanup would look at that and conclude nothing had gone wrong, leaving a
+# half-unpacked toolchain behind.
+sdk_install_aborted() {
+    trap - EXIT
+    if [ -n "${SDK_PARTIAL:-}" ]; then
+        warn "aborted — removing the partial ${SDK_PARTIAL}"
+        rm -rf "${SDK_PARTIAL:?}"
+        SDK_PARTIAL=""
+    else
+        warn "aborted"
+    fi
+    exit 143
+}
+
 sdk_install_cleanup() {
     local rc=$?
     if [ "$rc" = 0 ] || [ -z "${SDK_PARTIAL:-}" ]; then return 0; fi
@@ -712,7 +729,7 @@ sdk_install_tarball() {
 # Fetch an installer and run it. The URL here is a script, not the payload —
 # it goes and gets that itself, with the arguments the catalog gives.
 sdk_install_script() {
-    local what="$1" d url tmp
+    local what="$1" d url tmp tmpdir
     d="$(sdk_dir "$what")"
     sdk_mark_partial "$d"
     [ -z "$(sdk_meta field "$what" source.fresh_only)" ] || [ ! -d "$d" ] \
@@ -721,15 +738,21 @@ sdk_install_script() {
     [ -n "$url" ] || die "no installer URL in the catalog for ${what}"
     log "installing ${what} into ${d}"
     mkdir -p "$d"
-    tmp="$(mktemp "${TMPDIR:-/tmp}/bb-${what}.XXXXXX")"
-    sdk_fetch "$url" "$tmp" || { rm -f "$tmp"; die "could not download ${url}"; }
+    # Kept under the name upstream gave it, in a directory of its own.
+    # rustup-init decides what it is by the name it was invoked as: downloaded
+    # as bb-rust.XXXXXX it refused with "unknown proxy name: 'bb-rust'", having
+    # taken its own filename for an instruction. An installer's name is part of
+    # its interface, so it keeps the one from the URL.
+    tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/bb-${what}.XXXXXX")"
+    tmp="$tmpdir/$(basename "${url%%\?*}")"
+    sdk_fetch "$url" "$tmp" || { rm -rf "$tmpdir"; die "could not download ${url}"; }
     [ -z "$(sdk_meta field "$what" source.chmod)" ] || chmod +x "$tmp"
     local -a cmd env
     sdk_meta_into cmd argv "$what" source.run "dir=$d" "script=$tmp"
     [ "${#cmd[@]}" != 0 ] || { rm -f "$tmp"; die "no run command in the catalog for ${what}"; }
     sdk_meta_into env env "$what" source.env "dir=$d"
-    env "${env[@]}" "${cmd[@]}" || { rm -f "$tmp"; die "${what} installer failed"; }
-    rm -f "$tmp"
+    env "${env[@]}" "${cmd[@]}" || { rm -rf "$tmpdir"; die "${what} installer failed"; }
+    rm -rf "$tmpdir"
     sdk_install_steps "$what" "$d"
     sdk_install_verify "$what" "$d" ""
 }
@@ -837,6 +860,7 @@ sdk_install() {
     # EXIT rather than RETURN: a failing step here reaches `die`, which exits
     # the process, and a RETURN trap never fires on that path.
     trap sdk_install_cleanup EXIT
+    trap sdk_install_aborted TERM INT
     case "$kind" in
         sdkmanager) sdk_install_android "$what" ;;
         tarball)    sdk_install_tarball "$what" ;;

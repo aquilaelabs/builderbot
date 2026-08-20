@@ -684,25 +684,37 @@ def findings_payload():
 os.environ.pop("CLAUDECODE", None)
 
 
-def run(cmd, cwd=None, timeout=120, env=None, split_err=False):
+def run(cmd, cwd=None, timeout=120, env=None, split_err=False, register=None):
     # split_err=True keeps stdout in `out` and stderr in `err`, for the one
     # caller class that must not mistake a warning for real output (the
     # ls-remote emptiness check: ssh's first-contact "Permanently added ..."
     # note lands on stderr and made an empty repo look non-empty). The
     # default stays combined, which is what every log-oriented caller wants.
+    # register: hand the caller the process, so a long job can be interrupted.
+    # It gets its own process group with it, because stopping an install means
+    # stopping the curl or the tar it is waiting on, not only the shell.
     try:
-        p = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                           timeout=timeout, env=env)
-        out, err = p.stdout or "", p.stderr or ""
-        if not split_err:
-            out, err = out + err, ""
-        return {"cmd": shlex.join(cmd), "code": p.returncode,
-                "out": out, "err": err}
-    except subprocess.TimeoutExpired:
-        return {"cmd": shlex.join(cmd), "code": 124,
-                "out": f"timed out after {timeout}s", "err": ""}
+        p = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, env=env,
+                             start_new_session=register is not None)
     except FileNotFoundError as e:
         return {"cmd": shlex.join(cmd), "code": 127, "out": str(e), "err": ""}
+    if register:
+        register(p)
+    try:
+        out, err = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        p.communicate()
+        return {"cmd": shlex.join(cmd), "code": 124,
+                "out": f"timed out after {timeout}s", "err": ""}
+    finally:
+        if register:
+            register(None)
+    out, err = out or "", err or ""
+    if not split_err:
+        out, err = out + err, ""
+    return {"cmd": shlex.join(cmd), "code": p.returncode, "out": out, "err": err}
 
 
 # Where the image keeps the CLAUDE.md the environment block is copied from.
@@ -2133,6 +2145,8 @@ class Handler(BaseHTTPRequestHandler):
         rule every other executing endpoint here follows.
         """
         action = req.get("action")
+        if action == "abort":
+            return self._json({"ok": packages.abort_job()})
         if action not in ("install", "remove", "update", "check"):
             return self._json({"error": "unknown action"}, 400)
         known = {p["name"] for p in packages.PACKAGES}
