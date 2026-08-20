@@ -37,8 +37,10 @@ ok(await page.$eval('.pane .bar [data-reload]', b => b.dataset.reload) === 'pack
    'the pane bar offers a reload, like the findings report');
 const rows = () => page.$$eval('.doc .pkg', ls => ls.map(l => ({
   name: l.querySelector('input').value,
-  installed: l.querySelector('.where').classList.contains('on'),
-  where: l.querySelector('.where').textContent.trim(),
+  installed: !!l.querySelector('.where.on'),
+  // Null while a job is on this row: it shows what it is doing in place of
+  // where it lives, so anything reading paths has to tolerate their absence.
+  where: l.querySelector('.where')?.textContent.trim() ?? null,
 })));
 let list = await rows();
 ok(list.length >= 6 && list.some(r => r.name === 'flutter') && list.some(r => r.name === 'android:emulator'),
@@ -60,8 +62,9 @@ await page.waitForFunction(() => document.querySelectorAll('.doc .pkg').length >
 ok(await page.$$eval('.doc .pkg input:checked', is => is.length === 2),
    'a redraw keeps what was ticked');
 await page.click('.doc [data-pkg="install"]');
-await page.waitForFunction(() => [...document.querySelectorAll('.doc .where')]
-  .filter(w => w.classList.contains('on')).length === 2, { timeout: 30000 });
+await page.waitForFunction(() => packages?.job && !packages.job.running
+  && [...document.querySelectorAll('.doc .where')]
+       .filter(w => w.classList.contains('on')).length === 2, { timeout: 30000 });
 list = await rows();
 const flutter = list.find(r => r.name === 'flutter');
 const emu = list.find(r => r.name === 'android:emulator');
@@ -314,8 +317,13 @@ const nd = page.dialogs.length;
 await page.click('.doc [data-rm="android:emulator"]');
 ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Uninstall'),
    'uninstalling asks first');
-await page.waitForFunction(() => [...document.querySelectorAll('.doc .where')]
-  .filter(w => w.classList.contains('on')).length === 1, { timeout: 30000 });
+// The job, not just the count: a row being removed has no path line at all,
+// so "one installed path" is briefly true mid-removal — and everything after
+// this reads paths. On this runner that race is the difference between green
+// and a null dereference.
+await page.waitForFunction(() => packages?.job && !packages.job.running
+  && [...document.querySelectorAll('.doc .where')]
+       .filter(w => w.classList.contains('on')).length === 1, { timeout: 30000 });
 list = await rows();
 ok(!list.find(r => r.name === 'android:emulator').installed
    && list.find(r => r.name === 'flutter').installed,
