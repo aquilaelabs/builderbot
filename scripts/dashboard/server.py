@@ -1908,6 +1908,10 @@ class Handler(BaseHTTPRequestHandler):
             r = todo.set_done(name, req.get("id"), bool(req.get("done", True)))
         elif act == "edit":
             r = todo.edit(name, req.get("id"), req.get("text", ""))
+        elif act == "move":
+            r = todo.move(name, req.get("id"), req.get("step"), req.get("dir"))
+        elif act == "add-step":
+            r = todo.add_step(name, req.get("id"), req.get("text", ""))
         elif act == "cross":
             r = todo.cross(name, req.get("id"), req.get("step"),
                            bool(req.get("on", True)))

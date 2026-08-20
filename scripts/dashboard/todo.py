@@ -62,10 +62,26 @@ def load():
             d = json.load(f)
         if isinstance(d, dict) and isinstance(d.get("projects"), dict):
             d.setdefault("unsaved", {})
-            return d
+            return _migrate(d)
     except (OSError, ValueError):
         pass
-    return {"projects": {}, "unsaved": {}}
+    return {"projects": {}, "unsaved": {}, "ordered": True}
+
+
+def _migrate(d):
+    """Stored order became display order; it used to be newest-last and sorted
+    on the way out. Reverse the old files once so nobody's list turns upside
+    down the first time they open it after an update."""
+    if d.get("ordered"):
+        return d
+    for name, rows in d["projects"].items():
+        d["projects"][name] = list(reversed(rows))
+    d["ordered"] = True
+    try:
+        save(d)
+    except Exception:  # noqa: BLE001 - a read must not fail on a failed write
+        pass
+    return d
 
 
 def save(d):
@@ -96,16 +112,16 @@ def _prune(rows):
 
 
 def items(project):
+    """The list, in the order it is stored — which is the order it is shown.
+
+    Nothing is sorted here any more. A list that reshuffles itself is one you
+    cannot keep a plan in: an item ticked off would jump to the bottom, taking
+    its steps with it, and the order the operator arranged would be a
+    suggestion the list overruled. Done items fade where they are, the same
+    way sent steps stay struck through where they are.
+    """
     with _lock:
-        d = load()
-        rows = _prune(d["projects"].get(project) or [])
-    # Newest first, and the id breaks a tie: two items added inside one second
-    # have the same timestamp, and which of them came first is then whatever
-    # the sort happened to do — an order that changes under you between two
-    # draws of the same list.
-    rows.sort(key=lambda r: (bool(r.get("done")), -r.get("added", 0),
-                             -int(r.get("id", 0))))
-    return rows
+        return _prune(load()["projects"].get(project) or [])
 
 
 def counts():
@@ -150,7 +166,8 @@ def add(project, text, by="you", steps=()):
                "added": int(time.time()), "by": "claude" if by == "claude" else "you",
                "sent": 0,
                "steps": [{"text": x, "sent": 0} for x in steps]}
-        rows.append(row)
+        # The top, because that is where you look after typing something in.
+        rows.insert(0, row)
         d["projects"][project] = rows
         _touch(d, project)
         save(d)
@@ -219,6 +236,72 @@ def remove(project, item_id, step=None):
         if not 0 <= i < len(steps):
             return {"error": "no such step"}
         steps.pop(i)
+        return {"ok": True}
+    return _edit(project, item_id, change)
+
+
+def move(project, item_id, step=None, dir=0):
+    """Shuffle an item among the items, or a step within its group.
+
+    Steps that have gone do not move, and nothing moves above them: crossed
+    steps are a prefix, and every rule about what can be sent reads them that
+    way. So the past of a plan is fixed and its future can be rearranged,
+    which is the half anyone actually wants to change.
+    """
+    try:
+        dir = int(dir)
+    except (TypeError, ValueError):
+        return {"error": "not a direction"}
+    if dir not in (-1, 1):
+        return {"error": "not a direction"}
+
+    def swap(seq, i):
+        j = i + dir
+        if not 0 <= j < len(seq):
+            return {"error": "it is already at the end"}
+        seq[i], seq[j] = seq[j], seq[i]
+        return {"ok": True}
+
+    if step is None:
+        with _lock:
+            d = load()
+            rows = _prune(d["projects"].get(project) or [])
+            i = next((n for n, r in enumerate(rows)
+                      if int(r.get("id", 0)) == int(item_id)), None)
+            if i is None:
+                return {"error": "no such item"}
+            out = swap(rows, i)
+            if out.get("ok"):
+                d["projects"][project] = rows
+                _touch(d, project)
+                save(d)
+        return out
+
+    def change(row, rows):
+        steps = row.get("steps") or []
+        i = int(step)
+        if not 0 <= i < len(steps):
+            return {"error": "no such step"}
+        first = sum(1 for st in steps if st.get("sent"))
+        if i < first or i + dir < first:
+            return {"error": "a step that has gone stays where it is"}
+        return swap(steps, i)
+    return _edit(project, item_id, change)
+
+
+def add_step(project, item_id, text):
+    """Give an item a step — which is how a plain one becomes a plan."""
+    text = " ".join((text or "").split())
+    if not text:
+        return {"error": "nothing to add"}
+    if len(text) > MAX_TEXT:
+        return {"error": f"too long — {MAX_TEXT} characters is the limit"}
+
+    def change(row, rows):
+        steps = row.setdefault("steps", [])
+        if len(steps) >= MAX_STEPS:
+            return {"error": f"{MAX_STEPS} steps is the limit for one item"}
+        steps.append({"text": text, "sent": 0})
         return {"ok": True}
     return _edit(project, item_id, change)
 

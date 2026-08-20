@@ -1077,11 +1077,24 @@ The "I also changed the list" note rides on the *same message* as the step
 rather than chasing it — two lines into one input box is how the second ends up
 glued to the first.
 
-**An item can be an ordered group of steps** — `bb todo add "rework the picker"
---step "widen the select" --step "then re-measure it"`. Only the next unsent
-step can be sent; the one after it is dead until the one before has gone,
-because three separate items can be handed over backwards and the second then
-lands on a tree the first was supposed to have made.
+**An item can be an ordered group of steps.** From a terminal that is
+`bb todo add "rework the picker" --step "widen the select" --step "then
+re-measure it"`; in the panel it is **+ step** under any item, which turns a
+plain one into a plan — and the field stays open, so three steps is three lines
+of typing rather than three dialogs. Only the next unsent step can be sent; the
+one after it is dead until the one before has gone, because three separate
+items can be handed over backwards and the second then lands on a tree the
+first was supposed to have made.
+
+**Reorder** is a mode rather than two more icons on every row — five controls
+and a number do not fit a phone, and nobody rearranges a list at the same
+moment they are sending from it. The toggle beside the hint swaps each row's
+send/strike/bin for up and down: items move among items, steps move within
+their group. A step that has gone is pinned and nothing moves above it, so the
+crossed ones stay the block every other rule reads them as. The order on
+screen is the order in the file — nothing is sorted on the way out, so a list
+you arranged stays arranged and a ticked item fades where it is rather than
+jumping to the bottom.
 
 **Editing the list or the memories tells the running session**, in one line, to
 go and read them and carry on — not to drop what it is doing. A list edited

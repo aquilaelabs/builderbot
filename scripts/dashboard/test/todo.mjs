@@ -332,6 +332,76 @@ ok(over.status === 400 && /limit/.test(over.body.error),
    'a list long enough to stop being readable refuses to grow');
 page.errors = [];
 
+// ---- building a plan in the panel --------------------------------------
+// A plain item becomes a plan by being given a step; the field stays open, so
+// three steps is three lines of typing rather than three dialogs.
+const plainId = (await open()).find(i => i.step === '-1'
+  && i.text.startsWith('make the picker')).id;
+await page.click(`#todoList .addstep[data-id="${plainId}"] button`);
+await page.fill(`#todoList .addstep[data-id="${plainId}"] input`, 'first, widen it');
+await page.keyboard.press('Enter');
+await page.waitForFunction(id => document.querySelectorAll(
+  `#todoList .grp:has(.todo[data-id="${id}"]) .todo.step`).length === 1, plainId,
+  { timeout: 10000 });
+ok(await page.$eval(`#todoList .addstep[data-id="${plainId}"] input`, e => !!e),
+   'the step field stays open, so a plan is typed rather than assembled');
+await page.fill(`#todoList .addstep[data-id="${plainId}"] input`, 'then re-measure');
+await page.keyboard.press('Enter');
+await page.waitForFunction(id => document.querySelectorAll(
+  `#todoList .grp:has(.todo[data-id="${id}"]) .todo.step`).length === 2, plainId,
+  { timeout: 10000 });
+let made = read().projects.alpha.find(r => String(r.id) === plainId);
+ok(made.steps.length === 2 && made.steps[0].text === 'first, widen it'
+   && made.steps[1].text === 'then re-measure',
+   '...and they land in the order they were typed');
+await page.keyboard.press('Escape');
+
+// ---- moving things about -----------------------------------------------
+// Its own mode: five controls and a number do not fit a phone row, and
+// nobody rearranges a list at the same moment they are sending from it.
+await page.click('#todoOrder');
+await page.waitForFunction(() => !document.getElementById('todoAsk').checkVisibility());
+ok(await page.$$eval('#todoList .todo .go', g => g.length === 0)
+   && await page.$$eval('#todoList .todo .mv', m => m.length > 0),
+   'reordering swaps the row controls rather than crowding in beside them');
+ok(await page.$$eval('#todoList .addstep', a => a.length === 0),
+   '...and puts the step field away: the question here is only where things sit');
+
+const order = () => page.$$eval('#todoList .grp .todo[data-step="-1"] .txt',
+  ts => ts.map(t => t.textContent.slice(0, 14)));
+const was = await order();
+// The first one, moved down — whichever it is. `plainId` may already be last,
+// and "move the last one down" is correctly a refusal.
+const firstId = await page.$eval('#todoList .grp .todo[data-step="-1"]',
+                                 t => t.dataset.id);
+await page.click(`#todoList .todo[data-id="${firstId}"][data-step="-1"] .mv[data-dir="1"]`);
+await page.waitForFunction(o => JSON.stringify([...document.querySelectorAll(
+  '#todoList .grp .todo[data-step="-1"] .txt')].map(t => t.textContent.slice(0, 14)))
+  !== JSON.stringify(o), was, { timeout: 10000 });
+const now = await order();
+ok(now.indexOf(was[0]) === 1 && now.indexOf(was[1]) === 0,
+   'an item moves down past the one below it');
+ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.stringify(now),
+   '...and the file is the order on screen — nothing is sorted on the way out');
+
+// A step that has gone does not move, and nothing moves above it.
+await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: true });
+await page.evaluate(() => loadTodo(memGen));
+await page.waitForFunction(() => document.querySelector(
+  '#todoList .todo.step')?.classList.contains('sent'), { timeout: 10000 });
+ok(await page.$eval(`#todoList .todo[data-id="${plainId}"][data-step="0"] .mv`,
+     b => b.disabled),
+   'a crossed step is pinned: the past of a plan does not shuffle');
+const up1 = await post({ action: 'move', project: 'alpha', id: Number(plainId),
+                         step: 1, dir: -1 });
+ok(up1.status === 400 && /has gone/.test(up1.body.error),
+   '...and nothing moves above it either, which is what keeps the crossed ones a block');
+page.errors = [];
+await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: false });
+await page.click('#todoOrder');
+await page.waitForFunction(() => document.getElementById('todoAsk').checkVisibility());
+ok(true, 'and the send controls come back');
+
 // ---- nothing slides sideways -------------------------------------------
 // Four buttons in the footer did not fit a phone, and a footer that does not
 // fit makes the box scroll horizontally — so the whole panel slid under the

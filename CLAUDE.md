@@ -207,7 +207,9 @@ A list that only grows is one that stops being read.
 
 **When a change needs several things done in a set order, add it as one item
 with steps** — `bb todo add "rework the picker" --step "widen the select"
---step "then re-measure it"`. Steps are handed to a session one at a time, in
+--step "then re-measure it"`. The operator can build and rearrange one from
+the dashboard too, so write the steps in the order they have to happen and
+leave the arranging to them. Steps are handed to a session one at a time, in
 order, from the dashboard: the operator sends the first, and the second only
 becomes sendable once the first has gone. Three separate items can be handed
 over backwards, and the second one then lands on a tree the first was supposed

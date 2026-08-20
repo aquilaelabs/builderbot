@@ -383,8 +383,34 @@ button.on{background:#1f6f36;border-color:#2ea043}
 @media(max-width:620px){ .todo .ph{width:26px} }
 /* The send strip: always there once there is a list, everything on it dead
    until an arrow is armed. */
+/* The hint and the Reorder toggle share a line: the toggle belongs to the
+   list, not to the Add field above it. */
+.hintrow{display:flex;gap:10px;align-items:flex-start;margin-top:6px}
+.hintrow[hidden]{display:none}
+.hintrow .hint{flex:1;min-width:0;margin:0}
+.hintrow button{flex:0 0 auto;min-height:28px;padding:4px 9px;font-size:11px}
+.hintrow button.on{background:#1b5e2a;border-color:#2ea043;color:#d7ffe0}
+/* Giving an item a step, which is how a plain one becomes a plan. */
+.addstep{padding:0 0 9px 26px;display:flex;gap:8px}
+.addstep[hidden]{display:none}
+.addstep .link{background:none;border:0;color:var(--dim);padding:2px 0;
+  font:12px/1.4 system-ui,sans-serif;min-height:24px}
+@media(hover:hover){ .addstep .link:hover{color:var(--accent)} }
+.addstep input{flex:1;min-width:0;background:#161b22;color:var(--ink);
+  border:1px solid var(--line);border-radius:6px;padding:5px 8px;
+  font:12.5px/1.4 system-ui,sans-serif;min-height:var(--tap)}
+.addstep button.primary{flex:0 0 auto;min-height:var(--tap)}
+@media(max-width:900px){ .addstep input{font-size:16px} }
+/* Moving things about: dim until it can, like every other row control. */
+.todo .mv{color:var(--dim)}
+.todo .mv[disabled]{opacity:.3}
+@media(hover:hover){ .todo .mv:not([disabled]):hover{color:var(--ink)} }
 .todoask{border-top:1px solid var(--line);background:#161d26;
   display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+/* An explicit display beats the [hidden] attribute, so hiding it needs saying
+   out loud — it was still on screen while every script that asked believed it
+   was gone. */
+.todoask[hidden]{display:none}
 .todoask .also{display:flex;gap:8px;align-items:center;margin:0;flex:1 1 auto;
   color:var(--dim);font:12px/1.4 system-ui,sans-serif;cursor:pointer}
 .todoask .also.off{opacity:.4;cursor:default}
@@ -755,7 +781,12 @@ body.dragging .tab .lbl{cursor:grabbing}
                placeholder="something to do here">
         <button id="todoAdd" class="primary" type="button">Add</button>
       </div>
-      <div class="hint" id="todoHint"></div>
+      <div class="hintrow">
+        <div class="hint" id="todoHint"></div>
+        <button id="todoOrder" type="button" hidden
+          title="move things up and down — the send controls come back when you are done"
+          >Reorder</button>
+      </div>
     </div>
     <div class="field" id="todoField"><div id="todoList"></div></div>
     <!-- Picking an arrow arms this; Send fires it. Two steps rather than one,
@@ -3392,6 +3423,7 @@ async function openMemory(name){
   $("memFold").open = false;
   $("todoSave").hidden = true;
   $("todoAsk").hidden = true;
+  todoOrdering = false;
   cancelSend();
   $("todoText").value = "";
   $("todoList").innerHTML = `<div class="hint">loading…</div>`;
@@ -3425,6 +3457,11 @@ const SEND = `<svg viewBox="0 0 16 16" aria-hidden="true">
 // Struck-through text, for the other way a line gets crossed off: by hand,
 // because it was already done or turned out not to be needed. Same mark
 // sending leaves, so a group moves on to its next step either way.
+const UP = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M8 12.6V3.7"/><path d="M4.4 7.3 8 3.7l3.6 3.6"/></svg>`;
+const DOWN = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M8 3.4v8.9"/><path d="M11.6 8.7 8 12.3 4.4 8.7"/></svg>`;
+
 const STRIKE = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M2.4 8h11.2"/>
   <path d="M11.4 4.9C11 3.8 9.7 3.1 8 3.1c-1.9 0-3.2.8-3.2 2 0 .9.6 1.5 1.7 1.9"/>
@@ -3493,24 +3530,36 @@ function stepRow(r, idx, live){
     r.done ? `<span class="who fin" title="a session marked this finished">done</span>` : "",
     r.by === "claude" ? `<span class="who" title="Claude put this here">claude</span>` : "",
   ].join("");
+  // In reorder mode the row's three controls are replaced rather than joined:
+  // five buttons and a number do not fit a phone, and moving things about is
+  // not something anybody does at the same time as sending them.
+  const fixed = idx >= 0 && idx < k;         // a step that has gone does not move
+  const moves = `<button class="eye mv" type="button" data-dir="-1"${
+      fixed ? " disabled" : ""} aria-label="up"
+      title="${fixed ? "a step that has gone stays where it is" : "move it up"}"
+      >${UP}</button>
+    <button class="eye mv" type="button" data-dir="1"${fixed ? " disabled" : ""}
+      aria-label="down"
+      title="${fixed ? "a step that has gone stays where it is" : "move it down"}"
+      >${DOWN}</button>`;
   return `<div class="todo${st.sent ? " sent" : ""}${idx >= 0 ? " step" : ""}${
        idx < 0 && r.done ? " done" : ""}" data-id="${r.id}" data-step="${idx}">
-    <button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
+    ${todoOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
       title="${esc(why)}" aria-label="send"
-      aria-pressed="${on ? "true" : "false"}">${SEND}</button>
+      aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}
     ${idx >= 0 ? `<span class="n">${idx + 1}</span>` : ""}
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
     </span>
-    ${strike ? `<button class="eye x${st.sent ? " on" : ""}" type="button" aria-label="cross out"
+    ${todoOrdering ? moves : `${strike ? `<button class="eye x${st.sent ? " on" : ""}" type="button" aria-label="cross out"
       title="${st.sent ? "put it back — it is not dealt with after all"
                        : "cross it out without sending: already done, or not needed"}"
       >${STRIKE}</button>` : `<span class="eye ph"></span>`}
     ${bin ? `<button class="eye rm" type="button" aria-label="drop it"
       title="${idx < 0 ? "take it off the list — the only way anything leaves"
                        : "drop this step; the one behind it takes its place"}"
-      >${BIN}</button>` : `<span class="eye ph"></span>`}
+      >${BIN}</button>` : `<span class="eye ph"></span>`}`}
   </div>`;
 }
 
@@ -3539,9 +3588,19 @@ function drawTodo(j){
     // The group's own row gets the same `live` as its steps now: its arrow
     // stands for the next one, so it is as clickable as that one is.
     `<div class="grp">${stepRow(r, -1, live)}${
-      (r.steps || []).map((_, i) => stepRow(r, i, live)).join("")}</div>`).join("");
+      (r.steps || []).map((_, i) => stepRow(r, i, live)).join("")}${
+      // How a plain item becomes a plan: give it a step. Hidden while
+      // reordering, where the question is only where things sit.
+      todoOrdering ? "" : `<div class="addstep" data-id="${r.id}"><button
+        type="button" class="link">+ step</button></div>`}</div>`).join("");
+  $("todoList").querySelectorAll(".addstep").forEach(box => {
+    box.querySelector("button").onclick = () => openStepInput(box);
+  });
   $("todoList").querySelectorAll(".todo").forEach(row => {
     const id = Number(row.dataset.id), step = Number(row.dataset.step);
+    row.querySelectorAll(".mv").forEach(b => b.onclick = () =>
+      postTodo({action: "move", id, step: step < 0 ? null : step,
+                dir: Number(b.dataset.dir)}));
     const go = row.querySelector(".go");
     // A group's title arrow stands for its next step, so both resolve to the
     // same choice and light up together.
@@ -3583,7 +3642,9 @@ function drawTodo(j){
   // The strip is always there once there is a list, with everything on it
   // dead until an arrow is armed — a control that appears under your thumb is
   // a control you press by accident.
-  $("todoAsk").hidden = !rows.length;
+  $("todoAsk").hidden = !rows.length || todoOrdering;
+  $("todoOrder").hidden = !rows.length;
+  $("todoOrder").classList.toggle("on", todoOrdering);
   const armed = !!todoSel && live;
   $("todoGo").disabled = !armed;
   $("todoAlso").disabled = !armed || !todoUnsaved;
@@ -3599,6 +3660,7 @@ let todoItems = [];
 let todoSession = null;
 let todoUnsaved = false;
 let todoSel = null;         // {id, step} — the arrow that is armed, if any
+let todoOrdering = false;   // the rows are showing move controls instead
 
 // Picking one arms the Send button; picking it again puts it down. The
 // highlight is the whole confirmation — the line it would send is the line the
@@ -3646,6 +3708,37 @@ async function postTodo(body){
     refresh();                            // the row's count moved
     return j;
   }catch(e){ notify("could not reach the server: " + e, true); return null; }
+}
+
+// Adding steps one after another: the field stays open, so a plan is typed
+// rather than assembled a dialog at a time.
+function openStepInput(box){
+  const id = box.dataset.id;
+  box.innerHTML = `<input maxlength="500" autocomplete="off"
+      placeholder="then…"><button type="button" class="primary">Add</button>`;
+  const inp = box.querySelector("input"), btn = box.querySelector("button");
+  const go = async () => {
+    if (!inp.value.trim()) return closeStepInput(box);
+    const keep = inp.value;
+    if (await postTodo({action: "add-step", id, text: keep})){
+      // The redraw replaced this box; find the new one and carry on typing.
+      const again = $("todoList").querySelector(`.addstep[data-id="${id}"]`);
+      if (again) openStepInput(again);
+    }
+  };
+  btn.onclick = go;
+  inp.onkeydown = e => {
+    if (e.key === "Enter"){ e.preventDefault(); go(); }
+    // stopPropagation, or the document handler behind it reads the same
+    // Escape as "close the panel" and the plan being typed goes with it.
+    if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); closeStepInput(box); }
+  };
+  inp.focus();
+}
+
+function closeStepInput(box){
+  box.innerHTML = `<button type="button" class="link">+ step</button>`;
+  box.querySelector("button").onclick = () => openStepInput(box);
 }
 
 async function addTodo(){
@@ -3808,6 +3901,11 @@ $("memFold").ontoggle = () => {
 };
 $("todoAdd").onclick = addTodo;
 $("todoGo").onclick = reallySend;
+$("todoOrder").onclick = () => {
+  todoOrdering = !todoOrdering;
+  if (todoOrdering) cancelSend();
+  drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
+};
 $("todoSave").onclick = async () => {
   const b = $("todoSave");
   b.disabled = true; b.textContent = "Telling…";
@@ -3815,7 +3913,13 @@ $("todoSave").onclick = async () => {
   if (j) notify(j.told ? "told " + (todoSession || "the session")
                        : "saved — nothing is running here to tell");
 };
-$("todoText").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); addTodo(); } };
+$("todoText").onkeydown = e => {
+  if (e.key === "Enter"){ e.preventDefault(); addTodo(); }
+  // Escape in a field with something in it clears the field, not the panel.
+  if (e.key === "Escape" && e.target.value){
+    e.preventDefault(); e.stopPropagation(); e.target.value = "";
+  }
+};
 $("memClose").onclick = closeMemory;
 $("memSave").onclick  = saveMemory;
 $("memNote").onclick  = noteMemory;
