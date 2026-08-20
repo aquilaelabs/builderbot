@@ -217,7 +217,9 @@ A step that has been sent is struck through rather than removed, and can be
 sent again — sent is not the same as done, and the difference is exactly the
 case worth being able to see. So do not treat "you sent me this" as proof it
 worked; if you cannot finish a step, say so plainly rather than quietly
-leaving it struck through.
+leaving it struck through. A line can also be struck by hand, meaning the
+operator dealt with it or dropped it; the list says which, so read the note
+rather than assuming you were asked.
 
 If the list or these notes change while you are working, you will be told in
 one line. Read them when it is relevant and carry on — a change to the list is

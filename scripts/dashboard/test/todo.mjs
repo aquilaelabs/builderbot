@@ -156,6 +156,65 @@ const back = await post({ action: 'send', project: 'alpha', id: Number(s1.id), s
 ok(back.status === 200, 'and the first again — "it did not take" is a real answer');
 page.errors = [];
 
+// ---- crossing off by hand ----------------------------------------------
+// The other way a line gets struck: the operator did it themselves, or it
+// turned out not to be needed. Same mark, so the group moves on either way —
+// which is the point, because otherwise a step you handled yourself blocks
+// every step behind it forever.
+items = await open();
+const c1 = items.find(i => i.text === 'widen the select');
+const c2 = items.find(i => i.text === 'then re-measure it');
+await post({ action: 'cross', project: 'alpha', id: Number(c1.id), step: 0, on: false });
+await post({ action: 'cross', project: 'alpha', id: Number(c2.id), step: 1, on: false });
+await page.evaluate(() => loadTodo(memGen));
+await page.waitForFunction(() => !document.querySelector(
+  '#todoList .todo[data-step="0"]')?.classList.contains('sent'));
+items = await open();
+ok(!items.find(i => i.text === 'then re-measure it').can,
+   'with both steps back open, only the first can go again');
+
+await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .x`);
+await page.waitForFunction(id => document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
+  c1.id, { timeout: 10000 });
+items = await open();
+ok(items.find(i => i.text === 'widen the select').sent,
+   'the strike icon crosses a step off without sending it');
+ok(items.find(i => i.text === 'then re-measure it').can,
+   '...and the next one in the group becomes the one that can go');
+const byHand = execFileSync(BB, ['todo', '--prompt'],
+  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws` } }).toString();
+ok(/crossed off by hand/.test(byHand),
+   '...and a session is told it was crossed off, not that it was sent');
+
+await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .x`);
+await page.waitForFunction(id => !document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
+  c1.id, { timeout: 10000 });
+items = await open();
+ok(!items.find(i => i.text === 'then re-measure it').can,
+   'the same icon puts it back, and the group closes up behind it');
+
+// ---- dropping one step out of a plan -----------------------------------
+await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .rm`);
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo[data-step="0"]').length === 1
+  && document.querySelectorAll('#todoList .todo[data-step="1"]').length === 0,
+  { timeout: 10000 });
+items = await open();
+ok(!items.some(i => i.text === 'widen the select')
+   && items.some(i => i.text === 'then re-measure it'),
+   'a step can be dropped out of a group on its own');
+ok(items.find(i => i.text === 'then re-measure it').can,
+   '...and what was behind it becomes the next in line');
+ok(read().projects.alpha.find(r => r.text === 'rework the picker').steps.length === 1,
+   '...leaving the rest of the plan intact');
+
+// ---- where the tags sit ------------------------------------------------
+ok(await page.$eval('#todoList .todo .body',
+     el => el.firstElementChild.classList.contains('tags')),
+   'a tag sits above the words, not beside them');
+
 // ---- when something else has the keyboard ------------------------------
 // A permission dialog swallows stray characters. Simulated with echo off,
 // which has the same signature: the line does not appear, so Enter is not

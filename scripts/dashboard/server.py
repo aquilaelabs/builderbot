@@ -1900,8 +1900,11 @@ class Handler(BaseHTTPRequestHandler):
             r = todo.set_done(name, req.get("id"), bool(req.get("done", True)))
         elif act == "edit":
             r = todo.edit(name, req.get("id"), req.get("text", ""))
+        elif act == "cross":
+            r = todo.cross(name, req.get("id"), req.get("step"),
+                           bool(req.get("on", True)))
         elif act == "remove":
-            r = todo.remove(name, req.get("id"))
+            r = todo.remove(name, req.get("id"), req.get("step"))
         elif act == "clear-done":
             r = todo.clear_done(name)
         else:

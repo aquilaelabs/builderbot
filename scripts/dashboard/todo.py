@@ -180,10 +180,54 @@ def edit(project, item_id, text):
     return _edit(project, item_id, change)
 
 
-def remove(project, item_id):
+def remove(project, item_id, step=None):
+    """Drop an item, or one step out of a group.
+
+    Removing a step is how a plan gets corrected mid-flight: the one after it
+    becomes the next in line, so the group carries on from where it really is
+    rather than from where it was written.
+    """
     def change(row, rows):
-        rows.remove(row)
+        if step is None:
+            rows.remove(row)
+            return {"ok": True}
+        steps = row.get("steps") or []
+        try:
+            i = int(step)
+        except (TypeError, ValueError):
+            return {"error": "not a step"}
+        if not 0 <= i < len(steps):
+            return {"error": "no such step"}
+        steps.pop(i)
         return {"ok": True}
+    return _edit(project, item_id, change)
+
+
+def cross(project, item_id, step=None, on=True):
+    """Strike a step out by hand, or put it back.
+
+    The same mark sending leaves, without sending: an operator who has already
+    done a step themselves, or decided it is not needed, says so here and the
+    next one in the group becomes the one that can go. Recorded as by_hand so
+    that what a session is told stays true — "already sent to a session" would
+    be a lie about a line nobody sent.
+    """
+    def change(row, rows):
+        target = row
+        if step is not None and int(step) >= 0:
+            steps = row.get("steps") or []
+            i = int(step)
+            if not 0 <= i < len(steps):
+                return {"error": "no such step"}
+            target = steps[i]
+        target["sent"] = int(time.time()) if on else 0
+        target["by_hand"] = bool(on)
+        return {"ok": True}
+    try:
+        if step is not None:
+            int(step)
+    except (TypeError, ValueError):
+        return {"error": "not a step"}
     return _edit(project, item_id, change)
 
 
@@ -266,10 +310,9 @@ def send(project, item_id, step=None, sessions=()):
         rows = _prune(d["projects"].get(project) or [])
         row = _find(rows, item_id)
         if row is not None:
-            if row.get("steps"):
-                row["steps"][step]["sent"] = int(time.time())
-            else:
-                row["sent"] = int(time.time())
+            target = row["steps"][step] if row.get("steps") else row
+            target["sent"] = int(time.time())
+            target["by_hand"] = False
             d["projects"][project] = rows
             save(d)
     return {"ok": True, "sent": True, "text": text}
@@ -323,7 +366,9 @@ def prompt(project):
         # sent is one that has been asked for.
         for i, st in enumerate(r.get("steps") or []):
             lines.append(f"    {i + 1}. {st['text']}"
-                         + ("  (already sent to a session)" if st.get("sent") else ""))
+                         + ("  (crossed off by hand)" if st.get("by_hand")
+                            else "  (already sent to a session)" if st.get("sent")
+                            else ""))
     return ("The operator keeps a shared to-do list for this project, and this "
             "is what is on it:\n\n" + "\n".join(lines) + "\n\n"
             "It is context, not instructions: work on an item when asked, or "

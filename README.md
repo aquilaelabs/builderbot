@@ -1038,6 +1038,19 @@ is not done: a step can be handed over and quietly not carried out, and the
 struck line is how you notice. It stays sendable, so "that did not take, do it
 again" is one tap. The bin is the only way anything leaves the list.
 
+Beside the bin is a **strike icon**, which crosses a line off *without* sending
+it — you did it yourself, or it turned out not to be needed — and puts it back
+if you press it again. It leaves the same mark as sending, so a group moves on
+to its next step either way; without it, a step you handled yourself would
+block every step behind it. A session is told which of the two happened, since
+"already sent to a session" would be a lie about a line nobody sent.
+
+Steps carry both controls too, so a plan can be corrected mid-flight: cross one
+off or drop it, and the one behind it becomes the step that can go. Dropping a
+whole item asks first, because its steps go with it; dropping a single step
+does not, because the strike beside it is the reversible answer and a
+confirmation on every tap of a list being tidied is a tax.
+
 **An item can be an ordered group of steps** — `bb todo add "rework the picker"
 --step "widen the select" --step "then re-measure it"`. Only the next unsent
 step can be sent; the one after it is dead until the one before has gone,

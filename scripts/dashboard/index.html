@@ -325,7 +325,12 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .todo.step{padding:5px 0 5px 26px;border-top:1px dashed #232b34}
 .todo .n{flex:0 0 auto;color:var(--dim);font:600 11px/1.5 var(--mono);
   min-width:1.2em;text-align:right}
-.todo .txt{flex:1;min-width:0;font:13px/1.45 system-ui,sans-serif;
+/* The words and their labels are one column, so a pill sits above the line
+   instead of eating a third of it — on a phone that difference is the whole
+   readability of the row. */
+.todo .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.todo .tags{display:flex;gap:5px;flex-wrap:wrap}
+.todo .txt{min-width:0;font:13px/1.45 system-ui,sans-serif;
   overflow-wrap:anywhere;cursor:text}
 .todo.step .txt{font-size:12.5px}
 /* Struck through means *sent*, not done. It stays where it was — the order is
@@ -337,7 +342,13 @@ button.on{background:#1f6f36;border-color:#2ea043}
    can be sent and not done, which is exactly the case worth seeing. */
 .todo.done{opacity:.55}
 .todo .who.fin{color:#7fc08a;border-color:#1f3f28}
-.todo .go{flex:0 0 auto;align-self:flex-start;color:var(--accent)}
+.todo .go,.todo .x,.todo .rm{flex:0 0 auto;align-self:flex-start}
+.todo .go{color:var(--accent)}
+/* Crossing out by hand: dim until it is on, then the same green as a line
+   that went — because the two mean the same thing to the group behind them. */
+.todo .x{color:var(--dim)}
+.todo .x.on{color:var(--accent)}
+@media(hover:hover){ .todo .x:hover{color:var(--ink)} }
 .todo .go[disabled]{opacity:.35;color:var(--dim);cursor:default}
 @media(hover:hover){ .todo .go:not([disabled]):hover{color:#7ee08a;border-color:#2ea043} }
 /* Items a session raised, marked so the operator can see what was flagged at
@@ -345,8 +356,11 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .todo .who{flex:0 0 auto;font:600 10px/1 system-ui,sans-serif;text-transform:uppercase;
   letter-spacing:.4px;padding:3px 5px;border-radius:4px;border:1px solid #38294a;
   color:#b79ae0;white-space:nowrap;margin-top:1px}
-.todo .rm{flex:0 0 auto;align-self:flex-start;color:var(--dim)}
+.todo .rm{color:var(--dim)}
 @media(hover:hover){ .todo .rm:hover{color:var(--bad);border-color:#4d2220} }
+/* Four controls and a number on one line is tight on a phone; the buttons
+   lose their padding before the words lose their width. */
+@media(max-width:620px){ .todo .go,.todo .x,.todo .rm{padding:5px 4px} .todo{gap:6px} }
 #memFold>summary{cursor:pointer;color:var(--dim);
   font:12px/1.5 system-ui,sans-serif;padding:11px 14px;list-style:none;
   border-top:1px solid var(--line)}
@@ -3364,6 +3378,14 @@ const SEND = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M2.6 8h9"/><path d="M8.2 4.6 11.6 8l-3.4 3.4"/>
   <path d="M13.6 3.2v9.6"/></svg>`;
 
+// Struck-through text, for the other way a line gets crossed off: by hand,
+// because it was already done or turned out not to be needed. Same mark
+// sending leaves, so a group moves on to its next step either way.
+const STRIKE = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M2.4 8h11.2"/>
+  <path d="M11.4 4.9C11 3.8 9.7 3.1 8 3.1c-1.9 0-3.2.8-3.2 2 0 .9.6 1.5 1.7 1.9"/>
+  <path d="M4.9 11.2c.5 1.1 1.7 1.7 3.3 1.7 2 0 3.3-.8 3.3-2 0-.6-.2-1-.7-1.4"/></svg>`;
+
 // Which step a group would hand over next: the first that has not gone. The
 // order is the whole point of a group — send the third before the second and
 // it lands on a tree the second was supposed to have made — so only that one,
@@ -3378,7 +3400,7 @@ function nextStep(r){
 function stepRow(r, idx, live){
   const steps = r.steps || [];
   const nxt = nextStep(r);
-  const st = idx < 0 ? {text: r.text, sent: r.sent} : steps[idx];
+  const st = idx < 0 ? r : steps[idx];
   // Sent ones stay live so they can go again — "it did not take, do it again"
   // is the reason they are still on screen at all.
   const can = live && (!!st.sent || idx === nxt);
@@ -3386,16 +3408,30 @@ function stepRow(r, idx, live){
             : st.sent ? "send it again"
             : idx === nxt ? "send this to the Claude session"
             : `step ${nxt + 1} has not been sent yet`;
+  // The tags sit above the line rather than beside it: they are labels on the
+  // whole item, and on a phone a pill sharing the first line pushed the words
+  // into a column two thirds as wide as the ones under it.
+  const tags = idx >= 0 ? "" : [
+    r.done ? `<span class="who fin" title="a session marked this finished">done</span>` : "",
+    r.by === "claude" ? `<span class="who" title="Claude put this here">claude</span>` : "",
+  ].join("");
   return `<div class="todo${st.sent ? " sent" : ""}${idx >= 0 ? " step" : ""}${
        idx < 0 && r.done ? " done" : ""}" data-id="${r.id}" data-step="${idx}">
     <button class="eye go" type="button"${can ? "" : " disabled"}
       title="${esc(why)}" aria-label="send">${SEND}</button>
     ${idx >= 0 ? `<span class="n">${idx + 1}</span>` : ""}
-    <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
-    ${idx < 0 && r.done ? `<span class="who fin" title="a session marked this finished">done</span>` : ""}
-    ${idx < 0 && r.by === "claude" ? `<span class="who" title="Claude put this here">claude</span>` : ""}
-    ${idx < 0 ? `<button class="eye rm" type="button" aria-label="drop it"
-      title="take it off the list — the only way anything leaves">${BIN}</button>` : ""}
+    <span class="body">
+      ${tags ? `<span class="tags">${tags}</span>` : ""}
+      <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
+    </span>
+    <button class="eye x${st.sent ? " on" : ""}" type="button" aria-label="cross out"
+      title="${st.sent ? "put it back — it is not dealt with after all"
+                       : "cross it out without sending: already done, or not needed"}"
+      >${STRIKE}</button>
+    <button class="eye rm" type="button" aria-label="drop it"
+      title="${idx < 0 ? "take it off the list — the only way anything leaves"
+                       : "drop this step; the next one becomes the one that can go"}"
+      >${BIN}</button>
   </div>`;
 }
 
@@ -3417,9 +3453,15 @@ function drawTodo(j){
     const id = Number(row.dataset.id), step = Number(row.dataset.step);
     const go = row.querySelector(".go");
     if (go) go.onclick = () => sendTodo(id, step < 0 ? null : step, go);
-    const rm = row.querySelector(".rm");
-    if (rm) rm.onclick = () => {
-      const r = (todoItems || []).find(x => x.id === id);
+    row.querySelector(".x").onclick = () =>
+      postTodo({action: "cross", id, step: step < 0 ? null : step,
+                on: !row.classList.contains("sent")});
+    // An item asks, because it takes its steps with it. A single step does
+    // not: it is one line, the cross-out beside it is the reversible answer,
+    // and a confirmation on every tap of a list being tidied is a tax.
+    row.querySelector(".rm").onclick = () => {
+      if (step >= 0) return void postTodo({action: "remove", id, step});
+      const r = (todoItems || []).find(x => String(x.id) === String(id));
       if (confirm(`Drop "${row.querySelector(".txt").textContent}"?${
         (r?.steps || []).length ? `\n\nIts ${r.steps.length} steps go with it.` : ""}`))
         postTodo({action: "remove", id});
@@ -3499,8 +3541,8 @@ function drawMemory(j){
   // what it will do: the text is typed, not sent. See memory.py's notify().
   memHasSession = !!j.session;
   $("memNote").hidden = !j.session || !$("memFold").open;
-  $("memNote").title = "type a note into " + (j.session || "") +
-    " asking it to re-read these — you press Enter there to send it";
+  $("memNote").title = "ask " + (j.session || "") + " to re-read these — sent "
+    + "if the line visibly lands in its input box, left there for you if not";
   $("memCount").textContent = n ? "Memories — newest first" : "Memories";
   $("memListField").hidden = !n;
   // Which were open before this redraw. Saving reloads the book, and folding
@@ -3581,7 +3623,13 @@ The file goes, and its line comes out of the`
 
 async function noteMemory(){
   const j = await postMemory({action:"notify"});
-  if (j) notify("typed into the session — press Enter there to send it");
+  if (!j) return;
+  // notify.py submits only what it can see arrived; anything else is left in
+  // the input box, because something other than a text field has the keyboard.
+  notify(j.sent ? "sent to the session"
+                : "typed into the session but not sent — something else has the "
+                  + "keyboard there; press Enter in that tab when it is clear",
+         !j.sent);
 }
 
 function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
