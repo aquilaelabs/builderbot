@@ -187,10 +187,22 @@ def download_urls(pkg):
     if spec is None:
         _, url = resolve(pkg)
         return [url] if url and src.get("kind") == "tarball" else []
-    if spec.get("resolver") == "android-repo":
-        return []                     # handled by size_of, which needs the id
-    if spec.get("resolver") != "command-urls":
-        die(f"{pkg['name']}: unknown download resolver {spec.get('resolver')!r}")
+    kind = spec.get("resolver")
+    if kind in ("android-repo", "approximate"):
+        return []                     # size_of answers these without a URL
+    if kind == "url-matches":
+        # The URLs are listed in a file upstream publishes rather than by a
+        # command: rust's channel manifest names an archive per component, and
+        # the three a minimal profile installs are the honest answer to what
+        # `rustup` is about to fetch.
+        if not spec.get("url") or not spec.get("match"):
+            die(f"{pkg['name']}: a url-matches download needs both url and match")
+        try:
+            return re.findall(spec["match"], get(spec["url"]))
+        except Exception:  # noqa: BLE001
+            return []
+    if kind != "command-urls":
+        die(f"{pkg['name']}: unknown download resolver {kind!r}")
     if not spec.get("run") or not spec.get("match"):
         die(f"{pkg['name']}: a command-urls download needs both run and match")
     env = dict(os.environ, **{k: str(v) for k, v in (spec.get("env") or {}).items()})
@@ -252,6 +264,12 @@ def size_of(pkg, pkg_id=""):
     spec = (pkg.get("source") or {}).get("download") or {}
     if spec.get("resolver") == "android-repo":
         return str(android_size(spec, pkg_id)) if pkg_id else ""
+    if spec.get("resolver") == "approximate":
+        # A number somebody wrote down, for the one recipe whose download
+        # cannot be measured before it happens. Marked with a tilde all the
+        # way to the row, so it is never mistaken for a measurement.
+        n = spec.get("bytes")
+        return f"~{n}" if isinstance(n, int) and n > 0 else ""
     total = 0
     for url in download_urls(pkg):
         try:

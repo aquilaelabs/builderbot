@@ -499,9 +499,12 @@ package id an install would resolve to: the index's newest Play Store image is
 an `android-CANARY` build nobody installs, and the emulator appears twice,
 once stable and once on the dev channel.
 
-Two cannot be asked at all. A git clone has no content length, and `rustup`
-picks its components as it goes, so Flutter and Rust show no size until this
-box has installed them once — after which they show what they actually took.
+Rust answers a fourth way: its channel manifest names an archive per
+component, and the three a minimal profile installs add up to what `rustup` is
+about to fetch. Only Flutter cannot be asked at all — a git clone has no
+content length — so it carries the one approximation in the catalog, marked
+with a `~` everywhere it appears and replaced by a measurement the moment the
+package has been installed here once.
 
 **Nothing installs, updates or removes itself, and no session can do it for
 you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in

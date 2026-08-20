@@ -32,13 +32,20 @@
     "             its Content-Length is the answer; \"command-urls\" runs a dry run",
     "             and matches the URLs out of it, which is how playwright's five",
     "             bundles and the .NET archive are counted. A recipe that cannot",
-    "             be asked — a git clone, rustup — simply has none,",
     "             and the row shows no size until it has been installed once.",
     "",
     "No size is written down here. One typed into a file is wrong the next time",
     "upstream ships: a row shows what the package takes on this disk once it is",
     "installed, what it took the last time it was, or what the download weighs",
-    "before that — never a number somebody guessed."
+    "before that — never a number somebody guessed.",
+    "             \"url-matches\" fetches a file upstream publishes and matches the",
+    "             URLs out of it, which is how rust's three minimal-profile",
+    "             components are counted; \"android-repo\" reads sdkmanager's own",
+    "             index, keyed by the package id an install resolves to; and",
+    "             \"approximate\" is a number written down, for the one recipe whose",
+    "             download cannot be measured before it happens — a git clone has",
+    "             no content length. It is marked as an approximation everywhere",
+    "             it is shown."
   ],
   "packages": [
     {
@@ -93,7 +100,11 @@
           "{dir}/bin/flutter",
           "--version"
         ],
-        "warm_note": "warming the toolchain (downloads the bundled dart sdk)"
+        "warm_note": "warming the toolchain (downloads the bundled dart sdk)",
+        "download": {
+          "resolver": "approximate",
+          "bytes": 520000000
+        }
       }
     },
     {
@@ -263,7 +274,12 @@
         "after": [
           "a Windows target also needs a linker: rustup target add x86_64-pc-windows-gnu,",
           "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb sdk install zig + cargo-zigbuild"
-        ]
+        ],
+        "download": {
+          "resolver": "url-matches",
+          "url": "https://static.rust-lang.org/dist/channel-rust-stable.toml",
+          "match": "\\[pkg\\.(?:rustc|cargo|rust-std)\\.target\\.x86_64-unknown-linux-gnu\\][^\\[]*?xz_url = \"([^\"]+)\""
+        }
       }
     },
     {
