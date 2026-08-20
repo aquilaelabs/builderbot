@@ -446,7 +446,18 @@ body.dragging .tab .lbl{cursor:grabbing}
   font:11px/1.6 var(--mono);color:var(--dim);flex:0 0 auto}
 .pane .bar .x{margin-left:auto;cursor:pointer;padding:2px 7px;border-radius:4px}
 .pane .bar button{min-height:22px;padding:2px 8px;font-size:11px}
-.pane iframe{flex:1;border:0;width:100%;display:block}
+/* The terminal's own background colour, on the frame itself.
+   A terminal's document is transparent until xterm paints into it, so what
+   fills the frame until then is the browser's default canvas — and this page
+   declares a dark color-scheme, which (in Chromium) makes that canvas white
+   rather than dark. The result was a quarter-second of white in the middle of
+   a dark page every time a tmux tab was opened, worst on a phone where the
+   frame takes longest to arrive. Giving the element the colour the terminal
+   settles on means there is no transition to see at all: measured, it holds
+   #2b2b2b from the first frame to the last.
+   Not color-scheme:dark on the frame — that is what turns the canvas white,
+   which is the opposite of what it sounds like it would do. */
+.pane iframe{flex:1;border:0;width:100%;display:block;background:#2b2b2b}
 .pane .doc{flex:1;overflow:auto;background:var(--bg);padding:12px;
   -webkit-overflow-scrolling:touch}
 .pane .slot{flex:1;min-height:0;display:flex}
