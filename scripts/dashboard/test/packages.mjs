@@ -445,6 +445,15 @@ ok(imgs.length === 1 && /android-30/.test(imgs[0].text) && /3\.1 GB|3\.\d GB/.te
    `an installed system image is listed with its size (${imgs[0]?.text || 'none'})`);
 ok(imgs[0].bin && !imgs[0].box,
    '...with a way to remove it, and no checkbox: there is nothing to select it for');
+ok(/AVD: fb30/.test(imgs[0].text),
+   '...and which AVD is built on it, since that is what "can this go?" means');
+// The same answer in the confirmation, because that is where it is asked.
+const ndImg = page.dialogs.length;
+await page.click('.doc .pkg.img [data-rmimg]');
+ok(page.dialogs.length > ndImg && /fb30 is built on it/.test(page.dialogs[ndImg]),
+   'removing one says what it would stop from booting');
+await page.waitForFunction(() => packages?.job && !packages.job.running,
+                           { timeout: 30000 });
 // The id goes back to the server, which checks it against the list it gave
 // out — the same rule every executing endpoint here follows.
 const badImg = await page.evaluate(async () => {

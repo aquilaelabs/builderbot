@@ -177,7 +177,9 @@ if [ "${1:-}" = sdk ]; then
                      printf 'system-images;android-30;google_apis;x86_64\t30\tgoogle_apis\t1438186618\n'
                      printf 'system-images;android-30;google_apis_playstore;x86_64\t30\tgoogle_apis_playstore\t1404405641\n'
                  else
-                     printf 'system-images;android-30;google_apis;x86_64\tandroid-30\tgoogle_apis\t3300000\n'
+                     # ...with the AVD built on it, which is what makes it
+                     # answerable whether the image can go.
+                     printf 'system-images;android-30;google_apis;x86_64\tandroid-30\tgoogle_apis\t3300000\tfb30\n'
                  fi ;;
         flavors) printf 'google_apis\tx86_64\tGoogle APIs\tPlay services, no Play Store app. Rootable.\n'
                  printf 'google_apis_playstore\tx86_64\tGoogle APIs + Play Store\tThe Play Store app itself; not rootable.\n' ;;

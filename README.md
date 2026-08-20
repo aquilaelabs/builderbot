@@ -638,7 +638,10 @@ several hundred lines of progress frames that came with it.
 System images sit below in a section of their own, because they are not
 packages: a picker for the API level and flavor with the download size on
 each option, and the ones already on disk listed under it with what they take
-and a bin each. A tab rather than a dialog because an install runs for
+and a bin each. Each one also says **which AVDs are built on it**, which is
+what "can this go?" actually means — an AVD names one image exactly and will
+not boot without it, and two flavors at the same API level are not
+interchangeable. An image no AVD names says so, and is the one that is spare. A tab rather than a dialog because an install runs for
 minutes — it can sit on the strip, be pinned to a pane, or be minimized while
 you work, and the work itself is a background job on the container, so the
 list keeps reporting progress instead of hanging on a request that would take
@@ -684,6 +687,13 @@ The first two are separate downloads from Google, not one image with a switch
 plain image for the same API level is already here. The trade is deliberate on
 Google's side: an image that ships the Play Store is certified, and a
 certified build does not give you root.
+
+Which means the two at one API level are **not** redundant with each other,
+even though they cost 2GB each and look almost identical. Take the Play Store
+one if something has to talk to Play; take the plain one if you want
+`adb root`, a writable system, or the level your existing AVDs were made
+against. Rarely both — and the image list says which AVDs are built on each,
+so the one that is actually spare is visible rather than guessed at.
 
 The Tools tab offers a level and a flavor and installs it; `bb sdk images
 --available` is the same list on the command line, sizes and all. Real Samsung
