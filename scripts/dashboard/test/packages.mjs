@@ -47,8 +47,8 @@ ok(list.length >= 6 && list.some(r => r.name === 'flutter') && list.some(r => r.
    'the tab lists the toolchains and the android packages');
 ok(list.every(r => !r.installed) && list.every(r => r.where === 'not installed'),
    'a scratch root starts with nothing installed');
-ok(await page.$$eval('.doc .pkg .nm .pill', ps => ps.every(p => p.textContent.startsWith('~'))),
-   '...so every size is the catalog estimate, and no row claims a version');
+ok(await page.$$eval('.doc .pkg .nm .pill', ps => ps.length === 0),
+   '...so no row carries a size or a version: nothing has been weighed yet');
 ok((await page.$eval('.pkghead', el => el.textContent)).includes(`${DIR}/sdk`),
    'it says which root things are installed into');
 // The catalog is a file in the repository, not a list in the server: adding a
@@ -162,9 +162,9 @@ ok((await page.$$eval('.doc .pkg .nm .pill', ps => ps.map(p => p.textContent)))
      .some(t => t === '1.0'), 'installed versions show without a check');
 ok(await page.$$eval('.doc .pkg .upd', us => us.length === 0),
    'no update claims before a check');
-// The estimate is a number somebody typed into the catalog; once the thing is
-// on disk there is a real one, measured by a worker and arriving a moment
-// after the row does.
+// No size is typed into the catalog — a typed one is wrong the next time
+// upstream ships — so a row carries one only once this box has weighed it,
+// measured by a worker and arriving a moment after the row does.
 const pill = (name, n = 0) => page.$$eval('.doc .pkg', (ls, [v, i]) => {
   const l = ls.find(x => x.querySelector('input').value === v);
   const ps = l ? l.querySelectorAll('.nm .pill') : [];
@@ -175,11 +175,10 @@ await page.waitForFunction(() => {
     .find(x => x.querySelector('input').value === 'flutter');
   return l && /measured/.test(l.querySelector('.nm .pill').title);
 }, { timeout: 30000 });
-ok(!(await pill('flutter')).text.startsWith('~'),
-   'an installed package shows what it takes on disk, not the catalog estimate');
-ok((await pill('swift')).text.startsWith('~')
-   && /approximate/.test((await pill('swift')).title),
-   '...and one that is not installed still shows the estimate, marked as one');
+ok(/measured on disk/.test((await pill('flutter')).title),
+   'an installed package shows what it takes on disk, and says so');
+ok((await pill('swift')) === null,
+   '...and one this box has never had shows no size at all rather than a guess');
 // A check spends no selection — it asks about every row regardless — so
 // whatever was ticked before it must survive it.
 await page.check('.doc .pkg input[value="swift"]');
@@ -207,9 +206,16 @@ ok(!(await page.$eval('.doc .pkg input[value="swift"]', i => i.disabled)),
 ok((await pill('flutter', 2)).text === '→ 2.0'
    && (await pill('flutter', 2)).title === 'update available',
    '...and the version it would move to is on the row, in the update color');
+// Pill zero, not one: a row this box has never installed carries no size, so
+// the version it would fetch is the first thing on the line.
 ok((await pill('swift', 1)).text === '9.9'
    && /would fetch/.test((await pill('swift', 1)).title),
    'a package that has never been installed says what Install would fetch');
+// Pill zero on that row is the download: the only size a package this box has
+// never had can honestly show, and upstream is the one that knows it.
+ok(/download/.test((await pill('swift', 0)).text)
+   && /from upstream/.test((await pill('swift', 0)).title),
+   '...and what the download weighs, asked of upstream rather than guessed');
 // The answers cost a network round trip each, so they are kept on the state
 // volume — a dashboard restart used to wipe every version the tab had been
 // told — and dated, because a number with no date on it goes quietly stale.

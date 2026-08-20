@@ -1411,7 +1411,7 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
             ;;
         android:*)
             local pkg="${what#android:}"
-            local kind; kind="$(sdk_android_kind "$pkg" || true)"
+            local kind; kind="$(sdk_meta field "$what" source.image)"
             if [ -n "$kind" ]; then
                 # An image flavour: what is installed is an API level, and
                 # sdkmanager's update table is what says whether that image
@@ -1488,7 +1488,11 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
         else status=update
         fi
     fi
-    printf '%s\t%s\t%s\t%s\n' "$what" "$inst" "$latest" "$status"
+    # A fifth column: what the download weighs, when the catalog names a URL
+    # that is the payload itself. Nothing for the recipes whose URL is an
+    # installer that goes and fetches the real thing.
+    printf '%s\t%s\t%s\t%s\t%s\n' "$what" "$inst" "$latest" "$status" \
+        "$(sdk_meta size "$what" 2>/dev/null)"
 }
 
 # bb sdk versions — installed versions only, nothing asked of the network.
@@ -1572,24 +1576,6 @@ If you ARE the operator at this keyboard: env -u CLAUDECODE bb sdk $*"
 # image update would throw it away and re-download it. Nothing warns about
 # this; the directory simply stops being a link. Checked after every install,
 # which is the only moment it can happen.
-# The sdkmanager "kind" behind a device-flavour name, or nothing.
-#
-# tv/wear/playstore/atd are shapes of system image, not packages: the real
-# name carries an API level, so every path that touches one has to resolve it.
-# Install did, and check and remove did not — which made `bb sdk check
-# android:tv` answer "absent" for an image that was sitting right there, and
-# would have handed `sdkmanager --uninstall tv` to a tool that has no such
-# package.
-sdk_android_kind() {
-    case "$1" in
-        tv)        printf 'android-tv' ;;
-        wear)      printf 'android-wear' ;;
-        playstore) printf 'google_apis_playstore' ;;
-        atd)       printf 'google_atd' ;;
-        *)         return 1 ;;
-    esac
-}
-
 # sdk_android_image_dir KIND — the installed system image of that kind, if any.
 sdk_android_image_dir() {
     # -L, because every package directory under ANDROID_HOME is a symlink onto
@@ -1693,185 +1679,268 @@ sdk_install_cleanup() {
     sdk_relink_android >/dev/null 2>&1 || true
 }
 
+# ---------------------------------------------------------------------------
+# Installing, from the catalog.
+#
+# Every URL, branch, flag, archive layout and environment variable lives in
+# config/packages.json; what is left here is the five shapes those values are
+# poured into. A package that fits one of them is a data edit and nothing else.
+#
+# The shapes stay code because they are genuinely different jobs: a shallow
+# clone the tool then updates in place, a tarball with a version in its top
+# directory, a vendor installer that wants its own arguments, a tool already in
+# the image pointed at a new directory, and sdkmanager, which resolves its own
+# package ids. A table that could express all five would be a language.
+SDK_META="$(dirname "$(readlink -f "$0")")/lib/sdkmeta.py"
+sdk_meta() { python3 "$SDK_META" "$@"; }
+
+# Read a NUL-separated list from the catalog into an array named by $1.
+sdk_meta_into() {
+    local -n _out="$1"; shift
+    _out=()
+    while IFS= read -r -d '' item; do _out+=("$item"); done < <(sdk_meta "$@")
+}
+
+# `bb sdk plan NAME` — what an install would do, without doing any of it.
+#
+# The recipes are data, and data can be wrong in ways that only show up three
+# gigabytes into a download. This asks every upstream what it currently offers
+# and prints the commands, so a catalog edit can be checked before it is
+# trusted.
+sdk_plan() {
+    local what="${1:-}" d kind url version rest
+    [ -n "$what" ] || die "usage: bb sdk plan <package>"
+    kind="$(sdk_meta field "$what" source.kind)"
+    [ -n "$kind" ] || die "no source in the catalog for ${what}"
+    d="$(sdk_dir "${what#android:}")"
+    case "$what" in android:*) d="$(sdk_dir android)" ;; esac
+    printf 'package   %s\n' "$what"
+    printf 'kind      %s\n' "$kind"
+    printf 'directory %s\n' "$d"
+    if [ "$kind" = sdkmanager ]; then
+        local pkg; pkg="$(sdk_android_id "$what")" || pkg="(cannot resolve — is sdkmanager here?)"
+        printf 'sdkmanager --install %s\n' "$pkg"
+        return 0
+    fi
+    rest="$(sdk_meta resolve "$what")"
+    version="${rest%%	*}"; url="${rest#*	}"
+    [ -z "$version" ] || printf 'version   %s\n' "$version"
+    [ -z "$url" ] || printf 'url       %s\n' "$url"
+    local -a cmd
+    sdk_meta_into cmd argv "$what" source.run "dir=$d" "version=$version" "script=<downloaded>"
+    [ "${#cmd[@]}" = 0 ] || printf 'run       %s\n' "${cmd[*]}"
+    sdk_meta_into cmd argv "$what" source.verify "dir=$d" "version=$version"
+    [ "${#cmd[@]}" = 0 ] || printf 'verify    %s\n' "${cmd[*]}"
+}
+
+# The android package id an install would resolve to: a bare name, a versioned
+# one, or the newest image of a flavour.
+sdk_android_id() {
+    local pkg="${1#android:}" kind
+    kind="$(sdk_meta field "$1" source.image)"
+    if [ -n "$kind" ]; then
+        sdk_android_list | sed -n '/Available Packages/,$p' | tr -d ' ' | cut -d'|' -f1 \
+            | grep -E "^system-images;android-[0-9]+;${kind};x86_64$" | sort -V | tail -1
+        return 0
+    fi
+    pkg="$(sdk_meta field "$1" source.package)"
+    if [ -n "$(sdk_meta field "$1" source.versioned)" ]; then
+        sdk_android_newest "$pkg" | cut -f1
+    else
+        printf '%s' "$pkg"
+    fi
+}
+
+sdk_install_android() {
+    local what="$1" pkg
+    command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
+    pkg="$(sdk_android_id "$what")"
+    [ -n "$pkg" ] || die "could not find a ${what#android:} package to install"
+    log "installing ${pkg} — into $(sdk_dir android)"
+    sdk_android_clear_stale_installer "$pkg"
+    sdk_mark_partial "$(sdk_android_pkg_dir "$pkg")"
+    sdkmanager --install "$pkg"
+    sdk_android_list_forget
+    sdk_relink_android
+}
+
+# Fetch source.url into the directory, unpacking it there. `strip` drops the
+# tarball's top directory, which is named for the release and would otherwise
+# pin the version into every PATH that points at it.
+sdk_install_tarball() {
+    local what="$1" d rest version url strip tmp
+    d="$(sdk_dir "$what")"
+    sdk_mark_partial "$d"
+    [ -z "$(sdk_meta field "$what" source.fresh_only)" ] || [ ! -d "$d" ] \
+        || die "${what} is already installed at ${d} (bb sdk remove ${what} first)"
+    rest="$(sdk_meta resolve "$what")"
+    version="${rest%%	*}"; url="${rest#*	}"
+    [ -n "$url" ] || die "could not resolve a download URL for ${what}"
+    strip="$(sdk_meta field "$what" source.strip)"; strip="${strip:-0}"
+    log "installing ${what}${version:+ }${version} into ${d}"
+    mkdir -p "$d"
+    tmp="$(mktemp "${TMPDIR:-/tmp}/bb-${what}.XXXXXX")"
+    sdk_fetch "$url" "$tmp" || { rm -f "$tmp"; die "could not download ${url}"; }
+    # -a: tar picks the decompressor from the file, so the catalog does not
+    # have to say whether a release ships .gz or .xz this year.
+    tar -xaf "$tmp" -C "$d" --strip-components="$strip" || { rm -f "$tmp"; die "could not unpack ${url}"; }
+    rm -f "$tmp"
+    sdk_install_verify "$what" "$d" "$version"
+}
+
+# Fetch an installer and run it. The URL here is a script, not the payload —
+# it goes and gets that itself, with the arguments the catalog gives.
+sdk_install_script() {
+    local what="$1" d url tmp
+    d="$(sdk_dir "$what")"
+    sdk_mark_partial "$d"
+    [ -z "$(sdk_meta field "$what" source.fresh_only)" ] || [ ! -d "$d" ] \
+        || die "${what} is already installed at ${d} (bb sdk remove ${what} first)"
+    url="$(sdk_meta field "$what" source.url)"
+    [ -n "$url" ] || die "no installer URL in the catalog for ${what}"
+    log "installing ${what} into ${d}"
+    mkdir -p "$d"
+    tmp="$(mktemp "${TMPDIR:-/tmp}/bb-${what}.XXXXXX")"
+    sdk_fetch "$url" "$tmp" || { rm -f "$tmp"; die "could not download ${url}"; }
+    [ -z "$(sdk_meta field "$what" source.chmod)" ] || chmod +x "$tmp"
+    local -a cmd env
+    sdk_meta_into cmd argv "$what" source.run "dir=$d" "script=$tmp"
+    [ "${#cmd[@]}" != 0 ] || { rm -f "$tmp"; die "no run command in the catalog for ${what}"; }
+    sdk_meta_into env env "$what" source.env "dir=$d"
+    env "${env[@]}" "${cmd[@]}" || { rm -f "$tmp"; die "${what} installer failed"; }
+    rm -f "$tmp"
+    sdk_install_steps "$what" "$d"
+    sdk_install_verify "$what" "$d" ""
+}
+
+# A shallow clone. The tool updates itself in place from here, which a tarball
+# cannot do, and it is the form its own tooling expects.
+sdk_install_git() {
+    local what="$1" d url branch depth
+    d="$(sdk_dir "$what")"
+    sdk_mark_partial "$d"
+    [ -z "$(sdk_meta field "$what" source.fresh_only)" ] || [ ! -d "$d" ] \
+        || die "${what} is already installed at ${d} (bb sdk remove ${what} first)"
+    url="$(sdk_meta field "$what" source.url)"
+    branch="$(sdk_meta field "$what" source.branch)"
+    depth="$(sdk_meta field "$what" source.depth)"
+    [ -n "$url" ] || die "no clone URL in the catalog for ${what}"
+    log "cloning ${what} (${branch:-default}) into ${d}"
+    # --progress: git prints none unless stderr is a terminal, and this runs
+    # from the dashboard's job runner, where it is a pipe.
+    git clone --progress ${depth:+--depth "$depth"} ${branch:+-b "$branch"} "$url" "$d"
+    [ -z "$(sdk_meta field "$what" source.safe_directory)" ] \
+        || git config --global --add safe.directory "$d"
+    local -a warm
+    sdk_meta_into warm argv "$what" source.warm "dir=$d"
+    if [ "${#warm[@]}" != 0 ]; then
+        log "$(sdk_meta field "$what" source.warm_note)"
+        "${warm[@]}"
+    fi
+}
+
+# Something already in the image, pointed at the install directory.
+sdk_install_command() {
+    local what="$1" d need
+    d="$(sdk_dir "$what")"
+    sdk_mark_partial "$d"
+    need="$(sdk_meta field "$what" source.requires)"
+    [ -z "$need" ] || command -v "$need" >/dev/null 2>&1 \
+        || die "${need} is not in this image"
+    mkdir -p "$d"
+    local -a cmd env
+    sdk_meta_into cmd argv "$what" source.run "dir=$d"
+    sdk_meta_into env env "$what" source.env "dir=$d"
+    log "installing ${what} into ${d}"
+    env "${env[@]}" "${cmd[@]}"
+    # A stable path to whatever the run produced under a revisioned name, so
+    # that everything pointing at it survives the next release.
+    local find_at link_at exe
+    find_at="$(sdk_meta field "$what" source.link.find)"
+    link_at="$(sdk_meta field "$what" source.link.as)"
+    if [ -n "$find_at" ] && [ -n "$link_at" ]; then
+        exe="$(find "$d" -path "$find_at" -type f 2>/dev/null | head -1)"
+        [ -z "$exe" ] || ln -sfn "$exe" "${link_at//\{dir\}/$d}"
+    fi
+    log "${what} ready at ${d}"
+}
+
+# The optional extra commands a recipe runs after its installer: .NET's
+# workload, and anything like it. `optional` carries the warning to print when
+# one fails, because a workload that will not install does not undo an SDK
+# that did.
+sdk_install_steps() {
+    local what="$1" d="$2" i=0 note soft
+    while :; do
+        local -a cmd env
+        sdk_meta_into cmd argv "$what" "source.then.${i}.run" "dir=$d"
+        [ "${#cmd[@]}" != 0 ] || break
+        note="$(sdk_meta field "$what" "source.then.${i}.note")"
+        soft="$(sdk_meta field "$what" "source.then.${i}.optional")"
+        [ -z "$note" ] || log "$note"
+        sdk_meta_into env env "$what" "source.then.${i}.env" "dir=$d"
+        if ! env "${env[@]}" "${cmd[@]}"; then
+            [ -n "$soft" ] || die "${what}: a required step failed"
+            warn "$soft"
+        fi
+        i=$((i + 1))
+    done
+}
+
+# Run after installing, so a broken unpack fails here rather than the first
+# time somebody tries to use the thing.
+sdk_install_verify() {
+    local what="$1" d="$2" version="$3"
+    local -a cmd env
+    sdk_meta_into cmd argv "$what" source.verify "dir=$d" "version=$version"
+    [ "${#cmd[@]}" != 0 ] || return 0
+    sdk_meta_into env env "$what" source.env "dir=$d"
+    # Captured rather than piped into head: a pipeline reports head's exit
+    # status, so a verify that failed would have read as passing, and closing
+    # the pipe early can kill the producer with SIGPIPE, which pipefail then
+    # reports as a failure that never happened.
+    local out
+    out="$(env "${env[@]}" "${cmd[@]}" 2>&1)" \
+        || die "${what} installed but ${cmd[0]} does not run: ${out}"
+    printf '%s\n' "${out%%$'\n'*}"
+}
+
 sdk_install() {
     sdk_operator_only install "$@"
-    local what="${1:-}" root; root="$(sdk_root)"
-    [ -n "$what" ] || die "usage: bb sdk install android:<pkg>|playwright|flutter|dotnet|swift|go|rust|zig|tizen"
+    local what="${1:-}" root kind; root="$(sdk_root)"
+    [ -n "$what" ] || die "usage: bb sdk install <package> — bb sdk list names them"
+    if [ "$what" = tizen ]; then sdk_install_tizen; return 0; fi
+    kind="$(sdk_meta field "$what" source.kind)"
+    [ -n "$kind" ] || die "unknown package: ${what} (bb sdk list names them)"
     mkdir -p "$root"
     # EXIT rather than RETURN: a failing step here reaches `die`, which exits
     # the process, and a RETURN trap never fires on that path.
     trap sdk_install_cleanup EXIT
-    case "$what" in
-        android:*)
-            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
-            local pkg="${what#android:}"
-            case "$pkg" in
-                tv|wear|playstore|atd)
-                    # A shape of system image, not a package name: pick the
-                    # newest of that kind rather than making the operator know
-                    # which API levels ship one.
-                    local kind; kind="$(sdk_android_kind "$pkg")"
-                    pkg="$(sdk_android_list | sed -n '/Available Packages/,$p' | tr -d ' ' | cut -d'|' -f1 \
-                           | grep -E "^system-images;android-[0-9]+;${kind};x86_64$" \
-                           | sort -V | tail -1)"
-                    [ -n "$pkg" ] || die "no ${kind} system image is available"
-                    ;;
-                ndk|cmake)
-                    # Versioned package ids, resolved by the same helper the
-                    # Tools tab quotes a version from — so what it promised is
-                    # what lands here.
-                    pkg="$(sdk_android_newest "$pkg" | cut -f1)"
-                    [ -n "$pkg" ] || die "could not find a ${what#android:} package to install"
-                    ;;
-            esac
-            # Straight through to sdkmanager: ANDROID_HOME's package
-            # directories are symlinks into the root, so this lands there
-            # without sdkmanager knowing anything about it.
-            log "installing ${pkg} — into $(sdk_dir android)"
-            sdk_android_clear_stale_installer "$pkg"
-            sdk_mark_partial "$(sdk_android_pkg_dir "$pkg")"
-            sdkmanager --install "$pkg"
-            sdk_android_list_forget
-            sdk_relink_android
-            ;;
-        flutter)
-            local d; d="$(sdk_dir flutter)"
-            sdk_mark_partial "$d"
-            [ -d "$d" ] && die "flutter is already installed at ${d} (bb sdk remove flutter first)"
-            # The stable branch as a shallow clone: Flutter upgrades itself in
-            # place from here, which a tarball cannot do, and the clone is the
-            # form its own tooling expects.
-            log "cloning flutter (stable) into ${d}"
-            # --progress: git prints none unless stderr is a terminal, and this
-            # runs from the dashboard's job runner where it is a pipe. Without
-            # it the largest download in this recipe is silent, and the tab sat
-            # on whatever number git's remote had last mentioned.
-            git clone --progress --depth 1 -b stable https://github.com/flutter/flutter.git "$d"
-            git config --global --add safe.directory "$d"
-            log "warming the toolchain (downloads the bundled dart sdk)"
-            "$d/bin/flutter" --version
-            log "flutter ready — new shells pick it up; this one: eval \"\$(bb sdk env)\""
-            ;;
-        dotnet)
-            local d; d="$(sdk_dir dotnet)"
-            sdk_mark_partial "$d"
-            log "installing the .NET SDK into ${d}"
-            sdk_fetch https://dot.net/v1/dotnet-install.sh /tmp/dotnet-install.sh
-            bash /tmp/dotnet-install.sh --channel LTS --install-dir "$d" --no-path
-            rm -f /tmp/dotnet-install.sh
-            log "adding the maui-android workload (android targets from C#)"
-            DOTNET_ROOT="$d" DOTNET_CLI_TELEMETRY_OPTOUT=1 \
-                "$d/dotnet" workload install maui-android --skip-sign-check \
-                || warn "the maui-android workload failed; the plain SDK is still installed"
-            log ".NET ready — new shells pick it up; this one: eval \"\$(bb sdk env)\""
-            ;;
-        swift)
-            local d; d="$(sdk_dir swift)"
-            sdk_mark_partial "$d"
-            [ -d "$d" ] && die "swift is already installed at ${d} (bb sdk remove swift first)"
-            # The release tarball, not swiftly: swiftly is the nicer installer
-            # right up until you ask where it put things — it honors its own
-            # home dir for configuration but unpacks toolchains under
-            # XDG_DATA_HOME, which put 3.3GB on the home volume while claiming
-            # to install to the share. A tarball unpacks exactly where it is
-            # told and is removed by deleting the directory.
-            #
-            # The version comes from the /releases/latest redirect rather than
-            # api.github.com, for the reason the Dockerfile gives for
-            # bundletool: the API rate-limits anonymous callers by IP.
-            local tag v url
-            tag="$(curl -fsSLI -o /dev/null -w '%{url_effective}' \
-                   https://github.com/swiftlang/swift/releases/latest)"
-            tag="${tag##*/}"
-            v="${tag#swift-}"; v="${v%-RELEASE}"
-            case "$v" in ''|*[!0-9.]*) die "could not resolve the current swift release (got '${tag}')" ;; esac
-            url="https://download.swift.org/swift-${v}-release/ubuntu2404/swift-${v}-RELEASE/swift-${v}-RELEASE-ubuntu24.04.tar.gz"
-            log "installing swift ${v} into ${d}"
-            mkdir -p "$d"
-            sdk_fetch "$url" /tmp/swift.tar.gz \
-                || { rm -rf "$d" /tmp/swift.tar.gz; die "could not download ${url}"; }
-            # --strip-components: the tarball carries one top directory named
-            # for the release, which would otherwise pin the version into
-            # every PATH that points here.
-            tar -xzf /tmp/swift.tar.gz -C "$d" --strip-components=1
-            rm -f /tmp/swift.tar.gz
-            "$d/usr/bin/swift" --version | head -1
-            log "swift ready — new shells pick it up; this one: eval \"\$(bb sdk env)\""
-            ;;
-        playwright)
-            # The browsers, not the module: the module is an npm global in the
-            # image, these are 1.3GB of bundles that only ever get downloaded.
-            local d; d="$(sdk_dir playwright)"
-            sdk_mark_partial "$d"
-            command -v playwright >/dev/null 2>&1 || die "playwright is not in this image"
-            mkdir -p "$d"
-            log "installing chromium, firefox and webkit into ${d}"
-            PLAYWRIGHT_BROWSERS_PATH="$d" playwright install chromium firefox webkit
-            local exe
-            exe="$(find "$d" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
-            [ -n "$exe" ] && ln -sfn "$exe" "$d/chromium"
-            log "browsers ready at ${d}"
-            ;;
-        go)
-            local d; d="$(sdk_dir go)"
-            sdk_mark_partial "$d"
-            [ -d "$d" ] && die "go is already installed at ${d}"
-            local v; v="$(timeout 30 curl -fsS 'https://go.dev/VERSION?m=text' | head -1)"
-            case "$v" in go*) ;; *) die "could not resolve the current go release" ;; esac
-            log "installing ${v} into ${d} — GOOS=windows and friends cross-compile from here"
-            mkdir -p "$d"
-            sdk_fetch "https://go.dev/dl/${v}.linux-amd64.tar.gz" /tmp/go.tgz \
-                || { rm -rf "$d" /tmp/go.tgz; die "could not download ${v}"; }
-            tar -xzf /tmp/go.tgz -C "$d" --strip-components=1
-            rm -f /tmp/go.tgz
-            "$d/bin/go" version
-            ;;
-        zig)
-            local d; d="$(sdk_dir zig)"
-            sdk_mark_partial "$d"
-            [ -d "$d" ] && die "zig is already installed at ${d}"
-            # Zig publishes an index of every release with its tarball URL,
-            # which beats guessing a filename whose shape changes between
-            # versions.
-            local url
-            url="$(timeout 30 curl -fsS https://ziglang.org/download/index.json \
-                   | python3 -c 'import json,sys
-d = json.load(sys.stdin)
-v = next(k for k in d if k != "master")
-print(d[v]["x86_64-linux"]["tarball"])' 2>/dev/null)"
-            [ -n "$url" ] || die "could not resolve the current zig release"
-            log "installing zig into ${d} — a C/C++ cross-compiler as much as a language"
-            mkdir -p "$d"
-            sdk_fetch "$url" /tmp/zig.tar.xz \
-                || { rm -rf "$d" /tmp/zig.tar.xz; die "could not download ${url}"; }
-            tar -xf /tmp/zig.tar.xz -C "$d" --strip-components=1
-            rm -f /tmp/zig.tar.xz
-            "$d/zig" version
-            ;;
-        rust)
-            local d; d="$(sdk_dir rust)"
-            sdk_mark_partial "$d"
-            [ -d "$d" ] && die "rust is already installed at ${d}"
-            log "installing rust into ${d}"
-            mkdir -p "$d"
-            sdk_fetch https://static.rust-lang.org/rustup/dist/x86_64-unknown-linux-gnu/rustup-init \
-                /tmp/rustup-init || { rm -rf "$d"; die "could not download rustup"; }
-            chmod +x /tmp/rustup-init
-            # Both homes inside the toolchain directory, so removing rust is
-            # removing one directory — rustup would otherwise scatter it
-            # across ~/.rustup and ~/.cargo on the home volume.
-            RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" \
-                /tmp/rustup-init -y --no-modify-path --profile minimal
-            rm -f /tmp/rustup-init
-            RUSTUP_HOME="$d/rustup" CARGO_HOME="$d/cargo" "$d/cargo/bin/rustc" --version
-            log "a Windows target also needs a linker: rustup target add x86_64-pc-windows-gnu,"
-            log "then EXTRA_APT_PACKAGES=gcc-mingw-w64, or bb sdk install zig + cargo-zigbuild"
-            ;;
-        tizen)
-            # Not in the dashboard's catalog: everything there installs, and
-            # this cannot. Kept here because the question keeps coming up and
-            # the honest answer has two halves.
-            cat <<'EOF'
+    case "$kind" in
+        sdkmanager) sdk_install_android "$what" ;;
+        tarball)    sdk_install_tarball "$what" ;;
+        script)     sdk_install_script  "$what" ;;
+        git)        sdk_install_git     "$what" ;;
+        command)    sdk_install_command "$what" ;;
+        *) die "the catalog gives ${what} an unknown source kind: ${kind}" ;;
+    esac
+    local -a after
+    sdk_meta_into after argv "$what" source.after
+    local line; for line in "${after[@]}"; do log "$line"; done
+    case "$kind" in
+        tarball|script|git) log "${what} ready — new shells pick it up; this one: eval \"\$(bb sdk env)\"" ;;
+    esac
+    SDK_PARTIAL=""
+    # Cleared here rather than up front: an install that fails leaves the
+    # package absent, and a marker cleared on the way in would have let the
+    # next restart quietly fetch what the operator had removed.
+    rm -f "$(sdk_removed_marker "$what")"
+}
+
+# Not in the catalog: everything there installs, and this cannot. Kept because
+# the question keeps coming up and the honest answer has two halves.
+sdk_install_tizen() {
+    cat <<'EOF'
 Tizen is Samsung's OS, and where it runs decides whether you want it:
 
   TVs, signage and appliances   alive and current — Samsung ships Tizen on
@@ -1890,14 +1959,6 @@ bundle — so putting it on the SDK share is a manual job:
   2. Install it with its --accept-license flag into  $(bb sdk root)/tizen
   3. bb sdk env   — picks up tools/ide/bin (tizen) and tools (sdb)
 EOF
-            ;;
-        *) die "unknown toolchain: ${what} (${SDK_TOOLCHAINS// /, }, or android:<package>)" ;;
-    esac
-    SDK_PARTIAL=""
-    # Cleared here rather than up front: an install that fails leaves the
-    # package absent, and a marker cleared on the way in would have let the
-    # next restart quietly fetch what the operator had removed.
-    rm -f "$(sdk_removed_marker "$what")"
 }
 
 sdk_remove() {
@@ -1910,24 +1971,37 @@ sdk_remove() {
         marker="$(sdk_removed_marker "$what")"
         mkdir -p "$(dirname "$marker")" 2>/dev/null && : > "$marker" || true
     fi
-    case "$what" in
-        flutter|dotnet|swift|tizen|playwright|go|rust|zig) d="$(sdk_find "$what")" \
-            || die "${what} is not installed" ;;
-        android:*)
+    # What the catalog says it is, so that adding a package really is one edit:
+    # a list of names repeated here is a package that installs and will not
+    # come off again.
+    local kind; kind="$(sdk_meta field "$what" source.kind 2>/dev/null)" || kind=""
+    if [ -z "$kind" ]; then
+        # tizen is not in the catalog — nothing there can install it — but it
+        # is a directory on the share like any other, so it comes off like one.
+        [ "$what" = tizen ] || die "unknown package: ${what} (bb sdk list names them)"
+    fi
+    if [ "$kind" != sdkmanager ]; then
+        d="$(sdk_find "$what")" || die "${what} is not installed"
+        log "removing ${d}"
+        rm -rf "$d"
+        return 0
+    fi
+    case "$kind" in
+        sdkmanager)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
-            local pkg="${what#android:}" v
-            local kind; kind="$(sdk_android_kind "$pkg" || true)"
+            local pkg="${what#android:}" v image
+            image="$(sdk_meta field "$what" source.image)"
             sdk_android_list_forget
-            if [ -n "$kind" ]; then
+            if [ -n "$image" ]; then
                 local dir api abi
-                for dir in "${ANDROID_HOME:-/opt/android-sdk}/system-images"/*/"$kind"; do
+                for dir in "${ANDROID_HOME:-/opt/android-sdk}/system-images"/*/"$image"; do
                     [ -d "$dir" ] || continue
                     api="$(basename "$(dirname "$dir")")"
                     for abi in "$dir"/*/; do
                         [ -d "$abi" ] || continue
-                        log "removing system-images;${api};${kind};$(basename "$abi")"
-                        sdk_android_clear_stale_installer "system-images;${api};${kind};$(basename "$abi")"
-                        sdkmanager --uninstall "system-images;${api};${kind};$(basename "$abi")"
+                        log "removing system-images;${api};${image};$(basename "$abi")"
+                        sdk_android_clear_stale_installer "system-images;${api};${image};$(basename "$abi")"
+                        sdkmanager --uninstall "system-images;${api};${image};$(basename "$abi")"
                     done
                     # The flavour directory is left behind by the uninstall,
                     # empty, and an empty directory with the right name is what
@@ -1937,8 +2011,7 @@ sdk_remove() {
                 sdk_relink_android
                 return 0
             fi
-            case "$pkg" in
-                ndk|cmake)
+            if [ -n "$(sdk_meta field "$what" source.versioned)" ]; then
                     # Versioned the same way going out: uninstall every version
                     # that is actually present, from the directory rather than
                     # from a guess about which one was installed.
@@ -1949,8 +2022,8 @@ sdk_remove() {
                         sdkmanager --uninstall "${pkg};$(basename "$v")"
                     done
                     sdk_relink_android
-                    return 0 ;;
-            esac
+                    return 0
+            fi
             # A top-level package whose directory under ANDROID_HOME is one of
             # our symlinks — the emulator is the only one in the catalog — is
             # deleted by sdkmanager as *the link*, leaving the payload sitting
@@ -1970,10 +2043,7 @@ sdk_remove() {
             fi
             sdk_relink_android
             return 0 ;;
-        *) die "usage: bb sdk remove playwright|flutter|dotnet|swift|tizen|android:<package>" ;;
     esac
-    log "removing ${d}"
-    rm -rf "$d"
 }
 
 cmd_sdk() {
@@ -1982,13 +2052,15 @@ cmd_sdk() {
         status|"")  sdk_status ;;
         root)       printf '%s\n' "$(sdk_root)" ;;
         env)        sdk_env_snippet ;;
+        list)       sdk_meta names ;;
+        plan)       sdk_plan "$@" ;;
         install)    sdk_install "$@"; sdk_write_env ;;
         check)      sdk_check "$@" ;;
         versions)   sdk_versions "$@" ;;
         relink)     sdk_relink_android ;;
         update)     sdk_update "$@"; sdk_write_env ;;
         remove)     sdk_remove "$@"; sdk_write_env ;;
-        *) die "usage: bb sdk [status|root|env|versions|check|relink|install X|update X|remove X]" ;;
+        *) die "usage: bb sdk [status|root|env|list|plan X|versions|check|relink|install X|update X|remove X]" ;;
     esac
 }
 
