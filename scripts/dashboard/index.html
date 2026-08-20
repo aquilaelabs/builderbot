@@ -3592,8 +3592,7 @@ function drawTodo(j){
   $("todoList").querySelectorAll(".todo").forEach(row => {
     const id = Number(row.dataset.id), step = Number(row.dataset.step);
     row.querySelectorAll(".mv").forEach(b => b.onclick = () =>
-      postTodo({action: "move", id, step: step < 0 ? null : step,
-                dir: Number(b.dataset.dir)}));
+      moveLocally(id, step < 0 ? null : step, Number(b.dataset.dir)));
     const go = row.querySelector(".go");
     // A group's title arrow stands for its next step, so both resolve to the
     // same choice and light up together.
@@ -3640,7 +3639,8 @@ function drawTodo(j){
   $("todoOrder").hidden = !rows.length;
   $("todoOrder").classList.toggle("on", todoOrdering);
   const armed = !!todoSel && live;
-  const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty();
+  const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
+                || todoMoves.length > 0;
   $("todoGo").disabled = !armed;
   $("todoAlso").disabled = !armed || !dirty;
   $("todoAlsoWrap").classList.toggle("off", !armed || !dirty);
@@ -3652,7 +3652,8 @@ function drawTodo(j){
 function syncSave(){
   const b = $("todoSave"), q = $("todoSaveQuiet");
   if (!b || !q) return;
-  const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty();
+  const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
+                || todoMoves.length > 0;
   q.disabled = !dirty;
   // Telling needs somewhere to tell. Dead rather than absent either way, so
   // the footer does not move about under a thumb.
@@ -3669,6 +3670,13 @@ let todoSession = null;
 let todoUnsaved = {};       // {todo, memory} — what a session has not been told
 let todoSel = null;         // {id, step} — the arrow that is armed, if any
 let todoOrdering = false;   // the rows are showing move controls instead
+// Reordering is the one edit held back. Everything else here is a decision —
+// ticked, crossed, dropped — and is written the moment it is made; arranging
+// is a draft you are in the middle of, and closing the panel on a half-done
+// shuffle should leave the order alone. So the moves live here until Save,
+// and the snapshot is what Cancel puts back.
+let todoMoves = [];         // {id, step, dir} in the order they were made
+let todoWas = null;         // the arrangement reordering started from
 
 // Picking one arms the Send button; picking it again puts it down. The
 // highlight is the whole confirmation — the line it would send is the line the
@@ -3705,15 +3713,16 @@ async function reallySend(){
   startClaude(proj, null);      // opens the tab, or goes to the one that is there
 }
 
-async function postTodo(body){
+async function postTodo(body, quiet){
   try{
     const r = await fetch("/api/todo", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({project: memProj, ...body})});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return null; }
-    drawTodo(j);
-    refresh();                            // the row's count moved
+    // quiet: one of a run of moves being flushed, where redrawing between
+    // each would flicker the list through every intermediate arrangement.
+    if (!quiet){ drawTodo(j); refresh(); }
     return j;
   }catch(e){ notify("could not reach the server: " + e, true); return null; }
 }
@@ -3756,7 +3765,15 @@ async function addTodo(){
   t.focus();
 }
 
-function closeMemory(){ memGen++; memProj = null; $("memModal").hidden = true; }
+function closeMemory(force){
+  if (!force && todoMoves.length
+      && !confirm("Close without saving the reordering?\n\nThe order goes back "
+                  + "to how it was."))
+    return;
+  revertMoves();
+  todoOrdering = false;
+  memGen++; memProj = null; $("memModal").hidden = true;
+}
 
 async function loadMemory(gen){
   let j;
@@ -3896,19 +3913,53 @@ $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 $("todoAdd").onclick = addTodo;
 $("todoGo").onclick = reallySend;
 $("todoOrder").onclick = () => {
+  if (todoOrdering && todoMoves.length
+      && !confirm("Discard the reordering?\n\nThe order goes back to how it "
+                  + "was. Save keeps it.")) return;
   todoOrdering = !todoOrdering;
-  if (todoOrdering) cancelSend();
-  drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
+  if (todoOrdering){ cancelSend(); todoWas = structuredClone(todoItems); todoMoves = []; }
+  else revertMoves();
+  redrawTodo();
 };
+
+// Put the arrangement back the way it was found. The server never saw any of
+// it, so this is only the page's own copy.
+function revertMoves(){
+  if (todoMoves.length && todoWas) todoItems = todoWas;
+  todoMoves = []; todoWas = null;
+}
+
+const redrawTodo = () =>
+  drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
+
+// One swap, on the page's copy. The same swap the server would do, so that
+// replaying the list of them at Save arrives at what is on screen.
+function moveLocally(id, step, dir){
+  const i = todoItems.findIndex(r => String(r.id) === String(id));
+  if (i < 0) return;
+  const seq = step === null ? todoItems : (todoItems[i].steps || []);
+  const at = step === null ? i : step;
+  const to = at + dir;
+  if (to < 0 || to >= seq.length) return;
+  [seq[at], seq[to]] = [seq[to], seq[at]];
+  todoMoves.push({id, step, dir});
+  redrawTodo();
+}
 // Both Saves write whatever the memory editor is holding and settle the
 // panel; only one of them spends a line saying so.
 async function saveAll(tellIt){
   const b = $(tellIt ? "todoSave" : "todoSaveQuiet"), was = b.textContent;
   b.disabled = true; b.textContent = "Saving…";
+  // The reordering, replayed in the order it was made — which is what makes
+  // it arrive at the arrangement on screen.
+  for (const m of todoMoves.splice(0))
+    await postTodo({action: "move", ...m}, true);
   if (memDirty()) await saveMemory(true);
   const j = await postTodo({action: tellIt ? "tell" : "save"});
   await loadMemory(memGen);
   b.textContent = was;
+  // The arrangement just committed is the one a Cancel would now go back to.
+  todoWas = todoOrdering ? structuredClone(todoItems) : null;
   if (j) notify(j.told ? "saved, and told " + (todoSession || "the session")
                        : "saved");
 }

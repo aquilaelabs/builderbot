@@ -1101,6 +1101,14 @@ screen is the order in the file — nothing is sorted on the way out, so a list
 you arranged stays arranged and a ticked item fades where it is rather than
 jumping to the bottom.
 
+**Reordering is the one edit held back until Save.** Everything else here is a
+decision — ticked, crossed, dropped — and is written the moment it is made, so
+that a phone dying half way through tidying a list loses nothing. Arranging is
+not a decision; it is something you are in the middle of. So the moves live in
+the page until you save them, leaving the mode puts the order back, and closing
+the panel on a half-done shuffle leaves the list alone. Both are asked about
+first, since an arrangement is work.
+
 **Editing the list or the memories tells the running session**, in one line, to
 go and read them and carry on — not to drop what it is doing. A list edited
 under a conversation is a list that conversation is holding a stale copy of.

@@ -382,16 +382,53 @@ await page.waitForFunction(o => JSON.stringify([...document.querySelectorAll(
 const now = await order();
 ok(now.indexOf(was[0]) === 1 && now.indexOf(was[1]) === 0,
    'an item moves down past the one below it');
-ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.stringify(now),
-   '...and the file is the order on screen — nothing is sorted on the way out');
-ok((read().unsaved?.alpha || {}).todo === true,
-   '...and a move counts as a change, so the Saves have something to do');
+// Reordering is the one edit held back: everything else here is a decision
+// and is written as it is made, but arranging is a draft you are in the
+// middle of, and closing on a half-done shuffle must leave the order alone.
+ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.stringify(was),
+   '...on screen only — the file still has the order it started with');
+ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+   '...and both Saves are armed, because there is something to commit');
+
+// Cancelling the mode puts it back, and never touched the file.
+page.dialogs = [];
+await page.click('#todoOrder');
+await page.waitForFunction(o => JSON.stringify([...document.querySelectorAll(
+  '#todoList .grp .todo[data-step="-1"] .txt')].map(t => t.textContent.slice(0, 14)))
+  === JSON.stringify(o), was, { timeout: 10000 });
+ok(page.dialogs.some(d => /Discard the reordering/.test(d)),
+   'leaving the mode with a shuffle in hand asks before dropping it');
+ok(JSON.stringify(await order()) === JSON.stringify(was),
+   '...and puts the order back');
+
+// Do it again and keep it this time.
+await page.click('#todoOrder');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo .mv').length > 0);
+await page.click(`#todoList .todo[data-id="${firstId}"][data-step="-1"] .mv[data-dir="1"]`);
+await page.waitForFunction(o => JSON.stringify([...document.querySelectorAll(
+  '#todoList .grp .todo[data-step="-1"] .txt')].map(t => t.textContent.slice(0, 14)))
+  !== JSON.stringify(o), was, { timeout: 10000 });
+await page.click('#todoSaveQuiet');
+await page.waitForFunction(() => {
+  const b = document.getElementById('todoSaveQuiet');
+  return b.textContent !== 'Saving…' && b.disabled; }, { timeout: 15000 });
+const kept = await order();
+ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.stringify(kept)
+   && JSON.stringify(kept) !== JSON.stringify(was),
+   'Save is what writes it — and the file is then the order on screen');
+page.dialogs = [];
+await page.click('#todoOrder');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo .mv').length === 0);
+ok(page.dialogs.length === 0,
+   '...and leaving the mode with nothing pending asks nothing');
 
 // A step that has gone does not move, and nothing moves above it.
 await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: true });
 await page.evaluate(() => loadTodo(memGen));
 await page.waitForFunction(() => document.querySelector(
   '#todoList .todo.step')?.classList.contains('sent'), { timeout: 10000 });
+await page.click('#todoOrder');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo .mv').length > 0);
 ok(await page.$eval(`#todoList .todo[data-id="${plainId}"][data-step="0"] .mv`,
      b => b.disabled),
    'a crossed step is pinned: the past of a plan does not shuffle');
@@ -429,6 +466,8 @@ await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on
 await page.click('#todoOrder');
 await page.waitForFunction(() => document.getElementById('todoAsk').checkVisibility());
 ok(true, 'and the send controls come back');
+await page.evaluate(() => loadTodo(memGen));
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0);
 
 // ---- two Saves, and what the line says ----------------------------------
 // The difference between them is whether a line of anybody's conversation is
