@@ -114,10 +114,11 @@ ok(read().projects.alpha.find(r => String(r.id) === mine.id).sent > 0,
 const pane = tmuxCapture('claude-alpha');
 ok(pane.includes('delete a project from the dashboard'),
    '...because it really went into the session');
-ok(pane.includes('I also changed the to-do list'),
+ok(/\(Also: the shared to-do list/.test(pane),
    '...with the note about the other changes on the same line, not racing it');
-ok(read().unsaved?.alpha === false,
-   '...and the list counts as told, since it was told');
+const flags = read().unsaved?.alpha || {};
+ok(flags.todo === false && flags.memory === false,
+   '...and the panel counts as told, since it was told');
 ok(await page.$$eval('.tab', ts => ts.some(t => /Claude: alpha/.test(t.textContent))),
    '...and it put the session\'s tab on the strip');
 
@@ -426,6 +427,41 @@ await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on
 await page.click('#todoOrder');
 await page.waitForFunction(() => document.getElementById('todoAsk').checkVisibility());
 ok(true, 'and the send controls come back');
+
+// ---- two Saves, and what the line says ----------------------------------
+// The difference between them is whether a line of anybody's conversation is
+// spent. Both settle the panel; only one tells.
+await post({ action: 'add', project: 'alpha', text: 'something to settle' });
+await page.evaluate(() => loadTodo(memGen));
+await page.waitForFunction(() => !document.getElementById('todoSaveQuiet').disabled);
+ok(!await page.$eval('#todoSave', b => b.disabled),
+   'a change arms both Saves');
+const beforeQuiet = tmuxCapture('claude-alpha').length;
+await page.click('#todoSaveQuiet');
+await page.waitForFunction(() => {
+  const b = document.getElementById('todoSaveQuiet');
+  return b.textContent !== 'Saving…' && b.disabled;
+}, { timeout: 15000 });
+ok(tmuxCapture('claude-alpha').length === beforeQuiet,
+   'the plain Save settles it without saying anything to the session');
+ok((read().unsaved?.alpha || {}).todo === false,
+   '...and it really is settled, so it stops asking');
+
+// The line names which half moved — "something changed" sends somebody to
+// look at both, and one of the two is a directory of files.
+await post({ action: 'add', project: 'alpha', text: 'and something to tell' });
+await page.evaluate(() => loadTodo(memGen));
+await page.waitForFunction(() => !document.getElementById('todoSave').disabled);
+await page.click('#todoSave');
+await page.waitForFunction(() => {
+  const b = document.getElementById('todoSave');
+  return b.textContent !== 'Saving…' && b.disabled;
+}, { timeout: 15000 });
+const told = tmuxCapture('claude-alpha');
+ok(/shared to-do list for this project/.test(told),
+   'Save & tell names the to-do list');
+ok(!/notes about how you work/.test(told.slice(beforeQuiet)),
+   '...and not the memories, which did not move');
 
 // ---- nothing slides sideways -------------------------------------------
 // Four buttons in the footer did not fit a phone, and a footer that does not

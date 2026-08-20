@@ -223,12 +223,14 @@ leaving it struck through. A line can also be struck by hand, meaning the
 operator dealt with it or dropped it; the list says which, so read the note
 rather than assuming you were asked.
 
-If the list or these notes change while you are working, you will be told in
-one line. Read them when it is relevant and carry on — a change to the list is
-not a request to drop what you are doing. That line costs the operator a
-message, so it is sent when they press Save rather than on every edit; do not
-expect to hear about every change, and re-read with `bb todo` if what you are
-about to do depends on it.
+If the list or these notes change while you are working, you may be told in
+one line, which names which of the two moved. Read them when it is relevant
+and carry on — a change to the list is not a request to drop what you are
+doing. That line costs the operator a
+message, so it is sent only when they press **Save & tell the session** —
+there is a plain Save beside it that changes things and says nothing. So do
+not expect to hear about every change, and re-read with `bb todo` if what you
+are about to do depends on it.
 
 A step arriving as a message *is* a request: the operator sent it deliberately,
 and the panel closed and put them in this tab to read the answer. Sometimes it

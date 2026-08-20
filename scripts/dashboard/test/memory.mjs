@@ -144,8 +144,8 @@ page.errors = [];
 // a line of its own. The fixture session is a shell and a shell echoes, so
 // notify.py submits it.
 const pane = tmuxCapture('claude-alpha');
-ok(/re-read them|to-do list/.test(pane),
-   'saving tells the running session, in one line for the lot');
+ok(/notes about how you work here/.test(pane),
+   'saving tells the running session, and the line names the memories');
 
 // ---- closing -----------------------------------------------------------
 await page.keyboard.press('Escape');

@@ -1053,12 +1053,18 @@ by pressing the same button again and the other is not.
 
 **Edits are written immediately; telling the session is separate.** A phone
 that dies half way through tidying a list must not lose it, but every telling
-costs a line of somebody's conversation — so the two are apart. **Save & tell
-the session** spends that line, once, for the whole panel: it writes any
-memory edits and then tells a running session that all of it moved. One Save,
-because two meant two lines saying the same thing. There is no way to make a
-session read something without sending it a message: no IPC into a running
-Claude, so the only door is its input box.
+costs a line of somebody's conversation — so the two are apart, and there are
+two Save buttons for the difference. **Save** writes any memory edits and
+settles the panel without saying anything, which is what you want while a
+session is mid-task or when there is none. **Save & tell the session** does
+the same and spends the line. Both are dead until something has moved; the
+second is also dead with nothing running to tell.
+
+The line **names which half moved** — the to-do list, the memories, or both —
+because "something changed" sends somebody to look at both, and one of the two
+is a directory of files. There is no way to make a session read something
+without sending it a message: no IPC into a running Claude, so the only door
+is its input box.
 
 Which is why **sending a step folds the two together**. Tapping an arrow
 **arms** it — the arrow lights up, and the Send button and its "also tell it

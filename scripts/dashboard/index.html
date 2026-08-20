@@ -819,10 +819,12 @@ body.dragging .tab .lbl{cursor:grabbing}
     </div>
     </details>
     <div class="foot">
-      <!-- One Save for the panel. Edits to the list are written as they are
-           made and memory edits are written here, and either way this is the
-           separate act of spending a line of the conversation to say so. -->
-      <button id="todoSave" type="button" disabled>Save</button>
+      <!-- Two, and the difference is whether a line of the conversation is
+           spent saying so. The plain one settles the panel without telling
+           anybody, which is the right answer while a session is mid-task or
+           when there is none. -->
+      <button id="todoSaveQuiet" type="button" disabled>Save</button>
+      <button id="todoSave" type="button" disabled>Save &amp; tell the session</button>
       <span class="sp"></span>
       <button id="memClose" class="primary" type="button">Close</button>
     </div>
@@ -3412,7 +3414,7 @@ async function openMemory(name){
   $("memDrift").innerHTML = $("memList").innerHTML = "";
   $("memIndex").value = "";
   $("memFold").open = false;
-  $("todoSave").disabled = true;
+  $("todoSave").disabled = $("todoSaveQuiet").disabled = true;
   $("todoAsk").hidden = true;
   todoOrdering = false;
   cancelSend();
@@ -3629,7 +3631,7 @@ function drawTodo(j){
     };
   });
   todoItems = rows;
-  todoUnsaved = !!j.unsaved;
+  todoUnsaved = j.unsaved || {};
   // The strip is always there once there is a list, with everything on it
   // dead until an arrow is armed — a control that appears under your thumb is
   // a control you press by accident.
@@ -3638,28 +3640,33 @@ function drawTodo(j){
   $("todoOrder").hidden = !rows.length;
   $("todoOrder").classList.toggle("on", todoOrdering);
   const armed = !!todoSel && live;
+  const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty();
   $("todoGo").disabled = !armed;
-  $("todoAlso").disabled = !armed || !todoUnsaved;
-  $("todoAlsoWrap").classList.toggle("off", !armed || !todoUnsaved);
+  $("todoAlso").disabled = !armed || !dirty;
+  $("todoAlsoWrap").classList.toggle("off", !armed || !dirty);
 }
 
 // One button for the panel: the list's changes are already on disk, the
 // memory editor's are not, and either way this is what tells a session. Dead
 // rather than absent, so the footer does not move about under a thumb.
 function syncSave(){
-  const b = $("todoSave");
-  if (!b) return;
-  const dirty = todoUnsaved || memDirty();
-  b.disabled = !dirty;
-  b.textContent = todoSession ? "Save & tell the session" : "Save";
+  const b = $("todoSave"), q = $("todoSaveQuiet");
+  if (!b || !q) return;
+  const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty();
+  q.disabled = !dirty;
+  // Telling needs somewhere to tell. Dead rather than absent either way, so
+  // the footer does not move about under a thumb.
+  b.disabled = !dirty || !todoSession;
+  q.title = "write any memory edits and settle the panel, without spending a "
+    + "line of anybody's conversation on it";
   b.title = todoSession
-    ? "write any memory edits, and tell " + todoSession + " that this moved"
-    : "write any memory edits — nothing is running here to tell";
+    ? "...and tell " + todoSession + " which of them moved"
+    : "nothing is running here to tell";
 }
 
 let todoItems = [];
 let todoSession = null;
-let todoUnsaved = false;
+let todoUnsaved = {};       // {todo, memory} — what a session has not been told
 let todoSel = null;         // {id, step} — the arrow that is armed, if any
 let todoOrdering = false;   // the rows are showing move controls instead
 
@@ -3677,7 +3684,7 @@ function cancelSend(){ todoSel = null; }
 async function reallySend(){
   if (!todoSel) return;
   const {id, step} = todoSel;
-  const also = todoUnsaved && $("todoAlso").checked;
+  const also = !$("todoAlso").disabled && $("todoAlso").checked;
   const proj = memProj;
   $("todoGo").disabled = true; $("todoGo").textContent = "Sending…";
   $("todoGo").classList.add("busy");
@@ -3893,18 +3900,20 @@ $("todoOrder").onclick = () => {
   if (todoOrdering) cancelSend();
   drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
 };
-// The one Save: memory edits are written, then a running session is told
-// once about everything that moved. Two buttons meant two lines spent saying
-// the same thing.
-$("todoSave").onclick = async () => {
-  const b = $("todoSave");
+// Both Saves write whatever the memory editor is holding and settle the
+// panel; only one of them spends a line saying so.
+async function saveAll(tellIt){
+  const b = $(tellIt ? "todoSave" : "todoSaveQuiet"), was = b.textContent;
   b.disabled = true; b.textContent = "Saving…";
   if (memDirty()) await saveMemory(true);
-  const j = await postTodo({action: "tell"});
+  const j = await postTodo({action: tellIt ? "tell" : "save"});
   await loadMemory(memGen);
+  b.textContent = was;
   if (j) notify(j.told ? "saved, and told " + (todoSession || "the session")
-                       : "saved — nothing is running here to tell");
-};
+                       : "saved");
+}
+$("todoSave").onclick = () => saveAll(true);
+$("todoSaveQuiet").onclick = () => saveAll(false);
 $("todoText").onkeydown = e => {
   if (e.key === "Enter"){ e.preventDefault(); addTodo(); }
   // Escape in a field with something in it clears the field, not the panel.
