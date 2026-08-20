@@ -486,14 +486,19 @@ Uninstalling is a **bin icon on the row itself**, with a confirmation,
 because it is about one package and a bulk Remove button beside a bulk
 Install was one mis-click from being expensive.
 
-**A row says what it is doing while it does it**, in two states and only two.
-A download can say how far along it is, so it gets a bar and a percentage,
-scraped from whatever the recipe happens to print — Playwright's bar,
-sdkmanager's, git's `Receiving objects`, curl's meter in either of its
-formats. Everything after the download cannot: there is no honest denominator
-for "installing", so the row says `installing` with a ticking ellipsis rather
-than naming whichever component it is unpacking. A percentage left over from
-the download before it would be worse than either. Until then a row that is
+**A row says what it is doing while it does it.** A bar and a percentage
+whenever the job reports one — scraped from whatever the recipe prints:
+Playwright's bar, sdkmanager's, git's `Receiving objects`, curl's meter in
+either of its formats — and the step's name beside it. Where a step reports
+no number at all, the row says `installing` with a ticking ellipsis rather
+than naming whichever component it is unpacking.
+
+The bar follows the number and not the word, because for at least one tool
+they are not the same thing: sdkmanager counts a single fraction across a
+whole operation and changes the label part way through, so a system image
+reaches about 30% under `Downloading` and finishes the rest under `Unzipping`.
+The job log also keeps every tenth of a job's progress, which is what tells
+you afterwards whether a bar failed to move or a tool stopped reporting. Until then a row that is
 mid-install said *"installed at /sdk/flutter"*, because every probe here
 calls a non-empty directory installed and that is precisely what a download
 in progress leaves behind. For the same reason an install that fails removes

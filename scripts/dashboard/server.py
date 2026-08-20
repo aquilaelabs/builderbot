@@ -1749,12 +1749,16 @@ _INSTALLY = re.compile(r"unzip|extract|instal|build|compil|resolv|warming|checki
 
 
 def _progress_of(line):
-    """(percent, said_something) for one line of a tool's output.
+    """(percent, installing, said_something) for one line of a tool's output.
 
-    A percent comes back only for a line that carries one and is not
-    announcing an install step, because the two states this drives are
-    "downloading, with a number" and "installing" — there is no honest
-    denominator for the second, so it does not get one.
+    A percentage is reported whatever step the line names, because for at
+    least one tool here the step is not the unit of progress. sdkmanager
+    counts one fraction across the whole operation and changes the label as it
+    goes — its own --list output runs "25% Loading local repository", "25%
+    Fetch remote repository", then on to 100% — so an install counts to about
+    thirty under Downloading and finishes the rest under Unzipping. Dropping
+    the number when the label stopped saying download is what made a system
+    image crawl to half and then appear to give up and skip to installing.
 
     Deliberately generic about where the number comes from. Every recipe here
     draws its own bar — playwright's `|====| 40% of 102 MiB`, sdkmanager's
@@ -1777,19 +1781,19 @@ def _progress_of(line):
     # state is how a row announced installing and only then produced a download
     # bar, which is backwards from what is actually going on.
     if line.startswith("[builderbot]"):
-        return None, False
+        return None, False, False
     m = _CURL_ROW.match(line)
     if m:
-        return int(m.group(1)), True
-    if _INSTALLY.search(line):
-        return None, True
+        return int(m.group(1)), False, True
+    installing = bool(_INSTALLY.search(line))
     m = _PCT.search(line)
-    if m:
-        pct = int(m.group(1))
-        if 0 <= pct <= 100:
-            return pct, True
-    return None, bool(re.search(r"[A-Za-z]", line)
-                      and not _PROGRESS_FRAME.match(line))
+    pct = int(m.group(1)) if m else None
+    if pct is not None and not 0 <= pct <= 100:
+        pct = None
+    if pct is not None:
+        return pct, installing, True
+    return None, installing, bool(re.search(r"[A-Za-z]", line)
+                                  and not _PROGRESS_FRAME.match(line))
 
 
 def run_streamed(cmd, on_line, timeout=3600):
@@ -1874,16 +1878,18 @@ def _pkg_worker():
         def watch(line, _name=name):
             with _pkg_lock:
                 cur = _pkg_job["progress"] or {}
-                pct, said = _progress_of(line)
+                pct, installing, said = _progress_of(line)
                 if not said:
                     return                    # a frame with no number in it
                 # Three states in order: starting, downloading, installing.
-                # Installing is only reachable once a download has reported at
-                # least once — before that, output is a tool clearing its
-                # throat (sdkmanager loading its repositories, git listing
-                # refs), and calling that "installing" put the last step first.
+                # Installing is only reachable once something has reported a
+                # number, or the line says so itself — before that, output is a
+                # tool clearing its throat (sdkmanager loading its
+                # repositories, git listing refs), and calling that
+                # "installing" put the last step first.
                 seen = bool(cur.get("seen")) or pct is not None
-                phase = ("downloading" if pct is not None
+                phase = ("installing" if installing
+                         else "downloading" if pct is not None
                          else "installing" if seen else "starting")
                 # Every tenth of a download, into the log. The bar shows what
                 # a job reported *now*; this shows what it reported at all,
@@ -1894,7 +1900,7 @@ def _pkg_worker():
                 mark = cur.get("mark")
                 if pct is not None and (mark is None or pct // 10 != mark):
                     mark = pct // 10
-                    _pkg_job["log"].append(f"  … downloading {pct}%")
+                    _pkg_job["log"].append(f"  … {phase} {pct}%")
                     _pkg_job["log"] = _pkg_job["log"][-60:]
                 _pkg_job["progress"] = {"name": _name, "pct": pct, "phase": phase,
                                         "seen": seen, "mark": mark}
