@@ -122,6 +122,12 @@ ok(d.text === 'downloading 42%' && d.where === null,
 // the thing being promised.
 ok(Math.abs(100 * d.fillW / d.barW - 42) <= 2,
    `...and the bar is filled to the fraction it claims (${d.fillW}px of ${d.barW}px)`);
+// One bundle per bar: playwright fetches five and meters each from zero, so a
+// bar that restarts has to say why or it reads as one that lost its place.
+d = await during({ action: 'install', current: 'flutter',
+                   progress: { name: 'flutter', pct: 20, phase: 'downloading', part: 3 } });
+ok(d.text === 'downloading 20% · file 3',
+   '...and says which file it is on once a download has restarted');
 // Mid-install the directory exists, so every probe calls it installed. The row
 // must not wear any of the furniture that means "this is here" — a half-written
 // NDK showed a ticked box, an uninstall bin and the version "installed".
@@ -353,6 +359,15 @@ ok(await page.evaluate(() => !tabs.some(t => t.kind === 'packages')), 'the tab m
 await page.click('#bPkgs');
 await page.waitForFunction(() => document.querySelectorAll('.doc .pkg').length > 0);
 ok(true, 'and reopens from the card');
+// The strip lives on the server and is handed to every browser, so a tab kind
+// the store does not recognise is dropped on every read — which is why this
+// one came back from a reload, or a container restart, missing.
+await page.reload();
+await ready(page);
+await page.waitForFunction(() => document.querySelectorAll('.doc .pkg').length > 0,
+                           { timeout: 30000 });
+ok(await page.evaluate(() => tabs.some(t => t.kind === 'packages')),
+   '...and survives a reload, the way the findings tab does');
 
 const errs = page.errors.filter(e => !/status of 400/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ' — ' + errs.join(' | ') : ''}`);

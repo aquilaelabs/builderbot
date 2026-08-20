@@ -379,7 +379,7 @@ def save_cards(v):
 # What a stored tab may contain. Anything else is dropped rather than trusted:
 # this file is written by one browser and handed to every other one, so it is
 # the one place where a bad value could travel between devices.
-TAB_KINDS = {"term", "findings"}
+TAB_KINDS = {"term", "findings", "packages"}
 
 
 def load_layout():
@@ -1923,10 +1923,22 @@ def _pkg_worker():
                 # "the tool said 17% and then said nothing for four minutes".
                 # There was no way to tell those apart from a screenshot, and
                 # I spent a long time guessing wrong about which it was.
+                # A percentage that drops a long way is a new file, not a
+                # bar giving up: `playwright install` fetches five bundles and
+                # meters each from zero, so the row restarted five times with
+                # nothing to say why. More than twenty-five points down is a
+                # restart; less is a meter jittering.
+                part = cur.get("part") or 0
+                if pct is not None and (part == 0
+                                        or (cur.get("pct") is not None
+                                            and pct < cur["pct"] - 25)):
+                    part += 1
                 mark = cur.get("mark")
-                if pct is not None and (mark is None or pct // 10 != mark):
+                if pct is not None and (mark is None or pct // 10 != mark
+                                        or part != (cur.get("part") or 0)):
                     mark = pct // 10
-                    _pkg_job["log"].append(f"  … {phase} {pct}%")
+                    where = f" (file {part})" if part > 1 else ""
+                    _pkg_job["log"].append(f"  … {phase} {pct}%{where}")
                     _pkg_job["log"] = _pkg_job["log"][-60:]
                 # When the number last meant something new, so that a reader
                 # can tell a bar that is moving from one that has parked.
@@ -1934,7 +1946,8 @@ def _pkg_worker():
                 if pct is not None and pct != cur.get("pct"):
                     at = time.monotonic()
                 _pkg_job["progress"] = {"name": _name, "pct": pct, "phase": phase,
-                                        "seen": seen, "mark": mark, "at": at}
+                                        "seen": seen, "mark": mark, "at": at,
+                                        "part": part}
 
         r = run_streamed([BB, "sdk", verb, name], watch, timeout=3600)
         with _pkg_lock:

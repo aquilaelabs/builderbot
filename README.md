@@ -495,7 +495,10 @@ across the whole operation and changes the label part way through, so for a
 system image the meter reads about 30% when the download is done and the rest
 of the count belongs to the unzip; that number is real but it is not a
 download, so the row does not quote it. For the same reason a percentage that
-stops moving is retired after a few seconds rather than left standing. The
+stops moving is retired after a few seconds rather than left standing, and a
+percentage that drops a long way is a new file rather than a bar losing its
+place — `playwright install` fetches five bundles and meters each from zero,
+so the row says which one it is on. The
 job log keeps every tenth of a job's progress, which is what tells you
 afterwards whether a bar failed to move or a tool stopped reporting. Until then a row that is
 mid-install said *"installed at /sdk/flutter"*, because every probe here
