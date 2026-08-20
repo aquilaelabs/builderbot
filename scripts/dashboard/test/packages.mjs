@@ -150,6 +150,11 @@ ok(d.text.startsWith('installing') && !d.bar,
 // the whole of writing a system image, and a bar sitting there reads as stuck.
 d = await during({ action: 'remove', current: 'flutter', progress: null });
 ok(d.text.startsWith('removing'), 'a removal says so on the row it is removing');
+// ...and never with a bar, however much sdkmanager counts on its way out.
+d = await during({ action: 'remove', current: 'flutter',
+                   progress: { name: 'flutter', pct: 40, phase: 'downloading', seen: true } });
+ok(d.text.startsWith('removing') && !d.bar,
+   '...and an uninstall gets no progress bar even when the tool offers one');
 // The dots are ticked by a timer, so a redraw must not reset them.
 const dots = await page.evaluate(async () => {
   const saved = packages.job;

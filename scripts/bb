@@ -1587,8 +1587,17 @@ sdk_android_image_dir() {
     # without it this searched the link itself, found nothing, and reported an
     # installed image as absent while the dashboard — which resolves paths
     # rather than walking them — said otherwise.
-    find -L "${ANDROID_HOME:-/opt/android-sdk}/system-images" -maxdepth 2 -type d \
-        -name "$1" 2>/dev/null | sort -V | tail -1
+    local d
+    while IFS= read -r d; do
+        # Non-empty, not merely present. sdkmanager's uninstall removes the
+        # abi directory below the flavour and leaves the flavour directory
+        # itself standing, so a removed image still has a folder with its name
+        # on it — and this reported it installed while the dashboard, which
+        # asks the harder question, said it was gone.
+        [ -n "$(ls -A "$d" 2>/dev/null)" ] || continue
+        printf '%s\n' "$d"
+    done < <(find -L "${ANDROID_HOME:-/opt/android-sdk}/system-images" -maxdepth 2 -type d \
+                  -name "$1" 2>/dev/null | sort -V) | tail -1
 }
 
 # sdkmanager records an operation in progress in <package>/.installer/, in a
@@ -1910,6 +1919,10 @@ sdk_remove() {
                         sdk_android_clear_stale_installer "system-images;${api};${kind};$(basename "$abi")"
                         sdkmanager --uninstall "system-images;${api};${kind};$(basename "$abi")"
                     done
+                    # The flavour directory is left behind by the uninstall,
+                    # empty, and an empty directory with the right name is what
+                    # made a removed image keep answering "installed".
+                    rmdir "$dir" 2>/dev/null || true
                 done
                 sdk_relink_android
                 return 0
