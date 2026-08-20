@@ -209,6 +209,18 @@ case "$target" in
         # An existing session is attached to rather than replaced, so clicking
         # a project twice returns to the same conversation instead of starting a
         # second one alongside it.
+        # A session under a claude name must be running claude. tmux takes a
+        # session with the command it was given, so a conversation that ends
+        # leaves nothing behind — but if one ever does survive as a bare
+        # shell, this tab is not the way into it: the name is claimed for
+        # claude, and anything else wearing it is replaced rather than
+        # attached to.
+        if tmux has-session -t "=claude-${proj//[.:]/_}" 2>/dev/null \
+           && ! tmux list-panes -t "=claude-${proj//[.:]/_}" -F '#{pane_current_command}' 2>/dev/null \
+                | grep -qi claude; then
+            log "claude-${proj}: session is not running claude — replacing it"
+            tmux kill-session -t "=claude-${proj//[.:]/_}" 2>/dev/null || true
+        fi
         start "claude-${proj}" "$dir" "${cmd[@]}"
         ;;
     shell:*)

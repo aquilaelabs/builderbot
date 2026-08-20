@@ -178,6 +178,14 @@ ok(mid.show && mid.anim && mid.overlay, 'Sessions opens its panel with a slide, 
 ok(mid.paneH === paneH0, 'the terminal holds still while the panel slides');
 await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('sliding'));
 ok(await phone.$eval('#panes', el => el.offsetHeight) < paneH0, 'then the terminal snaps to make room');
+// Commands wants a shell under it now, and the tab that was open got ended
+// above — so put one there, or this measures the guard instead of the swap.
+await phone.evaluate(() => {
+  const shell = t => t.kind === 'term' && !t.arg.startsWith('claude:');
+  if (!tabs.some(shell)) newShell();
+  panes[active] = tabs.find(shell).id;
+  render();
+});
 await phone.click('#mMacros');
 // the close is a slide now: the class drops when the tween lands
 await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('show'));
@@ -198,7 +206,14 @@ ok(await phone.$eval('#tabL', el => getComputedStyle(el).display !== 'none') && 
    'strip is one row with scroll arrows');
 
 // Swapping one flyout for another: the outgoing one stays under the incoming
-// slide and the terminal changes size once, when the new one lands.
+// slide and the terminal changes size once, when the new one lands. Commands
+// needs a shell under it, so make sure the pane is showing one.
+await phone.evaluate(() => {
+  const shell = t => t.kind === 'term' && !t.arg.startsWith('claude:');
+  if (!tabs.some(shell)) newShell();
+  panes[active] = tabs.find(shell).id;
+  render();
+});
 await phone.waitForFunction(() => document.querySelector('.col.term').getAnimations().length === 0);
 await phone.click('#mSessions');
 await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('sliding'));
@@ -235,7 +250,18 @@ ok(await phone.evaluate(() => !showSessions), 'picking a session closes the Sess
 // Keys over a document tab: the toggle is disabled and says why.
 await phone.evaluate(() => openFindings());
 await phone.waitForFunction(() => tabOf(panes[active])?.kind === 'findings');
-ok(await phone.$eval('#mKeys', b => b.disabled && /document/.test(b.title)), 'Keys is disabled over a document tab');
+ok(await phone.$eval('#mKeys', b => b.disabled && /not one/.test(b.title)), 'Keys is disabled over a document tab');
+ok(await phone.$eval('#mMacros', b => b.disabled), '...and so is Commands');
+// A Claude tab is a terminal, but not one to type keys or macros into: they
+// go to a conversation with its own idea of what a keystroke means.
+await phone.evaluate(() => {
+  const t = tabs.find(x => x.kind === 'term' && x.arg.startsWith('claude:'));
+  if (t) { panes[active] = t.id; render(); }
+});
+ok(await phone.evaluate(() => !tabs.some(t => t.arg.startsWith('claude:')))
+   || (await phone.$eval('#mKeys', b => b.disabled)
+       && await phone.$eval('#mMacros', b => b.disabled)),
+   '...and both are disabled over a Claude tab');
 
 // Opening a tab that sits off the end of the strip scrolls it into view, and
 // the arrows gray at the ends they cannot go past.
