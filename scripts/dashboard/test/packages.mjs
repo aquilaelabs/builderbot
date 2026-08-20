@@ -130,10 +130,17 @@ ok(d.text.startsWith('starting'),
 // Past the download there is no honest denominator, so the row stops
 // pretending: no bar, no number, and no naming of whichever component is
 // being unpacked — one of those ran off the side of a phone.
+// The bar follows the number, not the word: sdkmanager keeps counting through
+// its unzip, and dropping the count there was what made an install look like
+// it had given up at the halfway mark.
+d = await during({ action: 'install', current: 'flutter',
+                   progress: { name: 'flutter', pct: 70, phase: 'installing', seen: true } });
+ok(d.text === 'installing 70%' && Math.abs(100 * d.fillW / d.barW - 70) <= 2,
+   '...and a step that is installing but still counting keeps its bar');
 d = await during({ action: 'install', current: 'flutter',
                    progress: { name: 'flutter', pct: null, phase: 'installing', seen: true } });
 ok(d.text.startsWith('installing') && !d.bar,
-   '...and once installing, says so without a bar or a percentage');
+   '...while one with no number to give says so and animates');
 d = await during({ action: 'remove', current: 'flutter', progress: null });
 ok(d.text.startsWith('removing'), 'a removal says so on the row it is removing');
 // The dots are ticked by a timer, so a redraw must not reset them.
