@@ -194,6 +194,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
 .pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
+/* An image row has no checkbox, so the text starts where the others' does. */
+.pkg.img{padding-left:26px}
+.imghead{margin-top:18px}
 .pkg .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
 /* How old the version answers are, beside the button that refreshes them:
    they survive a restart now, and a number with no date on it is the kind of
@@ -258,6 +261,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   width:min(520px,100%);max-height:90vh;overflow:auto;
   box-shadow:0 18px 50px rgba(0,0,0,.6)}
+/* The memory book holds prose, not form fields: 520px wraps a description
+   every other line. */
+.modal .box.wide{width:min(760px,100%)}
 .modal h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
   font:600 13px/1.2 system-ui,sans-serif;letter-spacing:.3px;text-transform:uppercase}
 .modal .field{padding:11px 14px}
@@ -281,6 +287,44 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+
+/* ---- the memory book ------------------------------------------------- */
+/* One <details> per memory: collapsed it is the summary line Claude wrote for
+   itself, opened it is the file. Native disclosure rather than a toggle of
+   our own — this page has no framework and does not need one for a fold. */
+.mem{border:1px solid var(--line);border-radius:8px;margin-bottom:6px;
+  background:#161b22}
+.mem>summary{display:flex;gap:8px;align-items:center;padding:8px 10px;
+  cursor:pointer;list-style:none;min-height:var(--tap);box-sizing:border-box}
+.mem>summary::-webkit-details-marker{display:none}
+.mem>summary::before{content:"▸";color:var(--dim);font-size:11px;width:9px}
+.mem[open]>summary::before{content:"▾"}
+.mem .mname{font:600 12px/1.4 var(--mono);color:var(--ink)}
+.mem .mwhen{margin-left:auto;color:var(--dim);font:11px/1.4 system-ui,sans-serif;
+  white-space:nowrap}
+/* The four types Claude files a memory under, colored so a glance separates
+   "who Sean is" from "what I was told to do differently". */
+.mem .mtype{font:600 10px/1 system-ui,sans-serif;text-transform:uppercase;
+  letter-spacing:.4px;padding:3px 5px;border-radius:4px;border:1px solid var(--line);
+  color:var(--dim);white-space:nowrap}
+.mem .mtype.feedback{color:#d8b25c;border-color:#4a3c1e}
+.mem .mtype.user{color:#77b7e8;border-color:#1e3a4a}
+.mem .mtype.project{color:#7fc08a;border-color:#1f3f28}
+.mem .mtype.reference{color:#b79ae0;border-color:#38294a}
+/* Wrapped, unlike the command editor's textarea: those are shell lines where a
+   wrap would lie about what runs, these are prose with an 80-column habit and
+   a description line that is nobody's idea of scrollable. */
+#memIndex,.mem textarea{white-space:pre-wrap}
+#memIndex{min-height:96px}
+.mem .body{padding:0 10px 10px}
+.mem .mdesc{color:var(--dim);font:12px/1.5 system-ui,sans-serif;margin-bottom:8px}
+.mem textarea{min-height:190px}
+.mem .macts{display:flex;gap:8px;margin-top:8px}
+.mem .macts .sp{flex:1}
+/* Drift between the index and the files: never fatal, which is exactly why it
+   has to be said out loud rather than left to be noticed. */
+.mdrift{padding:0 14px 4px}
+.mdrift div{color:var(--warn);font:12px/1.5 system-ui,sans-serif;margin-bottom:4px}
 .modal select{width:100%;box-sizing:border-box;background:#161b22;color:var(--ink);
   border:1px solid var(--line);border-radius:6px;padding:8px 9px;
   font:13px/1.5 var(--mono)}
@@ -291,6 +335,15 @@ button.on{background:#1f6f36;border-color:#2ea043}
 #pCopy{margin-top:6px}
 /* Icon-width, so it sits beside Shell rather than wrapping the row. */
 button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--dim)}
+/* The count rides on the book, so the row answers "does Claude remember
+   anything here?" without being opened. A project with none keeps the button
+   — that is how you find out there is nothing, which is also an answer. */
+button.eye i{font:600 10px/1 system-ui,sans-serif;font-style:normal;margin-left:3px}
+/* The row for a project that does not exist yet — a clone still arriving.
+   Marked, because it is the one row in this card that is not a directory. */
+.row.job{background:#161d26}
+.row.job .name{color:var(--dim)}
+button.eye.none{opacity:.45}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the broom (reset) and the sign-out door —
@@ -567,6 +620,37 @@ body.dragging .tab .lbl{cursor:grabbing}
 </div>
 <!-- New project. The name and the URL are validated again server-side; the
      form's job is a fast answer, the server's is the real one. -->
+<!-- What Claude remembers about a project. Everything Claude is told at the
+     start of a session is reviewable somewhere — CLAUDE.md through a pull
+     request, the transcript on screen — except this, which writes itself and
+     is never read back. Opened from the book on the project's row, not from a
+     Claude tab: the question it answers ("why did it do that?") is usually
+     asked after the tab has been closed. -->
+<div id="memModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="memTitle">
+  <div class="box wide">
+    <h3 id="memTitle">Memory</h3>
+    <div class="field">
+      <div class="hint" id="memWhere"></div>
+    </div>
+    <div class="mdrift" id="memDrift"></div>
+    <div class="field">
+      <label for="memIndex">Index — loaded into every session started here</label>
+      <textarea id="memIndex" spellcheck="false" autocomplete="off"></textarea>
+      <div class="hint">One line per memory. Removing a memory below takes its
+        line out of here too.</div>
+    </div>
+    <div class="field" id="memListField">
+      <label id="memCount">Memories</label>
+      <div id="memList"></div>
+    </div>
+    <div class="foot">
+      <button id="memSave" class="primary" type="button">Save changes</button>
+      <span class="sp"></span>
+      <button id="memNote" type="button" hidden>Tell the session</button>
+      <button id="memClose" type="button">Close</button>
+    </div>
+  </div>
+</div>
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
@@ -2219,10 +2303,11 @@ function drawProjects(ps){
   if (!shown.length){
     // state.projects at click time, not the `ps` this draw was given: the
     // handler outlives the draw now that unchanged markup is kept.
-    if (paint(el, `<div class="empty">${
+    if (paint(el, jobHtml + `<div class="empty">${
       !ps.length ? "nothing mounted under /workspace"
                  : `nothing to show — everything here is folded away under Show ${hidden}`
     }</div>` + togHtml)){
+      pJobWire();
       $("bNewProj").onclick = openNewProject;
       if (flagged.length)
         $("bAll").onclick = () => { showAllProjects = !showAllProjects;
@@ -2233,9 +2318,36 @@ function drawProjects(ps){
 
   const cls = {error:"bad", warning:"warn", excluded:"off"};
   const live = liveSessions();
+  // A clone or a first push, drawn where its result will appear. An ellipsis
+  // rather than a percentage: git's progress is a carriage-return animation
+  // on stderr, and parsing one to redraw it is the thing the packages tab
+  // gave up on. What it *is* doing is a phrase from the server.
+  const jobHtml = pJob?.running
+    ? `<div class="row job">
+         <div class="grow">
+           <div class="name">${esc(pJob.name)}</div>
+           <div class="sub">${esc(pJob.step || pJob.kind)}<span class="dots"></span>${
+             pJob.for > 4 ? ` · ${pJob.for}s` : ""}</div>
+         </div>
+         <span class="acts"><button id="bJobStop"${pJob.aborting ? " disabled" : ""}
+           title="stop it — a half-cloned directory is removed, a remote already set stays"
+           >${pJob.aborting ? "Stopping…" : "Abort"}</button></span>
+       </div>`
+    // The last outcome, if it went wrong. Kept until it is dismissed rather
+    // than shown in a toast that is gone in seven seconds: the page may not
+    // even have been open when it failed.
+    : pJob?.error
+    ? `<div class="row">
+         <div class="grow">
+           <div class="name">${esc(pJob.name)}</div>
+           <div class="sub bad">${esc(pJob.error)}</div>
+         </div>
+         <span class="acts"><button id="bJobOk">Dismiss</button></span>
+       </div>`
+    : "";
   // Handlers bind on a real change only; an unchanged card keeps its
   // elements, and their handlers, from last time.
-  if (paint(el, shown.map(p => `
+  if (paint(el, jobHtml + shown.map(p => `
     <div class="row${p.excluded ? " off" : ""}">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
@@ -2267,6 +2379,12 @@ function drawProjects(ps){
         ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
              title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
         : ""}
+      ${isBroken(p) ? "" : `<button class="eye${p.memories ? "" : " none"}"
+         data-m="${esc(p.name)}" aria-label="memory"
+         title="${p.memories
+                  ? `${p.memories} ${p.memories === 1 ? "memory" : "memories"} — what Claude has written down about this project`
+                  : "no memories yet — what Claude writes down about this project appears here"}"
+         >${BOOK}${p.memories ? `<i>${p.memories}</i>` : ""}</button>`}
       <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
         aria-label="${p.excluded ? "include" : "exclude"}"
         title="${p.excluded ? "include — allow Claude sessions here again"
@@ -2286,6 +2404,8 @@ function drawProjects(ps){
     el.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
     el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
     el.querySelectorAll("[data-l]").forEach(b => b.onclick = () => openLinkProject(b.dataset.l));
+    el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => openMemory(b.dataset.m));
+    pJobWire();
     el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
       setExcluded(b.dataset.x, b.dataset.on === "1"));
   }
@@ -2294,6 +2414,23 @@ function drawProjects(ps){
   // and without this they stack up one per draw.
   el.closest(".card").querySelectorAll(".resumemenu").forEach(n => n.remove());
   if (resumeFor) placeResumeMenu();
+}
+
+// Handlers for the job row, and the ellipsis it needs running. Called from
+// both draw paths, because an empty workspace mid-clone shows only this row.
+function pJobWire(){
+  const stop = $("bJobStop"), okd = $("bJobOk");
+  if (stop) stop.onclick = () => pJobAct("abort");
+  if (okd)  okd.onclick  = () => pJobAct("dismiss");
+  // The packages tab owns the timer; starting it here too means the Projects
+  // card animates whether or not that tab has ever been opened.
+  if (stop && !pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
+  // While a job runs the two things that would start another are dead, the
+  // same rule the package buttons follow — the server answers 409 anyway,
+  // and a button that earns an error is worse than one that waits.
+  const busy = !!pJob?.running;
+  const nb = $("bNewProj"); if (nb) nb.disabled = busy;
+  document.querySelectorAll("#projects [data-l]").forEach(b => b.disabled = busy);
 }
 
 // ---- doctor -----------------------------------------------------------
@@ -2544,8 +2681,11 @@ async function loadPackages(){
 // written straight into the spans, so the once-a-second redraw neither
 // restarts it nor resets it — a rebuild simply renders the count it is on.
 let pkgDots = 0, pkgDotsTimer = null;
+// Every animated ellipsis on the page, not just the packages tab's: the
+// Projects card grew one when clones moved to a background job, and two
+// tickers running at different phases would read as a fault.
 function pkgTickDots(){
-  const spans = document.querySelectorAll(".doc .dots");
+  const spans = document.querySelectorAll(".dots");
   if (!spans.length){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; return; }
   pkgDots = (pkgDots + 1) % 4;
   spans.forEach(e => e.textContent = ".".repeat(pkgDots));
@@ -2623,6 +2763,21 @@ function pkgRow(p, busy, job){
   </label>`;
 }
 
+// One installed android image. No checkbox: there is nothing to select it
+// for — it is here, and the only thing to decide is whether it stays.
+function imgRow(im, busy){
+  return `<label class="pkg img">
+    <span class="grow">
+      <span class="nm">${esc(im.api)} <span class="pill">${esc(im.kind)}</span>
+        <span class="pill">${esc(im.size)}</span></span>
+      <span class="sub where on">installed at ${esc(im.id)}</span>
+    </span>
+    <button class="eye rm" data-rmimg="${esc(im.id)}" aria-label="remove ${esc(im.id)}"${
+      busy ? ` disabled title="another package operation is running"`
+           : ` title="remove this system image"`}>${BIN}</button>
+  </label>`;
+}
+
 function renderPackagesInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -2650,7 +2805,12 @@ function renderPackagesInto(i){
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
       : "The SDK root could not be determined; this image may predate <code>bb sdk</code>."}</div>
-    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy, job)).join("")}</div>
+    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy, job)).join("")}</div>${
+      (d.images || []).length ? `
+    <div class="pkghead imghead">Android system images on disk. The baseline in
+      <code>ANDROID_SYSTEM_IMAGES</code> installs one per API level it is given, and
+      they stay until somebody takes them off.</div>
+    <div class="pkgs">${d.images.map(im => imgRow(im, busy)).join("")}</div>` : ""}
     <div class="macros">
       <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
         busy && job.action === "install" ? `Working on ${esc(job.current || "")}…` : "Install selected"}</button>
@@ -2670,6 +2830,12 @@ function renderPackagesInto(i){
     b.checked ? pkgTicked.add(b.value) : pkgTicked.delete(b.value);
   });
   el.querySelectorAll("[data-pkg]").forEach(b => b.onclick = () => pkgAct(b.dataset.pkg));
+  el.querySelectorAll("[data-rmimg]").forEach(b => b.onclick = e => {
+    e.preventDefault(); e.stopPropagation();
+    const id = b.dataset.rmimg;
+    if (confirm(`Remove ${id}? The emulator can no longer boot that image until it is installed again.`))
+      pkgAct("remove", ["android:" + id]);
+  });
   el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
     // Inside a <label>, so the click would otherwise toggle the checkbox on
     // its way past.
@@ -2855,6 +3021,136 @@ function pOpen(mode){
 function openNewProject(){ pLink = null; pOpen("init"); }
 function openLinkProject(name){ pLink = name; pOpen("link"); }
 
+// ---- the memory book ---------------------------------------------------
+// The project's memory directory, read and written through /api/memory. The
+// server owns every path decision; this only ever names a project and a file
+// it was told about, which is what keeps the one free-text file write in the
+// dashboard from being a way to write anywhere.
+
+let memProj = null;      // which project's book is open
+let memGen  = 0;         // bumped on close, so a slow load cannot repaint it
+
+async function openMemory(name){
+  memProj = name;
+  const gen = ++memGen;
+  $("memTitle").textContent = "Memory — " + name;
+  $("memWhere").textContent = "loading…";
+  $("memDrift").innerHTML = $("memList").innerHTML = "";
+  $("memIndex").value = "";
+  $("memNote").hidden = true;
+  $("memModal").hidden = false;
+  await loadMemory(gen);
+}
+
+function closeMemory(){ memGen++; memProj = null; $("memModal").hidden = true; }
+
+async function loadMemory(gen){
+  let j;
+  try{
+    const r = await fetch("/api/memory?project=" + encodeURIComponent(memProj));
+    j = await r.json();
+  }catch(e){ j = {error: String(e)}; }
+  if (gen !== memGen) return;              // closed, or reopened elsewhere
+  if (j.error){ $("memWhere").textContent = j.error; return; }
+  drawMemory(j);
+}
+
+function drawMemory(j){
+  const n = j.memories.length;
+  $("memWhere").textContent = j.exists
+    ? `${n || "no"} ${n === 1 ? "memory" : "memories"} in ${j.dir}`
+    : `nothing written yet — memories would live in ${j.dir}`;
+  $("memIndex").value = j.index;
+  $("memIndex").dataset.was = j.index;
+  $("memDrift").innerHTML = j.issues.map(i => `<div>${esc(i.text)}</div>`).join("");
+  // The note is offered only when there is a session to put it in, and says
+  // what it will do: the text is typed, not sent. See memory.py's notify().
+  $("memNote").hidden = !j.session;
+  $("memNote").title = "type a note into " + (j.session || "") +
+    " asking it to re-read these — you press Enter there to send it";
+  $("memCount").textContent = n ? "Memories — newest first" : "Memories";
+  $("memListField").hidden = !n;
+  // Which were open before this redraw. Saving reloads the book, and folding
+  // away the memory that was just edited is the wrong answer to "did that
+  // work?" — the whole point is to look at it again.
+  const open = new Set([...$("memList").querySelectorAll(".mem[open]")]
+                       .map(d => d.dataset.file));
+  $("memList").innerHTML = j.memories.map(m => `
+    <details class="mem" data-file="${esc(m.file)}"${open.has(m.file) ? " open" : ""}>
+      <summary>
+        ${m.type ? `<span class="mtype ${esc(m.type)}">${esc(m.type)}</span>` : ""}
+        <span class="mname">${esc(m.name)}</span>
+        <span class="mwhen">${ago(m.when)}</span>
+      </summary>
+      <div class="body">
+        ${m.description ? `<div class="mdesc">${esc(m.description)}</div>` : ""}
+        ${m.big
+          ? `<div class="hint bad">${(m.bytes/1024).toFixed(0)}kB — too large to
+               edit here; open it in a terminal</div>`
+          : `<textarea spellcheck="false" autocomplete="off"
+               data-file="${esc(m.file)}">${esc(m.text)}</textarea>
+             <div class="macts">
+               <span class="sp"></span>
+               <button type="button" class="danger" data-del="${esc(m.file)}"
+                 title="delete this memory and take its line out of the index"
+                 >Forget this</button>
+             </div>`}
+      </div>
+    </details>`).join("");
+  $("memList").querySelectorAll("textarea[data-file]").forEach(t => t.dataset.was = t.value);
+  $("memList").querySelectorAll("[data-del]").forEach(b =>
+    b.onclick = () => forgetMemory(b.dataset.del));
+}
+
+async function postMemory(body){
+  try{
+    const r = await fetch("/api/memory", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({project: memProj, ...body})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return null; }
+    return j;
+  }catch(e){ notify("could not reach the server: " + e, true); return null; }
+}
+
+// One button for the lot: the index and any memory whose text was touched.
+// Saving each field as it blurs would be fewer clicks and worse — an edit to
+// a memory is a deliberate act, and it should take one.
+async function saveMemory(){
+  const edits = [];
+  const idx = $("memIndex");
+  if (idx.value !== idx.dataset.was) edits.push({file: "MEMORY.md", text: idx.value});
+  $("memList").querySelectorAll("textarea[data-file]").forEach(t => {
+    if (t.value !== t.dataset.was) edits.push({file: t.dataset.file, text: t.value});
+  });
+  if (!edits.length){ notify("nothing changed"); return; }
+  const b = $("memSave");
+  b.disabled = true; b.textContent = "Saving…";
+  let done = 0;
+  for (const e of edits) if (await postMemory({action:"save", ...e})) done++;
+  b.disabled = false; b.textContent = "Save changes";
+  if (done) notify(`saved ${done} of ${edits.length} — Claude reads these when a session starts`);
+  await loadMemory(memGen);
+  refresh();                                  // the row's count may have moved
+}
+
+async function forgetMemory(file){
+  if (!confirm(`Forget ${file}?
+
+The file goes, and its line comes out of the`
+    + ` index. A running session keeps what it already read.`)) return;
+  if (await postMemory({action:"delete", file})){
+    notify(`${file} forgotten`);
+    await loadMemory(memGen);
+    refresh();
+  }
+}
+
+async function noteMemory(){
+  const j = await postMemory({action:"notify"});
+  if (j) notify("typed into the session — press Enter there to send it");
+}
+
 function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
 
 // A stale error must not survive a mode switch — "a name is required" makes
@@ -2874,6 +3170,13 @@ $("pCopy").onclick = async () => {
 };
 $("pCancel").onclick = closeNewProject;
 $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
+
+$("memClose").onclick = closeMemory;
+$("memSave").onclick  = saveMemory;
+$("memNote").onclick  = noteMemory;
+// The backdrop closes it like the others — but only from the backdrop itself,
+// so a click that lands in the box while selecting text does not.
+$("memModal").onclick = e => { if (e.target.id === "memModal") closeMemory(); };
 for (const f of ["pName", "pUrl"])
   $(f).onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("pCreate").click(); } };
 
@@ -2892,7 +3195,7 @@ $("pCreate").onclick = async () => {
   $("pErrWrap").hidden = true;
   const b = $("pCreate");
   b.disabled = true;
-  b.textContent = { init: "Creating…", clone: "Cloning…", link: "Linking…" }[mode];
+  b.textContent = { init: "Creating…", clone: "Starting…", link: "Starting…" }[mode];
   try{
     // A push has to authenticate somehow; catching this before the round-trip
     // spares typing a URL into a flow that cannot finish. Judged on the
@@ -2917,8 +3220,18 @@ $("pCreate").onclick = async () => {
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return fail(j.error || `${mode} failed (HTTP ${r.status})`);
     if (gen === pGen) closeNewProject();
-    notify(`${j.name || name || linkName} ${mode === "link" ? "linked" : "created"} — ${j.note || "ready"}`);
-    refresh();                          // the new state, without waiting a poll
+    // Everything that touches the network is a background job now, and it is
+    // accepted, not finished. The dialog gets out of the way and the Projects
+    // card carries it from here — which is also what happens if this page is
+    // closed a second later.
+    if (j.started){
+      pJobSeen({running: true, kind: mode === "link" ? "link" : "clone",
+                name: j.name || linkName, step: "starting", for: 0});
+      pJobPoll();
+    } else {
+      notify(`${j.name || name || linkName} ${mode === "link" ? "linked" : "created"} — ${j.note || "ready"}`);
+      refresh();                        // the new state, without waiting a poll
+    }
   }catch(e){
     // The request may still be running server-side (a big clone or push
     // outlives a dropped connection), so say to look rather than blindly retry.
@@ -2968,6 +3281,49 @@ const LINK = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.7 9.3 9.3 6.7"/>
   <path d="M7.5 4.9 9.2 3.2a2.6 2.6 0 0 1 3.6 3.6L11.1 8.5"/>
   <path d="M8.5 11.1 6.8 12.8a2.6 2.6 0 0 1-3.6-3.6L4.9 7.5"/></svg>`;
+
+// A closed book, for the memory a project has accumulated. Not an open one:
+// the icon is the thing you press to open it.
+const BOOK = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M3.4 2.2h7.3a1.6 1.6 0 0 1 1.6 1.6v9.9a1.2 1.2 0 0 0-1.2-1.2H3.4z"/>
+  <path d="M3.4 2.2a1.2 1.2 0 0 0-1.2 1.2v9.9a1.2 1.2 0 0 1 1.2-1.2"/>
+  <path d="M5.2 5.4h4"/><path d="M5.2 7.7h4"/></svg>`;
+
+// The one project job — a clone or a first push — and the poll that watches
+// it. It lives on the server, so a page opened halfway through picks it up
+// from /api/status and a page closed halfway through changes nothing.
+let pJob = null;
+let pJobTimer = null;
+
+function pJobSeen(j){
+  const was = pJob?.running;
+  pJob = j;
+  if (j?.running){
+    if (!pJobTimer) pJobTimer = setTimeout(pJobPoll, 1000);
+  } else {
+    clearTimeout(pJobTimer); pJobTimer = null;
+    // Finished while we were watching: the note is the good news, and the
+    // list needs re-reading because a project just appeared in it.
+    if (was){ if (j.note) notify(`${j.name} — ${j.note}`); refresh(); }
+  }
+  if (state) drawProjects(state.projects);
+}
+
+async function pJobPoll(){
+  pJobTimer = null;
+  try{ pJobSeen(await (await fetch("/api/project-job")).json()); }
+  catch{ pJobTimer = setTimeout(pJobPoll, 3000); }   // a blip, not a finish
+}
+
+async function pJobAct(action){
+  try{
+    const j = await (await fetch("/api/project-job", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({action})})).json();
+    if (j.error) notify(j.error, true);
+  }catch(e){ notify("could not reach the server: " + e, true); }
+  pJobPoll();
+}
 
 // Which project's resume chooser is open, if any.
 let resumeFor = null;
@@ -3356,6 +3712,12 @@ async function refresh(){
     const glance = cs.find(c => c.state === "waiting") || cs.find(c => c.state === "working");
     $("vTerm").innerHTML = stateDot(glance || null) + "Terminal";
     drawRunner(state.runner);
+    // Adopted before the draw, so a page opened (or reloaded) while a clone
+    // is running picks it up and starts watching. pJobSeen redraws the card
+    // itself, and would recurse into refresh() on a finish — hence the plain
+    // assignment here and the poll started beside it.
+    pJob = state.project_job || null;
+    if (pJob?.running && !pJobTimer) pJobTimer = setTimeout(pJobPoll, 1000);
     drawProjects(state.projects);
     drawSessions(state.sessions);
     drawLinux();
@@ -3459,6 +3821,7 @@ document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (!$("modal").hidden) closeEditor();
   if (!$("pmodal").hidden) closeNewProject();
+  if (!$("memModal").hidden) closeMemory();
   if (pinFor){ pinFor = null; drawTabs(); }
   if (resumeFor){ resumeFor = null; if (state) drawProjects(state.projects); }
 });

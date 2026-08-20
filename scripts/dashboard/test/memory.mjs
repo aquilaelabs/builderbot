@@ -1,0 +1,168 @@
+// The memory book: the book icon on a project row, the modal behind it, and
+// /api/memory. The fixture (run.sh) gives alpha two memories arranged so both
+// kinds of index drift are present — one pointer with no file, one file with
+// no pointer — because those warnings are the reason to open the thing.
+//
+// The writes run for real against the scratch home, so this also checks the
+// part that matters most: a delete takes the index line out with the file.
+import { launch, newPage, ok, done, ready, tmuxCapture, tmuxFmt, URL, DIR } from './lib.mjs';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
+
+const MEM = `${DIR}/home/.claude/projects/${(DIR + '/ws/alpha').replaceAll('/', '-')}/memory`;
+const read = f => readFileSync(`${MEM}/${f}`, 'utf8');
+
+const browser = await launch();
+const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
+await page.goto(URL);
+await ready(page);
+
+// ---- the way in --------------------------------------------------------
+const row = n => `#projects .row:has(.name:text-is("${n}"))`;
+ok(await page.$eval(`${row('alpha')} [data-m]`, b => b.querySelector('i').textContent === '2'),
+   'a project with memories wears the count on its book');
+ok(await page.$eval(`${row('beta')} [data-m]`,
+     b => b.classList.contains('none') && !b.querySelector('i')),
+   'a project with none keeps the book, dimmed — "nothing here" is an answer too');
+ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 0),
+   'an excluded project has no book: nothing starts there to write one');
+
+await page.click(`${row('alpha')} [data-m]`);
+await page.waitForFunction(() => !document.getElementById('memModal').hidden);
+await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
+ok(await page.$eval('#memTitle', el => el.textContent === 'Memory — alpha'),
+   'the book opens on that project');
+ok((await page.$eval('#memWhere', el => el.textContent)).includes('2 memories'),
+   '...and says where the files are');
+
+// ---- what it shows -----------------------------------------------------
+const mems = await page.$$eval('#memList .mem', ls => ls.map(l => ({
+  name: l.querySelector('.mname').textContent,
+  type: l.querySelector('.mtype')?.textContent || '',
+  open: l.hasAttribute('open'),
+})));
+ok(mems.length === 2 && mems.every(m => !m.open),
+   'both memories are listed, and both start folded');
+ok(mems.some(m => m.name === 'tabs' && m.type === 'feedback')
+   && mems.some(m => m.name === 'loose' && m.type === 'project'),
+   'each carries the name and type out of its own frontmatter');
+ok(await page.$eval('#memIndex', t => t.value.includes('tabs.md')),
+   'the index is shown as itself, editable');
+
+const drift = await page.$$eval('#memDrift div', ds => ds.map(d => d.textContent));
+ok(drift.some(d => d.includes('vanished.md') && d.includes('not here')),
+   'an index line pointing at nothing is called out');
+ok(drift.some(d => d.includes('loose.md') && d.includes('not in the index')),
+   'a memory the index never lists is called out too');
+
+// ---- editing -----------------------------------------------------------
+await page.click('#memList .mem:has(.mname:text-is("tabs")) summary');
+await page.waitForSelector('#memList .mem[open] textarea');
+ok((await page.$eval('#memList .mem[open] textarea', t => t.value)).includes('asked for it twice'),
+   'opening one shows the whole file, frontmatter and all');
+
+await page.$eval('#memList .mem[open] textarea', t => {
+  t.value = t.value.replace('asked for it twice', 'asked for it three times');
+  t.dispatchEvent(new Event('input'));
+});
+await page.click('#memSave');
+await page.waitForFunction(() => document.getElementById('memSave').textContent === 'Save changes');
+ok(read('tabs.md').includes('asked for it three times'),
+   'Save writes the edit to the file on disk');
+ok(read('tabs.md').startsWith('---\n') && read('tabs.md').endsWith('\n'),
+   '...intact, and newline-terminated');
+
+// ---- forgetting --------------------------------------------------------
+page.dialogs = [];
+await page.click('#memList .mem[open] [data-del]');
+await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 1);
+ok(page.dialogs.some(d => d.includes('Forget tabs.md')),
+   'forgetting asks first');
+ok(!existsSync(`${MEM}/tabs.md`), 'the file is gone');
+ok(!read('MEMORY.md').includes('tabs.md') && read('MEMORY.md').includes('vanished.md'),
+   '...and its index line went with it, leaving the other lines alone');
+ok((await page.$eval('#memWhere', el => el.textContent)).includes('1 memory'),
+   'the book redraws without it');
+
+// ---- what the server refuses -------------------------------------------
+const post = (body) => page.evaluate(async b => {
+  const r = await fetch('/api/memory', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  return { status: r.status, body: await r.json() };
+}, body);
+
+// The one free-text file write in the dashboard. Everything here is a path
+// the client is trying to name for itself, and none of it may work.
+for (const [what, body] of [
+  ['a path climbing out of the memory directory',
+   { action: 'save', project: 'alpha', file: '../../../evil.md', text: 'x' }],
+  ['a project name that is really a path',
+   { action: 'save', project: '../../etc', file: 'MEMORY.md', text: 'x' }],
+  ['a project that does not exist',
+   { action: 'save', project: 'nosuch', file: 'MEMORY.md', text: 'x' }],
+  ['a file that is not a memory here',
+   { action: 'save', project: 'alpha', file: 'passwd.md', text: 'x' }],
+  ['deleting the index',
+   { action: 'delete', project: 'alpha', file: 'MEMORY.md' }],
+  ['an action nobody offers',
+   { action: 'wipe', project: 'alpha' }],
+]){
+  const r = await post(body);
+  ok(r.status === 400 && r.body.error, `refused: ${what}`);
+}
+ok(existsSync(`${MEM}/MEMORY.md`) && !existsSync(`${DIR}/home/.claude/evil.md`)
+   && !existsSync(`${DIR}/evil.md`),
+   'nothing was written outside the memory directory');
+
+// A memory bigger than the editor will take is reported, not truncated.
+mkdirSync(MEM, { recursive: true });
+writeFileSync(`${MEM}/huge.md`, '---\nname: huge\n---\n' + 'x'.repeat(40000));
+await page.evaluate(() => loadMemory(memGen));
+await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
+await page.click('#memList .mem:has(.mname:text-is("huge")) summary');
+ok(await page.$eval('#memList .mem:has(.mname:text-is("huge"))',
+     l => !l.querySelector('textarea') && l.querySelector('.hint.bad')),
+   'an oversized memory gets no editor, and says why');
+
+// Those refusals are 400s by design, and the harness's console collector
+// counts every one. Cleared here so the check at the end is about the page.
+page.errors = [];
+
+// ---- the note to a running session -------------------------------------
+// The fixture runs claude-alpha, so the offer is there. What has to hold is
+// that the note is *typed and not sent*: "waiting" covers a session at its
+// prompt and one holding a permission dialog alike, and a blind Enter into
+// the second would answer it.
+ok(!await page.$eval('#memNote', b => b.hidden),
+   'a project with a session running offers the note');
+const before = tmuxFmt('claude-alpha', '#{pane_current_command}');
+await page.click('#memNote');
+// The note's own toast, not whichever one happens to still be up: a stale
+// 'forgotten' toast satisfied a bare class check before the send landed.
+await page.waitForFunction(() =>
+  document.getElementById('toast').textContent.includes('press Enter there'));
+const pane = tmuxCapture('claude-alpha');
+ok(/re-read them/.test(pane), 'pressing it types the note into that pane');
+ok(pane.slice(pane.indexOf('I edited')).trimEnd().split('\n').length === 1,
+   '...on one line, with no Enter behind it');
+ok(!/[0-9]/.test(pane.slice(pane.indexOf('I edited'))),
+   '...and carrying no digit, which is how a permission dialog picks an option');
+ok(tmuxFmt('claude-alpha', '#{pane_current_command}') === before,
+   'nothing ran: the line is sitting in the pane, not submitted');
+
+// beta has no session, so it must make no offer — and refuse if asked anyway.
+const note = await post({ action: 'notify', project: 'beta' });
+ok(note.status === 400 && /no Claude session/.test(note.body.error),
+   'a project with no session refuses the note');
+page.errors = [];
+
+// ---- closing -----------------------------------------------------------
+await page.keyboard.press('Escape');
+ok(await page.$eval('#memModal', el => el.hidden), 'Escape closes the book');
+await page.click(`${row('alpha')} [data-m]`);
+await page.waitForFunction(() => !document.getElementById('memModal').hidden);
+await page.click('#memModal', { position: { x: 5, y: 5 } });
+ok(await page.$eval('#memModal', el => el.hidden), 'so does the backdrop');
+
+ok(page.errors.length === 0, 'zero console errors');
+if (page.errors.length) console.log(page.errors);
+await done(browser);

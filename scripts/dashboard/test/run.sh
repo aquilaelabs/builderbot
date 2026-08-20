@@ -92,10 +92,58 @@ mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk}
 # hand. Either way it is not a project.
 mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
 echo '["delta"]' > "$S/state/excluded-projects.json"
+# A git that stalls on one magic URL and is the real git for everything else.
+# Cloning is a background job now, and the two properties that matters for —
+# it outlives the page, and it can be stopped — can only be checked against a
+# clone that is still going when the test looks.
+REAL_GIT="$(command -v git)"
+cat > "$S/bin/git" <<GEOF
+#!/usr/bin/env bash
+for a in "\$@"; do
+    case "\$a" in *slowclone*) sleep 120; exit 1 ;; esac
+done
+exec "$REAL_GIT" "\$@"
+GEOF
+chmod +x "$S/bin/git"
 # alpha has a previous Claude conversation, so its Claude button offers the
 # Resume / New chooser rather than starting straight away.
 mkdir -p "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)"
 echo '{}' > "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)/abc123.jsonl"
+# alpha also has memories, arranged so both kinds of drift between the index
+# and the files are on screen: the index names one file that is not there, and
+# one file that is there is not in the index. Re-seeded before every test file
+# because memory.mjs edits and deletes these for real.
+M="$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)/memory"
+seed_memories() {
+rm -rf "$M"; mkdir -p "$M"
+cat > "$M/MEMORY.md" <<'MEOF'
+- [Prefers tabs](tabs.md) — spaces are a fight not worth having
+- [Something else](vanished.md) — a pointer with nothing behind it
+MEOF
+cat > "$M/tabs.md" <<'MEOF'
+---
+name: tabs
+description: indent with tabs in this project, always
+metadata:
+  type: feedback
+---
+
+Tabs, not spaces.
+
+**Why:** asked for it twice.
+MEOF
+cat > "$M/loose.md" <<'MEOF'
+---
+name: loose
+description: a memory that never made it into the index
+metadata:
+  type: project
+---
+
+Only recall will ever surface this one.
+MEOF
+}
+seed_memories
 # A scratch ssh-agent holding one throwaway key, so the deploy-key endpoint
 # has something deterministic to list. Its socket replaces the real agent's in
 # the server's environment — the tests must see this key and no operator key.
@@ -121,6 +169,8 @@ if [ "${1:-}" = sdk ]; then
     }
     case "${2:-}" in
         root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
+        images)  # one installed system image, so the tab has something to list
+                 printf 'system-images;android-30;google_apis;x86_64\tandroid-30\tgoogle_apis\t3300000\n' ;;
         versions) # local only: installed version, no upstream asked. Called
                   # with no names by the server, which wants the lot.
                  for n in ${3:-playwright flutter dotnet swift go rust zig android:emulator}; do
@@ -200,8 +250,13 @@ fresh() {
     rm -rf "$S/home/.ssh"           # deploy-key selectors a test wrote
     rm -rf "$S/sdk" "$S/androidsdk"; mkdir -p "$S/sdk" "$S/androidsdk"
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
+    seed_memories                   # memory.mjs edits and deletes these for real
     for n in shell-9 claude-alpha; do
         tmux has-session -t "$n" 2>/dev/null || tmux new-session -d -s "$n" -c /tmp
+        # A test that typed into a pane without pressing Enter — the memory
+        # book's note does exactly that — must not hand the half-typed line
+        # to the next file. C-u is kill-line, not a signal.
+        tmux send-keys -t "$n" C-u 2>/dev/null || true
     done
 }
 fresh

@@ -294,6 +294,42 @@ def human_kb(kb):
     return f"{kb} KB"
 
 
+# The android system images on disk, cached like the sizes are: `du` over
+# forty gigabytes is not something to do on a poll.
+_images = {"at": 0.0, "rows": []}
+IMAGES_TTL = 300
+
+
+def installed_images(refresh=True):
+    """One row per android system image actually installed here.
+
+    Not catalog packages: which exist depends on what has been installed, and
+    the ANDROID_SYSTEM_IMAGES baseline puts them there without anyone choosing
+    them one at a time. They accumulate — several API levels' worth were on
+    this box, most of them for versions nobody had configured in months — and
+    until now the tab could neither show nor remove one.
+
+    refresh=False serves what is cached without going back to disk, which is
+    what a running job wants: the tree is being written to and a size read
+    from it mid-install describes the moment rather than the package. The
+    first version of this returned nothing at all while a job ran, and since
+    the section is only rebuilt when the tab redraws, the images stayed gone
+    afterwards until something unrelated forced one.
+    """
+    if not refresh or time.monotonic() - _images["at"] < IMAGES_TTL:
+        return _images["rows"]
+    rows = []
+    r = run([BB, "sdk", "images"], timeout=300)
+    if r["code"] == 0:
+        for line in r["out"].splitlines():
+            f = line.rstrip().split("\t")
+            if len(f) == 4 and f[0].startswith("system-images;") and f[3].isdigit():
+                rows.append({"id": f[0], "api": f[1], "kind": f[2],
+                             "size": human_kb(int(f[3]))})
+    _images.update(at=time.monotonic(), rows=rows)
+    return rows
+
+
 def payload():
     items = []
     with _pkg_lock:
@@ -355,7 +391,8 @@ def payload():
     with _pkg_lock:
         job = {k: (list(v) if isinstance(v, list) else v)
                for k, v in _pkg_job.items()}
-    return {"root": sdk_root_path(),
+    return {"images": installed_images(refresh=not busy),
+            "root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
             "checked": _pkg_checked,
             "sizing": _pkg_sizing[0],
@@ -470,6 +507,7 @@ def _pkg_worker():
             _pkg_job["log"] = _pkg_job["log"][-60:]
             (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
         if action in ("install", "remove", "update"):
+            _images["at"] = 0.0           # an image may have just gone
             _pkg_local["key"] = None      # whatever just happened moved a version
             _pkg_sized_at[0] = 0.0        # ...and changed what is on the disk
             # ...and made the last check's answer about this package a
@@ -490,6 +528,17 @@ _pkg_child = [None]
 def _hold_child(proc):
     with _pkg_lock:
         _pkg_child[0] = proc
+
+
+def is_installed_image(name):
+    """Whether a name is one of the images this server just listed.
+
+    The rule everything executing here follows: what reaches a command line is
+    a string this server chose. The page posts back an id out of the list it
+    was given, and it is checked against that list again before it is used.
+    """
+    return name.startswith("android:") and any(
+        r["id"] == name[len("android:"):] for r in installed_images())
 
 
 def abort_job():

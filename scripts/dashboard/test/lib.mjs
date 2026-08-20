@@ -68,6 +68,16 @@ export function tmuxNew(name, dir = '/tmp'){
     throw new Error('tmuxNew: not on the private tmux server — refusing');
   execFileSync('tmux', ['new-session', '-d', '-s', name, '-c', dir]);
 }
+// What a pane on that private server currently shows. For checking that
+// something was typed into a session without being submitted — the screen is
+// the only place text that has not been sent to a program exists.
+export function tmuxCapture(name){
+  if (process.env.TMUX || !process.env.TMUX_TMPDIR)
+    throw new Error('tmuxCapture: not on the private tmux server — refusing');
+  // -J joins what the pane merely wrapped, so a long line typed into an
+  // 80-column pane still reads as the one line it is.
+  return execFileSync('tmux', ['capture-pane', '-p', '-J', '-t', name]).toString();
+}
 // A tmux format string evaluated against a session on that same private server.
 export function tmuxFmt(name, fmt){
   if (process.env.TMUX || !process.env.TMUX_TMPDIR)
