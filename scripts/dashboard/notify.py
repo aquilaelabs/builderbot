@@ -52,6 +52,29 @@ def live(session, sessions):
     return session in set(sessions)
 
 
+def send_line(session, text, sessions=()):
+    """Type a line into a session we started ourselves, and submit it.
+
+    No echo check, unlike tell(). That check exists because a Claude session
+    "waiting for input" might be holding a permission dialog, and Enter would
+    answer it. This is for the sign-in session: a terminal this dashboard
+    opened, running one command whose only input is a code, with no dialog in
+    it to answer. Knowing what is on the other end is the whole difference.
+    """
+    text = " ".join((text or "").split())
+    if not text:
+        return {"error": "nothing to send"}
+    if session not in set(sessions):
+        return {"error": "that terminal is not running"}
+    r = run(["tmux", "send-keys", "-t", session, "-l", "--", text], timeout=10)
+    if r["code"] != 0:
+        return r
+    e = run(["tmux", "send-keys", "-t", session, "Enter"], timeout=10)
+    if e["code"] != 0:
+        return e
+    return {"ok": True, "sent": True}
+
+
 def tell(session, text, sessions=()):
     """Type one line into a session and submit it if it visibly arrived.
 

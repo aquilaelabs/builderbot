@@ -833,7 +833,15 @@ lives in its body. The cards:
   with the action attached: **Sign out** when it is signed in, **Sign in** when
   it is not. Signing in opens a *terminal* rather than pretending to be one
   click — the flow is a URL to open in a browser and a code pasted back, so it
-  needs somewhere to type. Signing out is one command with no conversation in
+  needs somewhere to run. But neither of those two steps happens **in** the
+  terminal: while a sign-in is running the card carries the URL as a tappable
+  link and a field to paste the code into, and types it in for you. That is
+  not a convenience. A phone pasting a hundred characters into a canvas
+  terminal is where this reliably falls over — the paste silently does not
+  arrive, the Enter after it does, and the flow exchanges an empty code for a
+  `400` that reads exactly like the code was wrong. The code is shape-checked
+  before it goes anywhere near a terminal, and only ever into the session the
+  dashboard opened for the flow. Signing out is one command with no conversation in
   it, so it is a button, and it asks first because every session here stops
   working. **Sign in starts a new flow every time it is pressed** — it ends the
   terminal that is there and reloads onto a fresh one — because a code expires
