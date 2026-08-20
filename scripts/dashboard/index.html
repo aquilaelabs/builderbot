@@ -194,6 +194,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
 .pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
+/* An image row has no checkbox, so the text starts where the others' does. */
+.pkg.img{padding-left:26px}
+.imghead{margin-top:18px}
 .pkg .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
 /* How old the version answers are, beside the button that refreshes them:
    they survive a restart now, and a number with no date on it is the kind of
@@ -2623,6 +2626,21 @@ function pkgRow(p, busy, job){
   </label>`;
 }
 
+// One installed android image. No checkbox: there is nothing to select it
+// for — it is here, and the only thing to decide is whether it stays.
+function imgRow(im, busy){
+  return `<label class="pkg img">
+    <span class="grow">
+      <span class="nm">${esc(im.api)} <span class="pill">${esc(im.kind)}</span>
+        <span class="pill">${esc(im.size)}</span></span>
+      <span class="sub where on">installed at ${esc(im.id)}</span>
+    </span>
+    <button class="eye rm" data-rmimg="${esc(im.id)}" aria-label="remove ${esc(im.id)}"${
+      busy ? ` disabled title="another package operation is running"`
+           : ` title="remove this system image"`}>${BIN}</button>
+  </label>`;
+}
+
 function renderPackagesInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -2650,7 +2668,12 @@ function renderPackagesInto(i){
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
       : "The SDK root could not be determined; this image may predate <code>bb sdk</code>."}</div>
-    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy, job)).join("")}</div>
+    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy, job)).join("")}</div>${
+      (d.images || []).length ? `
+    <div class="pkghead imghead">Android system images on disk. The baseline in
+      <code>ANDROID_SYSTEM_IMAGES</code> installs one per API level it is given, and
+      they stay until somebody takes them off.</div>
+    <div class="pkgs">${d.images.map(im => imgRow(im, busy)).join("")}</div>` : ""}
     <div class="macros">
       <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
         busy && job.action === "install" ? `Working on ${esc(job.current || "")}…` : "Install selected"}</button>
@@ -2670,6 +2693,12 @@ function renderPackagesInto(i){
     b.checked ? pkgTicked.add(b.value) : pkgTicked.delete(b.value);
   });
   el.querySelectorAll("[data-pkg]").forEach(b => b.onclick = () => pkgAct(b.dataset.pkg));
+  el.querySelectorAll("[data-rmimg]").forEach(b => b.onclick = e => {
+    e.preventDefault(); e.stopPropagation();
+    const id = b.dataset.rmimg;
+    if (confirm(`Remove ${id}? The emulator can no longer boot that image until it is installed again.`))
+      pkgAct("remove", ["android:" + id]);
+  });
   el.querySelectorAll("[data-rm]").forEach(b => b.onclick = e => {
     // Inside a <label>, so the click would otherwise toggle the checkbox on
     // its way past.

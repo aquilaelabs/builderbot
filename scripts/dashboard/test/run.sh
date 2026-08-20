@@ -121,6 +121,8 @@ if [ "${1:-}" = sdk ]; then
     }
     case "${2:-}" in
         root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
+        images)  # one installed system image, so the tab has something to list
+                 printf 'system-images;android-30;google_apis;x86_64\tandroid-30\tgoogle_apis\t3300000\n' ;;
         versions) # local only: installed version, no upstream asked. Called
                   # with no names by the server, which wants the lot.
                  for n in ${3:-playwright flutter dotnet swift go rust zig android:emulator}; do

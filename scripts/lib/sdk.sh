@@ -675,7 +675,11 @@ sdk_plan() {
 # one, or the newest image of a flavour.
 sdk_android_id() {
     local pkg="${1#android:}" kind
-    kind="$(sdk_meta field "$1" source.image)"
+    # A full sdkmanager id — the shape `bb sdk images` prints. No catalog row
+    # names one, because which images exist is not a fixed list, so the id is
+    # its own answer.
+    case "$1" in android:*\;*) printf '%s' "$pkg"; return 0 ;; esac
+    kind="$(sdk_meta field "$1" source.image 2>/dev/null)"
     if [ -n "$kind" ]; then
         sdk_android_list | sed -n '/Available Packages/,$p' | tr -d ' ' | cut -d'|' -f1 \
             | grep -E "^system-images;android-[0-9]+;${kind};x86_64$" | sort -V | tail -1
@@ -854,7 +858,12 @@ sdk_install() {
     local what="${1:-}" root kind; root="$(sdk_root)"
     [ -n "$what" ] || die "usage: bb sdk install <package> — bb sdk list names them"
     if [ "$what" = tizen ]; then sdk_install_tizen; return 0; fi
-    kind="$(sdk_meta field "$what" source.kind)"
+    kind="$(sdk_meta field "$what" source.kind 2>/dev/null)" || kind=""
+    # The same full-id escape hatch removal has: `bb sdk images` prints ids the
+    # catalog does not list, and what can be removed by id has to be
+    # reinstallable by id — otherwise the warning a removal prints names a
+    # command that does not work.
+    [ -n "$kind" ] || case "$what" in android:*\;*) kind=sdkmanager ;; esac
     [ -n "$kind" ] || die "unknown package: ${what} (bb sdk list names them)"
     mkdir -p "$root"
     # EXIT rather than RETURN: a failing step here reaches `die`, which exits
@@ -914,9 +923,26 @@ sdk_remove() {
     # come off again.
     local kind; kind="$(sdk_meta field "$what" source.kind 2>/dev/null)" || kind=""
     if [ -z "$kind" ]; then
-        # tizen is not in the catalog — nothing there can install it — but it
-        # is a directory on the share like any other, so it comes off like one.
-        [ "$what" = tizen ] || die "unknown package: ${what} (bb sdk list names them)"
+        case "$what" in
+            # A full sdkmanager id — system-images;android-30;google_apis;x86_64
+            # and the like. No catalog row names one, because they are not a
+            # fixed list: which exist here depends on what has been installed.
+            # `bb sdk images` lists them.
+            android:*\;*)
+                kind=sdkmanager
+                # A typo'd id would otherwise reach sdkmanager, which fetches
+                # the whole remote repository before deciding it has nothing to
+                # uninstall — a minute of network for a misspelling. Every id
+                # of this shape maps to a directory, so ask the disk first.
+                [ -d "${ANDROID_HOME:-/opt/android-sdk}/$(printf '%s' "${what#android:}" | tr ';' '/')" ] \
+                    || die "${what} is not installed (bb sdk images lists what is)"
+                ;;
+            # tizen is not in the catalog — nothing there can install it — but
+            # it is a directory on the share like any other, so it comes off
+            # like one.
+            tizen) ;;
+            *) die "unknown package: ${what} (bb sdk list names them)" ;;
+        esac
     fi
     # Then the marker, before anything is deleted, so an uninstall that dies
     # half way still counts as one having been asked for — a hook re-fetching
@@ -935,7 +961,7 @@ sdk_remove() {
         sdkmanager)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
             local pkg="${what#android:}" v image
-            image="$(sdk_meta field "$what" source.image)"
+            image="$(sdk_meta field "$what" source.image 2>/dev/null)" || image=""
             sdk_android_list_forget
             if [ -n "$image" ]; then
                 local dir api abi
@@ -956,7 +982,7 @@ sdk_remove() {
                 sdk_relink_android
                 return 0
             fi
-            if [ -n "$(sdk_meta field "$what" source.versioned)" ]; then
+            if [ -n "$(sdk_meta field "$what" source.versioned 2>/dev/null)" ]; then
                     # Versioned the same way going out: uninstall every version
                     # that is actually present, from the directory rather than
                     # from a guess about which one was installed.
@@ -986,9 +1012,43 @@ sdk_remove() {
                 log "clearing ${store} — sdkmanager removed the link, not the files"
                 rm -rf "${store:?}"
             fi
+            # The directories above a removed image: sdkmanager takes the abi
+            # and leaves android-30/google_apis/ standing, and an empty
+            # directory with the right name is what makes a removed image keep
+            # answering "installed".
+            case "$pkg" in
+                system-images\;*)
+                    local left
+                    left="${ANDROID_HOME:-/opt/android-sdk}/$(printf '%s' "$pkg" | tr ';' '/')"
+                    rmdir "$left" 2>/dev/null || true
+                    rmdir "$(dirname "$left")" 2>/dev/null || true
+                    rmdir "$(dirname "$(dirname "$left")")" 2>/dev/null || true
+                    ;;
+            esac
             sdk_relink_android
             return 0 ;;
     esac
+}
+
+# bb sdk images — the android system images actually installed here.
+#
+# Not a catalog matter: which exist depends on what has been installed, and the
+# baseline in ANDROID_SYSTEM_IMAGES puts them there without anyone choosing
+# them one at a time. One TSV line each — id, API level, flavour, size — so
+# the tab can offer to remove the ones nobody is using. Forty-four gigabytes of
+# them accumulated here before there was any way to see them.
+sdk_images() {
+    local base d api kind abi
+    base="${ANDROID_HOME:-/opt/android-sdk}/system-images"
+    [ -d "$base" ] || return 0
+    while IFS= read -r d; do
+        [ -n "$(ls -A "$d" 2>/dev/null)" ] || continue
+        abi="$(basename "$d")"; kind="$(basename "$(dirname "$d")")"
+        api="$(basename "$(dirname "$(dirname "$d")")")"
+        printf '%s\t%s\t%s\t%s\n' \
+            "system-images;${api};${kind};${abi}" "$api" "$kind" \
+            "$(du -sk "$d" 2>/dev/null | cut -f1)"
+    done < <(find -L "$base" -mindepth 3 -maxdepth 3 -type d 2>/dev/null | sort -V)
 }
 
 cmd_sdk() {
@@ -998,6 +1058,7 @@ cmd_sdk() {
         root)       printf '%s\n' "$(sdk_root)" ;;
         env)        sdk_env_snippet ;;
         list)       sdk_meta names ;;
+        images)     sdk_images ;;
         plan)       sdk_plan "$@" ;;
         install)    sdk_install "$@"; sdk_write_env ;;
         check)      sdk_check "$@" ;;
@@ -1005,6 +1066,6 @@ cmd_sdk() {
         relink)     sdk_relink_android ;;
         update)     sdk_update "$@"; sdk_write_env ;;
         remove)     sdk_remove "$@"; sdk_write_env ;;
-        *) die "usage: bb sdk [status|root|env|list|plan X|versions|check|relink|install X|update X|remove X]" ;;
+        *) die "usage: bb sdk [status|root|env|list|images|plan X|versions|check|relink|install X|update X|remove X]" ;;
     esac
 }

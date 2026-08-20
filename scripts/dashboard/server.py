@@ -2150,7 +2150,11 @@ class Handler(BaseHTTPRequestHandler):
         if action not in ("install", "remove", "update", "check"):
             return self._json({"error": "unknown action"}, 400)
         known = {p["name"] for p in packages.PACKAGES}
-        names = [n for n in (req.get("names") or []) if n in known]
+        # ...or an android image this server listed a moment ago. Those are not
+        # catalog rows — which exist depends on what has been installed — so
+        # they are checked against the list rather than against a table.
+        names = [n for n in (req.get("names") or [])
+                 if n in known or (action == "remove" and packages.is_installed_image(n))]
         # Checking is about everything, not a selection: the question it
         # answers is "is any of this out of date, and what would the rest of
         # it install". The uninstalled rows are half the reason to press it —

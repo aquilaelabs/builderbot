@@ -78,6 +78,17 @@ for api in $(printf '%s' "${ANDROID_SYSTEM_IMAGES:-${ANDROID_DEFAULT_API:-36}}" 
     pkg="system-images;android-${api};${VARIANT}"
     avd="${PREFIX}-${api}"
 
+    # Same rule as the emulator above: ANDROID_SYSTEM_IMAGES says this
+    # container wants API ${api}, the marker says a person removed that image
+    # from the Tools tab, and the more specific instruction wins. Without this
+    # a removal from the dashboard is undone by the next restart, several GB
+    # at a time and with nothing on screen to say so.
+    if [ -e "$(sdk_removed_marker "android:${pkg}")" ]; then
+        warn "system image ${pkg} was removed by the operator — not reinstalling it"
+        warn "  put it back with: bb sdk install android:${pkg}"
+        continue
+    fi
+
     if [ ! -d "${ANDROID_HOME}/system-images/android-${api}/${VARIANT_PATH}" ]; then
         log "installing ${pkg} — a couple of GB, downloaded once and kept on the SDK share"
         if ! sdkmanager --install "$pkg" >/dev/null 2>&1; then
