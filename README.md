@@ -1232,6 +1232,7 @@ scripts/
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
+  lib/sdk.sh                     the package manager: `bb sdk`, sourced by bb
   lib/sdkmeta.py                 reads config/packages.json for bb: fields, argv, versions
   startup.d/*.sh                 startup hooks
   dashboard/                     web dashboard: server.py, index.html, bb-tty

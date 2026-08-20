@@ -2529,10 +2529,12 @@ function pkgRow(p, busy, job){
   // the shelf, and coloring six of them amber would be crying wolf.
   const ver = p.version && p.version !== "-"
     ? ` <span class="pill" title="installed">${esc(p.version)}</span>` : "";
-  const next = p.latest && p.latest !== "-" && p.latest !== p.version
-    ? (p.installed
-        ? ` <span class="pill warn" title="update available">→ ${esc(p.latest)}</span>`
-        : ` <span class="pill" title="what Install selected would fetch">${esc(p.latest)}</span>`)
+  // Only on a row that has nothing installed, where it is the one version
+  // worth showing: what Install would fetch. An installed row that is behind
+  // says so in words underneath — an amber arrow pointing at a number was one
+  // more thing to decode on a line that already has two.
+  const next = !p.installed && p.latest && p.latest !== "-"
+    ? ` <span class="pill" title="what Install selected would fetch">${esc(p.latest)}</span>`
     : "";
   const upd = p.state === "update"
     ? `<span class="sub upd">update available — tick it and press Install selected</span>`
