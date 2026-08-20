@@ -123,8 +123,13 @@ _pkg_lock = threading.Lock()
 # number typed into a file, and better than the download, which for Swift is a
 # gigabyte that unpacks to three.
 _pkg_versions, _pkg_checked, _pkg_remembered = {}, 0, {}
+# `errors` rather than a log: the tab used to end in a scrolling box of every
+# line every command printed, which was ninety-nine parts progress frames to
+# one part the sentence that mattered. What mattered was always *which package
+# failed and why*, so that is what is kept — per package, on its own row.
 _pkg_job = {"running": False, "queue": [], "current": "", "action": "",
-            "log": [], "done": [], "failed": [], "auto": False, "aborting": False}
+            "errors": {}, "done": [], "failed": [], "auto": False,
+            "aborting": False}
 _sdk_root_cache = []
 
 
@@ -148,20 +153,7 @@ def sdk_root_path():
 
 def _pkg_cands(probe):
     """Where a package could be, in the order worth looking."""
-    if probe.startswith("android-image:"):
-        # A system-image flavour, not a package directory: they all live under
-        # system-images/android-NN/<kind>/, so "is a TV image installed" is a
-        # question about the kind, not about the tree existing. Sharing one
-        # probe made every flavour claim to be installed the moment any image
-        # was — the reassuring wrong answer again.
-        kind = probe.split(":", 1)[1]
-        base = Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / "system-images"
-        cands = []
-        try:
-            cands = sorted(d / kind for d in base.iterdir() if d.is_dir())
-        except OSError:
-            pass
-    elif probe.startswith("android:"):
+    if probe.startswith("android:"):
         cands = [Path(os.environ.get("ANDROID_HOME", "/opt/android-sdk")) / probe.split(":", 1)[1]]
     else:
         root = sdk_root_path()
@@ -182,7 +174,7 @@ def _pkg_paths(probe):
     the share, and the whole point of the card is showing where a thing
     actually landed.
 
-    Usually one. A system-image flavour is the exception — it can be installed
+    Usually one. A system-image flavor is the exception — it can be installed
     at several API levels at once, all of them real directories and all of
     them its footprint — which is why this returns a list and the size adds
     them up."""
@@ -195,7 +187,7 @@ def _pkg_paths(probe):
             continue
         # The share and the home volume are two places to look for one
         # installation, not two installations to add together.
-        if out and not probe.startswith("android-image:"):
+        if out:
             break
     return out
 
@@ -330,6 +322,66 @@ def installed_images(refresh=True):
     return rows
 
 
+_choices = {"at": 0.0, "rows": [], "flavors": [], "loading": False}
+_choices_lock = threading.Lock()
+CHOICES_TTL = 3600            # the index changes when Google ships a level
+
+
+def image_choices():
+    """Every system image that could be installed, and what each flavor is for.
+
+    Two questions the operator cannot answer from here otherwise: which API
+    levels exist, and what one weighs before it is fetched. Both come out of
+    sdkmanager's own index, which is the only place a download size lives
+    before the download — bb reads it, this asks bb.
+
+    An hour's cache. The answer changes when Google ships an API level, and
+    the rows are also what the picker is drawn from, so it must not be a
+    network round trip per redraw.
+    """
+    if time.monotonic() - _choices["at"] < CHOICES_TTL and _choices["rows"]:
+        return _choices
+    # Off the request. Four XML indexes on a cold cache is a second or two of
+    # network, and doing it inline made the first draw of the whole tab wait
+    # for Google — for a picker most visits never touch. The tab says it is
+    # reading, and the picker arrives on the next poll.
+    with _choices_lock:
+        if _choices["loading"]:
+            return _choices
+        _choices["loading"] = True
+    threading.Thread(target=_load_choices, daemon=True).start()
+    return _choices
+
+
+def _load_choices():
+    rows, flavors = [], []
+    r = run([BB, "sdk", "images", "--available"], timeout=120)
+    if r["code"] == 0:
+        for line in r["out"].splitlines():
+            f = line.rstrip().split("\t")
+            if len(f) == 4 and f[0].startswith("system-images;") and f[3].isdigit():
+                rows.append({"id": f[0], "api": f[1], "kind": f[2],
+                             "size": human_kb(int(f[3]) // 1024)})
+    r = run([BB, "sdk", "flavors"], timeout=30)
+    if r["code"] == 0:
+        for line in r["out"].splitlines():
+            f = line.rstrip().split("\t")
+            if len(f) >= 3:
+                flavors.append({"kind": f[0], "label": f[2],
+                                "about": f[3] if len(f) > 3 else ""})
+    with _choices_lock:
+        if rows:
+            _choices.update(at=time.monotonic(), rows=rows, flavors=flavors)
+        _choices["loading"] = False
+
+
+def is_choosable_image(name):
+    """Is this one of the image ids the picker offered? Same rule as every
+    executing endpoint here: the server acts only on names it handed out."""
+    want = name.removeprefix("android:")
+    return any(r["id"] == want for r in image_choices()["rows"])
+
+
 def payload():
     items = []
     with _pkg_lock:
@@ -391,7 +443,13 @@ def payload():
     with _pkg_lock:
         job = {k: (list(v) if isinstance(v, list) else v)
                for k, v in _pkg_job.items()}
+    choices = image_choices()
+    here = {i["id"] for i in installed_images(refresh=not busy)}
     return {"images": installed_images(refresh=not busy),
+            # What could be added, minus what is already here.
+            "addable": [c for c in choices["rows"] if c["id"] not in here],
+            "flavors": choices["flavors"],
+            "images_loading": bool(choices["loading"]),
             "root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
             "checked": _pkg_checked,
@@ -465,18 +523,22 @@ def _pkg_worker():
             probe = next((p["probe"] for p in PACKAGES if p["name"] == name), name)
             verb = "update" if _pkg_path(probe) else "install"
         with _pkg_lock:
-            _pkg_job["log"].append(f"$ bb sdk {verb} {name}")
+            # Whatever it said last time is about a state that no longer holds;
+            # this run is the new answer.
+            _pkg_job["errors"].pop(name, None)
 
         # The child, so that an abort can reach it. bb's own EXIT trap removes
         # whatever the install had created, which is why this kills the process
         # rather than tearing the directory out from under it.
-        # Nothing is read out of the output beyond the log. Every recipe
-        # meters differently and several mislead by accident — one fraction
-        # across a whole operation, a count that parks for minutes, five files
-        # metered from zero apiece, the word "download" sitting inside the noun
+        #
+        # Nothing is read out of the output while it runs. Every recipe meters
+        # differently and several mislead by accident — one fraction across a
+        # whole operation, a count that parks for minutes, five files metered
+        # from zero apiece, the word "download" sitting inside the noun
         # "installer" — and a row reporting any of it faithfully still read as
-        # broken. The row says what it is doing and animates; the output goes
-        # to the log, where it can be read afterwards.
+        # broken. The row says what it is doing and animates. The output is
+        # looked at only when the thing fails, which is the only time anybody
+        # wanted it.
         r = run([BB, "sdk", verb, name], timeout=3600, register=_hold_child)
         with _pkg_lock:
             if action == "check":
@@ -495,16 +557,15 @@ def _pkg_worker():
                         if len(f) > 4 and f[4].lstrip("~").isdigit():
                             row["bytes"] = f[4]
                         _pkg_versions[f[0]] = row
-                _pkg_job["log"].append(f"{name}: {_pkg_versions.get(name, {}).get('status', '?')}")
-            else:
-                _pkg_job["log"].extend(_job_tail(r["out"]))
-                if r["code"] != 0:
-                    # The exit code, in words, because the output above may not
-                    # say anything: a killed sdkmanager prints nothing at all
-                    # and a tail of progress bars reads exactly like a run that
-                    # simply stopped. 137 is the OOM killer, 124 a timeout.
-                    _pkg_job["log"].append(f"{name}: {verb} failed (exit {r['code']})")
-            _pkg_job["log"] = _pkg_job["log"][-60:]
+                pass
+            elif r["code"] != 0:
+                # The end of what it said, plus the exit code in words: a
+                # killed sdkmanager prints nothing at all, and a tail of
+                # progress bars reads exactly like a run that simply stopped.
+                # 137 is the OOM killer, 124 a timeout.
+                said = _job_tail(r["out"], keep=4)
+                _pkg_job["errors"][name] = " · ".join(
+                    said + [f"{verb} failed (exit {r['code']})"])[-400:]
             (_pkg_job["done"] if r["code"] == 0 else _pkg_job["failed"]).append(name)
         if action in ("install", "remove", "update"):
             _images["at"] = 0.0           # an image may have just gone
@@ -555,7 +616,7 @@ def abort_job():
             return False
         _pkg_job["queue"] = []
         _pkg_job["aborting"] = True
-        _pkg_job["log"].append("— aborted; finishing the current package and stopping")
+        pass
         proc = _pkg_child[0]
     if proc is not None:
         try:

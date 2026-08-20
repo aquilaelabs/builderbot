@@ -55,11 +55,20 @@ def die(msg):
     raise SystemExit(2)
 
 
-def catalog():
+def _catalog():
+    """The whole file. Packages are most of it, but not all — see
+    android_images, which is data about a thing that is not a package."""
     try:
         with open(CATALOG) as f:
-            return json.load(f)["packages"]
-    except (OSError, ValueError, KeyError) as e:
+            return json.load(f)
+    except (OSError, ValueError) as e:
+        die(f"cannot read {CATALOG}: {e}")
+
+
+def catalog():
+    try:
+        return _catalog()["packages"]
+    except KeyError as e:
         die(f"cannot read {CATALOG}: {e}")
 
 
@@ -309,6 +318,76 @@ def android_size(spec, pkg_id):
     return best[1] if best else 0
 
 
+def image_flavors():
+    """The android_images section of the catalog: flavor -> {label, about, xml}."""
+    sec = _catalog().get("android_images") or {}
+    return sec.get("abi") or "x86_64", sec.get("flavors") or {}
+
+
+IMAGE_ID = re.compile(r"^system-images;android-([A-Za-z0-9.-]+);([A-Za-z0-9_-]+);(.+)$")
+
+
+def available_images():
+    """Every system image the catalog's flavors offer, from sdkmanager's index.
+
+    One line per image — id, API level, flavor, bytes — which is what makes an
+    API level offerable at all: sdkmanager cannot be asked what exists without
+    a network round trip that prints a thousand rows, and cannot be asked what
+    anything weighs at any price. The index answers both.
+
+    Stable channel only, and only the archive this host could run: the index
+    carries CANARY builds and other ABIs beside the ones anybody wants.
+    """
+    abi, flavors = image_flavors()
+    rows = {}
+    for flavor, spec in flavors.items():
+        url = spec.get("xml")
+        if not url:
+            continue
+        try:
+            root = ET.fromstring(get(url, decode=False))
+        except Exception:  # noqa: BLE001 - one index missing is not fatal
+            continue
+        channels = {c.get("id"): (c.text or "") for c in root if c.tag.endswith("channel")}
+        for el in root:
+            if not el.tag.endswith("remotePackage"):
+                continue
+            m = IMAGE_ID.match(el.get("path") or "")
+            if not m or m.group(2) != flavor or m.group(3) != abi:
+                continue
+            ref = el.find("channelRef")
+            channel = channels.get(ref.get("ref"), "") if ref is not None else "stable"
+            if channel and channel != "stable":
+                continue
+            for a in el.iter():
+                if not a.tag.endswith("archive"):
+                    continue
+                host, arch = a.findtext("host-os"), a.findtext("host-arch")
+                if host not in (None, "linux") or arch not in (None, "x64", "x86_64"):
+                    continue
+                size = a.findtext("complete/size") or ""
+                if not size.isdigit():
+                    continue
+                key = el.get("path")
+                # The newest revision of an image that ships more than one.
+                here = (_revision(el), int(size))
+                if key not in rows or here[0] > rows[key][0]:
+                    rows[key] = here
+    out = []
+    for key, (_, size) in rows.items():
+        m = IMAGE_ID.match(key)
+        out.append((key, m.group(1), m.group(2), size))
+    # Newest level first, and a plain level ahead of the extension builds that
+    # share its number — android-34 is what somebody picking "34" means, and
+    # android-34-ext11 is a thing they would have to have gone looking for.
+    # The index itself is in no order worth relying on.
+    def key(row):
+        m = re.match(r"(\d+)(.*)", row[1])
+        return (-int(m.group(1)) if m else 0, bool(m and m.group(2)),
+                m.group(2) if m else row[1], row[2])
+    return sorted(out, key=key)
+
+
 def size_of(pkg, pkg_id=""):
     """What an install would download, in bytes, or empty when unknowable."""
     spec = (pkg.get("source") or {}).get("download") or {}
@@ -332,11 +411,22 @@ def size_of(pkg, pkg_id=""):
 
 def main(argv):
     if not argv:
-        die("usage: sdkmeta.py names|field|argv|resolve|size ...")
+        die("usage: sdkmeta.py names|flavors|images|field|argv|resolve|size ...")
     op = argv[0]
 
     if op == "names":
         print("\n".join(p["name"] for p in catalog()))
+        return
+
+    if op == "flavors":
+        abi, flavors = image_flavors()
+        for name, spec in flavors.items():
+            print(f"{name}\t{abi}\t{spec.get('label', name)}\t{spec.get('about', '')}")
+        return
+
+    if op == "images":
+        for pid, api, flavor, size in available_images():
+            print(f"{pid}\t{api}\t{flavor}\t{size}")
         return
 
     if len(argv) < 2:

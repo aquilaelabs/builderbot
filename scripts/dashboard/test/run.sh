@@ -169,8 +169,18 @@ if [ "${1:-}" = sdk ]; then
     }
     case "${2:-}" in
         root)    printf '%s\n' "${SDK_TEST_ROOT:?}" ;;
-        images)  # one installed system image, so the tab has something to list
-                 printf 'system-images;android-30;google_apis;x86_64\tandroid-30\tgoogle_apis\t3300000\n' ;;
+        images)  # --available is the index of what could be installed; bare is
+                 # what is on disk. One of each, plus one that is both, so the
+                 # picker has something to leave out.
+                 if [ "${3:-}" = --available ]; then
+                     printf 'system-images;android-31;google_apis;x86_64\t31\tgoogle_apis\t1470822277\n'
+                     printf 'system-images;android-30;google_apis;x86_64\t30\tgoogle_apis\t1438186618\n'
+                     printf 'system-images;android-30;google_apis_playstore;x86_64\t30\tgoogle_apis_playstore\t1404405641\n'
+                 else
+                     printf 'system-images;android-30;google_apis;x86_64\tandroid-30\tgoogle_apis\t3300000\n'
+                 fi ;;
+        flavors) printf 'google_apis\tx86_64\tGoogle APIs\tPlay services, no Play Store app. Rootable.\n'
+                 printf 'google_apis_playstore\tx86_64\tGoogle APIs + Play Store\tThe Play Store app itself; not rootable.\n' ;;
         versions) # local only: installed version, no upstream asked. Called
                   # with no names by the server, which wants the lot.
                  for n in ${3:-playwright flutter dotnet swift go rust zig android:emulator}; do
@@ -195,6 +205,21 @@ if [ "${1:-}" = sdk ]; then
                      # the progress reach the row through the whole path:
                      # streamed output, parser, payload, poll, render. Every
                      # other package installs instantly, as before.
+                     # One that fails, loudly and then quietly: a real
+                     # install writes pages of progress and one useful line,
+                     # and what reaches the operator has to be the line.
+                     if [ "$3" = rust ]; then
+                         for pct in 10 40 90; do
+                             printf '[====] %s%% Downloading rust\r' "$pct"
+                         done
+                         printf '\ninfo: syncing channel updates\n'
+                         # Long enough that a test can see the row mid-attempt:
+                         # the last failure is cleared when the next one starts,
+                         # and that is a state with a beginning and an end.
+                         sleep 1.5
+                         printf 'error: could not download file from upstream\n' >&2
+                         exit 1
+                     fi
                      if [ "$3" = go ]; then
                          # Takes a while, and counts loudly while it does —
                          # shaped like sdkmanager, whose meter runs one fraction

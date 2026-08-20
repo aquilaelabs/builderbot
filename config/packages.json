@@ -7,8 +7,8 @@
     "  name     what `bb sdk install|remove` is called with.",
     "  probe    where it lands, so the page can tell installed from not: a bare",
     "           name is a directory under the SDK root, android:<pkg> a package",
-    "           directory under ANDROID_HOME, android-image:<kind> a system image",
-    "           flavour, which may exist at several API levels at once.",
+    "           directory under ANDROID_HOME. System images are not packages;",
+    "           they have a section of their own, above.",
     "  source   how to get it. {dir} is the install directory, {version} whatever",
     "           the version resolver returned, {script} a downloaded installer.",
     "",
@@ -16,7 +16,7 @@
     "        script       fetch source.url and run it with the given args and env.",
     "        git          shallow-clone a branch; the tool then updates in place.",
     "        command      run something already in the image, pointed at {dir}.",
-    "        sdkmanager   an android package, or an image flavour by kind.",
+    "        sdkmanager   an android package, installed by sdkmanager.",
     "",
     "  fresh_only   refuse when the directory already exists, for the recipes that",
     "               unpack rather than merge.",
@@ -47,6 +47,44 @@
     "             no content length. It is marked as an approximation everywhere",
     "             it is shown."
   ],
+  "android_images": {
+    "_comment": [
+      "System images, which are not packages. A package is one thing at one",
+      "version; a system image exists at every API level at once, and which of",
+      "them you want is a question about what you are testing, not about the",
+      "catalog. So the flavors live here as data, and the Tools tab offers an",
+      "API level and a flavor rather than a row per flavor that could only",
+      "ever install the newest one.",
+      "",
+      "  abi      the only one an x86_64 host can run at any speed.",
+      "  xml      sdkmanager's own index for that flavor: what levels exist,",
+      "           and what each weighs before it is downloaded.",
+      "  about    which one to pick, which is the whole question."
+    ],
+    "abi": "x86_64",
+    "flavors": {
+      "google_apis": {
+        "label": "Google APIs",
+        "about": "Google Play services — Maps, sign-in, push — but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what ANDROID_SYSTEM_IMAGES installs.",
+        "xml": "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-3.xml"
+      },
+      "google_apis_playstore": {
+        "label": "Google APIs + Play Store",
+        "about": "The same, plus the Play Store app itself — for anything that has to sign in to Play, check a license or take an in-app payment. A Play-certified build, so it is not rootable. Google ships it as a separate image; there is no image that is one plus a switch.",
+        "xml": "https://dl.google.com/android/repository/sys-img/google_apis_playstore/sys-img2-3.xml"
+      },
+      "android-tv": {
+        "label": "Android TV",
+        "about": "Leanback layout, remote-control navigation.",
+        "xml": "https://dl.google.com/android/repository/sys-img/android-tv/sys-img2-3.xml"
+      },
+      "android-wear": {
+        "label": "Wear OS",
+        "about": "What modern Galaxy and Pixel watches run. Round screen, tiny API level numbers of its own.",
+        "xml": "https://dl.google.com/android/repository/sys-img/android-wear/sys-img2-3.xml"
+      }
+    }
+  },
   "packages": [
     {
       "name": "android:cmake",
@@ -77,54 +115,6 @@
           "resolver": "android-repo",
           "xml": [
             "https://dl.google.com/android/repository/repository2-3.xml"
-          ]
-        }
-      }
-    },
-    {
-      "name": "android:playstore",
-      "label": "Android image: Play Store",
-      "probe": "android-image:google_apis_playstore",
-      "about": "A system image with the Play Store, for testing anything that depends on Google Play services. Pixel-style — Samsung, Oppo and the rest ship no emulator images at all.",
-      "source": {
-        "kind": "sdkmanager",
-        "image": "google_apis_playstore",
-        "download": {
-          "resolver": "android-repo",
-          "xml": [
-            "https://dl.google.com/android/repository/sys-img/google_apis_playstore/sys-img2-3.xml"
-          ]
-        }
-      }
-    },
-    {
-      "name": "android:tv",
-      "label": "Android image: TV",
-      "probe": "android-image:android-tv",
-      "about": "Android TV, for a leanback-layout build.",
-      "source": {
-        "kind": "sdkmanager",
-        "image": "android-tv",
-        "download": {
-          "resolver": "android-repo",
-          "xml": [
-            "https://dl.google.com/android/repository/sys-img/android-tv/sys-img2-3.xml"
-          ]
-        }
-      }
-    },
-    {
-      "name": "android:wear",
-      "label": "Android image: Wear OS",
-      "probe": "android-image:android-wear",
-      "about": "Wear OS, which is what modern Galaxy and Pixel watches run.",
-      "source": {
-        "kind": "sdkmanager",
-        "image": "android-wear",
-        "download": {
-          "resolver": "android-repo",
-          "xml": [
-            "https://dl.google.com/android/repository/sys-img/android-wear/sys-img2-3.xml"
           ]
         }
       }
