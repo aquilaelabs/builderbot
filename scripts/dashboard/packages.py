@@ -306,6 +306,12 @@ def payload():
     for p in PACKAGES:
         path = _pkg_path(p["probe"])
         v = _pkg_versions.get(p["name"], {})
+        # A check answer about a package that has since been installed or
+        # removed describes a state that no longer holds, so it is not an
+        # answer any more. The worker drops these as it goes; this catches the
+        # ones already on disk from before it did.
+        if bool(path) != ((v.get("installed") or "-") != "-"):
+            v = {}
         # Where a size comes from, in order of how much it is worth: what it
         # takes on this disk now, what it took the last time it was here, and
         # — for a package this box has never had — what the download weighs.
@@ -332,7 +338,11 @@ def payload():
                       # The version is local knowledge and always shown; the
                       # state, and what it would move to, are only ever what a
                       # check said.
-                      "version": v.get("installed") or local.get(p["name"], ""),
+                      # A dash is how a check writes "nothing installed", and
+                      # it is a truthy string: it stood in front of the local
+                      # reading and left an installed row claiming no version.
+                      "version": (v.get("installed") or "").strip("-")
+                                 and v["installed"] or local.get(p["name"], ""),
                       "latest": v.get("latest", ""),
                       "state": v.get("status", "")})
     with _pkg_lock:
@@ -449,6 +459,13 @@ def _pkg_worker():
         if action in ("install", "remove", "update"):
             _pkg_local["key"] = None      # whatever just happened moved a version
             _pkg_sized_at[0] = 0.0        # ...and changed what is on the disk
+            # ...and made the last check's answer about this package a
+            # statement about a state that no longer holds. An unchecked row
+            # says nothing, which is the honest thing for it to say until
+            # somebody asks again.
+            with _pkg_lock:
+                _pkg_versions.pop(name, None)
+                save_versions()
 
 
 def start_job(action, names, auto=False):

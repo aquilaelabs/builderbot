@@ -203,9 +203,8 @@ ok(!(await page.$eval('.doc .pkg input[value="flutter"]', i => i.disabled)),
    '...but an update brings its tick back');
 ok(!(await page.$eval('.doc .pkg input[value="swift"]', i => i.disabled)),
    'and something not installed at all is always tickable');
-ok((await pill('flutter', 2)).text === '→ 2.0'
-   && (await pill('flutter', 2)).title === 'update available',
-   '...and the version it would move to is on the row, in the update color');
+ok((await pill('flutter', 2)) === null,
+   '...and an installed row carries no second version: the words below say it');
 // Pill zero, not one: a row this box has never installed carries no size, so
 // the version it would fetch is the first thing on the line.
 ok((await pill('swift', 1)).text === '9.9'
