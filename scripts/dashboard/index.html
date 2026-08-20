@@ -303,7 +303,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
 @media(max-width:900px){ .modal input,.modal textarea{font-size:16px} }
 .modal input:focus,.modal textarea:focus{outline:2px solid #2f4d6d;outline-offset:-1px}
 .modal .hint{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-top:6px}
-.modal .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line)}
+/* Wrapping, because a footer that does not fit does not merely look cramped:
+   the box scrolls sideways and the whole panel slides under your thumb. */
+.modal .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
+  flex-wrap:wrap}
 .modal .foot .sp{flex:1}
 .modal .danger{color:var(--bad);border-color:#4d2220}
 /* Two-way choice as two buttons, not radios: one tap on a phone, and the
@@ -368,6 +371,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 #memFold>summary::before{content:"▸ ";font-size:11px}
 #memFold[open]>summary::before{content:"▾ "}
 #memFold>.field{padding-top:0}
+.memacts{padding:0 14px 12px}
 /* Long lists scroll inside the panel rather than pushing the Add field and the
    footer off the screen. A cap in rough proportion to the window, so a desktop
    shows more of it than a phone does, and a shadowless inset edge to say there
@@ -377,12 +381,18 @@ button.on{background:#1f6f36;border-color:#2ea043}
    rather than guessed: 16px of icon inside the same padding and border. */
 .todo .ph{display:inline-block;width:32px;height:1px;flex:0 0 auto}
 @media(max-width:620px){ .todo .ph{width:26px} }
-/* The send confirmation, inline rather than a dialog inside a dialog. */
-.todoask{border-top:1px solid var(--line);background:#161d26}
-.todoask .also{display:flex;gap:8px;align-items:center;margin:8px 0 0;
+/* The send strip: always there once there is a list, everything on it dead
+   until an arrow is armed. */
+.todoask{border-top:1px solid var(--line);background:#161d26;
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.todoask .also{display:flex;gap:8px;align-items:center;margin:0;flex:1 1 auto;
   color:var(--dim);font:12px/1.4 system-ui,sans-serif;cursor:pointer}
-.todoask .also input{width:18px;height:18px;accent-color:#2ea043}
-.todoask .macros{padding:10px 0 0}
+.todoask .also.off{opacity:.4;cursor:default}
+.todoask .also input{width:18px;height:18px;accent-color:#2ea043;flex:0 0 auto}
+.todoask button{flex:0 0 auto;min-height:var(--tap)}
+/* The armed arrow. Filled rather than outlined: it is the one control on the
+   panel that is about to do something outside it. */
+.todo .go.sel{background:#1b5e2a;border-color:#2ea043;color:#d7ffe0}
 #todoList,#memList{max-height:min(46vh,420px);overflow:auto;
   overscroll-behavior:contain}
 #memList{max-height:min(38vh,340px)}
@@ -748,19 +758,18 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint" id="todoHint"></div>
     </div>
     <div class="field" id="todoField"><div id="todoList"></div></div>
-    <!-- Sending is the one action that leaves the panel, so it asks here
-         rather than in a native confirm: it has a choice attached, and a
-         confirm() cannot hold a checkbox. -->
+    <!-- Picking an arrow arms this; Send fires it. Two steps rather than one,
+         because sending does four things at once — the line goes, the step is
+         crossed off, the panel closes and you land in that tab — and an
+         arrow that did all four on one tap would be a mis-tap you cannot take
+         back. The highlight is the confirmation; a sentence restating what is
+         already on the row was not. -->
     <div class="field todoask" id="todoAsk" hidden>
-      <div class="hint" id="todoAskWhat"></div>
-      <label class="also" id="todoAlsoWrap" hidden>
+      <label class="also" id="todoAlsoWrap">
         <input type="checkbox" id="todoAlso" checked>
         <span>also tell it the list changed</span>
       </label>
-      <div class="macros">
-        <button id="todoGo" class="primary" type="button">Send</button>
-        <button id="todoNo" type="button">Cancel</button>
-      </div>
+      <button id="todoGo" class="primary" type="button">Send</button>
     </div>
     <!-- What Claude remembers, folded away: it is a handful of files nobody
          edits, and the reason it is on screen at all is that it is the one
@@ -778,14 +787,19 @@ body.dragging .tab .lbl{cursor:grabbing}
       <label id="memCount">Memories</label>
       <div id="memList"></div>
     </div>
+    <!-- The fold's own controls live inside it. Four buttons in the footer did
+         not fit a phone, and a footer that does not fit slides the whole panel
+         sideways under your thumb. -->
+    <div class="macros memacts">
+      <button id="memSave" type="button">Save</button>
+      <button id="memNote" type="button" hidden>Re-read them</button>
+    </div>
     </details>
     <div class="foot">
-      <button id="memSave" type="button">Save memory changes</button>
       <!-- Edits are written the moment they are made; this is the separate
            act of spending a line of the conversation to say so. -->
       <button id="todoSave" type="button" hidden>Save &amp; tell the session</button>
       <span class="sp"></span>
-      <button id="memNote" type="button" hidden>Tell the session</button>
       <button id="memClose" class="primary" type="button">Close</button>
     </div>
   </div>
@@ -3376,8 +3390,8 @@ async function openMemory(name){
   $("memIndex").value = "";
   $("memNote").hidden = true;
   $("memFold").open = false;
-  $("memSave").hidden = $("memNote").hidden = true;
   $("todoSave").hidden = true;
+  $("todoAsk").hidden = true;
   cancelSend();
   $("todoText").value = "";
   $("todoList").innerHTML = `<div class="hint">loading…</div>`;
@@ -3452,11 +3466,26 @@ function stepRow(r, idx, live){
   const bin = idx < 0 || idx === 0;
   // Sent ones stay live so they can go again — "it did not take, do it again"
   // is the reason they are still on screen at all.
-  const can = live && (!!st.sent || idx === nxt);
+  // A crossed line cannot be sent. Un-cross it first — that is one tap, and
+  // it makes the struck-through state mean one thing instead of two.
+  //
+  // A group's own arrow is its next step's arrow: the plan is the item, and
+  // reaching for the title to send "the next bit of this" is what a hand
+  // does. Picking either highlights both, because they are one choice.
+  const can = idx < 0 ? (steps.length ? live && nxt !== null : live && !r.sent)
+                      : live && !st.sent && idx === nxt;
   const why = !live ? "no Claude session is running here"
-            : st.sent ? "send it again"
-            : idx === nxt ? "send this to the Claude session"
-            : `step ${nxt + 1} has not been sent yet`;
+            : st.sent ? "crossed off — put it back to send it again"
+            : idx < 0 && steps.length
+              ? (nxt === null ? "every step of this is crossed off"
+                              : `pick step ${nxt + 1}, the next one in line`)
+            : idx < 0 ? "pick this to send"
+            : idx === nxt ? "pick this to send"
+            : `step ${nxt + 1} comes first`;
+  // Both halves of a group light up together.
+  const on = todoSel && String(todoSel.id) === String(r.id)
+             && (idx < 0 ? (steps.length ? true : todoSel.step === null)
+                         : todoSel.step === idx);
   // The tags sit above the line rather than beside it: they are labels on the
   // whole item, and on a phone a pill sharing the first line pushed the words
   // into a column two thirds as wide as the ones under it.
@@ -3466,8 +3495,9 @@ function stepRow(r, idx, live){
   ].join("");
   return `<div class="todo${st.sent ? " sent" : ""}${idx >= 0 ? " step" : ""}${
        idx < 0 && r.done ? " done" : ""}" data-id="${r.id}" data-step="${idx}">
-    <button class="eye go" type="button"${can ? "" : " disabled"}
-      title="${esc(why)}" aria-label="send">${SEND}</button>
+    <button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
+      title="${esc(why)}" aria-label="send"
+      aria-pressed="${on ? "true" : "false"}">${SEND}</button>
     ${idx >= 0 ? `<span class="n">${idx + 1}</span>` : ""}
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
@@ -3487,6 +3517,16 @@ function stepRow(r, idx, live){
 function drawTodo(j){
   if (j.error){ $("todoList").innerHTML = `<div class="hint bad">${esc(j.error)}</div>`; return; }
   const rows = j.items || [], live = !!j.session;
+  // Whatever was armed may have been crossed off, dropped, or overtaken by a
+  // step in front of it since the last draw.
+  if (todoSel){
+    const r = rows.find(x => String(x.id) === String(todoSel.id));
+    const ok = r && (todoSel.step === null
+      ? !(r.steps || []).length && !r.sent
+      : (r.steps || [])[todoSel.step] && !r.steps[todoSel.step].sent
+        && todoSel.step === nextStep(r));
+    if (!ok || !live) todoSel = null;
+  }
   todoSession = j.session || null;
   const left = rows.reduce((n, r) => n + (nextStep(r) === null ? 0 : 1), 0);
   $("todoHint").textContent = !rows.length
@@ -3496,13 +3536,20 @@ function drawTodo(j){
       : `${left} still to send — no session is running here, so nothing can be sent yet`;
   $("todoField").hidden = !rows.length;
   $("todoList").innerHTML = rows.map(r =>
-    `<div class="grp">${stepRow(r, -1, live && !(r.steps || []).length)}${
+    // The group's own row gets the same `live` as its steps now: its arrow
+    // stands for the next one, so it is as clickable as that one is.
+    `<div class="grp">${stepRow(r, -1, live)}${
       (r.steps || []).map((_, i) => stepRow(r, i, live)).join("")}</div>`).join("");
   $("todoList").querySelectorAll(".todo").forEach(row => {
     const id = Number(row.dataset.id), step = Number(row.dataset.step);
     const go = row.querySelector(".go");
-    if (go) go.onclick = () => sendTodo(id, step < 0 ? null : step,
-                                        row.querySelector(".txt").textContent);
+    // A group's title arrow stands for its next step, so both resolve to the
+    // same choice and light up together.
+    if (go) go.onclick = () => {
+      const r = (todoItems || []).find(x2 => String(x2.id) === String(id));
+      const steps = r?.steps || [];
+      pickTodo(id, step >= 0 ? step : (steps.length ? nextStep(r) : null));
+    };
     // Crossing out never asks — it is one tap and the same tap undoes it.
     const x = row.querySelector(".x");
     if (x) x.onclick = () =>
@@ -3533,6 +3580,14 @@ function drawTodo(j){
   });
   todoItems = rows;
   todoUnsaved = !!j.unsaved;
+  // The strip is always there once there is a list, with everything on it
+  // dead until an arrow is armed — a control that appears under your thumb is
+  // a control you press by accident.
+  $("todoAsk").hidden = !rows.length;
+  const armed = !!todoSel && live;
+  $("todoGo").disabled = !armed;
+  $("todoAlso").disabled = !armed || !todoUnsaved;
+  $("todoAlsoWrap").classList.toggle("off", !armed || !todoUnsaved);
   // The Save button is the only thing that spends a line of the conversation,
   // so it is only there when there is something to spend it on.
   $("todoSave").hidden = !todoUnsaved || !live;
@@ -3543,34 +3598,30 @@ function drawTodo(j){
 let todoItems = [];
 let todoSession = null;
 let todoUnsaved = false;
-let todoAsking = null;      // the send waiting on the confirm strip
+let todoSel = null;         // {id, step} — the arrow that is armed, if any
 
-// Sending asks first, because it is the one action that does something
-// outside the panel: it hands a line to a conversation, crosses the step off,
-// closes this and puts you in that tab. All four are what you wanted or none
-// of them were.
-function sendTodo(id, step, text){
-  todoAsking = {id, step};
-  $("todoAskWhat").textContent = `Send “${text}” to ${todoSession}?`
-    + " It will be crossed off, and this closes and takes you to that tab.";
-  $("todoAlsoWrap").hidden = !todoUnsaved;
-  $("todoAsk").hidden = false;
-  $("todoAsk").scrollIntoView({block: "nearest"});
-  $("todoGo").focus();
+// Picking one arms the Send button; picking it again puts it down. The
+// highlight is the whole confirmation — the line it would send is the line the
+// arrow is sitting next to, and a sentence repeating it back was noise.
+function pickTodo(id, step){
+  todoSel = (todoSel && String(todoSel.id) === String(id) && todoSel.step === step)
+    ? null : {id, step};
+  drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
 }
 
-function cancelSend(){ todoAsking = null; $("todoAsk").hidden = true; }
+function cancelSend(){ todoSel = null; }
 
 async function reallySend(){
-  if (!todoAsking) return;
-  const {id, step} = todoAsking;
+  if (!todoSel) return;
+  const {id, step} = todoSel;
   const also = todoUnsaved && $("todoAlso").checked;
   const proj = memProj;
   $("todoGo").disabled = true; $("todoGo").textContent = "Sending…";
+  $("todoGo").classList.add("busy");
   // The note rides on the same line as the step rather than chasing it: two
   // messages into one input box is how the second ends up glued to the first.
   const j = await postTodo({action: "send", id, step, tell: also});
-  $("todoGo").disabled = false; $("todoGo").textContent = "Send";
+  $("todoGo").textContent = "Send"; $("todoGo").classList.remove("busy");
   cancelSend();
   if (!j) return;
   if (!j.sent){
@@ -3753,13 +3804,10 @@ $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 // the footer is one button, which is what a panel about a to-do list should
 // end with.
 $("memFold").ontoggle = () => {
-  const open = $("memFold").open;
-  $("memSave").hidden = !open;
-  $("memNote").hidden = !open || !memHasSession;
+  $("memNote").hidden = !$("memFold").open || !memHasSession;
 };
 $("todoAdd").onclick = addTodo;
 $("todoGo").onclick = reallySend;
-$("todoNo").onclick = cancelSend;
 $("todoSave").onclick = async () => {
   const b = $("todoSave");
   b.disabled = true; b.textContent = "Telling…";
@@ -4419,7 +4467,9 @@ document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (!$("modal").hidden) closeEditor();
   if (!$("pmodal").hidden) closeNewProject();
-  if (!$("todoAsk").hidden){ cancelSend(); return; }
+  // Escape puts an armed arrow down before it closes the panel.
+  if (todoSel && !$("memModal").hidden){ cancelSend(); drawTodo(
+    {items: todoItems, session: todoSession, unsaved: todoUnsaved}); return; }
   if (!$("memModal").hidden) closeMemory();
   if (pinFor){ pinFor = null; drawTabs(); }
   if (resumeFor){ resumeFor = null; if (state) drawProjects(state.projects); }
