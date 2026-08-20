@@ -829,6 +829,15 @@ on a header is never a misfire. The
 headers hold nothing but the title and a chevron — every control a card has
 lives in its body. The cards:
 
+- **who this container is signed in to Claude as**, under the doctor verdict,
+  with the action attached: **Sign out** when it is signed in, **Sign in** when
+  it is not. Signing in opens a *terminal* rather than pretending to be one
+  click — the flow is a URL to open in a browser and a code pasted back, so it
+  needs somewhere to type. Signing out is one command with no conversation in
+  it, so it is a button, and it asks first because every session here stops
+  working. On a claude too old to have `auth status` the row simply is not
+  there: not knowing is not the same as being signed out, and offering to sign
+  somebody out of nothing is worse than offering nothing
 - container uptime, and runner state — registered, listening, **running a job**
   (with the job's name and how long it has been going), or **failing to
   connect**. That last one matters: a runner retries a rejected connection

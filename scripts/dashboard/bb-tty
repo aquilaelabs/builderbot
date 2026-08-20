@@ -246,6 +246,13 @@ case "$target" in
             || bad "No such project: ${proj}"
         start "shell-${proj}" "$dir"
         ;;
+    login)
+        # Signing in is interactive — a URL to open in a browser and a code to
+        # paste back — so it needs a terminal, not a button that posts
+        # something and reports a result. The session dies with the flow,
+        # which is how the page notices it is over.
+        start "login" "$WORKSPACE" bb login
+        ;;
     *)
         # A named scratch session. Restricted to characters tmux is happy with
         # so a stray URL cannot produce a session nobody can address again.

@@ -510,7 +510,9 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 .st.bad{background:var(--bad)}
 /* Styled by class, not id: an id's display:flex would outrank the class-based
    .card.closed rule that hides every body row when the card is folded. */
-.doctor .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
+.doctor #docAuth{padding:0 12px 11px}
+#docAuth .grow{flex:1;min-width:0;overflow-wrap:anywhere}
+.docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
 #docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
 #doctor:not([hidden]){border-top:1px solid var(--line)}
 .doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
@@ -945,6 +947,11 @@ body.dragging .tab .lbl{cursor:grabbing}
         <span id="docWhen"></span>
         <button id="bDoctor" title="run bb doctor now">↻</button>
       </div>
+      <!-- The one piece of container health with an action attached. Signing
+           in wants a browser and a code pasted back, so it opens a terminal;
+           signing out is one command with no conversation in it, so it is a
+           button. -->
+      <div class="macros" id="docAuth" hidden></div>
       <div id="doctor"><div class="empty">first run pending…</div></div>
     </div>
     <div class="card" data-card="runner">
@@ -2729,6 +2736,42 @@ function pJobWire(){
   const busy = !!pJob?.running;
   const nb = $("bNewProj"); if (nb) nb.disabled = busy;
   document.querySelectorAll("#projects [data-l]").forEach(b => b.disabled = busy);
+}
+
+// Who this container is signed in to Claude as, under the doctor verdict —
+// the first thing to get right on a new box, and the last place anybody would
+// think to look for it on the command line.
+function drawAuth(){
+  const el = $("docAuth"), a = state?.claude_auth;
+  if (!a || a.unknown){ el.hidden = true; return; }
+  el.hidden = false;
+  if (paint(el, a.signed_in
+    ? `<span class="sub grow" title="claude auth status">signed in${
+         a.email ? " as " + esc(a.email) : ""}${a.plan ? ` · ${esc(a.plan)}` : ""}</span>
+       <button id="bSignOut" title="sign this container out of Claude">Sign out</button>`
+    : `<span class="sub grow bad">not signed in to Claude — sessions will not start</span>
+       <button id="bSignIn" class="primary"
+         title="opens a terminal and runs the sign-in flow">Sign in</button>`)){
+    const out = $("bSignOut"), inb = $("bSignIn");
+    if (out) out.onclick = signOut;
+    // A terminal, because the flow is a URL to open and a code to paste back.
+    if (inb) inb.onclick = () => openTab({kind: "term", arg: "login",
+                                          label: "Claude sign-in"});
+  }
+}
+
+async function signOut(){
+  if (!confirm("Sign this container out of Claude?\n\nEvery session here "
+               + "stops working until it is signed in again.")) return;
+  const b = $("bSignOut");
+  b.disabled = true; b.textContent = "Signing out…";
+  try{
+    const r = await fetch("/api/signout", {method:"POST",
+      headers:{"Content-Type":"application/json"}, body: "{}"});
+    const j = await r.json();
+    if (j.error) notify(j.error, true); else notify("signed out");
+  }catch(e){ notify("could not reach the server: " + e, true); }
+  refresh();
 }
 
 // ---- doctor -----------------------------------------------------------
@@ -4528,6 +4571,7 @@ async function refresh(){
     drawGit();
     drawCustom();
     drawDoctor();
+    drawAuth();
     $("cardFindings").hidden = !state.reports;
     drawFindingsSum(state.findings_counts || {});
     // A scan re-ran on the host: refresh any open findings view to match.

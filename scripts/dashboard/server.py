@@ -1383,6 +1383,37 @@ def run_doctor():
     return True
 
 
+# Who this container is signed in as, for the Doctor card. `claude auth
+# status --json` answers it locally and instantly — no network — so this is a
+# short cache against a poll every fifteen seconds rather than a real one.
+_auth = {"at": 0.0, "state": {}}
+AUTH_TTL = 20
+
+
+def claude_auth():
+    """{signed_in, email} — or {"unknown": True} on a claude too old to ask.
+
+    The one piece of container health that has an action attached, which is
+    why it is a field of its own rather than a line in the doctor verdict: a
+    verdict is read, and this is pressed.
+    """
+    if time.monotonic() - _auth["at"] < AUTH_TTL and _auth["state"]:
+        return _auth["state"]
+    r = run(["claude", "auth", "status", "--json"], timeout=20)
+    try:
+        d = json.loads(r["out"]) if r["code"] == 0 else {}
+        state = {"signed_in": bool(d.get("loggedIn")),
+                 "email": d.get("email") or "",
+                 "plan": d.get("subscriptionType") or ""}
+    except (ValueError, TypeError):
+        # An older claude has no `auth` subcommand and says so on stderr. Not
+        # knowing is not the same as being signed out, and offering to sign
+        # somebody out of nothing is worse than offering nothing.
+        state = {"unknown": True}
+    _auth.update(at=time.monotonic(), state=state)
+    return state
+
+
 def doctor_payload():
     with _doctor_lock:
         return {k: _doctor[k] for k in ("when", "checks", "failed", "running")}
@@ -1522,6 +1553,7 @@ def snapshot():
         "reports_mtime": reports_mtime(),
         "findings_counts": findings_counts(ps),
         "doctor": doctor_payload(),
+        "claude_auth": claude_auth(),
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
         "project_job": projects.job(),
@@ -1873,7 +1905,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._custom(req)
         if path.startswith("/api/doctor"):
             return self._doctor(req)
+        if path.startswith("/api/signout"):
+            return self._signout(req)
         self._json({"error": "not found"}, 404)
+
+    def _signout(self, req):
+        """Sign this container out of Claude.
+
+        The other half — signing in — is not here, because it cannot be: the
+        flow wants a browser and a code pasted back, so the page opens a
+        terminal for it. Signing out is one command with no conversation in
+        it, so it is a button.
+        """
+        r = run(["claude", "auth", "logout"], timeout=60)
+        _auth.update(at=0.0, state={})
+        if r["code"] != 0:
+            return self._json({"error": r["out"].strip()[-500:] or "logout failed"}, 500)
+        return self._json({"ok": True, "auth": claude_auth()})
 
     def _todo(self, req):
         """Add, send, edit or drop one item on a project's list.

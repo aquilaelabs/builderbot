@@ -248,6 +248,32 @@ fi
 exit 0
 EOF
 chmod +x "$S/bin/bb"
+# Stub claude: `auth status` answers from a fixture the tests flip, and
+# `auth logout` rewrites that fixture rather than going anywhere near the
+# operator's real credentials — which is the entire reason this stub exists,
+# since the real one would sign this container out for good.
+cat > "$S/bin/claude" <<'EOF'
+#!/usr/bin/env bash
+if [ "${1:-}" = auth ]; then
+    case "${2:-}" in
+        status) cat "${CLAUDE_AUTH_FIXTURE:?}" ;;
+        logout) printf '{"loggedIn":false}
+' > "${CLAUDE_AUTH_FIXTURE:?}" ;;
+        --help|help) printf 'Manage authentication
+' ;;
+        *) exit 1 ;;
+    esac
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$S/bin/claude"
+printf '{"loggedIn":true,"email":"tester@example.com","subscriptionType":"max"}
+'     > "$S/auth-in.json"
+printf '{"loggedIn":false}
+' > "$S/auth-out.json"
+cp "$S/auth-in.json" "$S/auth.json"
+
 # Stub gh: always unauthenticated, so `pat` is deterministically false — the
 # real gh would answer from the operator's own login state.
 printf '#!/usr/bin/env bash\nexit 1\n' > "$S/bin/gh"
@@ -280,6 +306,7 @@ fresh() {
     rm -rf "$S/home/.ssh"           # deploy-key selectors a test wrote
     rm -rf "$S/sdk" "$S/androidsdk"; mkdir -p "$S/sdk" "$S/androidsdk"
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
+    cp "$S/auth-in.json" "$S/auth.json"   # a test that signs out must not hand that on
     seed_memories                   # memory.mjs edits and deletes these for real
     for n in shell-9 claude-alpha; do
         tmux has-session -t "$n" 2>/dev/null || tmux new-session -d -s "$n" -c /tmp
@@ -298,7 +325,8 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     PKG_AUTOCHECK=0 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
-    BB_DOCTOR_FIXTURE="$S/doctor.txt" PATH="$S/bin:$PATH" \
+    BB_DOCTOR_FIXTURE="$S/doctor.txt" CLAUDE_AUTH_FIXTURE="$S/auth.json" \
+    PATH="$S/bin:$PATH" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
 pid=$!
 for _ in $(seq 40); do
