@@ -133,13 +133,14 @@ ok(d.text.startsWith('starting'),
 // Past the download there is no honest denominator, so the row stops
 // pretending: no bar, no number, and no naming of whichever component is
 // being unpacked — one of those ran off the side of a phone.
-// The bar follows the number, not the word: sdkmanager keeps counting through
-// its unzip, and dropping the count there was what made an install look like
-// it had given up at the halfway mark.
+// The bar is the download's and nobody else's: sdkmanager keeps counting
+// through its unzip on the same meter, and quoting that put "installing 55%"
+// on a row — which the operator has asked, twice, never to see. A number on
+// an installing step is dropped, not shown.
 d = await during({ action: 'install', current: 'flutter',
                    progress: { name: 'flutter', pct: 70, phase: 'installing', seen: true } });
-ok(d.text === 'installing 70%' && Math.abs(100 * d.fillW / d.barW - 70) <= 2,
-   '...and a step that is installing but still counting keeps its bar');
+ok(d.text.startsWith('installing') && !d.bar,
+   '...and a number on an installing step is not quoted as one');
 d = await during({ action: 'install', current: 'flutter',
                    progress: { name: 'flutter', pct: null, phase: 'installing', seen: true } });
 ok(d.text.startsWith('installing') && !d.bar,
@@ -275,11 +276,10 @@ ok(/^(starting|downloading)/.test(labels.find(Boolean) || ""),
 const dl = widths.filter((w, i) => w && /^downloading/.test(labels[i] || ""));
 ok(dl.length > 1 && dl[dl.length - 1] > dl[0],
    `...and the bar fills with it (${widths.join(' ')})`);
-// The count carries on past the label change: sdkmanager reports one fraction
-// for the whole operation, so dropping it when the word stops saying download
-// threw away the back half of every android install.
-ok(said.some(t => t === 'installing 55%'),
-   '...and keeps counting when the step it names changes');
+// Once the step stops saying downloading, the row is words and dots — no
+// number, however real, because it is no longer a download percentage.
+ok(!said.some(t => /installing \d/.test(t)),
+   '...and never wears a percentage once it is installing');
 // The log keeps what the bar cannot: every tenth of the download, so that
 // afterwards it is possible to tell a bar that failed to move from a tool
 // that reported once and went quiet.
