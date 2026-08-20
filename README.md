@@ -484,13 +484,20 @@ commands — without downloading anything, which is how a catalog edit gets
 checked before it is trusted.
 
 **No size is written down anywhere.** A size typed into a file is wrong the
-next time upstream ships, so a row shows what the package takes on this disk
-once it is installed, what it took the last time it was installed after that,
-and — for one this box has never had, where the catalog's URL is the payload
-itself — what the download weighs, from its own `Content-Length`. Where none
-of those is known the row says nothing rather than guessing. The download and
-the footprint are different numbers and the row says which it is showing:
-Swift arrives as a gigabyte and unpacks to three.
+next time upstream ships. A row shows the footprint once the package is
+installed — measured, and remembered after it is removed — and before that
+what an install would *download*, which is a different number and is labelled
+as one: Swift arrives as a gigabyte and unpacks to three.
+
+Upstream is asked for that download figure rather than guessed at. Where the
+catalog's URL is the payload, its `Content-Length` is the answer; where it is
+not, a `download` block names a dry run to execute and a pattern to match the
+URLs out of, which is how Playwright's five bundles and the .NET archive get
+counted. Both are catalog entries, so a package that can be asked the same way
+needs no code. Some cannot be asked — a git clone has no content length,
+rustup picks its components as it goes, `sdkmanager` keeps sizes in an index
+this does not read — and those rows show no size until the box has installed
+them once.
 
 **Nothing installs, updates or removes itself, and no session can do it for
 you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in
@@ -1225,10 +1232,13 @@ scripts/
   bb                             in-container helper CLI
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
+  lib/sdkmeta.py                 reads config/packages.json for bb: fields, argv, versions
   startup.d/*.sh                 startup hooks
   dashboard/                     web dashboard: server.py, index.html, bb-tty
+    packages.py                  everything behind the Tools tab: catalog, sizes, the job worker
     test/                        its Playwright suite — `bb dashboard test`, isolated
 config/skel/                     home directory skeleton
+config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)
 docs/unraid.md                   step-by-step Unraid walkthrough
 .hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint

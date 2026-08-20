@@ -208,9 +208,14 @@ ok((await pill('flutter', 2)).text === '→ 2.0'
    '...and the version it would move to is on the row, in the update color');
 // Pill zero, not one: a row this box has never installed carries no size, so
 // the version it would fetch is the first thing on the line.
-ok((await pill('swift', 0)).text === '9.9'
-   && /would fetch/.test((await pill('swift', 0)).title),
+ok((await pill('swift', 1)).text === '9.9'
+   && /would fetch/.test((await pill('swift', 1)).title),
    'a package that has never been installed says what Install would fetch');
+// Pill zero on that row is the download: the only size a package this box has
+// never had can honestly show, and upstream is the one that knows it.
+ok(/download/.test((await pill('swift', 0)).text)
+   && /from upstream/.test((await pill('swift', 0)).title),
+   '...and what the download weighs, asked of upstream rather than guessed');
 // The answers cost a network round trip each, so they are kept on the state
 // volume — a dashboard restart used to wipe every version the tab had been
 // told — and dated, because a number with no date on it goes quietly stale.

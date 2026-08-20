@@ -130,7 +130,10 @@ if [ "${1:-}" = sdk ]; then
         check)   # one line per name: installed, latest, status. Absent rows
                  # answer too — what they would install is the other half of
                  # what the button is for.
-                 if [ ! -d "$(_d "$3")" ];  then printf '%s\t-\t9.9\tabsent\n' "$3"
+                 # A fifth column on the absent rows: what an install would
+                 # download, which is the only size a package this box has
+                 # never had can honestly show.
+                 if [ ! -d "$(_d "$3")" ];  then printf '%s\t-\t9.9\tabsent\t123456789\n' "$3"
                  elif [ "$3" = flutter ];   then printf '%s\t1.0\t2.0\tupdate\n' "$3"
                  else                            printf '%s\t1.0\t1.0\tcurrent\n' "$3"; fi ;;
         update)  printf 'updated %s\n' "$3" ;;

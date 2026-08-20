@@ -23,10 +23,22 @@
     "  verify       run after installing, so a broken unpack fails the install",
     "               rather than waiting to fail the first time somebody uses it.",
     "",
-    "There is no size here on purpose. A size typed into a file is wrong the next",
     "time upstream ships: what a package weighs is measured from the disk once it",
     "is installed, remembered after it is removed, and read from the download's",
-    "own Content-Length before that when the URL is the payload itself."
+    "own Content-Length before that when the URL is the payload itself.",
+    "",
+    "  download   how to find out what an install would fetch, for a row that is",
+    "             not installed yet. Absent means source.url is the payload and",
+    "             its Content-Length is the answer; \"command-urls\" runs a dry run",
+    "             and matches the URLs out of it, which is how playwright's five",
+    "             bundles and the .NET archive are counted. A recipe that cannot",
+    "             be asked — a git clone, rustup, sdkmanager — simply has none,",
+    "             and the row shows no size until it has been installed once.",
+    "",
+    "No size is written down here. One typed into a file is wrong the next time",
+    "upstream ships: a row shows what the package takes on this disk once it is",
+    "installed, what it took the last time it was, or what the download weighs",
+    "before that — never a number somebody guessed."
   ],
   "packages": [
     {
@@ -50,6 +62,18 @@
         "link": {
           "find": "*/chromium-*/chrome-linux*/chrome",
           "as": "{dir}/chromium"
+        },
+        "download": {
+          "resolver": "command-urls",
+          "run": [
+            "playwright",
+            "install",
+            "--dry-run",
+            "chromium",
+            "firefox",
+            "webkit"
+          ],
+          "match": "Download url:\\s+(\\S+)"
         }
       }
     },
@@ -105,7 +129,16 @@
             },
             "optional": "the maui-android workload failed; the plain SDK is still installed"
           }
-        ]
+        ],
+        "download": {
+          "resolver": "command-urls",
+          "run": [
+            "bash",
+            "-c",
+            "curl -fsSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel LTS --dry-run"
+          ],
+          "match": "URL #0[^:]*:\\s+(\\S+)"
+        }
       }
     },
     {

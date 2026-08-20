@@ -28,6 +28,8 @@ Usage (all output is plain, and empty means "not set"):
 """
 import json
 import os
+import re
+import subprocess
 import sys
 import urllib.request
 
@@ -140,22 +142,54 @@ def resolve(pkg):
     return version, url
 
 
-def size_of(pkg):
-    """The download in bytes, when the URL is the thing being installed.
-
-    Only for tarballs. A "script" recipe's URL is an installer a few kilobytes
-    long that then fetches the real payload, and reporting its Content-Length
-    as the package size would be worse than saying nothing.
-    """
-    src = pkg.get("source") or {}
-    if src.get("kind") != "tarball":
-        return ""
-    _, url = resolve(pkg)
-    if not url:
-        return ""
+def content_length(url):
     req = urllib.request.Request(url, headers=UA, method="HEAD")
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
-        return r.headers.get("Content-Length") or ""
+        n = r.headers.get("Content-Length")
+    return int(n) if n and n.isdigit() else 0
+
+
+def download_urls(pkg):
+    """Every URL an install of this package would fetch, or none.
+
+    Two ways to know. A recipe whose own source.url is the payload — a tarball
+    — is its own answer. Everything else has to ask the installer, and most of
+    them will say: playwright's dry run names the five bundles it would pull,
+    the .NET installer names the SDK archive it would pull. That is a command
+    to run and a pattern to match, both of which are catalog entries rather
+    than code here, so a package that can be asked the same way needs no
+    python at all.
+
+    Some cannot be asked: a git clone has no content length, rustup fetches
+    components it decides on as it goes, and sdkmanager keeps its sizes in a
+    repository index this does not read. Those report nothing, which is the
+    honest answer and is what the row then shows.
+    """
+    src = pkg.get("source") or {}
+    spec = src.get("download")
+    if spec is None:
+        _, url = resolve(pkg)
+        return [url] if url and src.get("kind") == "tarball" else []
+    if spec.get("resolver") != "command-urls":
+        die(f"{pkg['name']}: unknown download resolver {spec.get('resolver')!r}")
+    env = dict(os.environ, **{k: str(v) for k, v in (spec.get("env") or {}).items()})
+    try:
+        out = subprocess.run(spec["run"], capture_output=True, text=True,
+                             timeout=120, env=env).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return re.findall(spec["match"], out)
+
+
+def size_of(pkg):
+    """What an install would download, in bytes, or empty when unknowable."""
+    total = 0
+    for url in download_urls(pkg):
+        try:
+            total += content_length(url)
+        except Exception:                 # noqa: BLE001 - one unreachable
+            return ""                     # mirror, and the total is a lie
+    return str(total) if total else ""
 
 
 def main(argv):
