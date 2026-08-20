@@ -27,14 +27,10 @@ CLAUDE_PROJECTS = None
 tmux_name = None
 
 
-tell = None
-
-
-def configure(*, run, workspace, claude_projects, tmux_name, tell=None):
+def configure(*, run, workspace, claude_projects, tmux_name):
     """Hand over the server's helpers."""
     globals().update(run=run, WORKSPACE=Path(workspace),
-                     CLAUDE_PROJECTS=Path(claude_projects), tmux_name=tmux_name,
-                     tell=tell)
+                     CLAUDE_PROJECTS=Path(claude_projects), tmux_name=tmux_name)
 
 
 # The index Claude loads at the start of every session in the project. Not a
@@ -278,26 +274,3 @@ def delete(project, file):
         return {"error": f"could not remove {file}: {e}"}
     _unindex(d, file)
     return {"ok": True}
-
-
-NOTE = ("I edited your memory files for this project from the dashboard. "
-        "Please re-read them before relying on what you remember here.")
-
-
-def notify(project, live=()):
-    """Ask this project's running session to re-read its memories.
-
-    What makes an edit land in a session that is *already running* is Claude
-    reading the files again, and the only channel into a running session is its
-    terminal. Whether the line is submitted or just left in the input box is
-    notify.py's decision, not this module's — see the rule about Enter there.
-    """
-    d = memory_dir(project)
-    if d is None:
-        return {"error": f"not a project: {project}"}
-    if tell is None:
-        return {"error": "no way to reach a session from here"}
-    session = tmux_name("claude-" + project)
-    if session not in set(live):
-        return {"error": "no Claude session running here"}
-    return tell(session, NOTE, live)

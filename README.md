@@ -928,14 +928,11 @@ lives in its body. The cards:
   no line names. It sits on the project row rather than in a Claude tab on
   purpose — *why did it do that?* is usually asked after the tab is closed —
   and it is folded shut, because a handful of files nobody edits does not
-  earn the top of a panel.
+  earn the top of a panel. Editing one arms the panel's single **Save**, the
+  same button the to-do list uses.
   **Edits land for the next session**, the same rule `bb claude-md` follows:
   the index is read at startup, and a running session is holding what it read
-  then. When a session for that project *is* running, **Tell the session**
-  types a note asking it to re-read them into that pane — and stops there,
-  without pressing Enter. "Waiting for input" covers a session at its prompt
-  and one holding a permission dialog alike, and a blind Enter into the
-  second would answer it; you press it yourself once you can see the screen
+  then — which is what Save tells it, in the one line it spends
 - an **eye** per project, which excludes it: persists across restarts and
   blocks Claude sessions for that directory — see below. A row that is excluded
   or has an error carries **no Claude button at all**, because a session cannot
@@ -1057,9 +1054,11 @@ by pressing the same button again and the other is not.
 **Edits are written immediately; telling the session is separate.** A phone
 that dies half way through tidying a list must not lose it, but every telling
 costs a line of somebody's conversation — so the two are apart. **Save & tell
-the session** appears once the list has moved, and spends that line. There is
-no way to make a session read something without sending it a message: no IPC
-into a running Claude, so the only door is its input box.
+the session** spends that line, once, for the whole panel: it writes any
+memory edits and then tells a running session that all of it moved. One Save,
+because two meant two lines saying the same thing. There is no way to make a
+session read something without sending it a message: no IPC into a running
+Claude, so the only door is its input box.
 
 Which is why **sending a step folds the two together**. Tapping an arrow
 **arms** it — the arrow lights up, and the Send button and its "also tell it
@@ -1077,11 +1076,24 @@ The "I also changed the list" note rides on the *same message* as the step
 rather than chasing it — two lines into one input box is how the second ends up
 glued to the first.
 
-**An item can be an ordered group of steps** — `bb todo add "rework the picker"
---step "widen the select" --step "then re-measure it"`. Only the next unsent
-step can be sent; the one after it is dead until the one before has gone,
-because three separate items can be handed over backwards and the second then
-lands on a tree the first was supposed to have made.
+**An item can be an ordered group of steps.** From a terminal that is
+`bb todo add "rework the picker" --step "widen the select" --step "then
+re-measure it"`; in the panel it is **+ step** under any item, which turns a
+plain one into a plan — and the field stays open, so three steps is three lines
+of typing rather than three dialogs. Only the next unsent step can be sent; the
+one after it is dead until the one before has gone, because three separate
+items can be handed over backwards and the second then lands on a tree the
+first was supposed to have made.
+
+**Reorder** is a mode rather than two more icons on every row — five controls
+and a number do not fit a phone, and nobody rearranges a list at the same
+moment they are sending from it. The toggle beside the hint swaps each row's
+send/strike/bin for up and down: items move among items, steps move within
+their group. A step that has gone is pinned and nothing moves above it, so the
+crossed ones stay the block every other rule reads them as. The order on
+screen is the order in the file — nothing is sorted on the way out, so a list
+you arranged stays arranged and a ticked item fades where it is rather than
+jumping to the bottom.
 
 **Editing the list or the memories tells the running session**, in one line, to
 go and read them and carry on — not to drop what it is doing. A list edited

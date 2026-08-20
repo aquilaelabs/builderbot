@@ -1410,8 +1410,7 @@ notify.configure(run=run)
 import memory                                                    # noqa: E402
 
 memory.configure(run=run, workspace=WORKSPACE,
-                 claude_projects=CLAUDE_PROJECTS, tmux_name=tmux_name,
-                 tell=notify.tell)
+                 claude_projects=CLAUDE_PROJECTS, tmux_name=tmux_name)
 
 # ---- the shared to-do list -------------------------------------------------
 # The one surface both sides write: the operator adds an item, a session adds
@@ -1908,6 +1907,10 @@ class Handler(BaseHTTPRequestHandler):
             r = todo.set_done(name, req.get("id"), bool(req.get("done", True)))
         elif act == "edit":
             r = todo.edit(name, req.get("id"), req.get("text", ""))
+        elif act == "move":
+            r = todo.move(name, req.get("id"), req.get("step"), req.get("dir"))
+        elif act == "add-step":
+            r = todo.add_step(name, req.get("id"), req.get("text", ""))
         elif act == "cross":
             r = todo.cross(name, req.get("id"), req.get("step"),
                            bool(req.get("on", True)))
@@ -1946,15 +1949,13 @@ class Handler(BaseHTTPRequestHandler):
             r = memory.save(proj, file, text)
         elif act == "delete":
             r = memory.delete(proj, file)
-        elif act == "notify":
-            r = memory.notify(proj, [s["name"] for s in tmux_sessions()])
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
-        # A memory edit *is* a save — there is no other moment to batch it to,
-        # since the editor only writes when Save is pressed — so it tells the
-        # session there and then, the same single line the list's Save spends.
+        # One Save for the project, not one per thing in the panel: a memory
+        # edit marks the same flag the list does, and the one button spends the
+        # one line telling a session about all of it.
         if not r.get("error") and act in ("save", "delete"):
-            todo.announce(proj, "memory", [s["name"] for s in tmux_sessions()])
+            todo.mark_unsaved(proj)
         return self._json(r, 400 if r.get("error") else 200)
 
     def _custom(self, req):

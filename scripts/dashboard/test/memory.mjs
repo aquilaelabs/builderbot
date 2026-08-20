@@ -31,17 +31,14 @@ ok(await page.$eval('#memTitle', el => el.textContent === 'To do — alpha'),
 // Memory is folded away under it: a handful of files nobody edits, on screen
 // only because it is the one input to a session nobody would otherwise see.
 ok(await page.$eval('#memFold', el => !el.open)
-   && !await page.$eval('#memSave', el => el.checkVisibility()),
-   '...with what Claude remembers folded, and its controls with it');
+   && !await page.$eval('#memList', el => el.checkVisibility()),
+   '...with what Claude remembers folded away under it');
 ok((await page.$eval('#memWhere', el => el.textContent)).includes('2 memories'),
    '...and the fold says how many there are');
 await page.click('#memFold > summary');
-// The controls live inside the fold, so they are on screen when it is open —
-// checkVisibility, not .hidden, because nothing sets a flag on them any more.
-await page.waitForFunction(() => document.getElementById('memSave').checkVisibility(),
+await page.waitForFunction(() => document.getElementById('memList').checkVisibility(),
                            { timeout: 5000 });
-ok(await page.$eval('#memFold', el => el.open),
-   'opening it brings the memory controls with it');
+ok(await page.$eval('#memFold', el => el.open), 'opening it brings them on screen');
 
 // ---- what it shows -----------------------------------------------------
 const mems = await page.$$eval('#memList .mem', ls => ls.map(l => ({
@@ -73,8 +70,14 @@ await page.$eval('#memList .mem[open] textarea', t => {
   t.value = t.value.replace('asked for it twice', 'asked for it three times');
   t.dispatchEvent(new Event('input'));
 });
-await page.click('#memSave');
-await page.waitForFunction(() => document.getElementById('memSave').textContent === 'Save changes');
+// One Save for the panel: the list's changes and the memory editor's, told to
+// a session once between them. Two buttons meant two lines spent saying the
+// same thing.
+ok(!await page.$eval('#todoSave', b => b.disabled),
+   'typing in a memory arms the panel\'s one Save button');
+await page.click('#todoSave');
+await page.waitForFunction(() => document.getElementById('todoSave').textContent !== 'Saving…',
+                           { timeout: 15000 });
 ok(read('tabs.md').includes('asked for it three times'),
    'Save writes the edit to the file on disk');
 ok(read('tabs.md').startsWith('---\n') && read('tabs.md').endsWith('\n'),
@@ -136,26 +139,13 @@ ok(await page.$eval('#memList .mem:has(.mname:text-is("huge"))',
 // counts every one. Cleared here so the check at the end is about the page.
 page.errors = [];
 
-// ---- the note to a running session -------------------------------------
-// The fixture runs claude-alpha, so the offer is there. What has to hold is
-// that the line goes through notify.py's one door, which submits it only when
-// it can see that it arrived — the fixture session is a shell, and a shell
-// echoes, so this one is submitted.
-ok(!await page.$eval('#memNote', b => b.hidden),
-   'a project with a session running offers the note');
-await page.click('#memNote');
-await page.waitForFunction(() => /sent|typed/.test(
-  document.getElementById('toast').textContent), { timeout: 15000 });
+// ...and telling the session is that same Save, once, for both halves —
+// which is why editing a memory marks the project unsaved rather than firing
+// a line of its own. The fixture session is a shell and a shell echoes, so
+// notify.py submits it.
 const pane = tmuxCapture('claude-alpha');
-ok(/re-read them/.test(pane), 'pressing it puts the note into that pane');
-ok(pane.split('I edited').length - 1 >= 1,
-   '...once, not twice: the check counts what it typed rather than looking for it');
-
-// beta has no session, so it must make no offer — and refuse if asked anyway.
-const note = await post({ action: 'notify', project: 'beta' });
-ok(note.status === 400 && /no Claude session/.test(note.body.error),
-   'a project with no session refuses the note');
-page.errors = [];
+ok(/re-read them|to-do list/.test(pane),
+   'saving tells the running session, in one line for the lot');
 
 // ---- closing -----------------------------------------------------------
 await page.keyboard.press('Escape');
