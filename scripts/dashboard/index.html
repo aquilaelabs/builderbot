@@ -2680,8 +2680,8 @@ function drawProjects(ps){
       ${isBroken(p) ? "" : `<button class="eye${p.todo ? "" : " none"}"
          data-m="${esc(p.name)}" aria-label="to do"
          title="${p.todo
-                  ? `${p.todo} still to do here — and what Claude remembers, below it`
-                  : "nothing to do here yet — and what Claude remembers, below it"}"
+                  ? `${p.todo} still to hand over here — and what Claude remembers, below it`
+                  : "nothing left to hand over here — and what Claude remembers, below it"}"
          >${BOOK}${p.todo ? `<i>${p.todo}</i>` : ""}</button>`}
       <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
         aria-label="${p.excluded ? "include" : "exclude"}"
@@ -3422,7 +3422,10 @@ async function openMemory(name){
   $("todoList").innerHTML = `<div class="hint">loading…</div>`;
   $("memModal").hidden = false;
   $("todoText").focus();
-  await Promise.all([loadTodo(gen), loadMemory(gen)]);
+  // Opening it is a re-read: both halves come off disk again, and the card
+  // behind gets the same treatment so the number on the row you just pressed
+  // is not the one from the last poll.
+  await Promise.all([loadTodo(gen), loadMemory(gen), refresh()]);
 }
 
 // ---- the shared to-do list ---------------------------------------------

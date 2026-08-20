@@ -469,6 +469,30 @@ ok(true, 'and the send controls come back');
 await page.evaluate(() => loadTodo(memGen));
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0);
 
+// ---- the number on the row ----------------------------------------------
+// It counts what the panel counts: things still to hand over. It used to
+// count "not done", and nothing in the panel sets done — so crossing a whole
+// list off left the badge exactly where it was.
+const badge = () => page.$eval(`${row('alpha')} [data-m]`,
+  b => b.querySelector('i')?.textContent || '0');
+// A plain one of its own, because everything left on this list by now is a
+// group or already crossed — and crossing a group's title is not something
+// the panel offers, nor would it settle one: its steps carry that.
+const counted = await post({ action: 'add', project: 'alpha', text: 'one to count' });
+const anyId = String(counted.body.item.id);
+await page.evaluate(() => refresh());
+const before = Number(await badge());
+ok(before > 0, `the row carries a count (${before})`);
+await post({ action: 'cross', project: 'alpha', id: Number(anyId), on: true });
+await page.evaluate(() => refresh());
+await page.waitForFunction(n => Number(document.querySelector(
+  '#projects .row:has(.name) [data-m] i')?.textContent || 0) !== n, before,
+  { timeout: 15000 });
+ok(Number(await badge()) === before - 1,
+   '...and crossing one off takes it down, which is the whole point of a badge');
+await post({ action: 'remove', project: 'alpha', id: Number(anyId) });
+await page.evaluate(() => refresh());
+
 // ---- two Saves, and what the line says ----------------------------------
 // The difference between them is whether a line of anybody's conversation is
 // spent. Both settle the panel; only one tells.

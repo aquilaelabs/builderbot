@@ -910,7 +910,9 @@ lives in its body. The cards:
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
   is a bin on the row
-- a **checklist** per project, carrying how much is still to do here. It opens
+- a **checklist** per project, carrying how much is still to hand over here —
+  the same number the panel shows, refreshed with every poll and again the
+  moment you open it. It opens
   the [shared to-do list](#the-shared-to-do-list) — the one surface here that
   both you and a session write — with what Claude remembers folded away
   beneath it.
