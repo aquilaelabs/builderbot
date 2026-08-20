@@ -371,7 +371,6 @@ button.on{background:#1f6f36;border-color:#2ea043}
 #memFold>summary::before{content:"▸ ";font-size:11px}
 #memFold[open]>summary::before{content:"▾ "}
 #memFold>.field{padding-top:0}
-.memacts{padding:0 14px 12px}
 /* Long lists scroll inside the panel rather than pushing the Add field and the
    footer off the screen. A cap in rough proportion to the window, so a desktop
    shows more of it than a phone does, and a shadowless inset edge to say there
@@ -798,7 +797,7 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="field todoask" id="todoAsk" hidden>
       <label class="also" id="todoAlsoWrap">
         <input type="checkbox" id="todoAlso" checked>
-        <span>also tell it the list changed</span>
+        <span>also save everything else</span>
       </label>
       <button id="todoGo" class="primary" type="button">Send</button>
     </div>
@@ -818,18 +817,12 @@ body.dragging .tab .lbl{cursor:grabbing}
       <label id="memCount">Memories</label>
       <div id="memList"></div>
     </div>
-    <!-- The fold's own controls live inside it. Four buttons in the footer did
-         not fit a phone, and a footer that does not fit slides the whole panel
-         sideways under your thumb. -->
-    <div class="macros memacts">
-      <button id="memSave" type="button">Save</button>
-      <button id="memNote" type="button" hidden>Re-read them</button>
-    </div>
     </details>
     <div class="foot">
-      <!-- Edits are written the moment they are made; this is the separate
-           act of spending a line of the conversation to say so. -->
-      <button id="todoSave" type="button" hidden>Save &amp; tell the session</button>
+      <!-- One Save for the panel. Edits to the list are written as they are
+           made and memory edits are written here, and either way this is the
+           separate act of spending a line of the conversation to say so. -->
+      <button id="todoSave" type="button" disabled>Save</button>
       <span class="sp"></span>
       <button id="memClose" class="primary" type="button">Close</button>
     </div>
@@ -3408,7 +3401,6 @@ function openLinkProject(name){ pLink = name; pOpen("link"); }
 // it was told about, which is what keeps the one free-text file write in the
 // dashboard from being a way to write anywhere.
 
-let memHasSession = false;   // is there a live session to hand a note to?
 let memProj = null;      // which project's panel is open
 let memGen  = 0;         // bumped on close, so a slow load cannot repaint it
 
@@ -3419,9 +3411,8 @@ async function openMemory(name){
   $("memWhere").textContent = "what Claude remembers here";
   $("memDrift").innerHTML = $("memList").innerHTML = "";
   $("memIndex").value = "";
-  $("memNote").hidden = true;
   $("memFold").open = false;
-  $("todoSave").hidden = true;
+  $("todoSave").disabled = true;
   $("todoAsk").hidden = true;
   todoOrdering = false;
   cancelSend();
@@ -3643,17 +3634,27 @@ function drawTodo(j){
   // dead until an arrow is armed — a control that appears under your thumb is
   // a control you press by accident.
   $("todoAsk").hidden = !rows.length || todoOrdering;
+  syncSave();
   $("todoOrder").hidden = !rows.length;
   $("todoOrder").classList.toggle("on", todoOrdering);
   const armed = !!todoSel && live;
   $("todoGo").disabled = !armed;
   $("todoAlso").disabled = !armed || !todoUnsaved;
   $("todoAlsoWrap").classList.toggle("off", !armed || !todoUnsaved);
-  // The Save button is the only thing that spends a line of the conversation,
-  // so it is only there when there is something to spend it on.
-  $("todoSave").hidden = !todoUnsaved || !live;
-  $("todoSave").disabled = false;
-  $("todoSave").textContent = "Save & tell the session";
+}
+
+// One button for the panel: the list's changes are already on disk, the
+// memory editor's are not, and either way this is what tells a session. Dead
+// rather than absent, so the footer does not move about under a thumb.
+function syncSave(){
+  const b = $("todoSave");
+  if (!b) return;
+  const dirty = todoUnsaved || memDirty();
+  b.disabled = !dirty;
+  b.textContent = todoSession ? "Save & tell the session" : "Save";
+  b.title = todoSession
+    ? "write any memory edits, and tell " + todoSession + " that this moved"
+    : "write any memory edits — nothing is running here to tell";
 }
 
 let todoItems = [];
@@ -3772,10 +3773,6 @@ function drawMemory(j){
   $("memDrift").innerHTML = j.issues.map(i => `<div>${esc(i.text)}</div>`).join("");
   // The note is offered only when there is a session to put it in, and says
   // what it will do: the text is typed, not sent. See memory.py's notify().
-  memHasSession = !!j.session;
-  $("memNote").hidden = !j.session || !$("memFold").open;
-  $("memNote").title = "ask " + (j.session || "") + " to re-read these — sent "
-    + "if the line visibly lands in its input box, left there for you if not";
   $("memCount").textContent = n ? "Memories — newest first" : "Memories";
   $("memListField").hidden = !n;
   // Which were open before this redraw. Saving reloads the book, and folding
@@ -3805,7 +3802,12 @@ function drawMemory(j){
              </div>`}
       </div>
     </details>`).join("");
-  $("memList").querySelectorAll("textarea[data-file]").forEach(t => t.dataset.was = t.value);
+  $("memList").querySelectorAll("textarea[data-file]").forEach(t => {
+    t.dataset.was = t.value;
+    t.oninput = syncSave;
+  });
+  $("memIndex").oninput = syncSave;
+  syncSave();
   $("memList").querySelectorAll("[data-del]").forEach(b =>
     b.onclick = () => forgetMemory(b.dataset.del));
 }
@@ -3827,7 +3829,8 @@ async function postMemory(body){
 // Is there anything in the memory half that has not been written?
 function memDirty(){
   const idx = $("memIndex");
-  if (idx.value !== idx.dataset.was) return true;
+  if (!idx) return false;
+  if (idx.value !== (idx.dataset.was ?? "")) return true;
   return [...$("memList").querySelectorAll("textarea[data-file]")]
     .some(t => t.value !== t.dataset.was);
 }
@@ -3840,11 +3843,8 @@ async function saveMemory(quiet){
     if (t.value !== t.dataset.was) edits.push({file: t.dataset.file, text: t.value});
   });
   if (!edits.length){ if (!quiet) notify("nothing changed"); return; }
-  const b = $("memSave");
-  b.disabled = true; b.textContent = "Saving…";
   let done = 0;
   for (const e of edits) if (await postMemory({action:"save", ...e})) done++;
-  b.disabled = false; b.textContent = "Save changes";
   if (done && !quiet)
     notify(`saved ${done} of ${edits.length} — Claude reads these when a session starts`);
   if (!quiet){ await loadMemory(memGen); refresh(); }
@@ -3862,16 +3862,6 @@ The file goes, and its line comes out of the`
   }
 }
 
-async function noteMemory(){
-  const j = await postMemory({action:"notify"});
-  if (!j) return;
-  // notify.py submits only what it can see arrived; anything else is left in
-  // the input box, because something other than a text field has the keyboard.
-  notify(j.sent ? "sent to the session"
-                : "typed into the session but not sent — something else has the "
-                  + "keyboard there; press Enter in that tab when it is clear",
-         !j.sent);
-}
 
 function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
 
@@ -3896,9 +3886,6 @@ $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 // The memory controls belong to the fold, not to the panel: with it closed
 // the footer is one button, which is what a panel about a to-do list should
 // end with.
-$("memFold").ontoggle = () => {
-  $("memNote").hidden = !$("memFold").open || !memHasSession;
-};
 $("todoAdd").onclick = addTodo;
 $("todoGo").onclick = reallySend;
 $("todoOrder").onclick = () => {
@@ -3906,11 +3893,16 @@ $("todoOrder").onclick = () => {
   if (todoOrdering) cancelSend();
   drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
 };
+// The one Save: memory edits are written, then a running session is told
+// once about everything that moved. Two buttons meant two lines spent saying
+// the same thing.
 $("todoSave").onclick = async () => {
   const b = $("todoSave");
-  b.disabled = true; b.textContent = "Telling…";
+  b.disabled = true; b.textContent = "Saving…";
+  if (memDirty()) await saveMemory(true);
   const j = await postTodo({action: "tell"});
-  if (j) notify(j.told ? "told " + (todoSession || "the session")
+  await loadMemory(memGen);
+  if (j) notify(j.told ? "saved, and told " + (todoSession || "the session")
                        : "saved — nothing is running here to tell");
 };
 $("todoText").onkeydown = e => {
@@ -3921,8 +3913,6 @@ $("todoText").onkeydown = e => {
   }
 };
 $("memClose").onclick = closeMemory;
-$("memSave").onclick  = saveMemory;
-$("memNote").onclick  = noteMemory;
 // The backdrop closes it like the others — but only from the backdrop itself,
 // so a click that lands in the box while selecting text does not.
 $("memModal").onclick = e => { if (e.target.id === "memModal") closeMemory(); };

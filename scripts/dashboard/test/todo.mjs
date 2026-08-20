@@ -397,6 +397,31 @@ const up1 = await post({ action: 'move', project: 'alpha', id: Number(plainId),
 ok(up1.status === 400 && /has gone/.test(up1.body.error),
    '...and nothing moves above it either, which is what keeps the crossed ones a block');
 page.errors = [];
+
+// A crossed *item* is not a crossed step: nothing behind it depends on where
+// it sits, so it moves like any other line. Only a group's steps are pinned,
+// because every rule about what can be sent reads them as a block.
+// A fresh one, because everything else on this list is a group by now.
+const lone = await post({ action: 'add', project: 'alpha', text: 'a line on its own' });
+const loneId = String(lone.body.item.id);
+await post({ action: 'cross', project: 'alpha', id: Number(loneId), on: true });
+await page.evaluate(() => loadTodo(memGen));
+await page.waitForFunction(id => document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="-1"]`)?.classList.contains('sent'),
+  loneId, { timeout: 10000 });
+ok(await page.$$eval(`#todoList .todo[data-id="${loneId}"][data-step="-1"] .mv`,
+     bs => bs.every(b => !b.disabled)),
+   'a crossed single item still moves — the pin is a rule about groups');
+// Down, because a new item goes in at the top and "move the top one up" is
+// correctly a refusal.
+const moved = await post({ action: 'move', project: 'alpha', id: Number(loneId),
+                           dir: 1 });
+ok(moved.status === 200, '...and the server agrees');
+ok(read().projects.alpha[1].text === 'a line on its own',
+   '...and it really moved, crossed or not');
+await post({ action: 'remove', project: 'alpha', id: Number(loneId) });
+page.errors = [];
+
 await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: false });
 await page.click('#todoOrder');
 await page.waitForFunction(() => document.getElementById('todoAsk').checkVisibility());
@@ -413,7 +438,7 @@ await ready(phone);
 await phone.click(`${row('alpha')} [data-m]`);
 await phone.waitForSelector('#todoList .todo', { timeout: 20000 });
 await phone.click('#memFold > summary');           // every control on screen at once
-await phone.waitForFunction(() => document.getElementById('memSave').checkVisibility());
+await phone.waitForFunction(() => document.getElementById('memList').checkVisibility());
 const wide = await phone.evaluate(() => {
   const out = [];
   for (const sel of ['.modal .box', '#todoList', '#memList', '.modal .foot', '.todoask'])

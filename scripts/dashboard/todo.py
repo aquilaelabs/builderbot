@@ -439,6 +439,16 @@ MEM_CHANGED = ("My notes about how you work here just changed — re-read them "
                "keep them in mind, but carry on with what you are doing.")
 
 
+def mark_unsaved(project):
+    """Something else about this project moved — a memory, say — and the one
+    Save button covers all of it."""
+    with _lock:
+        d = load()
+        _touch(d, project, True)
+        save(d)
+    return {"ok": True}
+
+
 def mark_told(project):
     with _lock:
         d = load()
