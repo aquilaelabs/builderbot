@@ -20,7 +20,6 @@ import os
 import re
 import selectors
 import shlex
-import shutil
 import socket
 import subprocess
 import tempfile
@@ -651,7 +650,7 @@ def _valid_projects(ps):
 
 
 def findings_payload():
-    ps = projects()
+    ps = project_list()
     known = {p["name"] for p in ps}
     if not REPORTS.is_dir():
         return {"available": False, "reports": [], "projects": sorted(known)}
@@ -774,11 +773,6 @@ GITHUB_URL = re.compile(
     r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)"
     r"[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._-]*?(?:\.git)?/?")
 
-# One creation at a time. Not _state_lock: a clone can take minutes, and
-# holding the state lock that long would stall every layout save behind it.
-_create_lock = threading.Lock()
-
-
 def build_claude_md(about):
     """A new project's CLAUDE.md: the shipped template, with the section below
     the end marker replaced by the operator's own notes when they gave any.
@@ -798,86 +792,6 @@ def build_claude_md(about):
         return text                      # unmarked template: nothing to split on
     head = text[:i + len(ENV_END)]
     return head + "\n\n---\n\n## About this project\n\n" + about.rstrip() + "\n"
-
-
-def _readme_intro(dest):
-    """The first prose paragraph of the repo's README, or None.
-
-    Headings, badges and raw HTML are skipped — the first thing most READMEs
-    hold is a wall of shields, and a CLAUDE.md that opens with badge markup
-    describes the README, not the project."""
-    for name in ("README.md", "README.rst", "README.txt", "README"):
-        p = dest / name
-        if not p.is_file():
-            continue
-        try:
-            text = p.read_text(errors="replace")
-        except OSError:
-            return None
-        out = []
-        for para in text.split("\n\n"):
-            # Filtered line by line, not paragraph by paragraph: the most
-            # common README opens "# Title\nprose" with no blank line
-            # between, and skipping that whole block threw away the prose
-            # with the heading.
-            lines = [l for l in para.splitlines()
-                     if l.strip() and not l.lstrip().startswith(
-                         ("#", "<", "![", "[![", "---", "=", "|", "```", ">"))]
-            if not lines:
-                continue
-            out.append(re.sub(r"\s+", " ", " ".join(lines)).strip())
-            if sum(map(len, out)) > 400:
-                break
-        return " ".join(out)[:600] or None
-    return None
-
-
-def _build_hints(dest):
-    """Build/test commands read off the tree's own marker files.
-
-    Heuristics, deliberately shallow: the point is a first draft that names
-    the toolchain, not a build system parser. Wrong guesses are cheap here —
-    the section carries a note saying to verify it."""
-    hints = []
-    try:
-        scripts = (json.loads((dest / "package.json").read_text())
-                   .get("scripts") or {})
-        hints += [f"- **{k}:** `npm run {k}`"
-                  for k in ("build", "test", "lint", "dev") if k in scripts]
-    except (OSError, ValueError):
-        pass
-    if (dest / "gradlew").is_file():
-        hints += ["- **Build:** `./gradlew build`"
-                  + (" — `./gradlew assembleDebug` for an APK"
-                     if (dest / "app").is_dir() else ""),
-                  "- **Test:** `./gradlew test`"]
-    if (dest / "Cargo.toml").is_file():
-        hints += ["- **Build:** `cargo build`", "- **Test:** `cargo test`"]
-    if (dest / "go.mod").is_file():
-        hints += ["- **Build:** `go build ./...`", "- **Test:** `go test ./...`"]
-    if (dest / "pyproject.toml").is_file():
-        hints.append("- **Python:** `pyproject.toml` present — `uv pip install -e .`"
-                     + ("; `pytest`" if (dest / "tests").is_dir() else ""))
-    if (dest / "Makefile").is_file():
-        hints.append("- **Make:** a `Makefile` is present — see its targets")
-    return hints
-
-
-def describe_repo(dest):
-    """A drafted project section for a repo that arrived without a CLAUDE.md:
-    the README's own first paragraph, plus whatever the marker files say about
-    building it. None when the tree says nothing — the template's placeholder
-    section is more honest than an empty guess."""
-    parts = [p for p in (_readme_intro(dest),) if p]
-    hints = _build_hints(dest)
-    if hints:
-        parts.append("What the tree suggests:\n\n" + "\n".join(hints))
-    if not parts:
-        return None
-    parts.append("<!-- Drafted automatically at clone time from the repository's "
-                 "own files. Have a session verify this against the code and "
-                 "flesh it out. -->")
-    return "\n\n".join(parts)
 
 
 # The builder user's ssh directory. Overridable through BUILDER_HOME for the
@@ -1022,7 +936,10 @@ def _github_remote(remotes):
 IGNORE_MARKER = ".bbignore"
 
 
-def projects():
+def project_list():
+    """Every directory under /workspace that is a project, with what is wrong
+    with it. Named _list because `projects` is the module beside this one that
+    creates them — one name for the reading and one for the writing."""
     out = []
     uid, gid = os.getuid(), os.getgid()
     try:
@@ -1042,7 +959,13 @@ def projects():
                  "issues": [{"level": "error",
                              "text": f"cannot list this directory as uid {uid}:{gid}"
                                      " — chown it to PUID:PGID on the host"}]}]
+    cloning = projects.busy_name()
     for d in here:
+        # Mid-clone: a directory with a .git and not much else, which every
+        # check below reads as a repository in a strange state. The job row is
+        # already saying what it really is.
+        if d.name == cloning:
+            continue
         # `_work` is the runner's checkout area, not a project. Hidden
         # directories are not projects either: the whole projects folder is
         # mounted now, so this list would otherwise open with the share's own
@@ -1477,6 +1400,17 @@ import memory                                                    # noqa: E402
 memory.configure(run=run, workspace=WORKSPACE,
                  claude_projects=CLAUDE_PROJECTS, tmux_name=tmux_name)
 
+# ---- new project, and linking one ------------------------------------------
+# Creating and cloning, and the worker that runs the ones that touch the
+# network. The credential half stays here — agent_keys and the ssh aliases are
+# this box's, not any one project's — and is handed over.
+import projects                                                  # noqa: E402
+
+projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
+                   gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
+                   repo_path=repo_path, build_claude_md=build_claude_md,
+                   project_name=PROJECT_NAME, github_url=GITHUB_URL)
+
 
 def _doctor_loop():
     while True:
@@ -1543,7 +1477,7 @@ def findings_counts(ps):
 
 
 def snapshot():
-    ps = projects()
+    ps = project_list()
     sessions = tmux_sessions()
     # Each shell's git context, resolved here where WORKSPACE is known: the
     # git/GitHub command cards ghost against the directory the active shell
@@ -1567,6 +1501,9 @@ def snapshot():
         "reports_mtime": reports_mtime(),
         "findings_counts": findings_counts(ps),
         "doctor": doctor_payload(),
+        # A clone or a first push runs in the background now, so the card can
+        # say what it is doing without the dialog being open.
+        "project_job": projects.job(),
         "max_tabs": MAX_TABS,
         # The command list is built from the table above rather than spelled out
         # again in the page, so a command added here appears as a button and one
@@ -1839,6 +1776,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(findings_payload())
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
+        if self.path.startswith("/api/project-job"):
+            return self._json(projects.job())
         if self.path.startswith("/api/memory"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             got = memory.payload(q.get("project", [""])[0],
@@ -1894,6 +1833,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._create(req)
         if path.startswith("/api/link"):
             return self._link(req)
+        if path.startswith("/api/project-job"):
+            return self._project_job(req)
         if path.startswith("/api/packages"):
             return self._packages(req)
         if path.startswith("/api/memory"):
@@ -1969,215 +1910,23 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"custom": load_custom()})
 
     def _create(self, req):
-        """Create a project under /workspace: a fresh local repo, or a clone
-        of a GitHub repository the container's credentials can already reach.
-
-        The name is validated before it becomes a path and the URL before it
-        becomes an argument — see PROJECT_NAME and GITHUB_URL for why both are
-        allow-lists. The clone runs with prompts disabled so missing access
-        fails with git's own message instead of hanging a request forever on a
-        username prompt nobody can answer.
-
-        mkdir is the claim: it is atomic, so two requests racing on one name
-        get one directory and one clean "already exists". On failure the
-        directory this request just made is removed — never one that was
-        already there, which is the FileExistsError branch returning first.
-        """
-        mode = req.get("mode")
-        if mode not in ("init", "clone"):
-            return self._json({"error": "unknown mode"}, 400)
-        url = (req.get("url") or "").strip()
-        if mode == "clone":
-            if not GITHUB_URL.fullmatch(url):
-                return self._json({"error": "not a GitHub repository address — "
-                                   "use https://github.com/owner/repo or "
-                                   "git@github.com:owner/repo.git"}, 400)
-            # The repository already knows its name; asking again would just
-            # invite a second spelling of the same thing. Notes are not asked
-            # for either — they are drafted from the code after the clone.
-            name = re.split(r"[/:]", url.rstrip("/"))[-1]
-            name = name[:-4] if name.endswith(".git") else name
-            about = ""
-            # An optional deploy key, by name. The name is only ever matched
-            # against what the agent actually holds — nothing from the request
-            # is written into a file or a config line; the matched key's own
-            # public line is. When one is chosen the clone goes through a
-            # per-repo alias (see ensure_deploy_alias for why), which also
-            # leaves the remote pointing at that alias, so pushes keep using
-            # the right key without anyone re-doing this by hand.
-            keyname = (req.get("key") or "").strip()
-            if keyname:
-                match = next((k for k in agent_keys()
-                              if k["name"] == keyname), None)
-                if match is None:
-                    return self._json({"error": f"the agent holds no key "
-                                                f"named {keyname}"}, 400)
-                alias = ensure_deploy_alias(match["name"], match["pub"])
-                url = f"git@{alias}:{repo_path(url)}.git"
-        else:
-            name = (req.get("name") or "").strip()
-            about = (req.get("about") or "").strip()
-        if not PROJECT_NAME.fullmatch(name):
-            return self._json({"error": "a project name is one path segment: "
-                               "letters, digits, dots, dashes, underscores, "
-                               "starting with a letter or digit"}, 400)
-        dest = WORKSPACE / name
-        with _create_lock:
-            try:
-                dest.mkdir()
-            except FileExistsError:
-                return self._json({"error": f"{name} already exists in the "
-                                            "workspace"}, 400)
-            except OSError as e:
-                return self._json({"error": f"cannot create {name}: {e}"}, 500)
-            if mode == "clone":
-                # BatchMode so a key the agent does not hold fails instead of
-                # prompting; accept-new because the first contact with github.com
-                # on a fresh home volume is expected, not an attack to refuse.
-                env = dict(os.environ, GIT_TERMINAL_PROMPT="0",
-                           GIT_SSH_COMMAND="ssh -o BatchMode=yes "
-                                           "-o StrictHostKeyChecking=accept-new")
-                r = run(["git", "clone", "--", url, str(dest)],
-                        timeout=600, env=env)
-            else:
-                r = run(["git", "init", "-b", "main", str(dest)], timeout=30)
-            if r["code"] != 0:
-                shutil.rmtree(dest, ignore_errors=True)   # made a moment ago
-                return self._json({"error": r["out"].strip()[-2000:]
-                                            or f"git {mode} failed"}, 500)
-
-            # The CLAUDE.md. A cloned repo that already carries one keeps it;
-            # one that does not gets a draft read out of its own files — the
-            # README's opening and whatever the marker files say about
-            # building it. A fresh local repo gets the operator's notes.
-            md = dest / "CLAUDE.md"
-            if md.is_file():
-                note = "kept the repository's own CLAUDE.md"
-            else:
-                if mode == "clone":
-                    about = describe_repo(dest) or ""
-                body = build_claude_md(about)
-                if body is None:
-                    note = "no CLAUDE.md template in this image; none written"
-                else:
-                    try:
-                        md.write_text(body)
-                        note = (("CLAUDE.md drafted from the repository's own files"
-                                 if mode == "clone" else
-                                 "CLAUDE.md created from your notes") if about
-                                else "CLAUDE.md created from the template")
-                    except OSError as e:
-                        note = f"could not write CLAUDE.md: {e}"
-        return self._json({"ok": True, "name": name, "note": note})
+        """New project — a fresh local repo, or a clone. See projects.py."""
+        body, code = projects.create(req)
+        return self._json(body, code)
 
     def _link(self, req):
-        """Point an existing local repo at an *empty* GitHub repository and
-        push what it has.
+        """Link an existing local repo to an empty GitHub repo. See projects.py."""
+        body, code = projects.link(req)
+        return self._json(body, code)
 
-        Empty-only is the safety property: `git ls-remote` must come back
-        with no refs before anything is pushed, so this can never write over
-        a repository that already holds work. The one thing it will create is
-        a repo that does not exist at all — PAT path only, always private —
-        because "not found" from GitHub is the one answer that proves there
-        is nothing there to harm.
-
-        Auth mirrors the clone: a picked deploy key means an ssh alias, no
-        key means the PAT answers for https — and with neither, this refuses
-        up front instead of letting the push discover it.
-
-        There is no lock around check-then-add: two racing links resolve at
-        `git remote add`, which refuses a duplicate origin, and the loser's
-        error says exactly that.
-        """
-        name = (req.get("name") or "").strip()
-        url = (req.get("url") or "").strip()
-        keyname = (req.get("key") or "").strip()
-        try:
-            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
-        except OSError:
-            here = set()
-        if name not in here:
-            return self._json({"error": f"unknown project: {name}"}, 400)
-        dest = str(WORKSPACE / name)
-        if run(["git", "-C", dest, "rev-parse", "--is-inside-work-tree"],
-               timeout=10)["out"].strip() != "true":
-            return self._json({"error": f"{name} is not a git repository"}, 400)
-        if run(["git", "-C", dest, "remote"], timeout=10)["out"].strip():
-            return self._json({"error": f"{name} already has a remote"}, 400)
-        if not GITHUB_URL.fullmatch(url):
-            return self._json({"error": "not a GitHub repository address — use "
-                               "https://github.com/owner/repo or "
-                               "git@github.com:owner/repo.git"}, 400)
-        path = repo_path(url)
-        pat = gh_authed()
-        if keyname:
-            match = next((k for k in agent_keys() if k["name"] == keyname), None)
-            if match is None:
-                return self._json({"error": f"the agent holds no key named "
-                                            f"{keyname}"}, 400)
-            remote = f"git@{ensure_deploy_alias(match['name'], match['pub'])}:{path}.git"
-        elif pat:
-            # Plain https: gh's credential helper (wired at startup) answers
-            # for it, so nothing secret lands in .git/config.
-            remote = f"https://github.com/{path}.git"
-        else:
-            return self._json({"error": "no PAT is configured and no deploy key "
-                               "was picked — a push needs one of the two"}, 400)
-
-        env = dict(os.environ, GIT_TERMINAL_PROMPT="0",
-                   GIT_SSH_COMMAND="ssh -o BatchMode=yes "
-                                   "-o StrictHostKeyChecking=accept-new")
-        created = ""
-        # split_err: emptiness is judged on stdout alone. ssh's first-contact
-        # "Permanently added github.com ..." note arrives on stderr with exit
-        # 0, and combined it made a genuinely empty repository look occupied.
-        r = run(["git", "ls-remote", "--", remote], timeout=60, env=env,
-                split_err=True)
-        if r["code"] != 0:
-            blame = (r["err"] + r["out"]).strip()
-            if "not found" in blame.lower() and keyname:
-                # Creating it here would not help: a brand-new repo has no
-                # deploy keys, so the push over this alias still fails — and
-                # a retry would then trip over the half-done state. Say what
-                # the fix actually is instead.
-                return self._json({"error": "GitHub reports the repository as "
-                                   "not found over ssh. Create it (empty) on "
-                                   "GitHub and add this deploy key to it first"
-                                   + (", or leave the key on none to use the "
-                                      "PAT" if pat else "") + "."}, 400)
-            if "not found" in blame.lower() and pat:
-                c = run(["gh", "repo", "create", path, "--private"], timeout=60)
-                if c["code"] != 0:
-                    return self._json({"error": c["out"].strip()[-2000:]
-                                                or "gh repo create failed"}, 500)
-                created = f"created {path} on GitHub (private); "
-            else:
-                return self._json({"error": blame[-2000:]
-                                            or "cannot reach that repository"}, 500)
-        elif r["out"].strip():
-            return self._json({"error": "that repository is not empty — linking "
-                               "only targets empty repositories, so nothing can "
-                               "be overwritten"}, 400)
-
-        a = run(["git", "-C", dest, "remote", "add", "origin", remote], timeout=10)
-        if a["code"] != 0:
-            return self._json({"error": a["out"].strip() or "remote add failed"}, 500)
-        if run(["git", "-C", dest, "rev-parse", "-q", "--verify", "HEAD"],
-               timeout=10)["code"] != 0:
-            return self._json({"ok": True, "name": name,
-                               "note": created + "remote set — nothing committed "
-                                                 "yet, so nothing was pushed"})
-        p = run(["git", "-C", dest, "push", "-u", "origin", "HEAD"],
-                timeout=300, env=env)
-        if p["code"] != 0:
-            # The remote stays: it is correct configuration, and the push is
-            # the retryable part — from here or from any shell.
-            return self._json({"error": created + "the remote was set, but the "
-                               "push failed:\n" + p["out"].strip()[-2000:]}, 500)
-        branch = run(["git", "-C", dest, "symbolic-ref", "--short", "-q", "HEAD"],
-                     timeout=10)["out"].strip() or "HEAD"
-        return self._json({"ok": True, "name": name,
-                           "note": f"{created}pushed {branch}"})
+    def _project_job(self, req):
+        """Stop the running project job, or clear the last one's outcome."""
+        act = req.get("action", "")
+        if act == "abort":
+            return self._json(projects.abort())
+        if act == "dismiss":
+            return self._json(projects.dismiss())
+        return self._json({"error": f"unknown action: {act}"}, 400)
 
     def _packages(self, req):
         """Queue installs or removals of the packages the Tools card offers.

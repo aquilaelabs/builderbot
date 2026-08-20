@@ -92,6 +92,19 @@ mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk}
 # hand. Either way it is not a project.
 mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
 echo '["delta"]' > "$S/state/excluded-projects.json"
+# A git that stalls on one magic URL and is the real git for everything else.
+# Cloning is a background job now, and the two properties that matters for —
+# it outlives the page, and it can be stopped — can only be checked against a
+# clone that is still going when the test looks.
+REAL_GIT="$(command -v git)"
+cat > "$S/bin/git" <<GEOF
+#!/usr/bin/env bash
+for a in "\$@"; do
+    case "\$a" in *slowclone*) sleep 120; exit 1 ;; esac
+done
+exec "$REAL_GIT" "\$@"
+GEOF
+chmod +x "$S/bin/git"
 # alpha has a previous Claude conversation, so its Claude button offers the
 # Resume / New chooser rather than starting straight away.
 mkdir -p "$S/home/.claude/projects/$(echo "$S/ws/alpha" | tr / -)"

@@ -119,11 +119,36 @@ ok(await page.$eval('#pPub', el => el.value.startsWith('ssh-ed25519 ')),
 
 await page.fill('#pUrl', 'https://github.com/owner/kproj');
 await page.click('#pCreate');
-await page.waitForFunction(() =>
-  !document.getElementById('pErrWrap').hidden, { timeout: 60000 });
-ok(await page.$eval('#pmodal', el => !el.hidden),
-   'the failed clone reports in place');
-ok(!existsSync(`${DIR}/ws/kproj`), '...and leaves no directory');
+// A clone is a background job now: the dialog gets out of the way as soon as
+// the job is accepted, and the Projects card carries it from there — which is
+// also what happens when the page is closed a second later.
+await page.waitForFunction(() => document.getElementById('pmodal').hidden,
+                           { timeout: 20000 });
+ok(true, 'the dialog closes once the clone is accepted, rather than holding the request');
+ok(await page.$eval('#projects .row.job .name', el => el.textContent === 'kproj'),
+   'the Projects card shows the job where its result will appear');
+ok(await page.$eval('#projects .row.job .sub', el => /clon|start/.test(el.textContent))
+   && await page.$('#projects .row.job .dots') !== null,
+   '...saying what it is doing, with an ellipsis rather than a parsed percentage');
+ok(await page.$eval('#bNewProj', b => b.disabled),
+   '...and New project is dead while it runs — one job at a time');
+// The failure lands on the card, not in a toast that is gone in seven
+// seconds: the page may not have been open when it happened.
+await page.waitForFunction(() => {
+  const s = document.querySelector('#projects .row .sub.bad');
+  return s && s.textContent.length > 0;
+}, { timeout: 60000 });
+ok(await page.$('#projects .row.job') === null
+   && await page.$eval('#bNewProj', b => !b.disabled),
+   'the job ends and the controls come back');
+ok(!existsSync(`${DIR}/ws/kproj`), '...and a failed clone leaves no directory');
+ok(await page.$('#bJobOk') !== null, 'the failure stays until it is dismissed');
+await page.click('#bJobOk');
+await page.waitForFunction(() => !document.querySelector('#projects .row .sub.bad'));
+ok(true, '...and dismissing clears it');
+await page.click('#bNewProj');
+await page.click('#pClone');
+await page.waitForFunction(() => !document.getElementById('pKeyField').hidden);
 const pub = readFileSync(`${DIR}/home/.ssh/bb_github_testkey.pub`, 'utf8');
 ok(pub.trim() === keys[0].pub, 'the .pub selector was written from the agent, not the request');
 const cfg = readFileSync(`${DIR}/home/.ssh/config`, 'utf8');
@@ -133,6 +158,43 @@ ok(cfg.includes('Host bb-github_testkey') && cfg.includes('IdentitiesOnly yes')
 ok(await post({ mode: 'clone', url: 'https://github.com/owner/kproj',
                 key: 'no_such_key' }) === 400, 'an unknown key name is refused');
 await page.click('#pCancel');
+
+// ---- a job outlives the page, and can be stopped ------------------------
+// The whole reason a clone stopped being an HTTP request. The harness's git
+// stalls on this URL, so there is something still running to look at.
+await page.click('#bNewProj');
+await page.click('#pClone');
+await page.fill('#pUrl', 'https://github.com/owner/slowclone');
+await page.click('#pCreate');
+await page.waitForFunction(() => document.getElementById('pmodal').hidden,
+                           { timeout: 20000 });
+await page.waitForFunction(() =>
+  document.querySelector('#projects .row.job .name')?.textContent === 'slowclone');
+ok(existsSync(`${DIR}/ws/slowclone`),
+   'the directory is claimed up front, so a second request cannot take the name');
+ok(await page.$$eval('#projects .row .name',
+     ns => ns.filter(n => n.textContent === 'slowclone').length === 1),
+   '...and the half-made directory is not also listed as a broken project');
+
+await page.reload();
+await ready(page);
+ok(await page.$eval('#projects .row.job .name', el => el.textContent === 'slowclone'),
+   'a reload finds the job still running — it belongs to the server, not the page');
+await page.waitForFunction(() => {
+  const s = document.querySelector('#projects .row.job .sub');
+  return s && /\d+s/.test(s.textContent);
+}, { timeout: 15000 });
+ok(true, '...and says how long it has been going');
+
+await page.click('#bJobStop');
+await page.waitForFunction(() => !document.querySelector('#projects .row.job'),
+                           { timeout: 30000 });
+ok(!existsSync(`${DIR}/ws/slowclone`),
+   'Abort stops it and removes the half-cloned directory');
+ok((await page.$eval('#projects .row .sub.bad', el => el.textContent)).includes('stopped'),
+   '...and says so rather than looking like a failure of its own');
+await page.click('#bJobOk');
+await page.waitForFunction(() => !document.querySelector('#projects .row .sub.bad'));
 
 // ---- link to GitHub ----------------------------------------------------
 // alpha has a remote, beta does not: the chain button shows on exactly the
@@ -163,12 +225,16 @@ ok(await page.$eval('#pErr', el => el.textContent.includes('deploy key')),
 await page.waitForFunction(() => !document.getElementById('pKeyField').hidden);
 await page.selectOption('#pKey', 'github_testkey');
 await page.click('#pCreate');
-await page.waitForFunction(() => !document.getElementById('pErrWrap').hidden
-  || document.getElementById('pmodal').hidden, { timeout: 60000 });
-ok(await page.$eval('#pmodal', el => !el.hidden), 'the failed link reports in place');
+await page.waitForFunction(() => document.getElementById('pmodal').hidden,
+                           { timeout: 20000 });
+await page.waitForFunction(() => {
+  const s = document.querySelector('#projects .row .sub.bad');
+  return s && s.textContent.length > 0;
+}, { timeout: 60000 });
+ok(true, 'a link runs as a job too, and its failure lands on the card');
 ok(!readFileSync(`${DIR}/ws/beta/.git/config`, 'utf8').includes('[remote'),
    '...and no remote was added — the check comes before the configuration');
-await page.click('#pCancel');
+await page.click('#bJobOk');
 ok(await post({ name: 'alpha', url: 'https://github.com/owner/alpha',
                 key: 'github_testkey' }, '/api/link') === 400,
    'a repo that already has a remote is refused');
