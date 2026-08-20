@@ -459,6 +459,14 @@ bb sdk remove flutter
 bb sdk env                 # the PATH lines; new shells get them automatically
 ```
 
+**The catalog is a file, not a list in the code.**
+[`config/packages.json`](config/packages.json) holds every row the tab renders
+— name, label, rough size, where it lands, what it is for — and both the
+dashboard and `bb sdk` read it, so adding one is a single edit. What it cannot
+hold is the recipe: each of these installs differently (a git clone, a
+tarball, `sdkmanager`, `rustup`, a vendor's shell script), so a new package is
+an entry there plus a branch in `bb`'s `sdk_install`.
+
 **Nothing installs, updates or removes itself, and no session can do it for
 you.** `bb sdk install|update|remove` refuses to run when `CLAUDECODE` is in
 the environment — that variable is in everything a Claude session runs, and
@@ -503,7 +511,10 @@ which is where to look when "it is working" is not enough.
 is local knowledge — a directory name, or `flutter --version` — so it is on
 every row from the moment the tab opens, cached until something is installed.
 Whether a newer one exists is a network round trip to a different upstream
-per toolchain, so that one waits to be asked. A check answers for the rows
+per toolchain, so that one is a slow background errand rather than something
+the poll does: once a minute or so after the container comes up, and once a
+day after that. **Check for updates** asks again on demand, and either way the
+answers are what the rows show. A check answers for the rows
 that are *not* installed too: the version there is what Install would fetch,
 plainly rather than in amber, since nothing about it is news. What a check
 found is kept on the state volume and dated on the page — those answers cost

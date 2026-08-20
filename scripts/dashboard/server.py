@@ -1454,53 +1454,38 @@ def doctor_payload():
 #
 # `probe` is relative to ANDROID_HOME for android packages (whose directories
 # are symlinks into the share) and to the SDK root for everything else.
-PACKAGES = [
-    {"name": "playwright", "label": "Playwright browsers", "size": "~1.3 GB",
-     "probe": "playwright",
-     "about": "Chromium, Firefox and WebKit. The image carries Playwright "
-              "itself and the system libraries; these are the browser bundles "
-              "bb shot and the dashboard's own tests drive."},
-    {"name": "flutter", "label": "Flutter", "size": "~1.3 GB", "probe": "flutter",
-     "about": "Flutter with the bundled Dart SDK. Builds Android APKs here; "
-              "the iOS half of a Flutter app still needs a Mac."},
-    {"name": "dotnet", "label": ".NET + MAUI", "size": "~4 GB", "probe": "dotnet",
-     "about": "The .NET SDK plus the maui-android workload — Android apps from C#."},
-    {"name": "swift", "label": "Swift", "size": "~3 GB", "probe": "swift",
-     "about": "The Swift toolchain for Linux: shared logic, server-side Swift, "
-              "and compiling packages. Not an iOS SDK."},
-    {"name": "android:emulator", "label": "Android emulator", "size": "~800 MB",
-     "probe": "android:emulator",
-     "about": "The emulator binary. System images are per API level and come "
-              "from ANDROID_SYSTEM_IMAGES."},
-    {"name": "android:ndk", "label": "Android NDK", "size": "~3 GB",
-     "probe": "android:ndk",
-     "about": "Native development kit, for C and C++ inside an Android app."},
-    {"name": "android:cmake", "label": "Android CMake", "size": "~100 MB",
-     "probe": "android:cmake",
-     "about": "The CMake the NDK's build system uses."},
-    {"name": "go", "label": "Go", "size": "~250 MB", "probe": "go",
-     "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with "
-              "GOOS and GOARCH — no extra toolchain, no target to install."},
-    {"name": "rust", "label": "Rust", "size": "~700 MB", "probe": "rust",
-     "about": "rustup, cargo and the stable toolchain, kept in one directory. "
-              "A Windows target needs a linker as well: gcc-mingw-w64 via "
-              "EXTRA_APT_PACKAGES, or zig plus cargo-zigbuild."},
-    {"name": "zig", "label": "Zig", "size": "~300 MB", "probe": "zig",
-     "about": "A C and C++ cross-compiler as much as a language: `zig cc "
-              "-target x86_64-windows-gnu` turns this box into a Windows "
-              "toolchain, and it links for Rust too."},
-    {"name": "android:playstore", "label": "Android image: Play Store",
-     "size": "~2 GB", "probe": "android-image:google_apis_playstore",
-     "about": "A system image with the Play Store, for testing anything that "
-              "depends on Google Play services. Pixel-style — Samsung, Oppo "
-              "and the rest ship no emulator images at all."},
-    {"name": "android:tv", "label": "Android image: TV", "size": "~8 GB",
-     "probe": "android-image:android-tv",
-     "about": "Android TV, for a leanback-layout build."},
-    {"name": "android:wear", "label": "Android image: Wear OS", "size": "~1.5 GB",
-     "probe": "android-image:android-wear",
-     "about": "Wear OS, which is what modern Galaxy and Pixel watches run."},
-]
+# The catalog lives beside the code rather than in it: config/packages.json,
+# which ships to /opt/builderbot/config/ and so sits at the same place relative
+# to this file in the image and in a checkout. Adding a package is an entry
+# there plus a recipe in bb's sdk_install — the recipes are the half that
+# cannot be a table, since every one of them installs differently.
+PACKAGES_FILE = HERE.parent.parent / "config" / "packages.json"
+
+
+def load_packages():
+    """The package catalog, or an empty one.
+
+    Empty rather than an exception: this runs at import, and a missing or
+    malformed file must leave a dashboard that says the tab is empty, not one
+    that will not start. Every field is checked because the page renders them.
+    """
+    try:
+        doc = json.loads(PACKAGES_FILE.read_text())
+        rows = doc["packages"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return []
+    out = []
+    for r in rows if isinstance(rows, list) else []:
+        if not isinstance(r, dict):
+            continue
+        if not all(isinstance(r.get(k), str) and r.get(k)
+                   for k in ("name", "label", "size", "probe", "about")):
+            continue
+        out.append({k: r[k] for k in ("name", "label", "size", "probe", "about")})
+    return out
+
+
+PACKAGES = load_packages()
 
 # What the last check found, kept on the state volume. Held only in memory
 # until now, which meant a dashboard restart — or a container update — wiped
@@ -1827,6 +1812,40 @@ def _pkg_worker():
         if action in ("install", "remove", "update"):
             _pkg_local["key"] = None      # whatever just happened moved a version
             _pkg_sized_at[0] = 0.0        # ...and changed what is on the disk
+
+
+def start_pkg_job(action, names):
+    """Queue a package job, unless one is already going. False if it is."""
+    with _pkg_lock:
+        if _pkg_job["running"]:
+            return False
+        _pkg_job.update(running=True, queue=list(names), action=action,
+                        current="", log=[], done=[], failed=[])
+    threading.Thread(target=_pkg_worker, daemon=True).start()
+    return True
+
+
+# A version check on the way up, and once a day after that.
+#
+# The answers are a network round trip apiece and they do not go stale in
+# minutes, so this is a slow background errand rather than anything the poll
+# does: eight seconds of it, a while after boot so that a container coming up
+# is not doing this alongside everything else it does at start. It steps aside
+# for anything the operator started — a check that queued itself behind an
+# install would hold the tab hostage — and tries again later.
+PKG_CHECK_EVERY = 86400
+PKG_CHECK_DELAY = int(os.environ.get("PKG_CHECK_DELAY", "45"))
+PKG_AUTOCHECK = os.environ.get("PKG_AUTOCHECK", "1") != "0"
+
+
+def _versions_loop():
+    time.sleep(PKG_CHECK_DELAY)
+    due = 0                       # the first pass always checks: a container
+    while True:                   # that has just come up gets fresh answers
+        if PACKAGES and time.time() >= due and not _pkg_job["running"]:
+            if start_pkg_job("check", [p["name"] for p in PACKAGES]):
+                due = time.time() + PKG_CHECK_EVERY
+        time.sleep(300)
 
 
 def _doctor_loop():
@@ -2519,12 +2538,8 @@ class Handler(BaseHTTPRequestHandler):
             names = [p["name"] for p in PACKAGES]
         if not names:
             return self._json({"error": "nothing selected"}, 400)
-        with _pkg_lock:
-            if _pkg_job["running"]:
-                return self._json({"error": "an install is already running"}, 409)
-            _pkg_job.update(running=True, queue=list(names), action=action,
-                            current="", log=[], done=[], failed=[])
-        threading.Thread(target=_pkg_worker, daemon=True).start()
+        if not start_pkg_job(action, names):
+            return self._json({"error": "an install is already running"}, 409)
         return self._json({"ok": True, "queued": names})
 
     def _claude_md(self, req):
@@ -2767,8 +2782,10 @@ def main():
             "source trees; it will not start unauthenticated."
         )
     prune_claude_tabs()
-    # Daemon: the doctor loop must die with the server, not hold it open.
+    # Daemons: these loops must die with the server, not hold it open.
     threading.Thread(target=_doctor_loop, daemon=True).start()
+    if PKG_AUTOCHECK:
+        threading.Thread(target=_versions_loop, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
 
 

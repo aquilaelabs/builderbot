@@ -207,6 +207,7 @@ fresh
 env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     TEMPLATE_MD="$DASH/../../config/templates/project-CLAUDE.md" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
+    PKG_AUTOCHECK=0 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" PATH="$S/bin:$PATH" \

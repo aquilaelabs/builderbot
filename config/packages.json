@@ -1,0 +1,109 @@
+{
+  "_comment": [
+    "The catalog the dashboard's Tools tab renders and `bb sdk check` walks.",
+    "Adding a package here puts it on the page; it still needs a recipe in",
+    "scripts/bb's sdk_install, because every one of these installs differently",
+    "— a git clone, a tarball, sdkmanager, rustup, a vendor's shell script —",
+    "and that is the part no table can hold.",
+    "",
+    "name   what bb sdk install/remove is called with.",
+    "probe  where it lands, so the page can tell installed from not:",
+    "       a bare name is a directory under the SDK root, android:<pkg> is a",
+    "       package directory under ANDROID_HOME, and android-image:<kind> is",
+    "       a system image flavour, which may exist at several API levels.",
+    "size   the download, roughly. Replaced by a measurement once installed."
+  ],
+  "packages": [
+    {
+      "name": "playwright",
+      "label": "Playwright browsers",
+      "size": "~1.3 GB",
+      "probe": "playwright",
+      "about": "Chromium, Firefox and WebKit. The image carries Playwright itself and the system libraries; these are the browser bundles bb shot and the dashboard's own tests drive."
+    },
+    {
+      "name": "flutter",
+      "label": "Flutter",
+      "size": "~1.3 GB",
+      "probe": "flutter",
+      "about": "Flutter with the bundled Dart SDK. Builds Android APKs here; the iOS half of a Flutter app still needs a Mac."
+    },
+    {
+      "name": "dotnet",
+      "label": ".NET + MAUI",
+      "size": "~4 GB",
+      "probe": "dotnet",
+      "about": "The .NET SDK plus the maui-android workload — Android apps from C#."
+    },
+    {
+      "name": "swift",
+      "label": "Swift",
+      "size": "~3 GB",
+      "probe": "swift",
+      "about": "The Swift toolchain for Linux: shared logic, server-side Swift, and compiling packages. Not an iOS SDK."
+    },
+    {
+      "name": "android:emulator",
+      "label": "Android emulator",
+      "size": "~800 MB",
+      "probe": "android:emulator",
+      "about": "The emulator binary. System images are per API level and come from ANDROID_SYSTEM_IMAGES."
+    },
+    {
+      "name": "android:ndk",
+      "label": "Android NDK",
+      "size": "~3 GB",
+      "probe": "android:ndk",
+      "about": "Native development kit, for C and C++ inside an Android app."
+    },
+    {
+      "name": "android:cmake",
+      "label": "Android CMake",
+      "size": "~100 MB",
+      "probe": "android:cmake",
+      "about": "The CMake the NDK's build system uses."
+    },
+    {
+      "name": "go",
+      "label": "Go",
+      "size": "~250 MB",
+      "probe": "go",
+      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH — no extra toolchain, no target to install."
+    },
+    {
+      "name": "rust",
+      "label": "Rust",
+      "size": "~700 MB",
+      "probe": "rust",
+      "about": "rustup, cargo and the stable toolchain, kept in one directory. A Windows target needs a linker as well: gcc-mingw-w64 via EXTRA_APT_PACKAGES, or zig plus cargo-zigbuild."
+    },
+    {
+      "name": "zig",
+      "label": "Zig",
+      "size": "~300 MB",
+      "probe": "zig",
+      "about": "A C and C++ cross-compiler as much as a language: `zig cc -target x86_64-windows-gnu` turns this box into a Windows toolchain, and it links for Rust too."
+    },
+    {
+      "name": "android:playstore",
+      "label": "Android image: Play Store",
+      "size": "~2 GB",
+      "probe": "android-image:google_apis_playstore",
+      "about": "A system image with the Play Store, for testing anything that depends on Google Play services. Pixel-style — Samsung, Oppo and the rest ship no emulator images at all."
+    },
+    {
+      "name": "android:tv",
+      "label": "Android image: TV",
+      "size": "~8 GB",
+      "probe": "android-image:android-tv",
+      "about": "Android TV, for a leanback-layout build."
+    },
+    {
+      "name": "android:wear",
+      "label": "Android image: Wear OS",
+      "size": "~1.5 GB",
+      "probe": "android-image:android-wear",
+      "about": "Wear OS, which is what modern Galaxy and Pixel watches run."
+    }
+  ]
+}

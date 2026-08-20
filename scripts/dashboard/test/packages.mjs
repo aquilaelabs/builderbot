@@ -51,6 +51,13 @@ ok(await page.$$eval('.doc .pkg .nm .pill', ps => ps.every(p => p.textContent.st
    '...so every size is the catalog estimate, and no row claims a version');
 ok((await page.$eval('.pkghead', el => el.textContent)).includes(`${DIR}/sdk`),
    'it says which root things are installed into');
+// The catalog is a file in the repository, not a list in the server: adding a
+// package should be an edit somebody can make without reading python.
+const catalog = JSON.parse(                     // URL here is the dashboard's
+  readFileSync(`${import.meta.dirname}/../../../config/packages.json`, 'utf8'));
+ok(catalog.packages.length === list.length
+   && catalog.packages.every(c => list.some(r => r.name === c.name)),
+   `the tab renders the catalog from config/packages.json (${catalog.packages.length} entries)`);
 
 // ---- install two, watch them land --------------------------------------
 await page.check('.doc .pkg input[value="flutter"]');
