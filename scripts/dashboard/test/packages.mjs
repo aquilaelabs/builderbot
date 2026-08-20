@@ -141,6 +141,9 @@ d = await during({ action: 'install', current: 'flutter',
                    progress: { name: 'flutter', pct: null, phase: 'installing', seen: true } });
 ok(d.text.startsWith('installing') && !d.bar,
    '...while one with no number to give says so and animates');
+// A number that has stopped moving is retired by the server, so the row falls
+// back to the same ellipsis: sdkmanager parks its fraction at about 55% for
+// the whole of writing a system image, and a bar sitting there reads as stuck.
 d = await during({ action: 'remove', current: 'flutter', progress: null });
 ok(d.text.startsWith('removing'), 'a removal says so on the row it is removing');
 // The dots are ticked by a timer, so a redraw must not reset them.
@@ -240,34 +243,51 @@ ok(await page.$$eval('.doc [data-pkg]', bs => bs.every(b => b.textContent.indexO
 // sampled here come through streaming, the parser, the payload and the poll.
 await page.check('.doc .pkg input[value="go"]');
 await page.click('.doc [data-pkg="install"]');
-const widths = [], labels = [];
-for (let i = 0; i < 12; i++){
+const widths = [], labels = [], bars = [];
+for (let i = 0; i < 26; i++){
   const s = await page.evaluate(() => {
     const row = [...document.querySelectorAll('.doc .pkg')]
       .find(l => l.querySelector('input').value === 'go');
     const f = row?.querySelector('.prog .bar i');
     return { w: f ? Math.round(f.getBoundingClientRect().width) : null,
-             t: row?.querySelector('.prog')?.textContent.trim() || null };
+             t: row?.querySelector('.prog')?.textContent.trim() || null,
+             bar: !!row?.querySelector('.prog .bar'),
+             running: !!packages?.job?.running };
   });
-  widths.push(s.w); labels.push(s.t);
+  widths.push(s.w); labels.push(s.t); bars.push(s.bar && s.running ? 1 : s.running ? 0 : null);
   await new Promise(r => setTimeout(r, 250));
 }
 // Four distinct widths, because the stub reports four percentages and every
 // one of them should land. The poll IS the frame rate of this bar: at one
 // second it caught 8 and 66 and missed 31 and 100, which on a download that
 // finishes quickly is a single frame and reads as a bar that never moves.
-const filled = [...new Set(widths.filter(w => w))];
-ok(filled.length === 4 && filled.every((w, i) => i === 0 || w > filled[i - 1]),
-   `the bar fills, hitting every percentage reported (${widths.join(' ')})`);
 const said = [...new Set(labels.filter(Boolean))];
 ok(['8', '31', '66', '100'].every(n => said.some(t => t === `downloading ${n}%`)),
-   `...and the row counts up with it (${said.join(' | ')})`);
+   `the row counts the download the whole way up (${said.join(' | ')})`);
+// "info: downloading installer" is rustup's opening line, and the substring
+// that matches install is inside the noun. Reading it as an install made the
+// row say installing from the first second of a rust install to the last.
+ok(/^(starting|downloading)/.test(labels.find(Boolean) || ""),
+   `...and never claims to be installing before it has downloaded (${labels.find(Boolean)})`);
+const dl = widths.filter((w, i) => w && /^downloading/.test(labels[i] || ""));
+ok(dl.length > 1 && dl[dl.length - 1] > dl[0],
+   `...and the bar fills with it (${widths.join(' ')})`);
+// The count carries on past the label change: sdkmanager reports one fraction
+// for the whole operation, so dropping it when the word stops saying download
+// threw away the back half of every android install.
+ok(said.some(t => t === 'installing 55%'),
+   '...and keeps counting when the step it names changes');
 // The log keeps what the bar cannot: every tenth of the download, so that
 // afterwards it is possible to tell a bar that failed to move from a tool
 // that reported once and went quiet.
 const logged = await page.$eval('.pkglog', el => el.textContent);
 ok(['8%', '31%', '66%', '100%'].every(n => logged.includes(`… downloading ${n}`)),
    'and the log keeps every tenth of it for afterwards');
+// The stub parks at 66% for three seconds, as sdkmanager parks at about 55%
+// for the whole of writing a system image. A bar that has not moved is
+// telling nobody anything, so it goes and the ellipsis takes over.
+ok(bars.some(b => b === 0) && bars.some(b => b === 1),
+   `...and a number that stops moving is retired mid-job (${bars.map(b => b === null ? '-' : b).join('')})`);
 await page.waitForFunction(() => packages?.job && !packages.job.running, { timeout: 30000 });
 // Put it back the way it was found: what follows counts installed packages,
 // and a third one left lying around here is how this file first went red.
