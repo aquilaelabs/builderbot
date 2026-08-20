@@ -32,7 +32,7 @@
     "             its Content-Length is the answer; \"command-urls\" runs a dry run",
     "             and matches the URLs out of it, which is how playwright's five",
     "             bundles and the .NET archive are counted. A recipe that cannot",
-    "             be asked — a git clone, rustup, sdkmanager — simply has none,",
+    "             be asked — a git clone, rustup — simply has none,",
     "             and the row shows no size until it has been installed once.",
     "",
     "No size is written down here. One typed into a file is wrong the next time",
@@ -171,7 +171,13 @@
       "about": "The emulator binary. System images are per API level and come from ANDROID_SYSTEM_IMAGES.",
       "source": {
         "kind": "sdkmanager",
-        "package": "emulator"
+        "package": "emulator",
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/repository2-3.xml"
+          ]
+        }
       }
     },
     {
@@ -182,7 +188,13 @@
       "source": {
         "kind": "sdkmanager",
         "package": "ndk",
-        "versioned": true
+        "versioned": true,
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/repository2-3.xml"
+          ]
+        }
       }
     },
     {
@@ -193,7 +205,13 @@
       "source": {
         "kind": "sdkmanager",
         "package": "cmake",
-        "versioned": true
+        "versioned": true,
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/repository2-3.xml"
+          ]
+        }
       }
     },
     {
@@ -275,7 +293,13 @@
       "about": "A system image with the Play Store, for testing anything that depends on Google Play services. Pixel-style — Samsung, Oppo and the rest ship no emulator images at all.",
       "source": {
         "kind": "sdkmanager",
-        "image": "google_apis_playstore"
+        "image": "google_apis_playstore",
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/sys-img/google_apis_playstore/sys-img2-3.xml"
+          ]
+        }
       }
     },
     {
@@ -285,7 +309,13 @@
       "about": "Android TV, for a leanback-layout build.",
       "source": {
         "kind": "sdkmanager",
-        "image": "android-tv"
+        "image": "android-tv",
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/sys-img/android-tv/sys-img2-3.xml"
+          ]
+        }
       }
     },
     {
@@ -295,7 +325,13 @@
       "about": "Wear OS, which is what modern Galaxy and Pixel watches run.",
       "source": {
         "kind": "sdkmanager",
-        "image": "android-wear"
+        "image": "android-wear",
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/sys-img/android-wear/sys-img2-3.xml"
+          ]
+        }
       }
     }
   ]

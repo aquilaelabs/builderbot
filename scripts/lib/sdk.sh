@@ -405,11 +405,15 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
         else status=update
         fi
     fi
-    # A fifth column: what the download weighs, when the catalog names a URL
-    # that is the payload itself. Nothing for the recipes whose URL is an
-    # installer that goes and fetches the real thing.
+    # A fifth column: what the download weighs. Most recipes answer from their
+    # own URL or a dry run; the android ones answer from sdkmanager's
+    # repository index, which is keyed by package id — so the id is resolved
+    # here, by the same code that would install it, rather than guessed at
+    # from the index's newest entry.
+    local dlid=""
+    [ "$(sdk_meta field "$what" source.kind)" != sdkmanager ] || dlid="$(sdk_android_id "$what" 2>/dev/null)"
     printf '%s\t%s\t%s\t%s\t%s\n' "$what" "$inst" "$latest" "$status" \
-        "$(sdk_meta size "$what" 2>/dev/null)"
+        "$(sdk_meta size "$what" "$dlid" 2>/dev/null)"
 }
 
 # bb sdk versions — installed versions only, nothing asked of the network.
