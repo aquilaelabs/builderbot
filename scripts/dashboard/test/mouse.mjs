@@ -33,7 +33,7 @@ await page.waitForFunction(() => document.querySelectorAll('.tab:not([data-id])'
 // The frame carries the terminal's own colour, because its document is
 // transparent until xterm paints and this page's dark color-scheme makes the
 // browser fill that gap with white. Without this the tab switch flashed.
-ok(await page.$eval('.pane iframe', el => {
+ok(await page.$eval('.slot.on iframe', el => {
      const c = getComputedStyle(el).backgroundColor;
      return c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent';
    }), 'a terminal frame is not transparent while it loads');
@@ -55,10 +55,11 @@ ok(await page.$eval('.tab[data-id]', el => el.dataset.mark !== 'kept'), '...whil
 // Split: focus landing in a pane's terminal makes that pane the active one,
 // even though the click itself happens inside a cross-origin iframe.
 await page.evaluate(() => { const ids = tabs.map(t => t.id); pinTo(ids[0], 0); pinTo(ids[1], 1); active = 0; render(); });
-await page.waitForFunction(() => isSplit() && document.querySelectorAll('.pane iframe').length === 2);
-await page.evaluate(() => { document.querySelector('#pane1 iframe').focus(); window.dispatchEvent(new Event('blur')); });
+await page.waitForFunction(() => isSplit()
+  && document.querySelectorAll('.slot.on iframe').length === 2);
+await page.evaluate(() => { document.querySelector('#pane1 .slot.on iframe').focus(); window.dispatchEvent(new Event('blur')); });
 ok(await page.evaluate(() => active === 1), 'focus into the right pane\'s terminal activates that pane');
-await page.evaluate(() => { document.querySelector('#pane0 iframe').focus(); window.dispatchEvent(new Event('blur')); });
+await page.evaluate(() => { document.querySelector('#pane0 .slot.on iframe').focus(); window.dispatchEvent(new Event('blur')); });
 ok(await page.evaluate(() => active === 0), '...and back to the left');
 await page.evaluate(() => closePane(1));
 ok(await page.$eval('#pane1', p => !p.querySelector('iframe') && !p.dataset.tab), 'unsplitting empties the hidden pane (no orphan terminal client)');

@@ -993,6 +993,17 @@ a placeholder, and **+** starts over.
 - **Ending a session for good is the ✕ in the Sessions card.** That one asks,
   because that is where something is actually lost: the shell and everything
   in it, or the Claude conversation (its transcript is kept and can be resumed).
+- **Switching between terminals is instant**, because a pane keeps the last
+  three of them loaded behind the one on screen. It used to rebuild the pane
+  to change tabs, which threw the frame away — and the terminal is 700KB of
+  JavaScript that then had to parse, open a websocket, attach to tmux and
+  draw. On a phone that was a second and a half of blank pane, every switch;
+  it is now single-digit milliseconds. The frames sit exactly on top of one
+  another at the same size, which is not just tidiness: a hidden frame is
+  still an attached tmux client, and tmux sizes a window to its smallest one,
+  so different geometry would mean the terminals fighting over the width. The
+  fourth reloads, as all of them used to — the ceiling is there because each
+  one is a live xterm and its own socket, the same reasoning as `DASHBOARD_MAX_TABS`.
   Killing a session also closes its tab, whichever tab that is — a tab left
   pointing at a dead session would only offer to recreate it.
 - **Tabs are named for where they are.** A terminal reads `sh: <directory>`,

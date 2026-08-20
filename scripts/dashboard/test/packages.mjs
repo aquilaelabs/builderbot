@@ -332,6 +332,36 @@ ok(!list.find(r => r.name === 'android:emulator').installed
    'removing the ticked one leaves the other alone');
 ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
 
+// ---- what it is doing, beside what started it ---------------------------
+// The status used to be the Install button's label, which made a package id
+// into a green banner across the tab. It is green text beside the button now
+// — and beside *whichever* button started it, because on a phone the picker
+// is a screenful above the Install row.
+await page.check('.doc .pkg:not(.img) input[value="go"]');
+await page.click('.doc [data-pkg="install"]');
+await page.waitForFunction(() => packages?.job?.running);
+ok(await page.$eval('.doc [data-pkg="install"]',
+     b => b.textContent.trim() === 'Install selected' && b.disabled),
+   'the Install button keeps its own name and goes dead, rather than becoming a banner');
+ok(await page.$eval('.doc .macros .pkgworking', e => /Installing go/.test(e.textContent))
+   && await page.$('.doc .macros .pkgworking .dots') !== null,
+   '...with what it is doing beside it, and an ellipsis');
+ok(await page.$('.doc .imgadd .pkgworking') === null,
+   '...and not up at the picker, which did not start this');
+await page.waitForFunction(() => packages?.job && !packages.job.running,
+                           { timeout: 60000 });
+
+// An image install came from Add, so that is where it is reported.
+await page.click('#imgAdd');
+await page.waitForFunction(() => packages?.job?.running);
+ok(await page.$eval('.doc .imgadd .pkgworking',
+     e => /Installing system-images/.test(e.textContent)),
+   'an image install reports at the picker that started it');
+ok(await page.$('.doc .macros .pkgworking') === null,
+   '...and only there');
+await page.waitForFunction(() => packages?.job && !packages.job.running,
+                           { timeout: 60000 });
+
 // ---- a failure, where the failure happened ------------------------------
 // There used to be a scrolling log at the foot of the tab holding every line
 // every command printed. What anybody ever wanted out of it was which package

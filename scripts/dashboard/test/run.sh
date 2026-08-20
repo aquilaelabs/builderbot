@@ -220,6 +220,9 @@ if [ "${1:-}" = sdk ]; then
                          printf 'error: could not download file from upstream\n' >&2
                          exit 1
                      fi
+                     # A system image takes its time too, so a test can see
+                     # where a job started from Add reports itself.
+                     case "$3" in *system-images*) sleep 1.5 ;; esac
                      if [ "$3" = go ]; then
                          # Takes a while, and counts loudly while it does —
                          # shaped like sdkmanager, whose meter runs one fraction
