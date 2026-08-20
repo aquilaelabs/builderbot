@@ -215,8 +215,13 @@ case "$target" in
         # shell, this tab is not the way into it: the name is claimed for
         # claude, and anything else wearing it is replaced rather than
         # attached to.
+        # pane_start_command, not pane_current_command: the current one is
+        # whatever is in the foreground this second, and claude runs its tools
+        # as subprocesses — so a session busy running a build reports `bash`
+        # and would have been killed here, mid-conversation. The start command
+        # is what the pane was created with and does not move.
         if tmux has-session -t "=claude-${proj//[.:]/_}" 2>/dev/null \
-           && ! tmux list-panes -t "=claude-${proj//[.:]/_}" -F '#{pane_current_command}' 2>/dev/null \
+           && ! tmux list-panes -t "=claude-${proj//[.:]/_}" -F '#{pane_start_command}' 2>/dev/null \
                 | grep -qi claude; then
             log "claude-${proj}: session is not running claude — replacing it"
             tmux kill-session -t "=claude-${proj//[.:]/_}" 2>/dev/null || true
