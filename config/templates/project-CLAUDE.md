@@ -205,6 +205,34 @@ the operator can see what you raised and sweep it if they disagree.
 **Tick things off as you finish them**, including items you did not add.
 A list that only grows is one that stops being read.
 
+**When a change needs several things done in a set order, add it as one item
+with steps** — `bb todo add "rework the picker" --step "widen the select"
+--step "then re-measure it"`. Steps are handed to a session one at a time, in
+order, from the dashboard: the operator sends the first, and the second only
+becomes sendable once the first has gone. Three separate items can be handed
+over backwards, and the second one then lands on a tree the first was supposed
+to have made.
+
+A step that has been sent is struck through rather than removed, and can be
+sent again — sent is not the same as done, and the difference is exactly the
+case worth being able to see. So do not treat "you sent me this" as proof it
+worked; if you cannot finish a step, say so plainly rather than quietly
+leaving it struck through. A line can also be struck by hand, meaning the
+operator dealt with it or dropped it; the list says which, so read the note
+rather than assuming you were asked.
+
+If the list or these notes change while you are working, you will be told in
+one line. Read them when it is relevant and carry on — a change to the list is
+not a request to drop what you are doing. That line costs the operator a
+message, so it is sent when they press Save rather than on every edit; do not
+expect to hear about every change, and re-read with `bb todo` if what you are
+about to do depends on it.
+
+A step arriving as a message *is* a request: the operator sent it deliberately,
+and the panel closed and put them in this tab to read the answer. Sometimes it
+carries a note that the list changed as well — that half is context, the step
+is the ask.
+
 Keep it short and keep it real. Thirty open items is the hard ceiling, and it
 is a working list rather than an issue tracker: one line, plainly worded, no
 duplicates of something already there. Anything that turns out to be a durable

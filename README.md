@@ -359,6 +359,7 @@ bb lint [path]     lint a repo's infrastructure files: shell scripts,
 bb findings        this project's scanner findings (--all for every project)
 bb todo            this project's shared to-do list
 bb todo add "..."  put something on it; `done N`, `undone N`, `rm N`, `clear`
+bb todo add "..." --step "..." --step "..."   an ordered group of steps
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -1020,6 +1021,63 @@ unauthenticated here on purpose, so GitHub Issues are unreachable from inside
 the container — and until this, something noticed mid-task and left undone
 lived in the conversation and died with it.
 
+**Items are handed to the session one at a time, by the arrow beside them.**
+Sending types the line into the running Claude session and submits it — but
+only if it can see that it arrived. There is no IPC into a session; the only
+door is its terminal, and a session "waiting for input" is either at its prompt
+or holding a permission dialog, which the title cannot tell apart. Answering a
+permission dialog on your behalf, blind, is the worst thing anything here could
+do — so instead of trying to recognise a dialog, it uses the one property every
+text box has and no dialog does: **it echoes what you type**. Type the line,
+look at the pane, and press Enter only if there is now one more of it on screen
+than there was. If it did not appear, the line is left in the input box unsent
+and the dashboard says so. With no session running, every arrow is dead.
+
+A sent step is **struck through in place** — not removed, not reordered. Sent
+is not done: a step can be handed over and quietly not carried out, and the
+struck line is how you notice. It stays sendable, so "that did not take, do it
+again" is one tap. The bin is the only way anything leaves the list.
+
+Beside the bin is a **strike icon**, which crosses a line off *without* sending
+it — you did it yourself, or it turned out not to be needed — and puts it back
+if you press it again. It leaves the same mark as sending, so a group moves on
+to its next step either way; without it, a step you handled yourself would
+block every step behind it. A session is told which of the two happened, since
+"already sent to a session" would be a lie about a line nobody sent.
+
+**A plan is edited at its edge.** Inside a group the strike is offered on
+exactly two rows — the last crossed step, to put it back, and the next one
+along, to cross it — so crossing step two moves the strike off step one and on
+to step three. The bin sits at the head of the queue: only the first step, and
+the item's own row. Both rules exist for the same reason as the send order —
+anything else leaves a plan in a state its order was supposed to prevent.
+**Deleting always asks; crossing out never does**, because one is recoverable
+by pressing the same button again and the other is not.
+
+**Edits are written immediately; telling the session is separate.** A phone
+that dies half way through tidying a list must not lose it, but every telling
+costs a line of somebody's conversation — so the two are apart. **Save & tell
+the session** appears once the list has moved, and spends that line. There is
+no way to make a session read something without sending it a message: no IPC
+into a running Claude, so the only door is its input box.
+
+Which is why **sending a step folds the two together**. The arrow asks first,
+offers to save your other changes in the same breath, and then does four
+things: the line goes, the step is crossed off, the panel closes and you land
+in that session's tab. The "I also changed the list" note rides on the *same
+message* as the step rather than chasing it — two lines into one input box is
+how the second ends up glued to the first.
+
+**An item can be an ordered group of steps** — `bb todo add "rework the picker"
+--step "widen the select" --step "then re-measure it"`. Only the next unsent
+step can be sent; the one after it is dead until the one before has gone,
+because three separate items can be handed over backwards and the second then
+lands on a tree the first was supposed to have made.
+
+**Editing the list or the memories tells the running session**, in one line, to
+go and read them and carry on — not to drop what it is doing. A list edited
+under a conversation is a list that conversation is holding a stale copy of.
+
 **The open items go in front of every Claude session the dashboard starts.**
 `bb-tty` appends them to the session's system prompt, so a note left on Tuesday
 is read on Thursday without anybody remembering to mention it. Items a session
@@ -1383,6 +1441,7 @@ scripts/
     memory.py                    everything behind the memory book: what Claude remembers per project
     projects.py                  new project / link to GitHub, and the worker that clones and pushes
     todo.py                      the shared to-do list; `bb todo` drives the same file
+    notify.py                    getting a line into a running Claude session, and knowing it landed
     test/                        its Playwright suite — `bb dashboard test`, isolated
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each

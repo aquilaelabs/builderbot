@@ -1396,13 +1396,22 @@ import packages                                                  # noqa: E402
 
 packages.configure(run=run, write_json=write_json, state=STATE)
 
+# ---- reaching a running Claude session -------------------------------------
+# One door, one rule about Enter, used by both the to-do list and the memory
+# book. See notify.py: it presses Enter only when the line it typed visibly
+# arrived, which is the one thing a permission dialog will not do.
+import notify                                                    # noqa: E402
+
+notify.configure(run=run)
+
 # ---- the memory book -------------------------------------------------------
 # What Claude remembers about each project, read and edited from the projects
 # card. Same arrangement as packages above: its own file, handed what it needs.
 import memory                                                    # noqa: E402
 
 memory.configure(run=run, workspace=WORKSPACE,
-                 claude_projects=CLAUDE_PROJECTS, tmux_name=tmux_name)
+                 claude_projects=CLAUDE_PROJECTS, tmux_name=tmux_name,
+                 tell=notify.tell)
 
 # ---- the shared to-do list -------------------------------------------------
 # The one surface both sides write: the operator adds an item, a session adds
@@ -1410,7 +1419,8 @@ memory.configure(run=run, workspace=WORKSPACE,
 # session it starts, which is the whole reason it is worth having.
 import todo                                                      # noqa: E402
 
-todo.configure(write_json=write_json, state=STATE)
+todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
+               tmux_name=tmux_name)
 
 # ---- new project, and linking one ------------------------------------------
 # Creating and cloning, and the worker that runs the ones that touch the
@@ -1795,7 +1805,8 @@ class Handler(BaseHTTPRequestHandler):
             name = q.get("project", [""])[0]
             if name not in {p["name"] for p in project_list()}:
                 return self._json({"error": "not a project"}, 400)
-            return self._json({"project": name, "items": todo.items(name)})
+            live = [s["name"] for s in tmux_sessions()]
+            return self._json({"project": name} | self._todo_state(name, live))
         if self.path.startswith("/api/memory"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             got = memory.payload(q.get("project", [""])[0],
@@ -1866,7 +1877,7 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
     def _todo(self, req):
-        """Add, tick, edit or drop one item on a project's list.
+        """Add, send, edit or drop one item on a project's list.
 
         The project is checked against the real list for the same reason every
         other endpoint here does it: a name that came back off the filesystem
@@ -1876,20 +1887,47 @@ class Handler(BaseHTTPRequestHandler):
         if name not in {p["name"] for p in project_list()}:
             return self._json({"error": f"not a project: {name}"}, 400)
         act = req.get("action", "")
+        live = [s["name"] for s in tmux_sessions()]
+        if act == "tell":
+            # The explicit "save" — edits are written as they are made, and
+            # this is the separate act of spending a line of the conversation
+            # to say so. Silent when nothing is running: the next session reads
+            # the list at startup anyway, which is the ordinary path.
+            r = todo.announce(name, "todo", live)
+            todo.mark_told(name)
+            return self._json({"ok": True, "told": bool(r.get("sent"))}
+                              | self._todo_state(name, live))
         if act == "add":
-            r = todo.add(name, req.get("text", ""))
+            r = todo.add(name, req.get("text", ""), steps=req.get("steps") or ())
+        elif act == "send":
+            r = todo.send(name, req.get("id"), req.get("step"), live,
+                          also_told=bool(req.get("tell")))
+            if r.get("sent") and req.get("tell"):
+                todo.mark_told(name)
         elif act == "done":
             r = todo.set_done(name, req.get("id"), bool(req.get("done", True)))
         elif act == "edit":
             r = todo.edit(name, req.get("id"), req.get("text", ""))
+        elif act == "cross":
+            r = todo.cross(name, req.get("id"), req.get("step"),
+                           bool(req.get("on", True)))
         elif act == "remove":
-            r = todo.remove(name, req.get("id"))
+            r = todo.remove(name, req.get("id"), req.get("step"))
         elif act == "clear-done":
             r = todo.clear_done(name)
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
-        return self._json(r | {"items": todo.items(name)} if not r.get("error") else r,
-                          400 if r.get("error") else 200)
+        if r.get("error"):
+            return self._json(r, 400)
+        return self._json(r | self._todo_state(name, live))
+
+    def _todo_state(self, name, live):
+        """What the panel needs after any change: the list, whether there is
+        anywhere to send, and whether a session has been told about it yet."""
+        session = todo.tmux_name("claude-" + name)
+        return {"items": todo.items(name),
+                "session": session if session in set(live) else None,
+                "unsaved": todo.unsaved(name)}
 
     def _memory(self, req):
         """Edit, delete, or point a running session at this project's memories.
@@ -1912,6 +1950,11 @@ class Handler(BaseHTTPRequestHandler):
             r = memory.notify(proj, [s["name"] for s in tmux_sessions()])
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
+        # A memory edit *is* a save — there is no other moment to batch it to,
+        # since the editor only writes when Save is pressed — so it tells the
+        # session there and then, the same single line the list's Save spends.
+        if not r.get("error") and act in ("save", "delete"):
+            todo.announce(proj, "memory", [s["name"] for s in tmux_sessions()])
         return self._json(r, 400 if r.get("error") else 200)
 
     def _custom(self, req):

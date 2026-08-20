@@ -317,21 +317,50 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .todoadd{display:flex;gap:8px}
 .todoadd input{flex:1 1 auto;min-width:0}
 .todoadd button{flex:0 0 auto;min-height:var(--tap)}
-.todo{display:flex;gap:9px;align-items:flex-start;padding:9px 0;
-  border-bottom:1px solid var(--line)}
-.todo:last-child{border-bottom:0}
-.todo input[type=checkbox]{margin:2px 0 0;width:18px;height:18px;flex:0 0 auto;
-  accent-color:#2ea043;cursor:pointer}
-.todo .txt{flex:1;min-width:0;font:13px/1.45 system-ui,sans-serif;
+.grp{border-bottom:1px solid var(--line)}
+.grp:last-child{border-bottom:0}
+.todo{display:flex;gap:9px;align-items:flex-start;padding:9px 0}
+/* A group's steps sit under its title, indented and hairlined, so the shape
+   of "these go in this order" is visible without reading them. */
+.todo.step{padding:5px 0 5px 26px;border-top:1px dashed #232b34}
+.todo .n{flex:0 0 auto;color:var(--dim);font:600 11px/1.5 var(--mono);
+  min-width:1.2em;text-align:right}
+/* The words and their labels are one column, so a pill sits above the line
+   instead of eating a third of it — on a phone that difference is the whole
+   readability of the row. */
+.todo .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.todo .tags{display:flex;gap:5px;flex-wrap:wrap}
+.todo .txt{min-width:0;font:13px/1.45 system-ui,sans-serif;
   overflow-wrap:anywhere;cursor:text}
-.todo.done .txt{color:var(--dim);text-decoration:line-through}
+.todo.step .txt{font-size:12.5px}
+/* Struck through means *sent*, not done. It stays where it was — the order is
+   the record — so that a step that was handed over and quietly not carried out
+   is still there to send again. */
+.todo.sent .txt{color:var(--dim);text-decoration:line-through}
+/* Sent and done are different facts and look different: sent is struck
+   through (it went), done is faded (a session says it finished it). Something
+   can be sent and not done, which is exactly the case worth seeing. */
+.todo.done{opacity:.55}
+.todo .who.fin{color:#7fc08a;border-color:#1f3f28}
+.todo .go,.todo .x,.todo .rm{flex:0 0 auto;align-self:flex-start}
+.todo .go{color:var(--accent)}
+/* Crossing out by hand: dim until it is on, then the same green as a line
+   that went — because the two mean the same thing to the group behind them. */
+.todo .x{color:var(--dim)}
+.todo .x.on{color:var(--accent)}
+@media(hover:hover){ .todo .x:hover{color:var(--ink)} }
+.todo .go[disabled]{opacity:.35;color:var(--dim);cursor:default}
+@media(hover:hover){ .todo .go:not([disabled]):hover{color:#7ee08a;border-color:#2ea043} }
 /* Items a session raised, marked so the operator can see what was flagged at
    them rather than by them — the reason the list exists at all. */
 .todo .who{flex:0 0 auto;font:600 10px/1 system-ui,sans-serif;text-transform:uppercase;
   letter-spacing:.4px;padding:3px 5px;border-radius:4px;border:1px solid #38294a;
   color:#b79ae0;white-space:nowrap;margin-top:1px}
-.todo .rm{flex:0 0 auto;align-self:flex-start;color:var(--dim)}
+.todo .rm{color:var(--dim)}
 @media(hover:hover){ .todo .rm:hover{color:var(--bad);border-color:#4d2220} }
+/* Four controls and a number on one line is tight on a phone; the buttons
+   lose their padding before the words lose their width. */
+@media(max-width:620px){ .todo .go,.todo .x,.todo .rm{padding:5px 4px} .todo{gap:6px} }
 #memFold>summary{cursor:pointer;color:var(--dim);
   font:12px/1.5 system-ui,sans-serif;padding:11px 14px;list-style:none;
   border-top:1px solid var(--line)}
@@ -339,6 +368,24 @@ button.on{background:#1f6f36;border-color:#2ea043}
 #memFold>summary::before{content:"▸ ";font-size:11px}
 #memFold[open]>summary::before{content:"▾ "}
 #memFold>.field{padding-top:0}
+/* Long lists scroll inside the panel rather than pushing the Add field and the
+   footer off the screen. A cap in rough proportion to the window, so a desktop
+   shows more of it than a phone does, and a shadowless inset edge to say there
+   is more below. */
+/* A control that is not offered still holds its place, so the words in a row
+   line up with the words in the row above it. Measured against the button
+   rather than guessed: 16px of icon inside the same padding and border. */
+.todo .ph{display:inline-block;width:32px;height:1px;flex:0 0 auto}
+@media(max-width:620px){ .todo .ph{width:26px} }
+/* The send confirmation, inline rather than a dialog inside a dialog. */
+.todoask{border-top:1px solid var(--line);background:#161d26}
+.todoask .also{display:flex;gap:8px;align-items:center;margin:8px 0 0;
+  color:var(--dim);font:12px/1.4 system-ui,sans-serif;cursor:pointer}
+.todoask .also input{width:18px;height:18px;accent-color:#2ea043}
+.todoask .macros{padding:10px 0 0}
+#todoList,#memList{max-height:min(46vh,420px);overflow:auto;
+  overscroll-behavior:contain}
+#memList{max-height:min(38vh,340px)}
 
 /* ---- the memory book ------------------------------------------------- */
 /* One <details> per memory: collapsed it is the summary line Claude wrote for
@@ -701,6 +748,20 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint" id="todoHint"></div>
     </div>
     <div class="field" id="todoField"><div id="todoList"></div></div>
+    <!-- Sending is the one action that leaves the panel, so it asks here
+         rather than in a native confirm: it has a choice attached, and a
+         confirm() cannot hold a checkbox. -->
+    <div class="field todoask" id="todoAsk" hidden>
+      <div class="hint" id="todoAskWhat"></div>
+      <label class="also" id="todoAlsoWrap" hidden>
+        <input type="checkbox" id="todoAlso" checked>
+        <span>also tell it the list changed</span>
+      </label>
+      <div class="macros">
+        <button id="todoGo" class="primary" type="button">Send</button>
+        <button id="todoNo" type="button">Cancel</button>
+      </div>
+    </div>
     <!-- What Claude remembers, folded away: it is a handful of files nobody
          edits, and the reason it is on screen at all is that it is the one
          input to a session nobody would otherwise ever see. -->
@@ -720,6 +781,9 @@ body.dragging .tab .lbl{cursor:grabbing}
     </details>
     <div class="foot">
       <button id="memSave" type="button">Save memory changes</button>
+      <!-- Edits are written the moment they are made; this is the separate
+           act of spending a line of the conversation to say so. -->
+      <button id="todoSave" type="button" hidden>Save &amp; tell the session</button>
       <span class="sp"></span>
       <button id="memNote" type="button" hidden>Tell the session</button>
       <button id="memClose" class="primary" type="button">Close</button>
@@ -3313,6 +3377,8 @@ async function openMemory(name){
   $("memNote").hidden = true;
   $("memFold").open = false;
   $("memSave").hidden = $("memNote").hidden = true;
+  $("todoSave").hidden = true;
+  cancelSend();
   $("todoText").value = "";
   $("todoList").innerHTML = `<div class="hint">loading…</div>`;
   $("memModal").hidden = false;
@@ -3335,37 +3401,187 @@ async function loadTodo(gen){
   drawTodo(j);
 }
 
+// The send arrow. Crossing something out here does not mean "done" — it means
+// "handed to the session", which is the thing the operator actually needs to
+// see, because a step can be sent and then not carried out.
+const SEND = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M2.6 8h9"/><path d="M8.2 4.6 11.6 8l-3.4 3.4"/>
+  <path d="M13.6 3.2v9.6"/></svg>`;
+
+// Struck-through text, for the other way a line gets crossed off: by hand,
+// because it was already done or turned out not to be needed. Same mark
+// sending leaves, so a group moves on to its next step either way.
+const STRIKE = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M2.4 8h11.2"/>
+  <path d="M11.4 4.9C11 3.8 9.7 3.1 8 3.1c-1.9 0-3.2.8-3.2 2 0 .9.6 1.5 1.7 1.9"/>
+  <path d="M4.9 11.2c.5 1.1 1.7 1.7 3.3 1.7 2 0 3.3-.8 3.3-2 0-.6-.2-1-.7-1.4"/></svg>`;
+
+// Which step a group would hand over next: the first that has not gone. The
+// order is the whole point of a group — send the third before the second and
+// it lands on a tree the second was supposed to have made — so only that one,
+// and any already sent, can be sent at all.
+function nextStep(r){
+  const steps = r.steps || [];
+  if (!steps.length) return r.sent ? null : -1;
+  const i = steps.findIndex(s => !s.sent);
+  return i < 0 ? null : i;
+}
+
+// Where the list has got to: how many steps at the front have been crossed.
+// Crossed steps are always a prefix — they are handed out in order and put
+// back from the end — so one number describes the whole state.
+function crossedTo(r){
+  const steps = r.steps || [];
+  let k = 0;
+  while (k < steps.length && steps[k].sent) k++;
+  return k;
+}
+
+function stepRow(r, idx, live){
+  const steps = r.steps || [];
+  const nxt = nextStep(r);
+  const st = idx < 0 ? r : steps[idx];
+  // Two controls, on two rows, and nowhere else. The strike is offered on the
+  // last crossed step (to put it back) and on the next one along (to cross
+  // it) — a plan is edited at its edge, and a strike on step five while step
+  // two is the frontier is a way to leave a group in a state its order was
+  // supposed to prevent. The bin sits at the head of the queue for the same
+  // reason: things come off a plan from the front.
+  const k = crossedTo(r);
+  const strike = idx < 0 ? !steps.length : (idx === k - 1 || idx === k);
+  const bin = idx < 0 || idx === 0;
+  // Sent ones stay live so they can go again — "it did not take, do it again"
+  // is the reason they are still on screen at all.
+  const can = live && (!!st.sent || idx === nxt);
+  const why = !live ? "no Claude session is running here"
+            : st.sent ? "send it again"
+            : idx === nxt ? "send this to the Claude session"
+            : `step ${nxt + 1} has not been sent yet`;
+  // The tags sit above the line rather than beside it: they are labels on the
+  // whole item, and on a phone a pill sharing the first line pushed the words
+  // into a column two thirds as wide as the ones under it.
+  const tags = idx >= 0 ? "" : [
+    r.done ? `<span class="who fin" title="a session marked this finished">done</span>` : "",
+    r.by === "claude" ? `<span class="who" title="Claude put this here">claude</span>` : "",
+  ].join("");
+  return `<div class="todo${st.sent ? " sent" : ""}${idx >= 0 ? " step" : ""}${
+       idx < 0 && r.done ? " done" : ""}" data-id="${r.id}" data-step="${idx}">
+    <button class="eye go" type="button"${can ? "" : " disabled"}
+      title="${esc(why)}" aria-label="send">${SEND}</button>
+    ${idx >= 0 ? `<span class="n">${idx + 1}</span>` : ""}
+    <span class="body">
+      ${tags ? `<span class="tags">${tags}</span>` : ""}
+      <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
+    </span>
+    ${strike ? `<button class="eye x${st.sent ? " on" : ""}" type="button" aria-label="cross out"
+      title="${st.sent ? "put it back — it is not dealt with after all"
+                       : "cross it out without sending: already done, or not needed"}"
+      >${STRIKE}</button>` : `<span class="eye ph"></span>`}
+    ${bin ? `<button class="eye rm" type="button" aria-label="drop it"
+      title="${idx < 0 ? "take it off the list — the only way anything leaves"
+                       : "drop this step; the one behind it takes its place"}"
+      >${BIN}</button>` : `<span class="eye ph"></span>`}
+  </div>`;
+}
+
 function drawTodo(j){
   if (j.error){ $("todoList").innerHTML = `<div class="hint bad">${esc(j.error)}</div>`; return; }
-  const rows = j.items || [];
-  const open = rows.filter(r => !r.done).length;
-  $("todoHint").textContent = rows.length
-    ? `${open} open — the open ones are put in front of every Claude session started here`
-    : "Nothing yet. What goes here is read at the start of every Claude session in this project.";
+  const rows = j.items || [], live = !!j.session;
+  todoSession = j.session || null;
+  const left = rows.reduce((n, r) => n + (nextStep(r) === null ? 0 : 1), 0);
+  $("todoHint").textContent = !rows.length
+    ? "Nothing yet. What goes here is read at the start of every Claude session in this project."
+    : live
+      ? `${left} still to send — ${esc(j.session)} is running, so the arrows are live`
+      : `${left} still to send — no session is running here, so nothing can be sent yet`;
   $("todoField").hidden = !rows.length;
-  $("todoList").innerHTML = rows.map(r => `
-    <div class="todo${r.done ? " done" : ""}" data-id="${r.id}">
-      <input type="checkbox"${r.done ? " checked" : ""} aria-label="done">
-      <span class="txt" role="textbox" tabindex="0">${esc(r.text)}</span>
-      ${r.by === "claude" ? `<span class="who" title="Claude put this here">claude</span>` : ""}
-      <button class="eye rm" type="button" aria-label="drop it"
-        title="take it off the list">${BIN}</button>
-    </div>`).join("");
+  $("todoList").innerHTML = rows.map(r =>
+    `<div class="grp">${stepRow(r, -1, live && !(r.steps || []).length)}${
+      (r.steps || []).map((_, i) => stepRow(r, i, live)).join("")}</div>`).join("");
   $("todoList").querySelectorAll(".todo").forEach(row => {
-    const id = Number(row.dataset.id);
-    row.querySelector("input").onchange = e =>
-      postTodo({action: "done", id, done: e.target.checked});
-    row.querySelector(".rm").onclick = () => postTodo({action: "remove", id});
+    const id = Number(row.dataset.id), step = Number(row.dataset.step);
+    const go = row.querySelector(".go");
+    if (go) go.onclick = () => sendTodo(id, step < 0 ? null : step,
+                                        row.querySelector(".txt").textContent);
+    // Crossing out never asks — it is one tap and the same tap undoes it.
+    const x = row.querySelector(".x");
+    if (x) x.onclick = () =>
+      postTodo({action: "cross", id, step: step < 0 ? null : step,
+                on: !row.classList.contains("sent")});
+    // Deleting always asks. Nothing here is recoverable, and the strike beside
+    // it is the reversible answer for anyone who only meant "not this one".
+    const rm = row.querySelector(".rm");
+    if (rm) rm.onclick = () => {
+      const what = row.querySelector(".txt").textContent;
+      const r = (todoItems || []).find(x2 => String(x2.id) === String(id));
+      const extra = step >= 0
+        ? "\n\nThe one behind it takes its place."
+        : (r?.steps || []).length ? `\n\nIts ${r.steps.length} steps go with it.` : "";
+      if (confirm(`Drop "${what}"?${extra}`))
+        postTodo(step >= 0 ? {action: "remove", id, step} : {action: "remove", id});
+    };
     // Click the text to reword it. A prompt rather than an inline editor: this
     // is a one-line note, and an editor that has to be saved is a second step
-    // for something that takes one.
-    row.querySelector(".txt").onclick = () => {
+    // for something that takes one. Only the item's own line — a step is part
+    // of a plan, and rewording one of those is a job for `bb todo`.
+    if (step < 0) row.querySelector(".txt").onclick = () => {
       const was = row.querySelector(".txt").textContent;
       const now = prompt("Reword it:", was);
       if (now !== null && now.trim() && now !== was)
         postTodo({action: "edit", id, text: now});
     };
   });
+  todoItems = rows;
+  todoUnsaved = !!j.unsaved;
+  // The Save button is the only thing that spends a line of the conversation,
+  // so it is only there when there is something to spend it on.
+  $("todoSave").hidden = !todoUnsaved || !live;
+  $("todoSave").disabled = false;
+  $("todoSave").textContent = "Save & tell the session";
+}
+
+let todoItems = [];
+let todoSession = null;
+let todoUnsaved = false;
+let todoAsking = null;      // the send waiting on the confirm strip
+
+// Sending asks first, because it is the one action that does something
+// outside the panel: it hands a line to a conversation, crosses the step off,
+// closes this and puts you in that tab. All four are what you wanted or none
+// of them were.
+function sendTodo(id, step, text){
+  todoAsking = {id, step};
+  $("todoAskWhat").textContent = `Send “${text}” to ${todoSession}?`
+    + " It will be crossed off, and this closes and takes you to that tab.";
+  $("todoAlsoWrap").hidden = !todoUnsaved;
+  $("todoAsk").hidden = false;
+  $("todoAsk").scrollIntoView({block: "nearest"});
+  $("todoGo").focus();
+}
+
+function cancelSend(){ todoAsking = null; $("todoAsk").hidden = true; }
+
+async function reallySend(){
+  if (!todoAsking) return;
+  const {id, step} = todoAsking;
+  const also = todoUnsaved && $("todoAlso").checked;
+  const proj = memProj;
+  $("todoGo").disabled = true; $("todoGo").textContent = "Sending…";
+  // The note rides on the same line as the step rather than chasing it: two
+  // messages into one input box is how the second ends up glued to the first.
+  const j = await postTodo({action: "send", id, step, tell: also});
+  $("todoGo").disabled = false; $("todoGo").textContent = "Send";
+  cancelSend();
+  if (!j) return;
+  if (!j.sent){
+    notify("typed into the session but not sent — something else has the "
+      + "keyboard there; press Enter in that tab when it is clear", true);
+    return;
+  }
+  // Saved memory edits go with it, since "my other changes" means all of them.
+  if (also && memDirty()) await saveMemory(true);
+  closeMemory();
+  startClaude(proj, null);      // opens the tab, or goes to the one that is there
 }
 
 async function postTodo(body){
@@ -3414,8 +3630,8 @@ function drawMemory(j){
   // what it will do: the text is typed, not sent. See memory.py's notify().
   memHasSession = !!j.session;
   $("memNote").hidden = !j.session || !$("memFold").open;
-  $("memNote").title = "type a note into " + (j.session || "") +
-    " asking it to re-read these — you press Enter there to send it";
+  $("memNote").title = "ask " + (j.session || "") + " to re-read these — sent "
+    + "if the line visibly lands in its input box, left there for you if not";
   $("memCount").textContent = n ? "Memories — newest first" : "Memories";
   $("memListField").hidden = !n;
   // Which were open before this redraw. Saving reloads the book, and folding
@@ -3464,22 +3680,30 @@ async function postMemory(body){
 // One button for the lot: the index and any memory whose text was touched.
 // Saving each field as it blurs would be fewer clicks and worse — an edit to
 // a memory is a deliberate act, and it should take one.
-async function saveMemory(){
+// Is there anything in the memory half that has not been written?
+function memDirty(){
+  const idx = $("memIndex");
+  if (idx.value !== idx.dataset.was) return true;
+  return [...$("memList").querySelectorAll("textarea[data-file]")]
+    .some(t => t.value !== t.dataset.was);
+}
+
+async function saveMemory(quiet){
   const edits = [];
   const idx = $("memIndex");
   if (idx.value !== idx.dataset.was) edits.push({file: "MEMORY.md", text: idx.value});
   $("memList").querySelectorAll("textarea[data-file]").forEach(t => {
     if (t.value !== t.dataset.was) edits.push({file: t.dataset.file, text: t.value});
   });
-  if (!edits.length){ notify("nothing changed"); return; }
+  if (!edits.length){ if (!quiet) notify("nothing changed"); return; }
   const b = $("memSave");
   b.disabled = true; b.textContent = "Saving…";
   let done = 0;
   for (const e of edits) if (await postMemory({action:"save", ...e})) done++;
   b.disabled = false; b.textContent = "Save changes";
-  if (done) notify(`saved ${done} of ${edits.length} — Claude reads these when a session starts`);
-  await loadMemory(memGen);
-  refresh();                                  // the row's count may have moved
+  if (done && !quiet)
+    notify(`saved ${done} of ${edits.length} — Claude reads these when a session starts`);
+  if (!quiet){ await loadMemory(memGen); refresh(); }
 }
 
 async function forgetMemory(file){
@@ -3496,7 +3720,13 @@ The file goes, and its line comes out of the`
 
 async function noteMemory(){
   const j = await postMemory({action:"notify"});
-  if (j) notify("typed into the session — press Enter there to send it");
+  if (!j) return;
+  // notify.py submits only what it can see arrived; anything else is left in
+  // the input box, because something other than a text field has the keyboard.
+  notify(j.sent ? "sent to the session"
+                : "typed into the session but not sent — something else has the "
+                  + "keyboard there; press Enter in that tab when it is clear",
+         !j.sent);
 }
 
 function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
@@ -3528,6 +3758,15 @@ $("memFold").ontoggle = () => {
   $("memNote").hidden = !open || !memHasSession;
 };
 $("todoAdd").onclick = addTodo;
+$("todoGo").onclick = reallySend;
+$("todoNo").onclick = cancelSend;
+$("todoSave").onclick = async () => {
+  const b = $("todoSave");
+  b.disabled = true; b.textContent = "Telling…";
+  const j = await postTodo({action: "tell"});
+  if (j) notify(j.told ? "told " + (todoSession || "the session")
+                       : "saved — nothing is running here to tell");
+};
 $("todoText").onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); addTodo(); } };
 $("memClose").onclick = closeMemory;
 $("memSave").onclick  = saveMemory;
@@ -4180,6 +4419,7 @@ document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (!$("modal").hidden) closeEditor();
   if (!$("pmodal").hidden) closeNewProject();
+  if (!$("todoAsk").hidden){ cancelSend(); return; }
   if (!$("memModal").hidden) closeMemory();
   if (pinFor){ pinFor = null; drawTabs(); }
   if (resumeFor){ resumeFor = null; if (state) drawProjects(state.projects); }

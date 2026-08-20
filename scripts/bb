@@ -38,6 +38,7 @@ bb — BuilderBot helper
   bb lint [PATH]         lint the infrastructure files a repo carries: shell
                          scripts, Dockerfiles, GitHub workflows, compose, XML
   bb todo                this project's shared to-do list (add/done/rm)
+  bb todo add "..." [--step "..."]   an item, or an ordered group of steps
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
@@ -615,6 +616,9 @@ def show():
         mark = "x" if r.get("done") else " "
         who = " (claude)" if r.get("by") == "claude" else ""
         print(f"  [{mark}] {r['id']:>2}  {r['text']}{who}")
+        for i, st in enumerate(r.get("steps") or []):
+            print(f"          {i + 1}. {st['text']}"
+                  + ("  (sent)" if st.get("sent") else ""))
 
 
 def bail(r):
@@ -628,9 +632,19 @@ if op in ("list", "ls"):
 elif op == "--prompt":
     sys.stdout.write(todo.prompt(proj))
 elif op == "add":
-    text = " ".join(rest).strip()
-    r = todo.add(proj, text, by="claude"); bail(r)
-    print(f"added {r['item']['id']}: {r['item']['text']}")
+    # `bb todo add "title" --step "..." --step "..."` — a change that needs
+    # things done in an order is one item with steps, not several items that
+    # can be handed over backwards.
+    words, steps, i = [], [], 0
+    while i < len(rest):
+        if rest[i] == "--step" and i + 1 < len(rest):
+            steps.append(rest[i + 1]); i += 2
+        else:
+            words.append(rest[i]); i += 1
+    r = todo.add(proj, " ".join(words).strip(), by="claude", steps=steps); bail(r)
+    n = len(r["item"]["steps"])
+    print(f"added {r['item']['id']}: {r['item']['text']}"
+          + (f" ({n} steps)" if n else ""))
 elif op in ("done", "undone"):
     if not rest:
         print("usage: bb todo done <n>", file=sys.stderr); sys.exit(1)
@@ -645,7 +659,7 @@ elif op == "clear":
     todo.clear_done(proj)
     print("cleared the ticked items")
 else:
-    print("usage: bb todo [list|add TEXT|done N|undone N|rm N|clear]",
+    print("usage: bb todo [list|add TEXT [--step ...]|done N|undone N|rm N|clear]",
           file=sys.stderr)
     sys.exit(1)
 PY
