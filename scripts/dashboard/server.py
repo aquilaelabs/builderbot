@@ -1917,6 +1917,13 @@ class Handler(BaseHTTPRequestHandler):
         terminal for it. Signing out is one command with no conversation in
         it, so it is a button.
         """
+        # Not while a conversation is running. Signing out pulls the ground
+        # from under every session on the box, and a page that has not polled
+        # for fifteen seconds can offer a button the answer has moved past —
+        # so the refusal is here as well as on the button.
+        busy = [s["name"] for s in tmux_sessions() if s["name"].startswith("claude-")]
+        if busy:
+            return self._json({"error": "end these first: " + ", ".join(busy)}, 409)
         r = run(["claude", "auth", "logout"], timeout=60)
         _auth.update(at=0.0, state={})
         if r["code"] != 0:

@@ -78,6 +78,13 @@ export function tmuxCapture(name){
   // 80-column pane still reads as the one line it is.
   return execFileSync('tmux', ['capture-pane', '-p', '-J', '-t', name]).toString();
 }
+// End one on that same private server. `fresh` puts the fixture sessions back
+// before the next file, so a test may end one it needs gone.
+export function tmuxKill(name){
+  if (process.env.TMUX || !process.env.TMUX_TMPDIR)
+    throw new Error('tmuxKill: not on the private tmux server — refusing');
+  try { execFileSync('tmux', ['kill-session', '-t', name]); } catch { /* already gone */ }
+}
 // A tmux format string evaluated against a session on that same private server.
 export function tmuxFmt(name, fmt){
   if (process.env.TMUX || !process.env.TMUX_TMPDIR)

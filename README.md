@@ -835,7 +835,12 @@ lives in its body. The cards:
   click — the flow is a URL to open in a browser and a code pasted back, so it
   needs somewhere to type. Signing out is one command with no conversation in
   it, so it is a button, and it asks first because every session here stops
-  working. On a claude too old to have `auth status` the row simply is not
+  working. **It is dead while any Claude session is running** and names the
+  ones in the way; the server refuses it too, since a page can be fifteen
+  seconds behind the answer. And with the container signed out, **every
+  project's Claude button goes dead with it** — as does the terminal URL
+  behind them, which refuses with the way in rather than letting a session
+  start and die on Claude's own error. On a claude too old to have `auth status` the row simply is not
   there: not knowing is not the same as being signed out, and offering to sign
   somebody out of nothing is worse than offering nothing
 - container uptime, and runner state — registered, listening, **running a job**

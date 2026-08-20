@@ -1090,6 +1090,11 @@ const projFor = n =>
 
 const isClaude = t => t.kind === "term" && sessionOf(t.arg).startsWith("claude-");
 const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
+// Signing out pulls the ground from under every conversation on the box, so
+// the button is dead while any of them is running. Named from the session
+// rather than the tab: a Claude session with no tab is still a conversation.
+const claudeSessions = () => [...liveSessions()].filter(n => n.startsWith("claude-"));
+const signedIn = () => state?.claude_auth?.signed_in !== false;
 
 // What a Claude session is doing — {state: "working"|"waiting", task} — read
 // from the pane title the server collected, or null for anything else. The
@@ -2672,8 +2677,11 @@ function drawProjects(ps){
       </div>
       <span class="acts">
       ${isBroken(p) ? "" : `<button class="${live.has(tmuxName("claude-"+p.name)) ? "primary" : ""}"
-         data-c="${esc(p.name)}"
-         title="${live.has(tmuxName("claude-"+p.name)) ? "session running — go to its tab"
+         data-c="${esc(p.name)}"${!signedIn() && !live.has(tmuxName("claude-"+p.name))
+           ? " disabled" : ""}
+         title="${!signedIn() && !live.has(tmuxName("claude-"+p.name))
+                   ? "this container is not signed in to Claude — the Doctor card has the way in"
+                 : live.has(tmuxName("claude-"+p.name)) ? "session running — go to its tab"
                  : p.last_claude ? "no session running — resume or start one"
                  : "start a Claude session here"}">${
            // The same working/waiting dot the tab wears, so a phone showing
@@ -2745,10 +2753,14 @@ function drawAuth(){
   const el = $("docAuth"), a = state?.claude_auth;
   if (!a || a.unknown){ el.hidden = true; return; }
   el.hidden = false;
+  const busy = claudeSessions();
   if (paint(el, a.signed_in
     ? `<span class="sub grow" title="claude auth status">signed in${
          a.email ? " as " + esc(a.email) : ""}${a.plan ? ` · ${esc(a.plan)}` : ""}</span>
-       <button id="bSignOut" title="sign this container out of Claude">Sign out</button>`
+       <button id="bSignOut"${busy.length ? " disabled" : ""} title="${busy.length
+         ? `end ${busy.length === 1 ? "this session" : "these sessions"} first: ${
+             esc(busy.join(", "))}`
+         : "sign this container out of Claude"}">Sign out</button>`
     : `<span class="sub grow bad">not signed in to Claude — sessions will not start</span>
        <button id="bSignIn" class="primary"
          title="opens a terminal and runs the sign-in flow">Sign in</button>`)){

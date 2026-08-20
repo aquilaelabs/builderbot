@@ -181,6 +181,16 @@ case "$target" in
                 -not -exec test -e '{}/.bbignore' ';' -printf '  %f\n' >&2
             bad ""
         fi
+        # Signed out, a session starts and dies on claude's own error, which
+        # reads like the container is broken. Refused positively only: an
+        # older claude with no `auth` subcommand, or one that cannot answer,
+        # gets the benefit of the doubt, because a wrong refusal here is worse
+        # than a confusing message.
+        if [ "$(claude auth status --json 2>/dev/null \
+                | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" = false ]; then
+            bad "This container is not signed in to Claude." \
+                "Sign in from the dashboard's Doctor card, or run: bb login"
+        fi
         if is_excluded "$proj"; then
             bad "'${proj}' is excluded: no Claude session can be started here." \
                 "Clear it from the dashboard's Projects card to allow one again."

@@ -1,7 +1,7 @@
 // Sidebar cards: universal collapse with a height tween, header-only
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
-import { launch, newPage, ok, done, ready, doctorFixture, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, doctorFixture, tmuxKill, URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync } from 'node:fs';
 
 const browser = await launch();
@@ -113,6 +113,26 @@ ok((await page.$eval('#docAuth', e => e.textContent)).includes('tester@example.c
 ok(await page.$('#bSignOut') !== null && await page.$('#bSignIn') === null,
    '...and offers the way out, not the way in');
 
+// Not while a conversation is running: signing out pulls the ground from
+// under every session on the box. The fixture has one.
+ok(await page.$eval('#bSignOut', b => b.disabled)
+   && (await page.$eval('#bSignOut', b => b.title)).includes('claude-alpha'),
+   'signing out is dead while a Claude session is running, and says which');
+const blocked = await page.evaluate(async () => {
+  const r = await fetch('/api/signout', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  return r.status;
+});
+ok(blocked === 409,
+   '...and the server refuses it too, because a page can be fifteen seconds stale');
+page.errors = [];
+
+tmuxKill('claude-alpha');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => !document.getElementById('bSignOut')?.disabled,
+                           { timeout: 25000 });
+ok(true, 'with the last one ended, it comes alive');
+
 // Signed out: the offer flips, and signing in opens a terminal, because the
 // flow is a URL to open and a code to paste back.
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-out.json`));
@@ -122,6 +142,9 @@ await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
 ok(await page.$('#bSignOut') === null
    && (await page.$eval('#docAuth', e => e.textContent)).includes('not signed in'),
    'signed out, it says so where the verdict is and offers the way in');
+// ...and nothing offers to start a conversation that cannot start.
+ok(await page.$$eval('#projects [data-c]', bs => bs.length > 0 && bs.every(b => b.disabled)),
+   '...and every project\'s Claude button goes with it');
 const tabsBefore = await page.$$eval('.tab[data-id]', t => t.length);
 await page.click('#bSignIn');
 await page.waitForFunction(n => document.querySelectorAll('.tab[data-id]').length > n,
