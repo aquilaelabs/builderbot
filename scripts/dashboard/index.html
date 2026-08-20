@@ -195,6 +195,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
 .pkg .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
+/* How old the version answers are, beside the button that refreshes them:
+   they survive a restart now, and a number with no date on it is the kind of
+   thing that quietly goes stale. */
+.pkgwhen{align-self:center;color:var(--dim);font:11px system-ui,sans-serif}
 /* A word and an ellipsis, never a bar — no percentage is read out of a
    job any more, so there is nothing for one to show. */
 .pkg .prog.plain{display:block}
@@ -2588,7 +2592,8 @@ function renderPackagesInto(i){
         busy && job.action === "install" ? `Working on ${esc(job.current || "")}…` : "Install selected"}</button>
       <button data-pkg="check"${busy ? " disabled" : ""}>${
         busy && job.action === "check" ? `Checking ${esc(job.current || "")}…`
-        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
+        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>${
+      d.checked ? `<span class="sub pkgwhen">versions checked ${ago(d.checked)}</span>` : ""}
     </div>
     ${lines.length ? `<pre class="pkglog">${esc(lines.join("\n"))}${
       busy ? "" : `\n— finished: ${(job.done || []).length} ok${

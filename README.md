@@ -505,7 +505,10 @@ every row from the moment the tab opens, cached until something is installed.
 Whether a newer one exists is a network round trip to a different upstream
 per toolchain, so that one waits to be asked. A check answers for the rows
 that are *not* installed too: the version there is what Install would fetch,
-plainly rather than in amber, since nothing about it is news.
+plainly rather than in amber, since nothing about it is news. What a check
+found is kept on the state volume and dated on the page — those answers cost
+a round trip each and do not go stale quickly, and holding them only in
+memory meant a restart wiped every version the tab had been told.
 
 **The size is an estimate until it is a measurement.** Every row carries one:
 the catalog's `~3 GB` before installation, which is what the download costs,

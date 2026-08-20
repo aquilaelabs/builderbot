@@ -1502,14 +1502,45 @@ PACKAGES = [
      "about": "Wear OS, which is what modern Galaxy and Pixel watches run."},
 ]
 
+# What the last check found, kept on the state volume. Held only in memory
+# until now, which meant a dashboard restart — or a container update — wiped
+# every version the tab had been told, and the rows for things that are not
+# installed went back to saying nothing at all. The answers are a network
+# round trip each and they do not go stale quickly; the tab says how old they
+# are and the button refreshes them.
+VERSIONS_FILE = STATE / "pkg-versions.json"
+
+
+def load_versions():
+    try:
+        v = json.loads(VERSIONS_FILE.read_text())
+    except (OSError, ValueError):
+        return {}, 0
+    if not isinstance(v, dict) or not isinstance(v.get("items"), dict):
+        return {}, 0
+    known = {p["name"] for p in PACKAGES}
+    out = {}
+    for name, row in v["items"].items():
+        # Shape-checked like every other stored file: it is read into a page
+        # that renders it, and a hand edit must not become a rendered value.
+        if name not in known or not isinstance(row, dict):
+            continue
+        if not all(isinstance(row.get(k), str) for k in ("installed", "latest", "status")):
+            continue
+        out[name] = {k: row[k][:64] for k in ("installed", "latest", "status")}
+    at = v.get("at")
+    return out, at if isinstance(at, int) and at > 0 else 0
+
+
 # One install at a time, in a worker thread, because these are minutes long
 # and megabytes wide: a request that waited for them would time out, and two
 # at once would fight over the same sdkmanager lock.
 _pkg_lock = threading.Lock()
 # What `bb sdk check` last reported: {name: {installed, latest, status}}.
 # Filled only when asked — every probe in it reaches the network, so doing it
-# on the fifteen-second poll would be a background service nobody requested.
-_pkg_versions = {}
+# on the fifteen-second poll would be a background service nobody requested —
+# and reloaded from disk at startup, so what it found outlives this process.
+_pkg_versions, _pkg_checked = load_versions()
 _pkg_job = {"running": False, "queue": [], "current": "", "action": "",
             "log": [], "done": [], "failed": []}
 _sdk_root_cache = []
@@ -1707,6 +1738,7 @@ def packages_payload():
                for k, v in _pkg_job.items()}
     return {"root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
+            "checked": _pkg_checked,
             "sizing": _pkg_sizing[0],
             "items": items, "job": job}
 
@@ -1780,6 +1812,8 @@ def _pkg_worker():
                         _pkg_versions[f[0]] = {"installed": f[1], "latest": f[2],
                                                "status": f[3]}
                 _pkg_job["log"].append(f"{name}: {_pkg_versions.get(name, {}).get('status', '?')}")
+                globals()["_pkg_checked"] = int(time.time())
+                write_json(VERSIONS_FILE, {"at": _pkg_checked, "items": _pkg_versions})
             else:
                 _pkg_job["log"].extend(_job_tail(r["out"]))
                 if r["code"] != 0:

@@ -6,7 +6,7 @@
 // stub makes and removes directories rather than downloading gigabytes, so
 // the whole round trip runs in a second.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
@@ -199,6 +199,14 @@ ok((await pill('flutter', 2)).text === '→ 2.0'
 ok((await pill('swift', 1)).text === '9.9'
    && /would fetch/.test((await pill('swift', 1)).title),
    'a package that has never been installed says what Install would fetch');
+// The answers cost a network round trip each, so they are kept on the state
+// volume — a dashboard restart used to wipe every version the tab had been
+// told — and dated, because a number with no date on it goes quietly stale.
+ok(/versions checked/.test(await page.$eval('.doc .macros', el => el.textContent)),
+   '...and the tab says how old the answers are');
+const stored = JSON.parse(readFileSync(`${DIR}/state/pkg-versions.json`, 'utf8'));
+ok(stored.at > 0 && stored.items.flutter.status === 'update',
+   '...and they are on disk, to outlive the process that asked');
 ok(await page.$$eval('.doc .pkg', ls => ls
      .filter(l => l.querySelector('input').value === 'swift')
      .every(l => l.querySelectorAll('.nm .pill.warn').length === 0)),
