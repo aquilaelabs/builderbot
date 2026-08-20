@@ -82,10 +82,19 @@ ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Claude'), 'Close
 // so the transcript id reaches the terminal, and the frame is rebuilt for it.
 await page.evaluate(() => openTab({kind:'term', arg:'claude:alpha', label:'Claude: alpha'}));
 await page.evaluate(() => openTab({kind:'term', arg:'claude:alpha:r:abc123', label:'Claude: alpha'}));
-ok(await page.evaluate(() => tabs.filter(t => sessionOf(t.arg) === 'claude-alpha').length === 1
-     && tabs.find(t => sessionOf(t.arg) === 'claude-alpha').arg === 'claude:alpha:r:abc123'
-     && document.querySelector('#pane0 iframe').src.includes(encodeURIComponent('claude:alpha:r:abc123'))),
-   'Resume on a dead session\'s tab carries the transcript id into the frame');
+const resumed = await page.evaluate(() => ({
+  tabs: tabs.filter(t => sessionOf(t.arg) === 'claude-alpha').length,
+  arg: tabs.find(t => sessionOf(t.arg) === 'claude-alpha')?.arg,
+  src: document.querySelector('#pane0 .slot.on iframe')?.src,
+  slots: [...document.querySelectorAll('#pane0 .slot')].map(c => c.dataset.key),
+}));
+ok(resumed.tabs === 1 && resumed.arg === 'claude:alpha:r:abc123'
+     && (resumed.src || "").includes(encodeURIComponent('claude:alpha:r:abc123'))
+     // ...and the frame the old tab had is gone with it. A pane keeps
+     // terminals alive behind the visible one; one whose tab has closed is
+     // still an attached client, on a session nothing is showing.
+     && !resumed.slots.some(k => k.includes('|claude:alpha') && !k.includes(':r:')),
+   `Resume on a dead session's tab carries the transcript id into the frame (${JSON.stringify(resumed)})`);
 await page.evaluate(() => hideTab(tabs.find(t => sessionOf(t.arg) === 'claude-alpha').id));
 
 await page.click('#cardFindings .macros button');
@@ -147,9 +156,11 @@ await page.waitForFunction(() => document.querySelector('#projects [data-c="ep.s
 
 // A back/forward-cache restore (persisted pageshow) reloads the terminal
 // iframe so a dead socket reconnects instead of sitting on ttyd's prompt.
-await page.waitForSelector('.pane iframe');
+// .slot.on: a pane keeps the terminals behind the visible one loaded, so
+// there is more than one frame in it and only one is on screen.
+await page.waitForSelector('.slot.on iframe');
 await page.evaluate(() => { window.__loads = 0;
-  document.querySelector('.pane iframe').addEventListener('load', () => window.__loads++); });
+  document.querySelector('.slot.on iframe').addEventListener('load', () => window.__loads++); });
 await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
 await page.waitForFunction(() => window.__loads > 0, { timeout: 10000 });
 ok(true, 'a bfcache restore reloads the terminal iframe to reconnect it');

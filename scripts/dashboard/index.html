@@ -224,14 +224,26 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .rm{flex:0 0 auto;align-self:center;color:var(--dim)}
 @media(hover:hover){ .pkg .rm:hover{color:var(--bad);border-color:#4d2220} }
 @media(hover:hover){ .pkg:hover{background:#1b222b} }
-/* The image picker: two selects and a button on one line, wrapping to two on
-   a phone rather than squeezing the level down to three characters. */
-.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 12px 10px}
-.imgadd select{background:#161b22;color:var(--ink);border:1px solid var(--line);
-  border-radius:6px;padding:6px 8px;font:12px/1.3 inherit;min-height:var(--tap);
-  max-width:100%}
+/* The image picker. Three controls that fit on one line on a desktop and wrap
+   to two on a phone — the level and its Add button staying together, because
+   they are one action. min-width:0 is the load-bearing part: a select is as
+   wide as its longest option unless told otherwise, and
+   "API 36-ext19 · 1.8 GB" was pushing the whole tab wider than the screen,
+   which clipped every paragraph on it. */
+.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:2px 12px 12px}
+.imgadd select{flex:1 1 190px;min-width:0;background:#161b22;color:var(--ink);
+  border:1px solid var(--line);border-radius:6px;padding:6px 8px;
+  font:12px/1.3 inherit;min-height:var(--tap)}
+#imgFlavor{flex-basis:210px}
+.imgadd button{flex:0 0 auto;min-height:var(--tap)}
 .imgadd .imgabout{flex:0 0 100%;color:var(--dim);margin:0;
   font:12px/1.5 system-ui,sans-serif;max-width:70ch}
+/* The one job at a time, said beside the button that started it rather than
+   written into the button — a package id is longer than any button should be,
+   and as a label it turned Install into a green banner across the tab. */
+.pkgworking{flex:0 0 100%;color:var(--accent);font:12px/1.5 system-ui,sans-serif;
+  overflow-wrap:anywhere}
+.macros .pkgworking{flex:1 1 100%}
 @media(max-width:900px){ .imgadd select{font-size:16px} }
 /* Bigger tap targets where a finger is doing the ticking. */
 @media(max-width:900px){ .pkg{padding:13px 0} .pkg input{width:20px;height:20px} }
@@ -517,9 +529,15 @@ body.dragging .tab .lbl{cursor:grabbing}
    Not color-scheme:dark on the frame — that is what turns the canvas white,
    which is the opposite of what it sounds like it would do. */
 .pane iframe{flex:1;border:0;width:100%;display:block;background:#2b2b2b}
-.pane .doc{flex:1;overflow:auto;background:var(--bg);padding:12px;
+.pane .doc{overflow:auto;background:var(--bg);padding:12px;
   -webkit-overflow-scrolling:touch}
-.pane .slot{position:relative;flex:1;min-height:0;display:flex}
+/* Every child of the stack occupies the whole of it, and one is visible. See
+   paneStack(): the frames behind stay loaded and stay the same size. */
+.pane .stack{position:relative;flex:1;min-height:0}
+.pane .stack > *{position:absolute;inset:0}
+.pane .stack > *:not(.on){visibility:hidden;pointer-events:none}
+.pane .stack > .empty-pane{display:grid;place-items:center}
+.pane .slot{display:flex}
 /* An opaque cover over the frame until the terminal is really there.
    The frame's own background (below) is enough in Chromium, and is not in
    Firefox on Android, which paints its white document canvas over it anyway —
@@ -1618,6 +1636,14 @@ function unveil(frame){
 function drawPanes(){
   if (!state) return;    // nothing to point a frame at until the first poll
   $("panes").classList.toggle("split", isSplit());
+  // A frame kept alive behind the visible one belongs to a tab. When the tab
+  // goes — closed, or replaced by a Resume that mints a new one — the frame
+  // is nobody's, and a nobody's frame is still an attached tmux client.
+  const liveTabs = new Set(tabs.map(t => t.id));
+  for (let j = 0; j < 2; j++)
+    [...($("pane" + j).querySelector(".stack")?.children || [])]
+      .filter(c => c.dataset.key && !liveTabs.has(c.dataset.key.split("|")[0]))
+      .forEach(c => c.remove());
   for (let i = 0; i < 2; i++){
     const pane = $("pane" + i);
     pane.classList.toggle("hidden", i === 1 && !isSplit());
@@ -1657,15 +1683,36 @@ function drawPanes(){
     pane.dataset.tab = t?.id || ""; pane.dataset.kind = t?.kind || ""; pane.dataset.arg = t?.arg || "";
     pane.onclick = () => { if (isSplit()){ active = i; render(); } };
 
-    if (!t){ pane.innerHTML = `<div class="empty-pane">no tab here — “+” opens a terminal, Sessions reopens a running one</div>`; continue; }
-    pane.innerHTML = `<div class="bar"></div>` + (t.kind === "term"
+    const st = paneStack(pane);
+    if (!t){ showInStack(st, "", () =>
+      `<div class="empty-pane">no tab here — “+” opens a terminal, Sessions reopens a running one</div>`);
+      continue; }
+    const key = `${t.id}|${t.kind}|${t.arg}`;
+    // A terminal that was on screen a moment ago is kept alive behind the one
+    // that replaced it, so coming back to it is instant. Two panes must never
+    // hold the same one: a second live client on a session is the size fight
+    // pinTo exists to avoid.
+    if (t.kind === "term") dropElsewhere(i, key);
+    // Same tab, different argument — a dead session's tab taking a Resume's
+    // transcript id — is a different frame, and the old one is nobody's now.
+    [...st.children].filter(c => c.dataset.key !== key
+                            && c.dataset.key?.startsWith(t.id + "|"))
+                    .forEach(c => c.remove());
+    const { el, fresh } = showInStack(st, key, () => t.kind === "term"
       // Selecting in a shell copies: the terminal fires the copy itself, and
       // this is the permission that lets it, since the terminal is served from
       // its own port and so counts as a cross-origin frame. Claude tabs are
       // left without it — they keep tmux's mouse mode, where a drag never
       // becomes a browser selection in the first place.
       ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i></div>`
+      // Documents are not kept: they redraw from state in a millisecond, and
+      // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
+    if (t.kind !== "term") el.id = "doc" + i;
+    evictFrames(st);
+    // Shown again after being hidden: xterm sizes itself from a resize event,
+    // and one that was laid out behind another frame may have missed one.
+    if (!fresh && t.kind === "term") nudgeTerminals();
     paintBar(pane, t, i);
     if (t.kind === "findings"){
       pane.dataset.rev = String(findingsRev); renderFindingsInto(i);
@@ -1677,6 +1724,65 @@ function drawPanes(){
       pane.dataset.rev = String(pkgRev); renderPackagesInto(i);
       if (!packages) loadPackages();      // same, for a restored packages tab
     }
+  }
+}
+
+// How many terminals a pane keeps alive behind the one on screen. Each is a
+// full xterm and its own websocket, so this is a real ceiling on browser
+// memory — the same reasoning as MAX_TABS, one level down. Three covers the
+// switching anyone actually does; the fourth reloads, as all of them used to.
+const KEEP_FRAMES = 3;
+let stackClock = 0;
+
+// A pane is a bar and a stack. The stack's children all sit on top of one
+// another at the same size, and exactly one of them is visible — which is the
+// whole trick: rebuilding a pane's innerHTML to change tabs threw the frame
+// away, and ttyd is 700KB of javascript that then had to load, connect and
+// draw again. A second and a half of blank pane, every switch.
+//
+// Same size, not merely present: a hidden frame is still an attached tmux
+// client, and tmux sizes a window to its smallest one. Overlapping them keeps
+// every client on the same geometry, so there is nothing to fight about.
+function paneStack(pane){
+  let st = pane.querySelector(".stack");
+  if (!st){
+    pane.innerHTML = `<div class="bar"></div><div class="stack"></div>`;
+    st = pane.querySelector(".stack");
+  }
+  return st;
+}
+
+function showInStack(st, key, html){
+  let el = [...st.children].find(c => c.dataset.key === key);
+  const fresh = !el;
+  if (fresh){
+    st.insertAdjacentHTML("beforeend", html());
+    el = st.lastElementChild;
+    el.dataset.key = key;
+  }
+  el.dataset.seen = String(++stackClock);
+  for (const c of st.children) c.classList.toggle("on", c === el);
+  return { el, fresh };
+}
+
+// Terminals only, oldest gone first — a document is one per pane already, and
+// costs nothing to rebuild. The visible one is counted rather than exempted:
+// when the pane is showing a document, all three terminals behind it are
+// hidden, and exempting "the visible slot" then kept one fewer than it says.
+function evictFrames(st){
+  [...st.children]
+    .filter(c => c.classList.contains("slot"))
+    .sort((a, b) => b.dataset.seen - a.dataset.seen)
+    .slice(KEEP_FRAMES)
+    .forEach(c => c.remove());
+}
+
+function dropElsewhere(keep, key){
+  for (let j = 0; j < 2; j++){
+    if (j === keep) continue;
+    [...($("pane" + j).querySelector(".stack")?.children || [])]
+      .filter(c => c.dataset.key === key)
+      .forEach(c => c.remove());
   }
 }
 
@@ -2726,6 +2832,17 @@ let pkgDots = 0, pkgDotsTimer = null;
 // question being asked, not a fact about the box.
 let pkgFlavor = "";
 
+// What the one job is doing, said next to the control that started it — Add
+// for a system image, Install selected for anything else — rather than
+// written into that button. A package id is longer than any button should be,
+// and using it as a label turned Install into a green banner across the tab.
+const pkgWorkingIsImage = job =>
+  (job?.current || "").includes("system-images;");
+const pkgWorking = job => `<span class="pkgworking">${
+  {install: "Installing", remove: "Removing", update: "Updating",
+   check: "Checking"}[job.action] || "Working on"} ${
+  esc((job.current || "").replace(/^android:/, ""))}<span class="dots"></span></span>`;
+
 function pkgTickDots(){
   const spans = document.querySelectorAll(".dots");
   if (!spans.length){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; return; }
@@ -2839,6 +2956,7 @@ function imgAdder(d, busy){
       mine.map(r => `<option value="${esc(r.id)}">API ${esc(r.api)} · ${esc(r.size)}</option>`)
           .join("") || `<option value="">none left to add</option>`}</select>
     <button id="imgAdd"${busy || !mine.length ? " disabled" : ""}>Add</button>
+    ${busy && pkgWorkingIsImage(d.job) ? pkgWorking(d.job) : ""}
     ${about ? `<div class="sub imgabout">${esc(about)}</div>` : ""}
   </div>`;
 }
@@ -2893,10 +3011,11 @@ function renderPackagesInto(i){
       ? `<div class="pkgs">${d.images.map(im => imgRow(im, busy)).join("")}</div>`
       : `<div class="pkghead">Nothing installed — the emulator has no image to boot.</div>`}
     <div class="macros">
-      <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
-        busy && job.action === "install" ? `Working on ${esc(job.current || "")}…` : "Install selected"}</button>
+      <button class="primary" data-pkg="install"${busy ? " disabled" : ""}
+        >Install selected</button>
       ${busy ? `<button data-pkg="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+      ${busy && !pkgWorkingIsImage(job) ? pkgWorking(job) : ""}
       <button data-pkg="check"${busy ? " disabled" : ""}>${
         busy && job.action === "check"
           ? `Checking for updates<span class="dots">${".".repeat(pkgDots)}</span>`
