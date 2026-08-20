@@ -1964,13 +1964,6 @@ EOF
 sdk_remove() {
     sdk_operator_only remove "$@"
     local what="${1:-}" d marker
-    # Written first, so an uninstall that dies half way still counts as one
-    # having been asked for — a hook re-fetching 1.3GB behind a failed removal
-    # is the surprise this exists to stop.
-    if [ -n "$what" ]; then
-        marker="$(sdk_removed_marker "$what")"
-        mkdir -p "$(dirname "$marker")" 2>/dev/null && : > "$marker" || true
-    fi
     # What the catalog says it is, so that adding a package really is one edit:
     # a list of names repeated here is a package that installs and will not
     # come off again.
@@ -1980,6 +1973,13 @@ sdk_remove() {
         # is a directory on the share like any other, so it comes off like one.
         [ "$what" = tizen ] || die "unknown package: ${what} (bb sdk list names them)"
     fi
+    # Then the marker, before anything is deleted, so an uninstall that dies
+    # half way still counts as one having been asked for — a hook re-fetching
+    # 1.3GB behind a failed removal is the surprise this exists to stop. After
+    # the name is checked, though: a typo used to leave a marker behind for a
+    # package that does not exist.
+    marker="$(sdk_removed_marker "$what")"
+    mkdir -p "$(dirname "$marker")" 2>/dev/null && : > "$marker" || true
     if [ "$kind" != sdkmanager ]; then
         d="$(sdk_find "$what")" || die "${what} is not installed"
         log "removing ${d}"
