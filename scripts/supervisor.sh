@@ -74,7 +74,10 @@ save_sessions() {
         printf '['
         while read -r name dir; do
             [ -n "$name" ] || continue
-            case "$name" in claude-*) continue ;; esac
+            # Neither a Claude conversation nor the sign-in flow's terminal is
+            # a workspace to put back: one ended with the container, the other
+            # is a prompt whose code expired with it.
+            case "$name" in claude-*|login) continue ;; esac
             # The names bb-tty makes are all of this shape; anything else is not
             # ours to write into a filename.
             case "$name" in *[!A-Za-z0-9._-]*) continue ;; esac

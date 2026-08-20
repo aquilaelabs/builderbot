@@ -509,10 +509,18 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 .st.warn{background:var(--warn)}
 .st.bad{background:var(--bad)}
 /* Styled by class, not id: an id's display:flex would outrank the class-based
-   .card.closed rule that hides every body row when the card is folded. */
-.doctor #docAuth{padding:0 12px 11px}
-#docAuth .grow{flex:1;min-width:0;overflow-wrap:anywhere}
+   .card.closed rule that hides every body row when the card is folded. Which
+   is also why the auth line is a .docbar rather than something of its own —
+   one row shape for the card, so the verdict and the action it comes with line
+   up on both edges instead of each having its own idea of the margin. */
+/* The same secondary type as every other explanatory line on the page: `.sub`
+   is scoped to `.row`, and without this the one line in the card that is not
+   in a row came out in body text, a size larger than everything around it. */
+#docAuth .sub{color:var(--dim);font:12px/1.4 var(--mono);overflow-wrap:anywhere}
+#docAuth .sub.bad{color:var(--bad)}
+#docAuth .grow{flex:1;min-width:0}
 .docbar{display:flex;align-items:center;gap:8px;padding:7px 10px}
+.doctor .docbar+.docbar{border-top:1px solid var(--line)}
 #docWhen{font:11px/1 var(--mono);color:var(--dim);margin-left:auto}
 #doctor:not([hidden]){border-top:1px solid var(--line)}
 .doctor .probs{padding:7px 10px;display:flex;flex-direction:column;gap:4px}
@@ -951,7 +959,7 @@ body.dragging .tab .lbl{cursor:grabbing}
            in wants a browser and a code pasted back, so it opens a terminal;
            signing out is one command with no conversation in it, so it is a
            button. -->
-      <div class="macros" id="docAuth" hidden></div>
+      <div class="docbar" id="docAuth" hidden></div>
       <div id="doctor"><div class="empty">first run pending…</div></div>
     </div>
     <div class="card" data-card="runner">
@@ -1877,8 +1885,14 @@ function drawPanes(){
     if (t.kind !== "term") el.id = "doc" + i;
     evictFrames(st);
     // Shown again after being hidden: xterm sizes itself from a resize event,
-    // and one that was laid out behind another frame may have missed one.
-    if (!fresh && t.kind === "term") nudgeTerminals();
+    // and one that was laid out behind another frame may have missed one. One
+    // marked stale slept through a disconnect instead, and needs the reload it
+    // was spared while nobody was looking at it.
+    if (!fresh && t.kind === "term"){
+      const f = el.querySelector("iframe");
+      if (f?.dataset.stale){ delete f.dataset.stale; f.src = f.src; }
+      else nudgeTerminals();
+    }
     paintBar(pane, t, i);
     if (t.kind === "findings"){
       pane.dataset.rev = String(findingsRev); renderFindingsInto(i);
@@ -1960,10 +1974,18 @@ function dropElsewhere(keep, key){
 //
 // Done when this page returns to the front, which is exactly when the other
 // device has been the one using it.
-let nudgeTimer = null;
+let nudgeTimer = null, nudgedAt = 0;
 function nudgeTerminals(){
-  const frames = [...document.querySelectorAll(".pane iframe")];
+  // The visible ones only. A pane keeps three more frames alive behind the one
+  // on screen, and they are all the same size already — thrashing their layout
+  // costs a reflow each and fixes nothing anybody is looking at.
+  const frames = [...document.querySelectorAll(".pane .slot.on iframe")];
   if (!frames.length) return;
+  // Focus comes back to this page every time a click leaves a terminal, and
+  // this is a layout thrash: often enough to matter on a phone, and pointless
+  // more than once in a moment.
+  if (Date.now() - nudgedAt < 1500) return;
+  nudgedAt = Date.now();
   clearTimeout(nudgeTimer);
   frames.forEach(f => f.style.width = "calc(100% - 1px)");
   // A frame has to be laid out at the new width for the resize to reach the
@@ -1980,7 +2002,14 @@ function nudgeTerminals(){
 // reload reattaches exactly where it was.
 let hiddenAt = 0;
 function reattachTerminals(){
-  document.querySelectorAll(".pane iframe").forEach(f => { f.src = f.src; });
+  // What is on screen reloads now; what is behind it is marked and reloads
+  // when it is next shown. Reloading all of them together was up to six ttyd
+  // instances — 700KB of javascript, a websocket and a full repaint each —
+  // starting at the same moment on the device least able to afford it, which
+  // is what a phone spent its first seconds back doing.
+  document.querySelectorAll(".pane .slot:not(.on) iframe")
+          .forEach(f => f.dataset.stale = "1");
+  document.querySelectorAll(".pane .slot.on iframe").forEach(f => { f.src = f.src; });
 }
 document.addEventListener("visibilitychange", () => {
   if (document.hidden){ hiddenAt = Date.now(); return; }
@@ -2767,9 +2796,30 @@ function drawAuth(){
     const out = $("bSignOut"), inb = $("bSignIn");
     if (out) out.onclick = signOut;
     // A terminal, because the flow is a URL to open and a code to paste back.
-    if (inb) inb.onclick = () => openTab({kind: "term", arg: "login",
-                                          label: "Claude sign-in"});
+    if (inb) inb.onclick = signIn;
   }
+}
+
+// Sign in, however many times it takes.
+//
+// The flow ends with its session — that is how the page notices it is over —
+// which leaves the tab holding a terminal with nothing behind it. Pressing the
+// button again then found that tab, focused it, and stopped: a dead rectangle
+// that swallows everything typed into it, from a button whose whole job is to
+// start the flow. So an existing tab gets its frame reloaded, which starts a
+// new session when the old one is gone and merely reattaches when it is not.
+function signIn(){
+  const t = tabs.find(x => x.kind === "term" && x.arg === "login");
+  if (!t) return openTab({kind: "term", arg: "login", label: "Claude sign-in"});
+  focusTab(t.id);
+  reloadFrameOf(t.id);
+}
+
+// Reload the terminal behind one tab. Lossless when the session is alive —
+// tmux holds it and its scrollback — and a fresh start when it is not.
+function reloadFrameOf(id){
+  const f = document.querySelector(`.pane .slot[data-key^="${CSS.escape(id)}|"] iframe`);
+  if (f) f.src = f.src;
 }
 
 async function signOut(){

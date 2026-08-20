@@ -152,6 +152,19 @@ await page.waitForFunction(n => document.querySelectorAll('.tab[data-id]').lengt
 ok(await page.evaluate(() => tabs.some(t => t.arg === 'login')),
    '...which opens a terminal for it rather than pretending it is one click');
 
+// And pressing it again starts another flow. The first one ends with its
+// session — that is how the page notices it is over — leaving the tab holding
+// a terminal with nothing behind it; focusing that and stopping is how the
+// button became a no-op that swallowed everything typed into it.
+let relogins = 0;
+page.on('framenavigated', f => { if (f.url().includes('arg=login')) relogins++; });
+await page.click('#bSignIn');
+await page.waitForFunction(() => true);
+await new Promise(r => setTimeout(r, 1500));
+ok(relogins >= 1, '...and pressing it again starts another, not the finished one');
+ok(await page.$$eval('.tab[data-id]', t => t.length) === tabsBefore + 1,
+   '...in the tab it already has, rather than a second one');
+
 // And back: the stub's logout rewrites its own fixture, so this proves the
 // button reaches the command without going near anybody's credentials.
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));

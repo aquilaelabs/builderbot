@@ -78,6 +78,46 @@ ok(await page.$$eval('#pane0 .stack > .slot', s => s.length === 3),
    `...and opening it did not disturb the terminals behind it (${
      await page.$$eval('#pane0 .stack > *', c => c.map(x => x.dataset.key).join(' '))})`);
 
+// Coming back to a page a phone had backgrounded reconnects the terminal that
+// is on screen, and only that one. All of them at once was six ttyd instances
+// starting together — 700KB of javascript, a websocket and a full repaint
+// each — on the device least able to afford it, which is what the page spent
+// its first seconds back doing.
+await page.evaluate(() => openTab({kind: 'term', arg: 'shell', label: 'sh'}));
+await page.waitForSelector('#pane0 .slot.on iframe');
+await page.setViewportSize({ width: 412, height: 900 });      // the phone path
+let reloads = 0;
+page.on('framenavigated', f => { if (f.url().includes('/term')) reloads++; });
+// Headless Chromium never really backgrounds a page, so the state it reads is
+// faked and the event it listens for is dispatched by hand.
+await page.evaluate(() => {
+  let v = 'hidden';
+  Object.defineProperty(document, 'visibilityState', { get: () => v, configurable: true });
+  Object.defineProperty(document, 'hidden', { get: () => v === 'hidden', configurable: true });
+  window.__show = () => { v = 'visible'; document.dispatchEvent(new Event('visibilitychange')); };
+  document.dispatchEvent(new Event('visibilitychange'));
+});
+await new Promise(r => setTimeout(r, 3600));    // past the "really dropped" gate
+reloads = 0;
+await page.evaluate(() => window.__show());
+await new Promise(r => setTimeout(r, 1500));
+ok(reloads === 1, `returning reconnects the terminal on screen, and only it (${reloads})`);
+const behind = await page.$$eval('#pane0 .slot:not(.on) iframe',
+                                 f => f.map(x => !!x.dataset.stale));
+ok(behind.length > 0 && behind.every(Boolean),
+   `...the ones behind it are marked instead (${behind.length})`);
+
+// ...and a marked one reconnects when it is next brought forward.
+await page.setViewportSize({ width: 1280, height: 800 });
+const asleep = await page.$eval('#pane0 .slot:not(.on) iframe',
+                                f => f.closest('.slot').dataset.key.split('|')[0]);
+reloads = 0;
+await show(asleep);
+await new Promise(r => setTimeout(r, 1500));
+ok(reloads === 1, `bringing one forward reconnects it then (${reloads})`);
+ok(await page.$$eval('#pane0 .slot.on iframe', f => !f[0].dataset.stale),
+   '...and it is not marked twice');
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);
