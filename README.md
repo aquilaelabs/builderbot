@@ -860,8 +860,14 @@ lives in its body. The cards:
   there: not knowing is not the same as being signed out, and offering to sign
   somebody out of nothing is worse than offering nothing
 - container uptime, and runner state — registered, listening, **running a job**
-  (with the job's name and how long it has been going), or **failing to
-  connect**. That last one matters: a runner retries a rejected connection
+  (with the job's name and how long it has been going), **waiting for GitHub
+  to release the last session**, or **failing to connect**. The middle one is
+  amber rather than red on purpose: GitHub holds a runner's session for a
+  minute or two after the process that had it goes away, so every container
+  restart and every finished job on an ephemeral runner spends a moment being
+  refused its own name. It clears itself, and a self-clearing state wearing
+  the same red as an outage sends you hunting for a fault that is the design
+  working. That last one matters: a runner retries a rejected connection
   forever without exiting, so the process being up is not evidence that it is
   reachable. (Progress within a job is as far as it goes: a runner long-polls
   for one job at a time and is never told what else is queued, and how far
