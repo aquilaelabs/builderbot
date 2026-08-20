@@ -453,6 +453,9 @@ bb sdk install flutter     # or: playwright · dotnet · swift · go · rust · 
 bb sdk install android:tv         # or wear · playstore · ndk · cmake · emulator
 bb sdk install android:"system-images;android-35;google_apis;x86_64"
 bb sdk list                # every package the catalog offers
+bb sdk images              # the android system images on disk, with sizes
+bb sdk images --available  # ...and every one that could be installed
+bb sdk flavors             # google_apis · +playstore · tv · wear, and which to pick
 bb sdk plan swift          # what installing it would fetch and run, exactly
 bb sdk versions            # what is installed, asking nobody
 bb sdk check               # ...and whether anything newer exists
@@ -475,7 +478,7 @@ it fits one of five shapes:
 | `script` | fetch a vendor installer and run it with the given arguments |
 | `git` | shallow-clone a branch, for a tool that then updates itself |
 | `command` | run something already in the image, pointed at the directory |
-| `sdkmanager` | an Android package, or an image flavour by kind |
+| `sdkmanager` | an Android package, or an image flavor by kind |
 
 The shapes stay in `bb` because they are genuinely different jobs, and a
 table that could express all five would be a programming language. **`bb sdk
@@ -617,7 +620,8 @@ anywhere else.
 | `go` | ~250MB | Windows, macOS, Linux and ARM binaries from here — `GOOS=windows go build`, no target to install |
 | `rust` | ~700MB | rustup, cargo and the stable toolchain in one directory |
 | `zig` | ~300MB | A C/C++ cross-compiler: `zig cc -target x86_64-windows-gnu` makes this box a Windows toolchain |
-| Android packages | 2GB per API level | Platforms, build-tools, emulator, system images |
+| Android packages | 800MB emulator, 3GB NDK | Platforms, build-tools, emulator, NDK, CMake |
+| Android system images | 1–2GB each | One per API level per flavor — see [below](#sdks-live-outside-the-image) |
 | `playwright` | ~1.3GB | Chromium, Firefox and WebKit — fetched on a fresh share, since `bb shot` and the dashboard's tests need them; removing it stays removed |
 | `flutter` | ~1.3GB | Flutter + the bundled Dart SDK; builds Android APKs here |
 | `dotnet` | ~4GB | .NET SDK plus the `maui-android` workload |
@@ -628,7 +632,13 @@ anywhere else.
 packages…**, which opens as a **tab** the way the findings report does: a list of
 everything above with a checkbox each, the size it will take, and, once
 installed, the path it actually landed on. Tick several and install or remove
-them in one go. A tab rather than a dialog because an install runs for
+them in one go. If one fails, its row says why — the sentence, not the
+several hundred lines of progress frames that came with it.
+
+System images sit below in a section of their own, because they are not
+packages: a picker for the API level and flavor with the download size on
+each option, and the ones already on disk listed under it with what they take
+and a bin each. A tab rather than a dialog because an install runs for
 minutes — it can sit on the strip, be pinned to a pane, or be minimized while
 you work, and the work itself is a background job on the container, so the
 list keeps reporting progress instead of hanging on a request that would take
@@ -657,13 +667,29 @@ Samsung, Pixel, Oppo, OnePlus, Xiaomi. There is no per-vendor SDK to install
 and no vendor emulator image to download — Samsung's Galaxy skins are
 cosmetic, and the vendor libraries (Samsung IAP or Health, Oppo/Xiaomi push)
 are Gradle dependencies a project declares, not toolchains a container holds.
-What genuinely differs is the *system image* you emulate against, which is
-why those are catalog entries: Google APIs (the default, Pixel-shaped), Play
-Store images for anything that needs Play services, plus Android TV and Wear
-OS — the last being what modern Galaxy and Pixel watches actually run. Real
-Samsung or Oppo hardware is a `adb connect` away over the network, and
-Samsung's Remote Test Lab rents you real devices, but neither is something to
-install here.
+What genuinely differs is the *system image* you emulate against — which is
+why those are not packages. A package is one thing at one version; a system
+image exists at **every API level at once**, so the question is which level
+and which flavor, never whether. The four flavors, and why you would pick one:
+
+| Flavor | What it is |
+|---|---|
+| **Google APIs** | Play *services* — Maps, sign-in, push — but no Play Store app. Rootable: `adb root` works. The default, and what `ANDROID_SYSTEM_IMAGES` installs |
+| **Google APIs + Play Store** | The same plus the Play Store app itself, for anything that signs in to Play, checks a license or takes an in-app payment. A Play-certified build, so **not** rootable |
+| **Android TV** | Leanback layout, remote-control navigation |
+| **Wear OS** | What modern Galaxy and Pixel watches run |
+
+The first two are separate downloads from Google, not one image with a switch
+— which is why the Play Store one has to be fetched on its own even when a
+plain image for the same API level is already here. The trade is deliberate on
+Google's side: an image that ships the Play Store is certified, and a
+certified build does not give you root.
+
+The Tools tab offers a level and a flavor and installs it; `bb sdk images
+--available` is the same list on the command line, sizes and all. Real Samsung
+or Oppo hardware is an `adb connect` away over the network, and Samsung's
+Remote Test Lab rents you real devices, but neither is something to install
+here.
 
 **iOS is not on this list and cannot be.** Xcode and the iOS SDK are macOS-only
 and licensed to Apple hardware; no Linux container can host them. For web and

@@ -81,7 +81,8 @@ ok(emu.installed && emu.where.includes(`${DIR}/androidsdk/emulator`),
    'an android package resolves to its place in the SDK tree');
 ok(existsSync(`${DIR}/sdk/flutter`) && existsSync(`${DIR}/androidsdk/emulator`),
    '...and both really exist on disk');
-ok(await page.$('.pkglog') !== null, 'the progress log appears');
+ok(await page.$('.pkglog') === null,
+   'no scrolling log at the foot of the tab — a job says what it is doing on its row');
 // The ticks are the operator's, and a poll every two seconds must not
 // quietly clear them mid-install.
 
@@ -243,12 +244,13 @@ ok(await page.$$eval('.doc .pkg:not(.img)', ls => ls
      .filter(l => l.querySelector('input').value === 'swift')
      .every(l => l.querySelectorAll('.nm .pill.warn').length === 0)),
    '...and says it plainly: only an actual update is amber');
-// Update runs like the others: a job, a log, and the ticks it consumed.
+// Update runs like the others: a job, and the ticks it consumed.
 await page.check('.doc .pkg:not(.img) input[value="flutter"]');
 await page.click('.doc [data-pkg="install"]');
-await page.waitForFunction(() => (document.querySelector('.pkglog')?.textContent || '').includes('updated flutter'),
-                           { timeout: 30000 });
-ok(true, 'Install selected updates a package that is already installed');
+await page.waitForFunction(() => packages?.job && !packages.job.running
+  && (packages.job.done || []).includes('flutter'), { timeout: 30000 });
+ok(await page.evaluate(() => (packages.job.failed || []).length === 0),
+   'Install selected updates a package that is already installed');
 ok(await page.$$eval('.doc [data-pkg]', bs => bs.every(b => b.textContent.indexOf('Remove') < 0)),
    'there is no bulk remove button to mis-click');
 
@@ -330,11 +332,81 @@ ok(!list.find(r => r.name === 'android:emulator').installed
    'removing the ticked one leaves the other alone');
 ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
 
+// ---- a failure, where the failure happened ------------------------------
+// There used to be a scrolling log at the foot of the tab holding every line
+// every command printed. What anybody ever wanted out of it was which package
+// failed and why, so that is what is kept now, on that package's own row.
+await page.check('.doc .pkg:not(.img) input[value="rust"]');
+await page.click('.doc [data-pkg="install"]');
+await page.waitForFunction(() => packages?.job && !packages.job.running
+  && (packages.job.failed || []).includes('rust'), { timeout: 30000 });
+const rustErr = await page.$eval('.doc .pkg:not(.img):has(input[value="rust"]) .sub.bad',
+                                 e => e.textContent).catch(() => "");
+ok(/could not download file/.test(rustErr),
+   `the failing row says what went wrong (${rustErr.slice(0, 52)})`);
+ok(!/\[====\]/.test(rustErr), '...without the progress frames that filled the old log');
+ok(/exit 1/.test(rustErr),
+   '...and the exit code, since a killed tool prints nothing at all');
+ok(await page.$$eval('.doc .pkg:not(.img) .sub.bad', e => e.length === 1),
+   'and no other row is wearing it');
+// Trying again is what clears it: by then it describes a state that is over.
+await page.check('.doc .pkg:not(.img) input[value="rust"]');
+await page.click('.doc [data-pkg="install"]');
+await page.waitForFunction(() => packages?.job?.running
+  && packages.job.current === 'rust', { timeout: 30000 });
+ok(await page.$$eval('.doc .pkg:not(.img) .sub.bad', e => e.length === 0),
+   '...and asking again clears it, because it is no longer the answer');
+await page.waitForFunction(() => packages?.job && !packages.job.running,
+                           { timeout: 30000 });
+
 // ---- android images, which are not catalog rows -------------------------
 // They are discovered, not listed: which exist depends on what has been
-// installed, and the API-level baseline puts them there without anyone asking
-// for one. Forty-four gigabytes of them accumulated here with no way to see
-// or remove one.
+// installed, and one exists at every API level at once — so the question is
+// which level and which flavor, not whether. That is a picker, not a row per
+// flavor: there are forty-odd of them upstream.
+const imgOpts = sel => page.$$eval(sel, o => o.map(x => ({
+  value: x.value, text: x.textContent.trim() })));
+const flavors = await imgOpts('#imgFlavor option');
+ok(flavors.length === 2 && flavors[0].text === 'Google APIs'
+   && flavors[1].text.includes('Play Store'),
+   'the picker offers the flavors the catalog names, by their labels');
+ok((await page.$eval('.imgabout', e => e.textContent)).includes('Rootable'),
+   '...with the line saying which one to pick, beside the picking');
+
+let apis = await imgOpts('#imgApi option');
+ok(apis.length === 1 && apis[0].value === 'system-images;android-31;google_apis;x86_64'
+   && /API 31 · 1\.\d GB/.test(apis[0].text),
+   `an API level that is not installed is offered, with what it weighs (${apis[0]?.text})`);
+ok(!apis.some(o => o.value.includes('android-30')),
+   '...and one that is already here is not offered again');
+
+await page.selectOption('#imgFlavor', 'google_apis_playstore');
+await page.waitForFunction(() => document.querySelector('#imgApi option')
+  ?.value.includes('playstore'));
+apis = await imgOpts('#imgApi option');
+ok(apis.length === 1 && apis[0].value.includes('android-30;google_apis_playstore'),
+   'switching flavor switches the levels — API 30 has no plain image left but does have a Play Store one');
+ok((await page.$eval('.imgabout', e => e.textContent)).includes('not rootable'),
+   '...and the line about it changes too');
+
+// Install goes through the same job as everything else, by the id the picker
+// gave out — which is the only id the server will take.
+await page.click('#imgAdd');
+await page.waitForFunction(() => packages?.job && !packages.job.running
+  && [...(packages.job.done || []), ...(packages.job.failed || [])]
+       .some(n => n.includes('google_apis_playstore')), { timeout: 30000 });
+ok(true, 'Add installs the picked image through the ordinary job');
+const badAdd = await page.evaluate(async () => {
+  const r = await fetch('/api/packages', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'install',
+      names: ['android:system-images;android-99;google_apis;x86_64'] }) });
+  return r.status;
+});
+ok(badAdd === 400, 'an image id the picker never offered cannot be installed');
+
+// ...and what is on disk is listed below the picker: forty-four gigabytes of
+// them had accumulated here with no way to see or remove one.
 const imgs = await page.$$eval('.doc .pkg.img', ls => ls.map(l => ({
   text: l.textContent.replace(/\s+/g, ' ').trim(),
   bin: !!l.querySelector('[data-rmimg]'),

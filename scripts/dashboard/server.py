@@ -1945,7 +1945,9 @@ class Handler(BaseHTTPRequestHandler):
         # catalog rows — which exist depends on what has been installed — so
         # they are checked against the list rather than against a table.
         names = [n for n in (req.get("names") or [])
-                 if n in known or (action == "remove" and packages.is_installed_image(n))]
+                 if n in known
+                 or (action == "remove" and packages.is_installed_image(n))
+                 or (action == "install" and packages.is_choosable_image(n))]
         # Checking is about everything, not a selection: the question it
         # answers is "is any of this out of date, and what would the rest of
         # it install". The uninstalled rows are half the reason to press it —

@@ -214,6 +214,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
    line does not twitch as the dots come and go. */
 .doc .dots{display:inline-block;width:3ch;text-align:left;white-space:pre}
 .pkg .where.on{color:var(--accent)}
+.pkg .sub.bad{color:var(--bad);overflow-wrap:anywhere}
 .pkg .upd{color:var(--warn)}
 /* Installed and current: the row is done, and says so with a ticked box that
    cannot be unticked — the tick reads as "this one is here", the fading as
@@ -223,10 +224,15 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg .rm{flex:0 0 auto;align-self:center;color:var(--dim)}
 @media(hover:hover){ .pkg .rm:hover{color:var(--bad);border-color:#4d2220} }
 @media(hover:hover){ .pkg:hover{background:#1b222b} }
-.pkglog{margin:0 12px 12px;padding:9px 10px;background:#0d1117;
-  border:1px solid var(--line);border-radius:6px;color:var(--dim);
-  font:11px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;
-  max-height:220px;overflow:auto}
+/* The image picker: two selects and a button on one line, wrapping to two on
+   a phone rather than squeezing the level down to three characters. */
+.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:0 12px 10px}
+.imgadd select{background:#161b22;color:var(--ink);border:1px solid var(--line);
+  border-radius:6px;padding:6px 8px;font:12px/1.3 inherit;min-height:var(--tap);
+  max-width:100%}
+.imgadd .imgabout{flex:0 0 100%;color:var(--dim);margin:0;
+  font:12px/1.5 system-ui,sans-serif;max-width:70ch}
+@media(max-width:900px){ .imgadd select{font-size:16px} }
 /* Bigger tap targets where a finger is doing the ticking. */
 @media(max-width:900px){ .pkg{padding:13px 0} .pkg input{width:20px;height:20px} }
 #pkgLog{min-height:0;font-size:11px;white-space:pre-wrap;color:var(--dim)}
@@ -517,11 +523,12 @@ body.dragging .tab .lbl{cursor:grabbing}
 /* An opaque cover over the frame until the terminal is really there.
    The frame's own background (below) is enough in Chromium, and is not in
    Firefox on Android, which paints its white document canvas over it anyway —
-   so the only thing that holds in every engine is something on top. It stays
-   a beat past the load event, because the white arrives *after* load: that is
-   when the document exists and is still transparent, waiting for xterm. */
+   so the only thing that holds in every engine is something on top. It covers
+   the window before the frame has a document to dress, and comes off a frame
+   after it has one — see unveil(), which closes the gap rather than waiting
+   it out. */
 .slot .veil{position:absolute;inset:0;background:#2b2b2b;pointer-events:none;
-  transition:opacity .15s linear}
+  transition:opacity .12s linear}
 .slot .veil.gone{opacity:0}
 .pane .empty-pane{margin:auto;color:var(--dim);font-style:italic}
 
@@ -1558,23 +1565,54 @@ function paintBar(pane, t, i){
       if (b.dataset.reload === "packages") loadPackages(); else loadFindings(true); });
 }
 
-// Uncover a terminal once it has had time to paint itself.
+// Uncover a terminal the moment there is nothing white left to see.
 //
-// The delay is the whole point: the frame's load event fires when its document
-// is there, which is before xterm has drawn anything into it, and that gap is
-// what the browser fills with white. Measured against a throttled connection,
-// the terminal lands within a few hundred milliseconds of load — so the cover
-// lifts after that, and what the eye sees is the pane's own colour turning
-// into a terminal.
-const VEIL_HOLD = 350;
+// The flash was never the terminal being slow. The frame's load event fires
+// when its document exists, and ttyd's stylesheet dresses `.xterm-viewport`
+// and nothing above it — `body,html{height:100%;margin:0}` and no colour at
+// all. A document with no background of its own is a transparent canvas, and
+// a transparent canvas is what a browser paints white; Firefox on Android
+// does it over whatever the iframe element underneath is set to.
+//
+// So rather than cover that window for a guessed number of milliseconds, this
+// closes it: /term is proxied through this server, the frame is same-origin,
+// and one inline style on its <html> gives it the pane's own colour. There is
+// then no white to hide, and the cover comes off on the next frame.
+//
+// The cover stays, for the two moments this cannot reach: before load, when
+// there is no document to dress, and the case where the frame will not answer
+// at all — a proxy error page on an opaque origin, or an engine that decides
+// the origins differ. That is what the clock below is for. It is the
+// backstop, not the mechanism.
+const VEIL_MAX  = 400;                 // longest it will ever stay
+const VEIL_FADE = 120;                 // matches the CSS transition
+const PANE_BG   = "#2b2b2b";           // the same colour as .pane iframe
+
+// Give a terminal frame's document a background of its own. True if it took,
+// null if the frame cannot be reached — which is the only case the clock is
+// still needed for.
+function dressFrame(frame){
+  try {
+    const d = frame.contentDocument;
+    if (!d || !d.documentElement) return null;
+    d.documentElement.style.background = PANE_BG;
+    return true;
+  } catch { return null; }
+}
+
 function unveil(frame){
   refreshSoon();                       // a new terminal appears under Sessions
   const veil = frame.parentElement?.querySelector(".veil");
   if (!veil) return;
-  setTimeout(() => {
+  const lift = () => {
+    if (!veil.isConnected) return;     // the pane was replaced under us
     veil.classList.add("gone");
-    setTimeout(() => veil.remove(), 400);
-  }, VEIL_HOLD);
+    setTimeout(() => veil.remove(), VEIL_FADE + 60);
+  };
+  // One frame's grace either way: after dressing it, so the colour is on the
+  // screen before the cover over it goes.
+  if (dressFrame(frame) === null) setTimeout(lift, VEIL_MAX);
+  else requestAnimationFrame(lift);
 }
 
 function drawPanes(){
@@ -2684,6 +2722,10 @@ let pkgDots = 0, pkgDotsTimer = null;
 // Every animated ellipsis on the page, not just the packages tab's: the
 // Projects card grew one when clones moved to a background job, and two
 // tickers running at different phases would read as a fault.
+// Which flavor the picker is showing. Page state, not the server's: it is a
+// question being asked, not a fact about the box.
+let pkgFlavor = "";
+
 function pkgTickDots(){
   const spans = document.querySelectorAll(".dots");
   if (!spans.length){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; return; }
@@ -2733,13 +2775,19 @@ function pkgRow(p, busy, job){
   const upd = p.state === "update"
     ? `<span class="sub upd">update available — tick it and press Install selected</span>`
     : "";
+  // What went wrong, on the row it went wrong on. This is what the scrolling
+  // log at the foot of the tab was for, minus the ninety-nine lines of
+  // progress frames it took to say it. Cleared when this package is tried
+  // again, because by then it describes a state that no longer holds.
+  const err = job?.errors?.[p.name] && !mine
+    ? `<span class="sub bad">${esc(job.errors[p.name])}</span>` : "";
   // One word and an ellipsis, for as long as it takes. No percentage is read
   // out of a job at all: every recipe meters differently and several mislead
   // by accident — sdkmanager counts one fraction across a whole operation and
   // parks it for minutes, playwright meters five files from zero apiece,
   // rustup reports nothing at all down a pipe — and a row relaying any of
-  // that faithfully still read as a bar that had broken. The log keeps the
-  // output for anyone who wants to know more than "it is working".
+  // that faithfully still read as a bar that had broken. If it fails, the row
+  // says so underneath; that is the only time the output was ever wanted.
   const doing = job && job.action === "remove" ? "removing"
               : job && job.action === "check" ? "checking" : "installing";
   const prog = `<span class="sub prog plain">${esc(doing)}<span class="dots">${
@@ -2755,7 +2803,7 @@ function pkgRow(p, busy, job){
       <span class="sub">${esc(p.about)}</span>
       ${mine ? prog : `<span class="sub where${p.installed ? " on" : ""}">${
         p.installed ? "installed at " + esc(p.path) : "not installed"}</span>`}
-      ${upd}
+      ${upd}${err}
     </span>
     ${p.installed && !mine ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
       busy ? ` disabled title="another package operation is running"`
@@ -2765,6 +2813,36 @@ function pkgRow(p, busy, job){
 
 // One installed android image. No checkbox: there is nothing to select it
 // for — it is here, and the only thing to decide is whether it stays.
+// Adding an image is a pick, not a tick. There are forty-odd of them — every
+// API level Google still ships, times four flavors — and a checkbox list that
+// long would bury the ten that are actually installed. The sizes come from
+// sdkmanager's own index, which is the only place they exist before the
+// download.
+function imgAdder(d, busy){
+  const rows = d.addable || [], flavors = d.flavors || [];
+  // Google's index is read off the request, so the first draw of the tab does
+  // not wait for it. Saying so beats the picker popping into existence a
+  // second later with no explanation.
+  if (!rows.length) return d.images_loading
+    ? `<div class="imgadd"><span class="sub">reading the list of available
+         images<span class="dots"></span></span></div>`
+    : "";
+  const chosen = pkgFlavor && flavors.some(f => f.kind === pkgFlavor)
+    ? pkgFlavor : (flavors[0]?.kind || "");
+  const mine = rows.filter(r => r.kind === chosen);
+  const about = flavors.find(f => f.kind === chosen)?.about || "";
+  return `<div class="imgadd">
+    <select id="imgFlavor"${busy ? " disabled" : ""} aria-label="image flavor">${
+      flavors.map(f => `<option value="${esc(f.kind)}"${f.kind === chosen ? " selected" : ""}
+        >${esc(f.label)}</option>`).join("")}</select>
+    <select id="imgApi"${busy ? " disabled" : ""} aria-label="API level">${
+      mine.map(r => `<option value="${esc(r.id)}">API ${esc(r.api)} · ${esc(r.size)}</option>`)
+          .join("") || `<option value="">none left to add</option>`}</select>
+    <button id="imgAdd"${busy || !mine.length ? " disabled" : ""}>Add</button>
+    ${about ? `<div class="sub imgabout">${esc(about)}</div>` : ""}
+  </div>`;
+}
+
 function imgRow(im, busy){
   return `<label class="pkg img">
     <span class="grow">
@@ -2798,19 +2876,22 @@ function renderPackagesInto(i){
   // you were about to install quietly unticked itself.
   if (!busy && job.action !== "check")
     for (const n of [...(job.done || []), ...(job.failed || [])]) pkgTicked.delete(n);
-  const lines = (job.log || []).slice(-14);
   el.innerHTML = `
     <div class="pkghead">${d.root
       ? (d.shared
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
       : "The SDK root could not be determined; this image may predate <code>bb sdk</code>."}</div>
-    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy, job)).join("")}</div>${
-      (d.images || []).length ? `
-    <div class="pkghead imghead">Android system images on disk. The baseline in
-      <code>ANDROID_SYSTEM_IMAGES</code> installs one per API level it is given, and
-      they stay until somebody takes them off.</div>
-    <div class="pkgs">${d.images.map(im => imgRow(im, busy)).join("")}</div>` : ""}
+    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy, job)).join("")}</div>
+    <div class="pkghead imghead">Android system images. Not packages: one exists at
+      every API level at once, so the question is which level and which flavor
+      rather than whether. <code>ANDROID_SYSTEM_IMAGES</code> installs the plain
+      Google APIs image for each level it is given; everything else is added
+      here, and nothing is removed except by asking.</div>
+    ${imgAdder(d, busy)}
+    ${(d.images || []).length
+      ? `<div class="pkgs">${d.images.map(im => imgRow(im, busy)).join("")}</div>`
+      : `<div class="pkghead">Nothing installed — the emulator has no image to boot.</div>`}
     <div class="macros">
       <button class="primary" data-pkg="install"${busy ? " disabled" : ""}>${
         busy && job.action === "install" ? `Working on ${esc(job.current || "")}…` : "Install selected"}</button>
@@ -2822,14 +2903,20 @@ function renderPackagesInto(i){
         : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>${
       d.checked ? `<span class="sub pkgwhen">versions checked ${ago(d.checked)}</span>` : ""}
     </div>
-    ${lines.length ? `<pre class="pkglog">${esc(lines.join("\n"))}${
-      busy ? "" : `\n— finished: ${(job.done || []).length} ok${
-        (job.failed || []).length ? `, ${job.failed.length} failed` : ""}`}</pre>` : ""}`;
+`;
 
   el.querySelectorAll(".pkg input").forEach(b => b.onchange = () => {
     b.checked ? pkgTicked.add(b.value) : pkgTicked.delete(b.value);
   });
   el.querySelectorAll("[data-pkg]").forEach(b => b.onclick = () => pkgAct(b.dataset.pkg));
+  const fl = el.querySelector("#imgFlavor"), api = el.querySelector("#imgApi");
+  if (fl) fl.onchange = () => { pkgFlavor = fl.value; pkgRev++; drawPanes(); };
+  if (el.querySelector("#imgAdd")) el.querySelector("#imgAdd").onclick = () => {
+    if (!api?.value) return;
+    // Straight in, no confirmation: it is a download into free space, and the
+    // size is on the option that was just picked.
+    pkgAct("install", ["android:" + api.value]);
+  };
   el.querySelectorAll("[data-rmimg]").forEach(b => b.onclick = e => {
     e.preventDefault(); e.stopPropagation();
     const id = b.dataset.rmimg;
@@ -2856,10 +2943,14 @@ function renderPackagesInto(i){
   // one is quick because the job's own state is what it is showing. Either way
   // the request is a cached dict, and it stops when the tab is not on screen:
   // nothing reschedules it but a draw.
-  pkgPoll = setTimeout(loadPackages, busy ? 500 : 8000);
-  if (busy && !pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
-  if (!busy && pkgDotsTimer){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; }
-  else if ((job.done || []).length) refresh();
+  // ...and faster than usual while the image index is still being read, so
+  // the picker appears when it lands rather than up to eight seconds later.
+  pkgPoll = setTimeout(loadPackages, busy ? 500 : d.images_loading ? 1000 : 8000);
+  // The ellipsis animates for the index read too, not only for a job.
+  const ticking = busy || d.images_loading;
+  if (ticking && !pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
+  if (!ticking && pkgDotsTimer){ clearInterval(pkgDotsTimer); pkgDotsTimer = null; }
+  else if (!busy && (job.done || []).length) refresh();
 }
 
 async function pkgAct(action, only){

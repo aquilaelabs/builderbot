@@ -328,60 +328,35 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
             ;;
         android:*)
             local pkg="${what#android:}"
-            local kind; kind="$(sdk_meta field "$what" source.image)"
-            if [ -n "$kind" ]; then
-                # An image flavour: what is installed is an API level, and
-                # sdkmanager's update table is what says whether that image
-                # itself has a newer revision. A *newer API level* is not an
-                # update — those sit side by side — so it is not reported as
-                # one. On a flavour that is absent, the API level a fresh
-                # install would pick is the useful answer instead.
-                d="$(sdk_android_image_dir "$kind")"
-                [ -z "$d" ] || inst="$(basename "$(dirname "$d")")"
-                if [ -z "$local_only" ] && [ -n "$d" ]; then
-                    if sdk_android_list | sed -n '/Available Updates/,$p' \
-                       | grep -q "system-images;${inst};${kind}"; then
-                        latest="newer"; status=update
-                    else
-                        latest="$inst"
-                    fi
-                elif [ -z "$local_only" ]; then
-                    latest="$(sdk_android_list | sed -n '/Available Packages/,$p' | tr -d ' ' | cut -d'|' -f1 \
-                              | grep -E "^system-images;android-[0-9]+;${kind};x86_64$" \
-                              | sort -V | tail -1 | cut -d';' -f2)"
-                    [ -n "$latest" ] || latest="-"
+            # Non-empty, not merely present: every one of these is a
+            # symlink onto the store, and the store has a directory per
+            # package kind whether or not anything was installed into it.
+            # `-d` alone called an empty ndk directory "installed and
+            # current", which is exactly the reassuring answer nobody
+            # re-checks.
+            d="${ANDROID_HOME:-/opt/android-sdk}/$pkg"
+            if [ -d "$d" ] && [ -n "$(ls -A "$d" 2>/dev/null)" ]; then
+                # Trimmed, not stripped of spaces: the version column
+                # is where a release candidate says so ("30.0.15729638
+                # rc2"), and squeezing it out hid that.
+                inst="$(timeout 120 sdkmanager --list_installed 2>/dev/null \
+                        | awk -F'|' -v p="$pkg" '$1 ~ "^ *"p"(;|  *$)" {v=$2; gsub(/^ +| +$/,"",v); print v; exit}')"
+                [ -n "$inst" ] || inst="installed"
+            fi
+            if [ -z "$local_only" ] && [ "$inst" != "-" ]; then
+                # sdkmanager prints an Available Updates table, and prints
+                # nothing under it when there is nothing to do.
+                if sdk_android_list | sed -n '/Available Updates/,$p' \
+                   | grep -qE "^ *${pkg}(;|  *\|)"; then
+                    latest="newer"; status=update
+                else
+                    latest="$inst"
                 fi
-            else
-                # Non-empty, not merely present: every one of these is a
-                # symlink onto the store, and the store has a directory per
-                # package kind whether or not anything was installed into it.
-                # `-d` alone called an empty ndk directory "installed and
-                # current", which is exactly the reassuring answer nobody
-                # re-checks.
-                d="${ANDROID_HOME:-/opt/android-sdk}/$pkg"
-                if [ -d "$d" ] && [ -n "$(ls -A "$d" 2>/dev/null)" ]; then
-                    # Trimmed, not stripped of spaces: the version column
-                    # is where a release candidate says so ("30.0.15729638
-                    # rc2"), and squeezing it out hid that.
-                    inst="$(timeout 120 sdkmanager --list_installed 2>/dev/null \
-                            | awk -F'|' -v p="$pkg" '$1 ~ "^ *"p"(;|  *$)" {v=$2; gsub(/^ +| +$/,"",v); print v; exit}')"
-                    [ -n "$inst" ] || inst="installed"
-                fi
-                if [ -z "$local_only" ] && [ "$inst" != "-" ]; then
-                    # sdkmanager prints an Available Updates table, and prints
-                    # nothing under it when there is nothing to do.
-                    if sdk_android_list | sed -n '/Available Updates/,$p' \
-                       | grep -qE "^ *${pkg}(;|  *\|)"; then
-                        latest="newer"; status=update
-                    else
-                        latest="$inst"
-                    fi
-                elif [ -z "$local_only" ]; then
-                    # Absent: whatever an install would resolve to, asked the
-                    # same way the installer asks.
-                    latest="$(sdk_android_newest "$pkg" | cut -f2)"
-                    [ -n "$latest" ] || latest="-"
-                fi
+            elif [ -z "$local_only" ]; then
+                # Absent: whatever an install would resolve to, asked the
+                # same way the installer asks.
+                latest="$(sdk_android_newest "$pkg" | cut -f2)"
+                [ -n "$latest" ] || latest="-"
             fi
             ;;
         *) printf '%s\t-\t-\tunknown\n' "$what"; return 0 ;;
@@ -497,25 +472,6 @@ If you ARE the operator at this keyboard: env -u CLAUDECODE bb sdk $*"
 # image update would throw it away and re-download it. Nothing warns about
 # this; the directory simply stops being a link. Checked after every install,
 # which is the only moment it can happen.
-# sdk_android_image_dir KIND — the installed system image of that kind, if any.
-sdk_android_image_dir() {
-    # -L, because every package directory under ANDROID_HOME is a symlink onto
-    # the SDK share and find does not descend into a symlinked starting point:
-    # without it this searched the link itself, found nothing, and reported an
-    # installed image as absent while the dashboard — which resolves paths
-    # rather than walking them — said otherwise.
-    local d
-    while IFS= read -r d; do
-        # Non-empty, not merely present. sdkmanager's uninstall removes the
-        # abi directory below the flavour and leaves the flavour directory
-        # itself standing, so a removed image still has a folder with its name
-        # on it — and this reported it installed while the dashboard, which
-        # asks the harder question, said it was gone.
-        [ -n "$(ls -A "$d" 2>/dev/null)" ] || continue
-        printf '%s\n' "$d"
-    done < <(find -L "${ANDROID_HOME:-/opt/android-sdk}/system-images" -maxdepth 2 -type d \
-                  -name "$1" 2>/dev/null | sort -V) | tail -1
-}
 
 # sdkmanager records an operation in progress in <package>/.installer/, in a
 # file naming a working directory under $ANDROID_HOME/.temp. That record
@@ -648,7 +604,9 @@ sdk_meta_into() {
 sdk_plan() {
     local what="${1:-}" d kind url version rest
     [ -n "$what" ] || die "usage: bb sdk plan <package>"
-    kind="$(sdk_meta field "$what" source.kind)"
+    kind="$(sdk_meta field "$what" source.kind 2>/dev/null)" || kind=""
+    [ -n "$kind" ] || { sdk_image_flavor "$what" >/dev/null && kind=sdkmanager; }
+    [ -n "$kind" ] || case "$what" in android:*\;*) kind=sdkmanager ;; esac
     [ -n "$kind" ] || die "no source in the catalog for ${what}"
     d="$(sdk_dir "${what#android:}")"
     case "$what" in android:*) d="$(sdk_dir android)" ;; esac
@@ -672,17 +630,40 @@ sdk_plan() {
 }
 
 # The android package id an install would resolve to: a bare name, a versioned
-# one, or the newest image of a flavour.
+# one, or the newest image of a flavor.
+# flavor -> the sdkmanager id prefix, out of the catalog's android_images
+# section. Empty when the name is not one of them. The section replaced three
+# package rows that could each only ever install the newest level; every
+# caller that used to ask a row for `source.image` asks this now.
+sdk_image_flavor() {
+    local want="${1#android:}" name abi rest
+    case "$want" in
+        # The short names the CLI has always taken, and the section's own keys.
+        tv) want=android-tv ;; wear) want=android-wear ;;
+        playstore) want=google_apis_playstore ;;
+    esac
+    while IFS=$'\t' read -r name abi rest; do
+        [ "$name" = "$want" ] || continue
+        printf '%s\t%s' "$name" "$abi"
+        return 0
+    done < <(sdk_meta flavors 2>/dev/null)
+    return 1
+}
+
 sdk_android_id() {
     local pkg="${1#android:}" kind
     # A full sdkmanager id — the shape `bb sdk images` prints. No catalog row
     # names one, because which images exist is not a fixed list, so the id is
     # its own answer.
     case "$1" in android:*\;*) printf '%s' "$pkg"; return 0 ;; esac
-    kind="$(sdk_meta field "$1" source.image 2>/dev/null)"
-    if [ -n "$kind" ]; then
-        sdk_android_list | sed -n '/Available Packages/,$p' | tr -d ' ' | cut -d'|' -f1 \
-            | grep -E "^system-images;android-[0-9]+;${kind};x86_64$" | sort -V | tail -1
+    local abi rest
+    if rest="$(sdk_image_flavor "$1")"; then
+        kind="${rest%%	*}"; abi="${rest#*	}"
+        # The newest plain API level of that flavor. From the catalog's index
+        # rather than sdkmanager's listing: same answer, no round trip through
+        # a thousand rows, and the sizes come along for free.
+        sdk_meta images 2>/dev/null | cut -f1 \
+            | grep -E "^system-images;android-[0-9]+;${kind};${abi}$" | sort -V | tail -1
         return 0
     fi
     pkg="$(sdk_meta field "$1" source.package)"
@@ -862,8 +843,10 @@ sdk_install() {
     # The same full-id escape hatch removal has: `bb sdk images` prints ids the
     # catalog does not list, and what can be removed by id has to be
     # reinstallable by id — otherwise the warning a removal prints names a
-    # command that does not work.
+    # command that does not work. An image flavor by name lands here too, now
+    # that the flavors are a section rather than three package rows.
     [ -n "$kind" ] || case "$what" in android:*\;*) kind=sdkmanager ;; esac
+    [ -n "$kind" ] || { sdk_image_flavor "$what" >/dev/null && kind=sdkmanager; }
     [ -n "$kind" ] || die "unknown package: ${what} (bb sdk list names them)"
     mkdir -p "$root"
     # EXIT rather than RETURN: a failing step here reaches `die`, which exits
@@ -922,6 +905,7 @@ sdk_remove() {
     # a list of names repeated here is a package that installs and will not
     # come off again.
     local kind; kind="$(sdk_meta field "$what" source.kind 2>/dev/null)" || kind=""
+    [ -n "$kind" ] || { sdk_image_flavor "$what" >/dev/null && kind=sdkmanager; }
     if [ -z "$kind" ]; then
         case "$what" in
             # A full sdkmanager id — system-images;android-30;google_apis;x86_64
@@ -960,8 +944,10 @@ sdk_remove() {
     case "$kind" in
         sdkmanager)
             command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
-            local pkg="${what#android:}" v image
-            image="$(sdk_meta field "$what" source.image 2>/dev/null)" || image=""
+            local pkg="${what#android:}" v image="" rest
+            if rest="$(sdk_image_flavor "$what")"; then
+                image="${rest%%	*}"; pkg="$image"
+            fi
             sdk_android_list_forget
             if [ -n "$image" ]; then
                 local dir api abi
@@ -974,7 +960,7 @@ sdk_remove() {
                         sdk_android_clear_stale_installer "system-images;${api};${image};$(basename "$abi")"
                         sdkmanager --uninstall "system-images;${api};${image};$(basename "$abi")"
                     done
-                    # The flavour directory is left behind by the uninstall,
+                    # The flavor directory is left behind by the uninstall,
                     # empty, and an empty directory with the right name is what
                     # made a removed image keep answering "installed".
                     rmdir "$dir" 2>/dev/null || true
@@ -1034,7 +1020,7 @@ sdk_remove() {
 #
 # Not a catalog matter: which exist depends on what has been installed, and the
 # baseline in ANDROID_SYSTEM_IMAGES puts them there without anyone choosing
-# them one at a time. One TSV line each — id, API level, flavour, size — so
+# them one at a time. One TSV line each — id, API level, flavor, size — so
 # the tab can offer to remove the ones nobody is using. Forty-four gigabytes of
 # them accumulated here before there was any way to see them.
 sdk_images() {
@@ -1058,7 +1044,9 @@ cmd_sdk() {
         root)       printf '%s\n' "$(sdk_root)" ;;
         env)        sdk_env_snippet ;;
         list)       sdk_meta names ;;
-        images)     sdk_images ;;
+        images)     if [ "${1:-}" = --available ]; then sdk_meta images
+                    else sdk_images; fi ;;
+        flavors)    sdk_meta flavors ;;
         plan)       sdk_plan "$@" ;;
         install)    sdk_install "$@"; sdk_write_env ;;
         check)      sdk_check "$@" ;;
@@ -1066,6 +1054,6 @@ cmd_sdk() {
         relink)     sdk_relink_android ;;
         update)     sdk_update "$@"; sdk_write_env ;;
         remove)     sdk_remove "$@"; sdk_write_env ;;
-        *) die "usage: bb sdk [status|root|env|list|images|plan X|versions|check|relink|install X|update X|remove X]" ;;
+        *) die "usage: bb sdk [status|root|env|list|images [--available]|flavors|plan X|versions|check|relink|install X|update X|remove X]" ;;
     esac
 }
