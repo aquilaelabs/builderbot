@@ -143,11 +143,17 @@ if [ "${1:-}" = sdk ]; then
                      # streamed output, parser, payload, poll, render. Every
                      # other package installs instantly, as before.
                      if [ "$3" = go ]; then
+                         # Shaped like sdkmanager: one count that runs the
+                         # whole way, a label that changes part way through,
+                         # and a long park inside the second half — which is
+                         # what writing a system image looks like from here.
                          printf 'Downloading go.tar.gz from https://example\n'
                          for pct in 8 31 66 100; do
-                             printf '[====] %s%% Downloading go.tar.gz\r' "$pct"; sleep 0.5
+                             printf '[====] %s%% Downloading go.tar.gz\r' "$pct"; sleep 0.4
                          done
-                         printf '\nUnzipping...\n'; sleep 0.4
+                         printf '\nUnzipping...\n'
+                         printf '[====] 55%% Unzipping...\r'; sleep 3
+                         printf '[====] 100%% Unzipping...\r\n'; sleep 0.3
                      fi
                      mkdir -p "$d" && : > "$d/marker"
                  else rm -rf "$d"; fi
@@ -199,6 +205,7 @@ fresh
 env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     TEMPLATE_MD="$DASH/../../config/templates/project-CLAUDE.md" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
+    PKG_STALL_SECONDS=2 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" PATH="$S/bin:$PATH" \

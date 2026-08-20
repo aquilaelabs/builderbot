@@ -1475,7 +1475,7 @@ PACKAGES = [
     {"name": "android:ndk", "label": "Android NDK", "size": "~3 GB",
      "probe": "android:ndk",
      "about": "Native development kit, for C and C++ inside an Android app."},
-    {"name": "android:cmake", "label": "Android CMake", "size": "~200 MB",
+    {"name": "android:cmake", "label": "Android CMake", "size": "~100 MB",
      "probe": "android:cmake",
      "about": "The CMake the NDK's build system uses."},
     {"name": "go", "label": "Go", "size": "~250 MB", "probe": "go",
@@ -1494,7 +1494,7 @@ PACKAGES = [
      "about": "A system image with the Play Store, for testing anything that "
               "depends on Google Play services. Pixel-style — Samsung, Oppo "
               "and the rest ship no emulator images at all."},
-    {"name": "android:tv", "label": "Android image: TV", "size": "~2 GB",
+    {"name": "android:tv", "label": "Android image: TV", "size": "~8 GB",
      "probe": "android-image:android-tv",
      "about": "Android TV, for a leanback-layout build."},
     {"name": "android:wear", "label": "Android image: Wear OS", "size": "~1.5 GB",
@@ -1624,6 +1624,16 @@ def local_versions():
 # thread: the payload serves the last measurement and says whether one is in
 # flight, and the page asks again shortly when it is. Re-measured on a TTL
 # rather than cached forever, because "it grew" is exactly what this is for.
+# How long a percentage may sit unchanged before the row stops quoting it.
+#
+# sdkmanager's fraction covers a whole operation and is not linear in time:
+# unzipping a system image parks it at about 55% while it writes one enormous
+# file, then jumps to 100. A bar that has not moved in this long is telling
+# the operator nothing that the ellipsis does not tell them more honestly, and
+# "stuck at 55%" is what it reads as.
+# Overridable only so the tests can drive a stall in a couple of seconds
+# rather than fifteen.
+PKG_STALL = int(os.environ.get("PKG_STALL_SECONDS", "15"))
 PKG_SIZE_TTL = 120
 _pkg_sizes = {}
 _pkg_sized_at = [0.0]
@@ -1703,6 +1713,12 @@ def packages_payload():
     with _pkg_lock:
         job = {k: (list(v) if isinstance(v, list) else dict(v) if isinstance(v, dict) else v)
                for k, v in _pkg_job.items()}
+    # Decided here rather than when the line arrived, because a stall is the
+    # absence of lines: nothing new will come along to retire the number.
+    pr = job.get("progress")
+    if (pr and pr.get("pct") is not None and pr.get("at") is not None
+            and time.monotonic() - pr["at"] > PKG_STALL):
+        job["progress"] = {**pr, "pct": None, "stalled": True}
     return {"root": sdk_root_path(),
             "shared": is_mount(sdk_root_path()),
             "sizing": _pkg_sizing[0],
@@ -1902,8 +1918,13 @@ def _pkg_worker():
                     mark = pct // 10
                     _pkg_job["log"].append(f"  … {phase} {pct}%")
                     _pkg_job["log"] = _pkg_job["log"][-60:]
+                # When the number last meant something new, so that a reader
+                # can tell a bar that is moving from one that has parked.
+                at = cur.get("at")
+                if pct is not None and pct != cur.get("pct"):
+                    at = time.monotonic()
                 _pkg_job["progress"] = {"name": _name, "pct": pct, "phase": phase,
-                                        "seen": seen, "mark": mark}
+                                        "seen": seen, "mark": mark, "at": at}
 
         r = run_streamed([BB, "sdk", verb, name], watch, timeout=3600)
         with _pkg_lock:
