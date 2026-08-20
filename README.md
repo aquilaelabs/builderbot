@@ -1061,12 +1061,21 @@ the session** appears once the list has moved, and spends that line. There is
 no way to make a session read something without sending it a message: no IPC
 into a running Claude, so the only door is its input box.
 
-Which is why **sending a step folds the two together**. The arrow asks first,
-offers to save your other changes in the same breath, and then does four
-things: the line goes, the step is crossed off, the panel closes and you land
-in that session's tab. The "I also changed the list" note rides on the *same
-message* as the step rather than chasing it — two lines into one input box is
-how the second ends up glued to the first.
+Which is why **sending a step folds the two together**. Tapping an arrow
+**arms** it — the arrow lights up, and the Send button and its "also tell it
+the list changed" checkbox come alive; tapping it again puts it down. Send then
+does four things: the line goes, the step is crossed off, the panel closes and
+you land in that session's tab. One tap for all four would be a mis-tap you
+could not take back, and the highlight is the confirmation — a sentence
+restating the line the arrow is sitting next to was not.
+
+A group's own arrow **stands for its next step**: picking either lights both,
+because they are one choice. A crossed-off line cannot be sent at all — put it
+back first, so that struck-through means one thing rather than two.
+
+The "I also changed the list" note rides on the *same message* as the step
+rather than chasing it — two lines into one input box is how the second ends up
+glued to the first.
 
 **An item can be an ordered group of steps** — `bb todo add "rework the picker"
 --step "widen the select" --step "then re-measure it"`. Only the next unsent

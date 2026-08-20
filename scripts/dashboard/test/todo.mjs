@@ -31,6 +31,7 @@ const open = () => page.$$eval('#todoList .todo', ts => ts.map(t => ({
   id: t.dataset.id, step: t.dataset.step, text: t.querySelector('.txt').textContent,
   sent: t.classList.contains('sent'),
   can: !t.querySelector('.go').disabled,
+  sel: t.querySelector('.go').classList.contains('sel'),
   claude: !!t.querySelector('.who:not(.fin)') })));
 
 // ---- adding ------------------------------------------------------------
@@ -82,21 +83,27 @@ ok(items.filter(i => i.claude).length === 1,
 // testable: a shell echoes what is typed into it, which is the exact property
 // notify.py uses to decide that Enter is safe.
 ok(items.every(i => i.can), 'with a session running, the arrows are live');
-// Sending asks first, because it does four things at once and they are all
-// what you wanted or none of them were.
+// An arrow arms Send; it does not fire it. Sending does four things at once —
+// the line goes, the step is crossed off, the panel closes and you land in
+// that tab — and one tap for all four is a mis-tap you cannot take back.
+ok(await page.$eval('#todoGo', e => e.disabled)
+   && await page.$eval('#todoAlso', e => e.disabled),
+   'with nothing armed, Send and its checkbox are dead');
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
-await page.waitForFunction(() => !document.getElementById('todoAsk').hidden);
-ok((await page.$eval('#todoAskWhat', e => e.textContent)).includes('delete a project'),
-   'the arrow asks first, naming the line it would send');
-ok(!await page.$eval('#todoAlsoWrap', e => e.hidden),
+await page.waitForFunction(() => !document.getElementById('todoGo').disabled);
+ok((await open()).find(i => i.id === mine.id).sel,
+   'picking an arrow highlights it — that is the whole confirmation');
+ok(!await page.$eval('#todoAlso', e => e.disabled),
    '...and offers to save the rest, because the list has changes nobody was told about');
-await page.click('#todoNo');
-ok(await page.$eval('#todoAsk', e => e.hidden), 'Cancel backs out of it');
+await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
+await page.waitForFunction(() => document.getElementById('todoGo').disabled);
+ok(!(await open()).find(i => i.id === mine.id).sel,
+   'picking it again puts it down');
 ok(!read().projects.alpha.find(r => String(r.id) === mine.id).sent,
    '...having sent nothing');
 
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
-await page.waitForFunction(() => !document.getElementById('todoAsk').hidden);
+await page.waitForFunction(() => !document.getElementById('todoGo').disabled);
 await page.click('#todoGo');
 // Four things: the line goes, the step is crossed, the panel closes and the
 // session's tab opens. The panel closing is what this waits on.
@@ -119,8 +126,9 @@ await page.click(`${row('alpha')} [data-m]`);
 await page.waitForSelector('#todoList .todo', { timeout: 20000 });
 items = await open();
 const still = items.find(i => i.id === mine.id);
-ok(still.sent && still.can,
-   '...and it stays, struck through and still sendable: sent is not done');
+ok(still.sent && !still.can,
+   '...and it stays, struck through — and locked until it is put back, so the '
+   + 'strike means one thing');
 ok(items.findIndex(i => i.id === mine.id) === 0,
    '...in the place it was, because the order is the record');
 
@@ -160,7 +168,7 @@ items = await open();
 const g = items.find(i => i.text === 'rework the picker');
 const s1 = items.find(i => i.text === 'widen the select');
 const s2 = items.find(i => i.text === 'then re-measure it');
-ok(!g.can, 'a group\'s own line sends nothing — its steps are the work');
+ok(g.can, 'a group\'s own arrow stands for its next step');
 ok(s1.can && !s2.can,
    'only the next step in line can be sent; the one after it is dead');
 
@@ -172,8 +180,9 @@ await page.waitForFunction(id => document.querySelector(
 items = await open();
 ok(items.find(i => i.text === 'then re-measure it').can,
    'sending the first opens the second, and only then');
-ok(items.find(i => i.text === 'widen the select').can,
-   '...while the first stays sendable, for when it did not take');
+ok(!items.find(i => i.text === 'widen the select').can,
+   '...and a crossed step cannot be sent: put it back first, so struck through '
+   + 'means one thing rather than two');
 ok(items.findIndex(i => i.text === 'widen the select')
    < items.findIndex(i => i.text === 'then re-measure it'),
    '...and nothing moved');
@@ -181,7 +190,8 @@ ok(items.findIndex(i => i.text === 'widen the select')
 const skip = await post({ action: 'send', project: 'alpha', id: Number(s2.id), step: 1 });
 ok(skip.status === 200, 'the second can now be sent');
 const back = await post({ action: 'send', project: 'alpha', id: Number(s1.id), step: 0 });
-ok(back.status === 200, 'and the first again — "it did not take" is a real answer');
+ok(back.status === 200, 'and the first again through the API — "it did not take" '
+   + 'is a real answer, it just costs an uncross on screen');
 page.errors = [];
 
 // ---- crossing off by hand ----------------------------------------------
@@ -200,6 +210,18 @@ await page.waitForFunction(() => !document.querySelector(
 items = await open();
 ok(!items.find(i => i.text === 'then re-measure it').can,
    'with both steps back open, only the first can go again');
+ok((await open()).find(i => i.step === '-1'
+     && i.text === 'rework the picker').can,
+   '...and the group\'s own arrow stands for it');
+await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="-1"] .go`);
+await page.waitForFunction(() => !document.getElementById('todoGo').disabled);
+items = await open();
+ok(items.find(i => i.text === 'rework the picker').sel
+   && items.find(i => i.text === 'widen the select').sel
+   && !items.find(i => i.text === 'then re-measure it').sel,
+   'picking the group lights the group and its next step, and nothing else');
+await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="-1"] .go`);
+await page.waitForFunction(() => document.getElementById('todoGo').disabled);
 
 // The strike is offered at the edge of the plan and nowhere else: the last
 // crossed step, to put it back, and the next one along, to cross it.
@@ -309,6 +331,32 @@ const over = await post({ action: 'add', project: 'gamma', text: 'one too many' 
 ok(over.status === 400 && /limit/.test(over.body.error),
    'a list long enough to stop being readable refuses to grow');
 page.errors = [];
+
+// ---- nothing slides sideways -------------------------------------------
+// Four buttons in the footer did not fit a phone, and a footer that does not
+// fit makes the box scroll horizontally — so the whole panel slid under the
+// thumb every time it was touched.
+const phone = await newPage(browser, { viewport: { width: 400, height: 860 },
+                                       isMobile: true, hasTouch: true });
+await phone.goto(URL);
+await ready(phone);
+await phone.click(`${row('alpha')} [data-m]`);
+await phone.waitForSelector('#todoList .todo', { timeout: 20000 });
+await phone.click('#memFold > summary');           // every control on screen at once
+await phone.waitForFunction(() => document.getElementById('memSave').checkVisibility());
+const wide = await phone.evaluate(() => {
+  const out = [];
+  for (const sel of ['.modal .box', '#todoList', '#memList', '.modal .foot', '.todoask'])
+    for (const el of document.querySelectorAll(sel))
+      if (el.scrollWidth > el.clientWidth + 1)
+        out.push(sel + ' ' + el.scrollWidth + '>' + el.clientWidth);
+  return out;
+});
+ok(wide.length === 0, `nothing in the panel scrolls sideways on a phone (${wide.join(', ')})`);
+ok(await phone.evaluate(() =>
+     document.documentElement.scrollWidth <= document.documentElement.clientWidth),
+   '...and neither does the page behind it');
+await phone.close();
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);

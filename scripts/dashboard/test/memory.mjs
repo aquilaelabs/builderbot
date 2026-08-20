@@ -31,14 +31,14 @@ ok(await page.$eval('#memTitle', el => el.textContent === 'To do — alpha'),
 // Memory is folded away under it: a handful of files nobody edits, on screen
 // only because it is the one input to a session nobody would otherwise see.
 ok(await page.$eval('#memFold', el => !el.open)
-   && await page.$eval('#memSave', el => el.hidden),
+   && !await page.$eval('#memSave', el => el.checkVisibility()),
    '...with what Claude remembers folded, and its controls with it');
 ok((await page.$eval('#memWhere', el => el.textContent)).includes('2 memories'),
    '...and the fold says how many there are');
 await page.click('#memFold > summary');
-// The toggle event is asynchronous — the attribute flips before the handler
-// that shows the controls runs, so waiting on `open` alone is a race.
-await page.waitForFunction(() => !document.getElementById('memSave').hidden,
+// The controls live inside the fold, so they are on screen when it is open —
+// checkVisibility, not .hidden, because nothing sets a flag on them any more.
+await page.waitForFunction(() => document.getElementById('memSave').checkVisibility(),
                            { timeout: 5000 });
 ok(await page.$eval('#memFold', el => el.open),
    'opening it brings the memory controls with it');
