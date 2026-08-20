@@ -1762,10 +1762,16 @@ _CURL_ROW = re.compile(r"^\s*(\d{1,3})\s+[\d.]+[KMGT]?\s+\d{1,3}\s+.*\d+:\d\d:\d
 # phase that carried called the entire 1GB transfer after it an install — so
 # Swift and .NET appeared to skip downloading altogether.
 _INSTALLY = re.compile(r"unzip|extract|instal|build|compil|resolv|warming|checking out", re.I)
+# ...unless the same line says it is fetching something, which wins. rustup
+# opens with "info: downloading installer", where the word that decides the
+# step is the first one and the substring that matched is inside the noun. A
+# row that called that an install then said "installing" for the whole of the
+# download that followed.
+_DOWNLOADY = re.compile(r"download|fetch|receiv|transferr|cloning", re.I)
 
 
 def _progress_of(line):
-    """(percent, installing, said_something) for one line of a tool's output.
+    """(percent, step, said_something) for one line of a tool's output.
 
     A percentage is reported whatever step the line names, because for at
     least one tool here the step is not the unit of progress. sdkmanager
@@ -1797,19 +1803,20 @@ def _progress_of(line):
     # state is how a row announced installing and only then produced a download
     # bar, which is backwards from what is actually going on.
     if line.startswith("[builderbot]"):
-        return None, False, False
+        return None, None, False
     m = _CURL_ROW.match(line)
     if m:
-        return int(m.group(1)), False, True
-    installing = bool(_INSTALLY.search(line))
+        return int(m.group(1)), "downloading", True
+    step = ("downloading" if _DOWNLOADY.search(line)
+            else "installing" if _INSTALLY.search(line) else None)
     m = _PCT.search(line)
     pct = int(m.group(1)) if m else None
     if pct is not None and not 0 <= pct <= 100:
         pct = None
     if pct is not None:
-        return pct, installing, True
-    return None, installing, bool(re.search(r"[A-Za-z]", line)
-                                  and not _PROGRESS_FRAME.match(line))
+        return pct, step, True
+    return None, step, bool(re.search(r"[A-Za-z]", line)
+                            and not _PROGRESS_FRAME.match(line))
 
 
 def run_streamed(cmd, on_line, timeout=3600):
@@ -1894,7 +1901,7 @@ def _pkg_worker():
         def watch(line, _name=name):
             with _pkg_lock:
                 cur = _pkg_job["progress"] or {}
-                pct, installing, said = _progress_of(line)
+                pct, step, said = _progress_of(line)
                 if not said:
                     return                    # a frame with no number in it
                 # Three states in order: starting, downloading, installing.
@@ -1904,9 +1911,12 @@ def _pkg_worker():
                 # repositories, git listing refs), and calling that
                 # "installing" put the last step first.
                 seen = bool(cur.get("seen")) or pct is not None
-                phase = ("installing" if installing
-                         else "downloading" if pct is not None
-                         else "installing" if seen else "starting")
+                # What the line said it was doing, if it said; else a number
+                # means a download; else, once anything has reported at all,
+                # whatever is happening is the install.
+                phase = (step
+                         or ("downloading" if pct is not None
+                             else "installing" if seen else "starting"))
                 # Every tenth of a download, into the log. The bar shows what
                 # a job reported *now*; this shows what it reported at all,
                 # which is the difference between "the bar is broken" and

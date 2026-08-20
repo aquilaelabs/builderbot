@@ -264,6 +264,11 @@ for (let i = 0; i < 26; i++){
 const said = [...new Set(labels.filter(Boolean))];
 ok(['8', '31', '66', '100'].every(n => said.some(t => t === `downloading ${n}%`)),
    `the row counts the download the whole way up (${said.join(' | ')})`);
+// "info: downloading installer" is rustup's opening line, and the substring
+// that matches install is inside the noun. Reading it as an install made the
+// row say installing from the first second of a rust install to the last.
+ok(/^(starting|downloading)/.test(labels.find(Boolean) || ""),
+   `...and never claims to be installing before it has downloaded (${labels.find(Boolean)})`);
 const dl = widths.filter((w, i) => w && /^downloading/.test(labels[i] || ""));
 ok(dl.length > 1 && dl[dl.length - 1] > dl[0],
    `...and the bar fills with it (${widths.join(' ')})`);

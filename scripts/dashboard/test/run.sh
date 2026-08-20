@@ -148,6 +148,10 @@ if [ "${1:-}" = sdk ]; then
                          # and a long park inside the second half — which is
                          # what writing a system image looks like from here.
                          printf 'Downloading go.tar.gz from https://example\n'
+                         # rustup's opening line, near enough: the word that
+                         # decides the step is the first one, and the substring
+                         # that says "install" is inside the noun.
+                         printf 'info: downloading installer\n'
                          for pct in 8 31 66 100; do
                              printf '[====] %s%% Downloading go.tar.gz\r' "$pct"; sleep 0.4
                          done
