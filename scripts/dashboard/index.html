@@ -317,14 +317,29 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .todoadd{display:flex;gap:8px}
 .todoadd input{flex:1 1 auto;min-width:0}
 .todoadd button{flex:0 0 auto;min-height:var(--tap)}
-.todo{display:flex;gap:9px;align-items:flex-start;padding:9px 0;
-  border-bottom:1px solid var(--line)}
-.todo:last-child{border-bottom:0}
-.todo input[type=checkbox]{margin:2px 0 0;width:18px;height:18px;flex:0 0 auto;
-  accent-color:#2ea043;cursor:pointer}
+.grp{border-bottom:1px solid var(--line)}
+.grp:last-child{border-bottom:0}
+.todo{display:flex;gap:9px;align-items:flex-start;padding:9px 0}
+/* A group's steps sit under its title, indented and hairlined, so the shape
+   of "these go in this order" is visible without reading them. */
+.todo.step{padding:5px 0 5px 26px;border-top:1px dashed #232b34}
+.todo .n{flex:0 0 auto;color:var(--dim);font:600 11px/1.5 var(--mono);
+  min-width:1.2em;text-align:right}
 .todo .txt{flex:1;min-width:0;font:13px/1.45 system-ui,sans-serif;
   overflow-wrap:anywhere;cursor:text}
-.todo.done .txt{color:var(--dim);text-decoration:line-through}
+.todo.step .txt{font-size:12.5px}
+/* Struck through means *sent*, not done. It stays where it was — the order is
+   the record — so that a step that was handed over and quietly not carried out
+   is still there to send again. */
+.todo.sent .txt{color:var(--dim);text-decoration:line-through}
+/* Sent and done are different facts and look different: sent is struck
+   through (it went), done is faded (a session says it finished it). Something
+   can be sent and not done, which is exactly the case worth seeing. */
+.todo.done{opacity:.55}
+.todo .who.fin{color:#7fc08a;border-color:#1f3f28}
+.todo .go{flex:0 0 auto;align-self:flex-start;color:var(--accent)}
+.todo .go[disabled]{opacity:.35;color:var(--dim);cursor:default}
+@media(hover:hover){ .todo .go:not([disabled]):hover{color:#7ee08a;border-color:#2ea043} }
 /* Items a session raised, marked so the operator can see what was flagged at
    them rather than by them — the reason the list exists at all. */
 .todo .who{flex:0 0 auto;font:600 10px/1 system-ui,sans-serif;text-transform:uppercase;
@@ -339,6 +354,13 @@ button.on{background:#1f6f36;border-color:#2ea043}
 #memFold>summary::before{content:"▸ ";font-size:11px}
 #memFold[open]>summary::before{content:"▾ "}
 #memFold>.field{padding-top:0}
+/* Long lists scroll inside the panel rather than pushing the Add field and the
+   footer off the screen. A cap in rough proportion to the window, so a desktop
+   shows more of it than a phone does, and a shadowless inset edge to say there
+   is more below. */
+#todoList,#memList{max-height:min(46vh,420px);overflow:auto;
+  overscroll-behavior:contain}
+#memList{max-height:min(38vh,340px)}
 
 /* ---- the memory book ------------------------------------------------- */
 /* One <details> per memory: collapsed it is the summary line Claude wrote for
@@ -3335,37 +3357,100 @@ async function loadTodo(gen){
   drawTodo(j);
 }
 
+// The send arrow. Crossing something out here does not mean "done" — it means
+// "handed to the session", which is the thing the operator actually needs to
+// see, because a step can be sent and then not carried out.
+const SEND = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M2.6 8h9"/><path d="M8.2 4.6 11.6 8l-3.4 3.4"/>
+  <path d="M13.6 3.2v9.6"/></svg>`;
+
+// Which step a group would hand over next: the first that has not gone. The
+// order is the whole point of a group — send the third before the second and
+// it lands on a tree the second was supposed to have made — so only that one,
+// and any already sent, can be sent at all.
+function nextStep(r){
+  const steps = r.steps || [];
+  if (!steps.length) return r.sent ? null : -1;
+  const i = steps.findIndex(s => !s.sent);
+  return i < 0 ? null : i;
+}
+
+function stepRow(r, idx, live){
+  const steps = r.steps || [];
+  const nxt = nextStep(r);
+  const st = idx < 0 ? {text: r.text, sent: r.sent} : steps[idx];
+  // Sent ones stay live so they can go again — "it did not take, do it again"
+  // is the reason they are still on screen at all.
+  const can = live && (!!st.sent || idx === nxt);
+  const why = !live ? "no Claude session is running here"
+            : st.sent ? "send it again"
+            : idx === nxt ? "send this to the Claude session"
+            : `step ${nxt + 1} has not been sent yet`;
+  return `<div class="todo${st.sent ? " sent" : ""}${idx >= 0 ? " step" : ""}${
+       idx < 0 && r.done ? " done" : ""}" data-id="${r.id}" data-step="${idx}">
+    <button class="eye go" type="button"${can ? "" : " disabled"}
+      title="${esc(why)}" aria-label="send">${SEND}</button>
+    ${idx >= 0 ? `<span class="n">${idx + 1}</span>` : ""}
+    <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
+    ${idx < 0 && r.done ? `<span class="who fin" title="a session marked this finished">done</span>` : ""}
+    ${idx < 0 && r.by === "claude" ? `<span class="who" title="Claude put this here">claude</span>` : ""}
+    ${idx < 0 ? `<button class="eye rm" type="button" aria-label="drop it"
+      title="take it off the list — the only way anything leaves">${BIN}</button>` : ""}
+  </div>`;
+}
+
 function drawTodo(j){
   if (j.error){ $("todoList").innerHTML = `<div class="hint bad">${esc(j.error)}</div>`; return; }
-  const rows = j.items || [];
-  const open = rows.filter(r => !r.done).length;
-  $("todoHint").textContent = rows.length
-    ? `${open} open — the open ones are put in front of every Claude session started here`
-    : "Nothing yet. What goes here is read at the start of every Claude session in this project.";
+  const rows = j.items || [], live = !!j.session;
+  todoSession = j.session || null;
+  const left = rows.reduce((n, r) => n + (nextStep(r) === null ? 0 : 1), 0);
+  $("todoHint").textContent = !rows.length
+    ? "Nothing yet. What goes here is read at the start of every Claude session in this project."
+    : live
+      ? `${left} still to send — ${esc(j.session)} is running, so the arrows are live`
+      : `${left} still to send — no session is running here, so nothing can be sent yet`;
   $("todoField").hidden = !rows.length;
-  $("todoList").innerHTML = rows.map(r => `
-    <div class="todo${r.done ? " done" : ""}" data-id="${r.id}">
-      <input type="checkbox"${r.done ? " checked" : ""} aria-label="done">
-      <span class="txt" role="textbox" tabindex="0">${esc(r.text)}</span>
-      ${r.by === "claude" ? `<span class="who" title="Claude put this here">claude</span>` : ""}
-      <button class="eye rm" type="button" aria-label="drop it"
-        title="take it off the list">${BIN}</button>
-    </div>`).join("");
+  $("todoList").innerHTML = rows.map(r =>
+    `<div class="grp">${stepRow(r, -1, live && !(r.steps || []).length)}${
+      (r.steps || []).map((_, i) => stepRow(r, i, live)).join("")}</div>`).join("");
   $("todoList").querySelectorAll(".todo").forEach(row => {
-    const id = Number(row.dataset.id);
-    row.querySelector("input").onchange = e =>
-      postTodo({action: "done", id, done: e.target.checked});
-    row.querySelector(".rm").onclick = () => postTodo({action: "remove", id});
+    const id = Number(row.dataset.id), step = Number(row.dataset.step);
+    const go = row.querySelector(".go");
+    if (go) go.onclick = () => sendTodo(id, step < 0 ? null : step, go);
+    const rm = row.querySelector(".rm");
+    if (rm) rm.onclick = () => {
+      const r = (todoItems || []).find(x => x.id === id);
+      if (confirm(`Drop "${row.querySelector(".txt").textContent}"?${
+        (r?.steps || []).length ? `\n\nIts ${r.steps.length} steps go with it.` : ""}`))
+        postTodo({action: "remove", id});
+    };
     // Click the text to reword it. A prompt rather than an inline editor: this
     // is a one-line note, and an editor that has to be saved is a second step
-    // for something that takes one.
-    row.querySelector(".txt").onclick = () => {
+    // for something that takes one. Only the item's own line — a step is part
+    // of a plan, and rewording one of those is a job for `bb todo`.
+    if (step < 0) row.querySelector(".txt").onclick = () => {
       const was = row.querySelector(".txt").textContent;
       const now = prompt("Reword it:", was);
       if (now !== null && now.trim() && now !== was)
         postTodo({action: "edit", id, text: now});
     };
   });
+  todoItems = rows;
+}
+
+let todoItems = [];
+let todoSession = null;
+
+async function sendTodo(id, step, btn){
+  btn.disabled = true;
+  const j = await postTodo({action: "send", id, step});
+  if (j && j.sent) notify("sent to " + (todoSession || "the session"));
+  // notify.py leaves the line in the input box when it could not tell that it
+  // had arrived — a dialog had the keyboard — and says so rather than crossing
+  // anything out.
+  else if (j && j.typed) notify("typed into the session but not sent — something "
+    + "else has the keyboard there; press Enter in that tab when it is clear", true);
+  if (btn.isConnected) btn.disabled = false;
 }
 
 async function postTodo(body){

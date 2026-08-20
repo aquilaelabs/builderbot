@@ -205,6 +205,24 @@ the operator can see what you raised and sweep it if they disagree.
 **Tick things off as you finish them**, including items you did not add.
 A list that only grows is one that stops being read.
 
+**When a change needs several things done in a set order, add it as one item
+with steps** — `bb todo add "rework the picker" --step "widen the select"
+--step "then re-measure it"`. Steps are handed to a session one at a time, in
+order, from the dashboard: the operator sends the first, and the second only
+becomes sendable once the first has gone. Three separate items can be handed
+over backwards, and the second one then lands on a tree the first was supposed
+to have made.
+
+A step that has been sent is struck through rather than removed, and can be
+sent again — sent is not the same as done, and the difference is exactly the
+case worth being able to see. So do not treat "you sent me this" as proof it
+worked; if you cannot finish a step, say so plainly rather than quietly
+leaving it struck through.
+
+If the list or these notes change while you are working, you will be told in
+one line. Read them when it is relevant and carry on — a change to the list is
+not a request to drop what you are doing.
+
 Keep it short and keep it real. Thirty open items is the hard ceiling, and it
 is a working list rather than an issue tracker: one line, plainly worded, no
 duplicates of something already there. Anything that turns out to be a durable

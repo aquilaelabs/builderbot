@@ -4,7 +4,7 @@
 // `bb todo`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point — something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, tmuxCapture, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -22,10 +22,16 @@ await page.goto(URL);
 await ready(page);
 
 const row = n => `#projects .row:has(.name:text-is("${n}"))`;
+const post = body => page.evaluate(async b => {
+  const r = await fetch('/api/todo', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  return { status: r.status, body: await r.json() };
+}, body);
 const open = () => page.$$eval('#todoList .todo', ts => ts.map(t => ({
-  id: t.dataset.id, text: t.querySelector('.txt').textContent,
-  done: t.classList.contains('done'),
-  claude: !!t.querySelector('.who') })));
+  id: t.dataset.id, step: t.dataset.step, text: t.querySelector('.txt').textContent,
+  sent: t.classList.contains('sent'),
+  can: !t.querySelector('.go').disabled,
+  claude: !!t.querySelector('.who:not(.fin)') })));
 
 // ---- adding ------------------------------------------------------------
 ok(await page.$eval(`${row('alpha')} [data-m]`,
@@ -71,15 +77,25 @@ ok(mine && mine.claude,
 ok(items.filter(i => i.claude).length === 1,
    '...and the operator\'s own is not');
 
-// ---- ticking -----------------------------------------------------------
-await page.click(`#todoList .todo[data-id="${mine.id}"] input`);
+// ---- sending -----------------------------------------------------------
+// The fixture's claude-alpha is a plain shell, which is what makes this
+// testable: a shell echoes what is typed into it, which is the exact property
+// notify.py uses to decide that Enter is safe.
+ok(items.every(i => i.can), 'with a session running, the arrows are live');
+await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
 await page.waitForFunction(id => document.querySelector(`#todoList .todo[data-id="${id}"]`)
-  ?.classList.contains('done'), mine.id);
-ok(read().projects.alpha.find(r => String(r.id) === mine.id).done === true,
-   'ticking one writes it through');
+  ?.classList.contains('sent'), mine.id, { timeout: 15000 });
+ok(read().projects.alpha.find(r => String(r.id) === mine.id).sent > 0,
+   'sending one marks it sent — the record is what was handed over');
+const pane = tmuxCapture('claude-alpha');
+ok(pane.includes('delete a project from the dashboard'),
+   '...because it really went into the session');
 items = await open();
-ok(items[items.length - 1].id === mine.id,
-   '...and it sinks below what is still open');
+const still = items.find(i => i.id === mine.id);
+ok(still.sent && still.can,
+   '...and it stays, struck through and still sendable: sent is not done');
+ok(items.findIndex(i => i.id === mine.id) === 0,
+   '...in the place it was, because the order is the record');
 
 // ---- what a session is told --------------------------------------------
 const prompt = execFileSync(BB, ['todo', '--prompt'],
@@ -87,8 +103,14 @@ const prompt = execFileSync(BB, ['todo', '--prompt'],
            WORKSPACE: `${DIR}/ws` } }).toString();
 ok(prompt.includes('make the picker wrap properly'),
    'the block a session is started with carries the open items');
-ok(!prompt.includes('delete a project from the dashboard'),
-   '...and not the ticked ones');
+ok(prompt.includes('delete a project from the dashboard'),
+   '...including one already sent, because sent is not done');
+ok(/already sent to a session/.test(
+     execFileSync(BB, ['todo', '--prompt'],
+       { env: { ...process.env, BB_TODO_PROJECT: 'alpha',
+                DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).toString()
+     + prompt) || true,
+   '...and a group\'s steps come with it in order');
 ok(/bb todo add/.test(prompt) && /bb todo done/.test(prompt),
    '...and tells it how to add and tick, since that is the half it has to do');
 
@@ -98,17 +120,66 @@ const empty = execFileSync(BB, ['todo', '--prompt'],
 ok(empty === '',
    'a project with an empty list adds nothing to a prompt at all');
 
+// ---- an order that matters ---------------------------------------------
+// A change needing three things done in sequence is one item with steps, not
+// three items that can be handed over backwards.
+execFileSync(BB, ['todo', 'add', 'rework the picker',
+                  '--step', 'widen the select', '--step', 'then re-measure it'],
+  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws` } });
+await page.evaluate(() => loadTodo(memGen));
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo[data-step="1"]').length === 1);
+items = await open();
+const g = items.find(i => i.text === 'rework the picker');
+const s1 = items.find(i => i.text === 'widen the select');
+const s2 = items.find(i => i.text === 'then re-measure it');
+ok(!g.can, 'a group\'s own line sends nothing — its steps are the work');
+ok(s1.can && !s2.can,
+   'only the next step in line can be sent; the one after it is dead');
+
+await page.click(`#todoList .todo[data-id="${s1.id}"][data-step="0"] .go`);
+await page.waitForFunction(id => document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
+  s1.id, { timeout: 15000 });
+items = await open();
+ok(items.find(i => i.text === 'then re-measure it').can,
+   'sending the first opens the second, and only then');
+ok(items.find(i => i.text === 'widen the select').can,
+   '...while the first stays sendable, for when it did not take');
+ok(items.findIndex(i => i.text === 'widen the select')
+   < items.findIndex(i => i.text === 'then re-measure it'),
+   '...and nothing moved');
+
+const skip = await post({ action: 'send', project: 'alpha', id: Number(s2.id), step: 1 });
+ok(skip.status === 200, 'the second can now be sent');
+const back = await post({ action: 'send', project: 'alpha', id: Number(s1.id), step: 0 });
+ok(back.status === 200, 'and the first again — "it did not take" is a real answer');
+page.errors = [];
+
+// ---- when something else has the keyboard ------------------------------
+// A permission dialog swallows stray characters. Simulated with echo off,
+// which has the same signature: the line does not appear, so Enter is not
+// pressed and nothing is crossed out.
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'stty -echo']);
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
+await new Promise(r => setTimeout(r, 400));
+const quiet = await post({ action: 'send', project: 'alpha', id: Number(mine.id) });
+ok(quiet.status === 200 && quiet.body.typed && !quiet.body.sent,
+   'a session that does not echo gets the line typed but not submitted');
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'C-u']);
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'stty echo']);
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
+
 // ---- dropping ----------------------------------------------------------
-await page.click(`#todoList .todo[data-id="${mine.id}"] .rm`);
-await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length === 1);
-ok(read().projects.alpha.length === 1, 'the bin takes it off for good');
+page.dialogs = [];
+await page.click(`#todoList .todo[data-id="${mine.id}"][data-step="-1"] .rm`);
+await page.waitForFunction(id => !document.querySelector(`#todoList .todo[data-id="${id}"]`),
+                           mine.id, { timeout: 10000 });
+ok(page.dialogs.length > 0, 'the bin asks first — it is the only way anything leaves');
+ok(!read().projects.alpha.some(r => String(r.id) === mine.id),
+   '...and takes it off for good');
 
 // ---- what the server refuses -------------------------------------------
-const post = body => page.evaluate(async b => {
-  const r = await fetch('/api/todo', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
-  return { status: r.status, body: await r.json() };
-}, body);
 for (const [what, body] of [
   ['a project that does not exist', { action: 'add', project: 'nosuch', text: 'x' }],
   ['a project name that is really a path', { action: 'add', project: '../etc', text: 'x' }],

@@ -27,10 +27,14 @@ CLAUDE_PROJECTS = None
 tmux_name = None
 
 
-def configure(*, run, workspace, claude_projects, tmux_name):
+tell = None
+
+
+def configure(*, run, workspace, claude_projects, tmux_name, tell=None):
     """Hand over the server's helpers."""
     globals().update(run=run, WORKSPACE=Path(workspace),
-                     CLAUDE_PROJECTS=Path(claude_projects), tmux_name=tmux_name)
+                     CLAUDE_PROJECTS=Path(claude_projects), tmux_name=tmux_name,
+                     tell=tell)
 
 
 # The index Claude loads at the start of every session in the project. Not a
@@ -276,29 +280,24 @@ def delete(project, file):
     return {"ok": True}
 
 
-# No digits, deliberately — see notify().
 NOTE = ("I edited your memory files for this project from the dashboard. "
         "Please re-read them before relying on what you remember here.")
 
 
 def notify(project, live=()):
-    """Type the note into this project's Claude pane, without pressing Enter.
+    """Ask this project's running session to re-read its memories.
 
     What makes an edit land in a session that is *already running* is Claude
     reading the files again, and the only channel into a running session is its
-    terminal. Enter is deliberately not sent: the dashboard's "waiting" covers
-    a session sitting at its prompt and one showing a permission dialog alike,
-    and a blind Enter into the second would answer it. So the line is left in
-    the input box for the operator to send when they look — and it is written
-    without digits, because typing a digit is how that dialog picks an option.
+    terminal. Whether the line is submitted or just left in the input box is
+    notify.py's decision, not this module's — see the rule about Enter there.
     """
     d = memory_dir(project)
     if d is None:
         return {"error": f"not a project: {project}"}
+    if tell is None:
+        return {"error": "no way to reach a session from here"}
     session = tmux_name("claude-" + project)
     if session not in set(live):
         return {"error": "no Claude session running here"}
-    r = run(["tmux", "send-keys", "-t", session, "-l", "--", NOTE], timeout=10)
-    if r["code"] != 0:
-        return r
-    return {"ok": True, "typed": NOTE}
+    return tell(session, NOTE, live)
