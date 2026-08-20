@@ -357,6 +357,8 @@ bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb findings        this project's scanner findings (--all for every project)
+bb todo            this project's shared to-do list
+bb todo add "..."  put something on it; `done N`, `undone N`, `rm N`, `clear`
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -907,20 +909,25 @@ lives in its body. The cards:
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
   is a bin on the row
-- a **book** per project, carrying the number of memories Claude has written
-  about it. Claude Code keeps those in `~/.claude/projects/<slug>/memory/`:
+- a **checklist** per project, carrying how much is still to do here. It opens
+  the [shared to-do list](#the-shared-to-do-list) — the one surface here that
+  both you and a session write — with what Claude remembers folded away
+  beneath it.
+  Claude Code keeps memories in `~/.claude/projects/<slug>/memory/`:
   one markdown file per fact, plus a `MEMORY.md` index that is loaded into
   every session started there. Everything else a session is told is
   reviewable — `CLAUDE.md` through a pull request, the transcript on screen —
   but a memory writes itself and is never read back, so a wrong one steers
-  every later session invisibly. The book opens them: each memory folded to
+  every later session invisibly. The fold opens them: each memory folded to
   the summary line Claude wrote for itself (name, type, when), unfolding to
   the whole file in an editor, with **Forget this** to delete one — which
   takes its line out of the index too, since a pointer to a file that is gone
   is worse than no pointer. Drift between the index and the files is called
   out in amber both ways: a line naming a file that is not there, and a file
-  no line names. It is on the project row rather than in a Claude tab on
-  purpose — *why did it do that?* is usually asked after the tab is closed.
+  no line names. It sits on the project row rather than in a Claude tab on
+  purpose — *why did it do that?* is usually asked after the tab is closed —
+  and it is folded shut, because a handful of files nobody edits does not
+  earn the top of a panel.
   **Edits land for the next session**, the same rule `bb claude-md` follows:
   the index is read at startup, and a running session is holding what it read
   then. When a session for that project *is* running, **Tell the session**
@@ -1000,6 +1007,36 @@ a placeholder, and **+** starts over.
   the Sessions ✕ asks — and closes the tab with it.
 - **✕ appears on the findings tab only**, because a document has no session to
   keep. It closes without asking too.
+### The shared to-do list
+
+Every project has one, reachable from the checklist icon on its row and from
+`bb todo` in a terminal. It is the one surface here that **both sides write**:
+you add "make the picker wrap properly", a session adds "a project can be
+created in one click and only deleted from a shell", and either of you can tick
+something off.
+
+It exists because nothing else on this box can hold that. `gh` is
+unauthenticated here on purpose, so GitHub Issues are unreachable from inside
+the container — and until this, something noticed mid-task and left undone
+lived in the conversation and died with it.
+
+**The open items go in front of every Claude session the dashboard starts.**
+`bb-tty` appends them to the session's system prompt, so a note left on Tuesday
+is read on Thursday without anybody remembering to mention it. Items a session
+added are marked, so you can see what it put there. It is given as context
+rather than instructions: a session works an item when you ask, or when it is
+plainly part of what you asked, and adds one when it notices something out of
+scope for what it is on.
+
+The list lives in `/config/todos.json`, beside the tab strip and the excluded
+projects — deliberately **not** in the repository. A list like this churns far
+faster than commits, and a checkbox tapped on a phone should not turn into an
+uncommitted change. Anything that deserves to be permanent graduates out of it:
+into `CLAUDE.md`, a commit message, or a test that fails when it regresses.
+Thirty open items is the ceiling, because the list is read at the start of
+every conversation and one nobody can take in at a glance is one nobody reads.
+Ticked items stay a week, then go.
+
 - **Ending a session for good is the ✕ in the Sessions card.** That one asks,
   because that is where something is actually lost: the shell and everything
   in it, or the Claude conversation (its transcript is kept and can be resumed).
@@ -1345,6 +1382,7 @@ scripts/
     packages.py                  everything behind the Tools tab: catalog, sizes, the job worker
     memory.py                    everything behind the memory book: what Claude remembers per project
     projects.py                  new project / link to GitHub, and the worker that clones and pushes
+    todo.py                      the shared to-do list; `bb todo` drives the same file
     test/                        its Playwright suite — `bb dashboard test`, isolated
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each

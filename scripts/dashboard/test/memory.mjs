@@ -17,22 +17,31 @@ await page.goto(URL);
 await ready(page);
 
 // ---- the way in --------------------------------------------------------
+// The icon carries the to-do count (todo.mjs covers that); memory rides in
+// the same panel, folded under it.
 const row = n => `#projects .row:has(.name:text-is("${n}"))`;
-ok(await page.$eval(`${row('alpha')} [data-m]`, b => b.querySelector('i').textContent === '2'),
-   'a project with memories wears the count on its book');
-ok(await page.$eval(`${row('beta')} [data-m]`,
-     b => b.classList.contains('none') && !b.querySelector('i')),
-   'a project with none keeps the book, dimmed — "nothing here" is an answer too');
 ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 0),
-   'an excluded project has no book: nothing starts there to write one');
+   'an excluded project has no panel: nothing starts there to remember anything');
 
 await page.click(`${row('alpha')} [data-m]`);
 await page.waitForFunction(() => !document.getElementById('memModal').hidden);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
-ok(await page.$eval('#memTitle', el => el.textContent === 'Memory — alpha'),
-   'the book opens on that project');
+ok(await page.$eval('#memTitle', el => el.textContent === 'To do — alpha'),
+   'the panel opens on that project, on its to-do list');
+// Memory is folded away under it: a handful of files nobody edits, on screen
+// only because it is the one input to a session nobody would otherwise see.
+ok(await page.$eval('#memFold', el => !el.open)
+   && await page.$eval('#memSave', el => el.hidden),
+   '...with what Claude remembers folded, and its controls with it');
 ok((await page.$eval('#memWhere', el => el.textContent)).includes('2 memories'),
-   '...and says where the files are');
+   '...and the fold says how many there are');
+await page.click('#memFold > summary');
+// The toggle event is asynchronous — the attribute flips before the handler
+// that shows the controls runs, so waiting on `open` alone is a race.
+await page.waitForFunction(() => !document.getElementById('memSave').hidden,
+                           { timeout: 5000 });
+ok(await page.$eval('#memFold', el => el.open),
+   'opening it brings the memory controls with it');
 
 // ---- what it shows -----------------------------------------------------
 const mems = await page.$$eval('#memList .mem', ls => ls.map(l => ({
@@ -81,7 +90,7 @@ ok(!existsSync(`${MEM}/tabs.md`), 'the file is gone');
 ok(!read('MEMORY.md').includes('tabs.md') && read('MEMORY.md').includes('vanished.md'),
    '...and its index line went with it, leaving the other lines alone');
 ok((await page.$eval('#memWhere', el => el.textContent)).includes('1 memory'),
-   'the book redraws without it');
+   'the fold redraws without it');
 
 // ---- what the server refuses -------------------------------------------
 const post = (body) => page.evaluate(async b => {

@@ -960,6 +960,7 @@ def project_list():
                              "text": f"cannot list this directory as uid {uid}:{gid}"
                                      " — chown it to PUID:PGID on the host"}]}]
     cloning = projects.busy_name()
+    open_todo = todo.counts()
     for d in here:
         # Mid-clone: a directory with a .git and not much else, which every
         # check below reads as a repository in a strange state. The job row is
@@ -1071,6 +1072,9 @@ def project_list():
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
                     "memories": memory.count(d.name),
+                    # ...and what is still to do, which is the number on the row
+                    # actually worth glancing at.
+                    "todo": open_todo.get(d.name, 0),
                     "issues": issues})
     return out
 
@@ -1399,6 +1403,14 @@ import memory                                                    # noqa: E402
 
 memory.configure(run=run, workspace=WORKSPACE,
                  claude_projects=CLAUDE_PROJECTS, tmux_name=tmux_name)
+
+# ---- the shared to-do list -------------------------------------------------
+# The one surface both sides write: the operator adds an item, a session adds
+# one and ticks it off. bb-tty puts the open items in front of every Claude
+# session it starts, which is the whole reason it is worth having.
+import todo                                                      # noqa: E402
+
+todo.configure(write_json=write_json, state=STATE)
 
 # ---- new project, and linking one ------------------------------------------
 # Creating and cloning, and the worker that runs the ones that touch the
@@ -1778,6 +1790,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(packages.payload())
         if self.path.startswith("/api/project-job"):
             return self._json(projects.job())
+        if self.path.startswith("/api/todo"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list()}:
+                return self._json({"error": "not a project"}, 400)
+            return self._json({"project": name, "items": todo.items(name)})
         if self.path.startswith("/api/memory"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             got = memory.payload(q.get("project", [""])[0],
@@ -1835,6 +1853,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._link(req)
         if path.startswith("/api/project-job"):
             return self._project_job(req)
+        if path.startswith("/api/todo"):
+            return self._todo(req)
         if path.startswith("/api/packages"):
             return self._packages(req)
         if path.startswith("/api/memory"):
@@ -1844,6 +1864,32 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/doctor"):
             return self._doctor(req)
         self._json({"error": "not found"}, 404)
+
+    def _todo(self, req):
+        """Add, tick, edit or drop one item on a project's list.
+
+        The project is checked against the real list for the same reason every
+        other endpoint here does it: a name that came back off the filesystem
+        cannot name something that was never there.
+        """
+        name = req.get("project", "")
+        if name not in {p["name"] for p in project_list()}:
+            return self._json({"error": f"not a project: {name}"}, 400)
+        act = req.get("action", "")
+        if act == "add":
+            r = todo.add(name, req.get("text", ""))
+        elif act == "done":
+            r = todo.set_done(name, req.get("id"), bool(req.get("done", True)))
+        elif act == "edit":
+            r = todo.edit(name, req.get("id"), req.get("text", ""))
+        elif act == "remove":
+            r = todo.remove(name, req.get("id"))
+        elif act == "clear-done":
+            r = todo.clear_done(name)
+        else:
+            return self._json({"error": f"unknown action: {act}"}, 400)
+        return self._json(r | {"items": todo.items(name)} if not r.get("error") else r,
+                          400 if r.get("error") else 200)
 
     def _memory(self, req):
         """Edit, delete, or point a running session at this project's memories.
