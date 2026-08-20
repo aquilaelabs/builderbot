@@ -1131,7 +1131,11 @@ const baseOf = path => path.replace(/\/+$/, "").split("/").pop() || "/";
 // — and only the duplicates — carry a number.
 function sessionLabels(){
   const list = (state?.sessions || []);
-  const of = s => s.name.startsWith("claude-") ? "Claude: " + (projFor(s.name.slice(7)) ?? s.name.slice(7))
+  // The sign-in terminal runs in the workspace but is not a shell in it:
+  // named by its directory it came out as "sh: workspace", a second copy of
+  // the name the terminal that really is one already wears.
+  const of = s => s.name === "login" ? "Claude sign-in"
+           : s.name.startsWith("claude-") ? "Claude: " + (projFor(s.name.slice(7)) ?? s.name.slice(7))
            : s.cwd ? "sh: " + baseOf(s.cwd)
            : "sh: " + s.name;
   const total = {};
@@ -2802,17 +2806,41 @@ function drawAuth(){
 
 // Sign in, however many times it takes.
 //
-// The flow ends with its session — that is how the page notices it is over —
-// which leaves the tab holding a terminal with nothing behind it. Pressing the
-// button again then found that tab, focused it, and stopped: a dead rectangle
-// that swallows everything typed into it, from a button whose whole job is to
-// start the flow. So an existing tab gets its frame reloaded, which starts a
-// new session when the old one is gone and merely reattaches when it is not.
-function signIn(){
+// Ending the terminal first is what makes this button mean "start a new flow".
+// bb-tty attaches to a sign-in session that is already there rather than
+// replacing it — a dropped socket, a phone coming back to the page, or a
+// second browser opening the same tab must not throw away a code halfway
+// through being pasted — so the one place that decides to start over is here,
+// under the finger that asked for it.
+async function signIn(){
   const t = tabs.find(x => x.kind === "term" && x.arg === "login");
+  if (t){
+    // Being replaced, not finished: without this the poll that lands between
+    // the kill and the reload would see the session gone and close the tab.
+    t.seen = false;
+    focusTab(t.id);
+  }
+  await endSession("login").catch(() => {});   // already gone is already ended
   if (!t) return openTab({kind: "term", arg: "login", label: "Claude sign-in"});
-  focusTab(t.id);
   reloadFrameOf(t.id);
+}
+
+// The sign-in terminal closes itself when the flow is over. Its last line says
+// to press enter to close it, and pressing that ends the session — which used
+// to leave the tab holding a dead rectangle that swallows what is typed into
+// it, and that a reload would quietly turn into a second sign-in flow.
+//
+// Only after tmux has actually registered the session: between opening the tab
+// and the poll that first sees it, "not in the list" means "not yet". The
+// window that is left is another browser polling in the moment between Sign in
+// ending one flow and the next one connecting, which takes the tab there —
+// rare, and one click from a tab again, since the flow that started is in the
+// Sessions list under the same name.
+function pruneSignIn(){
+  const t = tabs.find(x => x.kind === "term" && x.arg === "login");
+  if (!t) return;
+  if (liveSessions().has("login")) t.seen = true;
+  else if (t.seen) dropTab(t.id);
 }
 
 // Reload the terminal behind one tab. Lossless when the session is alive —
@@ -4383,10 +4411,7 @@ async function killSession(name){
           + `resumed later, but the conversation stops now.`
         : `End the session "${name}"?\n\nAnything running in it is terminated.`)) return;
   try{
-    const r = await fetch("/api/session", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({action:"kill", session:name})});
-    const j = await r.json();
+    const j = await endSession(name);
     if (j.error){ notify(j.error, true); return; }
     // Its tab, if one is open, is now pointing at nothing.
     const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === name);
@@ -4394,6 +4419,16 @@ async function killSession(name){
     notify(`ended ${name}`);
   }catch(e){ notify("could not end it: " + e, true); }
   refresh();
+}
+
+// End a session, no questions asked. killSession is this with the dialog in
+// front of it; Sign in is this without one, because the person just pressed a
+// button that says what it does.
+async function endSession(name){
+  const r = await fetch("/api/session", {method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({action:"kill", session:name})});
+  return r.json();
 }
 
 let toastTimer = null;
@@ -4609,6 +4644,7 @@ async function refresh(){
     $("host").textContent = state.host;
     $("uptime").textContent = "up " + state.uptime;
     adoptLayout(state.layout);
+    pruneSignIn();      // the layout is settled; now drop what is over
     // Not mid-drag: adopting the server's order under a moving pointer would
     // snap the card out of the operator's hand.
     if (state.cards && !cardDrag && asked > cardsChangedAt) adoptCards(state.cards);
