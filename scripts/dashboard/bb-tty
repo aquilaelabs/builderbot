@@ -257,6 +257,10 @@ case "$target" in
         start "shell-${proj}" "$dir"
         ;;
     login)
+        # Shared with the dashboard, which clears it when Sign in is pressed.
+        # /tmp rather than /run/builderbot, which is root's; a sign-in that
+        # finished is not worth surviving a restart either way.
+        LOGIN_DONE="${BB_LOGIN_DONE:-/tmp/bb-login-finished}"
         # Signing in is interactive — a URL to open in a browser and a code to
         # paste back — so it needs a terminal, not a button that posts
         # something and reports a result.
@@ -277,12 +281,31 @@ case "$target" in
         # it — used to take its terminal with it, leaving a blank tab and
         # nothing to read about why. The line says which it was, and the tab
         # goes when the session does.
+        # ttyd reconnects a dropped socket after five seconds, and the socket
+        # drops the moment the flow ends — so "press enter to close this
+        # terminal" ended the session, ttyd came back, and this started a
+        # brand-new sign-in. The tab could never close: the page polls every
+        # fifteen seconds and the session was always back before it looked.
+        # Worse, closing the terminal quietly began another OAuth flow.
+        #
+        # So a finished flow leaves a marker, and a connection that finds one
+        # with no session behind it says so and stops. Pressing Sign in is
+        # what clears it — that is the one place that means "start over".
+        if [ -e "$LOGIN_DONE" ] && ! tmux has-session -t "=login" 2>/dev/null; then
+            echo "That sign-in is over."
+            echo "Close this tab — or press Sign in on the dashboard to start another."
+            exit 0
+        fi
+        rm -f "$LOGIN_DONE"
         start "login" "$WORKSPACE" bash -c '
             bb login; s=$?
             [ "$s" = 0 ] && printf "\n[sign-in finished]\n" \
                          || printf "\n[sign-in exited with status %s]\n" "$s"
             printf "[press enter to close this terminal]\n"
-            read -r _'
+            read -r _
+            # $0 is the marker path, passed in rather than interpolated into
+            # this quoted script.
+            : > "$0"' "$LOGIN_DONE"
         ;;
     *)
         # A named scratch session. Restricted to characters tmux is happy with

@@ -2885,7 +2885,12 @@ async function signIn(){
     t.seen = false;
     focusTab(t.id);
   }
-  await endSession("login").catch(() => {});   // already gone is already ended
+  // Ends the terminal *and* clears the finished-flow marker: without the
+  // second half bb-tty reads the reload as a reconnect to a flow that is over
+  // and refuses to start another, which is what makes this button mean
+  // "start over" rather than "start over, sometimes".
+  await fetch("/api/signin", {method:"POST",
+    headers:{"Content-Type":"application/json"}, body: "{}"}).catch(() => {});
   if (!t) return openTab({kind: "term", arg: "login", label: "Claude sign-in"});
   reloadFrameOf(t.id);
 }

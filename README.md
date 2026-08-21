@@ -839,7 +839,14 @@ lives in its body. The cards:
   code into, and types it in for you. The moment the sign-in takes, the card
   goes back to saying who you are — the terminal outlives the flow, since it
   ends by waiting so a refusal can be read, and a lingering terminal is not a
-  reason to keep asking for a code that already worked. That is
+  reason to keep asking for a code that already worked.
+  Pressing enter to close that terminal really does close it, tab and all —
+  ttyd reconnects a dropped socket after five seconds, and the socket drops
+  exactly when the flow ends, so a finished sign-in used to come straight back
+  as a *new* one. A finished flow leaves a marker; a connection that finds one
+  with no session behind it says the sign-in is over and stops. **Sign in** is
+  the one thing that clears it, which is what makes that button mean start
+  over That is
   not a convenience. A phone pasting a hundred characters into a canvas
   terminal is where this reliably falls over — the paste silently does not
   arrive, the Enter after it does, and the flow exchanges an empty code for a
