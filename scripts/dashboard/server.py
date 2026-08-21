@@ -1992,6 +1992,15 @@ class Handler(BaseHTTPRequestHandler):
         # a code that wrapped in the page brings the break along. Spaces are
         # left alone: those are how prose pasted by mistake is still caught.
         code = field(req, "code").strip().replace("\r", "").replace("\n", "")
+        # And anything from a URL onward was never part of it. The page that
+        # hands the code out sets the authorize URL flush against it, so Copy
+        # takes both and the paste arrives as `code#state` with a link stuck to
+        # the end — which is not a code, and is also not the operator getting
+        # it wrong. A code is base64url and a `#`, so it can hold neither a
+        # colon nor a slash, and cutting here cannot take part of one. A paste
+        # that is only a URL is left with nothing and refused below, which is
+        # the right answer to copying the link instead of the code.
+        code = re.split(r"https?://", code, 1)[0]
         if not LOGIN_CODE.fullmatch(code):
             return self._json({"error": "that does not look like a code — copy "
                                         "the whole of it, including anything "

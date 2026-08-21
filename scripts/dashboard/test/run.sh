@@ -273,7 +273,11 @@ if [ "${1:-}" = auth ]; then
             case "$code" in
                 good*) cat "${CLAUDE_AUTH_IN:?}" > "${CLAUDE_AUTH_FIXTURE:?}"
                        printf '\nLogin successful.\n'; exit 0 ;;
-                *) printf '\nLogin failed: Request failed with status code 400\n'
+                # The code it was handed, echoed back. The dashboard trims
+                # what a copy brought along with it — a line break, the URL
+                # the code page sets flush against the code — and this is how
+                # a test sees what actually arrived rather than assuming.
+                *) printf '\nLogin failed: Request failed with status code 400 [got %s]\n' "$code"
                    exit 1 ;;
             esac ;;
         *) exit 1 ;;
