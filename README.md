@@ -843,12 +843,12 @@ lives in its body. The cards:
   opposite directions, and a program that wants a terminal only wants a pty —
   so the server holds one. What you see is a link and a text field, and what
   the flow says when it refuses a code is said on the card, in its own words.
-  The field takes the code as it is — base64 padding, the `#` and whatever
-  follows it, a line break the copy brought along, the authorize URL the code
-  page sets flush against the code so that **Copy code** takes both — and
-  refuses only what would reach the flow as a second line of input: a space, a
-  control character, or too little left to be a code at all, which is what
-  copying the link instead of the code leaves behind.
+  The field passes the code through rather than judging it: the authorize URL
+  the code page glues to it is cut off, whitespace and control junk are
+  stripped, and whatever remains goes to the flow — whose verdict is the only
+  one that counts. The only pastes refused outright are the two that cannot
+  be wrong to refuse: one with no code left in it (the link alone), and one
+  far too long to be a code.
   Signing out is one command with no conversation in it, so it is a button,
   and it asks first because every session here stops working. **It is dead
   while any Claude session is running** and names the ones in the way; the

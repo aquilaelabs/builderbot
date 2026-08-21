@@ -1454,13 +1454,15 @@ def _read_auth():
     return state
 
 
-# What an OAuth code can be made of. Never a free-text line into a process —
-# and what would make it one is a space, a newline or a control character, so
-# those are what this refuses. Not the alphabet: the code is somebody else's
-# credential format, and an allow-list of the characters we expected refused
-# ordinary base64 padding (`+`, `/`, `=`) with advice to copy the whole code,
-# to an operator who had copied the whole code.
-LOGIN_CODE = re.compile(r"[!-~]{8,512}")
+# What gets removed from a pasted code before it is handed to the flow:
+# whitespace of every kind (a wrapped copy brings line breaks, a phone
+# keyboard adds a trailing space), control characters, and the zero-width
+# marks HTML copy buttons smuggle along. Everything printable stays. This is
+# deliberately a strip-list and not an allow-list: two rounds of guessing the
+# code's alphabet each refused a real code with advice to copy it again, to an
+# operator who had copied it. The code is somebody else's credential format;
+# judging it is the flow's job, and the flow says why in its own words.
+CODE_JUNK = re.compile(r"[^!-~]+")
 
 
 def doctor_payload():
@@ -1981,30 +1983,31 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(signin.start() | {"signin": signin.state()})
 
     def _login_code(self, req):
-        """Hand the code from the browser to the sign-in terminal.
+        """Hand the code from the browser to the sign-in flow.
 
-        Shape-checked before it goes anywhere near a terminal — the same rule
-        every executing surface here follows — and only ever into the session
-        this dashboard opened for the flow.
+        Transport, not judgment. The only property this end owes the pty is
+        that a paste is one line of printable text — so the junk a copy brings
+        along is stripped rather than refused, and whether what remains is a
+        valid code is decided by the flow, whose refusal the card repeats in
+        the flow's own words. Two shape checks in a row each turned out to
+        refuse a real code (an allow-listed alphabet without base64's `+/=`,
+        then the page's own authorize URL glued to the code by its Copy
+        button); the only refusals left are the ones that cannot be wrong —
+        nothing left to send, or far too much to be a code.
         """
-        # A code is one line by construction, so a line break in the middle of
-        # one came from the copy rather than the credential — a phone selecting
-        # a code that wrapped in the page brings the break along. Spaces are
-        # left alone: those are how prose pasted by mistake is still caught.
-        code = field(req, "code").strip().replace("\r", "").replace("\n", "")
-        # And anything from a URL onward was never part of it. The page that
-        # hands the code out sets the authorize URL flush against it, so Copy
-        # takes both and the paste arrives as `code#state` with a link stuck to
-        # the end — which is not a code, and is also not the operator getting
-        # it wrong. A code is base64url and a `#`, so it can hold neither a
-        # colon nor a slash, and cutting here cannot take part of one. A paste
-        # that is only a URL is left with nothing and refused below, which is
-        # the right answer to copying the link instead of the code.
+        code = field(req, "code")
+        # Anything from a URL onward was never part of the code. The page that
+        # hands it out sets the authorize URL flush against it, so Copy takes
+        # both. A code is base64url and a `#` — no colon, no slash — so the
+        # cut cannot land inside a real one.
         code = re.split(r"https?://", code, 1)[0]
-        if not LOGIN_CODE.fullmatch(code):
-            return self._json({"error": "that does not look like a code — copy "
-                                        "the whole of it, including anything "
-                                        "after a #"}, 400)
+        code = CODE_JUNK.sub("", code)
+        if not code:
+            return self._json({"error": "no code in that paste — copy the "
+                                        "code itself, not the page's link"}, 400)
+        if len(code) > 2048:
+            return self._json({"error": "that is far too long to be a code — "
+                                        "copy just the code"}, 400)
         r = signin.submit(code)
         # Whatever the cache is holding is about to be wrong either way.
         _auth.update(at=0.0, state={})
