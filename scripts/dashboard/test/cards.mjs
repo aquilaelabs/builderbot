@@ -191,28 +191,33 @@ const junk = await page.evaluate(async () => {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }) }).then(r => r.status);
   return { prose: await send('not a code'), ctrl: await send('abcd\u0003efgh'),
-           half: await send('abc') };
+           half: await send('abc'),
+           link: await send('https://claude.com/cai/oauth/authorize?code=true') };
 });
-ok(junk.prose === 400 && junk.ctrl === 400 && junk.half === 400,
-   'prose, a control character and half a code are refused before it goes anywhere');
+ok(junk.prose === 400 && junk.ctrl === 400 && junk.half === 400 && junk.link === 400,
+   'prose, a control character, half a code and the link itself are all refused');
 page.errors = [];
 
 // A wrong one is refused by the flow, and the card says why — where it was
-// asked for, rather than in a terminal nobody can read on a phone. This one
-// carries base64 padding and the line break a copy brings along when the code
-// wrapped in the page: neither is this end's business to refuse, and refusing
-// them told an operator to copy the whole code when they had copied it.
+// asked for, rather than in a terminal nobody can read on a phone. What goes
+// in carries everything a real paste brings with it: base64 padding, the line
+// break a copy takes from a code that wrapped in the page, and the authorize
+// URL that the code page sets flush against the code so that Copy takes both.
+// None of that is this end's business to refuse, and refusing it told an
+// operator to copy the whole code when they had copied the whole code.
 const padded = await page.evaluate(async () => {
   const r = await fetch('/api/login-code', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: 'wrong+code/12\n34==' }) });
+    body: JSON.stringify({ code: 'wrong+code/12\n34==https://claude.com/cai/oauth/authorize?code=true' }) });
   return r.status;
 });
-ok(padded === 200, '...while padding and a line break go through to the flow');
+ok(padded === 200, '...while padding, a line break and a URL stuck to the end do not');
 await page.waitForFunction(() => /did not finish|Login failed/.test(
   document.getElementById('docAuth')?.textContent || ''), { timeout: 25000 });
 ok(/Login failed/.test(await page.$eval('#docAuth', e => e.textContent)),
    'a refused code is reported on the card, in the words the flow used');
+ok(/\[got wrong\+code\/1234==\]/.test(await page.$eval('#docAuth', e => e.textContent)),
+   '...and what reached the flow was the code, without what the copy added');
 
 // And a good one signs in, which flips the whole row.
 await page.click('#bSignIn');
