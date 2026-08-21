@@ -3,7 +3,7 @@
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, tmuxNew, tmuxKill, tmuxFmt,
          URL, DIR } from './lib.mjs';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
@@ -320,6 +320,23 @@ await page.evaluate(() => refresh());
 await page.waitForFunction(() => document.getElementById('authCode') === null,
                            { timeout: 25000 });
 ok(true, 'and the field goes when the sign-in does');
+
+// ttyd reconnects a dropped socket after five seconds, and the socket drops
+// when the flow ends — so "press enter to close this terminal" used to end
+// the session, ttyd came back, and bb-tty started another sign-in. The tab
+// could never close, and closing the terminal quietly began a new OAuth flow.
+writeFileSync(`${DIR}/login-finished`, '');
+await page.evaluate(() => refresh());
+await new Promise(r => setTimeout(r, 400));
+ok(existsSync(`${DIR}/login-finished`),
+   'a finished flow leaves a marker, so a reconnect is not read as a request for another');
+// Sign in is the one thing that means start over, so it is what clears it.
+await page.evaluate(async () => {
+  await fetch('/api/signin', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: '{}' });
+});
+ok(!existsSync(`${DIR}/login-finished`),
+   '...and pressing Sign in clears it, which is what makes the button mean that');
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 await page.evaluate(() => refresh());
 

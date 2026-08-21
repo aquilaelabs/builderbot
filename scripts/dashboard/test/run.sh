@@ -307,6 +307,7 @@ fresh() {
     rm -rf "$S/sdk" "$S/androidsdk"; mkdir -p "$S/sdk" "$S/androidsdk"
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
     cp "$S/auth-in.json" "$S/auth.json"   # a test that signs out must not hand that on
+    rm -f "$S/login-finished"
     seed_memories                   # memory.mjs edits and deletes these for real
     for n in shell-9 claude-alpha; do
         tmux has-session -t "$n" 2>/dev/null || tmux new-session -d -s "$n" -c /tmp
@@ -326,6 +327,7 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" CLAUDE_AUTH_FIXTURE="$S/auth.json" \
+    BB_LOGIN_DONE="$S/login-finished" \
     PATH="$S/bin:$PATH" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
 pid=$!

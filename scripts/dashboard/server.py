@@ -1424,6 +1424,11 @@ def claude_auth(fresh=False):
 # out of the pane to be tapped, and the code goes in through a text field,
 # which is a thing phones are good at.
 LOGIN_SESSION = "login"
+# The marker bb-tty leaves when a sign-in ends, so that ttyd reconnecting the
+# dropped socket five seconds later does not read a closed terminal as a
+# request for another flow. Pressing Sign in is the one thing that means start
+# over, so pressing it is what clears this.
+LOGIN_DONE = Path(os.environ.get("BB_LOGIN_DONE", "/tmp/bb-login-finished"))
 AUTH_URL = re.compile(r"https://(?:claude\.com|console\.anthropic\.com|"
                       r"platform\.claude\.com)/\S+")
 # What an OAuth code can be made of. Never a free-text line into a terminal.
@@ -1965,7 +1970,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._signout(req)
         if path.startswith("/api/login-code"):
             return self._login_code(req)
+        if path.startswith("/api/signin"):
+            return self._signin(req)
         self._json({"error": "not found"}, 404)
+
+    def _signin(self, req):
+        """Start over: end the terminal that is there and clear the marker.
+
+        Two things rather than one because they mean one thing together — a
+        session that is gone with the marker still set is a finished flow, and
+        bb-tty refuses to begin another for it. This is the only place that
+        says otherwise.
+        """
+        with contextlib.suppress(OSError):
+            LOGIN_DONE.unlink()
+        _auth.update(at=0.0, state={})
+        run(["tmux", "kill-session", "-t", LOGIN_SESSION], timeout=10)
+        return self._json({"ok": True})
 
     def _login_code(self, req):
         """Hand the code from the browser to the sign-in terminal.
