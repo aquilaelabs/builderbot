@@ -420,6 +420,28 @@ ENV PUID=99 \
     AUTO_UPDATE_CLAUDE=true \
     CHOWN_HOME=true
 
+# Which build of the image this is, readable from inside it.
+#
+# "Does this container have that fix yet?" had no answer from the running
+# system: /opt is the image's, an Unraid container keeps serving whatever it
+# last pulled, and the only clue was the uptime — which is how three rounds of
+# one bug went by with the fix already published and the box still on the build
+# before it. CI passes the commit and the time it built; an image built any
+# other way carries neither, and the dashboard says `unstamped` rather than
+# inventing something.
+#
+# Last, deliberately. These change on every single build, and an ARG or ENV
+# invalidates every layer below it — down here that is nothing but metadata, so
+# the host's pull is unaffected. In the top block this would re-download the
+# whole toolchain for every commit.
+# Named apart from the ENVs they fill, the way the Android baseline above is:
+# `ENV X=${X}` is the same variable on both sides of one statement, which is a
+# thing linters have opinions about and this file has no need to argue with.
+ARG IMAGE_REV
+ARG IMAGE_BUILT
+ENV BB_IMAGE_REV=${IMAGE_REV} \
+    BB_IMAGE_BUILT=${IMAGE_BUILT}
+
 WORKDIR /workspace
 
 HEALTHCHECK --interval=60s --timeout=10s --start-period=90s --retries=3 \
