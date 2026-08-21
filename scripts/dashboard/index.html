@@ -2817,7 +2817,11 @@ function drawAuth(){
   // suit on a phone — a wrapped URL cannot be selected and a paste into a
   // canvas silently does not arrive, leaving the Enter after it to hand the
   // flow an empty code and earn a 400 that reads like the code was wrong.
-  if (lg?.running){
+  // Signed in wins over a flow that is still on screen. The sign-in terminal
+  // outlives the sign-in: it ends by saying to press enter to close it, so
+  // that a refusal can be read rather than vanishing — which left the card
+  // asking for a code long after the code had worked.
+  if (lg?.running && !a.signed_in){
     // Whatever is half-typed survives a repaint. The row is rebuilt whenever
     // anything in it changes — the link arriving, the flow moving on — and a
     // field that empties itself under a thumb mid-paste is how this looked

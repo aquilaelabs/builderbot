@@ -1390,14 +1390,17 @@ _auth = {"at": 0.0, "state": {}}
 AUTH_TTL = 20
 
 
-def claude_auth():
+def claude_auth(fresh=False):
     """{signed_in, email} — or {"unknown": True} on a claude too old to ask.
 
     The one piece of container health that has an action attached, which is
     why it is a field of its own rather than a line in the doctor verdict: a
     verdict is read, and this is pressed.
     """
-    if time.monotonic() - _auth["at"] < AUTH_TTL and _auth["state"]:
+    # `fresh` while a sign-in is running: the twenty-second cache is there to
+    # keep a poll cheap, and the one moment it is worth paying for is the one
+    # where the answer is about to change.
+    if not fresh and time.monotonic() - _auth["at"] < AUTH_TTL and _auth["state"]:
         return _auth["state"]
     r = run(["claude", "auth", "status", "--json"], timeout=20)
     try:
@@ -1579,6 +1582,7 @@ def findings_counts(ps):
 def snapshot():
     ps = project_list()
     sessions = tmux_sessions()
+    login = login_state([s["name"] for s in sessions])
     # Each shell's git context, resolved here where WORKSPACE is known: the
     # git/GitHub command cards ghost against the directory the active shell
     # is actually in, and matching a cwd to a project is this server's
@@ -1601,8 +1605,11 @@ def snapshot():
         "reports_mtime": reports_mtime(),
         "findings_counts": findings_counts(ps),
         "doctor": doctor_payload(),
-        "claude_auth": claude_auth(),
-        "login": login_state([s["name"] for s in sessions]),
+        # Asked in this order: whether a sign-in is running decides whether
+        # the answer to "signed in?" is worth re-reading rather than serving
+        # from the cache.
+        "claude_auth": claude_auth(fresh=login["running"]),
+        "login": login,
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
         "project_job": projects.job(),
@@ -1974,6 +1981,8 @@ class Handler(BaseHTTPRequestHandler):
                                         "after a #"}, 400)
         live = [s["name"] for s in tmux_sessions()]
         r = notify.send_line(LOGIN_SESSION, code, live)
+        # Whatever the cache is holding is about to be wrong either way.
+        _auth.update(at=0.0, state={})
         return self._json(r, 400 if r.get("error") else 200)
 
     def _signout(self, req):

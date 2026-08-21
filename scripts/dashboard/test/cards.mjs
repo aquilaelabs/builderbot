@@ -222,6 +222,26 @@ writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 // wrong. So the URL comes out of the pane to be tapped, and the code goes in
 // through a text field. Driven against a stand-in flow — the real one needs a
 // browser and somebody's account.
+// Signed in wins over a flow still on screen. The sign-in terminal outlives
+// the sign-in — it ends by saying to press enter to close it, so a refusal
+// can be read rather than vanishing — and the card was asking for a code long
+// after the code had worked.
+tmuxNew('login', '/tmp');
+await page.evaluate(() => refresh());
+await new Promise(r => setTimeout(r, 500));
+ok(await page.$('#authCode') === null && await page.$('#bSignOut') !== null,
+   'a sign-in terminal left open after success does not ask for a code again');
+tmuxKill('login');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => document.getElementById('bSignOut') !== null,
+                           { timeout: 25000 });
+
+// The rest of this needs the container to look signed *out*, which is when
+// the code field is the point.
+writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-out.json`));
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
+                           { timeout: 25000 });
 const CODE = `${DIR}/logincode.txt`;
 tmuxNew('login', '/tmp', ['bash', '-c',
   `printf 'If the browser did not open, visit: `
@@ -300,6 +320,8 @@ await page.evaluate(() => refresh());
 await page.waitForFunction(() => document.getElementById('authCode') === null,
                            { timeout: 25000 });
 ok(true, 'and the field goes when the sign-in does');
+writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
+await page.evaluate(() => refresh());
 
 // ---- the runner's states -----------------------------------------------
 // Drawn directly, because the interesting ones need GitHub to be in a
