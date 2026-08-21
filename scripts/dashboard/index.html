@@ -2579,23 +2579,38 @@ function drawRunner(r){
   // the operator hunting for an outage that was the design working. Red is
   // reserved for unregistered with nothing coming to fix it.
   const stuck = r.listening && r.connected === false;
-  const cls = stuck  ? "bad"
+  // ...and one kind of stuck is not a fault. GitHub holds a runner's session
+  // for a minute or two after the process that had it goes away, so every
+  // container restart and every finished job on an ephemeral runner spends a
+  // moment being refused its own name. It clears itself, so it is amber and
+  // says so; red is for a runner that is genuinely unreachable.
+  const waiting = stuck && /session for this runner already exists/i.test(r.detail || "");
+  const cls = waiting ? "warn"
+            : stuck  ? "bad"
             : r.busy ? "note"
             : r.listening ? "ok"
             : r.registered || r.running ? "warn" : "bad";
-  const txt = stuck  ? "cannot connect — retrying"
+  const txt = waiting ? "waiting for GitHub to release the last session"
+            : stuck  ? "cannot connect — retrying"
             : r.busy ? (r.job ? `running job: ${r.job}` : "running a job")
             : r.listening ? "listening for jobs"
             : r.registered ? "registered, between jobs"
             : r.running ? "re-registering — a job just finished" : "not registered";
   paint(el,
     `<div class="row"><span class="pill ${cls}">${esc(txt)}</span>` +
-    ((r.busy || stuck) ? `<span class="spin${stuck?" bad":""}" title="${
-        stuck ? "retrying the connection to GitHub" : "a job is executing in this container"
+    ((r.busy || stuck) ? `<span class="spin${stuck && !waiting ? " bad" : ""}" title="${
+        waiting ? "waiting for the old session to expire, then it connects"
+        : stuck ? "retrying the connection to GitHub"
+        : "a job is executing in this container"
       }"></span>` : "") +
     (r.busy && !stuck && r.elapsed != null ? `<span class="sub">${esc(dur(r.elapsed))}</span>` : "") +
     `</div>` +
-    (stuck ? `<div class="row"><span class="sub">${esc(r.detail || "")}</span></div>
+    (waiting ? `<div class="row"><span class="sub">The last process to hold this
+        runner's name has gone, and GitHub has not expired its session yet.
+        Normal after a restart or a finished job, and it clears itself in a
+        minute or two — if it does not, look for a stray listener with
+        <code>pgrep -af Runner.Listener</code>.</span></div>`
+     : stuck ? `<div class="row"><span class="sub">${esc(r.detail || "")}</span></div>
       <div class="row"><span class="sub">Usually another process holding this
         runner's name. It clears when GitHub expires the old session; if it
         does not, check for a stray listener with

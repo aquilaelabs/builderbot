@@ -257,5 +257,36 @@ await page.waitForFunction(() => document.getElementById('authCode') === null,
                            { timeout: 25000 });
 ok(true, 'and the field goes when the sign-in does');
 
+// ---- the runner's states -----------------------------------------------
+// Drawn directly, because the interesting ones need GitHub to be in a
+// particular mood. The one that matters is the difference between a runner
+// that cannot be reached and one waiting for GitHub to let go of its own
+// name — which happens after every restart and every finished job on an
+// ephemeral runner, clears itself in a minute or two, and had been wearing
+// the same red as a real outage.
+const runnerPill = r => page.evaluate(x => {
+  drawRunner(x);
+  const p = document.querySelector('#runner .pill');
+  return { cls: p.className, text: p.textContent.trim(),
+           body: document.getElementById('runner').textContent };
+}, r);
+
+let rp = await runnerPill({ enabled: true, listening: true, connected: false,
+  detail: 'a session for this runner already exists' });
+ok(rp.cls.includes('warn') && !rp.cls.includes('bad'),
+   'waiting for GitHub to release a session is amber, not a fault');
+ok(/waiting for GitHub/.test(rp.text) && /clears itself/.test(rp.body),
+   '...and says it clears itself, which is the thing worth knowing');
+
+rp = await runnerPill({ enabled: true, listening: true, connected: false,
+  detail: 'connection refused' });
+ok(rp.cls.includes('bad') && /cannot connect/.test(rp.text),
+   'a runner that genuinely cannot reach GitHub is still red');
+
+rp = await runnerPill({ enabled: true, listening: true, connected: true });
+ok(rp.cls.includes('ok') && /listening for jobs/.test(rp.text),
+   'and a healthy one says so');
+await page.evaluate(() => refresh());
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);
