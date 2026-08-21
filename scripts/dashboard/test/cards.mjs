@@ -227,10 +227,14 @@ writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 // can be read rather than vanishing — and the card was asking for a code long
 // after the code had worked.
 tmuxNew('login', '/tmp');
+// Waited for rather than assumed: the auth answer is cached, and a sign-in
+// that happened in the terminal rather than through the field is noticed on
+// the next read rather than the next frame. One check is a whole node
+// runtime, so the cache is the thing keeping a poll cheap.
 await page.evaluate(() => refresh());
-await new Promise(r => setTimeout(r, 500));
-ok(await page.$('#authCode') === null && await page.$('#bSignOut') !== null,
-   'a sign-in terminal left open after success does not ask for a code again');
+await page.waitForFunction(() => document.getElementById('authCode') === null
+  && document.getElementById('bSignOut') !== null, null, { timeout: 25000 });
+ok(true, 'a sign-in terminal left open after success does not ask for a code again');
 tmuxKill('login');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => document.getElementById('bSignOut') !== null,

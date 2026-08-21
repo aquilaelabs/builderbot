@@ -33,6 +33,14 @@ import threading
 import time
 from pathlib import Path
 
+def _field(req, key):
+    """One string field out of a request body — see server.field, which is the
+    same rule at the same boundary. JSON carries types, and a name that
+    arrives as a number reaches .strip() and takes the handler with it."""
+    v = req.get(key)
+    return v if isinstance(v, str) else ""
+
+
 # The server's. Injected rather than imported, because importing the server
 # from a module the server imports is a circle — same shape as packages.py.
 run = None
@@ -191,10 +199,10 @@ def create(req):
     this request just made is removed — never one that was already there,
     which is the FileExistsError branch returning first.
     """
-    mode = req.get("mode")
+    mode = _field(req, "mode")
     if mode not in ("init", "clone"):
         return {"error": "unknown mode"}, 400
-    url = (req.get("url") or "").strip()
+    url = _field(req, "url").strip()
     about, key_url = "", ""
     if mode == "clone":
         if not GITHUB_URL.fullmatch(url):
@@ -212,7 +220,7 @@ def create(req):
         # line is. When one is chosen the clone goes through a per-repo alias,
         # which also leaves the remote pointing at that alias, so pushes keep
         # using the right key without anyone re-doing this by hand.
-        keyname = (req.get("key") or "").strip()
+        keyname = _field(req, "key").strip()
         if keyname:
             match = next((k for k in agent_keys() if k["name"] == keyname), None)
             if match is None:
@@ -220,8 +228,8 @@ def create(req):
             alias = ensure_deploy_alias(match["name"], match["pub"])
             key_url = f"git@{alias}:{repo_path(url)}.git"
     else:
-        name = (req.get("name") or "").strip()
-        about = (req.get("about") or "").strip()
+        name = _field(req, "name").strip()
+        about = _field(req, "about").strip()
     if not PROJECT_NAME.fullmatch(name):
         return {"error": "a project name is one path segment: letters, digits, "
                          "dots, dashes, underscores, starting with a letter "
@@ -324,9 +332,9 @@ def link(req):
     Everything above is local and instant, so it is answered here. The
     ls-remote, the create and the push are the network, and go to the worker.
     """
-    name = (req.get("name") or "").strip()
-    url = (req.get("url") or "").strip()
-    keyname = (req.get("key") or "").strip()
+    name = _field(req, "name").strip()
+    url = _field(req, "url").strip()
+    keyname = _field(req, "key").strip()
     try:
         here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
     except OSError:

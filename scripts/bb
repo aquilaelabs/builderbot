@@ -645,7 +645,14 @@ elif op == "add":
     # can be handed over backwards.
     words, steps, i = [], [], 0
     while i < len(rest):
-        if rest[i] == "--step" and i + 1 < len(rest):
+        if rest[i] == "--step":
+            # A dangling --step used to fall through and become part of the
+            # title, so `bb todo add "x" --step` quietly made an item called
+            # "x --step" instead of saying what was missing.
+            if i + 1 >= len(rest):
+                print("[builderbot] ERROR: --step needs the step after it",
+                      file=sys.stderr)
+                sys.exit(1)
             steps.append(rest[i + 1]); i += 2
         else:
             words.append(rest[i]); i += 1
