@@ -1454,8 +1454,13 @@ def _read_auth():
     return state
 
 
-# What an OAuth code can be made of. Never a free-text line into a process.
-LOGIN_CODE = re.compile(r"[A-Za-z0-9._~#-]{8,512}")
+# What an OAuth code can be made of. Never a free-text line into a process —
+# and what would make it one is a space, a newline or a control character, so
+# those are what this refuses. Not the alphabet: the code is somebody else's
+# credential format, and an allow-list of the characters we expected refused
+# ordinary base64 padding (`+`, `/`, `=`) with advice to copy the whole code,
+# to an operator who had copied the whole code.
+LOGIN_CODE = re.compile(r"[!-~]{8,512}")
 
 
 def doctor_payload():
@@ -1982,7 +1987,11 @@ class Handler(BaseHTTPRequestHandler):
         every executing surface here follows — and only ever into the session
         this dashboard opened for the flow.
         """
-        code = field(req, "code").strip()
+        # A code is one line by construction, so a line break in the middle of
+        # one came from the copy rather than the credential — a phone selecting
+        # a code that wrapped in the page brings the break along. Spaces are
+        # left alone: those are how prose pasted by mistake is still caught.
+        code = field(req, "code").strip().replace("\r", "").replace("\n", "")
         if not LOGIN_CODE.fullmatch(code):
             return self._json({"error": "that does not look like a code — copy "
                                         "the whole of it, including anything "
