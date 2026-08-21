@@ -1427,6 +1427,14 @@ AUTH_URL = re.compile(r"https://(?:claude\.com|console\.anthropic\.com|"
 LOGIN_CODE = re.compile(r"[A-Za-z0-9._~#-]{8,512}")
 
 
+# The URL this flow issued, kept for as long as the flow lasts. It is printed
+# once, near the top, and a phone's terminal is twenty lines tall — so within
+# seconds it has scrolled out of the visible pane, and a link derived fresh
+# from the pane every poll disappears with it, taking the row it was in and
+# anything typed into that row.
+_login_url = {"session": "", "url": ""}
+
+
 def login_state(live):
     """{running, url} for the sign-in terminal, if one is open.
 
@@ -1435,13 +1443,23 @@ def login_state(live):
     every card on the page for a terminal that is almost never open.
     """
     if LOGIN_SESSION not in set(live):
+        _login_url.update(session="", url="")     # the next flow is a new one
         return {"running": False}
-    # -J: the URL is longer than any pane is wide, and what is on screen is
-    # one line wrapped. Unjoined, the regex gets the first eighty characters
-    # of it and a link that goes nowhere.
-    r = run(["tmux", "capture-pane", "-p", "-J", "-t", LOGIN_SESSION], timeout=10)
+    started = run(["tmux", "display-message", "-p", "-t", LOGIN_SESSION,
+                   "#{session_created}"], timeout=10)["out"].strip()
+    if _login_url["session"] == started and _login_url["url"]:
+        return {"running": True, "url": _login_url["url"]}
+    # -J because the URL is longer than any pane is wide and what is on screen
+    # is one line wrapped — unjoined, the regex gets the first eighty
+    # characters of it and a link that goes nowhere. -S -400 because by the
+    # time anybody looks, it is in the scrollback rather than on the screen.
+    r = run(["tmux", "capture-pane", "-p", "-J", "-S", "-400",
+             "-t", LOGIN_SESSION], timeout=10)
     m = AUTH_URL.search(r["out"] if r["code"] == 0 else "")
-    return {"running": True, "url": m.group(0) if m else ""}
+    url = m.group(0) if m else ""
+    if url:
+        _login_url.update(session=started, url=url)
+    return {"running": True, "url": url}
 
 
 def doctor_payload():

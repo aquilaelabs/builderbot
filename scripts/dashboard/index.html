@@ -2818,6 +2818,11 @@ function drawAuth(){
   // canvas silently does not arrive, leaving the Enter after it to hand the
   // flow an empty code and earn a 400 that reads like the code was wrong.
   if (lg?.running){
+    // Whatever is half-typed survives a repaint. The row is rebuilt whenever
+    // anything in it changes — the link arriving, the flow moving on — and a
+    // field that empties itself under a thumb mid-paste is how this looked
+    // broken.
+    const held = $("authCode")?.value || "";
     // Sign in stays, and stays meaning what it meant: start over. A code that
     // has expired, a page closed on the way back, a wrong account — the way
     // out of all of them is a fresh flow, and it must not be hidden behind
@@ -2833,6 +2838,7 @@ function drawAuth(){
                autocapitalize="none" placeholder="paste the code here">
         <button id="bAuthCode" class="primary" type="button">Send</button>
       </div>`)){
+      $("authCode").value = held;
       $("bSignIn").onclick = signIn;
       $("bAuthCode").onclick = sendCode;
       $("authCode").onkeydown = e => {

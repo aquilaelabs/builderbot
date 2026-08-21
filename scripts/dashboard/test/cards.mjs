@@ -4,6 +4,7 @@
 import { launch, newPage, ok, done, ready, doctorFixture, tmuxNew, tmuxKill, tmuxFmt,
          URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -251,6 +252,49 @@ await page.waitForFunction(() => document.getElementById('authCode')?.value === 
 await new Promise(r => setTimeout(r, 600));
 ok(readFileSync(CODE, 'utf8') === 'abcd1234efgh5678#state-9',
    '...and a real one arrives whole, with the Enter behind it');
+// The URL is printed once, near the top, and a phone's terminal is twenty
+// lines tall — so it is in the scrollback within seconds. A link derived from
+// the visible pane vanishes with it, taking the row and anything typed in.
+execFileSync('tmux', ['send-keys', '-t', 'login', '-l', '--', ':']);
+for (let i = 0; i < 60; i++)
+  execFileSync('tmux', ['send-keys', '-t', 'login', '-l', '--', ' filler']);
+execFileSync('tmux', ['send-keys', '-t', 'login', 'Enter']);
+await new Promise(r => setTimeout(r, 800));
+await page.evaluate(() => refresh());
+await new Promise(r => setTimeout(r, 500));
+ok((await page.$eval('#docAuth a', a => a.href)).includes('oauth/authorize'),
+   'the link survives the URL scrolling out of the visible pane');
+
+// And what is half-typed survives a repaint, however the repaint was caused.
+await page.fill('#authCode', 'half-typed-code');
+await page.evaluate(() => { drawAuth(); drawAuth(); });
+ok(await page.$eval('#authCode', i => i.value) === 'half-typed-code',
+   '...as does whatever is in the field');
+await page.fill('#authCode', '');
+
+// Coming back from the background is the moment all of this happens at once:
+// the phone hid the page while the sign-in page was open in another tab. The
+// tab has to be there to survive, so put one back — the earlier block ended
+// with the flow closing itself and taking its tab.
+await page.evaluate(() => openTab({kind: 'term', arg: 'login', label: 'Claude sign-in'}));
+await page.waitForFunction(() => tabs.some(t => t.arg === 'login'), null,
+                           { timeout: 10000 });
+const other = await browser.newPage();
+await other.goto('about:blank');
+await other.bringToFront();
+await new Promise(r => setTimeout(r, 3600));   // past the reattach threshold
+await page.bringToFront();
+await page.waitForFunction(() => document.visibilityState === 'visible',
+                           { timeout: 10000 });
+await page.evaluate(() => refresh());
+await new Promise(r => setTimeout(r, 800));
+await other.close();
+ok(await page.$('#authCode') !== null
+   && (await page.$eval('#docAuth a', a => a.href)).includes('oauth/authorize'),
+   'coming back from the background leaves the link and the field where they were');
+ok(await page.evaluate(() => tabs.some(t => t.arg === 'login')),
+   '...and the sign-in tab with them');
+
 tmuxKill('login');
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => document.getElementById('authCode') === null,
