@@ -3990,8 +3990,13 @@ async function addTodo(){
   t.focus();
 }
 
+// force is only ever passed as a literal true, by the send flow, which has
+// just committed everything and is leaving on purpose. Checked identically
+// rather than for truthiness because `onclick = closeMemory` hands it a
+// MouseEvent — which is how the Close button came to be the one way out that
+// threw away a reordering without asking, while Escape and the backdrop asked.
 function closeMemory(force){
-  if (!force && todoMoves.length
+  if (force !== true && todoMoves.length
       && !confirm("Close without saving the reordering?\n\nThe order goes back "
                   + "to how it was."))
     return;
@@ -4197,7 +4202,7 @@ $("todoText").onkeydown = e => {
     e.preventDefault(); e.stopPropagation(); e.target.value = "";
   }
 };
-$("memClose").onclick = closeMemory;
+$("memClose").onclick = () => closeMemory();
 // The backdrop closes it like the others — but only from the backdrop itself,
 // so a click that lands in the box while selecting text does not.
 $("memModal").onclick = e => { if (e.target.id === "memModal") closeMemory(); };

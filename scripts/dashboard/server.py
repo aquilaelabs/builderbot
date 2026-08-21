@@ -275,6 +275,25 @@ CLAUDE_PROJECTS = Path(
 # a mistake or a probe, and reading it into memory unbounded helps neither.
 MAX_BODY = 64 * 1024
 
+
+def field(req, key, default=""):
+    """One string field out of a request body, or the default.
+
+    JSON carries types, and `(req.get(k) or "").strip()` only defends against
+    the field being absent. A number, a list or a dict reaches `.strip()` and
+    the handler dies on an AttributeError — which is a 500 on a surface that
+    runs commands, and a class of bug worth removing at the boundary rather
+    than one field at a time.
+    """
+    v = req.get(key)
+    return v if isinstance(v, str) else default
+
+
+def field_list(req, key):
+    """A list of strings out of a request body. Anything else is nothing."""
+    v = req.get(key)
+    return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+
 CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
 REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 
@@ -1387,7 +1406,15 @@ def run_doctor():
 # status --json` answers it locally and instantly — no network — so this is a
 # short cache against a poll every fifteen seconds rather than a real one.
 _auth = {"at": 0.0, "state": {}}
+_auth_lock = threading.Lock()
 AUTH_TTL = 20
+# While a sign-in is open and this box is still signed out, the answer is about
+# to change and is worth re-reading sooner. Not *every* poll, though: one check
+# is a full node runtime — measured at 357MB and 0.68s — so bypassing the cache
+# meant every status request spawning its own, several at once across a phone,
+# a desktop and a preload. The dashboard stopped updating and the container ran
+# out of memory, which is what "it freezes until I reload the page" was.
+AUTH_TTL_FAST = 5
 
 
 def claude_auth(fresh=False):
@@ -1397,11 +1424,21 @@ def claude_auth(fresh=False):
     why it is a field of its own rather than a line in the doctor verdict: a
     verdict is read, and this is pressed.
     """
-    # `fresh` while a sign-in is running: the twenty-second cache is there to
-    # keep a poll cheap, and the one moment it is worth paying for is the one
-    # where the answer is about to change.
-    if not fresh and time.monotonic() - _auth["at"] < AUTH_TTL and _auth["state"]:
+    # Signed in already: nothing a running sign-in does changes that answer,
+    # so it keeps the long cache however busy the flow looks.
+    ttl = AUTH_TTL_FAST if fresh and not _auth["state"].get("signed_in") else AUTH_TTL
+    if time.monotonic() - _auth["at"] < ttl and _auth["state"]:
         return _auth["state"]
+    # One at a time, and checked again on the way in: without this every
+    # request that arrives during the 0.68s answer starts its own copy, which
+    # is the difference between one node process and a handful.
+    with _auth_lock:
+        if time.monotonic() - _auth["at"] < ttl and _auth["state"]:
+            return _auth["state"]
+        return _read_auth()
+
+
+def _read_auth():
     r = run(["claude", "auth", "status", "--json"], timeout=20)
     try:
         d = json.loads(r["out"]) if r["code"] == 0 else {}
@@ -1995,7 +2032,7 @@ class Handler(BaseHTTPRequestHandler):
         every executing surface here follows — and only ever into the session
         this dashboard opened for the flow.
         """
-        code = (req.get("code") or "").strip()
+        code = field(req, "code").strip()
         if not LOGIN_CODE.fullmatch(code):
             return self._json({"error": "that does not look like a code — copy "
                                         "the whole of it, including anything "
@@ -2034,10 +2071,10 @@ class Handler(BaseHTTPRequestHandler):
         other endpoint here does it: a name that came back off the filesystem
         cannot name something that was never there.
         """
-        name = req.get("project", "")
+        name = field(req, "project")
         if name not in {p["name"] for p in project_list()}:
             return self._json({"error": f"not a project: {name}"}, 400)
-        act = req.get("action", "")
+        act = field(req, "action")
         live = [s["name"] for s in tmux_sessions()]
         if act in ("tell", "save"):
             # Two Saves, one difference: whether a line of the conversation is
@@ -2051,7 +2088,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "told": told}
                               | self._todo_state(name, live))
         if act == "add":
-            r = todo.add(name, req.get("text", ""), steps=req.get("steps") or ())
+            r = todo.add(name, field(req, "text"), steps=field_list(req, "steps"))
         elif act == "send":
             r = todo.send(name, req.get("id"), req.get("step"), live,
                           also_told=todo.unsaved(name) if req.get("tell") else False)
@@ -2060,11 +2097,11 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "done":
             r = todo.set_done(name, req.get("id"), bool(req.get("done", True)))
         elif act == "edit":
-            r = todo.edit(name, req.get("id"), req.get("text", ""))
+            r = todo.edit(name, req.get("id"), field(req, "text"))
         elif act == "move":
             r = todo.move(name, req.get("id"), req.get("step"), req.get("dir"))
         elif act == "add-step":
-            r = todo.add_step(name, req.get("id"), req.get("text", ""))
+            r = todo.add_step(name, req.get("id"), field(req, "text"))
         elif act == "cross":
             r = todo.cross(name, req.get("id"), req.get("step"),
                            bool(req.get("on", True)))
@@ -2094,13 +2131,10 @@ class Handler(BaseHTTPRequestHandler):
         that checks them against what is on disk — doing it in two places is
         how the two answers drift apart.
         """
-        act = req.get("action", "")
-        proj, file = req.get("project", ""), req.get("file", "")
+        act = field(req, "action")
+        proj, file = field(req, "project"), field(req, "file")
         if act == "save":
-            text = req.get("text", "")
-            if not isinstance(text, str):
-                return self._json({"error": "bad request"}, 400)
-            r = memory.save(proj, file, text)
+            r = memory.save(proj, file, field(req, "text"))
         elif act == "delete":
             r = memory.delete(proj, file)
         else:

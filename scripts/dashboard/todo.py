@@ -160,6 +160,22 @@ def counts():
             for p, rows in d["projects"].items()}
 
 
+def _int(v):
+    """A whole number out of whatever JSON carried, or None.
+
+    Everything that names an item or a step arrives from a request body, so
+    `int(v)` is a crash waiting for a field that is a list, a dict, or the
+    word "x". One reader, and every caller answers "not an item" instead of
+    dying.
+    """
+    if isinstance(v, bool) or not isinstance(v, (int, float, str)):
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _next_id(rows):
     return max((int(r.get("id", 0)) for r in rows), default=0) + 1
 
@@ -203,13 +219,12 @@ def add(project, text, by="you", steps=()):
 
 
 def _find(rows, item_id):
-    return next((r for r in rows if int(r.get("id", 0)) == item_id), None)
+    return next((r for r in rows if _int(r.get("id")) == item_id), None)
 
 
 def _edit(project, item_id, change):
-    try:
-        item_id = int(item_id)
-    except (TypeError, ValueError):
+    item_id = _int(item_id)
+    if item_id is None:
         return {"error": "not an item"}
     with _lock:
         d = load()
@@ -257,9 +272,8 @@ def remove(project, item_id, step=None):
             rows.remove(row)
             return {"ok": True}
         steps = row.get("steps") or []
-        try:
-            i = int(step)
-        except (TypeError, ValueError):
+        i = _int(step)
+        if i is None:
             return {"error": "not a step"}
         if not 0 <= i < len(steps):
             return {"error": "no such step"}
@@ -276,12 +290,12 @@ def move(project, item_id, step=None, dir=0):
     way. So the past of a plan is fixed and its future can be rearranged,
     which is the half anyone actually wants to change.
     """
-    try:
-        dir = int(dir)
-    except (TypeError, ValueError):
-        return {"error": "not a direction"}
+    dir = _int(dir)
     if dir not in (-1, 1):
         return {"error": "not a direction"}
+    item_id = _int(item_id)
+    if item_id is None:
+        return {"error": "not an item"}
 
     def swap(seq, i):
         j = i + dir
@@ -295,7 +309,7 @@ def move(project, item_id, step=None, dir=0):
             d = load()
             rows = _prune(d["projects"].get(project) or [])
             i = next((n for n, r in enumerate(rows)
-                      if int(r.get("id", 0)) == int(item_id)), None)
+                      if _int(r.get("id")) == item_id), None)
             if i is None:
                 return {"error": "no such item"}
             out = swap(rows, i)
@@ -307,7 +321,9 @@ def move(project, item_id, step=None, dir=0):
 
     def change(row, rows):
         steps = row.get("steps") or []
-        i = int(step)
+        i = _int(step)
+        if i is None:
+            return {"error": "not a step"}
         if not 0 <= i < len(steps):
             return {"error": "no such step"}
         first = sum(1 for st in steps if st.get("sent"))
@@ -343,22 +359,20 @@ def cross(project, item_id, step=None, on=True):
     that what a session is told stays true — "already sent to a session" would
     be a lie about a line nobody sent.
     """
+    if step is not None and _int(step) is None:
+        return {"error": "not a step"}
+
     def change(row, rows):
         target = row
-        if step is not None and int(step) >= 0:
+        i = _int(step)
+        if i is not None and i >= 0:
             steps = row.get("steps") or []
-            i = int(step)
             if not 0 <= i < len(steps):
                 return {"error": "no such step"}
             target = steps[i]
         target["sent"] = int(time.time()) if on else 0
         target["by_hand"] = bool(on)
         return {"ok": True}
-    try:
-        if step is not None:
-            int(step)
-    except (TypeError, ValueError):
-        return {"error": "not a step"}
     return _edit(project, item_id, change)
 
 
@@ -397,9 +411,8 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
     """
     if tell is None or tmux_name is None:
         return {"error": "no way to reach a session from here"}
-    try:
-        item_id = int(item_id)
-    except (TypeError, ValueError):
+    item_id = _int(item_id)
+    if item_id is None:
         return {"error": "not an item"}
     with _lock:
         d = load()
@@ -418,9 +431,8 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
                 return {"error": "every step of this has been sent — "
                                  "pick the one to send again"}
             step = -1
-    try:
-        step = int(step)
-    except (TypeError, ValueError):
+    step = _int(step)
+    if step is None:
         return {"error": "not a step"}
     if steps:
         if not 0 <= step < len(steps):
