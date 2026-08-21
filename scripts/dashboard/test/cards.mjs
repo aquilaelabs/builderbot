@@ -183,20 +183,32 @@ ok(await page.$eval('#docAuth a', a2 => a2.target === '_blank'),
 ok(await page.$$eval('.tab[data-id]', t => !t.some(x => /sign-in/i.test(x.textContent))),
    '...and no terminal was opened for it at all');
 
-// A code that is not one never reaches the process.
+// A code that is not one never reaches the process. What disqualifies one is
+// a space, a line break or a control character — anything that would arrive as
+// a second line of input — and not the alphabet it happens to be written in.
 const junk = await page.evaluate(async () => {
-  const r = await fetch('/api/login-code', { method: 'POST',
+  const send = code => fetch('/api/login-code', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: 'not a code' }) });
-  return r.status;
+    body: JSON.stringify({ code }) }).then(r => r.status);
+  return { prose: await send('not a code'), ctrl: await send('abcd\u0003efgh'),
+           half: await send('abc') };
 });
-ok(junk === 400, 'a code with a space in it is refused before it goes anywhere');
+ok(junk.prose === 400 && junk.ctrl === 400 && junk.half === 400,
+   'prose, a control character and half a code are refused before it goes anywhere');
 page.errors = [];
 
 // A wrong one is refused by the flow, and the card says why — where it was
-// asked for, rather than in a terminal nobody can read on a phone.
-await page.fill('#authCode', 'wrongcode1234');
-await page.click('#bAuthCode');
+// asked for, rather than in a terminal nobody can read on a phone. This one
+// carries base64 padding and the line break a copy brings along when the code
+// wrapped in the page: neither is this end's business to refuse, and refusing
+// them told an operator to copy the whole code when they had copied it.
+const padded = await page.evaluate(async () => {
+  const r = await fetch('/api/login-code', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: 'wrong+code/12\n34==' }) });
+  return r.status;
+});
+ok(padded === 200, '...while padding and a line break go through to the flow');
 await page.waitForFunction(() => /did not finish|Login failed/.test(
   document.getElementById('docAuth')?.textContent || ''), { timeout: 25000 });
 ok(/Login failed/.test(await page.$eval('#docAuth', e => e.textContent)),
