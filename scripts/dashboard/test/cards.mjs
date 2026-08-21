@@ -147,57 +147,6 @@ ok(await page.$('#bSignOut') === null
 // ...and nothing offers to start a conversation that cannot start.
 ok(await page.$$eval('#projects [data-c]', bs => bs.length > 0 && bs.every(b => b.disabled)),
    '...and every project\'s Claude button goes with it');
-const tabsBefore = await page.$$eval('.tab[data-id]', t => t.length);
-await page.click('#bSignIn');
-await page.waitForFunction(n => document.querySelectorAll('.tab[data-id]').length > n,
-                           tabsBefore, { timeout: 15000 });
-ok(await page.evaluate(() => tabs.some(t => t.arg === 'login')),
-   '...which opens a terminal for it rather than pretending it is one click');
-
-// There is no ttyd here, so the terminal itself never connects: the session
-// the flow would run in is made by hand, which is all the page ever sees of it.
-// Asked for the name back, not merely for the command to succeed: tmux's
-// display-message answers 0 with an empty line for a target that is gone.
-const alive = n => { try { return tmuxFmt(n, '#{session_name}') === n; } catch { return false; } };
-tmuxNew('login', '/tmp');
-await page.evaluate(() => refresh());
-await page.waitForFunction(() => tabs.some(t => t.arg === 'login' && t.seen), null,
-                           { timeout: 25000 });
-ok((await page.$$eval('.tab .lbl', ls => ls.map(l => l.textContent.trim())))
-     .includes('Claude sign-in'),
-   '...named for the flow it runs, not the directory it happens to sit in');
-ok((await page.$$eval('#sessions .name', ns => ns.map(n => n.textContent.trim())))
-     .includes('Claude sign-in'),
-   '...and the sessions list calls it what the tab does');
-
-// And pressing it again starts another flow — which means ending the one that
-// is there. Connecting does not: bb-tty attaches to a sign-in session rather
-// than replacing it, because ttyd remakes a dropped socket, a phone remakes
-// one coming back to the page, and a second browser on the same layout opens
-// the same terminal — and a restart in any of those threw away the code the
-// person had just gone to fetch. The decision to start over is this button's.
-let relogins = 0;
-page.on('framenavigated', f => { if (f.url().includes('arg=login')) relogins++; });
-await page.click('#bSignIn');
-await page.waitForFunction(() => true);
-await new Promise(r => setTimeout(r, 1500));
-ok(!alive('login'), 'pressing it again ends the flow that was there');
-ok(relogins >= 1, '...and reloads the terminal onto a new one');
-ok(await page.$$eval('.tab[data-id]', t => t.length) === tabsBefore + 1,
-   '...in the tab it already has, rather than a second one');
-
-// The flow ends with its session — the last line says to press enter, and
-// that is what pressing it does — and the tab goes with it, rather than
-// staying as a dead rectangle that swallows whatever is typed into it.
-tmuxNew('login', '/tmp');
-await page.evaluate(() => refresh());
-await page.waitForFunction(() => tabs.some(t => t.arg === 'login' && t.seen), null,
-                           { timeout: 25000 });
-tmuxKill('login');
-await page.evaluate(() => refresh());
-await page.waitForFunction(() => !tabs.some(t => t.arg === 'login'), null,
-                           { timeout: 25000 });
-ok(true, 'when the flow is over, its tab closes itself');
 
 // And back: the stub's logout rewrites its own fixture, so this proves the
 // button reaches the command without going near anybody's credentials.
@@ -215,51 +164,26 @@ ok(JSON.parse(readFileSync(`${DIR}/auth.json`, 'utf8')).loggedIn === false,
    '...and really runs it');
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 
-// ---- the sign-in, watched from outside the terminal --------------------
-// A phone pasting a hundred characters into a canvas terminal is where this
-// falls over: the paste silently does not arrive, the Enter after it does,
-// and the flow exchanges an empty code for a 400 that reads like the code was
-// wrong. So the URL comes out of the pane to be tapped, and the code goes in
-// through a text field. Driven against a stand-in flow — the real one needs a
-// browser and somebody's account.
-// Signed in wins over a flow still on screen. The sign-in terminal outlives
-// the sign-in — it ends by saying to press enter to close it, so a refusal
-// can be read rather than vanishing — and the card was asking for a code long
-// after the code had worked.
-tmuxNew('login', '/tmp');
-// Waited for rather than assumed: the auth answer is cached, and a sign-in
-// that happened in the terminal rather than through the field is noticed on
-// the next read rather than the next frame. One check is a whole node
-// runtime, so the cache is the thing keeping a poll cheap.
-await page.evaluate(() => refresh());
-await page.waitForFunction(() => document.getElementById('authCode') === null
-  && document.getElementById('bSignOut') !== null, null, { timeout: 25000 });
-ok(true, 'a sign-in terminal left open after success does not ask for a code again');
-tmuxKill('login');
-await page.evaluate(() => refresh());
-await page.waitForFunction(() => document.getElementById('bSignOut') !== null,
-                           { timeout: 25000 });
-
-// The rest of this needs the container to look signed *out*, which is when
-// the code field is the point.
+// ---- the sign-in, all of it -------------------------------------------
+// No terminal anywhere in this: the flow runs under a pty the server holds,
+// so the whole thing is drivable — which it never was while it lived in a
+// tmux session behind ttyd. The stub claude is shaped like the real one: a
+// URL, a prompt with no newline after it, and a line read back.
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-out.json`));
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
                            { timeout: 25000 });
-const CODE = `${DIR}/logincode.txt`;
-tmuxNew('login', '/tmp', ['bash', '-c',
-  `printf 'If the browser did not open, visit: `
-  + `https://claude.com/cai/oauth/authorize?code=true&state=abc\n'; `
-  + `printf 'Paste code here if prompted > '; read -r c; printf '%s' "$c" > ${CODE}; sleep 30`]);
-await page.evaluate(() => refresh());
+await page.click('#bSignIn');
 await page.waitForFunction(() => document.getElementById('authCode') !== null,
                            { timeout: 25000 });
-ok((await page.$eval('#docAuth a', a => a.href)).includes('oauth/authorize'),
-   'while signing in, the card carries the link out of the terminal, tappable');
-ok(await page.$eval('#docAuth a', a => a.target === '_blank'),
+ok((await page.$eval('#docAuth a', a2 => a2.href)).includes('oauth/authorize'),
+   'Sign in starts the flow and the card carries its link, tappable');
+ok(await page.$eval('#docAuth a', a2 => a2.target === '_blank'),
    '...opening away from the dashboard, not over it');
+ok(await page.$$eval('.tab[data-id]', t => !t.some(x => /sign-in/i.test(x.textContent))),
+   '...and no terminal was opened for it at all');
 
-// A code that is not one never reaches a terminal.
+// A code that is not one never reaches the process.
 const junk = await page.evaluate(async () => {
   const r = await fetch('/api/login-code', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -269,80 +193,28 @@ const junk = await page.evaluate(async () => {
 ok(junk === 400, 'a code with a space in it is refused before it goes anywhere');
 page.errors = [];
 
-await page.fill('#authCode', 'abcd1234efgh5678#state-9');
+// A wrong one is refused by the flow, and the card says why — where it was
+// asked for, rather than in a terminal nobody can read on a phone.
+await page.fill('#authCode', 'wrongcode1234');
 await page.click('#bAuthCode');
-await page.waitForFunction(() => document.getElementById('authCode')?.value === '',
-                           { timeout: 15000 });
-await new Promise(r => setTimeout(r, 600));
-ok(readFileSync(CODE, 'utf8') === 'abcd1234efgh5678#state-9',
-   '...and a real one arrives whole, with the Enter behind it');
-// The URL is printed once, near the top, and a phone's terminal is twenty
-// lines tall — so it is in the scrollback within seconds. A link derived from
-// the visible pane vanishes with it, taking the row and anything typed in.
-execFileSync('tmux', ['send-keys', '-t', 'login', '-l', '--', ':']);
-for (let i = 0; i < 60; i++)
-  execFileSync('tmux', ['send-keys', '-t', 'login', '-l', '--', ' filler']);
-execFileSync('tmux', ['send-keys', '-t', 'login', 'Enter']);
-await new Promise(r => setTimeout(r, 800));
-await page.evaluate(() => refresh());
-await new Promise(r => setTimeout(r, 500));
-ok((await page.$eval('#docAuth a', a => a.href)).includes('oauth/authorize'),
-   'the link survives the URL scrolling out of the visible pane');
+await page.waitForFunction(() => /did not finish|Login failed/.test(
+  document.getElementById('docAuth')?.textContent || ''), { timeout: 25000 });
+ok(/Login failed/.test(await page.$eval('#docAuth', e => e.textContent)),
+   'a refused code is reported on the card, in the words the flow used');
 
-// And what is half-typed survives a repaint, however the repaint was caused.
-await page.fill('#authCode', 'half-typed-code');
-await page.evaluate(() => { drawAuth(); drawAuth(); });
-ok(await page.$eval('#authCode', i => i.value) === 'half-typed-code',
-   '...as does whatever is in the field');
-await page.fill('#authCode', '');
-
-// Coming back from the background is the moment all of this happens at once:
-// the phone hid the page while the sign-in page was open in another tab. The
-// tab has to be there to survive, so put one back — the earlier block ended
-// with the flow closing itself and taking its tab.
-await page.evaluate(() => openTab({kind: 'term', arg: 'login', label: 'Claude sign-in'}));
-await page.waitForFunction(() => tabs.some(t => t.arg === 'login'), null,
-                           { timeout: 10000 });
-const other = await browser.newPage();
-await other.goto('about:blank');
-await other.bringToFront();
-await new Promise(r => setTimeout(r, 3600));   // past the reattach threshold
-await page.bringToFront();
-await page.waitForFunction(() => document.visibilityState === 'visible',
-                           { timeout: 10000 });
-await page.evaluate(() => refresh());
-await new Promise(r => setTimeout(r, 800));
-await other.close();
-ok(await page.$('#authCode') !== null
-   && (await page.$eval('#docAuth a', a => a.href)).includes('oauth/authorize'),
-   'coming back from the background leaves the link and the field where they were');
-ok(await page.evaluate(() => tabs.some(t => t.arg === 'login')),
-   '...and the sign-in tab with them');
-
-tmuxKill('login');
-await page.evaluate(() => refresh());
-await page.waitForFunction(() => document.getElementById('authCode') === null,
+// And a good one signs in, which flips the whole row.
+await page.click('#bSignIn');
+await page.waitForFunction(() => document.getElementById('authCode') !== null,
                            { timeout: 25000 });
-ok(true, 'and the field goes when the sign-in does');
-
-// ttyd reconnects a dropped socket after five seconds, and the socket drops
-// when the flow ends — so "press enter to close this terminal" used to end
-// the session, ttyd came back, and bb-tty started another sign-in. The tab
-// could never close, and closing the terminal quietly began a new OAuth flow.
-writeFileSync(`${DIR}/login-finished`, '');
-await page.evaluate(() => refresh());
-await new Promise(r => setTimeout(r, 400));
-ok(existsSync(`${DIR}/login-finished`),
-   'a finished flow leaves a marker, so a reconnect is not read as a request for another');
-// Sign in is the one thing that means start over, so it is what clears it.
-await page.evaluate(async () => {
-  await fetch('/api/signin', { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: '{}' });
-});
-ok(!existsSync(`${DIR}/login-finished`),
-   '...and pressing Sign in clears it, which is what makes the button mean that');
-writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
-await page.evaluate(() => refresh());
+await page.fill('#authCode', 'goodcode1234');
+await page.click('#bAuthCode');
+await page.waitForFunction(() => document.getElementById('bSignOut') !== null,
+                           { timeout: 30000 });
+ok(JSON.parse(readFileSync(`${DIR}/auth.json`, 'utf8')).loggedIn === true
+   && (await page.$eval('#docAuth', e => e.textContent)).includes('signed in as'),
+   'a good code signs in, and the card goes back to saying who you are');
+ok(await page.$('#authCode') === null,
+   '...with the code field gone, because there is nothing left to ask');
 
 // ---- the runner's states -----------------------------------------------
 // Drawn directly, because the interesting ones need GitHub to be in a

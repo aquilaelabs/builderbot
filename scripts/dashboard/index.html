@@ -1142,11 +1142,7 @@ const baseOf = path => path.replace(/\/+$/, "").split("/").pop() || "/";
 // — and only the duplicates — carry a number.
 function sessionLabels(){
   const list = (state?.sessions || []);
-  // The sign-in terminal runs in the workspace but is not a shell in it:
-  // named by its directory it came out as "sh: workspace", a second copy of
-  // the name the terminal that really is one already wears.
-  const of = s => s.name === "login" ? "Claude sign-in"
-           : s.name.startsWith("claude-") ? "Claude: " + (projFor(s.name.slice(7)) ?? s.name.slice(7))
+  const of = s => s.name.startsWith("claude-") ? "Claude: " + (projFor(s.name.slice(7)) ?? s.name.slice(7))
            : s.cwd ? "sh: " + baseOf(s.cwd)
            : "sh: " + s.name;
   const total = {};
@@ -2809,7 +2805,7 @@ function pJobWire(){
 // the first thing to get right on a new box, and the last place anybody would
 // think to look for it on the command line.
 function drawAuth(){
-  const el = $("docAuth"), a = state?.claude_auth, lg = state?.login;
+  const el = $("docAuth"), a = state?.claude_auth, lg = state?.signin;
   if (!a || a.unknown){ el.hidden = true; return; }
   el.hidden = false;
   // A sign-in is in progress: the two things it needs are a link that can be
@@ -2839,8 +2835,10 @@ function drawAuth(){
         one before it will not be accepted">Start over</button>
       <div class="codebox">
         <input id="authCode" autocomplete="off" spellcheck="false"
-               autocapitalize="none" placeholder="paste the code here">
-        <button id="bAuthCode" class="primary" type="button">Send</button>
+               autocapitalize="none" placeholder="paste the code here"${
+          lg.waiting ? "" : " disabled"}>
+        <button id="bAuthCode" class="primary" type="button"${
+          lg.waiting ? "" : " disabled"}>${lg.sent ? "Signing in…" : "Send"}</button>
       </div>`)){
       $("authCode").value = held;
       $("bSignIn").onclick = signIn;
@@ -2849,6 +2847,14 @@ function drawAuth(){
         if (e.key === "Enter"){ e.preventDefault(); sendCode(); }
       };
     }
+    return;
+  }
+  // A sign-in that ended without signing anybody in. Said here, where it was
+  // asked for, rather than in a terminal nobody can read on a phone.
+  if (lg?.done && !lg.ok && !a.signed_in){
+    if (paint(el, `<span class="sub grow bad">${esc(lg.error || "the sign-in did not finish")}</span>
+       <button id="bSignIn" class="primary" title="start another">Try again</button>`))
+      $("bSignIn").onclick = signIn;
     return;
   }
   const busy = claudeSessions();
@@ -2869,56 +2875,14 @@ function drawAuth(){
   }
 }
 
-// Sign in, however many times it takes.
-//
-// Ending the terminal first is what makes this button mean "start a new flow".
-// bb-tty attaches to a sign-in session that is already there rather than
-// replacing it — a dropped socket, a phone coming back to the page, or a
-// second browser opening the same tab must not throw away a code halfway
-// through being pasted — so the one place that decides to start over is here,
-// under the finger that asked for it.
+// Sign in, however many times it takes. No terminal: the flow runs under a
+// pty the server holds, so this is one request and the card does the rest.
 async function signIn(){
-  const t = tabs.find(x => x.kind === "term" && x.arg === "login");
-  if (t){
-    // Being replaced, not finished: without this the poll that lands between
-    // the kill and the reload would see the session gone and close the tab.
-    t.seen = false;
-    focusTab(t.id);
-  }
-  // Ends the terminal *and* clears the finished-flow marker: without the
-  // second half bb-tty reads the reload as a reconnect to a flow that is over
-  // and refuses to start another, which is what makes this button mean
-  // "start over" rather than "start over, sometimes".
   await fetch("/api/signin", {method:"POST",
     headers:{"Content-Type":"application/json"}, body: "{}"}).catch(() => {});
-  if (!t) return openTab({kind: "term", arg: "login", label: "Claude sign-in"});
-  reloadFrameOf(t.id);
+  refresh();
 }
 
-// The sign-in terminal closes itself when the flow is over. Its last line says
-// to press enter to close it, and pressing that ends the session — which used
-// to leave the tab holding a dead rectangle that swallows what is typed into
-// it, and that a reload would quietly turn into a second sign-in flow.
-//
-// Only after tmux has actually registered the session: between opening the tab
-// and the poll that first sees it, "not in the list" means "not yet". The
-// window that is left is another browser polling in the moment between Sign in
-// ending one flow and the next one connecting, which takes the tab there —
-// rare, and one click from a tab again, since the flow that started is in the
-// Sessions list under the same name.
-function pruneSignIn(){
-  const t = tabs.find(x => x.kind === "term" && x.arg === "login");
-  if (!t) return;
-  if (liveSessions().has("login")) t.seen = true;
-  else if (t.seen) dropTab(t.id);
-}
-
-// Reload the terminal behind one tab. Lossless when the session is alive —
-// tmux holds it and its scrollback — and a fresh start when it is not.
-function reloadFrameOf(id){
-  const f = document.querySelector(`.pane .slot[data-key^="${CSS.escape(id)}|"] iframe`);
-  if (f) f.src = f.src;
-}
 
 // The code from the browser, typed into the sign-in terminal for you. See the
 // server's _login_code: the two steps a phone is worst at are the two this
@@ -4738,7 +4702,6 @@ async function refresh(){
     $("host").textContent = state.host;
     $("uptime").textContent = "up " + state.uptime;
     adoptLayout(state.layout);
-    pruneSignIn();      // the layout is settled; now drop what is over
     // Not mid-drag: adopting the server's order under a moving pointer would
     // snap the card out of the operator's hand.
     if (state.cards && !cardDrag && asked > cardsChangedAt) adoptCards(state.cards);

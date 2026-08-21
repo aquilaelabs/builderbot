@@ -1454,57 +1454,8 @@ def _read_auth():
     return state
 
 
-# The sign-in flow, watched from outside it. A phone pasting a hundred
-# characters into a canvas terminal is where this falls over — the paste
-# silently does not arrive, the Enter after it does, and the flow exchanges an
-# empty code for a 400 that reads like the code was wrong. So the URL comes
-# out of the pane to be tapped, and the code goes in through a text field,
-# which is a thing phones are good at.
-LOGIN_SESSION = "login"
-# The marker bb-tty leaves when a sign-in ends, so that ttyd reconnecting the
-# dropped socket five seconds later does not read a closed terminal as a
-# request for another flow. Pressing Sign in is the one thing that means start
-# over, so pressing it is what clears this.
-LOGIN_DONE = Path(os.environ.get("BB_LOGIN_DONE", "/tmp/bb-login-finished"))
-AUTH_URL = re.compile(r"https://(?:claude\.com|console\.anthropic\.com|"
-                      r"platform\.claude\.com)/\S+")
-# What an OAuth code can be made of. Never a free-text line into a terminal.
+# What an OAuth code can be made of. Never a free-text line into a process.
 LOGIN_CODE = re.compile(r"[A-Za-z0-9._~#-]{8,512}")
-
-
-# The URL this flow issued, kept for as long as the flow lasts. It is printed
-# once, near the top, and a phone's terminal is twenty lines tall — so within
-# seconds it has scrolled out of the visible pane, and a link derived fresh
-# from the pane every poll disappears with it, taking the row it was in and
-# anything typed into that row.
-_login_url = {"session": "", "url": ""}
-
-
-def login_state(live):
-    """{running, url} for the sign-in terminal, if one is open.
-
-    Handed the session list rather than asking for its own: this runs on every
-    status poll, and a second `tmux list-sessions` per poll is latency paid by
-    every card on the page for a terminal that is almost never open.
-    """
-    if LOGIN_SESSION not in set(live):
-        _login_url.update(session="", url="")     # the next flow is a new one
-        return {"running": False}
-    started = run(["tmux", "display-message", "-p", "-t", LOGIN_SESSION,
-                   "#{session_created}"], timeout=10)["out"].strip()
-    if _login_url["session"] == started and _login_url["url"]:
-        return {"running": True, "url": _login_url["url"]}
-    # -J because the URL is longer than any pane is wide and what is on screen
-    # is one line wrapped — unjoined, the regex gets the first eighty
-    # characters of it and a link that goes nowhere. -S -400 because by the
-    # time anybody looks, it is in the scrollback rather than on the screen.
-    r = run(["tmux", "capture-pane", "-p", "-J", "-S", "-400",
-             "-t", LOGIN_SESSION], timeout=10)
-    m = AUTH_URL.search(r["out"] if r["code"] == 0 else "")
-    url = m.group(0) if m else ""
-    if url:
-        _login_url.update(session=started, url=url)
-    return {"running": True, "url": url}
 
 
 def doctor_payload():
@@ -1527,6 +1478,12 @@ packages.configure(run=run, write_json=write_json, state=STATE)
 import notify                                                    # noqa: E402
 
 notify.configure(run=run)
+
+# ---- signing in ------------------------------------------------------------
+# The flow runs under a pty this server holds, rather than in a terminal the
+# operator has to work in. See signin.py for why every part of the terminal
+# turned out to be somewhere it could go wrong.
+import signin                                                    # noqa: E402
 
 # ---- the memory book -------------------------------------------------------
 # What Claude remembers about each project, read and edited from the projects
@@ -1624,7 +1581,7 @@ def findings_counts(ps):
 def snapshot():
     ps = project_list()
     sessions = tmux_sessions()
-    login = login_state([s["name"] for s in sessions])
+    login = signin.state()
     # Each shell's git context, resolved here where WORKSPACE is known: the
     # git/GitHub command cards ghost against the directory the active shell
     # is actually in, and matching a cwd to a project is this server's
@@ -1651,7 +1608,7 @@ def snapshot():
         # the answer to "signed in?" is worth re-reading rather than serving
         # from the cache.
         "claude_auth": claude_auth(fresh=login["running"]),
-        "login": login,
+        "signin": login,
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
         "project_job": projects.job(),
@@ -2012,18 +1969,11 @@ class Handler(BaseHTTPRequestHandler):
         self._json({"error": "not found"}, 404)
 
     def _signin(self, req):
-        """Start over: end the terminal that is there and clear the marker.
-
-        Two things rather than one because they mean one thing together — a
-        session that is gone with the marker still set is a finished flow, and
-        bb-tty refuses to begin another for it. This is the only place that
-        says otherwise.
-        """
-        with contextlib.suppress(OSError):
-            LOGIN_DONE.unlink()
+        """Start a sign-in, or stop the one that is running."""
         _auth.update(at=0.0, state={})
-        run(["tmux", "kill-session", "-t", LOGIN_SESSION], timeout=10)
-        return self._json({"ok": True})
+        if field(req, "action") == "cancel":
+            return self._json(signin.cancel() | {"signin": signin.state()})
+        return self._json(signin.start() | {"signin": signin.state()})
 
     def _login_code(self, req):
         """Hand the code from the browser to the sign-in terminal.
@@ -2037,11 +1987,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "that does not look like a code — copy "
                                         "the whole of it, including anything "
                                         "after a #"}, 400)
-        live = [s["name"] for s in tmux_sessions()]
-        r = notify.send_line(LOGIN_SESSION, code, live)
+        r = signin.submit(code)
         # Whatever the cache is holding is about to be wrong either way.
         _auth.update(at=0.0, state={})
-        return self._json(r, 400 if r.get("error") else 200)
+        return self._json(r | {"signin": signin.state()},
+                          400 if r.get("error") else 200)
 
     def _signout(self, req):
         """Sign this container out of Claude.
