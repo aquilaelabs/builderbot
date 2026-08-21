@@ -257,10 +257,25 @@ cat > "$S/bin/claude" <<'EOF'
 if [ "${1:-}" = auth ]; then
     case "${2:-}" in
         status) cat "${CLAUDE_AUTH_FIXTURE:?}" ;;
-        logout) printf '{"loggedIn":false}
-' > "${CLAUDE_AUTH_FIXTURE:?}" ;;
-        --help|help) printf 'Manage authentication
-' ;;
+        logout) printf '{"loggedIn":false}\n' > "${CLAUDE_AUTH_FIXTURE:?}" ;;
+        --help|help) printf 'Manage authentication\n' ;;
+        # The flow, shaped like the real one: a URL, a prompt with no newline
+        # after it, and a line read back. A code beginning "good" signs in and
+        # rewrites the fixture; anything else is refused the way the real one
+        # refuses an expired code. This is the half that could never be tested
+        # while the sign-in lived in a terminal.
+        login)
+            printf 'Opening browser to sign in...\n'
+            printf 'If the browser did not open, visit: '
+            printf 'https://claude.com/cai/oauth/authorize?code=true&state=abc\n'
+            printf 'Paste code here if prompted > '
+            read -r code
+            case "$code" in
+                good*) cat "${CLAUDE_AUTH_IN:?}" > "${CLAUDE_AUTH_FIXTURE:?}"
+                       printf '\nLogin successful.\n'; exit 0 ;;
+                *) printf '\nLogin failed: Request failed with status code 400\n'
+                   exit 1 ;;
+            esac ;;
         *) exit 1 ;;
     esac
     exit 0
@@ -327,6 +342,7 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" CLAUDE_AUTH_FIXTURE="$S/auth.json" \
+    CLAUDE_AUTH_IN="$S/auth-in.json" \
     BB_LOGIN_DONE="$S/login-finished" \
     PATH="$S/bin:$PATH" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &

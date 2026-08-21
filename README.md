@@ -831,43 +831,26 @@ lives in its body. The cards:
 
 - **who this container is signed in to Claude as**, under the doctor verdict,
   with the action attached: **Sign out** when it is signed in, **Sign in** when
-  it is not. Signing in opens a *terminal* rather than pretending to be one
-  click — the flow is a URL to open in a browser and a code pasted back, so it
-  needs somewhere to run. But neither of those two steps happens **in** the
-  terminal: while a sign-in is running *and the container is still signed
-  out*, the card carries the URL as a tappable link and a field to paste the
-  code into, and types it in for you. The moment the sign-in takes, the card
-  goes back to saying who you are — the terminal outlives the flow, since it
-  ends by waiting so a refusal can be read, and a lingering terminal is not a
-  reason to keep asking for a code that already worked.
-  Pressing enter to close that terminal really does close it, tab and all —
-  ttyd reconnects a dropped socket after five seconds, and the socket drops
-  exactly when the flow ends, so a finished sign-in used to come straight back
-  as a *new* one. A finished flow leaves a marker; a connection that finds one
-  with no session behind it says the sign-in is over and stops. **Sign in** is
-  the one thing that clears it, which is what makes that button mean start
-  over That is
-  not a convenience. A phone pasting a hundred characters into a canvas
-  terminal is where this reliably falls over — the paste silently does not
-  arrive, the Enter after it does, and the flow exchanges an empty code for a
-  `400` that reads exactly like the code was wrong. The code is shape-checked
-  before it goes anywhere near a terminal, and only ever into the session the
-  dashboard opened for the flow. Signing out is one command with no conversation in
-  it, so it is a button, and it asks first because every session here stops
-  working. **Sign in starts a new flow every time it is pressed** — it ends the
-  terminal that is there and reloads onto a fresh one — because a code expires
-  and an attempt gets abandoned, and the button that starts one has to be able
-  to start another. Only when it is pressed, though: a dropped socket, a phone
-  coming back to the page, and a second browser opening the same tab all
-  *reattach*, so the code you left to fetch is still being pasted into the run
-  that issued the URL. The terminal holds after the flow ends and says how it
-  went; the last line invites you to press enter, and that closes the terminal
-  and its tab together. **It is dead while any Claude session is running** and names the
-  ones in the way; the server refuses it too, since a page can be fifteen
-  seconds behind the answer. And with the container signed out, **every
-  project's Claude button goes dead with it** — as does the terminal URL
-  behind them, which refuses with the way in rather than letting a session
-  start and die on Claude's own error. On a claude too old to have `auth status` the row simply is not
+  it is not. **There is no terminal in it.** `claude auth login` is
+  interactive — it prints a URL and waits for the code the browser gives back —
+  which looked like a job for a terminal, and got one: a tmux session behind
+  ttyd behind a tab. Every part of that was somewhere for it to go wrong. ttyd
+  reconnects a dropped socket, so closing the flow started another; a phone
+  cannot select a wrapped URL out of a canvas, and a paste into one silently
+  does not arrive, so the code reaching the prompt empty read as a *rejected*
+  code; and the tab zooms and reflows under a thumb while you are working in
+  it. None of that was the sign-in. The sign-in is two lines of text going in
+  opposite directions, and a program that wants a terminal only wants a pty —
+  so the server holds one. What you see is a link and a text field, and what
+  the flow says when it refuses a code is said on the card, in its own words.
+  Signing out is one command with no conversation in it, so it is a button,
+  and it asks first because every session here stops working. **It is dead
+  while any Claude session is running** and names the ones in the way; the
+  server refuses it too, since a page can be fifteen seconds behind the
+  answer. And with the container signed out, **every project's Claude button
+  goes dead with it** — as does the terminal URL behind them, which refuses
+  with the way in rather than letting a session start and die on Claude's own
+  error. On a claude too old to have `auth status` the row simply is not
   there: not knowing is not the same as being signed out, and offering to sign
   somebody out of nothing is worse than offering nothing
 - container uptime, and runner state — registered, listening, **running a job**
@@ -1530,6 +1513,7 @@ scripts/
     projects.py                  new project / link to GitHub, and the worker that clones and pushes
     todo.py                      the shared to-do list; `bb todo` drives the same file
     notify.py                    getting a line into a running Claude session, and knowing it landed
+    signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
