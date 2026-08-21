@@ -834,8 +834,12 @@ lives in its body. The cards:
   it is not. Signing in opens a *terminal* rather than pretending to be one
   click — the flow is a URL to open in a browser and a code pasted back, so it
   needs somewhere to run. But neither of those two steps happens **in** the
-  terminal: while a sign-in is running the card carries the URL as a tappable
-  link and a field to paste the code into, and types it in for you. That is
+  terminal: while a sign-in is running *and the container is still signed
+  out*, the card carries the URL as a tappable link and a field to paste the
+  code into, and types it in for you. The moment the sign-in takes, the card
+  goes back to saying who you are — the terminal outlives the flow, since it
+  ends by waiting so a refusal can be read, and a lingering terminal is not a
+  reason to keep asking for a code that already worked. That is
   not a convenience. A phone pasting a hundred characters into a canvas
   terminal is where this reliably falls over — the paste silently does not
   arrive, the Enter after it does, and the flow exchanges an empty code for a
