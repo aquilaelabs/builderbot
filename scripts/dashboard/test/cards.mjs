@@ -183,35 +183,34 @@ ok(await page.$eval('#docAuth a', a2 => a2.target === '_blank'),
 ok(await page.$$eval('.tab[data-id]', t => !t.some(x => /sign-in/i.test(x.textContent))),
    '...and no terminal was opened for it at all');
 
-// A code that is not one never reaches the process. What disqualifies one is
-// a space, a line break or a control character — anything that would arrive as
-// a second line of input — and not the alphabet it happens to be written in.
+// The dashboard no longer judges codes — two shape checks in a row each
+// refused a real one. The only refusals left are the two that cannot be
+// wrong: a paste with no code in it (the link alone, or nothing printable),
+// and one far too long to be a code. Neither reaches the flow, so the flow
+// this test has open is untouched.
 const junk = await page.evaluate(async () => {
   const send = code => fetch('/api/login-code', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ code }) }).then(r => r.status);
-  return { prose: await send('not a code'), ctrl: await send('abcd\u0003efgh'),
-           half: await send('abc'),
-           link: await send('https://claude.com/cai/oauth/authorize?code=true') };
+  return { link: await send('https://claude.com/cai/oauth/authorize?code=true'),
+           blank: await send('  \n\t '), long: await send('x'.repeat(5000)) };
 });
-ok(junk.prose === 400 && junk.ctrl === 400 && junk.half === 400 && junk.link === 400,
-   'prose, a control character, half a code and the link itself are all refused');
+ok(junk.link === 400 && junk.blank === 400 && junk.long === 400,
+   'the link alone, an empty paste and a novel are refused; nothing else is');
 page.errors = [];
 
-// A wrong one is refused by the flow, and the card says why — where it was
-// asked for, rather than in a terminal nobody can read on a phone. What goes
-// in carries everything a real paste brings with it: base64 padding, the line
-// break a copy takes from a code that wrapped in the page, and the authorize
-// URL that the code page sets flush against the code so that Copy takes both.
-// None of that is this end's business to refuse, and refusing it told an
-// operator to copy the whole code when they had copied the whole code.
+// Everything else goes to the flow, junk stripped rather than refused, and
+// the flow's own verdict comes back to the card. This paste carries the lot:
+// base64 padding, a line break from a wrapped copy, a space, a control
+// character, a zero-width mark from an HTML copy button, and the authorize
+// URL the code page sets flush against the code so that Copy takes both.
 const padded = await page.evaluate(async () => {
   const r = await fetch('/api/login-code', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: 'wrong+code/12\n34==https://claude.com/cai/oauth/authorize?code=true' }) });
+    body: JSON.stringify({ code: '\u200bwrong+code/12\n34 =\u0003=https://claude.com/cai/oauth/authorize?code=true' }) });
   return r.status;
 });
-ok(padded === 200, '...while padding, a line break and a URL stuck to the end do not');
+ok(padded === 200, '...while everything a real paste drags along goes through');
 await page.waitForFunction(() => /did not finish|Login failed/.test(
   document.getElementById('docAuth')?.textContent || ''), { timeout: 25000 });
 ok(/Login failed/.test(await page.$eval('#docAuth', e => e.textContent)),
