@@ -105,6 +105,29 @@ ok(fav.touch[0] === 200 && fav.touch[1] === 'image/png', 'apple-touch-icon is se
 ok(fav.links.includes('/favicon.svg') && fav.links.includes('/favicon.ico')
    && fav.links.includes('/apple-touch-icon.png'), 'the head links all three');
 
+// ---- which build this is ------------------------------------------------
+// Beside the uptime, because an Unraid container keeps serving whatever it
+// last pulled: "up two hours" and "has the fix" are different questions, and
+// answering the second by inferring from the first is how a published fix and
+// a stale container looked identical for a whole afternoon.
+const build = await page.$eval('#build', e => ({ text: e.textContent.trim(),
+                                                 title: e.title }));
+ok(build.text === 'abc1234',
+   'the header carries the build the image was stamped with');
+ok(build.title.includes('abc1234def5678901234567890abcdef12345678')
+   && build.title.includes('2026-08-21T19:30Z'),
+   '...with the whole commit and when it was built, on hover');
+ok(/bb drift/.test(build.title),
+   '...and says where to look for what a checkout has changed since');
+// An image built outside CI carries no stamp, and says so rather than leaving
+// a gap that reads as "this dashboard is too old to tell you".
+ok(await page.evaluate(() => { drawBuild({ rev: '', built: '' });
+                               const e = document.getElementById('build');
+                               return e.textContent === 'unstamped'
+                                   && /no build stamp/.test(e.title); }),
+   'an unstamped image says so, rather than showing nothing');
+await page.evaluate(() => refresh());
+
 // ---- signing in and out ------------------------------------------------
 // The first thing to get right on a new box, and the last place anybody would
 // think to look for it on a command line. Driven against a stub claude: the

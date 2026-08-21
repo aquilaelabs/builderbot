@@ -1362,6 +1362,21 @@ def uptime():
     return r["out"].strip() or "?"
 
 
+def image_stamp():
+    """Which build of the image this container is running.
+
+    Baked in at the end of the Dockerfile by CI (see BB_IMAGE_REV there).
+    Empty when the image was built any other way, which the page reports as
+    `unstamped` rather than guessing — the whole point of this is that the
+    answer to "is that fix in here?" stops being an inference from uptime.
+
+    Trimmed rather than validated: these come from the image's own build, not
+    from anything a request can set, and they are only ever displayed.
+    """
+    return {"rev": os.environ.get("BB_IMAGE_REV", "").strip()[:40],
+            "built": os.environ.get("BB_IMAGE_BUILT", "").strip()[:32]}
+
+
 # ---------------------------------------------------------------------------
 # bb doctor, cached. The checks take up to half a minute of network timeouts
 # when something is down, which rules out running them on the 15-second poll —
@@ -1604,6 +1619,7 @@ def snapshot():
     return {
         "host": os.uname().nodename,
         "uptime": uptime(),
+        "image": image_stamp(),
         "projects": ps,
         "sessions": sessions,
         "runner": runner(),

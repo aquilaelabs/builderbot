@@ -101,11 +101,22 @@ jobs:
             type=sha,format=short
             type=schedule,pattern={{date 'YYYYMMDD'}}
 
+      # What the image will say it is when someone asks it from the inside.
+      # The commit is the one being built; the time is this build's, not the
+      # commit's, because the weekly rebuild ships new packages under an
+      # unchanged sha and "which of those two is on my box" is the question.
+      - name: Stamp the build
+        id: stamp
+        run: echo "at=$(date -u +%Y-%m-%dT%H:%MZ)" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
+          build-args: |
+            IMAGE_REV=${{ github.sha }}
+            IMAGE_BUILT=${{ steps.stamp.outputs.at }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
