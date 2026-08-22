@@ -188,6 +188,15 @@ ok(items.findIndex(i => i.text === 'widen the select')
    < items.findIndex(i => i.text === 'then re-measure it'),
    '...and nothing moved');
 
+// A step arrives on its own, and "then re-measure it" means nothing without
+// the plan it belongs to — so the line carries all three: that it is one step
+// of several, what the whole thing is for, and which step this is.
+const stepLine = tmuxCapture('claude-alpha');
+ok(/step 1 of 2 in a plan/i.test(stepLine)
+   && /The plan: rework the picker/.test(stepLine)
+   && /Step 1: widen the select/.test(stepLine),
+   'a step is sent with the plan around it, not on its own');
+
 const skip = await post({ action: 'send', project: 'alpha', id: Number(s2.id), step: 1 });
 ok(skip.status === 200, 'the second can now be sent');
 const back = await post({ action: 'send', project: 'alpha', id: Number(s1.id), step: 0 });
@@ -357,11 +366,37 @@ ok(made.steps.length === 2 && made.steps[0].text === 'first, widen it'
    '...and they land in the order they were typed');
 await page.keyboard.press('Escape');
 
+// A step's own words are editable, which they were not: the pencil is on
+// every row, and a plan is written before it is right.
+// prompt() has no Playwright handler that can answer *with* text, so the
+// page's own is replaced for the length of this edit and put back after.
+await page.evaluate(() => { window.__prompt = window.prompt;
+                            window.prompt = () => 'first, widen it a lot'; });
+await page.click(`#todoList .todo[data-id="${plainId}"][data-step="0"] .ed`);
+await page.waitForFunction(id => (read => read)(document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="0"] .txt`)?.textContent)
+  === 'first, widen it a lot', plainId, { timeout: 10000 });
+ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].text
+   === 'first, widen it a lot',
+   'the pencil rewords a step, not only an item');
+
+// ...and the step field has a way out that is not the Escape key a phone
+// keyboard does not have.
+await page.click(`#todoList .addstep[data-id="${plainId}"] button`);
+await page.waitForSelector(`#todoList .addstep[data-id="${plainId}"] input`);
+await page.click(`#todoList .addstep[data-id="${plainId}"] .stop`);
+await page.waitForFunction(id => !document.querySelector(
+  `#todoList .addstep[data-id="${id}"] input`), plainId, { timeout: 10000 });
+ok(true, 'Cancel closes the step field without adding anything');
+await page.evaluate(() => { window.prompt = window.__prompt; });
+
 // ---- moving things about -----------------------------------------------
 // Its own mode: five controls and a number do not fit a phone row, and
 // nobody rearranges a list at the same moment they are sending from it.
+await page.$eval('#todoOrder', b => b.scrollIntoView({block: 'center'}));
 await page.click('#todoOrder');
-await page.waitForFunction(() => !document.getElementById('todoAsk').checkVisibility());
+await page.waitForFunction(() => !document.getElementById('todoAsk').checkVisibility(),
+                           null, { timeout: 15000 });
 ok(await page.$$eval('#todoList .todo .go', g => g.length === 0)
    && await page.$$eval('#todoList .todo .mv', m => m.length > 0),
    'reordering swaps the row controls rather than crowding in beside them');

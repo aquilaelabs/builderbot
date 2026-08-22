@@ -1132,10 +1132,12 @@ glued to the first.
 `bb todo add "rework the picker" --step "widen the select" --step "then
 re-measure it"`; in the panel it is **+ step** under any item, which turns a
 plain one into a plan — and the field stays open, so three steps is three lines
-of typing rather than three dialogs. Only the next unsent step can be sent; the
-one after it is dead until the one before has gone, because three separate
-items can be handed over backwards and the second then lands on a tree the
-first was supposed to have made.
+of typing rather than three dialogs. A step is **sent with the plan around
+it** — "this is step 2 of 3 in a plan", the plan's own line, then the step —
+because "then re-measure it" arriving on its own says nothing about what it is
+for. Only the next unsent step can be sent; the one after it is dead until the
+one before has gone, because three separate items can be handed over backwards
+and the second then lands on a tree the first was supposed to have made.
 
 **Reorder** is a mode rather than two more icons on every row — five controls
 and a number do not fit a phone, and nobody rearranges a list at the same

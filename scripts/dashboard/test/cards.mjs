@@ -201,6 +201,16 @@ await page.waitForFunction(() => document.getElementById('authCode') !== null,
                            { timeout: 25000 });
 ok((await page.$eval('#docAuth a', a2 => a2.href)).includes('oauth/authorize'),
    'Sign in starts the flow and the card carries its link, tappable');
+// In the button's own answer, not fifteen seconds later on the next poll:
+// the flow prints the URL about a second in, and start() waits for it.
+const started = await page.evaluate(async () => {
+  const t0 = performance.now();
+  const r = await fetch('/api/signin', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: '{}' });
+  return { ms: performance.now() - t0, url: !!(await r.json()).signin?.url };
+});
+ok(started.url && started.ms < 8000,
+   `...and the link is in the reply that starts it (${Math.round(started.ms)}ms)`);
 ok(await page.$eval('#docAuth a', a2 => a2.target === '_blank'),
    '...opening away from the dashboard, not over it');
 ok(await page.$$eval('.tab[data-id]', t => !t.some(x => /sign-in/i.test(x.textContent))),

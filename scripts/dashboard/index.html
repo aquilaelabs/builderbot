@@ -345,7 +345,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
    can be sent and not done, which is exactly the case worth seeing. */
 .todo.done{opacity:.55}
 .todo .who.fin{color:#7fc08a;border-color:#1f3f28}
-.todo .go,.todo .x,.todo .rm{flex:0 0 auto;align-self:flex-start}
+.todo .go,.todo .x,.todo .rm,.todo .ed{flex:0 0 auto;align-self:flex-start}
+.todo .ed{color:var(--dim)}
+@media(hover:hover){ .todo .ed:hover{color:var(--ink)} }
 .todo .go{color:var(--accent)}
 /* Crossing out by hand: dim until it is on, then the same green as a line
    that went — because the two mean the same thing to the group behind them. */
@@ -363,7 +365,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 @media(hover:hover){ .todo .rm:hover{color:var(--bad);border-color:#4d2220} }
 /* Four controls and a number on one line is tight on a phone; the buttons
    lose their padding before the words lose their width. */
-@media(max-width:620px){ .todo .go,.todo .x,.todo .rm{padding:5px 4px} .todo{gap:6px} }
+@media(max-width:620px){ .todo .go,.todo .x,.todo .rm,.todo .ed{padding:5px 4px}
+  .todo{gap:5px} }
 #memFold>summary{cursor:pointer;color:var(--dim);
   font:12px/1.5 system-ui,sans-serif;padding:11px 14px;list-style:none;
   border-top:1px solid var(--line)}
@@ -398,7 +401,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .addstep input{flex:1;min-width:0;background:#161b22;color:var(--ink);
   border:1px solid var(--line);border-radius:6px;padding:5px 8px;
   font:12.5px/1.4 system-ui,sans-serif;min-height:var(--tap)}
-.addstep button.primary{flex:0 0 auto;min-height:var(--tap)}
+.addstep button{flex:0 0 auto;min-height:var(--tap)}
 @media(max-width:900px){ .addstep input{font-size:16px} }
 /* Moving things about: dim until it can, like every other row control. */
 .todo .mv{color:var(--dim)}
@@ -2895,9 +2898,22 @@ function drawAuth(){
 // Sign in, however many times it takes. No terminal: the flow runs under a
 // pty the server holds, so this is one request and the card does the rest.
 async function signIn(){
+  const b = $("bSignIn");
+  if (b){ b.disabled = true; b.textContent = "Starting…"; }
   await fetch("/api/signin", {method:"POST",
     headers:{"Content-Type":"application/json"}, body: "{}"}).catch(() => {});
   refresh();
+}
+
+// While a sign-in is going, the card is worth more than one look every fifteen
+// seconds: the URL arrives a second in, and the answer to the code lands a
+// second after it is sent. Stops the moment there is nothing running.
+let signinTimer = null;
+function watchSignin(){
+  const lg = state?.signin;
+  const live = lg?.running || (lg?.done && !lg.ok && !state?.claude_auth?.signed_in);
+  if (live && !signinTimer) signinTimer = setInterval(refresh, 1200);
+  if (!live && signinTimer){ clearInterval(signinTimer); signinTimer = null; }
 }
 
 
@@ -2907,7 +2923,7 @@ async function signIn(){
 async function sendCode(){
   const f = $("authCode"), b = $("bAuthCode");
   const code = f.value.trim();
-  if (!code) return f.focus();
+  if (!code) return f.focus();   // pressed Send with nothing in it
   b.disabled = true; b.textContent = "Sending…";
   try{
     const r = await fetch("/api/login-code", {method:"POST",
@@ -3139,8 +3155,6 @@ function editCustom(id){
   $("mBody").value = (m?.lines || []).join("\n");
   $("mDelete").hidden = !m;
   $("modal").hidden = false;
-  $("mName").focus();
-  $("mName").select();
 }
 
 function closeEditor(){ $("modal").hidden = true; editing = null; }
@@ -3549,12 +3563,11 @@ function pSlide(){
   }
 }
 
-// The cursor goes to the mode's own first field, on open and on every tab
-// switch. Both directions, unconditionally: only the clone tab used to do
-// it, so switching back to New local repo left focus on a field that had
-// just been hidden — focus fell to the body and a phone's keyboard slid
-// away mid-thought.
-function pFocus(){ $(PMODES[pMode].focus).focus(); }
+// No cursor is put in a field here, on open or on a tab switch. A dialog that
+// focuses something raises the on-screen keyboard with it, which covers half
+// of what it just opened — so the field is chosen by the person who wants to
+// type in it. `focus` stays in PMODES because it is also the name of the
+// field that mode leads with, which pDraw uses.
 
 function pShowKey(){
   const k = pKeys.find(k => k.name === $("pKey").value);
@@ -3580,7 +3593,6 @@ function pOpen(mode){
   $("pErrWrap").hidden = $("pPubWrap").hidden = true;
   $("pCreate").disabled = false; $("pCreate").textContent = PMODES[mode].btn;
   $("pmodal").hidden = false;
-  pFocus();
   // Fetched per open, not cached: keys change when the container restarts
   // with a new /secrets/ssh, and a stale list here would offer a key the
   // agent no longer holds. The submit handler awaits pFetch directly, so an
@@ -3624,7 +3636,6 @@ async function openMemory(name){
   $("todoText").value = "";
   $("todoList").innerHTML = `<div class="hint">loading…</div>`;
   $("memModal").hidden = false;
-  $("todoText").focus();
   // Opening it is a re-read: both halves come off disk again, and the card
   // behind gets the same treatment so the number on the row you just pressed
   // is not the one from the last poll.
@@ -3751,7 +3762,8 @@ function stepRow(r, idx, live){
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
     </span>
-    ${todoOrdering ? moves : `${strike ? `<button class="eye x${st.sent ? " on" : ""}" type="button" aria-label="cross out"
+    ${todoOrdering ? moves : `<button class="eye ed" type="button" aria-label="reword"
+      title="reword this line">${PENCIL}</button>${strike ? `<button class="eye x${st.sent ? " on" : ""}" type="button" aria-label="cross out"
       title="${st.sent ? "put it back — it is not dealt with after all"
                        : "cross it out without sending: already done, or not needed"}"
       >${STRIKE}</button>` : `<span class="eye ph"></span>`}
@@ -3824,16 +3836,22 @@ function drawTodo(j){
       if (confirm(`Drop "${what}"?${extra}`))
         postTodo(step >= 0 ? {action: "remove", id, step} : {action: "remove", id});
     };
-    // Click the text to reword it. A prompt rather than an inline editor: this
-    // is a one-line note, and an editor that has to be saved is a second step
-    // for something that takes one. Only the item's own line — a step is part
-    // of a plan, and rewording one of those is a job for `bb todo`.
-    if (step < 0) row.querySelector(".txt").onclick = () => {
+    // A pencil, and the words themselves. The pencil because a tap target you
+    // can see is the only one a thumb finds; the words because that is where
+    // the hand goes anyway. Steps too — a plan is written before it is right,
+    // and the line that needed changing was always the one inside a group.
+    const reword = () => {
       const was = row.querySelector(".txt").textContent;
-      const now = prompt("Reword it:", was);
+      const now = prompt(step < 0 ? "Reword it:" : `Reword step ${step + 1}:`, was);
       if (now !== null && now.trim() && now !== was)
-        postTodo({action: "edit", id, text: now});
+        postTodo({action: "edit", id, step: step < 0 ? null : step, text: now});
     };
+    // Guarded like every other control on this row: reordering replaces all
+    // three of them, so in that mode there is no pencil to bind and an
+    // unguarded one took the whole redraw down with it.
+    const ed = row.querySelector(".ed");
+    if (ed) ed.onclick = reword;
+    row.querySelector(".txt").onclick = reword;
   });
   todoItems = rows;
   todoUnsaved = j.unsaved || {};
@@ -3938,8 +3956,12 @@ async function postTodo(body, quiet){
 function openStepInput(box){
   const id = box.dataset.id;
   box.innerHTML = `<input maxlength="500" autocomplete="off"
-      placeholder="then…"><button type="button" class="primary">Add</button>`;
-  const inp = box.querySelector("input"), btn = box.querySelector("button");
+      placeholder="then…"><button type="button" class="primary">Add</button>
+      <button type="button" class="stop">Cancel</button>`;
+  const inp = box.querySelector("input"), btn = box.querySelector(".primary");
+  // Escape closes it too, but a phone keyboard has no Escape — and a field
+  // that only closes by being emptied first is a field you are stuck in.
+  box.querySelector(".stop").onclick = () => closeStepInput(box);
   const go = async () => {
     if (!inp.value.trim()) return closeStepInput(box);
     const keep = inp.value;
@@ -3956,6 +3978,9 @@ function openStepInput(box){
     // Escape as "close the panel" and the plan being typed goes with it.
     if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); closeStepInput(box); }
   };
+  // Focused, unlike anything a window opens with: this field exists because
+  // the finger that wants it just tapped "+ step", and making them tap twice
+  // to type in the thing they asked for is not the same problem.
   inp.focus();
 }
 
@@ -3968,6 +3993,8 @@ async function addTodo(){
   const t = $("todoText");
   if (!t.value.trim()) return;
   if (await postTodo({action: "add", text: t.value})) t.value = "";
+  // Kept, not taken: the keyboard is already up because they just typed, and
+  // a list is usually added to more than one line at a time.
   t.focus();
 }
 
@@ -4103,7 +4130,7 @@ function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
 // A stale error must not survive a mode switch — "a name is required" makes
 // no sense over a form that no longer asks for one.
 const pSwitch = m => { if (pMode === m) return;
-  pMode = m; $("pErrWrap").hidden = true; pDraw(); pSlide(); pFocus(); };
+  pMode = m; $("pErrWrap").hidden = true; pDraw(); pSlide(); };
 $("pLocal").onclick = () => pSwitch("init");
 $("pClone").onclick = () => pSwitch("clone");
 $("pKey").onchange = pShowKey;
@@ -4745,6 +4772,7 @@ async function refresh(){
     drawCustom();
     drawDoctor();
     drawAuth();
+    watchSignin();
     $("cardFindings").hidden = !state.reports;
     drawFindingsSum(state.findings_counts || {});
     // A scan re-ran on the host: refresh any open findings view to match.

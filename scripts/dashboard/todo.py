@@ -247,15 +247,25 @@ def set_done(project, item_id, done):
     return _edit(project, item_id, change)
 
 
-def edit(project, item_id, text):
-    text = (text or "").strip()
+def edit(project, item_id, text, step=None):
+    """Reword an item, or one step of it."""
+    text = " ".join((text or "").split())
     if not text:
         return {"error": "nothing to say"}
     if len(text) > MAX_TEXT:
         return {"error": f"too long — {MAX_TEXT} characters is the limit"}
+    if step is not None and _int(step) is None:
+        return {"error": "not a step"}
 
     def change(row, rows):
-        row["text"] = text
+        i = _int(step)
+        if i is None or i < 0:
+            row["text"] = text
+            return {"ok": True, "item": row}
+        steps = row.get("steps") or []
+        if not 0 <= i < len(steps):
+            return {"error": "no such step"}
+        steps[i]["text"] = text
         return {"ok": True, "item": row}
     return _edit(project, item_id, change)
 
@@ -443,7 +453,13 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
         if not steps[step].get("sent") and nxt is not None and step != nxt:
             return {"error": f"step {nxt + 1} has not been sent yet — "
                              "this one is in a group, and the order is the point"}
-        text = steps[step]["text"]
+        # A step arrives on its own otherwise, and "then re-measure it" means
+        # nothing without the plan it belongs to. So the line carries all
+        # three: that it is one step of several, what the whole thing is for,
+        # and which step this is.
+        text = (f"This is step {step + 1} of {len(steps)} in a plan. "
+                f"The plan: {row['text']}. "
+                f"Step {step + 1}: {steps[step]['text']}")
     else:
         text = row["text"]
     # One message, not two. Saving the list and sending a step both want to

@@ -16,6 +16,9 @@ ok(await page.$eval('#projects #bNewProj', b => b.textContent.includes('New proj
    'New project sits at the foot of the Projects card');
 await page.click('#bNewProj');
 ok(await page.$eval('#pmodal', el => !el.hidden), 'the dialog opens');
+const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
+ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
+   '...with the cursor in none of its fields');
 ok(await page.$eval('#pUrlField', el => el.hidden), 'local repo is the default; no URL field');
 await page.click('#pClone');
 ok(await page.$eval('#pUrlField', el => !el.hidden)
@@ -28,17 +31,15 @@ ok(await page.$eval('#pNameField', el => el.hidden)
    'clone mode asks for nothing but the URL — name and notes come from the repo');
 await page.click('#pLocal');
 ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local brings the name field back');
-// Both tabs put the cursor in their own first field. Only clone used to,
-// so switching back left focus on a hidden input — which on a phone drops
-// focus to the body and closes the keyboard.
-ok(await page.evaluate(() => document.activeElement.id) === 'pName',
-   'switching to local focuses the name field');
+// Neither tab puts a cursor anywhere. A focused field brings the on-screen
+// keyboard up with it, over half of the dialog that just opened — so the
+// field is picked by whoever wants to type in it.
+ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
+   'switching to local leaves the keyboard down');
 await page.click('#pClone');
-ok(await page.evaluate(() => document.activeElement.id) === 'pUrl',
-   '...and switching to clone focuses the URL field');
+ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
+   '...and so does switching to clone');
 await page.click('#pLocal');
-ok(await page.evaluate(() => document.activeElement.id) === 'pName',
-   '...every time, not just the first');
 
 // Refusals keep the dialog open with the reason in place — nothing typed is
 // lost to a mistake.
