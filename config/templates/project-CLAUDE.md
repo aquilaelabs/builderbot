@@ -180,7 +180,8 @@ operator write.
 ```bash
 bb todo                      # what is on it
 bb todo add "..."            # put something on it
-bb todo done N               # tick one off; undone N, rm N, clear
+bb todo done N               # finished it — off the list, into the log
+bb todo rm N                 # not doing it — same, under a different word
 bb todo edit N "..."         # reword one
 bb todo step add N "..."     # give one a step; step edit N M "...", step rm N M
 bb todo history              # every change to it, newest first
@@ -214,6 +215,13 @@ the operator can see what you raised and sweep it if they disagree.
 
 **Tick things off as you finish them**, including items you did not add.
 A list that only grows is one that stops being read.
+
+Ticking one off **takes it off the list** — this list is read to find out what
+is left, and something finished is not left. It goes into the history under
+"done", where dropping it would have gone under "dropped", and there is no
+undoing either: if it turns out not to have been finished, add it again and
+say so. Only you tick things off. Nothing in the dashboard does it, because
+only the session that did the work knows whether it is done.
 
 **When a change needs several things done in a set order, add it as one item
 with steps** — `bb todo add "rework the picker" --step "widen the select"

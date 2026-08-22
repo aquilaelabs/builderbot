@@ -358,7 +358,7 @@ bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb findings        this project's scanner findings (--all for every project)
 bb todo            this project's shared to-do list
-bb todo add "..."  put something on it; `done N`, `undone N`, `rm N`, `clear`
+bb todo add "..."  put something on it; `done N` finished, `rm N` not doing it
 bb todo add "..." --step "..." --step "..."   an ordered group of steps
 bb todo edit N "..."               reword one; `step add|edit|rm` for one step
 bb todo history                    every change to it, newest first
@@ -1072,8 +1072,14 @@ first, each with its date and time and whether you or a session made it. A
 reword shows both wordings, the old one struck through. `bb todo history`
 prints the same log in a terminal.
 
-That log is also what makes deleting safe, because deleting is now the only
-way a line leaves. **Crossing a line off by hand is gone.** It used to sit
+That log is also what makes deleting safe, because the list now holds nothing
+but outstanding work. **A ticked-off item comes off it.** It used to sit
+there faded for a week, which is the same mistake crossing a line out was: a
+list is read to find out what is left, and a thing that is finished is not
+left. `bb todo done N` moves it into the log under *done*, where `rm N` would
+have put it under *dropped* — both leave, and the log is what says which
+happened. Only a session ticks things off; nothing in the dashboard can,
+because only the session that did the work knows. **Crossing a line off by hand is gone.** It used to sit
 beside the bin and leave exactly the mark that sending leaves, so a list
 filled up with things that looked dealt with and were not — and "I crossed
 that off" is not the same claim as "that is done". The strike icon is now

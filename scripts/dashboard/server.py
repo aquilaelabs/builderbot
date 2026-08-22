@@ -2044,8 +2044,6 @@ class Handler(BaseHTTPRequestHandler):
                           also_told=todo.unsaved(name) if req.get("tell") else False)
             if r.get("sent") and req.get("tell"):
                 todo.mark_told(name)
-        elif act == "done":
-            r = todo.set_done(name, req.get("id"), bool(req.get("done", True)))
         elif act == "edit":
             r = todo.edit(name, req.get("id"), field(req, "text"), req.get("step"))
         elif act == "move":
@@ -2057,8 +2055,6 @@ class Handler(BaseHTTPRequestHandler):
                            bool(req.get("on", True)))
         elif act == "remove":
             r = todo.remove(name, req.get("id"), req.get("step"))
-        elif act == "clear-done":
-            r = todo.clear_done(name)
         elif act == "history":
             # Fetched only when the panel is showing it. It rides in no poll:
             # a log nobody has opened is bytes on every status request for

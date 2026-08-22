@@ -621,9 +621,10 @@ def show():
         print(f"nothing on {proj}'s list")
         return
     for r in rows:
-        mark = "x" if r.get("done") else " "
+        # No done column: everything here is outstanding by construction, and
+        # a box that is never ticked is a column of nothing.
         who = " (claude)" if r.get("by") == "claude" else ""
-        print(f"  [{mark}] {r['id']:>2}  {r['text']}{who}")
+        print(f"  {r['id']:>3}  {r['text']}{who}")
         for i, st in enumerate(r.get("steps") or []):
             print(f"          {i + 1}. {st['text']}"
                   + ("  (sent)" if st.get("sent") else ""))
@@ -660,11 +661,14 @@ elif op == "add":
     n = len(r["item"]["steps"])
     print(f"added {r['item']['id']}: {r['item']['text']}"
           + (f" ({n} steps)" if n else ""))
-elif op in ("done", "undone"):
+elif op == "done":
+    # Off the list and into the log. There is no undoing it: a list is read to
+    # find out what is left, so nothing finished stays on it, and the history
+    # is where the words live afterwards.
     if not rest:
         print("usage: bb todo done <n>", file=sys.stderr); sys.exit(1)
-    r = todo.set_done(proj, rest[0], op == "done", by="claude"); bail(r)
-    print(f"{'done' if op == 'done' else 'reopened'} {rest[0]}")
+    r = todo.tick(proj, rest[0], by="claude"); bail(r)
+    print(f"done {rest[0]}: {r['item']['text']}")
 elif op in ("rm", "remove"):
     if not rest:
         print("usage: bb todo rm <n>", file=sys.stderr); sys.exit(1)
@@ -699,9 +703,6 @@ elif op == "step":
         print("usage: bb todo step add <n> \"...\" | step edit <n> <step> \"...\""
               " | step rm <n> <step>", file=sys.stderr)
         sys.exit(1)
-elif op == "clear":
-    todo.clear_done(proj, by="claude")
-    print("cleared the ticked items")
 elif op in ("history", "log"):
     h = todo.history(proj)
     if not h:
@@ -713,7 +714,7 @@ elif op in ("history", "log"):
               f"{where} #{e.get('id')}  {e.get('text', '')}")
 else:
     print("usage: bb todo [list|add TEXT [--step ...]|edit N TEXT|"
-          "step add|edit|rm ...|done N|undone N|rm N|clear|history]",
+          "step add|edit|rm ...|done N|rm N|history]",
           file=sys.stderr)
     sys.exit(1)
 PY

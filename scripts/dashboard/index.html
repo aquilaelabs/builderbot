@@ -366,11 +366,6 @@ button.on{background:#1f6f36;border-color:#2ea043}
    the record — so that a step that was handed over and quietly not carried out
    is still there to send again. */
 .todo.sent .txt{color:var(--dim);text-decoration:line-through}
-/* Sent and done are different facts and look different: sent is struck
-   through (it went), done is faded (a session says it finished it). Something
-   can be sent and not done, which is exactly the case worth seeing. */
-.todo.done{opacity:.55}
-.todo .who.fin{color:#7fc08a;border-color:#1f3f28}
 .todo .go,.todo .x,.todo .rm,.todo .ed{flex:0 0 auto;align-self:flex-start}
 .todo .ed{color:var(--dim)}
 @media(hover:hover){ .todo .ed:hover{color:var(--ink)} }
@@ -3787,10 +3782,8 @@ function stepRow(r, idx, live){
   // The tags sit above the line rather than beside it: they are labels on the
   // whole item, and on a phone a pill sharing the first line pushed the words
   // into a column two thirds as wide as the ones under it.
-  const tags = idx >= 0 ? "" : [
-    r.done ? `<span class="who fin" title="a session marked this finished">done</span>` : "",
-    r.by === "claude" ? `<span class="who" title="Claude put this here">claude</span>` : "",
-  ].join("");
+  const tags = idx >= 0 || r.by !== "claude" ? ""
+    : `<span class="who" title="Claude put this here">claude</span>`;
   // In reorder mode the row's three controls are replaced rather than joined:
   // five buttons and a number do not fit a phone, and moving things about is
   // not something anybody does at the same time as sending them.
@@ -3803,8 +3796,8 @@ function stepRow(r, idx, live){
       aria-label="down"
       title="${fixed ? "a step that has gone stays where it is" : "move it down"}"
       >${DOWN}</button>`;
-  return `<div class="todo${st.sent ? " sent" : ""}${idx >= 0 ? " step" : ""}${
-       idx < 0 && r.done ? " done" : ""}" data-id="${r.id}" data-step="${idx}">
+  return `<div class="todo${st.sent ? " sent" : ""}${
+       idx >= 0 ? " step" : ""}" data-id="${r.id}" data-step="${idx}">
     ${todoOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
       title="${esc(why)}" aria-label="send"
       aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}

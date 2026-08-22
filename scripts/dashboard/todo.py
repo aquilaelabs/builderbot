@@ -53,7 +53,6 @@ MAX_TEXT = 500
 
 # Ticked items stay a while, because "what did we just finish" is worth having
 # for a day or two, and then they are noise.
-KEEP_DONE_DAYS = 7
 
 
 def load():
@@ -74,6 +73,9 @@ def _migrate(d):
     `ordered`: stored order became display order; it used to be newest-last
     and sorted on the way out.
 
+    `ticked_off`: an item a session finished used to sit on the list, faded,
+    until a week had passed. It comes off now and lives in the log instead.
+
     `oldest_first`: items used to be added at the top, so the number a session
     quotes — the id, which is what `bb todo done` takes — counted *up* the
     screen and #1 sat at the bottom. Adding at the end instead makes the
@@ -87,6 +89,24 @@ def _migrate(d):
         for name, rows in d["projects"].items():
             d["projects"][name] = list(reversed(rows))
         d["ordered"] = dirty = True
+    if not d.get("ticked_off"):
+        # Ticked items used to fade in place until a week had passed. They
+        # come off now, but they are not simply dropped: each one is written
+        # into the log first, under the time it was actually ticked, so a list
+        # that shortens on the update can still say what left it.
+        for name, rows in d["projects"].items():
+            for r in rows:
+                if r.get("done"):
+                    h = d.setdefault("history", {}).setdefault(name, [])
+                    h.append({"at": int(r.get("done_at") or time.time()),
+                              "by": "claude", "act": "done", "id": r.get("id"),
+                              "text": r.get("text", "")})
+            d["projects"][name] = [r for r in rows if not r.get("done")]
+        # The log is written in whatever order the lists were walked; it is
+        # read newest-first, so it has to be in time order to start with.
+        for h in d.get("history", {}).values():
+            h.sort(key=lambda e: e.get("at", 0))
+        d["ticked_off"] = dirty = True
     if not d.get("oldest_first"):
         for name, rows in d["projects"].items():
             ids = [int(r.get("id", 0)) for r in rows]
@@ -167,12 +187,6 @@ def history(project):
     return list(reversed(h))
 
 
-def _prune(rows):
-    """Drop ticked items once they have been ticked long enough."""
-    cut = time.time() - KEEP_DONE_DAYS * 86400
-    return [r for r in rows if not (r.get("done") and r.get("done_at", 0) < cut)]
-
-
 def items(project):
     """The list, in the order it is stored — which is the order it is shown.
 
@@ -183,22 +197,20 @@ def items(project):
     way sent steps stay struck through where they are.
     """
     with _lock:
-        return _prune(load()["projects"].get(project) or [])
+        return load()["projects"].get(project) or []
 
 
 def counts():
     """{project: how much is still to do} for the project rows.
 
     The same number the panel shows, which is what makes the badge worth
-    glancing at: an item with nothing left to hand over does not count, and
-    neither does one a session marked finished. Counting "not done" instead
-    meant crossing a whole list off changed nothing on the row — because
-    nothing in the panel sets done; it sets sent.
+    glancing at: an item with nothing left to hand over does not count.
+    Everything on the list is outstanding by construction now — ticking one
+    off takes it off — so this is only about how much of it can still be sent.
     """
     with _lock:
         d = load()
-    return {p: sum(1 for r in _prune(rows)
-                   if not r.get("done") and next_step(r) is not None)
+    return {p: sum(1 for r in rows if next_step(r) is not None)
             for p, rows in d["projects"].items()}
 
 
@@ -243,12 +255,12 @@ def add(project, text, by="you", steps=()):
         return {"error": f"a step is longer than {MAX_TEXT} characters"}
     with _lock:
         d = load()
-        rows = _prune(d["projects"].get(project) or [])
-        if sum(1 for r in rows if not r.get("done")) >= MAX_OPEN:
+        rows = d["projects"].get(project) or []
+        if len(rows) >= MAX_OPEN:
             return {"error": f"{MAX_OPEN} open items is the limit — this list "
                              "goes in front of every session, so it has to stay "
                              "readable"}
-        row = {"id": _next_id(rows), "text": text, "done": False,
+        row = {"id": _next_id(rows), "text": text,
                "added": int(time.time()), "by": "claude" if by == "claude" else "you",
                "sent": 0,
                "steps": [{"text": x, "sent": 0} for x in steps]}
@@ -281,7 +293,7 @@ def _edit(project, item_id, change, by="you"):
         return {"error": "not an item"}
     with _lock:
         d = load()
-        rows = _prune(d["projects"].get(project) or [])
+        rows = d["projects"].get(project) or []
         row = _find(rows, item_id)
         if row is None:
             return {"error": "no such item"}
@@ -295,13 +307,25 @@ def _edit(project, item_id, change, by="you"):
     return out
 
 
-def set_done(project, item_id, done, by="you"):
+def tick(project, item_id, by="you"):
+    """Finish an item: off the list, into the log.
+
+    It used to fade in place for a week. That is the same mistake striking a
+    line out by hand was — a list is read to find out what is left, and a
+    thing that is finished is not left. Both ways of leaving now go the same
+    way, and the log is what tells them apart: "ticked off" is a session
+    saying it did the work, "dropped" is somebody deciding not to.
+
+    There is no putting one back, because there is nothing to put it back
+    *to*. The words are in the history; adding it again is a fresh item, and
+    that is honest — it is being asked for a second time.
+    """
     def change(row, rows):
-        row["done"] = bool(done)
-        row["done_at"] = int(time.time()) if done else 0
+        rows.remove(row)
         return {"ok": True, "item": row,
-                "log": {"act": "done" if done else "undone",
-                        "id": row["id"], "text": row["text"]}}
+                "log": {"act": "done", "id": row["id"], "text": row["text"],
+                        **({"steps": len(row.get("steps") or [])}
+                           if row.get("steps") else {})}}
     return _edit(project, item_id, change, by)
 
 
@@ -388,7 +412,7 @@ def move(project, item_id, step=None, dir=0):
     if step is None:
         with _lock:
             d = load()
-            rows = _prune(d["projects"].get(project) or [])
+            rows = d["projects"].get(project) or []
             i = next((n for n, r in enumerate(rows)
                       if _int(r.get("id")) == item_id), None)
             if i is None:
@@ -466,23 +490,6 @@ def cross(project, item_id, step=None, on=True, by="you"):
     return _edit(project, item_id, change, by)
 
 
-def clear_done(project, by="you"):
-    with _lock:
-        d = load()
-        keep = [r for r in (d["projects"].get(project) or []) if not r.get("done")]
-        # One event per line, not one for the sweep: the point of the log is
-        # that the words survive whatever took them off, and "cleared 4 items"
-        # does not bring any of them back.
-        for r in (d["projects"].get(project) or []):
-            if r.get("done"):
-                _log(d, project, by, {"act": "remove", "id": r.get("id"),
-                                      "text": r.get("text", ""), "cleared": True})
-        d["projects"][project] = keep
-        _touch(d, project)
-        save(d)
-    return {"ok": True}
-
-
 def next_step(row):
     """Index of the next step that has not been sent, or None.
 
@@ -513,7 +520,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
         return {"error": "not an item"}
     with _lock:
         d = load()
-        rows = _prune(d["projects"].get(project) or [])
+        rows = d["projects"].get(project) or []
         row = _find(rows, item_id)
     if row is None:
         return {"error": "no such item"}
@@ -559,7 +566,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
         return r
     with _lock:
         d = load()
-        rows = _prune(d["projects"].get(project) or [])
+        rows = d["projects"].get(project) or []
         row = _find(rows, item_id)
         if row is not None:
             target = row["steps"][step] if row.get("steps") else row
@@ -648,7 +655,7 @@ def prompt(project):
     structure has already lost the point of it. Empty when there is nothing,
     so a project with no list adds nothing to any prompt.
     """
-    rows = [r for r in items(project) if not r.get("done")]
+    rows = items(project)
     if not rows:
         return ""
     lines = []

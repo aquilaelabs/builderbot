@@ -400,12 +400,33 @@ ok(page.dialogs.length > 0, 'the bin asks first — it is the only way anything 
 ok(!read().projects.alpha.some(r => String(r.id) === mine.id),
    '...and takes it off for good');
 
+// ---- finishing one -------------------------------------------------------
+// Only a session says a thing is done, through bb, because only a session
+// knows. It comes off the list when it does: a list is read to find out what
+// is left, and something finished is not left. The log is where it goes, and
+// what tells "ticked off" apart from "dropped".
+const fin = await post({ action: 'add', project: 'alpha', text: 'a job to finish' });
+const finId = String(fin.body.item.id);
+bbTodo('done', finId);
+ok(!read().projects.alpha.some(r => String(r.id) === finId),
+   'bb todo done takes the item off the list rather than fading it in place');
+const afterDone = bbTodo('history');
+ok(new RegExp(`done\\s+#${finId}\\s+a job to finish`).test(afterDone),
+   '...and writes it into the history, under the word a session used');
+ok(/\bdone\b/.test(afterDone) && /\bremove\b/.test(afterDone),
+   '...which is what tells "ticked off" apart from "dropped": both leave, '
+   + 'and only the log says which happened');
+ok(!bbTodo('--prompt').includes('a job to finish'),
+   '...so the next session is not handed work that is already finished');
+
 // ---- what the server refuses -------------------------------------------
 for (const [what, body] of [
   ['a project that does not exist', { action: 'add', project: 'nosuch', text: 'x' }],
   ['a project name that is really a path', { action: 'add', project: '../etc', text: 'x' }],
   ['an empty item', { action: 'add', project: 'alpha', text: '   ' }],
-  ['an item nobody has', { action: 'done', project: 'alpha', id: 9999 }],
+  ['an item nobody has', { action: 'edit', project: 'alpha', id: 9999, text: 'x' }],
+  ['ticking one off over the wire — that is a session\'s word, not a button',
+   { action: 'done', project: 'alpha', id: 1 }],
   ['an action nobody offers', { action: 'burn', project: 'alpha' }],
 ]){
   const r = await post(body);
