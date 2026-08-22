@@ -359,9 +359,10 @@ bb lint [path]     lint a repo's infrastructure files: shell scripts,
 bb findings        this project's scanner findings (--all for every project)
 bb todo            this project's shared to-do list
 bb todo add "..."  put something on it; `done N` finished, `rm N [why]` not
-bb todo shelve N   park one without dropping it; `unshelve N` brings it back
+bb todo shelve N   park one without dropping it; `mv N up|down` moves it
 bb todo add "..." --step "..." --step "..."   an ordered group of steps
 bb todo edit N "..."               reword one; `step add|edit|rm` for one step
+bb todo begin      work one out; `commit` records it as one change, `revert` undoes
 bb todo history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
@@ -1102,6 +1103,21 @@ only ever an undo: it appears on a line that *has* been sent, to put it back
 so it can go again. A line you handled yourself gets dropped, and its words
 stay in the log to be retyped if you were wrong.
 
+**Nothing the panel does reaches the list until you press Save.** Type three
+steps, reword one, drop another, shuffle the order — it is all held on the
+page until then, so a plan can be looked at whole before it is committed to.
+Close asks, names how many changes would go, and puts the list back exactly as
+it was. The one exception is the send arrow: it types into a live session,
+which no Save button can take back, so it flushes whatever is staged first and
+then goes.
+
+A session gets the same idea in a different shape: `bb todo begin`, then work,
+then `bb todo commit` — the changes land on the list as they are made, because
+that is how you can see what a session is doing, but the *record* is written
+once at commit. Rewording the same step four times is one history entry rather
+than four. `bb todo revert` puts the list back and writes nothing, and refuses
+if you have touched the list yourself since the batch opened.
+
 **Dropping something asks why.** The bin opens a box under the row with an
 optional reason field, and the reason is kept with the entry and is
 searchable — because nothing here can be undone, and that note is the only
@@ -1118,10 +1134,13 @@ arrows, and a session is told it is parked rather than left to wonder. It is
 the only control here that undoes itself — the same tap brings it back — and
 it applies to an item, never to one step of a plan, because the thing you
 have decided not to do now is the whole plan. Shelved items do not count
-towards the number on the project row.
+towards the number on the project row. A session can shelve (something turns
+out to be blocked, and saying so on the row beats saying it in a reply nobody
+re-reads) but cannot unshelve — taking one off reverses a decision it was not
+told the reason for.
 
 **A session can correct a plan, not just follow it** — `bb todo edit N`,
-`bb todo step add|edit|rm|mv` — which matters when the design moves under a plan
+`bb todo step add|edit|rm|mv`, `bb todo mv N up|down` — which matters when the design moves under a plan
 written a week ago. Every one of those lands in the history under `claude`,
 so nothing gets quietly rewritten.
 

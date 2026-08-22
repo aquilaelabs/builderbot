@@ -22,6 +22,15 @@ await page.goto(URL);
 await ready(page);
 
 const row = n => `#projects .row:has(.name:text-is("${n}"))`;
+// Nothing the panel does reaches disk until Save. Every assertion about the
+// file goes through this, which is also the assertion that staging works.
+const saveList = async () => {
+  if (await page.$eval('#todoSaveQuiet', b => b.disabled)) return;
+  await page.click('#todoSaveQuiet');
+  await page.waitForFunction(() => {
+    const b = document.getElementById('todoSaveQuiet');
+    return b.textContent !== 'Saving…' && b.disabled; }, { timeout: 15000 });
+};
 const bbTodoEarly = (...a) => execFileSync(BB, ['todo', ...a],
   { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
@@ -58,8 +67,17 @@ ok(items[0].text === 'make the picker wrap properly' && !items[0].claude,
    'Enter adds it, unmarked — this one is the operator\'s');
 ok(await page.$eval('#todoText', el => el.value === ''),
    '...and the field clears for the next one');
+// Staged, not written. The panel is a form with a Save button: three steps
+// typed and looked at together, then kept or dropped as one.
+ok(!(read().projects.alpha || []).length,
+   '...but nothing is on disk yet — the panel writes on Save and not before');
+ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+   '...which is what arms Save');
+ok(await page.$eval('#todoList .todo[data-step="-1"] .n', n => n.textContent) === 'new',
+   '...and it wears "new" rather than a number, because it has not got one yet');
+await saveList();
 ok(read().projects.alpha.length === 1,
-   'it lands in /config, not in the project');
+   'Save writes it, into /config and not into the project');
 
 // The row's number is the open count, which is the number worth a glance.
 await page.waitForFunction(() =>
@@ -267,6 +285,7 @@ await page.waitForFunction(id => document.querySelector(
 items = await open();
 ok(items.filter(i => i.id === c1.id).every(i => !i.can),
    'shelving kills every arrow in the group, its steps included');
+await saveList();
 ok(read().projects.alpha.at(-1).text === 'rework the picker',
    '...and sinks it to the bottom of the list, where what is not live belongs');
 const shelvedPrompt = execFileSync(BB, ['todo', '--prompt'],
@@ -324,6 +343,10 @@ await page.click('.dropbox .danger');
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo[data-step="0"]').length === 1
   && document.querySelectorAll('#todoList .todo[data-step="1"]').length === 0,
   { timeout: 10000 });
+ok(read().projects.alpha.find(r => String(r.id) === c1.id).steps.length === 2,
+   '...and it is off the screen before it is off the disk, like every other '
+   + 'change the panel makes');
+await saveList();
 items = await open();
 ok(!items.some(i => i.text === 'widen the select')
    && items.some(i => i.text === 'then re-measure it'),
@@ -354,6 +377,79 @@ ok(grp().steps[1].text === 'and check it at both sizes',
 bbTodo('step', 'rm', c1.id, '2');
 ok(grp().steps.length === 1, 'bb todo step rm drops one step and leaves the rest');
 
+// A session can move an item as well as a step — both halves of restructuring,
+// because it is the one that knows a plan has to happen before the item under
+// it. And it can shelve, but only in one direction: taking something off the
+// shelf reverses a decision it was not told the reason for.
+const orderNow = () => read().projects.alpha.map(r => String(r.id));
+const wasOrder = orderNow();
+bbTodo('mv', c1.id, 'up');
+ok(orderNow().indexOf(c1.id) === wasOrder.indexOf(c1.id) - 1,
+   'bb todo mv moves an item up the list');
+bbTodo('mv', c1.id, 'down');
+ok(JSON.stringify(orderNow()) === JSON.stringify(wasOrder), '...and back down');
+bbTodo('shelve', c1.id);
+ok(read().projects.alpha.at(-1).shelved, 'bb todo shelve parks one');
+ok(/no unshelve|usage: bb todo/.test(
+     (() => { try { return bbTodo('unshelve', c1.id); }
+              catch (e) { return String(e.stderr || e); } })()),
+   '...and there is no unshelve for a session; that tap is the operator\'s');
+await post({ action: 'shelve', project: 'alpha', id: Number(c1.id), on: false });
+
+// ---- batches -------------------------------------------------------------
+// Working something out is arriving at one decision, not making a series of
+// them. The list still moves as the work happens — hiding it would be worse
+// than a noisy log — but the record is written once, at commit.
+bbTodo('begin');
+bbTodo('edit', c1.id, 'a first attempt at the wording');
+bbTodo('edit', c1.id, 'a second attempt');
+bbTodo('edit', c1.id, 'what it should have said all along');
+ok(read().projects.alpha.find(r => String(r.id) === c1.id).text
+   === 'what it should have said all along',
+   'a batch does not hide the work — the list moves as it is made');
+ok(/batch open/.test(bbTodo()),
+   '...and says so at the top of the list, so it cannot be left open unnoticed');
+const beforeCommit = bbTodo('history', '-n', '30');
+ok(!/a second attempt/.test(beforeCommit),
+   '...while writing nothing to the log yet');
+const done1 = bbTodo('commit');
+ok(/1 entry, 2 folded/.test(done1),
+   'commit folds three rewordings of one line into the one that happened');
+// Found rather than counted to: several of these land in the same second, so
+// "the last three" is not a stable way to ask for one of them.
+const afterCommit = bbTodo('history', '--find', 'attempt');
+ok(!afterCommit.includes('a second attempt')
+   && !afterCommit.includes('a first attempt'),
+   '...and the attempts it discarded are not in the log at all');
+ok(/what it should have said all along/.test(
+     bbTodo('history', '--find', 'should have said')),
+   '...only the wording it ended on');
+
+bbTodo('begin');
+bbTodo('add', 'something it thought better of');
+bbTodo('edit', c1.id, 'mangled again');
+bbTodo('revert');
+ok(!read().projects.alpha.some(r => r.text === 'something it thought better of')
+   && read().projects.alpha.find(r => String(r.id) === c1.id).text
+      === 'what it should have said all along',
+   'revert puts the list back exactly as the batch found it');
+ok(!/mangled again/.test(bbTodo('history', '-n', '10')),
+   '...and writes nothing at all');
+
+bbTodo('begin');
+bbTodo('edit', c1.id, 'the session was mid-thought');
+await post({ action: 'add', project: 'alpha', text: 'and the operator typed this' });
+ok(/and the operator typed this/.test(bbTodo('history', '-n', '5')),
+   'a change the operator makes while a batch is open is logged straight away, '
+   + 'not swept into somebody else\'s batch');
+const refused = (() => { try { return bbTodo('revert'); }
+                         catch (e) { return String(e.stderr || e); } })();
+ok(/operator has changed this list/.test(refused),
+   '...which is what lets revert refuse rather than undo their work too');
+bbTodo('commit');
+await post({ action: 'remove', project: 'alpha',
+             id: read().projects.alpha.find(r => r.text === 'and the operator typed this').id });
+
 // ---- the history --------------------------------------------------------
 // Two people write this list and it only ever shows the present tense, so
 // "was that step always worded like that?" had no answer. Now every change
@@ -367,13 +463,18 @@ const log = await page.$$eval('#todoList .hist', hs => hs.map(h => ({
   when: h.querySelector('.when').textContent.trim(),
   act: h.querySelector('.act').textContent.trim(),
   was: h.querySelector('.was')?.textContent.trim() || '',
+  by: h.querySelector('.who')?.textContent.trim() || '',
   what: h.querySelector('.what').textContent.replace(/\s+/g, ' ').trim() })));
-ok(log[0].act === 'dropped a step' && /and check it at both sizes/.test(log[0].what),
-   'the log opens newest first, on the last thing that happened');
+ok(log.length > 1 && log.every((e, i) => !i || e.when <= log[i - 1].when),
+   'the log opens newest first');
+ok(log.some(e => e.act === 'dropped a step'
+                 && /and check it at both sizes/.test(e.what)),
+   '...and carries the words of what was dropped, which is the point of it');
 ok(/\d{1,2}\s*\w+.*\d{2}:\d{2}/.test(log[0].when),
    '...with the date and the time on every line');
-ok(/claude/.test(log[0].what),
-   '...and who did it, which is the half neither of you can reconstruct');
+ok(log.every(e => e.by === 'claude' || e.by === 'you'),
+   '...and who did it on every line, which is the half neither of you can '
+   + 'reconstruct afterwards');
 ok(log.some(e => e.act === 'reworded'
                  && /rework the picker, properly/.test(e.what)
                  && e.was === 'rework the picker'),
@@ -381,7 +482,7 @@ ok(log.some(e => e.act === 'reworded'
 ok(log.some(e => e.act === 'dropped' || e.act === 'dropped a step'),
    '...and so is every drop, which is what makes the bin recoverable by hand');
 ok(log.some(e => e.act === 'added' && /make the picker wrap properly/.test(e.what)
-                 && / you/.test(e.what)),
+                 && e.by === 'you'),
    'the operator\'s own additions are in it too, marked as theirs');
 ok(log.some(e => e.act === 'sent'),
    '...and so is every handover, which is the record of what a session was asked');
@@ -453,6 +554,7 @@ ok(read().projects.alpha.some(r => String(r.id) === mine.id),
 await page.click('.dropbox .danger');
 await page.waitForFunction(id => !document.querySelector(`#todoList .todo[data-id="${id}"]`),
                            mine.id, { timeout: 10000 });
+await saveList();
 ok(!read().projects.alpha.some(r => String(r.id) === mine.id),
    '...and takes it off for good');
 ok(/remove\s+#\d+\s+delete a project/.test(bbTodoEarly('history', '-n', '4')),
@@ -520,11 +622,16 @@ await page.keyboard.press('Enter');
 await page.waitForFunction(id => document.querySelectorAll(
   `#todoList .grp:has(.todo[data-id="${id}"]) .todo.step`).length === 2, plainId,
   { timeout: 10000 });
+// Two steps typed, neither written: this is the case the staging is for —
+// look at the pair, then keep them or drop them as one.
+ok(!(read().projects.alpha.find(r => String(r.id) === plainId).steps || []).length,
+   '...and neither of them is on disk while the field is still open');
+await page.keyboard.press('Escape');
+await saveList();
 let made = read().projects.alpha.find(r => String(r.id) === plainId);
 ok(made.steps.length === 2 && made.steps[0].text === 'first, widen it'
    && made.steps[1].text === 'then re-measure',
-   '...and they land in the order they were typed');
-await page.keyboard.press('Escape');
+   'Save writes them, in the order they were typed');
 
 // A step's own words are editable, which they were not: the pencil is on
 // every row, and a plan is written before it is right. In a box under the row
@@ -539,6 +646,7 @@ await page.click('.editbox .primary');
 await page.waitForFunction(id => document.querySelector(
   `#todoList .todo[data-id="${id}"][data-step="0"] .txt`)?.textContent
   === 'first, widen it a lot', plainId, { timeout: 10000 });
+await saveList();
 ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].text
    === 'first, widen it a lot',
    'the pencil rewords a step, not only an item');
@@ -553,6 +661,7 @@ await page.click('.editbox .primary');
 await page.waitForFunction(id => /\n/.test(document.querySelector(
   `#todoList .todo[data-id="${id}"][data-step="0"] .txt`)?.textContent || ''),
   plainId, { timeout: 10000 });
+await saveList();
 ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].text
    === 'widen the select\n\nand check it at 412px',
    'a step keeps the breaks it was written with');
@@ -575,6 +684,43 @@ await page.click(`#todoList .addstep[data-id="${plainId}"] .stop`);
 await page.waitForFunction(id => !document.querySelector(
   `#todoList .addstep[data-id="${id}"] input`), plainId, { timeout: 10000 });
 ok(true, 'Cancel closes the step field without adding anything');
+
+// ---- nothing lands until Save, and Close is the other answer ------------
+// Deletions and rewords are staged like everything else: the panel is a form,
+// and a form you can close is a form you can change your mind in.
+await saveList();
+const untouched = JSON.stringify(read().projects.alpha);
+const wasText = read().projects.alpha.find(r => String(r.id) === plainId).text;
+await page.click(`#todoList .todo[data-id="${plainId}"][data-step="-1"] .ed`);
+await page.waitForSelector('.editbox textarea', { timeout: 10000 });
+await page.fill('.editbox textarea', 'a wording nobody asked for');
+await page.click('.editbox .primary');
+await page.waitForFunction(id => document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="-1"] .txt`)?.textContent
+  === 'a wording nobody asked for', plainId, { timeout: 10000 });
+await page.click(`#todoList .todo[data-id="${plainId}"][data-step="0"] .rm`);
+await page.waitForSelector('.dropbox .danger', { timeout: 10000 });
+await page.click('.dropbox .danger');
+await page.waitForFunction(id => document.querySelectorAll(
+  `#todoList .grp:has(.todo[data-id="${id}"]) .todo.step`).length === 1,
+  plainId, { timeout: 10000 });
+ok(JSON.stringify(read().projects.alpha) === untouched,
+   'a reword and a deletion both wait for Save, the same as an addition');
+
+page.dialogs = [];
+await page.click('#memClose');
+await page.waitForFunction(() => document.getElementById('memModal').hidden,
+                           { timeout: 10000 });
+ok(page.dialogs.some(d => /Close without saving\? 2 changes/.test(d)),
+   'Close names how many would go, rather than asking in the abstract');
+ok(JSON.stringify(read().projects.alpha) === untouched,
+   '...and dropping them leaves the file exactly as it was');
+await page.click(`${row('alpha')} [data-m]`);
+await page.waitForSelector('#todoList .todo', { timeout: 20000 });
+const reopened = await open();
+ok(reopened.filter(i => i.id === plainId && i.step !== '-1').length === 2
+   && reopened.find(i => i.id === plainId && i.step === '-1').text === wasText,
+   '...and both the deleted step and the original wording are back on screen');
 
 // ---- moving things about -----------------------------------------------
 // Its own mode: five controls and a number do not fit a phone row, and
@@ -603,46 +749,29 @@ await page.waitForFunction(o => JSON.stringify([...document.querySelectorAll(
 const now = await order();
 ok(now.indexOf(was[0]) === 1 && now.indexOf(was[1]) === 0,
    'an item moves down past the one below it');
-// Reordering is the one edit held back: everything else here is a decision
-// and is written as it is made, but arranging is a draft you are in the
-// middle of, and closing on a half-done shuffle must leave the order alone.
 ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.stringify(was),
    '...on screen only — the file still has the order it started with');
 ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
    '...and both Saves are armed, because there is something to commit');
 
-// Cancelling the mode puts it back, and never touched the file.
+// Leaving the mode is a mode switch and nothing more: the shuffle is staged
+// like every other change now, so it survives until Save or Close decides.
 page.dialogs = [];
 await page.click('#todoOrder');
-await page.waitForFunction(o => JSON.stringify([...document.querySelectorAll(
-  '#todoList .grp .todo[data-step="-1"] .txt')].map(t => t.textContent.slice(0, 14)))
-  === JSON.stringify(o), was, { timeout: 10000 });
-ok(page.dialogs.some(d => /Discard the reordering/.test(d)),
-   'leaving the mode with a shuffle in hand asks before dropping it');
-ok(JSON.stringify(await order()) === JSON.stringify(was),
-   '...and puts the order back');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo .mv').length === 0,
+                           { timeout: 10000 });
+ok(page.dialogs.length === 0,
+   'leaving the mode asks nothing — the shuffle is held, not thrown away');
+ok(JSON.stringify(await order()) !== JSON.stringify(was),
+   '...and the order on screen is still the rearranged one');
+ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
+   '...with Save still holding it');
 
-// Do it again and keep it this time.
-await page.click('#todoOrder');
-await page.waitForFunction(() => document.querySelectorAll('#todoList .todo .mv').length > 0);
-await page.click(`#todoList .todo[data-id="${firstId}"][data-step="-1"] .mv[data-dir="1"]`);
-await page.waitForFunction(o => JSON.stringify([...document.querySelectorAll(
-  '#todoList .grp .todo[data-step="-1"] .txt')].map(t => t.textContent.slice(0, 14)))
-  !== JSON.stringify(o), was, { timeout: 10000 });
-await page.click('#todoSaveQuiet');
-await page.waitForFunction(() => {
-  const b = document.getElementById('todoSaveQuiet');
-  return b.textContent !== 'Saving…' && b.disabled; }, { timeout: 15000 });
+await saveList();
 const kept = await order();
 ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.stringify(kept)
    && JSON.stringify(kept) !== JSON.stringify(was),
    'Save is what writes it — and the file is then the order on screen');
-page.dialogs = [];
-await page.click('#todoOrder');
-await page.waitForFunction(() => document.querySelectorAll('#todoList .todo .mv').length === 0);
-ok(page.dialogs.length === 0,
-   '...and leaving the mode with nothing pending asks nothing');
-
 // A step that has gone does not move, and nothing moves above it.
 await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: true });
 await page.evaluate(() => loadTodo(memGen));

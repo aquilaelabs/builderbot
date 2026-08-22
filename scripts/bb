@@ -628,6 +628,11 @@ rest = argv[1:]
 
 def show():
     rows = todo.items(proj)
+    b = todo.batch(proj)
+    if b:
+        print(f"  [batch open — {b['changes']} change"
+              f"{'' if b['changes'] == 1 else 's'} unrecorded; "
+              "bb todo commit, or revert]")
     if not rows:
         print(f"nothing on {proj}'s list")
         return
@@ -692,12 +697,43 @@ elif op in ("rm", "remove"):
         print("usage: bb todo rm <n> [\"why it is going\"]", file=sys.stderr); sys.exit(1)
     r = todo.remove(proj, rest[0], by="claude", why=" ".join(rest[1:])); bail(r)
     print(f"removed {rest[0]}")
-elif op in ("shelve", "unshelve"):
+elif op in ("begin", "commit", "revert"):
+    # Working something out is not a series of decisions the operator has to
+    # read; it is arriving at one. The work still lands on the list as it
+    # happens — hiding it would be worse than a noisy log — but the record is
+    # written once, at commit, saying what changed rather than every step of
+    # getting there.
+    if op == "begin":
+        bail(todo.begin(proj)); print(f"batch open on {proj} — commit or revert it")
+    elif op == "commit":
+        r = todo.commit(proj); bail(r)
+        print(f"committed: {r['written']} entr{'y' if r['written'] == 1 else 'ies'}"
+              + (f", {r['folded']} folded into them" if r["folded"] else ""))
+    else:
+        r = todo.revert(proj); bail(r)
+        print(f"reverted: the list is back as it was, {r['dropped']} change"
+              f"{'' if r['dropped'] == 1 else 's'} dropped")
+elif op in ("mv", "move"):
+    # The list's own order, not a group's. Both halves of restructuring belong
+    # to a session: it is the one that knows a plan has to happen before the
+    # item under it, and deleting and retyping to express that loses the words
+    # and the record both.
+    if len(rest) < 2 or rest[1] not in ("up", "down"):
+        print("usage: bb todo mv <n> up|down", file=sys.stderr); sys.exit(1)
+    r = todo.move(proj, rest[0], dir=-1 if rest[1] == "up" else 1, by="claude")
+    bail(r)
+    print(f"moved {rest[0]} {rest[1]}")
+elif op == "shelve":
     # Parked, not dropped: a reason to keep it, no intention of doing it now.
+    # One direction only. Putting something on the shelf is a thing a session
+    # knows — it is blocked, or it is waiting on somebody — and it is loud:
+    # the row goes dark at the bottom and the log says who did it. Taking one
+    # *off* is reversing a decision the operator made for reasons the session
+    # was not told, so it is theirs, and one tap in the panel.
     if not rest:
-        print(f"usage: bb todo {op} <n>", file=sys.stderr); sys.exit(1)
-    r = todo.shelve(proj, rest[0], op == "shelve", by="claude"); bail(r)
-    print(f"{op}d {rest[0]}")
+        print("usage: bb todo shelve <n>", file=sys.stderr); sys.exit(1)
+    r = todo.shelve(proj, rest[0], True, by="claude"); bail(r)
+    print(f"shelved {rest[0]} — say in your reply why, the operator unshelves it")
 elif op == "edit":
     # A plan written last week can describe a design that has since moved.
     # Correcting it is better than working around it, and the history keeps
@@ -781,8 +817,8 @@ elif op in ("history", "log"):
             print(f"{'':>32}why: {e['why']}")
 else:
     print("usage: bb todo [list|add TEXT [--step ...]|edit N TEXT|"
-          "step add|edit|rm|mv ...|done N|rm N [WHY]|shelve N|unshelve N|"
-          "history [-n N] [--since D] [--find TEXT]]",
+          "step add|edit|rm|mv ...|mv N up|down|done N|rm N [WHY]|shelve N|"
+          "begin|commit|revert|history [-n N] [--since D] [--find TEXT]]",
           file=sys.stderr)
     sys.exit(1)
 PY
