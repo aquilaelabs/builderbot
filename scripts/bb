@@ -633,9 +633,13 @@ def show():
         return
     for r in rows:
         # No done column: everything here is outstanding by construction, and
-        # a box that is never ticked is a column of nothing.
+        # a box that is never ticked is a column of nothing. Shelved is worth
+        # a column, because it is the one state that changes whether a line is
+        # asking for anything.
         who = " (claude)" if r.get("by") == "claude" else ""
-        print(f"  {r['id']:>3}  {r['text']}{who}")
+        mark = "~" if r.get("shelved") else " "
+        print(f" {mark}{r['id']:>3}  {r['text']}{who}"
+              + ("  [shelved]" if r.get("shelved") else ""))
         for i, st in enumerate(r.get("steps") or []):
             print(f"          {i + 1}. {st['text']}"
                   + ("  (sent)" if st.get("sent") else ""))
@@ -681,10 +685,19 @@ elif op == "done":
     r = todo.tick(proj, rest[0], by="claude"); bail(r)
     print(f"done {rest[0]}: {r['item']['text']}")
 elif op in ("rm", "remove"):
+    # The reason rides with the deletion. Nothing here can be undone, so the
+    # only thing that stops the next reader putting it straight back is a note
+    # saying why it went.
     if not rest:
-        print("usage: bb todo rm <n>", file=sys.stderr); sys.exit(1)
-    r = todo.remove(proj, rest[0], by="claude"); bail(r)
+        print("usage: bb todo rm <n> [\"why it is going\"]", file=sys.stderr); sys.exit(1)
+    r = todo.remove(proj, rest[0], by="claude", why=" ".join(rest[1:])); bail(r)
     print(f"removed {rest[0]}")
+elif op in ("shelve", "unshelve"):
+    # Parked, not dropped: a reason to keep it, no intention of doing it now.
+    if not rest:
+        print(f"usage: bb todo {op} <n>", file=sys.stderr); sys.exit(1)
+    r = todo.shelve(proj, rest[0], op == "shelve", by="claude"); bail(r)
+    print(f"{op}d {rest[0]}")
 elif op == "edit":
     # A plan written last week can describe a design that has since moved.
     # Correcting it is better than working around it, and the history keeps
@@ -708,24 +721,68 @@ elif op == "step":
     elif sub in ("rm", "remove") and len(srest) >= 2:
         r = todo.remove(proj, srest[0],
                         step=todo._int(srest[1]) - 1 if todo._int(srest[1]) else None,
-                        by="claude"); bail(r)
+                        by="claude", why=" ".join(srest[2:])); bail(r)
         print(f"removed step {srest[1]} of {srest[0]}")
+    elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] in ("up", "down"):
+        # The other half of restructuring a plan. Without it a session that
+        # finds two steps in the wrong order can only delete and retype them,
+        # which loses both their words and the record of what really changed.
+        r = todo.move(proj, srest[0],
+                      step=todo._int(srest[1]) - 1 if todo._int(srest[1]) else None,
+                      dir=-1 if srest[2] == "up" else 1, by="claude"); bail(r)
+        print(f"moved step {srest[1]} of {srest[0]} {srest[2]}")
     else:
         print("usage: bb todo step add <n> \"...\" | step edit <n> <step> \"...\""
-              " | step rm <n> <step>", file=sys.stderr)
+              " | step rm <n> <step> [\"why\"] | step mv <n> <step> up|down",
+              file=sys.stderr)
         sys.exit(1)
 elif op in ("history", "log"):
-    h = todo.history(proj)
+    # Narrowed on the way out, not on the way in: this is read by sessions as
+    # often as by people, and a whole log pasted into a conversation costs
+    # more context than the one line anybody wanted from it.
+    limit, since, find, i = 20, None, None, 0
+    while i < len(rest):
+        a = rest[i]
+        if a in ("-n", "--last") and i + 1 < len(rest):
+            limit = todo._int(rest[i + 1]); i += 2
+        elif a == "--all":
+            limit = None; i += 1
+        elif a == "--since" and i + 1 < len(rest):
+            # A day count, or a date. Both are things somebody types from
+            # memory; neither needs a library to read.
+            v = rest[i + 1]
+            n = todo._int(v.rstrip("d")) if v.rstrip("d").isdigit() else None
+            if n is not None:
+                since = int(time.time()) - n * 86400
+            else:
+                try:
+                    since = int(time.mktime(time.strptime(v, "%Y-%m-%d")))
+                except ValueError:
+                    print(f"[builderbot] ERROR: not a date or a day count: {v}",
+                          file=sys.stderr); sys.exit(1)
+            i += 2
+        elif a in ("--find", "-f") and i + 1 < len(rest):
+            find = rest[i + 1]; i += 2
+        else:
+            print("usage: bb todo history [-n N|--all] [--since 7d|YYYY-MM-DD] "
+                  "[--find TEXT]", file=sys.stderr)
+            sys.exit(1)
+    h = todo.history(proj, limit=limit, since=since, find=find)
     if not h:
-        print(f"nothing has happened to {proj}'s list yet")
+        print(f"nothing on {proj}'s list matches that")
     for e in h:
         when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
         where = f" step {e['step'] + 1} of" if e.get("step") is not None else ""
         print(f"  {when}  {e.get('by', ''):>6}  {e.get('act', ''):<11}"
               f"{where} #{e.get('id')}  {e.get('text', '')}")
+        if e.get("was"):
+            print(f"{'':>32}was: {e['was']}")
+        if e.get("why"):
+            print(f"{'':>32}why: {e['why']}")
 else:
     print("usage: bb todo [list|add TEXT [--step ...]|edit N TEXT|"
-          "step add|edit|rm ...|done N|rm N|history]",
+          "step add|edit|rm|mv ...|done N|rm N [WHY]|shelve N|unshelve N|"
+          "history [-n N] [--since D] [--find TEXT]]",
           file=sys.stderr)
     sys.exit(1)
 PY

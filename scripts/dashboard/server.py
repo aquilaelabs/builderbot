@@ -2091,12 +2091,18 @@ class Handler(BaseHTTPRequestHandler):
             r = todo.cross(name, req.get("id"), req.get("step"),
                            bool(req.get("on", True)))
         elif act == "remove":
-            r = todo.remove(name, req.get("id"), req.get("step"))
+            r = todo.remove(name, req.get("id"), req.get("step"),
+                            why=field(req, "why"))
+        elif act == "shelve":
+            r = todo.shelve(name, req.get("id"), bool(req.get("on", True)))
         elif act == "history":
             # Fetched only when the panel is showing it. It rides in no poll:
             # a log nobody has opened is bytes on every status request for
-            # every project, forever.
-            return self._json({"history": todo.history(name)})
+            # every project, forever. Narrowed server-side for the same
+            # reason: the panel asks for a window, not for everything.
+            return self._json({"history": todo.history(
+                name, limit=req.get("limit"), since=req.get("since"),
+                find=field(req, "find"))})
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):

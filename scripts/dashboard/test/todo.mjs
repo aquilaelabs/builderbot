@@ -22,6 +22,9 @@ await page.goto(URL);
 await ready(page);
 
 const row = n => `#projects .row:has(.name:text-is("${n}"))`;
+const bbTodoEarly = (...a) => execFileSync(BB, ['todo', ...a],
+  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws` } }).toString();
 const post = body => page.evaluate(async b => {
   const r = await fetch('/api/todo', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
@@ -136,9 +139,10 @@ await page.click(`${row('alpha')} [data-m]`);
 await page.waitForSelector('#todoList .todo', { timeout: 20000 });
 items = await open();
 const still = items.find(i => i.id === mine.id);
-ok(still.sent && !still.can,
-   '...and it stays, struck through — and locked until it is put back, so the '
-   + 'strike means one thing');
+ok(still.sent && still.can,
+   '...and it stays, struck through — and still live, because "it did not '
+   + 'take, do it again" is a real answer and the strike is the record of the '
+   + 'first go rather than a lock on the second');
 ok(items.findIndex(i => i.id === mine.id) === wasAt,
    '...in the place it was, because the order is the record');
 
@@ -195,9 +199,9 @@ await page.waitForFunction(id => document.querySelector(
 items = await open();
 ok(items.find(i => i.text === 'then re-measure it').can,
    'sending the first opens the second, and only then');
-ok(!items.find(i => i.text === 'widen the select').can,
-   '...and a crossed step cannot be sent: put it back first, so struck through '
-   + 'means one thing rather than two');
+ok(items.find(i => i.text === 'widen the select').can,
+   '...and the one that went can go again, which is what a step that quietly '
+   + 'did not happen needs');
 ok(items.findIndex(i => i.text === 'widen the select')
    < items.findIndex(i => i.text === 'then re-measure it'),
    '...and nothing moved');
@@ -247,40 +251,41 @@ ok(items.find(i => i.text === 'rework the picker').sel
 await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="-1"] .go`);
 await page.waitForFunction(() => document.getElementById('todoGo').disabled);
 
-// The strike is an undo and nothing else. It is offered on a line that went,
-// to put it back, and never on one that did not: crossing an unsent line off
-// by hand used to be here and is gone, because struck-by-hand and struck-by-
-// sending looked identical and the list filled up with things that looked
-// dealt with and were not. The bin is the answer for those, and the history
-// keeps their words.
-const strikes = () => page.$$eval('#todoList .todo',
+// ---- the shelf -----------------------------------------------------------
+// The state between "do this" and "we are not doing this". It is an item's
+// business, never a step's: parking one step of a plan and leaving the rest
+// live is not a state a plan can be in, so a group is shelved whole.
+const shelves = () => page.$$eval('#todoList .todo',
   ts => ts.filter(t => t.querySelector('.x')).map(t => t.dataset.step));
-ok(!(await strikes()).includes('0') && !(await strikes()).includes('1'),
-   'a step that has not been sent offers no way to cross it off by hand');
+ok((await shelves()).every(st => st === '-1'),
+   'only items carry a shelf button — never a step of a plan');
 
-await post({ action: 'send', project: 'alpha', id: Number(c1.id), step: 0 });
-await page.evaluate(() => loadTodo(memGen));
+await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="-1"] .x`);
 await page.waitForFunction(id => document.querySelector(
-  `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
-  c1.id, { timeout: 15000 });
-ok((await strikes()).includes('0') && !(await strikes()).includes('1'),
-   '...and once it has gone, that one and only that one can be put back');
-const promptNow = execFileSync(BB, ['todo', '--prompt'],
-  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
-           WORKSPACE: `${DIR}/ws` } }).toString();
-ok(!/crossed off by hand/.test(promptNow) && /already sent to a session/.test(promptNow),
-   '...and a session is only ever told a line was sent, which is now the only '
-   + 'thing a strike can mean');
-
-await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .x`);
-await page.waitForFunction(id => !document.querySelector(
-  `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
+  `#todoList .grp:has(.todo[data-id="${id}"])`)?.classList.contains('shelved'),
   c1.id, { timeout: 10000 });
 items = await open();
-ok(!items.find(i => i.text === 'then re-measure it').can,
-   'putting it back closes the group up behind it — the first is next again');
-ok(!(await strikes()).includes('0'),
-   '...and the strike goes with it, since there is nothing left to undo');
+ok(items.filter(i => i.id === c1.id).every(i => !i.can),
+   'shelving kills every arrow in the group, its steps included');
+ok(read().projects.alpha.at(-1).text === 'rework the picker',
+   '...and sinks it to the bottom of the list, where what is not live belongs');
+const shelvedPrompt = execFileSync(BB, ['todo', '--prompt'],
+  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws` } }).toString();
+ok(/shelved — the operator has parked this/.test(shelvedPrompt),
+   '...and a session is told it is parked, rather than left to wonder');
+const up = await post({ action: 'move', project: 'alpha', id: Number(c1.id), dir: -1 });
+ok(up.status === 400 && /stay at the bottom/.test(up.body.error),
+   '...and it cannot be shuffled back up among the live ones');
+page.errors = [];
+
+await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="-1"] .x`);
+await page.waitForFunction(id => !document.querySelector(
+  `#todoList .grp:has(.todo[data-id="${id}"])`)?.classList.contains('shelved'),
+  c1.id, { timeout: 10000 });
+ok((await open()).find(i => i.id === c1.id && i.step === '-1').can,
+   'the same button takes it off the shelf — the one control here that undoes '
+   + 'itself, which is the whole difference between it and the bin');
 
 // The bin sits at the head of the queue: things come off a plan from the
 // front, and the item's own row always has one.
@@ -291,8 +296,25 @@ ok(JSON.stringify(await bins()) === JSON.stringify(['-1', '-1', '-1', '0']),
      JSON.stringify(await bins())})`);
 
 // ---- dropping one step out of a plan -----------------------------------
-page.dialogs = [];
+// With the reason it went. Nothing here can be undone, so the note is the
+// only thing standing between a dropped line and somebody adding it back —
+// and it is optional, because a reason demanded is a reason typed as "x".
 await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .rm`);
+await page.waitForSelector('.dropbox', { timeout: 10000 });
+ok(await page.$$eval('#todoList .todo', ts => ts.length) > 0
+   && read().projects.alpha.find(r => String(r.id) === c1.id).steps.length === 2,
+   'the bin asks in place, and nothing has gone while it is asking');
+ok(await page.evaluate(() => document.activeElement?.tagName !== 'INPUT'),
+   '...without the cursor in the field, like every other box in this window');
+await page.click('.dropbox .stop');
+ok(await page.$('.dropbox') === null
+   && read().projects.alpha.find(r => String(r.id) === c1.id).steps.length === 2,
+   'Cancel closes it and drops nothing');
+
+await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .rm`);
+await page.waitForSelector('.dropbox input', { timeout: 10000 });
+await page.fill('.dropbox input', 'the select is gone, nothing to widen');
+await page.click('.dropbox .danger');
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo[data-step="0"]').length === 1
   && document.querySelectorAll('#todoList .todo[data-step="1"]').length === 0,
   { timeout: 10000 });
@@ -302,18 +324,17 @@ ok(!items.some(i => i.text === 'widen the select')
    'a step can be dropped out of a group on its own');
 ok(items.find(i => i.text === 'then re-measure it').can,
    '...and what was behind it becomes the next in line');
-ok(read().projects.alpha.find(r => r.text === 'rework the picker').steps.length === 1,
+ok(read().projects.alpha.find(r => String(r.id) === c1.id).steps.length === 1,
    '...leaving the rest of the plan intact');
-ok(page.dialogs.some(d => /Drop/.test(d)),
-   '...and it asked first, the way every deletion here does');
+ok(bbTodoEarly('history', '--find', 'nothing to widen')
+     .includes('why: the select is gone, nothing to widen'),
+   '...and the reason it went is in the log, findable by its own words');
 
 // ---- a session correcting a plan ---------------------------------------
 // A plan written last week can describe a design that has since moved.
 // Correcting it beats working around it, so the CLI a session drives can
 // reword an item and add, reword or drop a single step of one.
-const bbTodo = (...a) => execFileSync(BB, ['todo', ...a],
-  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
-           WORKSPACE: `${DIR}/ws` } }).toString();
+const bbTodo = bbTodoEarly;
 const grp = () => read().projects.alpha.find(r => String(r.id) === String(c1.id));
 bbTodo('edit', c1.id, 'rework the picker, properly this time');
 ok(grp().text === 'rework the picker, properly this time',
@@ -359,6 +380,33 @@ ok(log.some(e => e.act === 'added' && /make the picker wrap properly/.test(e.wha
 ok(log.some(e => e.act === 'sent'),
    '...and so is every handover, which is the record of what a session was asked');
 
+// Narrowing it, because a session reading this pays for every line of it and
+// the operator scrolling a phone pays too. The search reads the words, what a
+// line used to say, and the reason it went.
+await page.fill('#histFind', 'nothing to widen');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .hist').length === 1,
+                           { timeout: 10000 });
+ok(await page.$eval('#todoList .hist .note', n => /nothing to widen/.test(n.textContent)),
+   'searching finds a line by the reason it was dropped, not just by its words');
+await page.fill('#histFind', 'rework the picker');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .hist').length > 1,
+                           { timeout: 10000 });
+ok(true, '...and by its words');
+await page.fill('#histFind', 'zzz nothing at all');
+await page.waitForFunction(() => /matches that/.test(
+  document.getElementById('todoList').textContent), { timeout: 10000 });
+ok(true, '...and says so plainly when nothing does');
+await page.fill('#histFind', '');
+await page.selectOption('#histN', '25');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .hist').length > 1,
+                           { timeout: 10000 });
+const capped = await page.$$eval('#todoList .hist', hs => hs.length);
+ok(capped <= 25, `the window caps what comes back (${capped} of them)`);
+await page.selectOption('#histWhen', '0');
+await page.waitForTimeout(500);
+ok(await page.$$eval('#todoList .hist', hs => hs.length) >= capped,
+   '...and widening it to all time brings back at least as much');
+
 // The log is a view, not a mode you can edit from: the add row and the send
 // strip go while it is up, so nothing is armed against a list you cannot see.
 ok(await page.$eval('#todoAdd', b => !b.checkVisibility())
@@ -392,13 +440,17 @@ execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'stty echo'
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
 
 // ---- dropping ----------------------------------------------------------
-page.dialogs = [];
 await page.click(`#todoList .todo[data-id="${mine.id}"][data-step="-1"] .rm`);
+await page.waitForSelector('.dropbox', { timeout: 10000 });
+ok(read().projects.alpha.some(r => String(r.id) === mine.id),
+   'the bin asks first — it is one of the two ways anything leaves');
+await page.click('.dropbox .danger');
 await page.waitForFunction(id => !document.querySelector(`#todoList .todo[data-id="${id}"]`),
                            mine.id, { timeout: 10000 });
-ok(page.dialogs.length > 0, 'the bin asks first — it is the only way anything leaves');
 ok(!read().projects.alpha.some(r => String(r.id) === mine.id),
    '...and takes it off for good');
+ok(/remove\s+#\d+\s+delete a project/.test(bbTodoEarly('history', '-n', '4')),
+   '...into the log, with or without a reason typed into the box');
 
 // ---- finishing one -------------------------------------------------------
 // Only a session says a thing is done, through bb, because only a session
