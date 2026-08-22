@@ -368,8 +368,11 @@ button.on{background:#1f6f36;border-color:#2ea043}
    readability of the row. */
 .todo .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .todo .tags{display:flex;gap:5px;flex-wrap:wrap}
+/* pre-wrap, because a step may be written across a few lines: one step is one
+   message the operator sends by hand, so the cheap unit has to be able to hold
+   a paragraph rather than pushing a plan into more steps than it needs. */
 .todo .txt{min-width:0;font:13px/1.45 system-ui,sans-serif;
-  overflow-wrap:anywhere;cursor:text}
+  overflow-wrap:anywhere;cursor:text;white-space:pre-wrap}
 .todo.step .txt{font-size:12.5px}
 /* Struck through means *sent*, not done. It stays where it was — the order is
    the record — so that a step that was handed over and quietly not carried out
@@ -439,6 +442,13 @@ button.on{background:#1f6f36;border-color:#2ea043}
   border:1px solid var(--line);border-radius:6px;padding:6px 8px;
   font:12.5px/1.4 system-ui,sans-serif;min-height:var(--tap)}
 @media(max-width:900px){ .dropbox input{font-size:16px} }
+.dropbox textarea{width:100%;box-sizing:border-box;background:#161b22;
+  color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 8px;
+  font:12.5px/1.5 system-ui,sans-serif;min-height:86px;resize:vertical;
+  white-space:pre-wrap}
+@media(max-width:900px){ .dropbox textarea{font-size:16px} }
+/* Rewording is not a deletion; it borrows the box and not the red. */
+.editbox{border-color:var(--line);background:#12171d}
 .dropbox .acts{display:flex;gap:8px;margin-top:8px}
 .dropbox .acts .sp{flex:1}
 /* Giving an item a step, which is how a plain one becomes a plan. */
@@ -3875,14 +3885,15 @@ function stepRow(r, idx, live){
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
     </span>
-    ${todoOrdering ? moves : `<button class="eye ed" type="button" aria-label="reword"
-      title="reword this line">${PENCIL}</button>${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
+    ${todoOrdering ? moves : `${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
       aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
       title="${r.shelved
         ? "take it off the shelf — back among the live ones"
         : "shelve it: worth keeping, not for now. It goes dark at the bottom"
           + (steps.length ? " with its steps" : "") + " and a session is told it is parked"}"
       >${SHELF}</button>` : `<span class="eye ph"></span>`}
+    <button class="eye ed" type="button" aria-label="reword"
+      title="reword this line">${PENCIL}</button>
     <button class="eye rm" type="button" aria-label="drop it"
       title="${idx < 0 ? "take it off the list, with a note saying why"
                        : "drop this step; the one behind it takes its place"}"
@@ -3960,12 +3971,7 @@ function drawTodo(j){
     // can see is the only one a thumb finds; the words because that is where
     // the hand goes anyway. Steps too — a plan is written before it is right,
     // and the line that needed changing was always the one inside a group.
-    const reword = () => {
-      const was = row.querySelector(".txt").textContent;
-      const now = prompt(step < 0 ? "Reword it:" : `Reword step ${step + 1}:`, was);
-      if (now !== null && now.trim() && now !== was)
-        postTodo({action: "edit", id, step: step < 0 ? null : step, text: now});
-    };
+    const reword = () => openReword(row, id, step);
     // Guarded like every other control on this row: reordering replaces all
     // three of them, so in that mode there is no pencil to bind and an
     // unguarded one took the whole redraw down with it.
@@ -4079,7 +4085,8 @@ async function postTodo(body, quiet){
 // line and somebody adding it straight back is a note saying why it went.
 // Optional, deliberately. A reason demanded is a reason typed as "x".
 function openDrop(row, id, step){
-  if (row.querySelector(".dropbox")) return;
+  if (row.nextElementSibling?.classList.contains("dropbox")) return;
+  row.parentElement.querySelectorAll(".editbox,.dropbox").forEach(b => b.remove());
   const what = row.querySelector(".txt").textContent;
   const r = (todoItems || []).find(x => String(x.id) === String(id));
   const also = step >= 0
@@ -4106,6 +4113,45 @@ function openDrop(row, id, step){
     if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); shut(); }
   };
   // Not focused, like everything else that opens in this window.
+}
+
+// Rewording, in a box under the row rather than a prompt(). A prompt is one
+// line by construction, and these are not any more — opening a three-line step
+// in one would have flattened it on the way back, which is the kind of quiet
+// data loss an edit box should never do.
+function openReword(row, id, step){
+  if (row.nextElementSibling?.classList.contains("editbox")) return;
+  row.parentElement.querySelectorAll(".editbox,.dropbox").forEach(b => b.remove());
+  const was = row.querySelector(".txt").textContent;
+  const box = document.createElement("div");
+  box.className = "dropbox editbox";
+  box.innerHTML = `<div class="q">${step < 0 ? "Reword it"
+      : `Reword step ${step + 1}`}<span> — Enter saves, shift+Enter is a new line</span></div>
+    <textarea maxlength="500" spellcheck="false"></textarea>
+    <div class="acts"><span class="sp"></span>
+      <button type="button" class="stop">Cancel</button>
+      <button type="button" class="primary">Save</button></div>`;
+  row.after(box);
+  const ta = box.querySelector("textarea");
+  ta.value = was;
+  const shut = () => box.remove();
+  box.querySelector(".stop").onclick = shut;
+  box.querySelector(".primary").onclick = () => {
+    const now = ta.value;
+    shut();
+    if (now.trim() && now !== was)
+      postTodo({action: "edit", id, step: step < 0 ? null : step, text: now});
+  };
+  ta.onkeydown = e => {
+    if (e.key === "Enter" && !e.shiftKey){
+      e.preventDefault(); box.querySelector(".primary").click();
+    }
+    if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); shut(); }
+  };
+  // Focused, unlike a window opening: the finger that wants this field just
+  // tapped the pencil, and the text it wants to change is already in it.
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
 // Adding steps one after another: the field stays open, so a plan is typed

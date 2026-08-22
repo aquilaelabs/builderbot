@@ -51,6 +51,33 @@ _lock = threading.Lock()
 MAX_OPEN = 30
 MAX_TEXT = 500
 
+# A line may be several lines. A step is one thing to hand over, and one thing
+# is often three sentences and a blank line — collapsing that to a single
+# paragraph made every plan read like a wall, which pushed sessions into
+# splitting one step into three. Steps are the expensive unit here (each one is
+# a message the operator sends by hand), so the cheap thing has to be able to
+# hold the detail. Bounded so a paste cannot turn a list into a document.
+MAX_LINES = 12
+
+
+def _clean(text, multiline=True):
+    """Trim a line, or a small block of them.
+
+    Trailing space goes, runs of blank lines collapse to one, and the whole
+    thing is capped. Interior single newlines survive, which is the point.
+    """
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not multiline:
+        return " ".join(text.split())
+    lines = [" ".join(ln.split()) for ln in text.split("\n")]
+    out = []
+    for ln in lines:
+        if ln or (out and out[-1]):
+            out.append(ln)
+    while out and not out[-1]:
+        out.pop()
+    return "\n".join(out[:MAX_LINES])
+
 # Ticked items stay a while, because "what did we just finish" is worth having
 # for a day or two, and then they are noise.
 
@@ -263,12 +290,12 @@ MAX_STEPS = 12
 
 
 def add(project, text, by="you", steps=()):
-    text = (text or "").strip()
+    text = _clean(text)
     if not text:
         return {"error": "nothing to add"}
     if len(text) > MAX_TEXT:
         return {"error": f"too long — {MAX_TEXT} characters is the limit"}
-    steps = [" ".join(str(x).split()) for x in (steps or [])]
+    steps = [_clean(str(x)) for x in (steps or [])]
     steps = [x for x in steps if x]
     if len(steps) > MAX_STEPS:
         return {"error": f"{MAX_STEPS} steps is the limit for one item"}
@@ -382,7 +409,7 @@ def tick(project, item_id, by="you"):
 
 def edit(project, item_id, text, step=None, by="you"):
     """Reword an item, or one step of it."""
-    text = " ".join((text or "").split())
+    text = _clean(text)
     if not text:
         return {"error": "nothing to say"}
     if len(text) > MAX_TEXT:
@@ -423,7 +450,7 @@ def remove(project, item_id, step=None, by="you", why=""):
     different events to whoever reads it next — and the second one is what
     stops somebody putting it back.
     """
-    why = " ".join((why or "").split())[:MAX_TEXT]
+    why = _clean(why, multiline=False)[:MAX_TEXT]
 
     def change(row, rows):
         if step is None:
@@ -506,7 +533,7 @@ def move(project, item_id, step=None, dir=0, by="you"):
 
 def add_step(project, item_id, text, by="you"):
     """Give an item a step — which is how a plain one becomes a plan."""
-    text = " ".join((text or "").split())
+    text = _clean(text)
     if not text:
         return {"error": "nothing to add"}
     if len(text) > MAX_TEXT:
@@ -554,6 +581,20 @@ def cross(project, item_id, step=None, on=True, by="you"):
             ev.update(step=i, of=row["text"])
         return {"ok": True, "log": ev}
     return _edit(project, item_id, change, by)
+
+
+def _flat(text):
+    """One line, for the one place that has to be one line.
+
+    A step can be written across several lines because a person reads it in
+    the panel. It is delivered by typing it into a terminal, where a newline
+    is not whitespace — it is Enter, and it would submit half a prompt and
+    leave the rest to arrive as a second message. So the breaks become
+    separators on the way out. A paragraph break is a heavier one than a line
+    break, which is about as much of the shape as a single line can carry.
+    """
+    parts = [p.strip() for p in (text or "").split("\n\n")]
+    return " — ".join(" ".join(p.split()) for p in parts if p.strip())
 
 
 def next_step(row):
@@ -618,10 +659,10 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
         # three: that it is one step of several, what the whole thing is for,
         # and which step this is.
         text = (f"This is step {step + 1} of {len(steps)} in a plan. "
-                f"The plan: {row['text']}. "
-                f"Step {step + 1}: {steps[step]['text']}")
+                f"The plan: {_flat(row['text'])}. "
+                f"Step {step + 1}: {_flat(steps[step]['text'])}")
     else:
-        text = row["text"]
+        text = _flat(row["text"])
     # One message, not two. Saving the list and sending a step both want to
     # say something, and two lines racing into the same input box is how the
     # second one ends up appended to the first. So the note rides along.

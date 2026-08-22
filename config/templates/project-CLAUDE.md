@@ -224,15 +224,37 @@ undoing either: if it turns out not to have been finished, add it again and
 say so. Only you tick things off. Nothing in the dashboard does it, because
 only the session that did the work knows whether it is done.
 
-**When a change needs several things done in a set order, add it as one item
-with steps** — `bb todo add "rework the picker" --step "widen the select"
---step "then re-measure it"`. The operator can build and rearrange one from
-the dashboard too, so write the steps in the order they have to happen and
-leave the arranging to them. Steps are handed to a session one at a time, in
-order, from the dashboard: the operator sends the first, and the second only
-becomes sendable once the first has gone. Three separate items can be handed
-over backwards, and the second one then lands on a tree the first was supposed
-to have made.
+**A group is one goal with an order to it, and its title is that goal.**
+Group steps only when every one of them serves a single outcome — "the picker
+works on a phone", not "four things I noticed". If the steps do not share a
+goal they are separate items, and separate items can be sent in any order,
+which is the whole reason to have both shapes.
+
+Write the title as the goal in plain words, not as a summary of the work:
+somebody reading only that line should know what is being aimed at and what
+finishing it would look like. `bb todo add "make the picker usable on a
+phone" --step "..." --step "..."`, not `bb todo add "picker: select width +
+re-measure + regression pass"`. The steps carry the technical detail; the
+title is the reason they exist. If you cannot write the title without listing
+the steps, it is not one goal and should not be one group.
+
+**Steps are expensive — use as few as you can.** Each one is a message the
+operator sends by hand from the dashboard, one at a time, waiting on each. So
+a step is not a task, it is *a point at which the previous work must have
+finished before the next can start*. Put everything that can be done in one
+go into one step, using line breaks inside it to keep it readable, and only
+start a new step when you genuinely need the last prompt to have run first —
+a file that has to exist, a build that has to be green, an answer you need
+before you can write the next instruction. Two steps that could have been one
+cost somebody a round trip for nothing.
+
+A step may be several lines, and blank lines between them are kept. The
+operator can build and rearrange a group from the dashboard too, so write the
+steps in the order they have to happen and leave the arranging to them. The
+order is enforced on sending: the first has to go before the second becomes
+sendable, which is what separate items cannot promise — hand three of those
+over backwards and the second lands on a tree the first was supposed to have
+made.
 
 A step that has been sent is struck through rather than removed, and can be
 sent again — sent is not the same as done, and the difference is exactly the

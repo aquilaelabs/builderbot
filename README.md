@@ -1134,6 +1134,16 @@ the same numbers. Steps inside a group number themselves 1, 2, 3 within it.
 A gap in the numbers means something was removed; one out of sequence means
 it was moved.
 
+**A group is one goal with an order to it.** Its title is that goal in plain
+words — "make the picker usable on a phone" — and the steps under it carry the
+detail. Steps only exist because of one physical constraint: each is a message
+*you* send by hand, one at a time, waiting on each. So a step is not a task,
+it is a point at which the previous work has to have finished before the next
+can start, and a session that splits work into more steps than that costs you
+round trips for nothing. A step can be several lines, blank lines and all, so
+the cheap unit is the line and the expensive one is the step. The template
+CLAUDE.md every project gets says this to sessions in as many words.
+
 **Items are handed to the session one at a time, by the arrow beside them.**
 Sending types the line into the running Claude session and submits it — but
 only if it can see that it arrived. There is no IPC into a session; the only
