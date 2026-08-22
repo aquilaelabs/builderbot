@@ -2122,6 +2122,13 @@ class Handler(BaseHTTPRequestHandler):
         proj, file = field(req, "project"), field(req, "file")
         if act == "save":
             r = memory.save(proj, file, field(req, "text"))
+        elif act == "index":
+            r = memory.save_index(proj, [e for e in (req.get("lines") or [])
+                                         if isinstance(e, dict)])
+        elif act == "create":
+            r = memory.create(proj, field(req, "name"), field(req, "title"),
+                              field(req, "hook"), field(req, "type"),
+                              field(req, "body"))
         elif act == "delete":
             r = memory.delete(proj, file)
         else:
@@ -2129,7 +2136,7 @@ class Handler(BaseHTTPRequestHandler):
         # One Save for the project, not one per thing in the panel: a memory
         # edit marks the same flag the list does, and the one button spends the
         # one line telling a session about all of it.
-        if not r.get("error") and act in ("save", "delete"):
+        if not r.get("error") and act in ("save", "index", "create", "delete"):
             todo.mark_unsaved(proj, "memory")
         return self._json(r, 400 if r.get("error") else 200)
 

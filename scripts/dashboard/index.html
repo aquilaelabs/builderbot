@@ -294,14 +294,15 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .field{padding:11px 14px}
 .modal label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
   margin-bottom:5px}
-.modal input,.modal textarea{width:100%;box-sizing:border-box;background:#161b22;
-  color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px 9px;
-  font:13px/1.5 var(--mono)}
+.modal input,.modal textarea,.modal select{width:100%;box-sizing:border-box;
+  background:#161b22;color:var(--ink);border:1px solid var(--line);border-radius:6px;
+  padding:8px 9px;font:13px/1.5 var(--mono)}
 .modal textarea{min-height:132px;resize:vertical;white-space:pre}
 /* 16px on a phone: iOS Safari zooms the page into any smaller field on
    focus, and this fixed layout has no way to zoom back out. */
-@media(max-width:900px){ .modal input,.modal textarea{font-size:16px} }
-.modal input:focus,.modal textarea:focus{outline:2px solid #2f4d6d;outline-offset:-1px}
+@media(max-width:900px){ .modal input,.modal textarea,.modal select{font-size:16px} }
+.modal input:focus,.modal textarea:focus,.modal select:focus{
+  outline:2px solid #2f4d6d;outline-offset:-1px}
 .modal .hint{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-top:6px}
 /* Wrapping, because a footer that does not fit does not merely look cramped:
    the box scrolls sideways and the whole panel slides under your thumb. */
@@ -451,13 +452,37 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* Wrapped, unlike the command editor's textarea: those are shell lines where a
    wrap would lie about what runs, these are prose with an 80-column habit and
    a description line that is nobody's idea of scrollable. */
-#memIndex,.mem textarea{white-space:pre-wrap}
-#memIndex{min-height:96px}
+.mem textarea{white-space:pre-wrap}
 .mem .body{padding:0 10px 10px}
 .mem .mdesc{color:var(--dim);font:12px/1.5 system-ui,sans-serif;margin-bottom:8px}
 .mem textarea{min-height:190px}
 .mem .macts{display:flex;gap:8px;margin-top:8px}
 .mem .macts .sp{flex:1}
+/* The memory's line in the index, on the memory it belongs to. Two fields
+   rather than one: the title is what the line is filed under and the hook is
+   what it says, and they are read at different widths. Stacked below 560px —
+   side by side, the hook gets a dozen characters and reads as broken. */
+.mem .ix{display:flex;gap:6px;margin-bottom:4px}
+.mem .ix .ixt{flex:0 0 33%}
+.mem .ix .ixh{flex:1;min-width:0}
+@media(max-width:560px){ .mem .ix{display:block}
+  .mem .ix .ixt{margin-bottom:6px} }
+.mem .ixnote{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-bottom:8px}
+.mem .ixnote.bad{color:#d8b25c}
+#memAdd .link{background:none;border:0;color:var(--dim);padding:2px 0;
+  font:12px/1.4 system-ui,sans-serif;min-height:var(--tap)}
+@media(hover:hover){ #memAdd .link:hover{color:var(--accent)} }
+/* Dashed, because it is the one thing here that is not a memory yet. */
+.memadd{border:1px dashed var(--line);border-radius:8px;padding:10px}
+.memadd .two{display:flex;gap:6px}
+.memadd .two>*{flex:1;min-width:0}
+.memadd label{margin-top:8px}
+.memadd>label:first-child{margin-top:0}
+/* Wrapped, unlike the command editor's: this one is prose, and `.modal
+   textarea` defaults to pre for shell lines a wrap would lie about. */
+.memadd textarea{min-height:120px;white-space:pre-wrap}
+.memadd .acts{display:flex;gap:8px;margin-top:10px}
+.memadd .acts .sp{flex:1}
 /* Drift between the index and the files: never fatal, which is exactly why it
    has to be said out loud rather than left to be noticed. */
 .mdrift{padding:0 14px 4px}
@@ -831,16 +856,14 @@ body.dragging .tab .lbl{cursor:grabbing}
     <details id="memFold" class="field">
       <summary id="memWhere">what Claude remembers here</summary>
     <div class="mdrift" id="memDrift"></div>
-    <div class="field">
-      <label for="memIndex">Index — loaded into every session started here</label>
-      <textarea id="memIndex" spellcheck="false" autocomplete="off"></textarea>
-      <div class="hint">One line per memory. Removing a memory below takes its
-        line out of here too.</div>
-    </div>
     <div class="field" id="memListField">
       <label id="memCount">Memories</label>
       <div id="memList"></div>
     </div>
+    <!-- Outside the list, which is hidden when there is nothing in it — a
+         project with no memories is exactly where writing the first one by
+         hand is worth offering. -->
+    <div class="field" id="memAdd"></div>
     </details>
     <div class="foot">
       <!-- Two, and the difference is whether a line of the conversation is
@@ -3626,8 +3649,7 @@ async function openMemory(name){
   const gen = ++memGen;
   $("memTitle").textContent = "To do — " + name;
   $("memWhere").textContent = "what Claude remembers here";
-  $("memDrift").innerHTML = $("memList").innerHTML = "";
-  $("memIndex").value = "";
+  $("memDrift").innerHTML = $("memList").innerHTML = $("memAdd").innerHTML = "";
   $("memFold").open = false;
   $("todoSave").disabled = $("todoSaveQuiet").disabled = true;
   $("todoAsk").hidden = true;
@@ -4030,8 +4052,7 @@ function drawMemory(j){
     ? `what Claude remembers here — ${n} ${n === 1 ? "memory" : "memories"}`
     : "what Claude remembers here — nothing yet";
   $("memWhere").title = j.dir;
-  $("memIndex").value = j.index;
-  $("memIndex").dataset.was = j.index;
+  memTypes = j.types || memTypes;
   $("memDrift").innerHTML = j.issues.map(i => `<div>${esc(i.text)}</div>`).join("");
   // The note is offered only when there is a session to put it in, and says
   // what it will do: the text is typed, not sent. See memory.py's notify().
@@ -4050,6 +4071,15 @@ function drawMemory(j){
         <span class="mwhen">${ago(m.when)}</span>
       </summary>
       <div class="body">
+        <div class="ix" data-file="${esc(m.file)}">
+          <input class="ixt" maxlength="80" autocomplete="off" spellcheck="false"
+            placeholder="title" value="${esc(m.title)}">
+          <input class="ixh" maxlength="240" autocomplete="off"
+            placeholder="what it says, in one line" value="${esc(m.hook)}">
+        </div>
+        <div class="ixnote${m.listed ? "" : " bad"}">${m.listed
+          ? "Its line in the index — the one part loaded into every session started here."
+          : "Not in the index, so Claude sees this only when recall reaches for it. Saving adds the line."}</div>
         ${m.description ? `<div class="mdesc">${esc(m.description)}</div>` : ""}
         ${m.big
           ? `<div class="hint bad">${(m.bytes/1024).toFixed(0)}kB — too large to
@@ -4064,11 +4094,13 @@ function drawMemory(j){
              </div>`}
       </div>
     </details>`).join("");
-  $("memList").querySelectorAll("textarea[data-file]").forEach(t => {
+  $("memList").querySelectorAll("textarea[data-file], .ix input").forEach(t => {
     t.dataset.was = t.value;
     t.oninput = syncSave;
   });
-  $("memIndex").oninput = syncSave;
+  // Not while one is being typed into: a redraw arrives after every save, and
+  // it should not take a half-written memory with it.
+  if (!$("naName")) drawMemAdd();
   syncSave();
   $("memList").querySelectorAll("[data-del]").forEach(b =>
     b.onclick = () => forgetMemory(b.dataset.del));
@@ -4085,31 +4117,117 @@ async function postMemory(body){
   }catch(e){ notify("could not reach the server: " + e, true); return null; }
 }
 
-// One button for the lot: the index and any memory whose text was touched.
+// One button for the lot: any memory whose text or index line was touched.
 // Saving each field as it blurs would be fewer clicks and worse — an edit to
 // a memory is a deliberate act, and it should take one.
 // Is there anything in the memory half that has not been written?
 function memDirty(){
-  const idx = $("memIndex");
-  if (!idx) return false;
-  if (idx.value !== (idx.dataset.was ?? "")) return true;
-  return [...$("memList").querySelectorAll("textarea[data-file]")]
+  const l = $("memList");
+  return !!l && [...l.querySelectorAll("textarea[data-file], .ix input")]
     .some(t => t.value !== t.dataset.was);
+}
+
+// Every memory's index line as it now reads. The index is written whole, from
+// the fields, rather than patched line by line — which is what keeps it from
+// ever describing a memory that is not there.
+function memLines(){
+  return [...$("memList").querySelectorAll(".ix")].map(d => ({
+    file: d.dataset.file,
+    title: d.querySelector(".ixt").value,
+    hook: d.querySelector(".ixh").value}));
 }
 
 async function saveMemory(quiet){
   const edits = [];
-  const idx = $("memIndex");
-  if (idx.value !== idx.dataset.was) edits.push({file: "MEMORY.md", text: idx.value});
   $("memList").querySelectorAll("textarea[data-file]").forEach(t => {
     if (t.value !== t.dataset.was) edits.push({file: t.dataset.file, text: t.value});
   });
-  if (!edits.length){ if (!quiet) notify("nothing changed"); return; }
-  let done = 0;
+  const ix = [...$("memList").querySelectorAll(".ix input")]
+    .some(t => t.value !== t.dataset.was);
+  if (!edits.length && !ix){ if (!quiet) notify("nothing changed"); return; }
+  let done = 0, want = edits.length + (ix ? 1 : 0);
   for (const e of edits) if (await postMemory({action:"save", ...e})) done++;
+  if (ix && await postMemory({action:"index", lines: memLines()})) done++;
   if (done && !quiet)
-    notify(`saved ${done} of ${edits.length} — Claude reads these when a session starts`);
+    notify(`saved ${done} of ${want} — Claude reads these when a session starts`);
   if (!quiet){ await loadMemory(memGen); refresh(); }
+}
+
+// ---- writing one by hand ------------------------------------------------
+// Claude writes these itself, mid-conversation, and mostly that is the right
+// way round. This is for the other case: a standing instruction the operator
+// would otherwise have to say once per session and hope it stuck.
+let memTypes = ["user", "feedback", "project", "reference"];
+const TYPE_WHAT = {
+  user: "who you are — role, expertise, how you like to work",
+  feedback: "how sessions here should work, and why",
+  project: "something about this work that the code does not say",
+  reference: "a pointer somewhere else — a URL, a dashboard, a ticket"};
+
+function drawMemAdd(){
+  const box = $("memAdd");
+  box.innerHTML = `<button type="button" class="link">+ write a memory</button>`;
+  box.querySelector("button").onclick = openMemAdd;
+}
+
+// A slug of the title, which is both the file name and the memory's `name`.
+// Refused rather than repaired on the server, so the field shows what will be
+// written and stays editable.
+const memSlug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, "-")
+  .slice(0, 60).replace(/^-+|-+$/g, "");
+
+function openMemAdd(){
+  const box = $("memAdd");
+  box.innerHTML = `<div class="memadd">
+    <label for="naTitle">Title — how it reads in the index</label>
+    <input id="naTitle" maxlength="80" autocomplete="off" placeholder="No parsed progress">
+    <div class="two">
+      <div><label for="naName">File</label>
+        <input id="naName" maxlength="60" autocomplete="off" spellcheck="false"
+          placeholder="no-parsed-progress"></div>
+      <div><label for="naType">Kind</label>
+        <select id="naType">${memTypes.map(t =>
+          `<option value="${esc(t)}">${esc(t)}</option>`).join("")}</select></div>
+    </div>
+    <div class="hint" id="naWhat"></div>
+    <label for="naHook">One line — its hook in the index, and what recall matches on</label>
+    <input id="naHook" maxlength="240" autocomplete="off"
+      placeholder="a word and an animated ellipsis, never a bar or a percentage">
+    <label for="naBody">The memory itself</label>
+    <textarea id="naBody" spellcheck="false"
+      placeholder="The fact, in a line or two. For a kind that is guidance, follow it with why it is the rule and how to apply it."></textarea>
+    <div class="acts"><span class="sp"></span>
+      <button type="button" class="stop" id="naCancel">Cancel</button>
+      <button type="button" class="primary" id="naGo">Write it</button></div>
+  </div>`;
+  // The file name follows the title until it is typed in, and then stops:
+  // renaming a memory is a thing people do deliberately, once.
+  const t = $("naTitle"), n = $("naName");
+  t.oninput = () => { if (!n.dataset.mine) n.value = memSlug(t.value); };
+  n.oninput = () => { n.dataset.mine = "1"; };
+  const what = () => $("naWhat").textContent = TYPE_WHAT[$("naType").value] || "";
+  $("naType").onchange = what; what();
+  $("naCancel").onclick = drawMemAdd;
+  $("naGo").onclick = createMemory;
+  // Deliberately unfocused, like every other field in this window: five of
+  // them appearing under a keyboard is the thing being avoided.
+}
+
+async function createMemory(){
+  const b = $("naGo"), was = b.textContent;
+  b.disabled = true; b.textContent = "Writing…";
+  const j = await postMemory({action: "create",
+    name: $("naName").value.trim(), title: $("naTitle").value.trim(),
+    hook: $("naHook").value.trim(), type: $("naType").value,
+    body: $("naBody").value});
+  b.disabled = false; b.textContent = was;
+  // Left as it was typed on a refusal — postMemory has already said why, and
+  // the fix is a word in one of these fields, not typing all five again.
+  if (!j) return;
+  notify(j.file + " written — a session started here reads it from now on");
+  drawMemAdd();
+  await loadMemory(memGen);
+  refresh();
 }
 
 async function forgetMemory(file){

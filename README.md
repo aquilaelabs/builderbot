@@ -969,9 +969,21 @@ lives in its body. The cards:
   the summary line Claude wrote for itself (name, type, when), unfolding to
   the whole file in an editor, with **Forget this** to delete one — which
   takes its line out of the index too, since a pointer to a file that is gone
-  is worse than no pointer. Drift between the index and the files is called
+  is worse than no pointer. The index is not shown as a document of its own:
+  it is one line per memory, so it is edited as **title** and **hook** fields
+  on the memory that line names, and written back whole when you save. That
+  is also the difference worth knowing — the index is the only part always in
+  context, and the files themselves are read only when recall reaches for
+  one. Drift between the index and the files is called
   out in amber both ways: a line naming a file that is not there, and a file
-  no line names. It sits on the project row rather than in a Claude tab on
+  no line names; saving clears the first and fills in the second.
+  **+ write a memory** puts one there by hand — title, file name (slugged
+  from the title until you type in it), kind, the one-line hook, and the
+  memory itself — written with the frontmatter Claude uses and given its
+  index line in the same act, never one without the other. Mostly Claude
+  writes these itself; this is for the standing instruction you would
+  otherwise repeat once a session and hope stuck.
+  It sits on the project row rather than in a Claude tab on
   purpose — *why did it do that?* is usually asked after the tab is closed —
   and it is folded shut, because a handful of files nobody edits does not
   earn the top of a panel. Editing one arms the panel's single **Save**, the

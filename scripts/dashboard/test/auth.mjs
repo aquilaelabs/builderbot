@@ -54,8 +54,15 @@ const AUTHH = { Authorization: 'Basic ' + Buffer.from('test:test').toString('bas
 r = await bare('/api/status', { headers: { ...AUTHH, 'Accept-Encoding': 'gzip' } });
 ok(r.headers.get('content-encoding') === 'gzip', 'the status snapshot travels gzipped');
 r = await bare('/', { headers: { ...AUTHH, 'Accept-Encoding': 'gzip' } });
+const zipped = +r.headers.get('content-length');
+const plain = (await (await bare('/', { headers: AUTHH })).text()).length;
+// A ratio, not a byte count: the point is that the one file is compressed to
+// a fraction of itself, and a fixed ceiling set to whatever the page happened
+// to weigh becomes a tripwire that the next feature trips. The absolute
+// number is loose enough to mean only "something enormous got embedded".
 ok(r.headers.get('content-encoding') === 'gzip'
-   && +r.headers.get('content-length') < 80000, 'the page travels gzipped, at a fraction of its size');
+   && zipped < plain / 2 && zipped < 150000,
+   `the page travels gzipped, at a fraction of its size (${Math.round(zipped/1024)}kB of ${Math.round(plain/1024)}kB)`);
 r = await bare('/api/status', { headers: { ...AUTHH, 'Accept-Encoding': 'identity' } });
 ok(!r.headers.get('content-encoding'), 'a client that cannot take gzip gets plain bytes');
 

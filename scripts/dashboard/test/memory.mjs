@@ -55,8 +55,21 @@ ok(mems.length === 2 && mems.every(m => !m.open),
 ok(mems.some(m => m.name === 'tabs' && m.type === 'feedback')
    && mems.some(m => m.name === 'loose' && m.type === 'project'),
    'each carries the name and type out of its own frontmatter');
-ok(await page.$eval('#memIndex', t => t.value.includes('tabs.md')),
-   'the index is shown as itself, editable');
+// The index is not a document here — it is one line belonging to each memory,
+// shown on the memory it names. There is no whole-index editor to get wrong.
+ok(await page.$('#memIndex') === null,
+   'the index is not offered as a block of text to edit');
+const ixOf = name => page.$eval(`#memList .mem:has(.mname:text-is("${name}")) .ix`,
+  d => ({ t: d.querySelector('.ixt').value, h: d.querySelector('.ixh').value }));
+const tabsIx = await ixOf('tabs');
+ok(tabsIx.t === 'Prefers tabs' && tabsIx.h === 'spaces are a fight not worth having',
+   '...its line is split onto the memory it points at, title and hook apart');
+const looseIx = await ixOf('loose');
+ok(looseIx.t === '' && looseIx.h === '',
+   'a memory with no line gets empty fields rather than no fields');
+ok((await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixnote',
+                     d => d.textContent)).includes('Not in the index'),
+   '...and says on the row that this is why Claude misses it');
 
 const drift = await page.$$eval('#memDrift div', ds => ds.map(d => d.textContent));
 ok(drift.some(d => d.includes('vanished.md') && d.includes('not here')),
@@ -99,6 +112,57 @@ ok(!read('MEMORY.md').includes('tabs.md') && read('MEMORY.md').includes('vanishe
 ok((await page.$eval('#memWhere', el => el.textContent)).includes('1 memory'),
    'the fold redraws without it');
 
+// ---- the index, written from the rows -----------------------------------
+// What is left at this point: one memory (loose, unlisted) and one index line
+// pointing at a file that was never there. Filling the memory's fields in has
+// to do both halves — give it a line, and take the dead one out.
+await page.click('#memList .mem:has(.mname:text-is("loose")) summary');
+await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixt', i => {
+  i.value = 'Loose ends'; i.dispatchEvent(new Event('input')); });
+await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixh', i => {
+  i.value = 'only recall ever surfaced this one'; i.dispatchEvent(new Event('input')); });
+ok(!await page.$eval('#todoSave', b => b.disabled),
+   'typing an index line arms the same Save as everything else');
+await page.click('#todoSave');
+await page.waitForFunction(() => document.getElementById('todoSave').textContent !== 'Saving…',
+                           { timeout: 15000 });
+ok(read('MEMORY.md').includes('- [Loose ends](loose.md) — only recall ever surfaced this one'),
+   'saving writes the line, in the shape Claude wrote the others in');
+ok(!read('MEMORY.md').includes('vanished.md'),
+   '...and the line pointing at a file that is not there comes out with it');
+await page.waitForFunction(() => document.querySelectorAll('#memDrift div').length === 0);
+ok(true, 'which leaves the panel with nothing to warn about');
+
+// ---- writing one by hand -------------------------------------------------
+await page.click('#memAdd .link');
+await page.waitForSelector('#naTitle');
+ok(await page.evaluate(() => document.activeElement?.id !== 'naTitle'),
+   'the form opens without a cursor in it, like the rest of this window');
+await page.type('#naTitle', 'No parsed progress');
+ok(await page.$eval('#naName', i => i.value) === 'no-parsed-progress',
+   'the file name follows the title, slugged');
+await page.$eval('#naName', i => { i.value = 'my-own-name'; i.dispatchEvent(new Event('input')); });
+await page.type('#naTitle', ' here');
+ok(await page.$eval('#naName', i => i.value) === 'my-own-name',
+   '...and stops following it the moment it is typed in');
+await page.$eval('#naName', i => { i.value = 'no-parsed-progress'; i.dispatchEvent(new Event('input')); });
+await page.selectOption('#naType', 'feedback');
+await page.type('#naHook', 'a word and an ellipsis, never a bar');
+await page.type('#naBody', 'Report what it is doing in a word.');
+await page.click('#naGo');
+await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
+const born = read('no-parsed-progress.md');
+ok(born.startsWith('---\nname: no-parsed-progress\n')
+   && born.includes('description: a word and an ellipsis, never a bar')
+   && born.includes('metadata:\n  type: feedback\n')
+   && born.trimEnd().endsWith('Report what it is doing in a word.'),
+   'a memory written by hand comes out in the shape Claude writes them in');
+ok(read('MEMORY.md').includes('- [No parsed progress here](no-parsed-progress.md) — '
+                              + 'a word and an ellipsis, never a bar'),
+   '...and gets its line in the index in the same act, never one without the other');
+ok(await page.$('#naTitle') === null && await page.$('#memAdd .link') !== null,
+   'the form folds back to the button afterwards');
+
 // ---- what the server refuses -------------------------------------------
 const post = (body) => page.evaluate(async b => {
   const r = await fetch('/api/memory', { method: 'POST',
@@ -119,6 +183,26 @@ for (const [what, body] of [
    { action: 'save', project: 'alpha', file: 'passwd.md', text: 'x' }],
   ['deleting the index',
    { action: 'delete', project: 'alpha', file: 'MEMORY.md' }],
+  ['writing the index as a file, now that it has one writer',
+   { action: 'save', project: 'alpha', file: 'MEMORY.md', text: 'x' }],
+  ['a new memory whose name is a path',
+   { action: 'create', project: 'alpha', name: '../evil', title: 'x',
+     hook: 'x', type: 'user', body: 'x' }],
+  ['a new memory with a name nobody could have typed',
+   { action: 'create', project: 'alpha', name: 'Not A Slug', title: 'x',
+     hook: 'x', type: 'user', body: 'x' }],
+  ['a new memory of a kind that does not exist',
+   { action: 'create', project: 'alpha', name: 'fine-name', title: 'x',
+     hook: 'x', type: 'whatever', body: 'x' }],
+  ['a new memory with nothing in it',
+   { action: 'create', project: 'alpha', name: 'fine-name', title: 'x',
+     hook: 'x', type: 'user', body: '  ' }],
+  ['a new memory with no line to file it under',
+   { action: 'create', project: 'alpha', name: 'fine-name', title: 'x',
+     hook: '', type: 'user', body: 'x' }],
+  ['a name that is already a memory here',
+   { action: 'create', project: 'alpha', name: 'loose', title: 'x',
+     hook: 'x', type: 'user', body: 'x' }],
   ['an action nobody offers',
    { action: 'wipe', project: 'alpha' }],
 ]){
@@ -126,14 +210,17 @@ for (const [what, body] of [
   ok(r.status === 400 && r.body.error, `refused: ${what}`);
 }
 ok(existsSync(`${MEM}/MEMORY.md`) && !existsSync(`${DIR}/home/.claude/evil.md`)
-   && !existsSync(`${DIR}/evil.md`),
-   'nothing was written outside the memory directory');
+   && !existsSync(`${DIR}/evil.md`) && !existsSync(`${MEM}/../evil.md`)
+   && !existsSync(`${MEM}/fine-name.md`),
+   'nothing was written outside the memory directory, and no half-refused memory landed');
+ok(read('loose.md').includes('Only recall will ever surface this one'),
+   'and the memory a duplicate name aimed at is untouched');
 
 // A memory bigger than the editor will take is reported, not truncated.
 mkdirSync(MEM, { recursive: true });
 writeFileSync(`${MEM}/huge.md`, '---\nname: huge\n---\n' + 'x'.repeat(40000));
 await page.evaluate(() => loadMemory(memGen));
-await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
+await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 3);
 await page.click('#memList .mem:has(.mname:text-is("huge")) summary');
 ok(await page.$eval('#memList .mem:has(.mname:text-is("huge"))',
      l => !l.querySelector('textarea') && l.querySelector('.hint.bad')),
