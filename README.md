@@ -1076,6 +1076,15 @@ unauthenticated here on purpose, so GitHub Issues are unreachable from inside
 the container — and until this, something noticed mid-task and left undone
 lived in the conversation and died with it.
 
+**The list reads top down, and the top is what matters most** — new items go
+on the end, and the arrows in Reorder are how something gets promoted. Each
+item wears its number: `#4` is the item's own name, not its position, so it is
+what `bb todo done 4` takes, what a session means when it says "#4", and what
+survives the list being rearranged. The prompt a session starts with carries
+the same numbers. Steps inside a group number themselves 1, 2, 3 within it.
+A gap in the numbers means something was removed; one out of sequence means
+it was moved.
+
 **Items are handed to the session one at a time, by the arrow beside them.**
 Sending types the line into the running Claude session and submits it — but
 only if it can see that it arrived. There is no IPC into a session; the only

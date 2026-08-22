@@ -329,6 +329,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .todo.step{padding:5px 0 5px 26px;border-top:1px dashed #232b34}
 .todo .n{flex:0 0 auto;color:var(--dim);font:600 11px/1.5 var(--mono);
   min-width:1.2em;text-align:right}
+/* An item's own number, in the column its steps number themselves in. It is
+   the id, not the position — it does not change when the list is rearranged,
+   which is what makes it worth quoting in a conversation. */
+.todo .n.id{min-width:2.2em;opacity:.75}
 /* The words and their labels are one column, so a pill sits above the line
    instead of eating a third of it — on a phone that difference is the whole
    readability of the row. */
@@ -3779,7 +3783,8 @@ function stepRow(r, idx, live){
     ${todoOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
       title="${esc(why)}" aria-label="send"
       aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}
-    ${idx >= 0 ? `<span class="n">${idx + 1}</span>` : ""}
+    ${idx >= 0 ? `<span class="n">${idx + 1}</span>`
+               : `<span class="n id" title="this item is #${r.id} wherever it sits — what a session means by that number, and what bb todo done ${r.id} takes">#${r.id}</span>`}
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
@@ -4014,7 +4019,12 @@ function closeStepInput(box){
 async function addTodo(){
   const t = $("todoText");
   if (!t.value.trim()) return;
-  if (await postTodo({action: "add", text: t.value})) t.value = "";
+  if (await postTodo({action: "add", text: t.value})){
+    t.value = "";
+    // It lands at the end now, which on a phone is below the fold. Scrolled
+    // to, because "did that work?" should not need a swipe to answer.
+    $("todoList").lastElementChild?.scrollIntoView({block: "nearest"});
+  }
   // Kept, not taken: the keyboard is already up because they just typed, and
   // a list is usually added to more than one line at a time.
   t.focus();
