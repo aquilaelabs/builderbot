@@ -528,6 +528,34 @@ await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').le
 ok(await page.$eval('#todoAdd', b => b.checkVisibility()),
    'and the same button puts the list back');
 
+// ---- the pane is the only scroller --------------------------------------
+// The list used to be a scroll container with `overscroll-behavior: contain`,
+// which was fine inside a modal that gave it a ceiling and wrong the moment
+// the ceiling went: a container that cannot scroll and will not pass the
+// gesture on. A finger landing anywhere on the list — most of the panel —
+// did nothing, while the gaps between rows worked.
+const scrollers = await page.evaluate(() => {
+  const out = [];
+  for (const el of document.querySelectorAll('#nbBody, #nbBody *')){
+    // A textarea scrolling its own text is the point of a textarea.
+    if (el.tagName === 'TEXTAREA') continue;
+    const s = getComputedStyle(el);
+    if (/auto|scroll/.test(s.overflowY))
+      out.push(`${el.id || el.className}:${s.overscrollBehaviorY}`);
+  }
+  return out;
+});
+ok(scrollers.length === 0,
+   `nothing inside the notebook traps a scroll (${scrollers.join(', ') || 'none'})`);
+ok(await page.evaluate(() => {
+     const d = document.getElementById('nbBody').closest('.doc');
+     return d && /auto|scroll/.test(getComputedStyle(d).overflowY); }),
+   '...the pane\'s document is the one that scrolls');
+ok(await page.evaluate(() => {
+     const d = document.getElementById('nbBody').closest('.doc');
+     return getComputedStyle(d).padding === '0px'; }),
+   '...and it has no inset, so the notebook is the pane rather than a box in it');
+
 // ---- one notebook at a time --------------------------------------------
 // It is a single node moved into whichever pane shows it, so a second one
 // would fight over it. Opening another project's replaces this one.

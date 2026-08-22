@@ -553,16 +553,22 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .memadd .acts .sp{flex:1}
 /* Drift between the index and the files: never fatal, which is exactly why it
    has to be said out loud rather than left to be noticed. */
-/* The notebook, as a pane's document. It fills the pane and scrolls as one
-   column — the whole reason it stopped being a modal is that a list, a plan,
-   a log and a memory editor do not fit a 760px box on a desktop. Its own
-   heading goes: the pane's bar already names it. */
-.nb{display:block;height:100%;overflow:auto;background:var(--panel)}
+/* The notebook, as a pane's document. Its own heading goes — the pane's bar
+   already names it — and the pane is the ceiling, so nothing inside sets one.
+   The document is the only scroller: the list used to be one too, with
+   `overscroll-behavior: contain`, which is a scroll container that cannot
+   scroll refusing to pass the gesture on. A finger landing on the list — most
+   of the panel — did nothing at all, while the gaps between the rows worked. */
+.nb{display:block}
 .nb h3{display:none}
-/* Freed of the modal's ceilings — the pane is the ceiling now. */
-.nb #todoList,.nb #memList{max-height:none}
-/* The Saves and the Revert stay reachable however long the list is. */
-.nb .foot{position:sticky;bottom:0;background:var(--panel);z-index:1}
+.nb #todoList,.nb #memList{max-height:none;overflow:visible;
+  overscroll-behavior:auto}
+/* No inset and no ceiling: the notebook is the pane's whole content, not a
+   box floating in it. The padding and the darker ground behind it read as a
+   window sitting inside the window it is already in. */
+/* Scoped through .pane, or `.pane .doc` further down the sheet wins on
+   source order at equal specificity and the inset comes back. */
+.pane .doc.nbhost{padding:0;background:var(--panel)}
 .mdrift{padding:0 14px 4px}
 .mdrift div{color:var(--warn);font:12px/1.5 system-ui,sans-serif;margin-bottom:4px}
 .modal select{width:100%;box-sizing:border-box;background:#161b22;color:var(--ink);
@@ -2076,7 +2082,11 @@ function drawPanes(){
 function renderNotebookInto(i, project){
   const host = $("doc" + i), nb = $("nbBody");
   if (!host || !nb) return;
-  if (nb.parentElement !== host) host.appendChild(nb);
+  if (nb.parentElement !== host){
+    document.querySelectorAll(".doc.nbhost").forEach(d => d.classList.remove("nbhost"));
+    host.appendChild(nb);
+  }
+  host.classList.add("nbhost");
   if (memProj !== project) openMemory(project);
 }
 
@@ -2084,6 +2094,7 @@ function renderNotebookInto(i, project){
 // inside a pane's stack for the next document to be drawn over.
 function parkNotebook(){
   const nb = $("nbBody");
+  document.querySelectorAll(".doc.nbhost").forEach(d => d.classList.remove("nbhost"));
   if (nb && nb.parentElement?.id !== "nbPark") $("nbPark").appendChild(nb);
 }
 
