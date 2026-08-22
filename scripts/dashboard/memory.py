@@ -3,8 +3,11 @@
 
 Claude Code keeps per-project memories in `~/.claude/projects/<slug>/memory/`:
 one markdown file per fact, plus MEMORY.md, an index of one line each that is
-loaded into every session started in that project. Claude writes them; nobody
-reads them. That is the gap this exists to close — CLAUDE.md goes through a
+loaded into every session started in that project. The index is not a summary
+of the files — it is the only part always in context, and the files are read
+only when recall reaches for one — which is why it is edited here as a field
+on the memory it names rather than as a document of its own. Claude writes
+them; nobody reads them. That is the gap this exists to close — CLAUDE.md goes through a
 pull request and a transcript is on screen, but a memory accumulates silently
 and steers every later session, so a wrong one is both permanent and invisible.
 
@@ -72,6 +75,55 @@ def memory_dir(project):
 
 FIELD_RE = re.compile(r"^\s*(\w+):\s*(.*?)\s*$")
 LINK_RE = re.compile(r"\]\(([^)\s]+)")
+# One index line: `- [Title](file.md) — hook`. The separator is written as an
+# em dash but arrives as whatever the keyboard produced, so any of the dashes
+# is accepted and only the em dash is written back.
+INDEX_RE = re.compile(r"^\s*[-*]\s*\[(?P<title>[^\]]*)\]\((?P<file>[^)\s]+)\)"
+                      r"\s*(?:[—–-]|:)?\s*(?P<hook>.*?)\s*$")
+
+# What a memory's `type` is allowed to be — the four Claude Code documents.
+# A select rather than a text field on the page, and checked again here.
+TYPES = ("user", "feedback", "project", "reference")
+
+# A new memory's file name, which is also its `name:` field. The same shape
+# Claude uses: lowercase words joined by single dashes. This is the one string
+# the browser sends that becomes a file that did not exist before, so it is
+# matched whole rather than sanitized — a name that is not this is refused,
+# not repaired into something the operator did not type.
+SLUG_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+MAX_SLUG = 60
+
+
+def _index_rows(text):
+    """MEMORY.md as rows: index lines parsed, everything else kept verbatim.
+
+    Anything that is not a line pointing at a `.md` file — a heading someone
+    added, a blank line — comes back as raw and is written out untouched. The
+    index is defined as one line per memory, but nothing enforces that, and
+    losing a line the operator typed is a worse bug than carrying it.
+    """
+    rows = []
+    for line in text.splitlines():
+        m = INDEX_RE.match(line)
+        if m and m.group("file").endswith(".md") and "/" not in m.group("file"):
+            rows.append({"raw": line, "file": m.group("file"),
+                         "title": m.group("title").strip(),
+                         "hook": m.group("hook").strip()})
+        else:
+            rows.append({"raw": line})
+    return rows
+
+
+def _line(file, title, hook):
+    """One index line, from the two fields the panel edits.
+
+    The brackets and the parenthesis are the syntax, so they cannot survive
+    inside a title that is going between them — a title carrying a `]` would
+    write a line that reads back as a different one, or as none.
+    """
+    title = re.sub(r"[\[\]()]", "", (title or "").replace("\n", " ")).strip()
+    hook = (hook or "").replace("\n", " ").strip()
+    return f"- [{title or Path(file).stem}]({file})" + (f" — {hook}" if hook else "")
 
 
 def _front(text):
@@ -158,15 +210,26 @@ def payload(project, live=()):
             memories.append(m)
     memories.sort(key=lambda m: -m["when"])
 
+    # The index is not a separate document to edit — it is one line belonging
+    # to each memory, so it is served on the memory it belongs to. A memory
+    # with no line gets empty fields, which is the same thing the page shows
+    # for one whose line says nothing.
+    byfile = {r["file"]: r for r in _index_rows(index) if "file" in r}
+    for m in memories:
+        r = byfile.get(m["file"], {})
+        m["title"] = r.get("title", "")
+        m["hook"] = r.get("hook", "")
+        m["listed"] = m["file"] in byfile
+
     # The two ways the index and the files drift apart. Neither breaks
     # anything outright, which is exactly why they need saying: a dangling
     # pointer is a line of every session's context spent on a file that is
     # gone, and an unlisted memory is one Claude only sees if recall happens
     # to surface it.
-    listed = {h for h in LINK_RE.findall(index) if h.endswith(".md")}
-    present = {m["file"] for m in memories}
+    listed, present = set(byfile), {m["file"] for m in memories}
     issues = [{"level": "warning",
-               "text": f"the index points at {h}, which is not here"}
+               "text": f"the index points at {h}, which is not here — "
+                       "saving takes the line out"}
               for h in sorted(listed - present)]
     issues += [{"level": "warning",
                 "text": f"{f} is not in the index — Claude sees it only when "
@@ -177,8 +240,8 @@ def payload(project, live=()):
                        "text": f"{len(found) - MAX_FILES} more files here are not shown"})
 
     session = tmux_name("claude-" + project)
-    return {"project": project, "dir": str(d), "index": index,
-            "memories": memories, "issues": issues,
+    return {"project": project, "dir": str(d),
+            "memories": memories, "issues": issues, "types": list(TYPES),
             "exists": d.is_dir(),
             # The page offers the note only when there is somewhere to put it.
             "session": session if session in set(live) else None}
@@ -187,14 +250,12 @@ def payload(project, live=()):
 def _target(d, file):
     """The path this file name means, or None if it does not name one here.
 
-    The index is allowed by name because it may not exist yet — saving is how
-    it gets created. Everything else has to already be in the directory, which
-    is what makes the name safe: it came from the listing.
+    Every name has to already be in the directory, which is what makes it
+    safe: it came from the listing. The index is deliberately not reachable
+    this way — it has one writer, save_index, below.
     """
-    if not file or "/" in file or not file.endswith(".md"):
+    if not file or "/" in file or file == INDEX or not file.endswith(".md"):
         return None
-    if file == INDEX:
-        return d / INDEX
     try:
         if not (d / file).is_file():
             return None
@@ -219,6 +280,8 @@ def save(project, file, text):
     d = memory_dir(project)
     if d is None:
         return {"error": f"not a project: {project}"}
+    if file == INDEX:
+        return {"error": "the index is written from the memories themselves"}
     p = _target(d, file)
     if p is None:
         return {"error": f"no memory called {file} here"}
@@ -234,6 +297,119 @@ def save(project, file, text):
     except OSError as e:
         return {"error": f"could not write {file}: {e}"}
     return {"ok": True, "when": int(time.time())}
+
+
+def save_index(project, entries):
+    """Rewrite MEMORY.md from the one line each memory carries.
+
+    The index is regenerated rather than edited as text, so it cannot end up
+    describing memories that are not there — but it is regenerated *in place*:
+    a memory already listed keeps its position, because the order is the only
+    thing in the file nobody can reconstruct, and the operator may well have
+    put the important one at the top. New memories land at the end.
+
+    Lines pointing at files that are gone come out, which is the second half
+    of the warning the panel shows for them. Lines that are not index lines
+    at all are left exactly where they were.
+    """
+    d = memory_dir(project)
+    if d is None:
+        return {"error": f"not a project: {project}"}
+    want = {}
+    for e in entries:
+        f = e.get("file") if isinstance(e, dict) else None
+        if isinstance(f, str) and _target(d, f) is not None and f not in want:
+            want[f] = e
+    p = d / INDEX
+    try:
+        before = p.read_text(errors="replace") if p.is_file() else ""
+    except OSError as e:
+        return {"error": f"could not read the index: {e}"}
+    try:
+        present = {q.name for q in d.glob("*.md") if q.is_file() and q.name != INDEX}
+    except OSError:
+        present = set(want)
+    out, seen = [], set()
+    for r in _index_rows(before):
+        f = r.get("file")
+        if f is None:
+            out.append(r["raw"])
+        elif f in seen:
+            pass                      # a second line for the same memory
+        elif f in want:
+            seen.add(f)
+            out.append(_line(f, want[f].get("title"), want[f].get("hook")))
+        elif f in present:
+            seen.add(f)
+            out.append(r["raw"])      # a memory this payload said nothing about
+        # What is left points at a file that is not here: dropped, which is the
+        # second half of the warning the panel shows for it.
+    for f, e in want.items():
+        if f not in seen:
+            out.append(_line(f, e.get("title"), e.get("hook")))
+    text = "\n".join(out).rstrip("\n") + "\n" if out else ""
+    if text == before:
+        return {"ok": True, "unchanged": True}
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        _write(p, text)
+    except OSError as e:
+        return {"error": f"could not write the index: {e}"}
+    return {"ok": True, "when": int(time.time())}
+
+
+def create(project, name, title, hook, mtype, body):
+    """Write a new memory, and give it its line in the index.
+
+    Both halves or neither: a file with no index line is invisible until
+    recall happens to surface it, which is the failure mode the panel warns
+    about — it should not be the thing the panel's own button produces.
+    """
+    d = memory_dir(project)
+    if d is None:
+        return {"error": f"not a project: {project}"}
+    name = (name or "").strip()
+    if not SLUG_RE.match(name) or len(name) > MAX_SLUG:
+        return {"error": "a name is lowercase words joined by dashes, "
+                         f"up to {MAX_SLUG} characters"}
+    if mtype not in TYPES:
+        return {"error": f"a memory is one of: {', '.join(TYPES)}"}
+    hook = (hook or "").replace("\n", " ").strip()
+    if not hook:
+        return {"error": "a memory needs a one-line description — it is what "
+                         "recall matches against"}
+    body = (body or "").strip()
+    if not body:
+        return {"error": "a memory with no body is a title with nothing behind it"}
+    file = name + ".md"
+    p = d / file
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        if p.exists():
+            return {"error": f"{file} is already here"}
+    except OSError as e:
+        return {"error": f"could not reach the memory directory: {e}"}
+    text = (f"---\nname: {name}\ndescription: {hook}\n"
+            f"metadata:\n  type: {mtype}\n---\n\n{body}\n")
+    if len(text.encode()) > MAX_BYTES:
+        return {"error": "too large to be a memory"}
+    try:
+        # Exclusive: two panels open on the same project should not have the
+        # second one silently replace the first one's memory.
+        with open(p, "x") as fh:
+            fh.write(text)
+    except FileExistsError:
+        return {"error": f"{file} is already here"}
+    except OSError as e:
+        return {"error": f"could not write {file}: {e}"}
+    ip = d / INDEX
+    try:
+        before = ip.read_text(errors="replace") if ip.is_file() else ""
+        _write(ip, (before.rstrip("\n") + "\n" if before.strip() else "")
+               + _line(file, title, hook) + "\n")
+    except OSError as e:
+        return {"error": f"{file} was written, but the index was not: {e}"}
+    return {"ok": True, "file": file}
 
 
 def _unindex(d, file):
@@ -261,10 +437,10 @@ def delete(project, file):
     if d is None:
         return {"error": f"not a project: {project}"}
     if file == INDEX:
-        # The index is regenerated from nothing by no one — Claude appends to
-        # it. Emptying it is a save; removing it loses the pointers to every
-        # memory at once, which is never what one bin icon should mean.
-        return {"error": "the index is not a memory — edit it instead"}
+        # Removing it loses the pointer to every memory at once, which is
+        # never what one bin icon should mean. It is not offered — there is no
+        # row for it any more — so this is the belt to that braces.
+        return {"error": "the index is not a memory"}
     p = _target(d, file)
     if p is None:
         return {"error": f"no memory called {file} here"}
