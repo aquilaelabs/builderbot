@@ -4,7 +4,7 @@
 // `bb todo`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point — something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, tmuxCapture, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +52,7 @@ ok(await page.$eval(`${row('alpha')} [data-m]`,
    'a project with nothing to do wears a dimmed icon and no number');
 
 await page.click(`${row('alpha')} [data-m]`);
-await page.waitForFunction(() => !document.getElementById('memModal').hidden);
+await nbShown(page);
 ok(await page.$eval('#memTitle', el => el.textContent === 'To do — alpha'),
    'the panel opens on the list');
 await page.waitForFunction(() => document.getElementById('todoHint').textContent.length > 0);
@@ -135,10 +135,11 @@ ok(!read().projects.alpha.find(r => String(r.id) === mine.id).sent,
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
 await page.waitForFunction(() => !document.getElementById('todoGo').disabled);
 await page.click('#todoGo');
-// Four things: the line goes, the step is crossed, the panel closes and the
-// session's tab opens. The panel closing is what this waits on.
-await page.waitForFunction(() => document.getElementById('memModal').hidden,
-                           { timeout: 20000 });
+// Three things: the line goes, the step is crossed, and the session's tab
+// opens. The notebook stays where it is — it is a tab now, and a tab is not
+// in the way of the one you are being sent to.
+await page.waitForFunction(() => [...document.querySelectorAll('.tab')]
+  .some(t => /Claude: alpha/.test(t.textContent)), { timeout: 20000 });
 ok(read().projects.alpha.find(r => String(r.id) === mine.id).sent > 0,
    'sending crosses it off — the record is what was handed over');
 const pane = tmuxCapture('claude-alpha');
@@ -527,6 +528,23 @@ await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').le
 ok(await page.$eval('#todoAdd', b => b.checkVisibility()),
    'and the same button puts the list back');
 
+// ---- one notebook at a time --------------------------------------------
+// It is a single node moved into whichever pane shows it, so a second one
+// would fight over it. Opening another project's replaces this one.
+await page.click(`${row('beta')} [data-m]`);
+await page.waitForFunction(() => /beta/.test(
+  document.getElementById('memTitle')?.textContent || ''), { timeout: 15000 });
+const nbTabs = await page.evaluate(() => tabs.filter(t => t.kind === 'todo').map(t => t.arg));
+ok(nbTabs.length === 1 && nbTabs[0] === 'beta',
+   `a second project's notebook replaces the first rather than opening beside it (${nbTabs})`);
+ok(await page.$$eval('.tab', ts => ts.some(t => /To do: beta/.test(t.textContent))),
+   '...and the tab names the project it is showing');
+await page.click(`${row('alpha')} [data-m]`);
+await page.waitForFunction(() => /alpha/.test(
+  document.getElementById('memTitle')?.textContent || ''), { timeout: 15000 });
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0,
+                           { timeout: 15000 });
+
 // ---- where the tags sit ------------------------------------------------
 ok(await page.$eval('#todoList .todo:has(.who) .body',
      el => el.firstElementChild.classList.contains('tags')),
@@ -707,16 +725,21 @@ await page.waitForFunction(id => document.querySelectorAll(
 ok(JSON.stringify(read().projects.alpha) === untouched,
    'a reword and a deletion both wait for Save, the same as an addition');
 
+// Revert is where Close used to be, and it is the only thing left for a
+// button beside Save to mean now that saving does not close anything.
+ok(!await page.$eval('#todoRevert', b => b.disabled),
+   'unsaved changes arm Revert as well as Save');
 page.dialogs = [];
-await page.click('#memClose');
-await page.waitForFunction(() => document.getElementById('memModal').hidden,
-                           { timeout: 10000 });
-ok(page.dialogs.some(d => /Close without saving\? 2 changes/.test(d)),
-   'Close names how many would go, rather than asking in the abstract');
+await page.click('#todoRevert');
+await page.waitForFunction(id => document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="-1"] .txt`)?.textContent !== 'a wording nobody asked for',
+  plainId, { timeout: 10000 });
+ok(page.dialogs.some(d => /Revert 2 changes to the list/.test(d)),
+   'Revert names what it would throw away, rather than asking in the abstract');
 ok(JSON.stringify(read().projects.alpha) === untouched,
-   '...and dropping them leaves the file exactly as it was');
-await page.click(`${row('alpha')} [data-m]`);
-await page.waitForSelector('#todoList .todo', { timeout: 20000 });
+   '...and it never reached the file in the first place');
+ok(await page.$eval('#todoRevert', b => b.disabled),
+   '...and it goes dead once there is nothing left to throw away');
 const reopened = await open();
 ok(reopened.filter(i => i.id === plainId && i.step !== '-1').length === 2
    && reopened.find(i => i.id === plainId && i.step === '-1').text === wasText,

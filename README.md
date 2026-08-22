@@ -1070,7 +1070,15 @@ a placeholder, and **+** starts over.
 ### The shared to-do list
 
 Every project has one, reachable from the checklist icon on its row and from
-`bb todo` in a terminal. It is the one surface here that **both sides write**:
+`bb todo` in a terminal. **It opens as a tab of its own**, like the findings
+report — it was a modal, and on a desktop that meant reading a list, a plan, a
+log and a memory editor through a 760px slot. Saving does not close it; the
+Save buttons simply go dead until there is something to save again, and the
+button beside them is **Revert**, which throws away what has not been saved
+and is dead whenever there is nothing to throw. Closing the tab asks first if
+anything is unsaved. One notebook is open at a time: opening another
+project's replaces it, because it is one panel that moves rather than one per
+project. It is the one surface here that **both sides write**:
 you add "make the picker wrap properly", a session adds "a project can be
 created in one click and only deleted from a shell", and either of you can tick
 something off.
