@@ -180,10 +180,12 @@ operator write.
 ```bash
 bb todo                      # what is on it
 bb todo add "..."            # put something on it
-bb todo done N               # tick one off; undone N, rm N, clear
+bb todo done N               # finished it — off the list, into the log
+bb todo rm N ["why"]         # not doing it — same, and say why it went
+bb todo shelve N             # parked: keep it, not now. unshelve N brings it back
 bb todo edit N "..."         # reword one
 bb todo step add N "..."     # give one a step; step edit N M "...", step rm N M
-bb todo history              # every change to it, newest first
+bb todo history [-n N] [--since 7d] [--find TEXT]   # what changed, narrowed
 ```
 
 **The open items are already in your context.** They were appended to this
@@ -215,6 +217,13 @@ the operator can see what you raised and sweep it if they disagree.
 **Tick things off as you finish them**, including items you did not add.
 A list that only grows is one that stops being read.
 
+Ticking one off **takes it off the list** — this list is read to find out what
+is left, and something finished is not left. It goes into the history under
+"done", where dropping it would have gone under "dropped", and there is no
+undoing either: if it turns out not to have been finished, add it again and
+say so. Only you tick things off. Nothing in the dashboard does it, because
+only the session that did the work knows whether it is done.
+
 **When a change needs several things done in a set order, add it as one item
 with steps** — `bb todo add "rework the picker" --step "widen the select"
 --step "then re-measure it"`. The operator can build and rearrange one from
@@ -243,13 +252,33 @@ bb todo step edit 4 2 "...what step 2 should say now"
 bb todo step rm 4 2          # and step add 4 "..." to put one on the end
 ```
 
+Reordering too, when two steps turn out to be the wrong way round:
+`bb todo step mv 4 3 up`.
+
 Say in your reply that you did it, and why. Every change either of you makes
-is written to a log with its time and the name of who made it, which the
-operator reads from **History** in the panel and you read with
-`bb todo history` — so a step you dropped is recoverable from its own words,
-and there is no version of this where quietly rewriting somebody's plan goes
-unnoticed. That is the point: correct the list openly rather than leaving it
-describing work nobody is going to do.
+is written to a log with its time and the name of who made it — so a step you
+dropped is recoverable from its own words, and there is no version of this
+where quietly rewriting somebody's plan goes unnoticed. That is the point:
+correct the list openly rather than leaving it describing work nobody is
+going to do.
+
+**When you drop something, say why in the command**: `bb todo rm 4 "the
+picker this described no longer exists"`. Nothing here can be undone, so that
+note is the only thing between a dropped line and somebody adding it straight
+back. It is kept with the entry and is searchable.
+
+**Read the log narrowed, never whole.** `bb todo history` gives the last 20;
+`-n N` for more, `--all` for everything, `--since 7d` or `--since 2026-08-01`
+for a window, `--find TEXT` to search the lines, their previous wordings and
+the reasons things went. Reach for `--find` before `--all` — the whole log
+costs more context than the one line you wanted from it.
+
+**A shelved item is parked, not yours to pick up.** The operator shelves
+something they mean to keep and do not want done now; it goes dark at the
+bottom of the list and its steps go with it. It stays in your context so you
+know it exists — do not work on one unless they ask, and do not tidy it away
+either. `bb todo shelve N` is there if *you* want to park something and say
+why in your reply.
 
 If the list or these notes change while you are working, you may be told in
 one line, which names which of the two moved. Read them when it is relevant
