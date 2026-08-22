@@ -5,7 +5,7 @@
 //
 // The writes run for real against the scratch home, so this also checks the
 // part that matters most: a delete takes the index line out with the file.
-import { launch, newPage, ok, done, ready, tmuxCapture, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const MEM = `${DIR}/home/.claude/projects/${(DIR + '/ws/alpha').replaceAll('/', '-')}/memory`;
@@ -24,7 +24,7 @@ ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 0),
    'an excluded project has no panel: nothing starts there to remember anything');
 
 await page.click(`${row('alpha')} [data-m]`);
-await page.waitForFunction(() => !document.getElementById('memModal').hidden);
+await nbShown(page);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
 ok(await page.$eval('#memTitle', el => el.textContent === 'To do — alpha'),
    'the panel opens on that project, on its to-do list');
@@ -239,12 +239,16 @@ ok(/notes about how you work here/.test(pane),
    'saving tells the running session, and the line names the memories');
 
 // ---- closing -----------------------------------------------------------
+// It is a tab, so it closes the way tabs close and not on a stray Escape.
 await page.keyboard.press('Escape');
-ok(await page.$eval('#memModal', el => el.hidden), 'Escape closes the book');
-await page.click(`${row('alpha')} [data-m]`);
-await page.waitForFunction(() => !document.getElementById('memModal').hidden);
-await page.click('#memModal', { position: { x: 5, y: 5 } });
-ok(await page.$eval('#memModal', el => el.hidden), 'so does the backdrop');
+ok(!!await page.$('#nbBody'), 'Escape does not dismiss it — a tab is not a dialog');
+const nbTab = await page.$$eval('.tab',
+  ts => ts.findIndex(t => /To do: alpha/.test(t.textContent)));
+ok(nbTab >= 0, 'it is on the tab strip, named for its project');
+await page.click(`.tab:nth-of-type(${nbTab + 1}) .x, .tab:nth-of-type(${nbTab + 1}) [data-hide]`)
+  .catch(() => page.evaluate(() => hideTab(tabs.find(t => t.kind === 'todo').id)));
+await nbGone(page);
+ok(true, '...and closing that tab puts it away');
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);

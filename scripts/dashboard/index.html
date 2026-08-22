@@ -291,31 +291,34 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .box.wide{width:min(760px,100%)}
 .modal h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
   font:600 13px/1.2 system-ui,sans-serif;letter-spacing:.3px;text-transform:uppercase}
-.modal .field{padding:11px 14px}
-.modal label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
+.modal .field,.nb .field{padding:11px 14px}
+.modal label,.nb label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
   margin-bottom:5px}
-.modal input,.modal textarea,.modal select{width:100%;box-sizing:border-box;
+.modal input,.modal textarea,.modal select,
+.nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
   background:#161b22;color:var(--ink);border:1px solid var(--line);border-radius:6px;
   padding:8px 9px;font:13px/1.5 var(--mono)}
 .modal textarea{min-height:132px;resize:vertical;white-space:pre}
 /* 16px on a phone: iOS Safari zooms the page into any smaller field on
    focus, and this fixed layout has no way to zoom back out. */
-@media(max-width:900px){ .modal input,.modal textarea,.modal select{font-size:16px} }
-.modal input:focus,.modal textarea:focus,.modal select:focus{
+@media(max-width:900px){ .modal input,.modal textarea,.modal select,
+  .nb input,.nb textarea,.nb select{font-size:16px} }
+.modal input:focus,.modal textarea:focus,.modal select:focus,
+.nb input:focus,.nb textarea:focus,.nb select:focus{
   outline:2px solid #2f4d6d;outline-offset:-1px}
-.modal .hint{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-top:6px}
+.modal .hint,.nb .hint{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-top:6px}
 /* Wrapping, because a footer that does not fit does not merely look cramped:
    the box scrolls sideways and the whole panel slides under your thumb. */
-.modal .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
+.modal .foot,.nb .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
   flex-wrap:wrap}
-.modal .foot .sp{flex:1}
-.modal .danger{color:var(--bad);border-color:#4d2220}
+.modal .foot .sp,.nb .foot .sp{flex:1}
+.modal .danger,.nb .danger{color:var(--bad);border-color:#4d2220}
 /* Two-way choice as two buttons, not radios: one tap on a phone, and the
    green .on state is the same vocabulary as everything else on the page. */
 .modal .pseg{display:flex;gap:8px}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
-.modal .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+.modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
 
 /* ---- the shared to-do list -------------------------------------------- */
 .todoadd{display:flex;gap:8px}
@@ -550,6 +553,16 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .memadd .acts .sp{flex:1}
 /* Drift between the index and the files: never fatal, which is exactly why it
    has to be said out loud rather than left to be noticed. */
+/* The notebook, as a pane's document. It fills the pane and scrolls as one
+   column — the whole reason it stopped being a modal is that a list, a plan,
+   a log and a memory editor do not fit a 760px box on a desktop. Its own
+   heading goes: the pane's bar already names it. */
+.nb{display:block;height:100%;overflow:auto;background:var(--panel)}
+.nb h3{display:none}
+/* Freed of the modal's ceilings — the pane is the ceiling now. */
+.nb #todoList,.nb #memList{max-height:none}
+/* The Saves and the Revert stay reachable however long the list is. */
+.nb .foot{position:sticky;bottom:0;background:var(--panel);z-index:1}
 .mdrift{padding:0 14px 4px}
 .mdrift div{color:var(--warn);font:12px/1.5 system-ui,sans-serif;margin-bottom:4px}
 .modal select{width:100%;box-sizing:border-box;background:#161b22;color:var(--ink);
@@ -881,8 +894,13 @@ body.dragging .tab .lbl{cursor:grabbing}
      is never read back. Opened from the book on the project's row, not from a
      Claude tab: the question it answers ("why did it do that?") is usually
      asked after the tab has been closed. -->
-<div id="memModal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="memTitle">
-  <div class="box wide">
+<!-- The notebook. It lives here while no tab is showing it and is *moved* into
+     a pane when one is — one instance, so every id inside it stays unique and
+     the whole staging model keeps working without being made per-pane. It used
+     to be a modal, which on a desktop meant reading a list, a plan, a log and
+     a memory editor through a 760px slot. -->
+<div id="nbPark" hidden>
+  <div id="nbBody" class="nb">
     <h3 id="memTitle">To do</h3>
     <!-- The shared list. Both sides write it, which is what makes it worth a
          panel: everything else here is one-way. Its open items are appended to
@@ -958,7 +976,12 @@ body.dragging .tab .lbl{cursor:grabbing}
       <button id="todoSaveQuiet" type="button" disabled>Save</button>
       <button id="todoSave" type="button" disabled>Save &amp; tell the session</button>
       <span class="sp"></span>
-      <button id="memClose" class="primary" type="button">Close</button>
+      <!-- Where Close used to be. The tab does not go away when something is
+           saved, so the question this button answers is no longer "am I done
+           looking at this" — it is "throw the unsaved changes away", which is
+           the other half of a Save button and dead whenever there is nothing
+           to throw. -->
+      <button id="todoRevert" class="danger" type="button" disabled>Revert</button>
     </div>
   </div>
 </div>
@@ -1423,6 +1446,8 @@ function show(t){
   if (isPhone()) setView("terminal");
   if (t.kind === "findings" && !findings) loadFindings();
   if (t.kind === "packages") loadPackages();
+  // Only when it is a different project's: switching back to a notebook must
+  // not reload it, or whatever is staged in it goes.
   refreshSoon();      // a just-opened terminal's session appears in Sessions
 }
 
@@ -1448,6 +1473,10 @@ function hideTab(id, ev){
   ev?.stopPropagation();
   const t = tabOf(id);
   if (!t) return;
+  if (t.kind === "todo"){
+    if (!notebookLeaving()) return;
+    parkNotebook();
+  }
   dropTab(id);
   refresh();
 }
@@ -1998,7 +2027,7 @@ function drawPanes(){
     // that replaced it, so coming back to it is instant. Two panes must never
     // hold the same one: a second live client on a session is the size fight
     // pinTo exists to avoid.
-    if (t.kind === "term") dropElsewhere(i, key);
+    if (t.kind === "term" || t.kind === "todo") dropElsewhere(i, key);
     // Same tab, different argument — a dead session's tab taking a Resume's
     // transcript id — is a different frame, and the old one is nobody's now.
     [...st.children].filter(c => c.dataset.key !== key
@@ -2036,7 +2065,26 @@ function drawPanes(){
       pane.dataset.rev = String(pkgRev); renderPackagesInto(i);
       if (!packages) loadPackages();      // same, for a restored packages tab
     }
+    if (t.kind === "todo") renderNotebookInto(i, t.arg);
   }
+}
+
+// The notebook is *moved* into the pane rather than rendered into it. One
+// instance, so every id inside stays unique and the staging model does not
+// have to become per-pane — and moving it keeps whatever is half-typed in it,
+// which re-rendering would not.
+function renderNotebookInto(i, project){
+  const host = $("doc" + i), nb = $("nbBody");
+  if (!host || !nb) return;
+  if (nb.parentElement !== host) host.appendChild(nb);
+  if (memProj !== project) openMemory(project);
+}
+
+// Back to its holder when no tab is showing it, so a stale copy is never left
+// inside a pane's stack for the next document to be drawn over.
+function parkNotebook(){
+  const nb = $("nbBody");
+  if (nb && nb.parentElement?.id !== "nbPark") $("nbPark").appendChild(nb);
 }
 
 // How many terminals a pane keeps alive behind the one on screen. Each is a
@@ -2917,7 +2965,7 @@ function drawProjects(ps){
     el.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
     el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
     el.querySelectorAll("[data-l]").forEach(b => b.onclick = () => openLinkProject(b.dataset.l));
-    el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => openMemory(b.dataset.m));
+    el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => openNotebook(b.dataset.m));
     pJobWire();
     el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
       setExcluded(b.dataset.x, b.dataset.on === "1"));
@@ -3750,6 +3798,23 @@ function openLinkProject(name){ pLink = name; pOpen("link"); }
 let memProj = null;      // which project's panel is open
 let memGen  = 0;         // bumped on close, so a slow load cannot repaint it
 
+// The notebook opens as a tab of its own. Loading is separate from opening
+// because a tab can be shown again without being reopened — switching back to
+// it must not throw away what is staged in it.
+function openNotebook(name){
+  // One at a time. The notebook is a single node moved into a pane, so two of
+  // them would fight over it and the loser would show an empty document. A
+  // second project's notebook replaces the first's rather than pretending —
+  // and asks first, because the first may be holding unsaved work.
+  const open = tabs.find(t => t.kind === "todo");
+  if (open && open.arg !== name){
+    if (!notebookLeaving()) return;
+    parkNotebook();
+    dropTab(open.id);
+  }
+  openTab({kind: "todo", arg: name, label: "To do: " + name});
+}
+
 async function openMemory(name){
   memProj = name;
   const gen = ++memGen;
@@ -3767,10 +3832,9 @@ async function openMemory(name){
   cancelSend();
   $("todoText").value = "";
   $("todoList").innerHTML = `<div class="hint">loading…</div>`;
-  $("memModal").hidden = false;
   // Opening it is a re-read: both halves come off disk again, and the card
-  // behind gets the same treatment so the number on the row you just pressed
-  // is not the one from the last poll.
+  // gets the same treatment so the number on the row you just pressed is not
+  // the one from the last poll.
   await Promise.all([loadTodo(gen), loadMemory(gen), refresh()]);
 }
 
@@ -4026,6 +4090,14 @@ function syncSave(){
   const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
                 || todoPending.length > 0;
   q.disabled = !dirty;
+  // Revert answers the same question the Saves do, from the other side.
+  const rv = $("todoRevert");
+  if (rv){
+    rv.disabled = !(todoPending.length || memDirty());
+    rv.title = rv.disabled ? "nothing unsaved to throw away"
+      : "throw away what has not been saved — the list and the memory editors "
+        + "go back to what is on disk";
+  }
   // Telling needs somewhere to tell. Dead rather than absent either way, so
   // the footer does not move about under a thumb.
   b.disabled = !dirty || !todoSession;
@@ -4089,7 +4161,10 @@ async function reallySend(){
   }
   // Saved memory edits go with it, since "my other changes" means all of them.
   if (also && memDirty()) await saveMemory(true);
-  closeMemory();
+  // The notebook stays open behind it now. Sending used to close the panel
+  // because a modal was in the way of the tab you were being sent to; a tab
+  // is not in the way of anything, and coming back to the plan to send its
+  // next step is the ordinary next thing.
   startClaude(proj, null);      // opens the tab, or goes to the one that is there
 }
 
@@ -4233,20 +4308,38 @@ async function addTodo(){
   t.focus();
 }
 
-// force is only ever passed as a literal true, by the send flow, which has
-// just committed everything and is leaving on purpose. Checked identically
-// rather than for truthiness because `onclick = closeMemory` hands it a
-// MouseEvent — which is how the Close button came to be the one way out that
-// threw away a reordering without asking, while Escape and the backdrop asked.
-function closeMemory(force){
-  if (force !== true && todoPending.length
-      && !confirm(`Close without saving? ${todoPending.length} change`
-                  + `${todoPending.length === 1 ? "" : "s"} to the list `
-                  + "would be dropped — the list goes back to how it was."))
-    return;
+// What is unsaved here, in the words the buttons use. Both halves, because
+// both Saves write both and a Revert that left one behind would be a trap.
+function nbUnsaved(){
+  const n = todoPending.length;
+  return [n ? `${n} change${n === 1 ? "" : "s"} to the list` : "",
+          memDirty() ? "an edited memory" : ""].filter(Boolean).join(" and ");
+}
+
+// Throw the unsaved changes away. What Close used to do on the way out, now
+// that there is no way out to do it on: the tab stays, so this is the only
+// thing left for a button beside Save to mean.
+async function revertNotebook(){
+  const what = nbUnsaved();
+  if (!what) return;
+  if (!confirm(`Revert ${what}?\n\nIt goes back to what is on disk.`)) return;
   revertPending();
   todoOrdering = false;
-  memGen++; memProj = null; $("memModal").hidden = true;
+  redrawTodo();
+  await loadMemory(memGen);       // drops whatever the editors were holding
+}
+
+// A notebook tab going away takes whatever is unsaved in it with it, so it is
+// the one tab close that asks. Answered here rather than in hideTab, which is
+// shared by every kind and should not learn about any of them.
+function notebookLeaving(){
+  const what = nbUnsaved();
+  if (!what) return true;
+  if (!confirm(`Close without saving? ${what} would be dropped.`)) return false;
+  revertPending();
+  todoOrdering = false;
+  memGen++; memProj = null;
+  return true;
 }
 
 async function loadMemory(gen){
@@ -4749,10 +4842,7 @@ $("todoText").onkeydown = e => {
     e.preventDefault(); e.stopPropagation(); e.target.value = "";
   }
 };
-$("memClose").onclick = () => closeMemory();
-// The backdrop closes it like the others — but only from the backdrop itself,
-// so a click that lands in the box while selecting text does not.
-$("memModal").onclick = e => { if (e.target.id === "memModal") closeMemory(); };
+$("todoRevert").onclick = revertNotebook;
 for (const f of ["pName", "pUrl"])
   $(f).onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("pCreate").click(); } };
 
@@ -5417,10 +5507,9 @@ document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (!$("modal").hidden) closeEditor();
   if (!$("pmodal").hidden) closeNewProject();
-  // Escape puts an armed arrow down before it closes the panel.
-  if (todoSel && !$("memModal").hidden){ cancelSend(); drawTodo(
-    {items: todoItems, session: todoSession, unsaved: todoUnsaved}); return; }
-  if (!$("memModal").hidden) closeMemory();
+  // Escape puts an armed arrow down. It no longer closes anything: the
+  // notebook is a tab, and tabs are not dismissed by a keystroke.
+  if (todoSel && memProj){ cancelSend(); redrawTodo(); return; }
   if (pinFor){ pinFor = null; drawTabs(); }
   if (resumeFor){ resumeFor = null; if (state) drawProjects(state.projects); }
 });
