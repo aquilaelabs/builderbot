@@ -149,9 +149,21 @@ class Flow:
         return "the sign-in did not finish"
 
 
+# How long start() waits for the URL before answering. The flow takes about a
+# second to print it, and a button that returns before then leaves the card
+# saying "starting the sign-in…" until the next poll — which is how a link
+# that is ready in a second took fifteen to appear.
+URL_WAIT = 6
+
+
 def start():
     """Begin a flow, replacing any that is there. Pressing Sign in is the one
-    thing that means start over, so it always does."""
+    thing that means start over, so it always does.
+
+    Waits for the URL rather than returning the moment the process exists:
+    the answer is worth having in the response that the button is already
+    waiting on.
+    """
     global _flow
     with _lock:
         old = _flow
@@ -161,6 +173,9 @@ def start():
     f.start()
     with _lock:
         _flow = f
+    t0 = time.time()
+    while time.time() - t0 < URL_WAIT and not f.url and not f.done:
+        time.sleep(0.05)
     return {"ok": True}
 
 
