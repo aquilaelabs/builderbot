@@ -4,6 +4,9 @@
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
 import { launch, newPage, ok, done, sleep, tmuxNew, tmuxFmt, layoutSettled, URL, DIR } from './lib.mjs';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -316,6 +319,30 @@ await land.waitForFunction(() => document.getElementById('keys').classList.conta
 const fit2 = await land.evaluate(() => ({ bar: document.getElementById('mobar').getBoundingClientRect().bottom, panes: document.getElementById('panes').offsetHeight }));
 ok(fit2.bar <= 390 && fit2.panes >= 90, `landscape: same with the keys (bar bottom ${Math.round(fit2.bar)}px, terminal ${fit2.panes}px)`);
 await land.close();
+
+// ---- a tab that outlived its container ---------------------------------
+// A browser left open across a restart still holds its Claude tabs, and a
+// phone waking up reloads the terminal iframe — which spawns whatever the URL
+// names. Pruning the saved layout at boot cannot stop that, because the page
+// never re-read it. So the URL carries the boot it was opened in, and bb-tty
+// refuses to *start* a session for one from a previous run. Attaching to a
+// session that is already there is untouched: that is how a tab comes back.
+const BBTTY = join(dirname(fileURLToPath(import.meta.url)), '..', 'bb-tty');
+const tty = (arg) => {
+  try {
+    return execFileSync(BBTTY, [arg], { env: { ...process.env,
+      WORKSPACE: `${DIR}/ws`, DASHBOARD_STATE: `${DIR}/state` },
+      stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+  } catch (e) { return String(e.stdout || '') + String(e.stderr || ''); }
+};
+ok(/before the container restarted/.test(tty('claude:alpha:b:not-this-boot')),
+   'a Claude tab stamped with an older boot is refused rather than obeyed');
+ok(/before the container restarted/.test(tty('claude:alpha')),
+   '...and so is one with no stamp at all, since only the dashboard mints these');
+// A name that is not a project, so this asks the question without starting
+// anything: the point is only that the boot gate is a Claude rule.
+ok(!/before the container restarted/.test(tty('shell:nosuchproject:1')),
+   'a shell carries no stamp and never did — it is safe to recreate in place');
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

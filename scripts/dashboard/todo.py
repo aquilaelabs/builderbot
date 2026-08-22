@@ -238,8 +238,15 @@ def begin(project, by="claude"):
         d = load()
         if d.get("batch", {}).get(project):
             return {"error": "a batch is already open here — commit or revert it"}
+        # How many of the operator's changes the log already held. Counted,
+        # not timed: `at` has one-second resolution, so "later than the batch
+        # opened" caught anything that happened in the same second as it —
+        # which made revert refuse for a change that came *before* the work it
+        # was asked to undo.
+        h = d.get("history", {}).get(project) or []
         d.setdefault("batch", {})[project] = {
             "at": int(time.time()), "by": by, "events": [],
+            "yours": sum(1 for e in h if e.get("by") == "you"),
             "rows": json.loads(json.dumps(d["projects"].get(project) or []))}
         save(d)
     return {"ok": True}
@@ -321,7 +328,7 @@ def revert(project):
         # something while this was open, restoring a copy taken before it
         # would quietly undo their change too — so it is refused and said.
         h = d.get("history", {}).get(project) or []
-        if any(e.get("by") == "you" and e.get("at", 0) >= b.get("at", 0) for e in h):
+        if sum(1 for e in h if e.get("by") == "you") > b.get("yours", 0):
             return {"error": "the operator has changed this list since the batch "
                              "opened — reverting would undo their work too. "
                              "Commit it and correct what is wrong."}

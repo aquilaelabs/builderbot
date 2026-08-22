@@ -1303,7 +1303,16 @@ function nextShell(proj){
 // Same origin, not ttyd's own port: the server proxies /term to ttyd, so the
 // one sign-in that opened this page covers every terminal too — no second
 // credential prompt, and no second port for the router to publish.
-const ttydUrl = arg => `/term/?arg=${encodeURIComponent(arg)}`;
+// A Claude terminal's URL carries the boot it was opened in. It is fixed into
+// the iframe's src at that moment and a reattach reuses the string, so a page
+// left open across a container restart asks for a session under the *old*
+// boot — which bb-tty refuses. That is the hole the boot-time tab prune could
+// not close: pruning the stored layout does nothing about a browser already
+// holding the tab, and a phone waking up reloads its terminal iframe, which
+// spawns whatever the URL names. A shell carries no marker, because a shell
+// is safe to recreate in the same directory and always was.
+const ttydUrl = arg => `/term/?arg=${encodeURIComponent(
+  arg.startsWith("claude:") && state?.boot ? `${arg}:b:${state.boot}` : arg)}`;
 
 const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 
@@ -5260,6 +5269,7 @@ function adoptLayout(v){
                                                   // leave saves suppressed
 }
 
+let bootSeen = null;                      // which run of the container this page saw
 let preStatusUsed = false;                // the head's early fetch: once only
 
 async function refresh(){
@@ -5272,6 +5282,14 @@ async function refresh(){
     if (r.status === 401){ location.href = "/login?next=%2F"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     state = await r.json();
+    // The container was recreated under this page. Its Claude tabs are tabs to
+    // conversations that ended with it — the server prunes them from the saved
+    // layout at boot, but a page that has saved since then is ahead of that
+    // revision and would never adopt the pruned strip. So it drops its own,
+    // and the transcripts stay on disk for the Projects card to offer.
+    if (state.boot && bootSeen && state.boot !== bootSeen)
+      tabs.filter(t => String(t.arg).startsWith("claude:")).forEach(t => dropTab(t.id));
+    if (state.boot) bootSeen = state.boot;
     $("dot").classList.remove("off");
     $("host").textContent = state.host;
     $("uptime").textContent = "up " + state.uptime;

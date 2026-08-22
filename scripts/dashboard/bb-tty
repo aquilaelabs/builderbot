@@ -97,6 +97,16 @@ bad() {
 # BuilderBot used to write directly, which sets `mouse on` and never sources the
 # file we own now. Set on the session itself, this holds whatever the config
 # said, which is what a behavior the page promises has to do.
+# Which run of the container this is, by the same rule server.py uses: pid 1's
+# start time paired with the host's boot time, so it changes when the container
+# is recreated and not when the dashboard is merely restarted.
+boot_id() {
+    local start btime
+    start="$(sed 's/^.*) //' /proc/1/stat 2>/dev/null | awk '{print $20}')"
+    btime="$(awk '/^btime /{print $2}' /proc/stat 2>/dev/null)"
+    [ -n "$start" ] && [ -n "$btime" ] && printf '%s.%s' "$btime" "$start"
+}
+
 start() {
     local s="$1" dir="$2"; shift 2
     # tmux rewrites `.` and `:` in a session name to `_` (they are its target
@@ -161,9 +171,13 @@ case "$target" in
 
     claude:*)
         rest="${target#claude:}"
-        # claude:PROJECT           — a fresh conversation
-        # claude:PROJECT:r:UUID    — resume that transcript
-        resume=""
+        # claude:PROJECT                — a fresh conversation
+        # claude:PROJECT:r:UUID         — resume that transcript
+        # ...:b:BOOT                    — and which run of the container asked
+        resume="" want_boot=""
+        case "$rest" in
+            *:b:*) want_boot="${rest##*:b:}"; rest="${rest%:b:*}" ;;
+        esac
         case "$rest" in
             *:r:*) resume="${rest##*:r:}"; proj="${rest%%:r:*}" ;;
             *)     proj="$rest" ;;
@@ -194,6 +208,24 @@ case "$target" in
         if is_excluded "$proj"; then
             bad "'${proj}' is excluded: no Claude session can be started here." \
                 "Clear it from the dashboard's Projects card to allow one again."
+        fi
+        # Attaching to a session that is already running is always fine — the
+        # conversation is there, and this is how a tab comes back to it.
+        # *Starting* one is a decision, and it has to be a decision made now.
+        #
+        # A browser left open across a container restart still holds its Claude
+        # tabs, and a phone waking up reloads the terminal iframe — which
+        # spawns whatever its URL names, silently, minutes after a restart
+        # nobody connected it to. Pruning the stored layout at boot cannot stop
+        # that; the page never re-read it. So the URL carries the boot it was
+        # opened in, and one from a previous run is refused here, where the
+        # session would otherwise be created.
+        if ! tmux has-session -t "=claude-${proj//[.:]/_}" 2>/dev/null \
+           && [ "$want_boot" != "$(boot_id)" ]; then
+            bad "This tab is from before the container restarted." \
+                "Its conversation is still on disk. Open Claude on ${proj} from" \
+                "the dashboard's Projects card to pick it up again — starting a" \
+                "session is a decision, and a reconnecting tab is not one."
         fi
         cmd=(claude --remote-control "$proj")
         if [ -n "$resume" ]; then
