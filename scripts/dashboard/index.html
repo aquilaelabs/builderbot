@@ -352,7 +352,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .hist .act.gone{color:#e0796f;border-color:#4d2220}
 .hist .act.new{color:#7fc08a;border-color:#1f3f28}
 .hist .what{flex:1;min-width:0;overflow-wrap:anywhere}
-.hist .who{color:#b79ae0}
+/* Set off from the words rather than trailing them: without the gap the name
+   reads as the last word of the line it is labelling. */
+.hist .who{color:#b79ae0;margin-left:6px}
 .hist .who.you{color:var(--dim)}
 .hist .was{color:var(--dim);text-decoration:line-through}
 @media(max-width:560px){ .hist{display:block}
@@ -363,13 +365,21 @@ button.on{background:#1f6f36;border-color:#2ea043}
    the id, not the position — it does not change when the list is rearranged,
    which is what makes it worth quoting in a conversation. */
 .todo .n.id{min-width:2.2em;opacity:.75}
+/* An item the server has never heard of has no number to show. It gets one
+   from Save, which is also the moment it becomes something a session can be
+   told about. */
+.todo .n.id.new{font:600 10px/1.5 system-ui,sans-serif;color:var(--accent);
+  opacity:.9}
 /* The words and their labels are one column, so a pill sits above the line
    instead of eating a third of it — on a phone that difference is the whole
    readability of the row. */
 .todo .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .todo .tags{display:flex;gap:5px;flex-wrap:wrap}
+/* pre-wrap, because a step may be written across a few lines: one step is one
+   message the operator sends by hand, so the cheap unit has to be able to hold
+   a paragraph rather than pushing a plan into more steps than it needs. */
 .todo .txt{min-width:0;font:13px/1.45 system-ui,sans-serif;
-  overflow-wrap:anywhere;cursor:text}
+  overflow-wrap:anywhere;cursor:text;white-space:pre-wrap}
 .todo.step .txt{font-size:12.5px}
 /* Struck through means *sent*, not done. It stays where it was — the order is
    the record — so that a step that was handed over and quietly not carried out
@@ -439,6 +449,13 @@ button.on{background:#1f6f36;border-color:#2ea043}
   border:1px solid var(--line);border-radius:6px;padding:6px 8px;
   font:12.5px/1.4 system-ui,sans-serif;min-height:var(--tap)}
 @media(max-width:900px){ .dropbox input{font-size:16px} }
+.dropbox textarea{width:100%;box-sizing:border-box;background:#161b22;
+  color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 8px;
+  font:12.5px/1.5 system-ui,sans-serif;min-height:86px;resize:vertical;
+  white-space:pre-wrap}
+@media(max-width:900px){ .dropbox textarea{font-size:16px} }
+/* Rewording is not a deletion; it borrows the box and not the red. */
+.editbox{border-color:var(--line);background:#12171d}
 .dropbox .acts{display:flex;gap:8px;margin-top:8px}
 .dropbox .acts .sp{flex:1}
 /* Giving an item a step, which is how a plain one becomes a plan. */
@@ -3734,6 +3751,7 @@ async function openMemory(name){
   $("todoSave").disabled = $("todoSaveQuiet").disabled = true;
   $("todoAsk").hidden = true;
   todoOrdering = false;
+  todoPending = []; todoWas = null;
   todoLogOn = false;
   todoLog = null;
   $("histFind").value = "";
@@ -3812,12 +3830,16 @@ function stepRow(r, idx, live){
   // thing you have decided not to do now is the whole plan. So the shelf
   // button sits on the item row, and a group is shelved entire.
   //
-  // The bin sits at the head of the queue: things come off a plan from the
-  // front, and dropping step five while step two is the frontier leaves a
-  // group in a state its order was supposed to prevent.
+  // The bin is on every row. It used to be on the head of the queue only —
+  // things come off a plan from the front — which meant a stale step three
+  // cost you steps one and two to reach, and left the list describing work
+  // nobody was going to do. That guardrail was aimed at the wrong risk: the
+  // order that matters is the order things are *sent* in, and the frontier
+  // rule below is what protects it. A deletion cannot send anything out of
+  // order; it can only make a plan shorter, and it now says why it did and
+  // keeps the words in the log.
   const k = crossedTo(r);
   const shelf = idx < 0;
-  const bin = idx < 0 || idx === 0;
   // Sent ones stay live so they can go again — "it did not take, do it again"
   // is the reason they are still on screen at all.
   // A crossed line cannot be sent. Un-cross it first — that is one tap, and
@@ -3866,23 +3888,26 @@ function stepRow(r, idx, live){
       title="${esc(why)}" aria-label="send"
       aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}
     ${idx >= 0 ? `<span class="n">${idx + 1}</span>`
-               : `<span class="n id" title="this item is #${r.id} wherever it sits — what a session means by that number, and what bb todo done ${r.id} takes">#${r.id}</span>`}
+               : r.id < 0
+                 ? `<span class="n id new" title="not saved yet — it gets its number when you press Save">new</span>`
+                 : `<span class="n id" title="this item is #${r.id} wherever it sits — what a session means by that number, and what bb todo done ${r.id} takes">#${r.id}</span>`}
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
     </span>
-    ${todoOrdering ? moves : `<button class="eye ed" type="button" aria-label="reword"
-      title="reword this line">${PENCIL}</button>${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
+    ${todoOrdering ? moves : `${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
       aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
       title="${r.shelved
         ? "take it off the shelf — back among the live ones"
         : "shelve it: worth keeping, not for now. It goes dark at the bottom"
           + (steps.length ? " with its steps" : "") + " and a session is told it is parked"}"
       >${SHELF}</button>` : `<span class="eye ph"></span>`}
-    ${bin ? `<button class="eye rm" type="button" aria-label="drop it"
-      title="${idx < 0 ? "take it off the list — the only way anything leaves"
+    <button class="eye ed" type="button" aria-label="reword"
+      title="reword this line">${PENCIL}</button>
+    <button class="eye rm" type="button" aria-label="drop it"
+      title="${idx < 0 ? "take it off the list, with a note saying why"
                        : "drop this step; the one behind it takes its place"}"
-      >${BIN}</button>` : `<span class="eye ph"></span>`}`}
+      >${BIN}</button>`}
   </div>`;
 }
 
@@ -3947,7 +3972,7 @@ function drawTodo(j){
     // is the whole difference between it and the bin beside it.
     const x = row.querySelector(".x");
     if (x) x.onclick = () =>
-      postTodo({action: "shelve", id, on: !row.classList.contains("shelved")});
+      stageShelve(id, !row.classList.contains("shelved"));
     // Deleting always asks. Nothing here is recoverable, and the strike beside
     // it is the reversible answer for anyone who only meant "not this one".
     const rm = row.querySelector(".rm");
@@ -3956,12 +3981,7 @@ function drawTodo(j){
     // can see is the only one a thumb finds; the words because that is where
     // the hand goes anyway. Steps too — a plan is written before it is right,
     // and the line that needed changing was always the one inside a group.
-    const reword = () => {
-      const was = row.querySelector(".txt").textContent;
-      const now = prompt(step < 0 ? "Reword it:" : `Reword step ${step + 1}:`, was);
-      if (now !== null && now.trim() && now !== was)
-        postTodo({action: "edit", id, step: step < 0 ? null : step, text: now});
-    };
+    const reword = () => openReword(row, id, step);
     // Guarded like every other control on this row: reordering replaces all
     // three of them, so in that mode there is no pencil to bind and an
     // unguarded one took the whole redraw down with it.
@@ -3982,7 +4002,7 @@ function drawTodo(j){
   $("todoLog").classList.toggle("on", todoLogOn);
   const armed = !!todoSel && live;
   const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
-                || todoMoves.length > 0;
+                || todoPending.length > 0;
   $("todoGo").disabled = !armed;
   $("todoAlso").disabled = !armed || !dirty;
   $("todoAlsoWrap").classList.toggle("off", !armed || !dirty);
@@ -3995,7 +4015,7 @@ function syncSave(){
   const b = $("todoSave"), q = $("todoSaveQuiet");
   if (!b || !q) return;
   const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
-                || todoMoves.length > 0;
+                || todoPending.length > 0;
   q.disabled = !dirty;
   // Telling needs somewhere to tell. Dead rather than absent either way, so
   // the footer does not move about under a thumb.
@@ -4017,8 +4037,8 @@ let todoOrdering = false;   // the rows are showing move controls instead
 // is a draft you are in the middle of, and closing the panel on a half-done
 // shuffle should leave the order alone. So the moves live here until Save,
 // and the snapshot is what Cancel puts back.
-let todoMoves = [];         // {id, step, dir} in the order they were made
-let todoWas = null;         // the arrangement reordering started from
+let todoPending = [];       // staged changes, in the order they were made
+let todoWas = null;         // the list as it was before the first staged change
 
 // Picking one arms the Send button; picking it again puts it down. The
 // highlight is the whole confirmation — the line it would send is the line the
@@ -4033,11 +4053,20 @@ function cancelSend(){ todoSel = null; }
 
 async function reallySend(){
   if (!todoSel) return;
-  const {id, step} = todoSel;
+  let {id, step} = todoSel;
   const also = !$("todoAlso").disabled && $("todoAlso").checked;
   const proj = memProj;
   $("todoGo").disabled = true; $("todoGo").textContent = "Sending…";
   $("todoGo").classList.add("busy");
+  // Staged changes go first, always — not only when "also save" is ticked.
+  // The line about to be typed into a session is one of them, and sending it
+  // against a list the server has not been told about would hand over a step
+  // that does not exist there. An item added in this panel has a negative id
+  // until that flush; the real one comes back from it.
+  if (todoPending.length){
+    const map = await flushPending();
+    if (map.has(String(id))) id = map.get(String(id));
+  }
   // The note rides on the same line as the step rather than chasing it: two
   // messages into one input box is how the second ends up glued to the first.
   const j = await postTodo({action: "send", id, step, tell: also});
@@ -4075,7 +4104,8 @@ async function postTodo(body, quiet){
 // line and somebody adding it straight back is a note saying why it went.
 // Optional, deliberately. A reason demanded is a reason typed as "x".
 function openDrop(row, id, step){
-  if (row.querySelector(".dropbox")) return;
+  if (row.nextElementSibling?.classList.contains("dropbox")) return;
+  row.parentElement.querySelectorAll(".editbox,.dropbox").forEach(b => b.remove());
   const what = row.querySelector(".txt").textContent;
   const r = (todoItems || []).find(x => String(x.id) === String(id));
   const also = step >= 0
@@ -4095,13 +4125,52 @@ function openDrop(row, id, step){
   box.querySelector(".danger").onclick = () => {
     const why = box.querySelector("input").value;
     shut();
-    postTodo({action: "remove", id, ...(step >= 0 ? {step} : {}), why});
+    stageRemove(id, step, why);
   };
   box.querySelector("input").onkeydown = e => {
     if (e.key === "Enter"){ e.preventDefault(); box.querySelector(".danger").click(); }
     if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); shut(); }
   };
   // Not focused, like everything else that opens in this window.
+}
+
+// Rewording, in a box under the row rather than a prompt(). A prompt is one
+// line by construction, and these are not any more — opening a three-line step
+// in one would have flattened it on the way back, which is the kind of quiet
+// data loss an edit box should never do.
+function openReword(row, id, step){
+  if (row.nextElementSibling?.classList.contains("editbox")) return;
+  row.parentElement.querySelectorAll(".editbox,.dropbox").forEach(b => b.remove());
+  const was = row.querySelector(".txt").textContent;
+  const box = document.createElement("div");
+  box.className = "dropbox editbox";
+  box.innerHTML = `<div class="q">${step < 0 ? "Reword it"
+      : `Reword step ${step + 1}`}<span> — Enter saves, shift+Enter is a new line</span></div>
+    <textarea maxlength="500" spellcheck="false"></textarea>
+    <div class="acts"><span class="sp"></span>
+      <button type="button" class="stop">Cancel</button>
+      <button type="button" class="primary">Save</button></div>`;
+  row.after(box);
+  const ta = box.querySelector("textarea");
+  ta.value = was;
+  const shut = () => box.remove();
+  box.querySelector(".stop").onclick = shut;
+  box.querySelector(".primary").onclick = () => {
+    const now = ta.value;
+    shut();
+    if (now.trim() && now !== was)
+      stageEdit(id, step < 0 ? null : step, now);
+  };
+  ta.onkeydown = e => {
+    if (e.key === "Enter" && !e.shiftKey){
+      e.preventDefault(); box.querySelector(".primary").click();
+    }
+    if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); shut(); }
+  };
+  // Focused, unlike a window opening: the finger that wants this field just
+  // tapped the pencil, and the text it wants to change is already in it.
+  ta.focus();
+  ta.setSelectionRange(ta.value.length, ta.value.length);
 }
 
 // Adding steps one after another: the field stays open, so a plan is typed
@@ -4117,8 +4186,7 @@ function openStepInput(box){
   box.querySelector(".stop").onclick = () => closeStepInput(box);
   const go = async () => {
     if (!inp.value.trim()) return closeStepInput(box);
-    const keep = inp.value;
-    if (await postTodo({action: "add-step", id, text: keep})){
+    if (stageAddStep(id, _clean(inp.value))){
       // The redraw replaced this box; find the new one and carry on typing.
       const again = $("todoList").querySelector(`.addstep[data-id="${id}"]`);
       if (again) openStepInput(again);
@@ -4145,7 +4213,7 @@ function closeStepInput(box){
 async function addTodo(){
   const t = $("todoText");
   if (!t.value.trim()) return;
-  if (await postTodo({action: "add", text: t.value})){
+  if (stageAdd(_clean(t.value))){
     t.value = "";
     // It lands at the end now, which on a phone is below the fold. Scrolled
     // to, because "did that work?" should not need a swipe to answer.
@@ -4162,11 +4230,12 @@ async function addTodo(){
 // MouseEvent — which is how the Close button came to be the one way out that
 // threw away a reordering without asking, while Escape and the backdrop asked.
 function closeMemory(force){
-  if (force !== true && todoMoves.length
-      && !confirm("Close without saving the reordering?\n\nThe order goes back "
-                  + "to how it was."))
+  if (force !== true && todoPending.length
+      && !confirm(`Close without saving? ${todoPending.length} change`
+                  + `${todoPending.length === 1 ? "" : "s"} to the list `
+                  + "would be dropped — the list goes back to how it was."))
     return;
-  revertMoves();
+  revertPending();
   todoOrdering = false;
   memGen++; memProj = null; $("memModal").hidden = true;
 }
@@ -4405,19 +4474,19 @@ $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 $("todoAdd").onclick = addTodo;
 $("todoGo").onclick = reallySend;
 $("todoOrder").onclick = () => {
-  if (todoOrdering){ if (!leaveOrdering()) return; redrawTodo(); return; }
-  todoOrdering = true;
-  cancelSend();
-  todoWas = structuredClone(todoItems);
-  todoMoves = [];
+  // Entering the mode throws nothing away either: whatever is already staged
+  // stays staged, and the moves join it.
+  todoOrdering = !todoOrdering;
+  if (todoOrdering) cancelSend();
   redrawTodo();
 };
 
-// Put the arrangement back the way it was found. The server never saw any of
-// it, so this is only the page's own copy.
-function revertMoves(){
-  if (todoMoves.length && todoWas) todoItems = todoWas;
-  todoMoves = []; todoWas = null;
+// Put the list back the way it was found. The server never saw any of it, so
+// this is only the page's own copy going back to the snapshot taken when the
+// first change was staged.
+function revertPending(){
+  if (todoPending.length && todoWas) todoItems = todoWas;
+  todoPending = []; todoWas = null;
 }
 
 const redrawTodo = () =>
@@ -4517,53 +4586,148 @@ $("histFind").onkeydown = e => {
 $("histWhen").onchange = loadHistory;
 $("histN").onchange = loadHistory;
 
-// Both toggles leave reordering the same way, and neither throws away a
-// shuffle without asking.
-function leaveOrdering(){
-  if (!todoOrdering) return true;
-  if (todoMoves.length
-      && !confirm("Discard the reordering?\n\nThe order goes back to how it "
-                  + "was. Save keeps it.")) return false;
-  todoOrdering = false;
-  revertMoves();
-  return true;
-}
-
 $("todoLog").onclick = () => {
-  if (!leaveOrdering()) return;
+  todoOrdering = false;
   todoLogOn = !todoLogOn;
   if (todoLogOn){ cancelSend(); loadHistory(); }
   else { todoLog = null; redrawTodo(); }
 };
 
+// ---- staging -------------------------------------------------------------
+// Nothing the panel does touches the list until Save. Reordering worked this
+// way already; everything else used to write on the spot, which made Save mean
+// two different things depending on which control you had pressed — and left
+// no way to type three steps, look at them together, and change your mind.
+//
+// Each change is applied to the page's own copy and appended here. Save
+// replays them in the order they were made, which is what makes the server
+// arrive at what is on screen. Anything else — closing, Escape, the backdrop —
+// asks, and puts the copy back.
+//
+// Sending is not staged and cannot be: it types into a live session, which no
+// Save button can take back. It flushes whatever is pending first, so the line
+// that goes carries the list as the operator has just arranged it.
+let tmpId = 0;              // ids for items the server has never heard of
+
+function stage(op, apply){
+  if (!todoPending.length) todoWas = structuredClone(todoItems);
+  const out = apply();
+  if (out === false) return false;      // nothing actually changed
+  todoPending.push(op);
+  redrawTodo();
+  return true;
+}
+
+const findRow = id => todoItems.find(r => String(r.id) === String(id));
+
+// The same tidy todo.py's _clean does, so the row on screen before Save is
+// the row that lands after it rather than one that quietly loses a space.
+const _clean = t => String(t ?? "").replace(/\r\n?/g, "\n").split("\n")
+  .map(l => l.split(/\s+/).filter(Boolean).join(" "))
+  .filter((l, i, a) => l || (i && a[i - 1])).slice(0, 12)
+  .join("\n").replace(/\n+$/, "");
+
+function stageAdd(text){
+  const id = --tmpId;                   // negative: not on the server yet
+  return stage({action: "add", text, tmp: id}, () => {
+    todoItems.splice(todoItems.filter(r => !r.shelved).length, 0,
+                     {id, text, by: "you", sent: 0, steps: [], shelved: 0});
+    return true;
+  });
+}
+
+function stageAddStep(id, text){
+  return stage({action: "add-step", id, text}, () => {
+    const r = findRow(id);
+    if (!r) return false;
+    (r.steps = r.steps || []).push({text, sent: 0});
+  });
+}
+
+function stageEdit(id, step, text){
+  return stage({action: "edit", id, step, text}, () => {
+    const r = findRow(id);
+    if (!r) return false;
+    if (step === null || step < 0) r.text = text;
+    else if ((r.steps || [])[step]) r.steps[step].text = text;
+    else return false;
+  });
+}
+
+function stageRemove(id, step, why){
+  return stage({action: "remove", id, ...(step >= 0 ? {step} : {}), why}, () => {
+    const i = todoItems.findIndex(r => String(r.id) === String(id));
+    if (i < 0) return false;
+    if (step >= 0) todoItems[i].steps.splice(step, 1);
+    else todoItems.splice(i, 1);
+  });
+}
+
+function stageShelve(id, on){
+  return stage({action: "shelve", id, on}, () => {
+    const i = todoItems.findIndex(r => String(r.id) === String(id));
+    if (i < 0) return false;
+    const [r] = todoItems.splice(i, 1);
+    r.shelved = on ? Math.floor(Date.now() / 1000) : 0;
+    // The same place the server would put it: the shelf is the bottom of the
+    // list, and coming back off it means the end of the live ones.
+    if (on) todoItems.push(r);
+    else todoItems.splice(todoItems.filter(x => !x.shelved).length, 0, r);
+  });
+}
+
 // One swap, on the page's copy. The same swap the server would do, so that
 // replaying the list of them at Save arrives at what is on screen.
 function moveLocally(id, step, dir){
-  const i = todoItems.findIndex(r => String(r.id) === String(id));
-  if (i < 0) return;
-  const seq = step === null ? todoItems : (todoItems[i].steps || []);
-  const at = step === null ? i : step;
-  const to = at + dir;
-  if (to < 0 || to >= seq.length) return;
-  [seq[at], seq[to]] = [seq[to], seq[at]];
-  todoMoves.push({id, step, dir});
-  redrawTodo();
+  stage({action: "move", id, step, dir}, () => {
+    const i = todoItems.findIndex(r => String(r.id) === String(id));
+    if (i < 0) return false;
+    const seq = step === null ? todoItems : (todoItems[i].steps || []);
+    const at = step === null ? i : step;
+    const to = at + dir;
+    if (to < 0 || to >= seq.length) return false;
+    [seq[at], seq[to]] = [seq[to], seq[at]];
+  });
+}
+
+// Replay, in order. An item added here has a negative id the server has never
+// seen, so the id it comes back with is substituted into everything that was
+// staged against it — a step typed onto an item that did not exist yet is the
+// ordinary case, not the exotic one.
+async function flushPending(){
+  const map = new Map();
+  const real = v => map.has(String(v)) ? map.get(String(v)) : v;
+  // Taken one at a time rather than emptied up front: a refusal half way down
+  // used to discard everything behind it as well, which turned one rejected
+  // edit into the loss of a whole panel's work. What is left stays staged, so
+  // Save can be pressed again once whatever it was is dealt with.
+  while (todoPending.length){
+    const op = todoPending[0];
+    const body = {...op};
+    delete body.tmp;
+    if (body.id !== undefined) body.id = real(body.id);
+    const j = await postTodo(body, true);
+    if (!j) return map;                 // postTodo has already said why
+    todoPending.shift();
+    if (op.action === "add" && j.item) map.set(String(op.tmp), j.item.id);
+  }
+  todoWas = null;
+  return map;
 }
 // Both Saves write whatever the memory editor is holding and settle the
 // panel; only one of them spends a line saying so.
 async function saveAll(tellIt){
   const b = $(tellIt ? "todoSave" : "todoSaveQuiet"), was = b.textContent;
   b.disabled = true; b.textContent = "Saving…";
-  // The reordering, replayed in the order it was made — which is what makes
-  // it arrive at the arrangement on screen.
-  for (const m of todoMoves.splice(0))
-    await postTodo({action: "move", ...m}, true);
+  // Everything staged, replayed in the order it was made — which is what makes
+  // the server arrive at what is on screen.
+  await flushPending();
   if (memDirty()) await saveMemory(true);
   const j = await postTodo({action: tellIt ? "tell" : "save"});
   await loadMemory(memGen);
   b.textContent = was;
-  // The arrangement just committed is the one a Cancel would now go back to.
-  todoWas = todoOrdering ? structuredClone(todoItems) : null;
+  // Committed, so there is nothing left for a Cancel to go back to.
+  todoWas = null;
   if (j) notify(j.told ? "saved, and told " + (todoSession || "the session")
                        : "saved");
 }

@@ -359,9 +359,10 @@ bb lint [path]     lint a repo's infrastructure files: shell scripts,
 bb findings        this project's scanner findings (--all for every project)
 bb todo            this project's shared to-do list
 bb todo add "..."  put something on it; `done N` finished, `rm N [why]` not
-bb todo shelve N   park one without dropping it; `unshelve N` brings it back
+bb todo shelve N   park one without dropping it; `mv N up|down` moves it
 bb todo add "..." --step "..." --step "..."   an ordered group of steps
 bb todo edit N "..."               reword one; `step add|edit|rm` for one step
+bb todo begin      work one out; `commit` records it as one change, `revert` undoes
 bb todo history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
@@ -1102,6 +1103,21 @@ only ever an undo: it appears on a line that *has* been sent, to put it back
 so it can go again. A line you handled yourself gets dropped, and its words
 stay in the log to be retyped if you were wrong.
 
+**Nothing the panel does reaches the list until you press Save.** Type three
+steps, reword one, drop another, shuffle the order — it is all held on the
+page until then, so a plan can be looked at whole before it is committed to.
+Close asks, names how many changes would go, and puts the list back exactly as
+it was. The one exception is the send arrow: it types into a live session,
+which no Save button can take back, so it flushes whatever is staged first and
+then goes.
+
+A session gets the same idea in a different shape: `bb todo begin`, then work,
+then `bb todo commit` — the changes land on the list as they are made, because
+that is how you can see what a session is doing, but the *record* is written
+once at commit. Rewording the same step four times is one history entry rather
+than four. `bb todo revert` puts the list back and writes nothing, and refuses
+if you have touched the list yourself since the batch opened.
+
 **Dropping something asks why.** The bin opens a box under the row with an
 optional reason field, and the reason is kept with the entry and is
 searchable — because nothing here can be undone, and that note is the only
@@ -1118,10 +1134,13 @@ arrows, and a session is told it is parked rather than left to wonder. It is
 the only control here that undoes itself — the same tap brings it back — and
 it applies to an item, never to one step of a plan, because the thing you
 have decided not to do now is the whole plan. Shelved items do not count
-towards the number on the project row.
+towards the number on the project row. A session can shelve (something turns
+out to be blocked, and saying so on the row beats saying it in a reply nobody
+re-reads) but cannot unshelve — taking one off reverses a decision it was not
+told the reason for.
 
 **A session can correct a plan, not just follow it** — `bb todo edit N`,
-`bb todo step add|edit|rm|mv` — which matters when the design moves under a plan
+`bb todo step add|edit|rm|mv`, `bb todo mv N up|down` — which matters when the design moves under a plan
 written a week ago. Every one of those lands in the history under `claude`,
 so nothing gets quietly rewritten.
 
@@ -1133,6 +1152,16 @@ survives the list being rearranged. The prompt a session starts with carries
 the same numbers. Steps inside a group number themselves 1, 2, 3 within it.
 A gap in the numbers means something was removed; one out of sequence means
 it was moved.
+
+**A group is one goal with an order to it.** Its title is that goal in plain
+words — "make the picker usable on a phone" — and the steps under it carry the
+detail. Steps only exist because of one physical constraint: each is a message
+*you* send by hand, one at a time, waiting on each. So a step is not a task,
+it is a point at which the previous work has to have finished before the next
+can start, and a session that splits work into more steps than that costs you
+round trips for nothing. A step can be several lines, blank lines and all, so
+the cheap unit is the line and the expensive one is the step. The template
+CLAUDE.md every project gets says this to sessions in as many words.
 
 **Items are handed to the session one at a time, by the arrow beside them.**
 Sending types the line into the running Claude session and submits it — but
@@ -1149,23 +1178,23 @@ and the dashboard says so. With no session running, every arrow is dead.
 A sent step is **struck through in place** — not removed, not reordered. Sent
 is not done: a step can be handed over and quietly not carried out, and the
 struck line is how you notice. It stays sendable, so "that did not take, do it
-again" is one tap. The bin is the only way anything leaves the list.
+again" is one tap on the same arrow.
 
-Beside the bin is a **strike icon**, which crosses a line off *without* sending
-it — you did it yourself, or it turned out not to be needed — and puts it back
-if you press it again. It leaves the same mark as sending, so a group moves on
-to its next step either way; without it, a step you handled yourself would
-block every step behind it. A session is told which of the two happened, since
-"already sent to a session" would be a lie about a line nobody sent.
+**The order that is protected is the order things are sent in**, and nothing
+else. Only the frontier step of a group arms, and the group's own arrow stands
+for that same step — so a plan cannot be handed over backwards, which is the
+mistake that actually costs something: step three landing on a tree step two
+was supposed to have made.
 
-**A plan is edited at its edge.** Inside a group the strike is offered on
-exactly two rows — the last crossed step, to put it back, and the next one
-along, to cross it — so crossing step two moves the strike off step one and on
-to step three. The bin sits at the head of the queue: only the first step, and
-the item's own row. Both rules exist for the same reason as the send order —
-anything else leaves a plan in a state its order was supposed to prevent.
-**Deleting always asks; crossing out never does**, because one is recoverable
-by pressing the same button again and the other is not.
+Editing is not constrained the same way, deliberately. The pencil rewords any
+row, and the **bin is on every row** — item or step, anywhere in a plan. It
+used to be the first step only, on the theory that things come off a plan from
+the front; in practice that meant a stale step three cost you steps one and
+two to reach, and left the list describing work nobody was going to do. A
+deletion cannot send anything out of order. It can only make a plan shorter —
+and it now says why it did, in a note kept with the entry in the history.
+**The bin always asks; shelving never does**, because one is recoverable by
+pressing the same button again and the other is not.
 
 **Edits are written immediately; telling the session is separate.** A phone
 that dies half way through tidying a list must not lose it, but every telling

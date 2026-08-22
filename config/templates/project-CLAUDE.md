@@ -182,9 +182,12 @@ bb todo                      # what is on it
 bb todo add "..."            # put something on it
 bb todo done N               # finished it — off the list, into the log
 bb todo rm N ["why"]         # not doing it — same, and say why it went
-bb todo shelve N             # parked: keep it, not now. unshelve N brings it back
+bb todo shelve N             # parked: keep it, not now — the operator unshelves
+bb todo mv N up|down         # move one up or down the list
 bb todo edit N "..."         # reword one
 bb todo step add N "..."     # give one a step; step edit N M "...", step rm N M
+bb todo begin                # working one out: commit writes one record of it
+bb todo commit               # ...or revert, which puts the list back
 bb todo history [-n N] [--since 7d] [--find TEXT]   # what changed, narrowed
 ```
 
@@ -224,15 +227,37 @@ undoing either: if it turns out not to have been finished, add it again and
 say so. Only you tick things off. Nothing in the dashboard does it, because
 only the session that did the work knows whether it is done.
 
-**When a change needs several things done in a set order, add it as one item
-with steps** — `bb todo add "rework the picker" --step "widen the select"
---step "then re-measure it"`. The operator can build and rearrange one from
-the dashboard too, so write the steps in the order they have to happen and
-leave the arranging to them. Steps are handed to a session one at a time, in
-order, from the dashboard: the operator sends the first, and the second only
-becomes sendable once the first has gone. Three separate items can be handed
-over backwards, and the second one then lands on a tree the first was supposed
-to have made.
+**A group is one goal with an order to it, and its title is that goal.**
+Group steps only when every one of them serves a single outcome — "the picker
+works on a phone", not "four things I noticed". If the steps do not share a
+goal they are separate items, and separate items can be sent in any order,
+which is the whole reason to have both shapes.
+
+Write the title as the goal in plain words, not as a summary of the work:
+somebody reading only that line should know what is being aimed at and what
+finishing it would look like. `bb todo add "make the picker usable on a
+phone" --step "..." --step "..."`, not `bb todo add "picker: select width +
+re-measure + regression pass"`. The steps carry the technical detail; the
+title is the reason they exist. If you cannot write the title without listing
+the steps, it is not one goal and should not be one group.
+
+**Steps are expensive — use as few as you can.** Each one is a message the
+operator sends by hand from the dashboard, one at a time, waiting on each. So
+a step is not a task, it is *a point at which the previous work must have
+finished before the next can start*. Put everything that can be done in one
+go into one step, using line breaks inside it to keep it readable, and only
+start a new step when you genuinely need the last prompt to have run first —
+a file that has to exist, a build that has to be green, an answer you need
+before you can write the next instruction. Two steps that could have been one
+cost somebody a round trip for nothing.
+
+A step may be several lines, and blank lines between them are kept. The
+operator can build and rearrange a group from the dashboard too, so write the
+steps in the order they have to happen and leave the arranging to them. The
+order is enforced on sending: the first has to go before the second becomes
+sendable, which is what separate items cannot promise — hand three of those
+over backwards and the second lands on a tree the first was supposed to have
+made.
 
 A step that has been sent is struck through rather than removed, and can be
 sent again — sent is not the same as done, and the difference is exactly the
@@ -253,7 +278,8 @@ bb todo step rm 4 2          # and step add 4 "..." to put one on the end
 ```
 
 Reordering too, when two steps turn out to be the wrong way round:
-`bb todo step mv 4 3 up`.
+`bb todo step mv 4 3 up`, and `bb todo mv 4 up` for the item's own place in
+the list. Both are covered by a batch, so `revert` puts them back.
 
 Say in your reply that you did it, and why. Every change either of you makes
 is written to a log with its time and the name of who made it — so a step you
@@ -267,6 +293,17 @@ picker this described no longer exists"`. Nothing here can be undone, so that
 note is the only thing between a dropped line and somebody adding it straight
 back. It is kept with the entry and is searchable.
 
+**When you are working a plan out, open a batch first.** `bb todo begin`,
+then edit as much as you like, then `bb todo commit`. The changes land on the
+list as you make them — the operator can watch, which is better than hiding
+your work until you are happy — but the *record* is written once, at commit,
+saying what changed rather than every step of getting there. Rewording the
+same step four times before you are satisfied is one entry, not four, and a
+log nobody can skim is a log nobody reads. `bb todo revert` puts the list back
+as it was and writes nothing; it refuses if the operator has changed the list
+since you opened the batch, because putting your copy back would undo their
+work too.
+
 **Read the log narrowed, never whole.** `bb todo history` gives the last 20;
 `-n N` for more, `--all` for everything, `--since 7d` or `--since 2026-08-01`
 for a window, `--find TEXT` to search the lines, their previous wordings and
@@ -277,8 +314,12 @@ costs more context than the one line you wanted from it.
 something they mean to keep and do not want done now; it goes dark at the
 bottom of the list and its steps go with it. It stays in your context so you
 know it exists — do not work on one unless they ask, and do not tidy it away
-either. `bb todo shelve N` is there if *you* want to park something and say
-why in your reply.
+either.
+
+`bb todo shelve N` is there when something turns out to be blocked or waiting
+on somebody: park it and say why in your reply. There is no unshelve for you.
+Taking one off the shelf reverses a decision made for reasons you were not
+told, so it is the operator's, and it is one tap in the panel.
 
 If the list or these notes change while you are working, you may be told in
 one line, which names which of the two moved. Read them when it is relevant

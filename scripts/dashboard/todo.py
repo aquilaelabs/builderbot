@@ -51,6 +51,33 @@ _lock = threading.Lock()
 MAX_OPEN = 30
 MAX_TEXT = 500
 
+# A line may be several lines. A step is one thing to hand over, and one thing
+# is often three sentences and a blank line — collapsing that to a single
+# paragraph made every plan read like a wall, which pushed sessions into
+# splitting one step into three. Steps are the expensive unit here (each one is
+# a message the operator sends by hand), so the cheap thing has to be able to
+# hold the detail. Bounded so a paste cannot turn a list into a document.
+MAX_LINES = 12
+
+
+def _clean(text, multiline=True):
+    """Trim a line, or a small block of them.
+
+    Trailing space goes, runs of blank lines collapse to one, and the whole
+    thing is capped. Interior single newlines survive, which is the point.
+    """
+    text = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not multiline:
+        return " ".join(text.split())
+    lines = [" ".join(ln.split()) for ln in text.split("\n")]
+    out = []
+    for ln in lines:
+        if ln or (out and out[-1]):
+            out.append(ln)
+    while out and not out[-1]:
+        out.pop()
+    return "\n".join(out[:MAX_LINES])
+
 # Ticked items stay a while, because "what did we just finish" is worth having
 # for a day or two, and then they are noise.
 
@@ -171,13 +198,138 @@ MAX_HISTORY = 300
 
 
 def _log(d, project, by, ev):
-    """Append one event. Called inside the lock, before the save that commits
-    the change it describes — so the record and the change land together or
-    neither does."""
+    """Record one event — in the history, or in an open batch.
+
+    Called inside the lock, before the save that commits the change it
+    describes, so the record and the change land together or neither does.
+
+    While a batch is open the event goes into it instead. A session working a
+    plan out rewords the same step three times before it is happy, and three
+    entries saying so is a log nobody can read to find the one change that
+    mattered. The batch is coalesced on commit into what actually happened.
+    """
+    ev = {"at": int(time.time()),
+          "by": "claude" if by == "claude" else "you", **ev}
+    b = d.get("batch", {}).get(project)
+    if b is not None and ev["by"] == b.get("by", "claude"):
+        b.setdefault("events", []).append(ev)
+        return
+    # Anyone else's change goes straight to the history, which is also what
+    # makes revert's guard work: it looks there for the operator's hand.
     h = d.setdefault("history", {}).setdefault(project, [])
-    h.append({"at": int(time.time()),
-              "by": "claude" if by == "claude" else "you", **ev})
+    h.append(ev)
     del h[:-MAX_HISTORY]
+
+
+# ---- batches -------------------------------------------------------------
+# A session that is working something out is not making a series of decisions
+# the operator needs to read; it is arriving at one. `begin` takes a copy of
+# the list, the work happens normally on top of it — visible, so the operator
+# can watch it land — and `commit` writes what changed rather than every step
+# of getting there. `revert` puts the copy back.
+#
+# Deliberately not the panel's model. There, the thing being edited is on
+# screen and Save is the commit, so nothing should touch the list until it is
+# pressed. Here the list is the only way anyone can see what a session is
+# doing, and hiding the work until commit would be worse than a noisy log.
+
+def begin(project, by="claude"):
+    with _lock:
+        d = load()
+        if d.get("batch", {}).get(project):
+            return {"error": "a batch is already open here — commit or revert it"}
+        d.setdefault("batch", {})[project] = {
+            "at": int(time.time()), "by": by, "events": [],
+            "rows": json.loads(json.dumps(d["projects"].get(project) or []))}
+        save(d)
+    return {"ok": True}
+
+
+def batch(project):
+    """The open batch here, or None. What the panel shows a marker for."""
+    with _lock:
+        b = load().get("batch", {}).get(project)
+    return None if not b else {"at": b.get("at", 0), "by": b.get("by", ""),
+                               "changes": len(b.get("events") or [])}
+
+
+# Two events about the same line are one event about that line. Ordered by
+# what the pair means rather than by what each said: written-then-dropped is
+# nothing at all, and reworded-twice is one rewording from the first wording
+# to the last.
+def _coalesce(events):
+    out, seen = [], {}
+    for e in events:
+        key = (e.get("id"), e.get("step"))
+        act = e.get("act", "")
+        prev = seen.get(key)
+        if prev is None:
+            seen[key] = e
+            out.append(e)
+            continue
+        pact = prev.get("act", "")
+        if act.startswith("remove") and pact.startswith("add"):
+            out.remove(prev)                    # written and dropped again
+            del seen[key]
+            continue
+        if act.startswith("remove") or act in ("done",):
+            out.remove(prev)
+            seen[key] = e
+            out.append(e)
+            continue
+        if act == "unshelved" and pact == "shelved":
+            out.remove(prev)
+            del seen[key]
+            continue
+        if pact.startswith("add"):
+            prev["text"] = e.get("text", prev.get("text"))   # written, then reworded
+            prev["at"] = e["at"]
+            continue
+        if act.startswith("edit") and pact.startswith("edit"):
+            prev["text"] = e.get("text", "")                 # one rewording
+            prev["at"] = e["at"]
+            continue
+        out.remove(prev)
+        seen[key] = e
+        out.append(e)
+    return out
+
+
+def commit(project):
+    with _lock:
+        d = load()
+        b = d.get("batch", {}).get(project)
+        if not b:
+            return {"error": "nothing is open here"}
+        kept = _coalesce(b.get("events") or [])
+        h = d.setdefault("history", {}).setdefault(project, [])
+        h.extend(kept)
+        del h[:-MAX_HISTORY]
+        del d["batch"][project]
+        save(d)
+    return {"ok": True, "written": len(kept),
+            "folded": len(b.get("events") or []) - len(kept)}
+
+
+def revert(project):
+    with _lock:
+        d = load()
+        b = d.get("batch", {}).get(project)
+        if not b:
+            return {"error": "nothing is open here"}
+        # Only the session's own work goes back. If the operator changed
+        # something while this was open, restoring a copy taken before it
+        # would quietly undo their change too — so it is refused and said.
+        h = d.get("history", {}).get(project) or []
+        if any(e.get("by") == "you" and e.get("at", 0) >= b.get("at", 0) for e in h):
+            return {"error": "the operator has changed this list since the batch "
+                             "opened — reverting would undo their work too. "
+                             "Commit it and correct what is wrong."}
+        d["projects"][project] = b.get("rows") or []
+        del d["batch"][project]
+        _touch(d, project)
+        save(d)
+    return {"ok": True, "dropped": len(b.get("events") or [])}
 
 
 def history(project, limit=None, since=None, find=None):
@@ -191,7 +343,9 @@ def history(project, limit=None, since=None, find=None):
     """
     with _lock:
         h = load().get("history", {}).get(project) or []
-    out = list(reversed(h))
+    # Sorted, not merely reversed: a batch's events are written at commit, so
+    # the order they sit in the file is not the order they happened in.
+    out = sorted(h, key=lambda e: -e.get("at", 0))
     if since is not None:
         cut = _int(since)
         if cut is not None:
@@ -263,12 +417,12 @@ MAX_STEPS = 12
 
 
 def add(project, text, by="you", steps=()):
-    text = (text or "").strip()
+    text = _clean(text)
     if not text:
         return {"error": "nothing to add"}
     if len(text) > MAX_TEXT:
         return {"error": f"too long — {MAX_TEXT} characters is the limit"}
-    steps = [" ".join(str(x).split()) for x in (steps or [])]
+    steps = [_clean(str(x)) for x in (steps or [])]
     steps = [x for x in steps if x]
     if len(steps) > MAX_STEPS:
         return {"error": f"{MAX_STEPS} steps is the limit for one item"}
@@ -288,7 +442,11 @@ def add(project, text, by="you", steps=()):
         # The end, so the ids run down the page. The alternative is a list
         # where every addition renumbers what a session was looking at, and
         # the number is the whole way to say which item is meant.
-        rows.append(row)
+        # Above the shelf, not at the very end: the shelf is the bottom of the
+        # list and something just added is the opposite of parked. The panel
+        # puts it in the same place, and a new item landing somewhere other
+        # than where it was drawn is the kind of jump that reads as a bug.
+        rows.insert(sum(1 for r in rows if not r.get("shelved")), row)
         _log(d, project, by, {"act": "add", "id": row["id"], "text": text,
                               **({"steps": len(steps)} if steps else {})})
         d["projects"][project] = rows
@@ -382,7 +540,7 @@ def tick(project, item_id, by="you"):
 
 def edit(project, item_id, text, step=None, by="you"):
     """Reword an item, or one step of it."""
-    text = " ".join((text or "").split())
+    text = _clean(text)
     if not text:
         return {"error": "nothing to say"}
     if len(text) > MAX_TEXT:
@@ -423,7 +581,7 @@ def remove(project, item_id, step=None, by="you", why=""):
     different events to whoever reads it next — and the second one is what
     stops somebody putting it back.
     """
-    why = " ".join((why or "").split())[:MAX_TEXT]
+    why = _clean(why, multiline=False)[:MAX_TEXT]
 
     def change(row, rows):
         if step is None:
@@ -506,7 +664,7 @@ def move(project, item_id, step=None, dir=0, by="you"):
 
 def add_step(project, item_id, text, by="you"):
     """Give an item a step — which is how a plain one becomes a plan."""
-    text = " ".join((text or "").split())
+    text = _clean(text)
     if not text:
         return {"error": "nothing to add"}
     if len(text) > MAX_TEXT:
@@ -554,6 +712,20 @@ def cross(project, item_id, step=None, on=True, by="you"):
             ev.update(step=i, of=row["text"])
         return {"ok": True, "log": ev}
     return _edit(project, item_id, change, by)
+
+
+def _flat(text):
+    """One line, for the one place that has to be one line.
+
+    A step can be written across several lines because a person reads it in
+    the panel. It is delivered by typing it into a terminal, where a newline
+    is not whitespace — it is Enter, and it would submit half a prompt and
+    leave the rest to arrive as a second message. So the breaks become
+    separators on the way out. A paragraph break is a heavier one than a line
+    break, which is about as much of the shape as a single line can carry.
+    """
+    parts = [p.strip() for p in (text or "").split("\n\n")]
+    return " — ".join(" ".join(p.split()) for p in parts if p.strip())
 
 
 def next_step(row):
@@ -618,10 +790,10 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
         # three: that it is one step of several, what the whole thing is for,
         # and which step this is.
         text = (f"This is step {step + 1} of {len(steps)} in a plan. "
-                f"The plan: {row['text']}. "
-                f"Step {step + 1}: {steps[step]['text']}")
+                f"The plan: {_flat(row['text'])}. "
+                f"Step {step + 1}: {_flat(steps[step]['text'])}")
     else:
-        text = row["text"]
+        text = _flat(row["text"])
     # One message, not two. Saving the list and sending a step both want to
     # say something, and two lines racing into the same input box is how the
     # second one ends up appended to the first. So the note rides along.
