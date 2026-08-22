@@ -360,6 +360,8 @@ bb findings        this project's scanner findings (--all for every project)
 bb todo            this project's shared to-do list
 bb todo add "..."  put something on it; `done N`, `undone N`, `rm N`, `clear`
 bb todo add "..." --step "..." --step "..."   an ordered group of steps
+bb todo edit N "..."               reword one; `step add|edit|rm` for one step
+bb todo history                    every change to it, newest first
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -1061,6 +1063,28 @@ It exists because nothing else on this box can hold that. `gh` is
 unauthenticated here on purpose, so GitHub Issues are unreachable from inside
 the container — and until this, something noticed mid-task and left undone
 lived in the conversation and died with it.
+
+**Every change to a list is kept.** Both sides write these, and the list
+itself only ever shows the present tense — so *was that step always worded
+like that?* and *who dropped the third one?* had no answer at all.
+**History**, beside Reorder, is the answer: one line per change, newest
+first, each with its date and time and whether you or a session made it. A
+reword shows both wordings, the old one struck through. `bb todo history`
+prints the same log in a terminal.
+
+That log is also what makes deleting safe, because deleting is now the only
+way a line leaves. **Crossing a line off by hand is gone.** It used to sit
+beside the bin and leave exactly the mark that sending leaves, so a list
+filled up with things that looked dealt with and were not — and "I crossed
+that off" is not the same claim as "that is done". The strike icon is now
+only ever an undo: it appears on a line that *has* been sent, to put it back
+so it can go again. A line you handled yourself gets dropped, and its words
+stay in the log to be retyped if you were wrong.
+
+**A session can correct a plan, not just follow it** — `bb todo edit N`,
+`bb todo step add|edit|rm` — which matters when the design moves under a plan
+written a week ago. Every one of those lands in the history under `claude`,
+so nothing gets quietly rewritten.
 
 **The list reads top down, and the top is what matters most** — new items go
 on the end, and the arrows in Reorder are how something gets promoted. Each

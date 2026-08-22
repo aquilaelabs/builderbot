@@ -142,6 +142,31 @@ def _touch(d, project, kind="todo", on=True):
     d["unsaved"][project] = cur
 
 
+# Every change to a list, kept. The list itself only ever shows its present
+# state, and two people write it — so "was that step always worded like that?"
+# and "who dropped the third one?" had no answer at all. Capped per project:
+# this rides in the same file the list does, and an unbounded log would make
+# every read of a short list pay for a year of edits.
+MAX_HISTORY = 300
+
+
+def _log(d, project, by, ev):
+    """Append one event. Called inside the lock, before the save that commits
+    the change it describes — so the record and the change land together or
+    neither does."""
+    h = d.setdefault("history", {}).setdefault(project, [])
+    h.append({"at": int(time.time()),
+              "by": "claude" if by == "claude" else "you", **ev})
+    del h[:-MAX_HISTORY]
+
+
+def history(project):
+    """What has happened to this list, newest first."""
+    with _lock:
+        h = load().get("history", {}).get(project) or []
+    return list(reversed(h))
+
+
 def _prune(rows):
     """Drop ticked items once they have been ticked long enough."""
     cut = time.time() - KEEP_DONE_DAYS * 86400
@@ -231,6 +256,8 @@ def add(project, text, by="you", steps=()):
         # where every addition renumbers what a session was looking at, and
         # the number is the whole way to say which item is meant.
         rows.append(row)
+        _log(d, project, by, {"act": "add", "id": row["id"], "text": text,
+                              **({"steps": len(steps)} if steps else {})})
         d["projects"][project] = rows
         _touch(d, project)
         save(d)
@@ -241,7 +268,14 @@ def _find(rows, item_id):
     return next((r for r in rows if _int(r.get("id")) == item_id), None)
 
 
-def _edit(project, item_id, change):
+def _edit(project, item_id, change, by="you"):
+    """Run one change against one item, under the lock.
+
+    A change hands back its own history entry under "log", which is stripped
+    off here rather than by every caller: the entry has to be written inside
+    this lock, next to the change it describes, and a closure that returns it
+    cannot reach the loaded file to write it itself.
+    """
     item_id = _int(item_id)
     if item_id is None:
         return {"error": "not an item"}
@@ -252,21 +286,26 @@ def _edit(project, item_id, change):
         if row is None:
             return {"error": "no such item"}
         out = change(row, rows)
+        ev = out.pop("log", None) if isinstance(out, dict) else None
+        if ev and not out.get("error"):
+            _log(d, project, by, ev)
         d["projects"][project] = rows
         _touch(d, project)
         save(d)
     return out
 
 
-def set_done(project, item_id, done):
+def set_done(project, item_id, done, by="you"):
     def change(row, rows):
         row["done"] = bool(done)
         row["done_at"] = int(time.time()) if done else 0
-        return {"ok": True, "item": row}
-    return _edit(project, item_id, change)
+        return {"ok": True, "item": row,
+                "log": {"act": "done" if done else "undone",
+                        "id": row["id"], "text": row["text"]}}
+    return _edit(project, item_id, change, by)
 
 
-def edit(project, item_id, text, step=None):
+def edit(project, item_id, text, step=None, by="you"):
     """Reword an item, or one step of it."""
     text = " ".join((text or "").split())
     if not text:
@@ -279,36 +318,49 @@ def edit(project, item_id, text, step=None):
     def change(row, rows):
         i = _int(step)
         if i is None or i < 0:
-            row["text"] = text
-            return {"ok": True, "item": row}
+            was, row["text"] = row["text"], text
+            return {"ok": True, "item": row,
+                    "log": {"act": "edit", "id": row["id"],
+                            "text": text, "was": was}}
         steps = row.get("steps") or []
         if not 0 <= i < len(steps):
             return {"error": "no such step"}
-        steps[i]["text"] = text
-        return {"ok": True, "item": row}
-    return _edit(project, item_id, change)
+        was, steps[i]["text"] = steps[i]["text"], text
+        return {"ok": True, "item": row,
+                "log": {"act": "edit-step", "id": row["id"], "step": i,
+                        "text": text, "was": was, "of": row["text"]}}
+    return _edit(project, item_id, change, by)
 
 
-def remove(project, item_id, step=None):
+def remove(project, item_id, step=None, by="you"):
     """Drop an item, or one step out of a group.
 
     Removing a step is how a plan gets corrected mid-flight: the one after it
     becomes the next in line, so the group carries on from where it really is
     rather than from where it was written.
+
+    It is also the only way anything leaves the list, which is why the history
+    keeps the words: a line dropped by mistake is retyped from the log rather
+    than remembered.
     """
     def change(row, rows):
         if step is None:
             rows.remove(row)
-            return {"ok": True}
+            return {"ok": True,
+                    "log": {"act": "remove", "id": row["id"], "text": row["text"],
+                            **({"steps": len(row.get("steps") or [])}
+                               if row.get("steps") else {})}}
         steps = row.get("steps") or []
         i = _int(step)
         if i is None:
             return {"error": "not a step"}
         if not 0 <= i < len(steps):
             return {"error": "no such step"}
-        steps.pop(i)
-        return {"ok": True}
-    return _edit(project, item_id, change)
+        gone = steps.pop(i)
+        return {"ok": True,
+                "log": {"act": "remove-step", "id": row["id"], "step": i,
+                        "text": gone.get("text", ""), "of": row["text"]}}
+    return _edit(project, item_id, change, by)
 
 
 def move(project, item_id, step=None, dir=0):
@@ -362,7 +414,7 @@ def move(project, item_id, step=None, dir=0):
     return _edit(project, item_id, change)
 
 
-def add_step(project, item_id, text):
+def add_step(project, item_id, text, by="you"):
     """Give an item a step — which is how a plain one becomes a plan."""
     text = " ".join((text or "").split())
     if not text:
@@ -375,18 +427,21 @@ def add_step(project, item_id, text):
         if len(steps) >= MAX_STEPS:
             return {"error": f"{MAX_STEPS} steps is the limit for one item"}
         steps.append({"text": text, "sent": 0})
-        return {"ok": True}
-    return _edit(project, item_id, change)
+        return {"ok": True,
+                "log": {"act": "add-step", "id": row["id"],
+                        "step": len(steps) - 1, "text": text, "of": row["text"]}}
+    return _edit(project, item_id, change, by)
 
 
-def cross(project, item_id, step=None, on=True):
-    """Strike a step out by hand, or put it back.
+def cross(project, item_id, step=None, on=True, by="you"):
+    """Put a sent line back, or mark one as gone.
 
-    The same mark sending leaves, without sending: an operator who has already
-    done a step themselves, or decided it is not needed, says so here and the
-    next one in the group becomes the one that can go. Recorded as by_hand so
-    that what a session is told stays true — "already sent to a session" would
-    be a lie about a line nobody sent.
+    This used to be two features. Striking a line out *by hand* — "I did this
+    one myself" — is gone: a line crossed off without being handed over reads
+    exactly like one that was, and a list of things that look dealt with and
+    are not is worse than a shorter list. What is left is the undo of a send:
+    it did not take, put it back so it can go again. Removing it is the other
+    answer, and the history keeps the words either way.
     """
     if step is not None and _int(step) is None:
         return {"error": "not a step"}
@@ -399,17 +454,30 @@ def cross(project, item_id, step=None, on=True):
             if not 0 <= i < len(steps):
                 return {"error": "no such step"}
             target = steps[i]
+        if not on and not target.get("sent"):
+            return {"error": "that has not been sent"}
         target["sent"] = int(time.time()) if on else 0
-        target["by_hand"] = bool(on)
-        return {"ok": True}
-    return _edit(project, item_id, change)
+        target.pop("by_hand", None)
+        ev = {"act": "sent" if on else "unsent", "id": row["id"],
+              "text": target.get("text", "")}
+        if i is not None and i >= 0:
+            ev.update(step=i, of=row["text"])
+        return {"ok": True, "log": ev}
+    return _edit(project, item_id, change, by)
 
 
-def clear_done(project):
+def clear_done(project, by="you"):
     with _lock:
         d = load()
-        rows = [r for r in (d["projects"].get(project) or []) if not r.get("done")]
-        d["projects"][project] = rows
+        keep = [r for r in (d["projects"].get(project) or []) if not r.get("done")]
+        # One event per line, not one for the sweep: the point of the log is
+        # that the words survive whatever took them off, and "cleared 4 items"
+        # does not bring any of them back.
+        for r in (d["projects"].get(project) or []):
+            if r.get("done"):
+                _log(d, project, by, {"act": "remove", "id": r.get("id"),
+                                      "text": r.get("text", ""), "cleared": True})
+        d["projects"][project] = keep
         _touch(d, project)
         save(d)
     return {"ok": True}
@@ -496,7 +564,11 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
         if row is not None:
             target = row["steps"][step] if row.get("steps") else row
             target["sent"] = int(time.time())
-            target["by_hand"] = False
+            target.pop("by_hand", None)
+            ev = {"act": "sent", "id": row["id"], "text": target.get("text", "")}
+            if row.get("steps"):
+                ev.update(step=step, of=row["text"])
+            _log(d, project, "you", ev)
             d["projects"][project] = rows
             save(d)
     return {"ok": True, "sent": True, "text": text}
@@ -592,8 +664,7 @@ def prompt(project):
         # sent is one that has been asked for.
         for i, st in enumerate(r.get("steps") or []):
             lines.append(f"    {i + 1}. {st['text']}"
-                         + ("  (crossed off by hand)" if st.get("by_hand")
-                            else "  (already sent to a session)" if st.get("sent")
+                         + ("  (already sent to a session)" if st.get("sent")
                             else ""))
     return ("The operator keeps a shared to-do list for this project, and this "
             "is what is on it:\n\n" + "\n".join(lines) + "\n\n"
@@ -604,5 +675,12 @@ def prompt(project):
             "list. Tick one off with "
             "`bb todo done <n>` when you finish it, and add one with "
             "`bb todo add \"...\"` when you notice something worth doing and "
-            "it is out of scope for what you are on. Do not restate the list "
+            "it is out of scope for what you are on. A plan can be corrected "
+            "as well as written: `bb todo edit <n> \"...\"`, and "
+            "`bb todo step add|edit|rm <n> [<step>] [\"...\"]` for one step "
+            "of one — do that when the design moves under a plan rather than "
+            "leaving steps that describe the old one. Every change either of "
+            "you makes is logged with its time and kept where the operator "
+            "can read it, so correct the list rather than working around it. "
+            "Do not restate the list "
             "back to the operator — they can see it.")

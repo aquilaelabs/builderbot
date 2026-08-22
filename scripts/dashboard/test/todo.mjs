@@ -247,30 +247,30 @@ ok(items.find(i => i.text === 'rework the picker').sel
 await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="-1"] .go`);
 await page.waitForFunction(() => document.getElementById('todoGo').disabled);
 
-// The strike is offered at the edge of the plan and nowhere else: the last
-// crossed step, to put it back, and the next one along, to cross it.
+// The strike is an undo and nothing else. It is offered on a line that went,
+// to put it back, and never on one that did not: crossing an unsent line off
+// by hand used to be here and is gone, because struck-by-hand and struck-by-
+// sending looked identical and the list filled up with things that looked
+// dealt with and were not. The bin is the answer for those, and the history
+// keeps their words.
 const strikes = () => page.$$eval('#todoList .todo',
   ts => ts.filter(t => t.querySelector('.x')).map(t => t.dataset.step));
-ok(JSON.stringify(await strikes()) === JSON.stringify(['-1', '-1', '0']),
-   `nothing crossed yet: only the first step offers a strike (${
-     JSON.stringify(await strikes())})`);
+ok(!(await strikes()).includes('0') && !(await strikes()).includes('1'),
+   'a step that has not been sent offers no way to cross it off by hand');
 
-await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .x`);
+await post({ action: 'send', project: 'alpha', id: Number(c1.id), step: 0 });
+await page.evaluate(() => loadTodo(memGen));
 await page.waitForFunction(id => document.querySelector(
   `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
-  c1.id, { timeout: 10000 });
-items = await open();
-ok(items.find(i => i.text === 'widen the select').sent,
-   'the strike icon crosses a step off without sending it');
-ok(items.find(i => i.text === 'then re-measure it').can,
-   '...and the next one in the group becomes the one that can go');
-ok(JSON.stringify(await strikes()) === JSON.stringify(['-1', '-1', '0', '1']),
-   '...and the strike moves with it: the one crossed, and the one after');
-const byHand = execFileSync(BB, ['todo', '--prompt'],
+  c1.id, { timeout: 15000 });
+ok((await strikes()).includes('0') && !(await strikes()).includes('1'),
+   '...and once it has gone, that one and only that one can be put back');
+const promptNow = execFileSync(BB, ['todo', '--prompt'],
   { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
-ok(/crossed off by hand/.test(byHand),
-   '...and a session is told it was crossed off, not that it was sent');
+ok(!/crossed off by hand/.test(promptNow) && /already sent to a session/.test(promptNow),
+   '...and a session is only ever told a line was sent, which is now the only '
+   + 'thing a strike can mean');
 
 await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="0"] .x`);
 await page.waitForFunction(id => !document.querySelector(
@@ -278,7 +278,9 @@ await page.waitForFunction(id => !document.querySelector(
   c1.id, { timeout: 10000 });
 items = await open();
 ok(!items.find(i => i.text === 'then re-measure it').can,
-   'the same icon puts it back, and the group closes up behind it');
+   'putting it back closes the group up behind it — the first is next again');
+ok(!(await strikes()).includes('0'),
+   '...and the strike goes with it, since there is nothing left to undo');
 
 // The bin sits at the head of the queue: things come off a plan from the
 // front, and the item's own row always has one.
@@ -304,6 +306,71 @@ ok(read().projects.alpha.find(r => r.text === 'rework the picker').steps.length 
    '...leaving the rest of the plan intact');
 ok(page.dialogs.some(d => /Drop/.test(d)),
    '...and it asked first, the way every deletion here does');
+
+// ---- a session correcting a plan ---------------------------------------
+// A plan written last week can describe a design that has since moved.
+// Correcting it beats working around it, so the CLI a session drives can
+// reword an item and add, reword or drop a single step of one.
+const bbTodo = (...a) => execFileSync(BB, ['todo', ...a],
+  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws` } }).toString();
+const grp = () => read().projects.alpha.find(r => String(r.id) === String(c1.id));
+bbTodo('edit', c1.id, 'rework the picker, properly this time');
+ok(grp().text === 'rework the picker, properly this time',
+   'bb todo edit rewords an item');
+bbTodo('step', 'add', c1.id, 'and check it on a phone');
+ok(grp().steps.length === 2 && grp().steps[1].text === 'and check it on a phone',
+   'bb todo step add gives an existing item another step');
+bbTodo('step', 'edit', c1.id, '2', 'and check it at both sizes');
+ok(grp().steps[1].text === 'and check it at both sizes',
+   'bb todo step edit rewords one step, numbered the way a human reads it');
+bbTodo('step', 'rm', c1.id, '2');
+ok(grp().steps.length === 1, 'bb todo step rm drops one step and leaves the rest');
+
+// ---- the history --------------------------------------------------------
+// Two people write this list and it only ever shows the present tense, so
+// "was that step always worded like that?" had no answer. Now every change
+// carries who made it and when — and since removing is the only way a line
+// leaves, the log is what keeps a deletion from being final.
+await page.evaluate(() => loadTodo(memGen));
+await page.click('#todoLog');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .hist').length > 0,
+                           { timeout: 10000 });
+const log = await page.$$eval('#todoList .hist', hs => hs.map(h => ({
+  when: h.querySelector('.when').textContent.trim(),
+  act: h.querySelector('.act').textContent.trim(),
+  was: h.querySelector('.was')?.textContent.trim() || '',
+  what: h.querySelector('.what').textContent.replace(/\s+/g, ' ').trim() })));
+ok(log[0].act === 'dropped a step' && /and check it at both sizes/.test(log[0].what),
+   'the log opens newest first, on the last thing that happened');
+ok(/\d{1,2}\s*\w+.*\d{2}:\d{2}/.test(log[0].when),
+   '...with the date and the time on every line');
+ok(/claude/.test(log[0].what),
+   '...and who did it, which is the half neither of you can reconstruct');
+ok(log.some(e => e.act === 'reworded'
+                 && /rework the picker, properly/.test(e.what)
+                 && e.was === 'rework the picker'),
+   'a reword carries both wordings — the new one, and the old one struck through');
+ok(log.some(e => e.act === 'dropped' || e.act === 'dropped a step'),
+   '...and so is every drop, which is what makes the bin recoverable by hand');
+ok(log.some(e => e.act === 'added' && /make the picker wrap properly/.test(e.what)
+                 && / you/.test(e.what)),
+   'the operator\'s own additions are in it too, marked as theirs');
+ok(log.some(e => e.act === 'sent'),
+   '...and so is every handover, which is the record of what a session was asked');
+
+// The log is a view, not a mode you can edit from: the add row and the send
+// strip go while it is up, so nothing is armed against a list you cannot see.
+ok(await page.$eval('#todoAdd', b => !b.checkVisibility())
+   && await page.$eval('#todoAsk', el => el.hidden),
+   'the add row and the send strip are put away while the log is up');
+ok(await page.$eval('#todoOrder', b => b.hidden),
+   '...and so is Reorder, since there is nothing here to arrange');
+await page.click('#todoLog');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0,
+                           { timeout: 10000 });
+ok(await page.$eval('#todoAdd', b => b.checkVisibility()),
+   'and the same button puts the list back');
 
 // ---- where the tags sit ------------------------------------------------
 ok(await page.$eval('#todoList .todo:has(.who) .body',

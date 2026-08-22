@@ -181,6 +181,9 @@ operator write.
 bb todo                      # what is on it
 bb todo add "..."            # put something on it
 bb todo done N               # tick one off; undone N, rm N, clear
+bb todo edit N "..."         # reword one
+bb todo step add N "..."     # give one a step; step edit N M "...", step rm N M
+bb todo history              # every change to it, newest first
 ```
 
 **The open items are already in your context.** They were appended to this
@@ -226,9 +229,27 @@ A step that has been sent is struck through rather than removed, and can be
 sent again — sent is not the same as done, and the difference is exactly the
 case worth being able to see. So do not treat "you sent me this" as proof it
 worked; if you cannot finish a step, say so plainly rather than quietly
-leaving it struck through. A line can also be struck by hand, meaning the
-operator dealt with it or dropped it; the list says which, so read the note
-rather than assuming you were asked.
+leaving it struck through. Struck means sent and nothing else: there is no
+way to cross a line off by hand, so a line the operator dealt with themselves
+is dropped rather than marked.
+
+**A plan can be corrected as well as followed.** If the design moves under
+one — a step describes a file that no longer exists, or an approach that was
+abandoned — reword or drop that step rather than working around it:
+
+```bash
+bb todo edit 4 "the new wording"
+bb todo step edit 4 2 "...what step 2 should say now"
+bb todo step rm 4 2          # and step add 4 "..." to put one on the end
+```
+
+Say in your reply that you did it, and why. Every change either of you makes
+is written to a log with its time and the name of who made it, which the
+operator reads from **History** in the panel and you read with
+`bb todo history` — so a step you dropped is recoverable from its own words,
+and there is no version of this where quietly rewriting somebody's plan goes
+unnoticed. That is the point: correct the list openly rather than leaving it
+describing work nobody is going to do.
 
 If the list or these notes change while you are working, you may be told in
 one line, which names which of the two moved. Read them when it is relevant

@@ -589,7 +589,7 @@ cmd_todo() {
         esac
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
-import importlib.util, json, sys
+import importlib.util, json, sys, time
 
 spec = importlib.util.spec_from_file_location("todo", sys.argv[1])
 todo = importlib.util.module_from_spec(spec)
@@ -663,18 +663,57 @@ elif op == "add":
 elif op in ("done", "undone"):
     if not rest:
         print("usage: bb todo done <n>", file=sys.stderr); sys.exit(1)
-    r = todo.set_done(proj, rest[0], op == "done"); bail(r)
+    r = todo.set_done(proj, rest[0], op == "done", by="claude"); bail(r)
     print(f"{'done' if op == 'done' else 'reopened'} {rest[0]}")
 elif op in ("rm", "remove"):
     if not rest:
         print("usage: bb todo rm <n>", file=sys.stderr); sys.exit(1)
-    r = todo.remove(proj, rest[0]); bail(r)
+    r = todo.remove(proj, rest[0], by="claude"); bail(r)
     print(f"removed {rest[0]}")
+elif op == "edit":
+    # A plan written last week can describe a design that has since moved.
+    # Correcting it is better than working around it, and the history keeps
+    # what it used to say.
+    if len(rest) < 2:
+        print("usage: bb todo edit <n> \"the new wording\"", file=sys.stderr); sys.exit(1)
+    r = todo.edit(proj, rest[0], " ".join(rest[1:]), by="claude"); bail(r)
+    print(f"reworded {rest[0]}")
+elif op == "step":
+    sub, srest = (rest[0] if rest else ""), rest[1:]
+    if sub == "add" and len(srest) >= 2:
+        r = todo.add_step(proj, srest[0], " ".join(srest[1:]), by="claude"); bail(r)
+        print(f"added a step to {srest[0]}")
+    elif sub == "edit" and len(srest) >= 3:
+        # 1-based on the way in, because that is how the step is numbered
+        # everywhere a human reads it.
+        r = todo.edit(proj, srest[0], " ".join(srest[2:]),
+                      step=todo._int(srest[1]) - 1 if todo._int(srest[1]) else None,
+                      by="claude"); bail(r)
+        print(f"reworded step {srest[1]} of {srest[0]}")
+    elif sub in ("rm", "remove") and len(srest) >= 2:
+        r = todo.remove(proj, srest[0],
+                        step=todo._int(srest[1]) - 1 if todo._int(srest[1]) else None,
+                        by="claude"); bail(r)
+        print(f"removed step {srest[1]} of {srest[0]}")
+    else:
+        print("usage: bb todo step add <n> \"...\" | step edit <n> <step> \"...\""
+              " | step rm <n> <step>", file=sys.stderr)
+        sys.exit(1)
 elif op == "clear":
-    todo.clear_done(proj)
+    todo.clear_done(proj, by="claude")
     print("cleared the ticked items")
+elif op in ("history", "log"):
+    h = todo.history(proj)
+    if not h:
+        print(f"nothing has happened to {proj}'s list yet")
+    for e in h:
+        when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
+        where = f" step {e['step'] + 1} of" if e.get("step") is not None else ""
+        print(f"  {when}  {e.get('by', ''):>6}  {e.get('act', ''):<11}"
+              f"{where} #{e.get('id')}  {e.get('text', '')}")
 else:
-    print("usage: bb todo [list|add TEXT [--step ...]|done N|undone N|rm N|clear]",
+    print("usage: bb todo [list|add TEXT [--step ...]|edit N TEXT|"
+          "step add|edit|rm ...|done N|undone N|rm N|clear|history]",
           file=sys.stderr)
     sys.exit(1)
 PY

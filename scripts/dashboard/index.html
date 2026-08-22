@@ -319,6 +319,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 
 /* ---- the shared to-do list -------------------------------------------- */
 .todoadd{display:flex;gap:8px}
+/* display:flex beats the hidden attribute; the log hides this row. */
+.todoadd[hidden]{display:none}
 .todoadd input{flex:1 1 auto;min-width:0}
 .todoadd button{flex:0 0 auto;min-height:var(--tap)}
 .grp{border-bottom:1px solid var(--line)}
@@ -327,6 +329,25 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* A group's steps sit under its title, indented and hairlined, so the shape
    of "these go in this order" is visible without reading them. */
 .todo.step{padding:5px 0 5px 26px;border-top:1px dashed #232b34}
+/* The log. One line per change, newest first, and deliberately plain: it is
+   read when something is not where it was left, which is a moment for facts
+   and not for decoration. */
+.hist{font:12px/1.5 system-ui,sans-serif;padding:7px 0;
+  border-top:1px dashed #232b34;display:flex;gap:8px;align-items:baseline}
+.hist:first-child{border-top:0}
+.hist .when{flex:0 0 auto;color:var(--dim);font:11px/1.5 var(--mono);
+  min-width:8.5em}
+.hist .act{flex:0 0 auto;font:600 10px/1 system-ui,sans-serif;
+  text-transform:uppercase;letter-spacing:.4px;padding:3px 5px;border-radius:4px;
+  border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.hist .act.gone{color:#e0796f;border-color:#4d2220}
+.hist .act.new{color:#7fc08a;border-color:#1f3f28}
+.hist .what{flex:1;min-width:0;overflow-wrap:anywhere}
+.hist .who{color:#b79ae0}
+.hist .who.you{color:var(--dim)}
+.hist .was{color:var(--dim);text-decoration:line-through}
+@media(max-width:560px){ .hist{display:block}
+  .hist .when{display:inline;margin-right:6px} }
 .todo .n{flex:0 0 auto;color:var(--dim);font:600 11px/1.5 var(--mono);
   min-width:1.2em;text-align:right}
 /* An item's own number, in the column its steps number themselves in. It is
@@ -835,6 +856,9 @@ body.dragging .tab .lbl{cursor:grabbing}
       </div>
       <div class="hintrow">
         <div class="hint" id="todoHint"></div>
+        <button id="todoLog" type="button"
+          title="every change to this list, by either of you, with when"
+          >History</button>
         <button id="todoOrder" type="button" hidden
           title="move things up and down — the send controls come back when you are done"
           >Reorder</button>
@@ -2390,10 +2414,18 @@ const cardEls = () => [...document.querySelectorAll(".side .card[data-card]")];
 function applyCards(animate){
   const side = document.querySelector(".col.side");
   const play = animate ? flip(cardEls, el => el.dataset.card) : null;
-  for (const key of cards.order){
-    const el = side.querySelector(`.card[data-card="${key}"]`);
-    if (el) side.appendChild(el);   // appendChild moves, so this re-sorts in place
-  }
+  // Only when the order is actually wrong. appendChild moves a node — remove
+  // then insert — and a node leaving the document takes the focus inside it
+  // with it. Once every fifteen seconds that is a shrug; during a sign-in the
+  // card polls every 1.2s, and it knocked the phone's keyboard down under the
+  // thumb of whoever was pasting the code in.
+  const here = cardEls().map(el => el.dataset.card);
+  const want = cards.order.filter(k => here.includes(k));
+  if (want.join() !== here.filter(k => cards.order.includes(k)).join())
+    for (const key of cards.order){
+      const el = side.querySelector(`.card[data-card="${key}"]`);
+      if (el) side.appendChild(el);   // appendChild moves, so this re-sorts in place
+    }
   // A card mid-fold is left to its animation's own finish handler — snapping
   // the class on under it would cut the tween short.
   cardEls().forEach(el => {
@@ -2853,6 +2885,7 @@ function drawAuth(){
     // field that empties itself under a thumb mid-paste is how this looked
     // broken.
     const held = $("authCode")?.value || "";
+    const hadFocus = document.activeElement === $("authCode");
     // Sign in stays, and stays meaning what it meant: start over. A code that
     // has expired, a page closed on the way back, a wrong account — the way
     // out of all of them is a fresh flow, and it must not be hidden behind
@@ -2871,6 +2904,9 @@ function drawAuth(){
           lg.waiting ? "" : " disabled"}>${lg.sent ? "Signing in…" : "Send"}</button>
       </div>`)){
       $("authCode").value = held;
+      // Restoring focus, not taking it: the row was rebuilt under someone who
+      // was already typing in this field, and only they put it there.
+      if (hadFocus && !$("authCode").disabled) $("authCode").focus();
       $("bSignIn").onclick = signIn;
       $("bAuthCode").onclick = sendCode;
       $("authCode").onkeydown = e => {
@@ -3641,6 +3677,8 @@ async function openMemory(name){
   $("todoSave").disabled = $("todoSaveQuiet").disabled = true;
   $("todoAsk").hidden = true;
   todoOrdering = false;
+  todoLogOn = false;
+  todoLog = null;
   cancelSend();
   $("todoText").value = "";
   $("todoList").innerHTML = `<div class="hint">loading…</div>`;
@@ -3711,14 +3749,18 @@ function stepRow(r, idx, live){
   const steps = r.steps || [];
   const nxt = nextStep(r);
   const st = idx < 0 ? r : steps[idx];
-  // Two controls, on two rows, and nowhere else. The strike is offered on the
-  // last crossed step (to put it back) and on the next one along (to cross
-  // it) — a plan is edited at its edge, and a strike on step five while step
-  // two is the frontier is a way to leave a group in a state its order was
-  // supposed to prevent. The bin sits at the head of the queue for the same
-  // reason: things come off a plan from the front.
+  // The strike is an undo and nothing else: it is offered on a line that has
+  // been sent, to put it back, and never on one that has not. Crossing an
+  // unsent line off by hand used to be here too and is gone — struck by hand
+  // and struck by sending looked identical, so a list filled up with things
+  // that looked dealt with and were not. What is left when a line really is
+  // handled without being sent is the bin, and the history keeps its words.
+  //
+  // The bin sits at the head of the queue: things come off a plan from the
+  // front, and dropping step five while step two is the frontier leaves a
+  // group in a state its order was supposed to prevent.
   const k = crossedTo(r);
-  const strike = idx < 0 ? !steps.length : (idx === k - 1 || idx === k);
+  const strike = idx < 0 ? (!steps.length && !!r.sent) : (idx === k - 1);
   const bin = idx < 0 || idx === 0;
   // Sent ones stay live so they can go again — "it did not take, do it again"
   // is the reason they are still on screen at all.
@@ -3773,9 +3815,8 @@ function stepRow(r, idx, live){
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
     </span>
     ${todoOrdering ? moves : `<button class="eye ed" type="button" aria-label="reword"
-      title="reword this line">${PENCIL}</button>${strike ? `<button class="eye x${st.sent ? " on" : ""}" type="button" aria-label="cross out"
-      title="${st.sent ? "put it back — it is not dealt with after all"
-                       : "cross it out without sending: already done, or not needed"}"
+      title="reword this line">${PENCIL}</button>${strike ? `<button class="eye x on" type="button" aria-label="put it back"
+      title="it did not take — put it back so it can be sent again"
       >${STRIKE}</button>` : `<span class="eye ph"></span>`}
     ${bin ? `<button class="eye rm" type="button" aria-label="drop it"
       title="${idx < 0 ? "take it off the list — the only way anything leaves"
@@ -3804,7 +3845,12 @@ function drawTodo(j){
     : live
       ? `${left} still to send — ${esc(j.session)} is running, so the arrows are live`
       : `${left} still to send — no session is running here, so nothing can be sent yet`;
-  $("todoField").hidden = !rows.length;
+  if (todoLogOn)
+    $("todoHint").textContent = "every change to this list, newest first — "
+      + "the only place a dropped line is still written down";
+  $("todoField").hidden = !rows.length && !todoLogOn;
+  $("todoAdd").parentElement.hidden = todoLogOn;
+  if (todoLogOn) drawHistory(); else {
   $("todoList").innerHTML = rows.map(r =>
     // The group's own row gets the same `live` as its steps now: its arrow
     // stands for the next one, so it is as clickable as that one is.
@@ -3829,11 +3875,11 @@ function drawTodo(j){
       const steps = r?.steps || [];
       pickTodo(id, step >= 0 ? step : (steps.length ? nextStep(r) : null));
     };
-    // Crossing out never asks — it is one tap and the same tap undoes it.
+    // Putting a sent line back never asks: it costs nothing and the same tap
+    // that undid it sends it again.
     const x = row.querySelector(".x");
     if (x) x.onclick = () =>
-      postTodo({action: "cross", id, step: step < 0 ? null : step,
-                on: !row.classList.contains("sent")});
+      postTodo({action: "cross", id, step: step < 0 ? null : step, on: false});
     // Deleting always asks. Nothing here is recoverable, and the strike beside
     // it is the reversible answer for anyone who only meant "not this one".
     const rm = row.querySelector(".rm");
@@ -3863,15 +3909,17 @@ function drawTodo(j){
     if (ed) ed.onclick = reword;
     row.querySelector(".txt").onclick = reword;
   });
+  }
   todoItems = rows;
   todoUnsaved = j.unsaved || {};
   // The strip is always there once there is a list, with everything on it
   // dead until an arrow is armed — a control that appears under your thumb is
   // a control you press by accident.
-  $("todoAsk").hidden = !rows.length || todoOrdering;
+  $("todoAsk").hidden = !rows.length || todoOrdering || todoLogOn;
   syncSave();
-  $("todoOrder").hidden = !rows.length;
+  $("todoOrder").hidden = !rows.length || todoLogOn;
   $("todoOrder").classList.toggle("on", todoOrdering);
+  $("todoLog").classList.toggle("on", todoLogOn);
   const armed = !!todoSel && live;
   const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
                 || todoMoves.length > 0;
@@ -4262,12 +4310,11 @@ $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 $("todoAdd").onclick = addTodo;
 $("todoGo").onclick = reallySend;
 $("todoOrder").onclick = () => {
-  if (todoOrdering && todoMoves.length
-      && !confirm("Discard the reordering?\n\nThe order goes back to how it "
-                  + "was. Save keeps it.")) return;
-  todoOrdering = !todoOrdering;
-  if (todoOrdering){ cancelSend(); todoWas = structuredClone(todoItems); todoMoves = []; }
-  else revertMoves();
+  if (todoOrdering){ if (!leaveOrdering()) return; redrawTodo(); return; }
+  todoOrdering = true;
+  cancelSend();
+  todoWas = structuredClone(todoItems);
+  todoMoves = [];
   redrawTodo();
 };
 
@@ -4280,6 +4327,86 @@ function revertMoves(){
 
 const redrawTodo = () =>
   drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
+
+// ---- what happened to this list ----------------------------------------
+// The list shows the present tense and two people write it, so until this
+// there was no answer to "was that step always worded like that?" or "who
+// dropped the third one?". Removing is now the only way a line leaves — the
+// cross-off-by-hand is gone — which makes the log the thing that stops a
+// deletion being final: the words are still here to retype.
+let todoLogOn = false;      // the panel is showing the log instead of the list
+let todoLog = null;         // what it is showing, or null while it loads
+
+const ACT = {
+  add:           ["added", "new"],
+  "add-step":    ["added a step", "new"],
+  edit:          ["reworded", ""],
+  "edit-step":   ["reworded", ""],
+  remove:        ["dropped", "gone"],
+  "remove-step": ["dropped a step", "gone"],
+  done:          ["ticked off", ""],
+  undone:        ["reopened", ""],
+  sent:          ["sent", ""],
+  unsent:        ["put back", ""],
+};
+
+// Local time, like everything else this container prints — its clock is set
+// from the host's TZ.
+const stamp = t => new Date(t * 1000).toLocaleString(undefined,
+  {day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false});
+
+function drawHistory(){
+  if (!todoLog){
+    $("todoList").innerHTML = `<div class="hint">loading…</div>`;
+    return;
+  }
+  if (!todoLog.length){
+    $("todoList").innerHTML = `<div class="hint">Nothing has happened to this
+      list yet. Every add, reword, send and drop lands here from now on.</div>`;
+    return;
+  }
+  $("todoList").innerHTML = todoLog.map(e => {
+    const [word, tone] = ACT[e.act] || [e.act || "changed", ""];
+    const where = e.step != null ? `step ${e.step + 1} of #${e.id}` : `#${e.id}`;
+    return `<div class="hist">
+      <span class="when">${esc(stamp(e.at || 0))}</span>
+      <span class="act ${tone}">${esc(word)}</span>
+      <span class="what">${esc(where)} · ${esc(e.text || "")}${
+        e.was ? ` <span class="was">${esc(e.was)}</span>` : ""}${
+        e.steps ? ` <span class="was" style="text-decoration:none">(${e.steps} steps)</span>` : ""}
+        <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}</span></span>
+    </div>`;
+  }).join("");
+}
+
+async function loadHistory(){
+  todoLog = null;
+  redrawTodo();
+  // quiet, because the answer is not a list payload and drawTodo must not be
+  // handed one that has no items in it.
+  const j = await postTodo({action: "history"}, true);
+  todoLog = j?.history || [];
+  redrawTodo();
+}
+
+// Both toggles leave reordering the same way, and neither throws away a
+// shuffle without asking.
+function leaveOrdering(){
+  if (!todoOrdering) return true;
+  if (todoMoves.length
+      && !confirm("Discard the reordering?\n\nThe order goes back to how it "
+                  + "was. Save keeps it.")) return false;
+  todoOrdering = false;
+  revertMoves();
+  return true;
+}
+
+$("todoLog").onclick = () => {
+  if (!leaveOrdering()) return;
+  todoLogOn = !todoLogOn;
+  if (todoLogOn){ cancelSend(); loadHistory(); }
+  else { todoLog = null; redrawTodo(); }
+};
 
 // One swap, on the page's copy. The same swap the server would do, so that
 // replaying the list of them at Save arrives at what is on screen.
