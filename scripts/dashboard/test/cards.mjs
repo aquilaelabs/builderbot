@@ -105,6 +105,29 @@ ok(fav.touch[0] === 200 && fav.touch[1] === 'image/png', 'apple-touch-icon is se
 ok(fav.links.includes('/favicon.svg') && fav.links.includes('/favicon.ico')
    && fav.links.includes('/apple-touch-icon.png'), 'the head links all three');
 
+// ---- which build this is ------------------------------------------------
+// Beside the uptime, because an Unraid container keeps serving whatever it
+// last pulled: "up two hours" and "has the fix" are different questions, and
+// answering the second by inferring from the first is how a published fix and
+// a stale container looked identical for a whole afternoon.
+const build = await page.$eval('#build', e => ({ text: e.textContent.trim(),
+                                                 title: e.title }));
+ok(build.text === 'abc1234',
+   'the header carries the build the image was stamped with');
+ok(build.title.includes('abc1234def5678901234567890abcdef12345678')
+   && build.title.includes('2026-08-21T19:30Z'),
+   '...with the whole commit and when it was built, on hover');
+ok(/bb drift/.test(build.title),
+   '...and says where to look for what a checkout has changed since');
+// An image built outside CI carries no stamp, and says so rather than leaving
+// a gap that reads as "this dashboard is too old to tell you".
+ok(await page.evaluate(() => { drawBuild({ rev: '', built: '' });
+                               const e = document.getElementById('build');
+                               return e.textContent === 'unstamped'
+                                   && /no build stamp/.test(e.title); }),
+   'an unstamped image says so, rather than showing nothing');
+await page.evaluate(() => refresh());
+
 // ---- signing in and out ------------------------------------------------
 // The first thing to get right on a new box, and the last place anybody would
 // think to look for it on a command line. Driven against a stub claude: the
@@ -210,22 +233,34 @@ ok(await page.evaluate(() => document.activeElement?.id === 'authCode'),
 
 // A code that is not one never reaches the process.
 const junk = await page.evaluate(async () => {
-  const r = await fetch('/api/login-code', { method: 'POST',
+  const send = code => fetch('/api/login-code', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ code: 'not a code' }) });
-  return r.status;
+    body: JSON.stringify({ code }) }).then(r => r.status);
+  return { link: await send('https://claude.com/cai/oauth/authorize?code=true'),
+           blank: await send('  \n\t '), long: await send('x'.repeat(5000)) };
 });
-ok(junk === 400, 'a code with a space in it is refused before it goes anywhere');
+ok(junk.link === 400 && junk.blank === 400 && junk.long === 400,
+   'the link alone, an empty paste and a novel are refused; nothing else is');
 page.errors = [];
 
-// A wrong one is refused by the flow, and the card says why — where it was
-// asked for, rather than in a terminal nobody can read on a phone.
-await page.fill('#authCode', 'wrongcode1234');
-await page.click('#bAuthCode');
+// Everything else goes to the flow, junk stripped rather than refused, and
+// the flow's own verdict comes back to the card. This paste carries the lot:
+// base64 padding, a line break from a wrapped copy, a space, a control
+// character, a zero-width mark from an HTML copy button, and the authorize
+// URL the code page sets flush against the code so that Copy takes both.
+const padded = await page.evaluate(async () => {
+  const r = await fetch('/api/login-code', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ code: '\u200bwrong+code/12\n34 =\u0003=https://claude.com/cai/oauth/authorize?code=true' }) });
+  return r.status;
+});
+ok(padded === 200, '...while everything a real paste drags along goes through');
 await page.waitForFunction(() => /did not finish|Login failed/.test(
   document.getElementById('docAuth')?.textContent || ''), { timeout: 25000 });
 ok(/Login failed/.test(await page.$eval('#docAuth', e => e.textContent)),
    'a refused code is reported on the card, in the words the flow used');
+ok(/\[got wrong\+code\/1234==\]/.test(await page.$eval('#docAuth', e => e.textContent)),
+   '...and what reached the flow was the code, without what the copy added');
 
 // And a good one signs in, which flips the whole row.
 await page.click('#bSignIn');

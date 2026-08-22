@@ -70,6 +70,17 @@ version() {
 
 cmd_status() {
     echo "== versions =="
+    # First, because it is the identity of everything under it: every version
+    # below came out of this image, and which image that is was otherwise
+    # guessable only from the uptime. Stamped by CI at the end of the
+    # Dockerfile; empty means the image was built some other way.
+    printf '  %-8s %s\n' image "$(
+        if [ -n "${BB_IMAGE_REV:-}" ]; then
+            printf '%.7s%s' "$BB_IMAGE_REV" \
+                "${BB_IMAGE_BUILT:+ (built $BB_IMAGE_BUILT)}"
+        else
+            printf 'unstamped'
+        fi)"
     version claude claude --version
     version node   node --version
     version npm    npm --version

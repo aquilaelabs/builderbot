@@ -400,6 +400,18 @@ checkout properly — it sources the library next to itself, so a new helper in
 `/opt` by absolute path, and nothing is really live until CI builds a new image
 and Unraid updates the container.
 
+The corollary is a trap worth naming, because a session has already fallen into
+it: when a fix is merged and the operator says the thing is still broken, the
+first question is **which build their container is on**, not whether the fix was
+wrong. An Unraid container keeps serving whatever it last pulled — an image
+published twenty minutes ago is not on the box until somebody presses update —
+so a screenshot taken after a merge is not evidence about the merge. Three
+speculative fixes went out one afternoon on exactly that mistake, each shipped
+against a screenshot of the build before it. The dashboard header now carries
+the short commit beside the uptime (`bb status` prints the same line first), so
+the question is a glance rather than an inference: check it before concluding
+anything from a report of behavior you thought you had already changed.
+
 - **Build:** the image, and nothing else. `.github/workflows/build-image.yml`
   builds and pushes `ghcr.io/stencil-projects/builderbot` on pushes to `main`
   that touch the image's inputs (Dockerfile, `scripts/`, `config/`) — plus a
