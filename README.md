@@ -1149,23 +1149,23 @@ and the dashboard says so. With no session running, every arrow is dead.
 A sent step is **struck through in place** — not removed, not reordered. Sent
 is not done: a step can be handed over and quietly not carried out, and the
 struck line is how you notice. It stays sendable, so "that did not take, do it
-again" is one tap. The bin is the only way anything leaves the list.
+again" is one tap on the same arrow.
 
-Beside the bin is a **strike icon**, which crosses a line off *without* sending
-it — you did it yourself, or it turned out not to be needed — and puts it back
-if you press it again. It leaves the same mark as sending, so a group moves on
-to its next step either way; without it, a step you handled yourself would
-block every step behind it. A session is told which of the two happened, since
-"already sent to a session" would be a lie about a line nobody sent.
+**The order that is protected is the order things are sent in**, and nothing
+else. Only the frontier step of a group arms, and the group's own arrow stands
+for that same step — so a plan cannot be handed over backwards, which is the
+mistake that actually costs something: step three landing on a tree step two
+was supposed to have made.
 
-**A plan is edited at its edge.** Inside a group the strike is offered on
-exactly two rows — the last crossed step, to put it back, and the next one
-along, to cross it — so crossing step two moves the strike off step one and on
-to step three. The bin sits at the head of the queue: only the first step, and
-the item's own row. Both rules exist for the same reason as the send order —
-anything else leaves a plan in a state its order was supposed to prevent.
-**Deleting always asks; crossing out never does**, because one is recoverable
-by pressing the same button again and the other is not.
+Editing is not constrained the same way, deliberately. The pencil rewords any
+row, and the **bin is on every row** — item or step, anywhere in a plan. It
+used to be the first step only, on the theory that things come off a plan from
+the front; in practice that meant a stale step three cost you steps one and
+two to reach, and left the list describing work nobody was going to do. A
+deletion cannot send anything out of order. It can only make a plan shorter —
+and it now says why it did, in a note kept with the entry in the history.
+**The bin always asks; shelving never does**, because one is recoverable by
+pressing the same button again and the other is not.
 
 **Edits are written immediately; telling the session is separate.** A phone
 that dies half way through tidying a list must not lose it, but every telling

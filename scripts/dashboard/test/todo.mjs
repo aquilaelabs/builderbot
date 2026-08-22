@@ -287,13 +287,19 @@ ok((await open()).find(i => i.id === c1.id && i.step === '-1').can,
    'the same button takes it off the shelf — the one control here that undoes '
    + 'itself, which is the whole difference between it and the bin');
 
-// The bin sits at the head of the queue: things come off a plan from the
-// front, and the item's own row always has one.
+// Every row has a bin. It was the head of the queue only, on the theory that
+// things come off a plan from the front — but that cost steps one and two to
+// reach a stale step three, and the order that actually matters is the order
+// things are *sent* in, which the frontier rule protects on its own.
 const bins = () => page.$$eval('#todoList .todo',
   ts => ts.filter(t => t.querySelector('.rm')).map(t => t.dataset.step));
-ok(JSON.stringify(await bins()) === JSON.stringify(['-1', '-1', '-1', '0']),
-   `only the first step and the items themselves can be dropped (${
-     JSON.stringify(await bins())})`);
+const allRows = await page.$$eval('#todoList .todo', ts => ts.length);
+ok((await bins()).length === allRows,
+   `anything can be dropped, step or item — ${allRows} rows, ${
+     (await bins()).length} bins`);
+ok((await bins()).includes('1'),
+   '...including a step in the middle of a plan, which used to need the two '
+   + 'in front of it deleted first');
 
 // ---- dropping one step out of a plan -----------------------------------
 // With the reason it went. Nothing here can be undone, so the note is the

@@ -3812,12 +3812,16 @@ function stepRow(r, idx, live){
   // thing you have decided not to do now is the whole plan. So the shelf
   // button sits on the item row, and a group is shelved entire.
   //
-  // The bin sits at the head of the queue: things come off a plan from the
-  // front, and dropping step five while step two is the frontier leaves a
-  // group in a state its order was supposed to prevent.
+  // The bin is on every row. It used to be on the head of the queue only —
+  // things come off a plan from the front — which meant a stale step three
+  // cost you steps one and two to reach, and left the list describing work
+  // nobody was going to do. That guardrail was aimed at the wrong risk: the
+  // order that matters is the order things are *sent* in, and the frontier
+  // rule below is what protects it. A deletion cannot send anything out of
+  // order; it can only make a plan shorter, and it now says why it did and
+  // keeps the words in the log.
   const k = crossedTo(r);
   const shelf = idx < 0;
-  const bin = idx < 0 || idx === 0;
   // Sent ones stay live so they can go again — "it did not take, do it again"
   // is the reason they are still on screen at all.
   // A crossed line cannot be sent. Un-cross it first — that is one tap, and
@@ -3879,10 +3883,10 @@ function stepRow(r, idx, live){
         : "shelve it: worth keeping, not for now. It goes dark at the bottom"
           + (steps.length ? " with its steps" : "") + " and a session is told it is parked"}"
       >${SHELF}</button>` : `<span class="eye ph"></span>`}
-    ${bin ? `<button class="eye rm" type="button" aria-label="drop it"
-      title="${idx < 0 ? "take it off the list — the only way anything leaves"
+    <button class="eye rm" type="button" aria-label="drop it"
+      title="${idx < 0 ? "take it off the list, with a note saying why"
                        : "drop this step; the one behind it takes its place"}"
-      >${BIN}</button>` : `<span class="eye ph"></span>`}`}
+      >${BIN}</button>`}
   </div>`;
 }
 
