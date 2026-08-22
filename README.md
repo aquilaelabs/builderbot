@@ -1139,6 +1139,18 @@ out to be blocked, and saying so on the row beats saying it in a reply nobody
 re-reads) but cannot unshelve — taking one off reverses a decision it was not
 told the reason for.
 
+**A Claude tab does not come back on its own after a restart.** The
+conversation ended with the container; the transcript did not, so the
+project's Claude button offers to resume it and that stays a decision you
+make. Enforcing it takes two halves: the saved layout drops Claude tabs at
+boot, and — because a browser left open still holds its own copy, and a phone
+waking up reloads the terminal iframe, which spawns whatever its URL names —
+each Claude terminal's URL carries the run of the container it was opened in.
+One from a previous run is refused where the session would have been created,
+with a line saying to open it from the card instead. Shell tabs carry no such
+marker and never needed one: a shell is safe to recreate in the same
+directory, which is why it survives a restart and a conversation does not.
+
 **A session can correct a plan, not just follow it** — `bb todo edit N`,
 `bb todo step add|edit|rm|mv`, `bb todo mv N up|down` — which matters when the design moves under a plan
 written a week ago. Every one of those lands in the history under `claude`,

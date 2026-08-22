@@ -1619,6 +1619,10 @@ def snapshot():
     return {
         "host": os.uname().nodename,
         "uptime": uptime(),
+        # Which run of the container this is. The page stamps it into the URL
+        # of every Claude terminal it opens, so bb-tty can tell a request made
+        # now from one a browser carried across a restart.
+        "boot": boot_id(),
         "image": image_stamp(),
         "projects": ps,
         "sessions": sessions,
