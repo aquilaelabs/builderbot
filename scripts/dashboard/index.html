@@ -2906,7 +2906,7 @@ function watchSignin(){
 async function sendCode(){
   const f = $("authCode"), b = $("bAuthCode");
   const code = f.value.trim();
-  if (!code) return f.focus();
+  if (!code) return f.focus();   // pressed Send with nothing in it
   b.disabled = true; b.textContent = "Sending…";
   try{
     const r = await fetch("/api/login-code", {method:"POST",
@@ -3138,8 +3138,6 @@ function editCustom(id){
   $("mBody").value = (m?.lines || []).join("\n");
   $("mDelete").hidden = !m;
   $("modal").hidden = false;
-  $("mName").focus();
-  $("mName").select();
 }
 
 function closeEditor(){ $("modal").hidden = true; editing = null; }
@@ -3548,12 +3546,11 @@ function pSlide(){
   }
 }
 
-// The cursor goes to the mode's own first field, on open and on every tab
-// switch. Both directions, unconditionally: only the clone tab used to do
-// it, so switching back to New local repo left focus on a field that had
-// just been hidden — focus fell to the body and a phone's keyboard slid
-// away mid-thought.
-function pFocus(){ $(PMODES[pMode].focus).focus(); }
+// No cursor is put in a field here, on open or on a tab switch. A dialog that
+// focuses something raises the on-screen keyboard with it, which covers half
+// of what it just opened — so the field is chosen by the person who wants to
+// type in it. `focus` stays in PMODES because it is also the name of the
+// field that mode leads with, which pDraw uses.
 
 function pShowKey(){
   const k = pKeys.find(k => k.name === $("pKey").value);
@@ -3579,7 +3576,6 @@ function pOpen(mode){
   $("pErrWrap").hidden = $("pPubWrap").hidden = true;
   $("pCreate").disabled = false; $("pCreate").textContent = PMODES[mode].btn;
   $("pmodal").hidden = false;
-  pFocus();
   // Fetched per open, not cached: keys change when the container restarts
   // with a new /secrets/ssh, and a stale list here would offer a key the
   // agent no longer holds. The submit handler awaits pFetch directly, so an
@@ -3623,7 +3619,6 @@ async function openMemory(name){
   $("todoText").value = "";
   $("todoList").innerHTML = `<div class="hint">loading…</div>`;
   $("memModal").hidden = false;
-  $("todoText").focus();
   // Opening it is a re-read: both halves come off disk again, and the card
   // behind gets the same treatment so the number on the row you just pressed
   // is not the one from the last poll.
@@ -3966,6 +3961,9 @@ function openStepInput(box){
     // Escape as "close the panel" and the plan being typed goes with it.
     if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); closeStepInput(box); }
   };
+  // Focused, unlike anything a window opens with: this field exists because
+  // the finger that wants it just tapped "+ step", and making them tap twice
+  // to type in the thing they asked for is not the same problem.
   inp.focus();
 }
 
@@ -3978,6 +3976,8 @@ async function addTodo(){
   const t = $("todoText");
   if (!t.value.trim()) return;
   if (await postTodo({action: "add", text: t.value})) t.value = "";
+  // Kept, not taken: the keyboard is already up because they just typed, and
+  // a list is usually added to more than one line at a time.
   t.focus();
 }
 
@@ -4113,7 +4113,7 @@ function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
 // A stale error must not survive a mode switch — "a name is required" makes
 // no sense over a form that no longer asks for one.
 const pSwitch = m => { if (pMode === m) return;
-  pMode = m; $("pErrWrap").hidden = true; pDraw(); pSlide(); pFocus(); };
+  pMode = m; $("pErrWrap").hidden = true; pDraw(); pSlide(); };
 $("pLocal").onclick = () => pSwitch("init");
 $("pClone").onclick = () => pSwitch("clone");
 $("pKey").onchange = pShowKey;

@@ -28,6 +28,10 @@ await page.waitForFunction(() => !document.getElementById('memModal').hidden);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
 ok(await page.$eval('#memTitle', el => el.textContent === 'To do — alpha'),
    'the panel opens on that project, on its to-do list');
+// And with the cursor nowhere: focusing the add-a-line field would raise a
+// phone's keyboard over the list the panel just opened to show.
+ok(await page.evaluate(() => document.activeElement?.id !== 'todoText'),
+   '...without putting the cursor in the field and the keyboard over it');
 // Memory is folded away under it: a handful of files nobody edits, on screen
 // only because it is the one input to a session nobody would otherwise see.
 ok(await page.$eval('#memFold', el => !el.open)
