@@ -2096,6 +2096,11 @@ class Handler(BaseHTTPRequestHandler):
             r = todo.remove(name, req.get("id"), req.get("step"))
         elif act == "clear-done":
             r = todo.clear_done(name)
+        elif act == "history":
+            # Fetched only when the panel is showing it. It rides in no poll:
+            # a log nobody has opened is bytes on every status request for
+            # every project, forever.
+            return self._json({"history": todo.history(name)})
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):

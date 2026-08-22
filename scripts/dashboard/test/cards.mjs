@@ -216,11 +216,22 @@ ok(await page.$eval('#docAuth a', a2 => a2.target === '_blank'),
 ok(await page.$$eval('.tab[data-id]', t => !t.some(x => /sign-in/i.test(x.textContent))),
    '...and no terminal was opened for it at all');
 
-// The dashboard no longer judges codes — two shape checks in a row each
-// refused a real one. The only refusals left are the two that cannot be
-// wrong: a paste with no code in it (the link alone, or nothing printable),
-// and one far too long to be a code. Neither reaches the flow, so the flow
-// this test has open is untouched.
+// The code is pasted into that field on a phone, while the card is polling
+// every 1.2s to catch the answer. A poll must not take the field away: the
+// card layout used to re-append every card on every poll, and a node leaving
+// the document takes the focus — and the on-screen keyboard — with it.
+await page.click('#authCode');
+ok(await page.evaluate(() => document.activeElement?.id === 'authCode'),
+   'the code field takes focus when it is tapped');
+await page.evaluate(() => { refresh(); refresh(); });
+await page.waitForTimeout(1500);
+ok(await page.evaluate(() => document.activeElement?.id === 'authCode'),
+   '...and keeps it across the polls that are watching for the answer');
+await page.evaluate(() => applyCards(false));
+ok(await page.evaluate(() => document.activeElement?.id === 'authCode'),
+   '...even when the card order is reapplied, since nothing actually moved');
+
+// A code that is not one never reaches the process.
 const junk = await page.evaluate(async () => {
   const send = code => fetch('/api/login-code', { method: 'POST',
     headers: { 'Content-Type': 'application/json' },
