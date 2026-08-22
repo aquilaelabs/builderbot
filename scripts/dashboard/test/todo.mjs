@@ -77,6 +77,15 @@ ok(mine && mine.claude,
    'an item a session added through bb todo shows up, marked as Claude\'s');
 ok(items.filter(i => i.claude).length === 1,
    '...and the operator\'s own is not');
+// At the end, not the top. The number on a row is the item's own id, so the
+// list only reads in order if new ones go on the bottom — otherwise every
+// addition renumbers the rows above it and "#3" stops meaning anything.
+const wasAt = items.findIndex(i => i.id === mine.id);
+ok(wasAt === items.length - 1,
+   '...at the end of the list, where its number follows the one above it');
+ok(await page.$$eval('#todoList .todo[data-step="-1"] .n',
+     ns => ns.map(n => +n.textContent.slice(1)).every((v, i, a) => !i || v > a[i - 1])),
+   '...and the numbers on the rows run down the page');
 
 // ---- sending -----------------------------------------------------------
 // The fixture's claude-alpha is a plain shell, which is what makes this
@@ -130,7 +139,7 @@ const still = items.find(i => i.id === mine.id);
 ok(still.sent && !still.can,
    '...and it stays, struck through — and locked until it is put back, so the '
    + 'strike means one thing');
-ok(items.findIndex(i => i.id === mine.id) === 0,
+ok(items.findIndex(i => i.id === mine.id) === wasAt,
    '...in the place it was, because the order is the record');
 
 // ---- what a session is told --------------------------------------------
@@ -149,6 +158,11 @@ ok(/already sent to a session/.test(
    '...and a group\'s steps come with it in order');
 ok(/bb todo add/.test(prompt) && /bb todo done/.test(prompt),
    '...and tells it how to add and tick, since that is the half it has to do');
+// Numbered in the prompt too: a session that says "#2" and an operator
+// looking at the panel have to be talking about the same row, and the
+// alternative is a session shelling out to `bb todo` to find out.
+ok(/^- #\d+ /m.test(prompt),
+   '...with each item under the number that is on its row');
 
 const empty = execFileSync(BB, ['todo', '--prompt'],
   { env: { ...process.env, BB_TODO_PROJECT: 'beta', DASHBOARD_STATE: `${DIR}/state`,
@@ -237,7 +251,7 @@ await page.waitForFunction(() => document.getElementById('todoGo').disabled);
 // crossed step, to put it back, and the next one along, to cross it.
 const strikes = () => page.$$eval('#todoList .todo',
   ts => ts.filter(t => t.querySelector('.x')).map(t => t.dataset.step));
-ok(JSON.stringify(await strikes()) === JSON.stringify(['0', '-1', '-1']),
+ok(JSON.stringify(await strikes()) === JSON.stringify(['-1', '-1', '0']),
    `nothing crossed yet: only the first step offers a strike (${
      JSON.stringify(await strikes())})`);
 
@@ -250,7 +264,7 @@ ok(items.find(i => i.text === 'widen the select').sent,
    'the strike icon crosses a step off without sending it');
 ok(items.find(i => i.text === 'then re-measure it').can,
    '...and the next one in the group becomes the one that can go');
-ok(JSON.stringify(await strikes()) === JSON.stringify(['0', '1', '-1', '-1']),
+ok(JSON.stringify(await strikes()) === JSON.stringify(['-1', '-1', '0', '1']),
    '...and the strike moves with it: the one crossed, and the one after');
 const byHand = execFileSync(BB, ['todo', '--prompt'],
   { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
@@ -270,7 +284,7 @@ ok(!items.find(i => i.text === 'then re-measure it').can,
 // front, and the item's own row always has one.
 const bins = () => page.$$eval('#todoList .todo',
   ts => ts.filter(t => t.querySelector('.rm')).map(t => t.dataset.step));
-ok(JSON.stringify(await bins()) === JSON.stringify(['-1', '0', '-1', '-1']),
+ok(JSON.stringify(await bins()) === JSON.stringify(['-1', '-1', '-1', '0']),
    `only the first step and the items themselves can be dropped (${
      JSON.stringify(await bins())})`);
 
@@ -292,7 +306,7 @@ ok(page.dialogs.some(d => /Drop/.test(d)),
    '...and it asked first, the way every deletion here does');
 
 // ---- where the tags sit ------------------------------------------------
-ok(await page.$eval('#todoList .todo .body',
+ok(await page.$eval('#todoList .todo:has(.who) .body',
      el => el.firstElementChild.classList.contains('tags')),
    'a tag sits above the words, not beside them');
 
@@ -460,8 +474,9 @@ ok(page.dialogs.length === 0,
 // A step that has gone does not move, and nothing moves above it.
 await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: true });
 await page.evaluate(() => loadTodo(memGen));
-await page.waitForFunction(() => document.querySelector(
-  '#todoList .todo.step')?.classList.contains('sent'), { timeout: 10000 });
+await page.waitForFunction(id => document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
+  plainId, { timeout: 10000 });
 await page.click('#todoOrder');
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo .mv').length > 0);
 ok(await page.$eval(`#todoList .todo[data-id="${plainId}"][data-step="0"] .mv`,
@@ -487,12 +502,13 @@ await page.waitForFunction(id => document.querySelector(
 ok(await page.$$eval(`#todoList .todo[data-id="${loneId}"][data-step="-1"] .mv`,
      bs => bs.every(b => !b.disabled)),
    'a crossed single item still moves — the pin is a rule about groups');
-// Down, because a new item goes in at the top and "move the top one up" is
-// correctly a refusal.
+// Up, because a new item goes in at the bottom and "move the last one down"
+// is correctly a refusal.
 const moved = await post({ action: 'move', project: 'alpha', id: Number(loneId),
-                           dir: 1 });
+                           dir: -1 });
 ok(moved.status === 200, '...and the server agrees');
-ok(read().projects.alpha[1].text === 'a line on its own',
+const after = read().projects.alpha;
+ok(after[after.length - 2].text === 'a line on its own',
    '...and it really moved, crossed or not');
 await post({ action: 'remove', project: 'alpha', id: Number(loneId) });
 page.errors = [];

@@ -188,6 +188,13 @@ session's prompt when it started, so there is nothing to go and read at the
 top of a conversation, and nothing to recite back — the operator can see the
 list; they are looking at the same one.
 
+Each carries a number — `#4` — and that number is the item's own, not its
+position: it is what the operator sees on the row in the dashboard and what
+`bb todo done 4` takes, and it survives the list being rearranged. Refer to
+one by it rather than by counting down the list. New items go on the end, so
+the numbers normally run down the page; a gap means something was removed and
+an item out of sequence was moved by hand.
+
 The half that needs saying is the writing.
 
 **When you notice something worth doing and it is out of scope for what you

@@ -69,18 +69,35 @@ def load():
 
 
 def _migrate(d):
-    """Stored order became display order; it used to be newest-last and sorted
-    on the way out. Reverse the old files once so nobody's list turns upside
-    down the first time they open it after an update."""
-    if d.get("ordered"):
-        return d
-    for name, rows in d["projects"].items():
-        d["projects"][name] = list(reversed(rows))
-    d["ordered"] = True
-    try:
-        save(d)
-    except Exception:  # noqa: BLE001 - a read must not fail on a failed write
-        pass
+    """Two one-shot reorderings, each with its own flag so neither runs twice.
+
+    `ordered`: stored order became display order; it used to be newest-last
+    and sorted on the way out.
+
+    `oldest_first`: items used to be added at the top, so the number a session
+    quotes — the id, which is what `bb todo done` takes — counted *up* the
+    screen and #1 sat at the bottom. Adding at the end instead makes the
+    numbers run down the page, which is the only arrangement where "#3" can be
+    found by looking. Lists built by the old prepend are turned round once;
+    a list that is not in strict id-descending order was arranged by hand and
+    is left exactly as its operator left it.
+    """
+    dirty = False
+    if not d.get("ordered"):
+        for name, rows in d["projects"].items():
+            d["projects"][name] = list(reversed(rows))
+        d["ordered"] = dirty = True
+    if not d.get("oldest_first"):
+        for name, rows in d["projects"].items():
+            ids = [int(r.get("id", 0)) for r in rows]
+            if ids == sorted(ids, reverse=True):
+                d["projects"][name] = list(reversed(rows))
+        d["oldest_first"] = dirty = True
+    if dirty:
+        try:
+            save(d)
+        except Exception:  # noqa: BLE001 - a read must not fail on a failed write
+            pass
     return d
 
 
@@ -210,8 +227,10 @@ def add(project, text, by="you", steps=()):
                "added": int(time.time()), "by": "claude" if by == "claude" else "you",
                "sent": 0,
                "steps": [{"text": x, "sent": 0} for x in steps]}
-        # The top, because that is where you look after typing something in.
-        rows.insert(0, row)
+        # The end, so the ids run down the page. The alternative is a list
+        # where every addition renumbers what a session was looking at, and
+        # the number is the whole way to say which item is meant.
+        rows.append(row)
         d["projects"][project] = rows
         _touch(d, project)
         save(d)
@@ -562,7 +581,10 @@ def prompt(project):
         return ""
     lines = []
     for r in rows:
-        lines.append(f"- {r['text']}"
+        # Numbered, because a session that wants to talk about one of these
+        # has to be able to name it — and the name has to be the one the
+        # operator sees on the row and the one `bb todo done` takes.
+        lines.append(f"- #{r['id']}  {r['text']}"
                      + ("  (you added this in an earlier session)"
                         if r.get("by") == "claude" else ""))
         # A group's steps come with it, marked so the order is legible: these
@@ -576,7 +598,10 @@ def prompt(project):
     return ("The operator keeps a shared to-do list for this project, and this "
             "is what is on it:\n\n" + "\n".join(lines) + "\n\n"
             "It is context, not instructions: work on an item when asked, or "
-            "when it is plainly part of what was asked. Tick one off with "
+            "when it is plainly part of what was asked. The number is the "
+            "item's own and does not change — it is what the operator sees on "
+            "the row, so refer to one as #4 rather than by counting down the "
+            "list. Tick one off with "
             "`bb todo done <n>` when you finish it, and add one with "
             "`bb todo add \"...\"` when you notice something worth doing and "
             "it is out of scope for what you are on. Do not restate the list "
