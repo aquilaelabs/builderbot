@@ -273,7 +273,11 @@ if [ "${1:-}" = auth ]; then
             case "$code" in
                 good*) cat "${CLAUDE_AUTH_IN:?}" > "${CLAUDE_AUTH_FIXTURE:?}"
                        printf '\nLogin successful.\n'; exit 0 ;;
-                *) printf '\nLogin failed: Request failed with status code 400\n'
+                # The code it was handed, echoed back. The dashboard trims
+                # what a copy brought along with it — a line break, the URL
+                # the code page sets flush against the code — and this is how
+                # a test sees what actually arrived rather than assuming.
+                *) printf '\nLogin failed: Request failed with status code 400 [got %s]\n' "$code"
                    exit 1 ;;
             esac ;;
         *) exit 1 ;;
@@ -342,6 +346,8 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" CLAUDE_AUTH_FIXTURE="$S/auth.json" \
+    BB_IMAGE_REV=abc1234def5678901234567890abcdef12345678 \
+    BB_IMAGE_BUILT=2026-08-21T19:30Z \
     CLAUDE_AUTH_IN="$S/auth-in.json" \
     BB_LOGIN_DONE="$S/login-finished" \
     PATH="$S/bin:$PATH" \

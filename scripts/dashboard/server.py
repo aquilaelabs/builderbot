@@ -1362,6 +1362,21 @@ def uptime():
     return r["out"].strip() or "?"
 
 
+def image_stamp():
+    """Which build of the image this container is running.
+
+    Baked in at the end of the Dockerfile by CI (see BB_IMAGE_REV there).
+    Empty when the image was built any other way, which the page reports as
+    `unstamped` rather than guessing — the whole point of this is that the
+    answer to "is that fix in here?" stops being an inference from uptime.
+
+    Trimmed rather than validated: these come from the image's own build, not
+    from anything a request can set, and they are only ever displayed.
+    """
+    return {"rev": os.environ.get("BB_IMAGE_REV", "").strip()[:40],
+            "built": os.environ.get("BB_IMAGE_BUILT", "").strip()[:32]}
+
+
 # ---------------------------------------------------------------------------
 # bb doctor, cached. The checks take up to half a minute of network timeouts
 # when something is down, which rules out running them on the 15-second poll —
@@ -1454,8 +1469,15 @@ def _read_auth():
     return state
 
 
-# What an OAuth code can be made of. Never a free-text line into a process.
-LOGIN_CODE = re.compile(r"[A-Za-z0-9._~#-]{8,512}")
+# What gets removed from a pasted code before it is handed to the flow:
+# whitespace of every kind (a wrapped copy brings line breaks, a phone
+# keyboard adds a trailing space), control characters, and the zero-width
+# marks HTML copy buttons smuggle along. Everything printable stays. This is
+# deliberately a strip-list and not an allow-list: two rounds of guessing the
+# code's alphabet each refused a real code with advice to copy it again, to an
+# operator who had copied it. The code is somebody else's credential format;
+# judging it is the flow's job, and the flow says why in its own words.
+CODE_JUNK = re.compile(r"[^!-~]+")
 
 
 def doctor_payload():
@@ -1597,6 +1619,7 @@ def snapshot():
     return {
         "host": os.uname().nodename,
         "uptime": uptime(),
+        "image": image_stamp(),
         "projects": ps,
         "sessions": sessions,
         "runner": runner(),
@@ -1976,17 +1999,31 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(signin.start() | {"signin": signin.state()})
 
     def _login_code(self, req):
-        """Hand the code from the browser to the sign-in terminal.
+        """Hand the code from the browser to the sign-in flow.
 
-        Shape-checked before it goes anywhere near a terminal — the same rule
-        every executing surface here follows — and only ever into the session
-        this dashboard opened for the flow.
+        Transport, not judgment. The only property this end owes the pty is
+        that a paste is one line of printable text — so the junk a copy brings
+        along is stripped rather than refused, and whether what remains is a
+        valid code is decided by the flow, whose refusal the card repeats in
+        the flow's own words. Two shape checks in a row each turned out to
+        refuse a real code (an allow-listed alphabet without base64's `+/=`,
+        then the page's own authorize URL glued to the code by its Copy
+        button); the only refusals left are the ones that cannot be wrong —
+        nothing left to send, or far too much to be a code.
         """
-        code = field(req, "code").strip()
-        if not LOGIN_CODE.fullmatch(code):
-            return self._json({"error": "that does not look like a code — copy "
-                                        "the whole of it, including anything "
-                                        "after a #"}, 400)
+        code = field(req, "code")
+        # Anything from a URL onward was never part of the code. The page that
+        # hands it out sets the authorize URL flush against it, so Copy takes
+        # both. A code is base64url and a `#` — no colon, no slash — so the
+        # cut cannot land inside a real one.
+        code = re.split(r"https?://", code, 1)[0]
+        code = CODE_JUNK.sub("", code)
+        if not code:
+            return self._json({"error": "no code in that paste — copy the "
+                                        "code itself, not the page's link"}, 400)
+        if len(code) > 2048:
+            return self._json({"error": "that is far too long to be a code — "
+                                        "copy just the code"}, 400)
         r = signin.submit(code)
         # Whatever the cache is holding is about to be wrong either way.
         _auth.update(at=0.0, state={})

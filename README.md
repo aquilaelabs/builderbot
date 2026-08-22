@@ -845,6 +845,12 @@ lives in its body. The cards:
   opposite directions, and a program that wants a terminal only wants a pty —
   so the server holds one. What you see is a link and a text field, and what
   the flow says when it refuses a code is said on the card, in its own words.
+  The field passes the code through rather than judging it: the authorize URL
+  the code page glues to it is cut off, whitespace and control junk are
+  stripped, and whatever remains goes to the flow — whose verdict is the only
+  one that counts. The only pastes refused outright are the two that cannot
+  be wrong to refuse: one with no code left in it (the link alone), and one
+  far too long to be a code.
   Signing out is one command with no conversation in it, so it is a button,
   and it asks first because every session here stops working. **It is dead
   while any Claude session is running** and names the ones in the way; the
@@ -855,7 +861,15 @@ lives in its body. The cards:
   error. On a claude too old to have `auth status` the row simply is not
   there: not knowing is not the same as being signed out, and offering to sign
   somebody out of nothing is worse than offering nothing
-- container uptime, and runner state — registered, listening, **running a job**
+- container uptime, **and which build of the image is serving it** — the short
+  commit beside the uptime, with the whole one and the time it was built on
+  hover. The two are different questions: an Unraid container keeps running
+  whatever it last pulled, so "up two hours" says nothing about whether a fix
+  merged an hour ago is in there, and inferring one from the other is a good
+  way to spend an afternoon debugging a bug that was already fixed. `unstamped`
+  means the image was built outside CI. `bb status` prints the same line first,
+  and `bb drift` is the other half — what a checkout has changed that the
+  running container is not serving. Also runner state — registered, listening, **running a job**
   (with the job's name and how long it has been going), **waiting for GitHub
   to release the last session**, or **failing to connect**. The middle one is
   amber rather than red on purpose: GitHub holds a runner's session for a

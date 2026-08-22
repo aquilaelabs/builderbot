@@ -975,6 +975,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   <span class="meta host" id="host"></span>
   <span class="spacer"></span>
   <span class="meta" id="uptime"></span>
+  <span class="meta" id="build"></span>
   <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" aria-label="reset the sidebar cards"
           title="reset the sidebar cards — default order, all expanded">
@@ -2083,6 +2084,22 @@ document.addEventListener("visibilitychange", () => {
 // A back/forward-cache restore always resumes with a dead socket, phone or not.
 window.addEventListener("pageshow", e => { if (e.persisted) reattachTerminals(); });
 window.addEventListener("focus", nudgeTerminals);
+
+// Which build of the image this container is running, beside how long it has
+// been running it. The pair is the point: an Unraid container keeps serving
+// whatever it last pulled, so "how long has this been up" and "what is this"
+// are different questions, and only one of them used to be answerable. The
+// stamp is what /opt is serving; bb drift is what a checkout has changed since.
+function drawBuild(img){
+  const el = $("build"), rev = img?.rev || "";
+  el.textContent = rev ? rev.slice(0, 7) : "unstamped";
+  el.title = rev
+    ? `image ${rev}${img.built ? `\nbuilt ${img.built}` : ""}`
+      + `\n\nthis is what /opt is serving — \`bb drift\` says what a checkout`
+      + `\nhas changed since, and an update pulls whatever :latest is now`
+    : "this image carries no build stamp — built outside CI, or older than the"
+      + " stamp itself";
+}
 
 // Which pane of a split is active decides where the keys and the commands
 // go, and clicking into a terminal is the natural way to say "this one" —
@@ -4976,6 +4993,7 @@ async function refresh(){
     $("dot").classList.remove("off");
     $("host").textContent = state.host;
     $("uptime").textContent = "up " + state.uptime;
+    drawBuild(state.image);
     adoptLayout(state.layout);
     // Not mid-drag: adopting the server's order under a moving pointer would
     // snap the card out of the operator's hand.
