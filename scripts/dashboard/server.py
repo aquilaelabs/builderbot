@@ -397,7 +397,10 @@ def save_cards(v):
 # What a stored tab may contain. Anything else is dropped rather than trusted:
 # this file is written by one browser and handed to every other one, so it is
 # the one place where a bad value could travel between devices.
-TAB_KINDS = {"term", "findings", "packages"}
+# Every kind of tab the saved layout may carry. A kind missing from here is
+# dropped on read without a word — which is how the notebook came back from a
+# refresh as no tab at all: it was written to the file and filtered out of it.
+TAB_KINDS = {"term", "findings", "packages", "todo"}
 
 
 def load_layout():
@@ -980,6 +983,7 @@ def project_list():
                                      " — chown it to PUID:PGID on the host"}]}]
     cloning = projects.busy_name()
     open_todo = todo.counts()
+    todo_batches = todo.batches()
     for d in here:
         # Mid-clone: a directory with a .git and not much else, which every
         # check below reads as a repository in a strange state. The job row is
@@ -1094,6 +1098,9 @@ def project_list():
                     # ...and what is still to do, which is the number on the row
                     # actually worth glancing at.
                     "todo": open_todo.get(d.name, 0),
+                    # So the open notebook learns a session has started one
+                    # without waiting for the operator to touch something.
+                    "todo_batch": todo_batches.get(d.name),
                     "issues": issues})
     return out
 
@@ -2119,7 +2126,13 @@ class Handler(BaseHTTPRequestHandler):
         session = todo.tmux_name("claude-" + name)
         return {"items": todo.items(name),
                 "session": session if session in set(live) else None,
-                "unsaved": todo.unsaved(name)}
+                "unsaved": todo.unsaved(name),
+                # A session part-way through a batch. The panel refuses to save
+                # over one: the list on screen is a copy taken before the
+                # session started, and replaying edits onto a list that has
+                # moved underneath is how two people writing one file lose
+                # each other's work.
+                "batch": todo.batch(name)}
 
     def _memory(self, req):
         """Edit, delete, or point a running session at this project's memories.

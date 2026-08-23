@@ -1120,6 +1120,14 @@ it was. The one exception is the send arrow: it types into a live session,
 which no Save button can take back, so it flushes whatever is staged first and
 then goes.
 
+While a session has a batch open, **the panel's Saves are held** — and only
+the Saves. You can still type, edit, drop and revert; what waits is writing
+back, because what is on your screen was read before the session started and
+saving over a list that has moved underneath is how two writers lose each
+other's work. The block is one-way: nothing in the panel ever makes a session
+wait. When the batch commits the notebook says so and offers to reload, since
+what it is holding is now out of date.
+
 A session gets the same idea in a different shape: `bb todo begin`, then work,
 then `bb todo commit` — the changes land on the list as they are made, because
 that is how you can see what a session is doing, but the *record* is written

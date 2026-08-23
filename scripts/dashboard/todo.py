@@ -252,6 +252,19 @@ def begin(project, by="claude"):
     return {"ok": True}
 
 
+def batches():
+    """Every project with a batch open, for the status poll.
+
+    One read of the file for all of them: this runs on every poll, and asking
+    per project would be a load and a lock each.
+    """
+    with _lock:
+        d = load().get("batch", {})
+    return {p: {"at": b.get("at", 0), "by": b.get("by", ""),
+                "changes": len(b.get("events") or [])}
+            for p, b in d.items() if b}
+
+
 def batch(project):
     """The open batch here, or None. What the panel shows a marker for."""
     with _lock:

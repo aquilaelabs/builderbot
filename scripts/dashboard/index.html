@@ -569,6 +569,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* Scoped through .pane, or `.pane .doc` further down the sheet wins on
    source order at equal specificity and the inset comes back. */
 .pane .doc.nbhost{padding:0;background:var(--panel)}
+#todoBatch{padding:0 14px 8px}
+#todoBatch button{margin-top:6px}
 .mdrift{padding:0 14px 4px}
 .mdrift div{color:var(--warn);font:12px/1.5 system-ui,sans-serif;margin-bottom:4px}
 .modal select{width:100%;box-sizing:border-box;background:#161b22;color:var(--ink);
@@ -844,8 +846,13 @@ body.dragging .tab .lbl{cursor:grabbing}
 /* Findings view ------------------------------------------------------ */
 .fx h3{margin:0 0 8px;font-size:15px}
 .fx .stats{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
-.fx .grp{border:1px solid var(--line);border-radius:8px;margin-bottom:10px;
-  background:var(--panel);overflow:hidden}
+/* Not in the notebook. A pane's document carries `fx` whatever it holds, so
+   the findings card — bordered, rounded, floating on its own background —
+   landed on every row of the to-do list and made it read as a wall of
+   bubbles. Inside a tab the divider is the language; the card is for a report
+   whose groups really are separate documents. */
+.fx:not(.nbhost) .grp{border:1px solid var(--line);border-radius:8px;
+  margin-bottom:10px;background:var(--panel);overflow:hidden}
 .fx .grp>summary{padding:9px 11px;cursor:pointer;font-weight:600;
   display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none;
   transition:background-color .15s ease}
@@ -945,6 +952,13 @@ body.dragging .tab .lbl{cursor:grabbing}
         <option value="0">all</option>
       </select>
     </div>
+    <!-- A session is part-way through changing this list. Saving over it is
+         refused rather than merged: what is on screen is a copy taken before
+         the session started, and replaying edits onto a list that has moved
+         underneath is how two writers lose each other's work. It only ever
+         blocks the operator — nothing here stops a session, which cannot see
+         this panel and should not be waiting on it. -->
+    <div class="field mdrift" id="todoBatch" hidden></div>
     <div class="field" id="todoField"><div id="todoList"></div></div>
     <!-- Picking an arrow arms this; Send fires it. Two steps rather than one,
          because sending does four things at once — the line goes, the step is
@@ -3837,6 +3851,7 @@ async function openMemory(name){
   $("todoAsk").hidden = true;
   todoOrdering = false;
   todoPending = []; todoWas = null;
+  todoBatch = null; todoStale = false;
   todoLogOn = false;
   todoLog = null;
   $("histFind").value = "";
@@ -4076,6 +4091,8 @@ function drawTodo(j){
   }
   todoItems = rows;
   todoUnsaved = j.unsaved || {};
+  if (j.batch !== undefined) noteBatch(j.batch);
+  drawBatchNote();
   // The strip is always there once there is a list, with everything on it
   // dead until an arrow is armed — a control that appears under your thumb is
   // a control you press by accident.
@@ -4092,6 +4109,45 @@ function drawTodo(j){
   $("todoAlsoWrap").classList.toggle("off", !armed || !dirty);
 }
 
+// A batch opening is news; a batch closing is news of a different kind — the
+// list on screen is now a copy of something that has changed, so it is marked
+// stale and stays that way until it is re-read.
+function noteBatch(b){
+  if (todoBatch && !b) todoStale = true;
+  todoBatch = b || null;
+}
+
+function drawBatchNote(){
+  const el = $("todoBatch");
+  if (!el) return;
+  el.hidden = !todoBatch && !todoStale;
+  if (el.hidden){ el.innerHTML = ""; return; }
+  const n = todoBatch?.changes || 0;
+  el.innerHTML = todoBatch
+    ? `<div>${esc(todoBatch.by || "a session")} is part-way through changing this
+         list${n ? ` — ${n} change${n === 1 ? "" : "s"} so far` : ""}. Saving is
+         held until it commits; your own edits are safe where they are.</div>`
+    : `<div>A session finished changing this list. What is on screen was read
+         before that, so saving over it would undo the change.
+         <button type="button" id="todoReread">Reload the list</button></div>`;
+  const rr = $("todoReread");
+  if (rr) rr.onclick = rereadTodo;
+}
+
+// Re-read, which is the only way out of stale. It costs whatever is staged,
+// so it says so first.
+async function rereadTodo(){
+  if (todoPending.length
+      && !confirm(`Reload? ${todoPending.length} unsaved change`
+                  + `${todoPending.length === 1 ? "" : "s"} of yours would go — `
+                  + "the list is being replaced with what is on disk."))
+    return;
+  revertPending();
+  todoOrdering = false;
+  todoStale = false;
+  await loadTodo(memGen);
+}
+
 // One button for the panel: the list's changes are already on disk, the
 // memory editor's are not, and either way this is what tells a session. Dead
 // rather than absent, so the footer does not move about under a thumb.
@@ -4100,7 +4156,11 @@ function syncSave(){
   if (!b || !q) return;
   const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
                 || todoPending.length > 0;
-  q.disabled = !dirty;
+  // Held while a session is mid-batch, and again until the list is re-read
+  // after one finishes. Reverting is still allowed either way: throwing away
+  // your own unsaved work never depends on what anybody else is doing.
+  const held = !!todoBatch || todoStale;
+  q.disabled = !dirty || held;
   // Revert answers the same question the Saves do, from the other side.
   const rv = $("todoRevert");
   if (rv){
@@ -4111,9 +4171,12 @@ function syncSave(){
   }
   // Telling needs somewhere to tell. Dead rather than absent either way, so
   // the footer does not move about under a thumb.
-  b.disabled = !dirty || !todoSession;
-  q.title = "write any memory edits and settle the panel, without spending a "
-    + "line of anybody's conversation on it";
+  b.disabled = !dirty || !todoSession || held;
+  q.title = held
+    ? (todoBatch ? "a session is part-way through changing this list"
+                 : "a session changed this list — reload it before saving over it")
+    : "write any memory edits and settle the panel, without spending a "
+      + "line of anybody's conversation on it";
   b.title = todoSession
     ? "...and tell " + todoSession + " which of them moved"
     : "nothing is running here to tell";
@@ -4131,6 +4194,11 @@ let todoOrdering = false;   // the rows are showing move controls instead
 // and the snapshot is what Cancel puts back.
 let todoPending = [];       // staged changes, in the order they were made
 let todoWas = null;         // the list as it was before the first staged change
+// A session's open batch, and whether one has closed since this copy of the
+// list was read. Both block Save: while it is open the list is moving, and
+// once it has closed what is on screen is out of date.
+let todoBatch = null;
+let todoStale = false;
 
 // Picking one arms the Send button; picking it again puts it down. The
 // highlight is the whole confirmation — the line it would send is the line the
@@ -5414,6 +5482,12 @@ async function refresh(){
     pJob = state.project_job || null;
     if (pJob?.running && !pJobTimer) pJobTimer = setTimeout(pJobPoll, 1000);
     drawProjects(state.projects);
+    // An open notebook learns from the poll that a session has started or
+    // finished a batch, without the operator having to touch anything.
+    if (memProj){
+      const p = (state.projects || []).find(x => x.name === memProj);
+      if (p){ noteBatch(p.todo_batch); drawBatchNote(); syncSave(); }
+    }
     drawSessions(state.sessions);
     drawLinux();
     drawCommands();
