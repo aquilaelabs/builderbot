@@ -528,6 +528,59 @@ await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').le
 ok(await page.$eval('#todoAdd', b => b.checkVisibility()),
    'and the same button puts the list back');
 
+// ---- a session mid-batch holds the operator's Save -----------------------
+// Not the other way round: the panel is a copy of the list taken when it was
+// opened, and replaying edits onto a list that has moved underneath is how
+// two writers lose each other's work. Nothing here blocks the session, which
+// cannot see this panel and should not be waiting on it.
+bbTodo('begin');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => !document.getElementById('todoBatch').hidden,
+                           { timeout: 20000 });
+const banner = () => page.$eval('#todoBatch',
+  el => el.textContent.replace(/\s+/g, ' ').trim());
+ok(/part-way through changing this list/.test(await banner()),
+   'the notebook says a session is mid-change, without being touched');
+ok(await page.$eval('#todoSaveQuiet', b => b.disabled)
+   && await page.$eval('#todoSave', b => b.disabled),
+   '...and both Saves are held while it is');
+await page.fill('#todoText', 'typed while a session was mid-batch');
+await page.keyboard.press('Enter');
+await page.waitForFunction(() => [...document.querySelectorAll('#todoList .txt')]
+  .some(t => /typed while a session/.test(t.textContent)), { timeout: 10000 });
+ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
+   '...so typing is allowed and only committing it is not');
+ok(!await page.$eval('#todoRevert', b => b.disabled),
+   '...and Revert still works, since throwing away your own work depends on '
+   + 'nobody else');
+bbTodo('add', 'and the session was not blocked at all');
+ok(read().projects.alpha.some(r => r.text === 'and the session was not blocked at all'),
+   'the session writes straight through — the block is one-way');
+
+bbTodo('commit');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => /A session finished changing this list/.test(
+  document.getElementById('todoBatch').textContent.replace(/\s+/g, ' ')),
+  { timeout: 20000 });
+ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
+   'once it commits, Save stays held: what is on screen was read before that');
+page.dialogs = [];
+await page.click('#todoReread');
+await page.waitForFunction(() => document.getElementById('todoBatch').hidden,
+                           { timeout: 15000 });
+ok(page.dialogs.some(d => /unsaved change/.test(d)),
+   'reloading says what it would cost first');
+ok(!await page.$eval('#todoSaveQuiet', b => b.disabled)
+   || !(await open()).some(i => /typed while a session/.test(i.text)),
+   '...and afterwards the list is the one on disk again');
+ok((await open()).some(i => /not blocked at all/.test(i.text)),
+   '...with the session\'s change on it');
+await post({ action: 'remove', project: 'alpha',
+             id: read().projects.alpha.find(r => /not blocked at all/.test(r.text)).id });
+await page.evaluate(() => loadTodo(memGen));
+await page.waitForFunction(() => ![...document.querySelectorAll('#todoList .txt')]
+  .some(t => /not blocked at all/.test(t.textContent)), { timeout: 10000 });
+
 // ---- the pane is the only scroller --------------------------------------
 // The list used to be a scroll container with `overscroll-behavior: contain`,
 // which was fine inside a modal that gave it a ceiling and wrong the moment

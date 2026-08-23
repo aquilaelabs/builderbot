@@ -304,6 +304,13 @@ as it was and writes nothing; it refuses if the operator has changed the list
 since you opened the batch, because putting your copy back would undo their
 work too.
 
+**Do not leave one open.** While a batch is open the operator's Save in the
+panel is held — what is on their screen was read before you started, and
+saving over a list that has moved underneath is how two writers lose each
+other's work. Their typing is not blocked and yours is not either; only the
+writing-back waits. So commit or revert before you finish the reply, and if
+you are not about to make several related changes, do not open one at all.
+
 **Read the log narrowed, never whole.** `bb todo history` gives the last 20;
 `-n N` for more, `--all` for everything, `--since 7d` or `--since 2026-08-01`
 for a window, `--find TEXT` to search the lines, their previous wordings and
