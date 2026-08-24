@@ -82,7 +82,8 @@ services:
       # swiftshader_indirect (default) is software rendering and always works.
       # swangle_indirect is usually faster, still software. host needs a GPU
       # and the nvidia block below.
-      ANDROID_EMULATOR_GPU: ${ANDROID_EMULATOR_GPU:-swiftshader_indirect}
+      ANDROID_EMULATOR_GPU: ${ANDROID_EMULATOR_GPU:-}
+      ENABLE_GPU_DISPLAY: ${ENABLE_GPU_DISPLAY:-true}
 
       # --- nvidia gpu -------------------------------------------------------
       # Only meaningful with the deploy: block below. The default capabilities
