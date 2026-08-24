@@ -378,6 +378,16 @@ button.on{background:#1f6f36;border-color:#2ea043}
    readability of the row. */
 .todo .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .todo .tags{display:flex;gap:5px;flex-wrap:wrap}
+/* The details fold under a line: the row's words are the decision, this is
+   the workings — files, functions, approach — wanted when the work starts
+   and noise until then. */
+.todo .dtog{background:none;border:0;color:var(--dim);padding:2px 0;
+  font:11px/1.4 system-ui,sans-serif;align-self:flex-start;min-height:0}
+@media(hover:hover){ .todo .dtog:hover{color:var(--ink)} }
+.todo .dinfo{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dim);
+  font:12px/1.5 var(--mono);border-left:2px solid var(--line);
+  padding:3px 0 3px 9px;margin-top:2px}
+.editbox .qd{margin-top:8px}
 /* pre-wrap, because a step may be written across a few lines: one step is one
    message the operator sends by hand, so the cheap unit has to be able to hold
    a paragraph rather than pushing a plan into more steps than it needs. */
@@ -954,7 +964,7 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="field">
       <div class="todoadd">
         <input id="todoText" maxlength="500" autocomplete="off"
-               placeholder="something to do here">
+               placeholder="something for the roadmap">
         <button id="todoAdd" class="primary" type="button">Add</button>
       </div>
       <div class="hintrow">
@@ -1366,6 +1376,9 @@ function sessionLabels(){
 }
 
 function tabLabel(t){
+  // Computed for a notebook, not stored: a tab restored from a layout saved
+  // before the rename would otherwise wear "To do:" forever.
+  if (t.kind === "todo") return "Notebook: " + t.arg;
   if (t.kind !== "term") return t.label;
   // Falls back to the stored label only while tmux has yet to register a
   // just-opened session.
@@ -4058,6 +4071,9 @@ function stepRow(r, idx, live){
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
+      ${st.info ? `<button type="button" class="dtog" aria-expanded="false"
+        title="the technical half: files, functions, approach">▸ details</button>
+      <div class="dinfo" hidden>${esc(st.info)}</div>` : ""}
     </span>
     ${todoOrdering ? moves : `${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
       aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
@@ -4146,6 +4162,15 @@ function drawTodo(j){
     // the hand goes anyway. Steps too — a plan is written before it is right,
     // and the line that needed changing was always the one inside a group.
     const reword = () => openReword(row, id, step);
+    // The details fold: closed by default because the row's words are the
+    // decision and this is the workings, wanted when the work starts.
+    const dt = row.querySelector(".dtog");
+    if (dt) dt.onclick = () => {
+      const info = row.querySelector(".dinfo");
+      info.hidden = !info.hidden;
+      dt.textContent = info.hidden ? "▸ details" : "▾ details";
+      dt.setAttribute("aria-expanded", String(!info.hidden));
+    };
     // Guarded like every other control on this row: reordering replaces all
     // three of them, so in that mode there is no pencil to bind and an
     // unguarded one took the whole redraw down with it.
@@ -4370,24 +4395,33 @@ function openReword(row, id, step){
   if (row.nextElementSibling?.classList.contains("editbox")) return;
   row.parentElement.querySelectorAll(".editbox,.dropbox").forEach(b => b.remove());
   const was = row.querySelector(".txt").textContent;
+  const r0 = findRow(id);
+  const wasInfo = (step < 0 ? r0?.info : r0?.steps?.[step]?.info) || "";
   const box = document.createElement("div");
   box.className = "dropbox editbox";
   box.innerHTML = `<div class="q">${step < 0 ? "Reword it"
       : `Reword step ${step + 1}`}<span> — Enter saves, shift+Enter is a new line</span></div>
     <textarea maxlength="500" spellcheck="false"></textarea>
+    <div class="q qd"><span>Details — the technical half: files, functions, approach</span></div>
+    <textarea class="dta" maxlength="2000" spellcheck="false"
+      placeholder="mostly Claude's to write; empty is fine"></textarea>
     <div class="acts"><span class="sp"></span>
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="primary">Save</button></div>`;
   row.after(box);
   const ta = box.querySelector("textarea");
   ta.value = was;
+  const dta = box.querySelector(".dta");
+  dta.value = wasInfo;
   const shut = () => box.remove();
   box.querySelector(".stop").onclick = shut;
   box.querySelector(".primary").onclick = () => {
-    const now = ta.value;
+    const now = ta.value, nowInfo = dta.value;
     shut();
     if (now.trim() && now !== was)
       stageEdit(id, step < 0 ? null : step, now);
+    if (nowInfo !== wasInfo)
+      stageInfo(id, step < 0 ? null : step, nowInfo);
   };
   ta.onkeydown = e => {
     if (e.key === "Enter" && !e.shiftKey){
@@ -4733,6 +4767,8 @@ const ACT = {
   "remove-step": ["dropped a step", "gone"],
   done:          ["ticked off", ""],
   undone:        ["reopened", ""],
+  info:          ["detailed", ""],
+  "info-step":   ["detailed", ""],
   sent:          ["sent", ""],
   unsent:        ["put back", ""],
   shelved:       ["shelved", ""],
@@ -4874,6 +4910,16 @@ function stageEdit(id, step, text){
     if (step === null || step < 0) r.text = text;
     else if ((r.steps || [])[step]) r.steps[step].text = text;
     else return false;
+  });
+}
+
+function stageInfo(id, step, text){
+  return stage({action: "info", id, ...(step !== null ? {step} : {}), text}, () => {
+    const r = findRow(id);
+    if (!r) return false;
+    const t = step === null ? r : (r.steps || [])[step];
+    if (!t) return false;
+    if (text.trim()) t.info = text; else delete t.info;
   });
 }
 

@@ -172,10 +172,11 @@ consequence worth internalizing:
 Judging whether a duration *feels* right is a question for real hardware, and
 you should say so rather than guessing from a headless emulator.
 
-## The shared to-do list
+## The roadmap
 
-This project has one, and it is the only thing here that both you and the
-operator write.
+Every project has a notebook in the dashboard — memory, roadmap, bugs, one
+tab each. The roadmap (it was called the to-do list) is the shared list of
+design work, and both you and the operator write it.
 
 ```bash
 bb todo                      # what is on it
@@ -185,6 +186,7 @@ bb todo rm N ["why"]         # not doing it — same, and say why it went
 bb todo shelve N             # parked: keep it, not now — the operator unshelves
 bb todo mv N up|down         # move one up or down the list
 bb todo edit N "..."         # reword one
+bb todo info N [M] "..."     # attach the technical details to one, or step M
 bb todo step add N "..."     # give one a step; step edit N M "...", step rm N M
 bb todo begin                # working one out: commit writes one record of it
 bb todo commit               # ...or revert, which puts the list back
@@ -240,6 +242,14 @@ phone" --step "..." --step "..."`, not `bb todo add "picker: select width +
 re-measure + regression pass"`. The steps carry the technical detail; the
 title is the reason they exist. If you cannot write the title without listing
 the steps, it is not one goal and should not be one group.
+
+**Write the details when you write the plan.** `bb todo info N "..."` on an
+item, `bb todo info N M "..."` on step M: which files, which functions, the
+approach — the technical half the title should not carry. They show under a
+fold on the row, travel with a step when the operator sends it, and appear in
+this block for the next session, which is the point: the session that works
+the step should not start from a cold grep because you already knew where the
+work was.
 
 **Steps are expensive — use as few as you can.** Each one is a message the
 operator sends by hand from the dashboard, one at a time, waiting on each. So
@@ -348,6 +358,31 @@ duplicates of something already there. Anything that turns out to be a durable
 rule rather than a task belongs somewhere stronger — a note in this file, a
 comment where the code is, or a test that fails when it regresses — and should
 come off the list once it lands there.
+
+## The bug tracker
+
+The notebook's third tab, and yours through `bb bug`. The roadmap is for
+design work; a bug is a different record — severity, where it lives, how to
+reproduce it, expected against actual, and a notes field the analysis
+accumulates in. The open ones are appended to your prompt by number and
+severity; `bb bug show <n>` gives one in full.
+
+```bash
+bb bug                       # the open ones; `all` includes closed, `show N` one in full
+bb bug add "..." --sev high --area "..." --repro "..."   # file what you find
+bb bug note N "..."          # append what you learned — dated, never replacing
+bb bug fix N "what fixed it" # close it, with the note that is the point
+bb bug wontfix N "why"       # the other way to close; `reopen N` if it did not take
+```
+
+**When you find a bug and it is out of scope for what you are on, file it** —
+the same rule as the roadmap, applied to defects: a reply is read once, the
+tracker is read at the start of every session after it. Fill in the fields
+you would want on arrival: area and repro above all. When you fix one, close
+it with the note; when you learn something about one you did not fix, `bb bug
+note` it — the tracker is where the next session looks first. Do not delete
+or re-file what exists: a closed bug is the record that stops the same report
+being chased twice.
 
 ## Static analysis findings
 

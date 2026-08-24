@@ -2111,6 +2111,9 @@ class Handler(BaseHTTPRequestHandler):
             r = todo.edit(name, req.get("id"), field(req, "text"), req.get("step"))
         elif act == "move":
             r = todo.move(name, req.get("id"), req.get("step"), req.get("dir"))
+        elif act == "info":
+            r = todo.set_info(name, req.get("id"), field(req, "text"),
+                              step=req.get("step"))
         elif act == "add-step":
             r = todo.add_step(name, req.get("id"), field(req, "text"))
         elif act == "cross":

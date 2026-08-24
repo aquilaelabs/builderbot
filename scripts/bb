@@ -647,9 +647,14 @@ def show():
         mark = "~" if r.get("shelved") else " "
         print(f" {mark}{r['id']:>3}  {r['text']}{who}"
               + ("  [shelved]" if r.get("shelved") else ""))
+        if r.get("info"):
+            print("       details: " + r["info"].replace("\n", "\n                "))
         for i, st in enumerate(r.get("steps") or []):
             print(f"          {i + 1}. {st['text']}"
                   + ("  (sent)" if st.get("sent") else ""))
+            if st.get("info"):
+                print("             details: "
+                      + st["info"].replace("\n", "\n                      "))
 
 
 def bail(r):
@@ -744,6 +749,20 @@ elif op == "edit":
         print("usage: bb todo edit <n> \"the new wording\"", file=sys.stderr); sys.exit(1)
     r = todo.edit(proj, rest[0], " ".join(rest[1:]), by="claude"); bail(r)
     print(f"reworded {rest[0]}")
+elif op == "info":
+    # The technical half, attached where the work is: which files, which
+    # functions, the approach. `bb todo info N "..."` for an item,
+    # `bb todo info N M "..."` for step M of it; "" clears.
+    if len(rest) < 2:
+        print("usage: bb todo info <n> [<step>] \"...\"", file=sys.stderr)
+        sys.exit(1)
+    if len(rest) >= 3 and rest[1].isdigit():
+        r = todo.set_info(proj, rest[0], " ".join(rest[2:]),
+                          step=int(rest[1]) - 1, by="claude"); bail(r)
+        print(f"details on step {rest[1]} of {rest[0]}")
+    else:
+        r = todo.set_info(proj, rest[0], " ".join(rest[1:]), by="claude"); bail(r)
+        print(f"details on {rest[0]}")
 elif op == "step":
     sub, srest = (rest[0] if rest else ""), rest[1:]
     if sub == "add" and len(srest) >= 2:
@@ -761,6 +780,11 @@ elif op == "step":
                         step=todo._int(srest[1]) - 1 if todo._int(srest[1]) else None,
                         by="claude", why=" ".join(srest[2:])); bail(r)
         print(f"removed step {srest[1]} of {srest[0]}")
+    elif sub == "info" and len(srest) >= 2:
+        r = todo.set_info(proj, srest[0], " ".join(srest[2:]),
+                          step=todo._int(srest[1]) - 1 if todo._int(srest[1]) else None,
+                          by="claude"); bail(r)
+        print(f"details on step {srest[1]} of {srest[0]}")
     elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] in ("up", "down"):
         # The other half of restructuring a plan. Without it a session that
         # finds two steps in the wrong order can only delete and retype them,
@@ -819,8 +843,9 @@ elif op in ("history", "log"):
             print(f"{'':>32}why: {e['why']}")
 else:
     print("usage: bb todo [list|add TEXT [--step ...]|edit N TEXT|"
-          "step add|edit|rm|mv ...|mv N up|down|done N|rm N [WHY]|shelve N|"
-          "begin|commit|revert|history [-n N] [--since D] [--find TEXT]]",
+          "info N [M] TEXT|step add|edit|rm|mv|info ...|mv N up|down|done N|"
+          "rm N [WHY]|shelve N|begin|commit|revert|"
+          "history [-n N] [--since D] [--find TEXT]]",
           file=sys.stderr)
     sys.exit(1)
 PY

@@ -357,12 +357,16 @@ bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb findings        this project's scanner findings (--all for every project)
-bb todo            this project's shared to-do list
+bb todo            this project's roadmap
 bb todo add "..."  put something on it; `done N` finished, `rm N [why]` not
 bb todo shelve N   park one without dropping it; `mv N up|down` moves it
 bb todo add "..." --step "..." --step "..."   an ordered group of steps
 bb todo edit N "..."               reword one; `step add|edit|rm` for one step
+bb todo info N [M] "..."           attach the technical details to one, or step M
 bb todo begin      work one out; `commit` records it as one change, `revert` undoes
+bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
+bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
+                   `wontfix N`, `reopen N`
 bb todo history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
@@ -1067,12 +1071,16 @@ a placeholder, and **+** starts over.
   the Sessions ✕ asks — and closes the tab with it.
 - **✕ appears on the findings tab only**, because a document has no session to
   keep. It closes without asking too.
-### The shared to-do list
+### The notebook
 
-Every project has one, reachable from the checklist icon on its row and from
-`bb todo` in a terminal. **It opens as a tab of its own**, like the findings
-report — it was a modal, and on a desktop that meant reading a list, a plan, a
-log and a memory editor through a 760px slot. Saving does not close it; the
+Every project has one, reachable from the checklist icon on its row: a tab of
+its own, one per project, and as many open at once as you have projects —
+each is its own instance, so what is half-typed in one survives working in
+another. Three views under its tab strip: **Memory** (what Claude remembers
+here, moved up from the fold it used to live in), the **Roadmap** (the shared
+list, renamed for what it is — design work and ordered plans), and **Bugs**.
+
+**The roadmap** is `bb todo` in a terminal. Saving does not close it; the
 Save buttons simply go dead until there is something to save again, and the
 button beside them is **Revert**, which throws away what has not been saved
 and is dead whenever there is nothing to throw. It fills the pane rather than
@@ -1182,6 +1190,14 @@ the same numbers. Steps inside a group number themselves 1, 2, 3 within it.
 A gap in the numbers means something was removed; one out of sequence means
 it was moved.
 
+**Every line can carry details** — the technical half: which files, which
+functions, the approach. They live under a "▸ details" fold on the row (the
+words are the decision; this is the workings), travel with a step when it is
+sent, and ride in the block a session starts with, so the session that works
+the step does not start from a cold grep. Claude writes them with
+`bb todo info N [M] "..."`, usually when it writes the plan; the pencil edits
+them alongside the words.
+
 **A group is one goal with an order to it.** Its title is that goal in plain
 words — "make the picker usable on a phone" — and the steps under it carry the
 detail. Steps only exist because of one physical constraint: each is a message
@@ -1284,6 +1300,21 @@ not a decision; it is something you are in the middle of. So the moves live in
 the page until you save them, leaving the mode puts the order back, and closing
 the panel on a half-done shuffle leaves the list alone. Both are asked about
 first, since an arrangement is work.
+
+**The bug tracker** is the notebook's third view, and `bb bug` in a terminal.
+The roadmap is for things somebody decided to build; a bug is a different
+record — it has a severity, a place it lives, a way to make it happen, and a
+gap between expected and actual, which are exactly its fields, plus a notes
+field the analysis accumulates in (`bb bug note N "..."` appends, dated,
+rather than replacing — the last analysis is how the next one starts). Either
+side writes it: you report from the tab, a session files what it trips over
+with `bb bug add "..." --sev high --area "..." --repro "..."`. It is
+write-through, not staged — a report is a form submitted once — and nothing
+is ever deleted: a bug closes as **fixed** or **won't fix**, each asking for
+the note that is the point of closing, and `bb bug all` still lists it,
+because a closed bug is the record that stops the same report being chased
+twice. Open bugs ride into every session's starting prompt by number,
+severity and title, with the fields on disk behind `bb bug show N`.
 
 **Editing the list or the memories tells the running session**, in one line, to
 go and read them and carry on — not to drop what it is doing. A list edited

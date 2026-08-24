@@ -796,6 +796,63 @@ await page.waitForFunction(id => !document.querySelector(
   `#todoList .addstep[data-id="${id}"] input`), plainId, { timeout: 10000 });
 ok(true, 'Cancel closes the step field without adding anything');
 
+// ---- the details under a line --------------------------------------------
+// The row's words are the decision; the details are the workings — which
+// files, which functions, the approach — earmarked when the plan is written
+// so the session that works it does not start from a cold grep.
+bbTodoEarly('info', plainId, 'lives in scripts/dashboard/todo.py\n\nGUI half: stepRow');
+ok(read().projects.alpha.find(r => String(r.id) === plainId).info
+     === 'lives in scripts/dashboard/todo.py\n\nGUI half: stepRow',
+   'bb todo info attaches details to an item, breaks kept');
+bbTodoEarly('info', plainId, '1', 'the select is built in stepRow()');
+ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].info
+     === 'the select is built in stepRow()',
+   '...and to one step of it, numbered the way a human reads it');
+ok(/details: lives in scripts/.test(bbTodoEarly('--prompt')),
+   'the prompt block carries them, so a session reads the plan with its map');
+
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(id => !!document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="-1"] .dtog`), plainId,
+  { timeout: 10000 });
+ok(await page.$eval(`#todoList .todo[data-id="${plainId}"][data-step="-1"] .dinfo`,
+     el => el.hidden),
+   'the panel shows a details fold, closed: the words are the decision, this is the workings');
+await page.click(`#todoList .todo[data-id="${plainId}"][data-step="-1"] .dtog`);
+ok(await page.$eval(`#todoList .todo[data-id="${plainId}"][data-step="-1"] .dinfo`,
+     el => !el.hidden && /GUI half: stepRow/.test(el.textContent)),
+   '...and one tap opens it, breaks and all');
+
+// Editing them is part of the reword box, staged like everything else there.
+await page.click(`#todoList .todo[data-id="${plainId}"][data-step="0"] .ed`);
+await page.waitForSelector('.editbox .dta', { timeout: 10000 });
+ok(await page.$eval('.editbox .dta', t => t.value) === 'the select is built in stepRow()',
+   'the reword box opens with the details as they stand');
+await page.fill('.editbox .dta', 'stepRow(), and the CSS at .todo .dinfo');
+await page.click('.editbox .primary');
+await page.waitForFunction(id => /CSS at/.test(document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="0"] .dinfo`)?.textContent || ''),
+  plainId, { timeout: 10000 });
+ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].info
+     === 'the select is built in stepRow()',
+   '...staged, not written — the file still has the old details');
+await saveList();
+ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].info
+     === 'stepRow(), and the CSS at .todo .dinfo',
+   '...until Save, like every other change the panel makes');
+
+// A sent step carries its details, since they are the half the work needs.
+await post({ action: 'send', project: 'alpha', id: Number(plainId), step: 0 });
+ok(/Details: stepRow\(\), and the CSS/.test(tmuxCapture('claude-alpha')),
+   'sending a step sends its details with it');
+await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: false });
+bbTodoEarly('info', plainId, '');
+bbTodoEarly('step', 'info', plainId, '1', '');
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(id => !document.querySelector(
+  `#todoList .todo[data-id="${id}"] .dtog`), plainId, { timeout: 10000 });
+ok(true, 'clearing the details takes the fold away with them');
+
 // ---- nothing lands until Save, and Close is the other answer ------------
 // Deletions and rewords are staged like everything else: the panel is a form,
 // and a form you can close is a form you can change your mind in.

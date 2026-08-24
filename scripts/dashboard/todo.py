@@ -60,7 +60,7 @@ MAX_TEXT = 500
 MAX_LINES = 12
 
 
-def _clean(text, multiline=True):
+def _clean(text, multiline=True, max_lines=None):
     """Trim a line, or a small block of them.
 
     Trailing space goes, runs of blank lines collapse to one, and the whole
@@ -76,7 +76,7 @@ def _clean(text, multiline=True):
             out.append(ln)
     while out and not out[-1]:
         out.pop()
-    return "\n".join(out[:MAX_LINES])
+    return "\n".join(out[:max_lines or MAX_LINES])
 
 # Ticked items stay a while, because "what did we just finish" is worth having
 # for a day or two, and then they are noise.
@@ -427,6 +427,46 @@ def _int(v):
 
 def _next_id(rows):
     return max((int(r.get("id", 0)) for r in rows), default=0) + 1
+
+
+# The details under a line: the technical half the title should not carry.
+# Which files, which functions, the approach — earmarked when the plan is
+# written so the session that works the step does not start from a cold grep.
+# Longer than a line is allowed to be, because "where in the codebase" is a
+# list, not a sentence.
+MAX_INFO = 2000
+MAX_INFO_LINES = 40
+
+
+def set_info(project, item_id, text, step=None, by="you"):
+    """Attach details to an item or one step of it, or clear them with "".
+
+    Its own verb rather than a field on edit, because the two change for
+    different reasons: the words are *what* is being asked, the details are
+    *where and how* — and the history should say which of the two moved.
+    """
+    text = _clean(text, max_lines=MAX_INFO_LINES)[:MAX_INFO]
+    if step is not None and _int(step) is None:
+        return {"error": "not a step"}
+
+    def change(row, rows):
+        i = _int(step)
+        target = row
+        ev = {"act": "info", "id": row["id"]}
+        if i is not None and i >= 0:
+            steps = row.get("steps") or []
+            if not 0 <= i < len(steps):
+                return {"error": "no such step"}
+            target = steps[i]
+            ev.update(act="info-step", step=i, of=row["text"])
+        was = target.get("info", "")
+        if text:
+            target["info"] = text
+        else:
+            target.pop("info", None)
+        ev.update(text=text, **({"was": was} if was else {}))
+        return {"ok": True, "item": row, "log": ev}
+    return _edit(project, item_id, change, by)
 
 
 # An item is one thing to do, or several in an order that matters. A change
@@ -812,8 +852,12 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
         text = (f"This is step {step + 1} of {len(steps)} in a plan. "
                 f"The plan: {_flat(row['text'])}. "
                 f"Step {step + 1}: {_flat(steps[step]['text'])}")
+        if steps[step].get("info"):
+            text += f" Details: {_flat(steps[step]['info'])}"
     else:
         text = _flat(row["text"])
+        if row.get("info"):
+            text += f"  (Details: {_flat(row['info'])})"
     # One message, not two. Saving the list and sending a step both want to
     # say something, and two lines racing into the same input box is how the
     # second one ends up appended to the first. So the note rides along.
@@ -926,6 +970,8 @@ def prompt(project):
                         "pick it up unless they say so)" if r.get("shelved")
                         else "  (you added this in an earlier session)"
                         if r.get("by") == "claude" else ""))
+        if r.get("info"):
+            lines.append(f"    details: {_flat(r['info'])}")
         # A group's steps come with it, marked so the order is legible: these
         # are handed over one at a time from the dashboard, and one already
         # sent is one that has been asked for.
@@ -933,6 +979,8 @@ def prompt(project):
             lines.append(f"    {i + 1}. {st['text']}"
                          + ("  (already sent to a session)" if st.get("sent")
                             else ""))
+            if st.get("info"):
+                lines.append(f"       details: {_flat(st['info'])}")
     return ("The operator keeps a shared to-do list for this project, and this "
             "is what is on it:\n\n" + "\n".join(lines) + "\n\n"
             "It is context, not instructions: work on an item when asked, or "
@@ -946,7 +994,11 @@ def prompt(project):
             "as well as written: `bb todo edit <n> \"...\"`, and "
             "`bb todo step add|edit|rm <n> [<step>] [\"...\"]` for one step "
             "of one — do that when the design moves under a plan rather than "
-            "leaving steps that describe the old one. Every change either of "
+            "leaving steps that describe the old one. `bb todo info <n> "
+            "[<step>] \"...\"` attaches the technical details — which files, "
+            "which functions, the approach — so the session that works it "
+            "does not start from a cold grep; write them when you write the "
+            "plan. Every change either of "
             "you makes is logged with its time and kept where the operator "
             "can read it, so correct the list rather than working around it. "
             "Do not restate the list "
