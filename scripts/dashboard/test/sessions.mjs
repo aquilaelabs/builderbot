@@ -172,14 +172,32 @@ ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') &&
    'phone shows the bottom bar and hides the strip ⌨');
 // Measure the terminal before, mid-slide and after: it must hold still
 // through the slide (the panel is an overlay then) and shrink once at the end.
-const paneH0 = await phone.$eval('#panes', el => el.offsetHeight);
-await phone.click('#mSessions');
-const mid = await phone.$eval('#sespanel', el => ({
-  show: el.classList.contains('show'), anim: el.getAnimations().length > 0,
-  overlay: el.classList.contains('sliding') && getComputedStyle(el).position === 'absolute',
-  paneH: document.getElementById('panes').offsetHeight }));
+//
+// Both heights are read in ONE evaluate, either side of a synchronous click,
+// and that is the whole point rather than a shortcut. The button's handler is
+// mobPanel -> render -> drawKeys -> slidePanel with nothing awaited, so when
+// .click() returns the panel is already absolute and its animation started —
+// no frame, no poll and no other animation can land between the two reads.
+// Sampling the baseline in an earlier round trip is what CI kept failing on,
+// four runs running, while an idle box passed: the panel assertion above it
+// passed in the same breath, so the panel was still absolute and cannot have
+// been what moved the terminal — the baseline was simply stale. The likeliest
+// mover is setView('terminal') just above, a 220ms slide that holds overflow-x
+// on <main> for its duration, but the fix does not depend on which it was:
+// nothing at all can intervene between two reads in the same task.
+const mid = await phone.evaluate(() => {
+  const panes = document.getElementById('panes');
+  const before = panes.offsetHeight;
+  document.getElementById('mSessions').click();
+  const el = document.getElementById('sespanel');
+  return { before, after: panes.offsetHeight,
+    show: el.classList.contains('show'), anim: el.getAnimations().length > 0,
+    overlay: el.classList.contains('sliding') && getComputedStyle(el).position === 'absolute' };
+});
 ok(mid.show && mid.anim && mid.overlay, 'Sessions opens its panel with a slide, as an overlay');
-ok(mid.paneH === paneH0, 'the terminal holds still while the panel slides');
+ok(mid.after === mid.before,
+   `the terminal holds still while the panel slides (${mid.after} vs ${mid.before}px)`);
+const paneH0 = mid.before;
 await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('sliding'));
 ok(await phone.$eval('#panes', el => el.offsetHeight) < paneH0, 'then the terminal snaps to make room');
 // Commands wants a shell under it now, and the tab that was open got ended
