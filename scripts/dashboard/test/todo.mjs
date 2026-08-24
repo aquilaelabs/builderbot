@@ -53,7 +53,7 @@ ok(await page.$eval(`${row('alpha')} [data-m]`,
 
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
-ok(await page.$eval('#memTitle', el => el.textContent === 'To do — alpha'),
+ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook — alpha'),
    'the panel opens on the list');
 await page.waitForFunction(() => document.getElementById('todoHint').textContent.length > 0);
 ok((await page.$eval('#todoHint', el => el.textContent)).includes('every Claude session'),
@@ -90,7 +90,7 @@ ok(true, 'the project row picks up the count without a reload');
 execFileSync(BB, ['todo', 'add', 'delete a project from the dashboard'],
   { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } });
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length === 2);
 items = await open();
 const mine = items.find(i => i.text.includes('delete a project'));
@@ -200,7 +200,7 @@ execFileSync(BB, ['todo', 'add', 'rework the picker',
                   '--step', 'widen the select', '--step', 'then re-measure it'],
   { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } });
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo[data-step="1"]').length === 1);
 items = await open();
 const g = items.find(i => i.text === 'rework the picker');
@@ -211,7 +211,7 @@ ok(s1.can && !s2.can,
    'only the next step in line can be sent; the one after it is dead');
 
 await post({ action: 'send', project: 'alpha', id: Number(s1.id), step: 0 });
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(id => document.querySelector(
   `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
   s1.id, { timeout: 15000 });
@@ -251,7 +251,7 @@ const c1 = items.find(i => i.text === 'widen the select');
 const c2 = items.find(i => i.text === 'then re-measure it');
 await post({ action: 'cross', project: 'alpha', id: Number(c1.id), step: 0, on: false });
 await post({ action: 'cross', project: 'alpha', id: Number(c2.id), step: 1, on: false });
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => !document.querySelector(
   '#todoList .todo[data-step="0"]')?.classList.contains('sent'));
 items = await open();
@@ -456,7 +456,7 @@ await post({ action: 'remove', project: 'alpha',
 // "was that step always worded like that?" had no answer. Now every change
 // carries who made it and when — and since removing is the only way a line
 // leaves, the log is what keeps a deletion from being final.
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.click('#todoLog');
 await page.waitForFunction(() => document.querySelectorAll('#todoList .hist').length > 0,
                            { timeout: 10000 });
@@ -577,7 +577,7 @@ ok((await open()).some(i => /not blocked at all/.test(i.text)),
    '...with the session\'s change on it');
 await post({ action: 'remove', project: 'alpha',
              id: read().projects.alpha.find(r => /not blocked at all/.test(r.text)).id });
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => ![...document.querySelectorAll('#todoList .txt')]
   .some(t => /not blocked at all/.test(t.textContent)), { timeout: 10000 });
 
@@ -589,7 +589,7 @@ await page.waitForFunction(() => ![...document.querySelectorAll('#todoList .txt'
 // did nothing, while the gaps between rows worked.
 const scrollers = await page.evaluate(() => {
   const out = [];
-  for (const el of document.querySelectorAll('#nbBody, #nbBody *')){
+  for (const el of document.querySelectorAll('.pane .nb, .pane .nb *')){
     // A textarea scrolling its own text is the point of a textarea.
     if (el.tagName === 'TEXTAREA') continue;
     const s = getComputedStyle(el);
@@ -601,28 +601,40 @@ const scrollers = await page.evaluate(() => {
 ok(scrollers.length === 0,
    `nothing inside the notebook traps a scroll (${scrollers.join(', ') || 'none'})`);
 ok(await page.evaluate(() => {
-     const d = document.getElementById('nbBody').closest('.doc');
+     const d = document.querySelector('.pane .nb').closest('.doc');
      return d && /auto|scroll/.test(getComputedStyle(d).overflowY); }),
    '...the pane\'s document is the one that scrolls');
 ok(await page.evaluate(() => {
-     const d = document.getElementById('nbBody').closest('.doc');
+     const d = document.querySelector('.pane .nb').closest('.doc');
      return getComputedStyle(d).padding === '0px'; }),
    '...and it has no inset, so the notebook is the pane rather than a box in it');
 
-// ---- one notebook at a time --------------------------------------------
-// It is a single node moved into whichever pane shows it, so a second one
-// would fight over it. Opening another project's replaces this one.
+// ---- one notebook per project, as many as there are projects -------------
+// Each is its own clone with its own state, so a second project's opens
+// beside the first rather than replacing it — and what is half-typed in one
+// survives the other being looked at.
+await page.evaluate(() => {
+  notebooks.get('alpha').root.querySelector('[id="todoText"]').value = 'half-typed';
+});
 await page.click(`${row('beta')} [data-m]`);
 await page.waitForFunction(() => /beta/.test(
-  document.getElementById('memTitle')?.textContent || ''), { timeout: 15000 });
+  document.querySelector('.pane .doc.on .nb h3')?.textContent || ''), { timeout: 15000 });
 const nbTabs = await page.evaluate(() => tabs.filter(t => t.kind === 'todo').map(t => t.arg));
-ok(nbTabs.length === 1 && nbTabs[0] === 'beta',
-   `a second project's notebook replaces the first rather than opening beside it (${nbTabs})`);
-ok(await page.$$eval('.tab', ts => ts.some(t => /To do: beta/.test(t.textContent))),
-   '...and the tab names the project it is showing');
+ok(nbTabs.length === 2 && nbTabs.includes('alpha') && nbTabs.includes('beta'),
+   `both projects' notebooks are open at once (${nbTabs})`);
+ok(await page.$$eval('.tab', ts => ts.some(t => /Notebook: beta/.test(t.textContent))
+     && ts.some(t => /Notebook: alpha/.test(t.textContent))),
+   '...each tab named for its project');
 await page.click(`${row('alpha')} [data-m]`);
 await page.waitForFunction(() => /alpha/.test(
-  document.getElementById('memTitle')?.textContent || ''), { timeout: 15000 });
+  document.querySelector('.pane .doc.on .nb h3')?.textContent || ''), { timeout: 15000 });
+ok(await page.evaluate(() =>
+     notebooks.get('alpha').root.querySelector('[id="todoText"]').value) === 'half-typed',
+   '...and coming back finds the field exactly as it was left');
+await page.evaluate(() => {
+  notebooks.get('alpha').root.querySelector('[id="todoText"]').value = '';
+  hideTab(tabs.find(t => t.kind === 'todo' && t.arg === 'beta').id);
+});
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0,
                            { timeout: 15000 });
 
@@ -878,7 +890,7 @@ ok(JSON.stringify(read().projects.alpha.map(r => r.text.slice(0, 14))) === JSON.
    'Save is what writes it — and the file is then the order on screen');
 // A step that has gone does not move, and nothing moves above it.
 await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: true });
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(id => document.querySelector(
   `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('sent'),
   plainId, { timeout: 10000 });
@@ -900,7 +912,7 @@ page.errors = [];
 const lone = await post({ action: 'add', project: 'alpha', text: 'a line on its own' });
 const loneId = String(lone.body.item.id);
 await post({ action: 'cross', project: 'alpha', id: Number(loneId), on: true });
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(id => document.querySelector(
   `#todoList .todo[data-id="${id}"][data-step="-1"]`)?.classList.contains('sent'),
   loneId, { timeout: 10000 });
@@ -922,7 +934,7 @@ await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on
 await page.click('#todoOrder');
 await page.waitForFunction(() => document.getElementById('todoAsk').checkVisibility());
 ok(true, 'and the send controls come back');
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0);
 
 // ---- the number on the row ----------------------------------------------
@@ -953,7 +965,7 @@ await page.evaluate(() => refresh());
 // The difference between them is whether a line of anybody's conversation is
 // spent. Both settle the panel; only one tells.
 await post({ action: 'add', project: 'alpha', text: 'something to settle' });
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => !document.getElementById('todoSaveQuiet').disabled);
 ok(!await page.$eval('#todoSave', b => b.disabled),
    'a change arms both Saves');
@@ -971,7 +983,7 @@ ok((read().unsaved?.alpha || {}).todo === false,
 // The line names which half moved — "something changed" sends somebody to
 // look at both, and one of the two is a directory of files.
 await post({ action: 'add', project: 'alpha', text: 'and something to tell' });
-await page.evaluate(() => loadTodo(memGen));
+await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => !document.getElementById('todoSave').disabled);
 await page.click('#todoSave');
 await page.waitForFunction(() => {
@@ -994,7 +1006,7 @@ await phone.goto(URL);
 await ready(phone);
 await phone.click(`${row('alpha')} [data-m]`);
 await phone.waitForSelector('#todoList .todo', { timeout: 20000 });
-await phone.click('#memFold > summary');           // every control on screen at once
+await phone.click('.pane .nb .nbtabs [data-v="memory"]'); // every control on screen at once
 await phone.waitForFunction(() => document.getElementById('memList').checkVisibility());
 const wide = await phone.evaluate(() => {
   const out = [];

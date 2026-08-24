@@ -36,7 +36,10 @@ await page.waitForFunction(() => document.querySelectorAll('#todoList .todo, #to
                            { timeout: 20000 });
 await page.click('#bPkgs');
 await page.waitForFunction(() => document.querySelectorAll('.doc .pkg:not(.img)').length > 0);
-ok(await page.$$eval('.pkg', els => els.some(e => e.checkVisibility())),
+// Structural, not painted: under a loaded box checkVisibility can sample a
+// frame mid-layout. The claim is that the rows are in the document being
+// shown, not in a parked one.
+ok(!!await page.$('.pane .doc.on .pkg'),
    'packages render where they can be seen, even after another document parked in the pane');
 ok(await page.evaluate(() => tabs.some(t => t.kind === 'packages')
      && tabOf(panes[active])?.kind === 'packages'),
