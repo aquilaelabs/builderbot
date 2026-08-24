@@ -91,6 +91,41 @@ def _clean(text, limit):
     return "\n".join(out)[:limit]
 
 
+# Every change to the tracker, kept — the same reason the roadmap keeps its
+# log: two people write this, and the tracker itself only shows the present
+# tense. Capped per project alongside the bugs it describes.
+MAX_HISTORY = 300
+
+
+def _log(d, project, by, ev):
+    h = d.setdefault("history", {}).setdefault(project, [])
+    h.append({"at": int(time.time()),
+              "by": "claude" if by == "claude" else "you", **ev})
+    del h[:-MAX_HISTORY]
+
+
+def history(project, limit=None, since=None, find=None):
+    """What has happened to the tracker, newest first, optionally narrowed —
+    the same filters the roadmap's log takes, because whoever learned one
+    should not have to learn the other."""
+    with _lock:
+        h = load().get("history", {}).get(project) or []
+    out = sorted(h, key=lambda e: -e.get("at", 0))
+    if since is not None:
+        cut = _int(since)
+        if cut is not None:
+            out = [e for e in out if e.get("at", 0) >= cut]
+    if find:
+        needle = str(find).lower()
+        out = [e for e in out
+               if any(needle in str(e.get(k, "")).lower()
+                      for k in ("text", "note", "act"))]
+    n = _int(limit)
+    if n is not None and n > 0:
+        out = out[:n]
+    return out
+
+
 def payload(project):
     """The Bugs tab's whole answer: open first, newest first within a group.
 
@@ -134,11 +169,13 @@ def add(project, title, by="you", severity="medium", **fields):
             if v:
                 bug[k] = v
         rows.append(bug)
+        _log(d, project, by, {"act": "filed", "id": bug["id"], "text": title,
+                              "note": bug.get("severity", "")})
         save(d)
     return {"ok": True, "bug": bug}
 
 
-def _edit(project, bug_id, change):
+def _edit(project, bug_id, change, by="you"):
     bug_id = _int(bug_id)
     if bug_id is None:
         return {"error": "not a bug number"}
@@ -149,15 +186,23 @@ def _edit(project, bug_id, change):
         if bug is None:
             return {"error": f"no bug #{bug_id} here"}
         out = change(bug)
+        ev = out.pop("log", None) if isinstance(out, dict) else None
         if not out.get("error"):
+            if ev:
+                _log(d, project, by, ev)
             bug["updated"] = int(time.time())
             save(d)
     return out
 
 
-def edit(project, bug_id, by="you", **fields):
+def edit(project, bug_id, by="you", act="edited", **fields):
     """Reword any of a bug's fields. Unknown keys are ignored rather than
-    stored: the file's shape is this module's, not the request's."""
+    stored: the file's shape is this module's, not the request's.
+
+    `act` names the event for the log — the CLI's `note` is an edit of the
+    notes field, but "noted" and "edited" are different claims to whoever
+    reads the history back.
+    """
     def change(bug):
         if "title" in fields:
             t = _clean(fields["title"], MAX_SHORT).replace("\n", " ")
@@ -176,8 +221,11 @@ def edit(project, bug_id, by="you", **fields):
                     bug[k] = v
                 else:
                     bug.pop(k, None)
-        return {"ok": True, "bug": bug}
-    return _edit(project, bug_id, change)
+        changed = sorted(set(fields) & (set(FIELDS) | {"title", "severity"}))
+        return {"ok": True, "bug": bug,
+                "log": {"act": act, "id": bug["id"], "text": bug["title"],
+                        "note": ", ".join(changed)}}
+    return _edit(project, bug_id, change, by)
 
 
 def set_status(project, bug_id, status, note="", by="you"):
@@ -199,8 +247,10 @@ def set_status(project, bug_id, status, note="", by="you"):
         else:
             bug["status_note"] = note_
             bug["status_by"] = "claude" if by == "claude" else "you"
-        return {"ok": True, "bug": bug}
-    return _edit(project, bug_id, change)
+        return {"ok": True, "bug": bug,
+                "log": {"act": "reopened" if status == "open" else status,
+                        "id": bug["id"], "text": bug["title"], "note": note_}}
+    return _edit(project, bug_id, change, by)
 
 
 def prompt(project):

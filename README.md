@@ -367,6 +367,8 @@ bb todo begin      work one out; `commit` records it as one change, `revert` und
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `reopen N`
+bb history         one search over the notebook's logs — roadmap, bugs, memory
+                   (`--find X`, `--since 7d`, `-n N`)
 bb todo history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
@@ -1300,6 +1302,25 @@ not a decision; it is something you are in the middle of. So the moves live in
 the page until you save them, leaving the mode puts the order back, and closing
 the panel on a half-done shuffle leaves the list alone. Both are asked about
 first, since an arrangement is work.
+
+**Every view keeps its history.** The roadmap's log came first; the bug
+tracker and the memory view have the same button now, with the same bar —
+search, a time window, a cap — and the same rows: what happened, to which
+line, by whom, when. The memory log records what the *notebook* changed
+(wrote, edited, forgot) — Claude's own memory writes are files, not events,
+so they have no entry to make. For a session, `bb history --find X` is one
+search across all three logs, merged by time and tagged by source; `bb todo
+history` and `bb bug history` scope to one.
+
+**Analysis** is the notebook's fourth view: the scanner's findings for that
+project alone, worst level first, read-only — the scan runs on the host, and
+`bb findings` reads the same digest in a terminal. The whole-report findings
+tab is gone; the Static analysis card's per-project rows are the way in now,
+each opening its project's notebook on this view. Findings whose paths
+resolve into directories that are deliberately not projects — the SDK share,
+anything carrying `.bbignore` — are counted and set aside rather than shown
+as "unattributed": the label is reserved for paths that genuinely place
+nowhere, which is the case worth a look.
 
 **The bug tracker** is the notebook's third view, and `bb bug` in a terminal.
 The roadmap is for things somebody decided to build; a bug is a different

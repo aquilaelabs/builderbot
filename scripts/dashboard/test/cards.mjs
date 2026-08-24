@@ -52,7 +52,10 @@ await page.click('#projects #bAll');
 // findings card: per-project counts, valid projects only, plain button
 const rows = await page.$$eval('#findingsSum .row', rs => rs.map(r => r.querySelector('.name').textContent.trim()));
 ok(rows.join(',') === 'alpha,beta', `findings card lists valid projects only (${rows.join(',')})`);
-ok(!(await page.$eval('#cardFindings .macros button', el => el.classList.contains('primary'))), 'report button is not green');
+ok(await page.$('#cardFindings .macros button') === null,
+   'the card carries no report button — its rows open a notebook\'s Analysis view');
+ok(await page.$eval('#findingsSum .row[data-ana="alpha"]', r => r.classList.contains('go')),
+   '...and a project\'s row says it is clickable');
 
 // .bbignore hides a directory from the card entirely — not listed, not
 // counted, not folded away under the Excluded/Error toggle either.
@@ -82,13 +85,11 @@ await page.waitForFunction(() => document.querySelector('.side .card[data-card]'
   && !document.querySelector('.side .card.closed'));
 ok(true, 'reset restores default order and expands everything');
 
-// The findings report preloads in idle time when a report exists and no
-// findings tab is open — so the first click renders from cache instead of
-// starting its fetch on the tap.
-await page.waitForFunction(() => typeof findings !== 'undefined'
-  && findings && !findings.loading && !findings.error, { timeout: 10000 });
-ok(await page.evaluate(() => !tabs.some(t => t.kind === 'findings')),
-   'the findings report is warmed before any findings tab exists');
+// The whole-report tab is retired: findings are read per project, in the
+// notebook's Analysis view, and the digest is fetched when one is opened.
+ok(await page.evaluate(() => !tabs.some(t => t.kind === 'findings')
+     && typeof openFindings === 'undefined'),
+   'no whole-report findings tab exists to open any more');
 
 // The favicon set: served by the allow-list, linked from the head. Sizes and
 // content types matter — a wrong type is a globe in the tab, silently.

@@ -100,31 +100,21 @@ ok(resumed.tabs === 1 && resumed.arg === 'claude:alpha:r:abc123'
    `Resume on a dead session's tab carries the transcript id into the frame (${JSON.stringify(resumed)})`);
 await page.evaluate(() => hideTab(tabs.find(t => sessionOf(t.arg) === 'claude-alpha').id));
 
-await page.click('#cardFindings .macros button');
-await page.waitForSelector('details[data-proj="alpha"]');
-await page.click('details[data-proj="alpha"] summary');
-ok(await page.$eval('details[data-proj="alpha"]', d => d.getAnimations().length > 0 && d.open), 'findings group animates open');
-await page.waitForFunction(() => document.querySelector('details[data-proj="alpha"]').getAnimations().length === 0);
-ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros grayed on the findings tab');
-ok(await page.$$eval('.stats .pill', ps => ps.some(p => p.textContent.trim() === '2 hidden')), 'report says how many findings it held back');
-await page.click('#cardFindings .macros button');
-ok(await page.$eval('details[data-proj="alpha"]', d => d.open), 'reopening the report keeps the expanded group');
-// The save is debounced; reload only once the server truly has the tab.
-await layoutSettled(l => l.tabs.some(t => t.kind === 'findings'));
+await page.click('#findingsSum .row[data-ana="alpha"]');
+await page.waitForSelector('.pane .nb [data-view="analysis"]:not([hidden]) .rule',
+                           { timeout: 20000 });
+ok(true, 'a project\'s row on the card opens its notebook, on the Analysis view');
+ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros grayed on a notebook tab');
+ok(await page.$$eval('.pane .nb .rule .rid .pill', ps => ps.length > 0),
+   '...with the findings for that project alone, worst level first');
+// A notebook tab survives the reload and loads itself — the restore story
+// the findings tab used to carry, now the notebook's.
+await layoutSettled(l => l.tabs.some(t => t.kind === 'todo'));
 await page.reload();
-try {
-  await page.waitForFunction(() => document.querySelector('details[data-proj]') !== null, { timeout: 30000 });
-  ok(true, 'a findings tab restored from the layout loads itself');
-} catch (e) {
-  const diag = await page.evaluate(() => ({
-    findings: findings && { loading: findings.loading, error: findings.error, reports: findings.reports?.length },
-    pane0: document.getElementById('pane0').dataset, tabs: tabs.map(t => t.kind), panes, active,
-    myRev, serverLayout: state?.layout && { rev: state.layout.rev, kinds: state.layout.tabs.map(t => t.kind) },
-    dot: document.getElementById('dot').className,
-    doc: document.getElementById('doc0')?.innerHTML.slice(0, 120) }));
-  ok(false, 'a findings tab restored from the layout loads itself — ' + JSON.stringify(diag)
-     + ' errors=' + JSON.stringify(page.errors));
-}
+await page.waitForFunction(() => document.querySelector('.pane .nb') !== null,
+                           { timeout: 30000 });
+ok(true, 'a notebook tab restored from the layout loads itself');
+await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'todo').id));
 
 // The rest needs shell-9 on the strip; reopen it if the restore above failed.
 await page.evaluate(() => { if (!tabs.some(t => sessionOf(t.arg) === 'shell-9'))
@@ -262,8 +252,8 @@ await phone.click('#mpSessions [data-go="shell-7"]');
 ok(await phone.evaluate(() => !showSessions), 'picking a session closes the Sessions flyout');
 
 // Keys over a document tab: the toggle is disabled and says why.
-await phone.evaluate(() => openFindings());
-await phone.waitForFunction(() => tabOf(panes[active])?.kind === 'findings');
+await phone.evaluate(() => openNotebook('alpha'));
+await phone.waitForFunction(() => tabOf(panes[active])?.kind === 'todo');
 ok(await phone.$eval('#mKeys', b => b.disabled && /not one/.test(b.title)), 'Keys is disabled over a document tab');
 ok(await phone.$eval('#mMacros', b => b.disabled), '...and so is Commands');
 // A Claude tab is a terminal, but not one to type keys or macros into: they

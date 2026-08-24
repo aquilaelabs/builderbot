@@ -375,6 +375,11 @@ bb bug fix N "what fixed it" # close it, with the note that is the point
 bb bug wontfix N "why"       # the other way to close; `reopen N` if it did not take
 ```
 
+`bb history [--find X] [--since 7d]` is one search across the notebook's
+three logs — roadmap, bugs, and what the dashboard changed in the memories —
+merged by time and tagged by source. Reach for it when the question is "when
+did anything here mention X", which no single tab can answer.
+
 **When you find a bug and it is out of scope for what you are on, file it** —
 the same rule as the roadmap, applied to defects: a reply is read once, the
 tracker is read at the start of every session after it. Fill in the fields
