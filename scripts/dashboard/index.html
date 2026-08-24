@@ -3959,7 +3959,7 @@ async function openMemory(name){
 }
 
 // ---- the shared to-do list ---------------------------------------------
-// Both sides write it: the operator here, a session through `bb todo`. Its
+// Both sides write it: the operator here, a session through `bb roadmap`. Its
 // open items are appended to every Claude session bb-tty starts, which is why
 // something noticed mid-task and left undone survives the conversation.
 
@@ -4066,7 +4066,7 @@ function stepRow(r, idx, live){
     ${idx >= 0 ? `<span class="n">${idx + 1}</span>`
                : r.id < 0
                  ? `<span class="n id new" title="not saved yet — it gets its number when you press Save">new</span>`
-                 : `<span class="n id" title="this item is #${r.id} wherever it sits — what a session means by that number, and what bb todo done ${r.id} takes">#${r.id}</span>`}
+                 : `<span class="n id" title="this item is #${r.id} wherever it sits — what a session means by that number, and what bb roadmap done ${r.id} takes">#${r.id}</span>`}
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
@@ -4209,7 +4209,7 @@ function noteBatch(b){
     if (!todoPending.length && !memDirty()){
       todoStale = false;
       todoBatch = null;
-      loadTodo(memGen);
+      reloadViews();
       return;
     }
   }
@@ -4246,23 +4246,38 @@ function drawBatchNote(){
   // itself — the guard should only demand a click when a click would cost.
   if (rc) rc.onclick = async () => {
     rc.disabled = true; rc.textContent = "Checking…";
-    await loadTodo(memGen);
+    // The batch state, which is the question the button asks — not a reload
+    // of one view, which is what it used to do and why the roadmap refreshed
+    // while the other three tabs did not. If the batch has closed and nothing
+    // local is staged, noteBatch re-reads the whole notebook by itself.
+    await refresh();
     if (nbHeld()) notify("still at it — the guard stays until it commits");
   };
 }
 
 // Re-read, which is the only way out of stale. It costs whatever is staged,
 // so it says so first.
+// Every view, not just the roadmap. The banner says a session changed *this
+// notebook*, and it holds all four tabs — so the re-read that lifts it has to
+// cover what it held. Reloading only the list is how the Bugs tab could sit
+// there showing what a session had already changed.
+async function reloadViews(){
+  await loadTodo(memGen);
+  if (bugs) await loadBugs();
+  await loadMemory(memGen);
+  if (!root.querySelector('[data-view="analysis"]').hidden) await loadAnalysis();
+}
+
 async function rereadTodo(){
   if (todoPending.length
       && !confirm(`Reload? ${todoPending.length} unsaved change`
                   + `${todoPending.length === 1 ? "" : "s"} of yours would go — `
-                  + "the list is being replaced with what is on disk."))
+                  + "the notebook is being replaced with what is on disk."))
     return;
   revertPending();
   todoOrdering = false;
   todoStale = false;
-  await loadTodo(memGen);
+  await reloadViews();
 }
 
 // One button for the panel: the list's changes are already on disk, the
@@ -5158,6 +5173,7 @@ $("todoRevert").onclick = revertNotebook;
   // not a list curated in place, and a session finding one mid-task must not
   // depend on somebody pressing Save later.
   let bugs = null;
+  let bugRev = null;      // the tracker's revision as of the last read
 
   async function loadBugs(){
     try{
@@ -5165,6 +5181,8 @@ $("todoRevert").onclick = revertNotebook;
       const j = await r.json();
       bugs = j.error ? {bugs: [], error: j.error} : j;
     }catch(e){ bugs = {bugs: [], error: String(e)}; }
+    // Whatever the poll last said is now what this copy reflects.
+    bugRev = (state?.projects || []).find(x => x.name === project)?.bug_rev ?? bugRev;
     drawBugs();
   }
 
@@ -5184,6 +5202,10 @@ $("todoRevert").onclick = revertNotebook;
       const j = await r.json();
       if (j.error){ notify(j.error, true); return null; }
       bugs = j;
+      // This panel's own write moved the revision. Left unmarked, the next
+      // poll reads it as somebody else's and reloads on top of the answer
+      // just received.
+      if (bugRev !== null) bugRev += 1;
       drawBugs();
       return j;
     }catch(e){ notify("could not reach the server: " + e, true); return null; }
@@ -5381,6 +5403,13 @@ $("todoRevert").onclick = revertNotebook;
     view: setNbView,
     poll(p){
       noteBatch(p.todo_batch); drawBatchNote(); syncSave();
+      // A session filed, closed or deleted a bug. The tracker is
+      // write-through on both sides, so there is nothing local to lose and
+      // nothing to ask about — the view simply catches up. Keyed on a
+      // revision from the poll rather than re-fetching the tracker every
+      // fifteen seconds to find out whether it moved.
+      if (bugs && bugRev !== null && p.bug_rev !== bugRev) loadBugs();
+      if (p.bug_rev !== undefined) bugRev = p.bug_rev;
       // A scan re-ran while the Analysis view is up: re-read. The cache was
       // dropped by refresh() when the mtime moved, so this is one fetch.
       if (!root.querySelector('[data-view="analysis"]').hidden

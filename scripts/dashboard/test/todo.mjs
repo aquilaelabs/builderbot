@@ -1,7 +1,7 @@
 // The shared to-do list: the one surface here that both sides write.
 //
 // The operator adds an item in the panel, a session adds one through
-// `bb todo`, and either can tick it off. The open items are appended to every
+// `bb roadmap`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point — something noticed
 // mid-task and left undone used to live in the conversation and die with it.
 import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR } from './lib.mjs';
@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-// The checkout's bb, not the stub on the harness PATH: `bb todo` is the half
+// The checkout's bb, not the stub on the harness PATH: `bb roadmap` is the half
 // of this a session uses, and it is the real implementation under test.
 const BB = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bb');
 const FILE = `${DIR}/state/todos.json`;
@@ -31,8 +31,8 @@ const saveList = async () => {
     const b = document.getElementById('todoSaveQuiet');
     return b.textContent !== 'Saving…' && b.disabled; }, { timeout: 15000 });
 };
-const bbTodoEarly = (...a) => execFileSync(BB, ['todo', ...a],
-  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+const bbTodoEarly = (...a) => execFileSync(BB, ['roadmap', ...a],
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
 const post = body => page.evaluate(async b => {
   const r = await fetch('/api/todo', { method: 'POST',
@@ -84,15 +84,15 @@ ok(read().projects.alpha.length === 1,
 
 // ---- what a session adds is marked -------------------------------------
 // Through bb, the same way a session would: one file, two writers.
-execFileSync(BB, ['todo', 'add', 'delete a project from the dashboard'],
-  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+execFileSync(BB, ['roadmap', 'add', 'delete a project from the dashboard'],
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } });
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length === 2);
 items = await open();
 const mine = items.find(i => i.text.includes('delete a project'));
 ok(mine && mine.claude,
-   'an item a session added through bb todo shows up, marked as Claude\'s');
+   'an item a session added through bb roadmap shows up, marked as Claude\'s');
 ok(items.filter(i => i.claude).length === 1,
    '...and the operator\'s own is not');
 // At the end, not the top. The number on a row is the item's own id, so the
@@ -163,29 +163,29 @@ ok(items.findIndex(i => i.id === mine.id) === wasAt,
    '...in the place it was, because the order is the record');
 
 // ---- what a session is told --------------------------------------------
-const prompt = execFileSync(BB, ['todo', '--prompt'],
-  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+const prompt = execFileSync(BB, ['roadmap', '--prompt'],
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
 ok(prompt.includes('make the picker wrap properly'),
    'the block a session is started with carries the open items');
 ok(prompt.includes('delete a project from the dashboard'),
    '...including one already sent, because sent is not done');
 ok(/already sent to a session/.test(
-     execFileSync(BB, ['todo', '--prompt'],
-       { env: { ...process.env, BB_TODO_PROJECT: 'alpha',
+     execFileSync(BB, ['roadmap', '--prompt'],
+       { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha',
                 DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).toString()
      + prompt) || true,
    '...and a group\'s steps come with it in order');
-ok(/bb todo add/.test(prompt) && /bb todo done/.test(prompt),
+ok(/bb roadmap add/.test(prompt) && /bb roadmap done/.test(prompt),
    '...and tells it how to add and tick, since that is the half it has to do');
 // Numbered in the prompt too: a session that says "#2" and an operator
 // looking at the panel have to be talking about the same row, and the
-// alternative is a session shelling out to `bb todo` to find out.
+// alternative is a session shelling out to `bb roadmap` to find out.
 ok(/^- #\d+ /m.test(prompt),
    '...with each item under the number that is on its row');
 
-const empty = execFileSync(BB, ['todo', '--prompt'],
-  { env: { ...process.env, BB_TODO_PROJECT: 'beta', DASHBOARD_STATE: `${DIR}/state`,
+const empty = execFileSync(BB, ['roadmap', '--prompt'],
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'beta', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
 ok(empty === '',
    'a project with an empty list adds nothing to a prompt at all');
@@ -193,9 +193,9 @@ ok(empty === '',
 // ---- an order that matters ---------------------------------------------
 // A change needing three things done in sequence is one item with steps, not
 // three items that can be handed over backwards.
-execFileSync(BB, ['todo', 'add', 'rework the picker',
+execFileSync(BB, ['roadmap', 'add', 'rework the picker',
                   '--step', 'widen the select', '--step', 'then re-measure it'],
-  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } });
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo[data-step="1"]').length === 1);
@@ -286,8 +286,8 @@ ok(items.filter(i => i.id === c1.id).every(i => !i.can),
 await saveList();
 ok(read().projects.alpha.at(-1).text === 'rework the picker',
    '...and sinks it to the bottom of the list, where what is not live belongs');
-const shelvedPrompt = execFileSync(BB, ['todo', '--prompt'],
-  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+const shelvedPrompt = execFileSync(BB, ['roadmap', '--prompt'],
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
 ok(/shelved — the operator has parked this/.test(shelvedPrompt),
    '...and a session is told it is parked, rather than left to wonder');
@@ -365,15 +365,15 @@ const bbTodo = bbTodoEarly;
 const grp = () => read().projects.alpha.find(r => String(r.id) === String(c1.id));
 bbTodo('edit', c1.id, 'rework the picker, properly this time');
 ok(grp().text === 'rework the picker, properly this time',
-   'bb todo edit rewords an item');
+   'bb roadmap edit rewords an item');
 bbTodo('step', 'add', c1.id, 'and check it on a phone');
 ok(grp().steps.length === 2 && grp().steps[1].text === 'and check it on a phone',
-   'bb todo step add gives an existing item another step');
+   'bb roadmap step add gives an existing item another step');
 bbTodo('step', 'edit', c1.id, '2', 'and check it at both sizes');
 ok(grp().steps[1].text === 'and check it at both sizes',
-   'bb todo step edit rewords one step, numbered the way a human reads it');
+   'bb roadmap step edit rewords one step, numbered the way a human reads it');
 bbTodo('step', 'rm', c1.id, '2');
-ok(grp().steps.length === 1, 'bb todo step rm drops one step and leaves the rest');
+ok(grp().steps.length === 1, 'bb roadmap step rm drops one step and leaves the rest');
 
 // A session can move an item as well as a step — both halves of restructuring,
 // because it is the one that knows a plan has to happen before the item under
@@ -383,12 +383,12 @@ const orderNow = () => read().projects.alpha.map(r => String(r.id));
 const wasOrder = orderNow();
 bbTodo('mv', c1.id, 'up');
 ok(orderNow().indexOf(c1.id) === wasOrder.indexOf(c1.id) - 1,
-   'bb todo mv moves an item up the list');
+   'bb roadmap mv moves an item up the list');
 bbTodo('mv', c1.id, 'down');
 ok(JSON.stringify(orderNow()) === JSON.stringify(wasOrder), '...and back down');
 bbTodo('shelve', c1.id);
-ok(read().projects.alpha.at(-1).shelved, 'bb todo shelve parks one');
-ok(/no unshelve|usage: bb todo/.test(
+ok(read().projects.alpha.at(-1).shelved, 'bb roadmap shelve parks one');
+ok(/no unshelve|usage: bb roadmap/.test(
      (() => { try { return bbTodo('unshelve', c1.id); }
               catch (e) { return String(e.stderr || e); } })()),
    '...and there is no unshelve for a session; that tap is the operator\'s');
@@ -583,8 +583,11 @@ ok(page.dialogs.some(d => /unsaved change/.test(d)),
 ok(!await page.$eval('#todoSaveQuiet', b => b.disabled)
    || !(await open()).some(i => /typed while a session/.test(i.text)),
    '...and afterwards the list is the one on disk again');
-ok((await open()).some(i => /not blocked at all/.test(i.text)),
-   '...with the session\'s change on it');
+// Waited for rather than read once: Reload is async and now re-reads every
+// view, so "afterwards" is a state to arrive at and not an instant.
+await page.waitForFunction(() => [...document.querySelectorAll('#todoList .txt')]
+  .some(t => /not blocked at all/.test(t.textContent)), { timeout: 15000 });
+ok(true, '...with the session\'s change on it');
 await post({ action: 'remove', project: 'alpha',
              id: read().projects.alpha.find(r => /not blocked at all/.test(r.text)).id });
 await page.evaluate(() => notebooks.get('alpha').reload());
@@ -690,7 +693,7 @@ const fin = await post({ action: 'add', project: 'alpha', text: 'a job to finish
 const finId = String(fin.body.item.id);
 bbTodo('done', finId);
 ok(!read().projects.alpha.some(r => String(r.id) === finId),
-   'bb todo done takes the item off the list rather than fading it in place');
+   'bb roadmap done takes the item off the list rather than fading it in place');
 const afterDone = bbTodo('history');
 ok(new RegExp(`done\\s+#${finId}\\s+a job to finish`).test(afterDone),
    '...and writes it into the history, under the word a session used');
@@ -813,7 +816,7 @@ ok(true, 'Cancel closes the step field without adding anything');
 bbTodoEarly('info', plainId, 'lives in scripts/dashboard/todo.py\n\nGUI half: stepRow');
 ok(read().projects.alpha.find(r => String(r.id) === plainId).info
      === 'lives in scripts/dashboard/todo.py\n\nGUI half: stepRow',
-   'bb todo info attaches details to an item, breaks kept');
+   'bb roadmap info attaches details to an item, breaks kept');
 bbTodoEarly('info', plainId, '1', 'the select is built in stepRow()');
 ok(read().projects.alpha.find(r => String(r.id) === plainId).steps[0].info
      === 'the select is built in stepRow()',

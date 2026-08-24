@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""The per-project to-do list — the one thing here that both sides write.
+"""The per-project roadmap — the one thing here that both sides write.
+
+Named todo.py because that is what the list was called when it was written,
+and the file is served from an absolute path by the running image; the
+command, the tab and the words everywhere else are "roadmap".
 
 Everything else the dashboard holds is one-way. The package list is the
 container's; a memory is Claude's; the project list is the filesystem's. This
@@ -20,7 +24,7 @@ change. Anything that deserves to be permanent graduates out of here: into
 CLAUDE.md, a commit message, or a test that fails when it regresses.
 
 The server imports this and hands it the helpers it needs; nothing here reaches
-back into the server. bb reads and writes the same file through `bb todo`, so a
+back into the server. bb reads and writes the same file through `bb roadmap`, so a
 session can add an item without a browser.
 """
 import json
@@ -104,7 +108,7 @@ def _migrate(d):
     until a week had passed. It comes off now and lives in the log instead.
 
     `oldest_first`: items used to be added at the top, so the number a session
-    quotes — the id, which is what `bb todo done` takes — counted *up* the
+    quotes — the id, which is what `bb roadmap done` takes — counted *up* the
     screen and #1 sat at the bottom. Adding at the end instead makes the
     numbers run down the page, which is the only arrangement where "#3" can be
     found by looking. Lists built by the old prepend are turned round once;
@@ -891,7 +895,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
 # session is mid-task all the time, and a session that downed tools to go and
 # read them every time would be worse than one that never read them at all.
 LOOK = {
-    "todo": "the shared to-do list for this project (`bb todo`)",
+    "todo": "the shared to-do list for this project (`bb roadmap`)",
     "memory": ("my notes about how you work here "
                "(`cat ~/.claude/projects/$(pwd | tr / -)/memory/*.md`)"),
 }
@@ -964,7 +968,7 @@ def prompt(project):
     for r in rows:
         # Numbered, because a session that wants to talk about one of these
         # has to be able to name it — and the name has to be the one the
-        # operator sees on the row and the one `bb todo done` takes.
+        # operator sees on the row and the one `bb roadmap done` takes.
         lines.append(f"- #{r['id']}  {r['text']}"
                      + ("  (shelved — the operator has parked this; do not "
                         "pick it up unless they say so)" if r.get("shelved")
@@ -988,13 +992,13 @@ def prompt(project):
             "item's own and does not change — it is what the operator sees on "
             "the row, so refer to one as #4 rather than by counting down the "
             "list. Tick one off with "
-            "`bb todo done <n>` when you finish it, and add one with "
-            "`bb todo add \"...\"` when you notice something worth doing and "
+            "`bb roadmap done <n>` when you finish it, and add one with "
+            "`bb roadmap add \"...\"` when you notice something worth doing and "
             "it is out of scope for what you are on. A plan can be corrected "
-            "as well as written: `bb todo edit <n> \"...\"`, and "
-            "`bb todo step add|edit|rm <n> [<step>] [\"...\"]` for one step "
+            "as well as written: `bb roadmap edit <n> \"...\"`, and "
+            "`bb roadmap step add|edit|rm <n> [<step>] [\"...\"]` for one step "
             "of one — do that when the design moves under a plan rather than "
-            "leaving steps that describe the old one. `bb todo info <n> "
+            "leaving steps that describe the old one. `bb roadmap info <n> "
             "[<step>] \"...\"` attaches the technical details — which files, "
             "which functions, the approach — so the session that works it "
             "does not start from a cold grep; write them when you write the "

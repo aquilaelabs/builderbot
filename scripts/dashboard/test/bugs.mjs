@@ -13,6 +13,9 @@ const BB = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bb');
 const bbBug = (...a) => execFileSync(BB, ['bug', ...a],
   { env: { ...process.env, BB_BUG_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
+const bbTodoBatch = (...a) => execFileSync(BB, ['roadmap', ...a],
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws` } }).toString();
 const FILE = `${DIR}/state/bugs.json`;
 const read = () => existsSync(FILE)
   ? JSON.parse(readFileSync(FILE, 'utf8')).projects.alpha || [] : [];
@@ -190,6 +193,48 @@ bbBug('na', naId, 'removed again in the CLI');
 ok(read().find(b => String(b.id) === naId).status === 'na',
    'bb bug na does the same from a session');
 
+// ---- a session writing while the tab is open ------------------------------
+// The tracker is write-through on both sides, so there is nothing local to
+// lose and nothing to ask about: the view catches up on the poll. It used to
+// sit there showing what a session had already changed until the tab was
+// reopened.
+const seen = () => page.$$eval('#bugList .bug', ds => ds.map(d => d.dataset.id));
+const beforeLive = (await seen()).length;
+bbBug('add', 'filed by a session while the tab was open', '--sev', 'low');
+await page.evaluate(() => refresh());
+await page.waitForFunction(n => document.querySelectorAll('#bugList .bug').length > n,
+                           beforeLive, { timeout: 20000 });
+ok(true, 'a bug a session files appears without the tab being reopened');
+const liveId = String(read().at(-1).id);
+bbBug('fix', liveId, 'closed by the session too');
+await page.evaluate(() => refresh());
+await page.waitForFunction(n => document.querySelector(
+  `#bugList .bug[data-id="${n}"] .bstat`)?.textContent === 'fixed', liveId,
+  { timeout: 20000 });
+ok(true, '...and so does a closure, which no count of open bugs would catch');
+bbBug('rm', liveId, 'test scaffolding');
+await page.evaluate(() => refresh());
+await page.waitForFunction(n => !document.querySelector(`#bugList .bug[data-id="${n}"]`),
+                           liveId, { timeout: 20000 });
+ok(true, '...and a delete, which is the case a revision catches and a count does not');
+
+// ---- Check now answers about the batch, not about one view -----------------
+// It used to reload the roadmap, which refreshed one tab of four and left the
+// other three showing what the session had already changed.
+bbTodoBatch('begin');
+bbBug('add', 'filed mid-batch, from a session', '--sev', 'high');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => !document.getElementById('todoBatch').hidden,
+                           { timeout: 20000 });
+ok(await page.evaluate(() => nbHeldFor('alpha')), 'the notebook is held');
+bbTodoBatch('commit');
+await page.click('#todoRecheck');
+await page.waitForFunction(() => document.getElementById('todoBatch').hidden,
+                           { timeout: 20000 });
+ok(await page.$$eval('#bugList .bug .btitle',
+     ts => ts.some(t => /filed mid-batch/.test(t.textContent))),
+   'Check now lifts the hold and the Bugs tab has the session\'s report on it');
+
 // ---- the tracker's log -----------------------------------------------------
 // Same bar, same rows as the roadmap's: search, a window, a cap. Filed,
 // noted, fixed, reopened — with who and when, which the tracker's present
@@ -214,7 +259,7 @@ await page.waitForFunction(() => !document.getElementById('bugList').hidden);
 // One search across the whole notebook, for a session: roadmap, bugs and the
 // memory log merged by time, tagged by source.
 const merged = execFileSync(BB, ['history', '--find', 'compose files'],
-  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
 ok(/bugs\s+claude\s+filed/.test(merged),
    'bb history finds a bug by its words, tagged with which log it came from');

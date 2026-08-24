@@ -163,6 +163,20 @@ def counts():
             for p, rows in d["projects"].items()}
 
 
+def revisions():
+    """{project: how many things have happened to its tracker}.
+
+    A revision number for the status poll, so an open Bugs tab can tell that
+    a session wrote something without re-fetching the tracker every fifteen
+    seconds to find out. The history length is exactly right for it: every
+    write appends one entry, including the deletes and the status flips a
+    count of open bugs would miss.
+    """
+    with _lock:
+        h = load().get("history", {})
+    return {p: len(rows) for p, rows in h.items()}
+
+
 def add(project, title, by="you", severity="medium", **fields):
     title = _clean(title, MAX_SHORT).replace("\n", " ")
     if not title:

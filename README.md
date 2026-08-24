@@ -357,19 +357,19 @@ bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb findings        this project's scanner findings (--all for every project)
-bb todo            this project's roadmap
-bb todo add "..."  put something on it; `done N` finished, `rm N [why]` not
-bb todo shelve N   park one without dropping it; `mv N up|down` moves it
-bb todo add "..." --step "..." --step "..."   an ordered group of steps
-bb todo edit N "..."               reword one; `step add|edit|rm` for one step
-bb todo info N [M] "..."           attach the technical details to one, or step M
-bb todo begin      work one out; `commit` records it as one change, `revert` undoes
+bb roadmap            this project's roadmap
+bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` not
+bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
+bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
+bb roadmap edit N "..."               reword one; `step add|edit|rm` for one step
+bb roadmap info N [M] "..."           attach the technical details to one, or step M
+bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
 bb history         one search over the notebook's logs — roadmap, bugs, memory
                    (`--find X`, `--since 7d`, `-n N`)
-bb todo history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
+bb roadmap history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -967,7 +967,7 @@ lives in its body. The cards:
 - a **checklist** per project, carrying how much is still to hand over here —
   the same number the panel shows, refreshed with every poll and again the
   moment you open it. It opens
-  the [shared to-do list](#the-shared-to-do-list) — the one surface here that
+  the [notebook](#the-notebook) — the one surface here that
   both you and a session write — with what Claude remembers folded away
   beneath it.
   Claude Code keeps memories in `~/.claude/projects/<slug>/memory/`:
@@ -997,7 +997,7 @@ lives in its body. The cards:
   purpose — *why did it do that?* is usually asked after the tab is closed —
   and it is folded shut, because a handful of files nobody edits does not
   earn the top of a panel. Editing one arms the panel's single **Save**, the
-  same button the to-do list uses.
+  same button the roadmap uses.
   **Edits land for the next session**, the same rule `bb claude-md` follows:
   the index is read at startup, and a running session is holding what it read
   then — which is what Save tells it, in the one line it spends
@@ -1082,7 +1082,7 @@ another. Three views under its tab strip: **Memory** (what Claude remembers
 here, moved up from the fold it used to live in), the **Roadmap** (the shared
 list, renamed for what it is — design work and ordered plans), and **Bugs**.
 
-**The roadmap** is `bb todo` in a terminal. Saving does not close it; the
+**The roadmap** is `bb roadmap` in a terminal. Saving does not close it; the
 Save buttons simply go dead until there is something to save again, and the
 button beside them is **Revert**, which throws away what has not been saved
 and is dead whenever there is nothing to throw. It fills the pane rather than
@@ -1104,14 +1104,14 @@ itself only ever shows the present tense — so *was that step always worded
 like that?* and *who dropped the third one?* had no answer at all.
 **History**, beside Reorder, is the answer: one line per change, newest
 first, each with its date and time and whether you or a session made it. A
-reword shows both wordings, the old one struck through. `bb todo history`
+reword shows both wordings, the old one struck through. `bb roadmap history`
 prints the same log in a terminal.
 
 That log is also what makes deleting safe, because the list now holds nothing
 but outstanding work. **A ticked-off item comes off it.** It used to sit
 there faded for a week, which is the same mistake crossing a line out was: a
 list is read to find out what is left, and a thing that is finished is not
-left. `bb todo done N` moves it into the log under *done*, where `rm N` would
+left. `bb roadmap done N` moves it into the log under *done*, where `rm N` would
 have put it under *dropped* — both leave, and the log is what says which
 happened. Only a session ticks things off; nothing in the dashboard can,
 because only the session that did the work knows. **Crossing a line off by hand is gone.** It used to sit
@@ -1138,11 +1138,11 @@ other's work. The block is one-way: nothing in the panel ever makes a session
 wait. When the batch commits the notebook says so and offers to reload, since
 what it is holding is now out of date.
 
-A session gets the same idea in a different shape: `bb todo begin`, then work,
-then `bb todo commit` — the changes land on the list as they are made, because
+A session gets the same idea in a different shape: `bb roadmap begin`, then work,
+then `bb roadmap commit` — the changes land on the list as they are made, because
 that is how you can see what a session is doing, but the *record* is written
 once at commit. Rewording the same step four times is one history entry rather
-than four. `bb todo revert` puts the list back and writes nothing, and refuses
+than four. `bb roadmap revert` puts the list back and writes nothing, and refuses
 if you have touched the list yourself since the batch opened.
 
 **Dropping something asks why.** The bin opens a box under the row with an
@@ -1151,7 +1151,7 @@ searchable — because nothing here can be undone, and that note is the only
 thing between a dropped line and somebody adding it straight back. The log
 can be narrowed rather than read whole: search the lines, their previous
 wordings and the reasons things went, over a window of time, capped to a
-count. `bb todo history --find picker --since 7d` does the same in a
+count. `bb roadmap history --find picker --since 7d` does the same in a
 terminal, which is how a session reads it without spending its context on
 the whole thing.
 
@@ -1178,15 +1178,15 @@ with a line saying to open it from the card instead. Shell tabs carry no such
 marker and never needed one: a shell is safe to recreate in the same
 directory, which is why it survives a restart and a conversation does not.
 
-**A session can correct a plan, not just follow it** — `bb todo edit N`,
-`bb todo step add|edit|rm|mv`, `bb todo mv N up|down` — which matters when the design moves under a plan
+**A session can correct a plan, not just follow it** — `bb roadmap edit N`,
+`bb roadmap step add|edit|rm|mv`, `bb roadmap mv N up|down` — which matters when the design moves under a plan
 written a week ago. Every one of those lands in the history under `claude`,
 so nothing gets quietly rewritten.
 
 **The list reads top down, and the top is what matters most** — new items go
 on the end, and the arrows in Reorder are how something gets promoted. Each
 item wears its number: `#4` is the item's own name, not its position, so it is
-what `bb todo done 4` takes, what a session means when it says "#4", and what
+what `bb roadmap done 4` takes, what a session means when it says "#4", and what
 survives the list being rearranged. The prompt a session starts with carries
 the same numbers. Steps inside a group number themselves 1, 2, 3 within it.
 A gap in the numbers means something was removed; one out of sequence means
@@ -1197,7 +1197,7 @@ functions, the approach. They live under a "▸ details" fold on the row (the
 words are the decision; this is the workings), travel with a step when it is
 sent, and ride in the block a session starts with, so the session that works
 the step does not start from a cold grep. Claude writes them with
-`bb todo info N [M] "..."`, usually when it writes the plan; the pencil edits
+`bb roadmap info N [M] "..."`, usually when it writes the plan; the pencil edits
 them alongside the words.
 
 **A group is one goal with an order to it.** Its title is that goal in plain
@@ -1252,7 +1252,7 @@ session is mid-task or when there is none. **Save & tell the session** does
 the same and spends the line. Both are dead until something has moved; the
 second is also dead with nothing running to tell.
 
-The line **names which half moved** — the to-do list, the memories, or both —
+The line **names which half moved** — the roadmap, the memories, or both —
 because "something changed" sends somebody to look at both, and one of the two
 is a directory of files. There is no way to make a session read something
 without sending it a message: no IPC into a running Claude, so the only door
@@ -1275,7 +1275,7 @@ rather than chasing it — two lines into one input box is how the second ends u
 glued to the first.
 
 **An item can be an ordered group of steps.** From a terminal that is
-`bb todo add "rework the picker" --step "widen the select" --step "then
+`bb roadmap add "rework the picker" --step "widen the select" --step "then
 re-measure it"`; in the panel it is **+ step** under any item, which turns a
 plain one into a plan — and the field stays open, so three steps is three lines
 of typing rather than three dialogs. A step is **sent with the plan around
@@ -1309,7 +1309,7 @@ search, a time window, a cap — and the same rows: what happened, to which
 line, by whom, when. The memory log records what the *notebook* changed
 (wrote, edited, forgot) — Claude's own memory writes are files, not events,
 so they have no entry to make. For a session, `bb history --find X` is one
-search across all three logs, merged by time and tagged by source; `bb todo
+search across all three logs, merged by time and tagged by source; `bb roadmap
 history` and `bb bug history` scope to one.
 
 **Analysis** is the notebook's fourth view: the scanner's findings for that
@@ -1720,7 +1720,7 @@ scripts/
     packages.py                  everything behind the Tools tab: catalog, sizes, the job worker
     memory.py                    everything behind the memory book: what Claude remembers per project
     projects.py                  new project / link to GitHub, and the worker that clones and pushes
-    todo.py                      the shared to-do list; `bb todo` drives the same file
+    todo.py                      the roadmap; `bb roadmap` drives the same file
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
