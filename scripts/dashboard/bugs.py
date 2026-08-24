@@ -35,8 +35,9 @@ STATE = None
 FILE = None
 
 
-def configure(*, write_json, state):
-    globals().update(write_json=write_json, STATE=Path(state))
+def configure(*, write_json, state, tell=None, tmux_name=None):
+    globals().update(write_json=write_json, STATE=Path(state),
+                     tell=tell, tmux_name=tmux_name)
     globals()["FILE"] = Path(state) / "bugs.json"
 
 
@@ -256,6 +257,67 @@ def edit(project, bug_id, by="you", act="edited", **fields):
                 "log": {"act": act, "id": bug["id"], "text": bug["title"],
                         "note": ", ".join(changed)}}
     return _edit(project, bug_id, change, by)
+
+
+# What the panel may switch a session to on the way in. The same two tables
+# the roadmap keeps, and kept here rather than imported for the same reason
+# either has them: this becomes a command typed into a terminal, so the list
+# of what is allowed lives beside the code that types it.
+MODELS = ("opus", "sonnet", "haiku", "fable")
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+
+def send(project, bug_id, sessions=(), model=None, effort=None, note=""):
+    """Point a running session at one bug, by number rather than by contents.
+
+    The message deliberately does NOT carry the report. It says which bug and
+    tells the session to run `bb bug show N`, because the tracker is the copy
+    that stays current: a report pasted into a conversation is a snapshot that
+    starts going stale the moment somebody adds a note to it, and the session
+    would then be working from the paste rather than from the file everything
+    else here reads. One number and an instruction cannot drift.
+    """
+    if tell is None or tmux_name is None:
+        return {"error": "no way to reach a session from here"}
+    bug_id = _int(bug_id)
+    if bug_id is None:
+        return {"error": "not a bug"}
+    with _lock:
+        d = load()
+        row = next((b for b in (d["projects"].get(project) or [])
+                    if b.get("id") == bug_id), None)
+    if row is None:
+        return {"error": "no such bug"}
+    session = tmux_name("claude-" + project)
+    for cmd, val, table in (("/model", model, MODELS), ("/effort", effort, EFFORTS)):
+        if not val:
+            continue
+        if val not in table:
+            return {"error": f"not a {cmd[1:]} this can set: {val}"}
+        r = tell(session, f"{cmd} {val}", sessions)
+        if r.get("error") or not r.get("sent"):
+            return r | {"switching": cmd[1:]}
+    line = (f"Please look at bug #{bug_id} in this project's tracker. "
+            f"Run `bb bug show {bug_id}` for the report — the area, how to "
+            f"reproduce it, expected against actual, and the notes so far. "
+            f"When you have dealt with it, close it with `bb bug fix "
+            f"{bug_id} \"what fixed it\"`, or one of the other closes if it "
+            f"turns out not to be a fix.")
+    note = " ".join(_clean(note or "", 500).split())
+    if note:
+        line += f"  (From the operator, with this: {note})"
+    r = tell(session, line, sessions)
+    if r.get("error") or not r.get("sent"):
+        return r
+    # Written down rather than only typed: "was this ever handed to a session,
+    # and when?" is a tracker question, and the tracker is where the next
+    # reader looks. It is not a status change — sent is not fixed.
+    with _lock:
+        d = load()
+        _log(d, project, "you", {"act": "sent", "id": bug_id,
+                                 "text": row.get("title", "")})
+        save(d)
+    return {"ok": True, "sent": True, "text": line}
 
 
 def set_status(project, bug_id, status, note="", by="you"):

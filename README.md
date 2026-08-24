@@ -1294,12 +1294,37 @@ without sending it a message: no IPC into a running Claude, so the only door
 is its input box.
 
 Which is why **sending a step folds the two together**. Tapping an arrow
-**arms** it — the arrow lights up, and the Send button and its "also tell it
-the list changed" checkbox come alive; tapping it again puts it down. Send then
-does four things: the line goes, the step is crossed off, the panel closes and
-you land in that session's tab. One tap for all four would be a mis-tap you
-could not take back, and the highlight is the confirmation — a sentence
-restating the line the arrow is sitting next to was not.
+**arms** it — the arrow lights up and a **send box opens under that row**,
+carrying the Send button and the two pickers below; tapping the arrow again
+puts it down. Send then does four
+things: the line goes, the step is crossed off, the panel closes and you land
+in that session's tab. One tap for all four would be a mis-tap you could not
+take back, and the highlight is the confirmation — a sentence restating the
+line the arrow is sitting next to was not.
+
+The box sits **under the line it would send**, not at the foot of the panel.
+It used to be a strip down beside Save, which on a phone put the confirmation
+for handing a line over a screen away from the line, with nothing on it saying
+which one.
+
+**A note can ride with it.** The box carries a field for anything to send
+alongside — "the select is the one on the left" — and it goes on the *same*
+line as the step rather than as a second message, for the reason two messages
+never work here: the second lands glued to the first. It is cleared once the
+step has gone, where the pickers stay: a note belongs to the one thing it was
+written for, and finding it still sitting there on the next step is how it
+gets sent twice.
+
+**Model and effort** are pickers in that box, both starting at *leave as is*.
+A running session's model cannot be changed by a flag it was not started with —
+`--model` and `--effort` only apply at startup — so a pick is typed into the
+session as its own slash command, `/model sonnet` then `/effort xhigh`, each on
+its own line and both ahead of the step, which is what makes the step run on
+what was picked. If either line does not submit (something else has the
+keyboard in that tab) the step is **not** sent after it, because a step typed
+onto the end of an unsent `/model` line is one line that is neither. Worth
+knowing before picking: claude saves both as the default for new sessions, so
+this is not scoped to the conversation it is typed into — the box says so.
 
 A group's own arrow **stands for its next step**: picking either lights both,
 because they are one choice. A crossed-off line cannot be sent at all — put it
@@ -1307,7 +1332,25 @@ back first, so that struck-through means one thing rather than two.
 
 The "I also changed the list" note rides on the *same message* as the step
 rather than chasing it — two lines into one input box is how the second ends up
-glued to the first.
+glued to the first. It rides on every send rather than being offered as a
+choice: a session about to act on a step is exactly who wants to know the plan
+around it moved, and by the time anything can be sent there is nothing unsaved
+left to keep quiet about — which is the next rule.
+
+**Nothing can be sent while the panel is holding unsaved work.** The arrows go
+down, and the line above the list says which change is not on disk and that
+Save or Revert will clear it. The reason is what a step *is*: a line typed into
+a session, which then goes and reads the list for itself. Send a step off a
+list that exists only in this browser and the two are describing different
+plans — the session is working from the file, and the file has never heard of
+it.
+
+**Unsaved work does not follow you between the four tabs.** Leaving one asks,
+and answering yes throws the change away rather than carrying it along. It used
+to carry: an edit left on Memory sat in a variable no tab switch touched, so
+you could meet it again much later with no memory of making it, and Save from
+another tab would write it. The tab close asks the same question for the same
+reason.
 
 **An item can be an ordered group of steps.** From a terminal that is
 `bb roadmap add "rework the picker" --step "widen the select" --step "then
@@ -1378,6 +1421,24 @@ twice.
 existed — mis-filed, duplicated, aimed at the wrong project. It takes the row
 and leaves the reason in the log. The template CLAUDE.md tells sessions that
 this is the only case for it; anything that was a real bug gets closed.
+
+**Send to Claude** hands one bug to the session running there, from the same
+box the roadmap opens under a step — the same Model and Effort pickers, the
+same field for anything to send with it — opened under the report instead.
+
+What goes over is **a number and an instruction, never a copy of the report**.
+The line asks the session to run `bb bug show N` for the area, the repro,
+expected against actual and the notes so far, and tells it to close the bug
+with `bb bug fix N "what fixed it"` when it is done. That is deliberate: the
+tracker is the copy that stays current, and a report pasted into a
+conversation starts going stale the moment anybody adds a note to it — the
+session would then be working from the paste while everything else here reads
+the file. One number cannot drift. It also means a bug that has grown a long
+analysis costs the same to hand over as a one-line report.
+
+Sending is **written into the tracker's log** as `sent`, because "was this
+ever handed to a session, and when?" is a tracker question. It is not a status
+change: sent is not fixed, and the bug stays open until somebody closes it.
 
 The list **sorts** by severity, newest, oldest, recently changed or title,
 from the same bar shape the log's filters use. Open before closed is not one

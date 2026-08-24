@@ -808,7 +808,45 @@ def next_step(row):
     return None
 
 
-def send(project, item_id, step=None, sessions=(), also_told=False):
+# What the panel may ask a session to switch to, as tables rather than as
+# strings passed through. Everything the web UI can make this container run is
+# a lookup here for the same reason the macros are — a select is only as
+# trustworthy as the request it produces, and the request comes off the wire.
+#
+# Both are aliases claude's own CLI accepts (`--model`, `--effort`); an empty
+# pick means "leave it alone" and types nothing at all.
+MODELS = ("opus", "sonnet", "haiku", "fable")
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+
+
+def _switch(session, sessions, model, effort):
+    """Type /model and /effort ahead of a step, when the panel asked for them.
+
+    Returns None when there is nothing to do or it all landed, and the failed
+    tell otherwise. Failing matters more than it looks: `tell` leaves a line it
+    could not submit sitting in the input box, so carrying on would type the
+    step onto the end of an unsent `/model opus` and hand over one line that is
+    neither. So the first one that does not land stops the send.
+
+    These are the session's own slash commands, which is the only door there
+    is — claude has no way in from outside the terminal it sits in, and a
+    running session's model cannot be changed by a flag it was not started
+    with. Worth knowing about them: claude saves both as the default for new
+    sessions, so this is not scoped to the conversation it is typed into.
+    """
+    for cmd, val, table in (("/model", model, MODELS), ("/effort", effort, EFFORTS)):
+        if not val:
+            continue
+        if val not in table:
+            return {"error": f"not a {cmd[1:]} this can set: {val}"}
+        r = tell(session, f"{cmd} {val}", sessions)
+        if r.get("error") or not r.get("sent"):
+            return r | {"switching": cmd[1:]}
+    return None
+
+
+def send(project, item_id, step=None, sessions=(), also_told=False,
+         model=None, effort=None, note=""):
     """Hand one step to the running Claude session and mark it sent.
 
     Marked only when it actually went: a line left sitting in the input box
@@ -865,9 +903,22 @@ def send(project, item_id, step=None, sessions=(), also_told=False):
     # One message, not two. Saving the list and sending a step both want to
     # say something, and two lines racing into the same input box is how the
     # second one ends up appended to the first. So the note rides along.
+    # The operator's own words for this send, if they wrote any. Ahead of the
+    # "and the list moved" rider and behind the step itself: it is about this
+    # step, where the rider is about everything else.
+    note = _flat(_clean(note or "")) if note else ""
+    if note:
+        text += f"  (From the operator, with this step: {note})"
     extra = changed_line(also_told) if isinstance(also_told, dict) else ""
     line = text + (f"  (Also: {extra[0].lower()}{extra[1:]})" if extra else "")
-    r = tell(tmux_name("claude-" + project), line, sessions)
+    session = tmux_name("claude-" + project)
+    # The switch goes first and on its own line: /model takes effect for the
+    # turn after it, so putting it in front of the step is what makes the step
+    # run on the model that was picked.
+    failed = _switch(session, sessions, model, effort)
+    if failed is not None:
+        return failed
+    r = tell(session, line, sessions)
     if r.get("error") or not r.get("sent"):
         return r
     with _lock:

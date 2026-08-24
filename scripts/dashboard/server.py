@@ -1566,7 +1566,8 @@ import signin                                                    # noqa: E402
 # two helpers it needs, nothing reaching back.
 import bugs                                                      # noqa: E402
 
-bugs.configure(write_json=write_json, state=STATE)
+bugs.configure(write_json=write_json, state=STATE, tell=notify.tell,
+               tmux_name=tmux_name)
 
 # ---- the memory book -------------------------------------------------------
 # What Claude remembers about each project, read and edited from the projects
@@ -2155,7 +2156,9 @@ class Handler(BaseHTTPRequestHandler):
             r = todo.add(name, field(req, "text"), steps=field_list(req, "steps"))
         elif act == "send":
             r = todo.send(name, req.get("id"), req.get("step"), live,
-                          also_told=todo.unsaved(name) if req.get("tell") else False)
+                          also_told=todo.unsaved(name) if req.get("tell") else False,
+                          model=field(req, "model"), effort=field(req, "effort"),
+                          note=field(req, "note"))
             if r.get("sent") and req.get("tell"):
                 todo.mark_told(name)
         elif act == "edit":
@@ -2224,6 +2227,17 @@ class Handler(BaseHTTPRequestHandler):
                                 note=field(req, "note"))
         elif act == "remove":
             r = bugs.remove(name, req.get("id"), why=field(req, "why"))
+        elif act == "send":
+            r = bugs.send(name, req.get("id"),
+                          [s["name"] for s in tmux_sessions()],
+                          model=field(req, "model"), effort=field(req, "effort"),
+                          note=field(req, "note"))
+            if r.get("error"):
+                return self._json(r, 400)
+            # The send's own answer rides along with the fresh list: whether
+            # the line landed is the whole question, and the tab has to be
+            # able to say so rather than quietly redrawing as if it had.
+            return self._json(r | bugs.payload(name))
         elif act == "history":
             return self._json({"history": bugs.history(
                 name, limit=req.get("limit"), since=req.get("since"),

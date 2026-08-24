@@ -113,24 +113,40 @@ ok(items.every(i => i.can), 'with a session running, the arrows are live');
 // An arrow arms Send; it does not fire it. Sending does four things at once —
 // the line goes, the step is crossed off, the panel closes and you land in
 // that tab — and one tap for all four is a mis-tap you cannot take back.
-ok(await page.$eval('#todoGo', e => e.disabled)
-   && await page.$eval('#todoAlso', e => e.disabled),
-   'with nothing armed, Send and its checkbox are dead');
+ok(await page.$('.sendbox') === null,
+   'with nothing armed there is no send box at all');
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
-await page.waitForFunction(() => !document.getElementById('todoGo').disabled);
+await page.waitForSelector('.sendbox');
 ok((await open()).find(i => i.id === mine.id).sel,
    'picking an arrow highlights it — that is the whole confirmation');
-ok(!await page.$eval('#todoAlso', e => e.disabled),
-   '...and offers to save the rest, because the list has changes nobody was told about');
+// Under the row it would send, not at the foot of the panel: the confirmation
+// for handing a line over belongs beside the line, which on a phone is the
+// difference between reading it and scrolling for it.
+ok(await page.$eval('.sendbox', b =>
+     b.previousElementSibling?.classList.contains('todo')
+     && b.previousElementSibling.dataset.id === b.closest('.grp')
+          .querySelector('.todo').dataset.id),
+   '...and the box opens directly under that row');
+ok(await page.$('#todoAlso') === null,
+   '...and asks nothing about saving, because nothing can be unsaved by here');
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
-await page.waitForFunction(() => document.getElementById('todoGo').disabled);
+await page.waitForFunction(() => !document.querySelector('.sendbox'));
 ok(!(await open()).find(i => i.id === mine.id).sel,
    'picking it again puts it down');
 ok(!read().projects.alpha.find(r => String(r.id) === mine.id).sent,
    '...having sent nothing');
 
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
-await page.waitForFunction(() => !document.getElementById('todoGo').disabled);
+await page.waitForSelector('.sendbox');
+// Both pickers start on "leave as is", so an ordinary send types no slash
+// command at all — the session keeps whatever it was started with.
+ok(await page.$eval('#sendModelSel', e => e.value) === ''
+   && await page.$eval('#sendEffortSel', e => e.value) === ''
+   && await page.$eval('#sendNote', e => e.hidden),
+   'model and effort default to leaving the session alone');
+// The note field rides with the step on the same line, so a session gets one
+// message rather than a step and then an afterthought glued behind it.
+await page.fill('#sendMore', 'the select is the one on the left');
 await page.click('#todoGo');
 // Three things: the line goes, the step is crossed, and the session's tab
 // opens. The notebook stays where it is — it is a tab now, and a tab is not
@@ -144,6 +160,8 @@ ok(pane.includes('delete a project from the dashboard'),
    '...because it really went into the session');
 ok(/\(Also: the shared to-do list/.test(pane),
    '...with the note about the other changes on the same line, not racing it');
+ok(/From the operator, with this step: the select is the one on the left/.test(pane),
+   '...and the operator\'s own note with it, on that same line too');
 const flags = read().unsaved?.alpha || {};
 ok(flags.todo === false && flags.memory === false,
    '...and the panel counts as told, since it was told');
@@ -161,6 +179,92 @@ ok(still.sent && still.can,
    + 'first go rather than a lock on the second');
 ok(items.findIndex(i => i.id === mine.id) === wasAt,
    '...in the place it was, because the order is the record');
+
+// ---- switching the session on the way in --------------------------------
+// A running session's model cannot be changed by a flag it was not started
+// with, so the picks go in as claude's own slash commands, ahead of the step
+// and on their own lines. The fixture's session is a shell, so what lands in
+// the pane is the literal text — which is exactly what wants checking: the
+// order, and that the step is not glued onto the end of a /model line.
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'C-u']);
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'clear']);
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
+await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
+await page.waitForSelector('.sendbox');
+await page.selectOption('#sendModelSel', 'sonnet');
+await page.selectOption('#sendEffortSel', 'xhigh');
+ok(!await page.$eval('#sendNote', e => e.hidden)
+   && /default for new sessions/.test(await page.$eval('#sendNote', e => e.textContent)),
+   'picking one says out loud that claude keeps it as the new default');
+await page.click('#todoGo');
+await page.waitForFunction(() => !document.querySelector('.sendbox'),
+                           null, { timeout: 20000 });
+const switched = tmuxCapture('claude-alpha');
+ok(/\/model sonnet/.test(switched) && /\/effort xhigh/.test(switched),
+   'the picks go in as /model and /effort');
+ok(switched.indexOf('/model sonnet') < switched.indexOf('/effort xhigh'),
+   '...model first, then effort');
+ok(!/\/model sonnet.*delete a project/s.test(switched.split('\n')
+     .find(l => l.includes('/model sonnet')) || ''),
+   '...each on its own line, never glued to the step');
+// A send with nothing picked types no slash command at all — the pickers hold
+// their choice for the next one, but "leave as is" has to stay possible.
+// Back into the notebook first: sending lands you in the session's tab.
+await page.click(`${row('alpha')} [data-m]`);
+await page.waitForSelector('#todoList .todo', { timeout: 20000 });
+sendPicksReset: {
+  await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
+  await page.waitForSelector('.sendbox');
+  ok(await page.$eval('#sendModelSel', e => e.value) === 'sonnet',
+     'the box reopens on the last pick rather than forgetting it');
+  ok(await page.$eval('#sendMore', e => e.value) === '',
+     '...but not on the last note, which belonged to the step it went with');
+  await page.selectOption('#sendModelSel', '');
+  await page.selectOption('#sendEffortSel', '');
+  ok(await page.$eval('#sendNote', e => e.hidden),
+     '...and putting both back to "leave as is" takes the warning away');
+  await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
+  await page.waitForFunction(() => !document.querySelector('.sendbox'));
+}
+
+// ---- unsaved work blocks a send, and does not follow you to another tab --
+// Two rules with one reason: a step is a line typed into a session, and the
+// session then goes and reads the list. Handing over a step the server has
+// never heard of, off a list that only exists in this browser, is how the two
+// end up describing different plans.
+const tab = v => `.nbtabs button[data-v="${v}"]`;
+await page.fill('#todoText', 'staged, deliberately not saved');
+await page.click('#todoAdd');
+await page.waitForFunction(() => [...document.querySelectorAll('#todoList .txt')]
+  .some(t => t.textContent.includes('staged, deliberately')));
+ok(await page.$$eval('#todoList .todo .go', gs => gs.every(g => g.disabled)),
+   'an unsaved change puts every arrow down');
+ok(/not saved/.test(await page.$eval('#todoHint', h => h.textContent)),
+   '...and the line above the list says which, and what to do about it');
+ok((await page.$eval('#todoList .todo .go', g => g.title)).includes('save or revert'),
+   '...and so does the arrow itself');
+// dispatched rather than clicked: a real click cannot reach a disabled
+// button, and what wants proving is that even one that did lands nowhere.
+await page.dispatchEvent(`#todoList .todo[data-id="${mine.id}"] .go`, 'click');
+await page.waitForTimeout(200);
+ok(await page.$('.sendbox') === null,
+   '...and no box opens, because there is nothing it could honestly send');
+
+const nd = page.dialogs.length;
+await page.click(tab('memory'));
+await page.waitForFunction(() => !document.querySelector('[data-view="memory"]').hidden,
+                           null, { timeout: 15000 });
+ok(page.dialogs.length === nd + 1 && /thrown away/.test(page.dialogs.at(-1)),
+   'leaving the tab asks before throwing the unsaved change away');
+ok(!read().projects.alpha.some(r => /staged, deliberately/.test(r.text)),
+   '...and it never reached disk, which is what "unsaved" meant');
+await page.click(tab('roadmap'));
+await page.waitForFunction(() => !document.querySelector('[data-view="roadmap"]').hidden);
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0);
+ok(!(await open()).some(i => /staged, deliberately/.test(i.text)),
+   '...and coming back, the change is gone rather than waiting where it was left');
+ok((await open()).some(i => i.can),
+   '...so the arrows are live again');
 
 // ---- what a session is told --------------------------------------------
 const prompt = execFileSync(BB, ['roadmap', '--prompt'],
@@ -258,14 +362,14 @@ ok((await open()).find(i => i.step === '-1'
      && i.text === 'rework the picker').can,
    '...and the group\'s own arrow stands for it');
 await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="-1"] .go`);
-await page.waitForFunction(() => !document.getElementById('todoGo').disabled);
+await page.waitForSelector('.sendbox');
 items = await open();
 ok(items.find(i => i.text === 'rework the picker').sel
    && items.find(i => i.text === 'widen the select').sel
    && !items.find(i => i.text === 'then re-measure it').sel,
    'picking the group lights the group and its next step, and nothing else');
 await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="-1"] .go`);
-await page.waitForFunction(() => document.getElementById('todoGo').disabled);
+await page.waitForFunction(() => !document.querySelector('.sendbox'));
 
 // ---- the shelf -----------------------------------------------------------
 // The state between "do this" and "we are not doing this". It is an item's
@@ -300,6 +404,9 @@ await page.click(`#todoList .todo[data-id="${c1.id}"][data-step="-1"] .x`);
 await page.waitForFunction(id => !document.querySelector(
   `#todoList .grp:has(.todo[data-id="${id}"])`)?.classList.contains('shelved'),
   c1.id, { timeout: 10000 });
+// Saved before asking whether it is live: taking something off the shelf is
+// itself an unsaved change, and an unsaved change puts every arrow down.
+await saveList();
 ok((await open()).find(i => i.id === c1.id && i.step === '-1').can,
    'the same button takes it off the shelf — the one control here that undoes '
    + 'itself, which is the whole difference between it and the bin');
@@ -513,10 +620,10 @@ ok(await page.$$eval('#todoList .hist', hs => hs.length) >= capped,
    '...and widening it to all time brings back at least as much');
 
 // The log is a view, not a mode you can edit from: the add row and the send
-// strip go while it is up, so nothing is armed against a list you cannot see.
+// box go while it is up, so nothing is armed against a list you cannot see.
 ok(await page.$eval('#todoAdd', b => !b.checkVisibility())
-   && await page.$eval('#todoAsk', el => el.hidden),
-   'the add row and the send strip are put away while the log is up');
+   && await page.$('.sendbox') === null,
+   'the add row and the send box are put away while the log is up');
 ok(await page.$eval('#todoOrder', b => b.hidden),
    '...and so is Reorder, since there is nothing here to arrange');
 await page.click('#todoLog');
@@ -913,9 +1020,12 @@ ok(reopened.filter(i => i.id === plainId && i.step !== '-1').length === 2
 // nobody rearranges a list at the same moment they are sending from it.
 await page.$eval('#todoOrder', b => b.scrollIntoView({block: 'center'}));
 await page.click('#todoOrder');
-await page.waitForFunction(() => !document.getElementById('todoAsk').checkVisibility(),
+// The arrows are what arms a send, and the box only exists under an armed
+// one — so in this mode there is nothing to send with and nothing to send.
+await page.waitForFunction(() => !document.querySelector('#todoList .todo .go'),
                            null, { timeout: 15000 });
-ok(await page.$$eval('#todoList .todo .go', g => g.length === 0)
+ok(await page.$('.sendbox') === null
+   && await page.$$eval('#todoList .todo .go', g => g.length === 0)
    && await page.$$eval('#todoList .todo .mv', m => m.length > 0),
    'reordering swaps the row controls rather than crowding in beside them');
 ok(await page.$$eval('#todoList .addstep', a => a.length === 0),
@@ -1002,8 +1112,8 @@ page.errors = [];
 
 await post({ action: 'cross', project: 'alpha', id: Number(plainId), step: 0, on: false });
 await page.click('#todoOrder');
-await page.waitForFunction(() => document.getElementById('todoAsk').checkVisibility());
-ok(true, 'and the send controls come back');
+await page.waitForFunction(() => !!document.querySelector('#todoList .todo .go'));
+ok(true, 'and the send arrows come back');
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0);
 
@@ -1090,11 +1200,25 @@ await phone.goto(URL);
 await ready(phone);
 await phone.click(`${row('alpha')} [data-m]`);
 await phone.waitForSelector('#todoList .todo', { timeout: 20000 });
+// The head reads the same way the other three tabs do: the view's own summary
+// and its History first, then the row of things that change the list.
+ok(await phone.evaluate(() => {
+     const head = document.querySelector('[data-view="roadmap"] .nbhead');
+     const add = document.querySelector('.todoadd');
+     return !!head && !!add
+       && head.contains(document.getElementById('todoHint'))
+       && head.contains(document.getElementById('todoLog'))
+       && add.contains(document.getElementById('todoAdd'))
+       && add.contains(document.getElementById('todoOrder'))
+       && head.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING;
+   }),
+   'the summary and History sit above the add row, with Add and Reorder beside the field');
 await phone.click('.pane .nb .nbtabs [data-v="memory"]'); // every control on screen at once
 await phone.waitForFunction(() => document.getElementById('memList').checkVisibility());
 const wide = await phone.evaluate(() => {
   const out = [];
-  for (const sel of ['.modal .box', '#todoList', '#memList', '.modal .foot', '.todoask'])
+  for (const sel of ['.modal .box', '#todoList', '#memList', '.modal .foot',
+                     '.todoadd', '.sendbox'])
     for (const el of document.querySelectorAll(sel))
       if (el.scrollWidth > el.clientWidth + 1)
         out.push(sel + ' ' + el.scrollWidth + '>' + el.clientWidth);
