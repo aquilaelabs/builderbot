@@ -52,9 +52,16 @@ if [ -z "$bus" ]; then
     log "gpu display: nvidia-smi reported no GPU — skipping"
     exit 0
 fi
-bus="${bus#0000}"; bus="${bus#:}"
-IFS=':.' read -r b d f <<< "$bus"
-busid="PCI:$((16#${b:-0})):$((16#${d:-0})):$((16#${f:-0}))"
+# Four fields, not three: nvidia-smi's form is domain:bus:device.function
+# (00000000:01:00.0). The first version stripped a fixed "0000" prefix, so
+# the eight-digit domain survived, the split landed "00.0" in one field, and
+# $((16#00.0)) took the whole hook down before Xorg ever started.
+IFS=':.' read -r _domain b d f <<< "$bus"
+if [ -z "${f:-}" ]; then
+    warn "gpu display: could not parse PCI bus id '${bus}' — skipping"
+    exit 0
+fi
+busid="PCI:$((16#${b})):$((16#${d})):$((16#${f}))"
 
 # The module path matters: the injected server module is not where Debian's
 # Xorg looks by default, so the search path is told about it explicitly.
