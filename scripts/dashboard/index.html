@@ -616,7 +616,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
    `overscroll-behavior: contain`, which is a scroll container that cannot
    scroll refusing to pass the gesture on. A finger landing on the list — most
    of the panel — did nothing at all, while the gaps between the rows worked. */
-.nb{display:block}
+.nb{display:block;max-width:var(--doc-w)}
+/* Every band of the notebook shares it, so the tab strip, the rows, the
+   banner and the footer all end at the same edge. */
+.nb > *{max-width:var(--doc-w)}
 .nb h3{display:none}
 .nb #todoList,.nb #memList{max-height:none;overflow:visible;
   overscroll-behavior:auto}
@@ -839,6 +842,14 @@ body.dragging .tab .lbl{cursor:grabbing}
 .pane iframe{flex:1;border:0;width:100%;display:block;background:#2b2b2b}
 .pane .doc{overflow:auto;background:var(--bg);padding:12px;
   -webkit-overflow-scrolling:touch}
+/* A document has a reading width. Left to fill an ultrawide pane, every row
+   here becomes a name at one end of two thousand pixels and the control that
+   acts on it at the other — the bin, the Revert, the version pill — with the
+   eye travelling the whole way between them. Capped and left-aligned rather
+   than centred: the pane's own bar is at this edge, and the content should
+   start where the label naming it does. */
+.pane .doc > *{max-width:var(--doc-w);}
+:root{--doc-w:1080px}
 /* Every child of the stack occupies the whole of it, and one is visible. See
    paneStack(): the frames behind stay loaded and stay the same size. */
 .pane .stack{position:relative;flex:1;min-height:0}
@@ -5920,9 +5931,12 @@ function drawFindingsSum(per){
     const lv = per[p];
     const pills = Object.keys(lv).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
       .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l]}</span>`).join("");
-    return `<div class="row${p ? " go" : ""}"${p ? ` data-ana="${esc(p)}"` : ""}
+    // Stacked, like the project rows above: the pills are about the name, and
+    // beside it in a sidebar they crowded a long project name off its own row.
+    return `<div class="row stack2${p ? " go" : ""}"${p ? ` data-ana="${esc(p)}"` : ""}
       ${p ? `title="open ${esc(p)}'s notebook on its Analysis view"` : ""}>
-      <div class="grow name">${esc(p || "unattributed paths")}</div>${pills}</div>`;
+      <div class="grow name">${esc(p || "unattributed paths")}</div>
+      <div class="acts">${pills}</div></div>`;
   }).join("")
   : `<div class="empty">no findings in the current reports — which is not the
      same as every project passing; SARIF records findings, not coverage</div>`)
