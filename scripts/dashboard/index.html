@@ -2063,7 +2063,15 @@ function drawPanes(){
       // Documents are not kept: they redraw from state in a millisecond, and
       // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
-    if (t.kind !== "term") el.id = "doc" + i;
+    // The id names "the document being shown in pane i", so it must name one
+    // node. A hidden document left in the stack (the notebook parks there)
+    // used to keep it, and getElementById returns the first in DOM order —
+    // so packages and findings rendered into a node nobody could see and the
+    // pane sat blank.
+    if (t.kind !== "term"){
+      [...st.children].forEach(c => { if (c !== el && c.id) c.removeAttribute("id"); });
+      el.id = "doc" + i;
+    }
     evictFrames(st);
     // Shown again after being hidden: xterm sizes itself from a resize event,
     // and one that was laid out behind another frame may have missed one. One

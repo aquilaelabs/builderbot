@@ -28,8 +28,16 @@ ok(await page.$eval('.card[data-card="tools"] #bPkgs', b => !b.hidden)
    'each card carries its own button');
 
 // ---- the tab -----------------------------------------------------------
+// Through the notebook first: a document that parks in the pane's stack used
+// to keep the pane's doc id, and the packages view then rendered into that
+// hidden node — a blank tab. The id has one owner now: whatever is shown.
+await page.click('#projects .row:has(.name:text-is("alpha")) [data-m]');
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo, #todoList .hint').length > 0,
+                           { timeout: 20000 });
 await page.click('#bPkgs');
 await page.waitForFunction(() => document.querySelectorAll('.doc .pkg:not(.img)').length > 0);
+ok(await page.$$eval('.pkg', els => els.some(e => e.checkVisibility())),
+   'packages render where they can be seen, even after another document parked in the pane');
 ok(await page.evaluate(() => tabs.some(t => t.kind === 'packages')
      && tabOf(panes[active])?.kind === 'packages'),
    'Additional packages opens a tab, and lands on it');
