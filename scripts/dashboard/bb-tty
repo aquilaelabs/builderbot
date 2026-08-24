@@ -245,11 +245,11 @@ case "$target" in
         # a note left in a conversation dies with it, and one left here is
         # read by the next session without anybody remembering to mention it.
         # Only the open items, and nothing at all when there are none.
-        # Named rather than inferred: `bb todo` takes the project from the
+        # Named rather than inferred: `bb roadmap` takes the project from the
         # working directory, and this is not run from one. An older image
         # whose bb has no `todo` prints usage and fails, which is caught here
         # and simply means no block.
-        todo_block="$(BB_TODO_PROJECT="$proj" bb todo --prompt 2>/dev/null || true)"
+        todo_block="$(BB_ROADMAP_PROJECT="$proj" bb roadmap --prompt 2>/dev/null || true)"
         # The bug tracker rides in the same block: open bugs by number and
         # severity, with the fields on disk behind `bb bug show`. An older
         # image whose bb has no `bug` prints usage and fails, which is caught

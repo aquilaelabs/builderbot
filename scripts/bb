@@ -37,10 +37,12 @@ bb — BuilderBot helper
   bb claude-md --init    create a CLAUDE.md here from the shipped template
   bb lint [PATH]         lint the infrastructure files a repo carries: shell
                          scripts, Dockerfiles, GitHub workflows, compose, XML
-  bb todo                this project's roadmap (add/done/rm/shelve/history)
-  bb todo add "..." [--step "..."]   an item, or an ordered group of steps
+  bb roadmap             this project's roadmap (add/done/rm/shelve/history)
+  bb roadmap add "..." [--step "..."]   an item, or an ordered group of steps
   bb bug                 this project's bug tracker: open bugs, newest first
   bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
+  bb bug na N ["why"]    it was real and stopped applying — the feature went
+  bb bug rm N ["why"]    delete a report that should not have been filed
   bb history [--find X]  one search over the notebook: roadmap, bugs and memory logs
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
@@ -590,11 +592,14 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
 # The project is the directory this is run in, not an argument: a session is
 # already in its project, and asking it to name one is asking it to get one
 # wrong.
-cmd_todo() {
+cmd_roadmap() {
     local py
+    # todo.py, still: the file is where the roadmap has always been implemented
+    # and renaming it would move code the running image serves by absolute
+    # path. The command is what the operator reads, and that is `bb roadmap`.
     py="$(dirname "$(readlink -f "$0")")/dashboard/todo.py"
     [ -f "$py" ] || die "todo.py is missing from this image"
-    local proj="${BB_TODO_PROJECT:-}"
+    local proj="${BB_ROADMAP_PROJECT:-${BB_TODO_PROJECT:-}}"
     if [ -z "$proj" ]; then
         local here; here="$(pwd -P)"
         case "$here" in
@@ -635,7 +640,7 @@ def show():
     if b:
         print(f"  [batch open — {b['changes']} change"
               f"{'' if b['changes'] == 1 else 's'} unrecorded; "
-              "bb todo commit, or revert]")
+              "bb roadmap commit, or revert]")
     if not rows:
         print(f"nothing on {proj}'s list")
         return
@@ -669,14 +674,14 @@ if op in ("list", "ls"):
 elif op == "--prompt":
     sys.stdout.write(todo.prompt(proj))
 elif op == "add":
-    # `bb todo add "title" --step "..." --step "..."` — a change that needs
+    # `bb roadmap add "title" --step "..." --step "..."` — a change that needs
     # things done in an order is one item with steps, not several items that
     # can be handed over backwards.
     words, steps, i = [], [], 0
     while i < len(rest):
         if rest[i] == "--step":
             # A dangling --step used to fall through and become part of the
-            # title, so `bb todo add "x" --step` quietly made an item called
+            # title, so `bb roadmap add "x" --step` quietly made an item called
             # "x --step" instead of saying what was missing.
             if i + 1 >= len(rest):
                 print("[builderbot] ERROR: --step needs the step after it",
@@ -694,7 +699,7 @@ elif op == "done":
     # find out what is left, so nothing finished stays on it, and the history
     # is where the words live afterwards.
     if not rest:
-        print("usage: bb todo done <n>", file=sys.stderr); sys.exit(1)
+        print("usage: bb roadmap done <n>", file=sys.stderr); sys.exit(1)
     r = todo.tick(proj, rest[0], by="claude"); bail(r)
     print(f"done {rest[0]}: {r['item']['text']}")
 elif op in ("rm", "remove"):
@@ -702,7 +707,7 @@ elif op in ("rm", "remove"):
     # only thing that stops the next reader putting it straight back is a note
     # saying why it went.
     if not rest:
-        print("usage: bb todo rm <n> [\"why it is going\"]", file=sys.stderr); sys.exit(1)
+        print("usage: bb roadmap rm <n> [\"why it is going\"]", file=sys.stderr); sys.exit(1)
     r = todo.remove(proj, rest[0], by="claude", why=" ".join(rest[1:])); bail(r)
     print(f"removed {rest[0]}")
 elif op in ("begin", "commit", "revert"):
@@ -727,7 +732,7 @@ elif op in ("mv", "move"):
     # item under it, and deleting and retyping to express that loses the words
     # and the record both.
     if len(rest) < 2 or rest[1] not in ("up", "down"):
-        print("usage: bb todo mv <n> up|down", file=sys.stderr); sys.exit(1)
+        print("usage: bb roadmap mv <n> up|down", file=sys.stderr); sys.exit(1)
     r = todo.move(proj, rest[0], dir=-1 if rest[1] == "up" else 1, by="claude")
     bail(r)
     print(f"moved {rest[0]} {rest[1]}")
@@ -739,7 +744,7 @@ elif op == "shelve":
     # *off* is reversing a decision the operator made for reasons the session
     # was not told, so it is theirs, and one tap in the panel.
     if not rest:
-        print("usage: bb todo shelve <n>", file=sys.stderr); sys.exit(1)
+        print("usage: bb roadmap shelve <n>", file=sys.stderr); sys.exit(1)
     r = todo.shelve(proj, rest[0], True, by="claude"); bail(r)
     print(f"shelved {rest[0]} — say in your reply why, the operator unshelves it")
 elif op == "edit":
@@ -747,15 +752,15 @@ elif op == "edit":
     # Correcting it is better than working around it, and the history keeps
     # what it used to say.
     if len(rest) < 2:
-        print("usage: bb todo edit <n> \"the new wording\"", file=sys.stderr); sys.exit(1)
+        print("usage: bb roadmap edit <n> \"the new wording\"", file=sys.stderr); sys.exit(1)
     r = todo.edit(proj, rest[0], " ".join(rest[1:]), by="claude"); bail(r)
     print(f"reworded {rest[0]}")
 elif op == "info":
     # The technical half, attached where the work is: which files, which
-    # functions, the approach. `bb todo info N "..."` for an item,
-    # `bb todo info N M "..."` for step M of it; "" clears.
+    # functions, the approach. `bb roadmap info N "..."` for an item,
+    # `bb roadmap info N M "..."` for step M of it; "" clears.
     if len(rest) < 2:
-        print("usage: bb todo info <n> [<step>] \"...\"", file=sys.stderr)
+        print("usage: bb roadmap info <n> [<step>] \"...\"", file=sys.stderr)
         sys.exit(1)
     if len(rest) >= 3 and rest[1].isdigit():
         r = todo.set_info(proj, rest[0], " ".join(rest[2:]),
@@ -795,7 +800,7 @@ elif op == "step":
                       dir=-1 if srest[2] == "up" else 1, by="claude"); bail(r)
         print(f"moved step {srest[1]} of {srest[0]} {srest[2]}")
     else:
-        print("usage: bb todo step add <n> \"...\" | step edit <n> <step> \"...\""
+        print("usage: bb roadmap step add <n> \"...\" | step edit <n> <step> \"...\""
               " | step rm <n> <step> [\"why\"] | step mv <n> <step> up|down",
               file=sys.stderr)
         sys.exit(1)
@@ -827,7 +832,7 @@ elif op in ("history", "log"):
         elif a in ("--find", "-f") and i + 1 < len(rest):
             find = rest[i + 1]; i += 2
         else:
-            print("usage: bb todo history [-n N|--all] [--since 7d|YYYY-MM-DD] "
+            print("usage: bb roadmap history [-n N|--all] [--since 7d|YYYY-MM-DD] "
                   "[--find TEXT]", file=sys.stderr)
             sys.exit(1)
     h = todo.history(proj, limit=limit, since=since, find=find)
@@ -843,7 +848,7 @@ elif op in ("history", "log"):
         if e.get("why"):
             print(f"{'':>32}why: {e['why']}")
 else:
-    print("usage: bb todo [list|add TEXT [--step ...]|edit N TEXT|"
+    print("usage: bb roadmap [list|add TEXT [--step ...]|edit N TEXT|"
           "info N [M] TEXT|step add|edit|rm|mv|info ...|mv N up|down|done N|"
           "rm N [WHY]|shelve N|begin|commit|revert|"
           "history [-n N] [--since D] [--find TEXT]]",
@@ -855,12 +860,12 @@ PY
 cmd_history() {
     # One search over all three of the notebook's logs — roadmap, bugs, and
     # what the dashboard did to the memories — tagged by source and merged by
-    # time. `bb todo history` and `bb bug history` scope to one; this is for
+    # time. `bb roadmap history` and `bb bug history` scope to one; this is for
     # "when did anything here mention the picker?", which is a question about
     # the notebook and not about a tab of it.
     local dir
     dir="$(dirname "$(readlink -f "$0")")/dashboard"
-    local proj="${BB_TODO_PROJECT:-}"
+    local proj="${BB_ROADMAP_PROJECT:-${BB_TODO_PROJECT:-}}"
     if [ -z "$proj" ]; then
         local here; here="$(pwd -P)"
         case "$here" in
@@ -1085,20 +1090,69 @@ elif op == "edit":
     r = bugs.edit(proj, rest[0], by="claude", **{k: " ".join(rest[2:])})
     bail(r)
     print(f"updated {k} on #{rest[0]}")
-elif op in ("fix", "wontfix", "reopen"):
+elif op in ("rm", "remove"):
+    # For a report that should not exist — mis-filed, a duplicate, the wrong
+    # project. A bug that was real and is dealt with gets `fix` or `wontfix`,
+    # which keeps it; this does not, and says why in the log.
+    if not rest:
+        print("usage: bb bug rm <n> [\"why it should not have been filed\"]",
+              file=sys.stderr)
+        sys.exit(1)
+    r = bugs.remove(proj, rest[0], why=" ".join(rest[1:]), by="claude"); bail(r)
+    print(f"removed #{rest[0]} — closing keeps a bug, this does not")
+elif op in ("fix", "wontfix", "na", "reopen"):
     if not rest:
         print(f"usage: bb bug {op} <n> [\"note\"]", file=sys.stderr); sys.exit(1)
-    status = {"fix": "fixed", "wontfix": "wontfix", "reopen": "open"}[op]
+    status = {"fix": "fixed", "wontfix": "wontfix", "na": "na",
+              "reopen": "open"}[op]
     r = bugs.set_status(proj, rest[0], status,
                         note=" ".join(rest[1:]), by="claude")
     bail(r)
     print(f"#{rest[0]} {status}")
+elif op in ("history", "log"):
+    # The same filters `bb roadmap history` takes, because whoever learned one
+    # should not have to learn the other. `bb history` merges all three.
+    limit, since, find, i = 20, None, None, 0
+    while i < len(rest):
+        a = rest[i]
+        if a in ("-n", "--last") and i + 1 < len(rest):
+            limit = int(rest[i + 1]); i += 2
+        elif a == "--all":
+            limit = None; i += 1
+        elif a == "--since" and i + 1 < len(rest):
+            v = rest[i + 1]
+            if v.rstrip("d").isdigit():
+                since = int(time.time()) - int(v.rstrip("d")) * 86400
+            else:
+                try:
+                    since = int(time.mktime(time.strptime(v, "%Y-%m-%d")))
+                except ValueError:
+                    print(f"[builderbot] ERROR: not a date or a day count: {v}",
+                          file=sys.stderr)
+                    sys.exit(1)
+            i += 2
+        elif a in ("--find", "-f") and i + 1 < len(rest):
+            find = rest[i + 1]; i += 2
+        else:
+            print("usage: bb bug history [-n N|--all] [--since 7d|YYYY-MM-DD] "
+                  "[--find TEXT]", file=sys.stderr)
+            sys.exit(1)
+    h = bugs.history(proj, limit=limit, since=since, find=find)
+    if not h:
+        print(f"nothing in {proj}'s tracker matches that")
+    for e in h:
+        when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
+        print(f"  {when}  {e.get('by', ''):>6}  {e.get('act', ''):<9}"
+              f"  #{e.get('id')}  {e.get('text', '')}")
+        if e.get("note"):
+            print(f"{'':>30}note: {e['note']}")
 elif op == "--prompt":
     sys.stdout.write(bugs.prompt(proj))
 else:
     print("usage: bb bug [list|all|show N|add TITLE [--sev S] [--area ..] "
           "[--repro ..]|note N TEXT|edit N FIELD TEXT|fix N [NOTE]|"
-          "wontfix N [WHY]|reopen N]", file=sys.stderr)
+          "wontfix N [WHY]|na N [WHY]|reopen N|rm N [WHY]|"
+          "history [-n N] [--since D] [--find TEXT]]", file=sys.stderr)
     sys.exit(1)
 PY
 }
@@ -1775,7 +1829,9 @@ case "${1:-help}" in
     claude-md|claudemd) shift; cmd_claude_md "$@" ;;
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
-    todo)     shift; cmd_todo "$@" ;;
+    # `todo` still works: sessions started before the rename carry it in their
+    # prompt, and a live conversation should not break on a word change.
+    roadmap|todo) shift; cmd_roadmap "$@" ;;
     bug|bugs) shift; cmd_bug "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;

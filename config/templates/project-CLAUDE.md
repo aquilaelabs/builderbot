@@ -175,22 +175,24 @@ you should say so rather than guessing from a headless emulator.
 ## The roadmap
 
 Every project has a notebook in the dashboard — memory, roadmap, bugs, one
-tab each. The roadmap (it was called the to-do list) is the shared list of
-design work, and both you and the operator write it.
+tab each. The roadmap is the shared list of design work, and both you and the
+operator write it. (`bb todo` still works as an alias for `bb roadmap`, so a
+conversation that started before the rename does not break mid-task; use
+`bb roadmap`.)
 
 ```bash
-bb todo                      # what is on it
-bb todo add "..."            # put something on it
-bb todo done N               # finished it — off the list, into the log
-bb todo rm N ["why"]         # not doing it — same, and say why it went
-bb todo shelve N             # parked: keep it, not now — the operator unshelves
-bb todo mv N up|down         # move one up or down the list
-bb todo edit N "..."         # reword one
-bb todo info N [M] "..."     # attach the technical details to one, or step M
-bb todo step add N "..."     # give one a step; step edit N M "...", step rm N M
-bb todo begin                # working one out: commit writes one record of it
-bb todo commit               # ...or revert, which puts the list back
-bb todo history [-n N] [--since 7d] [--find TEXT]   # what changed, narrowed
+bb roadmap                      # what is on it
+bb roadmap add "..."            # put something on it
+bb roadmap done N               # finished it — off the list, into the log
+bb roadmap rm N ["why"]         # not doing it — same, and say why it went
+bb roadmap shelve N             # parked: keep it, not now — the operator unshelves
+bb roadmap mv N up|down         # move one up or down the list
+bb roadmap edit N "..."         # reword one
+bb roadmap info N [M] "..."     # attach the technical details to one, or step M
+bb roadmap step add N "..."     # give one a step; step edit N M "...", step rm N M
+bb roadmap begin                # working one out: commit writes one record of it
+bb roadmap commit               # ...or revert, which puts the list back
+bb roadmap history [-n N] [--since 7d] [--find TEXT]   # what changed, narrowed
 ```
 
 **The open items are already in your context.** They were appended to this
@@ -200,7 +202,7 @@ list; they are looking at the same one.
 
 Each carries a number — `#4` — and that number is the item's own, not its
 position: it is what the operator sees on the row in the dashboard and what
-`bb todo done 4` takes, and it survives the list being rearranged. Refer to
+`bb roadmap done 4` takes, and it survives the list being rearranged. Refer to
 one by it rather than by counting down the list. New items go on the end, so
 the numbers normally run down the page; a gap means something was removed and
 an item out of sequence was moved by hand.
@@ -237,14 +239,14 @@ which is the whole reason to have both shapes.
 
 Write the title as the goal in plain words, not as a summary of the work:
 somebody reading only that line should know what is being aimed at and what
-finishing it would look like. `bb todo add "make the picker usable on a
-phone" --step "..." --step "..."`, not `bb todo add "picker: select width +
+finishing it would look like. `bb roadmap add "make the picker usable on a
+phone" --step "..." --step "..."`, not `bb roadmap add "picker: select width +
 re-measure + regression pass"`. The steps carry the technical detail; the
 title is the reason they exist. If you cannot write the title without listing
 the steps, it is not one goal and should not be one group.
 
-**Write the details when you write the plan.** `bb todo info N "..."` on an
-item, `bb todo info N M "..."` on step M: which files, which functions, the
+**Write the details when you write the plan.** `bb roadmap info N "..."` on an
+item, `bb roadmap info N M "..."` on step M: which files, which functions, the
 approach — the technical half the title should not carry. They show under a
 fold on the row, travel with a step when the operator sends it, and appear in
 this block for the next session, which is the point: the session that works
@@ -282,13 +284,13 @@ one — a step describes a file that no longer exists, or an approach that was
 abandoned — reword or drop that step rather than working around it:
 
 ```bash
-bb todo edit 4 "the new wording"
-bb todo step edit 4 2 "...what step 2 should say now"
-bb todo step rm 4 2          # and step add 4 "..." to put one on the end
+bb roadmap edit 4 "the new wording"
+bb roadmap step edit 4 2 "...what step 2 should say now"
+bb roadmap step rm 4 2          # and step add 4 "..." to put one on the end
 ```
 
 Reordering too, when two steps turn out to be the wrong way round:
-`bb todo step mv 4 3 up`, and `bb todo mv 4 up` for the item's own place in
+`bb roadmap step mv 4 3 up`, and `bb roadmap mv 4 up` for the item's own place in
 the list. Both are covered by a batch, so `revert` puts them back.
 
 Say in your reply that you did it, and why. Every change either of you makes
@@ -298,18 +300,18 @@ where quietly rewriting somebody's plan goes unnoticed. That is the point:
 correct the list openly rather than leaving it describing work nobody is
 going to do.
 
-**When you drop something, say why in the command**: `bb todo rm 4 "the
+**When you drop something, say why in the command**: `bb roadmap rm 4 "the
 picker this described no longer exists"`. Nothing here can be undone, so that
 note is the only thing between a dropped line and somebody adding it straight
 back. It is kept with the entry and is searchable.
 
-**When you are working a plan out, open a batch first.** `bb todo begin`,
-then edit as much as you like, then `bb todo commit`. The changes land on the
+**When you are working a plan out, open a batch first.** `bb roadmap begin`,
+then edit as much as you like, then `bb roadmap commit`. The changes land on the
 list as you make them — the operator can watch, which is better than hiding
 your work until you are happy — but the *record* is written once, at commit,
 saying what changed rather than every step of getting there. Rewording the
 same step four times before you are satisfied is one entry, not four, and a
-log nobody can skim is a log nobody reads. `bb todo revert` puts the list back
+log nobody can skim is a log nobody reads. `bb roadmap revert` puts the list back
 as it was and writes nothing; it refuses if the operator has changed the list
 since you opened the batch, because putting your copy back would undo their
 work too.
@@ -321,7 +323,7 @@ other's work. Their typing is not blocked and yours is not either; only the
 writing-back waits. So commit or revert before you finish the reply, and if
 you are not about to make several related changes, do not open one at all.
 
-**Read the log narrowed, never whole.** `bb todo history` gives the last 20;
+**Read the log narrowed, never whole.** `bb roadmap history` gives the last 20;
 `-n N` for more, `--all` for everything, `--since 7d` or `--since 2026-08-01`
 for a window, `--find TEXT` to search the lines, their previous wordings and
 the reasons things went. Reach for `--find` before `--all` — the whole log
@@ -333,7 +335,7 @@ bottom of the list and its steps go with it. It stays in your context so you
 know it exists — do not work on one unless they ask, and do not tidy it away
 either.
 
-`bb todo shelve N` is there when something turns out to be blocked or waiting
+`bb roadmap shelve N` is there when something turns out to be blocked or waiting
 on somebody: park it and say why in your reply. There is no unshelve for you.
 Taking one off the shelf reverses a decision made for reasons you were not
 told, so it is the operator's, and it is one tap in the panel.
@@ -344,7 +346,7 @@ and carry on — a change to the list is not a request to drop what you are
 doing. That line costs the operator a
 message, so it is sent only when they press **Save & tell the session** —
 there is a plain Save beside it that changes things and says nothing. So do
-not expect to hear about every change, and re-read with `bb todo` if what you
+not expect to hear about every change, and re-read with `bb roadmap` if what you
 are about to do depends on it.
 
 A step arriving as a message *is* a request: the operator sent it deliberately,
@@ -372,7 +374,10 @@ bb bug                       # the open ones; `all` includes closed, `show N` on
 bb bug add "..." --sev high --area "..." --repro "..."   # file what you find
 bb bug note N "..."          # append what you learned — dated, never replacing
 bb bug fix N "what fixed it" # close it, with the note that is the point
-bb bug wontfix N "why"       # the other way to close; `reopen N` if it did not take
+bb bug wontfix N "why"       # decided not to; `reopen N` if a fix did not take
+bb bug na N "why"            # it was real and stopped applying — the feature went
+bb bug rm N "why"            # only for a report that should never have existed
+bb bug history [-n N] [--since 7d] [--find TEXT]   # what changed, narrowed
 ```
 
 `bb history [--find X] [--since 7d]` is one search across the notebook's
@@ -383,11 +388,28 @@ did anything here mention X", which no single tab can answer.
 **When you find a bug and it is out of scope for what you are on, file it** —
 the same rule as the roadmap, applied to defects: a reply is read once, the
 tracker is read at the start of every session after it. Fill in the fields
-you would want on arrival: area and repro above all. When you fix one, close
-it with the note; when you learn something about one you did not fix, `bb bug
-note` it — the tracker is where the next session looks first. Do not delete
-or re-file what exists: a closed bug is the record that stops the same report
-being chased twice.
+you would want on arrival: area and repro above all. When you learn something
+about one you did not fix, `bb bug note` it — the tracker is where the next
+session looks first.
+
+**Close bugs; do not delete them.** There are three ways to close one, and
+the difference between them is what the next reader is told:
+
+- `fix N "what fixed it"` — you fixed it. The note is the point.
+- `wontfix N "why"` — it is real and a decision was made to leave it.
+- `na N "why"` — it was real and stopped applying, because the feature it was
+  about went away. Neither of the other two is true of it: nobody fixed it,
+  and nobody decided to leave it.
+
+A closed bug stays in the tracker, which is what stops the same report being
+investigated twice.
+
+**`rm` is only for a report that should never have existed** — you mis-filed
+one, filed it twice, or filed it against the wrong project. That is the whole
+list. Reaching for it because a bug is dealt with destroys the record that
+makes the tracker worth keeping; if you are not correcting your own mistake,
+one of the three closes above is the honest answer. Deleting says why in the
+log, and that note is all that survives it.
 
 ## Static analysis findings
 

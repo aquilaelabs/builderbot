@@ -13,6 +13,9 @@ const BB = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'bb');
 const bbBug = (...a) => execFileSync(BB, ['bug', ...a],
   { env: { ...process.env, BB_BUG_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
+const bbTodoBatch = (...a) => execFileSync(BB, ['roadmap', ...a],
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws` } }).toString();
 const FILE = `${DIR}/state/bugs.json`;
 const read = () => existsSync(FILE)
   ? JSON.parse(readFileSync(FILE, 'utf8')).projects.alpha || [] : [];
@@ -111,6 +114,127 @@ bbBug('edit', '2', 'sev', 'medium');
 ok(read().find(b => b.id === 2).severity === 'medium',
    'a session can re-grade a bug once it knows more');
 
+// ---- sorting ---------------------------------------------------------------
+// Open before closed is not one of the choices — a tracker is read to find
+// what is left — so every order below is an order within that.
+bbBug('add', 'a third, filed last and graded critical', '--sev', 'critical');
+await page.evaluate(() => notebooks.get('alpha').reloadBugs());
+await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 3,
+                           { timeout: 10000 });
+const ids = () => page.$$eval('#bugList .bug', ds => ds.map(d => d.dataset.id));
+ok((await ids())[0] === '3',
+   'severity is the default, so the critical leads');
+await page.selectOption('#bugSort', 'oldest');
+await page.waitForFunction(() => document.querySelector('#bugList .bug').dataset.id === '2',
+                           { timeout: 10000 });
+ok(true, 'oldest first puts the earliest open report at the top');
+await page.selectOption('#bugSort', 'newest');
+await page.waitForFunction(() => document.querySelector('#bugList .bug').dataset.id === '3',
+                           { timeout: 10000 });
+ok((await ids()).at(-1) === '1',
+   'newest first reverses it — and the closed one stays at the bottom either way');
+await page.selectOption('#bugSort', 'title');
+ok((await ids()).slice(0, 2).join() === '3,2',
+   'title A–Z orders by the words, open ones still first');
+await page.selectOption('#bugSort', 'severity');
+
+// ---- deleting a report that should not exist -------------------------------
+// Not the same act as closing one: fixed and wontfix keep the bug, because a
+// closed bug stops the same report being chased twice. This is for the report
+// that should never have been filed, and it says so in the log.
+await page.click('#bugList .bug[data-id="3"] summary');
+await page.click('#bugList .bug[data-id="3"] .bRm');
+await page.waitForSelector('.bug .dropbox input', { timeout: 10000 });
+ok(read().some(b => b.id === 3),
+   'the bin asks in place, and nothing has gone while it is asking');
+await page.click('.bug .dropbox .stop');
+ok(read().some(b => b.id === 3) && await page.$('.bug .dropbox') === null,
+   'Cancel closes it and deletes nothing');
+await page.click('#bugList .bug[data-id="3"] .bRm');
+await page.waitForSelector('.bug .dropbox input', { timeout: 10000 });
+await page.fill('.bug .dropbox input', 'filed against the wrong project');
+await page.click('.bug .dropbox .danger');
+await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 2,
+                           { timeout: 10000 });
+ok(!read().some(b => b.id === 3), 'Delete it takes the row for good');
+ok(/wrong project/.test(bbBug('history', '--find', 'wrong project')),
+   '...leaving the reason in the log, which is all that is left of it');
+
+// A session can do the same, for the case that prompted it: a mis-filed report.
+bbBug('add', 'filed by a session in error');
+const oops = String(read().at(-1).id);
+bbBug('rm', oops, 'a mis-file — the session meant the other project');
+ok(!read().some(b => String(b.id) === oops),
+   'bb bug rm deletes one, for the mis-file that closing would lie about');
+
+// ---- not applicable --------------------------------------------------------
+// The third way a bug leaves the open list: it was real, and it stopped
+// applying — the feature it was about went away. Calling that fixed credits
+// a fix nobody made; calling it wontfix claims a decision nobody took.
+bbBug('add', 'the picker drops focus on rotate', '--sev', 'medium');
+const naId = String(read().at(-1).id);
+await page.evaluate(() => notebooks.get('alpha').reloadBugs());
+await page.waitForFunction(n => !!document.querySelector(`#bugList .bug[data-id="${n}"]`),
+                           naId, { timeout: 10000 });
+await page.evaluate(() => { window.prompt = () => 'the picker was removed entirely'; });
+await page.click(`#bugList .bug[data-id="${naId}"] summary`);
+await page.click(`#bugList .bug[data-id="${naId}"] .bNa`);
+await page.waitForFunction(n => document.querySelector(
+  `#bugList .bug[data-id="${n}"] .bstat`)?.textContent === 'n/a', naId,
+  { timeout: 10000 });
+const naBug = read().find(b => String(b.id) === naId);
+ok(naBug.status === 'na' && naBug.status_note === 'the picker was removed entirely',
+   'Not applicable closes it with what stopped it applying');
+ok(!/picker drops focus/.test(bbBug('--prompt')),
+   '...and it leaves the block a session starts with, like any other closure');
+ok(/\[na\]/.test(bbBug('all')), '...but stays in the tracker, as its own kind of closed');
+bbBug('reopen', naId);
+bbBug('na', naId, 'removed again in the CLI');
+ok(read().find(b => String(b.id) === naId).status === 'na',
+   'bb bug na does the same from a session');
+
+// ---- a session writing while the tab is open ------------------------------
+// The tracker is write-through on both sides, so there is nothing local to
+// lose and nothing to ask about: the view catches up on the poll. It used to
+// sit there showing what a session had already changed until the tab was
+// reopened.
+const seen = () => page.$$eval('#bugList .bug', ds => ds.map(d => d.dataset.id));
+const beforeLive = (await seen()).length;
+bbBug('add', 'filed by a session while the tab was open', '--sev', 'low');
+await page.evaluate(() => refresh());
+await page.waitForFunction(n => document.querySelectorAll('#bugList .bug').length > n,
+                           beforeLive, { timeout: 20000 });
+ok(true, 'a bug a session files appears without the tab being reopened');
+const liveId = String(read().at(-1).id);
+bbBug('fix', liveId, 'closed by the session too');
+await page.evaluate(() => refresh());
+await page.waitForFunction(n => document.querySelector(
+  `#bugList .bug[data-id="${n}"] .bstat`)?.textContent === 'fixed', liveId,
+  { timeout: 20000 });
+ok(true, '...and so does a closure, which no count of open bugs would catch');
+bbBug('rm', liveId, 'test scaffolding');
+await page.evaluate(() => refresh());
+await page.waitForFunction(n => !document.querySelector(`#bugList .bug[data-id="${n}"]`),
+                           liveId, { timeout: 20000 });
+ok(true, '...and a delete, which is the case a revision catches and a count does not');
+
+// ---- Check now answers about the batch, not about one view -----------------
+// It used to reload the roadmap, which refreshed one tab of four and left the
+// other three showing what the session had already changed.
+bbTodoBatch('begin');
+bbBug('add', 'filed mid-batch, from a session', '--sev', 'high');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => !document.getElementById('todoBatch').hidden,
+                           { timeout: 20000 });
+ok(await page.evaluate(() => nbHeldFor('alpha')), 'the notebook is held');
+bbTodoBatch('commit');
+await page.click('#todoRecheck');
+await page.waitForFunction(() => document.getElementById('todoBatch').hidden,
+                           { timeout: 20000 });
+ok(await page.$$eval('#bugList .bug .btitle',
+     ts => ts.some(t => /filed mid-batch/.test(t.textContent))),
+   'Check now lifts the hold and the Bugs tab has the session\'s report on it');
+
 // ---- the tracker's log -----------------------------------------------------
 // Same bar, same rows as the roadmap's: search, a window, a cap. Filed,
 // noted, fixed, reopened — with who and when, which the tracker's present
@@ -122,8 +246,8 @@ ok(await page.$eval('#bugList', el => el.hidden),
    'History swaps the list out, the way the roadmap\'s does');
 const acts = await page.$$eval('#bugHist .hist .act', as => as.map(a => a.textContent));
 ok(acts.includes('filed') && acts.includes('fixed') && acts.includes('noted')
-   && acts.includes('reopened'),
-   'the log carries the tracker\'s verbs: filed, noted, fixed, reopened');
+   && acts.includes('reopened') && acts.includes('deleted'),
+   'the log carries the tracker\'s verbs: filed, noted, fixed, reopened, deleted');
 await page.fill('#bugHistBar input', 'resize listener');
 await page.waitForFunction(() => document.querySelectorAll('#bugHist .hist').length === 1,
                            { timeout: 10000 });
@@ -135,7 +259,7 @@ await page.waitForFunction(() => !document.getElementById('bugList').hidden);
 // One search across the whole notebook, for a session: roadmap, bugs and the
 // memory log merged by time, tagged by source.
 const merged = execFileSync(BB, ['history', '--find', 'compose files'],
-  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
            WORKSPACE: `${DIR}/ws` } }).toString();
 ok(/bugs\s+claude\s+filed/.test(merged),
    'bb history finds a bug by its words, tagged with which log it came from');
@@ -152,8 +276,11 @@ for (const [what, body] of [
   ['a bug with no title', { action: 'add', project: 'alpha', title: '  ' }],
   ['a severity nobody defined', { action: 'add', project: 'alpha', title: 'x', severity: 'catastrophic' }],
   ['a status nobody defined', { action: 'status', project: 'alpha', id: 1, status: 'maybe' }],
+  ['a bug history request for a project that does not exist',
+   { action: 'history', project: 'nosuch' }],
   ['a bug nobody has', { action: 'status', project: 'alpha', id: 999, status: 'fixed' }],
   ['an action nobody offers', { action: 'purge', project: 'alpha' }],
+  ['deleting a bug nobody has', { action: 'remove', project: 'alpha', id: 999 }],
 ]){
   const r = await post(body);
   ok(r.status === 400 && r.body.error, `refused: ${what}`);

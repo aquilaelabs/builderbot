@@ -1027,6 +1027,7 @@ def project_list():
     cloning = projects.busy_name()
     open_todo = todo.counts()
     todo_batches = todo.batches()
+    bug_revs = bugs.revisions()
     for d in here:
         # Mid-clone: a directory with a .git and not much else, which every
         # check below reads as a repository in a strange state. The job row is
@@ -1144,6 +1145,9 @@ def project_list():
                     # So the open notebook learns a session has started one
                     # without waiting for the operator to touch something.
                     "todo_batch": todo_batches.get(d.name),
+                    # So an open Bugs tab notices a session filing or closing
+                    # one without polling the tracker itself.
+                    "bug_rev": bug_revs.get(d.name, 0),
                     "issues": issues})
     return out
 
@@ -2218,6 +2222,8 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "status":
             r = bugs.set_status(name, req.get("id"), field(req, "status"),
                                 note=field(req, "note"))
+        elif act == "remove":
+            r = bugs.remove(name, req.get("id"), why=field(req, "why"))
         elif act == "history":
             return self._json({"history": bugs.history(
                 name, limit=req.get("limit"), since=req.get("since"),
