@@ -239,8 +239,18 @@ RUN set -eux; \
     # libegl1/libvulkan1 are the GLVND + Vulkan dispatch layers. They are inert
     # on their own, but without them the vendor drivers that the NVIDIA
     # container runtime injects have no loader, so -gpu host cannot work.
+    #
+    # xserver-xorg-core is here for the same reason, and it is the *only*
+    # remaining piece: NVIDIA's EGL refuses to hand out a display without an X
+    # server carrying its own GLX module. Xvfb does not count — it answers
+    # from Mesa, which has no driver for an NVIDIA card and falls back to
+    # llvmpipe, i.e. software by a slower road. The module the real server
+    # needs (libglxserver_nvidia.so) is injected by the container runtime
+    # when NVIDIA_DRIVER_CAPABILITIES includes `display`; this supplies the
+    # server it plugs into. Nothing here starts it — see 48-gpu-display.
     apt-get install -y --no-install-recommends \
-        libpulse0 libgl1 libglu1-mesa libasound2t64 libegl1 libvulkan1; \
+        libpulse0 libgl1 libglu1-mesa libasound2t64 libegl1 libvulkan1 \
+        xserver-xorg-core xkb-data; \
     mkdir -p "${ANDROID_HOME}/cmdline-tools"; \
     curl -fsSL -o /tmp/clt.zip \
         "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip"; \

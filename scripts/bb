@@ -33,6 +33,7 @@ bb — BuilderBot helper
   bb emu status          adb devices
   bb emu list            configured API levels and the AVDs that exist
   bb emu log [-p] [N]    this boot's emulator log, or -p for the one before it
+  bb emu gpu             which renderer a start would use, and why
   bb claude-md           is this project's CLAUDE.md environment block current?
   bb claude-md --update  refresh that block, leaving the project section alone
   bb claude-md --init    create a CLAUDE.md here from the shipped template
@@ -353,6 +354,39 @@ emu_avd() {
     fi
 }
 
+# Does hardware GLES actually work here? Not "is there a GPU" — the card can be
+# present, the Vulkan loader can find it, and EGL can still refuse to hand out
+# a display, which is exactly the state this box was in for months. So this
+# asks EGL itself, and believes the answer.
+#
+# Prints the vendor string on success and nothing on failure; the caller reads
+# the exit status.
+gpu_gles_ok() {
+    [ -n "${DISPLAY:-}" ] || return 1
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 - <<'PY' 2>/dev/null
+import ctypes, sys
+try:
+    egl = ctypes.CDLL("libEGL.so.1")
+except OSError:
+    sys.exit(1)
+egl.eglQueryString.restype = ctypes.c_char_p
+d = egl.eglGetDisplay(0)
+if not d:
+    sys.exit(1)
+maj, mnr = ctypes.c_int(), ctypes.c_int()
+if not egl.eglInitialize(d, ctypes.byref(maj), ctypes.byref(mnr)):
+    sys.exit(1)
+v = egl.eglQueryString(d, 0x3053)
+v = v.decode() if v else ""
+# Mesa answering means llvmpipe: a display, but software behind it, which is
+# the trap this check exists to catch. Only a vendor driver counts.
+if not v or "Mesa" in v:
+    sys.exit(1)
+print(v)
+PY
+}
+
 cmd_emu() {
     local avd
     case "${1:-status}" in
@@ -373,7 +407,22 @@ cmd_emu() {
             # and this container has none. Bridging that needs an X server
             # (Xvfb) in EXTRA_APT_PACKAGES, which is the operator's call — so
             # the default stays software and says why rather than pretending.
-            local gpu="${ANDROID_EMULATOR_GPU:-swiftshader_indirect}"
+            # What to render with. An explicit ANDROID_EMULATOR_GPU is obeyed
+            # as given; otherwise the hardware path is *tested* rather than
+            # assumed — 48-gpu-display starts an X server for the card at boot,
+            # and if EGL answers on it with a vendor driver the emulator can
+            # use the GPU. Anything else falls back to software, which is the
+            # behaviour this box has always had.
+            local gpu vendor
+            if [ -n "${ANDROID_EMULATOR_GPU:-}" ]; then
+                gpu="$ANDROID_EMULATOR_GPU"
+            elif [ -S /tmp/.X11-unix/X0 ] && vendor="$(DISPLAY="${DISPLAY:-:0}" gpu_gles_ok)"; then
+                gpu=host
+                export DISPLAY="${DISPLAY:-:0}"
+                log "hardware rendering: EGL answers on ${DISPLAY} (${vendor})"
+            else
+                gpu=swiftshader_indirect
+            fi
             # Under a software GPU the guest has no DRM render node, so HWUI's
             # default Vulkan backend cannot initialise: the app draws, the view
             # hierarchy is complete, and every frame comes out blank. The guest
@@ -415,6 +464,26 @@ cmd_emu() {
             ;;
         status)
             adb devices -l
+            ;;
+        gpu)
+            # "Which renderer would a start use, and why" — one command,
+            # because the answer used to take an afternoon of reading logs.
+            local v
+            if [ -n "${ANDROID_EMULATOR_GPU:-}" ]; then
+                printf 'ANDROID_EMULATOR_GPU is set: %s (used as given)\n' "$ANDROID_EMULATOR_GPU"
+            elif [ ! -S /tmp/.X11-unix/X0 ]; then
+                printf 'software (swiftshader_indirect): no X display for the GPU\n'
+                command -v Xorg >/dev/null 2>&1 \
+                    || printf '  this image has no X server — the GPU path needs one (see 48-gpu-display)\n'
+                command -v nvidia-smi >/dev/null 2>&1 \
+                    && printf '  the card is here: %s\n' \
+                       "$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
+            elif v="$(DISPLAY="${DISPLAY:-:0}" gpu_gles_ok)"; then
+                printf 'hardware (-gpu host): EGL vendor %s on %s\n' "$v" "${DISPLAY:-:0}"
+            else
+                printf 'software (swiftshader_indirect): X is up but EGL gave no vendor driver\n'
+                printf '  Mesa answering here means llvmpipe — software by a slower road\n'
+            fi
             ;;
         log|logs)
             # This start's log, or the one before it. `-p` is the interesting
@@ -1776,13 +1845,26 @@ cmd_doctor() {
         # Compute works with the default capabilities; GL/EGL/Vulkan do not.
         # The vendor ICD only lands when capabilities include graphics, so test
         # for the file rather than trusting the variable.
-        if [ -e /usr/share/glvnd/egl_vendor.d/10_nvidia.json ]; then
-            printf '  [ok]   nvidia graphics stack injected (EGL available)\n'
-        else
+        if [ ! -e /usr/share/glvnd/egl_vendor.d/10_nvidia.json ]; then
             printf '  [FAIL] nvidia gpu present but no EGL — set NVIDIA_DRIVER_CAPABILITIES=all\n'
             printf '         (currently %s; compute works, -gpu host does not)\n' \
                 "${NVIDIA_DRIVER_CAPABILITIES:-unset, so the default compute,utility applies}"
             ok=1
+        # The library being present is not the question anyone is asking. It
+        # was reported as [ok] here for months while every attempt at hardware
+        # rendering fell back to software, because NVIDIA's EGL also needs an X
+        # server carrying its own GLX module and there was none. So ask EGL.
+        elif vendor="$(DISPLAY="${DISPLAY:-:0}" gpu_gles_ok)"; then
+            printf '  [ok]   nvidia graphics stack usable (EGL vendor: %s)\n' "$vendor"
+        elif [ -S /tmp/.X11-unix/X0 ]; then
+            printf '  [warn] nvidia EGL is installed but gave no vendor driver on the X display\n'
+            printf '         — Mesa answering means llvmpipe; the emulator will use software\n'
+        else
+            printf '  [warn] nvidia EGL is installed but has no display to render on\n'
+            printf '         — %s; the emulator will use software (bb emu gpu)\n' \
+                "$(command -v Xorg >/dev/null 2>&1 \
+                   && echo "the X server did not start, see /var/log/xorg-builderbot.log" \
+                   || echo "this image has no X server")"
         fi
     elif command -v nvidia-smi >/dev/null 2>&1; then
         printf '  [FAIL] nvidia-smi present but no GPU visible — check --runtime=nvidia --gpus all\n'

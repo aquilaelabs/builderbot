@@ -414,14 +414,40 @@ plugin are built around, so prefer it here.
 `compute,utility`, which injects CUDA but no GL/EGL/Vulkan drivers. `nvidia-smi`
 then reports a completely healthy GPU while anything that tries to *render*
 fails or silently falls back — which is a genuinely annoying thing to chase.
-`bb doctor` separates the two questions:
+`bb doctor` separates the questions:
 
 ```
   [ok]   nvidia gpu: NVIDIA GeForce RTX 3070 Ti
-  [ok]   nvidia graphics stack injected (EGL available)
+  [ok]   nvidia graphics stack usable (EGL vendor: NVIDIA)
 ```
 
-If the second line is `[FAIL]`, capabilities are the cause.
+If the second line is `[FAIL]`, capabilities are the cause. If it is `[warn]`,
+the drivers are injected but nothing can render on them yet — see below.
+
+**Rendering needs a display, not just a driver.** This is the part that looks
+like it should already work and does not. NVIDIA's EGL refuses to hand out a
+display unless an X server carrying its own GLX module is running; with none,
+the Android emulator finds the card for Vulkan, fails at `Failed to get EGL
+display`, and quietly renders in software. The container starts a headless
+`Xorg` for the card at boot to close that gap (`ENABLE_GPU_DISPLAY`, on by
+default, silent on a box with no GPU). Two things have to be true for it:
+
+- **`NVIDIA_DRIVER_CAPABILITIES` must include `display`** — `all` does. It is
+  what makes the runtime inject `libglxserver_nvidia.so`, the module the X
+  server loads. `graphics` alone is not enough.
+- **The card must not be in use by a VM**, for the same VFIO reason below.
+
+`bb emu gpu` answers "hardware or software, and why" in one line, and
+`/var/log/xorg-builderbot.log` has the detail when the answer is software.
+After a driver update this is the first thing to check: NVIDIA's X module is
+built against a specific X server ABI, and if the two disagree the server will
+not start — the log says so, and the emulator carries on in software rather
+than failing.
+
+Xvfb is the obvious thing to reach for here and it does not work: it has no
+NVIDIA GLX, so EGL falls through to Mesa, which has no driver for an NVIDIA
+card and lands on llvmpipe. That is software rendering by a slower road, and
+it looks like success from the outside.
 
 **Two gotchas worth knowing:**
 

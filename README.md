@@ -282,7 +282,8 @@ and is always the big one. Rollback = point the Repository field at a
 | `ANDROID_SYSTEM_IMAGES` | `36` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
 | `ANDROID_SYSTEM_IMAGE_VARIANT` | `google_apis;x86_64` | Image flavor; `default;x86_64` is smaller AOSP, no Google APIs |
 | `ANDROID_AVD_NAME` / `ANDROID_AVD_PREFIX` | *(derived)* / `builderbot` | Override the default AVD, or the `<prefix>-<api>` naming |
-| `ANDROID_EMULATOR_GPU` | `swiftshader_indirect` | Emulator renderer — `swangle_indirect` (faster software) or `host` (needs a GPU) |
+| `ENABLE_GPU_DISPLAY` | `true` | Start a headless X server for a passed-through NVIDIA GPU at boot, so the emulator can render on it. Does nothing without one |
+| `ANDROID_EMULATOR_GPU` | *(empty — auto)* | Emulator renderer. Empty tests the GPU and falls back to software; `swiftshader_indirect`/`swangle_indirect` force software, `host` insists on the GPU |
 | `NVIDIA_VISIBLE_DEVICES` | `all` | Only with `--runtime=nvidia`; GPU UUID when you have more than one card |
 | `NVIDIA_DRIVER_CAPABILITIES` | `all` | Only with `--runtime=nvidia`; `all` is what gets you GL/EGL/Vulkan, not just CUDA |
 | `NPM_TOKEN` | — | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
@@ -792,11 +793,22 @@ load, after which `bb emu log -p` is the account of why. The log rotates on
 each start rather than being overwritten, so a death survives the restart that
 follows it.
 
-`-gpu host` does not work here even with a GPU passed through: the emulator
-finds the card for Vulkan and then fails at `Failed to get EGL display`,
-because NVIDIA's EGL wants a display and this container has none. An X server
-(`Xvfb`, via `EXTRA_APT_PACKAGES`) would bridge it; until somebody decides to
-spend that, software rendering is the honest default.
+**Using the GPU takes an X server, and not just any X server.** `-gpu host`
+needs GLES from the host driver, and NVIDIA's EGL will not hand out a display
+without an X server carrying its own GLX module — with none, the emulator
+finds the card for Vulkan and then fails at `Failed to get EGL display` and
+falls back. Xvfb does not fix it and is the obvious wrong turn: it has no
+NVIDIA GLX, so EGL falls through to Mesa, which has no driver for an NVIDIA
+card and lands on llvmpipe — software by a slower road than the emulator's own
+SwiftShader.
+
+So the container starts a real `Xorg` on the injected `nvidia_drv.so` at boot
+(`ENABLE_GPU_DISPLAY`, on by default, silent without a GPU). It has to happen
+at boot because a session runs unprivileged with no capabilities and cannot
+become DRM master. `bb emu start` then **tests** the result rather than
+trusting it — EGL has to answer with a vendor driver, and Mesa answering counts
+as failure for exactly the reason above — and falls back to software if it does
+not. `bb emu gpu` says which you have and why, in one line.
 
 ## Static analysis reports
 

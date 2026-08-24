@@ -152,6 +152,7 @@ bb emu start 37   # boot a specific API level, if it is configured
 bb emu status     # adb devices -l
 bb emu stop       # graceful shutdown — use this, do not kill the process
 bb emu log [-p]   # this boot's emulator log; -p is the one before it
+bb emu gpu        # hardware or software rendering, and why
 ```
 
 The emulator is **not** started automatically, holds a few GB of RAM, and runs
@@ -190,15 +191,23 @@ check these before you go looking:
   overwritten, precisely so the account of a death survives the restart that
   follows it.
 
-`-gpu host` is not the answer, and it is worth knowing why so nobody spends
-an afternoon on it: with a GPU passed through and `NVIDIA_DRIVER_CAPABILITIES`
-including graphics, the emulator finds the card for Vulkan and then fails at
-`Failed to get EGL display` — NVIDIA's EGL wants a display and this container
-has none. Bridging that needs an X server (Xvfb) added through
-`EXTRA_APT_PACKAGES`, which is the operator's decision, not a session's.
+**Which renderer you got is a question with a one-line answer**, and it is
+worth asking before drawing conclusions about performance or about a blank
+screen:
 
-Rendering is software by default (`swiftshader_indirect`), which has one
-consequence worth internalizing:
+```bash
+bb emu gpu        # hardware or software, and why
+```
+
+With a GPU passed through, the container starts a headless X server for it at
+boot and `bb emu start` uses `-gpu host` *if EGL actually answers there with a
+vendor driver*. It tests rather than assumes, because the failure mode in
+between is the expensive one: Mesa will happily answer on an X server it
+cannot accelerate and hand back llvmpipe, which is software wearing hardware's
+name. Anything short of a real answer falls back to `swiftshader_indirect`,
+which is what this box did for months.
+
+Under software rendering there is one more consequence worth internalizing:
 
 > **`screenrecord` captures ~10fps under software rendering.** Do not use it to
 > verify animation timing — a 300ms transition is 3 frames and you will draw
