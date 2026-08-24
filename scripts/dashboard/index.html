@@ -260,6 +260,12 @@ button.on{background:#1f6f36;border-color:#2ea043}
    four possible). Together they either fit beside the name or drop below it
    whole, which reads as a layout, not an accident. */
 .row .acts{display:flex;gap:6px;align-items:center;margin-left:auto}
+/* A project row stacks: name and its notes first, the buttons on their own
+   line under them. Side by side, "Notebook" as a word did not fit beside a
+   long project name on a phone — and the count it used to carry is the
+   panel's own business now. */
+.row.stack2{flex-direction:column;align-items:stretch;gap:4px}
+.row.stack2 .acts{margin-left:0;flex-wrap:wrap}
 /* A command and its thumbtack are one control with two halves, so the tack
    cannot be mistaken for a command of its own. */
 .cmd{display:inline-flex;align-items:stretch;border:1px solid var(--line);
@@ -436,6 +442,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .nbtabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
+/* Held: a session is mid-change. The write controls dim as one statement —
+   the click-time guards are the enforcement, this is the reading of it. */
+.nb.held #bugAdd,.nb.held .bug .macts,.nb.held #memAdd,
+.nb.held .mem .macts{opacity:.4}
 .nb .nbhead{color:var(--dim);font:12px/1.5 system-ui,sans-serif}
 /* Long lists scroll inside the panel rather than pushing the Add field and the
    footer off the screen. A cap in rough proportion to the window, so a desktop
@@ -951,6 +961,12 @@ body.dragging .tab .lbl{cursor:grabbing}
 <template id="nbTpl">
   <div class="nb">
     <h3 id="memTitle">Notebook</h3>
+    <!-- A session is part-way through changing this notebook. Above the view
+         strip because it holds the whole panel, not one tab of it: the Saves,
+         and every write-through control on the other views. It only ever
+         blocks the operator — nothing here stops a session, which cannot see
+         this panel and should not be waiting on it. -->
+    <div class="field mdrift" id="todoBatch" hidden></div>
     <div class="nbtabs" role="tablist">
       <button type="button" data-v="memory">Memory</button>
       <button type="button" data-v="roadmap" class="on">Roadmap</button>
@@ -994,13 +1010,6 @@ body.dragging .tab .lbl{cursor:grabbing}
         <option value="0">all</option>
       </select>
     </div>
-    <!-- A session is part-way through changing this list. Saving over it is
-         refused rather than merged: what is on screen is a copy taken before
-         the session started, and replaying edits onto a list that has moved
-         underneath is how two writers lose each other's work. It only ever
-         blocks the operator — nothing here stops a session, which cannot see
-         this panel and should not be waiting on it. -->
-    <div class="field mdrift" id="todoBatch" hidden></div>
     <div class="field" id="todoField"><div id="todoList"></div></div>
     <!-- Picking an arrow arms this; Send fires it. Two steps rather than one,
          because sending does four things at once — the line goes, the step is
@@ -2934,6 +2943,8 @@ function hiddenLabel(flagged){
          .filter(Boolean).join(" / ");
 }
 
+const nbOpen = name => tabs.some(t => t.kind === "todo" && t.arg === name);
+
 function drawProjects(ps){
   const el = $("projects");
   const flagged = ps.filter(isBroken);
@@ -3000,7 +3011,7 @@ function drawProjects(ps){
   // Handlers bind on a real change only; an unchanged card keeps its
   // elements, and their handlers, from last time.
   if (paint(el, jobHtml + shown.map(p => `
-    <div class="row${p.excluded ? " off" : ""}">
+    <div class="row stack2${p.excluded ? " off" : ""}">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}</div>` : ""}
@@ -3034,12 +3045,10 @@ function drawProjects(ps){
         ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
              title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
         : ""}
-      ${isBroken(p) ? "" : `<button class="eye${p.todo ? "" : " none"}"
-         data-m="${esc(p.name)}" aria-label="to do"
-         title="${p.todo
-                  ? `${p.todo} still to hand over here — and what Claude remembers, below it`
-                  : "nothing left to hand over here — and what Claude remembers, below it"}"
-         >${BOOK}${p.todo ? `<i>${p.todo}</i>` : ""}</button>`}
+      ${isBroken(p) ? "" : `<button class="${nbOpen(p.name) ? "primary" : ""}"
+         data-m="${esc(p.name)}"
+         title="${nbOpen(p.name) ? "its notebook is open — go to the tab"
+                : "roadmap, memory and bugs for this project"}">Notebook</button>`}
       <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
         aria-label="${p.excluded ? "include" : "exclude"}"
         title="${p.excluded ? "include — allow Claude sessions here again"
@@ -3916,6 +3925,8 @@ function crossedTo(r){
 // one on purpose — every lookup inside the notebook's code resolves within
 // its own clone, which is what makes the ids in the template safe to repeat.
 const notebooks = new Map();
+// For the tests: the held state of one project's notebook, from outside.
+const nbHeldFor = name => !!notebooks.get(name)?.held();
 
 function getNotebook(project){
   let nb = notebooks.get(project);
@@ -4203,25 +4214,53 @@ function drawTodo(j){
 // list on screen is now a copy of something that has changed, so it is marked
 // stale and stays that way until it is re-read.
 function noteBatch(b){
-  if (todoBatch && !b) todoStale = true;
+  if (todoBatch && !b){
+    todoStale = true;
+    // Nothing staged and nothing half-typed: the fresh list can simply be
+    // taken, and the banner never has to ask for a click it does not need.
+    if (!todoPending.length && !memDirty()){
+      todoStale = false;
+      todoBatch = null;
+      loadTodo(memGen);
+      return;
+    }
+  }
   todoBatch = b || null;
 }
+
+// Is the notebook held against operator writes? While a session's batch is
+// open, and again until the roadmap is re-read after one closes. It holds
+// everything — the Saves, and the write-through controls on the memory and
+// bug views — because "a session is mid-change here" is a fact about the
+// notebook, not about one of its tabs.
+function nbHeld(){ return !!todoBatch || todoStale; }
 
 function drawBatchNote(){
   const el = $("todoBatch");
   if (!el) return;
+  root.classList.toggle("held", nbHeld());
   el.hidden = !todoBatch && !todoStale;
   if (el.hidden){ el.innerHTML = ""; return; }
   const n = todoBatch?.changes || 0;
   el.innerHTML = todoBatch
     ? `<div>${esc(todoBatch.by || "a session")} is part-way through changing this
-         list${n ? ` — ${n} change${n === 1 ? "" : "s"} so far` : ""}. Saving is
-         held until it commits; your own edits are safe where they are.</div>`
-    : `<div>A session finished changing this list. What is on screen was read
-         before that, so saving over it would undo the change.
+         notebook${n ? ` — ${n} change${n === 1 ? "" : "s"} so far` : ""}. Saving
+         and reporting are held until it commits; your own edits are safe where
+         they are. <button type="button" id="todoRecheck">Check now</button></div>`
+    : `<div>A session finished changing this notebook. What is on screen was
+         read before that, so saving over it would undo the change.
          <button type="button" id="todoReread">Reload the list</button></div>`;
   const rr = $("todoReread");
   if (rr) rr.onclick = rereadTodo;
+  const rc = $("todoRecheck");
+  // The link is the answer to "is it done yet?" without waiting for the next
+  // poll. If it is, and nothing local is at stake, the reload happens by
+  // itself — the guard should only demand a click when a click would cost.
+  if (rc) rc.onclick = async () => {
+    rc.disabled = true; rc.textContent = "Checking…";
+    await loadTodo(memGen);
+    if (nbHeld()) notify("still at it — the guard stays until it commits");
+  };
 }
 
 // Re-read, which is the only way out of stale. It costs whatever is staged,
@@ -4592,6 +4631,11 @@ function drawMemory(j){
 }
 
 async function postMemory(body){
+  if (nbHeld()){
+    notify("a session is part-way through changing this notebook — "
+           + "check the banner at the top", true);
+    return null;
+  }
   try{
     const r = await fetch("/api/memory", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -5037,6 +5081,14 @@ $("todoRevert").onclick = revertNotebook;
   }
 
   async function postBug(body){
+    // The batch guard reaches here too: a report would survive a session's
+    // commit untouched (different file), but "held" has to mean the notebook,
+    // or the banner is a lie about two of its three tabs.
+    if (nbHeld()){
+      notify("a session is part-way through changing this notebook — "
+             + "check the banner at the top", true);
+      return null;
+    }
     try{
       const r = await fetch("/api/bugs", {method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -5177,6 +5229,7 @@ $("todoRevert").onclick = revertNotebook;
     reloadMemory(){ return loadMemory(memGen); },
     reloadBugs(){ return loadBugs(); },
     leaving: notebookLeaving,
+    held: nbHeld,
     unsaved: nbUnsaved,
     poll(p){ noteBatch(p.todo_batch); drawBatchNote(); syncSave(); },
     escape(){ if (todoSel){ cancelSend(); redrawTodo(); return true; } return false; },

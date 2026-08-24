@@ -47,9 +47,11 @@ const open = () => page.$$eval('#todoList .todo', ts => ts.map(t => ({
   claude: !!t.querySelector('.who:not(.fin)') })));
 
 // ---- adding ------------------------------------------------------------
+// The button is a word now, no count: the number was the panel's business and
+// the row's job is to say the notebook exists and whether it is open.
 ok(await page.$eval(`${row('alpha')} [data-m]`,
-     b => b.classList.contains('none') && !b.querySelector('i')),
-   'a project with nothing to do wears a dimmed icon and no number');
+     b => b.textContent.trim() === 'Notebook' && !b.classList.contains('primary')),
+   'the row offers a Notebook button, unlit while no tab is open');
 
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
@@ -79,11 +81,6 @@ await saveList();
 ok(read().projects.alpha.length === 1,
    'Save writes it, into /config and not into the project');
 
-// The row's number is the open count, which is the number worth a glance.
-await page.waitForFunction(() =>
-  document.querySelector('#projects .row:has(.name) [data-m] i')?.textContent === '1',
-  { timeout: 15000 });
-ok(true, 'the project row picks up the count without a reload');
 
 // ---- what a session adds is marked -------------------------------------
 // Through bb, the same way a session would: one file, two writers.
@@ -539,7 +536,7 @@ await page.waitForFunction(() => !document.getElementById('todoBatch').hidden,
                            { timeout: 20000 });
 const banner = () => page.$eval('#todoBatch',
   el => el.textContent.replace(/\s+/g, ' ').trim());
-ok(/part-way through changing this list/.test(await banner()),
+ok(/part-way through changing this notebook/.test(await banner()),
    'the notebook says a session is mid-change, without being touched');
 ok(await page.$eval('#todoSaveQuiet', b => b.disabled)
    && await page.$eval('#todoSave', b => b.disabled),
@@ -553,17 +550,30 @@ ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
 ok(!await page.$eval('#todoRevert', b => b.disabled),
    '...and Revert still works, since throwing away your own work depends on '
    + 'nobody else');
+// The hold is the notebook's, not one tab's: a bug report posted while a
+// session is mid-batch is refused at the click, with the banner as the why.
+ok(await page.evaluate(() => document.querySelector('.pane .nb').classList.contains('held')),
+   '...and the whole notebook wears the held state, memory and bugs included');
 bbTodo('add', 'and the session was not blocked at all');
 ok(read().projects.alpha.some(r => r.text === 'and the session was not blocked at all'),
    'the session writes straight through — the block is one-way');
 
+// "Check now" answers "is it done yet?" without waiting for the poll. Here
+// the batch is still open, so the answer is no and the guard stays.
+await page.click('#todoRecheck');
+await page.waitForFunction(() => document.getElementById('todoRecheck')
+  && !document.getElementById('todoRecheck').disabled, { timeout: 15000 });
+ok(await page.evaluate(() => nbHeldFor('alpha')),
+   'Check now while the batch is still open leaves the guard in place');
+
 bbTodo('commit');
 await page.evaluate(() => refresh());
-await page.waitForFunction(() => /A session finished changing this list/.test(
+await page.waitForFunction(() => /A session finished changing this notebook/.test(
   document.getElementById('todoBatch').textContent.replace(/\s+/g, ' ')),
   { timeout: 20000 });
 ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
-   'once it commits, Save stays held: what is on screen was read before that');
+   'once it commits, Save stays held: what is on screen was read before that '
+   + '— staged work is at stake, so only Reload decides');
 page.dialogs = [];
 await page.click('#todoReread');
 await page.waitForFunction(() => document.getElementById('todoBatch').hidden,
@@ -994,29 +1004,17 @@ ok(true, 'and the send controls come back');
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0);
 
-// ---- the number on the row ----------------------------------------------
-// It counts what the panel counts: things still to hand over. It used to
-// count "not done", and nothing in the panel sets done — so crossing a whole
-// list off left the badge exactly where it was.
-const badge = () => page.$eval(`${row('alpha')} [data-m]`,
-  b => b.querySelector('i')?.textContent || '0');
-// A plain one of its own, because everything left on this list by now is a
-// group or already crossed — and crossing a group's title is not something
-// the panel offers, nor would it settle one: its steps carry that.
-const counted = await post({ action: 'add', project: 'alpha', text: 'one to count' });
-const anyId = String(counted.body.item.id);
+// ---- the row's button lights while the tab is open -----------------------
 await page.evaluate(() => refresh());
-const before = Number(await badge());
-ok(before > 0, `the row carries a count (${before})`);
-await post({ action: 'cross', project: 'alpha', id: Number(anyId), on: true });
-await page.evaluate(() => refresh());
-await page.waitForFunction(n => Number(document.querySelector(
-  '#projects .row:has(.name) [data-m] i')?.textContent || 0) !== n, before,
+await page.waitForFunction(() => document.querySelector(
+  '#projects .row:has(.name) [data-m]')?.classList.contains('primary'),
   { timeout: 15000 });
-ok(Number(await badge()) === before - 1,
-   '...and crossing one off takes it down, which is the whole point of a badge');
-await post({ action: 'remove', project: 'alpha', id: Number(anyId) });
-await page.evaluate(() => refresh());
+ok(true, 'the Notebook button takes the green while its tab is open');
+ok(await page.$eval(`${row('alpha')} .acts`, a => {
+     const r = a.getBoundingClientRect();
+     const n = a.closest('.row').querySelector('.name').getBoundingClientRect();
+     return r.top >= n.bottom; }),
+   '...and the buttons sit on their own line under the name, where a word fits');
 
 // ---- two Saves, and what the line says ----------------------------------
 // The difference between them is whether a line of anybody's conversation is

@@ -584,21 +584,51 @@ def save_excludes(names):
     write_json(EXCLUDES_FILE, sorted(set(names)))
 
 
-def _project_of(uri, known):
+def _project_of(uri, known, nonproject=frozenset()):
     """Which mounted project a scanner-recorded path belongs to.
 
     The scanner records where *it* saw the code, which is never where this
     container mounts it, so the only reliable anchor is a path component that
     matches a directory in the workspace.
+
+    A component that matches a directory that is deliberately *not* a project
+    — the SDK share, anything carrying .bbignore — attributes to IGNORED
+    rather than to nothing. The host scanner sweeps the whole share, so the
+    flutter checkout alone lands thousands of findings, and filing those as
+    "unattributed" buried the handful of genuinely unplaceable paths under
+    them: 9,000 rows of vendored toolchain wearing the label that was meant
+    to say "look at this one, its path is wrong".
     """
     parts = [p for p in uri.replace("\\", "/").split("/") if p]
     for i, part in enumerate(parts):
         if part in known:
             return part, "/".join(parts[i + 1:]) or part
+        if part in nonproject:
+            return IGNORED, "/".join(parts[i:])
     return None, "/".join(parts)
 
 
-def _parse_run(runinfo, known):
+# The sentinel a finding attributes to when its path resolves into a directory
+# the dashboard knows and deliberately does not treat as a project. Impossible
+# as a real project name (a slash never survives a directory name).
+IGNORED = "not/a/project"
+
+
+def nonproject_dirs():
+    """Top-level workspace directories that are not projects: the runner's
+    _work tree, and anything carrying .bbignore — which is how the SDK share
+    marks itself. Listed fresh per parse; it is one readdir."""
+    out = set()
+    try:
+        for d in WORKSPACE.iterdir():
+            if d.is_dir() and (d.name == "_work" or (d / ".bbignore").exists()):
+                out.add(d.name)
+    except OSError:
+        pass
+    return out
+
+
+def _parse_run(runinfo, known, nonproject=frozenset()):
     """One SARIF run -> (tool name, rows)."""
     driver = (runinfo.get("tool") or {}).get("driver") or {}
     rules = {}
@@ -618,7 +648,7 @@ def _parse_run(runinfo, known):
         loc = ((res.get("locations") or [{}])[0].get("physicalLocation") or {})
         uri = ((loc.get("artifactLocation") or {}).get("uri") or "?")
         line = ((loc.get("region") or {}).get("startLine") or 0)
-        proj, rel = _project_of(uri, known)
+        proj, rel = _project_of(uri, known, nonproject)
         # CVEs turn up in the rule id (Trivy) or the prose (most others).
         cves = sorted(set(CVE_RE.findall(" ".join([rid, msg, meta.get("desc", ""),
                                                    meta.get("help", "")]))))
@@ -636,7 +666,7 @@ def _parse_run(runinfo, known):
     return driver.get("name") or "", rows
 
 
-def parse_sarif(path, known):
+def parse_sarif(path, known, nonproject=frozenset()):
     """SARIF 2.1.0 -> flat findings. Tolerant: a malformed run is skipped, not
     fatal, because one bad report should not blank the whole page."""
     try:
@@ -650,7 +680,7 @@ def parse_sarif(path, known):
         # belong, and one such run used to take the whole endpoint down with an
         # AttributeError rather than being skipped as documented.
         try:
-            name, got = _parse_run(runinfo, known)
+            name, got = _parse_run(runinfo, known, nonproject)
         except (AttributeError, TypeError, IndexError, KeyError):
             continue
         if name and name not in tools:
@@ -683,16 +713,27 @@ def findings_payload():
     # are dropped after attribution, and counted: a report that quietly
     # shrinks reads as "covered everything" when it did not.
     valid = _valid_projects(ps)
-    reports, hidden = [], 0
+    nonproject = nonproject_dirs()
+    reports, hidden, outside = [], 0, 0
     for f in files:
-        rep = parse_sarif(f, known)
-        keep = [r for r in rep["findings"]
-                if r["project"] is None or r["project"] in valid]
-        hidden += len(rep["findings"]) - len(keep)
+        rep = parse_sarif(f, known, nonproject)
+        keep, dropped = [], 0
+        for r in rep["findings"]:
+            if r["project"] == IGNORED:
+                outside += 1
+            elif r["project"] is None or r["project"] in valid:
+                keep.append(r)
+            else:
+                dropped += 1
+        hidden += dropped
         rep["findings"] = keep
         reports.append(rep)
+    # `outside` is its own number, not folded into `hidden`: hidden rows are
+    # a project the operator shut out, outside rows are the scanner sweeping
+    # the SDK share — one is a decision to revisit, the other is noise the
+    # host's scan config could stop making.
     return {"available": True, "projects": sorted(known),
-            "hidden": hidden, "reports": reports}
+            "hidden": hidden, "outside": outside, "reports": reports}
 
 
 # `bb sdk install|update|remove` refuses when CLAUDECODE is set, and the
@@ -1597,13 +1638,16 @@ def findings_counts(ps):
         stamp = tuple((f.name, f.stat().st_mtime_ns, f.stat().st_size) for f in files)
     except OSError:
         stamp = ()
-    key = (stamp, tuple(sorted(known)))
+    nonproject = nonproject_dirs()
+    key = (stamp, tuple(sorted(known)), tuple(sorted(nonproject)))
     if _findings_counts["mtime"] != key:
         per, broken = {}, False
         for f in files:
-            rep = parse_sarif(f, known)
+            rep = parse_sarif(f, known, nonproject)
             broken = broken or bool(rep.get("error"))
             for row in rep["findings"]:
+                if row["project"] == IGNORED:
+                    continue        # the SDK share et al: see _project_of
                 lv = per.setdefault(row["project"] or "", {})
                 lv[row["level"]] = lv.get(row["level"], 0) + 1
         # A report that failed to parse is not cached: half-written is the
