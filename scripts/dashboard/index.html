@@ -447,6 +447,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .nbtabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
+/* The roadmap's summary is a full sentence where the other three are a few
+   words, so it is the one that has to be allowed to wrap inside the header
+   rather than shoving History off the end. */
+.nbhead .hint{min-width:0;margin:0}
 /* Held: a session is mid-change. The write controls dim as one statement —
    the click-time guards are the enforcement, this is the reading of it. */
 .nb.held #bugAdd,.nb.held .bug .macts,.nb.held #memAdd,
@@ -477,9 +481,6 @@ button.on{background:#1f6f36;border-color:#2ea043}
    button two tabs over, doing the same job. It shares .vbar's now; only the
    top margin is its own, because it sits under the add field rather than at
    the top of its view. */
-.hintrow{margin-top:6px}
-.hintrow[hidden]{display:none}
-.hintrow .hint{min-width:0;margin:0}
 /* Confirming a drop, with the reason it is going. Red-edged rather than a
    browser dialog: it has to hold a field, and a phone's confirm() cannot. */
 .dropbox{border:1px solid #4d2220;border-radius:8px;padding:9px 10px;
@@ -514,17 +515,35 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .todo .mv{color:var(--dim)}
 .todo .mv[disabled]{opacity:.3}
 @media(hover:hover){ .todo .mv:not([disabled]):hover{color:var(--ink)} }
-.todoask{border-top:1px solid var(--line);background:#161d26;
-  display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-/* An explicit display beats the [hidden] attribute, so hiding it needs saying
-   out loud — it was still on screen while every script that asked believed it
-   was gone. */
-.todoask[hidden]{display:none}
-.todoask .also{display:flex;gap:8px;align-items:center;margin:0;flex:1 1 auto;
+/* The send box, under the step it would send — the same shape as the drop box
+   and the edit box beside it, because it answers the same kind of question
+   about the same row. It used to be a bar pinned at the foot of the panel: on
+   a phone that put the confirmation for "hand this line over" a screen away
+   from the line, with nothing on it naming which one. */
+.sendbox{background:#161d26;border:1px solid var(--line);border-radius:8px;
+  margin:6px 0 2px;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
+.sendbox .q{color:var(--fg);font:600 12px/1.4 system-ui,sans-serif}
+.sendbox .q span{font-weight:400;color:var(--dim)}
+/* Two pickers side by side while there is room, stacked when there is not —
+   an ultrawide should not stretch a select to a foot wide, and a phone should
+   not put half of one off the edge. */
+.sendbox .picks{display:flex;gap:8px;flex-wrap:wrap}
+.sendbox label.pick{display:flex;gap:6px;align-items:center;flex:0 1 240px;
+  color:var(--dim);font:12px/1.4 system-ui,sans-serif}
+.sendbox label.pick select{flex:1 1 auto;min-width:0;min-height:var(--tap)}
+.sendbox .also{display:flex;gap:8px;align-items:center;margin:0;
   color:var(--dim);font:12px/1.4 system-ui,sans-serif;cursor:pointer}
-.todoask .also.off{opacity:.4;cursor:default}
-.todoask .also input{width:18px;height:18px;accent-color:#2ea043;flex:0 0 auto}
-.todoask button{flex:0 0 auto;min-height:var(--tap)}
+.sendbox .also.off{opacity:.4;cursor:default}
+.sendbox .also input{width:18px;height:18px;accent-color:#2ea043;flex:0 0 auto}
+.sendbox textarea{width:100%;box-sizing:border-box;resize:vertical;
+  min-height:calc(var(--tap) + 6px)}
+.sendbox .note{color:var(--dim);font:11px/1.4 system-ui,sans-serif}
+.sendbox .acts{display:flex;gap:8px;align-items:center}
+/* The spacer is per-context here, not global — without this rule it collapses
+   and the two buttons sit left while every other box on the panel puts them
+   right. */
+.sendbox .acts .sp{flex:1}
+.sendbox .acts button{flex:0 0 auto;min-height:var(--tap)}
 /* The armed arrow. Filled rather than outlined: it is the one control on the
    panel that is about to do something outside it. */
 .todo .go.sel{background:#1b5e2a;border-color:#2ea043;color:#d7ffe0}
@@ -1007,20 +1026,24 @@ body.dragging .tab .lbl{cursor:grabbing}
          panel: everything else here is one-way. Its open items are appended
          to every Claude session the dashboard starts, so an item added on
          Tuesday is read on Thursday without anybody remembering to say so. -->
+    <!-- The same header the other three views open with: the view's own
+         one-line summary on the left, its History on the right. It sits above
+         the add row rather than under it so all four tabs start the same way —
+         the eye should not have to look in a different place per tab. -->
+    <div class="field nbhead vbar"><span class="hint" id="todoHint"></span>
+      <span class="sp"></span>
+      <button id="todoLog" type="button"
+        title="every change to this list, by either of you, with when"
+        >History</button>
+    </div>
     <div class="field">
+      <!-- One row: type it, add it, or rearrange what is already there. They
+           are the three things you do TO the list, as against the History
+           above, which only reads it. -->
       <div class="todoadd">
         <input id="todoText" maxlength="500" autocomplete="off"
                placeholder="something for the roadmap">
         <button id="todoAdd" class="primary" type="button">Add</button>
-      </div>
-      <!-- The same header shape the other three views use: the view's own
-           one-line summary on the left, its controls on the right. -->
-      <div class="hintrow vbar">
-        <div class="hint" id="todoHint"></div>
-        <span class="sp"></span>
-        <button id="todoLog" type="button"
-          title="every change to this list, by either of you, with when"
-          >History</button>
         <button id="todoOrder" type="button" hidden
           title="move things up and down — the send controls come back when you are done"
           >Reorder</button>
@@ -1044,19 +1067,6 @@ body.dragging .tab .lbl{cursor:grabbing}
       </select>
     </div>
     <div class="field" id="todoField"><div id="todoList"></div></div>
-    <!-- Picking an arrow arms this; Send fires it. Two steps rather than one,
-         because sending does four things at once — the line goes, the step is
-         crossed off, the panel closes and you land in that tab — and an
-         arrow that did all four on one tap would be a mis-tap you cannot take
-         back. The highlight is the confirmation; a sentence restating what is
-         already on the row was not. -->
-    <div class="field todoask" id="todoAsk" hidden>
-      <label class="also" id="todoAlsoWrap">
-        <input type="checkbox" id="todoAlso" checked>
-        <span>also save everything else</span>
-      </label>
-      <button id="todoGo" class="primary" type="button">Send</button>
-    </div>
     </div>
     <!-- What Claude remembers, on its own tab: a handful of files nobody
          edits, on screen because they are the one input to a session nobody
@@ -3942,8 +3952,8 @@ async function openMemory(name){
   $("memWhere").textContent = "what Claude remembers here";
   $("memDrift").innerHTML = $("memList").innerHTML = $("memAdd").innerHTML = "";
   $("todoSave").disabled = $("todoSaveQuiet").disabled = true;
-  $("todoAsk").hidden = true;
-  todoOrdering = false;
+  todoSel = null;                 // the send box lives on the row, and the
+  todoOrdering = false;           // rows are about to be replaced wholesale
   todoPending = []; todoWas = null;
   todoBatch = null; todoStale = false;
   todoLogOn = false;
@@ -3997,6 +4007,30 @@ const SHELF = `<svg viewBox="0 0 16 16" aria-hidden="true">
 // order is the whole point of a group — send the third before the second and
 // it lands on a tree the second was supposed to have made — so only that one,
 // and any already sent, can be sent at all.
+// Whether a row can be handed to a session — asked by the arrow that offers
+// it and by the redraw that decides whether an armed one is still valid.
+//
+// One function because it used to be two, and they disagreed: the arrow on a
+// sent row was live (that is the whole "it did not take, do it again" case)
+// while the redraw dropped the selection the moment it was made, so picking
+// one armed nothing and the send controls never came up.
+function canSend(r, idx, live){
+  // Nothing goes out while the panel is holding unsaved work. The line about
+  // to be typed into a session is one of the things that might be unsaved, so
+  // sending against a list the server has not been told about would hand over
+  // a step that does not exist there — and the session would then go and read
+  // a roadmap that says something else. Save first, or throw it away first;
+  // either way the list a step comes from is the list on disk.
+  if (nbUnsaved()) return false;
+  if (!live || r.shelved) return false;
+  const steps = r.steps || [];
+  if (idx < 0) return steps.length ? nextStep(r) !== null : true;
+  const st = steps[idx];
+  // The frontier, or one that has already gone. Never a later one: send the
+  // third before the second and it lands on a tree the second was to make.
+  return !!st && (idx === nextStep(r) || !!st.sent);
+}
+
 function stepRow(r, idx, live){
   const steps = r.steps || [];
   const nxt = nextStep(r);
@@ -4024,10 +4058,9 @@ function stepRow(r, idx, live){
   // A group's own arrow is its next step's arrow: the plan is the item, and
   // reaching for the title to send "the next bit of this" is what a hand
   // does. Picking either highlights both, because they are one choice.
-  const can = r.shelved ? false
-            : idx < 0 ? (steps.length ? live && nxt !== null : live)
-            : live && (idx === nxt || !!st.sent);
-  const why = r.shelved ? "shelved — take it off the shelf to send it"
+  const can = canSend(r, idx, live);
+  const why = nbUnsaved() ? `save or revert first — ${nbUnsaved()} not on disk yet`
+            : r.shelved ? "shelved — take it off the shelf to send it"
             : !live ? "no Claude session is running here"
             : st.sent ? "this one has gone already — pick it to send it again"
             : idx < 0 && steps.length
@@ -4098,10 +4131,9 @@ function drawTodo(j){
   if (todoSel){
     const r = rows.find(x => String(x.id) === String(todoSel.id));
     const ok = r && (todoSel.step === null
-      ? !(r.steps || []).length && !r.sent
-      : (r.steps || [])[todoSel.step] && !r.steps[todoSel.step].sent
-        && todoSel.step === nextStep(r));
-    if (!ok || !live) todoSel = null;
+      ? !(r.steps || []).length && canSend(r, -1, live)
+      : canSend(r, todoSel.step, live));
+    if (!ok) todoSel = null;
   }
   todoSession = j.session || null;
   // Shelved ones are not counted, here or on the project row: "still to send"
@@ -4109,9 +4141,13 @@ function drawTodo(j){
   const left = rows.reduce((n, r) =>
     n + (r.shelved || nextStep(r) === null ? 0 : 1), 0);
   const parked = rows.filter(r => r.shelved).length;
+  const held = nbUnsaved();
   $("todoHint").textContent = !rows.length
     ? "Nothing yet. What goes here is read at the start of every Claude session in this project."
-    : live
+    : held
+      ? `${left} still to send${parked ? `, ${parked} shelved` : ""} — ${held} `
+        + `not saved, so nothing can be sent until you Save or Revert`
+      : live
       ? `${left} still to send${parked ? `, ${parked} shelved` : ""} — ${
           esc(j.session)} is running, so the arrows are live`
       : `${left} still to send${parked ? `, ${parked} shelved` : ""} — no session `
@@ -4182,20 +4218,105 @@ function drawTodo(j){
   todoUnsaved = j.unsaved || {};
   if (j.batch !== undefined) noteBatch(j.batch);
   drawBatchNote();
-  // The strip is always there once there is a list, with everything on it
-  // dead until an arrow is armed — a control that appears under your thumb is
-  // a control you press by accident.
-  $("todoAsk").hidden = !rows.length || todoOrdering || todoLogOn;
   syncSave();
   $("todoOrder").hidden = !rows.length || todoLogOn;
   $("todoOrder").classList.toggle("on", todoOrdering);
   $("todoLog").classList.toggle("on", todoLogOn);
-  const armed = !!todoSel && live;
-  const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
-                || todoPending.length > 0;
-  $("todoGo").disabled = !armed;
-  $("todoAlso").disabled = !armed || !dirty;
-  $("todoAlsoWrap").classList.toggle("off", !armed || !dirty);
+  drawSendBox(live);
+}
+
+// What a session can be switched to on the way in. Tables, not free text:
+// these become part of a command typed into a terminal, and the server keeps
+// its own copy of both lists rather than trusting the one that arrives.
+const MODELS = [["", "leave as is"], ["opus", "Opus"], ["sonnet", "Sonnet"],
+                ["haiku", "Haiku"], ["fable", "Fable"]];
+const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
+                 ["high", "high"], ["xhigh", "xhigh"], ["max", "max"]];
+// Remembered outside the box, because the box is rebuilt from scratch every
+// time its list is redrawn — a picker that forgot itself, or a half-typed
+// note that vanished, whenever something else on the panel moved would be
+// worse than useless.
+let sendModel = "", sendEffort = "", sendNoteText = "";
+
+// The box itself, built once and used by both lists.
+//
+// The roadmap hands a step to a session and the tracker hands it a bug; the
+// question either asks is the same one — which session settings, anything to
+// add, go or don't — so it is one box rather than two that drift apart.
+function sendBoxEl({label, sub, placeholder, onSend, onCancel}){
+  const sel = (id, table, cur) =>
+    `<select id="${id}">${table.map(([v, l]) =>
+      `<option value="${v}"${v === cur ? " selected" : ""}>${esc(l)}</option>`
+    ).join("")}</select>`;
+  const box = document.createElement("div");
+  box.className = "sendbox";
+  box.innerHTML = `<div class="q">${esc(label)}${
+      sub ? ` <span>— ${esc(sub)}</span>` : ""}</div>
+    <div class="picks">
+      <label class="pick">Model ${sel("sendModelSel", MODELS, sendModel)}</label>
+      <label class="pick">Effort ${sel("sendEffortSel", EFFORTS, sendEffort)}</label>
+    </div>
+    <textarea id="sendMore" rows="2" maxlength="500"
+      placeholder="${esc(placeholder)}"></textarea>
+    <div class="note" id="sendNote" hidden></div>
+    <div class="acts"><span class="sp"></span>
+      <button type="button" class="stop">Cancel</button>
+      <button type="button" class="primary" id="todoGo">Send</button></div>`;
+  const more = box.querySelector("#sendMore");
+  more.value = sendNoteText;
+  // Kept on every keystroke rather than read at the end: a redraw between the
+  // typing and the Send would otherwise take the words with it.
+  more.oninput = () => { sendNoteText = more.value; };
+  more.onkeydown = e => {
+    if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); onCancel(); }
+  };
+  // Claude says it itself when you run either one: the pick is saved as the
+  // default for new sessions, not scoped to the conversation it is typed
+  // into. That is a thing to know before picking, not after.
+  const note = box.querySelector("#sendNote");
+  const say = () => {
+    const on = [sendModel && "model", sendEffort && "effort"].filter(Boolean);
+    note.hidden = !on.length;
+    note.textContent = on.length
+      ? `typed into the session as a slash command first — claude saves the `
+        + `${on.join(" and ")} as the default for new sessions too`
+      : "";
+  };
+  say();
+  box.querySelector("#sendModelSel").onchange = e => { sendModel = e.target.value; say(); };
+  box.querySelector("#sendEffortSel").onchange = e => { sendEffort = e.target.value; say(); };
+  box.querySelector(".stop").onclick = onCancel;
+  box.querySelector("#todoGo").onclick = onSend;
+  return box;
+}
+
+// Only ever one open, anywhere in the notebook: two boxes would mean two
+// answers to "what are the pickers set to", and the pickers are shared.
+function shutSendBoxes(){
+  document.querySelectorAll(".sendbox").forEach(b => b.remove());
+}
+
+// The roadmap's, under the step it would send.
+//
+// Rebuilt on every draw rather than parked somewhere and moved: the rows are
+// replaced wholesale by the redraw above, so a box held over would be sitting
+// under whatever row happened to take that place. Cheap, and it cannot end up
+// pointing at the wrong line.
+function drawSendBox(live){
+  const list = $("todoList");
+  list.querySelectorAll(".sendbox").forEach(b => b.remove());
+  if (!todoSel || !live || todoOrdering || todoLogOn) return;
+  const step = todoSel.step === null ? -1 : todoSel.step;
+  const row = list.querySelector(
+    `.todo[data-id="${CSS.escape(String(todoSel.id))}"][data-step="${step}"]`);
+  if (!row) return;
+  row.after(sendBoxEl({
+    label: "Send this one?",
+    sub: step >= 0 ? `step ${step + 1}` : "",
+    placeholder: "anything to send with it (optional)",
+    onSend: reallySend,
+    onCancel: () => pickTodo(todoSel.id, todoSel.step),
+  }));
 }
 
 // A batch opening is news; a batch closing is news of a different kind — the
@@ -4338,18 +4459,40 @@ let todoStale = false;
 function pickTodo(id, step){
   todoSel = (todoSel && String(todoSel.id) === String(id) && todoSel.step === step)
     ? null : {id, step};
+  // A new target starts with an empty note. The text survives a *redraw* of
+  // the box it was typed into, which is what the variable is for — but it
+  // must not follow you to another step, or to a bug on the other tab, where
+  // it would arrive pre-filled with words written about something else.
+  sendNoteText = "";
   drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
 }
 
-function cancelSend(){ todoSel = null; }
+// Putting the selection down, and the box with it. It redraws rather than
+// only clearing the variable: the box and the lit arrow are both drawn from
+// todoSel, and a sent row stays selectable now (that is the point of being
+// able to send it again), so nothing else is going to take them off screen.
+function cancelSend(){
+  todoSel = null;
+  drawTodo({items: todoItems, session: todoSession, unsaved: todoUnsaved});
+}
 
 async function reallySend(){
   if (!todoSel) return;
   let {id, step} = todoSel;
-  const also = !$("todoAlso").disabled && $("todoAlso").checked;
+  // Always told, where this used to be a checkbox. The question the checkbox
+  // asked — "shall I mention the list moved?" — cannot have a useful "no" any
+  // more: nothing can be sent until the panel is saved, so by the time a step
+  // goes there IS no unsaved work to keep quiet about, and a session about to
+  // act on a step is exactly who wants to know the plan around it changed.
+  // It costs nothing when nothing moved: the note is empty and rides as "".
   const proj = memProj;
-  $("todoGo").disabled = true; $("todoGo").textContent = "Sending…";
-  $("todoGo").classList.add("busy");
+  // Held in locals: the box is rebuilt by every redraw between here and the
+  // end of this function, so the button read back at the end is not
+  // necessarily the one that was pressed — but a switch that was asked for
+  // still has to be the one that gets sent.
+  const model = sendModel, effort = sendEffort, note = sendNoteText;
+  const go = $("todoGo");
+  go.disabled = true; go.textContent = "Sending…"; go.classList.add("busy");
   // Staged changes go first, always — not only when "also save" is ticked.
   // The line about to be typed into a session is one of them, and sending it
   // against a list the server has not been told about would hand over a step
@@ -4361,17 +4504,28 @@ async function reallySend(){
   }
   // The note rides on the same line as the step rather than chasing it: two
   // messages into one input box is how the second ends up glued to the first.
-  const j = await postTodo({action: "send", id, step, tell: also});
-  $("todoGo").textContent = "Send"; $("todoGo").classList.remove("busy");
-  cancelSend();
-  if (!j) return;
+  const j = await postTodo({action: "send", id, step, tell: true,
+                            model, effort, note});
+  go.textContent = "Send"; go.classList.remove("busy"); go.disabled = false;
+  if (!j) { drawSendBox(!!todoSession); return; }
   if (!j.sent){
-    notify("typed into the session but not sent — something else has the "
-      + "keyboard there; press Enter in that tab when it is clear", true);
+    // Which line stalled matters: a step left in the box is one to press
+    // Enter on, but a `/model` left there has the step still to come, and
+    // sending it now would glue the two together. So the switch says so.
+    notify(j.switching
+      ? `the /${j.switching} line was typed but not sent — something else has `
+        + "the keyboard there. The step has NOT been sent; clear that tab and "
+        + "send it again"
+      : "typed into the session but not sent — something else has the "
+        + "keyboard there; press Enter in that tab when it is clear", true);
+    drawSendBox(!!todoSession);
     return;
   }
-  // Saved memory edits go with it, since "my other changes" means all of them.
-  if (also && memDirty()) await saveMemory(true);
+  // Cleared only once it has gone. The pickers are a standing preference and
+  // stay; a note belongs to the one thing it was written for, and finding it
+  // still sitting there on the next step is how it ends up sent twice.
+  sendNoteText = "";
+  cancelSend();
   // The notebook stays open behind it now. Sending used to close the panel
   // because a modal was in the way of the tab you were being sent to; a tab
   // is not in the way of anything, and coming back to the plan to send its
@@ -4776,7 +4930,6 @@ The file goes, and its line comes out of the`
 
 
 $("todoAdd").onclick = addTodo;
-$("todoGo").onclick = reallySend;
 $("todoOrder").onclick = () => {
   // Entering the mode throws nothing away either: whatever is already staged
   // stays staged, and the moves join it.
@@ -5066,8 +5219,34 @@ $("todoRevert").onclick = revertNotebook;
     if (v === "bugs" && !bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
   }
+  // Unsaved work does not follow you to another tab.
+  //
+  // It used to: the roadmap's staged changes and a half-edited memory both
+  // sat in variables that no tab switch touched, so you could leave an edit
+  // on Memory, do something on Bugs, and meet it again later with no memory
+  // of having made it — and Save, from over there, would write it. So leaving
+  // asks, and answering yes throws it away. Same question the tab close asks,
+  // for the same reason, in the one other place work can be walked away from.
+  //
+  // Only the operator's own click is guarded, never setNbView itself: the
+  // panel opens itself on a view sometimes (a findings row asks for Analysis),
+  // and nothing is unsaved a moment after opening.
+  async function leaveNbView(v){
+    const cur = root.querySelector(".nbview:not([hidden])")?.dataset.view;
+    if (v === cur) return true;
+    const what = nbUnsaved();
+    if (!what) return true;
+    if (!confirm(`Leave this tab? ${what} would be thrown away.\n\n`
+                 + "Unsaved work does not carry across the tabs — Save it "
+                 + "first if you want to keep it.")) return false;
+    revertPending();
+    todoOrdering = false;
+    redrawTodo();
+    await loadMemory(memGen);     // drops whatever the editors were holding
+    return true;
+  }
   root.querySelectorAll(".nbtabs button").forEach(b =>
-    b.onclick = () => setNbView(b.dataset.v));
+    b.onclick = async () => { if (await leaveNbView(b.dataset.v)) setNbView(b.dataset.v); });
 
   // ---- one History, three tabs ---------------------------------------------
   // The memory and bug views get the same log the roadmap has, through the
@@ -5322,6 +5501,10 @@ $("todoRevert").onclick = revertNotebook;
               ? ` · ${esc(STATUS_WORDS[b.status] || b.status)}: ${esc(b.status_note)}`
               : ""}</div>
           <div class="macts">
+            <button type="button" class="bSend"
+              title="hand this bug to the session running here — it is sent as
+                     a number and an instruction to look it up, not as a copy
+                     of the report">Send to Claude</button>
             <button type="button" class="bEdit">Edit</button>
             <button type="button" class="danger bRm"
               title="for a report that should not exist — mis-filed, a duplicate,
@@ -5354,6 +5537,51 @@ $("todoRevert").onclick = revertNotebook;
         () => ask("na", "What stopped it applying? (kept on the bug)"));
       d.querySelector(".bReopen")?.addEventListener("click",
         () => postBug({action: "status", id, status: "open", note: ""}));
+      // Handing a bug over. Same box the roadmap opens under a step, opened
+      // under the report instead — it asks the same question and the pickers
+      // behind it are the same two.
+      d.querySelector(".bSend")?.addEventListener("click", () => {
+        const body = d.querySelector(".body");
+        if (body.querySelector(".sendbox")) { shutSendBoxes(); return; }
+        shutSendBoxes();
+        sendNoteText = "";            // see pickTodo: a note is not carried over
+        todoSel = null;               // and only one thing is armed at a time
+        drawSendBox(!!todoSession);
+        // Same session the roadmap sends into, and the same reason it has to
+        // exist first: there is no door into a Claude that is not running.
+        if (!todoSession){
+          notify("no Claude session is running here — start one from the "
+                 + "project's card first", true);
+          return;
+        }
+        const box = sendBoxEl({
+          label: `Send bug #${id} to ${todoSession}?`,
+          sub: "as a number to look up, not as a copy",
+          placeholder: "anything to send with it (optional)",
+          onCancel: shutSendBoxes,
+          onSend: async () => {
+            const go = box.querySelector("#todoGo");
+            go.disabled = true; go.textContent = "Sending…"; go.classList.add("busy");
+            const j = await postBug({action: "send", id, model: sendModel,
+                                     effort: sendEffort, note: sendNoteText});
+            go.disabled = false; go.textContent = "Send"; go.classList.remove("busy");
+            if (!j) return;
+            if (!j.sent){
+              notify(j.switching
+                ? `the /${j.switching} line was typed but not sent — something `
+                  + "else has the keyboard there. The bug has NOT been sent"
+                : "typed into the session but not sent — something else has "
+                  + "the keyboard there; press Enter in that tab when it is clear",
+                true);
+              return;
+            }
+            sendNoteText = "";
+            shutSendBoxes();
+            startClaude(project, null);   // land in the tab it went to
+          },
+        });
+        body.appendChild(box);
+      });
       // Same box the roadmap's bin opens, for the same reason: nothing here
       // can be undone, so the only thing between a deleted report and its
       // being filed again is a note saying why it went.

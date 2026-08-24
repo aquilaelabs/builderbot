@@ -3,7 +3,7 @@
 // report is a form submitted once, not a list curated in place — and nothing
 // is ever deleted: a bug closes as fixed or wontfix, each with a note, because
 // a closed bug is the record that stops the same report being chased twice.
-import { launch, newPage, ok, done, ready, nbShown, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, nbShown, tmuxCapture, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -264,12 +264,48 @@ const merged = execFileSync(BB, ['history', '--find', 'compose files'],
 ok(/bugs\s+claude\s+filed/.test(merged),
    'bb history finds a bug by its words, tagged with which log it came from');
 
-// ---- what the server refuses ------------------------------------------------
 const post = body => page.evaluate(async b => {
   const r = await fetch('/api/bugs', { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
   return { status: r.status, body: await r.json() };
 }, body);
+
+// ---- handing one to a session ----------------------------------------------
+// A bug goes over as a NUMBER and an instruction to look it up, never as a
+// copy of the report. The tracker is the copy that stays current: paste the
+// fields into a conversation and they start going stale the moment anybody
+// adds a note, and the session is then working from the paste.
+await page.waitForSelector('#bugList .bug', { timeout: 15000 });
+const first = await page.$eval('#bugList .bug', d => d.dataset.id);
+await page.click(`#bugList .bug[data-id="${first}"] summary`);
+await page.click(`#bugList .bug[data-id="${first}"] .bSend`);
+await page.waitForSelector('.sendbox');
+ok(await page.$eval('.sendbox', b => b.closest('.bug')?.dataset.id) === first,
+   'the send box opens inside the report it would send');
+ok(await page.$('#sendModelSel') !== null && await page.$('#sendEffortSel') !== null
+   && await page.$('#sendMore') !== null,
+   '...with the same pickers and note field the roadmap uses');
+ok(await page.$eval('#sendMore', e => e.value) === '',
+   '...and the note starts empty, never carrying words written for something else');
+await page.fill('#sendMore', 'it happens on the second run, not the first');
+await page.click('#todoGo');
+await page.waitForFunction(() => !document.querySelector('.sendbox'),
+                           null, { timeout: 20000 });
+const sent = tmuxCapture('claude-alpha');
+ok(new RegExp(`bug #${first}\\b`).test(sent)
+   && new RegExp(`bb bug show ${first}`).test(sent),
+   'the line names the bug and tells the session to look it up');
+ok(!/expected:|actual:|repro:/i.test(sent),
+   '...and carries none of the fields, which is the whole point');
+ok(/it happens on the second run/.test(sent),
+   '...but does carry the operator\'s note');
+ok(new RegExp(`bb bug fix ${first}`).test(sent),
+   '...and says how to close it when it is dealt with');
+const log = await post({ action: 'history', project: 'alpha' });
+ok(log.body.history.some(e => e.act === 'sent' && String(e.id) === String(first)),
+   '...and the tracker records that it went, since "was this ever handed over" is a tracker question');
+
+// ---- what the server refuses ------------------------------------------------
 for (const [what, body] of [
   ['a project that does not exist', { action: 'add', project: 'nosuch', title: 'x' }],
   ['a project name that is really a path', { action: 'add', project: '../etc', title: 'x' }],
