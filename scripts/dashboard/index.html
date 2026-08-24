@@ -447,6 +447,12 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .nb.held #bugAdd,.nb.held .bug .macts,.nb.held #memAdd,
 .nb.held .mem .macts{opacity:.4}
 .nb .nbhead{color:var(--dim);font:12px/1.5 system-ui,sans-serif}
+/* Every view opens the same way: its one-line summary left, its controls
+   right — the same shape on all four tabs, which is most of what "the same
+   design language" means. */
+.nb .vbar{display:flex;gap:8px;align-items:center}
+.nb .vbar .sp{flex:1}
+.nb .vbar button.on{background:#1f6f36;border-color:#2ea043;color:#d7ffe0}
 /* Long lists scroll inside the panel rather than pushing the Add field and the
    footer off the screen. A cap in rough proportion to the window, so a desktop
    shows more of it than a phone does, and a shadowless inset edge to say there
@@ -971,6 +977,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <button type="button" data-v="memory">Memory</button>
       <button type="button" data-v="roadmap" class="on">Roadmap</button>
       <button type="button" data-v="bugs">Bugs</button>
+      <button type="button" data-v="analysis">Analysis</button>
     </div>
     <div class="nbview" data-view="roadmap">
     <!-- The roadmap. Both sides write it, which is what makes it worth a
@@ -1029,7 +1036,23 @@ body.dragging .tab .lbl{cursor:grabbing}
          edits, on screen because they are the one input to a session nobody
          would otherwise ever see. -->
     <div class="nbview" data-view="memory" hidden>
-      <div class="field nbhead" id="memWhere">what Claude remembers here</div>
+      <div class="field nbhead vbar"><span id="memWhere">what Claude remembers here</span>
+        <span class="sp"></span>
+        <button type="button" id="memLog"
+          title="what the notebook changed here, with when — Claude's own memory writes are files, not events, so they are not in it">History</button>
+      </div>
+      <div class="field histbar" id="memHistBar" hidden>
+        <input maxlength="80" autocomplete="off" placeholder="search the memory log">
+        <select class="hwhen" aria-label="how far back">
+          <option value="0">all time</option><option value="1">today</option>
+          <option value="7" selected>7 days</option><option value="30">30 days</option>
+        </select>
+        <select class="hn" aria-label="how many">
+          <option value="25" selected>25</option><option value="100">100</option>
+          <option value="0">all</option>
+        </select>
+      </div>
+      <div class="field" id="memHist" hidden></div>
       <div class="mdrift" id="memDrift"></div>
     <div class="field" id="memListField">
       <label id="memCount">Memories</label>
@@ -1044,9 +1067,31 @@ body.dragging .tab .lbl{cursor:grabbing}
          a bug report is a form submitted once, not a list curated in place,
          so staging it behind Save would only delay the record. -->
     <div class="nbview" data-view="bugs" hidden>
-      <div class="field nbhead" id="bugHint">loading…</div>
+      <div class="field nbhead vbar"><span id="bugHint">loading…</span>
+        <span class="sp"></span>
+        <button type="button" id="bugLog"
+          title="every change to the tracker, by either of you, with when">History</button>
+      </div>
+      <div class="field histbar" id="bugHistBar" hidden>
+        <input maxlength="80" autocomplete="off" placeholder="search the tracker's log">
+        <select class="hwhen" aria-label="how far back">
+          <option value="0">all time</option><option value="1">today</option>
+          <option value="7" selected>7 days</option><option value="30">30 days</option>
+        </select>
+        <select class="hn" aria-label="how many">
+          <option value="25" selected>25</option><option value="100">100</option>
+          <option value="0">all</option>
+        </select>
+      </div>
+      <div class="field" id="bugHist" hidden></div>
       <div class="field" id="bugList"></div>
       <div class="field" id="bugAdd"></div>
+    </div>
+    <!-- The scanner's findings for this project, read-only: the scan runs on
+         the host and bb findings reads the same digest in a terminal. -->
+    <div class="nbview" data-view="analysis" hidden>
+      <div class="field nbhead vbar"><span id="anaHint">loading…</span></div>
+      <div class="field" id="anaList"></div>
     </div>
     <div class="foot">
       <!-- Two, and the difference is whether a line of the conversation is
@@ -1221,10 +1266,11 @@ body.dragging .tab .lbl{cursor:grabbing}
     </div>
     <div class="card" id="cardFindings" data-card="findings" hidden>
       <h2>Static analysis</h2>
+      <!-- The rows are the way in: each opens that project's notebook on its
+           Analysis view. The whole-report tab this card used to open is gone —
+           findings are read per project now, next to the roadmap and the bugs
+           they turn into. -->
       <div id="findingsSum"></div>
-      <div class="macros">
-        <button id="bFindings" onclick="openFindings()">Open findings report</button>
-      </div>
     </div>
     <div class="card" data-card="sessions">
       <h2>Sessions</h2>
@@ -1540,7 +1586,6 @@ function show(t){
   pinFor = null;
   render();
   if (isPhone()) setView("terminal");
-  if (t.kind === "findings" && !findings) loadFindings();
   if (t.kind === "packages") loadPackages();
   // Only when it is a different project's: switching back to a notebook must
   // not reload it, or whatever is staged in it goes.
@@ -2006,7 +2051,7 @@ function newShell(proj){
 function paintBar(pane, t, i){
   const closeBtn = isSplit()
     ? `<span class="x" data-cp="${i}" title="close this pane">✕</span>` : "";
-  const reload = (t.kind === "findings" || t.kind === "packages")
+  const reload = (t.kind === "packages")
     ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
   bar.innerHTML = `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
@@ -2102,10 +2147,6 @@ function drawPanes(){
       paintBar(pane, t, i);
       // Refill a document pane only when the report itself changed. Doing it
       // on every status poll would fight the reader for control of the page.
-      if (t.kind === "findings" && pane.dataset.rev !== String(findingsRev)){
-        pane.dataset.rev = String(findingsRev);
-        renderFindingsInto(i);
-      }
       if (t.kind === "packages" && pane.dataset.rev !== String(pkgRev)){
         pane.dataset.rev = String(pkgRev);
         renderPackagesInto(i);
@@ -2162,12 +2203,6 @@ function drawPanes(){
       else nudgeTerminals();
     }
     paintBar(pane, t, i);
-    if (t.kind === "findings"){
-      pane.dataset.rev = String(findingsRev); renderFindingsInto(i);
-      // A findings tab restored from the saved layout has no one calling
-      // loadFindings for it — it sat on "loading…" until something else did.
-      if (!findings) loadFindings();
-    }
     if (t.kind === "packages"){
       pane.dataset.rev = String(pkgRev); renderPackagesInto(i);
       if (!packages) loadPackages();      // same, for a restored packages tab
@@ -2487,30 +2522,21 @@ const LEVEL_ORDER = {error:0, warning:1, note:2, info:2, none:3};
 const levelClass = l => l === "error" ? "bad" : l === "warning" ? "warn"
                       : (l === "note" || l === "info") ? "note" : "";
 
-// Bumped only when the data actually changes. The status poll redraws every
-// 15s, and re-rendering the report on each pass threw away whatever the reader
-// had collapsed — and their scroll position with it.
-let findingsRev = 0;
-
 // The reports' mtime as of the last load, so a scan re-run on the host shows
 // up on its own: the status poll carries the current mtime, and a mismatch
 // while a findings tab is open triggers a reload. Only then — reloading on a
 // timer would fight the reader for the page (their collapsed sections do
 // survive, but their scroll position does not).
 let findingsMtime = null;
-let findingsWarming = false;   // an idle warm-up fetch is out
 
 async function loadFindings(force){
   if (findings && !force) return;
   findingsMtime = state?.reports_mtime ?? null;
-  findings = {loading:true}; findingsRev++;
-  drawPanes();
+  findings = {loading: true};
   try{
     const r = await fetch("/api/findings");
     findings = await r.json();
-  }catch(e){ findings = {error:String(e)}; }
-  findingsRev++;
-  drawPanes();
+  }catch(e){ findings = {error: String(e)}; }
 }
 
 // Every project section starts collapsed — the summary line of pills is the
@@ -2518,116 +2544,37 @@ async function loadFindings(force){
 // have opened is kept across re-renders so a reload does not undo it.
 const opened = new Set();
 
-function renderFindingsInto(i){
-  const el = $("doc" + i);
-  if (!el) return;
-  if (!findings || findings.loading){ el.innerHTML = `<div class="empty">loading…</div>`; return; }
-  if (findings.error){ el.innerHTML = `<div class="empty">${esc(findings.error)}</div>`; return; }
-  if (!findings.available){
-    el.innerHTML = `<div class="empty">No /reports mount. Point the container's
-      scanner-reports path at your scanner's output directory.</div>`; return;
+// The per-rule rendering the notebook's Analysis view uses: worst level
+// first, each rule one block with its hits. What used to be the whole-report
+// tab, scoped to one project — the grouping by project became the notebook.
+function findingsRulesHtml(rows){
+  const by = (xs, k) => xs.reduce((m, x) => ((m[x[k] ?? "—"] ??= []).push(x), m), {});
+  const rules = by(rows, "rule");
+  for (const k of Object.keys(rules))
+    rules[k].sort((a, b) => (LEVEL_ORDER[a.level] ?? 9) - (LEVEL_ORDER[b.level] ?? 9));
+  const order = Object.keys(rules).sort((a, b) =>
+    (LEVEL_ORDER[rules[a][0].level] ?? 9) - (LEVEL_ORDER[rules[b][0].level] ?? 9)
+    || rules[b].length - rules[a].length);
+  let html = "";
+  for (const rid of order){
+    const hits = rules[rid];
+    const f = hits[0];
+    const cves = [...new Set(hits.flatMap(h => h.cves))];
+    html += `<div class="rule">
+      <div class="rid">
+        <span class="pill ${levelClass(f.level)}">${esc(f.level)}</span>
+        ${f.uri ? `<a href="${esc(f.uri)}" target="_blank" rel="noopener">${esc(rid)}</a>`
+                : esc(rid)} · ${hits.length}
+      </div>
+      <div class="desc">${esc(f.desc || "(no description)")}</div>
+      ${cves.map(c => `<a class="cve" target="_blank" rel="noopener"
+          href="https://nvd.nist.gov/vuln/detail/${esc(c)}">${esc(c)}</a>`).join("")}
+      <div>${hits.map(h => `<div class="loc">${esc(h.path)}:${h.line}</div>`).join("")}</div>
+      ${f.message && f.message !== f.desc
+          ? `<div class="msg">${esc(f.message.slice(0, 600))}</div>` : ""}
+    </div>`;
   }
-
-  const all = [];
-  for (const rep of findings.reports)
-    for (const f of rep.findings) all.push(Object.assign({tool: rep.tool}, f));
-  const errs = findings.reports.filter(r => r.error);
-
-  if (!all.length){
-    el.innerHTML = `<h3>No findings</h3>
-      <p class="empty">Reports parsed: ${findings.reports.map(r=>esc(r.file)).join(", ") || "none"}.
-      Remember an absent project has not necessarily passed — SARIF records
-      findings, not coverage.${findings.hidden
-        ? ` ${findings.hidden} finding${findings.hidden===1?"":"s"} in excluded
-           or broken projects ${findings.hidden===1?"is":"are"} not shown.` : ""}</p>`
-      + errs.map(r =>
-        `<div class="empty">${esc(r.file)}: ${esc(r.error)}</div>`).join("");
-    return;
-  }
-
-  const by = (rows, k) => rows.reduce((m,x) => ((m[x[k] ?? "—"] ??= []).push(x), m), {});
-  const counts = by(all, "level");
-  const stat = Object.keys(counts).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
-    .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${counts[l].length}</span>`).join("");
-
-  const cveCount = new Set(all.flatMap(f => f.cves)).size;
-  const projects = by(all, "project");
-
-  // One report per tool is the common case, but a tool can write several and
-  // an unparsed one has no name at all — so dedupe and drop the unknowns.
-  const tools = [...new Set(findings.reports.map(r => r.tool).filter(t => t && t !== "?"))];
-
-  let html = `<h3>Findings (${all.length})</h3><div class="stats">${stat}
-    <span class="pill">${Object.keys(projects).length} projects</span>
-    ${cveCount ? `<span class="pill bad">${cveCount} CVEs</span>` : ""}
-    ${tools.length ? `<span class="pill">${esc(tools.join(" · "))}</span>` : ""}
-    ${findings.hidden ? `<span class="pill" title="findings in projects that are
-      excluded or have repo errors — fix or un-exclude the project to see them"
-      >${findings.hidden} hidden</span>` : ""}
-  </div>`;
-
-  html += errs.map(r =>
-    `<div class="grp bust">${esc(r.file)} could not be parsed: ${esc(r.error)}</div>`
-  ).join("");
-
-  const projNames = Object.keys(projects).sort((a,b) => (a==="—")-(b==="—") || a.localeCompare(b));
-  for (const proj of projNames){
-    const rows = projects[proj];
-    const lv = by(rows, "level");
-    const badges = Object.keys(lv).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
-      .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l].length}</span>`).join("");
-
-    const shut = !opened.has(proj);
-    html += `<details class="grp" data-proj="${esc(proj)}" ${shut?"":"open"}>
-      <summary>${esc(proj === "—" ? "unattributed paths" : proj)} ${badges}</summary>`;
-
-    const rules = by(rows, "rule");
-    // Worst hit first, so a rule that fires at two levels is labeled by the
-    // one that matters rather than by whichever the scanner happened to emit.
-    for (const k of Object.keys(rules))
-      rules[k].sort((a,b) => (LEVEL_ORDER[a.level]??9)-(LEVEL_ORDER[b.level]??9));
-    const order = Object.keys(rules).sort((a,b) =>
-      (LEVEL_ORDER[rules[a][0].level]??9)-(LEVEL_ORDER[rules[b][0].level]??9)
-      || rules[b].length - rules[a].length);
-
-    for (const rid of order){
-      const hits = rules[rid];
-      const f = hits[0];
-      const cves = [...new Set(hits.flatMap(h => h.cves))];
-      html += `<div class="rule">
-        <div class="rid">
-          <span class="pill ${levelClass(f.level)}">${esc(f.level)}</span>
-          ${f.uri ? `<a href="${esc(f.uri)}" target="_blank" rel="noopener">${esc(rid)}</a>`
-                  : esc(rid)} · ${hits.length}
-        </div>
-        <div class="desc">${esc(f.desc || "(no description)")}</div>
-        ${cves.map(c => `<a class="cve" target="_blank" rel="noopener"
-            href="https://nvd.nist.gov/vuln/detail/${esc(c)}">${esc(c)}</a>`).join("")}
-        <div>${hits.map(h => `<div class="loc">${esc(h.path)}:${h.line}</div>`).join("")}</div>
-        ${f.message && f.message !== f.desc
-            ? `<div class="msg">${esc(f.message.slice(0, 600))}</div>` : ""}
-      </div>`;
-    }
-    html += `</details>`;
-  }
-  el.innerHTML = html;
-  el.querySelectorAll("details[data-proj]").forEach(d => {
-    d.addEventListener("toggle", () =>
-      d.open ? opened.add(d.dataset.proj) : opened.delete(d.dataset.proj));
-    // The same height tween the sidebar cards fold with: closing keeps the
-    // body visible while it shrinks and flips `open` at the end.
-    d.querySelector("summary").onclick = e => {
-      e.preventDefault();
-      if (noMotion()){ d.open = !d.open; return; }
-      const closing = d.open, from = d.offsetHeight;
-      d.getAnimations().forEach(a => a.cancel());
-      d.open = true;
-      const to = closing ? d.querySelector("summary").offsetHeight : d.offsetHeight;
-      d.style.overflow = "hidden";
-      d.animate([{height: from + "px"}, {height: to + "px"}], {duration: 180, easing: "ease"})
-       .onfinish = () => { d.style.overflow = ""; if (closing) d.open = false; };
-    };
-  });
+  return html;
 }
 
 // ---- sidebar cards ---------------------------------------------------
@@ -3934,8 +3881,9 @@ function getNotebook(project){
   return nb;
 }
 
-function openNotebook(name){
+function openNotebook(name, view){
   openTab({kind: "todo", arg: name, label: "Notebook: " + name});
+  if (view) getNotebook(name).view(view);
 }
 
 function makeNotebook(project){
@@ -4631,7 +4579,7 @@ function drawMemory(j){
 }
 
 async function postMemory(body){
-  if (nbHeld()){
+  if (nbHeld() && body.action !== "history"){
     notify("a session is part-way through changing this notebook — "
            + "check the banner at the top", true);
     return null;
@@ -5055,15 +5003,114 @@ $("todoText").onkeydown = e => {
 };
 $("todoRevert").onclick = revertNotebook;
 
-  // ---- the three views ---------------------------------------------------
+  // ---- the four views ------------------------------------------------------
   function setNbView(v){
     root.querySelectorAll(".nbtabs button").forEach(b =>
       b.classList.toggle("on", b.dataset.v === v));
     root.querySelectorAll(".nbview").forEach(x => x.hidden = x.dataset.view !== v);
     if (v === "bugs" && !bugs) loadBugs();
+    if (v === "analysis") loadAnalysis();
   }
   root.querySelectorAll(".nbtabs button").forEach(b =>
     b.onclick = () => setNbView(b.dataset.v));
+
+  // ---- one History, three tabs ---------------------------------------------
+  // The memory and bug views get the same log the roadmap has, through the
+  // same bar: search, a window, a cap. One helper because "functionally the
+  // same" should be structurally the same — a divergence here is a bug
+  // somebody has to notice by feel.
+  const LOG_ACTS = {
+    filed: "new", fixed: "", wontfix: "gone", reopened: "",
+    wrote: "new", forgot: "gone", edited: "", noted: "",
+  };
+
+  function logPane({btnId, barId, paneId, showIds, fetchLog}){
+    const btn = $(btnId), bar = $(barId), pane = $(paneId);
+    let on = false, timer = null;
+    const draw = rows => {
+      pane.innerHTML = rows === null
+        ? `<div class="hint">loading…</div>`
+        : !rows.length
+        ? `<div class="hint">${bar.querySelector("input").value.trim()
+             || bar.querySelector(".hwhen").value !== "0"
+             ? "Nothing in the log matches that. Widen the window, or clear the search."
+             : "Nothing has happened here through the notebook yet."}</div>`
+        : rows.map(e => `<div class="hist">
+            <span class="when">${esc(stamp(e.at || 0))}</span>
+            <span class="act ${LOG_ACTS[e.act] || ""}">${esc(e.act || "changed")}</span>
+            <span class="what">${e.id != null ? `#${e.id} · ` : ""}${esc(e.text || "")}
+              <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}</span>${
+              e.note ? `<span class="note">${esc(e.note)}</span>` : ""}</span>
+          </div>`).join("");
+    };
+    const load = async () => {
+      draw(null);
+      const days = Number(bar.querySelector(".hwhen").value) || 0;
+      const j = await fetchLog({
+        limit: Number(bar.querySelector(".hn").value) || 0,
+        since: days ? Math.floor(Date.now() / 1000) - days * 86400 : 0,
+        find: bar.querySelector("input").value.trim()});
+      draw(j?.history || []);
+    };
+    const toggle = () => {
+      on = !on;
+      btn.classList.toggle("on", on);
+      bar.hidden = !on;
+      pane.hidden = !on;
+      showIds.forEach(id => { const el = $(id); if (el) el.hidden = on; });
+      if (on) load();
+    };
+    btn.onclick = toggle;
+    const find = bar.querySelector("input");
+    find.oninput = () => { clearTimeout(timer); timer = setTimeout(load, 250); };
+    find.onkeydown = e => {
+      if (e.key === "Enter"){ e.preventDefault(); clearTimeout(timer); load(); }
+      if (e.key === "Escape" && e.target.value){
+        e.preventDefault(); e.stopPropagation(); e.target.value = ""; load();
+      }
+    };
+    bar.querySelector(".hwhen").onchange = load;
+    bar.querySelector(".hn").onchange = load;
+  }
+
+  logPane({btnId: "memLog", barId: "memHistBar", paneId: "memHist",
+           showIds: ["memDrift", "memListField", "memAdd"],
+           fetchLog: q => postMemory({action: "history", ...q})});
+  logPane({btnId: "bugLog", barId: "bugHistBar", paneId: "bugHist",
+           showIds: ["bugList", "bugAdd"],
+           fetchLog: q => postBug({action: "history", ...q})});
+
+  // ---- analysis ------------------------------------------------------------
+  // The scanner's findings for this project. Read-only, from the page-wide
+  // cache: the scan runs on the host, and every notebook reads the one digest.
+  let anaStamp;
+
+  async function loadAnalysis(){
+    const hint = $("anaHint"), list = $("anaList");
+    if (!findings || findings.error) await loadFindings(!!findings?.error);
+    anaStamp = state?.reports_mtime ?? null;
+    if (!findings || findings.loading){ hint.textContent = "loading…"; return; }
+    if (findings.error){ hint.textContent = "analysis: " + findings.error; return; }
+    if (!findings.available){
+      hint.textContent = "no /reports mount — the scanner runs on the host, "
+        + "and its output directory is not mapped in";
+      list.innerHTML = "";
+      return;
+    }
+    const rows = [];
+    for (const rep of findings.reports)
+      for (const f of rep.findings)
+        if (f.project === project) rows.push(f);
+    const lv = {};
+    rows.forEach(f => lv[f.level] = (lv[f.level] || 0) + 1);
+    const stat = Object.keys(lv).sort((a, b) => (LEVEL_ORDER[a] ?? 9) - (LEVEL_ORDER[b] ?? 9))
+      .map(l => `${lv[l]} ${l}${lv[l] === 1 ? "" : "s"}`).join(", ");
+    hint.textContent = rows.length
+      ? `${stat} — the scan runs on the host; bb findings reads the same digest`
+      : "nothing attributed to this project in the current reports — which is "
+        + "not the same as passing; SARIF records findings, not coverage";
+    list.innerHTML = findingsRulesHtml(rows);
+  }
 
   // ---- bugs ----------------------------------------------------------------
   // Write-through, unlike the roadmap: a bug report is a form submitted once,
@@ -5083,8 +5130,8 @@ $("todoRevert").onclick = revertNotebook;
   async function postBug(body){
     // The batch guard reaches here too: a report would survive a session's
     // commit untouched (different file), but "held" has to mean the notebook,
-    // or the banner is a lie about two of its three tabs.
-    if (nbHeld()){
+    // or the banner is a lie about its other tabs. Reading is never held.
+    if (nbHeld() && body.action !== "history"){
       notify("a session is part-way through changing this notebook — "
              + "check the banner at the top", true);
       return null;
@@ -5231,7 +5278,15 @@ $("todoRevert").onclick = revertNotebook;
     leaving: notebookLeaving,
     held: nbHeld,
     unsaved: nbUnsaved,
-    poll(p){ noteBatch(p.todo_batch); drawBatchNote(); syncSave(); },
+    view: setNbView,
+    poll(p){
+      noteBatch(p.todo_batch); drawBatchNote(); syncSave();
+      // A scan re-ran while the Analysis view is up: re-read. The cache was
+      // dropped by refresh() when the mtime moved, so this is one fetch.
+      if (!root.querySelector('[data-view="analysis"]').hidden
+          && anaStamp !== (state?.reports_mtime ?? null))
+        loadAnalysis();
+    },
     escape(){ if (todoSel){ cancelSend(); redrawTodo(); return true; } return false; },
     destroy(){
       notebooks.delete(project);
@@ -5837,37 +5892,11 @@ async function refresh(){
     watchSignin();
     $("cardFindings").hidden = !state.reports;
     drawFindingsSum(state.findings_counts || {});
-    // A scan re-ran on the host: refresh any open findings view to match.
+    // A scan re-ran on the host: drop the cache, and any notebook showing
+    // its Analysis view re-reads on its poll below.
     if (findings && !findings.loading && findingsMtime !== null
-        && state.reports_mtime !== findingsMtime
-        && tabs.some(t => t.kind === "findings"))
-      loadFindings(true);
-    // The complement, as a preload: when a report exists but no findings tab
-    // is open, warm the cache in idle time — first ever, and again when the
-    // scan re-ran — so opening the report renders instantly instead of
-    // starting its fetch on the click. Deliberately NOT loadFindings(): that
-    // sets the shared loading state, stamps findingsMtime early and redraws
-    // panes, and running it from an idle callback means doing all that at an
-    // arbitrary moment in whatever else the page is mid-way through — a
-    // first version did exactly that and the suite caught it interfering.
-    // This fetches into a local, then installs the result only if the world
-    // still looks like it did when the fetch left: no tab opened meanwhile,
-    // nothing else loaded, same scan. Anything else, the answer is dropped —
-    // a wasted fetch is nothing; a fight over shared state is not.
-    else if (state.reports && !findingsWarming
-             && !tabs.some(t => t.kind === "findings")
-             && !(findings && findings.loading)
-             && (!findings || findingsMtime !== state.reports_mtime)){
-      findingsWarming = true;
-      const mt = state.reports_mtime;
-      (window.requestIdleCallback || (f => setTimeout(f, 1500)))(() =>
-        fetch("/api/findings").then(r => r.json()).then(j => {
-          if (!findings && state?.reports_mtime === mt
-              && !tabs.some(t => t.kind === "findings")){
-            findings = j; findingsMtime = mt; findingsRev++;
-          }
-        }).catch(() => {}).finally(() => { findingsWarming = false; }));
-    }
+        && state.reports_mtime !== findingsMtime)
+      findings = null;
     render();
   }catch(e){
     // The light goes red either way; the console says whether the box was
@@ -5879,10 +5908,6 @@ async function refresh(){
 
 // Findings opens as a document tab, not a terminal — it is a report to read,
 // and piping it through a PTY would only make it harder to.
-function openFindings(){
-  openTab({kind:"findings", arg:"__findings", label:"findings"});
-}
-
 // The card's per-project headline: which project, how many, how bad — so
 // "is anything on fire, and whose" is answered without opening the report.
 // Same level pills the report itself leads with; "" is the scanner seeing a
@@ -5895,10 +5920,14 @@ function drawFindingsSum(per){
     const lv = per[p];
     const pills = Object.keys(lv).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
       .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l]}</span>`).join("");
-    return `<div class="row"><div class="grow name">${esc(p || "unattributed paths")}</div>${pills}</div>`;
+    return `<div class="row${p ? " go" : ""}"${p ? ` data-ana="${esc(p)}"` : ""}
+      ${p ? `title="open ${esc(p)}'s notebook on its Analysis view"` : ""}>
+      <div class="grow name">${esc(p || "unattributed paths")}</div>${pills}</div>`;
   }).join("")
   : `<div class="empty">no findings in the current reports — which is not the
-     same as every project passing; SARIF records findings, not coverage</div>`);
+     same as every project passing; SARIF records findings, not coverage</div>`)
+  && el.querySelectorAll("[data-ana]").forEach(r =>
+       r.onclick = () => openNotebook(r.dataset.ana, "analysis"));
 }
 
 // Both popup menus dismiss on a click that is neither in them nor on the

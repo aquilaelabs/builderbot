@@ -41,6 +41,7 @@ bb — BuilderBot helper
   bb todo add "..." [--step "..."]   an item, or an ordered group of steps
   bb bug                 this project's bug tracker: open bugs, newest first
   bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
+  bb history [--find X]  one search over the notebook: roadmap, bugs and memory logs
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
@@ -851,6 +852,98 @@ else:
 PY
 }
 
+cmd_history() {
+    # One search over all three of the notebook's logs — roadmap, bugs, and
+    # what the dashboard did to the memories — tagged by source and merged by
+    # time. `bb todo history` and `bb bug history` scope to one; this is for
+    # "when did anything here mention the picker?", which is a question about
+    # the notebook and not about a tab of it.
+    local dir
+    dir="$(dirname "$(readlink -f "$0")")/dashboard"
+    local proj="${BB_TODO_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        local here; here="$(pwd -P)"
+        case "$here" in
+            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
+            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
+        esac
+    fi
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$dir" "$proj" "$@" <<'PY'
+import importlib.util, json, os, sys, time
+
+
+def load_mod(dirname, name):
+    spec = importlib.util.spec_from_file_location(name, f"{dirname}/{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def write_json(path, obj):
+    tmp = str(path) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=1)
+    os.replace(tmp, str(path))
+
+
+dirname, proj, argv = sys.argv[1], sys.argv[2], sys.argv[3:]
+state = os.environ.get("DASHBOARD_STATE", "/config")
+todo = load_mod(dirname, "todo")
+todo.configure(write_json=write_json, state=state)
+bugs = load_mod(dirname, "bugs")
+bugs.configure(write_json=write_json, state=state)
+memory = load_mod(dirname, "memory")
+memory.configure_log(write_json=write_json, state=state)
+
+limit, since, find, i = 20, None, None, 0
+while i < len(argv):
+    a = argv[i]
+    if a in ("-n", "--last") and i + 1 < len(argv):
+        limit = int(argv[i + 1]); i += 2
+    elif a == "--all":
+        limit = None; i += 1
+    elif a == "--since" and i + 1 < len(argv):
+        v = argv[i + 1]
+        if v.rstrip("d").isdigit():
+            since = int(time.time()) - int(v.rstrip("d")) * 86400
+        else:
+            try:
+                since = int(time.mktime(time.strptime(v, "%Y-%m-%d")))
+            except ValueError:
+                print(f"[builderbot] ERROR: not a date or a day count: {v}",
+                      file=sys.stderr)
+                sys.exit(1)
+        i += 2
+    elif a in ("--find", "-f") and i + 1 < len(argv):
+        find = argv[i + 1]; i += 2
+    else:
+        print("usage: bb history [-n N|--all] [--since 7d|YYYY-MM-DD] "
+              "[--find TEXT]", file=sys.stderr)
+        sys.exit(1)
+
+rows = []
+for tag, mod in (("roadmap", todo), ("bugs", bugs), ("memory", memory)):
+    for e in mod.history(proj, since=since, find=find):
+        rows.append((tag, e))
+rows.sort(key=lambda te: -te[1].get("at", 0))
+if limit:
+    rows = rows[:limit]
+if not rows:
+    print(f"nothing in {proj}'s notebook matches that")
+for tag, e in rows:
+    when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
+    where = f" step {e['step'] + 1} of" if e.get("step") is not None else ""
+    ident = f" #{e['id']}" if e.get("id") is not None else ""
+    print(f"  {when}  {tag:>7}  {e.get('by', ''):>6}  {e.get('act', ''):<11}"
+          f"{where}{ident}  {e.get('text', '')}")
+    if e.get("was"):
+        print(f"{'':>41}was: {e['was']}")
+    for k in ("why", "note"):
+        if e.get(k):
+            print(f"{'':>41}{k}: {e[k]}")
+PY
+}
+
 cmd_bug() {
     # The bug tracker's CLI half — the side a session drives. Same shape as
     # cmd_todo: the project from the working directory (or BB_BUG_PROJECT for
@@ -980,7 +1073,7 @@ elif op == "note":
         sys.exit(1)
     stamp = time.strftime("%d %b", time.localtime())
     body = (b.get("notes", "") + f"\n\n[{stamp}] " + " ".join(rest[1:])).strip()
-    r = bugs.edit(proj, rest[0], by="claude", notes=body); bail(r)
+    r = bugs.edit(proj, rest[0], by="claude", act="noted", notes=body); bail(r)
     print(f"noted on #{rest[0]}")
 elif op == "edit":
     if len(rest) < 3 or rest[1] not in ("title", "sev", "severity", "area",
@@ -1684,6 +1777,7 @@ case "${1:-help}" in
     findings) shift; cmd_findings "$@" ;;
     todo)     shift; cmd_todo "$@" ;;
     bug|bugs) shift; cmd_bug "$@" ;;
+    history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;

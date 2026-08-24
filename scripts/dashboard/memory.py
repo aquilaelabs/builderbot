@@ -18,7 +18,9 @@ directories actually under /workspace and a file name against the directory's
 own listing, so nothing the page posts can name a path that was not already
 there to be named.
 """
+import json
 import re
+import threading
 import time
 from pathlib import Path
 
@@ -28,12 +30,90 @@ run = None
 WORKSPACE = None
 CLAUDE_PROJECTS = None
 tmux_name = None
+write_json = None
+STATE = None
+LOG_FILE = None
 
 
-def configure(*, run, workspace, claude_projects, tmux_name):
-    """Hand over the server's helpers."""
+def configure(*, run, workspace, claude_projects, tmux_name,
+              write_json=None, state=None):
+    """Hand over the server's helpers.
+
+    write_json and state arrived with the change log; optional so the bb CLI,
+    which only reads the log, can configure with just those two through
+    configure_log below.
+    """
     globals().update(run=run, WORKSPACE=Path(workspace),
                      CLAUDE_PROJECTS=Path(claude_projects), tmux_name=tmux_name)
+    if state is not None:
+        configure_log(write_json=write_json, state=state)
+
+
+def configure_log(*, write_json, state):
+    globals().update(write_json=write_json, STATE=Path(state))
+    globals()["LOG_FILE"] = Path(state) / "memory-log.json"
+
+
+_log_lock = threading.Lock()
+
+# What the dashboard did to a project's memories, kept — the one half of the
+# memory story that can be logged here at all. Claude writes its memories
+# through its own tooling, straight to the files; those changes have no event
+# to record, only mtimes. So this log answers "what did the notebook change,
+# and when", which is exactly the half nobody could reconstruct.
+MAX_HISTORY = 300
+
+
+def _log(project, by, ev):
+    if LOG_FILE is None:
+        return
+    with _log_lock:
+        try:
+            d = json.loads(LOG_FILE.read_text())
+            if not isinstance(d, dict) or not isinstance(d.get("projects"), dict):
+                d = {"projects": {}}
+        except (OSError, ValueError):
+            d = {"projects": {}}
+        h = d["projects"].setdefault(project, [])
+        h.append({"at": int(time.time()),
+                  "by": "claude" if by == "claude" else "you", **ev})
+        del h[:-MAX_HISTORY]
+        try:
+            write_json(LOG_FILE, d)
+        except OSError:
+            pass
+
+
+def history(project, limit=None, since=None, find=None):
+    """The notebook's memory changes, newest first, same filters as the other
+    two logs."""
+    if LOG_FILE is None:
+        return []
+    with _log_lock:
+        try:
+            d = json.loads(LOG_FILE.read_text())
+            h = (d.get("projects") or {}).get(project) or []
+        except (OSError, ValueError):
+            h = []
+    out = sorted(h, key=lambda e: -e.get("at", 0))
+    if since is not None:
+        try:
+            cut = int(since)
+            out = [e for e in out if e.get("at", 0) >= cut]
+        except (TypeError, ValueError):
+            pass
+    if find:
+        needle = str(find).lower()
+        out = [e for e in out
+               if any(needle in str(e.get(k, "")).lower()
+                      for k in ("text", "note", "act"))]
+    try:
+        n = int(limit) if limit is not None else None
+    except (TypeError, ValueError):
+        n = None
+    if n is not None and n > 0:
+        out = out[:n]
+    return out
 
 
 # The index Claude loads at the start of every session in the project. Not a
@@ -296,6 +376,7 @@ def save(project, file, text):
         _write(p, text)
     except OSError as e:
         return {"error": f"could not write {file}: {e}"}
+    _log(project, "you", {"act": "edited", "text": file})
     return {"ok": True, "when": int(time.time())}
 
 
@@ -355,6 +436,7 @@ def save_index(project, entries):
         _write(p, text)
     except OSError as e:
         return {"error": f"could not write the index: {e}"}
+    _log(project, "you", {"act": "edited", "text": INDEX})
     return {"ok": True, "when": int(time.time())}
 
 
@@ -409,6 +491,7 @@ def create(project, name, title, hook, mtype, body):
                + _line(file, title, hook) + "\n")
     except OSError as e:
         return {"error": f"{file} was written, but the index was not: {e}"}
+    _log(project, "you", {"act": "wrote", "text": file, "note": hook})
     return {"ok": True, "file": file}
 
 
@@ -449,4 +532,5 @@ def delete(project, file):
     except OSError as e:
         return {"error": f"could not remove {file}: {e}"}
     _unindex(d, file)
+    _log(project, "you", {"act": "forgot", "text": file})
     return {"ok": True}

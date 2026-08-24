@@ -400,7 +400,9 @@ def save_cards(v):
 # Every kind of tab the saved layout may carry. A kind missing from here is
 # dropped on read without a word — which is how the notebook came back from a
 # refresh as no tab at all: it was written to the file and filtered out of it.
-TAB_KINDS = {"term", "findings", "packages", "todo"}
+# "findings" left the set when the report became the notebook's Analysis
+# view — a stored layout that still carries one sheds it on read.
+TAB_KINDS = {"term", "packages", "todo"}
 
 
 def load_layout():
@@ -1568,7 +1570,8 @@ bugs.configure(write_json=write_json, state=STATE)
 import memory                                                    # noqa: E402
 
 memory.configure(run=run, workspace=WORKSPACE,
-                 claude_projects=CLAUDE_PROJECTS, tmux_name=tmux_name)
+                 claude_projects=CLAUDE_PROJECTS, tmux_name=tmux_name,
+                 write_json=write_json, state=STATE)
 
 # ---- the shared to-do list -------------------------------------------------
 # The one surface both sides write: the operator adds an item, a session adds
@@ -2215,6 +2218,10 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "status":
             r = bugs.set_status(name, req.get("id"), field(req, "status"),
                                 note=field(req, "note"))
+        elif act == "history":
+            return self._json({"history": bugs.history(
+                name, limit=req.get("limit"), since=req.get("since"),
+                find=field(req, "find"))})
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
@@ -2242,6 +2249,10 @@ class Handler(BaseHTTPRequestHandler):
                               field(req, "body"))
         elif act == "delete":
             r = memory.delete(proj, file)
+        elif act == "history":
+            return self._json({"history": memory.history(
+                proj, limit=req.get("limit"), since=req.get("since"),
+                find=field(req, "find"))})
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         # One Save for the project, not one per thing in the panel: a memory

@@ -23,9 +23,8 @@ ok(await page.$$eval('.side .card[data-card]', cs => {
      const k = cs.map(c => c.dataset.card);
      return k.indexOf('tools') >= 0 && k.indexOf('tools') < k.indexOf('findings');
    }), 'Tools sits above it');
-ok(await page.$eval('.card[data-card="tools"] #bPkgs', b => !b.hidden)
-   && await page.$eval('.card[data-card="findings"] #bFindings', b => !b.hidden),
-   'each card carries its own button');
+ok(await page.$eval('.card[data-card="tools"] #bPkgs', b => !b.hidden),
+   'the Tools card carries its button');
 
 // ---- the tab -----------------------------------------------------------
 // Through the notebook first: a document that parks in the pane's stack used

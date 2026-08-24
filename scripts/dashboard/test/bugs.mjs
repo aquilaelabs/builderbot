@@ -111,6 +111,35 @@ bbBug('edit', '2', 'sev', 'medium');
 ok(read().find(b => b.id === 2).severity === 'medium',
    'a session can re-grade a bug once it knows more');
 
+// ---- the tracker's log -----------------------------------------------------
+// Same bar, same rows as the roadmap's: search, a window, a cap. Filed,
+// noted, fixed, reopened — with who and when, which the tracker's present
+// tense cannot answer.
+await page.click('#bugLog');
+await page.waitForFunction(() => document.querySelectorAll('#bugHist .hist').length > 0,
+                           { timeout: 10000 });
+ok(await page.$eval('#bugList', el => el.hidden),
+   'History swaps the list out, the way the roadmap\'s does');
+const acts = await page.$$eval('#bugHist .hist .act', as => as.map(a => a.textContent));
+ok(acts.includes('filed') && acts.includes('fixed') && acts.includes('noted')
+   && acts.includes('reopened'),
+   'the log carries the tracker\'s verbs: filed, noted, fixed, reopened');
+await page.fill('#bugHistBar input', 'resize listener');
+await page.waitForFunction(() => document.querySelectorAll('#bugHist .hist').length === 1,
+                           { timeout: 10000 });
+ok(await page.$eval('#bugHist .hist .note', n => /resize listener/.test(n.textContent)),
+   '...and the search reads the notes, so a fix is findable by what fixed it');
+await page.click('#bugLog');
+await page.waitForFunction(() => !document.getElementById('bugList').hidden);
+
+// One search across the whole notebook, for a session: roadmap, bugs and the
+// memory log merged by time, tagged by source.
+const merged = execFileSync(BB, ['history', '--find', 'compose files'],
+  { env: { ...process.env, BB_TODO_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws` } }).toString();
+ok(/bugs\s+claude\s+filed/.test(merged),
+   'bb history finds a bug by its words, tagged with which log it came from');
+
 // ---- what the server refuses ------------------------------------------------
 const post = body => page.evaluate(async b => {
   const r = await fetch('/api/bugs', { method: 'POST',

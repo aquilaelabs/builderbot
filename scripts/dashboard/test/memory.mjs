@@ -161,6 +161,21 @@ ok(read('MEMORY.md').includes('- [No parsed progress here](no-parsed-progress.md
 ok(await page.$('#naTitle') === null && await page.$('#memAdd .link') !== null,
    'the form folds back to the button afterwards');
 
+// ---- the memory log --------------------------------------------------------
+// What the notebook changed here, with when. Claude's own memory writes are
+// files, not events — the button's tooltip says so — but the dashboard's
+// half used to vanish without record: who forgot a memory was nobody.
+await page.click('#memLog');
+await page.waitForFunction(() => document.querySelectorAll('#memHist .hist').length > 0,
+                           { timeout: 10000 });
+const macts = await page.$$eval('#memHist .hist .act', as => as.map(a => a.textContent));
+ok(macts.includes('forgot') && macts.includes('edited') && macts.includes('wrote'),
+   'the memory log carries its verbs: wrote, edited, forgot');
+ok(await page.$$eval('#memHist .hist .what', ws => ws.some(w => /tabs\.md/.test(w.textContent))),
+   '...naming the file each event touched');
+await page.click('#memLog');
+await page.waitForFunction(() => !document.getElementById('memListField').hidden);
+
 // ---- what the server refuses -------------------------------------------
 const post = (body) => page.evaluate(async b => {
   const r = await fetch('/api/memory', { method: 'POST',
