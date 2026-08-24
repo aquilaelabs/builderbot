@@ -37,8 +37,10 @@ bb — BuilderBot helper
   bb claude-md --init    create a CLAUDE.md here from the shipped template
   bb lint [PATH]         lint the infrastructure files a repo carries: shell
                          scripts, Dockerfiles, GitHub workflows, compose, XML
-  bb todo                this project's shared to-do list (add/done/rm)
+  bb todo                this project's roadmap (add/done/rm/shelve/history)
   bb todo add "..." [--step "..."]   an item, or an ordered group of steps
+  bb bug                 this project's bug tracker: open bugs, newest first
+  bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
@@ -824,6 +826,165 @@ else:
 PY
 }
 
+cmd_bug() {
+    # The bug tracker's CLI half — the side a session drives. Same shape as
+    # cmd_todo: the project from the working directory (or BB_BUG_PROJECT for
+    # callers that are not in one, like bb-tty), the module loaded from the
+    # file beside this script so the checkout's copy is the one under test.
+    local py
+    py="$(dirname "$(readlink -f "$0")")/dashboard/bugs.py"
+    [ -f "$py" ] || die "bugs.py is missing from this image"
+    local proj="${BB_BUG_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        local here; here="$(pwd -P)"
+        case "$here" in
+            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
+            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
+        esac
+    fi
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
+import importlib.util, json, sys, time
+
+spec = importlib.util.spec_from_file_location("bugs", sys.argv[1])
+bugs = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bugs)
+
+
+def write_json(path, obj):
+    """Atomic, like the server's: a half-written tracker is worse than a
+    failed write."""
+    import os
+    tmp = str(path) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=1)
+    os.replace(tmp, str(path))
+
+
+import os
+bugs.configure(write_json=write_json,
+               state=os.environ.get("DASHBOARD_STATE", "/config"))
+
+proj, argv = sys.argv[2], sys.argv[3:]
+op = argv[0] if argv else "list"
+rest = argv[1:]
+
+
+def bail(r):
+    if r.get("error"):
+        print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr)
+        sys.exit(1)
+
+
+def line(b):
+    mark = " " if b.get("status") == "open" else "x"
+    extra = "" if b.get("status") == "open" else f"  [{b['status']}]"
+    return (f"  [{mark}] {b['id']:>3}  ({b.get('severity', 'medium')})  "
+            f"{b['title']}{extra}")
+
+
+def show(b):
+    print(line(b))
+    for k in ("area", "repro", "expected", "actual", "notes"):
+        if b.get(k):
+            body = b[k].replace("\n", "\n" + " " * 12)
+            print(f"  {k:>8}: {body}")
+    when = time.strftime("%d %b %H:%M", time.localtime(b.get("at", 0)))
+    print(f"  {'by':>8}: {b.get('by', '?')} · {when}"
+          + (f" · {b['status']}: {b.get('status_note', '')}"
+             if b.get("status") != "open" else ""))
+
+
+def rows():
+    return bugs.payload(proj)["bugs"]
+
+
+def pull_flags(args):
+    """--sev/--area/--repro/--expected/--actual/--notes out of an argv,
+    leaving the words that make the title."""
+    words, out, i = [], {}, 0
+    names = {"--sev": "severity", "--severity": "severity", "--area": "area",
+             "--repro": "repro", "--expected": "expected",
+             "--actual": "actual", "--notes": "notes"}
+    while i < len(args):
+        if args[i] in names:
+            if i + 1 >= len(args):
+                print(f"[builderbot] ERROR: {args[i]} needs a value after it",
+                      file=sys.stderr)
+                sys.exit(1)
+            out[names[args[i]]] = args[i + 1]; i += 2
+        else:
+            words.append(args[i]); i += 1
+    return " ".join(words).strip(), out
+
+
+if op in ("list", "ls"):
+    open_rows = [b for b in rows() if b.get("status") == "open"]
+    if not open_rows:
+        print(f"no open bugs on {proj} — `bb bug all` includes the closed ones")
+    for b in open_rows:
+        print(line(b))
+elif op == "all":
+    if not rows():
+        print(f"nothing in {proj}'s bug tracker")
+    for b in rows():
+        print(line(b))
+elif op == "show":
+    if not rest:
+        print("usage: bb bug show <n>", file=sys.stderr); sys.exit(1)
+    b = next((x for x in rows() if str(x.get("id")) == rest[0]), None)
+    if b is None:
+        print(f"[builderbot] ERROR: no bug #{rest[0]} here", file=sys.stderr)
+        sys.exit(1)
+    show(b)
+elif op == "add":
+    title, flags = pull_flags(rest)
+    r = bugs.add(proj, title, by="claude",
+                 severity=flags.pop("severity", "medium"), **flags)
+    bail(r)
+    print(f"filed #{r['bug']['id']}: {r['bug']['title']}")
+elif op == "note":
+    # The everyday update: what a session learned about a bug it did not fix.
+    # Appended rather than replacing, because the last analysis is not made
+    # wrong by the next one — it is how the next one starts.
+    if len(rest) < 2:
+        print("usage: bb bug note <n> \"what you learned\"", file=sys.stderr)
+        sys.exit(1)
+    b = next((x for x in rows() if str(x.get("id")) == rest[0]), None)
+    if b is None:
+        print(f"[builderbot] ERROR: no bug #{rest[0]} here", file=sys.stderr)
+        sys.exit(1)
+    stamp = time.strftime("%d %b", time.localtime())
+    body = (b.get("notes", "") + f"\n\n[{stamp}] " + " ".join(rest[1:])).strip()
+    r = bugs.edit(proj, rest[0], by="claude", notes=body); bail(r)
+    print(f"noted on #{rest[0]}")
+elif op == "edit":
+    if len(rest) < 3 or rest[1] not in ("title", "sev", "severity", "area",
+                                        "repro", "expected", "actual", "notes"):
+        print("usage: bb bug edit <n> title|sev|area|repro|expected|actual|notes"
+              " \"...\"", file=sys.stderr)
+        sys.exit(1)
+    k = "severity" if rest[1] in ("sev", "severity") else rest[1]
+    r = bugs.edit(proj, rest[0], by="claude", **{k: " ".join(rest[2:])})
+    bail(r)
+    print(f"updated {k} on #{rest[0]}")
+elif op in ("fix", "wontfix", "reopen"):
+    if not rest:
+        print(f"usage: bb bug {op} <n> [\"note\"]", file=sys.stderr); sys.exit(1)
+    status = {"fix": "fixed", "wontfix": "wontfix", "reopen": "open"}[op]
+    r = bugs.set_status(proj, rest[0], status,
+                        note=" ".join(rest[1:]), by="claude")
+    bail(r)
+    print(f"#{rest[0]} {status}")
+elif op == "--prompt":
+    sys.stdout.write(bugs.prompt(proj))
+else:
+    print("usage: bb bug [list|all|show N|add TITLE [--sev S] [--area ..] "
+          "[--repro ..]|note N TEXT|edit N FIELD TEXT|fix N [NOTE]|"
+          "wontfix N [WHY]|reopen N]", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 cmd_findings() {
     local target="" scope=mine proj
     while [ $# -gt 0 ]; do
@@ -1497,6 +1658,7 @@ case "${1:-help}" in
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
     todo)     shift; cmd_todo "$@" ;;
+    bug|bugs) shift; cmd_bug "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;

@@ -315,7 +315,8 @@ EOF
 # throwaway sessions present — a file that minimizes tabs or ends a session
 # must not hand that state to the next.
 fresh() {
-    rm -f "$S/state/tabs.json" "$S/state/cards.json" "$S/state/todos.json"
+    rm -f "$S/state/tabs.json" "$S/state/cards.json" "$S/state/todos.json" \
+          "$S/state/bugs.json"
     echo '["delta"]' > "$S/state/excluded-projects.json"   # a test that excludes must not hand that on
     # Projects a test created through /api/create go too — anything that is
     # not one of the five fixtures. Scoped to $S, like every rm in this file.
