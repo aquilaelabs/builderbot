@@ -250,6 +250,14 @@ case "$target" in
         # whose bb has no `todo` prints usage and fails, which is caught here
         # and simply means no block.
         todo_block="$(BB_TODO_PROJECT="$proj" bb todo --prompt 2>/dev/null || true)"
+        # The bug tracker rides in the same block: open bugs by number and
+        # severity, with the fields on disk behind `bb bug show`. An older
+        # image whose bb has no `bug` prints usage and fails, which is caught
+        # here and simply means no bugs block.
+        bug_block="$(BB_BUG_PROJECT="$proj" bb bug --prompt 2>/dev/null || true)"
+        [ -z "$bug_block" ] || todo_block="${todo_block:+$todo_block
+
+}$bug_block"
         [ -z "$todo_block" ] || cmd+=(--append-system-prompt "$todo_block")
         if scope="$(claude_scope "$proj")"; then
             cmd+=(--settings "$scope")

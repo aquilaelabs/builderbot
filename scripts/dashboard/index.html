@@ -378,6 +378,16 @@ button.on{background:#1f6f36;border-color:#2ea043}
    readability of the row. */
 .todo .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
 .todo .tags{display:flex;gap:5px;flex-wrap:wrap}
+/* The details fold under a line: the row's words are the decision, this is
+   the workings — files, functions, approach — wanted when the work starts
+   and noise until then. */
+.todo .dtog{background:none;border:0;color:var(--dim);padding:2px 0;
+  font:11px/1.4 system-ui,sans-serif;align-self:flex-start;min-height:0}
+@media(hover:hover){ .todo .dtog:hover{color:var(--ink)} }
+.todo .dinfo{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dim);
+  font:12px/1.5 var(--mono);border-left:2px solid var(--line);
+  padding:3px 0 3px 9px;margin-top:2px}
+.editbox .qd{margin-top:8px}
 /* pre-wrap, because a step may be written across a few lines: one step is one
    message the operator sends by hand, so the cheap unit has to be able to hold
    a paragraph rather than pushing a plan into more steps than it needs. */
@@ -417,13 +427,16 @@ button.on{background:#1f6f36;border-color:#2ea043}
    lose their padding before the words lose their width. */
 @media(max-width:620px){ .todo .go,.todo .x,.todo .rm,.todo .ed{padding:5px 4px}
   .todo{gap:5px} }
-#memFold>summary{cursor:pointer;color:var(--dim);
-  font:12px/1.5 system-ui,sans-serif;padding:11px 14px;list-style:none;
-  border-top:1px solid var(--line)}
-#memFold>summary::-webkit-details-marker{display:none}
-#memFold>summary::before{content:"▸ ";font-size:11px}
-#memFold[open]>summary::before{content:"▾ "}
-#memFold>.field{padding-top:0}
+/* The notebook's own tab strip: three views under one roof. Underlined, not
+   boxed — these switch what the page shows, they do not open anything. */
+.nbtabs{display:flex;border-bottom:1px solid var(--line);padding:0 8px}
+.nbtabs button{background:none;border:0;border-bottom:2px solid transparent;
+  color:var(--dim);padding:11px 13px;font:600 12px/1 system-ui,sans-serif;
+  min-height:var(--tap);border-radius:0}
+.nbtabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
+@media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
+.nbview[hidden]{display:none}
+.nb .nbhead{color:var(--dim);font:12px/1.5 system-ui,sans-serif}
 /* Long lists scroll inside the panel rather than pushing the Add field and the
    footer off the screen. A cap in rough proportion to the window, so a desktop
    shows more of it than a phone does, and a shadowless inset edge to say there
@@ -551,6 +564,34 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .memadd textarea{min-height:120px;white-space:pre-wrap}
 .memadd .acts{display:flex;gap:8px;margin-top:10px}
 .memadd .acts .sp{flex:1}
+/* Bugs: one <details> per report, severity leading the line the way type
+   leads a memory's. */
+.bug{border-top:1px solid var(--line);padding:2px 0}
+.bug:first-child{border-top:0}
+.bug>summary{display:flex;gap:8px;align-items:center;padding:8px 2px;
+  cursor:pointer;list-style:none}
+.bug>summary::-webkit-details-marker{display:none}
+.bug>summary::before{content:"▸";color:var(--dim);font-size:11px;width:9px}
+.bug[open]>summary::before{content:"▾"}
+.bug .btitle{flex:1;min-width:0;font:13px/1.4 system-ui,sans-serif;
+  overflow-wrap:anywhere}
+.bug .btitle.done{color:var(--dim);text-decoration:line-through}
+.bug .sev,.bug .bstat{flex:0 0 auto;font:600 10px/1 system-ui,sans-serif;
+  text-transform:uppercase;letter-spacing:.4px;padding:3px 5px;border-radius:4px;
+  border:1px solid var(--line);color:var(--dim);white-space:nowrap}
+.bug .sev.high{color:#e8a04c;border-color:#4a331e}
+.bug .sev.critical{color:#e0796f;border-color:#4d2220}
+.bug .bstat.open{color:#77b7e8;border-color:#1e3a4a}
+.bug .bstat.fixed{color:#7fc08a;border-color:#1f3f28}
+.bug .body{padding:0 2px 10px 17px}
+.bug .bfield{margin-bottom:7px}
+.bug .bfield label{font:600 10px/1.6 system-ui,sans-serif;color:var(--dim);
+  text-transform:uppercase;letter-spacing:.4px;display:block}
+.bug .bval{font:12.5px/1.5 system-ui,sans-serif;white-space:pre-wrap;
+  overflow-wrap:anywhere}
+.bug .bwho{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin:6px 0}
+.bugform .two{display:flex;gap:6px}
+.bugform .two>*{flex:1;min-width:0}
 /* Drift between the index and the files: never fatal, which is exactly why it
    has to be said out loud rather than left to be noticed. */
 /* The notebook, as a pane's document. Its own heading goes — the pane's bar
@@ -899,30 +940,31 @@ body.dragging .tab .lbl{cursor:grabbing}
     </div>
   </div>
 </div>
-<!-- New project. The name and the URL are validated again server-side; the
-     form's job is a fast answer, the server's is the real one. -->
-<!-- What Claude remembers about a project. Everything Claude is told at the
-     start of a session is reviewable somewhere — CLAUDE.md through a pull
-     request, the transcript on screen — except this, which writes itself and
-     is never read back. Opened from the book on the project's row, not from a
-     Claude tab: the question it answers ("why did it do that?") is usually
-     asked after the tab has been closed. -->
-<!-- The notebook. It lives here while no tab is showing it and is *moved* into
-     a pane when one is — one instance, so every id inside it stays unique and
-     the whole staging model keeps working without being made per-pane. It used
-     to be a modal, which on a desktop meant reading a list, a plan, a log and
-     a memory editor through a 760px slot. -->
-<div id="nbPark" hidden>
-  <div id="nbBody" class="nb">
-    <h3 id="memTitle">To do</h3>
-    <!-- The shared list. Both sides write it, which is what makes it worth a
-         panel: everything else here is one-way. Its open items are appended to
-         every Claude session the dashboard starts, so an item added on Tuesday
-         is read on Thursday without anybody remembering to mention it. -->
+<!-- Notebooks live here while no tab is showing them. One instance per
+     project, cloned from the template below — which is what lets two
+     projects' notebooks be open, and visible, at the same time. -->
+<div id="nbPark" hidden></div>
+<!-- One project's notebook. Three views under one roof: the roadmap (design
+     work, ordered plans), what Claude remembers here, and the bug tracker.
+     Ids inside are unique per clone, and every lookup in the notebook's own
+     code is scoped to its clone — nothing here is addressed globally. -->
+<template id="nbTpl">
+  <div class="nb">
+    <h3 id="memTitle">Notebook</h3>
+    <div class="nbtabs" role="tablist">
+      <button type="button" data-v="memory">Memory</button>
+      <button type="button" data-v="roadmap" class="on">Roadmap</button>
+      <button type="button" data-v="bugs">Bugs</button>
+    </div>
+    <div class="nbview" data-view="roadmap">
+    <!-- The roadmap. Both sides write it, which is what makes it worth a
+         panel: everything else here is one-way. Its open items are appended
+         to every Claude session the dashboard starts, so an item added on
+         Tuesday is read on Thursday without anybody remembering to say so. -->
     <div class="field">
       <div class="todoadd">
         <input id="todoText" maxlength="500" autocomplete="off"
-               placeholder="something to do here">
+               placeholder="something for the roadmap">
         <button id="todoAdd" class="primary" type="button">Add</button>
       </div>
       <div class="hintrow">
@@ -973,12 +1015,13 @@ body.dragging .tab .lbl{cursor:grabbing}
       </label>
       <button id="todoGo" class="primary" type="button">Send</button>
     </div>
-    <!-- What Claude remembers, folded away: it is a handful of files nobody
-         edits, and the reason it is on screen at all is that it is the one
-         input to a session nobody would otherwise ever see. -->
-    <details id="memFold" class="field">
-      <summary id="memWhere">what Claude remembers here</summary>
-    <div class="mdrift" id="memDrift"></div>
+    </div>
+    <!-- What Claude remembers, on its own tab: a handful of files nobody
+         edits, on screen because they are the one input to a session nobody
+         would otherwise ever see. -->
+    <div class="nbview" data-view="memory" hidden>
+      <div class="field nbhead" id="memWhere">what Claude remembers here</div>
+      <div class="mdrift" id="memDrift"></div>
     <div class="field" id="memListField">
       <label id="memCount">Memories</label>
       <div id="memList"></div>
@@ -987,7 +1030,15 @@ body.dragging .tab .lbl{cursor:grabbing}
          project with no memories is exactly where writing the first one by
          hand is worth offering. -->
     <div class="field" id="memAdd"></div>
-    </details>
+    </div>
+    <!-- The bug tracker. Deliberately write-through, unlike the roadmap:
+         a bug report is a form submitted once, not a list curated in place,
+         so staging it behind Save would only delay the record. -->
+    <div class="nbview" data-view="bugs" hidden>
+      <div class="field nbhead" id="bugHint">loading…</div>
+      <div class="field" id="bugList"></div>
+      <div class="field" id="bugAdd"></div>
+    </div>
     <div class="foot">
       <!-- Two, and the difference is whether a line of the conversation is
            spent saying so. The plain one settles the panel without telling
@@ -1004,7 +1055,20 @@ body.dragging .tab .lbl{cursor:grabbing}
       <button id="todoRevert" class="danger" type="button" disabled>Revert</button>
     </div>
   </div>
-</div>
+</template>
+<!-- New project. The name and the URL are validated again server-side; the
+     form's job is a fast answer, the server's is the real one. -->
+<!-- What Claude remembers about a project. Everything Claude is told at the
+     start of a session is reviewable somewhere — CLAUDE.md through a pull
+     request, the transcript on screen — except this, which writes itself and
+     is never read back. Opened from the book on the project's row, not from a
+     Claude tab: the question it answers ("why did it do that?") is usually
+     asked after the tab has been closed. -->
+<!-- The notebook. It lives here while no tab is showing it and is *moved* into
+     a pane when one is — one instance, so every id inside it stays unique and
+     the whole staging model keeps working without being made per-pane. It used
+     to be a modal, which on a desktop meant reading a list, a plan, a log and
+     a memory editor through a 760px slot. -->
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
@@ -1312,6 +1376,9 @@ function sessionLabels(){
 }
 
 function tabLabel(t){
+  // Computed for a notebook, not stored: a tab restored from a layout saved
+  // before the rename would otherwise wear "To do:" forever.
+  if (t.kind === "todo") return "Notebook: " + t.arg;
   if (t.kind !== "term") return t.label;
   // Falls back to the stored label only while tmux has yet to register a
   // just-opened session.
@@ -1494,8 +1561,11 @@ function hideTab(id, ev){
   const t = tabOf(id);
   if (!t) return;
   if (t.kind === "todo"){
-    if (!notebookLeaving()) return;
-    parkNotebook();
+    // Closing a notebook's tab ends its instance: whatever was staged in it
+    // was just answered for, and reopening reads fresh from disk.
+    const nb = notebooks.get(t.arg);
+    if (nb && !nb.leaving()) return;
+    nb?.destroy();
   }
   dropTab(id);
   refresh();
@@ -2063,7 +2133,15 @@ function drawPanes(){
       // Documents are not kept: they redraw from state in a millisecond, and
       // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
-    if (t.kind !== "term") el.id = "doc" + i;
+    // The id names "the document being shown in pane i", so it must name one
+    // node. A hidden document left in the stack (the notebook parks there)
+    // used to keep it, and getElementById returns the first in DOM order —
+    // so packages and findings rendered into a node nobody could see and the
+    // pane sat blank.
+    if (t.kind !== "term"){
+      [...st.children].forEach(c => { if (c !== el && c.id) c.removeAttribute("id"); });
+      el.id = "doc" + i;
+    }
     evictFrames(st);
     // Shown again after being hidden: xterm sizes itself from a resize event,
     // and one that was laid out behind another frame may have missed one. One
@@ -2094,24 +2172,15 @@ function drawPanes(){
 // have to become per-pane — and moving it keeps whatever is half-typed in it,
 // which re-rendering would not.
 function renderNotebookInto(i, project){
-  const host = $("doc" + i), nb = $("nbBody");
-  if (!host || !nb) return;
-  if (nb.parentElement !== host){
-    document.querySelectorAll(".doc.nbhost").forEach(d => d.classList.remove("nbhost"));
-    host.appendChild(nb);
-  }
+  const host = $("doc" + i), nb = getNotebook(project);
+  if (!host) return;
   host.classList.add("nbhost");
-  if (memProj !== project) openMemory(project);
+  if (nb.root.parentElement !== host) host.appendChild(nb.root);
+  nb.shown();
 }
 
 // Back to its holder when no tab is showing it, so a stale copy is never left
 // inside a pane's stack for the next document to be drawn over.
-function parkNotebook(){
-  const nb = $("nbBody");
-  document.querySelectorAll(".doc.nbhost").forEach(d => d.classList.remove("nbhost"));
-  if (nb && nb.parentElement?.id !== "nbPark") $("nbPark").appendChild(nb);
-}
-
 // How many terminals a pane keeps alive behind the one on screen. Each is a
 // full xterm and its own websocket, so this is a real ceiling on browser
 // memory — the same reasoning as MAX_TABS, one level down. Three covers the
@@ -3820,33 +3889,59 @@ function openLinkProject(name){ pLink = name; pOpen("link"); }
 // it was told about, which is what keeps the one free-text file write in the
 // dashboard from being a way to write anywhere.
 
-let memProj = null;      // which project's panel is open
-let memGen  = 0;         // bumped on close, so a slow load cannot repaint it
 
-// The notebook opens as a tab of its own. Loading is separate from opening
-// because a tab can be shown again without being reopened — switching back to
-// it must not throw away what is staged in it.
-function openNotebook(name){
-  // One at a time. The notebook is a single node moved into a pane, so two of
-  // them would fight over it and the loser would show an empty document. A
-  // second project's notebook replaces the first's rather than pretending —
-  // and asks first, because the first may be holding unsaved work.
-  const open = tabs.find(t => t.kind === "todo");
-  if (open && open.arg !== name){
-    if (!notebookLeaving()) return;
-    parkNotebook();
-    dropTab(open.id);
-  }
-  openTab({kind: "todo", arg: name, label: "To do: " + name});
+function nextStep(r){
+  const steps = r.steps || [];
+  if (!steps.length) return r.sent ? null : -1;
+  const i = steps.findIndex(s => !s.sent);
+  return i < 0 ? null : i;
 }
+
+// Where the list has got to: how many steps at the front have been crossed.
+// Crossed steps are always a prefix — they are handed out in order and put
+// back from the end — so one number describes the whole state.
+function crossedTo(r){
+  const steps = r.steps || [];
+  let k = 0;
+  while (k < steps.length && steps[k].sent) k++;
+  return k;
+}
+
+
+
+// ---- notebooks -----------------------------------------------------------
+// One notebook per project, and as many open as there are projects: each is a
+// clone of #nbTpl with its state held in this closure, so two of them in a
+// split do not share so much as a variable. The local `$` shadows the global
+// one on purpose — every lookup inside the notebook's code resolves within
+// its own clone, which is what makes the ids in the template safe to repeat.
+const notebooks = new Map();
+
+function getNotebook(project){
+  let nb = notebooks.get(project);
+  if (!nb){ nb = makeNotebook(project); notebooks.set(project, nb); }
+  return nb;
+}
+
+function openNotebook(name){
+  openTab({kind: "todo", arg: name, label: "Notebook: " + name});
+}
+
+function makeNotebook(project){
+  const root = document.getElementById("nbTpl").content.firstElementChild.cloneNode(true);
+  document.getElementById("nbPark").appendChild(root);
+  const $ = id => root.querySelector('[id="' + CSS.escape(id) + '"]');
+  let loaded = false;
+
+let memProj = null;      // set by openMemory; always this project
+let memGen  = 0;         // bumped on close, so a slow load cannot repaint it
 
 async function openMemory(name){
   memProj = name;
   const gen = ++memGen;
-  $("memTitle").textContent = "To do — " + name;
+  $("memTitle").textContent = "Notebook — " + name;
   $("memWhere").textContent = "what Claude remembers here";
   $("memDrift").innerHTML = $("memList").innerHTML = $("memAdd").innerHTML = "";
-  $("memFold").open = false;
   $("todoSave").disabled = $("todoSaveQuiet").disabled = true;
   $("todoAsk").hidden = true;
   todoOrdering = false;
@@ -3903,23 +3998,6 @@ const SHELF = `<svg viewBox="0 0 16 16" aria-hidden="true">
 // order is the whole point of a group — send the third before the second and
 // it lands on a tree the second was supposed to have made — so only that one,
 // and any already sent, can be sent at all.
-function nextStep(r){
-  const steps = r.steps || [];
-  if (!steps.length) return r.sent ? null : -1;
-  const i = steps.findIndex(s => !s.sent);
-  return i < 0 ? null : i;
-}
-
-// Where the list has got to: how many steps at the front have been crossed.
-// Crossed steps are always a prefix — they are handed out in order and put
-// back from the end — so one number describes the whole state.
-function crossedTo(r){
-  const steps = r.steps || [];
-  let k = 0;
-  while (k < steps.length && steps[k].sent) k++;
-  return k;
-}
-
 function stepRow(r, idx, live){
   const steps = r.steps || [];
   const nxt = nextStep(r);
@@ -3993,6 +4071,9 @@ function stepRow(r, idx, live){
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
+      ${st.info ? `<button type="button" class="dtog" aria-expanded="false"
+        title="the technical half: files, functions, approach">▸ details</button>
+      <div class="dinfo" hidden>${esc(st.info)}</div>` : ""}
     </span>
     ${todoOrdering ? moves : `${shelf ? `<button class="eye x${r.shelved ? " on" : ""}" type="button"
       aria-label="${r.shelved ? "take it off the shelf" : "shelve it"}"
@@ -4081,6 +4162,15 @@ function drawTodo(j){
     // the hand goes anyway. Steps too — a plan is written before it is right,
     // and the line that needed changing was always the one inside a group.
     const reword = () => openReword(row, id, step);
+    // The details fold: closed by default because the row's words are the
+    // decision and this is the workings, wanted when the work starts.
+    const dt = row.querySelector(".dtog");
+    if (dt) dt.onclick = () => {
+      const info = row.querySelector(".dinfo");
+      info.hidden = !info.hidden;
+      dt.textContent = info.hidden ? "▸ details" : "▾ details";
+      dt.setAttribute("aria-expanded", String(!info.hidden));
+    };
     // Guarded like every other control on this row: reordering replaces all
     // three of them, so in that mode there is no pencil to bind and an
     // unguarded one took the whole redraw down with it.
@@ -4305,24 +4395,33 @@ function openReword(row, id, step){
   if (row.nextElementSibling?.classList.contains("editbox")) return;
   row.parentElement.querySelectorAll(".editbox,.dropbox").forEach(b => b.remove());
   const was = row.querySelector(".txt").textContent;
+  const r0 = findRow(id);
+  const wasInfo = (step < 0 ? r0?.info : r0?.steps?.[step]?.info) || "";
   const box = document.createElement("div");
   box.className = "dropbox editbox";
   box.innerHTML = `<div class="q">${step < 0 ? "Reword it"
       : `Reword step ${step + 1}`}<span> — Enter saves, shift+Enter is a new line</span></div>
     <textarea maxlength="500" spellcheck="false"></textarea>
+    <div class="q qd"><span>Details — the technical half: files, functions, approach</span></div>
+    <textarea class="dta" maxlength="2000" spellcheck="false"
+      placeholder="mostly Claude's to write; empty is fine"></textarea>
     <div class="acts"><span class="sp"></span>
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="primary">Save</button></div>`;
   row.after(box);
   const ta = box.querySelector("textarea");
   ta.value = was;
+  const dta = box.querySelector(".dta");
+  dta.value = wasInfo;
   const shut = () => box.remove();
   box.querySelector(".stop").onclick = shut;
   box.querySelector(".primary").onclick = () => {
-    const now = ta.value;
+    const now = ta.value, nowInfo = dta.value;
     shut();
     if (now.trim() && now !== was)
       stageEdit(id, step < 0 ? null : step, now);
+    if (nowInfo !== wasInfo)
+      stageInfo(id, step < 0 ? null : step, nowInfo);
   };
   ta.onkeydown = e => {
     if (e.key === "Enter" && !e.shiftKey){
@@ -4629,29 +4728,6 @@ The file goes, and its line comes out of the`
 }
 
 
-function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
-
-// A stale error must not survive a mode switch — "a name is required" makes
-// no sense over a form that no longer asks for one.
-const pSwitch = m => { if (pMode === m) return;
-  pMode = m; $("pErrWrap").hidden = true; pDraw(); pSlide(); };
-$("pLocal").onclick = () => pSwitch("init");
-$("pClone").onclick = () => pSwitch("clone");
-$("pKey").onchange = pShowKey;
-$("pCopy").onclick = async () => {
-  // clipboard API needs a secure context; plain-http access to the dashboard
-  // falls back to the selection route, which works everywhere a click does.
-  const pub = $("pPub").value;
-  try { await navigator.clipboard.writeText(pub); }
-  catch { $("pPub").select(); document.execCommand("copy"); }
-  notify("public key copied — paste it under the repo's Settings → Deploy keys");
-};
-$("pCancel").onclick = closeNewProject;
-$("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
-
-// The memory controls belong to the fold, not to the panel: with it closed
-// the footer is one button, which is what a panel about a to-do list should
-// end with.
 $("todoAdd").onclick = addTodo;
 $("todoGo").onclick = reallySend;
 $("todoOrder").onclick = () => {
@@ -4691,6 +4767,8 @@ const ACT = {
   "remove-step": ["dropped a step", "gone"],
   done:          ["ticked off", ""],
   undone:        ["reopened", ""],
+  info:          ["detailed", ""],
+  "info-step":   ["detailed", ""],
   sent:          ["sent", ""],
   unsent:        ["put back", ""],
   shelved:       ["shelved", ""],
@@ -4835,6 +4913,16 @@ function stageEdit(id, step, text){
   });
 }
 
+function stageInfo(id, step, text){
+  return stage({action: "info", id, ...(step !== null ? {step} : {}), text}, () => {
+    const r = findRow(id);
+    if (!r) return false;
+    const t = step === null ? r : (r.steps || [])[step];
+    if (!t) return false;
+    if (text.trim()) t.info = text; else delete t.info;
+  });
+}
+
 function stageRemove(id, step, why){
   return stage({action: "remove", id, ...(step >= 0 ? {step} : {}), why}, () => {
     const i = todoItems.findIndex(r => String(r.id) === String(id));
@@ -4922,6 +5010,204 @@ $("todoText").onkeydown = e => {
   }
 };
 $("todoRevert").onclick = revertNotebook;
+
+  // ---- the three views ---------------------------------------------------
+  function setNbView(v){
+    root.querySelectorAll(".nbtabs button").forEach(b =>
+      b.classList.toggle("on", b.dataset.v === v));
+    root.querySelectorAll(".nbview").forEach(x => x.hidden = x.dataset.view !== v);
+    if (v === "bugs" && !bugs) loadBugs();
+  }
+  root.querySelectorAll(".nbtabs button").forEach(b =>
+    b.onclick = () => setNbView(b.dataset.v));
+
+  // ---- bugs ----------------------------------------------------------------
+  // Write-through, unlike the roadmap: a bug report is a form submitted once,
+  // not a list curated in place, and a session finding one mid-task must not
+  // depend on somebody pressing Save later.
+  let bugs = null;
+
+  async function loadBugs(){
+    try{
+      const r = await fetch("/api/bugs?project=" + encodeURIComponent(project));
+      const j = await r.json();
+      bugs = j.error ? {bugs: [], error: j.error} : j;
+    }catch(e){ bugs = {bugs: [], error: String(e)}; }
+    drawBugs();
+  }
+
+  async function postBug(body){
+    try{
+      const r = await fetch("/api/bugs", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, ...body})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return null; }
+      bugs = j;
+      drawBugs();
+      return j;
+    }catch(e){ notify("could not reach the server: " + e, true); return null; }
+  }
+
+  const SEVS = ["low", "medium", "high", "critical"];
+
+  // The report form, used for a new bug and for editing one. The fields are
+  // the ones a session needs to act on a report without a conversation: where
+  // it lives, how to make it happen, and the gap between should and does.
+  function bugForm(b){
+    const v = k => esc(b?.[k] || "");
+    return `<div class="memadd bugform">
+      <label>Title — one line, what goes wrong</label>
+      <input class="bfTitle" maxlength="200" autocomplete="off" value="${v("title")}"
+        placeholder="the picker loses its selection on rotate">
+      <div class="two">
+        <div><label>Severity</label>
+          <select class="bfSev">${SEVS.map(x =>
+            `<option value="${x}"${(b?.severity || "medium") === x ? " selected" : ""}>${x}</option>`).join("")}</select></div>
+        <div><label>Where — files, component, screen</label>
+          <input class="bfArea" maxlength="200" autocomplete="off" value="${v("area")}"
+            placeholder="scripts/dashboard/index.html, the picker"></div>
+      </div>
+      <label>How to reproduce</label>
+      <textarea class="bfRepro" spellcheck="false"
+        placeholder="1. open the picker on a phone&#10;2. rotate">${v("repro")}</textarea>
+      <div class="two">
+        <div><label>Expected</label>
+          <input class="bfExpected" maxlength="300" autocomplete="off" value="${v("expected")}"></div>
+        <div><label>Actual</label>
+          <input class="bfActual" maxlength="300" autocomplete="off" value="${v("actual")}"></div>
+      </div>
+      <label>Notes — cause, analysis, fix plan</label>
+      <textarea class="bfNotes" spellcheck="false"
+        placeholder="what is known about why; mostly Claude's half">${v("notes")}</textarea>
+      <div class="acts"><span class="sp"></span>
+        <button type="button" class="stop bfCancel">Cancel</button>
+        <button type="button" class="primary bfGo">${b ? "Save the bug" : "Report it"}</button></div>
+    </div>`;
+  }
+
+  function readBugForm(box){
+    return {title: box.querySelector(".bfTitle").value,
+            severity: box.querySelector(".bfSev").value,
+            area: box.querySelector(".bfArea").value,
+            repro: box.querySelector(".bfRepro").value,
+            expected: box.querySelector(".bfExpected").value,
+            actual: box.querySelector(".bfActual").value,
+            notes: box.querySelector(".bfNotes").value};
+  }
+
+  function drawBugAdd(){
+    const box = $("bugAdd");
+    box.innerHTML = `<button type="button" class="link">+ report a bug</button>`;
+    box.querySelector("button").onclick = () => {
+      box.innerHTML = bugForm(null);
+      box.querySelector(".bfCancel").onclick = drawBugAdd;
+      box.querySelector(".bfGo").onclick = async () => {
+        const j = await postBug({action: "add", ...readBugForm(box)});
+        if (j) drawBugAdd();
+      };
+    };
+  }
+
+  function drawBugs(){
+    const list = $("bugList"), hint = $("bugHint");
+    if (!bugs){ hint.textContent = "loading…"; return; }
+    if (bugs.error){ hint.textContent = "bugs: " + bugs.error; return; }
+    const rows = bugs.bugs || [];
+    const open = rows.filter(b => b.status === "open").length;
+    hint.textContent = rows.length
+      ? `${open} open of ${rows.length} — sessions read these with bb bug`
+      : "Nothing reported. What goes here reaches every Claude session in this project.";
+    // Which were open before this redraw, so acting on one does not fold it.
+    const held = new Set([...list.querySelectorAll(".bug[open]")].map(d => d.dataset.id));
+    list.innerHTML = rows.map(b => `
+      <details class="bug" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
+        <summary>
+          <span class="sev ${esc(b.severity)}">${esc(b.severity)}</span>
+          <span class="n id">#${b.id}</span>
+          <span class="btitle${b.status !== "open" ? " done" : ""}">${esc(b.title)}</span>
+          <span class="bstat ${esc(b.status)}">${esc(b.status)}</span>
+        </summary>
+        <div class="body">
+          ${["area", "repro", "expected", "actual", "notes"].map(k => b[k]
+            ? `<div class="bfield"><label>${k}</label><div class="bval">${esc(b[k])}</div></div>` : "").join("")}
+          <div class="bwho">reported by ${esc(b.by)} · ${ago(b.at)}${
+            b.status !== "open" && b.status_note
+              ? ` · ${esc(b.status)}: ${esc(b.status_note)}` : ""}</div>
+          <div class="macts">
+            <button type="button" class="bEdit">Edit</button>
+            <span class="sp"></span>
+            ${b.status === "open"
+              ? `<button type="button" class="bFix">Mark fixed</button>
+                 <button type="button" class="bWont">Won't fix</button>`
+              : `<button type="button" class="bReopen">Reopen</button>`}
+          </div>
+        </div>
+      </details>`).join("");
+    list.querySelectorAll(".bug").forEach(d => {
+      const id = Number(d.dataset.id);
+      const ask = (status, q) => {
+        const note = prompt(q, "");
+        if (note !== null) postBug({action: "status", id, status, note});
+      };
+      d.querySelector(".bFix")?.addEventListener("click",
+        () => ask("fixed", "What fixed it? (a commit, a word — kept on the bug)"));
+      d.querySelector(".bWont")?.addEventListener("click",
+        () => ask("wontfix", "Why not? (kept on the bug)"));
+      d.querySelector(".bReopen")?.addEventListener("click",
+        () => postBug({action: "status", id, status: "open", note: ""}));
+      d.querySelector(".bEdit")?.addEventListener("click", () => {
+        const body = d.querySelector(".body");
+        const b = (bugs.bugs || []).find(x => x.id === id);
+        body.innerHTML = bugForm(b);
+        body.querySelector(".bfCancel").onclick = drawBugs;
+        body.querySelector(".bfGo").onclick = () =>
+          postBug({action: "edit", id, ...readBugForm(body)});
+      });
+    });
+    drawBugAdd();
+  }
+
+  // ---- the handle the rest of the page holds ------------------------------
+  return {
+    root, project,
+    // First show loads; later shows are just the pane coming back.
+    shown(){ if (!loaded){ loaded = true; openMemory(project); } },
+    reload(){ return loadTodo(memGen); },
+    reloadMemory(){ return loadMemory(memGen); },
+    reloadBugs(){ return loadBugs(); },
+    leaving: notebookLeaving,
+    unsaved: nbUnsaved,
+    poll(p){ noteBatch(p.todo_batch); drawBatchNote(); syncSave(); },
+    escape(){ if (todoSel){ cancelSend(); redrawTodo(); return true; } return false; },
+    destroy(){
+      notebooks.delete(project);
+      root.remove();
+    },
+  };
+}
+
+function closeNewProject(){ pGen++; $("pmodal").hidden = true; }
+
+// A stale error must not survive a mode switch — "a name is required" makes
+// no sense over a form that no longer asks for one.
+const pSwitch = m => { if (pMode === m) return;
+  pMode = m; $("pErrWrap").hidden = true; pDraw(); pSlide(); };
+$("pLocal").onclick = () => pSwitch("init");
+$("pClone").onclick = () => pSwitch("clone");
+$("pKey").onchange = pShowKey;
+$("pCopy").onclick = async () => {
+  // clipboard API needs a secure context; plain-http access to the dashboard
+  // falls back to the selection route, which works everywhere a click does.
+  const pub = $("pPub").value;
+  try { await navigator.clipboard.writeText(pub); }
+  catch { $("pPub").select(); document.execCommand("copy"); }
+  notify("public key copied — paste it under the repo's Settings → Deploy keys");
+};
+$("pCancel").onclick = closeNewProject;
+$("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
+
+
 for (const f of ["pName", "pUrl"])
   $(f).onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("pCreate").click(); } };
 
@@ -5484,10 +5770,10 @@ async function refresh(){
     drawProjects(state.projects);
     // An open notebook learns from the poll that a session has started or
     // finished a batch, without the operator having to touch anything.
-    if (memProj){
-      const p = (state.projects || []).find(x => x.name === memProj);
-      if (p){ noteBatch(p.todo_batch); drawBatchNote(); syncSave(); }
-    }
+    notebooks.forEach(nb => {
+      const p = (state.projects || []).find(x => x.name === nb.project);
+      if (p) nb.poll(p);
+    });
     drawSessions(state.sessions);
     drawLinux();
     drawCommands();
@@ -5592,9 +5878,12 @@ document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
   if (!$("modal").hidden) closeEditor();
   if (!$("pmodal").hidden) closeNewProject();
-  // Escape puts an armed arrow down. It no longer closes anything: the
-  // notebook is a tab, and tabs are not dismissed by a keystroke.
-  if (todoSel && memProj){ cancelSend(); redrawTodo(); return; }
+  // Escape puts an armed arrow down, in whichever notebook holds one. It
+  // closes nothing: the notebook is a tab, and tabs are not dismissed by a
+  // keystroke.
+  let armed = false;
+  notebooks.forEach(nb => { if (nb.escape()) armed = true; });
+  if (armed) return;
   if (pinFor){ pinFor = null; drawTabs(); }
   if (resumeFor){ resumeFor = null; if (state) drawProjects(state.projects); }
 });

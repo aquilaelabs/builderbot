@@ -141,8 +141,8 @@ export async function finger(page, x, y, x2, y2, holdMs){
 // The notebook is a tab now, not a modal: it is *moved* into whichever pane is
 // showing it, so "is it open" is a question about where its node lives.
 export const nbShown = (page) =>
-  page.waitForFunction(() => !!document.getElementById('nbBody')?.closest('.pane'),
+  page.waitForFunction(() => !!document.querySelector('.pane .nb'),
                        { timeout: 20000 });
 export const nbGone = (page) =>
-  page.waitForFunction(() => !document.getElementById('nbBody')?.closest('.pane'),
+  page.waitForFunction(() => !document.querySelector('.pane .nb'),
                        { timeout: 20000 });

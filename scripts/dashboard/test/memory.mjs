@@ -26,23 +26,21 @@ ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 0),
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
-ok(await page.$eval('#memTitle', el => el.textContent === 'To do — alpha'),
-   'the panel opens on that project, on its to-do list');
+ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook — alpha'),
+   'the panel opens on that project, on its roadmap');
 // And with the cursor nowhere: focusing the add-a-line field would raise a
 // phone's keyboard over the list the panel just opened to show.
 ok(await page.evaluate(() => document.activeElement?.id !== 'todoText'),
    '...without putting the cursor in the field and the keyboard over it');
 // Memory is folded away under it: a handful of files nobody edits, on screen
 // only because it is the one input to a session nobody would otherwise see.
-ok(await page.$eval('#memFold', el => !el.open)
-   && !await page.$eval('#memList', el => el.checkVisibility()),
-   '...with what Claude remembers folded away under it');
-ok((await page.$eval('#memWhere', el => el.textContent)).includes('2 memories'),
-   '...and the fold says how many there are');
-await page.click('#memFold > summary');
+ok(!await page.$eval('#memList', el => el.checkVisibility()),
+   '...with what Claude remembers on its own tab, not in the way of the list');
+await page.click('.pane .nb .nbtabs [data-v="memory"]');
 await page.waitForFunction(() => document.getElementById('memList').checkVisibility(),
                            { timeout: 5000 });
-ok(await page.$eval('#memFold', el => el.open), 'opening it brings them on screen');
+ok((await page.$eval('#memWhere', el => el.textContent)).includes('2 memories'),
+   'the Memory tab brings them on screen, and says how many there are');
 
 // ---- what it shows -----------------------------------------------------
 const mems = await page.$$eval('#memList .mem', ls => ls.map(l => ({
@@ -219,7 +217,7 @@ ok(read('loose.md').includes('Only recall will ever surface this one'),
 // A memory bigger than the editor will take is reported, not truncated.
 mkdirSync(MEM, { recursive: true });
 writeFileSync(`${MEM}/huge.md`, '---\nname: huge\n---\n' + 'x'.repeat(40000));
-await page.evaluate(() => loadMemory(memGen));
+await page.evaluate(() => notebooks.get('alpha').reloadMemory());
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 3);
 await page.click('#memList .mem:has(.mname:text-is("huge")) summary');
 ok(await page.$eval('#memList .mem:has(.mname:text-is("huge"))',
@@ -241,9 +239,9 @@ ok(/notes about how you work here/.test(pane),
 // ---- closing -----------------------------------------------------------
 // It is a tab, so it closes the way tabs close and not on a stray Escape.
 await page.keyboard.press('Escape');
-ok(!!await page.$('#nbBody'), 'Escape does not dismiss it — a tab is not a dialog');
+ok(!!await page.$('.pane .nb'), 'Escape does not dismiss it — a tab is not a dialog');
 const nbTab = await page.$$eval('.tab',
-  ts => ts.findIndex(t => /To do: alpha/.test(t.textContent)));
+  ts => ts.findIndex(t => /Notebook: alpha/.test(t.textContent)));
 ok(nbTab >= 0, 'it is on the tab strip, named for its project');
 await page.click(`.tab:nth-of-type(${nbTab + 1}) .x, .tab:nth-of-type(${nbTab + 1}) [data-hide]`)
   .catch(() => page.evaluate(() => hideTab(tabs.find(t => t.kind === 'todo').id)));

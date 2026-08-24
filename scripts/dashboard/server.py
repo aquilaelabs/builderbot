@@ -1514,6 +1514,13 @@ notify.configure(run=run)
 # turned out to be somewhere it could go wrong.
 import signin                                                    # noqa: E402
 
+# ---- the bug tracker --------------------------------------------------------
+# The notebook's third view. Same arrangement again: its own file, handed the
+# two helpers it needs, nothing reaching back.
+import bugs                                                      # noqa: E402
+
+bugs.configure(write_json=write_json, state=STATE)
+
 # ---- the memory book -------------------------------------------------------
 # What Claude remembers about each project, read and edited from the projects
 # card. Same arrangement as packages above: its own file, handed what it needs.
@@ -1933,6 +1940,12 @@ class Handler(BaseHTTPRequestHandler):
                                  [s["name"] for s in tmux_sessions()])
             return self._json(got if got is not None
                               else {"error": "not a project"}, 400 if got is None else 200)
+        if self.path.startswith("/api/bugs"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list()}:
+                return self._json({"error": f"not a project: {name}"}, 400)
+            return self._json(bugs.payload(name))
         if self.path.startswith("/api/pubkeys"):
             # The shielded agent's public halves, for the New project dialog:
             # picking one selects it for the clone, and showing it is how the
@@ -1990,6 +2003,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._packages(req)
         if path.startswith("/api/memory"):
             return self._memory(req)
+        if path.startswith("/api/bugs"):
+            return self._bugs(req)
         if path.startswith("/api/custom"):
             return self._custom(req)
         if path.startswith("/api/doctor"):
@@ -2096,6 +2111,9 @@ class Handler(BaseHTTPRequestHandler):
             r = todo.edit(name, req.get("id"), field(req, "text"), req.get("step"))
         elif act == "move":
             r = todo.move(name, req.get("id"), req.get("step"), req.get("dir"))
+        elif act == "info":
+            r = todo.set_info(name, req.get("id"), field(req, "text"),
+                              step=req.get("step"))
         elif act == "add-step":
             r = todo.add_step(name, req.get("id"), field(req, "text"))
         elif act == "cross":
@@ -2133,6 +2151,31 @@ class Handler(BaseHTTPRequestHandler):
                 # moved underneath is how two people writing one file lose
                 # each other's work.
                 "batch": todo.batch(name)}
+
+    def _bugs(self, req):
+        """Report, edit, or close one bug. The fields go through bugs.py's own
+        cleaner; this only picks the action and answers with the fresh list,
+        so the tab never has to guess what the write left behind."""
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list()}:
+            return self._json({"error": f"not a project: {name}"}, 400)
+        act = field(req, "action")
+        fields = {k: field(req, k) for k in ("title", "area", "repro",
+                                             "expected", "actual", "notes")}
+        if act == "add":
+            r = bugs.add(name, fields.pop("title"),
+                         severity=field(req, "severity", "medium"), **fields)
+        elif act == "edit":
+            r = bugs.edit(name, req.get("id"),
+                          severity=field(req, "severity", "medium"), **fields)
+        elif act == "status":
+            r = bugs.set_status(name, req.get("id"), field(req, "status"),
+                                note=field(req, "note"))
+        else:
+            return self._json({"error": f"unknown action: {act}"}, 400)
+        if r.get("error"):
+            return self._json(r, 400)
+        return self._json(bugs.payload(name))
 
     def _memory(self, req):
         """Edit, delete, or point a running session at this project's memories.

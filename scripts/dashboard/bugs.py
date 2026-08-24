@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+"""Everything behind the notebook's bug tracker.
+
+The roadmap is for design work — things somebody decided to build. A bug is a
+different kind of record: nobody decided it, it has a place it lives and a way
+to make it happen, and "done" means fixed rather than delivered. Mixing the two
+in one list meant every bug was worded as a task and lost the fields a session
+actually needs to act on it — where it is, how to reproduce it, and the gap
+between what should happen and what does.
+
+So bugs get their own file and their own shape. Either side writes them: the
+operator reports one from the notebook's Bugs tab, a session through `bb bug`
+when it trips over something out of scope for what it is on — the same reason
+the roadmap exists, applied to defects. A bug is never deleted, only closed
+(fixed, or wontfix, each with a note saying why), because a closed bug is the
+record that stops the same report being investigated twice.
+
+Same arrangement as todo.py: the server or the bb CLI hands over write_json
+and the state directory; nothing here reaches back.
+"""
+import json
+import threading
+import time
+from pathlib import Path
+
+write_json = None
+STATE = None
+FILE = None
+
+
+def configure(*, write_json, state):
+    globals().update(write_json=write_json, STATE=Path(state))
+    globals()["FILE"] = Path(state) / "bugs.json"
+
+
+_lock = threading.Lock()
+
+SEVERITIES = ("low", "medium", "high", "critical")
+STATUSES = ("open", "fixed", "wontfix")
+
+# One line each; the two long fields get room for real repro steps and a real
+# analysis. Capped so a paste cannot turn the tracker into a log file.
+MAX_SHORT = 300
+MAX_LONG = 4000
+MAX_BUGS = 200
+
+# What a report may carry besides its title. Fixed here, once: the CLI, the
+# HTTP handler and the editor all consult this list rather than each keeping
+# their own idea of what a bug is.
+FIELDS = ("area", "repro", "expected", "actual", "notes")
+
+
+def load():
+    try:
+        with open(FILE) as f:
+            d = json.load(f)
+        if isinstance(d, dict) and isinstance(d.get("projects"), dict):
+            return d
+    except (OSError, ValueError):
+        pass
+    return {"projects": {}}
+
+
+def save(d):
+    write_json(FILE, d)
+
+
+def _int(v):
+    if isinstance(v, bool) or not isinstance(v, (int, float, str)):
+        return None
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean(text, limit):
+    """Trim a field: whitespace tidied, blank runs collapsed, capped.
+
+    Interior newlines survive — repro steps and an analysis are written across
+    lines on purpose — the same rule the roadmap's text follows.
+    """
+    text = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    lines = [" ".join(ln.split()) for ln in text.split("\n")]
+    out = []
+    for ln in lines:
+        if ln or (out and out[-1]):
+            out.append(ln)
+    while out and not out[-1]:
+        out.pop()
+    return "\n".join(out)[:limit]
+
+
+def payload(project):
+    """The Bugs tab's whole answer: open first, newest first within a group.
+
+    Sorted on the way out rather than stored sorted, because the stored order
+    is the record of when things were reported and a status flip should not
+    rewrite the file's shape.
+    """
+    with _lock:
+        rows = list(load()["projects"].get(project) or [])
+    rows.sort(key=lambda b: (b.get("status") != "open", -b.get("at", 0)))
+    return {"project": project, "bugs": rows}
+
+
+def counts():
+    """{project: open bugs} — one read for every project row."""
+    with _lock:
+        d = load()
+    return {p: sum(1 for b in rows if b.get("status") == "open")
+            for p, rows in d["projects"].items()}
+
+
+def add(project, title, by="you", severity="medium", **fields):
+    title = _clean(title, MAX_SHORT).replace("\n", " ")
+    if not title:
+        return {"error": "a bug needs a title — one line, what goes wrong"}
+    if severity not in SEVERITIES:
+        return {"error": f"severity is one of: {', '.join(SEVERITIES)}"}
+    with _lock:
+        d = load()
+        rows = d["projects"].setdefault(project, [])
+        if len(rows) >= MAX_BUGS:
+            return {"error": f"{MAX_BUGS} bugs is the limit — close some, or "
+                             "this stops being a tracker and starts being a log"}
+        bug = {"id": max((int(b.get("id", 0)) for b in rows), default=0) + 1,
+               "title": title, "severity": severity, "status": "open",
+               "by": "claude" if by == "claude" else "you",
+               "at": int(time.time())}
+        for k in FIELDS:
+            v = _clean(fields.get(k), MAX_LONG if k in ("repro", "notes")
+                       else MAX_SHORT)
+            if v:
+                bug[k] = v
+        rows.append(bug)
+        save(d)
+    return {"ok": True, "bug": bug}
+
+
+def _edit(project, bug_id, change):
+    bug_id = _int(bug_id)
+    if bug_id is None:
+        return {"error": "not a bug number"}
+    with _lock:
+        d = load()
+        rows = d["projects"].get(project) or []
+        bug = next((b for b in rows if _int(b.get("id")) == bug_id), None)
+        if bug is None:
+            return {"error": f"no bug #{bug_id} here"}
+        out = change(bug)
+        if not out.get("error"):
+            bug["updated"] = int(time.time())
+            save(d)
+    return out
+
+
+def edit(project, bug_id, by="you", **fields):
+    """Reword any of a bug's fields. Unknown keys are ignored rather than
+    stored: the file's shape is this module's, not the request's."""
+    def change(bug):
+        if "title" in fields:
+            t = _clean(fields["title"], MAX_SHORT).replace("\n", " ")
+            if not t:
+                return {"error": "a bug needs a title"}
+            bug["title"] = t
+        if "severity" in fields:
+            if fields["severity"] not in SEVERITIES:
+                return {"error": f"severity is one of: {', '.join(SEVERITIES)}"}
+            bug["severity"] = fields["severity"]
+        for k in FIELDS:
+            if k in fields:
+                v = _clean(fields[k], MAX_LONG if k in ("repro", "notes")
+                           else MAX_SHORT)
+                if v:
+                    bug[k] = v
+                else:
+                    bug.pop(k, None)
+        return {"ok": True, "bug": bug}
+    return _edit(project, bug_id, change)
+
+
+def set_status(project, bug_id, status, note="", by="you"):
+    """Close a bug, or open it again.
+
+    The note is the point of closing: "fixed" alone tells the next reader
+    nothing, "fixed: the picker re-measures on rotate now (commit abc)" is the
+    record that stops the same report being chased twice.
+    """
+    if status not in STATUSES:
+        return {"error": f"status is one of: {', '.join(STATUSES)}"}
+
+    def change(bug):
+        bug["status"] = status
+        note_ = _clean(note, MAX_SHORT).replace("\n", " ")
+        if status == "open":
+            bug.pop("status_note", None)
+            bug.pop("status_by", None)
+        else:
+            bug["status_note"] = note_
+            bug["status_by"] = "claude" if by == "claude" else "you"
+        return {"ok": True, "bug": bug}
+    return _edit(project, bug_id, change)
+
+
+def prompt(project):
+    """The block bb-tty appends for a session, after the roadmap's.
+
+    The open bugs by number, severity and title — enough to recognise one when
+    the work touches it — with the fields left on disk behind `bb bug show`,
+    because ten full repro scripts in every prompt is the price of nothing.
+    """
+    with _lock:
+        rows = [b for b in (load()["projects"].get(project) or [])
+                if b.get("status") == "open"]
+    if not rows:
+        return ""
+    rows.sort(key=lambda b: (SEVERITIES.index(b.get("severity", "medium"))
+                             if b.get("severity") in SEVERITIES else 1))
+    lines = [f"- #{b['id']} [{b.get('severity', 'medium')}] {b['title']}"
+             for b in reversed(rows)]
+    return ("The project also has a bug tracker, with these open:\n\n"
+            + "\n".join(lines) + "\n\n"
+            "`bb bug show <n>` gives one in full — where it lives, how to "
+            "reproduce it, what is known about why. When you fix one, close it "
+            "with `bb bug fix <n> \"what fixed it\"`; when you find a new one "
+            "and it is out of scope for what you are on, `bb bug add "
+            "\"...\" --sev medium --area \"...\" --repro \"...\"` rather than "
+            "only mentioning it. Add what you learn about an open one to its "
+            "notes with `bb bug note <n> \"...\"` — the tracker is where the "
+            "next session looks first.")
