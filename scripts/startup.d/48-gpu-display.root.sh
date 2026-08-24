@@ -112,5 +112,18 @@ if [ -S /tmp/.X11-unix/X0 ]; then
     chmod 1777 /tmp/.X11-unix 2>/dev/null || true
     log "gpu display: X is up on :0 — bb emu start will use -gpu host if EGL agrees"
 else
-    warn "gpu display: Xorg did not come up (see /var/log/xorg-builderbot.log) — the emulator will use software rendering"
+    # Name the reason rather than pointing at a log. These three cover what
+    # actually goes wrong here, and the first is the one to expect after a
+    # driver update: NVIDIA's X modules are built against one server ABI, and
+    # the distribution's Xorg moves on its own schedule.
+    reason=""
+    if grep -qiE "module ABI major version.*does not match|ABI.*mismatch" /var/log/xorg-builderbot.log 2>/dev/null; then
+        reason="the nvidia X module and this Xorg disagree about the server ABI — the driver is newer or older than the server expects"
+    elif grep -qiE "no devices detected|no screens found" /var/log/xorg-builderbot.log 2>/dev/null; then
+        reason="Xorg found no device at ${busid} — check the BusID against nvidia-smi"
+    elif grep -qiE "permission denied|cannot open /dev/dri" /var/log/xorg-builderbot.log 2>/dev/null; then
+        reason="Xorg could not open the DRM device — the container needs /dev/dri passed through"
+    fi
+    warn "gpu display: Xorg did not come up${reason:+ — $reason}"
+    warn "gpu display: the emulator falls back to software rendering; full log in /var/log/xorg-builderbot.log"
 fi

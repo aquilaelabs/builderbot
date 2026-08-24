@@ -1845,13 +1845,26 @@ cmd_doctor() {
         # Compute works with the default capabilities; GL/EGL/Vulkan do not.
         # The vendor ICD only lands when capabilities include graphics, so test
         # for the file rather than trusting the variable.
-        if [ -e /usr/share/glvnd/egl_vendor.d/10_nvidia.json ]; then
-            printf '  [ok]   nvidia graphics stack injected (EGL available)\n'
-        else
+        if [ ! -e /usr/share/glvnd/egl_vendor.d/10_nvidia.json ]; then
             printf '  [FAIL] nvidia gpu present but no EGL — set NVIDIA_DRIVER_CAPABILITIES=all\n'
             printf '         (currently %s; compute works, -gpu host does not)\n' \
                 "${NVIDIA_DRIVER_CAPABILITIES:-unset, so the default compute,utility applies}"
             ok=1
+        # The library being present is not the question anyone is asking. It
+        # was reported as [ok] here for months while every attempt at hardware
+        # rendering fell back to software, because NVIDIA's EGL also needs an X
+        # server carrying its own GLX module and there was none. So ask EGL.
+        elif vendor="$(DISPLAY="${DISPLAY:-:0}" gpu_gles_ok)"; then
+            printf '  [ok]   nvidia graphics stack usable (EGL vendor: %s)\n' "$vendor"
+        elif [ -S /tmp/.X11-unix/X0 ]; then
+            printf '  [warn] nvidia EGL is installed but gave no vendor driver on the X display\n'
+            printf '         — Mesa answering means llvmpipe; the emulator will use software\n'
+        else
+            printf '  [warn] nvidia EGL is installed but has no display to render on\n'
+            printf '         — %s; the emulator will use software (bb emu gpu)\n' \
+                "$(command -v Xorg >/dev/null 2>&1 \
+                   && echo "the X server did not start, see /var/log/xorg-builderbot.log" \
+                   || echo "this image has no X server")"
         fi
     elif command -v nvidia-smi >/dev/null 2>&1; then
         printf '  [FAIL] nvidia-smi present but no GPU visible — check --runtime=nvidia --gpus all\n'
