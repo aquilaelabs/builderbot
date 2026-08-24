@@ -40,8 +40,10 @@ bb — BuilderBot helper
   bb lint [PATH]         lint the infrastructure files a repo carries: shell
                          scripts, Dockerfiles, GitHub workflows, compose, XML
   bb roadmap             this project's roadmap (add/done/rm/shelve/history)
+  bb roadmap show N      one item in full: its details, its steps and theirs
   bb roadmap add "..." [--step "..."]   an item, or an ordered group of steps
   bb bug                 this project's bug tracker: open bugs, newest first
+  bb bug find TEXT       search the reports themselves — area and repro included
   bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
   bb bug na N ["why"]    it was real and stopped applying — the feature went
   bb bug rm N ["why"]    delete a report that should not have been filed
@@ -777,6 +779,25 @@ def bail(r):
 
 if op in ("list", "ls"):
     show()
+elif op == "show":
+    # One item in full: its details, its steps and theirs. `list` cannot carry
+    # this without becoming unreadable, and a session working item N wants
+    # exactly N — the same reason `bb bug show` exists.
+    if not rest:
+        print("usage: bb roadmap show <n>", file=sys.stderr); sys.exit(1)
+    r = next((x for x in todo.items(proj) if str(x.get("id")) == rest[0]), None)
+    if r is None:
+        print(f"[builderbot] ERROR: no item #{rest[0]} here", file=sys.stderr)
+        sys.exit(1)
+    who = " (claude)" if r.get("by") == "claude" else ""
+    print(f"  #{r['id']}  {r['text']}{who}"
+          + ("  [shelved]" if r.get("shelved") else ""))
+    if r.get("info"):
+        print("  details: " + r["info"].replace("\n", "\n           "))
+    for i, st in enumerate(r.get("steps") or []):
+        print(f"    {i + 1}. {st['text']}" + ("  (sent)" if st.get("sent") else ""))
+        if st.get("info"):
+            print("       details: " + st["info"].replace("\n", "\n                "))
 elif op == "--prompt":
     sys.stdout.write(todo.prompt(proj))
 elif op == "add":
@@ -869,14 +890,34 @@ elif op == "info":
         print("usage: bb roadmap info <n> [<step>] \"...\"", file=sys.stderr)
         sys.exit(1)
     if len(rest) >= 3 and rest[1].isdigit():
+        n = int(rest[1])
+        if n < 1:
+            print("[builderbot] ERROR: step numbers start at 1", file=sys.stderr)
+            sys.exit(1)
         r = todo.set_info(proj, rest[0], " ".join(rest[2:]),
-                          step=int(rest[1]) - 1, by="claude"); bail(r)
+                          step=n - 1, by="claude"); bail(r)
         print(f"details on step {rest[1]} of {rest[0]}")
     else:
         r = todo.set_info(proj, rest[0], " ".join(rest[1:]), by="claude"); bail(r)
         print(f"details on {rest[0]}")
 elif op == "step":
     sub, srest = (rest[0] if rest else ""), rest[1:]
+
+    def step_index(word):
+        """A 1-based step number from the command line, as a 0-based index.
+
+        Its own function because the expression it replaces read
+        `_int(x) - 1 if _int(x) else None`, and Python's zero is falsy: step 0
+        was not "invalid", it was "no step at all", so `step edit N 0 "..."`
+        fell through to editing the item and renamed it. Every step verb had
+        its own copy of that.
+        """
+        n = todo._int(word)
+        if n is None or n < 1:
+            print(f"[builderbot] ERROR: step numbers start at 1 (got {word!r})",
+                  file=sys.stderr)
+            sys.exit(1)
+        return n - 1
     if sub == "add" and len(srest) >= 2:
         r = todo.add_step(proj, srest[0], " ".join(srest[1:]), by="claude"); bail(r)
         print(f"added a step to {srest[0]}")
@@ -884,17 +925,17 @@ elif op == "step":
         # 1-based on the way in, because that is how the step is numbered
         # everywhere a human reads it.
         r = todo.edit(proj, srest[0], " ".join(srest[2:]),
-                      step=todo._int(srest[1]) - 1 if todo._int(srest[1]) else None,
+                      step=step_index(srest[1]),
                       by="claude"); bail(r)
         print(f"reworded step {srest[1]} of {srest[0]}")
     elif sub in ("rm", "remove") and len(srest) >= 2:
         r = todo.remove(proj, srest[0],
-                        step=todo._int(srest[1]) - 1 if todo._int(srest[1]) else None,
+                        step=step_index(srest[1]),
                         by="claude", why=" ".join(srest[2:])); bail(r)
         print(f"removed step {srest[1]} of {srest[0]}")
     elif sub == "info" and len(srest) >= 2:
         r = todo.set_info(proj, srest[0], " ".join(srest[2:]),
-                          step=todo._int(srest[1]) - 1 if todo._int(srest[1]) else None,
+                          step=step_index(srest[1]),
                           by="claude"); bail(r)
         print(f"details on step {srest[1]} of {srest[0]}")
     elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] in ("up", "down"):
@@ -902,7 +943,7 @@ elif op == "step":
         # finds two steps in the wrong order can only delete and retype them,
         # which loses both their words and the record of what really changed.
         r = todo.move(proj, srest[0],
-                      step=todo._int(srest[1]) - 1 if todo._int(srest[1]) else None,
+                      step=step_index(srest[1]),
                       dir=-1 if srest[2] == "up" else 1, by="claude"); bail(r)
         print(f"moved step {srest[1]} of {srest[0]} {srest[2]}")
     else:
@@ -954,7 +995,7 @@ elif op in ("history", "log"):
         if e.get("why"):
             print(f"{'':>32}why: {e['why']}")
 else:
-    print("usage: bb roadmap [list|add TEXT [--step ...]|edit N TEXT|"
+    print("usage: bb roadmap [list|show N|add TEXT [--step ...]|edit N TEXT|"
           "info N [M] TEXT|step add|edit|rm|mv|info ...|mv N up|down|done N|"
           "rm N [WHY]|shelve N|begin|commit|revert|"
           "history [-n N] [--since D] [--find TEXT]]",
@@ -1157,6 +1198,22 @@ elif op == "all":
         print(f"nothing in {proj}'s bug tracker")
     for b in rows():
         print(line(b))
+elif op in ("find", "search"):
+    # Over the bugs themselves, not over the log. `history --find` searches
+    # what happened; this searches what is *on file* — the area and the repro
+    # above all, which is how you find out whether the thing you just tripped
+    # over is already known.
+    if not rest:
+        print("usage: bb bug find <text>", file=sys.stderr); sys.exit(1)
+    needle = " ".join(rest).lower()
+    hits = [b for b in rows()
+            if any(needle in str(b.get(k, "")).lower()
+                   for k in ("title", "area", "repro", "expected", "actual",
+                             "notes", "status_note"))]
+    if not hits:
+        print(f"nothing in {proj}'s tracker mentions that")
+    for b in hits:
+        print(line(b))
 elif op == "show":
     if not rest:
         print("usage: bb bug show <n>", file=sys.stderr); sys.exit(1)
@@ -1255,7 +1312,7 @@ elif op in ("history", "log"):
 elif op == "--prompt":
     sys.stdout.write(bugs.prompt(proj))
 else:
-    print("usage: bb bug [list|all|show N|add TITLE [--sev S] [--area ..] "
+    print("usage: bb bug [list|all|show N|find TEXT|add TITLE [--sev S] [--area ..] "
           "[--repro ..]|note N TEXT|edit N FIELD TEXT|fix N [NOTE]|"
           "wontfix N [WHY]|na N [WHY]|reopen N|rm N [WHY]|"
           "history [-n N] [--since D] [--find TEXT]]", file=sys.stderr)

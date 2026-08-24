@@ -94,8 +94,16 @@ a bug to route around with Bash.
 
 ## There is no display
 
-Everything is headless. There is no X server, no window manager, nothing to
-show a GUI on.
+Everything is headless: no window manager, no monitor, nothing to show a GUI
+on. Run every tool in its headless mode and show the user pixels by saving a
+screenshot to a file.
+
+There may be an X server on `:0` all the same, and it is not an exception to
+any of that. When a GPU is passed through, the container starts a headless
+Xorg at boot for one reason: NVIDIA's EGL will not hand out a display without
+one, and without EGL the Android emulator cannot use the card. It has no
+window manager, no monitor and one intended client. Do not read `$DISPLAY`
+being set as permission to open a window on it.
 
 - **Playwright** — browsers live at `/opt/pw-browsers`, which is a symlink
   onto the SDK share (they are 1.3GB of download, so the image does not carry
@@ -307,6 +315,13 @@ start a new step when you genuinely need the last prompt to have run first —
 a file that has to exist, a build that has to be green, an answer you need
 before you can write the next instruction. Two steps that could have been one
 cost somebody a round trip for nothing.
+
+There are limits, and they are the design rather than an obstacle: a title or
+a step is 500 characters over at most 12 lines, an item takes 12 steps, the
+list holds 30 open items, and `info` takes 2000 characters over 40 lines. So
+when a step will not fit, the answer is almost never to compress the wording —
+it is that the technical half belongs in `bb roadmap info` and the step should
+say what has to be true before the next one can start.
 
 A step may be several lines, and blank lines between them are kept. The
 operator can build and rearrange a group from the dashboard too, so write the

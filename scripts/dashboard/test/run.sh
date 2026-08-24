@@ -40,6 +40,16 @@ CHROME="$(bash "$DASH/../bb" shot --print-chromium 2>/dev/null || true)"
 command -v tmux >/dev/null || { log "[skip] tmux is not installed"; exit 0; }
 
 PORT="${DASHBOARD_TEST_PORT:-8093}"
+# Refuse a port we do not own, before doing anything else. An interrupted run
+# (SIGKILL, or the session that launched it dying) leaves a server holding this
+# one with a scratch dir that no longer exists. Ours then exits on EADDRINUSE
+# while the old one keeps answering — same port, same test:test credential — so
+# the readiness curl below succeeds and the whole suite runs against the wrong
+# fixtures. The failures that produces read as real regressions and are not;
+# that cost an hour once, and the tell was obscure enough to be worth this check.
+if holder="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)" && [ -n "$holder" ]; then
+    die "port $PORT is already in use by pid $holder ($(ps -o comm= -p "$holder" 2>/dev/null || echo unknown)) — if that is a test server left behind by an interrupted run, 'kill $holder' and re-run; otherwise set DASHBOARD_TEST_PORT to something free."
+fi
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
 # Every tmux call from here on — ours and the server's — talks to a private
 # server whose socket lives in the scratch dir. Nothing reaches the real one.
