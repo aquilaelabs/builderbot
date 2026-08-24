@@ -359,6 +359,7 @@ bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb findings        this project's scanner findings (--all for every project)
 bb roadmap            this project's roadmap
+bb roadmap show N     one item in full: its details, its steps and theirs
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` not
 bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
 bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
@@ -366,6 +367,7 @@ bb roadmap edit N "..."               reword one; `step add|edit|rm` for one ste
 bb roadmap info N [M] "..."           attach the technical details to one, or step M
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
+bb bug find TEXT   search the reports themselves — area, repro and notes too
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
 bb history         one search over the notebook's logs — roadmap, bugs, memory

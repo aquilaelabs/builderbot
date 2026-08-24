@@ -34,6 +34,15 @@ import subprocess
 import sys
 import time
 import urllib.request
+
+# Semgrep flags this import (use-defused-xml) and it is a fair thing to ask
+# about, so the answer lives here rather than being re-derived every scan: the
+# only XML parsed is Google's SDK repository index, fetched over TLS from
+# dl.google.com. ElementTree does not resolve external entities at all, so XXE
+# is not reachable; what remains is entity-expansion blowup, which requires
+# Google's own CDN to serve a hostile index. Adding defusedxml would put a
+# dependency in an otherwise stdlib-only tree to defend against that. If this
+# ever parses XML from a source the catalog does not control, revisit it.
 import xml.etree.ElementTree as ET
 
 HERE = os.path.dirname(os.path.abspath(__file__))
