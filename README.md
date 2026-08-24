@@ -350,7 +350,7 @@ bb shell           login shell as the builder user
 bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
 bb runner status | stop | start | restart
-bb emu start [api] | stop | status | list
+bb emu start [api] | stop | status | list | log [-p]
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only
 bb claude-md --init     create one here from the template
@@ -760,6 +760,7 @@ bb emu list          # configured levels, and which AVDs exist
 bb emu start 37      # boot Android 17
 bb emu start         # the first configured level
 bb emu stop
+bb emu log -p        # the previous boot's log — the post-mortem after a death
 ```
 
 As of 2026 the supported range is **34–37** (Android 14 through 17). API 33 and
@@ -776,6 +777,26 @@ images at the price of the Google APIs.
 Two practical limits: an Android 17 phone AVD wants **4 GB of RAM minimum**, and
 `bb emu` runs one emulator at a time — this is for testing across versions in
 sequence, not a device farm.
+
+**Rendering is software, and it fails in ways that look like your bug.** Under
+`swiftshader_indirect` the guest has no DRM render node, so HWUI's default
+Vulkan backend cannot start and every frame comes out blank while the app draws
+perfectly — the view hierarchy is complete and the pixels are empty, with one
+`E/MESA: Failed to open rendernode` in logcat as the only hint. `bb emu start`
+sets `debug.hwui.renderer=skiagl` at boot to head that off; a shell `setprop`
+does the same but does not survive a reboot, which is what made it look
+intermittent. Two related failures are worth knowing: a window can stop
+updating part-way through a long session (restart the app — the host log says
+`Failed to find EmulatedEglImage`), and the emulator can exit silently under
+load, after which `bb emu log -p` is the account of why. The log rotates on
+each start rather than being overwritten, so a death survives the restart that
+follows it.
+
+`-gpu host` does not work here even with a GPU passed through: the emulator
+finds the card for Vulkan and then fails at `Failed to get EGL display`,
+because NVIDIA's EGL wants a display and this container has none. An X server
+(`Xvfb`, via `EXTRA_APT_PACKAGES`) would bridge it; until somebody decides to
+spend that, software rendering is the honest default.
 
 ## Static analysis reports
 

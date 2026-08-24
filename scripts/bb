@@ -32,6 +32,7 @@ bb — BuilderBot helper
   bb emu stop            shut the emulator down
   bb emu status          adb devices
   bb emu list            configured API levels and the AVDs that exist
+  bb emu log [-p] [N]    this boot's emulator log, or -p for the one before it
   bb claude-md           is this project's CLAUDE.md environment block current?
   bb claude-md --update  refresh that block, leaving the project section alone
   bb claude-md --init    create a CLAUDE.md here from the shipped template
@@ -365,14 +366,41 @@ cmd_emu() {
             avd_exists "$avd" \
                 || die "AVD '${avd}' not found — add its API level to ANDROID_SYSTEM_IMAGES and restart, or see: bb emu list"
             [ -w /dev/kvm ] || warn "/dev/kvm not available — this will be very slow"
-            # Software rendering by default: it is the only mode guaranteed to
-            # work with no GPU passed through. With an NVIDIA GPU (and
-            # NVIDIA_DRIVER_CAPABILITIES including graphics) try host; with
-            # neither, swangle_indirect is usually faster than swiftshader.
+            # Software rendering by default. `-gpu host` does not work here
+            # even with a GPU passed through and NVIDIA_DRIVER_CAPABILITIES=all:
+            # the emulator finds the card for Vulkan and then fails at
+            # "Failed to get EGL display", because NVIDIA's EGL wants a display
+            # and this container has none. Bridging that needs an X server
+            # (Xvfb) in EXTRA_APT_PACKAGES, which is the operator's call — so
+            # the default stays software and says why rather than pretending.
             local gpu="${ANDROID_EMULATOR_GPU:-swiftshader_indirect}"
-            log "starting AVD '${avd}' headless, -gpu ${gpu} (log: ~/.android/emulator.log)"
+            # Under a software GPU the guest has no DRM render node, so HWUI's
+            # default Vulkan backend cannot initialise: the app draws, the view
+            # hierarchy is complete, and every frame comes out blank. The guest
+            # says so once in logcat — "E/MESA: Failed to open rendernode" — and
+            # is otherwise silent about it, which is why this cost somebody a
+            # day of thinking their own screen was broken.
+            #
+            # setprop from a shell fixes it and does not survive a reboot;
+            # -prop sets it at boot, every boot. Only for the software modes:
+            # with a real GPU the Vulkan backend is the faster one and should
+            # be left alone.
+            local hwui="${ANDROID_HWUI_RENDERER-skiagl}"
+            local propargs=()
+            case "$gpu" in
+                swiftshader*|swangle*|guest|off)
+                    [ -z "$hwui" ] || propargs=(-prop "debug.hwui.renderer=${hwui}") ;;
+            esac
+            # The log rotates rather than truncating. The emulator dies
+            # silently under load — adb goes quiet, `bb emu stop` says there is
+            # nothing to stop — and the only account of why is in the log the
+            # *next* start used to overwrite before anybody could read it.
+            if [ -s "$HOME/.android/emulator.log" ]; then
+                mv -f "$HOME/.android/emulator.log" "$HOME/.android/emulator.log.1"
+            fi
+            log "starting AVD '${avd}' headless, -gpu ${gpu}${propargs:+, hwui ${hwui}} (log: bb emu log)"
             nohup emulator -avd "$avd" -no-window -no-audio -no-boot-anim \
-                -gpu "$gpu" \
+                -gpu "$gpu" "${propargs[@]}" \
                 > "$HOME/.android/emulator.log" 2>&1 &
             log "waiting for the device to come up..."
             # Bounded: a crashed emulator otherwise leaves this waiting forever
@@ -387,6 +415,15 @@ cmd_emu() {
             ;;
         status)
             adb devices -l
+            ;;
+        log|logs)
+            # This start's log, or the one before it. `-p` is the interesting
+            # one: after a silent death, the previous log is the post-mortem,
+            # and it is gone the moment somebody starts the emulator again.
+            local f="$HOME/.android/emulator.log"
+            [ "${2:-}" = "-p" ] || [ "${2:-}" = "--prev" ] && f="$f.1"
+            [ -f "$f" ] || die "no emulator log at ${f}"
+            tail -n "${3:-200}" "$f"
             ;;
         list)
             printf 'configured API levels: %s\n' "${ANDROID_SYSTEM_IMAGES:-${ANDROID_DEFAULT_API:-36}}"
