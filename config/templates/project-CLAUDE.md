@@ -151,6 +151,7 @@ bb emu start      # boot the default AVD headless (takes ~50s cold)
 bb emu start 37   # boot a specific API level, if it is configured
 bb emu status     # adb devices -l
 bb emu stop       # graceful shutdown — use this, do not kill the process
+bb emu log [-p]   # this boot's emulator log; -p is the one before it
 ```
 
 The emulator is **not** started automatically, holds a few GB of RAM, and runs
@@ -160,6 +161,41 @@ Which API levels exist is set by `ANDROID_SYSTEM_IMAGES` on the container. Run
 `bb emu list` before assuming a version is available; if the one you need is
 missing, say so rather than trying to install it — a runtime `sdkmanager`
 install works but the user should decide to spend the disk.
+
+### When the screen is blank but the app is fine
+
+Three failure modes here are the emulator's, not Android's and not the app's.
+All three look like a bug in what you just wrote, and none of them are — so
+check these before you go looking:
+
+- **Every frame blank, view hierarchy complete.** Under a software GPU the
+  guest has no DRM render node, so HWUI's default Vulkan backend cannot
+  start: the app draws, `uiautomator` sees every view, and the pixels come
+  out empty. The one hint is `E/MESA: Failed to open rendernode` in logcat.
+  `bb emu start` now sets `debug.hwui.renderer=skiagl` at boot, so this
+  should be gone — if you meet it, check the property survived
+  (`adb shell getprop debug.hwui.renderer`) and say so, because a shell
+  `setprop` does not survive a reboot and was the old workaround.
+- **A window stops updating part-way through a long session.** After many
+  minutes of screenshots and input, a running app's surface silently freezes:
+  the hierarchy is still complete, `screencap` returns flat white.
+  `am force-stop` and relaunch paints fine. The host log shows
+  `Failed to find EmulatedEglImage` when it happens. **If pixels go blank
+  while the hierarchy is intact, restart the app before suspecting your
+  code.**
+- **The emulator dies silently.** `adb` calls start hanging, then
+  `adb devices` is empty and `bb emu stop` says there is nothing to stop —
+  the process simply exited. Recovery is `bb emu start`. The post-mortem is
+  `bb emu log -p`: the log rotates on each start rather than being
+  overwritten, precisely so the account of a death survives the restart that
+  follows it.
+
+`-gpu host` is not the answer, and it is worth knowing why so nobody spends
+an afternoon on it: with a GPU passed through and `NVIDIA_DRIVER_CAPABILITIES`
+including graphics, the emulator finds the card for Vulkan and then fails at
+`Failed to get EGL display` — NVIDIA's EGL wants a display and this container
+has none. Bridging that needs an X server (Xvfb) added through
+`EXTRA_APT_PACKAGES`, which is the operator's decision, not a session's.
 
 Rendering is software by default (`swiftshader_indirect`), which has one
 consequence worth internalizing:
