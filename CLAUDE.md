@@ -372,7 +372,10 @@ bb bug                       # the open ones; `all` includes closed, `show N` on
 bb bug add "..." --sev high --area "..." --repro "..."   # file what you find
 bb bug note N "..."          # append what you learned — dated, never replacing
 bb bug fix N "what fixed it" # close it, with the note that is the point
-bb bug wontfix N "why"       # the other way to close; `reopen N` if it did not take
+bb bug wontfix N "why"       # decided not to; `reopen N` if a fix did not take
+bb bug na N "why"            # it was real and stopped applying — the feature went
+bb bug rm N "why"            # only for a report that should never have existed
+bb bug history [-n N] [--since 7d] [--find TEXT]   # what changed, narrowed
 ```
 
 `bb history [--find X] [--since 7d]` is one search across the notebook's
@@ -383,11 +386,28 @@ did anything here mention X", which no single tab can answer.
 **When you find a bug and it is out of scope for what you are on, file it** —
 the same rule as the roadmap, applied to defects: a reply is read once, the
 tracker is read at the start of every session after it. Fill in the fields
-you would want on arrival: area and repro above all. When you fix one, close
-it with the note; when you learn something about one you did not fix, `bb bug
-note` it — the tracker is where the next session looks first. Do not delete
-or re-file what exists: a closed bug is the record that stops the same report
-being chased twice.
+you would want on arrival: area and repro above all. When you learn something
+about one you did not fix, `bb bug note` it — the tracker is where the next
+session looks first.
+
+**Close bugs; do not delete them.** There are three ways to close one, and
+the difference between them is what the next reader is told:
+
+- `fix N "what fixed it"` — you fixed it. The note is the point.
+- `wontfix N "why"` — it is real and a decision was made to leave it.
+- `na N "why"` — it was real and stopped applying, because the feature it was
+  about went away. Neither of the other two is true of it: nobody fixed it,
+  and nobody decided to leave it.
+
+A closed bug stays in the tracker, which is what stops the same report being
+investigated twice.
+
+**`rm` is only for a report that should never have existed** — you mis-filed
+one, filed it twice, or filed it against the wrong project. That is the whole
+list. Reaching for it because a bug is dealt with destroys the record that
+makes the tracker worth keeping; if you are not correcting your own mistake,
+one of the three closes above is the honest answer. Deleting says why in the
+log, and that note is all that survives it.
 
 ## Static analysis findings
 

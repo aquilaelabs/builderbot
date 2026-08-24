@@ -11,9 +11,16 @@ between what should happen and what does.
 So bugs get their own file and their own shape. Either side writes them: the
 operator reports one from the notebook's Bugs tab, a session through `bb bug`
 when it trips over something out of scope for what it is on — the same reason
-the roadmap exists, applied to defects. A bug is never deleted, only closed
-(fixed, or wontfix, each with a note saying why), because a closed bug is the
-record that stops the same report being investigated twice.
+the roadmap exists, applied to defects.
+
+A bug that turns out to be real is *closed*, not deleted — fixed or wontfix,
+each with a note saying why — because a closed bug is the record that stops
+the same report being investigated twice. Deleting exists for the other case,
+which the first version of this file did not admit to: a report that should
+never have been filed. A session mis-files one, a duplicate goes in twice,
+somebody reports the wrong project. Closing those as "wontfix" lies about
+them, and leaving them on the list is the noise a tracker is supposed to
+remove. So a delete takes the row and leaves the reason in the log.
 
 Same arrangement as todo.py: the server or the bb CLI hands over write_json
 and the state directory; nothing here reaches back.
@@ -36,7 +43,16 @@ def configure(*, write_json, state):
 _lock = threading.Lock()
 
 SEVERITIES = ("low", "medium", "high", "critical")
-STATUSES = ("open", "fixed", "wontfix")
+# The ways a bug leaves the open list. "na" is for one that was real and
+# stopped applying — the feature it was about was removed, the screen it lived
+# on is gone — which is neither fixed (nobody fixed it) nor wontfix (it was
+# not a decision to leave it). Saying either of those about it misleads
+# whoever reads the tracker next.
+STATUSES = ("open", "fixed", "wontfix", "na")
+
+# What each looks like where there is room for a sentence.
+STATUS_WORDS = {"open": "open", "fixed": "fixed", "wontfix": "won't fix",
+                "na": "not applicable"}
 
 # One line each; the two long fields get room for real repro steps and a real
 # analysis. Capped so a paste cannot turn the tracker into a log file.
@@ -251,6 +267,32 @@ def set_status(project, bug_id, status, note="", by="you"):
                 "log": {"act": "reopened" if status == "open" else status,
                         "id": bug["id"], "text": bug["title"], "note": note_}}
     return _edit(project, bug_id, change, by)
+
+
+def remove(project, bug_id, why="", by="you"):
+    """Take a report off the tracker for good.
+
+    For a report that should not exist — mis-filed, duplicated, the wrong
+    project — and nothing else. A bug that was real and is now dealt with is
+    closed, which keeps it; this does not. The reason is kept in the log
+    either way, because a row vanishing with no account of why is exactly the
+    thing the history was added to prevent.
+    """
+    bug_id = _int(bug_id)
+    if bug_id is None:
+        return {"error": "not a bug number"}
+    with _lock:
+        d = load()
+        rows = d["projects"].get(project) or []
+        bug = next((b for b in rows if _int(b.get("id")) == bug_id), None)
+        if bug is None:
+            return {"error": f"no bug #{bug_id} here"}
+        rows.remove(bug)
+        _log(d, project, by, {"act": "deleted", "id": bug_id,
+                              "text": bug.get("title", ""),
+                              "note": _clean(why, MAX_SHORT).replace("\n", " ")})
+        save(d)
+    return {"ok": True}
 
 
 def prompt(project):

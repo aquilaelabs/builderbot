@@ -2218,6 +2218,8 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "status":
             r = bugs.set_status(name, req.get("id"), field(req, "status"),
                                 note=field(req, "note"))
+        elif act == "remove":
+            r = bugs.remove(name, req.get("id"), why=field(req, "why"))
         elif act == "history":
             return self._json({"history": bugs.history(
                 name, limit=req.get("limit"), since=req.get("since"),

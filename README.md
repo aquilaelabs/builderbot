@@ -366,7 +366,7 @@ bb todo info N [M] "..."           attach the technical details to one, or step 
 bb todo begin      work one out; `commit` records it as one change, `revert` undoes
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
-                   `wontfix N`, `reopen N`
+                   `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
 bb history         one search over the notebook's logs — roadmap, bugs, memory
                    (`--find X`, `--since 7d`, `-n N`)
 bb todo history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
@@ -1330,11 +1330,24 @@ field the analysis accumulates in (`bb bug note N "..."` appends, dated,
 rather than replacing — the last analysis is how the next one starts). Either
 side writes it: you report from the tab, a session files what it trips over
 with `bb bug add "..." --sev high --area "..." --repro "..."`. It is
-write-through, not staged — a report is a form submitted once — and nothing
-is ever deleted: a bug closes as **fixed** or **won't fix**, each asking for
+write-through, not staged — a report is a form submitted once. A bug **closes**
+three ways, and the difference is what the next reader is told: **fixed**
+(somebody fixed it), **won't fix** (a decision to leave it), and **not
+applicable** (it was real and stopped applying, because the feature it was
+about went away — neither of the other two is true of that). Each asks for
 the note that is the point of closing, and `bb bug all` still lists it,
 because a closed bug is the record that stops the same report being chased
-twice. Open bugs ride into every session's starting prompt by number,
+twice.
+
+**Delete** is separate and narrower: for a report that should never have
+existed — mis-filed, duplicated, aimed at the wrong project. It takes the row
+and leaves the reason in the log. The template CLAUDE.md tells sessions that
+this is the only case for it; anything that was a real bug gets closed.
+
+The list **sorts** by severity, newest, oldest, recently changed or title,
+from the same bar shape the log's filters use. Open before closed is not one
+of the choices — a tracker is read to find what is outstanding — so every
+order works within that. Open bugs ride into every session's starting prompt by number,
 severity and title, with the fields on disk behind `bb bug show N`.
 
 **Editing the list or the memories tells the running session**, in one line, to

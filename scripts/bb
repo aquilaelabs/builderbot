@@ -41,6 +41,8 @@ bb — BuilderBot helper
   bb todo add "..." [--step "..."]   an item, or an ordered group of steps
   bb bug                 this project's bug tracker: open bugs, newest first
   bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
+  bb bug na N ["why"]    it was real and stopped applying — the feature went
+  bb bug rm N ["why"]    delete a report that should not have been filed
   bb history [--find X]  one search over the notebook: roadmap, bugs and memory logs
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
@@ -1085,20 +1087,69 @@ elif op == "edit":
     r = bugs.edit(proj, rest[0], by="claude", **{k: " ".join(rest[2:])})
     bail(r)
     print(f"updated {k} on #{rest[0]}")
-elif op in ("fix", "wontfix", "reopen"):
+elif op in ("rm", "remove"):
+    # For a report that should not exist — mis-filed, a duplicate, the wrong
+    # project. A bug that was real and is dealt with gets `fix` or `wontfix`,
+    # which keeps it; this does not, and says why in the log.
+    if not rest:
+        print("usage: bb bug rm <n> [\"why it should not have been filed\"]",
+              file=sys.stderr)
+        sys.exit(1)
+    r = bugs.remove(proj, rest[0], why=" ".join(rest[1:]), by="claude"); bail(r)
+    print(f"removed #{rest[0]} — closing keeps a bug, this does not")
+elif op in ("fix", "wontfix", "na", "reopen"):
     if not rest:
         print(f"usage: bb bug {op} <n> [\"note\"]", file=sys.stderr); sys.exit(1)
-    status = {"fix": "fixed", "wontfix": "wontfix", "reopen": "open"}[op]
+    status = {"fix": "fixed", "wontfix": "wontfix", "na": "na",
+              "reopen": "open"}[op]
     r = bugs.set_status(proj, rest[0], status,
                         note=" ".join(rest[1:]), by="claude")
     bail(r)
     print(f"#{rest[0]} {status}")
+elif op in ("history", "log"):
+    # The same filters `bb todo history` takes, because whoever learned one
+    # should not have to learn the other. `bb history` merges all three.
+    limit, since, find, i = 20, None, None, 0
+    while i < len(rest):
+        a = rest[i]
+        if a in ("-n", "--last") and i + 1 < len(rest):
+            limit = int(rest[i + 1]); i += 2
+        elif a == "--all":
+            limit = None; i += 1
+        elif a == "--since" and i + 1 < len(rest):
+            v = rest[i + 1]
+            if v.rstrip("d").isdigit():
+                since = int(time.time()) - int(v.rstrip("d")) * 86400
+            else:
+                try:
+                    since = int(time.mktime(time.strptime(v, "%Y-%m-%d")))
+                except ValueError:
+                    print(f"[builderbot] ERROR: not a date or a day count: {v}",
+                          file=sys.stderr)
+                    sys.exit(1)
+            i += 2
+        elif a in ("--find", "-f") and i + 1 < len(rest):
+            find = rest[i + 1]; i += 2
+        else:
+            print("usage: bb bug history [-n N|--all] [--since 7d|YYYY-MM-DD] "
+                  "[--find TEXT]", file=sys.stderr)
+            sys.exit(1)
+    h = bugs.history(proj, limit=limit, since=since, find=find)
+    if not h:
+        print(f"nothing in {proj}'s tracker matches that")
+    for e in h:
+        when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
+        print(f"  {when}  {e.get('by', ''):>6}  {e.get('act', ''):<9}"
+              f"  #{e.get('id')}  {e.get('text', '')}")
+        if e.get("note"):
+            print(f"{'':>30}note: {e['note']}")
 elif op == "--prompt":
     sys.stdout.write(bugs.prompt(proj))
 else:
     print("usage: bb bug [list|all|show N|add TITLE [--sev S] [--area ..] "
           "[--repro ..]|note N TEXT|edit N FIELD TEXT|fix N [NOTE]|"
-          "wontfix N [WHY]|reopen N]", file=sys.stderr)
+          "wontfix N [WHY]|na N [WHY]|reopen N|rm N [WHY]|"
+          "history [-n N] [--since D] [--find TEXT]]", file=sys.stderr)
     sys.exit(1)
 PY
 }
