@@ -1016,6 +1016,32 @@ ok(await page.$eval(`${row('alpha')} .acts`, a => {
      return r.top >= n.bottom; }),
    '...and the buttons sit on their own line under the name, where a word fits');
 
+// ---- a document has a reading width --------------------------------------
+// An ultrawide pane put a row's name at one end of two thousand pixels and
+// the bin that acts on it at the other.
+const ultra = await newPage(browser, { viewport: { width: 2200, height: 900 } });
+await ultra.goto(URL);
+await ready(ultra);
+await ultra.click(`${row('alpha')} [data-m]`);
+await nbShown(ultra);
+await ultra.waitForFunction(() => document.querySelectorAll('#todoList .todo, #todoList .hint').length > 0,
+                           { timeout: 20000 });
+const spread = await ultra.evaluate(() => {
+  const nb = document.querySelector('.pane .nb');
+  const pane = nb.closest('.doc').getBoundingClientRect();
+  return { nb: Math.round(nb.getBoundingClientRect().width),
+           pane: Math.round(pane.width) };
+});
+ok(spread.pane > 1500 && spread.nb <= 1100,
+   `the notebook keeps a reading width in a ${spread.pane}px pane (${spread.nb}px)`);
+await ultra.evaluate(() => openPackages());
+await ultra.waitForSelector('.doc .pkg', { timeout: 20000 });
+ok(await ultra.evaluate(() => {
+     const p = document.querySelector('.doc.on .pkg');
+     return p && p.getBoundingClientRect().width <= 1100; }),
+   '...and so does the packages tab, where the bin was furthest from its row');
+await ultra.close();
+
 // ---- two Saves, and what the line says ----------------------------------
 // The difference between them is whether a line of anybody's conversation is
 // spent. Both settle the panel; only one tells.
