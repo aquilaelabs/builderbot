@@ -1690,15 +1690,22 @@ dashboard's own process.
 ### Keeping a session in its own project
 
 A Claude session started from the dashboard is launched with a generated
-settings file that denies its file tools access to every *other* project under
-`/workspace`, plus the runner's `_work` checkouts. That file is passed with
+settings file that denies its file tools — `Read`, `Edit`, `Write` and
+`NotebookEdit`, since a deny rule names one tool and Read does not imply the
+rest — access to every *other* project under `/workspace`, plus the runner's
+`_work` checkouts. Siblings are enumerated by name rather than matched by
+pattern, so a project called `app[1]` cannot quietly take its neighbours out of
+the list. That file is passed with
 `--settings`, which ranks as a command-line argument — above the project's own
 `.claude/settings.json` and `.claude/settings.local.json` — so a session cannot
 widen its own boundary by editing files in the repo it is working on. Only the
 root-owned managed policy file outranks it.
 
 **This is a guardrail, not a sandbox.** It stops a session wandering into the
-wrong tree by mistake, which is the common failure. It does not contain one
+wrong tree by mistake, which is the common failure. Note also that it only
+applies to sessions the dashboard starts: run `claude` yourself in a shell tab
+and there is no settings file, leaving the instruction in the project's
+CLAUDE.md as the only thing asking it to stay put. It does not contain one
 that goes looking: Bash still reaches the whole filesystem, and no in-process
 permission system changes that. If you need a hard boundary, do not mount the
 other projects into the same container.

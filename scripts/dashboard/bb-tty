@@ -63,6 +63,13 @@ claude_scope() {
     mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)"; mkdir -p "$dir"; }
     out="$dir/claude-scope-${proj}.json"
 
+    # Every tool that reaches a file by path, not just the two that seemed
+    # obvious. A rule names one tool: Read and Edit do not cover Write, so the
+    # first version of this left a session able to CREATE a file in a sibling
+    # project — it could not read one or change one, because Write refuses on
+    # a file it has not read and Read was denied, but a new path was reachable.
+    # NotebookEdit is the same tool wearing a different name for .ipynb.
+    #
     # Build beside the target and move into place. Writing straight to $out
     # would leave a truncated file if jq failed, and claude would then be
     # handed a settings file that is not JSON.
@@ -70,8 +77,10 @@ claude_scope() {
     if siblings_of "$proj" | jq -R . | jq -s --arg ws "$WORKSPACE" '
            {permissions: {
               additionalDirectories: [],
-              deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
-                     + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)"])
+              deny: (map("Read(\(.)/**)", "Edit(\(.)/**)",
+                         "Write(\(.)/**)", "NotebookEdit(\(.)/**)")
+                     + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)",
+                        "Write(\($ws)/_work/**)", "NotebookEdit(\($ws)/_work/**)"])
            }}' > "$tmp" && [ -s "$tmp" ]; then
         mv -f "$tmp" "$out"
         printf '%s' "$out"
