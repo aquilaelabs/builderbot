@@ -5,7 +5,7 @@
 //
 // The writes run for real against the scratch home, so this also checks the
 // part that matters most: a delete takes the index line out with the file.
-import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR, openFold } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const MEM = `${DIR}/home/.claude/projects/${(DIR + '/ws/alpha').replaceAll('/', '-')}/memory`;
@@ -76,7 +76,7 @@ ok(drift.some(d => d.includes('loose.md') && d.includes('not in the index')),
    'a memory the index never lists is called out too');
 
 // ---- editing -----------------------------------------------------------
-await page.click('#memList .mem:has(.mname:text-is("tabs")) summary');
+await openFold(page, '#memList .mem:has(.mname:text-is("tabs"))');
 await page.waitForSelector('#memList .mem[open] textarea');
 ok((await page.$eval('#memList .mem[open] textarea', t => t.value)).includes('asked for it twice'),
    'opening one shows the whole file, frontmatter and all');
@@ -114,7 +114,7 @@ ok((await page.$eval('#memWhere', el => el.textContent)).includes('1 memory'),
 // What is left at this point: one memory (loose, unlisted) and one index line
 // pointing at a file that was never there. Filling the memory's fields in has
 // to do both halves — give it a line, and take the dead one out.
-await page.click('#memList .mem:has(.mname:text-is("loose")) summary');
+await openFold(page, '#memList .mem:has(.mname:text-is("loose"))');
 await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixt', i => {
   i.value = 'Loose ends'; i.dispatchEvent(new Event('input')); });
 await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixh', i => {
@@ -234,7 +234,7 @@ mkdirSync(MEM, { recursive: true });
 writeFileSync(`${MEM}/huge.md`, '---\nname: huge\n---\n' + 'x'.repeat(40000));
 await page.evaluate(() => notebooks.get('alpha').reloadMemory());
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 3);
-await page.click('#memList .mem:has(.mname:text-is("huge")) summary');
+await openFold(page, '#memList .mem:has(.mname:text-is("huge"))');
 ok(await page.$eval('#memList .mem:has(.mname:text-is("huge"))',
      l => !l.querySelector('textarea') && l.querySelector('.hint.bad')),
    'an oversized memory gets no editor, and says why');

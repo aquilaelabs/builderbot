@@ -3,7 +3,7 @@
 // scratch workspace, CLAUDE.md built from the checkout's template — while the
 // clone path is tested up to its URL allow-list: the list is the thing under
 // test, and a real clone would need GitHub on the other end.
-import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 
 const browser = await launch();
@@ -20,11 +20,11 @@ const idle = () => page.evaluate(() => document.activeElement?.tagName || '');
 ok(await idle() !== 'INPUT' && await idle() !== 'TEXTAREA',
    '...with the cursor in none of its fields');
 ok(await page.$eval('#pUrlField', el => el.hidden), 'local repo is the default; no URL field');
-await page.click('#pClone');
+const cloneSlide = await animatedDuring(page, () => page.click('#pClone'));
 ok(await page.$eval('#pUrlField', el => !el.hidden)
    && await page.$eval('#pClone', b => b.classList.contains('on')),
    'clone mode shows the URL field and takes the green');
-ok(await page.$eval('#pUrlField', el => el.getAnimations().length > 0),
+ok(cloneSlide.some(k => k.includes('pUrlField')),
    '...sliding in from its tab\'s side, like the view switch');
 ok(await page.$eval('#pNameField', el => el.hidden)
    && await page.$eval('#pAboutField', el => el.hidden),

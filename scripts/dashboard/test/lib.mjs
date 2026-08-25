@@ -113,6 +113,63 @@ export async function layoutSettled(pred, ms = 15000){
   }
 }
 
+// What animated while `act` ran — recorded, not sampled.
+//
+// Asking `getAnimations().length > 0` in a round trip after the action only
+// works if that round trip lands inside the tween, which is 140-220ms here.
+// On an idle box it does; on a loaded one it does not, and the test fails
+// with nothing wrong with the page. Wrapping Element.animate answers the
+// question that was actually being asked — did this animate — rather than
+// the one about whether it still is.
+//
+// Returns a key per animated element: its id, its data-card, and its classes,
+// so a caller can look for whichever of those it knows the element by.
+export async function animatedDuring(page, act){
+  await page.evaluate(() => {
+    window.__anim = [];
+    window.__realAnimate = Element.prototype.animate;
+    Element.prototype.animate = function(...a){
+      // classList rather than className: on an SVG element the latter is an
+      // SVGAnimatedString, which joins as "[object SVGAnimatedString]".
+      window.__anim.push([this.id, this.dataset?.card,
+                          ...(this.classList || [])].filter(Boolean).join(" "));
+      return window.__realAnimate.apply(this, a);
+    };
+  });
+  let seen = [];
+  try {
+    await act();
+  } finally {
+    // Restored even if the action threw: a patched prototype left behind
+    // would follow every later assertion in the file.
+    seen = await page.evaluate(() => {
+      Element.prototype.animate = window.__realAnimate;
+      return window.__anim;
+    });
+  }
+  return seen;
+}
+
+// Open a fold and wait for it to stop moving.
+//
+// The memories and the bug reports slide open now, which means everything
+// inside one is in motion for the length of the tween — and Playwright will
+// not click a moving target, so a test that reached straight into a freshly
+// opened report failed on "element is not stable" under load. Waiting on the
+// element's own animations is exact: no sleep to tune, and nothing to
+// re-tune when the duration changes.
+export async function openFold(page, sel){
+  // Resolved to a handle first, and the wait done through that rather than
+  // through the selector: these are often Playwright's own selector flavour
+  // (`:has(.mname:text-is("tabs"))`), which page.$ understands and the page's
+  // own querySelector does not.
+  const el = await page.$(sel);
+  if (!el) throw new Error(`openFold: nothing matches ${sel}`);
+  await (await el.$("summary")).click();
+  await page.waitForFunction(d => d.open && !d.getAnimations().length,
+                             el, { timeout: 10000 });
+}
+
 // Wait until the page has its first doctor verdict — the last thing to land
 // on a fresh instance, so a good "page is ready" marker.
 export const ready = page => page.waitForFunction(() => {

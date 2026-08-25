@@ -3,7 +3,7 @@
 // report is a form submitted once, not a list curated in place — and nothing
 // is ever deleted: a bug closes as fixed or wontfix, each with a note, because
 // a closed bug is the record that stops the same report being chased twice.
-import { launch, newPage, ok, done, ready, nbShown, tmuxCapture, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, nbShown, tmuxCapture, URL, DIR, openFold } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -84,7 +84,7 @@ ok(true, 'the tab picks up what a session filed');
 // ---- closing one, with the note that is the point --------------------------
 page.dialogs = [];
 await page.evaluate(() => { window.prompt = () => 'the select re-measures on rotate now'; });
-await page.click('#bugList .bug[data-id="1"] summary');
+await openFold(page, '#bugList .bug[data-id="1"]');
 await page.click('#bugList .bug[data-id="1"] .bFix');
 await page.waitForFunction(() => document.querySelector('#bugList .bug[data-id="1"] .bstat')?.textContent === 'fixed', { timeout: 10000 });
 ok(read().find(b => b.id === 1).status === 'fixed'
@@ -142,7 +142,7 @@ await page.selectOption('#bugSort', 'severity');
 // Not the same act as closing one: fixed and wontfix keep the bug, because a
 // closed bug stops the same report being chased twice. This is for the report
 // that should never have been filed, and it says so in the log.
-await page.click('#bugList .bug[data-id="3"] summary');
+await openFold(page, '#bugList .bug[data-id="3"]');
 await page.click('#bugList .bug[data-id="3"] .bRm');
 await page.waitForSelector('.bug .dropbox input', { timeout: 10000 });
 ok(read().some(b => b.id === 3),
@@ -177,7 +177,7 @@ await page.evaluate(() => notebooks.get('alpha').reloadBugs());
 await page.waitForFunction(n => !!document.querySelector(`#bugList .bug[data-id="${n}"]`),
                            naId, { timeout: 10000 });
 await page.evaluate(() => { window.prompt = () => 'the picker was removed entirely'; });
-await page.click(`#bugList .bug[data-id="${naId}"] summary`);
+await openFold(page, `#bugList .bug[data-id="${naId}"]`);
 await page.click(`#bugList .bug[data-id="${naId}"] .bNa`);
 await page.waitForFunction(n => document.querySelector(
   `#bugList .bug[data-id="${n}"] .bstat`)?.textContent === 'n/a', naId,
@@ -287,20 +287,28 @@ const post = body => page.evaluate(async b => {
   await page.click('.pane .nb .nbtabs [data-v="bugs"]');
   await page.waitForSelector('#bugList .bug', { timeout: 15000 });
   const one = await page.$eval('#bugList .bug', d => d.dataset.id);
-  const shut = await page.$eval(`#bugList .bug[data-id="${one}"]`, d => d.offsetHeight);
-  await page.click(`#bugList .bug[data-id="${one}"] summary`);
-  const mid = await page.$eval(`#bugList .bug[data-id="${one}"]`, d => ({
-    anim: d.getAnimations().length > 0, open: d.open, h: d.offsetHeight }));
-  ok(mid.anim && mid.open, 'a bug report opens with a slide');
-  await page.waitForFunction(id => !document.querySelector(
-    `#bugList .bug[data-id="${id}"]`).getAnimations().length, one, { timeout: 5000 });
-  const full = await page.$eval(`#bugList .bug[data-id="${one}"]`, d => d.offsetHeight);
-  ok(full > shut && mid.h < full,
-     `...growing to its real height rather than jumping (${shut} → ${mid.h} → ${full}px)`);
-  await page.click(`#bugList .bug[data-id="${one}"] summary`);
-  await page.waitForFunction(id => !document.querySelector(
-    `#bugList .bug[data-id="${id}"]`).open, one, { timeout: 5000 });
-  ok(await page.$eval(`#bugList .bug[data-id="${one}"]`, d => d.offsetHeight) === shut,
+  const sel = `#bugList .bug[data-id="${one}"]`;
+  const shut = await page.$eval(sel, d => d.offsetHeight);
+  // The keyframes, read in the SAME task as the click. slideDetails animates
+  // synchronously inside the handler, so this cannot miss the tween the way
+  // asking "is it animating?" in a later round trip can — which is the bug
+  // this whole pass is about, and it would be poor to reintroduce it here.
+  const kf = await page.evaluate(s => {
+    const el = document.querySelector(s);
+    el.querySelector("summary").click();
+    const a = el.getAnimations()[0];
+    return a ? a.effect.getKeyframes().map(k => parseFloat(k.height)) : null;
+  }, sel);
+  ok(kf && kf[0] === shut && kf[1] > shut,
+     `a bug report opens with a slide, from its shut height (${kf?.join(' → ')}px)`);
+  await page.waitForFunction(s => !document.querySelector(s).getAnimations().length,
+                             sel, { timeout: 5000 });
+  const full = await page.$eval(sel, d => d.offsetHeight);
+  ok(full > shut && kf[1] === full,
+     `...landing at the height it aimed for (${shut} → ${full}px)`);
+  await page.click(`${sel} summary`);
+  await page.waitForFunction(s => !document.querySelector(s).open, sel, { timeout: 5000 });
+  ok(await page.$eval(sel, d => d.offsetHeight) === shut,
      '...and closes back to exactly the height it started at');
 }
 
@@ -311,7 +319,7 @@ const post = body => page.evaluate(async b => {
 // adds a note, and the session is then working from the paste.
 await page.waitForSelector('#bugList .bug', { timeout: 15000 });
 const first = await page.$eval('#bugList .bug', d => d.dataset.id);
-await page.click(`#bugList .bug[data-id="${first}"] summary`);
+await openFold(page, `#bugList .bug[data-id="${first}"]`);
 await page.click(`#bugList .bug[data-id="${first}"] .bSend`);
 await page.waitForSelector('.sendbox');
 ok(await page.$eval('.sendbox', b => b.closest('.bug')?.dataset.id) === first,
@@ -347,7 +355,7 @@ const closed = await page.$$eval('#bugList .bug',
         ? null
         : ds.find(d => d.querySelector('.bReopen'))?.dataset.id);
 if (closed){
-  await page.click(`#bugList .bug[data-id="${closed}"] summary`);
+  await openFold(page, `#bugList .bug[data-id="${closed}"]`);
   ok(await page.$eval(`#bugList .bug[data-id="${closed}"] .bSend`, b => b.disabled),
      'a closed bug cannot be sent from the row');
   ok((await page.$eval(`#bugList .bug[data-id="${closed}"] .bSend`, b => b.title))

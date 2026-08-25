@@ -216,8 +216,14 @@ ok(await phone.$eval('#commands', el => el.parentElement.id === 'mpCmd' && el.qu
 ok(await phone.$eval('.tab [data-pin]', el => getComputedStyle(el).display === 'none'), 'pin buttons hidden on a phone');
 // Claude on a project with a transcript opens the Resume/New chooser — which
 // must be visible on a phone (it once shared the hidden pin menu's class).
-await phone.evaluate(() => setView('dash'));
-ok(await phone.$eval('.col.side', el => el.getAnimations().length > 0), 'the view slides across the switch');
+// Both in one evaluate: setView animates the column synchronously, so asking
+// afterwards in a second round trip was asking whether the 220ms tween had
+// outlived the trip — true on an idle box, not on a loaded one.
+ok(await phone.evaluate(() => {
+     setView('dash');
+     return document.querySelector('.col.side').getAnimations().length > 0;
+   }),
+   'the view slides across the switch');
 await phone.click('#projects [data-c="alpha"]');
 ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
    'phone: Claude on a project with history shows the Resume/New chooser');
@@ -251,10 +257,24 @@ ok(await phone.$eval('#sespanel', el => !el.classList.contains('show')) && await
    '...and the old one is gone when the new one lands');
 // A second tap mid-slide reverses from where the panel is, not from full height.
 const hFull = await phone.$eval('#macpanel', el => el.offsetHeight);   // landed, in the flow
-await phone.click('#mMacros');                       // closing (slides)
-await sleep(90);                                      // ...part-way down
-await phone.click('#mMacros');                       // reopen mid-slide
-const from = parseFloat(await phone.$eval('#macpanel', el => el.getAnimations()[0]?.effect.getKeyframes()[0].height));
+// The whole gesture inside one evaluate, and the wait measured against the
+// animation's OWN clock rather than a sleep. Three round trips around a 200ms
+// tween is a race: on a loaded box the close lands before the second tap, so
+// there is no mid-slide left to reverse from and the test fails for a reason
+// that is about the box. Waiting on currentTime is exactly the condition the
+// assertion cares about — that the panel really is part-way down.
+const from = await phone.evaluate(async () => {
+  const el = document.getElementById("macpanel");
+  document.getElementById("mMacros").click();          // closing (slides)
+  const a = el.getAnimations()[0];
+  if (a) await new Promise(res => {
+    const tick = () => (a.playState !== "running" || a.currentTime >= 90)
+      ? res() : requestAnimationFrame(tick);
+    tick();
+  });
+  document.getElementById("mMacros").click();          // reopen mid-slide
+  return parseFloat(el.getAnimations()[0]?.effect.getKeyframes()[0].height);
+});
 ok(from > 0 && from < hFull, `re-tap mid-slide resumes from the current height (${from} of ${hFull}px)`);
 await phone.waitForFunction(() => !document.getElementById('macpanel').classList.contains('sliding'));
 
