@@ -60,18 +60,18 @@ for (const [what, body] of [
 page.errors = [];
 
 // ---- pushing ---------------------------------------------------------------
-ok(await page.$eval('#phState', el => /Test Phone/.test(el.textContent)),
+ok(await page.$eval('.card[data-card="phone"]', el => /Test Phone/.test(el.textContent)),
    'the card shows the connected phone by model');
-await page.click('.phext [data-push]');
+await page.click('.row [data-push]');
 await page.waitForFunction(() => /live/.test(
-  document.querySelector('.phjob')?.textContent || ''), null, { timeout: 20000 });
+  document.querySelector('.row.phjob')?.textContent || ''), null, { timeout: 20000 });
 ok(true, 'Push runs web-ext and the card goes live once the add-on is really on');
-ok(/temporary/.test(await page.$eval('.phjob', el => el.textContent)),
+ok(/temporary/.test(await page.$eval('.row.phjob', el => el.textContent)),
    '...saying out loud that the install is temporary, because it is');
-ok(await page.$eval('.phext [data-push]', b => b.disabled),
+ok(await page.$eval('.row [data-push]', b => b.disabled),
    '...and a second push cannot start on top of the first');
 await page.click('#phStop');
-await page.waitForFunction(() => !document.querySelector('.phjob'),
+await page.waitForFunction(() => !document.querySelector('.row.phjob'),
                            null, { timeout: 20000 });
 ok(true, 'Stop ends it');
 
@@ -81,13 +81,13 @@ ok(true, 'Stop ends it');
 // a fresh container is actually in: web-ext is not in the image.
 renameSync(`${DIR}/bin/web-ext`, `${DIR}/bin/web-ext.hidden`);
 await page.evaluate(() => phFetch());
-await page.waitForFunction(() => document.querySelector('.phext [data-push]')?.disabled,
+await page.waitForFunction(() => document.querySelector('.row [data-push]')?.disabled,
                            null, { timeout: 15000 });
-ok((await page.$eval('.phext [data-push]', b => b.title)).includes('EXTRA_NPM_PACKAGES'),
+ok((await page.$eval('.row [data-push]', b => b.title)).includes('EXTRA_NPM_PACKAGES'),
    'with no web-ext, Push is dead and says how to fix it');
 renameSync(`${DIR}/bin/web-ext.hidden`, `${DIR}/bin/web-ext`);
 await page.evaluate(() => phFetch());
-await page.waitForFunction(() => !document.querySelector('.phext [data-push]')?.disabled,
+await page.waitForFunction(() => !document.querySelector('.row [data-push]')?.disabled,
                            null, { timeout: 15000 });
 ok(true, '...and alive again once it is there');
 
@@ -104,9 +104,9 @@ const asked = await post({ action: 'ask', why: 'read the Firefox version',
 ok(asked.body.id > 0, 'a session can ask, and gets a number back');
 await page.evaluate(() => phFetch());
 await page.waitForSelector('.phask', { timeout: 15000 });
-ok(/read the Firefox version/.test(await page.$eval('.phask .why', e => e.textContent)),
+ok(/read the Firefox version/.test(await page.$eval('.phask .name', e => e.textContent)),
    '...and the card shows the reason it gave');
-ok(/getprop/.test(await page.$eval('.phask .cmd', e => e.textContent)),
+ok(/getprop/.test(await page.$eval('.phask .phcmd', e => e.textContent)),
    '...beside the exact command, so Allow is not a guess');
 const pend = await page.evaluate(async () => (await fetch('/api/phone')).json());
 ok((pend.asks || []).length === 1, '...and it is pending until answered');

@@ -92,6 +92,12 @@ def save(d):
 # the sibling-project deny list makes.
 ADB_PORT = os.environ.get("BB_PHONE_ADB_PORT", "5038")
 
+# Which web-ext to use. A name normally, resolved on PATH; the test harness
+# points it at its own stub by absolute path, so what the suite reports does
+# not depend on whether the box it runs on happens to have the real one
+# installed. That has already caught this out once.
+WEBEXT_BIN = os.environ.get("BB_WEBEXT_BIN", "web-ext")
+
 
 def _env():
     e = dict(os.environ)
@@ -396,7 +402,7 @@ def push(source, serial, apk):
     lookup and not a command line.
     """
     import shutil
-    if shutil.which("web-ext") is None:
+    if shutil.which(WEBEXT_BIN) is None:
         return {"error": "web-ext is not installed. Add it to EXTRA_NPM_PACKAGES "
                          "on the container and restart — installing it by hand "
                          "here would not survive an image update."}
@@ -412,7 +418,7 @@ def push(source, serial, apk):
         return {"error": "that phone is not connected"}
     # --adb-port so web-ext talks to the phone's server rather than the
     # default one, which does not have the phone on it.
-    cmd = ["web-ext", "run", "--target=firefox-android", f"--adb-port={ADB_PORT}",
+    cmd = [WEBEXT_BIN, "run", "--target=firefox-android", f"--adb-port={ADB_PORT}",
            f"--adb-device={serial}", f"--firefox-apk={apk}",
            f"--source-dir={d}", "--no-input", "--adb-remove-old-artifacts"]
     global _proc
@@ -462,7 +468,7 @@ def payload(projects=()):
     # git commands ghost outside a repo. A control that looks alive and then
     # explains itself only once pressed is a worse control.
     return {"devices": devices(), "phone": p, "asks": requests_open(),
-            "webext": shutil.which("web-ext") is not None,
+            "webext": shutil.which(WEBEXT_BIN) is not None,
             "ip": load().get("ip", ""),
             "apks": firefox_apks((p or {}).get("serial", "")),
             "extensions": extensions(projects),

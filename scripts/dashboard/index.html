@@ -301,6 +301,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal label,.nb label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
   margin-bottom:5px}
 .modal input,.modal textarea,.modal select,
+.row input,.row select,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
   background:#161b22;color:var(--ink);border:1px solid var(--line);border-radius:6px;
   padding:8px 9px;font:13px/1.5 var(--mono)}
@@ -308,6 +309,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* 16px on a phone: iOS Safari zooms the page into any smaller field on
    focus, and this fixed layout has no way to zoom back out. */
 @media(max-width:900px){ .modal input,.modal textarea,.modal select,
+  .row input,.row select,
   .nb input,.nb textarea,.nb select{font-size:16px} }
 .modal input:focus,.modal textarea:focus,.modal select:focus,
 .nb input:focus,.nb textarea:focus,.nb select:focus{
@@ -327,37 +329,13 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
 
 /* ---- the shared to-do list -------------------------------------------- */
-/* The phone card. Rows that wrap rather than a grid: the sidebar is 340px on
-   a desktop and the full width on a phone, and this has to read at both. */
-.phbody{display:flex;flex-direction:column;gap:8px}
-.phstate{font:12px/1.5 system-ui,sans-serif}
-.phrow{display:flex;gap:6px;flex-wrap:wrap}
-.phrow input{flex:1 1 90px;min-width:0}
-.phrow button{flex:0 0 auto;min-height:var(--tap)}
-.phhint{color:var(--dim);font:11px/1.45 system-ui,sans-serif}
-/* Same reserved width as everywhere else these are used, so the line does not
-   twitch as the dots come and go. */
-.phbody .dots{display:inline-block;width:3ch;text-align:left;white-space:pre}
-.phhint.bad{color:var(--bad)}
-.phpair>summary{color:var(--dim);font:11px/1.4 system-ui,sans-serif;cursor:pointer}
-.phpair[open]>summary{margin-bottom:6px}
-.phlist{display:flex;flex-direction:column;gap:6px}
-.phext{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
-  border-top:1px solid var(--line);padding-top:6px}
-.phext .what{flex:1 1 140px;min-width:0;font:12px/1.4 system-ui,sans-serif}
-.phext button{flex:0 0 auto;min-height:var(--tap)}
-/* A session waiting on an answer. Bordered rather than merely spaced: it is a
-   question, and questions on a dashboard are easy to scroll past. */
-.phask{border:1px solid var(--accent);border-radius:8px;padding:8px;
-  margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
-.phask .why{font:600 12px/1.4 system-ui,sans-serif;color:var(--ink)}
-.phask .cmd{font:11px/1.4 var(--mono);color:var(--dim);word-break:break-all}
-.phask .acts{display:flex;gap:6px;align-items:center}
-.phask .acts .sp{flex:1}
-.phask button{min-height:var(--tap)}
-.phjob{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.phjob .what{flex:1 1 auto;min-width:0;font:12px/1.4 system-ui,sans-serif}
-.phjob .phhint{flex:1 1 100%}
+/* The phone card. Almost nothing of its own: it is .row like Projects, and
+   these are the few things a list of rows does not already say. */
+.phcmd{font:11px/1.4 var(--mono);color:var(--dim);overflow-wrap:anywhere}
+/* A question somebody is blocked on. Bordered rather than merely spaced,
+   because a question on a dashboard is easy to scroll past. */
+.row.phask{border-left:2px solid var(--accent)}
+.row .dots{display:inline-block;width:3ch;text-align:left;white-space:pre}
 .todoadd{display:flex;gap:8px}
 /* display:flex beats the hidden attribute; the log hides this row. */
 .todoadd[hidden]{display:none}
@@ -1364,38 +1342,14 @@ body.dragging .tab .lbl{cursor:grabbing}
     <!-- A phone on the end of wireless adb. USB is not an option here: there
          is no /dev/bus/usb in the container, and even passed through the
          handset would have to be plugged into the server rather than sitting
-         on the desk. -->
+         on the desk.
+
+         Drawn from JS as rows, the way Projects is, rather than as a bespoke
+         block: this is a list of things with names, subtitles and actions,
+         which is what .row already is. -->
     <div class="card" data-card="phone">
       <h2>Phone</h2>
-      <div class="phbody">
-        <div class="phstate" id="phState">not connected</div>
-        <div class="phrow">
-          <input id="phIp" maxlength="15" autocomplete="off" placeholder="192.168.0.10"
-                 aria-label="phone IP address">
-          <button type="button" id="phConnect" class="primary">Connect</button>
-          <button type="button" id="phDisconnect" hidden>Disconnect</button>
-        </div>
-        <!-- Pairing is separate because it is a once-per-container thing, and
-             because its port is NOT the connect port — the phone shows two
-             different numbers on two different screens and everybody tries
-             the wrong one first. -->
-        <details class="phpair" id="phPairFold">
-          <summary>Pair a new phone</summary>
-          <div class="phrow">
-            <input id="phPairPort" maxlength="5" autocomplete="off" placeholder="port"
-                   aria-label="pairing port">
-            <input id="phPairCode" maxlength="6" autocomplete="off" placeholder="6-digit code"
-                   aria-label="pairing code">
-            <button type="button" id="phPair">Pair</button>
-          </div>
-          <div class="phhint">Developer options → Wireless debugging → <b>Pair
-            device with pairing code</b>. That screen's port is not the one the
-            main screen shows; this needs the pairing one. The pairing is kept
-            on the home volume, so it outlives a restart.</div>
-        </details>
-        <div id="phAsks"></div>
-        <div id="phExts"></div>
-      </div>
+      <div id="phBody"><div class="empty">loading…</div></div>
     </div>
     <div class="card" id="cardFindings" data-card="findings" hidden>
       <h2>Static analysis</h2>
@@ -6447,9 +6401,13 @@ async function refresh(){
 // ---- the phone card --------------------------------------------------------
 // Fetched on demand rather than on the fifteen-second poll: the payload walks
 // the projects looking for extension manifests, and doing that forever for a
-// card nobody has open is a poor trade. It refreshes when something is pressed,
-// and while a push is running — which is the only time it changes on its own.
-let ph = null, phTimer = null, phBusy = "";
+// card nobody has open is a poor trade. It refreshes when something is
+// pressed, and while a push is live or a session is waiting on an answer —
+// which is the only time it changes on its own.
+let ph = null, phBusy = "";
+// Held outside the render, because the card is rebuilt whole on every draw and
+// a field that emptied itself mid-sentence would be unusable.
+let phIp = "", phPort = "", phCode = "";
 
 async function phFetch(body){
   try{
@@ -6466,125 +6424,147 @@ async function phFetch(body){
 }
 
 function drawPhone(){
-  const st = $("phState"), exts = $("phExts");
-  if (!st || !exts) return;
-  const dev = ph?.phone, job = ph?.push || {};
-  // A word and an animated ellipsis, never a bar: nothing here knows a
-  // percentage and inventing one would be a lie about progress.
-  st.innerHTML = phBusy
-    ? `<span class="pill go">${esc(phBusy)}<span class="dots"></span></span>`
-    : dev
-    ? `<span class="pill ok">${esc(dev.model || "phone")}</span>
-       <span class="dim">${esc(dev.serial)}</span>`
-    : `<span class="dim">not connected</span>`;
-  if (!pkgDotsTimer && document.querySelector(".dots"))
-    pkgDotsTimer = setInterval(pkgTickDots, 400);
-  $("phDisconnect").hidden = !dev;
-  $("phConnect").textContent = dev ? "Reconnect" : "Connect";
-  if ($("phIp") && !$("phIp").value && ph?.ip) $("phIp").value = ph.ip;
+  const box = $("phBody");
+  if (!box) return;
+  const dev = ph?.phone, job = ph?.push || {}, asks = ph?.asks || [];
+  const list = ph?.extensions || [], apks = ph?.apks || [];
+  if (!phIp && ph?.ip) phIp = ph.ip;
 
-  // What a session is waiting on. Above everything else on the card, because
-  // somebody is blocked on it — and with the reason it gave, since Allow on a
+  // A word and an animated ellipsis, never a bar: nothing here knows a
+  // percentage, and inventing one would be a lie about progress.
+  const state = phBusy
+    ? `<span class="pill go">${esc(phBusy)}<span class="dots"></span></span>`
+    : dev ? `<span class="pill ok">${esc(dev.model || "phone")}</span>`
+          : `<span class="pill">not connected</span>`;
+
+  const rows = [
+    `<div class="row">
+       <div class="grow"><div class="name">${state}</div>
+         <div class="sub">${dev ? esc(dev.serial)
+           : "pair once, then connect by IP"}</div></div>
+       ${dev ? `<span class="acts"><button type="button" id="phDisconnect"
+         >Disconnect</button></span>` : ""}
+     </div>`,
+    // An IP and no port. Android hands out a new connect port every time
+    // wireless debugging is toggled, so the server scans for it rather than
+    // sending anybody back to the phone to read a number that has changed.
+    `<div class="row">
+       <div class="grow"><input id="phIp" maxlength="15" autocomplete="off"
+         placeholder="192.168.0.10" value="${esc(phIp)}"
+         aria-label="phone IP address"></div>
+       <span class="acts"><button type="button" id="phConnect" class="primary"
+         >${dev ? "Reconnect" : "Connect"}</button></span>
+     </div>`,
+    // Pairing in the open rather than behind a fold: it is two fields, and a
+    // fold over two fields is a click that buys nothing.
+    `<div class="row">
+       <div class="grow" style="display:flex;gap:6px">
+         <input id="phPairPort" maxlength="5" autocomplete="off" placeholder="pairing port"
+           value="${esc(phPort)}" aria-label="pairing port">
+         <input id="phPairCode" maxlength="6" autocomplete="off" placeholder="code"
+           value="${esc(phCode)}" aria-label="pairing code">
+       </div>
+       <span class="acts"><button type="button" id="phPair">Pair</button></span>
+       <div class="sub">Wireless debugging → <b>Pair device with pairing
+         code</b>. That screen's port is not the one the main screen shows.</div>
+     </div>`,
+  ];
+
+  // What a session is waiting on, above everything else it could be doing:
+  // somebody is blocked on it. With the reason it gave, because Allow on a
   // command you did not write and cannot place is a guess.
-  const asks = $("phAsks");
-  const waiting = ph?.asks || [];
-  asks.innerHTML = !waiting.length ? "" : waiting.map(a => `
-    <div class="phask" data-ask="${a.id}">
-      <div class="why">${esc(a.why)}</div>
-      <div class="cmd">adb ${esc(a.cmd.join(" "))}</div>
-      <div class="acts"><span class="dim">${esc(a.by)}</span><span class="sp"></span>
+  for (const a of asks)
+    rows.push(`<div class="row phask">
+      <div class="grow"><div class="name">${esc(a.why)}</div>
+        <div class="phcmd">adb ${esc(a.cmd.join(" "))}</div></div>
+      <span class="acts">
         <button type="button" data-deny="${a.id}">Deny</button>
         <button type="button" class="primary" data-allow="${a.id}">Allow</button>
+      </span></div>`);
+
+  if (dev && job.running)
+    rows.push(`<div class="row phjob">
+      <div class="grow">
+        <div class="name"><span class="pill ${job.state === "running" ? "ok" : "go"}"
+          >${job.state === "running" ? "live" : "starting"}${
+          job.state === "running" ? "" : `<span class="dots"></span>`}</span>
+          ${esc(job.what)}</div>
+        <div class="sub">a <b>temporary</b> add-on, reloaded on every source
+          change — gone when Firefox restarts${
+          job.error ? ` · <span class="bad">${esc(job.error)}</span>` : ""}</div>
       </div>
-    </div>`).join("");
-  asks.querySelectorAll("[data-allow]").forEach(b => b.onclick = () => {
+      <span class="acts"><button type="button" id="phStop">Stop</button></span>
+     </div>`);
+
+  if (dev && !list.length)
+    rows.push(`<div class="row"><div class="grow"><div class="sub">No extension
+      in any project — this looks for a manifest.json with a manifest_version
+      in it, three directories down.</div></div></div>`);
+
+  if (dev) list.forEach((e, i) => rows.push(`<div class="row">
+      <div class="grow"><div class="name">${esc(e.name || e.path)}
+        <span class="sub">${esc(e.version)}</span></div>
+        <div class="sub">${esc(e.path)} · ${esc(ago(e.changed))}</div></div>
+      <span class="acts"><button type="button" data-push="${i}"${
+        job.running || !ph?.webext ? " disabled" : ""} title="${
+        !ph?.webext
+          ? "web-ext is not installed — add it to EXTRA_NPM_PACKAGES on the "
+            + "container and restart"
+          : job.running ? "one push at a time" : "install it on the phone, temporarily"
+        }">Push</button></span></div>`));
+
+  if (dev && apks.length > 1)
+    rows.push(`<div class="row"><div class="grow"><div class="sub">Firefox</div></div>
+      <span class="acts"><select id="phApk">${apks.map(a =>
+        `<option value="${esc(a)}"${a === phApk ? " selected" : ""}>${
+          esc(a.replace("org.mozilla.", ""))}</option>`).join("")}</select></span></div>`);
+
+  box.innerHTML = rows.join("");
+  // One timer writes into every .dots on the page, and stops itself when
+  // there are none left. Started the way every other user of it does.
+  if (!pkgDotsTimer && box.querySelector(".dots"))
+    pkgDotsTimer = setInterval(pkgTickDots, 400);
+
+  // The fields keep what is in them across a redraw, which happens on a poll
+  // while a push is live.
+  const keep = (id, set) => { const el = $(id); if (el) el.oninput = e => set(e.target.value); };
+  keep("phIp", v => phIp = v);
+  keep("phPairPort", v => phPort = v);
+  keep("phPairCode", v => phCode = v);
+  const apk = $("phApk"); if (apk) apk.onchange = e => phApk = e.target.value;
+
+  const on = (id, fn) => { const el = $(id); if (el) el.onclick = fn; };
+  on("phConnect", () => {
+    if (!phIp.trim()) return notify("the phone's IP, from its wireless debugging screen", true);
+    phBusy = "looking for the phone"; drawPhone();
+    phFetch({action: "connect", ip: phIp.trim()});
+  });
+  on("phDisconnect", () => { phBusy = "disconnecting"; drawPhone();
+                             phFetch({action: "disconnect"}); });
+  on("phPair", () => {
+    phBusy = "pairing"; drawPhone();
+    phFetch({action: "pair", ip: phIp.trim(), port: phPort.trim(), code: phCode.trim()});
+  });
+  on("phStop", () => { phBusy = "stopping"; drawPhone(); phFetch({action: "stop"}); });
+  box.querySelectorAll("[data-push]").forEach(b => b.onclick = () => {
+    phBusy = "starting web-ext"; drawPhone();
+    phFetch({action: "push", source: list[Number(b.dataset.push)].path,
+             serial: dev.serial, apk: phApk || apks[0] || ""});
+  });
+  box.querySelectorAll("[data-allow]").forEach(b => b.onclick = () => {
     phBusy = "running it"; drawPhone();
     phFetch({action: "allow", id: Number(b.dataset.allow)});
   });
-  asks.querySelectorAll("[data-deny]").forEach(b => b.onclick = () =>
+  box.querySelectorAll("[data-deny]").forEach(b => b.onclick = () =>
     phFetch({action: "deny", id: Number(b.dataset.deny)}));
-
-  if (!dev){ exts.innerHTML = ""; return; }
-  const list = ph?.extensions || [];
-  const apks = ph?.apks || [];
-  if (!list.length){
-    exts.innerHTML = `<div class="phhint">No extension found in any project —
-      this looks for a manifest.json with a manifest_version in it, three
-      directories down.</div>`;
-    return;
-  }
-  // The running push first, because while one is up it is the whole state of
-  // this card and the list under it is just what else there is.
-  const running = job.running
-    ? `<div class="phjob"><span class="pill ${job.state === "running" ? "ok" : "go"}">${
-         job.state === "running" ? "live" : "starting"}${
-         job.state === "running" ? "" : `<span class="dots"></span>`}</span>
-       <span class="what">${esc(job.what)}</span>
-       <button type="button" id="phStop">Stop</button>
-       <div class="phhint">Installed as a <b>temporary</b> add-on and reloaded
-         on every source change. It goes when Firefox restarts — that is what
-         temporary means here, and it is the development loop rather than an
-         install.</div>
-       ${job.error ? `<div class="phhint bad">${esc(job.error)}</div>` : ""}</div>`
-    : "";
-  exts.innerHTML = running + `<div class="phlist">${list.map((e, i) => `
-      <div class="phext">
-        <div class="what"><b>${esc(e.name || e.path)}</b>
-          <span class="dim">${esc(e.version)}</span></div>
-        <div class="dim">${esc(e.path)} · ${esc(ago(e.changed))}</div>
-        <button type="button" data-push="${i}"${
-          job.running || !ph?.webext ? " disabled" : ""} title="${
-          !ph?.webext
-            ? "web-ext is not installed — add it to EXTRA_NPM_PACKAGES on the "
-              + "container and restart. Installing it by hand here would not "
-              + "survive an image update."
-            : job.running ? "one push at a time" : "install it on the phone, temporarily"
-          }">Push</button>
-      </div>`).join("")}</div>` +
-    (apks.length > 1 ? `<label class="phhint">Firefox
-       <select id="phApk">${apks.map(a =>
-         `<option value="${esc(a)}">${esc(a.replace("org.mozilla.", ""))}</option>`
-       ).join("")}</select></label>` : "");
-
-  // The shared ellipsis ticker, started the way every other user of it does:
-  // it is one timer writing into every .dots on the page, and it stops itself
-  // when there are none left.
-  if (!pkgDotsTimer && document.querySelector(".dots"))
-    pkgDotsTimer = setInterval(pkgTickDots, 400);
-
-  exts.querySelectorAll("[data-push]").forEach(b => b.onclick = () => {
-    const e = list[Number(b.dataset.push)];
-    phBusy = "starting web-ext"; drawPhone();
-    phFetch({action: "push", source: e.path, serial: dev.serial,
-             apk: $("phApk")?.value || apks[0] || ""});
-  });
-  const stop = $("phStop");
-  if (stop) stop.onclick = () => { phBusy = "stopping"; drawPhone();
-                                   phFetch({action: "stop"}); };
 }
+let phApk = "";
 
-$("phConnect").onclick = () => {
-  const ip = $("phIp").value.trim();
-  if (!ip) return notify("the phone's IP, from its wireless debugging screen", true);
-  // No port: the server scans for it. Android hands out a new one every time
-  // debugging is toggled, so a remembered number goes stale and asking for it
-  // again each time is the friction that stops a thing being used.
-  phBusy = "looking for the phone"; drawPhone();
-  phFetch({action: "connect", ip});
-};
-$("phDisconnect").onclick = () => { phBusy = "disconnecting"; drawPhone();
-                                    phFetch({action: "disconnect"}); };
-$("phPair").onclick = () => {
-  phBusy = "pairing"; drawPhone();
-  phFetch({action: "pair", ip: $("phIp").value.trim(),
-           port: $("phPairPort").value.trim(), code: $("phPairCode").value.trim()});
-};
-
-// While a push is starting or live, the card is the only thing that changes on
-// its own, so it polls itself — and stops the moment it is not.
+// While a push is live or somebody is waiting on an answer, the card is the
+// only thing that changes on its own, so it polls itself — and stops when it
+// is not.
 setInterval(() => {
-  const on = ph?.push?.running || (ph?.asks || []).length;
-  if (on && !document.hidden) phFetch();
+  if ((ph?.push?.running || (ph?.asks || []).length) && !document.hidden) phFetch();
 }, 5000);
 phFetch();
 
