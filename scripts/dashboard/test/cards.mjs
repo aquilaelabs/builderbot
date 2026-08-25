@@ -1,7 +1,7 @@
 // Sidebar cards: universal collapse with a height tween, header-only
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
-import { launch, newPage, ok, done, ready, doctorFixture, tmuxNew, tmuxKill, tmuxFmt,
+import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, tmuxNew, tmuxKill, tmuxFmt,
          URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -20,8 +20,10 @@ ok((await order())[0] === 'doctor', 'doctor is first by default');
 ok(await page.$eval('#bDocTog', el => el.textContent.trim() === 'all 3 ok'), 'doctor status row folded green');
 
 // collapse animates, persists across reload
-await page.click('.card[data-card="sessions"] h2');
-ok(await page.$eval('.card[data-card="sessions"]', el => el.getAnimations().length > 0 && !el.classList.contains('closed')),
+const collapsed = await animatedDuring(page,
+  () => page.click('.card[data-card="sessions"] h2'));
+ok(collapsed.some(k => k.includes('sessions'))
+   && !await page.$eval('.card[data-card="sessions"]', el => el.classList.contains('closed')),
    'collapse runs a height tween before the class lands');
 await page.waitForFunction(() => document.querySelector('.card[data-card="sessions"]').classList.contains('closed'));
 await page.reload(); await ready(page);
@@ -45,8 +47,9 @@ await page.waitForFunction(() => document.getElementById('docDot').className.inc
 // excluded on purpose, and those are not the same kind of thing.
 ok(await page.$eval('#projects #bAll', el => el.textContent.trim()) === 'Show Excluded (1) / Error (1)',
    'the toggle says what it is hiding, by kind');
-await page.click('#projects #bAll');
-ok(await page.$eval('#projects', el => el.closest('.card').getAnimations().length > 0), 'in-card toggle slides the card');
+ok((await animatedDuring(page, () => page.click('#projects #bAll')))
+     .some(k => k.includes('projects')),
+   'in-card toggle slides the card');
 await page.click('#projects #bAll');
 
 // findings card: per-project counts, valid projects only, plain button
@@ -69,10 +72,28 @@ ok(!all.includes('toolstore'), '...not even with the error rows shown');
 // drag: reorder + slide + persistence; the click ending a drag is not a toggle
 const hb = await (await page.$('.card[data-card="runner"] h2')).boundingBox();
 const top = await (await page.$('.side .card[data-card]')).boundingBox();
+// Recorded, not sampled. The FLIP tween is 140ms, and asking for it in a
+// round trip AFTER the drag only works if that round trip happens to land
+// inside those 140ms — true on an idle box, false on a loaded one, which is
+// the test timing the browser rather than the behaviour. Wrapping
+// Element.animate says whether the displaced card WAS animated, whenever
+// that was. Undone straight after, so nothing later in this file is
+// measuring through a patched prototype.
+await page.evaluate(() => {
+  window.__flipped = [];
+  window.__realAnimate = Element.prototype.animate;
+  Element.prototype.animate = function(...a){
+    window.__flipped.push(this.dataset?.card || "");
+    return window.__realAnimate.apply(this, a);
+  };
+});
 await page.mouse.move(hb.x + 40, hb.y + 12); await page.mouse.down();
 await page.mouse.move(hb.x + 40, top.y + 2, { steps: 10 });
-const sliding = await page.$eval('.card[data-card="doctor"]', el => el.getAnimations().length > 0);
 await page.mouse.up();
+const sliding = await page.evaluate(() => {
+  Element.prototype.animate = window.__realAnimate;
+  return window.__flipped.includes("doctor");
+});
 ok(sliding, 'displaced cards slide during a drag');
 ok((await order())[0] === 'runner', `runner dragged to the top (${(await order()).join(',')})`);
 ok(!(await page.$eval('.card[data-card="runner"]', el => el.classList.contains('closed'))), 'the drop did not toggle the card');
