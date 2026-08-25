@@ -331,6 +331,15 @@ case "$1" in
   disconnect) printf 'disconnected
 '; exit 0 ;;
 esac
+# adb -s SERIAL install -r PATH. A file named *-clash.apk fails the way a
+# signature mismatch really does, so the test can prove that answer is turned
+# into a sentence rather than passed through raw.
+if [ "$3" = install ]; then
+    case "$5" in
+        *-clash.apk) printf 'adb: failed to install %s: Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE]\n' "$5"; exit 1 ;;
+        *) printf 'Performing Streamed Install\nSuccess\n'; exit 0 ;;
+    esac
+fi
 # adb -s SERIAL shell pm list packages
 if [ "$4 $5 $6" = "pm list packages" ]; then
     printf 'package:org.mozilla.firefox_beta
@@ -420,7 +429,7 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     BB_IMAGE_BUILT=2026-08-21T19:30Z \
     CLAUDE_AUTH_IN="$S/auth-in.json" \
     BB_LOGIN_DONE="$S/login-finished" \
-    PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" \
+    PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" BB_ADB_BIN="$S/bin/adb" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
 pid=$!
 for _ in $(seq 40); do

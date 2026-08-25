@@ -235,6 +235,10 @@ you should say so rather than guessing from a headless emulator.
 
 Only relevant when the operator has one paired to the dashboard's Phone card.
 
+Pairing is once per container, not per session: the key it trusts lives in
+`~/.android` on the home volume, so it outlives a restart. If the phone is not
+showing as connected, the answer is almost always Connect rather than Pair.
+
 **You cannot reach it directly, and that is deliberate.** The handset is kept
 on an adb server of its own, so `adb devices` here shows the emulator and
 nothing else. Asking for the phone goes through the operator:
@@ -274,8 +278,9 @@ If a version string does not move between builds, put something that does in
 the filename — the short commit, usually — or every build is named
 identically and the tab cannot tell this one from the last.
 
-From that tab the operator downloads any of them, and pushes an `.xpi` to
-their paired phone. Nothing auto-pushes: a push is a decision the operator
+From that tab the operator downloads any of them, installs an `.apk` on their
+paired phone (which replaces an existing copy in place, keeping its data), and
+pushes an `.xpi` to it. Nothing auto-pushes: a push is a decision the operator
 makes each time, so do not design around the extension on the handset staying
 current — say when a rebuild is worth pushing instead.
 

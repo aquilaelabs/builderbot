@@ -1743,6 +1743,52 @@ def findings_counts(ps):
     return dict(_findings_counts["projects"])
 
 
+# ---- revisions -------------------------------------------------------------
+# One token per thing a view can depend on. A view says what it watches and is
+# told when that moves; it never writes its own "should I re-read?" rule.
+#
+# Four bugs in one week came from every view inventing that rule out of
+# knowledge it did not have — the roadmap's arrows not noticing a session
+# start, the Artifacts tab not noticing a phone connect, and the Phone card
+# polling only when it ALREADY knew about a request, which meant it could
+# never learn of the first one. Each was patched where it hurt. This is the
+# shape that stops the fifth.
+#
+# Everything here must be cheap, because it is asked for every second or two.
+# Files answer with their mtime; counters answer from memory. Nothing in this
+# function runs git, lists tmux, or shells out — that is what makes it
+# affordable to ask often, and it is the whole reason it is not snapshot().
+def _mtime(path):
+    try:
+        return int(Path(path).stat().st_mtime_ns)
+    except OSError:
+        return 0
+
+
+def revisions():
+    names = [d.name for d in WORKSPACE.iterdir()
+             if d.is_dir() and not d.name.startswith(".")] \
+        if WORKSPACE.is_dir() else []
+    revs = {
+        # The container itself. A restart invalidates everything a page holds.
+        "boot": boot_id(),
+        # One file each, so any write through any path moves the token — the
+        # CLI's included, which no in-process counter would catch.
+        "todo": _mtime(STATE / "todos.json"),
+        "bugs": _mtime(STATE / "bugs.json"),
+        "findings": _mtime(STATE / "findings-log.json"),
+        "reports": reports_mtime(),
+        # In memory, free to read.
+        "phone.asks": len(phone.requests_open()),
+        "phone.dev": phone.device_rev(),
+        "packages": packages.job_rev(),
+    }
+    # Per project, for the views that are per project.
+    for n in names:
+        revs[f"dist:{n}"] = _mtime(WORKSPACE / n / "dist")
+    return revs
+
+
 def snapshot():
     ps = project_list()
     sessions = tmux_sessions()
@@ -1762,6 +1808,11 @@ def snapshot():
     return {
         "host": os.uname().nodename,
         "uptime": uptime(),
+        # How many phone requests are waiting on the operator. A count and not
+        # the requests themselves: this rides on every poll, and it exists so
+        # the Phone card knows when to go and fetch the real thing. Reading it
+        # is a length() on a list in memory — no adb, nothing to pay for.
+        "phone_asks": len(phone.requests_open()),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.
@@ -2048,6 +2099,11 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "public, max-age=86400")
             self.end_headers()
             return self.wfile.write(body)
+        if self.path.startswith("/api/revs"):
+            # Deliberately tiny and deliberately cheap: this is polled every
+            # second or two, where /api/status is polled every fifteen because
+            # it runs git for every project.
+            return self._json(revisions())
         if self.path.startswith("/api/status"):
             return self._json(snapshot())
         if self.path.startswith("/api/findings"):
@@ -2382,6 +2438,21 @@ class Handler(BaseHTTPRequestHandler):
             r = phone.push_dir(d, dev["serial"], field(req, "apk"), label=rel)
             if not r.get("error"):
                 artifacts.set_live(name, rel)
+        elif act == "install":
+            # An APK, installed for real and kept — unlike the extension push,
+            # which is a temporary add-on. `adb install -r` replaces an
+            # existing copy in place and keeps its data, so this is the update
+            # path too and there is no second verb.
+            dev = phone.phone()
+            if not dev:
+                return self._json({"error": "no phone is connected — pair one "
+                                            "on the Phone card first"}, 400)
+            rel = field(req, "path")
+            f = artifacts.resolve(name, rel)
+            if f is None or f.suffix.lower() not in (".apk",):
+                return self._json({"error": "not an .apk in this project's "
+                                            "dist/"}, 400)
+            r = phone.install_apk(f, dev["serial"], label=rel)
         elif act == "stop":
             r = phone.stop_push()
             artifacts.clear_live()

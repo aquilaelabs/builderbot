@@ -2,7 +2,7 @@
 // The convention IS the feature — the tab lists dist/ and nothing else, so a
 // build worth keeping has to be copied there, and an empty tab says that.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
-import { mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 // alpha ships an APK and an XPI; the XPI is a real zip with a manifest, since
@@ -92,6 +92,71 @@ await page.waitForFunction(() => !document.querySelector('.artrow.job'),
                            null, { timeout: 20000 });
 ok(true, 'Stop ends it');
 
+// ---- installing an APK -----------------------------------------------------
+// `adb install -r` replaces an existing copy in place, so install and update
+// are one verb. The interesting half is the failure: a signature clash is the
+// one that actually happens, and it has to arrive as a sentence.
+ok(await page.$eval('[data-artinstall]', b => !b.disabled),
+   'an APK offers Install, and only an APK does');
+ok(await page.$$eval('.artrow', rs => rs.filter(r =>
+     r.querySelector('[data-artpush]') && r.querySelector('[data-artinstall]')).length === 0),
+   '...never both on one row — they are different acts on different things');
+const instState = () => page.evaluate(async () =>
+  (await (await fetch('/api/artifacts?project=alpha')).json()).install || {});
+await page.click('[data-artinstall]');
+await page.waitForFunction(async () => {
+  const r = await (await fetch('/api/artifacts?project=alpha')).json();
+  return (r.install || {}).state === 'done';
+}, null, { timeout: 25000 });
+ok((await instState()).error === '', 'Install runs and reports no error');
+
+// ...and the clash, in words. The tab is reloaded by leaving and coming back,
+// which is what a person does — loadArtifacts lives inside the notebook's own
+// closure and is not something a test can call.
+writeFileSync(`${DIR}/ws/alpha/dist/streamlift-1.3-clash.apk`, 'x');
+await page.click('.nbtabs [data-v="analysis"]:visible');
+await page.click('.nbtabs [data-v="artifacts"]:visible');
+await page.waitForFunction(() => [...document.querySelectorAll('.artrow')]
+  .some(r => /clash/.test(r.textContent)), null, { timeout: 15000 });
+await page.evaluate(() => {
+  const r = [...document.querySelectorAll('.artrow')].find(x => /clash/.test(x.textContent));
+  r.querySelector('[data-artinstall]').click();
+});
+await page.waitForFunction(async () => {
+  const r = await (await fetch('/api/artifacts?project=alpha')).json();
+  return (r.install || {}).state === 'failed';
+}, null, { timeout: 25000 });
+ok(/signed with a different key/.test((await instState()).error),
+   'a signature clash is explained, not passed through as INSTALL_FAILED_UPDATE_INCOMPATIBLE');
+await page.waitForFunction(() => /signed with a different key/.test(
+  document.querySelector('.artrow.job')?.textContent || ''), null, { timeout: 15000 });
+ok(true, '...and the sentence is what the tab shows');
+
+// ---- the view notices the phone arriving ----------------------------------
+// Whether Push is offered depends on a phone being connected, and that happens
+// on a different card — or from a terminal. The view used to fetch when its
+// tab was opened and never again, so a phone connected afterwards left Push
+// ghosted and looking broken.
+{
+  // Hide the phone by moving the stub aside, then bring it back and let the
+  // poll do the work — no tab switching, which is the thing that used to be
+  // required.
+  renameSync(`${DIR}/bin/adb`, `${DIR}/bin/adb.hidden`);
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => {
+    const b = document.querySelector('[data-artpush]');
+    return b && b.disabled;
+  }, null, { timeout: 20000 });
+  ok(true, 'with the phone gone, Push goes dead on its own');
+  renameSync(`${DIR}/bin/adb.hidden`, `${DIR}/bin/adb`);
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => {
+    const b = document.querySelector('[data-artpush]');
+    return b && !b.disabled;
+  }, null, { timeout: 20000 });
+  ok(true, '...and comes back when it returns, without touching the tab');
+}
+
 // ---- what the POST refuses -------------------------------------------------
 const post = body => page.evaluate(async b => {
   const r = await fetch('/api/artifacts', { method: 'POST',
@@ -103,6 +168,8 @@ for (const [what, body] of [
   ['pushing a path outside dist/', { action: 'push', project: 'alpha', path: '../beta/x.xpi' }],
   ['a project that does not exist', { action: 'push', project: 'nosuch', path: 'dist/a.xpi' }],
   ['an action nobody offers', { action: 'delete', project: 'alpha' }],
+  ['installing the xpi, which is not an APK', { action: 'install', project: 'alpha', path: 'dist/companion-0.2.0.xpi' }],
+  ['installing a path outside dist/', { action: 'install', project: 'alpha', path: '../beta/x.apk' }],
 ]){
   const r = await post(body);
   ok(r.status === 400 && r.body.error, `refused: ${what}`);

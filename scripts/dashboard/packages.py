@@ -489,6 +489,13 @@ def _job_tail(out, keep=16):
     return [ln for ln in lines if ln and not _PROGRESS_FRAME.match(ln)][-keep:]
 
 
+def job_rev():
+    """A token for "the install job moved", for the revisions poll. All in
+    memory: the job's state, what it is on, and how far through it is."""
+    j = _pkg_job
+    return f"{j['running']}:{j['action']}:{j['current']}:{len(j['done'])}:{len(j['failed'])}"
+
+
 def job_is_automatic():
     """Whether the job in the way is the daily check rather than a person's.
 

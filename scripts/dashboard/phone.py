@@ -98,6 +98,13 @@ ADB_PORT = os.environ.get("BB_PHONE_ADB_PORT", "5038")
 # installed. That has already caught this out once.
 WEBEXT_BIN = os.environ.get("BB_WEBEXT_BIN", "web-ext")
 
+# Which adb to use, for the same reason as WEBEXT_BIN above: the test harness
+# points this at its own stub by absolute path. Without it, a suite that tried
+# to simulate "no phone" by hiding the stub fell through to the real adb — and
+# the real adb, on this box, had the operator's actual handset connected. The
+# test then reported a fact about the room.
+ADB_BIN = os.environ.get("BB_ADB_BIN", "adb")
+
 
 def _env():
     e = dict(os.environ)
@@ -109,7 +116,7 @@ def _adb(*args, timeout=30):
     """One adb command, on the phone's own server. Never `-e` or `-d` — see
     the module docstring."""
     try:
-        p = subprocess.run(["adb", *args], capture_output=True, text=True,
+        p = subprocess.run([ADB_BIN, *args], capture_output=True, text=True,
                            timeout=timeout, env=_env())
         return {"code": p.returncode, "out": (p.stdout or "") + (p.stderr or "")}
     except (OSError, subprocess.SubprocessError) as e:
@@ -229,6 +236,7 @@ def connect(ip, port=None):
     if "connected to" not in r["out"]:
         return {"error": (r["out"].strip().splitlines() or ["connect failed"])[-1]}
     d = load(); d["ip"] = ip; save(d)
+    device_rev(force=True)
     return {"ok": True, "serial": f"{ip}:{n}"}
 
 
@@ -238,6 +246,7 @@ def disconnect(serial=""):
     if not target:
         return {"error": "no phone is connected"}
     _adb("disconnect", target, timeout=15)
+    device_rev(force=True)
     return {"ok": True}
 
 
@@ -332,7 +341,7 @@ def push_dir(d, serial, apk, label=""):
     # nobody was pointing at. The directory pushed here is a snapshot of the
     # .xpi anyway, but the flag makes the promise rather than the layout.
     cmd = [WEBEXT_BIN, "run", "--target=firefox-android", "--no-reload",
-           f"--adb-port={ADB_PORT}",
+           f"--adb-bin={ADB_BIN}", f"--adb-port={ADB_PORT}",
            f"--adb-device={serial}", f"--firefox-apk={apk}",
            f"--source-dir={d}", "--no-input", "--adb-remove-old-artifacts"]
     global _proc
@@ -373,6 +382,26 @@ def stop_push():
     return {"ok": True}
 
 
+# A token for "the set of attached devices changed", for the revisions poll.
+#
+# Cached with a floor on how often adb is actually asked: this is read once or
+# twice a second and `adb devices` is a subprocess. Refreshed on demand at
+# most every few seconds, and immediately whenever this module connects or
+# disconnects something, so the case that matters — the operator pressing
+# Connect — is instant rather than up to the floor late.
+_dev_cache = {"at": 0.0, "rev": ""}
+DEV_TTL = 3.0
+
+
+def device_rev(force=False):
+    now = time.monotonic()
+    if force or now - _dev_cache["at"] > DEV_TTL:
+        _dev_cache["rev"] = ",".join(sorted(
+            f"{d['serial']}:{d['state']}" for d in devices()))
+        _dev_cache["at"] = now
+    return _dev_cache["rev"]
+
+
 def payload():
     """The card's half: the connection and what is waiting on the operator.
     What there is to push lives in the notebook's Artifacts view now, which
@@ -391,7 +420,8 @@ def summary():
     return {"phone": p,
             "webext": shutil.which(WEBEXT_BIN) is not None,
             "apks": firefox_apks((p or {}).get("serial", "")),
-            "push": push_state()}
+            "push": push_state(),
+            "install": install_state()}
 
 
 # ---- asking first ----------------------------------------------------------
@@ -411,19 +441,34 @@ _reqs = []
 _req_seq = 0
 MAX_REQS = 20
 
-# How long a session will wait before giving up. Long enough to walk to the
-# dashboard, short enough that a forgotten request does not hold a session
-# open forever.
-WAIT_SECONDS = 300
+# How long a session will wait before giving up.
+#
+# Fifteen minutes, not five. Five assumed somebody was already looking at the
+# dashboard; the ordinary case is that the tab is behind three others and the
+# request is noticed on the next glance. A request that expires before it is
+# ever seen is worse than one that waits — the session is idle either way, and
+# only one of the two ends in an answer.
+WAIT_SECONDS = 900
 
 
 def _req_public(r):
+    # `left` so the card can count down: an approval that quietly stops being
+    # possible, with the button still sitting there, is a worse failure than
+    # being told it has gone.
     return {"id": r["id"], "at": r["at"], "why": r["why"], "cmd": r["cmd"],
-            "state": r["state"], "by": r["by"]}
+            "state": r["state"], "by": r["by"],
+            "left": max(0, r["at"] + WAIT_SECONDS - int(time.time()))}
 
 
 def requests_open():
+    """The ones still waiting. An expired request is not offered: the session
+    that asked has stopped listening, so allowing it would run a command
+    nobody is going to receive the answer to."""
+    now = int(time.time())
     with _lock:
+        for r in _reqs:
+            if r["state"] == "pending" and now - r["at"] > WAIT_SECONDS:
+                r["state"] = "expired"
         return [_req_public(r) for r in _reqs if r["state"] == "pending"]
 
 
@@ -492,3 +537,71 @@ def outcome(rid):
             return {"error": "no such request"}
         return {"ok": True, "state": r["state"], "out": r["out"],
                 "code": r["code"], "why": r["why"]}
+
+
+# ---- installing an APK -----------------------------------------------------
+# `adb install -r` replaces an existing install in place, keeping its data —
+# so this is both "install" and "update", and there is no separate verb worth
+# offering. Two failures are common enough to name rather than dump raw:
+#
+# - The installed copy was signed with a different key (a release build, or
+#   one from the Play Store, against a debug build from here). Android refuses
+#   the update outright and the only way through is uninstalling first, which
+#   takes the app's data with it — a decision for the operator, on the phone,
+#   not something to do on their behalf.
+# - A lower version code than what is installed. `-d` allows it but only for
+#   debuggable packages, and passing it always would quietly turn a mistaken
+#   downgrade into a successful one.
+#
+# Neither -g nor -t is passed: granting every runtime permission, or allowing
+# test-only packages, makes the install behave unlike the one a real user
+# would get, which is the opposite of what testing on a real handset is for.
+_install = {"running": False, "what": "", "state": "", "error": "", "at": 0}
+
+
+def install_state():
+    with _lock:
+        return dict(_install)
+
+
+FAILURES = (
+    ("INSTALL_FAILED_UPDATE_INCOMPATIBLE",
+     "the copy already on the phone was signed with a different key — "
+     "uninstall it there first, which also removes its data"),
+    ("INSTALL_FAILED_VERSION_DOWNGRADE",
+     "that build's version code is lower than the one installed"),
+    ("INSTALL_FAILED_INSUFFICIENT_STORAGE", "the phone is out of space"),
+    ("INSTALL_FAILED_INVALID_APK", "the phone would not read that as an APK"),
+    ("INSTALL_PARSE_FAILED_NO_CERTIFICATES", "that APK is not signed"),
+)
+
+
+def _install_worker(path, serial):
+    r = _adb("-s", serial, "install", "-r", str(path), timeout=600)
+    out = r["out"]
+    ok = r["code"] == 0 and "Success" in out
+    err = ""
+    if not ok:
+        for token, said in FAILURES:
+            if token in out:
+                err = said
+                break
+        else:
+            err = " ".join(out.split())[-300:] or "the install failed"
+    with _lock:
+        _install.update(running=False, state="done" if ok else "failed", error=err)
+
+
+def install_apk(path, serial, label=""):
+    """Install (or update) one APK on the connected phone."""
+    with _lock:
+        if _install["running"]:
+            return {"error": f"already installing {_install['what']}"}
+    if not any(x["serial"] == serial and x["kind"] == "phone" for x in devices()):
+        return {"error": "that phone is not connected"}
+    with _lock:
+        _install.update(running=True, what=label or Path(path).name,
+                        state="installing", error="", at=int(time.time()))
+    threading.Thread(target=_install_worker, args=(path, serial),
+                     daemon=True).start()
+    return {"ok": True}
