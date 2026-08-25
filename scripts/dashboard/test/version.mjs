@@ -66,6 +66,14 @@ ok(bb('--msi').out === '0.4.3', 'the MSI form puts the ordinal in a read field')
 ok(bb('--pep440').out === `0.4.0.dev3+${sha}`, 'PEP 440 has its own spelling');
 ok(!bb('--file').out.includes('+'), 'the filename form carries no + to lose in a URL');
 
+// An artifact built from uncommitted work must not wear the name of a build
+// the sha can reproduce.
+writeFileSync(`${ROOT}/scratch.txt`, 'uncommitted');
+ok(bb('--file').out.endsWith('-dirty'),
+   'a dirty tree marks the filename form');
+ok(bb('--semver').out.endsWith('.dirty'), '...and the semver form');
+rmSync(`${ROOT}/scratch.txt`);
+
 // ---- who may move it -----------------------------------------------------
 // The default is the strongest: a version is a claim about the project, so
 // the operator opts into delegating it rather than out of it.
@@ -78,7 +86,7 @@ ok(/locked/.test(bb('policy').out),
    'a session can read the limit it is held to');
 
 // The operator sets it; there is no CLI verb that does, deliberately.
-const setPolicy = v => {
+const setPolicyFor = (proj, v) => {
   const py = fileURLToPath(new URL('../version.py', import.meta.url));
   execFileSync('python3', ['-c', `
 import importlib.util, json, os, sys
@@ -86,9 +94,9 @@ spec = importlib.util.spec_from_file_location('v', ${JSON.stringify(py)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 m.configure(workspace=${JSON.stringify(WS)}, state=${JSON.stringify(`${DIR}/state`)},
             write_json=lambda p, o: open(str(p), 'w').write(json.dumps(o)))
-print(m.set_policy(${JSON.stringify(PROJ)}, ${JSON.stringify(v)}))`], { env });
+print(m.set_policy(${JSON.stringify(proj)}, ${JSON.stringify(v)}))`], { env });
 };
-setPolicy('minor');
+setPolicyFor(PROJ, 'minor');
 r = bb('bump', 'major');
 ok(r.code !== 0 && /not major/.test(r.out),
    'a policy of minor still keeps major with the operator');
@@ -117,6 +125,39 @@ r = bb('bump', 'patch');
 ok(r.code !== 0 && /already staged/.test(r.out),
    'a VERSION staged for another commit is refused, not quietly taken');
 git('reset', '-q', 'HEAD', 'VERSION'); git('checkout', '-q', '--', 'VERSION');
+
+// The unstaged twin is worse: an operator hand edit sitting uncommitted
+// would be absorbed into the bump's commit, and the log would then say
+// "(session)" over a change the operator made. The log being trustworthy
+// about who moved the version is the whole safety story here.
+writeFileSync(`${ROOT}/VERSION`, '0.9.0\n');
+r = bb('bump', 'patch');
+ok(r.code !== 0 && /uncommitted changes/.test(r.out),
+   'an uncommitted hand edit to VERSION blocks a bump instead of being swept');
+ok(readFileSync(`${ROOT}/VERSION`, 'utf8').trim() === '0.9.0',
+   '...and the hand edit survives untouched');
+git('checkout', '-q', '--', 'VERSION');
+
+// A VERSION created by hand and never committed is still bumpable: a partial
+// commit only knows tracked paths, so without the add this wrote the file
+// and then failed, leaving it half-mutated.
+const FRESH = `${WS}/fresh-version`;
+rmSync(FRESH, { recursive: true, force: true });
+mkdirSync(FRESH, { recursive: true });
+execFileSync('git', ['-C', FRESH, 'init', '-q', '.'], { env });
+writeFileSync(`${FRESH}/f`, 'x');
+execFileSync('git', ['-C', FRESH, 'add', '-A'], { env });
+execFileSync('git', ['-C', FRESH, 'commit', '-qm', 'init'], { env });
+writeFileSync(`${FRESH}/VERSION`, '0.1.0\n');
+setPolicyFor('fresh-version', 'open');
+let rf;
+try {
+  rf = { out: execFileSync('bash', [BB, 'version', 'bump', 'patch'],
+                           { cwd: FRESH, env }).toString(), code: 0 };
+} catch (e) { rf = { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; }
+ok(rf.code === 0 && /0\.1\.0 -> 0\.1\.1/.test(rf.out),
+   'a never-committed VERSION can still be bumped and committed');
+rmSync(FRESH, { recursive: true, force: true });
 
 // ---- degrading honestly --------------------------------------------------
 // A malformed file must not hand back a git-describe string that could end up

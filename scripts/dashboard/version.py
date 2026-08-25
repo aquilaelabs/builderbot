@@ -156,7 +156,7 @@ def render(project):
     tgt, ordinal, sha = p["target"], p["ordinal"], p["sha"]
     forms = {"semver": None, "code": None, "quad": None, "msi": None,
              "pep440": None, "file": None}
-    p["released"] = bool(p["tag"]) and tgt is not None and p["tag"].lstrip("v") == tgt
+    p["released"] = bool(p["tag"]) and tgt is not None and p["tag"].removeprefix("v") == tgt
     # The ordinal is the one form that needs no VERSION file: it is pure git,
     # and it is the one Android cannot ship without.
     if ordinal is not None:
@@ -167,8 +167,15 @@ def render(project):
             # On a release the ordinal drops out of every form. MSI's
             # three fields are exactly major.minor.patch, so the target is
             # already the right string; the quad pads the unused fourth.
-            forms.update(semver=tgt, pep440=tgt, file=tgt, msi=tgt,
-                         quad=f"{tgt}.0")
+            # A dirty tree on the tag is NOT the release, and the two forms
+            # that can say so do. The digit-only forms cannot carry a mark;
+            # anything built from them here is mislabeled, which the summary's
+            # dirty flag is the only warning for.
+            mark = "dirty" if p["dirty"] else ""
+            forms.update(semver=tgt + (f"+{mark}" if mark else ""),
+                         pep440=tgt + (f"+{mark}" if mark else ""),
+                         file=tgt + (f"-{mark}" if mark else ""),
+                         msi=tgt, quad=f"{tgt}.0")
         else:
             mark = ".dirty" if p["dirty"] else ""
             a3, b3, _c3 = tgt.split(".")
@@ -188,10 +195,12 @@ def render(project):
             # same version to it and the upgrade silently does not fire. Three
             # fields, with the ordinal promoted into the one that is read.
             forms["msi"] = f"{a3}.{b3}.{ordinal}"
-            forms["pep440"] = f"{tgt}.dev{ordinal}+{sha}"
+            forms["pep440"] = f"{tgt}.dev{ordinal}+{sha}{mark}"
             # No '+' and no build metadata: this ends up in filenames and in
-            # URLs, where '+' is a space to something eventually.
-            forms["file"] = f"{tgt}-dev.{ordinal}-{sha}"
+            # URLs, where '+' is a space to something eventually. The dirty
+            # mark stays — an artifact built from uncommitted work must not
+            # wear the name of a build the sha can reproduce.
+            forms["file"] = f"{tgt}-dev.{ordinal}-{sha}" + ("-dirty" if p["dirty"] else "")
     elif p["describe"]:
         # No VERSION file. Say what git says, in the one field that can hold
         # an arbitrary string, and leave the format-constrained ones empty.
@@ -237,6 +246,11 @@ def set_policy(project, value):
         d["projects"].setdefault(project, {})["policy"] = value
         write_json(FILE, d)
     return {"ok": True, "policy": value}
+
+
+def allows(pol):
+    """Which parts a policy delegates — for display; may() is the gate."""
+    return _ALLOWS.get(pol, ())
 
 
 def may(project, part, by="claude"):
@@ -291,6 +305,15 @@ def bump(project, part, by="claude"):
     if VERSION_FILE in staged.splitlines():
         return {"error": f"{VERSION_FILE} is already staged for another "
                          "commit — commit or unstage that first"}
+    # And the unstaged twin, which is worse: a hand edit sitting in the
+    # worktree would be absorbed into this commit, so the log would say
+    # "(session)" over a change the operator made. The log being trustworthy
+    # about who moved the version is the design's whole safety story.
+    unstaged = _git(project, "diff", "--name-only", "--", VERSION_FILE) or ""
+    if unstaged.strip():
+        return {"error": f"{VERSION_FILE} has uncommitted changes — commit "
+                         "or discard those first, so this bump's commit "
+                         "records only its own move"}
     new = next_version(tgt, part)
     p = root(project) / VERSION_FILE
     try:
@@ -300,6 +323,10 @@ def bump(project, part, by="claude"):
     # Who moved it, in the message, because that is the only place the
     # distinction survives: the commit identity is the container's either way.
     msg = f"Set version to {new}" + ("" if by == "operator" else " (session)")
+    # `git commit -- path` only knows tracked paths, so a VERSION that has
+    # never been committed — created by hand five minutes ago — needs the add.
+    # For a tracked file this is a no-op as far as the partial commit cares.
+    _git(project, "add", "--", VERSION_FILE)
     out = _git(project, "commit", "-m", msg, "--", VERSION_FILE, timeout=30)
     if out is None:
         # The file is written but uncommitted. Say both halves — a caller told

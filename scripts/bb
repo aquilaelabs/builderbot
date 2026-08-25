@@ -2424,7 +2424,7 @@ def fail(msg):
 
 def policy_line():
     pol = version.policy(proj)
-    allowed = version._ALLOWS[pol]
+    allowed = version.allows(pol)
     return (f"{pol}" + (f" — a session may move {', '.join(allowed)}"
                         if allowed else " — the operator only"))
 
@@ -2479,7 +2479,11 @@ if argv:
 if v.get("error"):
     print(f"{proj}: {v['error']}")
 if forms["semver"]:
-    print(f"{proj} {forms['semver']}" + ("   [released]" if v["released"] else ""))
+    # Not "[released]" beside "+dirty": HEAD being tagged does not make an
+    # uncommitted tree the release, and the two claims side by side read as a
+    # contradiction because they are one.
+    print(f"{proj} {forms['semver']}"
+          + ("   [released]" if v["released"] and not v["dirty"] else ""))
 else:
     print(f"{proj}: no version could be determined")
 print("  building towards  " + (

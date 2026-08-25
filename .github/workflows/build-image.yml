@@ -131,6 +131,9 @@ jobs:
             v="$short"
           elif tag="$(git describe --tags --exact-match HEAD 2>/dev/null)"; then
             v="${tag#v}"
+            if [ "$v" != "$target" ]; then
+              echo "::warning::tag $tag disagrees with VERSION ($target) — stamping the tag, but one of them is wrong"
+            fi
           else
             v="${target}-dev.${ordinal}+${short}"
           fi

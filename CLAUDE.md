@@ -268,26 +268,29 @@ and nothing to agree about.
 ```bash
 bb version              # the identity, and who is allowed to move it
 bb version --file       # the form to put in a dist/ filename
-bb version --code       # Android versionCode; --quad (= --win), --msi, --pep440
+bb version --code       # Android versionCode; also --quad/--win, --msi,
+                        #   --pep440, --semver, --json
 bb version policy       # what a session may move here, and who decides
 ```
 
 It is built from three parts: a `VERSION` file at the repo root holding one
 line of `MAJOR.MINOR.PATCH`, the commit count (`git rev-list --count HEAD`),
-and the short sha — rendered as `0.4.0-dev.390+e1615f5`, or as whatever format
-the thing you are stamping demands. **Use `bb version --file` for the artifact
-name** rather than inventing one; that is what makes two builds tellable apart
-in the Artifacts tab.
+and the short sha — rendered as `0.4.0-dev.390+e1615f5`, or as whatever
+format the thing you are stamping demands. **Use `bb version --file` for the
+artifact name** rather than inventing one; that is what makes two builds
+tellable apart in the Artifacts tab.
 
 A project with no `VERSION` file still answers, falling back to `git describe`.
 If one should have a version and does not, say so — do not create the file.
 
 **You very likely cannot move it, and that is the point.** Which parts a
 session may bump is a per-project setting the operator owns: the default is
-`locked`, meaning none. `bb version bump minor` refuses and says so, the file
-tools are denied on `VERSION`, and the operator moves it from the dashboard.
-So propose a bump in your reply, with what shipped since the last one; do not
-route around the refusal. `bb version policy` prints the limit you are under.
+`locked`, meaning none. `bb version bump minor` refuses and says so, and in a
+dashboard-started session the file tools are denied on `VERSION` — the same
+guardrail, and the same honest limit, as the sibling-project rule above. So
+propose a bump in your reply, with what shipped since the last one, and let
+the operator move it; do not route around the refusal. `bb version policy`
+prints the limit you are under.
 
 ## What you build goes in dist/
 
