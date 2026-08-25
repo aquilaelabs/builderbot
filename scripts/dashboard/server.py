@@ -1463,7 +1463,11 @@ def image_stamp():
     from anything a request can set, and they are only ever displayed.
     """
     return {"rev": os.environ.get("BB_IMAGE_REV", "").strip()[:40],
-            "built": os.environ.get("BB_IMAGE_BUILT", "").strip()[:32]}
+            "built": os.environ.get("BB_IMAGE_BUILT", "").strip()[:32],
+            # The ordered name for the same build. Derived from the VERSION
+            # file at build time, so an image built outside CI has none and
+            # the page falls back to the commit, as it always did.
+            "version": os.environ.get("BB_VERSION", "").strip()[:64]}
 
 
 # ---------------------------------------------------------------------------

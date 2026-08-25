@@ -20,6 +20,12 @@ usage() {
 bb — BuilderBot helper
 
   bb status              show tool versions, runner state and mounted projects
+  bb version             this project's version, and who is allowed to move it
+  bb version --code      one form only: --code (Android versionCode), --quad
+                         (= --win: manifest.json and Windows VERSIONINFO),
+                         --msi, --pep440, --file, --semver, --json
+  bb version bump PART   move the target: major|minor|patch, if policy allows
+  bb version policy      what a session may move here, and who decides
   bb projects            list mounted project directories
   bb shell               open a login shell as the builder user
   bb update              update Claude Code (and npm globals) in place
@@ -92,6 +98,9 @@ cmd_status() {
     # below came out of this image, and which image that is was otherwise
     # guessable only from the uptime. Stamped by CI at the end of the
     # Dockerfile; empty means the image was built some other way.
+    # Above the commit, because it is the half a person can order. A sha
+    # says which build; only this says which came first.
+    printf '  %-8s %s\n' version "${BB_VERSION:-unstamped}"
     printf '  %-8s %s\n' image "$(
         if [ -n "${BB_IMAGE_REV:-}" ]; then
             printf '%.7s%s' "$BB_IMAGE_REV" \
@@ -2360,8 +2369,161 @@ cmd_doctor() {
 # Bare `bb` prints what it can do. It used to run `status`, which is the same
 # wall of tool versions `bb status` gives you — an answer to a question nobody
 # typing `bb` on its own was asking.
+# bb version — this project's version identity, in whatever form is asking.
+#
+# The shell half is deliberately thin: everything that decides what a version
+# IS lives in dashboard/version.py, because the notebook needs the same answers
+# and two implementations of "what version is this" would drift the week one of
+# them was touched. This resolves which project is being asked about and prints
+# what the module returns.
+cmd_version() {
+    local py proj here
+    py="$(dirname "$(readlink -f "$0")")/dashboard/version.py"
+    [ -f "$py" ] || die "version.py is missing from this image"
+    proj="${BB_VERSION_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        here="$(pwd -P)"
+        case "$here" in
+            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
+            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
+        esac
+    fi
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+    BB_WORKSPACE="$WORKSPACE" python3 - "$py" "$proj" "$@" <<'PY'
+import importlib.util, json, os, sys
+
+spec = importlib.util.spec_from_file_location("version", sys.argv[1])
+version = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(version)
+
+
+def write_json(path, obj):
+    """Atomic, like the server's — a half-written policy file is read at every
+    bump after it."""
+    tmp = str(path) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=1)
+    os.replace(tmp, path)
+
+
+version.configure(workspace=os.environ.get("BB_WORKSPACE", "/workspace"),
+                  state=os.environ.get("DASHBOARD_STATE", "/config"),
+                  write_json=write_json)
+
+proj, argv = sys.argv[2], sys.argv[3:]
+
+USAGE = ("bb version [--semver|--code|--quad|--win|--msi|--pep440|--file|--json]\n"
+         "bb version bump major|minor|patch\n"
+         "bb version policy")
+
+
+def fail(msg):
+    print(msg, file=sys.stderr)
+    raise SystemExit(1)
+
+
+def policy_line():
+    pol = version.policy(proj)
+    allowed = version._ALLOWS[pol]
+    return (f"{pol}" + (f" — a session may move {', '.join(allowed)}"
+                        if allowed else " — the operator only"))
+
+
+if argv and argv[0] == "bump":
+    if len(argv) < 2:
+        fail("bb version bump major|minor|patch")
+    # `by` is not a flag: this runs AS the session, so the only honest value
+    # is the one the policy is about. The operator's bumps come from the
+    # dashboard, which calls bump() directly.
+    r = version.bump(proj, argv[1], by="claude")
+    if r.get("error"):
+        fail(r["error"])
+    print(f"{proj} {r['was']} -> {r['target']}  "
+          f"({r['part']}, committed {r['commit']}, not pushed)")
+    raise SystemExit(0)
+
+if argv and argv[0] == "policy":
+    # Read-only on purpose: a session should be able to see the limit it is
+    # held to and never to move it.
+    print(f"{proj}: {policy_line()}")
+    print("the operator changes this on the project's Artifacts tab")
+    raise SystemExit(0)
+
+v = version.render(proj)
+forms = v["forms"]
+
+if argv and argv[0] == "--json":
+    print(json.dumps(v, indent=1))
+    raise SystemExit(0)
+
+# --win is an alias rather than its own form: a Windows VERSIONINFO resource
+# and a Firefox manifest want the identical four-integer string, and shipping
+# two names for one value is cheaper than making somebody work that out.
+FLAGS = {"--semver": "semver", "--code": "code", "--quad": "quad",
+         "--win": "quad", "--moz": "quad", "--msi": "msi",
+         "--pep440": "pep440", "--file": "file"}
+if argv:
+    key = FLAGS.get(argv[0])
+    if key is None:
+        fail(USAGE)
+    if v.get("error"):
+        fail(v["error"])
+    if forms[key] is None:
+        fail(
+             f"no {argv[0]} form here: {proj} has no VERSION file, and that "
+             "format cannot be produced without one")
+    print(forms[key])
+    raise SystemExit(0)
+
+# The human summary.
+if v.get("error"):
+    print(f"{proj}: {v['error']}")
+if forms["semver"]:
+    print(f"{proj} {forms['semver']}" + ("   [released]" if v["released"] else ""))
+else:
+    print(f"{proj}: no version could be determined")
+print("  building towards  " + (
+    v["target"] or ("(VERSION is there but unreadable — see above)"
+                    if v.get("error") else "(no VERSION file — add one to opt in)")))
+if v["ordinal"] is not None:
+    print(f"  ordinal           {v['ordinal']}")
+if v["sha"]:
+    print(f"  commit            {v['sha']}"
+          + ("  (working tree dirty)" if v["dirty"] else ""))
+
+# What this container is running, but only where that is a comparison rather
+# than a coincidence: BB_VERSION is the image's, and the image is built from
+# THIS repo. Beside any other project's version it would be noise.
+own = (version.root(proj) / "config/templates/project-CLAUDE.md").is_file()
+running = os.environ.get("BB_VERSION", "").strip()
+if own and running:
+    print(f"  running here      {running}")
+    if forms["semver"] and running != forms["semver"]:
+        print("                    differs from this checkout — the box serves"
+              " whatever image it last pulled")
+
+print(f"  who may bump      {policy_line()}")
+
+since = version.since_bump(proj)
+if since.get("commits"):
+    print(f"  since that target {since['commits']} commit"
+          + ("" if since["commits"] == 1 else "s"))
+if v.get("warn"):
+    print(f"  warning           {v['warn']}")
+
+other = [(f, forms[k]) for f, k in (("--code", "code"), ("--quad/--win", "quad"),
+                                    ("--msi", "msi"), ("--pep440", "pep440"),
+                                    ("--file", "file")) if forms[k]]
+if other:
+    print()
+    for flag, val in other:
+        print(f"  {flag:<12} {val}")
+PY
+}
+
 case "${1:-help}" in
     status)   cmd_status ;;
+    version)  shift; cmd_version "$@" ;;
     projects) cmd_projects ;;
     shell)    exec bash -l ;;
     update)   cmd_update ;;

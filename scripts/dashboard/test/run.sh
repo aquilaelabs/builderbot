@@ -427,6 +427,7 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     BB_DOCTOR_FIXTURE="$S/doctor.txt" CLAUDE_AUTH_FIXTURE="$S/auth.json" \
     BB_IMAGE_REV=abc1234def5678901234567890abcdef12345678 \
     BB_IMAGE_BUILT=2026-08-21T19:30Z \
+    BB_VERSION=0.4.0-dev.390+abc1234 \
     CLAUDE_AUTH_IN="$S/auth-in.json" \
     BB_LOGIN_DONE="$S/login-finished" \
     PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" BB_ADB_BIN="$S/bin/adb" \

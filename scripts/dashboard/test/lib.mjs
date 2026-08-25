@@ -20,8 +20,11 @@ export const ok = (cond, name) => {
   console.log((cond ? 'PASS' : 'FAIL') + '  ' + name);
   cond ? pass++ : fail++;
 };
+// The browser is optional: not every file here drives a page. version.mjs
+// exercises a module through the CLI that shares it, and still wants the
+// same pass/fail tally and exit code as the browser files.
 export const done = async browser => {
-  await browser.close();
+  await browser?.close();
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);
 };

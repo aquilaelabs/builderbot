@@ -346,6 +346,12 @@ Bare `bb` prints this list; `bb status` is the tool-version wall.
 
 ```
 bb status          tool versions, runner registration, mounted projects
+bb version         this project's version, and who is allowed to move it
+bb version --code  one form only: --code (Android versionCode), --quad (= --win:
+                   manifest.json and Windows VERSIONINFO), --msi, --pep440,
+                   --file, --semver, --json
+bb version bump major|minor|patch    move the target, if the policy allows it
+bb version policy  what a session may move here, and who decides
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place

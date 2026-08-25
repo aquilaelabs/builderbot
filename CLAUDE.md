@@ -259,6 +259,36 @@ And do not go looking for the port the phone is on: reaching around this is
 possible, in the way most things in a container are possible, and it is the
 one thing here that touches hardware the operator is holding.
 
+## What version this is
+
+Every project here uses the same scheme, and `bb version` is what makes it the
+same one — it is on your PATH in any project, so there is nothing to set up
+and nothing to agree about.
+
+```bash
+bb version              # the identity, and who is allowed to move it
+bb version --file       # the form to put in a dist/ filename
+bb version --code       # Android versionCode; --quad (= --win), --msi, --pep440
+bb version policy       # what a session may move here, and who decides
+```
+
+It is built from three parts: a `VERSION` file at the repo root holding one
+line of `MAJOR.MINOR.PATCH`, the commit count (`git rev-list --count HEAD`),
+and the short sha — rendered as `0.4.0-dev.390+e1615f5`, or as whatever format
+the thing you are stamping demands. **Use `bb version --file` for the artifact
+name** rather than inventing one; that is what makes two builds tellable apart
+in the Artifacts tab.
+
+A project with no `VERSION` file still answers, falling back to `git describe`.
+If one should have a version and does not, say so — do not create the file.
+
+**You very likely cannot move it, and that is the point.** Which parts a
+session may bump is a per-project setting the operator owns: the default is
+`locked`, meaning none. `bb version bump minor` refuses and says so, the file
+tools are denied on `VERSION`, and the operator moves it from the dashboard.
+So propose a bump in your reply, with what shipped since the last one; do not
+route around the refusal. `bb version policy` prints the limit you are under.
+
 ## What you build goes in dist/
 
 When a build produces something shippable — an APK, a browser extension's
@@ -274,9 +304,11 @@ by committing a build — and a 24MB APK per build is history nobody wants.
 Document the rebuild command in the README instead, so the artifact is
 reproducible rather than stored.
 
-If a version string does not move between builds, put something that does in
-the filename — the short commit, usually — or every build is named
-identically and the tab cannot tell this one from the last.
+`bb version --file` already carries something that moves between builds, so a
+name built from it is never ambiguous. If you name an artifact some other way,
+make sure something in it changes per build — the short commit, usually — or
+every build is named identically and the tab cannot tell this one from the
+last.
 
 From that tab the operator downloads any of them, installs an `.apk` on their
 paired phone (which replaces an existing copy in place, keeping its data), and
