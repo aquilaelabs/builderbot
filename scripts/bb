@@ -47,9 +47,12 @@ bb — BuilderBot helper
   bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
   bb bug na N ["why"]    it was real and stopped applying — the feature went
   bb bug rm N ["why"]    delete a report that should not have been filed
-  bb history [--find X]  one search over the notebook: roadmap, bugs and memory logs
+  bb history [--find X]  one search over the notebook: roadmap, bugs, memory
+                         and the scanner's logs
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
+  bb findings history    what the scanner stopped and started saying here
+                         (-n N, --since 7d, --find TEXT, as the other logs)
   bb ci-log              what CI printed on its last run here — the runner
                          keeps none of it, so the workflow archives it
   bb ci-log --list       the runs kept for this project, newest first
@@ -1132,6 +1135,8 @@ bugs = load_mod(dirname, "bugs")
 bugs.configure(write_json=write_json, state=state)
 memory = load_mod(dirname, "memory")
 memory.configure_log(write_json=write_json, state=state)
+findings = load_mod(dirname, "findings")
+findings.configure(write_json=write_json, state=state)
 
 limit, since, find, i = 20, None, None, 0
 while i < len(argv):
@@ -1160,7 +1165,11 @@ while i < len(argv):
         sys.exit(1)
 
 rows = []
-for tag, mod in (("roadmap", todo), ("bugs", bugs), ("memory", memory)):
+# All four views, so "when did anything here mention X" means all of it. The
+# findings log is the one nobody wrote: its rows carry no `by`, which reads
+# correctly in this column as a blank rather than a name.
+for tag, mod in (("roadmap", todo), ("bugs", bugs), ("memory", memory),
+                 ("scanner", findings)):
     for e in mod.history(proj, since=since, find=find):
         rows.append((tag, e))
 rows.sort(key=lambda te: -te[1].get("at", 0))
@@ -1402,7 +1411,7 @@ elif op in ("fix", "wontfix", "na", "reopen"):
     print(f"#{rest[0]} {status}")
 elif op in ("history", "log"):
     # The same filters `bb roadmap history` takes, because whoever learned one
-    # should not have to learn the other. `bb history` merges all three.
+    # should not have to learn the other. `bb history` merges all four.
     limit, since, find, i = 20, None, None, 0
     while i < len(rest):
         a = rest[i]
@@ -1448,8 +1457,90 @@ else:
 PY
 }
 
+# The Analysis tab's log, for a session. Its own subcommand rather than a flag,
+# because it answers a different question: not what the scanner says now, which
+# is what the report is for, but what it has stopped and started saying — a
+# finding that is simply absent this week leaves no other trace at all.
+cmd_findings_history() {
+    local py proj here
+    py="$(dirname "$(readlink -f "$0")")/dashboard/findings.py"
+    [ -f "$py" ] || die "findings.py is missing from this image"
+    proj="${BB_FINDINGS_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        here="$(pwd -P)"
+        case "$here" in
+            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
+            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
+        esac
+    fi
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
+import importlib.util, json, os, sys, time
+
+spec = importlib.util.spec_from_file_location("findings", sys.argv[1])
+fx = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fx)
+
+
+def write_json(path, obj):
+    tmp = str(path) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(obj, f, indent=1)
+    os.replace(tmp, str(path))
+
+
+fx.configure(write_json=write_json,
+             state=os.environ.get("DASHBOARD_STATE", "/config"))
+proj, argv = sys.argv[2], sys.argv[3:]
+
+# The same three filters the other logs take, parsed the same way — a day
+# count or a date, because both are things somebody types from memory.
+limit, since, find, i = 20, None, None, 0
+while i < len(argv):
+    a = argv[i]
+    if a in ("-n", "--last") and i + 1 < len(argv):
+        limit = fx._int(argv[i + 1]); i += 2
+    elif a == "--all":
+        limit = None; i += 1
+    elif a == "--since" and i + 1 < len(argv):
+        v = argv[i + 1]
+        n = fx._int(v.rstrip("d")) if v.rstrip("d").isdigit() else None
+        if n is not None:
+            since = int(time.time()) - n * 86400
+        else:
+            try:
+                since = int(time.mktime(time.strptime(v, "%Y-%m-%d")))
+            except ValueError:
+                print(f"[builderbot] ERROR: not a date or a day count: {v}",
+                      file=sys.stderr); sys.exit(1)
+        i += 2
+    elif a in ("--find", "-f") and i + 1 < len(argv):
+        find = argv[i + 1]; i += 2
+    else:
+        print("usage: bb findings history [-n N|--all] [--since 7d|YYYY-MM-DD] "
+              "[--find TEXT]", file=sys.stderr)
+        sys.exit(1)
+
+h = fx.history(proj, limit=limit, since=since, find=find)
+if not h:
+    print(f"nothing in {proj}'s findings log matches that")
+    print("the first scan of a project is its starting point rather than an "
+          "entry, so this fills in from the second one onwards")
+for e in h:
+    when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
+    print(f"  {when}  {e.get('act', ''):<8}  {e.get('text', '')}")
+    if e.get("note"):
+        print(f"{'':>24}{e['note']}")
+PY
+}
+
 cmd_findings() {
     local target="" scope=mine proj
+    # `bb findings history` reads the notebook's fourth log — what the scanner
+    # has stopped and started saying here. Handed straight to the same helper
+    # the other three use, so the filters are the ones already learned.
+    if [ "${1:-}" = history ]; then
+        shift; cmd_findings_history "$@"; return
+    fi
     while [ $# -gt 0 ]; do
         case "$1" in
             -a|--all) scope=all ;;

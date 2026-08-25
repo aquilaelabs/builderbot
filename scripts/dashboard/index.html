@@ -1140,7 +1140,23 @@ body.dragging .tab .lbl{cursor:grabbing}
     <!-- The scanner's findings for this project, read-only: the scan runs on
          the host and bb findings reads the same digest in a terminal. -->
     <div class="nbview" data-view="analysis" hidden>
-      <div class="field nbhead vbar"><span id="anaHint">loading…</span></div>
+      <div class="field nbhead vbar"><span id="anaHint">loading…</span>
+        <span class="sp"></span>
+        <button type="button" id="anaLog"
+          title="what the scanner has stopped and started saying here — nobody writes these, so the log is the difference between one scan and the last">History</button>
+      </div>
+      <div class="field histbar" id="anaHistBar" hidden>
+        <input maxlength="80" autocomplete="off" placeholder="search the findings log">
+        <select class="hwhen" aria-label="how far back">
+          <option value="0">all time</option><option value="1">today</option>
+          <option value="7" selected>7 days</option><option value="30">30 days</option>
+        </select>
+        <select class="hn" aria-label="how many">
+          <option value="25" selected>25</option><option value="100">100</option>
+          <option value="0">all</option>
+        </select>
+      </div>
+      <div class="field" id="anaHist" hidden></div>
       <div class="field" id="anaList"></div>
     </div>
     <div class="foot">
@@ -5312,9 +5328,12 @@ $("todoRevert").onclick = revertNotebook;
   const LOG_ACTS = {
     filed: "new", fixed: "", wontfix: "gone", reopened: "",
     wrote: "new", forgot: "gone", edited: "", noted: "", deleted: "gone",
+    // The findings log's three. Nobody performs these — they are the
+    // difference between one scan and the last.
+    found: "new", gone: "gone", changed: "",
   };
 
-  function logPane({btnId, barId, paneId, showIds, fetchLog}){
+  function logPane({btnId, barId, paneId, showIds, fetchLog, emptyText}){
     const btn = $(btnId), bar = $(barId), pane = $(paneId);
     let on = false, timer = null;
     const draw = rows => {
@@ -5324,7 +5343,7 @@ $("todoRevert").onclick = revertNotebook;
         ? `<div class="hint">${bar.querySelector("input").value.trim()
              || bar.querySelector(".hwhen").value !== "0"
              ? "Nothing in the log matches that. Widen the window, or clear the search."
-             : "Nothing has happened here through the notebook yet."}</div>`
+             : emptyText || "Nothing has happened here through the notebook yet."}</div>`
         : rows.map(e => `<div class="hist">
             <span class="when">${esc(stamp(e.at || 0))}</span>
             <span class="act ${LOG_ACTS[e.act] || ""}">${esc(e.act || "changed")}</span>
@@ -5370,6 +5389,19 @@ $("todoRevert").onclick = revertNotebook;
   logPane({btnId: "bugLog", barId: "bugHistBar", paneId: "bugHist",
            showIds: ["bugList", "bugAdd", "bugSortBar"],
            fetchLog: q => postBug({action: "history", ...q})});
+  // The fourth, so all four answer "what happened here" the same way.
+  logPane({btnId: "anaLog", barId: "anaHistBar", paneId: "anaHist",
+           showIds: ["anaList"],
+           emptyText: "Nothing has changed here between scans yet. The first "
+             + "scan of a project is taken as the starting point rather than "
+             + "logged, so this fills in from the second one onwards.",
+           fetchLog: async q => {
+             const r = await fetch("/api/findings", {method: "POST",
+               headers: {"Content-Type": "application/json"},
+               body: JSON.stringify({project, action: "history", ...q})});
+             const j = await r.json();
+             return j.error ? (notify(j.error, true), {history: []}) : j;
+           }});
 
   // ---- analysis ------------------------------------------------------------
   // The scanner's findings for this project. Read-only, from the page-wide

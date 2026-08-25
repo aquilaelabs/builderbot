@@ -1578,6 +1578,13 @@ import bugs                                                      # noqa: E402
 bugs.configure(write_json=write_json, state=STATE, tell=notify.tell,
                tmux_name=tmux_name)
 
+# The notebook's fourth view keeps a log too, and it is the odd one: nothing
+# here writes findings, so the entries are derived by comparing one read of
+# the report against the last.
+import findings                                                  # noqa: E402
+
+findings.configure(write_json=write_json, state=STATE)
+
 # ---- the memory book -------------------------------------------------------
 # What Claude remembers about each project, read and edited from the projects
 # card. Same arrangement as packages above: its own file, handed what it needs.
@@ -1658,7 +1665,7 @@ def findings_counts(ps):
     nonproject = nonproject_dirs()
     key = (stamp, tuple(sorted(known)), tuple(sorted(nonproject)))
     if _findings_counts["mtime"] != key:
-        per, broken = {}, False
+        per, rows_by, broken = {}, {}, False
         for f in files:
             rep = parse_sarif(f, known, nonproject)
             broken = broken or bool(rep.get("error"))
@@ -1667,9 +1674,28 @@ def findings_counts(ps):
                     continue        # the SDK share et al: see _project_of
                 lv = per.setdefault(row["project"] or "", {})
                 lv[row["level"]] = lv.get(row["level"], 0) + 1
+                rows_by.setdefault(row["project"] or "", []).append(row)
         # A report that failed to parse is not cached: half-written is the
         # usual reason, and the next poll should read it whole.
         _findings_counts.update(mtime=None if broken else key, projects=per)
+        # The findings log, written here because here is where the report is
+        # known to have *changed* — this block runs on a new mtime and not on
+        # the reads in between.
+        #
+        # Not on a broken or missing report, which is the whole point of the
+        # guard: a half-written file, or a reports directory that is not there
+        # this minute, has nothing to say about what was fixed, and logging
+        # every finding as gone off one would be the SARIF mistake this
+        # project is careful about everywhere else.
+        #
+        # Coverage is assumed for every known project when a report does parse,
+        # and that assumption is specific to this setup rather than general:
+        # the scanners are pointed at the whole development share, so a project
+        # in it was in scope of the run whether or not it produced a row. Point
+        # them at one project and this would need to learn better.
+        if files and not broken:
+            for name in known:
+                findings.seen(name, rows_by.get(name, []), covered=True)
     valid = _valid_projects(ps)
     return {p: lv for p, lv in _findings_counts["projects"].items()
             if not p or p in valid}
@@ -2064,6 +2090,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._packages(req)
         if path.startswith("/api/memory"):
             return self._memory(req)
+        if path.startswith("/api/findings"):
+            return self._findings_log(req)
         if path.startswith("/api/bugs"):
             return self._bugs(req)
         if path.startswith("/api/custom"):
@@ -2214,6 +2242,20 @@ class Handler(BaseHTTPRequestHandler):
                 # moved underneath is how two people writing one file lose
                 # each other's work.
                 "batch": todo.batch(name)}
+
+    def _findings_log(self, req):
+        """The Analysis view's log. Read-only by nature: the scan runs on the
+        host and nothing here can write a finding, so `history` is the only
+        action there is — the entries are made by findings_counts noticing the
+        report changed."""
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list()}:
+            return self._json({"error": f"not a project: {name}"}, 400)
+        if field(req, "action") != "history":
+            return self._json({"error": "the findings log is read-only"}, 400)
+        return self._json({"history": findings.history(
+            name, limit=req.get("limit"), since=req.get("since"),
+            find=field(req, "find"))})
 
     def _bugs(self, req):
         """Report, edit, or close one bug. The fields go through bugs.py's own

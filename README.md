@@ -358,6 +358,8 @@ bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb findings        this project's scanner findings (--all for every project)
+bb findings history   what the scanner stopped and started saying here
+                      (-n N, --since 7d, --find TEXT, as the other logs)
 bb roadmap            this project's roadmap
 bb roadmap show N     one item in full: its details, its steps and theirs
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` not
@@ -1422,6 +1424,25 @@ line, by whom, when. The memory log records what the *notebook* changed
 so they have no entry to make. For a session, `bb history --find X` is one
 search across all three logs, merged by time and tagged by source; `bb roadmap
 history` and `bb bug history` scope to one.
+
+**Analysis** keeps a log too, and it is the odd one of the four: nothing here
+writes a finding. The scan runs on the host, the container reads a report, and
+between two runs a finding can simply stop being in it — fixed, or the file
+went, or a rule changed upstream. The report cannot tell those apart and
+neither does the log; what it says is *it was here on the 3rd and it is not
+here now*, which had no answer at all before. So the entries are **derived**:
+each read of the report is compared against the last, and the difference is
+the entry — `found`, `gone`, or `changed` when the count or level moved.
+
+Two things keep it honest. A finding is identified by **rule and path, not
+line**, because line numbers move whenever anything is inserted above them and
+a key including the line turns one edit into a gone-and-found pair for
+everything below it. And **the first scan of a project seeds silently** — the
+starting point rather than an entry — because stamping a discovery date on
+findings older than the feature would be confidently wrong. A report that
+fails to parse, or a reports directory that is not there this minute, is
+skipped rather than read as "everything was fixed": that is the SARIF trap the
+rest of this is careful about.
 
 **Analysis** is the notebook's fourth view: the scanner's findings for that
 project alone, worst level first, read-only — the scan runs on the host, and

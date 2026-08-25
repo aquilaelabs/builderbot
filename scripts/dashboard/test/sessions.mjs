@@ -107,6 +107,28 @@ ok(true, 'a project\'s row on the card opens its notebook, on the Analysis view'
 ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros grayed on a notebook tab');
 ok(await page.$$eval('.pane .nb .rule .rid .pill', ps => ps.length > 0),
    '...with the findings for that project alone, worst level first');
+// The fourth log. Nothing writes it — it is the difference between one scan
+// and the last — but it opens and filters like the other three, which is the
+// point of it being here at all.
+await page.click('.pane .nb #anaLog');
+await page.waitForFunction(() => !document.getElementById('anaHist').hidden,
+                           null, { timeout: 15000 });
+ok(await page.$eval('.pane .nb #anaList', el => el.hidden)
+   && await page.$eval('.pane .nb #anaHistBar', el => !el.hidden),
+   'Analysis has a History that swaps the findings out, the way the other three do');
+ok((await page.$eval('.pane .nb #anaHistBar input', i => i.placeholder)).includes('search')
+   && await page.$$eval('.pane .nb #anaHistBar select', ss => ss.length === 2),
+   '...with the same search box and the same two filters');
+// At "all time" with nothing to show, this log says why it is empty rather
+// than reusing the shared line about a notebook nobody has written in — no
+// one writes this one at all.
+await page.selectOption('.pane .nb #anaHistBar .hwhen', '0');
+await page.waitForFunction(() => /first scan/.test(
+  document.getElementById('anaHist').textContent), null, { timeout: 15000 });
+ok(true, '...and says why it is empty rather than looking broken');
+await page.click('.pane .nb #anaLog');
+await page.waitForFunction(() => document.getElementById('anaHist').hidden,
+                           null, { timeout: 15000 });
 // A notebook tab survives the reload and loads itself — the restore story
 // the findings tab used to carry, now the notebook's.
 await layoutSettled(l => l.tabs.some(t => t.kind === 'todo'));
