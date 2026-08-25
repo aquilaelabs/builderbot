@@ -977,6 +977,18 @@ await page.click(`#todoList .todo[data-id="${plainId}"][data-step="-1"] .dtog`);
 ok(await page.$eval(`#todoList .todo[data-id="${plainId}"][data-step="-1"] .dinfo`,
      el => !el.hidden && /GUI half: stepRow/.test(el.textContent)),
    '...and one tap opens it, breaks and all');
+// It slides rather than appearing: the same height tween the sidebar cards
+// fold with, so the rows below ride down instead of jumping.
+const fold = await page.$eval(
+  `#todoList .todo[data-id="${plainId}"][data-step="-1"] .dinfo`,
+  el => ({ anim: el.getAnimations().length > 0, h: el.offsetHeight }));
+ok(fold.anim, '...as a slide, not a snap');
+await page.waitForFunction(id => !document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="-1"] .dinfo`).getAnimations().length,
+  plainId, { timeout: 5000 });
+ok(await page.$eval(`#todoList .todo[data-id="${plainId}"][data-step="-1"] .dinfo`,
+     el => el.offsetHeight > 0 && !el.style.height),
+   '...and settles at its real height, with the inline one taken back off');
 
 // Editing them is part of the reword box, staged like everything else there.
 await page.click(`#todoList .todo[data-id="${plainId}"][data-step="0"] .ed`);

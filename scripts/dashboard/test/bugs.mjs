@@ -275,6 +275,35 @@ const post = body => page.evaluate(async b => {
   return { status: r.status, body: await r.json() };
 }, body);
 
+// ---- opening one is a slide, not a snap -------------------------------------
+// The same height tween the sidebar cards fold with. A <details> opens
+// instantly by construction, so the summary's click is taken over; what
+// proves it is an animation running on the element and a height between the
+// two resting sizes rather than at one of them.
+{
+  // Back on the list: the History above swapped it out, and a fold cannot be
+  // measured through a view that is not on screen.
+  await page.click(`${row('alpha')} [data-m]`);
+  await page.click('.pane .nb .nbtabs [data-v="bugs"]');
+  await page.waitForSelector('#bugList .bug', { timeout: 15000 });
+  const one = await page.$eval('#bugList .bug', d => d.dataset.id);
+  const shut = await page.$eval(`#bugList .bug[data-id="${one}"]`, d => d.offsetHeight);
+  await page.click(`#bugList .bug[data-id="${one}"] summary`);
+  const mid = await page.$eval(`#bugList .bug[data-id="${one}"]`, d => ({
+    anim: d.getAnimations().length > 0, open: d.open, h: d.offsetHeight }));
+  ok(mid.anim && mid.open, 'a bug report opens with a slide');
+  await page.waitForFunction(id => !document.querySelector(
+    `#bugList .bug[data-id="${id}"]`).getAnimations().length, one, { timeout: 5000 });
+  const full = await page.$eval(`#bugList .bug[data-id="${one}"]`, d => d.offsetHeight);
+  ok(full > shut && mid.h < full,
+     `...growing to its real height rather than jumping (${shut} → ${mid.h} → ${full}px)`);
+  await page.click(`#bugList .bug[data-id="${one}"] summary`);
+  await page.waitForFunction(id => !document.querySelector(
+    `#bugList .bug[data-id="${id}"]`).open, one, { timeout: 5000 });
+  ok(await page.$eval(`#bugList .bug[data-id="${one}"]`, d => d.offsetHeight) === shut,
+     '...and closes back to exactly the height it started at');
+}
+
 // ---- handing one to a session ----------------------------------------------
 // A bug goes over as a NUMBER and an instruction to look it up, never as a
 // copy of the report. The tracker is the copy that stays current: paste the
