@@ -417,6 +417,23 @@ when a step will not fit, the answer is almost never to compress the wording —
 it is that the technical half belongs in `bb roadmap info` and the step should
 say what has to be true before the next one can start.
 
+**Those are per-item caps, and the total is what actually costs.** The whole
+list — every open item, its details, every step and every step's details — is
+read into the prompt of every session that starts on this project, so a
+paragraph written once is paid for again on every conversation afterwards. It
+is easy to stay inside all of the limits above and still write a list nobody
+can afford: one project's notebook reached 16KB and made its sessions
+unstartable, because that is all `tmux new-session` accepts, and every session
+before that had simply been paying for it quietly. The launcher no longer has
+that ceiling, so the cost is the reason to be brief now, not the crash.
+
+So write `info` as the technical half a session would otherwise have to grep
+for — which files, which functions, what was decided and why — and not as a
+record of the thinking that got there. **When the work lands, trim the item
+back to what is left**: reasoning that is now a comment in the code, a section
+in this file or a line in the README is being stored twice, and the copy in
+the roadmap is the one nobody maintains.
+
 A step may be several lines, and blank lines between them are kept. The
 operator can build and rearrange a group from the dashboard too, so write the
 steps in the order they have to happen and leave the arranging to them. The
