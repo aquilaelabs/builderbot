@@ -1652,10 +1652,11 @@ todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
 # why one literal string cannot work. Handed the two notebook halves as well:
 # the case for a bump is "what has happened since the target last moved", and
 # only the roadmap's and the tracker's dated logs know that.
+import changelog                                                 # noqa: E402
 import version                                                   # noqa: E402
 
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
-                  todo_mod=todo, bugs_mod=bugs)
+                  todo_mod=todo, bugs_mod=bugs, changelog_mod=changelog)
 
 # ---- new project, and linking one ------------------------------------------
 # Creating and cloning, and the worker that runs the ones that touch the
@@ -2127,6 +2128,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(snapshot())
         if self.path.startswith("/api/findings"):
             return self._json(findings_payload())
+        if self.path.startswith("/api/changelog"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list()}:
+                return self._json({"error": "not a project"}, 400)
+            d = version._sub(name, q.get("component", [""])[0])
+            if d is None:
+                return self._json({"error": "no such component"}, 400)
+            return self._json({"text": changelog.read(d)})
         if self.path.startswith("/api/version"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]

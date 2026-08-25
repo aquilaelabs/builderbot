@@ -355,6 +355,9 @@ bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component — a directory with its own VERSION
 bb version policy  what a session may move here, and who decides
+bb changelog       this project's user-facing changelog (--for DIR for a component)
+bb changelog add "..."   log what a change means for the person using it; the
+                   next version bump dates the accumulated lines
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place

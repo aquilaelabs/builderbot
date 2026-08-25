@@ -73,6 +73,7 @@ makes a bad bump recoverable is that VERSION is committed: every move is in
 import json
 import os
 import re
+import time
 import subprocess
 import threading
 from pathlib import Path
@@ -86,6 +87,7 @@ write_json = None
 # copy with its own configuration and its own idea of where the state lives.
 todo = None
 bugs = None
+changelog = None
 
 # The file a project declares its target in. One line, at the repo root.
 VERSION_FILE = "VERSION"
@@ -108,9 +110,11 @@ PARTS = ("major", "minor", "patch")
 _lock = threading.Lock()
 
 
-def configure(*, workspace, state, write_json, todo_mod=None, bugs_mod=None):
+def configure(*, workspace, state, write_json, todo_mod=None, bugs_mod=None,
+              changelog_mod=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
-                     write_json=write_json, todo=todo_mod, bugs=bugs_mod)
+                     write_json=write_json, todo=todo_mod, bugs=bugs_mod,
+                     changelog=changelog_mod)
     globals()["FILE"] = Path(state) / "versions.json"
 
 
@@ -487,11 +491,23 @@ def bump(project, part, by="claude", comp=""):
     # distinction survives: the commit identity is the container's either way.
     msg = (f"Set {comp} version to {new}" if comp
            else f"Set version to {new}") + ("" if by == "operator" else " (session)")
+    # The changelog's Unreleased section becomes this version's, dated today,
+    # in the same commit — the bump is the date break, and splitting the two
+    # across commits would let one land without the other. Uncommitted entry
+    # lines are swept in deliberately: everything in that file is changelog,
+    # and dating it is exactly what a bump means for it. Nothing rolls when
+    # nothing was logged — an empty cycle gets no section, and the warning
+    # about that belongs in the confirm, not in the shipped file.
+    paths = [rel]
+    if changelog is not None and changelog.roll(
+            where, new, time.strftime("%Y-%m-%d")):
+        paths.append(str((where / changelog.FILE)
+                         .relative_to(root(project).resolve())))
     # `git commit -- path` only knows tracked paths, so a VERSION that has
     # never been committed — created by hand five minutes ago — needs the add.
     # For a tracked file this is a no-op as far as the partial commit cares.
-    _git(project, "add", "--", rel)
-    out = _git(project, "commit", "-m", msg, "--", rel, timeout=30)
+    _git(project, "add", "--", *paths)
+    out = _git(project, "commit", "-m", msg, "--", *paths, timeout=30)
     if out is None:
         # The file is written but uncommitted. Say both halves — a caller told
         # only "commit failed" would not know the target had already moved.
@@ -568,6 +584,14 @@ def one(project, comp=""):
         # Only on the project's own block: a component is added from the one
         # place that lists what could become one.
         "candidates": [] if comp else candidates(project),
+        # The changelog beside this VERSION: how many entries are waiting for
+        # a bump to date them, and whether the file exists at all. None for
+        # has_changelog is honest — a directory that failed to resolve has no
+        # answer, not a no.
+        "unreleased": (len(changelog.unreleased(_sub(project, comp)))
+                       if changelog is not None and _sub(project, comp) else 0),
+        "has_changelog": (changelog.read(_sub(project, comp)) is not None
+                          if changelog is not None and _sub(project, comp) else False),
     }
 
 

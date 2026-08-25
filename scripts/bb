@@ -30,6 +30,9 @@ bb — BuilderBot helper
                          component — a directory with its own VERSION file
   bb version --for DIR   ask about one component instead of the project
   bb version policy      what a session may move here, and who decides
+  bb changelog           this project's user-facing changelog (--for DIR)
+  bb changelog add "..." log what a change means for the person using it;
+                         the next version bump dates the accumulated lines
   bb projects            list mounted project directories
   bb shell               open a login shell as the builder user
   bb update              update Claude Code (and npm globals) in place
@@ -2400,6 +2403,13 @@ spec = importlib.util.spec_from_file_location("version", sys.argv[1])
 version = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(version)
 
+# The changelog rides with the version: a bump dates its Unreleased section
+# in the same commit, so the module that bumps needs the module that rolls.
+_clpath = os.path.join(os.path.dirname(sys.argv[1]), "changelog.py")
+_clspec = importlib.util.spec_from_file_location("changelog", _clpath)
+changelog = importlib.util.module_from_spec(_clspec)
+_clspec.loader.exec_module(changelog)
+
 
 def write_json(path, obj):
     """Atomic, like the server's — a half-written policy file is read at every
@@ -2412,7 +2422,7 @@ def write_json(path, obj):
 
 version.configure(workspace=os.environ.get("BB_WORKSPACE", "/workspace"),
                   state=os.environ.get("DASHBOARD_STATE", "/config"),
-                  write_json=write_json)
+                  write_json=write_json, changelog_mod=changelog)
 
 proj, argv = sys.argv[2], sys.argv[3:]
 
@@ -2572,9 +2582,88 @@ if other:
 PY
 }
 
+# bb changelog — the user-facing record beside VERSION, per project or
+# component. A session logs what changed for the person using the product;
+# the next bump dates the accumulated lines. Writing goes through `add` so
+# the shape stays uniform; reading is just the file.
+cmd_changelog() {
+    local py proj here
+    py="$(dirname "$(readlink -f "$0")")/dashboard/version.py"
+    [ -f "$py" ] || die "version.py is missing from this image"
+    proj="${BB_VERSION_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        here="$(pwd -P)"
+        case "$here" in
+            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
+            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
+        esac
+    fi
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+    BB_WORKSPACE="$WORKSPACE" python3 - "$py" "$proj" "$@" <<'PY'
+import importlib.util, os, sys
+
+spec = importlib.util.spec_from_file_location("version", sys.argv[1])
+version = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(version)
+_clspec = importlib.util.spec_from_file_location(
+    "changelog", os.path.join(os.path.dirname(sys.argv[1]), "changelog.py"))
+changelog = importlib.util.module_from_spec(_clspec)
+_clspec.loader.exec_module(changelog)
+version.configure(workspace=os.environ.get("BB_WORKSPACE", "/workspace"),
+                  state=os.environ.get("DASHBOARD_STATE", "/config"),
+                  write_json=lambda *a: None)
+
+proj, argv = sys.argv[2], sys.argv[3:]
+comp = ""
+if "--for" in argv:
+    i = argv.index("--for")
+    if i + 1 >= len(argv):
+        print("--for needs a component directory", file=sys.stderr)
+        raise SystemExit(1)
+    comp = argv[i + 1]
+    argv = argv[:i] + argv[i + 2:]
+
+d = version._sub(proj, comp)
+if d is None:
+    print(f"no such component here: {comp}", file=sys.stderr)
+    raise SystemExit(1)
+
+if argv and argv[0] == "add":
+    if len(argv) < 2 or not argv[1].strip():
+        print('bb changelog add "what changed, for the person using it" '
+              '[--for DIR]', file=sys.stderr)
+        raise SystemExit(1)
+    # Stamped with HEAD: the instruction in the template is to log after
+    # committing, so the sha names the commit the entry describes.
+    sha = version._git(proj, "rev-parse", "--short=7", "HEAD") or ""
+    r = changelog.add(d, argv[1], sha=sha)
+    if r.get("error"):
+        print(r["error"], file=sys.stderr)
+        raise SystemExit(1)
+    n = len(changelog.unreleased(d))
+    print(f"logged{' (new ' + changelog.FILE + ')' if r.get('created') else ''} — "
+          f"{n} unreleased entr{'y' if n == 1 else 'ies'} now waiting for a bump")
+    raise SystemExit(0)
+
+if argv:
+    print("bb changelog [--for DIR]         read it\n"
+          'bb changelog add "..." [--for DIR]   log a user-facing change',
+          file=sys.stderr)
+    raise SystemExit(1)
+
+text = changelog.read(d)
+if text is None:
+    print(f"no {changelog.FILE} here yet — the first "
+          f"`bb changelog add` creates it")
+    raise SystemExit(0)
+print(text, end="")
+PY
+}
+
 case "${1:-help}" in
     status)   cmd_status ;;
     version)  shift; cmd_version "$@" ;;
+    changelog) shift; cmd_changelog "$@" ;;
     projects) cmd_projects ;;
     shell)    exec bash -l ;;
     update)   cmd_update ;;
