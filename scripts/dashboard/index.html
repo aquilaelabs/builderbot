@@ -333,6 +333,25 @@ button.on{background:#1f6f36;border-color:#2ea043}
    Two stacked lines rather than one wrapping group — a row whose parts rewrap
    independently gives every row a different shape, which on a phone read as
    ragged: one file's buttons beside its name, the next file's below it. */
+/* The version block. Rows of label + value so the eye runs down the values,
+   which is how "what is this at" is actually read; the buttons sit under
+   them because a bump is rare and should not lead. */
+.verln{display:flex;gap:8px;align-items:baseline;padding:2px 0;flex-wrap:wrap}
+.verln span:first-child{flex:0 0 118px;color:var(--dim);font:11px/1.5 system-ui,sans-serif}
+.verln code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
+.verln.off code{color:var(--dim)}
+.vermark{font:11px/1.5 system-ui,sans-serif;color:var(--warn,#d29922)}
+.verwhy{color:var(--dim);font:11px/1.6 system-ui,sans-serif;margin:7px 0 0}
+.verbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
+.verbtns .sp{flex:1 1 auto}
+.verpol{display:flex;gap:6px;align-items:center;font:11px/1.5 system-ui,sans-serif;
+  color:var(--dim);flex-wrap:wrap}
+@media(max-width:520px){
+  .verln span:first-child{flex:0 0 100%}
+  .verln{padding:3px 0}
+  .verbtns .sp{display:none}
+  .verbtns button{flex:1 1 auto}
+}
 .artrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
   border-bottom:1px solid var(--line);padding:9px 2px}
 .artrow:last-child{border-bottom:0}
@@ -1186,6 +1205,10 @@ body.dragging .tab .lbl{cursor:grabbing}
          would restate the mtime column. -->
     <div class="nbview" data-view="artifacts" hidden>
       <div class="field nbhead vbar"><span id="artHint">loading…</span></div>
+      <!-- The version, above the things it names. Not a sixth tab: the strip
+           already runs past a phone at five labels, and a version and the
+           artifacts it stamps are one subject — those filenames carry it. -->
+      <div class="field" id="verBox"></div>
       <div class="field" id="artList"></div>
     </div>
     <div class="nbview" data-view="analysis" hidden>
@@ -5356,7 +5379,7 @@ $("todoRevert").onclick = revertNotebook;
     root.querySelectorAll(".nbview").forEach(x => x.hidden = x.dataset.view !== v);
     if (v === "bugs" && !bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
-    if (v === "artifacts") loadArtifacts();
+    if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
   }
   // Unsaved work does not follow you to another tab.
   //
@@ -5461,7 +5484,14 @@ $("todoRevert").onclick = revertNotebook;
   // acted on while the view in question is actually on screen — a token
   // moving for a tab nobody is looking at is not worth a fetch.
   const showing = v => !root.querySelector(`[data-view="${v}"]`).hidden;
-  onRev(() => `dist:${project}`, () => { if (showing("artifacts")) loadArtifacts(); });
+  onRev(() => `dist:${project}`, () => {
+    if (showing("artifacts")){ loadArtifacts(); loadVersion(); }
+  });
+  // A session bumping while this tab is open, and the policy changing from
+  // anywhere else. Both are file mtimes on the server — neither costs a git
+  // call to notice.
+  onRev(() => `ver:${project}`, () => { if (showing("artifacts")) loadVersion(); });
+  onRev("vpolicy", () => { if (showing("artifacts")) loadVersion(); });
   onRev("phone.dev", () => { if (showing("artifacts")) loadArtifacts(); });
   onRev("reports", () => { if (showing("analysis")) loadAnalysis(); });
   onRev("bugs", () => { if (bugs && showing("bugs")) loadBugs(); });
@@ -5577,6 +5607,120 @@ $("todoRevert").onclick = revertNotebook;
     if ((job.running || inst.running)
         && !root.querySelector('[data-view="artifacts"]').hidden)
       artTimer = setTimeout(loadArtifacts, 2000);
+  }
+
+  // ---- the version, in the head of the tab whose files carry it ----------
+  // Two jobs, and they are not the same job. The display answers "what is
+  // this at", which needs no decision and is on all the time. The buttons
+  // answer "what should it be next", which is rare, and is hard here for a
+  // specific reason the operator named: most of the coding happens through
+  // prompts, so by bump time nobody remembers what the last three weeks
+  // contained. Hence the evidence line — that is the half that makes the
+  // decision two seconds instead of a scroll through git log.
+  let ver = null;
+
+  async function loadVersion(){
+    const box = $("verBox");
+    try{
+      const r = await fetch("/api/version?project=" + encodeURIComponent(project));
+      ver = await r.json();
+    }catch(e){ box.textContent = "version: " + e; return; }
+    if (ver.error && !ver.target){
+      // A malformed VERSION is worth saying out loud: everything downstream
+      // assumes the shape, so this is the one place it can be reported.
+      box.innerHTML = `<div class="verln"><span>version</span><code>${
+        esc(ver.error)}</code></div>`;
+      return;
+    }
+    drawVersion();
+  }
+
+  function drawVersion(){
+    const v = ver, box = $("verBox"), f = v.forms || {};
+    const line = (label, value, cls = "") => value
+      ? `<div class="verln ${cls}"><span>${label}</span><code>${esc(value)}</code></div>`
+      : "";
+    // "running here" only where it is a comparison rather than a coincidence:
+    // BB_VERSION is the image's, and the image is built from one repo. It is
+    // also the line that catches "merged, therefore running", which has cost
+    // this project an afternoon before.
+    const stale = v.running && f.semver && v.running !== f.semver;
+    // Which way round, because the two directions mean opposite things and
+    // guessing gets it wrong half the time. The ordinal is the only orderable
+    // part, which is the entire reason it exists.
+    const ordOf = str => { const m = /-dev\.(\d+)/.exec(str || ""); return m ? +m[1] : null; };
+    const mine = v.ordinal, theirs = ordOf(v.running);
+    const which = !stale ? ""
+      : (theirs != null && mine != null && theirs > mine)
+        ? "the box is ahead of this checkout — pull, or you are reading old code"
+      : (theirs != null && mine != null && theirs < mine)
+        ? "this checkout is ahead of the box — the box serves whatever image it "
+          + "last pulled, so a merge is not a deploy"
+        : "the box and this checkout are different builds";
+    const newest = (art?.artifacts || [])[0];
+    const s = v.since || {};
+    // Counts, no verdict. Roadmap items finished reads as a minor and fixes
+    // alone read as a patch, but that judgment is the operator's — a
+    // recommendation this side cannot justify is worse than none.
+    const bits = [];
+    if (s.commits != null) bits.push(`${s.commits} commit${s.commits === 1 ? "" : "s"}`);
+    if (s.done) bits.push(`${s.done} roadmap item${s.done === 1 ? "" : "s"} done`);
+    if (s.fixed) bits.push(`${s.fixed} bug${s.fixed === 1 ? "" : "s"} fixed`);
+    box.innerHTML =
+      line("building towards", v.target || "no VERSION file")
+      + line("a build now", f.semver)
+      + (v.running ? line("running here", v.running, stale ? "" : "off") : "")
+      + (stale ? `<div class="verln"><span></span><span class="vermark">${
+           esc(which)}</span></div>` : "")
+      + (newest ? line("last shipped", newest.name, "off") : "")
+      + (v.warn ? `<div class="verln"><span></span><span class="vermark">${
+           esc(v.warn)}</span></div>` : "")
+      + (v.target ? `
+        <p class="verwhy">${bits.length
+          ? "since " + esc(v.target) + ": " + bits.join(" · ")
+          : "nothing has landed since " + esc(v.target)}</p>
+        <div class="verbtns">
+          ${["patch", "minor", "major"].map(pt => `
+            <button type="button" data-verbump="${pt}"
+              title="set VERSION to ${esc(v.next[pt] || "")} and commit that one file">
+              ${pt[0].toUpperCase() + pt.slice(1)} → ${esc(v.next[pt] || "")}</button>`).join("")}
+          <span class="sp"></span>
+          <span class="verpol">who may bump
+            <select id="verPolicy" aria-label="who may bump this project's version">
+              ${(v.policies || []).map(o => `<option value="${o}"${
+                o === v.policy ? " selected" : ""}>${o}</option>`).join("")}
+            </select>
+          </span>
+        </div>
+        <p class="verwhy">A bump writes VERSION and commits that one path — it
+          is never pushed. The policy stops <code>bb version bump</code> and a
+          session's file tools; it does not stop Bash.</p>` : `
+        <p class="verwhy">Add a <code>VERSION</code> file holding one line like
+          <code>0.1.0</code> to give this project a version that sorts.</p>`);
+
+    box.querySelectorAll("[data-verbump]").forEach(b => b.onclick = async () => {
+      const part = b.dataset.verbump, to = ver.next[part];
+      // Typed confirmation is for destroying things; this is one reviewable
+      // line in a commit of its own, so a plain confirm is the right weight.
+      if (!confirm(`Set this project's version to ${to}?\n\n`
+                   + `Writes VERSION and commits that one file. Not pushed.`)) return;
+      box.querySelectorAll("button,select").forEach(x => x.disabled = true);
+      await postVersion({action: "bump", part});
+    });
+    const pol = $("verPolicy");
+    if (pol) pol.onchange = () => postVersion({action: "policy", policy: pol.value});
+  }
+
+  async function postVersion(body){
+    try{
+      const r = await fetch("/api/version", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, ...body})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); }
+      else if (j.bumped) notify(`version ${j.bumped.was} → ${j.bumped.target}`);
+    }catch(e){ notify("version: " + e, true); }
+    await loadVersion();
   }
 
   async function postArtifacts(body){
