@@ -4,7 +4,7 @@
 // `bb roadmap`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point — something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1194,6 +1194,28 @@ ok(!/notes about how you work/.test(told.slice(beforeQuiet)),
 // Four buttons in the footer did not fit a phone, and a footer that does not
 // fit makes the box scroll horizontally — so the whole panel slid under the
 // thumb every time it was touched.
+// ---- a session starting under an open notebook --------------------------
+// Whether a step can be sent is a fact about the session running beside it,
+// and it used to arrive only with the list — fetched when the notebook opened
+// and then never again. So starting Claude while looking at the Roadmap left
+// every arrow grey until the tab was closed and reopened.
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0);
+ok((await open()).some(i => i.can), 'with the session up, something can be sent');
+tmuxKill('claude-alpha');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => [...document.querySelectorAll('#todoList .todo .go')]
+  .every(g => g.disabled), null, { timeout: 15000 });
+ok(/no session/.test(await page.$eval('#todoHint', h => h.textContent)),
+   'the session going away puts the arrows down, without touching the tab');
+tmuxNew('claude-alpha');
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => [...document.querySelectorAll('#todoList .todo .go')]
+  .some(g => !g.disabled), null, { timeout: 15000 });
+ok(/is running, so the arrows are live/.test(
+     await page.$eval('#todoHint', h => h.textContent)),
+   '...and starting one brings them back, with the notebook left open the whole time');
+
 const phone = await newPage(browser, { viewport: { width: 400, height: 860 },
                                        isMobile: true, hasTouch: true });
 await phone.goto(URL);

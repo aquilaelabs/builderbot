@@ -1436,6 +1436,15 @@ session would then be working from the paste while everything else here reads
 the file. One number cannot drift. It also means a bug that has grown a long
 analysis costs the same to hand over as a one-line report.
 
+**A closed bug cannot be sent** — reopen it first. A closed bug is a record
+rather than work, and the three closes exist to say which kind of dealt-with
+it was; handing one over asks a session to deal with something somebody has
+already decided is done. If a fix did not take, `reopen` is the honest way
+back, and it leaves a line in the log where sending it again would leave
+none. The button goes dead on the row and says so, and the server refuses it
+independently — a rule only the panel honors is a suggestion, and this one is
+reachable over the API.
+
 Sending is **written into the tracker's log** as `sent`, because "was this
 ever handed to a session, and when?" is a tracker question. It is not a status
 change: sent is not fixed, and the bug stays open until somebody closes it.

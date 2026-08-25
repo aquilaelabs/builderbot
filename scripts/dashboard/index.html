@@ -5501,10 +5501,15 @@ $("todoRevert").onclick = revertNotebook;
               ? ` · ${esc(STATUS_WORDS[b.status] || b.status)}: ${esc(b.status_note)}`
               : ""}</div>
           <div class="macts">
-            <button type="button" class="bSend"
-              title="hand this bug to the session running here — it is sent as
-                     a number and an instruction to look it up, not as a copy
-                     of the report">Send to Claude</button>
+            <button type="button" class="bSend"${b.status === "open" ? "" : " disabled"}
+              title="${b.status === "open"
+                ? `hand this bug to the session running here — it is sent as a
+                   number and an instruction to look it up, not as a copy of
+                   the report`
+                : `this one is closed — reopen it first. A closed bug is a
+                   record, not work, and sending it would ask a session to
+                   deal with something already dealt with`}"
+              >Send to Claude</button>
             <button type="button" class="bEdit">Edit</button>
             <button type="button" class="danger bRm"
               title="for a report that should not exist — mis-filed, a duplicate,
@@ -5631,6 +5636,22 @@ $("todoRevert").onclick = revertNotebook;
     view: setNbView,
     poll(p){
       noteBatch(p.todo_batch); drawBatchNote(); syncSave();
+      // A session started (or ended) under an open notebook.
+      //
+      // Whether a step can be sent is a fact about the session running beside
+      // it, and that fact arrived only with the list — which is fetched when
+      // the notebook opens and then not again. So starting Claude while
+      // looking at the Roadmap left every arrow grey, correctly describing
+      // the world as it had been when the tab opened, until the tab was
+      // closed and reopened. It is read off the poll now, like everything
+      // else on this row.
+      //
+      // Redrawn from what is already in hand rather than re-fetched: the list
+      // on screen may be carrying staged changes that are not on the server,
+      // and a refetch here would quietly throw them away.
+      const want = tmuxName("claude-" + project);
+      const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
+      if (now !== todoSession){ todoSession = now; redrawTodo(); }
       // A session filed, closed or deleted a bug. The tracker is
       // write-through on both sides, so there is nothing local to lose and
       // nothing to ask about — the view simply catches up. Keyed on a
