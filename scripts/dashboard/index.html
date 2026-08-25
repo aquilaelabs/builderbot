@@ -347,6 +347,13 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .verinit{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .verinit .vstart{font:12px/1.5 var(--mono);flex:0 0 auto;width:8em}
 .verinit .vdir{flex:0 1 auto;min-width:0}
+/* The changelog, read in place. pre-wrap keeps the file's own line breaks —
+   it is a document someone wrote, not data to reflow. */
+.verlogpane{font:12px/1.6 var(--mono);color:var(--ink);white-space:pre-wrap;
+  overflow-wrap:anywhere;background:var(--well,rgba(0,0,0,.15));
+  border:1px solid var(--line);border-radius:6px;padding:10px 12px;
+  margin-top:8px;max-height:16em;overflow-y:auto}
+.verlogbtn{font:600 11px/1 system-ui,sans-serif}
 .veradd{margin-top:10px}
 .veradd summary{color:var(--dim);font:11px/1.6 system-ui,sans-serif;
   cursor:pointer;min-height:var(--tap);display:flex;align-items:center}
@@ -5662,14 +5669,40 @@ $("todoRevert").onclick = revertNotebook;
     const all = [ver, ...(ver.versions || [])];
     box.innerHTML = all.map(v => verSection(v, all.length > 1)).join(
       `<div class="versep"></div>`);
+    box.querySelectorAll("[data-verlog]").forEach(b => b.onclick = async () => {
+      const comp = b.dataset.verlog || "";
+      const pane = box.querySelector(`[data-verlogpane="${CSS.escape(comp)}"]`);
+      if (!pane.hidden){ pane.hidden = true; return; }
+      pane.textContent = "loading…"; pane.hidden = false;
+      try{
+        const r = await fetch(`/api/changelog?project=${encodeURIComponent(project)}`
+                              + `&component=${encodeURIComponent(comp)}`);
+        const j = await r.json();
+        pane.textContent = j.error ? `changelog: ${j.error}`
+          : (j.text ?? `no CHANGELOG.md here yet — a session's first\n`
+              + `\`bb changelog add "..."\` creates it, and the next bump\n`
+              + `dates whatever has accumulated`);
+      }catch(e){ pane.textContent = "changelog: " + e; }
+    });
     box.querySelectorAll("[data-verbump]").forEach(b => b.onclick = async () => {
       const part = b.dataset.verbump, comp = b.dataset.vercomp || "";
       const blk = all.find(x => (x.component || "") === comp);
       const to = blk?.next?.[part];
       const what = comp ? `${comp}'s version` : "this project's version";
+      // The empty-cycle warning, at the moment it is actionable. Warn and
+      // allow rather than refuse: a housekeeping bump legitimately has
+      // nothing user-facing to say, and a gate here would be paid in junk
+      // entries written to get past it.
+      const gap = !blk?.unreleased
+        ? `\n\n⚠ Nothing in the changelog since ${blk?.target}`
+          + (blk?.since?.commits ? ` — ${blk.since.commits} commit`
+             + `${blk.since.commits === 1 ? "" : "s"} landed unlogged` : "")
+          + `.\n${to} will get no changelog section.`
+        : `\n\nIts ${blk.unreleased} logged change${blk.unreleased === 1 ? "" : "s"}`
+          + ` become the ${to} section, dated today.`;
       // Typed confirmation is for destroying things; this is one reviewable
       // line in a commit of its own, so a plain confirm is the right weight.
-      if (!confirm(`Set ${what} to ${to}?\n\n`
+      if (!confirm(`Set ${what} to ${to}?${gap}\n\n`
                    + `Writes ${comp ? comp + "/" : ""}VERSION and commits that `
                    + `one file. Not pushed.`)) return;
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
@@ -5740,6 +5773,7 @@ $("todoRevert").onclick = revertNotebook;
     if (s.commits != null) bits.push(`${s.commits} commit${s.commits === 1 ? "" : "s"}`);
     if (s.done) bits.push(`${s.done} roadmap item${s.done === 1 ? "" : "s"} done`);
     if (s.fixed) bits.push(`${s.fixed} bug${s.fixed === 1 ? "" : "s"} fixed`);
+    if (v.unreleased) bits.push(`${v.unreleased} change${v.unreleased === 1 ? "" : "s"} logged`);
     return (named ? `<div class="vername">${
         esc(v.component || v.project)}${v.component ? "" : "  (the project)"}</div>` : "")
       + line("building towards", v.target || "no VERSION file")
@@ -5759,6 +5793,10 @@ $("todoRevert").onclick = revertNotebook;
             <button type="button" data-verbump="${pt}" data-vercomp="${esc(v.component || "")}"
               title="set VERSION to ${esc(v.next[pt] || "")} and commit that one file">
               ${pt[0].toUpperCase() + pt.slice(1)} → ${esc(v.next[pt] || "")}</button>`).join("")}
+          <button type="button" class="verlogbtn" data-verlog="${esc(v.component || "")}"
+            title="the user-facing record of what changed here — sessions add to
+it as work lands, and a bump dates the accumulated lines">Changelog${
+            v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
           ${v.component ? "" : `<span class="sp"></span>
           <span class="verpol">who may bump
             <select id="verPolicy" aria-label="who may bump this project's version">
@@ -5767,6 +5805,7 @@ $("todoRevert").onclick = revertNotebook;
             </select>
           </span>`}
         </div>
+        <div class="verlogpane" data-verlogpane="${esc(v.component || "")}" hidden></div>
         ${v.component ? "" : `<p class="verwhy">A bump writes VERSION and commits
           that one path — it is never pushed. The policy stops
           <code>bb version bump</code> and a session's file tools; it does not

@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { launch, newPage, ready, ok, done, DIR, URL as DURL } from './lib.mjs';
+import { launch, newPage, ready, ok, done, sleep, DIR, URL as DURL } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -243,6 +243,51 @@ ok(execFileSync('git', ['-C', M, 'show', '--stat', '--format=', 'HEAD'], { env }
 ok(/^Set extension version to 2\.2\.0 \(session\)$/m.test(
      execFileSync('git', ['-C', M, 'log', '-1', '--format=%s'], { env }).toString()),
    '...with a message naming which one moved');
+// ---- the changelog: accrued by sessions, dated by the bump ---------------
+// The record and the number are decoupled on purpose: entries land under
+// Unreleased as work is done, and a bump — whoever presses it — only renames
+// that section to the new version with the date. The operator keeping the
+// number costs the record nothing.
+const cl = (...a) => {
+  try {
+    return { out: execFileSync('bash', [BB, 'changelog', ...a],
+                               { cwd: M, env }).toString(), code: 0 };
+  } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; }
+};
+ok(/no CHANGELOG\.md here yet/.test(cl().out),
+   'a project with no changelog says so, and how to start one');
+ok(cl('add', 'Pairing works across screen switches').code === 0,
+   'a session can log a user-facing change');
+cl('add', 'The app no longer forgets its settings', '--for', 'extension');
+ok(/Pairing works/.test(cl().out) && !/forgets its settings/.test(cl().out),
+   "an entry lands in the changelog it was logged to, not the project's");
+ok(/forgets its settings \([0-9a-f]{7}\)/.test(cl('--for', 'extension').out),
+   '...stamped with the commit it describes');
+ok(cl('add', '').code !== 0, 'an empty entry is refused');
+
+// The bump dates the section, in the same commit that moves VERSION.
+mb('bump', 'patch');
+const rolled = cl().out;
+ok(/## 2\.2\.1 — \d{4}-\d{2}-\d{2}\n\n- Pairing works/.test(rolled)
+   === false && /## 0\.4\.1 — \d{4}-\d{2}-\d{2}/.test(rolled)
+   && /- Pairing works/.test(rolled) && !/## Unreleased/.test(rolled),
+   "the project's bump dates its Unreleased section");
+ok(/## Unreleased/.test(cl('--for', 'extension').out),
+   "...and leaves the extension's still accruing");
+ok(execFileSync('git', ['-C', M, 'show', '--stat', '--format=', 'HEAD'], { env })
+     .toString().includes('CHANGELOG.md'),
+   '...with VERSION and CHANGELOG.md moving in one commit');
+
+// A cycle with nothing logged writes no empty section.
+mb('bump', 'patch');
+ok(!/## 0\.4\.2/.test(cl().out),
+   'a bump with nothing logged writes no empty section');
+// And the next entry reopens Unreleased above the dated history.
+cl('add', 'Something new after the release');
+const reopened = cl().out;
+ok(reopened.indexOf('## Unreleased') !== -1
+   && reopened.indexOf('## Unreleased') < reopened.indexOf('## 0.4.1'),
+   'the next entry reopens Unreleased above the dated history');
 rmSync(M, { recursive: true, force: true });
 
 // ---- the same module, in the Artifacts tab head --------------------------
@@ -357,6 +402,31 @@ ok(noVer.next.patch === null,
 
 await page.click(`#projects .row:has(.name:text-is("beta")) [data-m]`);
 NB = nb('beta');
+
+// The harness's tab state survives between test files, so an earlier file
+// can leave this notebook parked out of a pane: the input then resolves but
+// is never visible, and a plain fill waits its timeout out. Re-showing the
+// notebook is the fix the operator would make by hand — click the project
+// row (which goes to the existing tab) and the view strip again.
+// Atomic on purpose: setting the field and pressing the button in two
+// round trips leaves a gap a redraw can land in — the box re-renders when a
+// revision key moves, the fresh input comes back holding its default, and
+// the click then submits a value the test never typed.
+async function initWith(val){
+  for (let t = 0; t < 30; t++){
+    const okc = await page.$eval(`${NB} #verBox`, (box, v) => {
+      const f = box.querySelector(".vstart"), b = box.querySelector("[data-verinit]");
+      if (!f || !b || !box.offsetParent) return false;
+      f.value = v; b.click();
+      return true;
+    }, val).catch(() => false);
+    if (okc) return;
+    await page.click(`#projects .row:has(.name:text-is("beta")) [data-m]`).catch(() => {});
+    await page.click(`${NB} .nbtabs [data-v="artifacts"]`).catch(() => {});
+    await sleep(300);
+  }
+  throw new Error("the init control never became usable");
+}
 await page.waitForSelector(`${NB} .nbtabs [data-v="artifacts"]`, { timeout: 20000 });
 await page.click(`${NB} .nbtabs [data-v="artifacts"]`);
 await page.waitForSelector(`${NB} #verBox .verln`, { timeout: 20000 });
@@ -375,13 +445,11 @@ ok((await page.$$(`${NB} #verBox [data-verinit]`)).length === 1,
 
 // A starting number is arbitrary — nothing can derive it — so it is the one
 // value here that is typed. Which means it has to be checked.
-await page.fill(`${NB} #verBox .vstart`, 'v1.2');
-await page.click(`${NB} #verBox [data-verinit]`);
+await initWith('v1.2');
 await page.waitForTimeout(400);
 ok(!existsSync(`${B}/VERSION`), 'a malformed starting version is refused, not written');
 
-await page.fill(`${NB} #verBox .vstart`, '0.2.0');
-await page.click(`${NB} #verBox [data-verinit]`);
+await initWith('0.2.0');
 await waitTarget('0.2.0');
 ok(readFileSync(`${B}/VERSION`, 'utf8').trim() === '0.2.0',
    'the tab can give a project its first version');
@@ -396,6 +464,20 @@ ok((await page.$$(`${NB} #verBox [data-verbump]`)).length === 3,
 const dirs = await page.$$eval(`${NB} #verBox .vdir option`, os => os.map(o => o.textContent));
 ok(dirs.includes('sub'), 'the component control offers directories that exist');
 ok(!dirs.includes('.git'), '...and not the ones that are nobody\'s product');
+
+// The changelog pane, on beta which has none: the message says how to start
+// one rather than rendering an error, and the button toggles it away.
+// NB is a Playwright selector (:has, :text-is), which the page's own
+// querySelector cannot parse — so the polling stays on this side.
+await page.click(`${NB} #verBox [data-verlog]`);
+let paneText = "";
+for (let t = 0; t < 50; t++){
+  paneText = await page.$eval(`${NB} .verlogpane`, e => e.textContent).catch(() => "");
+  if (/no CHANGELOG\.md here yet/.test(paneText)) break;
+  await sleep(200);
+}
+ok(/no CHANGELOG\.md here yet/.test(paneText),
+   'the changelog pane says how to opt in when there is no file');
 
 ok((await page.errors).length === 0, 'no console errors from the version block');
 

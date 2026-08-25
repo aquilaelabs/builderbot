@@ -294,6 +294,23 @@ appearing to change every time the app beside it is edited. **Stamp each
 artifact from its own component** — using the project's number for all of them
 tells whoever installed the extension that it moved when it did not.
 
+**Log what a change means for the person using the product.** Beside the
+version sits its changelog, and you write it:
+
+```bash
+bb changelog add "Pairing no longer fails when you switch screens"
+bb changelog            # read it; --for DIR for a component's own
+```
+
+A changelog line is not a commit message. The commit says what happened to
+the code; this line says what changed for the person holding the app, in
+their words — if it only makes sense to someone reading the source, reword it
+or leave it out. Log after committing (the entry is stamped with the commit
+it describes), once per user-visible change rather than once per commit, and
+into the component the change belongs to. Entries accumulate under
+Unreleased; when the operator bumps the version they become that release's
+dated section, so nothing is lost while the number waits.
+
 **You very likely cannot move it, and that is the point.** Which parts a
 session may bump is a per-project setting the operator owns: the default is
 `locked`, meaning none. `bb version bump minor` refuses and says so, and in a
