@@ -141,10 +141,26 @@ env TMUX_TMPDIR="$TMUX_TMPDIR" WORKSPACE="$W" DASHBOARD_STATE="$S/state" \
          --url-arg --writable -t reconnect=5 "$REPO/scripts/dashboard/bb-tty" \
     > "$S/ttyd.log" 2>&1 &
 ttyd_pid=$!
+# A stubbed `claude`, so the Doctor card's sign-in line reads an invented
+# account. Without it these pictures carry the operator's real email address
+# into the repository — the card did not exist when this script was written,
+# and a staged instance that quietly photographs one real thing is worse than
+# one that photographs none, because nobody thinks to look.
+mkdir -p "$S/bin"
+cat > "$S/bin/claude" <<'STUB'
+#!/usr/bin/env bash
+if [ "${1:-}" = auth ] && [ "${2:-}" = status ]; then
+    printf '{"loggedIn":true,"email":"you@example.com","subscriptionType":"max"}\n'
+    exit 0
+fi
+exit 0
+STUB
+chmod +x "$S/bin/claude"
 env TMUX_TMPDIR="$TMUX_TMPDIR" WORKSPACE="$W" DASHBOARD_PORT="$PORT" \
     DASHBOARD_TTYD_PORT="$TTYD_PORT" BUILDER_HOME="$S/home" \
     TEMPLATE_MD="$REPO/config/templates/project-CLAUDE.md" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH="$AUTH" \
+    PATH="$S/bin:$PATH" \
     python3 "$REPO/scripts/dashboard/server.py" > "$S/server.log" 2>&1 &
 server_pid=$!
 for _ in $(seq 40); do

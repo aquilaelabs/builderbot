@@ -87,10 +87,16 @@ the container's own storage (the SDK share) or something the operator chose to
 hide. Leave those alone too.
 
 If this session was started from the dashboard, that is also enforced: the file
-tools are denied every sibling path and the runner's `_work` tree, via a
-settings file passed on the command line. A `Read` or `Edit` that comes back
-denied for a path outside this project is that rule, working as intended — not
-a bug to route around with Bash.
+tools — `Read`, `Edit`, `Write` and `NotebookEdit` — are denied every sibling
+path and the runner's `_work` tree, via a settings file passed on the command
+line. One of them coming back denied for a path outside this project is that
+rule, working as intended — not a bug to route around with Bash.
+
+Bash is **not** covered by it, and that is worth knowing rather than
+discovering: `cat ../other-project/src/main.kt` works. The settings file is a
+guardrail against wandering into the wrong tree by mistake, not a sandbox. The
+rule above is the actual boundary; the file tools just make it harder to cross
+by accident.
 
 ## There is no display
 
