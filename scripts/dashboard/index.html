@@ -327,6 +327,37 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
 
 /* ---- the shared to-do list -------------------------------------------- */
+/* The phone card. Rows that wrap rather than a grid: the sidebar is 340px on
+   a desktop and the full width on a phone, and this has to read at both. */
+.phbody{display:flex;flex-direction:column;gap:8px}
+.phstate{font:12px/1.5 system-ui,sans-serif}
+.phrow{display:flex;gap:6px;flex-wrap:wrap}
+.phrow input{flex:1 1 90px;min-width:0}
+.phrow button{flex:0 0 auto;min-height:var(--tap)}
+.phhint{color:var(--dim);font:11px/1.45 system-ui,sans-serif}
+/* Same reserved width as everywhere else these are used, so the line does not
+   twitch as the dots come and go. */
+.phbody .dots{display:inline-block;width:3ch;text-align:left;white-space:pre}
+.phhint.bad{color:var(--bad)}
+.phpair>summary{color:var(--dim);font:11px/1.4 system-ui,sans-serif;cursor:pointer}
+.phpair[open]>summary{margin-bottom:6px}
+.phlist{display:flex;flex-direction:column;gap:6px}
+.phext{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  border-top:1px solid var(--line);padding-top:6px}
+.phext .what{flex:1 1 140px;min-width:0;font:12px/1.4 system-ui,sans-serif}
+.phext button{flex:0 0 auto;min-height:var(--tap)}
+/* A session waiting on an answer. Bordered rather than merely spaced: it is a
+   question, and questions on a dashboard are easy to scroll past. */
+.phask{border:1px solid var(--accent);border-radius:8px;padding:8px;
+  margin-bottom:8px;display:flex;flex-direction:column;gap:6px}
+.phask .why{font:600 12px/1.4 system-ui,sans-serif;color:var(--ink)}
+.phask .cmd{font:11px/1.4 var(--mono);color:var(--dim);word-break:break-all}
+.phask .acts{display:flex;gap:6px;align-items:center}
+.phask .acts .sp{flex:1}
+.phask button{min-height:var(--tap)}
+.phjob{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.phjob .what{flex:1 1 auto;min-width:0;font:12px/1.4 system-ui,sans-serif}
+.phjob .phhint{flex:1 1 100%}
 .todoadd{display:flex;gap:8px}
 /* display:flex beats the hidden attribute; the log hides this row. */
 .todoadd[hidden]{display:none}
@@ -1328,6 +1359,42 @@ body.dragging .tab .lbl{cursor:grabbing}
       <h2>Tools</h2>
       <div class="macros">
         <button id="bPkgs" onclick="openPackages()">Additional packages…</button>
+      </div>
+    </div>
+    <!-- A phone on the end of wireless adb. USB is not an option here: there
+         is no /dev/bus/usb in the container, and even passed through the
+         handset would have to be plugged into the server rather than sitting
+         on the desk. -->
+    <div class="card" data-card="phone">
+      <h2>Phone</h2>
+      <div class="phbody">
+        <div class="phstate" id="phState">not connected</div>
+        <div class="phrow">
+          <input id="phIp" maxlength="15" autocomplete="off" placeholder="192.168.0.10"
+                 aria-label="phone IP address">
+          <button type="button" id="phConnect" class="primary">Connect</button>
+          <button type="button" id="phDisconnect" hidden>Disconnect</button>
+        </div>
+        <!-- Pairing is separate because it is a once-per-container thing, and
+             because its port is NOT the connect port — the phone shows two
+             different numbers on two different screens and everybody tries
+             the wrong one first. -->
+        <details class="phpair" id="phPairFold">
+          <summary>Pair a new phone</summary>
+          <div class="phrow">
+            <input id="phPairPort" maxlength="5" autocomplete="off" placeholder="port"
+                   aria-label="pairing port">
+            <input id="phPairCode" maxlength="6" autocomplete="off" placeholder="6-digit code"
+                   aria-label="pairing code">
+            <button type="button" id="phPair">Pair</button>
+          </div>
+          <div class="phhint">Developer options → Wireless debugging → <b>Pair
+            device with pairing code</b>. That screen's port is not the one the
+            main screen shows; this needs the pairing one. The pairing is kept
+            on the home volume, so it outlives a restart.</div>
+        </details>
+        <div id="phAsks"></div>
+        <div id="phExts"></div>
       </div>
     </div>
     <div class="card" id="cardFindings" data-card="findings" hidden>
@@ -2649,7 +2716,7 @@ function findingsRulesHtml(rows){
 // server like the pins do — the phone and the desktop are looking at one
 // machine and should agree about how its dashboard is arranged.
 // Doctor first: the verdict on the whole box outranks any one card below it.
-const CARD_ORDER = ["doctor","runner","projects","tools","findings","sessions","linux","commands","git","custom"];
+const CARD_ORDER = ["doctor","runner","projects","tools","phone","findings","sessions","linux","commands","git","custom"];
 let cards = {order: CARD_ORDER.slice(), closed: []};
 let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
                                            // the arrangement here: a poll
@@ -6376,6 +6443,150 @@ async function refresh(){
     $("dot").classList.add("off");
   }
 }
+
+// ---- the phone card --------------------------------------------------------
+// Fetched on demand rather than on the fifteen-second poll: the payload walks
+// the projects looking for extension manifests, and doing that forever for a
+// card nobody has open is a poor trade. It refreshes when something is pressed,
+// and while a push is running — which is the only time it changes on its own.
+let ph = null, phTimer = null, phBusy = "";
+
+async function phFetch(body){
+  try{
+    const r = body
+      ? await fetch("/api/phone", {method: "POST",
+          headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})
+      : await fetch("/api/phone");
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); if (!ph) return; }
+    else ph = j;
+  }catch(e){ notify("phone: " + e, true); }
+  phBusy = "";
+  drawPhone();
+}
+
+function drawPhone(){
+  const st = $("phState"), exts = $("phExts");
+  if (!st || !exts) return;
+  const dev = ph?.phone, job = ph?.push || {};
+  // A word and an animated ellipsis, never a bar: nothing here knows a
+  // percentage and inventing one would be a lie about progress.
+  st.innerHTML = phBusy
+    ? `<span class="pill go">${esc(phBusy)}<span class="dots"></span></span>`
+    : dev
+    ? `<span class="pill ok">${esc(dev.model || "phone")}</span>
+       <span class="dim">${esc(dev.serial)}</span>`
+    : `<span class="dim">not connected</span>`;
+  if (!pkgDotsTimer && document.querySelector(".dots"))
+    pkgDotsTimer = setInterval(pkgTickDots, 400);
+  $("phDisconnect").hidden = !dev;
+  $("phConnect").textContent = dev ? "Reconnect" : "Connect";
+  if ($("phIp") && !$("phIp").value && ph?.ip) $("phIp").value = ph.ip;
+
+  // What a session is waiting on. Above everything else on the card, because
+  // somebody is blocked on it — and with the reason it gave, since Allow on a
+  // command you did not write and cannot place is a guess.
+  const asks = $("phAsks");
+  const waiting = ph?.asks || [];
+  asks.innerHTML = !waiting.length ? "" : waiting.map(a => `
+    <div class="phask" data-ask="${a.id}">
+      <div class="why">${esc(a.why)}</div>
+      <div class="cmd">adb ${esc(a.cmd.join(" "))}</div>
+      <div class="acts"><span class="dim">${esc(a.by)}</span><span class="sp"></span>
+        <button type="button" data-deny="${a.id}">Deny</button>
+        <button type="button" class="primary" data-allow="${a.id}">Allow</button>
+      </div>
+    </div>`).join("");
+  asks.querySelectorAll("[data-allow]").forEach(b => b.onclick = () => {
+    phBusy = "running it"; drawPhone();
+    phFetch({action: "allow", id: Number(b.dataset.allow)});
+  });
+  asks.querySelectorAll("[data-deny]").forEach(b => b.onclick = () =>
+    phFetch({action: "deny", id: Number(b.dataset.deny)}));
+
+  if (!dev){ exts.innerHTML = ""; return; }
+  const list = ph?.extensions || [];
+  const apks = ph?.apks || [];
+  if (!list.length){
+    exts.innerHTML = `<div class="phhint">No extension found in any project —
+      this looks for a manifest.json with a manifest_version in it, three
+      directories down.</div>`;
+    return;
+  }
+  // The running push first, because while one is up it is the whole state of
+  // this card and the list under it is just what else there is.
+  const running = job.running
+    ? `<div class="phjob"><span class="pill ${job.state === "running" ? "ok" : "go"}">${
+         job.state === "running" ? "live" : "starting"}${
+         job.state === "running" ? "" : `<span class="dots"></span>`}</span>
+       <span class="what">${esc(job.what)}</span>
+       <button type="button" id="phStop">Stop</button>
+       <div class="phhint">Installed as a <b>temporary</b> add-on and reloaded
+         on every source change. It goes when Firefox restarts — that is what
+         temporary means here, and it is the development loop rather than an
+         install.</div>
+       ${job.error ? `<div class="phhint bad">${esc(job.error)}</div>` : ""}</div>`
+    : "";
+  exts.innerHTML = running + `<div class="phlist">${list.map((e, i) => `
+      <div class="phext">
+        <div class="what"><b>${esc(e.name || e.path)}</b>
+          <span class="dim">${esc(e.version)}</span></div>
+        <div class="dim">${esc(e.path)} · ${esc(ago(e.changed))}</div>
+        <button type="button" data-push="${i}"${
+          job.running || !ph?.webext ? " disabled" : ""} title="${
+          !ph?.webext
+            ? "web-ext is not installed — add it to EXTRA_NPM_PACKAGES on the "
+              + "container and restart. Installing it by hand here would not "
+              + "survive an image update."
+            : job.running ? "one push at a time" : "install it on the phone, temporarily"
+          }">Push</button>
+      </div>`).join("")}</div>` +
+    (apks.length > 1 ? `<label class="phhint">Firefox
+       <select id="phApk">${apks.map(a =>
+         `<option value="${esc(a)}">${esc(a.replace("org.mozilla.", ""))}</option>`
+       ).join("")}</select></label>` : "");
+
+  // The shared ellipsis ticker, started the way every other user of it does:
+  // it is one timer writing into every .dots on the page, and it stops itself
+  // when there are none left.
+  if (!pkgDotsTimer && document.querySelector(".dots"))
+    pkgDotsTimer = setInterval(pkgTickDots, 400);
+
+  exts.querySelectorAll("[data-push]").forEach(b => b.onclick = () => {
+    const e = list[Number(b.dataset.push)];
+    phBusy = "starting web-ext"; drawPhone();
+    phFetch({action: "push", source: e.path, serial: dev.serial,
+             apk: $("phApk")?.value || apks[0] || ""});
+  });
+  const stop = $("phStop");
+  if (stop) stop.onclick = () => { phBusy = "stopping"; drawPhone();
+                                   phFetch({action: "stop"}); };
+}
+
+$("phConnect").onclick = () => {
+  const ip = $("phIp").value.trim();
+  if (!ip) return notify("the phone's IP, from its wireless debugging screen", true);
+  // No port: the server scans for it. Android hands out a new one every time
+  // debugging is toggled, so a remembered number goes stale and asking for it
+  // again each time is the friction that stops a thing being used.
+  phBusy = "looking for the phone"; drawPhone();
+  phFetch({action: "connect", ip});
+};
+$("phDisconnect").onclick = () => { phBusy = "disconnecting"; drawPhone();
+                                    phFetch({action: "disconnect"}); };
+$("phPair").onclick = () => {
+  phBusy = "pairing"; drawPhone();
+  phFetch({action: "pair", ip: $("phIp").value.trim(),
+           port: $("phPairPort").value.trim(), code: $("phPairCode").value.trim()});
+};
+
+// While a push is starting or live, the card is the only thing that changes on
+// its own, so it polls itself — and stops the moment it is not.
+setInterval(() => {
+  const on = ph?.push?.running || (ph?.asks || []).length;
+  if (on && !document.hidden) phFetch();
+}, 5000);
+phFetch();
 
 // Findings opens as a document tab, not a terminal — it is a report to read,
 // and piping it through a PTY would only make it harder to.

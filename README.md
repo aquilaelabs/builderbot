@@ -376,6 +376,11 @@ bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
 bb history         one search over the notebook's logs — roadmap, bugs, memory
                    (`--find X`, `--since 7d`, `-n N`)
 bb roadmap history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
+bb phone           what phone is connected, and what is waiting on you
+bb phone run --why "..." -- adb args...
+                   ask to reach it — the operator allows it on the dashboard
+                   and the dashboard runs it, so a session never touches the
+                   handset itself
 bb ci-log          what CI printed on its last run here (`--list` for the runs
                    kept, a run id for one, `--project NAME` from elsewhere)
 bb logs [-f] [N]   this boot's log
@@ -1721,6 +1726,42 @@ a fixed list — and it is still not a remote-execution API. The lines are store
 by one authenticated request and typed by another into a tty that the same
 operator is already sitting at with a full shell. Nothing is executed in the
 dashboard's own process.
+
+### A phone, and asking before touching it
+
+USB is not an option here — there is no `/dev/bus/usb` in the container, and
+passed through it would mean plugging the handset into the server rather than
+leaving it on the desk. So the **Phone** card speaks Android's wireless
+debugging: pair once with the six-digit code, then Connect by IP.
+
+**You give it an IP, not a port.** Android hands out a new one every time
+wireless debugging is toggled, so a remembered port goes stale, and the port on
+the pairing screen is a different number from the one on the main screen
+anyway. The server scans for it. mDNS would answer for free and cannot — the
+container is NAT'd on Docker's bridge and multicast does not cross it.
+
+**Pushing an extension** lists what it finds rather than asking you to browse:
+every WebExtension source directory across the projects, by the name and
+version in its manifest and when it last changed. Push runs `web-ext`, which
+installs the add-on **temporarily** over Firefox's remote debugging socket and
+reloads it on every source change — the development loop, not an install; it
+is gone when Firefox restarts. `web-ext` is not in the image, so add it to
+`EXTRA_NPM_PACKAGES` if you want this; the button ghosts with that reason
+until you do.
+
+**A session never touches the phone itself.** It is kept on an adb server of
+its own, so a plain `adb devices` in a session shows the emulator and nothing
+else. To reach the handset a session runs `bb phone run --why "..." -- …`,
+which puts the reason and the exact command on the card and waits; on **Allow**
+the dashboard runs it and hands back the output. The reason is required, not
+optional — approving a command you did not write, with no sentence saying what
+it is for, is a guess.
+
+That is a door that is shut by default rather than a wall. A session could set
+`ANDROID_ADB_SERVER_PORT` itself and go straight there; inside one container,
+with Bash, nothing can be a wall. What it buys is that reaching the phone is a
+deliberate act rather than an incidental one, and that every deliberate one
+leaves a question on your screen.
 
 ### Reading CI from inside the container
 

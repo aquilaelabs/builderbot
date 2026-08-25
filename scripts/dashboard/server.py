@@ -328,7 +328,7 @@ TABS_FILE = STATE / "tabs.json"
 CARDS_FILE = STATE / "cards.json"
 # Doctor first: this order is the default an unwritten (or reset) sidebar
 # gets, and the verdict on the whole box outranks any one card below it.
-CARD_KEYS = ["doctor", "runner", "projects", "tools", "findings", "sessions",
+CARD_KEYS = ["doctor", "runner", "projects", "tools", "phone", "findings", "sessions",
              "linux", "commands", "git", "custom"]
 
 
@@ -1610,6 +1610,13 @@ import findings                                                  # noqa: E402
 
 findings.configure(write_json=write_json, state=STATE)
 
+# A phone on the end of wireless adb, and pushing an extension to it. Its own
+# file for the usual reason; handed the workspace because what it can push is
+# derived from the projects rather than browsed for.
+import phone                                                     # noqa: E402
+
+phone.configure(write_json=write_json, state=STATE, workspace=WORKSPACE)
+
 # ---- the memory book -------------------------------------------------------
 # What Claude remembers about each project, read and edited from the projects
 # card. Same arrangement as packages above: its own file, handed what it needs.
@@ -2037,6 +2044,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(snapshot())
         if self.path.startswith("/api/findings"):
             return self._json(findings_payload())
+        if self.path.startswith("/api/phone"):
+            # Not on the status poll: this walks the projects looking for
+            # extension manifests, and a filesystem walk every fifteen seconds
+            # for a card nobody has open is a poor trade. The card asks.
+            return self._json(phone.payload(
+                [p["name"] for p in project_list()]))
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
         if self.path.startswith("/api/project-job"):
@@ -2117,6 +2130,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._packages(req)
         if path.startswith("/api/memory"):
             return self._memory(req)
+        if path.startswith("/api/phone"):
+            return self._phone(req)
         if path.startswith("/api/findings"):
             return self._findings_log(req)
         if path.startswith("/api/bugs"):
@@ -2269,6 +2284,40 @@ class Handler(BaseHTTPRequestHandler):
                 # moved underneath is how two people writing one file lose
                 # each other's work.
                 "batch": todo.batch(name)}
+
+    def _phone(self, req):
+        """Pair, connect, and push an extension. Every argument is checked by
+        phone.py against something already known — a discovered extension, an
+        attached device, a Firefox that is actually installed — rather than
+        taken as given: this is one of the few places the page causes a program
+        to run."""
+        act = field(req, "action")
+        if act == "pair":
+            r = phone.pair(field(req, "ip"), field(req, "port"), field(req, "code"))
+        elif act == "connect":
+            r = phone.connect(field(req, "ip"), field(req, "port") or None)
+        elif act == "disconnect":
+            r = phone.disconnect(field(req, "serial"))
+        elif act == "push":
+            r = phone.push(field(req, "source"), field(req, "serial"),
+                           field(req, "apk"))
+        elif act == "stop":
+            r = phone.stop_push()
+        elif act == "ask":
+            # A session asking to reach the phone. It does not run anything
+            # itself; if the operator allows it, this process does.
+            r = phone.ask(field(req, "why"), req.get("cmd"))
+        elif act == "allow" or act == "deny":
+            r = phone.decide(req.get("id"), act == "allow")
+        elif act == "outcome":
+            r = phone.outcome(req.get("id"))
+            if not r.get("error"):
+                return self._json(r)
+        else:
+            return self._json({"error": f"unknown action: {act}"}, 400)
+        if r.get("error"):
+            return self._json(r, 400)
+        return self._json(r | phone.payload([p["name"] for p in project_list()]))
 
     def _findings_log(self, req):
         """The Analysis view's log. Read-only by nature: the scan runs on the
