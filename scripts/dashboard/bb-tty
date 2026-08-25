@@ -85,6 +85,10 @@ claude_scope() {
     # `bb version bump`, which checks the per-project policy first. Editing the
     # file directly would walk straight past that check.
     #
+    # Both forms, because a repo that ships two products has a VERSION per
+    # component: denying only the root one would leave `extension/VERSION`
+    # editable and the policy walked straight past.
+    #
     # Read is deliberately not denied — a session should be able to see the
     # version it is working against, and `bb version` prints it anyway.
     #
@@ -101,7 +105,10 @@ claude_scope() {
                         "Write(\($ws)/_work/**)", "NotebookEdit(\($ws)/_work/**)",
                         "Edit(\($ws)/\($proj)/VERSION)",
                         "Write(\($ws)/\($proj)/VERSION)",
-                        "NotebookEdit(\($ws)/\($proj)/VERSION)"])
+                        "NotebookEdit(\($ws)/\($proj)/VERSION)",
+                        "Edit(\($ws)/\($proj)/**/VERSION)",
+                        "Write(\($ws)/\($proj)/**/VERSION)",
+                        "NotebookEdit(\($ws)/\($proj)/**/VERSION)"])
            }}' > "$tmp" && [ -s "$tmp" ]; then
         mv -f "$tmp" "$out"
         printf '%s' "$out"

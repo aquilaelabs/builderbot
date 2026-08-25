@@ -283,6 +283,15 @@ tellable apart in the Artifacts tab.
 A project with no `VERSION` file still answers, falling back to `git describe`.
 If one should have a version and does not, say so — do not create the file.
 
+**A repo that ships two products has two versions.** An APK and a browser
+extension do not share a maturity, so a directory with its own `VERSION` file
+is a *component* and answers for itself: `bb version --for extension`, and
+`bb version --list` for everything this repo carries. Its ordinal counts only
+the commits that touched that directory, so a shipped extension stops
+appearing to change every time the app beside it is edited. **Stamp each
+artifact from its own component** — using the project's number for all of them
+tells whoever installed the extension that it moved when it did not.
+
 **You very likely cannot move it, and that is the point.** Which parts a
 session may bump is a per-project setting the operator owns: the default is
 `locked`, meaning none. `bb version bump minor` refuses and says so, and in a

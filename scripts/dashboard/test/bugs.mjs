@@ -3,7 +3,7 @@
 // report is a form submitted once, not a list curated in place — and nothing
 // is ever deleted: a bug closes as fixed or wontfix, each with a note, because
 // a closed bug is the record that stops the same report being chased twice.
-import { launch, newPage, ok, done, ready, nbShown, tmuxCapture, URL, DIR, openFold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, nbShown, tmuxCapture, URL, DIR, openFold, closeFold } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -306,8 +306,7 @@ const post = body => page.evaluate(async b => {
   const full = await page.$eval(sel, d => d.offsetHeight);
   ok(full > shut && kf[1] === full,
      `...landing at the height it aimed for (${shut} → ${full}px)`);
-  await page.click(`${sel} summary`);
-  await page.waitForFunction(s => !document.querySelector(s).open, sel, { timeout: 5000 });
+  await closeFold(page, sel);
   ok(await page.$eval(sel, d => d.offsetHeight) === shut,
      '...and closes back to exactly the height it started at');
 }

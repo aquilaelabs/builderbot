@@ -192,6 +192,59 @@ ok(/no VERSION file/.test(bare().out), '...and says how to opt in');
 rmSync(ROOT, { recursive: true, force: true });
 rmSync(BARE, { recursive: true, force: true });
 
+// ---- a repo that ships two products --------------------------------------
+// One number cannot state two maturities: an extension at 2.1 beside a new
+// app at 0.3. So a directory with its own VERSION file is a component, and
+// its ordinal counts only the commits that touched it — otherwise a shipped
+// extension appears to change every time the app beside it is edited.
+const M = `${WS}/two-products`;
+rmSync(M, { recursive: true, force: true });
+mkdirSync(`${M}/extension`, { recursive: true });
+mkdirSync(`${M}/app`, { recursive: true });
+execFileSync('git', ['-C', M, 'init', '-q', '.'], { env });
+writeFileSync(`${M}/VERSION`, '0.4.0\n');
+writeFileSync(`${M}/extension/VERSION`, '2.1.0\n');
+writeFileSync(`${M}/app/main.kt`, 'a');
+writeFileSync(`${M}/extension/manifest.json`, '{}');
+execFileSync('git', ['-C', M, 'add', '-A'], { env });
+execFileSync('git', ['-C', M, 'commit', '-qm', 'both'], { env });
+for (const i of [1, 2, 3]) {          // three commits touching only the app
+  writeFileSync(`${M}/app/main.kt`, `a${i}`);
+  execFileSync('git', ['-C', M, 'add', '-A'], { env });
+  execFileSync('git', ['-C', M, 'commit', '-qm', `app ${i}`], { env });
+}
+const mb = (...a) => {
+  try {
+    return { out: execFileSync('bash', [BB, 'version', ...a],
+                               { cwd: M, env }).toString().trim(), code: 0 };
+  } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; }
+};
+ok(mb('--code').out === '4' && mb('--for', 'extension', '--code').out === '1',
+   "a component's ordinal counts only the commits that touched it");
+ok(mb('--for', 'extension', '--semver').out.startsWith('2.1.0-dev.1+'),
+   '...so an untouched product stops moving when its neighbour is edited');
+ok(mb('--semver').out.startsWith('0.4.0-dev.4+'),
+   '...while the project keeps its own count');
+ok(/two-products\/extension\s+2\.1\.0/.test(mb('--list').out)
+   && /two-products\s+0\.4\.0/.test(mb('--list').out),
+   '--list shows every version the repo carries');
+// `comp` reaches this from a browser, so it must not read arbitrary files.
+ok(mb('--for', '../../..', '--code').code !== 0 && mb('--for', 'nope', '--code').code !== 0,
+   'a component outside the project is refused, not resolved');
+// Bumping one must leave the other alone — that is the entire point.
+setPolicyFor('two-products', 'open');
+ok(mb('--for', 'extension', 'bump', 'minor').out.includes('2.1.0 -> 2.2.0'),
+   'a component bumps on its own');
+ok(readFileSync(`${M}/VERSION`, 'utf8').trim() === '0.4.0',
+   "...leaving the project's own target untouched");
+ok(execFileSync('git', ['-C', M, 'show', '--stat', '--format=', 'HEAD'], { env })
+     .toString().includes('extension/VERSION'),
+   '...committing the component file, not the root one');
+ok(/^Set extension version to 2\.2\.0 \(session\)$/m.test(
+     execFileSync('git', ['-C', M, 'log', '-1', '--format=%s'], { env }).toString()),
+   '...with a message naming which one moved');
+rmSync(M, { recursive: true, force: true });
+
 // ---- the same module, in the Artifacts tab head --------------------------
 // The display answers "what is this at" and needs no decision. The buttons
 // answer "what next", which is the rare half — and the evidence beside them
