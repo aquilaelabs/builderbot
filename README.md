@@ -1459,8 +1459,25 @@ the tab lists `dist/` and nothing else. An empty tab on a project that builds
 things means the copy step is missing, and it says so.
 
 Each row is labeled by kind — apk, xpi, whatever the extension says — with
-its size and age, newest first. Everything can be **downloaded**; an `.xpi`
-can also be **pushed** to the paired phone, which unpacks it and hands the
+its size and age, newest first. Everything can be **downloaded**.
+
+An `.apk` can be **installed** on the paired phone. `adb install -r` replaces
+an existing copy in place and keeps its data, so install and update are one
+verb and there is no second button. Two failures are common enough to be
+turned into sentences rather than passed through: a **signature clash** (the
+copy on the phone was signed with a different key — a release build, or one
+from the Play Store, against a debug build from here) says to uninstall it on
+the phone first, and notes that this takes the app's data with it, because
+that is the operator's call to make on the handset rather than something to do
+on their behalf. A **version downgrade** says so plainly; `-d` would allow it
+but only for debuggable packages, and passing it always would quietly turn a
+mistaken downgrade into a successful one. Neither `-g` nor `-t` is passed
+either: granting every runtime permission, or allowing test-only packages,
+makes the install behave unlike the one a real user would get, which is the
+opposite of what testing on a real handset is for.
+
+An `.xpi`
+can instead be **pushed** to the paired phone, which unpacks it and hands the
 directory to `web-ext` for a **temporary** install (gone when Firefox
 restarts). Two rules keep the push honest: **nothing auto-pushes** — web-ext's
 file-watcher is disabled and what is pushed is a snapshot, so a push is a

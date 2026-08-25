@@ -391,7 +391,8 @@ def summary():
     return {"phone": p,
             "webext": shutil.which(WEBEXT_BIN) is not None,
             "apks": firefox_apks((p or {}).get("serial", "")),
-            "push": push_state()}
+            "push": push_state(),
+            "install": install_state()}
 
 
 # ---- asking first ----------------------------------------------------------
@@ -492,3 +493,71 @@ def outcome(rid):
             return {"error": "no such request"}
         return {"ok": True, "state": r["state"], "out": r["out"],
                 "code": r["code"], "why": r["why"]}
+
+
+# ---- installing an APK -----------------------------------------------------
+# `adb install -r` replaces an existing install in place, keeping its data —
+# so this is both "install" and "update", and there is no separate verb worth
+# offering. Two failures are common enough to name rather than dump raw:
+#
+# - The installed copy was signed with a different key (a release build, or
+#   one from the Play Store, against a debug build from here). Android refuses
+#   the update outright and the only way through is uninstalling first, which
+#   takes the app's data with it — a decision for the operator, on the phone,
+#   not something to do on their behalf.
+# - A lower version code than what is installed. `-d` allows it but only for
+#   debuggable packages, and passing it always would quietly turn a mistaken
+#   downgrade into a successful one.
+#
+# Neither -g nor -t is passed: granting every runtime permission, or allowing
+# test-only packages, makes the install behave unlike the one a real user
+# would get, which is the opposite of what testing on a real handset is for.
+_install = {"running": False, "what": "", "state": "", "error": "", "at": 0}
+
+
+def install_state():
+    with _lock:
+        return dict(_install)
+
+
+FAILURES = (
+    ("INSTALL_FAILED_UPDATE_INCOMPATIBLE",
+     "the copy already on the phone was signed with a different key — "
+     "uninstall it there first, which also removes its data"),
+    ("INSTALL_FAILED_VERSION_DOWNGRADE",
+     "that build's version code is lower than the one installed"),
+    ("INSTALL_FAILED_INSUFFICIENT_STORAGE", "the phone is out of space"),
+    ("INSTALL_FAILED_INVALID_APK", "the phone would not read that as an APK"),
+    ("INSTALL_PARSE_FAILED_NO_CERTIFICATES", "that APK is not signed"),
+)
+
+
+def _install_worker(path, serial):
+    r = _adb("-s", serial, "install", "-r", str(path), timeout=600)
+    out = r["out"]
+    ok = r["code"] == 0 and "Success" in out
+    err = ""
+    if not ok:
+        for token, said in FAILURES:
+            if token in out:
+                err = said
+                break
+        else:
+            err = " ".join(out.split())[-300:] or "the install failed"
+    with _lock:
+        _install.update(running=False, state="done" if ok else "failed", error=err)
+
+
+def install_apk(path, serial, label=""):
+    """Install (or update) one APK on the connected phone."""
+    with _lock:
+        if _install["running"]:
+            return {"error": f"already installing {_install['what']}"}
+    if not any(x["serial"] == serial and x["kind"] == "phone" for x in devices()):
+        return {"error": "that phone is not connected"}
+    with _lock:
+        _install.update(running=True, what=label or Path(path).name,
+                        state="installing", error="", at=int(time.time()))
+    threading.Thread(target=_install_worker, args=(path, serial),
+                     daemon=True).start()
+    return {"ok": True}

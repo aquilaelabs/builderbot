@@ -5480,6 +5480,7 @@ $("todoRevert").onclick = revertNotebook;
     }catch(e){ hint.textContent = "artifacts: " + e; return; }
     if (art.error){ hint.textContent = "artifacts: " + art.error; return; }
     const rows = art.artifacts || [], job = art.push || {}, dev = art.phone;
+    const inst = art.install || {};
     hint.textContent = rows.length
       ? `${rows.length} in dist/ — what this project ships, newest first`
       : "nothing here yet";
@@ -5498,12 +5499,22 @@ $("todoRevert").onclick = revertNotebook;
           the .xpi and push again. Gone when Firefox restarts.</span>
         <button type="button" id="artStop">Stop</button>
       </div>` : "";
+    // An install is one shot rather than a session, so it reports its own
+    // line: what it is doing, and what went wrong in words when it does.
+    const instHtml = inst.running || inst.state === "failed" ? `
+      <div class="artrow job">
+        <span class="pill ${inst.state === "failed" ? "bad" : "go"}">${
+          inst.state === "failed" ? "failed" : "installing"}${
+          inst.running ? `<span class="dots"></span>` : ""}</span>
+        <span class="grow">${esc(inst.what)}${
+          inst.error ? ` — ${esc(inst.error)}` : ""}</span>
+      </div>` : "";
     list.innerHTML = !rows.length
       ? `<div class="hint">Nothing in <b>dist/</b>. The deal is one word long:
            a build worth keeping gets copied to the project's dist/ directory,
            and this tab lists dist/ and nothing else. An empty tab on a project
            that builds things means the copy step is missing.</div>`
-      : jobHtml + rows.map((a, i) => `
+      : jobHtml + instHtml + rows.map((a, i) => `
         <div class="artrow">
           <span class="grow">
             <span class="top"><span class="pill">${esc(a.kind)}</span>
@@ -5511,6 +5522,12 @@ $("todoRevert").onclick = revertNotebook;
             <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}${
               a.path !== a.name ? ` · ${esc(a.path)}` : ""}</span></span>
           <span class="acts">
+            ${a.kind === "apk" ? `<button type="button" data-artinstall="${i}"${
+                inst.running || !dev ? " disabled" : ""} title="${
+                !dev ? "no phone is connected — pair one on the Phone card"
+                : inst.running ? "one install at a time"
+                : "install it on the phone, replacing any copy already there"
+                }">Install</button>` : ""}
             ${a.kind === "xpi" ? `<button type="button" data-artpush="${i}"${
                 job.running || !art.webext || !dev ? " disabled" : ""} title="${
                 !dev ? "no phone is connected — pair one on the Phone card"
@@ -5529,11 +5546,19 @@ $("todoRevert").onclick = revertNotebook;
       await postArtifacts({action: "push", path: a.path,
                            apk: (art.apks || [])[0] || ""});
     });
+    list.querySelectorAll("[data-artinstall]").forEach(b => b.onclick = async () => {
+      const a = rows[Number(b.dataset.artinstall)];
+      b.disabled = true;
+      await postArtifacts({action: "install", path: a.path});
+    });
     const stop = $("artStop");
     if (stop) stop.onclick = () => postArtifacts({action: "stop"});
     clearInterval(artTimer); artTimer = null;
-    if (job.running && !root.querySelector('[data-view="artifacts"]').hidden)
-      artTimer = setTimeout(loadArtifacts, 4000);
+    // Polled while either thing is in flight. An install is the slower of the
+    // two — a 24MB APK over wifi — and is the reason this exists at all.
+    if ((job.running || inst.running)
+        && !root.querySelector('[data-view="artifacts"]').hidden)
+      artTimer = setTimeout(loadArtifacts, 2000);
   }
 
   async function postArtifacts(body){

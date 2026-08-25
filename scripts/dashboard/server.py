@@ -2382,6 +2382,21 @@ class Handler(BaseHTTPRequestHandler):
             r = phone.push_dir(d, dev["serial"], field(req, "apk"), label=rel)
             if not r.get("error"):
                 artifacts.set_live(name, rel)
+        elif act == "install":
+            # An APK, installed for real and kept — unlike the extension push,
+            # which is a temporary add-on. `adb install -r` replaces an
+            # existing copy in place and keeps its data, so this is the update
+            # path too and there is no second verb.
+            dev = phone.phone()
+            if not dev:
+                return self._json({"error": "no phone is connected — pair one "
+                                            "on the Phone card first"}, 400)
+            rel = field(req, "path")
+            f = artifacts.resolve(name, rel)
+            if f is None or f.suffix.lower() not in (".apk",):
+                return self._json({"error": "not an .apk in this project's "
+                                            "dist/"}, 400)
+            r = phone.install_apk(f, dev["serial"], label=rel)
         elif act == "stop":
             r = phone.stop_push()
             artifacts.clear_live()

@@ -274,8 +274,9 @@ If a version string does not move between builds, put something that does in
 the filename — the short commit, usually — or every build is named
 identically and the tab cannot tell this one from the last.
 
-From that tab the operator downloads any of them, and pushes an `.xpi` to
-their paired phone. Nothing auto-pushes: a push is a decision the operator
+From that tab the operator downloads any of them, installs an `.apk` on their
+paired phone (which replaces an existing copy in place, keeping its data), and
+pushes an `.xpi` to it. Nothing auto-pushes: a push is a decision the operator
 makes each time, so do not design around the extension on the handset staying
 current — say when a rebuild is worth pushing instead.
 
