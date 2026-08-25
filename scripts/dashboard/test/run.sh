@@ -308,6 +308,52 @@ printf '{"loggedIn":false}
 ' > "$S/auth-out.json"
 cp "$S/auth-in.json" "$S/auth.json"
 
+# Stub adb and web-ext, for the same reason as gh below: the phone card shells
+# out to the real ones, and a suite whose answers depend on whether somebody
+# has a handset paired right now is not a suite. These answer as a phone that
+# is always there, so the card can be exercised on a box with nothing attached
+# — and, more to the point, cannot reach a box that has.
+cat > "$S/bin/adb" <<'ADBEOF'
+#!/usr/bin/env bash
+case "$1 $2" in
+  "devices -l") printf 'List of devices attached
+192.168.9.9:5555	device product:test model:Test_Phone device:test
+'; exit 0 ;;
+esac
+case "$1" in
+  devices) printf 'List of devices attached
+192.168.9.9:5555	device
+'; exit 0 ;;
+  pair)    printf 'Successfully paired to %s [guid=adb-TEST]
+' "$2"; exit 0 ;;
+  connect) printf 'connected to %s
+' "$2"; exit 0 ;;
+  disconnect) printf 'disconnected
+'; exit 0 ;;
+esac
+# adb -s SERIAL shell pm list packages
+if [ "$4 $5 $6" = "pm list packages" ]; then
+    printf 'package:org.mozilla.firefox_beta
+package:com.android.chrome
+'; exit 0
+fi
+exit 0
+ADBEOF
+chmod +x "$S/bin/adb"
+# web-ext that installs and then sits there, the way the real one does.
+cat > "$S/bin/web-ext" <<'WEEOF'
+#!/usr/bin/env bash
+printf 'Running web extension from here
+'
+sleep 0.3
+printf 'Installed /data/local/tmp/probe.xpi as a temporary add-on
+'
+printf 'The extension will reload if any source file changes
+'
+while :; do sleep 1; done
+WEEOF
+chmod +x "$S/bin/web-ext"
+
 # Stub gh: always unauthenticated, so `pat` is deterministically false — the
 # real gh would answer from the operator's own login state.
 printf '#!/usr/bin/env bash\nexit 1\n' > "$S/bin/gh"

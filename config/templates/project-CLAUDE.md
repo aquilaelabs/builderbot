@@ -231,6 +231,30 @@ Under software rendering there is one more consequence worth internalizing:
 Judging whether a duration *feels* right is a question for real hardware, and
 you should say so rather than guessing from a headless emulator.
 
+## A phone, if one is connected
+
+Only relevant when the operator has one paired to the dashboard's Phone card.
+
+**You cannot reach it directly, and that is deliberate.** The handset is kept
+on an adb server of its own, so `adb devices` here shows the emulator and
+nothing else. Asking for the phone goes through the operator:
+
+```bash
+bb phone                                    # what is connected, what is waiting
+bb phone run --why "..." -- shell getprop ro.build.version.release
+```
+
+That puts your reason and the exact command on the card and waits. On **Allow**
+the dashboard runs it and hands you the output; on **Deny** you are told no.
+The reason is required — the operator is being asked about a command they did
+not write, and without a sentence saying what it is for, allowing it is a
+guess. Write the sentence you would want to read.
+
+It waits five minutes and then gives up, so do not open one and wander off.
+And do not go looking for the port the phone is on: reaching around this is
+possible, in the way most things in a container are possible, and it is the
+one thing here that touches hardware the operator is holding.
+
 ## The roadmap
 
 Every project has a notebook in the dashboard — memory, roadmap, bugs, one

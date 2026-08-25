@@ -53,6 +53,9 @@ bb — BuilderBot helper
   bb findings --all      ...including findings in other projects' trees
   bb findings history    what the scanner stopped and started saying here
                          (-n N, --since 7d, --find TEXT, as the other logs)
+  bb phone               what phone is connected, and what is waiting on you
+  bb phone run --why "..." -- adb args...    ask to reach it; the operator
+                         allows it on the dashboard and this runs it there
   bb ci-log              what CI printed on its last run here — the runner
                          keeps none of it, so the workflow archives it
   bb ci-log --list       the runs kept for this project, newest first
@@ -395,6 +398,23 @@ print(v)
 PY
 }
 
+# The serial of the running emulator, or empty. Matched by NAME, which is the
+# only thing that actually distinguishes one.
+#
+# Not `adb -e`, which is the obvious answer and is wrong: adb means "the device
+# on a local/TCP transport" by that, and a phone attached over wireless adb is
+# exactly that. With a Pixel connected, `adb -e shell` reaches the Pixel and
+# `adb -d` finds nothing at all. An emulator is emulator-NNNN; a wireless phone
+# is IP:PORT; that difference is the test.
+#
+# `device` and not `offline`: an emulator appears in the list before it will
+# answer, and treating the first sighting as ready is how `bb emu start` used
+# to return before the thing had booted.
+emu_serial() {
+    adb devices 2>/dev/null \
+        | awk '$1 ~ /^emulator-[0-9]+$/ && $2 == "device" { print $1; exit }'
+}
+
 cmd_emu() {
     local avd
     case "${1:-status}" in
@@ -463,14 +483,39 @@ cmd_emu() {
             # Bounded: a crashed emulator otherwise leaves this waiting forever
             # for a device that is never coming, with the reason sitting unread
             # in the log the timeout message points at.
-            timeout "${ANDROID_BOOT_TIMEOUT:-180}" adb wait-for-device \
-                || die "device did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s — see ~/.android/emulator.log"
+            #
+            # Waiting for THIS emulator, not for any device. A bare
+            # wait-for-device is satisfied the instant it is asked when a phone
+            # is attached over wireless adb, and this reported the emulator
+            # ready before it had booted — a wrong answer rather than a missing
+            # one, which is worse.
+            local waited=0 serial=""
+            while [ "$waited" -lt "${ANDROID_BOOT_TIMEOUT:-180}" ]; do
+                serial="$(emu_serial)"
+                [ -n "$serial" ] && break
+                sleep 1; waited=$((waited + 1))
+            done
+            [ -n "$serial" ] \
+                || die "the emulator did not appear within ${ANDROID_BOOT_TIMEOUT:-180}s — see ~/.android/emulator.log"
+            log "emulator is up as ${serial}"
             adb devices
             ;;
         stop)
-            adb emu kill 2>/dev/null || warn "no emulator to stop"
+            # Named, for the same reason: without a serial this is "kill
+            # whatever single device is attached", which with a phone connected
+            # and no emulator is an emu command aimed at a handset.
+            avd="$(emu_serial)"
+            if [ -n "$avd" ]; then
+                adb -s "$avd" emu kill 2>/dev/null || warn "emulator ${avd} did not stop"
+            else
+                warn "no emulator to stop"
+            fi
             ;;
         status)
+            # Everything attached, deliberately — a phone paired over wireless
+            # adb shares this adb server, and knowing it is there is the point
+            # when a command aimed at "the device" could mean either. The
+            # emulator is the one named emulator-NNNN.
             adb devices -l
             ;;
         gpu)
@@ -1461,6 +1506,94 @@ PY
 # because it answers a different question: not what the scanner says now, which
 # is what the report is for, but what it has stopped and started saying — a
 # finding that is simply absent this week leaves no other trace at all.
+# ---- the phone, through the operator ---------------------------------------
+# A session does not reach the handset itself. It says what it wants and why,
+# the dashboard puts that in front of the operator, and on Allow the DASHBOARD
+# runs it and hands back the output. So "did Claude touch my phone" has one
+# answer, and it is on the card rather than in a scroll of transcript.
+#
+# The phone is on an adb server of its own, so a plain `adb devices` in a
+# session shows the emulator and nothing else. That is the point: not a rule
+# to remember, an address that was never given out.
+cmd_phone() {
+    local sub="${1:-status}" why="" auth url
+    url="http://127.0.0.1:${DASHBOARD_PORT:-8080}/api/phone"
+    auth="${DASHBOARD_AUTH:-}"
+    [ -n "$auth" ] || die "DASHBOARD_AUTH is not set — this talks to the dashboard"
+    shift || true
+    case "$sub" in
+        status)
+            curl -fsS -u "$auth" "$url" \
+                | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+p = d.get("phone")
+print(f"phone:   {p[\"model\"]} ({p[\"serial\"]})" if p else "phone:   not connected")
+for a in d.get("asks") or []:
+    print(f"waiting: #{a[\"id\"]} {a[\"why\"]}")
+'           ;;
+        run)
+            # `--why` is required, not polite. The operator is being asked
+            # about a command they did not write; without a sentence saying
+            # what it is for, Allow is a guess.
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --why) why="${2:-}"; shift 2 ;;
+                    --) shift; break ;;
+                    *) die "usage: bb phone run --why \"what this is for\" -- adb args..." ;;
+                esac
+            done
+            [ -n "$why" ] || die "bb phone run needs --why \"what this is for\""
+            [ $# -gt 0 ] || die "nothing to run — put the adb arguments after --"
+            BB_PHONE_WHY="$why" BB_PHONE_URL="$url" BB_PHONE_AUTH="$auth" \
+                python3 - "$@" <<'PY'
+import json, os, sys, time, urllib.request, base64
+
+url, auth = os.environ["BB_PHONE_URL"], os.environ["BB_PHONE_AUTH"]
+hdr = {"Content-Type": "application/json",
+       "Authorization": "Basic " + base64.b64encode(auth.encode()).decode()}
+
+
+def post(body):
+    req = urllib.request.Request(url, json.dumps(body).encode(), hdr)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            return json.load(e)
+        except Exception:
+            return {"error": f"HTTP {e.code}"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+r = post({"action": "ask", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[1:]})
+if r.get("error"):
+    print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
+rid = r["id"]
+print(f"[builderbot] asked the operator (#{rid}) — waiting for Allow on the "
+      "dashboard's Phone card", file=sys.stderr)
+# Polled rather than pushed: this is a shell command waiting on a person, and
+# a person is slow in a way no callback improves.
+for _ in range(300):
+    time.sleep(1)
+    o = post({"action": "outcome", "id": rid})
+    if o.get("error"):
+        print(f"[builderbot] ERROR: {o['error']}", file=sys.stderr); sys.exit(1)
+    if o["state"] == "denied":
+        print("[builderbot] the operator said no", file=sys.stderr); sys.exit(1)
+    if o["state"] == "done":
+        sys.stdout.write(o.get("out") or "")
+        sys.exit(o.get("code") or 0)
+print("[builderbot] nobody answered within five minutes", file=sys.stderr)
+sys.exit(1)
+PY
+            ;;
+        *) die "usage: bb phone [status|run --why \"...\" -- adb args...]" ;;
+    esac
+}
+
 cmd_findings_history() {
     local py proj here
     py="$(dirname "$(readlink -f "$0")")/dashboard/findings.py"
@@ -2231,6 +2364,7 @@ case "${1:-help}" in
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     ci-log)   shift; cmd_ci_log "$@" ;;
+    phone)    shift; cmd_phone "$@" ;;
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;
