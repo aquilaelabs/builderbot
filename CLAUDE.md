@@ -385,6 +385,11 @@ describing work against a tracker that never recorded why. Your memories are
 not in it — those are files you write directly, so there is no write to
 intercept and `revert` will not put one back.
 
+**Read the logs before you open one.** While a batch is open your own changes
+are not in `bb roadmap history` or `bb bug history` yet — that is the whole
+point of it — so a session that opens a batch and then asks the log what it
+just did gets a confusing answer. Do the reading first, then start editing.
+
 **Do not leave one open.** While a batch is open the operator's Save in the
 panel is held — what is on their screen was read before you started, and
 saving over a list that has moved underneath is how two writers lose each
