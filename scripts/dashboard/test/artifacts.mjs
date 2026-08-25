@@ -2,7 +2,7 @@
 // The convention IS the feature — the tab lists dist/ and nothing else, so a
 // build worth keeping has to be copied there, and an empty tab says that.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
-import { mkdirSync, writeFileSync, symlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 // alpha ships an APK and an XPI; the XPI is a real zip with a manifest, since
@@ -123,4 +123,10 @@ ok(true, 'a project with no dist/ is told the convention, not shown a blank');
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
+// Put alpha back as it was found. fresh() between files resets state and
+// removes stray projects, but it does not reach inside a fixture project —
+// so a file that plants a dist/ tree and a symlink there has to clear them
+// itself, or every later file runs against a project this one changed.
+rmSync(`${DIR}/ws/alpha/dist`, { recursive: true, force: true });
+rmSync(`${DIR}/ws/alpha/secret.txt`, { force: true });
 await done(browser);

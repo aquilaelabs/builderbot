@@ -329,14 +329,24 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
 
 /* ---- the shared to-do list -------------------------------------------- */
-/* The Artifacts view: rows in the notebook, same voice as the bug rows. */
+/* The Artifacts view: rows in the notebook, same voice as the bug rows.
+   Two stacked lines rather than one wrapping group — a row whose parts rewrap
+   independently gives every row a different shape, which on a phone read as
+   ragged: one file's buttons beside its name, the next file's below it. */
 .artrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
-  border-bottom:1px solid var(--line);padding:8px 2px}
+  border-bottom:1px solid var(--line);padding:9px 2px}
 .artrow:last-child{border-bottom:0}
-.artrow .grow{flex:1 1 220px;min-width:0;font:13px/1.5 system-ui,sans-serif;
-  display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;overflow-wrap:anywhere}
-.artrow .dim{color:var(--dim);font:12px/1.4 var(--mono)}
-.artrow .acts{display:flex;gap:6px;flex:0 0 auto}
+.artrow .grow{flex:1 1 200px;min-width:0;display:flex;flex-direction:column;
+  gap:3px;font:13px/1.4 system-ui,sans-serif}
+.artrow .top{display:flex;gap:7px;align-items:center;min-width:0}
+.artrow .top b{overflow-wrap:anywhere}
+.artrow .dim{color:var(--dim);font:11px/1.4 var(--mono);overflow-wrap:anywhere}
+/* Pushed right on a desktop; on a phone the buttons take their own line, the
+   same line, on every row — evenness beats compactness at that width. */
+.artrow .acts{display:flex;gap:6px;flex:0 0 auto;margin-left:auto}
+@media(max-width:900px){
+  .artrow .acts{flex:1 1 100%;margin-left:0;justify-content:flex-end}
+}
 /* A download is a link wearing the button suit, because the browser has to
    navigate to it — fetch would buffer the file into JS for nothing. */
 .artrow a.btn{display:inline-flex;align-items:center;min-height:var(--tap);
@@ -5495,10 +5505,11 @@ $("todoRevert").onclick = revertNotebook;
            that builds things means the copy step is missing.</div>`
       : jobHtml + rows.map((a, i) => `
         <div class="artrow">
-          <span class="pill">${esc(a.kind)}</span>
-          <span class="grow"><b>${esc(a.name)}</b>
-            <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}</span>
-            ${a.path !== a.name ? `<span class="dim">${esc(a.path)}</span>` : ""}</span>
+          <span class="grow">
+            <span class="top"><span class="pill">${esc(a.kind)}</span>
+              <b>${esc(a.name)}</b></span>
+            <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}${
+              a.path !== a.name ? ` · ${esc(a.path)}` : ""}</span></span>
           <span class="acts">
             ${a.kind === "xpi" ? `<button type="button" data-artpush="${i}"${
                 job.running || !art.webext || !dev ? " disabled" : ""} title="${
