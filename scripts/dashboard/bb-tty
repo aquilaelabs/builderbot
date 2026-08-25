@@ -15,7 +15,11 @@
 # this is not a bare shell.
 #
 set -euo pipefail
-. /opt/builderbot/scripts/lib/common.sh
+# Beside this script rather than by absolute path. In the image the two are the
+# same file — this lives at /opt/builderbot/scripts/dashboard/bb-tty — and out
+# of it, the checkout's copy runs from the checkout, which is what lets the
+# dashboard suite drive this script at all.
+. "$(dirname "$(readlink -f "$0")")/../lib/common.sh"
 
 target="${1:-shell}"
 
@@ -105,6 +109,51 @@ claude_scope() {
     fi
     rm -f "$tmp"
     return 1
+}
+
+# claude_launcher PROJECT COMMAND... — write COMMAND as a script and echo its
+# path, so tmux is handed one short argument instead of the whole command line.
+#
+# tmux's client sends `new-session`'s arguments to the server in a single
+# message capped at 16KB, and answers a longer one with `command too long` and
+# nothing else. The system prompt this appends carries the project's roadmap
+# and open bugs — every item, its details, and every step's details — so it
+# grows with the project, and a big enough notebook silently made every Claude
+# session on that project unstartable: bb-tty exited on the failed
+# new-session, ttyd reconnected five seconds later, and the pane filled with
+# `command too long` over and over. Measured on tmux 3.4: 16000 bytes of
+# argument starts, 20000 does not.
+#
+# One file per project, rewritten on every connection, in the same cache dir
+# and for the same reason as claude_scope's settings: this runs on every
+# browser connection, and mktemp here would leave a file per page load. The
+# name begins with `claude-` deliberately — the session-is-really-claude check
+# below reads pane_start_command, which is now this path.
+claude_launcher() {
+    local proj="$1"; shift
+    local dir out tmp
+    dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
+    dir="${dir:-/tmp/bb-scope-$(id -u)}/builderbot"
+    mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)"; mkdir -p "$dir"; }
+    out="$dir/claude-run-${proj}.sh"
+    tmp="$out.new"
+    # %q so the command survives being written down and read back as shell —
+    # the system prompt is somebody's prose, with quotes and newlines in it.
+    # exec, so nothing sits between tmux and claude: the pane's process is the
+    # conversation, which is what the shutdown's TERM and the pane's pid mean.
+    {
+        printf '#!/usr/bin/env bash\n'
+        printf '# Written by bb-tty each time a session for %s is opened.\n' "$proj"
+        printf '# tmux takes a command in one 16KB message; this is how a long\n'
+        printf '# system prompt gets past that. Not edited by hand — it is\n'
+        printf '# overwritten on the next connection.\n'
+        printf 'exec'
+        printf ' %q' "$@"
+        printf '\n'
+    } > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    chmod +x "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    mv -f "$tmp" "$out" 2>/dev/null || { rm -f "$tmp"; return 1; }
+    printf '%s' "$out"
 }
 
 # bad MESSAGE... — fail visibly. ttyd closes the connection the moment this
@@ -284,7 +333,30 @@ case "$target" in
         [ -z "$bug_block" ] || todo_block="${todo_block:+$todo_block
 
 }$bug_block"
-        [ -z "$todo_block" ] || cmd+=(--append-system-prompt "$todo_block")
+        # One ceiling up from tmux's there is the kernel's: a single argument
+        # cannot exceed MAX_ARG_STRLEN — 131072 bytes, measured here — and past
+        # it exec answers "Argument list too long" and the pane dies without
+        # saying why, which is the same silent death the launcher exists to
+        # end. So the block is cut to fit and says that it was cut, rather than
+        # taking the session down with it. Bytes, not characters: prose in the
+        # roadmap is UTF-8, and the kernel counts bytes.
+        PROMPT_MAX=100000
+        if [ "$(printf '%s' "$todo_block" | wc -c)" -gt "$PROMPT_MAX" ]; then
+            echo "WARNING: this project's roadmap and bugs are too long to fit in a" >&2
+            echo "session's prompt; only the first ${PROMPT_MAX} bytes are in this one." >&2
+            echo "Trim the list with \`bb roadmap\`, or the rest of it is invisible" >&2
+            echo "to every session started here." >&2
+            # Back to a line boundary, so the cut cannot land inside a word —
+            # or inside a UTF-8 character, which head -c is happy to do.
+            todo_block="$(printf '%s' "$todo_block" | head -c "$PROMPT_MAX" || true)"
+            todo_block="${todo_block%$'\n'*}"$'\n'
+            todo_block+="[the rest of this list did not fit in the prompt — \`bb roadmap\`"
+            todo_block+=" and \`bb bug\` show all of it]"
+        fi
+        # Kept beside the command rather than in it: the fallback below starts
+        # the session without this block, and cannot if the two are one array.
+        prompt=()
+        [ -z "$todo_block" ] || prompt=(--append-system-prompt "$todo_block")
         if scope="$(claude_scope "$proj")"; then
             cmd+=(--settings "$scope")
         else
@@ -313,7 +385,25 @@ case "$target" in
             log "claude-${proj}: session is not running claude — replacing it"
             tmux kill-session -t "=claude-${proj//[.:]/_}" 2>/dev/null || true
         fi
-        start "claude-${proj}" "$dir" "${cmd[@]}"
+        # Through a launcher, always — not only when the prompt happens to be
+        # long today. A path that is exercised on every session is one that
+        # works; a fallback taken only past 16KB is one nobody finds out about
+        # until a notebook grows. If the file cannot be written, the command
+        # goes to tmux directly, which is what used to happen and is still
+        # right for a short one.
+        if launcher="$(claude_launcher "$proj" "${cmd[@]}" "${prompt[@]}")"; then
+            start "claude-${proj}" "$dir" "$launcher"
+        else
+            # Nowhere to write it. The command without the block still fits on
+            # tmux's command line, and a session that starts knowing less is
+            # worth more than one that refuses to start at all — which is what
+            # passing the block here would produce for any real roadmap.
+            echo "WARNING: could not write the launcher for '${proj}'," >&2
+            echo "so this session starts without the project's roadmap and bugs." >&2
+            echo "Everything else about it is the same. Check that ${HOME:-\$HOME}/.cache" >&2
+            echo "is writable." >&2
+            start "claude-${proj}" "$dir" "${cmd[@]}"
+        fi
         ;;
     shell:*)
         proj="${target#shell:}"

@@ -1,0 +1,120 @@
+// bb-tty's Claude launch — the one path the browser files cannot reach, since
+// the harness runs no ttyd. This drives the script the way ttyd does (one URL
+// argument, one connection) against the same private tmux server, with stubs
+// standing in for `bb` and `claude`.
+//
+// What it is here for: tmux hands `new-session` its command in a single 16KB
+// message and answers a longer one with `command too long`. The system prompt
+// bb-tty appends carries the project's whole roadmap and open bugs, so it grows
+// with the project — and once past that line, every Claude session on that
+// project became unstartable, ttyd reconnecting into the same error every five
+// seconds. The command goes through a launcher file now, and this is the test
+// that says so.
+import { ok, done, sleep, URL, DIR, tmuxKill, tmuxFmt } from './lib.mjs';
+import { execFileSync } from 'child_process';
+import { mkdtempSync, writeFileSync, chmodSync, readFileSync, existsSync } from 'fs';
+import { tmpdir } from 'os';
+import { join } from 'path';
+
+const BBTTY = join(import.meta.dirname, '..', 'bb-tty');
+const LAUNCHER = join(DIR, 'home', '.cache', 'builderbot', 'claude-run-alpha.sh');
+
+// The boot this container is on, from the server rather than computed again
+// here: the page reads it from /api/status and puts it in the terminal's URL,
+// and bb-tty refuses a session whose URL names a previous run. Asking the same
+// source the page asks keeps this test honest about what it is driving.
+const status = await (await fetch(new global.URL('api/status', URL), {
+  headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
+})).json();
+const boot = status.boot;
+
+// Stubs, ahead of everything on PATH. `claude` has to hold the pane open — a
+// command that exits takes the session with it, and the session is the thing
+// being asserted — and to record what it was handed.
+const bin = mkdtempSync(join(tmpdir(), 'bbtty-'));
+const argvOut = join(bin, 'argv');
+writeFileSync(join(bin, 'bb'), `#!/usr/bin/env bash
+# A roadmap of whatever size the case asks for, in items rather than one long
+# line, so the trim has real line boundaries to land on.
+case "\${1:-}" in
+  roadmap) if [ "\${2:-}" = --prompt ] && [ "\${FAKE_PROMPT:-0}" -gt 0 ]; then
+             n=$(( FAKE_PROMPT / 50 ))
+             for ((i = 0; i < n; i++)); do
+               printf -- "- #%d  an item with enough words in it to be about fifty\\n" "$i"
+             done
+           fi ;;
+  bug)     [ "\${2:-}" = --prompt ] && printf 'the bugs block\\n' ;;
+esac
+exit 0
+`);
+writeFileSync(join(bin, 'claude'), `#!/usr/bin/env bash
+if [ "\${1:-}" = auth ]; then
+  [ "\${2:-}" = status ] && printf '{"loggedIn":true}\\n'
+  exit 0
+fi
+printf '%s\\0' "$@" > "${argvOut}"
+sleep 60
+`);
+chmodSync(join(bin, 'bb'), 0o755);
+chmodSync(join(bin, 'claude'), 0o755);
+
+// One connection, the way ttyd makes one. bb-tty ends by exec'ing `tmux
+// attach-session`, which fails without a terminal — by then the session either
+// exists or does not, which is the whole question.
+function connect(promptBytes){
+  tmuxKill('claude-alpha');
+  try {
+    return execFileSync('bash', [BBTTY, `claude:alpha:b:${boot}`], {
+      encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
+             WORKSPACE: join(DIR, 'ws'), HOME: join(DIR, 'home'),
+             DASHBOARD_STATE: join(DIR, 'state'), FAKE_PROMPT: String(promptBytes) },
+    });
+  } catch (e) { return `${e.stdout || ''}${e.stderr || ''}`; }
+}
+const alive = n => { try { return tmuxFmt(n, '#{session_name}') === n; }
+                     catch { return false; } };
+const paneCmd = () => { try { return tmuxFmt('claude-alpha', '#{pane_start_command}'); }
+                        catch { return ''; } };
+// Missing is an answer, not a crash: run this against the code before the
+// launcher and every one of these should read FAIL, not stop the file.
+const launcher = () => existsSync(LAUNCHER) ? readFileSync(LAUNCHER, 'utf8') : '';
+
+// A roadmap of 40KB. Under the old code this was `command too long` and no
+// session at all — the operator's report was a pane filling with that line as
+// ttyd reconnected into it every five seconds.
+let out = connect(40000);
+await sleep(400);
+ok(!/command too long/.test(out),
+   'a roadmap past tmux\'s 16KB command limit does not stop the session starting');
+ok(alive('claude-alpha'), '...the session is really there');
+const cmd = paneCmd();
+ok(cmd.length < 200 && /claude-run-alpha\.sh$/.test(cmd),
+   '...because tmux was handed a launcher, not the command');
+ok(launcher().length > 40000,
+   '...and the launcher carries the prompt tmux could not');
+const argv = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
+ok(argv.includes('--append-system-prompt') && argv.length > 40000,
+   '...which reaches claude whole, roadmap and all');
+
+// The next ceiling up is the kernel's: one argument cannot pass 131072 bytes,
+// and exec answers "Argument list too long" — a pane that dies without saying
+// why, which is the failure this file exists to keep out. Cut to fit, said out
+// loud, and the session still starts.
+out = connect(150000);
+await sleep(400);
+ok(alive('claude-alpha'), 'a roadmap past the kernel\'s argument limit still starts');
+ok(/too long to fit/.test(out) && /bb roadmap/.test(out),
+   '...saying so, and where to trim it');
+ok(launcher().includes('did not fit in the prompt'),
+   '...and the prompt itself says it was cut, rather than ending mid-item');
+
+// The ordinary case still goes through the same path, so it is the one that
+// gets exercised rather than a fallback nobody reaches until a list grows.
+out = connect(0);
+await sleep(400);
+ok(alive('claude-alpha') && /claude-run-alpha\.sh$/.test(paneCmd()),
+   'a project with no roadmap starts the same way');
+
+tmuxKill('claude-alpha');
+await done();

@@ -1581,7 +1581,14 @@ is read on Thursday without anybody remembering to mention it. Items a session
 added are marked, so you can see what it put there. It is given as context
 rather than instructions: a session works an item when you ask, or when it is
 plainly part of what you asked, and adds one when it notices something out of
-scope for what it is on.
+scope for what it is on. The block travels to the session in a file rather than
+on tmux's command line, which takes at most 16KB and answers a longer one with
+`command too long` and nothing else — a full notebook made every Claude session
+on that project unstartable, and the pane filled with that line as the terminal
+reconnected into it. Past 100KB the block is cut at an item boundary and says
+so, in the prompt and in the pane: one argument cannot exceed the kernel's
+131072 bytes, and a list that big has outgrown being read at the start of every
+conversation anyway.
 
 The list lives in `/config/todos.json`, beside the tab strip and the excluded
 projects — deliberately **not** in the repository. A list like this churns far
