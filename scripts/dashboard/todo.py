@@ -335,20 +335,39 @@ def commit(project):
             "folded": len(b.get("events") or []) - len(kept)}
 
 
+def revert_blocked(project):
+    """Why a revert would refuse, or None. Asked before anything is undone.
+
+    Only the session's own work goes back. If the operator changed something
+    while the batch was open, restoring a copy taken before it would quietly
+    undo their change too — so it is refused and said.
+
+    Its own function because a notebook batch spans two files: both guards
+    have to answer before either is put back, or a refusal from the second
+    would leave the first already reverted.
+    """
+    with _lock:
+        d = load()
+        b = d.get("batch", {}).get(project)
+        if not b:
+            return "nothing is open here"
+        h = d.get("history", {}).get(project) or []
+        if sum(1 for e in h if e.get("by") == "you") > b.get("yours", 0):
+            return ("the operator has changed this list since the batch "
+                    "opened — reverting would undo their work too. "
+                    "Commit it and correct what is wrong.")
+    return None
+
+
 def revert(project):
+    why = revert_blocked(project)
+    if why:
+        return {"error": why}
     with _lock:
         d = load()
         b = d.get("batch", {}).get(project)
         if not b:
             return {"error": "nothing is open here"}
-        # Only the session's own work goes back. If the operator changed
-        # something while this was open, restoring a copy taken before it
-        # would quietly undo their change too — so it is refused and said.
-        h = d.get("history", {}).get(project) or []
-        if sum(1 for e in h if e.get("by") == "you") > b.get("yours", 0):
-            return {"error": "the operator has changed this list since the batch "
-                             "opened — reverting would undo their work too. "
-                             "Commit it and correct what is wrong."}
         d["projects"][project] = b.get("rows") or []
         del d["batch"][project]
         _touch(d, project)

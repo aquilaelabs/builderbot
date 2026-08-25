@@ -231,9 +231,14 @@ bbTodoBatch('commit');
 await page.click('#todoRecheck');
 await page.waitForFunction(() => document.getElementById('todoBatch').hidden,
                            { timeout: 20000 });
-ok(await page.$$eval('#bugList .bug .btitle',
-     ts => ts.some(t => /filed mid-batch/.test(t.textContent))),
-   'Check now lifts the hold and the Bugs tab has the session\'s report on it');
+// Waited for rather than read straight off. A batch now covers the tracker
+// too, so a bug filed inside one does not move the tracker's revision until
+// the commit — the tab has no reason to reload while the notebook is held,
+// and learns about the report from this re-read rather than from a poll that
+// happened to fire earlier.
+await page.waitForFunction(() => [...document.querySelectorAll('#bugList .bug .btitle')]
+  .some(t => /filed mid-batch/.test(t.textContent)), { timeout: 20000 });
+ok(true, 'Check now lifts the hold and the Bugs tab has the session\'s report on it');
 
 // ---- the tracker's log -----------------------------------------------------
 // Same bar, same rows as the roadmap's: search, a window, a cap. Filed,
