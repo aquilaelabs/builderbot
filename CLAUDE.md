@@ -683,6 +683,12 @@ anything from a report of behavior you thought you had already changed.
   fetches any that are missing, so it stays green on a container whose image
   predates a newly added tool); `bb lint` runs the same three (plus compose
   validation and XML well-formedness) in-container.
+  **When it fails, `bb ci-log` is the first place to look** — the runner keeps
+  no console output, so the workflow tees each check into
+  `/config/ci-logs/<repo>/` and that command reads it. `--list` shows the runs
+  kept with their results. Without it the only local evidence is
+  `/workspace/_work/_diag`, which names the failing step and nothing it said;
+  that cost a round trip through the operator once already.
   It runs **on the pull request and nowhere else**. A `pull_request` build
   checks out `refs/pull/N/merge` — this branch already merged into main — so
   it is testing the tree the merge button is about to produce, and re-running

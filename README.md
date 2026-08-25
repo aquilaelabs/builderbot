@@ -374,6 +374,8 @@ bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
 bb history         one search over the notebook's logs — roadmap, bugs, memory
                    (`--find X`, `--since 7d`, `-n N`)
 bb roadmap history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
+bb ci-log          what CI printed on its last run here (`--list` for the runs
+                   kept, a run id for one, `--project NAME` from elsewhere)
 bb logs [-f] [N]   this boot's log
 bb logs -p [N]     a previous boot's log
 bb logs --list     the kept boot logs, newest first
@@ -1686,6 +1688,30 @@ a fixed list — and it is still not a remote-execution API. The lines are store
 by one authenticated request and typed by another into a tty that the same
 operator is already sitting at with a full shell. Nothing is executed in the
 dashboard's own process.
+
+### Reading CI from inside the container
+
+The self-hosted runner streams a job's console output to GitHub and keeps none
+of it. `/workspace/_work/_diag` holds the runner's own diagnostics — which step
+failed and its exit code — and not one line of what that step printed. With
+`GIT_PAT` unset there is no API to ask either, so *"CI is red, why?"* had no
+answer in here for a job that ran in this very container.
+
+So the lint workflow archives its own output: each check is teed into
+`/config/ci-logs/<repo>/<run-id>-<attempt>.log`, with a header naming the
+commit, ref and event, and a `result:` line written by an `if: always()` step
+so a job that died still says so. `bb ci-log` prints the newest, `--list` shows
+the twenty kept with their results, and a run id picks one.
+
+Two details that are load-bearing. The job sets `shell: bash` rather than
+taking the default `bash -e`, because the difference is `pipefail` — without it
+the tee's exit status becomes the step's and a failing linter reports success.
+And the logs live in `/config` rather than `/tmp`, because a log that vanishes
+with the container is no use for the question *"what broke while I was away?"*.
+
+This only covers jobs that run on this box. A workflow on a hosted runner is
+out of reach, which is one more reason to keep the checks self-hosted where the
+minutes are free anyway.
 
 ### Keeping a session in its own project
 

@@ -50,6 +50,9 @@ bb — BuilderBot helper
   bb history [--find X]  one search over the notebook: roadmap, bugs and memory logs
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
+  bb ci-log              what CI printed on its last run here — the runner
+                         keeps none of it, so the workflow archives it
+  bb ci-log --list       the runs kept for this project, newest first
   bb logs [-f] [N]       show this boot's log (default: last 100 lines)
   bb logs -p [N]         show a previous boot's log (the log rotates per start)
   bb logs --list         list the kept boot logs, newest first
@@ -506,6 +509,66 @@ cmd_emu() {
             ;;
         *) usage; exit 1 ;;
     esac
+}
+
+# ---- what CI said, from inside the container -------------------------------
+# The self-hosted runner streams a job's console output to GitHub and keeps
+# none of it: /workspace/_work/_diag holds the runner's own diagnostics, which
+# name the failing step and its exit code and never a line of what it printed.
+# With no PAT there is no API to ask either, so "CI is red — why?" had no
+# answer in here for a job that ran in this very container. The lint workflow
+# tees each check into /config/ci-logs/<repo>/ and this reads it.
+cmd_ci_log() {
+    local dir="${BB_CI_LOG_DIR:-/config/ci-logs}"
+    local proj="" want="" list=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --list|-l) list=1 ;;
+            --project) proj="${2:-}"; shift ;;
+            -*) die "unknown option: $1" ;;
+            *) want="$1" ;;
+        esac
+        shift
+    done
+    # The project this is run from, the same way `bb roadmap` decides.
+    if [ -z "$proj" ]; then
+        local here; here="$(pwd -P)"
+        case "$here" in
+            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
+            *) die "not inside a project under ${WORKSPACE} — cd into one, or pass --project NAME" ;;
+        esac
+    fi
+    local d="$dir/$proj"
+    if [ ! -d "$d" ] || [ -z "$(find "$d" -maxdepth 1 -name '*.log' -print -quit 2>/dev/null)" ]; then
+        log "no CI logs kept for ${proj}"
+        log "only a job that runs on this box archives one, and only once the"
+        log "workflow carrying the archive step has landed on the branch that ran"
+        return 0
+    fi
+    # Newest first by mtime rather than by name: a re-run of an older run has a
+    # lower id than a newer first attempt, so the number does not order them.
+    local logs; mapfile -t logs < <(
+        find "$d" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
+    if [ "$list" = 1 ]; then
+        echo "kept for ${proj}, newest first:"
+        local f
+        for f in "${logs[@]}"; do
+            printf '  %-22s %s  %s\n' "$(basename "$f" .log)" \
+                "$(date -r "$f" '+%d %b %H:%M')" \
+                "$(sed -n 's/^result: //p' "$f" | head -1 || true)"
+        done
+        return 0
+    fi
+    local pick="${logs[0]}"
+    if [ -n "$want" ]; then
+        pick=""
+        local f
+        for f in "${logs[@]}"; do
+            case "$(basename "$f" .log)" in "$want"|"$want"-*) pick="$f"; break ;; esac
+        done
+        [ -n "$pick" ] || die "no kept log for run ${want} — try: bb ci-log --list"
+    fi
+    cat "$pick"
 }
 
 cmd_logs() {
@@ -2076,6 +2139,7 @@ case "${1:-help}" in
     bug|bugs) shift; cmd_bug "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
+    ci-log)   shift; cmd_ci_log "$@" ;;
     doctor)   cmd_doctor ;;
     dashboard) shift; cmd_dashboard "$@" ;;
     drift)    shift; cmd_drift "$@" ;;

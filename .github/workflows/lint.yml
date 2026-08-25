@@ -30,8 +30,41 @@ jobs:
     # toolchain. One job rather than one per tool because a single runner
     # serves jobs serially; splitting only adds queueing.
     runs-on: [self-hosted, builderbot]
+    # `bash` rather than the default `bash -e`, because that one difference is
+    # pipefail — and every check below is piped into tee. Without it the tee's
+    # exit status is the step's, and a failing linter would report success.
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v5
+
+      - name: Open a log this container can read afterwards
+        # The runner streams a step's console output to GitHub and keeps none
+        # of it on disk: /workspace/_work/_diag records which step failed and
+        # its exit code, never a line of what it printed. So a session inside
+        # this container — which has no PAT and cannot ask the API — could see
+        # that CI was red and nothing about why, for a job that ran a few
+        # inches away. Every check below tees into this file, and `bb ci-log`
+        # reads it.
+        #
+        # /config because it survives an image update; /tmp does not, and a
+        # log that vanishes with the container is no use for the question
+        # "what broke while I was away".
+        run: |
+          dir="/config/ci-logs/${GITHUB_REPOSITORY##*/}"
+          mkdir -p "$dir"
+          log="$dir/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
+          echo "CI_LOG=$log" >> "$GITHUB_ENV"
+          echo "CI_LOG_DIR=$dir" >> "$GITHUB_ENV"
+          {
+            echo "# ${GITHUB_WORKFLOW} — ${GITHUB_REPOSITORY}"
+            echo "run:    ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}"
+            echo "event:  ${GITHUB_EVENT_NAME}  ref: ${GITHUB_REF}"
+            echo "commit: ${GITHUB_SHA}"
+            echo "opened: $(date -Is)"
+            echo
+          } > "$log"
 
       - name: Ensure linters
         # The container the runner lives in can lag this repo: the PR that
@@ -73,18 +106,18 @@ jobs:
           # argument — went unlinted. A shebang cannot be forgotten.
           mapfile -t files < <(find scripts -type f -exec grep -lE '^#!.*\b(ba)?sh\b' {} + | sort)
           printf 'checking %s\n' "${files[@]}"
-          shellcheck -x -S warning "${files[@]}"
+          shellcheck -x -S warning "${files[@]}" 2>&1 | tee -a "$CI_LOG"
 
       - name: Dockerfile
         # Ignores live in .hadolint.yaml, which hadolint picks up on its own —
         # one config for this job and for `bb lint`, so the two can never
         # disagree about what a clean Dockerfile is.
-        run: hadolint Dockerfile
+        run: hadolint Dockerfile 2>&1 | tee -a "$CI_LOG"
 
       - name: Workflows
         # The runner labels a runs-on may target live in .github/actionlint.yaml,
         # shared with `bb lint`.
-        run: actionlint -color
+        run: actionlint -color 2>&1 | tee -a "$CI_LOG"
 
       - name: Dashboard browser tests
         # The dashboard's Playwright suite, against an isolated instance on
@@ -102,16 +135,30 @@ jobs:
              && [ "${{ github.event_name }}" != workflow_dispatch ]; then
             echo "dashboard unchanged — skipping browser tests"; exit 0
           fi
-          bash scripts/dashboard/test/run.sh
+          bash scripts/dashboard/test/run.sh 2>&1 | tee -a "$CI_LOG"
 
       - name: Compose file and Unraid template
         run: |
           # --env-file rather than cp .env.example .env: config is daemonless
           # and this leaves no .env behind in the runner's work directory.
-          docker compose --env-file .env.example config -q
-          echo "compose file is valid"
-          python3 - <<'EOF'
+          {
+            docker compose --env-file .env.example config -q
+            echo "compose file is valid"
+            python3 - <<'EOF'
           import xml.dom.minidom
           xml.dom.minidom.parse("unraid/builderbot.xml")
           print("unraid template is well-formed")
           EOF
+          } 2>&1 | tee -a "$CI_LOG"
+
+      - name: Close the log
+        if: always()
+        # Written whatever happened, because "it failed and said nothing" is
+        # the case this exists for. Twenty runs kept: enough to compare a red
+        # one against the green before it, few enough that /config does not
+        # grow a year of them.
+        run: |
+          printf '\nresult: %s\nclosed: %s\n' "${{ job.status }}" "$(date -Is)" \
+            >> "$CI_LOG"
+          find "$CI_LOG_DIR" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' \
+            | sort -rn | tail -n +21 | cut -d' ' -f2- | xargs -r rm -f
