@@ -241,97 +241,6 @@ def disconnect(serial=""):
     return {"ok": True}
 
 
-# ---- what there is to push -------------------------------------------------
-# Discovered rather than browsed to. The dashboard has no file browser and
-# should not grow one for this; it already knows what the projects are, and a
-# WebExtension announces itself with a manifest. So the card can offer "the
-# extension in StreamLift, last changed two hours ago" instead of asking
-# somebody to remember a path.
-#
-# Bounded deliberately: three levels down, skipping the directories that are
-# always large and never the answer. A source tree is not a haystack to search
-# exhaustively, and this runs when the card asks rather than on the poll.
-SKIP_DIRS = {"node_modules", ".git", "web-ext-artifacts", "build", "dist",
-             ".venv", "venv", "target", ".gradle", "__pycache__"}
-MAX_DEPTH = 3
-
-
-def _manifest_is_extension(path):
-    """A WebExtension manifest, as opposed to any other manifest.json.
-
-    npm, Android and half the tooling in existence use that filename, so the
-    test is the field only a browser extension has.
-    """
-    try:
-        with open(path) as f:
-            d = json.load(f)
-    except (OSError, ValueError):
-        return None
-    if not isinstance(d, dict) or "manifest_version" not in d:
-        return None
-    if not isinstance(d.get("name"), str):
-        return None
-    return {"name": d.get("name", ""), "version": str(d.get("version", "")),
-            "mv": d.get("manifest_version")}
-
-
-def _newest(dirpath, cap=3000):
-    """When this source last changed. Capped: a runaway tree must not turn a
-    card refresh into a filesystem walk of the whole share."""
-    newest, seen = 0, 0
-    for p in Path(dirpath).rglob("*"):
-        if seen >= cap:
-            break
-        parts = set(p.parts)
-        if parts & SKIP_DIRS:
-            continue
-        try:
-            if p.is_file():
-                seen += 1
-                newest = max(newest, int(p.stat().st_mtime))
-        except OSError:
-            continue
-    return newest
-
-
-def extensions(projects=()):
-    """Every WebExtension source directory across the projects, newest first.
-
-    `projects` is the list the dashboard already has, so this never decides for
-    itself what a project is — one rule for that, and it lives elsewhere.
-    """
-    out = []
-    for name in projects:
-        root = WORKSPACE / name
-        if not root.is_dir():
-            continue
-        stack = [(root, 0)]
-        while stack:
-            d, depth = stack.pop()
-            mf = d / "manifest.json"
-            if mf.is_file():
-                info = _manifest_is_extension(mf)
-                if info:
-                    out.append({
-                        "project": name,
-                        # Relative, because that is what the operator reads and
-                        # what the server validates a push against.
-                        "path": str(d.relative_to(WORKSPACE)),
-                        "name": info["name"], "version": info["version"],
-                        "mv": info["mv"], "changed": _newest(d)})
-                    continue        # no nesting an extension inside an extension
-            if depth >= MAX_DEPTH:
-                continue
-            try:
-                for c in d.iterdir():
-                    if c.is_dir() and not c.name.startswith(".") \
-                            and c.name not in SKIP_DIRS:
-                        stack.append((c, depth + 1))
-            except OSError:
-                continue
-    return sorted(out, key=lambda e: -e["changed"])
-
-
 # ---- pushing one to the phone ----------------------------------------------
 # `web-ext run` is Mozilla's own tool and the only supported way in: an XPI is
 # not an APK, so `adb install` is not it, and Firefox for Android will not take
@@ -392,14 +301,14 @@ def _reader(proc):
         _job["state"] = "stopped"
 
 
-def push(source, serial, apk):
-    """Start web-ext against a discovered source directory.
+def push_dir(d, serial, apk, label=""):
+    """Start web-ext against a directory the CALLER has already validated.
 
-    Every argument is checked against something the server already knows —
-    the discovered extensions, the attached devices, the Firefoxes on the
-    phone — rather than taken as given. This is one of the few places the web
-    UI causes a program to run, and the house rule is that such a thing is a
-    lookup and not a command line.
+    Not exposed to the API as a path — the artifacts endpoint resolves an .xpi
+    inside a project's dist/, unpacks it, and hands the directory here. The
+    checks that remain are the ones about this module's own arguments: the
+    device is attached, the Firefox is one we know, the directory really holds
+    an extension.
     """
     import shutil
     if shutil.which(WEBEXT_BIN) is None:
@@ -409,21 +318,26 @@ def push(source, serial, apk):
     with _lock:
         if _job["running"]:
             return {"error": f"already pushing {_job['what']} — stop it first"}
-    d = (WORKSPACE / source).resolve()
-    if not str(d).startswith(str(WORKSPACE) + "/") or not (d / "manifest.json").is_file():
-        return {"error": f"not an extension source directory: {source}"}
+    d = Path(d)
+    if not (d / "manifest.json").is_file():
+        return {"error": "no manifest.json there — not an unpacked extension"}
     if apk not in FIREFOX_APKS:
         return {"error": f"not a Firefox this knows: {apk}"}
     if not any(x["serial"] == serial and x["kind"] == "phone" for x in devices()):
         return {"error": "that phone is not connected"}
     # --adb-port so web-ext talks to the phone's server rather than the
-    # default one, which does not have the phone on it.
-    cmd = [WEBEXT_BIN, "run", "--target=firefox-android", f"--adb-port={ADB_PORT}",
+    # default one, which does not have the phone on it. --no-reload because a
+    # push is a decision: web-ext's file-watcher reloading the add-on the
+    # moment something changed underneath it meant edits reached the handset
+    # nobody was pointing at. The directory pushed here is a snapshot of the
+    # .xpi anyway, but the flag makes the promise rather than the layout.
+    cmd = [WEBEXT_BIN, "run", "--target=firefox-android", "--no-reload",
+           f"--adb-port={ADB_PORT}",
            f"--adb-device={serial}", f"--firefox-apk={apk}",
            f"--source-dir={d}", "--no-input", "--adb-remove-old-artifacts"]
     global _proc
     with _lock:
-        _job.update(running=True, what=source, serial=serial, apk=apk,
+        _job.update(running=True, what=label or d.name, serial=serial, apk=apk,
                     state="starting", error="", lines=[], started=int(time.time()))
     try:
         _proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
@@ -459,19 +373,24 @@ def stop_push():
     return {"ok": True}
 
 
-def payload(projects=()):
-    """Everything the card shows, in one answer."""
+def payload():
+    """The card's half: the connection and what is waiting on the operator.
+    What there is to push lives in the notebook's Artifacts view now, which
+    asks summary() below for the phone-shaped part of its answer."""
+    p = phone()
+    return {"devices": devices(), "phone": p, "asks": requests_open(),
+            "ip": load().get("ip", "")}
+
+
+def summary():
+    """What the Artifacts view needs to offer a Push: is a phone there, which
+    Firefoxes it has, whether web-ext exists. Reported rather than discovered
+    on click, so the button can ghost with the reason on it."""
     import shutil
     p = phone()
-    # Whether a push is possible at all. Reported rather than discovered on
-    # click, so the button can ghost with the reason on it — the same way the
-    # git commands ghost outside a repo. A control that looks alive and then
-    # explains itself only once pressed is a worse control.
-    return {"devices": devices(), "phone": p, "asks": requests_open(),
+    return {"phone": p,
             "webext": shutil.which(WEBEXT_BIN) is not None,
-            "ip": load().get("ip", ""),
             "apks": firefox_apks((p or {}).get("serial", "")),
-            "extensions": extensions(projects),
             "push": push_state()}
 
 

@@ -1449,6 +1449,28 @@ fails to parse, or a reports directory that is not there this minute, is
 skipped rather than read as "everything was fixed": that is the SARIF trap the
 rest of this is careful about.
 
+**Artifacts** is the fifth view: what the project has built, listed from its
+`dist/` directory — and the convention is the feature. Build systems scatter
+their outputs (gradle five directories deep, cargo into `target/`), and a tab
+that went looking for all of those would be a catalogue of build systems that
+is wrong the week a new one arrives. So the deal is one word long: **what
+ships goes in `dist/`**, a session that builds something copies it there, and
+the tab lists `dist/` and nothing else. An empty tab on a project that builds
+things means the copy step is missing, and it says so.
+
+Each row is labeled by kind — apk, xpi, whatever the extension says — with
+its size and age, newest first. Everything can be **downloaded**; an `.xpi`
+can also be **pushed** to the paired phone, which unpacks it and hands the
+directory to `web-ext` for a **temporary** install (gone when Firefox
+restarts). Two rules keep the push honest: **nothing auto-pushes** — web-ext's
+file-watcher is disabled and what is pushed is a snapshot, so a push is a
+decision made each time — and pushing the **identical build** into a live
+session is said rather than done, since it would install nothing. Stop the
+session and the same file becomes pushable again, because after a stop (or a
+Firefox restart) that is a legitimate thing to want. No History button,
+deliberately: the files' own timestamps are the history, and a log of "the
+file changed" would restate the mtime column.
+
 **Analysis** is the notebook's fourth view: the scanner's findings for that
 project alone, worst level first, read-only — the scan runs on the host, and
 `bb findings` reads the same digest in a terminal. The whole-report findings
@@ -1748,14 +1770,9 @@ the pairing screen is a different number from the one on the main screen
 anyway. The server scans for it. mDNS would answer for free and cannot — the
 container is NAT'd on Docker's bridge and multicast does not cross it.
 
-**Pushing an extension** lists what it finds rather than asking you to browse:
-every WebExtension source directory across the projects, by the name and
-version in its manifest and when it last changed. Push runs `web-ext`, which
-installs the add-on **temporarily** over Firefox's remote debugging socket and
-reloads it on every source change — the development loop, not an install; it
-is gone when Firefox restarts. `web-ext` is not in the image, so add it to
-`EXTRA_NPM_PACKAGES` if you want this; the button ghosts with that reason
-until you do.
+**Pushing lives in the notebook now**, on the Artifacts view — the card is
+the connection, and what there is to push is a fact about a project rather
+than about the phone.
 
 **A session never touches the phone itself.** It is kept on an adb server of
 its own, so a plain `adb devices` in a session shows the emulator and nothing

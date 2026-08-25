@@ -1618,6 +1618,13 @@ import phone                                                     # noqa: E402
 
 phone.configure(write_json=write_json, state=STATE, workspace=WORKSPACE)
 
+# What a project has built, from its dist/ directory — the notebook's fifth
+# view. The convention is the module's docstring; the scratch dir is where an
+# .xpi is unpacked for web-ext, never dist/ itself.
+import artifacts                                                 # noqa: E402
+
+artifacts.configure(workspace=WORKSPACE, scratch=STATE / "artifacts-tmp")
+
 # ---- the memory book -------------------------------------------------------
 # What Claude remembers about each project, read and edited from the projects
 # card. Same arrangement as packages above: its own file, handed what it needs.
@@ -2045,6 +2052,37 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(snapshot())
         if self.path.startswith("/api/findings"):
             return self._json(findings_payload())
+        if self.path.startswith("/api/artifacts"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list()}:
+                return self._json({"error": "not a project"}, 400)
+            return self._json({"artifacts": artifacts.listing(name)}
+                              | phone.summary())
+        if self.path.startswith("/api/artifact?"):
+            # The download. Resolved and prefix-checked in artifacts.resolve —
+            # a symlink inside dist/ must not turn this into a file server for
+            # the whole box.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            rel = q.get("path", [""])[0]
+            if name not in {p["name"] for p in project_list()}:
+                return self._json({"error": "not a project"}, 400)
+            f = artifacts.resolve(name, rel)
+            if f is None:
+                return self._json({"error": "no such artifact"}, 404)
+            try:
+                data = f.read_bytes()
+            except OSError as e:
+                return self._json({"error": str(e)}, 500)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition",
+                             f'attachment; filename="{f.name}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return None
         if self.path.startswith("/api/phone"):
             # Not on the status poll: this walks the projects looking for
             # extension manifests, and a filesystem walk every fifteen seconds
@@ -2130,6 +2168,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._packages(req)
         if path.startswith("/api/memory"):
             return self._memory(req)
+        if path.startswith("/api/artifacts"):
+            return self._artifacts(req)
         if path.startswith("/api/phone"):
             return self._phone(req)
         if path.startswith("/api/findings"):
@@ -2298,7 +2338,7 @@ class Handler(BaseHTTPRequestHandler):
         is the desktop's, which is emphatically not the phone, and filling the
         field with it would be a confident wrong answer — the worst kind.
         """
-        out = phone.payload([p["name"] for p in project_list()])
+        out = phone.payload()
         ua = self.headers.get("User-Agent", "")
         if "Android" in ua:
             try:
@@ -2308,6 +2348,49 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, IndexError):
                 pass
         return out
+
+    def _artifacts(self, req):
+        """Push an .xpi from a project's dist/ to the paired phone, or stop
+        one. The path is resolved against dist/ and unpacked before anything
+        runs — push_dir never sees a caller-supplied path."""
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list()}:
+            return self._json({"error": f"not a project: {name}"}, 400)
+        act = field(req, "action")
+        if act == "push":
+            dev = phone.phone()
+            if not dev:
+                return self._json({"error": "no phone is connected — pair one "
+                                            "on the Phone card first"}, 400)
+            rel = field(req, "path")
+            # A push is a decision, made each time — nothing auto-pushes on a
+            # change. The other half of that bargain: pushing the IDENTICAL
+            # build into a session that is still live installs nothing, so it
+            # is compared and said instead of done. Stopping the session
+            # clears the comparison, because after a stop (or a Firefox
+            # restart) the same file is a legitimate thing to push again.
+            if phone.push_state()["running"]:
+                if artifacts.live_matches(name, rel):
+                    return self._json({"error": "that exact build is already "
+                                       "live on the phone — rebuild the .xpi, "
+                                       "or Stop and push again"}, 400)
+                return self._json({"error": "a push is still live — Stop it "
+                                            "first"}, 400)
+            d, err = artifacts.unpack_xpi(name, rel)
+            if err:
+                return self._json({"error": err}, 400)
+            r = phone.push_dir(d, dev["serial"], field(req, "apk"), label=rel)
+            if not r.get("error"):
+                artifacts.set_live(name, rel)
+        elif act == "stop":
+            r = phone.stop_push()
+            artifacts.clear_live()
+        else:
+            return self._json({"error": f"unknown action: {act}"}, 400)
+        if r.get("error"):
+            return self._json(r, 400)
+        return self._json(r | {"artifacts": artifacts.listing(name)}
+                          | phone.summary())
 
     def _phone(self, req):
         """Pair, connect, and push an extension. Every argument is checked by
@@ -2322,11 +2405,6 @@ class Handler(BaseHTTPRequestHandler):
             r = phone.connect(field(req, "ip"), field(req, "port") or None)
         elif act == "disconnect":
             r = phone.disconnect(field(req, "serial"))
-        elif act == "push":
-            r = phone.push(field(req, "source"), field(req, "serial"),
-                           field(req, "apk"))
-        elif act == "stop":
-            r = phone.stop_push()
         elif act == "ask":
             # A session asking to reach the phone. It does not run anything
             # itself; if the operator allows it, this process does.
