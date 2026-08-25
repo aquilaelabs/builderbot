@@ -662,6 +662,12 @@ anything from a report of behavior you thought you had already changed.
   fetches any that are missing, so it stays green on a container whose image
   predates a newly added tool); `bb lint` runs the same three (plus compose
   validation and XML well-formedness) in-container.
+  It runs **on the pull request and nowhere else**. A `pull_request` build
+  checks out `refs/pull/N/merge` — this branch already merged into main — so
+  it is testing the tree the merge button is about to produce, and re-running
+  on the push that merging creates would say the same thing twice, after the
+  decision instead of before it. A push straight to main is therefore
+  unlinted, which is fine because work lands through a PR.
   The shared configs are the contract: `.hadolint.yaml` holds the Dockerfile
   ignores (DL3008/DL3013/DL3016 — a rolling dev image deliberately tracks the
   newest packages — and SC1091), `.github/actionlint.yaml` declares the labels

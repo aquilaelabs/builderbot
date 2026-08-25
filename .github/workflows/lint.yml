@@ -1,8 +1,17 @@
 name: lint
 
+# On the pull request and nowhere else. Merging used to run this a second
+# time, on the push to main that the merge creates, and that second run tells
+# you nothing the first did not: a pull_request build checks out
+# refs/pull/N/merge, which IS this branch merged into main — the same tree the
+# button is about to produce. So the check happens once, before the decision it
+# informs, rather than once before and once after.
+#
+# The one case it gives up: a commit pushed straight to main, bypassing a PR,
+# is not linted. That is deliberate — work here lands on a branch and merges
+# through a PR — and `bb lint` in the container is the same set of tools if
+# something ever does need checking by hand.
 on:
-  push:
-    branches: ["main"]
   pull_request:
   workflow_dispatch:
 
@@ -86,7 +95,10 @@ jobs:
         # than passing by omission. Only worth running when it could have
         # changed, so it is skipped for pushes that leave the dashboard alone.
         run: |
-          if git diff --quiet "${{ github.event.before || 'HEAD~1' }}" HEAD -- scripts/dashboard 2>/dev/null \
+          # HEAD~1 on a pull_request build is the base branch tip and HEAD is
+          # this branch merged into it, so this is the PR's whole change to
+          # the dashboard rather than just its last commit's.
+          if git diff --quiet HEAD~1 HEAD -- scripts/dashboard 2>/dev/null \
              && [ "${{ github.event_name }}" != workflow_dispatch ]; then
             echo "dashboard unchanged — skipping browser tests"; exit 0
           fi
