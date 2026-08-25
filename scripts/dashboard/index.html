@@ -6428,7 +6428,10 @@ function drawPhone(){
   if (!box) return;
   const dev = ph?.phone, job = ph?.push || {}, asks = ph?.asks || [];
   const list = ph?.extensions || [], apks = ph?.apks || [];
-  if (!phIp && ph?.ip) phIp = ph.ip;
+  // This browser's own address wins when it is the phone: viewing the
+  // dashboard ON the device is the one case where the number is not something
+  // anybody has to go and read. A remembered IP is the fallback.
+  if (!phIp) phIp = ph?.you || ph?.ip || "";
 
   // A word and an animated ellipsis, never a bar: nothing here knows a
   // percentage, and inventing one would be a lie about progress.
@@ -6454,6 +6457,8 @@ function drawPhone(){
          aria-label="phone IP address"></div>
        <span class="acts"><button type="button" id="phConnect" class="primary"
          >${dev ? "Reconnect" : "Connect"}</button></span>
+       ${ph?.you && phIp === ph.you
+         ? `<div class="sub">this device — you are reading this on it</div>` : ""}
      </div>`,
     // Pairing in the open rather than behind a fold: it is two fields, and a
     // fold over two fields is a click that buys nothing.
@@ -6465,8 +6470,9 @@ function drawPhone(){
            value="${esc(phCode)}" aria-label="pairing code">
        </div>
        <span class="acts"><button type="button" id="phPair">Pair</button></span>
-       <div class="sub">Wireless debugging → <b>Pair device with pairing
-         code</b>. That screen's port is not the one the main screen shows.</div>
+       <div class="sub">${ph?.you ? "On this phone: " : ""}Wireless debugging →
+         <b>Pair device with pairing code</b>. That screen's port is not the
+         one the main screen shows.</div>
      </div>`,
   ];
 

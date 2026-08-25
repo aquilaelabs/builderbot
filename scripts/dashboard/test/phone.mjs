@@ -6,6 +6,7 @@
 // rather than about the code.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { mkdirSync, writeFileSync, renameSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 // A project with an extension in it, and a lookalike that must not be listed:
 // npm, Android and half the world use the name manifest.json.
@@ -74,6 +75,27 @@ await page.click('#phStop');
 await page.waitForFunction(() => !document.querySelector('.row.phjob'),
                            null, { timeout: 20000 });
 ok(true, 'Stop ends it');
+
+// ---- browsing from the phone itself ----------------------------------------
+// The IP field exists because the number has to be read off the device — and
+// when the dashboard is being viewed ON that device, the server already has
+// it. Offered only to an Android client: from a desktop the client address is
+// the desktop's, which is not the phone, and filling it in would be a
+// confident wrong answer.
+const asDesktop = await page.evaluate(async () => (await fetch('/api/phone')).json());
+ok(asDesktop.you === undefined,
+   'from a desktop the card is not told an address — the browser is not the phone');
+// From node and over the container's own LAN address, not the page: the page
+// is served on loopback, and a loopback client is the container talking to
+// itself rather than a handset — which the server rightly refuses to treat as
+// one. This is the nearest thing to a real phone the suite can be.
+const lan = execSync("hostname -i").toString().trim().split(/\s+/)[0];
+const asPhone = await (await fetch(URL.replace('127.0.0.1', lan) + 'api/phone', {
+  headers: { 'User-Agent': 'Mozilla/5.0 (Android 17; Mobile; rv:145.0) Firefox/145.0',
+             Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') }
+})).json();
+ok(typeof asPhone.you === 'string' && /^\d+\.\d+\.\d+\.\d+$/.test(asPhone.you),
+   `from an Android browser it offers that browser's own address (${asPhone.you})`);
 
 // ---- without web-ext there is nothing to push with -------------------------
 // Ghosted with the reason on it, rather than a button that looks alive and
