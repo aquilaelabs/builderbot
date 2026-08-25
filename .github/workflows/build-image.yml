@@ -45,7 +45,13 @@ jobs:
       packages: write
 
     steps:
+      # Full history, not the default depth-1: the version's ordinal is
+      # `git rev-list --count HEAD`, and a shallow clone answers that with 1.
+      # It would not fail — every build would just silently call itself
+      # .dev.1, which is worse.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       # The hosted runner ships ~25GB of toolchains this build never uses
       # (dotnet, the runner's own Android SDK, GHC, CodeQL). This image was
@@ -109,6 +115,31 @@ jobs:
         id: stamp
         run: echo "at=$(date -u +%Y-%m-%dT%H:%MZ)" >> "$GITHUB_OUTPUT"
 
+      # The ordered identity, derived the same way `bb version` derives it in
+      # a checkout — see scripts/dashboard/version.py for why rev-list and not
+      # a run number or `git describe`'s count. Kept as shell here rather than
+      # calling into the module: this runs on a hosted runner with only the
+      # repo checked out, before any image exists to run bb from.
+      - name: Derive the version
+        id: ver
+        run: |
+          target="$(head -1 VERSION 2>/dev/null | tr -d '[:space:]')"
+          ordinal="$(git rev-list --count HEAD)"
+          short="$(git rev-parse --short=7 HEAD)"
+          if ! printf '%s' "$target" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::warning::no usable VERSION file; stamping the commit alone"
+            v="$short"
+          elif tag="$(git describe --tags --exact-match HEAD 2>/dev/null)"; then
+            v="${tag#v}"
+            if [ "$v" != "$target" ]; then
+              echo "::warning::tag $tag disagrees with VERSION ($target) — stamping the tag, but one of them is wrong"
+            fi
+          else
+            v="${target}-dev.${ordinal}+${short}"
+          fi
+          echo "built $v"
+          echo "v=$v" >> "$GITHUB_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
@@ -117,6 +148,7 @@ jobs:
           build-args: |
             IMAGE_REV=${{ github.sha }}
             IMAGE_BUILT=${{ steps.stamp.outputs.at }}
+            IMAGE_VERSION=${{ steps.ver.outputs.v }}
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

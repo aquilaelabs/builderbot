@@ -74,13 +74,30 @@ claude_scope() {
     # would leave a truncated file if jq failed, and claude would then be
     # handed a settings file that is not JSON.
     tmp="$out.new"
-    if siblings_of "$proj" | jq -R . | jq -s --arg ws "$WORKSPACE" '
+    # The project's own VERSION file is denied too, and it is the one entry
+    # here that points INSIDE the project rather than outside it. The version
+    # is the operator's claim about their own work: they move it from the
+    # dashboard, and a session that may move it does so through
+    # `bb version bump`, which checks the per-project policy first. Editing the
+    # file directly would walk straight past that check.
+    #
+    # Read is deliberately not denied — a session should be able to see the
+    # version it is working against, and `bb version` prints it anyway.
+    #
+    # Same caveat as every rule in this file: it binds the file tools, not
+    # Bash. `echo 0.5.0 > VERSION` still works. This makes the sanctioned path
+    # the easy one; the record that makes a bad bump recoverable is that
+    # VERSION is committed and `git log` says who moved it.
+    if siblings_of "$proj" | jq -R . | jq -s --arg ws "$WORKSPACE" --arg proj "$proj" '
            {permissions: {
               additionalDirectories: [],
               deny: (map("Read(\(.)/**)", "Edit(\(.)/**)",
                          "Write(\(.)/**)", "NotebookEdit(\(.)/**)")
                      + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)",
-                        "Write(\($ws)/_work/**)", "NotebookEdit(\($ws)/_work/**)"])
+                        "Write(\($ws)/_work/**)", "NotebookEdit(\($ws)/_work/**)",
+                        "Edit(\($ws)/\($proj)/VERSION)",
+                        "Write(\($ws)/\($proj)/VERSION)",
+                        "NotebookEdit(\($ws)/\($proj)/VERSION)"])
            }}' > "$tmp" && [ -s "$tmp" ]; then
         mv -f "$tmp" "$out"
         printf '%s' "$out"

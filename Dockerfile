@@ -449,8 +449,10 @@ ENV PUID=99 \
 # thing linters have opinions about and this file has no need to argue with.
 ARG IMAGE_REV
 ARG IMAGE_BUILT
+ARG IMAGE_VERSION
 ENV BB_IMAGE_REV=${IMAGE_REV} \
-    BB_IMAGE_BUILT=${IMAGE_BUILT}
+    BB_IMAGE_BUILT=${IMAGE_BUILT} \
+    BB_VERSION=${IMAGE_VERSION}
 
 WORKDIR /workspace
 

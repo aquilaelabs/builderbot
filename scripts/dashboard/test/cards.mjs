@@ -146,11 +146,20 @@ ok(fav.links.includes('/favicon.svg') && fav.links.includes('/favicon.ico')
 // a stale container looked identical for a whole afternoon.
 const build = await page.$eval('#build', e => ({ text: e.textContent.trim(),
                                                  title: e.title }));
-ok(build.text === 'abc1234',
-   'the header carries the build the image was stamped with');
+// The version rather than the commit, because it is the half that can be
+// ordered: two shas do not say which came first, which is the question
+// anybody reading this is actually asking.
+ok(build.text === '0.4.0-dev.390+abc1234',
+   'the header carries the ordered version the image was stamped with');
 ok(build.title.includes('abc1234def5678901234567890abcdef12345678')
    && build.title.includes('2026-08-21T19:30Z'),
    '...with the whole commit and when it was built, on hover');
+// An image built before versions existed still has a commit, and the header
+// falls back to it rather than going blank.
+ok(await page.evaluate(() => { drawBuild({ rev: 'deadbee1234', built: '' });
+                               return document.getElementById('build')
+                                      .textContent === 'deadbee'; }),
+   '...falling back to the commit for an image with no version');
 ok(/bb drift/.test(build.title),
    '...and says where to look for what a checkout has changed since');
 // An image built outside CI carries no stamp, and says so rather than leaving

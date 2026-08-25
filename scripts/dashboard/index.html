@@ -2475,10 +2475,15 @@ window.addEventListener("focus", nudgeTerminals);
 // are different questions, and only one of them used to be answerable. The
 // stamp is what /opt is serving; bb drift is what a checkout has changed since.
 function drawBuild(img){
-  const el = $("build"), rev = img?.rev || "";
-  el.textContent = rev ? rev.slice(0, 7) : "unstamped";
+  const el = $("build"), rev = img?.rev || "", ver = img?.version || "";
+  // The version when there is one, because it is the half that can be
+  // ordered: two shas do not say which came first, which is the question
+  // being asked whenever anybody looks at this. The commit stays one hover
+  // away rather than being dropped — it is what `bb drift` compares against.
+  el.textContent = ver || (rev ? rev.slice(0, 7) : "unstamped");
   el.title = rev
-    ? `image ${rev}${img.built ? `\nbuilt ${img.built}` : ""}`
+    ? `${ver ? `version ${ver}\n` : ""}image ${rev}`
+      + `${img.built ? `\nbuilt ${img.built}` : ""}`
       + `\n\nthis is what /opt is serving — \`bb drift\` says what a checkout`
       + `\nhas changed since, and an update pulls whatever :latest is now`
     : "this image carries no build stamp — built outside CI, or older than the"
