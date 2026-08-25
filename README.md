@@ -368,6 +368,7 @@ bb roadmap info N [M] "..."           attach the technical details to one, or st
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
 bb bug find TEXT   search the reports themselves — area, repro and notes too
+bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `revert`
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
 bb history         one search over the notebook's logs — roadmap, bugs, memory
@@ -1098,33 +1099,40 @@ a placeholder, and **+** starts over.
 - **Shell** opens *another* terminal at the project path every time you click
   it, so you can have several side by side. **+**, at the left of the tab
   strip, does the same for `/workspace`.
-- **Open findings report** opens a *document* tab, not a terminal. It is a
-  report to read; putting it through a PTY would only make it harder to.
+- **A Static analysis row** opens that project's notebook on its **Analysis**
+  view — a *document* tab, not a terminal. It is a report to read; putting it
+  through a PTY would only make it harder to. The whole-report findings tab it
+  replaced is gone.
 - **— on a tab minimizes it**, and asks nothing. The terminal keeps running
   and is listed under Sessions, where **Open** brings it back; a **Claude** tab
   is the same, the conversation carries on without a tab. Nothing is lost, so
   nothing is asked. **Middle-clicking** a terminal tab is the stronger thing,
   the way it is in a browser: it ends the session — after the same question
   the Sessions ✕ asks — and closes the tab with it.
-- **✕ appears on the findings tab only**, because a document has no session to
-  keep. It closes without asking too.
+- **✕ appears on document tabs**, the notebook and Analysis, because a document
+  has no session to keep. The notebook asks first if anything in it is unsaved;
+  nothing else does.
 ### The notebook
 
-Every project has one, reachable from the checklist icon on its row: a tab of
-its own, one per project, and as many open at once as you have projects —
+Every project has one, reachable from the **Notebook** button on its row: a tab
+of its own, one per project, and as many open at once as you have projects —
 each is its own instance, so what is half-typed in one survives working in
-another. Three views under its tab strip: **Memory** (what Claude remembers
-here, moved up from the fold it used to live in), the **Roadmap** (the shared
-list, renamed for what it is — design work and ordered plans), and **Bugs**.
+another, and the button lights green while that project's is open. Four views
+under its tab strip: **Memory** (what Claude remembers here, moved up from the
+fold it used to live in), the **Roadmap** (the shared list, renamed for what it
+is — design work and ordered plans), **Bugs**, and **Analysis** (the scanner's
+findings for this project alone).
+
+**Unsaved work does not cross those four.** Leaving a view asks, and answering
+yes throws the change away rather than carrying it to the next tab.
 
 **The roadmap** is `bb roadmap` in a terminal. Saving does not close it; the
 Save buttons simply go dead until there is something to save again, and the
 button beside them is **Revert**, which throws away what has not been saved
 and is dead whenever there is nothing to throw. It fills the pane rather than
 sitting in it, and the pane is the only thing that scrolls. Closing the tab
-asks first if anything is unsaved. One notebook is open at a time: opening another
-project's replaces it, because it is one panel that moves rather than one per
-project. It is the one surface here that **both sides write**:
+asks first if anything is unsaved. It is the one surface here that
+**both sides write**:
 you add "make the picker wrap properly", a session adds "a project can be
 created in one click and only deleted from a shell", and either of you can tick
 something off.
@@ -1137,7 +1145,8 @@ lived in the conversation and died with it.
 **Every change to a list is kept.** Both sides write these, and the list
 itself only ever shows the present tense — so *was that step always worded
 like that?* and *who dropped the third one?* had no answer at all.
-**History**, beside Reorder, is the answer: one line per change, newest
+**History**, at the top of the view where the other three tabs keep theirs, is
+the answer: one line per change, newest
 first, each with its date and time and whether you or a session made it. A
 reword shows both wordings, the old one struck through. `bb roadmap history`
 prints the same log in a terminal.
@@ -1353,6 +1362,11 @@ glued to the first. It rides on every send rather than being offered as a
 choice: a session about to act on a step is exactly who wants to know the plan
 around it moved, and by the time anything can be sent there is nothing unsaved
 left to keep quiet about — which is the next rule.
+
+The view opens the way the other three do — its one-line summary on the left
+and **History** on the right — with the field, **Add** and **Reorder** together
+on the row under it. Those three are the things that change the list; History
+only reads it.
 
 **Nothing can be sent while the panel is holding unsaved work.** The arrows go
 down, and the line above the list says which change is not on disk and that
@@ -1843,6 +1857,8 @@ scripts/
     memory.py                    everything behind the memory book: what Claude remembers per project
     projects.py                  new project / link to GitHub, and the worker that clones and pushes
     todo.py                      the roadmap; `bb roadmap` drives the same file
+    bugs.py                      the bug tracker; `bb bug` drives the same file
+    notebook.py                  one batch over both of those, so half of one cannot exist
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
