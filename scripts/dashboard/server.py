@@ -593,13 +593,16 @@ def _project_of(uri, known, nonproject=frozenset()):
     container mounts it, so the only reliable anchor is a path component that
     matches a directory in the workspace.
 
-    A component that matches a directory that is deliberately *not* a project
-    — the SDK share, anything carrying .bbignore — attributes to IGNORED
-    rather than to nothing. The host scanner sweeps the whole share, so the
-    flutter checkout alone lands thousands of findings, and filing those as
-    "unattributed" buried the handful of genuinely unplaceable paths under
-    them: 9,000 rows of vendored toolchain wearing the label that was meant
-    to say "look at this one, its path is wrong".
+    A component that matches a directory in the share that is NOT a project —
+    the SDK share, the runner's tree, anything else living in there —
+    attributes to IGNORED rather than to nothing. The host scanner sweeps the
+    whole share, so the flutter checkout alone lands thousands of findings,
+    and filing those as "unattributed" buried the handful of genuinely
+    unplaceable paths under them: 9,000 rows of vendored toolchain wearing the
+    label that was meant to say "look at this one, its path is wrong".
+
+    `nonproject` is everything in the share minus the projects, so this needs
+    no list of what to skip and nothing has to be excluded on the scanner.
     """
     parts = [p for p in uri.replace("\\", "/").split("/") if p]
     for i, part in enumerate(parts):
@@ -616,14 +619,35 @@ def _project_of(uri, known, nonproject=frozenset()):
 IGNORED = "not/a/project"
 
 
-def nonproject_dirs():
-    """Top-level workspace directories that are not projects: the runner's
-    _work tree, and anything carrying .bbignore — which is how the SDK share
-    marks itself. Listed fresh per parse; it is one readdir."""
+def nonproject_dirs(valid):
+    """Top-level workspace directories that are not projects.
+
+    Derived by subtraction rather than by recognising each kind: everything in
+    the share that is not a project worth reading findings for is one of these.
+    That set is the one the card already computes — listed, not excluded, no
+    error-level issue — so asking for it and taking the remainder needs no
+    maintenance when a new sort of directory turns up in the share.
+
+    Subtracting the *valid* projects rather than merely the listed ones is what
+    makes it cover the case that started this. A share mapped inside the
+    projects folder with nothing to mark it is still a directory, so the card
+    lists it — as a project with an error, because it is not a repository. Take
+    away only the listed names and its thousands of findings stay in play; take
+    away the valid ones and it falls out with the rest.
+
+    That width is the point. The SDK share is the case that made it matter: on
+    this box it lives *inside* the development share, so the host's scanner
+    walks it like anything else and a report grew nine thousand findings
+    attributed to a "project" that is a pile of downloaded toolchains. Those
+    now attribute to IGNORED and are counted aside, rather than burying the
+    handful of genuinely unplaceable paths that the "unattributed" label is
+    for. Nothing had to be excluded on the scanner to get there.
+
+    Listed fresh per parse; it is one readdir."""
     out = set()
     try:
         for d in WORKSPACE.iterdir():
-            if d.is_dir() and (d.name == "_work" or (d / ".bbignore").exists()):
+            if d.is_dir() and d.name not in valid:
                 out.add(d.name)
     except OSError:
         pass
@@ -710,32 +734,33 @@ def findings_payload():
         return {"available": False, "reports": [], "projects": sorted(known)}
     files = sorted(f for f in REPORTS.glob("*.sarif")) + \
             sorted(f for f in REPORTS.glob("*.sarif.json"))
-    # Attribution still uses every directory name — filtering the *names*
-    # would misfile an excluded project's findings as unattributed. The rows
-    # are dropped after attribution, and counted: a report that quietly
-    # shrinks reads as "covered everything" when it did not.
+    # Only the projects worth reading findings for get attributed to: listed,
+    # not excluded, no error-level issue. Everything else under the share —
+    # a project shut out, one that is broken, the SDK share, a directory
+    # nobody has explained — attributes to IGNORED and is counted aside.
+    #
+    # Counted rather than silently dropped: a report that quietly shrinks
+    # reads as "covered everything" when it did not.
     valid = _valid_projects(ps)
-    nonproject = nonproject_dirs()
-    reports, hidden, outside = [], 0, 0
+    nonproject = nonproject_dirs(valid)
+    reports, aside = [], 0
     for f in files:
-        rep = parse_sarif(f, known, nonproject)
-        keep, dropped = [], 0
+        rep = parse_sarif(f, valid, nonproject)
+        keep = []
         for r in rep["findings"]:
             if r["project"] == IGNORED:
-                outside += 1
-            elif r["project"] is None or r["project"] in valid:
-                keep.append(r)
+                aside += 1
             else:
-                dropped += 1
-        hidden += dropped
+                keep.append(r)
         rep["findings"] = keep
         reports.append(rep)
-    # `outside` is its own number, not folded into `hidden`: hidden rows are
-    # a project the operator shut out, outside rows are the scanner sweeping
-    # the SDK share — one is a decision to revisit, the other is noise the
-    # host's scan config could stop making.
+    # One number rather than the two this used to keep. They were never shown
+    # anywhere, and the distinction they drew — shut out on purpose vs. not a
+    # project — stopped being one this code could make once attribution became
+    # "valid projects only": a broken project and a vendored toolchain now
+    # leave by the same door, which is the point.
     return {"available": True, "projects": sorted(known),
-            "hidden": hidden, "outside": outside, "reports": reports}
+            "aside": aside, "reports": reports}
 
 
 # `bb sdk install|update|remove` refuses when CLAUDECODE is set, and the
@@ -1646,11 +1671,12 @@ def findings_counts(ps):
     finding. The cache holds the unfiltered counts: validity can change
     (an exclusion toggled, a permission fixed) without any report changing,
     so the filter runs per call and only the parse is cached."""
-    # Keyed on the project names too: attribution matches path components
-    # against them, so a directory that appears between scans would otherwise
-    # keep counting as unattributed here while the report tab, which parses
-    # fresh, files it correctly.
+    # Keyed on the valid project names too: attribution matches path components
+    # against them, so a project that appears — or stops being valid — between
+    # scans would otherwise keep being counted the old way here while the
+    # notebook's view, which parses fresh, files it correctly.
     known = {p["name"] for p in ps}
+    valid = _valid_projects(ps)
     files = []
     if REPORTS.is_dir():
         files = sorted(REPORTS.glob("*.sarif")) + \
@@ -1662,12 +1688,12 @@ def findings_counts(ps):
         stamp = tuple((f.name, f.stat().st_mtime_ns, f.stat().st_size) for f in files)
     except OSError:
         stamp = ()
-    nonproject = nonproject_dirs()
-    key = (stamp, tuple(sorted(known)), tuple(sorted(nonproject)))
+    nonproject = nonproject_dirs(valid)
+    key = (stamp, tuple(sorted(valid)), tuple(sorted(nonproject)))
     if _findings_counts["mtime"] != key:
         per, rows_by, broken = {}, {}, False
         for f in files:
-            rep = parse_sarif(f, known, nonproject)
+            rep = parse_sarif(f, valid, nonproject)
             broken = broken or bool(rep.get("error"))
             for row in rep["findings"]:
                 if row["project"] == IGNORED:
@@ -1696,9 +1722,10 @@ def findings_counts(ps):
         if files and not broken:
             for name in known:
                 findings.seen(name, rows_by.get(name, []), covered=True)
-    valid = _valid_projects(ps)
-    return {p: lv for p, lv in _findings_counts["projects"].items()
-            if not p or p in valid}
+    # No filter on the way out any more: nothing but a valid project (or the
+    # empty key, which is an unattributed path) can be in there at all, and
+    # the cache is keyed on the valid set so a change to it re-parses.
+    return dict(_findings_counts["projects"])
 
 
 def snapshot():

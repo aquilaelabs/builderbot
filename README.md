@@ -1449,10 +1449,22 @@ project alone, worst level first, read-only — the scan runs on the host, and
 `bb findings` reads the same digest in a terminal. The whole-report findings
 tab is gone; the Static analysis card's per-project rows are the way in now,
 each opening its project's notebook on this view. Findings whose paths
-resolve into directories that are deliberately not projects — the SDK share,
-anything carrying `.bbignore` — are counted and set aside rather than shown
-as "unattributed": the label is reserved for paths that genuinely place
-nowhere, which is the case worth a look.
+resolve into anything other than a **valid** project — one that is listed, not
+excluded, and free of error-level issues — are counted and set aside rather
+than shown as "unattributed". The label is reserved for paths that genuinely
+place nowhere, which is the case worth a look.
+
+That rule is a subtraction, and deliberately so: rather than recognising each
+kind of thing that is not a project, findings attribute only to the projects
+worth reading them for, and everything else in the share falls out together.
+It matters because of how the SDK share is mapped here — inside the
+development folder, so the host's scanner walks it like anything else and one
+report grew nine thousand findings for a pile of downloaded toolchains. A
+marker file (`.bbignore`) handles the case where the container knows about the
+directory, but a share mapped in with nothing to mark it is still listed as a
+project — one with an error, because it is not a repository — so subtracting
+only the *listed* names would have left it in play. Subtracting the valid ones
+catches both, and needs no excludes configured on the scanner.
 
 **The bug tracker** is the notebook's third view, and `bb bug` in a terminal.
 The roadmap is for things somebody decided to build; a bug is a different

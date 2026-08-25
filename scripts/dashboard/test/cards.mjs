@@ -45,7 +45,7 @@ await page.waitForFunction(() => document.getElementById('docDot').className.inc
 // projects: fold-away toggle at the foot; slides the card. It names what it
 // is hiding rather than calling all of it errors — gamma has no git, delta was
 // excluded on purpose, and those are not the same kind of thing.
-ok(await page.$eval('#projects #bAll', el => el.textContent.trim()) === 'Show Excluded (1) / Error (1)',
+ok(await page.$eval('#projects #bAll', el => el.textContent.trim()) === 'Show Excluded (1) / Error (2)',
    'the toggle says what it is hiding, by kind');
 ok((await animatedDuring(page, () => page.click('#projects #bAll')))
      .some(k => k.includes('projects')),
@@ -54,7 +54,13 @@ await page.click('#projects #bAll');
 
 // findings card: per-project counts, valid projects only, plain button
 const rows = await page.$$eval('#findingsSum .row', rs => rs.map(r => r.querySelector('.name').textContent.trim()));
-ok(rows.join(',') === 'alpha,beta', `findings card lists valid projects only (${rows.join(',')})`);
+// alpha and beta are the valid projects; the last row is the one path that
+// genuinely places nowhere. gamma (error), delta (excluded), toolstore and
+// vendored-junk all had findings in the fixture and none of them are here:
+// attribution only knows valid projects now, so everything else is set aside
+// rather than swelling the unattributed row it used to swamp.
+ok(rows.join(',') === 'alpha,beta,unattributed paths',
+   `findings card lists valid projects, and the one real orphan (${rows.join(',')})`);
 ok(await page.$('#cardFindings .macros button') === null,
    'the card carries no report button — its rows open a notebook\'s Analysis view');
 ok(await page.$eval('#findingsSum .row[data-ana="alpha"]', r => r.classList.contains('go')),
@@ -68,6 +74,11 @@ await page.click('#projects #bAll');
 const all = await page.$$eval('#projects .name', ns => ns.map(n => n.textContent.trim()));
 await page.click('#projects #bAll');
 ok(!all.includes('toolstore'), '...not even with the error rows shown');
+// An unmarked directory IS still listed, as a project with an error — that is
+// the card doing its job, and how you find out something in the share is not a
+// repository. What changed is that its findings no longer count as anybody's.
+ok(all.includes('vendored-junk'),
+   '...while one with no marker is listed, as the error it is');
 
 // drag: reorder + slide + persistence; the click ending a drag is not a toggle
 const hb = await (await page.$('.card[data-card="runner"] h2')).boundingBox();
