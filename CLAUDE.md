@@ -499,6 +499,7 @@ If `/reports` exists, a scanner runs on the host and drops SARIF there.
 ```bash
 bb findings        # this project's findings, repo-relative paths
 bb findings --all  # every project the report covers
+bb findings history   # what the scanner stopped and started saying here
 ```
 
 The scanner may cover several repos in one report; `bb findings` shows only

@@ -101,6 +101,11 @@ mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk}
 # its own that land in the projects share, and an operator can write one by
 # hand. Either way it is not a project.
 mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
+# ...and one with no marker at all, the shape the SDK share actually has when
+# somebody maps a share inside the projects folder and nothing has told the
+# container about it. It is not a project because the Projects card did not
+# accept it, which is the only test that matters now.
+mkdir -p "$S/ws/vendored-junk/deep" && echo x > "$S/ws/vendored-junk/deep/thing.py"
 echo '["delta"]' > "$S/state/excluded-projects.json"
 # A git that stalls on one magic URL and is the real git for everything else.
 # Cloning is a background job now, and the two properties that matters for —
@@ -318,7 +323,15 @@ def res(rule, level, uri):
                                                 "region": {"startLine": 3}}}]}
 doc = {"version": "2.1.0", "runs": [{"tool": {"driver": {"name": "testscan", "rules": []}},
        "results": [res("A1", "error", "scan/alpha/a.sh"), res("B1", "note", "scan/beta/x.py"),
-                   res("G1", "error", "scan/gamma/g.c"), res("D1", "warning", "scan/delta/d1.c")]}]}
+                   res("G1", "error", "scan/gamma/g.c"), res("D1", "warning", "scan/delta/d1.c"),
+                   # Two the scanner swept that are not projects: one marked
+                   # with .bbignore, one not marked at all. Both must be set
+                   # aside rather than counted as unattributed.
+                   res("T1", "error", "scan/toolstore/vendor/lib.py"),
+                   res("V1", "error", "scan/vendored-junk/deep/thing.py"),
+                   # ...and one that genuinely places nowhere, which is what
+                   # the unattributed label is actually for.
+                   res("U1", "warning", "somewhere/else/entirely.py")]}]}
 open(sys.argv[1], "w").write(json.dumps(doc))
 EOF
 # Each test file starts from the same place: an unwritten layout and both
@@ -332,7 +345,7 @@ fresh() {
     # not one of the five fixtures. Scoped to $S, like every rm in this file.
     find "$S/ws" -maxdepth 1 -mindepth 1 -type d \
         ! -name alpha ! -name beta ! -name gamma ! -name delta ! -name ep.silon \
-        ! -name toolstore -exec rm -rf {} +
+        ! -name toolstore ! -name vendored-junk -exec rm -rf {} +
     rm -rf "$S/home/.ssh"           # deploy-key selectors a test wrote
     rm -rf "$S/sdk" "$S/androidsdk"; mkdir -p "$S/sdk" "$S/androidsdk"
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
