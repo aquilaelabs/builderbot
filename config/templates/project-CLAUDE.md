@@ -235,6 +235,10 @@ you should say so rather than guessing from a headless emulator.
 
 Only relevant when the operator has one paired to the dashboard's Phone card.
 
+Pairing is once per container, not per session: the key it trusts lives in
+`~/.android` on the home volume, so it outlives a restart. If the phone is not
+showing as connected, the answer is almost always Connect rather than Pair.
+
 **You cannot reach it directly, and that is deliberate.** The handset is kept
 on an adb server of its own, so `adb devices` here shows the emulator and
 nothing else. Asking for the phone goes through the operator:

@@ -429,7 +429,7 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     BB_IMAGE_BUILT=2026-08-21T19:30Z \
     CLAUDE_AUTH_IN="$S/auth-in.json" \
     BB_LOGIN_DONE="$S/login-finished" \
-    PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" \
+    PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" BB_ADB_BIN="$S/bin/adb" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
 pid=$!
 for _ in $(seq 40); do

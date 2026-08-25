@@ -63,15 +63,38 @@ ok((await post({ action: 'ask', why: 'poke about', cmd: [] })).body.error,
 const asked = await post({ action: 'ask', why: 'read the Firefox version',
                            cmd: ['shell', 'getprop', 'ro.build.version.release'] });
 ok(asked.body.id > 0, 'a session can ask, and gets a number back');
-await page.evaluate(() => phFetch());
-await page.waitForSelector('.phask', { timeout: 15000 });
+// Found on the ordinary status poll, with nothing pressed and no phFetch of
+// our own. The card used to poll only when it already knew about an ask,
+// which meant it could never learn about the first one: the request sat on
+// the server, bb phone could see it, and the card showed nothing.
+// Nothing is pressed and no fetch is triggered: the revisions poll is the
+// only thing running, which is the whole point. A view says what it depends
+// on and is told; it never reasons about when to re-read.
+await page.waitForSelector('.phask', { timeout: 20000 });
+ok(true, '...and the card finds it on its own, with nothing pressed');
+// The tab says so too, for the case this exists for: the request arrives
+// while somebody is looking at another tab entirely.
+await page.waitForFunction(() => /^\(1\) /.test(document.title),
+                           null, { timeout: 15000 });
+ok(true, '...and the tab title carries the count, since the tab may not be in front');
+ok(await page.evaluate(() => {
+     const l = document.querySelector('link[rel="icon"][href^="data:"]');
+     return !!l && l.getAttribute('href').includes('f0883e');
+   }),
+   '...and so does the favicon, for when the strip is too crowded for text');
 ok(/read the Firefox version/.test(await page.$eval('.phask .name', e => e.textContent)),
    '...and the card shows the reason it gave');
 ok(/getprop/.test(await page.$eval('.phask .phcmd', e => e.textContent)),
    '...beside the exact command, so Allow is not a guess');
+ok(/left to answer/.test(await page.$eval('.phask', e => e.textContent)),
+   '...and how long is left, since an Allow that has quietly stopped working '
+   + 'is worse than one that says it has gone');
 await page.click('.phask [data-allow]');
 await page.waitForFunction(() => !document.querySelector('.phask'),
                            null, { timeout: 20000 });
+await page.waitForFunction(() => document.title === 'BuilderBot',
+                           null, { timeout: 15000 });
+ok(true, '...and the badge clears when nothing is waiting');
 const done1 = await post({ action: 'outcome', id: asked.body.id });
 ok(done1.body.state === 'done', 'Allow runs it — on the dashboard, not in the session');
 const denied = await post({ action: 'ask', why: 'wipe something',

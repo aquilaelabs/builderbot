@@ -2,7 +2,7 @@
 // The convention IS the feature — the tab lists dist/ and nothing else, so a
 // build worth keeping has to be copied there, and an empty tab says that.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
-import { mkdirSync, writeFileSync, symlinkSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 // alpha ships an APK and an XPI; the XPI is a real zip with a manifest, since
@@ -131,6 +131,31 @@ ok(/signed with a different key/.test((await instState()).error),
 await page.waitForFunction(() => /signed with a different key/.test(
   document.querySelector('.artrow.job')?.textContent || ''), null, { timeout: 15000 });
 ok(true, '...and the sentence is what the tab shows');
+
+// ---- the view notices the phone arriving ----------------------------------
+// Whether Push is offered depends on a phone being connected, and that happens
+// on a different card — or from a terminal. The view used to fetch when its
+// tab was opened and never again, so a phone connected afterwards left Push
+// ghosted and looking broken.
+{
+  // Hide the phone by moving the stub aside, then bring it back and let the
+  // poll do the work — no tab switching, which is the thing that used to be
+  // required.
+  renameSync(`${DIR}/bin/adb`, `${DIR}/bin/adb.hidden`);
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => {
+    const b = document.querySelector('[data-artpush]');
+    return b && b.disabled;
+  }, null, { timeout: 20000 });
+  ok(true, 'with the phone gone, Push goes dead on its own');
+  renameSync(`${DIR}/bin/adb.hidden`, `${DIR}/bin/adb`);
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => {
+    const b = document.querySelector('[data-artpush]');
+    return b && !b.disabled;
+  }, null, { timeout: 20000 });
+  ok(true, '...and comes back when it returns, without touching the tab');
+}
 
 // ---- what the POST refuses -------------------------------------------------
 const post = body => page.evaluate(async b => {

@@ -1781,6 +1781,16 @@ client address is the desktop's, which is not the phone, and filling it in
 would be a confident wrong answer. The port and the six-digit code still come
 off the phone's own screen; nothing but the phone knows those.
 
+**Pairing is once, and it outlives a restart** — the key the phone trusts is
+in `~/.android` on the home volume, so after a container update the phone is
+still paired and Connect is all it needs. Which matters because pairing has a
+trap in it: **Android cancels the pairing dialog the moment you navigate away
+from it**, taking its port with it. Pairing from the browser *on the phone you
+are pairing* therefore cannot work — by the time you paste the code, the port
+it belonged to is gone. The card notices that case (it knows it is being read
+on the phone whose IP is in the field) and says so, and says the thing worth
+saying first: try Connect, you are probably already paired.
+
 **You give it an IP, not a port.** Android hands out a new one every time
 wireless debugging is toggled, so a remembered port goes stale, and the port on
 the pairing screen is a different number from the one on the main screen
@@ -1804,6 +1814,47 @@ That is a door that is shut by default rather than a wall. A session could set
 with Bash, nothing can be a wall. What it buys is that reaching the phone is a
 deliberate act rather than an incidental one, and that every deliberate one
 leaves a question on your screen.
+
+### How a view knows to re-read
+
+Every view shows facts it does not own. The roadmap's arrows depend on a Claude
+session existing; the Artifacts tab's Push depends on a phone being connected
+somewhere else entirely; the Phone card's questions arrive from a terminal. In
+one week, four of them went stale in exactly the same way — each had invented
+its own rule for when to re-read, out of knowledge it did not have. The worst
+was self-defeating: the Phone card polled only while it already knew of a
+pending request, so it could never discover the first one.
+
+So no view decides that any more. `/api/revs` returns one token per thing that
+can change, a view registers what it depends on, and it is told:
+
+```js
+onRev("phone.asks", () => phFetch());
+onRev(() => `dist:${project}`, () => loadArtifacts());
+```
+
+The endpoint is **deliberately tiny** — file mtimes and in-memory counters, no
+git, no tmux, no adb — which is what makes it affordable at a second and a
+half, where `/api/status` runs git for every project and is affordable at
+fifteen. The one thing that is not free, the set of attached devices, is
+cached with a floor of a few seconds and refreshed at once when the dashboard
+itself connects or disconnects, so pressing Connect is instant rather than up
+to that floor late.
+
+**A hidden tab slows down; it does not stop.** That distinction is the point:
+a request lands while you are looking at something else, which is the ordinary
+case rather than the exception. The poll drops to thirty seconds when the tab
+is hidden — browsers throttle background timers hard anyway — and the tab
+re-reads *immediately* on becoming visible, so coming back to it is never
+looking at a stale page. A pending request also puts a count in the **tab
+title** and a dot on the **favicon**, which is as far as a page can go without
+asking for notification permission; that is a decision about your browser
+rather than about the dashboard, so it is not taken on your behalf.
+
+Requests wait **fifteen minutes**, not five, and the card counts down. Five
+assumed somebody was already watching the dashboard; a request that expires
+before it is ever seen is worse than one that waits, because the session is
+idle either way and only one of the two ends in an answer.
 
 ### Reading CI from inside the container
 

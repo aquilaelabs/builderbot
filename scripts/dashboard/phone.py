@@ -98,6 +98,13 @@ ADB_PORT = os.environ.get("BB_PHONE_ADB_PORT", "5038")
 # installed. That has already caught this out once.
 WEBEXT_BIN = os.environ.get("BB_WEBEXT_BIN", "web-ext")
 
+# Which adb to use, for the same reason as WEBEXT_BIN above: the test harness
+# points this at its own stub by absolute path. Without it, a suite that tried
+# to simulate "no phone" by hiding the stub fell through to the real adb — and
+# the real adb, on this box, had the operator's actual handset connected. The
+# test then reported a fact about the room.
+ADB_BIN = os.environ.get("BB_ADB_BIN", "adb")
+
 
 def _env():
     e = dict(os.environ)
@@ -109,7 +116,7 @@ def _adb(*args, timeout=30):
     """One adb command, on the phone's own server. Never `-e` or `-d` — see
     the module docstring."""
     try:
-        p = subprocess.run(["adb", *args], capture_output=True, text=True,
+        p = subprocess.run([ADB_BIN, *args], capture_output=True, text=True,
                            timeout=timeout, env=_env())
         return {"code": p.returncode, "out": (p.stdout or "") + (p.stderr or "")}
     except (OSError, subprocess.SubprocessError) as e:
@@ -229,6 +236,7 @@ def connect(ip, port=None):
     if "connected to" not in r["out"]:
         return {"error": (r["out"].strip().splitlines() or ["connect failed"])[-1]}
     d = load(); d["ip"] = ip; save(d)
+    device_rev(force=True)
     return {"ok": True, "serial": f"{ip}:{n}"}
 
 
@@ -238,6 +246,7 @@ def disconnect(serial=""):
     if not target:
         return {"error": "no phone is connected"}
     _adb("disconnect", target, timeout=15)
+    device_rev(force=True)
     return {"ok": True}
 
 
@@ -332,7 +341,7 @@ def push_dir(d, serial, apk, label=""):
     # nobody was pointing at. The directory pushed here is a snapshot of the
     # .xpi anyway, but the flag makes the promise rather than the layout.
     cmd = [WEBEXT_BIN, "run", "--target=firefox-android", "--no-reload",
-           f"--adb-port={ADB_PORT}",
+           f"--adb-bin={ADB_BIN}", f"--adb-port={ADB_PORT}",
            f"--adb-device={serial}", f"--firefox-apk={apk}",
            f"--source-dir={d}", "--no-input", "--adb-remove-old-artifacts"]
     global _proc
@@ -371,6 +380,26 @@ def stop_push():
     with _lock:
         _job.update(running=False, state="stopped")
     return {"ok": True}
+
+
+# A token for "the set of attached devices changed", for the revisions poll.
+#
+# Cached with a floor on how often adb is actually asked: this is read once or
+# twice a second and `adb devices` is a subprocess. Refreshed on demand at
+# most every few seconds, and immediately whenever this module connects or
+# disconnects something, so the case that matters — the operator pressing
+# Connect — is instant rather than up to the floor late.
+_dev_cache = {"at": 0.0, "rev": ""}
+DEV_TTL = 3.0
+
+
+def device_rev(force=False):
+    now = time.monotonic()
+    if force or now - _dev_cache["at"] > DEV_TTL:
+        _dev_cache["rev"] = ",".join(sorted(
+            f"{d['serial']}:{d['state']}" for d in devices()))
+        _dev_cache["at"] = now
+    return _dev_cache["rev"]
 
 
 def payload():
@@ -412,19 +441,34 @@ _reqs = []
 _req_seq = 0
 MAX_REQS = 20
 
-# How long a session will wait before giving up. Long enough to walk to the
-# dashboard, short enough that a forgotten request does not hold a session
-# open forever.
-WAIT_SECONDS = 300
+# How long a session will wait before giving up.
+#
+# Fifteen minutes, not five. Five assumed somebody was already looking at the
+# dashboard; the ordinary case is that the tab is behind three others and the
+# request is noticed on the next glance. A request that expires before it is
+# ever seen is worse than one that waits — the session is idle either way, and
+# only one of the two ends in an answer.
+WAIT_SECONDS = 900
 
 
 def _req_public(r):
+    # `left` so the card can count down: an approval that quietly stops being
+    # possible, with the button still sitting there, is a worse failure than
+    # being told it has gone.
     return {"id": r["id"], "at": r["at"], "why": r["why"], "cmd": r["cmd"],
-            "state": r["state"], "by": r["by"]}
+            "state": r["state"], "by": r["by"],
+            "left": max(0, r["at"] + WAIT_SECONDS - int(time.time()))}
 
 
 def requests_open():
+    """The ones still waiting. An expired request is not offered: the session
+    that asked has stopped listening, so allowing it would run a command
+    nobody is going to receive the answer to."""
+    now = int(time.time())
     with _lock:
+        for r in _reqs:
+            if r["state"] == "pending" and now - r["at"] > WAIT_SECONDS:
+                r["state"] = "expired"
         return [_req_public(r) for r in _reqs if r["state"] == "pending"]
 
 

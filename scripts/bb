@@ -1523,15 +1523,29 @@ cmd_phone() {
     shift || true
     case "$sub" in
         status)
-            curl -fsS -u "$auth" "$url" \
-                | python3 -c '
-import json, sys
-d = json.load(sys.stdin)
+            # A quoted heredoc, not `python3 -c` inside single quotes: the
+            # escaping that needs is a minefield and this shipped broken once,
+            # with a SyntaxError where the phone's model should have been.
+            # The JSON arrives by environment, not by pipe: `python3 -` takes
+            # its PROGRAM from stdin, so a heredoc and a pipe are competing for
+            # the same channel and the heredoc wins — which is how this came to
+            # be parsing an empty stdin as JSON.
+            local body
+            body="$(curl -fsS -u "$auth" "$url")" \
+                || die "could not reach the dashboard on ${url}"
+            BB_PHONE_JSON="$body" python3 - <<'PY'
+import json, os
+
+d = json.loads(os.environ["BB_PHONE_JSON"])
 p = d.get("phone")
-print(f"phone:   {p[\"model\"]} ({p[\"serial\"]})" if p else "phone:   not connected")
+if p:
+    print("phone:   {} ({})".format(p.get("model") or "phone", p.get("serial")))
+else:
+    print("phone:   not connected")
 for a in d.get("asks") or []:
-    print(f"waiting: #{a[\"id\"]} {a[\"why\"]}")
-'           ;;
+    print("waiting: #{} {}".format(a.get("id"), a.get("why")))
+PY
+            ;;
         run)
             # `--why` is required, not polite. The operator is being asked
             # about a command they did not write; without a sentence saying
@@ -1572,11 +1586,11 @@ r = post({"action": "ask", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[1:
 if r.get("error"):
     print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr); sys.exit(1)
 rid = r["id"]
-print(f"[builderbot] asked the operator (#{rid}) — waiting for Allow on the "
-      "dashboard's Phone card", file=sys.stderr)
+print(f"[builderbot] asked the operator (#{rid}) — waiting up to 15 minutes "
+      "for Allow on the dashboard's Phone card", file=sys.stderr)
 # Polled rather than pushed: this is a shell command waiting on a person, and
 # a person is slow in a way no callback improves.
-for _ in range(300):
+for _ in range(900):
     time.sleep(1)
     o = post({"action": "outcome", "id": rid})
     if o.get("error"):
@@ -1586,7 +1600,7 @@ for _ in range(300):
     if o["state"] == "done":
         sys.stdout.write(o.get("out") or "")
         sys.exit(o.get("code") or 0)
-print("[builderbot] nobody answered within five minutes", file=sys.stderr)
+print("[builderbot] nobody answered within fifteen minutes", file=sys.stderr)
 sys.exit(1)
 PY
             ;;
