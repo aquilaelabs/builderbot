@@ -288,6 +288,14 @@ def send(project, bug_id, sessions=(), model=None, effort=None, note=""):
                     if b.get("id") == bug_id), None)
     if row is None:
         return {"error": "no such bug"}
+    # A closed bug is a record, not work. Sending one would ask a session to
+    # go and deal with something somebody has already decided is dealt with —
+    # and the three closes exist precisely to say which kind of dealt-with it
+    # was. If it turns out not to have been, `reopen` is the honest way back,
+    # and it leaves a line in the log saying so where this would leave none.
+    if row.get("status") != "open":
+        return {"error": f"bug #{bug_id} is {STATUS_WORDS.get(row['status'], row['status'])}"
+                         " — reopen it first if it needs work again"}
     session = tmux_name("claude-" + project)
     for cmd, val, table in (("/model", model, MODELS), ("/effort", effort, EFFORTS)):
         if not val:

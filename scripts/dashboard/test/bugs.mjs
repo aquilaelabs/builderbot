@@ -301,6 +301,30 @@ ok(/it happens on the second run/.test(sent),
    '...but does carry the operator\'s note');
 ok(new RegExp(`bb bug fix ${first}`).test(sent),
    '...and says how to close it when it is dealt with');
+// Back into the notebook: the send above lands you in the session's tab.
+await page.click(`${row('alpha')} [data-m]`);
+await page.click('.pane .nb .nbtabs [data-v="bugs"]');
+await page.waitForSelector('#bugList .bug', { timeout: 15000 });
+// A closed bug is a record, not work. Both halves of that: the button goes
+// dead on the row, and the server refuses even if something asks anyway —
+// a rule only the panel honors is a suggestion.
+const closed = await page.$$eval('#bugList .bug',
+  ds => ds.filter(d => !d.querySelector('.bReopen')).length === ds.length
+        ? null
+        : ds.find(d => d.querySelector('.bReopen'))?.dataset.id);
+if (closed){
+  await page.click(`#bugList .bug[data-id="${closed}"] summary`);
+  ok(await page.$eval(`#bugList .bug[data-id="${closed}"] .bSend`, b => b.disabled),
+     'a closed bug cannot be sent from the row');
+  ok((await page.$eval(`#bugList .bug[data-id="${closed}"] .bSend`, b => b.title))
+       .includes('reopen it first'),
+     '...and the button says to reopen it rather than going quiet');
+  const refused = await post({ action: 'send', project: 'alpha', id: Number(closed) });
+  ok(refused.status === 400 && /reopen it first/.test(refused.body.error),
+     '...and the server refuses it too, not just the panel');
+}
+ok(closed !== null, 'there was a closed bug to try it on');
+
 const log = await post({ action: 'history', project: 'alpha' });
 ok(log.body.history.some(e => e.act === 'sent' && String(e.id) === String(first)),
    '...and the tracker records that it went, since "was this ever handed over" is a tracker question');
