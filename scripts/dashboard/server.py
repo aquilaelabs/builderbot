@@ -15,6 +15,7 @@ import contextlib
 import gzip
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -2048,8 +2049,7 @@ class Handler(BaseHTTPRequestHandler):
             # Not on the status poll: this walks the projects looking for
             # extension manifests, and a filesystem walk every fifteen seconds
             # for a card nobody has open is a poor trade. The card asks.
-            return self._json(phone.payload(
-                [p["name"] for p in project_list()]))
+            return self._json(self._phone_payload())
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
         if self.path.startswith("/api/project-job"):
@@ -2285,6 +2285,30 @@ class Handler(BaseHTTPRequestHandler):
                 # each other's work.
                 "batch": todo.batch(name)}
 
+    def _phone_payload(self):
+        """The card's data, plus this browser's own address when it is a phone.
+
+        The whole point of the IP field is a number the operator has to go and
+        read off the device — and when the dashboard is being viewed ON that
+        device, the server already has it: the client address of this very
+        request. Docker's bridge does not masquerade it, so what arrives is the
+        real LAN address rather than the gateway's.
+
+        Only offered for an Android client. From a desktop the client address
+        is the desktop's, which is emphatically not the phone, and filling the
+        field with it would be a confident wrong answer — the worst kind.
+        """
+        out = phone.payload([p["name"] for p in project_list()])
+        ua = self.headers.get("User-Agent", "")
+        if "Android" in ua:
+            try:
+                ip = ipaddress.ip_address(self.client_address[0])
+                if ip.is_private and not ip.is_loopback:
+                    out["you"] = str(ip)
+            except (ValueError, IndexError):
+                pass
+        return out
+
     def _phone(self, req):
         """Pair, connect, and push an extension. Every argument is checked by
         phone.py against something already known — a discovered extension, an
@@ -2317,7 +2341,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
             return self._json(r, 400)
-        return self._json(r | phone.payload([p["name"] for p in project_list()]))
+        return self._json(r | self._phone_payload())
 
     def _findings_log(self, req):
         """The Analysis view's log. Read-only by nature: the scan runs on the

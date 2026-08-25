@@ -1734,6 +1734,14 @@ passed through it would mean plugging the handset into the server rather than
 leaving it on the desk. So the **Phone** card speaks Android's wireless
 debugging: pair once with the six-digit code, then Connect by IP.
 
+**Open the dashboard on the phone and the IP is already there.** The address
+the field exists to capture is the client address of that very request, and
+Docker's bridge does not masquerade it — so browsing from the handset fills it
+in and says "this device". Only for an Android browser: from a desktop the
+client address is the desktop's, which is not the phone, and filling it in
+would be a confident wrong answer. The port and the six-digit code still come
+off the phone's own screen; nothing but the phone knows those.
+
 **You give it an IP, not a port.** Android hands out a new one every time
 wireless debugging is toggled, so a remembered port goes stale, and the port on
 the pairing screen is a different number from the one on the main screen
