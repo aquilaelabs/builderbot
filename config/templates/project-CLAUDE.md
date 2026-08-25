@@ -265,6 +265,15 @@ an artifact left in `app/build/outputs/...` simply does not exist as far as
 the operator's tab is concerned. Subdirectories one level down are fine
 (`dist/android/app-1.2.apk`).
 
+**Gitignore it.** The tab reads the filesystem, not git, so nothing is gained
+by committing a build — and a 24MB APK per build is history nobody wants.
+Document the rebuild command in the README instead, so the artifact is
+reproducible rather than stored.
+
+If a version string does not move between builds, put something that does in
+the filename — the short commit, usually — or every build is named
+identically and the tab cannot tell this one from the last.
+
 From that tab the operator downloads any of them, and pushes an `.xpi` to
 their paired phone. Nothing auto-pushes: a push is a decision the operator
 makes each time, so do not design around the extension on the handset staying
