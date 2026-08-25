@@ -351,6 +351,7 @@ bb version --code  one form only: --code (Android versionCode), --quad (= --win:
                    manifest.json and Windows VERSIONINFO), --msi, --pep440,
                    --file, --semver, --json
 bb version bump major|minor|patch    move the target, if the policy allows it
+bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
 bb version --list  every version this repo carries: its own, and any component
 bb version --for DIR   ask about a component — a directory with its own VERSION
 bb version policy  what a session may move here, and who decides

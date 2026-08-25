@@ -341,6 +341,19 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .vername{font:600 11px/1.5 system-ui,sans-serif;color:var(--ink);
   margin:0 0 4px;letter-spacing:.02em}
 .versep{border-top:1px solid var(--line);margin:12px 0}
+/* The one place a version is typed rather than chosen. A bump can preview its
+   next value, so it is a button; a starting number is arbitrary and nothing
+   can derive it, so it is a field — validated here and again on the server. */
+.verinit{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.verinit .vstart{font:12px/1.5 var(--mono);flex:0 0 auto;width:8em}
+.verinit .vdir{flex:0 1 auto;min-width:0}
+.veradd{margin-top:10px}
+.veradd summary{color:var(--dim);font:11px/1.6 system-ui,sans-serif;
+  cursor:pointer;min-height:var(--tap);display:flex;align-items:center}
+@media(max-width:520px){
+  .verinit .vstart,.verinit .vdir{flex:1 1 100%;width:auto}
+  .verinit button{flex:1 1 100%}
+}
 .verln{display:flex;gap:8px;align-items:baseline;padding:2px 0;flex-wrap:wrap}
 .verln span:first-child{flex:0 0 118px;color:var(--dim);font:11px/1.5 system-ui,sans-serif}
 .verln code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
@@ -5662,6 +5675,36 @@ $("todoRevert").onclick = revertNotebook;
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
       await postVersion({action: "bump", part, component: comp});
     });
+    // Creating the first VERSION, and creating a component's. Both exist
+    // because the file tools are denied on VERSION: without a sanctioned path
+    // the tab would be telling the operator to do something no part of this
+    // UI can do, which is how a guardrail turns into a thing people route
+    // around.
+    const start = el => {
+      const f = el.closest(".verinit").querySelector(".vstart");
+      const val = (f.value || "").trim();
+      if (!/^\d+\.\d+\.\d+$/.test(val)){
+        notify("a version is MAJOR.MINOR.PATCH, like 0.1.0", true);
+        f.focus();
+        return null;
+      }
+      return val;
+    };
+    box.querySelectorAll("[data-verinit]").forEach(b => b.onclick = async () => {
+      const val = start(b);
+      if (val === null) return;
+      b.disabled = true;
+      await postVersion({action: "init", value: val,
+                         component: b.dataset.verinit || ""});
+    });
+    const add = box.querySelector("[data-veradd]");
+    if (add) add.onclick = async () => {
+      const val = start(add);
+      if (val === null) return;
+      const dir = add.closest(".verinit").querySelector(".vdir").value;
+      add.disabled = true;
+      await postVersion({action: "init", value: val, component: dir});
+    };
     const pol = $("verPolicy");
     if (pol) pol.onchange = () => postVersion({action: "policy", policy: pol.value});
   }
@@ -5727,9 +5770,32 @@ $("todoRevert").onclick = revertNotebook;
         ${v.component ? "" : `<p class="verwhy">A bump writes VERSION and commits
           that one path — it is never pushed. The policy stops
           <code>bb version bump</code> and a session's file tools; it does not
-          stop Bash. It covers this project and its components alike.</p>`}` : `
-        <p class="verwhy">Add a <code>VERSION</code> file holding one line like
-          <code>0.1.0</code> to give this project a version that sorts.</p>`);
+          stop Bash. It covers this project and its components alike.</p>
+        ${(v.candidates || []).length ? `
+          <details class="veradd"><summary>ships something else from here?</summary>
+            <p class="verwhy">A directory with its own <code>VERSION</code> is a
+              component and versions itself — for an extension beside an app,
+              which do not share a maturity. Its ordinal counts only the commits
+              that touched it.</p>
+            <div class="verinit">
+              <select class="vdir" aria-label="which directory">${
+                v.candidates.map(c => `<option>${esc(c)}</option>`).join("")}</select>
+              <input class="vstart" value="0.1.0" size="8" maxlength="20"
+                inputmode="decimal" aria-label="starting version"
+                pattern="[0-9]+\.[0-9]+\.[0-9]+">
+              <button type="button" data-veradd>Give it its own version</button>
+            </div>
+          </details>` : ""}`}` : `
+        <p class="verwhy">This project has no version yet. Giving it one writes
+          a <code>VERSION</code> file and commits it — after that the buttons
+          above move it.</p>
+        <div class="verinit">
+          <input class="vstart" value="0.1.0" size="8" maxlength="20"
+            inputmode="decimal" aria-label="starting version"
+            pattern="[0-9]+\.[0-9]+\.[0-9]+">
+          <button type="button" data-verinit="${esc(v.component || "")}">Give it
+            this version</button>
+        </div>`);
 
   }
 
@@ -5741,6 +5807,8 @@ $("todoRevert").onclick = revertNotebook;
       const j = await r.json();
       if (j.error){ notify(j.error, true); }
       else if (j.bumped) notify(`version ${j.bumped.was} → ${j.bumped.target}`);
+      else if (j.created) notify(`${j.created.component || "this project"} `
+                                 + `is now ${j.created.target}`);
     }catch(e){ notify("version: " + e, true); }
     await loadVersion();
   }

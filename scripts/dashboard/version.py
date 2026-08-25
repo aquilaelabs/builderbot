@@ -368,6 +368,74 @@ def next_version(tgt, part):
     return f"{a}.{b}.{c + 1}"
 
 
+def init(project, value, by="claude", comp=""):
+    """Give a project — or a component — its first VERSION, and commit it.
+
+    This exists because the guardrail would otherwise be a dead end: the file
+    tools are denied on VERSION, so nothing a session or the panel can do
+    would create the first one, and the tab was left telling the operator to
+    make a file by hand in a terminal. A rule with no sanctioned path is a
+    rule people route around.
+
+    `locked` refuses this the way it refuses a bump. Under any delegating
+    policy a session may create one: if the operator has handed over some of
+    the moving, handing over the starting point is the same decision, and a
+    new project with no version at all is the case worth unblocking.
+    """
+    if by != "operator" and policy(project) == "locked":
+        return {"error": f"{project}'s version is locked to the operator. They "
+                         f"can give it one on the project's Artifacts tab."}
+    value = str(value or "").strip()
+    if not TARGET_RE.match(value):
+        return {"error": f"a version is MAJOR.MINOR.PATCH, like 0.1.0 — "
+                         f"not {value[:40]!r}"}
+    where = _sub(project, comp)
+    if where is None:
+        return {"error": f"no such directory here: {comp}"}
+    p = where / VERSION_FILE
+    if p.exists():
+        # Not an error worth dressing up: the thing being asked for is already
+        # true, and changing it is what bump is.
+        return {"error": f"{comp + '/' if comp else ''}{VERSION_FILE} already "
+                         f"exists — use a bump to change it"}
+    if _git(project, "rev-parse", "--short=7", "HEAD") is None:
+        return {"error": "not a git repository, or no commits yet — a version "
+                         "needs history to count"}
+    try:
+        p.write_text(value + "\n", encoding="utf-8")
+    except OSError as e:
+        return {"error": f"could not write {VERSION_FILE}: {e}"}
+    rel = str(p.relative_to(root(project).resolve()))
+    msg = (f"Add {comp} VERSION at {value}" if comp
+           else f"Add VERSION at {value}") + ("" if by == "operator" else " (session)")
+    _git(project, "add", "--", rel)
+    if _git(project, "commit", "-m", msg, "--", rel, timeout=30) is None:
+        return {"error": f"{rel} now reads {value}, but committing it failed — "
+                         f"commit it by hand", "target": value}
+    return {"ok": True, "target": value, "component": comp,
+            "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
+
+
+def candidates(project):
+    """Directories that could become a component — one level down, no VERSION.
+
+    Offered so that creating the second product's version is a choice from
+    what is actually there rather than a path typed from memory.
+    """
+    base = root(project)
+    out = []
+    try:
+        entries = sorted(base.iterdir())
+    except OSError:
+        return out
+    for p in entries:
+        if not p.is_dir() or p.name.startswith(".") or p.name in _SKIP:
+            continue
+        if not (p / VERSION_FILE).is_file():
+            out.append(p.name)
+    return out
+
+
 def bump(project, part, by="claude", comp=""):
     """Move the target and commit that one file.
 
@@ -497,6 +565,9 @@ def one(project, comp=""):
         "next": {part: (next_version(v["target"], part) if v["target"] else None)
                  for part in PARTS},
         "since": evidence(project, comp),
+        # Only on the project's own block: a component is added from the one
+        # place that lists what could become one.
+        "candidates": [] if comp else candidates(project),
     }
 
 

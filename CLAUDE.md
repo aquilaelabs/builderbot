@@ -281,7 +281,9 @@ artifact name** rather than inventing one; that is what makes two builds
 tellable apart in the Artifacts tab.
 
 A project with no `VERSION` file still answers, falling back to `git describe`.
-If one should have a version and does not, say so — do not create the file.
+Giving it one is `bb version init 0.1.0` — which the same policy governs, so
+under the default `locked` it is the operator's, from the Artifacts tab. Do
+not write the file by hand; that is the one path deliberately closed.
 
 **A repo that ships two products has two versions.** An APK and a browser
 extension do not share a maturity, so a directory with its own `VERSION` file
