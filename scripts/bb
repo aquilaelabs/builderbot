@@ -25,6 +25,9 @@ bb — BuilderBot helper
                          (= --win: manifest.json and Windows VERSIONINFO),
                          --msi, --pep440, --file, --semver, --json
   bb version bump PART   move the target: major|minor|patch, if policy allows
+  bb version --list      every version this repo carries: its own, and any
+                         component — a directory with its own VERSION file
+  bb version --for DIR   ask about one component instead of the project
   bb version policy      what a session may move here, and who decides
   bb projects            list mounted project directories
   bb shell               open a login shell as the builder user
@@ -2412,8 +2415,22 @@ version.configure(workspace=os.environ.get("BB_WORKSPACE", "/workspace"),
 
 proj, argv = sys.argv[2], sys.argv[3:]
 
-USAGE = ("bb version [--semver|--code|--quad|--win|--msi|--pep440|--file|--json]\n"
-         "bb version bump major|minor|patch\n"
+# --for NAME asks about a component: a directory with its own VERSION file.
+# Pulled out of argv first so it can sit anywhere, which is what anybody
+# typing `bb version --for extension --code` expects.
+comp = ""
+if "--for" in argv:
+    i = argv.index("--for")
+    if i + 1 >= len(argv):
+        print("--for needs a component directory", file=sys.stderr)
+        raise SystemExit(1)
+    comp = argv[i + 1]
+    argv = argv[:i] + argv[i + 2:]
+
+USAGE = ("bb version [--for DIR] "
+         "[--semver|--code|--quad|--win|--msi|--pep440|--file|--json]\n"
+         "bb version --list                 every version this repo carries\n"
+         "bb version [--for DIR] bump major|minor|patch\n"
          "bb version policy")
 
 
@@ -2435,10 +2452,10 @@ if argv and argv[0] == "bump":
     # `by` is not a flag: this runs AS the session, so the only honest value
     # is the one the policy is about. The operator's bumps come from the
     # dashboard, which calls bump() directly.
-    r = version.bump(proj, argv[1], by="claude")
+    r = version.bump(proj, argv[1], by="claude", comp=comp)
     if r.get("error"):
         fail(r["error"])
-    print(f"{proj} {r['was']} -> {r['target']}  "
+    print(f"{proj}{'/' + comp if comp else ''} {r['was']} -> {r['target']}  "
           f"({r['part']}, committed {r['commit']}, not pushed)")
     raise SystemExit(0)
 
@@ -2449,7 +2466,21 @@ if argv and argv[0] == "policy":
     print("the operator changes this on the project's Artifacts tab")
     raise SystemExit(0)
 
-v = version.render(proj)
+if argv and argv[0] == "--list":
+    # What this repo actually carries. One line for a normal project; more
+    # only where somebody put a VERSION file in a subdirectory.
+    rows = [("", version.render(proj))] + [
+        (c, version.render(proj, c)) for c in version.components(proj)]
+    for name, rv in rows:
+        label = f"{proj}/{name}" if name else proj
+        print(f"  {label:<28} {rv['forms']['semver'] or '(none)'}")
+    if len(rows) == 1:
+        print("\n  one version for the whole repo. A directory with its own "
+              "VERSION\n  file becomes a component with its own — see "
+              "`bb version --for DIR`.")
+    raise SystemExit(0)
+
+v = version.render(proj, comp)
 forms = v["forms"]
 
 if argv and argv[0] == "--json":
@@ -2482,7 +2513,7 @@ if forms["semver"]:
     # Not "[released]" beside "+dirty": HEAD being tagged does not make an
     # uncommitted tree the release, and the two claims side by side read as a
     # contradiction because they are one.
-    print(f"{proj} {forms['semver']}"
+    print(f"{proj}{'/' + comp if comp else ''} {forms['semver']}"
           + ("   [released]" if v["released"] and not v["dirty"] else ""))
 else:
     print(f"{proj}: no version could be determined")
@@ -2498,7 +2529,7 @@ if v["sha"]:
 # What this container is running, but only where that is a comparison rather
 # than a coincidence: BB_VERSION is the image's, and the image is built from
 # THIS repo. Beside any other project's version it would be noise.
-own = (version.root(proj) / "config/templates/project-CLAUDE.md").is_file()
+own = not comp and (version.root(proj) / "config/templates/project-CLAUDE.md").is_file()
 running = os.environ.get("BB_VERSION", "").strip()
 if own and running:
     print(f"  running here      {running}")
@@ -2508,7 +2539,11 @@ if own and running:
 
 print(f"  who may bump      {policy_line()}")
 
-since = version.since_bump(proj)
+comps = version.components(proj)
+if comps and not comp:
+    print(f"  components        {', '.join(comps)}"
+          f"   (bb version --for {comps[0]})")
+since = version.since_bump(proj, comp)
 if since.get("commits"):
     print(f"  since that target {since['commits']} commit"
           + ("" if since["commits"] == 1 else "s"))

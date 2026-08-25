@@ -2445,7 +2445,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
         if act == "bump":
-            r = version.bump(name, field(req, "part"), by="operator")
+            r = version.bump(name, field(req, "part"), by="operator",
+                             comp=field(req, "component") or "")
             if r.get("error"):
                 return self._json(r, 400)
             return self._json(version.payload(name) | {"bumped": r})

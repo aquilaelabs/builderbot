@@ -336,6 +336,11 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* The version block. Rows of label + value so the eye runs down the values,
    which is how "what is this at" is actually read; the buttons sit under
    them because a bump is rare and should not lead. */
+/* Only drawn when a repo carries more than one — one product's version needs
+   no heading, and giving it one would imply a choice that is not there. */
+.vername{font:600 11px/1.5 system-ui,sans-serif;color:var(--ink);
+  margin:0 0 4px;letter-spacing:.02em}
+.versep{border-top:1px solid var(--line);margin:12px 0}
 .verln{display:flex;gap:8px;align-items:baseline;padding:2px 0;flex-wrap:wrap}
 .verln span:first-child{flex:0 0 118px;color:var(--dim);font:11px/1.5 system-ui,sans-serif}
 .verln code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
@@ -5635,8 +5640,34 @@ $("todoRevert").onclick = revertNotebook;
     drawVersion();
   }
 
+  // A repo can ship two products, and then one number is a lie: an extension
+  // at 2.1 beside an app at 0.3 do not share a maturity. So the block is one
+  // section per VERSION file the project carries — almost always just the
+  // one, because a component exists only where somebody put a file.
   function drawVersion(){
-    const v = ver, box = $("verBox"), f = v.forms || {};
+    const box = $("verBox");
+    const all = [ver, ...(ver.versions || [])];
+    box.innerHTML = all.map(v => verSection(v, all.length > 1)).join(
+      `<div class="versep"></div>`);
+    box.querySelectorAll("[data-verbump]").forEach(b => b.onclick = async () => {
+      const part = b.dataset.verbump, comp = b.dataset.vercomp || "";
+      const blk = all.find(x => (x.component || "") === comp);
+      const to = blk?.next?.[part];
+      const what = comp ? `${comp}'s version` : "this project's version";
+      // Typed confirmation is for destroying things; this is one reviewable
+      // line in a commit of its own, so a plain confirm is the right weight.
+      if (!confirm(`Set ${what} to ${to}?\n\n`
+                   + `Writes ${comp ? comp + "/" : ""}VERSION and commits that `
+                   + `one file. Not pushed.`)) return;
+      box.querySelectorAll("button,select").forEach(x => x.disabled = true);
+      await postVersion({action: "bump", part, component: comp});
+    });
+    const pol = $("verPolicy");
+    if (pol) pol.onchange = () => postVersion({action: "policy", policy: pol.value});
+  }
+
+  function verSection(v, named){
+    const f = v.forms || {};
     const line = (label, value, cls = "") => value
       ? `<div class="verln ${cls}"><span>${label}</span><code>${esc(value)}</code></div>`
       : "";
@@ -5666,8 +5697,9 @@ $("todoRevert").onclick = revertNotebook;
     if (s.commits != null) bits.push(`${s.commits} commit${s.commits === 1 ? "" : "s"}`);
     if (s.done) bits.push(`${s.done} roadmap item${s.done === 1 ? "" : "s"} done`);
     if (s.fixed) bits.push(`${s.fixed} bug${s.fixed === 1 ? "" : "s"} fixed`);
-    box.innerHTML =
-      line("building towards", v.target || "no VERSION file")
+    return (named ? `<div class="vername">${
+        esc(v.component || v.project)}${v.component ? "" : "  (the project)"}</div>` : "")
+      + line("building towards", v.target || "no VERSION file")
       + line("a build now", f.semver)
       + (v.running ? line("running here", v.running, stale ? "" : "off") : "")
       + (stale ? `<div class="verln"><span></span><span class="vermark">${
@@ -5681,34 +5713,24 @@ $("todoRevert").onclick = revertNotebook;
           : "nothing has landed since " + esc(v.target)}</p>
         <div class="verbtns">
           ${["patch", "minor", "major"].map(pt => `
-            <button type="button" data-verbump="${pt}"
+            <button type="button" data-verbump="${pt}" data-vercomp="${esc(v.component || "")}"
               title="set VERSION to ${esc(v.next[pt] || "")} and commit that one file">
               ${pt[0].toUpperCase() + pt.slice(1)} → ${esc(v.next[pt] || "")}</button>`).join("")}
-          <span class="sp"></span>
+          ${v.component ? "" : `<span class="sp"></span>
           <span class="verpol">who may bump
             <select id="verPolicy" aria-label="who may bump this project's version">
               ${(v.policies || []).map(o => `<option value="${o}"${
                 o === v.policy ? " selected" : ""}>${o}</option>`).join("")}
             </select>
-          </span>
+          </span>`}
         </div>
-        <p class="verwhy">A bump writes VERSION and commits that one path — it
-          is never pushed. The policy stops <code>bb version bump</code> and a
-          session's file tools; it does not stop Bash.</p>` : `
+        ${v.component ? "" : `<p class="verwhy">A bump writes VERSION and commits
+          that one path — it is never pushed. The policy stops
+          <code>bb version bump</code> and a session's file tools; it does not
+          stop Bash. It covers this project and its components alike.</p>`}` : `
         <p class="verwhy">Add a <code>VERSION</code> file holding one line like
           <code>0.1.0</code> to give this project a version that sorts.</p>`);
 
-    box.querySelectorAll("[data-verbump]").forEach(b => b.onclick = async () => {
-      const part = b.dataset.verbump, to = ver.next[part];
-      // Typed confirmation is for destroying things; this is one reviewable
-      // line in a commit of its own, so a plain confirm is the right weight.
-      if (!confirm(`Set this project's version to ${to}?\n\n`
-                   + `Writes VERSION and commits that one file. Not pushed.`)) return;
-      box.querySelectorAll("button,select").forEach(x => x.disabled = true);
-      await postVersion({action: "bump", part});
-    });
-    const pol = $("verPolicy");
-    if (pol) pol.onchange = () => postVersion({action: "policy", policy: pol.value});
   }
 
   async function postVersion(body){

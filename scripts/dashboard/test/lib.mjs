@@ -194,6 +194,26 @@ export async function openFold(page, sel){
 
 // Wait until the page has its first doctor verdict — the last thing to land
 // on a fresh instance, so a good "page is ready" marker.
+// The closing half of openFold, and racy for the same reason: the click can
+// land on a row that a repaint is about to replace, and the replacement comes
+// back open. Only clicks while it is actually open, so a retry cannot toggle
+// a fold that already did close.
+export async function closeFold(page, sel){
+  let last;
+  for (let attempt = 0; attempt < 4; attempt++){
+    const isOpen = await page.$eval(sel, d => d.open).catch(() => false);
+    if (isOpen) await page.click(`${sel} summary`).catch(e => { last = e; });
+    try{
+      await page.waitForFunction(s => {
+        const d = document.querySelector(s);
+        return d && !d.open && !d.getAnimations().length;
+      }, sel, { timeout: 3000 });
+      return;
+    }catch(e){ last = e; await sleep(120); }
+  }
+  throw last;
+}
+
 export const ready = page => page.waitForFunction(() => {
   const d = document.getElementById('docDot');
   return d && !d.hidden && d.className.includes('ok');

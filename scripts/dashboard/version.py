@@ -43,6 +43,23 @@ and arriving, and it comes free rather than needing a rule.
 `git describe --tags --always --dirty` and saying so. Every project can be
 asked; one that has not opted in should degrade, not fail.
 
+**A repo can ship two products, and then one number is a lie.** An APK and a
+browser extension in one tree do not share a maturity: the extension can be at
+2.1 while the app is new at 0.3, and bumping minor for an app feature would
+silently move the extension's user-visible version for whoever installed it.
+
+So a *component* is any directory holding its own VERSION file — discovered,
+not configured, the same deal `dist/` is. The root VERSION is the project's
+and is what an unqualified `bb version` answers, unchanged. A component
+answers for itself.
+
+Only the target splits. The sha is the repo's either way, and the ordinal
+becomes the count of commits that touched THAT directory: still strictly
+increasing, so versionCode and AMO stay satisfied, but an untouched product's
+version stops moving every time its neighbour is edited. That churn is the
+whole reason to split them — a shipped extension should not appear to change
+because somebody edited the app.
+
 **Who may move it.** A per-project policy, because most of the coding here
 happens through prompts and by bump time nobody remembers what three weeks
 contained. `locked` (the default) keeps it entirely with the operator; `patch`,
@@ -101,6 +118,45 @@ def root(project):
     return WORKSPACE / project
 
 
+# How deep to look for a component. One level below the root, the same reach
+# artifacts.py allows inside dist/: enough for app/ and extension/ side by
+# side, not enough to invite a vendored tree's own VERSION file to show up as
+# a product this project ships.
+COMPONENT_DEPTH = 1
+
+# Never descend into these looking for a component. dist/ holds outputs, not
+# sources, and the rest are other people's trees.
+_SKIP = {"node_modules", "vendor", "dist", "build", "target", ".git",
+         "__pycache__", "venv", ".venv"}
+
+
+def components(project):
+    """Directories under the project that carry their own VERSION file.
+
+    Empty for the overwhelming majority of projects, which ship one thing and
+    want one number. A component exists because somebody put a file there.
+    """
+    base = root(project)
+    out = []
+    stack = [(base, 0)]
+    while stack:
+        d, depth = stack.pop()
+        if depth > COMPONENT_DEPTH:
+            continue
+        try:
+            entries = sorted(d.iterdir())
+        except OSError:
+            continue
+        for p in entries:
+            if not p.is_dir() or p.name.startswith(".") or p.name in _SKIP:
+                continue
+            if (p / VERSION_FILE).is_file():
+                out.append(str(p.relative_to(base)))
+            if depth < COMPONENT_DEPTH:
+                stack.append((p, depth + 1))
+    return sorted(out)
+
+
 def _git(project, *args, timeout=10):
     """One git command in the project, or None if it failed.
 
@@ -117,9 +173,31 @@ def _git(project, *args, timeout=10):
     return r.stdout.strip() if r.returncode == 0 else None
 
 
-def target(project):
+def _sub(project, comp):
+    """The directory a version question is about — the root, or a component.
+
+    Resolved and prefix-checked rather than joined: `comp` can arrive from a
+    browser, and `../..` must not turn this into a reader of arbitrary VERSION
+    files on the box.
+    """
+    base = root(project).resolve()
+    if not comp:
+        return base
+    try:
+        d = (root(project) / comp).resolve(strict=True)
+    except OSError:
+        return None
+    if not str(d).startswith(str(base) + "/") or not d.is_dir():
+        return None
+    return d
+
+
+def target(project, comp=""):
     """(MAJOR.MINOR.PATCH, error). Both None-able; error explains a refusal."""
-    p = root(project) / VERSION_FILE
+    d = _sub(project, comp)
+    if d is None:
+        return None, f"no such component here: {comp}"
+    p = d / VERSION_FILE
     try:
         raw = p.read_text(encoding="utf-8", errors="replace")
     except OSError:
@@ -131,10 +209,15 @@ def target(project):
     return line, None
 
 
-def parts(project):
+def parts(project, comp=""):
     """Everything the renderings are built from, plus why any of it is missing."""
-    tgt, err = target(project)
-    ordinal = _git(project, "rev-list", "--count", "HEAD")
+    tgt, err = target(project, comp)
+    # A component counts only the commits that touched it. Still monotonic —
+    # commits accumulate, they do not un-happen — so versionCode and AMO are
+    # as satisfied as before; but the extension stops appearing to change
+    # every time the app beside it is edited.
+    ordinal = _git(project, "rev-list", "--count", "HEAD",
+                   *(["--", comp] if comp else []))
     sha = _git(project, "rev-parse", "--short=7", "HEAD")
     if sha is None:
         return {"target": tgt, "error": err or "not a git repository, or no commits yet",
@@ -150,7 +233,7 @@ def parts(project):
             "describe": _git(project, "describe", "--tags", "--always", "--dirty")}
 
 
-def render(project):
+def render(project, comp=""):
     """Every form of this project's version, and the parts they came from.
 
     A form that cannot honestly be produced is None rather than a guess. The
@@ -158,7 +241,8 @@ def render(project):
     file would put a wrong number in a shipped artifact, which is the one
     outcome worth more than a missing field.
     """
-    p = dict(parts(project))
+    p = dict(parts(project, comp))
+    p["component"] = comp
     tgt, ordinal, sha = p["target"], p["ordinal"], p["sha"]
     forms = {"semver": None, "code": None, "quad": None, "msi": None,
              "pep440": None, "file": None}
@@ -284,7 +368,7 @@ def next_version(tgt, part):
     return f"{a}.{b}.{c + 1}"
 
 
-def bump(project, part, by="claude"):
+def bump(project, part, by="claude", comp=""):
     """Move the target and commit that one file.
 
     Committing rather than leaving the tree dirty is the whole reason this is
@@ -296,54 +380,60 @@ def bump(project, part, by="claude"):
     why = may(project, part, by)
     if why:
         return {"error": why}
-    tgt, err = target(project)
+    tgt, err = target(project, comp)
     if err:
         return {"error": err}
     if tgt is None:
         return {"error": f"{project} has no {VERSION_FILE} file yet — create "
                          f"one holding a line like 0.1.0 first"}
+    where = _sub(project, comp)
+    if where is None:
+        return {"error": f"no such component here: {comp}"}
+    # Every git path below is relative to the repo root, not the component.
+    rel = str((where / VERSION_FILE).relative_to(root(project).resolve()))
     if _git(project, "rev-parse", "--short=7", "HEAD") is None:
         return {"error": "not a git repository, or no commits yet"}
     # A partial commit takes the worktree copy, so a VERSION already staged as
     # part of something else would be quietly swept into this commit under a
     # message about a version bump. Refuse and say so.
     staged = _git(project, "diff", "--cached", "--name-only") or ""
-    if VERSION_FILE in staged.splitlines():
+    if rel in staged.splitlines():
         return {"error": f"{VERSION_FILE} is already staged for another "
                          "commit — commit or unstage that first"}
     # And the unstaged twin, which is worse: a hand edit sitting in the
     # worktree would be absorbed into this commit, so the log would say
     # "(session)" over a change the operator made. The log being trustworthy
     # about who moved the version is the design's whole safety story.
-    unstaged = _git(project, "diff", "--name-only", "--", VERSION_FILE) or ""
+    unstaged = _git(project, "diff", "--name-only", "--", rel) or ""
     if unstaged.strip():
         return {"error": f"{VERSION_FILE} has uncommitted changes — commit "
                          "or discard those first, so this bump's commit "
                          "records only its own move"}
     new = next_version(tgt, part)
-    p = root(project) / VERSION_FILE
+    p = where / VERSION_FILE
     try:
         p.write_text(new + "\n", encoding="utf-8")
     except OSError as e:
         return {"error": f"could not write {VERSION_FILE}: {e}"}
     # Who moved it, in the message, because that is the only place the
     # distinction survives: the commit identity is the container's either way.
-    msg = f"Set version to {new}" + ("" if by == "operator" else " (session)")
+    msg = (f"Set {comp} version to {new}" if comp
+           else f"Set version to {new}") + ("" if by == "operator" else " (session)")
     # `git commit -- path` only knows tracked paths, so a VERSION that has
     # never been committed — created by hand five minutes ago — needs the add.
     # For a tracked file this is a no-op as far as the partial commit cares.
-    _git(project, "add", "--", VERSION_FILE)
-    out = _git(project, "commit", "-m", msg, "--", VERSION_FILE, timeout=30)
+    _git(project, "add", "--", rel)
+    out = _git(project, "commit", "-m", msg, "--", rel, timeout=30)
     if out is None:
         # The file is written but uncommitted. Say both halves — a caller told
         # only "commit failed" would not know the target had already moved.
         return {"error": f"{VERSION_FILE} now reads {new}, but committing it "
                          f"failed — commit it by hand", "target": new}
-    return {"ok": True, "was": tgt, "target": new, "part": part,
+    return {"ok": True, "was": tgt, "target": new, "part": part, "component": comp,
             "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
 
 
-def evidence(project):
+def evidence(project, comp=""):
     """What has happened since the target last moved — the case for a bump.
 
     This is the reason the controls are worth building rather than just a
@@ -358,7 +448,7 @@ def evidence(project):
     the emulator benchmarking item settled on. Evidence the operator reads
     beats a recommendation this side cannot justify.
     """
-    e = dict(since_bump(project))
+    e = dict(since_bump(project, comp))
     at = e.get("at")
     e["done"] = e["fixed"] = None
     if at is None:
@@ -376,10 +466,23 @@ def evidence(project):
 
 
 def payload(project):
-    """Everything the Artifacts tab head needs, in one read."""
-    v = render(project)
+    """Everything the Artifacts tab head needs, in one read.
+
+    `versions` is the project's own first, then one per component. Almost
+    always a list of one — a component exists only because somebody put a
+    VERSION file in a directory.
+    """
+    out = one(project)
+    out["versions"] = [one(project, c) for c in components(project)]
+    return out
+
+
+def one(project, comp=""):
+    """One version block: the project's, or a component's."""
+    v = render(project, comp)
     pol = policy(project)
     return {
+        "component": comp,
         "project": project, "target": v["target"], "forms": v["forms"],
         "ordinal": v["ordinal"], "sha": v["sha"], "dirty": v["dirty"],
         "released": v["released"], "tag": v["tag"],
@@ -388,10 +491,12 @@ def payload(project):
         # What the container is running, which is only a comparison for the
         # project the image is built from. Any other project's tab would be
         # showing it an unrelated number.
-        "running": _running_here(project),
+        # Only the project's own line compares against the image: BB_VERSION
+        # is built from the repo, not from one directory inside it.
+        "running": None if comp else _running_here(project),
         "next": {part: (next_version(v["target"], part) if v["target"] else None)
                  for part in PARTS},
-        "since": evidence(project),
+        "since": evidence(project, comp),
     }
 
 
@@ -401,16 +506,23 @@ def _running_here(project):
     return os.environ.get("BB_VERSION", "").strip() or None
 
 
-def since_bump(project):
+def since_bump(project, comp=""):
     """What has happened since the target last moved — the case for a bump.
 
     The git half only. The counts that make the decision easy — roadmap items
     done, bugs fixed — come from the notebook's own dated logs and are added
     by the caller that has them.
     """
-    at = _git(project, "log", "-1", "--format=%ct", "--", VERSION_FILE)
+    where = _sub(project, comp)
+    if where is None:
+        return {"at": None, "commits": None}
+    rel = str((where / VERSION_FILE).relative_to(root(project).resolve()))
+    at = _git(project, "log", "-1", "--format=%ct", "--", rel)
     if not (at or "").isdigit():
         return {"at": None, "commits": None}
-    last = _git(project, "log", "-1", "--format=%H", "--", VERSION_FILE)
-    n = _git(project, "rev-list", "--count", f"{last}..HEAD") if last else None
+    last = _git(project, "log", "-1", "--format=%H", "--", rel)
+    # Narrowed to the component too: "what has happened here since" should not
+    # count the app's commits when the question is about the extension.
+    n = _git(project, "rev-list", "--count", f"{last}..HEAD",
+             *(["--", comp] if comp else [])) if last else None
     return {"at": int(at), "commits": int(n) if (n or "").isdigit() else None}
