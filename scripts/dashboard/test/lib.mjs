@@ -166,11 +166,30 @@ export async function openFold(page, sel){
   // through the selector: these are often Playwright's own selector flavour
   // (`:has(.mname:text-is("tabs"))`), which page.$ understands and the page's
   // own querySelector does not.
-  const el = await page.$(sel);
-  if (!el) throw new Error(`openFold: nothing matches ${sel}`);
-  await (await el.$("summary")).click();
-  await page.waitForFunction(d => d.open && !d.getAnimations().length,
-                             el, { timeout: 10000 });
+  //
+  // Retried, because the handle can go stale between resolving it and
+  // clicking it: these lists repaint whenever their revision token moves, and
+  // a test that files or notes a bug moves it legitimately. The row is then
+  // replaced by an equal one and the click lands on a detached node. Nothing
+  // is wrong with the page when that happens — re-resolve and go again rather
+  // than making the suite's honesty depend on that gap staying narrow.
+  let last;
+  for (let attempt = 0; attempt < 4; attempt++){
+    const el = await page.$(sel);
+    if (!el) throw new Error(`openFold: nothing matches ${sel}`);
+    try{
+      await (await el.$("summary")).click();
+      await page.waitForFunction(d => d.open && !d.getAnimations().length,
+                                 el, { timeout: 10000 });
+      return;
+    }catch(e){
+      last = e;
+      // Only a stale handle is worth another go; a real failure should fail.
+      if (!/not attached|not stable|detached/i.test(String(e))) throw e;
+      await sleep(120);
+    }
+  }
+  throw last;
 }
 
 // Wait until the page has its first doctor verdict — the last thing to land
