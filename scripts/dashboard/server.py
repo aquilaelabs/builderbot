@@ -2450,6 +2450,12 @@ class Handler(BaseHTTPRequestHandler):
             if r.get("error"):
                 return self._json(r, 400)
             return self._json(version.payload(name) | {"bumped": r})
+        if act == "init":
+            r = version.init(name, field(req, "value"), by="operator",
+                             comp=field(req, "component") or "")
+            if r.get("error"):
+                return self._json(r, 400)
+            return self._json(version.payload(name) | {"created": r})
         if act == "policy":
             r = version.set_policy(name, field(req, "policy"))
             if r.get("error"):

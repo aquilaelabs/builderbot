@@ -25,6 +25,7 @@ bb — BuilderBot helper
                          (= --win: manifest.json and Windows VERSIONINFO),
                          --msi, --pep440, --file, --semver, --json
   bb version bump PART   move the target: major|minor|patch, if policy allows
+  bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
   bb version --list      every version this repo carries: its own, and any
                          component — a directory with its own VERSION file
   bb version --for DIR   ask about one component instead of the project
@@ -2431,6 +2432,7 @@ USAGE = ("bb version [--for DIR] "
          "[--semver|--code|--quad|--win|--msi|--pep440|--file|--json]\n"
          "bb version --list                 every version this repo carries\n"
          "bb version [--for DIR] bump major|minor|patch\n"
+         "bb version [--for DIR] init X.Y.Z    give one its first VERSION\n"
          "bb version policy")
 
 
@@ -2457,6 +2459,16 @@ if argv and argv[0] == "bump":
         fail(r["error"])
     print(f"{proj}{'/' + comp if comp else ''} {r['was']} -> {r['target']}  "
           f"({r['part']}, committed {r['commit']}, not pushed)")
+    raise SystemExit(0)
+
+if argv and argv[0] == "init":
+    if len(argv) < 2:
+        fail("bb version init X.Y.Z [--for DIR]")
+    r = version.init(proj, argv[1], by="claude", comp=comp)
+    if r.get("error"):
+        fail(r["error"])
+    print(f"{proj}{'/' + comp if comp else ''} is now {r['target']}  "
+          f"(committed {r['commit']}, not pushed)")
     raise SystemExit(0)
 
 if argv and argv[0] == "policy":

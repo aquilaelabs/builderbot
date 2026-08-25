@@ -6,7 +6,7 @@
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
 import { launch, newPage, ready, ok, done, DIR, URL as DURL } from './lib.mjs';
-import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -256,6 +256,8 @@ rmSync(M, { recursive: true, force: true });
 // to degrade on rather than break. (A repo with NO commits is a third state,
 // and it reports that instead: there is nothing to version yet.)
 const B = `${WS}/beta`;
+mkdirSync(`${B}/sub`, { recursive: true });
+writeFileSync(`${B}/sub/thing.js`, '1');
 writeFileSync(`${B}/readme.txt`, 'beta');
 execFileSync('git', ['-C', B, 'add', '-A'], { env });
 execFileSync('git', ['-C', B, 'commit', '-qm', 'init'], { env });
@@ -270,19 +272,36 @@ writeFileSync(`${A}/b.txt`, 'two');
 execFileSync('git', ['-C', A, 'add', '-A'], { env });
 execFileSync('git', ['-C', A, 'commit', '-qm', 'two'], { env });
 
+// The notebook whose title names this project. Two open notebooks are two
+// clones of one template, so every id inside exists twice, and neither
+// :visible nor offsetParent separates them — both are laid out. The title is
+// the only thing in the markup that tells them apart.
+const nb = name => `.nb:has(#memTitle:text-is("Notebook — ${name}"))`;
+let NB = nb('alpha');
+
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
 await page.goto(DURL);
 await ready(page);
 await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
 await page.waitForSelector('#todoList, .nb', { timeout: 20000 });
-await page.click('.nbtabs [data-v="artifacts"]:visible');
+await page.click(`${NB} .nbtabs [data-v="artifacts"]`);
 await page.waitForSelector('#verBox .verln', { timeout: 20000 });
 
-const rows = () => page.$$eval('#verBox:visible .verln',
+async function waitTarget(want, ms = 20000){
+  const until = Date.now() + ms;
+  for (;;) {
+    const r = await rows().catch(() => ({}));
+    if (r['building towards'] === want) return;
+    if (Date.now() > until)
+      throw new Error(`building towards never became ${want} (saw ${r['building towards']})`);
+    await new Promise(r2 => setTimeout(r2, 200));
+  }
+}
+const rows = () => page.$$eval(`${NB} #verBox .verln`,
   ls => Object.fromEntries(ls.map(l => [l.children[0]?.textContent?.trim(),
                                         l.children[1]?.textContent?.trim()])));
-const boxText = () => page.$eval('#verBox:visible', e => e.textContent.replace(/\s+/g, ' '));
+const boxText = () => page.$eval(`${NB} #verBox`, e => e.textContent.replace(/\s+/g, ' '));
 let r0 = await rows();
 ok(r0['building towards'] === '0.4.0',
    'the tab says what the project is building towards');
@@ -292,7 +311,7 @@ ok(/since 0\.4\.0: 1 commit\b/.test(await boxText()),
    '...with the commits since the target last moved, as the case for a bump');
 
 // Buttons, not a text field: a malformed version can never reach a manifest.
-const labels = await page.$$eval('#verBox:visible [data-verbump]', bs => bs.map(b => b.textContent.trim()));
+const labels = await page.$$eval(`${NB} #verBox [data-verbump]`, bs => bs.map(b => b.textContent.trim()));
 ok(labels.some(l => /Patch → 0\.4\.1/.test(l)) && labels.some(l => /Minor → 0\.5\.0/.test(l))
    && labels.some(l => /Major → 1\.0\.0/.test(l)),
    'each button previews the value it would set');
@@ -301,12 +320,8 @@ ok(labels.some(l => /Patch → 0\.4\.1/.test(l)) && labels.some(l => /Minor → 
 // about sessions. It should also commit, so the tree is not left dirty.
 // newPage auto-accepts dialogs and records them, so the confirm is checked
 // rather than merely dismissed: a bump is a commit, and should be asked about.
-await page.click('#verBox:visible [data-verbump="minor"]');
-await page.waitForFunction(() => {
-  const l = document.querySelector('.nb:not([hidden]) #verBox .verln')
-            || document.querySelector('#verBox .verln');
-  return l && l.children[1]?.textContent?.trim() === '0.5.0';
-}, { timeout: 20000 });
+await page.click(`${NB} #verBox [data-verbump="minor"]`);
+await waitTarget('0.5.0');
 ok((await rows())['building towards'] === '0.5.0',
    'the operator can bump even while the policy is locked to them');
 ok(page.dialogs.some(d => /0\.5\.0/.test(d) && /commits/i.test(d)),
@@ -319,7 +334,7 @@ ok(!execFileSync('git', ['-C', A, 'status', '--porcelain'], { env }).toString().
 
 // The policy control is the answer to "when should this be incremented" for
 // a session: the operator decides how much of the decision to delegate.
-await page.selectOption('#verPolicy:visible', 'minor');
+await page.selectOption(`${NB} #verPolicy`, 'minor');
 await page.waitForFunction(async () => {
   const r = await fetch('/api/version?project=alpha');
   return (await r.json()).policy === 'minor';
@@ -341,14 +356,46 @@ ok(noVer.next.patch === null,
    '...and offers no next value to bump to, rather than inventing 0.0.1');
 
 await page.click(`#projects .row:has(.name:text-is("beta")) [data-m]`);
-await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
-await page.click('.nbtabs [data-v="artifacts"]:visible');
-await page.waitForSelector('#verBox:visible .verln', { timeout: 20000 });
-const fallback = (await page.$eval('#verBox:visible', e => e.textContent)).replace(/\s+/g, ' ');
-ok(/Add a VERSION file/.test(fallback),
-   '...and its tab says how to opt in');
-ok((await page.$$('#verBox:visible [data-verbump]')).length === 0,
+NB = nb('beta');
+await page.waitForSelector(`${NB} .nbtabs [data-v="artifacts"]`, { timeout: 20000 });
+await page.click(`${NB} .nbtabs [data-v="artifacts"]`);
+await page.waitForSelector(`${NB} #verBox .verln`, { timeout: 20000 });
+const fallback = (await page.$eval(`${NB} #verBox`, e => e.textContent)).replace(/\s+/g, ' ');
+ok(/no version yet/.test(fallback),
+   '...and its tab says so rather than showing an invented one');
+ok((await page.$$(`${NB} #verBox [data-verbump]`)).length === 0,
    '...offering no bump buttons for a version that does not exist');
+
+// The file tools are denied on VERSION, so if the tab could not create the
+// first one there would be no sanctioned path at all and the instruction
+// would be to go and do it in a terminal. A guardrail with no way through is
+// one people route around.
+ok((await page.$$(`${NB} #verBox [data-verinit]`)).length === 1,
+   '...but offering to create one, since nothing else can');
+
+// A starting number is arbitrary — nothing can derive it — so it is the one
+// value here that is typed. Which means it has to be checked.
+await page.fill(`${NB} #verBox .vstart`, 'v1.2');
+await page.click(`${NB} #verBox [data-verinit]`);
+await page.waitForTimeout(400);
+ok(!existsSync(`${B}/VERSION`), 'a malformed starting version is refused, not written');
+
+await page.fill(`${NB} #verBox .vstart`, '0.2.0');
+await page.click(`${NB} #verBox [data-verinit]`);
+await waitTarget('0.2.0');
+ok(readFileSync(`${B}/VERSION`, 'utf8').trim() === '0.2.0',
+   'the tab can give a project its first version');
+ok(execFileSync('git', ['-C', B, 'log', '-1', '--format=%s'], { env }).toString().trim()
+     === 'Add VERSION at 0.2.0',
+   '...committing it, with no "(session)" mark since the operator did it');
+ok((await page.$$(`${NB} #verBox [data-verbump]`)).length === 3,
+   '...and the bump buttons appear once there is something to bump');
+
+// A component is created the same way, from what is actually on disk rather
+// than a path typed from memory.
+const dirs = await page.$$eval(`${NB} #verBox .vdir option`, os => os.map(o => o.textContent));
+ok(dirs.includes('sub'), 'the component control offers directories that exist');
+ok(!dirs.includes('.git'), '...and not the ones that are nobody\'s product');
 
 ok((await page.errors).length === 0, 'no console errors from the version block');
 
@@ -360,6 +407,8 @@ rmSync(`${A}/VERSION`, { force: true });
 rmSync(`${A}/a.txt`, { force: true });
 rmSync(`${A}/b.txt`, { force: true });
 rmSync(`${B}/readme.txt`, { force: true });
+rmSync(`${B}/VERSION`, { force: true });
+rmSync(`${B}/sub`, { recursive: true, force: true });
 execFileSync('git', ['-C', A, 'init', '-q', '.'], { env });
 execFileSync('git', ['-C', B, 'init', '-q', '.'], { env });
 execFileSync('git', ['-C', A, 'remote', 'add', 'origin',
