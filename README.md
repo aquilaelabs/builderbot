@@ -1173,6 +1173,23 @@ other's work. The block is one-way: nothing in the panel ever makes a session
 wait. When the batch commits the notebook says so and offers to reload, since
 what it is holding is now out of date.
 
+**One batch covers the whole notebook**, not just the roadmap. Bugs filed,
+noted or closed while one is open are staged the same way, and `bb bug begin`,
+`commit` and `revert` are the same three commands reached from the other tab's
+name — `notebook.py` sequences the two halves so that half a batch is a state
+the front door cannot reach. A plan usually moves *because* of what the tracker
+now says, and committing one while reverting the other would leave a roadmap
+describing work against a tracker that never recorded why, with nothing
+afterwards able to notice. The memories are outside it: a session writes those
+as files with its own tools, so there is no write to intercept and `revert`
+will not put one back.
+
+That is deliberately the opposite of the panel's rule, where unsaved work is
+per-tab and cannot cross. The two models are answering different questions. In
+the panel the thing being edited is on screen and Save is the commit, so each
+tab holds its own; for a session the file is the only way anyone can see what
+it is doing, so the work lands as it happens and only the *record* waits.
+
 A session gets the same idea in a different shape: `bb roadmap begin`, then work,
 then `bb roadmap commit` — the changes land on the list as they are made, because
 that is how you can see what a session is doing, but the *record* is written

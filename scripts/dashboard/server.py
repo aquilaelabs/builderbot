@@ -1026,7 +1026,16 @@ def project_list():
                                      " — chown it to PUID:PGID on the host"}]}]
     cloning = projects.busy_name()
     open_todo = todo.counts()
+    # One batch spans the notebook, so the count the panel shows has to be
+    # both halves added up — a banner reporting only the roadmap's would read
+    # as "nothing much" while a dozen tracker changes sat unrecorded.
     todo_batches = todo.batches()
+    for name, b in bugs.batches().items():
+        if name in todo_batches:
+            todo_batches[name]["changes"] += b.get("changes", 0)
+            todo_batches[name]["at"] = min(todo_batches[name]["at"], b["at"])
+        else:
+            todo_batches[name] = b
     bug_revs = bugs.revisions()
     for d in here:
         # Mid-clone: a directory with a .git and not much else, which every

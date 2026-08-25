@@ -115,10 +115,158 @@ MAX_HISTORY = 300
 
 
 def _log(d, project, by, ev):
+    """Record one change — in the history, or in an open batch.
+
+    The same arrangement the roadmap's log has, and now the same batch: a
+    session working through a notebook is arriving at one state, not making a
+    series of decisions the operator needs to read one at a time. The tracker
+    still changes as it goes, visibly; only the record waits for commit.
+    """
+    ev = {"at": int(time.time()),
+          "by": "claude" if by == "claude" else "you", **ev}
+    b = d.get("batch", {}).get(project)
+    if b is not None and ev["by"] == b.get("by", "claude"):
+        b.setdefault("events", []).append(ev)
+        return
+    # Anyone else's change goes straight to the history, which is also what
+    # makes revert's guard work: it looks there for the operator's hand.
     h = d.setdefault("history", {}).setdefault(project, [])
-    h.append({"at": int(time.time()),
-              "by": "claude" if by == "claude" else "you", **ev})
+    h.append(ev)
     del h[:-MAX_HISTORY]
+
+
+# ---- the tracker's half of a notebook batch ------------------------------
+# Opened and closed by notebook.py, never on its own: a batch covers the whole
+# notebook, and half of one is a state nothing here knows how to describe.
+
+# What a batch's events fold down to. Coarser than the roadmap's because a
+# bug has fewer moving parts: per bug, the filing if it happened, the last
+# thing said about its contents, the last status it landed on, and whether it
+# was handed to a session.
+_CONTENT = ("edited", "noted")
+_STATUS = ("fixed", "wontfix", "na", "reopened")
+
+
+def _coalesce(events):
+    filed, content, status, sent, dropped = {}, {}, {}, {}, {}
+    order = []
+    for e in events:
+        i, act = e.get("id"), e.get("act", "")
+        if i not in order:
+            order.append(i)
+        if act == "deleted":
+            # Filed and dropped again inside one batch: neither happened as
+            # far as anybody reading the log afterwards is concerned.
+            if i in filed:
+                filed.pop(i); content.pop(i, None); status.pop(i, None)
+                sent.pop(i, None); dropped.pop(i, None)
+                order.remove(i)
+                continue
+            dropped[i] = e
+            content.pop(i, None); status.pop(i, None); sent.pop(i, None)
+        elif act == "filed":
+            filed[i] = e
+        elif act in _CONTENT:
+            # A title reworded after filing belongs on the filing, not beside
+            # it — "filed X" then "edited X" reads as two events and was one.
+            if i in filed:
+                filed[i]["text"] = e.get("text", filed[i].get("text"))
+                filed[i]["at"] = e["at"]
+            else:
+                content[i] = e
+        elif act in _STATUS:
+            status[i] = e
+        elif act == "sent":
+            sent[i] = e
+        else:
+            content[i] = e
+    out = []
+    for i in order:
+        for bucket in (dropped, filed, content, status, sent):
+            if i in bucket:
+                out.append(bucket[i])
+    return out
+
+
+def begin(project, by="claude"):
+    with _lock:
+        d = load()
+        if d.get("batch", {}).get(project):
+            return {"error": "a batch is already open here"}
+        h = d.get("history", {}).get(project) or []
+        d.setdefault("batch", {})[project] = {
+            "at": int(time.time()), "by": by, "events": [],
+            "yours": sum(1 for e in h if e.get("by") == "you"),
+            "rows": json.loads(json.dumps(d["projects"].get(project) or []))}
+        save(d)
+    return {"ok": True}
+
+
+def batches():
+    """Every project with a tracker batch open, for the status poll.
+
+    One read of the file for all of them, the same as the roadmap's: this runs
+    on every poll, and asking per project would be a load and a lock each.
+    """
+    with _lock:
+        d = load().get("batch", {})
+    return {p: {"at": b.get("at", 0), "by": b.get("by", ""),
+                "changes": len(b.get("events") or [])}
+            for p, b in d.items() if b}
+
+
+def batch(project):
+    """The open batch here, or None."""
+    with _lock:
+        b = load().get("batch", {}).get(project)
+    return None if not b else {"at": b.get("at", 0), "by": b.get("by", ""),
+                               "changes": len(b.get("events") or [])}
+
+
+def commit(project):
+    with _lock:
+        d = load()
+        b = d.get("batch", {}).get(project)
+        if not b:
+            return {"error": "nothing is open here"}
+        kept = _coalesce(b.get("events") or [])
+        h = d.setdefault("history", {}).setdefault(project, [])
+        h.extend(kept)
+        del h[:-MAX_HISTORY]
+        del d["batch"][project]
+        save(d)
+    return {"ok": True, "written": len(kept),
+            "folded": len(b.get("events") or []) - len(kept)}
+
+
+def revert_blocked(project):
+    """Why a revert would refuse, or None — see todo.revert_blocked."""
+    with _lock:
+        d = load()
+        b = d.get("batch", {}).get(project)
+        if not b:
+            return "nothing is open here"
+        h = d.get("history", {}).get(project) or []
+        if sum(1 for e in h if e.get("by") == "you") > b.get("yours", 0):
+            return ("the operator has changed the tracker since the batch "
+                    "opened — reverting would undo their work too. "
+                    "Commit it and correct what is wrong.")
+    return None
+
+
+def revert(project):
+    why = revert_blocked(project)
+    if why:
+        return {"error": why}
+    with _lock:
+        d = load()
+        b = d.get("batch", {}).get(project)
+        if not b:
+            return {"error": "nothing is open here"}
+        d["projects"][project] = b.get("rows") or []
+        del d["batch"][project]
+        save(d)
+    return {"ok": True, "dropped": len(b.get("events") or [])}
 
 
 def history(project, limit=None, since=None, find=None):

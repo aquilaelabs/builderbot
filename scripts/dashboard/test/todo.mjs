@@ -555,6 +555,41 @@ bbTodo('commit');
 await post({ action: 'remove', project: 'alpha',
              id: read().projects.alpha.find(r => r.text === 'and the operator typed this').id });
 
+// ---- one batch over the whole notebook ----------------------------------
+// A plan usually moves because of what the tracker now says, so the two are
+// one transaction: committing the roadmap while reverting the tracker would
+// leave a list describing work against a tracker that never recorded why.
+const bbBug = (...a) => execFileSync(BB, ['bug', ...a],
+  { env: { ...process.env, BB_BUG_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws` } }).toString();
+const bugsFile = () => JSON.parse(readFileSync(`${DIR}/state/bugs.json`, 'utf8'));
+
+bbTodo('begin');
+ok(/batch open/.test(bbBug()),
+   'a batch opened on the roadmap says so on the tracker too — it is one notebook');
+bbBug('add', 'filed while the batch was open', '--sev', 'low');
+bbTodo('add', 'and a plan to go with it');
+const staged = bugsFile().projects.alpha.some(b => /filed while the batch/.test(b.title));
+ok(staged, '...and the tracker moves as the work happens, the same as the list');
+ok(!/filed while the batch/.test(bbBug('history', '-n', '20')),
+   '...while its log waits for the commit, the same as the list\'s');
+bbTodo('revert');
+ok(!bugsFile().projects.alpha.some(b => /filed while the batch/.test(b.title))
+   && !read().projects.alpha.some(r => /a plan to go with it/.test(r.text)),
+   'reverting from the roadmap takes the tracker back with it');
+
+// ...and it works from either name, because it is the same batch.
+bbBug('begin');
+bbBug('add', 'this one is kept', '--sev', 'medium');
+bbBug('note', String(bugsFile().projects.alpha.at(-1).id), 'a first thought');
+bbBug('note', String(bugsFile().projects.alpha.at(-1).id), 'a second thought');
+const bugCommit = bbBug('commit');
+ok(/entr/.test(bugCommit) && /folded/.test(bugCommit),
+   'bb bug commit closes the same batch, folding the notes into the filing');
+const bugLog = bbBug('history', '-n', '20');
+ok(/this one is kept/.test(bugLog) && !/a first thought/.test(bugLog),
+   '...so the log says it was filed, not that it was thought about three times');
+
 // ---- the history --------------------------------------------------------
 // Two people write this list and it only ever shows the present tense, so
 // "was that step always worded like that?" had no answer. Now every change

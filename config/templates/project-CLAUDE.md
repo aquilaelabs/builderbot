@@ -244,7 +244,7 @@ bb roadmap edit N "..."         # reword one
 bb roadmap info N [M] "..."     # attach the technical details to one, or step M
 bb roadmap step add N "..."     # give one a step; step edit N M "...", step rm N M
 bb roadmap begin                # working one out: commit writes one record of it
-bb roadmap commit               # ...or revert, which puts the list back
+bb roadmap commit               # ...or revert, which puts the notebook back
 bb roadmap history [-n N] [--since 7d] [--find TEXT]   # what changed, narrowed
 ```
 
@@ -376,6 +376,20 @@ as it was and writes nothing; it refuses if the operator has changed the list
 since you opened the batch, because putting your copy back would undo their
 work too.
 
+**A batch covers the whole notebook, not just the roadmap.** Bugs you file,
+note or close while one is open are staged the same way, and `bb bug begin`,
+`commit` and `revert` are the same three commands reached from the other tab's
+name. That is deliberate: a plan usually moves because of what the tracker now
+says, and committing one while reverting the other would leave a roadmap
+describing work against a tracker that never recorded why. Your memories are
+not in it — those are files you write directly, so there is no write to
+intercept and `revert` will not put one back.
+
+**Read the logs before you open one.** While a batch is open your own changes
+are not in `bb roadmap history` or `bb bug history` yet — that is the whole
+point of it — so a session that opens a batch and then asks the log what it
+just did gets a confusing answer. Do the reading first, then start editing.
+
 **Do not leave one open.** While a batch is open the operator's Save in the
 panel is held — what is on their screen was read before you started, and
 saving over a list that has moved underneath is how two writers lose each
@@ -437,6 +451,7 @@ bb bug fix N "what fixed it" # close it, with the note that is the point
 bb bug wontfix N "why"       # decided not to; `reopen N` if a fix did not take
 bb bug na N "why"            # it was real and stopped applying — the feature went
 bb bug rm N "why"            # only for a report that should never have existed
+bb bug begin                 # the same notebook batch `bb roadmap begin` opens
 bb bug history [-n N] [--since 7d] [--find TEXT]   # what changed, narrowed
 ```
 

@@ -734,8 +734,22 @@ def write_json(path, obj):
 
 
 import os
-todo.configure(write_json=write_json,
-               state=os.environ.get("DASHBOARD_STATE", "/config"))
+_state = os.environ.get("DASHBOARD_STATE", "/config")
+todo.configure(write_json=write_json, state=_state)
+
+# The tracker's half of a notebook batch. A batch spans both files, so the
+# roadmap's begin/commit/revert have to reach the tracker as well — loaded
+# beside todo.py rather than imported, for the same reason todo.py is: this
+# has to be the copy sitting next to the script that was actually run.
+_here = os.path.dirname(sys.argv[1])
+_bugs = importlib.util.module_from_spec(
+    importlib.util.spec_from_file_location("bugs", os.path.join(_here, "bugs.py")))
+_bugs.__loader__.exec_module(_bugs)
+_bugs.configure(write_json=write_json, state=_state)
+_nb = importlib.util.module_from_spec(
+    importlib.util.spec_from_file_location("notebook", os.path.join(_here, "notebook.py")))
+_nb.__loader__.exec_module(_nb)
+_nb.configure(todo_mod=todo, bugs_mod=_bugs)
 
 proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"
@@ -744,11 +758,14 @@ rest = argv[1:]
 
 def show():
     rows = todo.items(proj)
-    b = todo.batch(proj)
+    # The whole notebook's count, not the roadmap's: one batch covers both,
+    # and a banner reporting half of it would read as "nothing much staged"
+    # while a dozen tracker changes sat unrecorded.
+    b = _nb.state(proj)
     if b:
         print(f"  [batch open — {b['changes']} change"
-              f"{'' if b['changes'] == 1 else 's'} unrecorded; "
-              "bb roadmap commit, or revert]")
+              f"{'' if b['changes'] == 1 else 's'} unrecorded across this "
+              "notebook; bb roadmap commit, or revert]")
     if not rows:
         print(f"nothing on {proj}'s list")
         return
@@ -839,20 +856,26 @@ elif op in ("rm", "remove"):
     print(f"removed {rest[0]}")
 elif op in ("begin", "commit", "revert"):
     # Working something out is not a series of decisions the operator has to
-    # read; it is arriving at one. The work still lands on the list as it
-    # happens — hiding it would be worse than a noisy log — but the record is
-    # written once, at commit, saying what changed rather than every step of
-    # getting there.
+    # read; it is arriving at one. The work still lands as it happens — hiding
+    # it would be worse than a noisy log — but the record is written once, at
+    # commit, saying what changed rather than every step of getting there.
+    #
+    # One batch over the WHOLE notebook: the roadmap and the tracker both.
+    # A plan usually moves because of what the tracker now says, and letting
+    # one be committed while the other is reverted would leave a roadmap
+    # describing work against a tracker that never recorded why.
     if op == "begin":
-        bail(todo.begin(proj)); print(f"batch open on {proj} — commit or revert it")
+        bail(_nb.begin(proj))
+        print(f"batch open on {proj}'s notebook — the roadmap and the bug "
+              "tracker both. Commit or revert it")
     elif op == "commit":
-        r = todo.commit(proj); bail(r)
+        r = _nb.commit(proj); bail(r)
         print(f"committed: {r['written']} entr{'y' if r['written'] == 1 else 'ies'}"
               + (f", {r['folded']} folded into them" if r["folded"] else ""))
     else:
-        r = todo.revert(proj); bail(r)
-        print(f"reverted: the list is back as it was, {r['dropped']} change"
-              f"{'' if r['dropped'] == 1 else 's'} dropped")
+        r = _nb.revert(proj); bail(r)
+        print(f"reverted: the roadmap and the tracker are back as they were, "
+              f"{r['dropped']} change{'' if r['dropped'] == 1 else 's'} dropped")
 elif op in ("mv", "move"):
     # The list's own order, not a group's. Both halves of restructuring belong
     # to a session: it is the one that knows a plan has to happen before the
@@ -1131,8 +1154,27 @@ def write_json(path, obj):
 
 
 import os
-bugs.configure(write_json=write_json,
-               state=os.environ.get("DASHBOARD_STATE", "/config"))
+_state = os.environ.get("DASHBOARD_STATE", "/config")
+bugs.configure(write_json=write_json, state=_state)
+
+# The roadmap's half of a notebook batch, and the coordinator over the two.
+# `bb bug begin` and `bb roadmap begin` are the same command reached from
+# either tab's name — one batch covers the notebook, so it would be a lie for
+# the tracker to have a private one.
+_here = os.path.dirname(sys.argv[1])
+
+
+def _load(name):
+    sp = importlib.util.spec_from_file_location(name, os.path.join(_here, name + ".py"))
+    m = importlib.util.module_from_spec(sp)
+    sp.loader.exec_module(m)
+    return m
+
+
+_todo = _load("todo")
+_todo.configure(write_json=write_json, state=_state)
+_nb = _load("notebook")
+_nb.configure(todo_mod=_todo, bugs_mod=bugs)
 
 proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"
@@ -1188,6 +1230,14 @@ def pull_flags(args):
 
 
 if op in ("list", "ls"):
+    # Same banner the roadmap's listing carries, for the same batch. A session
+    # that opened one on the roadmap and then came here to file something
+    # should not have to remember that its notes are unrecorded.
+    _b = _nb.state(proj)
+    if _b:
+        print(f"  [batch open — {_b['changes']} change"
+              f"{'' if _b['changes'] == 1 else 's'} unrecorded across this "
+              "notebook; bb bug commit, or revert]")
     open_rows = [b for b in rows() if b.get("status") == "open"]
     if not open_rows:
         print(f"no open bugs on {proj} — `bb bug all` includes the closed ones")
@@ -1198,6 +1248,21 @@ elif op == "all":
         print(f"nothing in {proj}'s bug tracker")
     for b in rows():
         print(line(b))
+elif op in ("begin", "commit", "revert"):
+    # The same batch `bb roadmap begin` opens — one over the whole notebook,
+    # reached from whichever tab's name you happened to be thinking in.
+    if op == "begin":
+        bail(_nb.begin(proj))
+        print(f"batch open on {proj}'s notebook — the bug tracker and the "
+              "roadmap both. Commit or revert it")
+    elif op == "commit":
+        r = _nb.commit(proj); bail(r)
+        print(f"committed: {r['written']} entr{'y' if r['written'] == 1 else 'ies'}"
+              + (f", {r['folded']} folded into them" if r["folded"] else ""))
+    else:
+        r = _nb.revert(proj); bail(r)
+        print(f"reverted: the tracker and the roadmap are back as they were, "
+              f"{r['dropped']} change{'' if r['dropped'] == 1 else 's'} dropped")
 elif op in ("find", "search"):
     # Over the bugs themselves, not over the log. `history --find` searches
     # what happened; this searches what is *on file* — the area and the repro
@@ -1312,7 +1377,7 @@ elif op in ("history", "log"):
 elif op == "--prompt":
     sys.stdout.write(bugs.prompt(proj))
 else:
-    print("usage: bb bug [list|all|show N|find TEXT|add TITLE [--sev S] [--area ..] "
+    print("usage: bb bug [list|all|show N|find TEXT|begin|commit|revert|add TITLE [--sev S] [--area ..] "
           "[--repro ..]|note N TEXT|edit N FIELD TEXT|fix N [NOTE]|"
           "wontfix N [WHY]|na N [WHY]|reopen N|rm N [WHY]|"
           "history [-n N] [--since D] [--find TEXT]]", file=sys.stderr)
