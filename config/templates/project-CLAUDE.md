@@ -255,6 +255,21 @@ And do not go looking for the port the phone is on: reaching around this is
 possible, in the way most things in a container are possible, and it is the
 one thing here that touches hardware the operator is holding.
 
+## What you build goes in dist/
+
+When a build produces something shippable — an APK, a browser extension's
+.xpi, an installer — **copy it into the project's `dist/` directory**, named
+with its version. The dashboard's Artifacts tab lists `dist/` and nothing
+else: build systems scatter their outputs, so the deal is one word long, and
+an artifact left in `app/build/outputs/...` simply does not exist as far as
+the operator's tab is concerned. Subdirectories one level down are fine
+(`dist/android/app-1.2.apk`).
+
+From that tab the operator downloads any of them, and pushes an `.xpi` to
+their paired phone. Nothing auto-pushes: a push is a decision the operator
+makes each time, so do not design around the extension on the handset staying
+current — say when a rebuild is worth pushing instead.
+
 ## The roadmap
 
 Every project has a notebook in the dashboard — memory, roadmap, bugs, one
