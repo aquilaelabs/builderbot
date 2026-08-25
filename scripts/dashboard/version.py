@@ -54,6 +54,7 @@ makes a bad bump recoverable is that VERSION is committed: every move is in
 `git log` with a date and a message saying who made it.
 """
 import json
+import os
 import re
 import subprocess
 import threading
@@ -63,6 +64,11 @@ WORKSPACE = None
 STATE = None
 FILE = None
 write_json = None
+# Injected rather than imported, the way notebook.py takes them: the CLI loads
+# these modules by path, and importing them again here would make a second
+# copy with its own configuration and its own idea of where the state lives.
+todo = None
+bugs = None
 
 # The file a project declares its target in. One line, at the repo root.
 VERSION_FILE = "VERSION"
@@ -85,9 +91,9 @@ PARTS = ("major", "minor", "patch")
 _lock = threading.Lock()
 
 
-def configure(*, workspace, state, write_json):
+def configure(*, workspace, state, write_json, todo_mod=None, bugs_mod=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
-                     write_json=write_json)
+                     write_json=write_json, todo=todo_mod, bugs=bugs_mod)
     globals()["FILE"] = Path(state) / "versions.json"
 
 
@@ -335,6 +341,64 @@ def bump(project, part, by="claude"):
                          f"failed — commit it by hand", "target": new}
     return {"ok": True, "was": tgt, "target": new, "part": part,
             "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
+
+
+def evidence(project):
+    """What has happened since the target last moved — the case for a bump.
+
+    This is the reason the controls are worth building rather than just a
+    number being displayed. Most of the coding here happens through prompts,
+    so by bump time nobody remembers what the last three weeks contained; the
+    notebook's own dated logs do, and they are the only place that knows. Two
+    roadmap items finished reads as a minor, four bug fixes and nothing else
+    reads as a patch, and that is a two-second judgment instead of scrolling
+    git log trying to reconstruct it.
+
+    Counts only, and deliberately no suggested verdict — the same principle
+    the emulator benchmarking item settled on. Evidence the operator reads
+    beats a recommendation this side cannot justify.
+    """
+    e = dict(since_bump(project))
+    at = e.get("at")
+    e["done"] = e["fixed"] = None
+    if at is None:
+        # No commit has ever touched VERSION, so there is no window to count
+        # over. None rather than 0: "nothing happened" and "there is nothing
+        # to measure from" are different answers.
+        return e
+    if todo is not None:
+        e["done"] = sum(1 for x in todo.history(project, since=at)
+                        if x.get("act") == "done")
+    if bugs is not None:
+        e["fixed"] = sum(1 for x in bugs.history(project, since=at)
+                         if x.get("act") == "fixed")
+    return e
+
+
+def payload(project):
+    """Everything the Artifacts tab head needs, in one read."""
+    v = render(project)
+    pol = policy(project)
+    return {
+        "project": project, "target": v["target"], "forms": v["forms"],
+        "ordinal": v["ordinal"], "sha": v["sha"], "dirty": v["dirty"],
+        "released": v["released"], "tag": v["tag"],
+        "error": v.get("error"), "warn": v.get("warn"),
+        "policy": pol, "policies": list(POLICIES), "allows": list(allows(pol)),
+        # What the container is running, which is only a comparison for the
+        # project the image is built from. Any other project's tab would be
+        # showing it an unrelated number.
+        "running": _running_here(project),
+        "next": {part: (next_version(v["target"], part) if v["target"] else None)
+                 for part in PARTS},
+        "since": evidence(project),
+    }
+
+
+def _running_here(project):
+    if not (root(project) / "config/templates/project-CLAUDE.md").is_file():
+        return None
+    return os.environ.get("BB_VERSION", "").strip() or None
 
 
 def since_bump(project):

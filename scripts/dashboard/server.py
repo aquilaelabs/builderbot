@@ -1647,6 +1647,16 @@ import todo                                                      # noqa: E402
 todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
                tmux_name=tmux_name)
 
+# ---- the version ----------------------------------------------------------
+# One identity per project, rendered per target — the module's docstring says
+# why one literal string cannot work. Handed the two notebook halves as well:
+# the case for a bump is "what has happened since the target last moved", and
+# only the roadmap's and the tracker's dated logs know that.
+import version                                                   # noqa: E402
+
+version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
+                  todo_mod=todo, bugs_mod=bugs)
+
 # ---- new project, and linking one ------------------------------------------
 # Creating and cloning, and the worker that runs the ones that touch the
 # network. The credential half stays here — agent_keys and the ssh aliases are
@@ -1790,6 +1800,11 @@ def revisions():
     # Per project, for the views that are per project.
     for n in names:
         revs[f"dist:{n}"] = _mtime(WORKSPACE / n / "dist")
+        # A session may bump while the operator has the tab open, and the
+        # policy file moves when they change who may bump. Both are cheap
+        # stats; neither shells out to git.
+        revs[f"ver:{n}"] = _mtime(WORKSPACE / n / "VERSION")
+    revs["vpolicy"] = _mtime(STATE / "versions.json")
     return revs
 
 
@@ -2112,6 +2127,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(snapshot())
         if self.path.startswith("/api/findings"):
             return self._json(findings_payload())
+        if self.path.startswith("/api/version"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list()}:
+                return self._json({"error": "not a project"}, 400)
+            return self._json(version.payload(name))
         if self.path.startswith("/api/artifacts"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
@@ -2228,6 +2249,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._packages(req)
         if path.startswith("/api/memory"):
             return self._memory(req)
+        if path.startswith("/api/version"):
+            return self._version(req)
         if path.startswith("/api/artifacts"):
             return self._artifacts(req)
         if path.startswith("/api/phone"):
@@ -2408,6 +2431,30 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, IndexError):
                 pass
         return out
+
+    def _version(self, req):
+        """Move a project's version, or change who is allowed to.
+
+        Both are the operator's: this endpoint is only reachable from the
+        panel, so `by="operator"` is the honest value rather than a field the
+        caller supplies. A session's bump goes through `bb version bump`,
+        which asks the same policy and passes `by="claude"`.
+        """
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list()}:
+            return self._json({"error": f"not a project: {name}"}, 400)
+        act = field(req, "action")
+        if act == "bump":
+            r = version.bump(name, field(req, "part"), by="operator")
+            if r.get("error"):
+                return self._json(r, 400)
+            return self._json(version.payload(name) | {"bumped": r})
+        if act == "policy":
+            r = version.set_policy(name, field(req, "policy"))
+            if r.get("error"):
+                return self._json(r, 400)
+            return self._json(version.payload(name))
+        return self._json({"error": f"unknown action: {act}"}, 400)
 
     def _artifacts(self, req):
         """Push an .xpi from a project's dist/ to the paired phone, or stop

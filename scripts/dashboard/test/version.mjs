@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { ok, done, DIR } from './lib.mjs';
+import { launch, newPage, ready, ok, done, DIR, URL as DURL } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -191,4 +191,124 @@ ok(/no VERSION file/.test(bare().out), '...and says how to opt in');
 
 rmSync(ROOT, { recursive: true, force: true });
 rmSync(BARE, { recursive: true, force: true });
-await done();
+
+// ---- the same module, in the Artifacts tab head --------------------------
+// The display answers "what is this at" and needs no decision. The buttons
+// answer "what next", which is the rare half — and the evidence beside them
+// is the point, because by bump time nobody remembers what three weeks of
+// prompting contained.
+// alpha is a git repo in the fixtures but has no commits, so give it the
+// history a version needs. beta gets a commit and no VERSION file — a repo
+// with history that never adopted the scheme, which is the case the block has
+// to degrade on rather than break. (A repo with NO commits is a third state,
+// and it reports that instead: there is nothing to version yet.)
+const B = `${WS}/beta`;
+writeFileSync(`${B}/readme.txt`, 'beta');
+execFileSync('git', ['-C', B, 'add', '-A'], { env });
+execFileSync('git', ['-C', B, 'commit', '-qm', 'init'], { env });
+const A = `${WS}/alpha`;
+writeFileSync(`${A}/a.txt`, 'one');
+execFileSync('git', ['-C', A, 'add', '-A'], { env });
+execFileSync('git', ['-C', A, 'commit', '-qm', 'one'], { env });
+writeFileSync(`${A}/VERSION`, '0.4.0\n');
+execFileSync('git', ['-C', A, 'add', '-A'], { env });
+execFileSync('git', ['-C', A, 'commit', '-qm', 'set version'], { env });
+writeFileSync(`${A}/b.txt`, 'two');
+execFileSync('git', ['-C', A, 'add', '-A'], { env });
+execFileSync('git', ['-C', A, 'commit', '-qm', 'two'], { env });
+
+const browser = await launch();
+const page = await newPage(browser, { viewport: { width: 1280, height: 1000 } });
+await page.goto(DURL);
+await ready(page);
+await page.click(`#projects .row:has(.name:text-is("alpha")) [data-m]`);
+await page.waitForSelector('#todoList, .nb', { timeout: 20000 });
+await page.click('.nbtabs [data-v="artifacts"]:visible');
+await page.waitForSelector('#verBox .verln', { timeout: 20000 });
+
+const rows = () => page.$$eval('#verBox:visible .verln',
+  ls => Object.fromEntries(ls.map(l => [l.children[0]?.textContent?.trim(),
+                                        l.children[1]?.textContent?.trim()])));
+const boxText = () => page.$eval('#verBox:visible', e => e.textContent.replace(/\s+/g, ' '));
+let r0 = await rows();
+ok(r0['building towards'] === '0.4.0',
+   'the tab says what the project is building towards');
+ok(/^0\.4\.0-dev\.3\+[0-9a-f]{7}$/.test(r0['a build now'] || ''),
+   '...and what a build right now would be called');
+ok(/since 0\.4\.0: 1 commit\b/.test(await boxText()),
+   '...with the commits since the target last moved, as the case for a bump');
+
+// Buttons, not a text field: a malformed version can never reach a manifest.
+const labels = await page.$$eval('#verBox:visible [data-verbump]', bs => bs.map(b => b.textContent.trim()));
+ok(labels.some(l => /Patch → 0\.4\.1/.test(l)) && labels.some(l => /Minor → 0\.5\.0/.test(l))
+   && labels.some(l => /Major → 1\.0\.0/.test(l)),
+   'each button previews the value it would set');
+
+// The operator's bump is allowed regardless of the policy — the policy is
+// about sessions. It should also commit, so the tree is not left dirty.
+// newPage auto-accepts dialogs and records them, so the confirm is checked
+// rather than merely dismissed: a bump is a commit, and should be asked about.
+await page.click('#verBox:visible [data-verbump="minor"]');
+await page.waitForFunction(() => {
+  const l = document.querySelector('.nb:not([hidden]) #verBox .verln')
+            || document.querySelector('#verBox .verln');
+  return l && l.children[1]?.textContent?.trim() === '0.5.0';
+}, { timeout: 20000 });
+ok((await rows())['building towards'] === '0.5.0',
+   'the operator can bump even while the policy is locked to them');
+ok(page.dialogs.some(d => /0\.5\.0/.test(d) && /commits/i.test(d)),
+   '...having been asked first, and told it commits');
+ok(execFileSync('git', ['-C', A, 'log', '-1', '--format=%s'], { env }).toString().trim()
+     === 'Set version to 0.5.0',
+   '...and the commit says the operator moved it, with no "(session)" mark');
+ok(!execFileSync('git', ['-C', A, 'status', '--porcelain'], { env }).toString().includes('VERSION'),
+   '...leaving no dirty VERSION behind');
+
+// The policy control is the answer to "when should this be incremented" for
+// a session: the operator decides how much of the decision to delegate.
+await page.selectOption('#verPolicy:visible', 'minor');
+await page.waitForFunction(async () => {
+  const r = await fetch('/api/version?project=alpha');
+  return (await r.json()).policy === 'minor';
+}, { timeout: 20000 });
+const polAfter = execFileSync('bash', [BB, 'version', 'policy'], { cwd: A, env }).toString();
+ok(/minor/.test(polAfter),
+   'the policy set in the tab is the one bb version reports to a session');
+
+// Every project has this tab, not only the ones that opted in, so a project
+// with no VERSION file has to say how to opt in rather than render a broken
+// block or a version it invented.
+const noVer = await page.evaluate(async () => {
+  const r = await fetch('/api/version?project=beta');
+  return await r.json();
+});
+ok(noVer.target === null && noVer.forms.quad === null,
+   'a project with no VERSION file reports no target');
+ok(noVer.next.patch === null,
+   '...and offers no next value to bump to, rather than inventing 0.0.1');
+
+await page.click(`#projects .row:has(.name:text-is("beta")) [data-m]`);
+await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
+await page.click('.nbtabs [data-v="artifacts"]:visible');
+await page.waitForSelector('#verBox:visible .verln', { timeout: 20000 });
+const fallback = (await page.$eval('#verBox:visible', e => e.textContent)).replace(/\s+/g, ' ');
+ok(/Add a VERSION file/.test(fallback),
+   '...and its tab says how to opt in');
+ok((await page.$$('#verBox:visible [data-verbump]')).length === 0,
+   '...offering no bump buttons for a version that does not exist');
+
+ok((await page.errors).length === 0, 'no console errors from the version block');
+
+// fresh() removes stray projects but does not reach inside a fixture, so the
+// commits and the VERSION file this planted in alpha and beta have to go —
+// otherwise every later file runs against projects this one changed.
+for (const d of [A, B]) rmSync(`${d}/.git`, { recursive: true, force: true });
+rmSync(`${A}/VERSION`, { force: true });
+rmSync(`${A}/a.txt`, { force: true });
+rmSync(`${A}/b.txt`, { force: true });
+rmSync(`${B}/readme.txt`, { force: true });
+execFileSync('git', ['-C', A, 'init', '-q', '.'], { env });
+execFileSync('git', ['-C', B, 'init', '-q', '.'], { env });
+execFileSync('git', ['-C', A, 'remote', 'add', 'origin',
+                     'git@github.com:owner/alpha.git'], { env });
+await done(browser);
