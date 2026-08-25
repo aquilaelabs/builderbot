@@ -2726,6 +2726,51 @@ function slideCard(el, closing){
   };
 }
 
+// The same fold, on a <details> and on a plain hidden block: the memories,
+// the bug reports, and a roadmap row's details. A <details> snaps open by
+// construction and a [hidden] block appears with no in-between, so both are
+// driven here instead — measure, flip the state, measure again, and tween
+// between the two real heights. Height is real layout, so everything below
+// rides along frame by frame rather than jumping, which is the whole reason
+// the cards do it this way.
+function foldHeight(el, from, to, done){
+  // Only its own kind, so a fold inside a card cannot swallow the class write
+  // the card-level fold's finish handler is going to make.
+  el.getAnimations().forEach(a => { if (a.id === "fold") a.cancel(); });
+  el.style.overflow = "hidden";
+  const anim = el.animate([{height: from + "px"}, {height: to + "px"}],
+                          {duration: 180, easing: "ease"});
+  anim.id = "fold";
+  const settle = () => { el.style.overflow = ""; el.style.height = ""; };
+  anim.onfinish = () => { done(); settle(); };
+  // Canceled by a newer fold: that one owns the element now, and it measured
+  // its own starting height from wherever this one had got to.
+  anim.oncancel = settle;
+}
+
+// A <details>, which has to be open while it shrinks or there is nothing to
+// see moving — so the flag is set true for the tween and written for real at
+// the end, whichever direction it went.
+function slideDetails(el, willOpen){
+  const sum = el.querySelector("summary");
+  if (!sum || noMotion()){ el.open = willOpen; return; }
+  const from = el.offsetHeight;
+  el.open = true;
+  const to = willOpen ? el.offsetHeight : sum.offsetHeight;
+  if (from === to){ el.open = willOpen; return; }
+  foldHeight(el, from, to, () => { el.open = willOpen; });
+}
+
+// A plain block that is shown and hidden. Same tween, collapsed height zero.
+function slideHidden(el, willShow, after){
+  const done = () => { el.hidden = !willShow; after?.(); };
+  if (noMotion()){ done(); return; }
+  el.hidden = false;
+  const full = el.offsetHeight;
+  foldHeight(el, willShow ? 0 : full, willShow ? full : 0,
+             () => { el.hidden = !willShow; after?.(); });
+}
+
 // Grow or shrink a card around what a control just changed inside it — the
 // projects error toggle, the commands cut-off, doctor's detail — with the
 // same height tween as the card-level fold. `mutate` does the actual redraw.
@@ -4202,9 +4247,12 @@ function drawTodo(j){
     const dt = row.querySelector(".dtog");
     if (dt) dt.onclick = () => {
       const info = row.querySelector(".dinfo");
-      info.hidden = !info.hidden;
-      dt.textContent = info.hidden ? "▸ details" : "▾ details";
-      dt.setAttribute("aria-expanded", String(!info.hidden));
+      const show = info.hidden;
+      // The caret turns with the slide rather than after it, so the row reads
+      // as one movement instead of a glyph flicking ahead of the content.
+      dt.textContent = show ? "▾ details" : "▸ details";
+      dt.setAttribute("aria-expanded", String(show));
+      slideHidden(info, show);
     };
     // Guarded like every other control on this row: reordering replaces all
     // three of them, so in that mode there is no pencil to bind and an
@@ -4775,6 +4823,14 @@ function drawMemory(j){
              </div>`}
       </div>
     </details>`).join("");
+  // The fold, driven rather than left to the browser's instant one — the same
+  // height tween the sidebar cards use, so a memory opens the way a card does.
+  $("memList").querySelectorAll(".mem > summary").forEach(sum => {
+    sum.onclick = e => {
+      e.preventDefault();                       // the browser's snap, replaced
+      slideDetails(sum.parentElement, !sum.parentElement.open);
+    };
+  });
   $("memList").querySelectorAll("textarea[data-file], .ix input").forEach(t => {
     t.dataset.was = t.value;
     t.oninput = syncSave;
@@ -5530,6 +5586,11 @@ $("todoRevert").onclick = revertNotebook;
       </details>`).join("");
     list.querySelectorAll(".bug").forEach(d => {
       const id = Number(d.dataset.id);
+      // Opened with the same tween the cards and the memories use. Bound on
+      // the summary rather than the details' toggle event, because toggle
+      // fires after the browser has already snapped it open.
+      const sum = d.querySelector("summary");
+      if (sum) sum.onclick = e => { e.preventDefault(); slideDetails(d, !d.open); };
       const ask = (status, q) => {
         const note = prompt(q, "");
         if (note !== null) postBug({action: "status", id, status, note});
