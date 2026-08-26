@@ -252,7 +252,9 @@ image's inputs (Dockerfile, `scripts/`, `config/`) + a weekly freshness
 rebuild. Unraid's *Check for Updates* flips the container to **update ready**
 — click it. Builds seed their layer cache from the previous `:latest`, so a
 scripts-only change is a small pull; the Monday rebuild is uncached on purpose
-and is always the big one. Rollback = point the Repository field at a
+and is always the big one. *Run workflow* takes a **Rebuild every layer** box
+for the same effect on demand — leave it off and a manual run is a cheap retry,
+tick it to force a fresh pull of everything. Rollback = point the Repository field at a
 `sha-<commit>` tag. Compose: `docker compose pull && docker compose up -d`.
 
 ---
@@ -396,6 +398,10 @@ bb phone run --why "..." -- adb args...
                    ask to reach it — the operator allows it on the dashboard
                    and the dashboard runs it, so a session never touches the
                    handset itself
+bb catchup         what has happened here lately: commits with the first line
+                   of their bodies, what moved in the notebook, the builds this
+                   box archived, and which image it is actually running
+                   (`--since 7d`, `-n COMMITS`)
 bb ci-log          what CI printed on its last run here (`--list` for the runs
                    kept, a run id for one, `--project NAME` from elsewhere)
 bb logs [-f] [N]   this boot's log
@@ -1925,9 +1931,38 @@ the tee's exit status becomes the step's and a failing linter reports success.
 And the logs live in `/config` rather than `/tmp`, because a log that vanishes
 with the container is no use for the question *"what broke while I was away?"*.
 
-This only covers jobs that run on this box. A workflow on a hosted runner is
-out of reach, which is one more reason to keep the checks self-hosted where the
-minutes are free anyway.
+The image build is the exception that proves it: it runs on a hosted runner, so
+nothing it prints is reachable from in here. Its last job comes back to this
+box — `runs-on: [self-hosted, builderbot]` — and archives the *outcome* into the
+same directory: result, trigger, version, digest, how long it took, and whether
+the layer cache was used. Not the console output, which is gone; enough to
+answer "did that build land, and why did the host re-pull a gigabyte?".
+
+### Catching up after time away
+
+Two things are recorded for no other reason than that a later session will
+want them, and neither can be reconstructed afterwards.
+
+The first is which images this container has actually run. It is recreated on
+every update, so its own stamp answers only *what is running now*, the boot log
+rotates away after a few starts, and with no PAT there is no registry to ask —
+which leaves *"which build was the box on when I saw that?"* unanswerable, and
+that is the first question whenever a fix appears not to have landed. So the
+entrypoint appends a line to `/config/image-log.tsv` whenever the stamp differs
+from the last one: first-seen, commit, version, build time. A restart writes
+nothing; a rollback writes a line, which is the point.
+
+The second is `bb catchup`, which reads both of those plus git and the
+notebook's own logs and prints one screen: the image this box is running and
+how far behind `origin/main` it is, recent commits **with the first line of
+each body** — the line that says *why*, which `--oneline` throws away — what
+moved in the roadmap and the tracker, and the builds archived above.
+
+It is deliberately a pull and not a ritual. A session's prompt already carries
+the roadmap and the open bugs, paid for on every conversation in the project;
+most conversations never ask about last week. Reach for it when the first
+message refers to history — *"it finally built"*, *"is that still broken?"* —
+which is exactly when the alternative is four or five commands.
 
 ### Keeping a session in its own project
 

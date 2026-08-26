@@ -71,6 +71,9 @@ bb — BuilderBot helper
   bb phone               what phone is connected, and what is waiting on you
   bb phone run --why "..." -- adb args...    ask to reach it; the operator
                          allows it on the dashboard and this runs it there
+  bb catchup             what has happened here lately: commits and the first
+                         line of their bodies, what moved in the notebook, the
+                         builds, and which image this box is running
   bb ci-log              what CI printed on its last run here — the runner
                          keeps none of it, so the workflow archives it
   bb ci-log --list       the runs kept for this project, newest first
@@ -598,11 +601,8 @@ cmd_ci_log() {
     done
     # The project this is run from, the same way `bb roadmap` decides.
     if [ -z "$proj" ]; then
-        local here; here="$(pwd -P)"
-        case "$here" in
-            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
-            *) die "not inside a project under ${WORKSPACE} — cd into one, or pass --project NAME" ;;
-        esac
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one, or pass --project NAME"
     fi
     local d="$dir/$proj"
     if [ ! -d "$d" ] || [ -z "$(find "$d" -maxdepth 1 -name '*.log' -print -quit 2>/dev/null)" ]; then
@@ -617,12 +617,7 @@ cmd_ci_log() {
         find "$d" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2-)
     if [ "$list" = 1 ]; then
         echo "kept for ${proj}, newest first:"
-        local f
-        for f in "${logs[@]}"; do
-            printf '  %-22s %s  %s\n' "$(basename "$f" .log)" \
-                "$(date -r "$f" '+%d %b %H:%M')" \
-                "$(sed -n 's/^result: //p' "$f" | head -1 || true)"
-        done
+        ci_log_rows "$d"
         return 0
     fi
     local pick="${logs[0]}"
@@ -635,6 +630,220 @@ cmd_ci_log() {
         [ -n "$pick" ] || die "no kept log for run ${want} — try: bb ci-log --list"
     fi
     cat "$pick"
+}
+
+# ---- what has happened here lately -----------------------------------------
+# A session's prompt carries the roadmap and the bug tracker — the project's
+# STATE — and nothing whatever about its recent past. So a conversation that
+# opens with "it finally built" or "is that still broken?" costs four or five
+# calls to reconstruct by hand: git log, a git show per commit for the body
+# that actually explains it, bb status for the image, a history per notebook
+# tab. This is that reconstruction, once, on one screen.
+#
+# Deliberately a pull and not a ritual: the notebook is already paid for in
+# every prompt on this project, and most conversations never ask about last
+# week. Reach for it when the first message refers to history.
+
+# project_here — the project directory this was run from, or nothing.
+project_here() {
+    local here; here="$(pwd -P)"
+    case "$here" in
+        "$WORKSPACE"/*) here="${here#"$WORKSPACE"/}"; printf '%s' "${here%%/*}" ;;
+        *) return 1 ;;
+    esac
+}
+
+# trim_line TEXT — one line, capped so that a screen stays a screen. Counted in
+# characters and not bytes: bash slices by character in this image's UTF-8
+# locale, and the text being cut here is full of em dashes.
+trim_line() {
+    local t="$1" w="${2:-72}"
+    if [ "${#t}" -gt "$w" ]; then
+        printf '%s…' "${t:0:$((w - 1))}"
+    else
+        printf '%s' "$t"
+    fi
+}
+
+# ci_log_rows DIR [LIMIT] — one line per archived CI run, newest first.
+#
+# Newest by mtime rather than by name: a re-run of an older run carries a lower
+# id than a newer first attempt, so the number does not order them. The
+# workflow's name comes off the header line because two workflows archive here
+# now — the lint job and the image build's outcome — and a list that cannot
+# tell them apart is a list of numbers.
+ci_log_rows() {
+    local d="$1" limit="${2:-0}" rows f
+    [ -d "$d" ] || return 0
+    rows="$(find "$d" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' 2>/dev/null \
+            | sort -rn | cut -d' ' -f2-)"
+    [ -n "$rows" ] || return 0
+    if [ "$limit" -gt 0 ]; then
+        rows="$(printf '%s\n' "$rows" | head -n "$limit")"
+    fi
+    while IFS= read -r f; do
+        [ -n "$f" ] || continue
+        printf '  %-20s %s  %-12s %s\n' "$(basename "$f" .log)" \
+            "$(date -r "$f" '+%d %b %H:%M')" \
+            "$(sed -n '1s/^# \(.*\) — .*/\1/p' "$f")" \
+            "$(sed -n 's/^result: //p' "$f" | head -1 || true)"
+    done <<< "$rows"
+}
+
+cmd_catchup() {
+    local since="7d" n=8 gsince
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --since) since="${2:-7d}"; shift ;;
+            -n|--last) n="${2:-8}"; shift ;;
+            *) die "usage: bb catchup [--since 7d] [-n COMMITS]" ;;
+        esac
+        # `|| break` because the option branches above have already consumed
+        # their value: `bb catchup --since` with nothing after it would
+        # otherwise shift an empty list and die under `set -e`.
+        shift || break
+    done
+    case "$n" in ''|*[!0-9]*) die "-n takes a number" ;; esac
+    # git understands "7 days ago" and not "7d"; the notebook's logs take "7d"
+    # and a date. Accept the notebook's spelling and translate for git.
+    case "$since" in
+        [0-9]*d) gsince="${since%d} days ago" ;;
+        *) gsince="$since" ;;
+    esac
+
+    echo "== this box =="
+    printf '  %-9s %s\n' image "$(
+        if [ -n "${BB_IMAGE_REV:-}" ]; then
+            printf '%.7s%s' "$BB_IMAGE_REV" "${BB_IMAGE_BUILT:+ (built $BB_IMAGE_BUILT)}"
+        else
+            printf 'unstamped — built outside CI'
+        fi)"
+    printf '  %-9s %s\n' version "${BB_VERSION:-unstamped}"
+    # The ledger the entrypoint keeps. Its last few lines answer "when did this
+    # box change image, and what was it on before" — which is most of what
+    # "your fix is not working" turns out to be.
+    local ledger; ledger="$(bb_image_log)"
+    if [ -s "$ledger" ]; then
+        while IFS=$'\t' read -r seen rev ver _built; do
+            case "$seen" in '#'*|'') continue ;; esac
+            printf '  %-9s %.7s  %-24s %s\n' ran "$rev" "$ver" \
+                "since $(date -d "$seen" '+%d %b %H:%M' 2>/dev/null || printf '%s' "$seen")"
+        done < <(grep -v '^#' "$ledger" | tail -3)
+    else
+        printf '  %-9s %s\n' ran "no ledger yet — this image predates it, or /config is not mounted"
+    fi
+
+    if git rev-parse --git-dir >/dev/null 2>&1; then
+        # Remote-tracking refs go stale, and "level with main" read off a
+        # week-old fetch is worse than no answer. Bounded and silent: a project
+        # with no reachable remote should still get the rest of the screen.
+        if git remote get-url origin >/dev/null 2>&1; then
+            timeout 10 env GIT_TERMINAL_PROMPT=0 git fetch --quiet --no-tags origin \
+                >/dev/null 2>&1 || true
+        fi
+        # Only meaningful where this checkout IS the image's source: elsewhere
+        # the container's commit belongs to another repo entirely, and the
+        # question answers itself by the rev being unknown here.
+        if [ -n "${BB_IMAGE_REV:-}" ] && git cat-file -e "${BB_IMAGE_REV}^{commit}" 2>/dev/null; then
+            local main behind
+            main="$(git rev-parse --verify -q origin/main >/dev/null 2>&1 && echo origin/main || echo '')"
+            if [ -n "$main" ] && git merge-base --is-ancestor "$BB_IMAGE_REV" "$main" 2>/dev/null; then
+                behind="$(git rev-list --count "${BB_IMAGE_REV}..${main}" 2>/dev/null || echo '?')"
+                if [ "$behind" = 0 ]; then
+                    printf '  %-9s %s\n' serving "origin/main exactly — what is merged is what is running"
+                else
+                    printf '  %-9s %s\n' serving "$behind commit(s) behind origin/main — anything merged since is NOT live in here"
+                fi
+            else
+                printf '  %-9s %s\n' serving "an image built from a commit that is not on origin/main"
+            fi
+        fi
+
+        local br up ahead behind dirty untracked
+        br="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '-')"
+        up="$(git rev-parse --abbrev-ref '@{upstream}' 2>/dev/null || true)"
+        if [ -n "$up" ]; then
+            read -r ahead behind < <(git rev-list --left-right --count "HEAD...${up}" 2>/dev/null || echo "0 0")
+            printf '  %-9s %s\n' branch "$br — ${ahead} ahead / ${behind} behind ${up}"
+        else
+            printf '  %-9s %s\n' branch "$br — no upstream"
+        fi
+        dirty="$(git status --porcelain 2>/dev/null | grep -cv '^??' || true)"
+        untracked="$(git status --porcelain 2>/dev/null | grep -c '^??' || true)"
+        if [ "$dirty" = 0 ] && [ "$untracked" = 0 ]; then
+            printf '  %-9s %s\n' tree "clean"
+        else
+            printf '  %-9s %s\n' tree "${dirty} changed, ${untracked} untracked — uncommitted work is here"
+        fi
+
+        echo
+        echo "== commits since ${since} (merges omitted) =="
+        # The subject says what changed; the first line of the body says why,
+        # and in this repo that line is usually the most valuable thing a cold
+        # session can read. --oneline throws it away, which is why this does
+        # not use it.
+        local rec sha day subj body line found=0
+        while IFS= read -r -d $'\x1e' rec; do
+            # tformat puts a newline after each record, so every record but the
+            # first arrives with the previous one's line ending on the front.
+            rec="${rec#$'\n'}"
+            [ -n "$rec" ] || continue
+            found=1
+            sha="${rec%%$'\x1f'*}"; rec="${rec#*$'\x1f'}"
+            day="${rec%%$'\x1f'*}"; rec="${rec#*$'\x1f'}"
+            subj="${rec%%$'\x1f'*}"; body="${rec#*$'\x1f'}"
+            printf '  %-6s  %-7s  %s\n' "$day" "$sha" "$(trim_line "$subj")"
+            while IFS= read -r line; do
+                case "$line" in
+                    '') continue ;;
+                    # Trailers are not why anything happened, and on a one-line
+                    # commit they are the whole of %b.
+                    [Cc]o-[Aa]uthored-[Bb]y:*|[Ss]igned-off-by:*|Claude-Session:*|http*) continue ;;
+                esac
+                printf '  %-6s  %-7s  %s\n' "" "" "$(trim_line "$line")"
+                break
+            done <<< "$body"
+        done < <(git log --no-merges -n "$n" --since="$gsince" \
+                     --date=format:'%d %b' \
+                     --pretty=tformat:'%h%x1f%ad%x1f%s%x1f%b%x1e' 2>/dev/null)
+        [ "$found" = 1 ] || echo "  nothing committed here in that window"
+    fi
+
+    local proj; proj="$(project_here || true)"
+    if [ -n "$proj" ]; then
+        echo
+        echo "== the notebook =="
+        # Its own log, not the tabs' contents: the open items are already in a
+        # session's prompt, and what is missing from there is what MOVED.
+        # One line per change, trimmed. `bb history` prints an entry's whole
+        # text — which for a roadmap `info` is a page — and three of those is
+        # the screen this command exists to be.
+        local moved
+        moved="$(cmd_history --since "$since" -n 8 2>/dev/null | while IFS= read -r line; do
+                     case "$line" in
+                         '  '[0-9][0-9]' '[A-Za-z][A-Za-z][A-Za-z]' '*) ;;
+                         *) continue ;;
+                     esac
+                     printf '%s\n' "$(trim_line "$line" 108)"
+                 done)"
+        if [ -n "$moved" ]; then
+            printf '%s\n' "$moved"
+            echo "  ('bb history' for these in full — the text is cut short here)"
+        else
+            echo "  nothing moved in that window"
+        fi
+
+        echo
+        echo "== builds this box archived =="
+        local dir="${BB_CI_LOG_DIR:-/config/ci-logs}/$proj" rows
+        rows="$(ci_log_rows "$dir" 5)"
+        if [ -n "$rows" ]; then
+            printf '%s\n' "$rows"
+            echo "  ('bb ci-log RUN' for one in full)"
+        else
+            echo "  none kept — only a job that runs on this box archives one"
+        fi
+    fi
 }
 
 cmd_logs() {
@@ -838,11 +1047,8 @@ cmd_roadmap() {
     [ -f "$py" ] || die "todo.py is missing from this image"
     local proj="${BB_ROADMAP_PROJECT:-${BB_TODO_PROJECT:-}}"
     if [ -z "$proj" ]; then
-        local here; here="$(pwd -P)"
-        case "$here" in
-            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
-            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
-        esac
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
 import importlib.util, json, sys, time
@@ -1166,11 +1372,8 @@ cmd_history() {
     dir="$(dirname "$(readlink -f "$0")")/dashboard"
     local proj="${BB_ROADMAP_PROJECT:-${BB_TODO_PROJECT:-}}"
     if [ -z "$proj" ]; then
-        local here; here="$(pwd -P)"
-        case "$here" in
-            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
-            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
-        esac
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$dir" "$proj" "$@" <<'PY'
 import importlib.util, json, os, sys, time
@@ -1264,11 +1467,8 @@ cmd_bug() {
     [ -f "$py" ] || die "bugs.py is missing from this image"
     local proj="${BB_BUG_PROJECT:-}"
     if [ -z "$proj" ]; then
-        local here; here="$(pwd -P)"
-        case "$here" in
-            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
-            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
-        esac
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
 import importlib.util, json, sys, time
@@ -1627,16 +1827,13 @@ PY
 }
 
 cmd_findings_history() {
-    local py proj here
+    local py proj
     py="$(dirname "$(readlink -f "$0")")/dashboard/findings.py"
     [ -f "$py" ] || die "findings.py is missing from this image"
     proj="${BB_FINDINGS_PROJECT:-}"
     if [ -z "$proj" ]; then
-        here="$(pwd -P)"
-        case "$here" in
-            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
-            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
-        esac
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$proj" "$@" <<'PY'
 import importlib.util, json, os, sys, time
@@ -2386,16 +2583,13 @@ cmd_doctor() {
 # them was touched. This resolves which project is being asked about and prints
 # what the module returns.
 cmd_version() {
-    local py proj here
+    local py proj
     py="$(dirname "$(readlink -f "$0")")/dashboard/version.py"
     [ -f "$py" ] || die "version.py is missing from this image"
     proj="${BB_VERSION_PROJECT:-}"
     if [ -z "$proj" ]; then
-        here="$(pwd -P)"
-        case "$here" in
-            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
-            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
-        esac
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 - "$py" "$proj" "$@" <<'PY'
@@ -2600,16 +2794,13 @@ PY
 # the next bump dates the accumulated lines. Writing goes through `add` so
 # the shape stays uniform; reading is just the file.
 cmd_changelog() {
-    local py proj here
+    local py proj
     py="$(dirname "$(readlink -f "$0")")/dashboard/version.py"
     [ -f "$py" ] || die "version.py is missing from this image"
     proj="${BB_VERSION_PROJECT:-}"
     if [ -z "$proj" ]; then
-        here="$(pwd -P)"
-        case "$here" in
-            "$WORKSPACE"/*) proj="${here#"$WORKSPACE"/}"; proj="${proj%%/*}" ;;
-            *) die "not inside a project under ${WORKSPACE} — cd into one first" ;;
-        esac
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
     BB_WORKSPACE="$WORKSPACE" python3 - "$py" "$proj" "$@" <<'PY'
@@ -2692,6 +2883,7 @@ case "${1:-help}" in
     bug|bugs) shift; cmd_bug "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
+    catchup)  shift; cmd_catchup "$@" ;;
     ci-log)   shift; cmd_ci_log "$@" ;;
     phone)    shift; cmd_phone "$@" ;;
     doctor)   cmd_doctor ;;

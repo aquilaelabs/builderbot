@@ -120,6 +120,19 @@ bb_log_dir() {
     fi
 }
 
+# bb_image_log — the ledger of images this container has actually run.
+#
+# The one fact nothing else here keeps. The container is recreated on every
+# image update, so its own stamp answers only "what is running now"; the boot
+# log rotates away after a few starts; and with no PAT there is no registry to
+# ask. That leaves "which build was the box on when I saw that?" — the first
+# question whenever a fix appears not to have landed — with nothing to read.
+#
+# /config, because the file has to survive the update it exists to record.
+bb_image_log() {
+    printf '%s' "${BB_IMAGE_LOG:-/config/image-log.tsv}"
+}
+
 # clear_npm_staging — remove half-finished npm upgrade directories.
 #
 # npm upgrades a package by renaming the installed directory to a hidden
