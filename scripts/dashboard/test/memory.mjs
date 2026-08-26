@@ -27,16 +27,18 @@ await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
 await page.waitForFunction(() => document.querySelectorAll('#memList .mem').length === 2);
 ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook — alpha'),
-   'the panel opens on that project, on its roadmap');
+   'the panel opens on that project');
+// On the strip's FIRST tab, whichever that is — the default is read off the
+// strip rather than marked on a button, so reordering the tabs moves it.
+ok(await page.$eval('.pane .nb .nbtabs button', b => b.classList.contains('on'))
+   && await page.$eval('#memList', el => el.checkVisibility()),
+   '...on the first of its tabs, which is what Claude remembers here');
 // And with the cursor nowhere: focusing the add-a-line field would raise a
 // phone's keyboard over the list the panel just opened to show.
 ok(await page.evaluate(() => document.activeElement?.id !== 'todoText'),
    '...without putting the cursor in the field and the keyboard over it');
-// Memory is folded away under it: a handful of files nobody edits, on screen
-// only because it is the one input to a session nobody would otherwise see.
-ok(!await page.$eval('#memList', el => el.checkVisibility()),
-   '...with what Claude remembers on its own tab, not in the way of the list');
-await page.click('.pane .nb .nbtabs [data-v="memory"]');
+ok(!await page.$eval('#todoList', el => el.checkVisibility()),
+   '...with the roadmap on its own tab, not in the way of it');
 await page.waitForFunction(() => document.getElementById('memList').checkVisibility(),
                            { timeout: 5000 });
 ok((await page.$eval('#memWhere', el => el.textContent)).includes('2 memories'),
