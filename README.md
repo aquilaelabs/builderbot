@@ -1508,6 +1508,24 @@ convention. BuilderBot itself gets the row too — the dev instance is
 `up` to refuse while the real one holds the same host ports, which is the env
 file's job to change.
 
+Two things bound what that row can reach, and they answer different halves of
+the question. The **namespace** is enforced rather than conventional: every
+docker call goes through one function, which refuses any argv that is not a
+`compose` call carrying a `--project-name` beginning `bbdev-` (plus one
+`docker version`). The socket proxy cannot do this itself — its flags are per
+*endpoint*, so `CONTAINERS=1` is the whole `/containers` API for every
+container on the host — so the invariant is asserted at the one place every
+call passes through. The **compose file** is the other half, and the one no
+namespace can bound: a file that says `privileged: true` and mounts `/`
+produces a `bbdev-` container like any other. So it is read before anything
+starts, and `privileged`, host `pid`/`network_mode`, and bind mounts landing
+outside the project and `${BB_DEV_DATA}` are named on the row and put in a
+confirmation. Confirmed once per set rather than per press — an
+acknowledgement given every time is one nobody reads — and asked again the
+moment the file reaches for something new. It warns rather than refuses: a
+legitimate compose may genuinely want a host path, and nothing here can tell
+which.
+
 An `.apk` can be **installed** on the paired phone. `adb install -r` replaces
 an existing copy in place and keeps its data, so install and update are one
 verb and there is no second button. Two failures are common enough to be

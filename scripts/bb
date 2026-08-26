@@ -681,12 +681,18 @@ ci_log_rows() {
     if [ "$limit" -gt 0 ]; then
         rows="$(printf '%s\n' "$rows" | head -n "$limit")"
     fi
+    local result
     while IFS= read -r f; do
         [ -n "$f" ] || continue
+        # No result line means the closing step never ran — the job was killed
+        # rather than finished, which on this box usually means the container
+        # updated underneath it. Say so: a blank column reads like a bug in
+        # this listing, and it is the opposite, a job whose end never happened.
+        result="$(sed -n 's/^result: //p' "$f" | head -1)"
         printf '  %-20s %s  %-12s %s\n' "$(basename "$f" .log)" \
             "$(date -r "$f" '+%d %b %H:%M')" \
             "$(sed -n '1s/^# \(.*\) — .*/\1/p' "$f")" \
-            "$(sed -n 's/^result: //p' "$f" | head -1 || true)"
+            "${result:-(unfinished)}"
     done <<< "$rows"
 }
 

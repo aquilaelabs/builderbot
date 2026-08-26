@@ -44,6 +44,12 @@ const row = () => page.$eval('#devRow', e => ({
   down: e.querySelector('[data-devact="down"]').disabled,
   rebuild: e.querySelector('[data-devact="rebuild"]').disabled,
 }));
+// The pill on its own, never out of the row's text: that text carries the
+// buttons' own labels, so "down" in it could as easily be the Down button.
+const pill = () => page.$eval('#devRow .pill', e => e.textContent.trim());
+const pillIs = (want) => page.waitForFunction(
+  (w) => document.querySelector('#devRow .pill')?.textContent.trim() === w,
+  want, { timeout: 20000 });
 
 let r = await row();
 ok(/never built/.test(r.text), 'a project with a compose file gets the row, unbuilt');
@@ -136,8 +142,8 @@ await page.waitForFunction(() => {
   const e = document.querySelector('#devRow');
   return e && /fill in the env/.test(e.textContent);
 }, { timeout: 30000 });
-r = await row();
-ok(/stopped/.test(r.text), 'the gated rebuild stops after down rather than starting broken');
+ok(await pill() === 'down',
+   'the gated rebuild stops after down rather than starting broken');
 await page.click('#devRow [data-devact="env"]');
 await page.waitForSelector('#devEnvModal:not([hidden])');
 const gated = await page.$eval('#devEnvModal textarea', e => e.value);
@@ -159,12 +165,25 @@ ok(true, '...and Up is manual after the gate, exactly as asked');
 
 // Down, from the row.
 await page.click('#devRow [data-devact="down"]');
-await page.waitForFunction(() => {
-  const e = document.querySelector('#devRow');
-  return e && /stopped/.test(e.textContent);
-}, { timeout: 20000 });
+await pillIs('down');
 ok(/compose --project-name bbdev-ep-silon .*down/.test(dockerLog()),
    'Down runs compose down, nothing else');
+ok((await row()).down, '...and goes dead after it: there is nothing left to remove');
+
+// A container that EXITED still exists — it holds its name and the project's
+// network, and `down` is the only thing that clears it. Asking compose only
+// about RUNNING containers left a crashed instance with a greyed-out Down and
+// no way out except a shell, which is the one thing these buttons are for.
+writeFileSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`, '1');
+await page.evaluate(() => refresh());
+await pillIs('stopped');
+r = await row();
+ok(!r.down, 'a crashed instance offers Down — its containers are still there');
+ok(!r.up, '...and Up, which recreates them rather than colliding with them');
+await page.click('#devRow [data-devact="down"]');
+await pillIs('down');
+ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`),
+   '...and Down is what clears them');
 
 // A build in flight when BuilderBot restarts is lost — compose build is a
 // subprocess of the dashboard and dies with it. Everything already recovered
@@ -224,6 +243,84 @@ await page.waitForFunction(() => {
 ok(/stub build exploded/.test(await page.$eval('#devRow', e => e.textContent)),
    'a failed build shows its own last words, and nothing was started');
 rmSync(`${DIR}/dockerstate/build.fail`, { force: true });
+
+// What the compose FILE asks for, which is the half no namespace can bound:
+// a container started from a file that mounts / and asks for privileged is
+// labelled bbdev- like every other one and passes every check that can be
+// made on a name. So the file is read, and what it reaches for is put in
+// front of the operator once, before anything starts.
+const stubCfg = `${DIR}/dockerstate/bbdev-ep-silon.config`;
+const risky = (vols) => writeFileSync(stubCfg, JSON.stringify(
+  { services: { app: { build: { context: '.' }, privileged: true, volumes: vols } } }));
+
+// From stopped: the failed build above left the instance running, because a
+// build that never succeeded never reached the down-and-up.
+if (await pill() !== 'down') {
+  await page.click('#devRow [data-devact="down"]');
+  await pillIs('down');
+}
+risky(['/:/host']);
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => /asks for more than its own directory/.test(
+  document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
+ok(true, 'a compose reaching past its own directory says so on the row');
+
+let seen = page.dialogs.length;
+await page.click('#devRow [data-devact="up"]');
+await pillIs('running');
+ok(page.dialogs.slice(seen).some(
+     d => /runs privileged/.test(d) && /mounts \/ from the host/.test(d)),
+   '...and Up asks first, naming what it found rather than warning in general');
+
+// Asked once per set, not once per press: an acknowledgement the operator has
+// to give again every time is one they stop reading.
+await page.click('#devRow [data-devact="down"]');
+await pillIs('down');
+seen = page.dialogs.length;
+await page.click('#devRow [data-devact="up"]');
+await pillIs('running');
+ok(!page.dialogs.slice(seen).some(d => /asks for more/.test(d)),
+   '...and does not ask again for the same set');
+
+// ...but a file that gains one does not inherit the last yes.
+risky(['/:/host', '/var/run/docker.sock:/s']);
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => /docker\.sock/.test(
+  document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
+await page.click('#devRow [data-devact="down"]');
+await pillIs('down');
+seen = page.dialogs.length;
+await page.click('#devRow [data-devact="up"]');
+await pillIs('running');
+ok(page.dialogs.slice(seen).some(d => /docker\.sock/.test(d)),
+   '...and asks again the moment the file asks for something new');
+
+// A docker call that is not a namespaced compose call does not run at all —
+// the invariant the whole feature's blast radius rests on, asserted at the
+// one place every call passes through.
+const guard = execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.DOCKER = 'docker'
+print(json.dumps({
+  'git': m._guard(['git', '-C', '/x', 'status']),
+  'version': m._guard(['docker', 'version']),
+  'ours': m._guard(['docker', 'compose', '--project-name', 'bbdev-a', 'down']),
+  'theirs': m._guard(['docker', 'compose', '--project-name', 'plex', 'down']),
+  'unnamed': m._guard(['docker', 'compose', '-f', 'x', 'down']),
+  'bare': m._guard(['docker', 'rm', '-f', 'someone-elses-container']),
+}))
+`], { encoding: 'utf8' });
+const g = JSON.parse(guard.trim().split('\n').pop());
+ok(!g.git && !g.version && !g.ours,
+   'git, docker version and a bbdev- compose call are what may run');
+ok(g.theirs && g.unnamed && g.bare,
+   '...and another project name, a missing one, and any other docker verb are not');
+await page.click('#devRow [data-devact="down"]');
+await pillIs('down');
+rmSync(stubCfg, { force: true });
 
 // DOCKER_HOST=auto resolves by asking candidates for /version, caches what
 // it found, and re-scans when that stops answering — a bridge-assigned IP

@@ -227,6 +227,15 @@ jobs:
     # The image is pushed by the time this runs, so nothing waits on it: with
     # the box down the job simply queues until the box is back, and records a
     # build that finished half an hour earlier.
+    #
+    # It can still lose a race, and did on its first live run: the runner takes
+    # one job at a time, this one queued behind the same branch's lint, and the
+    # operator updated the container — killing both — before it got a turn. The
+    # loss is survivable by construction, because the outcome most likely to be
+    # lost that way is a SUCCESS whose image is about to be recorded in
+    # /config/image-log.tsv anyway. A failed build publishes nothing, so nobody
+    # updates, so the runner stays up and the record gets written — which is
+    # the case this job exists for.
     runs-on: [self-hosted, builderbot]
     # A bookkeeping job must not be able to paint a successful build red. It
     # still shows as failed on its own row, which is where a broken recorder

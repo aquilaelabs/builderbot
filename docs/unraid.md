@@ -598,6 +598,19 @@ not trust. On a sole-operator box, with the dashboard's controls being fixed
 compose commands, that trade is reasonable — and it is yours to make, which
 is why the feature is off until you wire it.
 
+Two limits worth knowing exactly, because one of them is not the proxy's.
+The proxy's flags are per **endpoint**: `CONTAINERS=1` is the whole
+`/containers` API for *every* container on the host, and no arrangement of
+these flags means "only BuilderBot's". What keeps it to `bbdev-` containers
+is BuilderBot itself, which refuses any docker call that is not a `compose`
+call under that namespace. And a compose file can ask for the host directly
+— `privileged: true`, `network_mode: host`, a bind mount of `/` — in which
+case the container it makes is namespaced like any other and no name-based
+check catches it. So the file is read before anything starts and what it
+reaches for is named on the row and in a confirmation you have to accept
+once per set. That is a warning, not a refusal: a compose may want a host
+path for good reasons, and nothing here can tell which.
+
 1. Install **docker-socket-proxy** from Community Applications (the
    `tecnativa` image is the usual one). Set its environment:
    `CONTAINERS=1`, `IMAGES=1`, `BUILD=1`, `NETWORKS=1`, `VOLUMES=1`,

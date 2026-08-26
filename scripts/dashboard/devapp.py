@@ -19,6 +19,17 @@ is acceptable is that this is a sole-operator box and the controls below are
 table-lookup compose commands, never freeform. Sessions are told the proxy
 is not theirs; that is a guardrail, not a sandbox.
 
+**And the proxy cannot scope to our containers**, which is worth being exact
+about because it looks as if it should: its flags are per ENDPOINT, so
+CONTAINERS=1 is the whole /containers API for every container on the host.
+Two things here bound the reach instead, and they answer different halves.
+_guard() makes the bbdev- namespace an invariant rather than a habit — every
+docker call passes through _run(), and one that is not a namespaced compose
+call does not run. risks() answers the half no namespace can: a compose file
+saying `privileged: true` and mounting / produces a bbdev- container like
+any other, so the file is read and what it reaches for is named on the row
+and confirmed once per set before anything starts.
+
 **What "rebuild needs the env filled in" means.** The one detectable signal:
 the repo's .env.example gained keys the dev env file does not have. A rebuild
 that hits that stops after `down`, rewrites the env file as the new example
@@ -39,10 +50,12 @@ shows `unstamped` for its version, which is honest: it is one.
 State: /config/devapps.json ({project: built_rev/built_at}), the env files in
 /config/devenv/, one build job at a time in memory.
 """
+import hashlib
 import json
 import os
 import re
 import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
@@ -229,7 +242,50 @@ def available():
 _CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
 
 
+# Every docker call this module makes is a compose call inside the project's
+# own bbdev- namespace, plus one `docker version`. That is the whole of what
+# keeps the blast radius to containers this dashboard created — and until this
+# guard it was true only because every call site happened to go through
+# _compose(). The socket proxy cannot help with it: its flags are per
+# ENDPOINT, so CONTAINERS=1 is the entire /containers API for every container
+# on the host, and no arrangement of them means "only ours".
+#
+# So the invariant is asserted at the one place every call passes through,
+# which turns "the code always passes --project-name" into "the code cannot
+# not". It says nothing about what a compose FILE asks for — see risks().
+_BARE_OK = {"version"}
+
+
+def _guard(argv):
+    """The reason to refuse this argv, or "" to let it run."""
+    if not argv or argv[0] != DOCKER:
+        return ""                      # git, and anything else not docker
+    verb = argv[1] if len(argv) > 1 else ""
+    if verb in _BARE_OK:
+        return ""
+    if not verb:
+        return "a bare `docker` with no subcommand"
+    if verb != "compose":
+        return f"`docker {verb}` — only compose and version are reachable here"
+    try:
+        name = argv[argv.index("--project-name") + 1]
+    except (ValueError, IndexError):
+        return "a compose call carrying no --project-name"
+    if not name.startswith("bbdev-"):
+        return f"a compose call outside the bbdev- namespace ({name})"
+    return ""
+
+
 def _run(argv, timeout=60, env_extra=None):
+    bad = _guard(argv)
+    if bad:
+        # Refused rather than raised: _worker runs builds on a thread, where an
+        # exception would end the job with nothing to show for it. A code and a
+        # message travel the path a real docker failure already travels — and
+        # say plainly that this one is a bug here, not a daemon that said no.
+        msg = "refused by BuilderBot, and this is a bug in it: " + bad
+        print("[devapp] " + msg, file=sys.stderr, flush=True)
+        return {"code": 126, "out": msg}
     env = dict(os.environ)
     # The resolved address, so `auto` never reaches the docker CLI — it does
     # not know the word.
@@ -393,7 +449,30 @@ def _load():
     return {}
 
 
-def needs_build(project):
+def _config(project):
+    """The compose file as compose itself resolves it: variables substituted,
+    relative paths made absolute against the project directory.
+
+    None when it cannot be read, which every caller has to treat as the
+    cautious answer rather than as "nothing here". Fetched once per poll
+    because state() asks it two separate questions.
+    """
+    r = _run(_compose(project, "config", "--format", "json"), timeout=30)
+    if r["code"] != 0:
+        return None
+    try:
+        d = json.loads(r["out"])
+    except ValueError:
+        return None
+    return d if isinstance(d, dict) else None
+
+
+def _services(cfg):
+    return {n: sv for n, sv in ((cfg or {}).get("services") or {}).items()
+            if isinstance(sv, dict)}
+
+
+def needs_build(cfg):
     """Whether this compose has anything to build at all.
 
     A compose that only runs published images — `image: postgres` and no
@@ -403,22 +482,136 @@ def needs_build(project):
     path this feature deliberately avoids, and the operator would get the
     403 from a button that never mentioned building.
     """
-    r = _run(_compose(project, "config", "--format", "json"), timeout=30)
-    if r["code"] != 0:
+    if cfg is None:
         # Unreadable compose: assume it builds, which is the cautious way
         # round — Up stays gated rather than firing an implicit build.
         return True
+    return any(bool(sv.get("build")) for sv in _services(cfg).values())
+
+
+def _within(path, base):
     try:
-        d = json.loads(r["out"])
-    except ValueError:
+        Path(path).resolve().relative_to(Path(base).resolve())
         return True
-    return any(bool(sv.get("build"))
-               for sv in (d.get("services") or {}).values()
-               if isinstance(sv, dict))
+    except (ValueError, OSError):
+        return False
+
+
+def _binds(sv, project):
+    """Host paths a service bind-mounts, in either spelling compose accepts:
+    the normalized {"type": "bind", "source": ...} objects `config` emits, and
+    the "host:container" short form, since depending on one shape of somebody
+    else's JSON is how a check quietly stops checking."""
+    out = []
+    for v in sv.get("volumes") or []:
+        src = ""
+        if isinstance(v, dict):
+            if (v.get("type") or "") != "bind":
+                continue                    # a named volume is compose's own
+            src = str(v.get("source") or "")
+        elif isinstance(v, str):
+            head = v.split(":")[0]
+            # "data:/var/lib" names a volume; only a path is a host path.
+            if head.startswith("/") or head.startswith("."):
+                src = head
+        if src:
+            # Resolved, so that what the operator is shown is where the mount
+            # actually lands: "../../etc" and a symlink both read as the
+            # project's own directory until they are followed.
+            p = Path(src) if src.startswith("/") else WORKSPACE / project / src
+            try:
+                out.append(str(p.resolve()))
+            except OSError:
+                out.append(str(p))
+    return out
+
+
+def risks(project, cfg):
+    """What this compose asks for beyond its own directory.
+
+    The half of the blast radius that no namespace can bound. A container
+    started from a file saying `privileged: true` and mounting `/` is labelled
+    bbdev- like every other one and passes every check that can be made on a
+    name — so the file itself is read, and what it asks for is put in front of
+    the operator before anything starts.
+
+    Warned and confirmed rather than refused: a legitimate compose may want a
+    host path (a media folder, the timezone file), and nothing here can tell
+    which. The point is that it is never a surprise.
+    """
+    if cfg is None:
+        return []
+    ours = [WORKSPACE / project]
+    root = Path(DEVDATA)
+    if root.is_dir():
+        ours.append(root)
+    out = []
+    for name, sv in sorted(_services(cfg).items()):
+        if sv.get("privileged"):
+            out.append(f"{name} runs privileged — root on the host, in effect")
+        # Named beside privileged rather than left out: a check that catches
+        # `privileged: true` and misses `cap_add: [SYS_ADMIN]` has a hole in
+        # it that is obvious to anyone who would use it.
+        caps = sorted(c for c in (sv.get("cap_add") or []) if isinstance(c, str))
+        if caps:
+            out.append(f"{name} takes kernel capabilities: {', '.join(caps)}")
+        devs = [d for d in (sv.get("devices") or []) if d]
+        if devs:
+            shown = ", ".join(str(d.get("source") if isinstance(d, dict) else d)
+                              for d in devs[:3])
+            out.append(f"{name} is handed host devices: {shown}"
+                       + (" …" if len(devs) > 3 else ""))
+        if str(sv.get("pid") or "") == "host":
+            out.append(f"{name} shares the host's process namespace")
+        if str(sv.get("network_mode") or "") == "host":
+            out.append(f"{name} is on the host's own network")
+        for src in _binds(sv, project):
+            if not any(_within(src, b) for b in ours):
+                out.append(f"{name} mounts {src} from the host")
+    return out
+
+
+def risk_digest(rs):
+    """A stable name for one set of risks, so that acknowledging them stops
+    counting the moment the compose file asks for something new."""
+    if not rs:
+        return ""
+    return hashlib.sha256("\n".join(sorted(rs)).encode()).hexdigest()[:12]
+
+
+def _risk_gate(project, ack=""):
+    """The reason to stop before starting anything, or "" to go ahead."""
+    rs = risks(project, _config(project))
+    if not rs:
+        return ""
+    d = risk_digest(rs)
+    if ((_load().get(project) or {}).get("risks_ack")) == d:
+        return ""
+    if ack and ack == d:
+        with _lock:
+            store = _load()
+            store.setdefault(project, {})["risks_ack"] = d
+            write_json(FILE, store)
+        return ""
+    return ("this compose asks for more than its own directory — "
+            + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else ""))
 
 
 def _running(project):
     r = _run(_compose(project, "ps", "--status", "running", "-q"), timeout=20)
+    return r["code"] == 0 and bool(r["out"].strip())
+
+
+def _exists(project):
+    """Does compose know about any container here, running or not?
+
+    A container that EXITED — a crash, a bad entrypoint, an OOM — is still
+    there, still holding its name and the project's network, and `down` is the
+    only thing that clears it. Asking only about RUNNING containers is what
+    left a crashed instance with a greyed-out Down and no way out of the
+    dashboard at all.
+    """
+    r = _run(_compose(project, "ps", "-aq"), timeout=20)
     return r["code"] == 0 and bool(r["out"].strip())
 
 
@@ -456,8 +649,20 @@ def state(project):
                                and not _job["running"]),
            "job": dict(_job) if _job["project"] == project else None}
     if a["on"]:
-        out["needs_build"] = needs_build(project)
+        cfg = _config(project)
+        out["needs_build"] = needs_build(cfg)
+        rs = risks(project, cfg)
+        out["risks"] = rs
+        out["risks_digest"] = risk_digest(rs)
+        # True when nothing stands in the way — either the file asks for
+        # nothing beyond its own directory, or the operator has already said
+        # yes to exactly this set.
+        out["risks_ack"] = (not rs
+                            or built.get("risks_ack") == out["risks_digest"])
         out["running"] = _running(project)
+        # Only worth a second call when nothing is running: a running stack
+        # self-evidently has containers, and this is on the artifacts poll.
+        out["exists"] = out["running"] or _exists(project)
         head = _head(project)
         dirty = _dirty(project)
         moved = bool(built.get("rev")) and built.get("rev") != head
@@ -472,16 +677,23 @@ def state(project):
                               else "")
     else:
         out["running"] = False
+        out["exists"] = False
         out["changed"] = False
+        out["risks"] = []
+        out["risks_digest"] = ""
+        out["risks_ack"] = True
     return out
 
 
 # ---------------------------------------------------------------------------
 # actions
 
-def up(project):
+def up(project, ack=""):
     if _job["running"]:
         return {"error": "a build is already running — one at a time"}
+    gate = _risk_gate(project, ack)
+    if gate:
+        return {"error": gate}
     miss = missing_env(project)
     if miss:
         return {"error": "the env is missing " + ", ".join(miss[:4])
@@ -520,13 +732,18 @@ def down(project):
     return {"ok": True}
 
 
-def rebuild(project):
+def rebuild(project, ack=""):
     """Build, then bounce — or stop at the env gate. In a thread: a build is
     minutes, and the poll watches it through job_rev."""
     if _job["running"]:
         return {"error": "a build is already running — one at a time"}
     if compose_file(project) is None:
         return {"error": "no compose file here"}
+    # Before the build, not before the `up` inside it: a build runs this
+    # project's Dockerfile, which is the same trust either way.
+    gate = _risk_gate(project, ack)
+    if gate:
+        return {"error": gate}
     # On disk before the work starts, so a restart can tell "this build never
     # finished" from "no build has been asked for". The job dict is memory and
     # dies with the container; this outlives it.
