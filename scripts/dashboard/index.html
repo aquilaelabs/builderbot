@@ -5827,6 +5827,33 @@ $("todoRevert").onclick = revertNotebook;
     if (pol) pol.onchange = () => postVersion({action: "policy", policy: pol.value});
   }
 
+  // "Ships something else from here?" — the door to a component's own
+  // number. Offered wherever candidate directories exist, INCLUDING on a
+  // project with no version of its own yet: two products with different
+  // maturities is exactly the state a fresh project can already be in, and
+  // the two inits work in either order.
+  function verAddFold(v){
+    if (v.component || !(v.candidates || []).length) return "";
+    return `
+      <details class="veradd"><summary>ships something else from here?</summary>
+        <p class="verwhy">A directory with its own <code>VERSION</code> is a
+          component and versions itself — for an extension beside an app,
+          which do not share a maturity. Its ordinal counts only the commits
+          that touched it.</p>
+        <div class="verinit">
+          <select class="vdir" aria-label="which directory">${
+            v.candidates.map(c => `<option>${esc(c)}</option>`).join("")}</select>
+          <input class="vstart" value="0.1.0" size="8" maxlength="20"
+            inputmode="decimal" aria-label="starting version"
+            pattern="[0-9]+\.[0-9]+\.[0-9]+">
+          <button type="button" data-veradd>Give it its own version</button>
+          <button type="button" data-verask="@fold"
+            title="put the question to this project's Claude session, for
+this directory">Ask Claude</button>
+        </div>
+      </details>`;
+  }
+
   function verSection(v, named){
     const f = v.forms || {};
     const line = (label, value, cls = "") => value
@@ -5905,25 +5932,7 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
           that one path — it is never pushed. The policy stops
           <code>bb version bump</code> and a session's file tools; it does not
           stop Bash. It covers this project and its components alike.</p>
-        ${(v.candidates || []).length ? `
-          <details class="veradd"><summary>ships something else from here?</summary>
-            <p class="verwhy">A directory with its own <code>VERSION</code> is a
-              component and versions itself — for an extension beside an app,
-              which do not share a maturity. Its ordinal counts only the commits
-              that touched it.</p>
-            <div class="verinit">
-              <select class="vdir" aria-label="which directory">${
-                v.candidates.map(c => `<option>${esc(c)}</option>`).join("")}</select>
-              <input class="vstart" value="0.1.0" size="8" maxlength="20"
-                inputmode="decimal" aria-label="starting version"
-                pattern="[0-9]+\.[0-9]+\.[0-9]+">
-              <button type="button" data-veradd>Give it its own version</button>
-              <button type="button" data-verask="@fold"
-                title="put the question to this project's Claude session, for
-this directory">Ask Claude</button>
-            </div>
-
-          </details>` : ""}`}` : `
+        ${verAddFold(v)}`}` : `
         <p class="verwhy">This project has no version yet. Giving it one writes
           a <code>VERSION</code> file and commits it — after that the buttons
           above move it.${v.unreleased ? ` The ${v.unreleased} logged
@@ -5947,7 +5956,7 @@ become that version's section when it is created">Changelog${
 the code, the roadmap and the changelog, and you can argue with the answer.
 It proposes and asks before doing anything.">Ask Claude</button>
         </div>
-`);
+        ${verAddFold(v)}`);
 
   }
 

@@ -626,8 +626,14 @@ ok((await page.$$(`${NB} #verBox [data-verbump]`)).length === 0,
 // one people route around.
 ok((await page.$$(`${NB} #verBox [data-verinit]`)).length === 1,
    '...but offering to create one, since nothing else can');
-ok((await page.$$(`${NB} #verBox [data-verask]`)).length === 1,
+ok((await page.$$(`${NB} #verBox [data-verask]:not([data-verask="@fold"])`)).length === 1,
    '...and offering to put the question to the project\u2019s own session');
+// Two products with different maturities is a state a fresh project can
+// already be in — StreamLift proposed 0.2.0 for the app and 0.1.0 for its
+// extension while neither file existed — so the component door has to be
+// visible before the root version is, not only after.
+ok(await page.$(`${NB} #verBox .veradd .vdir`) !== null,
+   'the component fold is offered before the project has any version at all');
 
 // A starting number is arbitrary — nothing can derive it — so it is the one
 // value here that is typed. Which means it has to be checked.
