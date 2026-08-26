@@ -242,6 +242,15 @@ export async function finger(page, x, y, x2, y2, holdMs){
 export const nbShown = (page) =>
   page.waitForFunction(() => !!document.querySelector('.pane .nb'),
                        { timeout: 20000 });
+// The notebook opens on its first tab (Memory). A file whose subject is one of
+// the others says so once, here, rather than every test in it knowing which
+// tab the panel happens to start on.
+export const nbTab = async (page, v) => {
+  await page.click(`.pane .nb .nbtabs [data-v="${v}"]`);
+  await page.waitForFunction(
+    (w) => document.querySelector(`.pane .nb .nbview[data-view="${w}"]`)?.checkVisibility(),
+    v, { timeout: 20000 });
+};
 export const nbGone = (page) =>
   page.waitForFunction(() => !document.querySelector('.pane .nb'),
                        { timeout: 20000 });

@@ -1232,12 +1232,12 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="field mdrift" id="todoBatch" hidden></div>
     <div class="nbtabs" role="tablist">
       <button type="button" data-v="memory">Memory</button>
-      <button type="button" data-v="roadmap" class="on">Roadmap</button>
+      <button type="button" data-v="roadmap">Roadmap</button>
       <button type="button" data-v="bugs">Bugs</button>
       <button type="button" data-v="analysis">Analysis</button>
       <button type="button" data-v="artifacts">Artifacts</button>
     </div>
-    <div class="nbview" data-view="roadmap">
+    <div class="nbview" data-view="roadmap" hidden>
     <!-- The roadmap. Both sides write it, which is what makes it worth a
          panel: everything else here is one-way. Its open items are appended
          to every Claude session the dashboard starts, so an item added on
@@ -1535,15 +1535,6 @@ body.dragging .tab .lbl{cursor:grabbing}
        (the glance is the point of having it in the header); on a phone it
        collapses to the word About, and either way the popup carries what the
        tooltip used to. -->
-  <button id="bAbout" aria-haspopup="dialog" aria-label="about this BuilderBot"
-          title="about this BuilderBot">
-    <span class="meta" id="build"></span>
-    <svg class="out alab" viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="8" r="6.3"/>
-      <path d="M6.2 6.2a1.85 1.85 0 1 1 2.4 1.9c-.5.2-.8.6-.8 1.1v.3"/>
-      <circle cx="7.8" cy="11.9" r=".85" fill="currentColor" stroke="none"/>
-    </svg>
-  </button>
   <!-- Everything the page has said that was worth saying twice, plus anything
        a session is blocked on. See logNote: a toast is seen by whoever was
        looking at the time, which is the wrong deal for the messages that
@@ -1558,6 +1549,15 @@ body.dragging .tab .lbl{cursor:grabbing}
   </button>
   <div id="bellPanel" class="bellpanel" hidden role="dialog"
        aria-label="notifications"></div>
+  <button id="bAbout" aria-haspopup="dialog" aria-label="about this BuilderBot"
+          title="about this BuilderBot">
+    <span class="meta" id="build"></span>
+    <svg class="out alab" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.3"/>
+      <path d="M6.2 6.2a1.85 1.85 0 1 1 2.4 1.9c-.5.2-.8.6-.8 1.1v.3"/>
+      <circle cx="7.8" cy="11.9" r=".85" fill="currentColor" stroke="none"/>
+    </svg>
+  </button>
   <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" aria-label="reset the sidebar cards"
           title="reset the sidebar cards — default order, all expanded">
@@ -5791,6 +5791,17 @@ $("todoRevert").onclick = revertNotebook;
   }
   root.querySelectorAll(".nbtabs button").forEach(b =>
     b.onclick = async () => { if (await leaveNbView(b.dataset.v)) setNbView(b.dataset.v); });
+  // Which view a new notebook opens on: the first tab of the strip, read from
+  // the strip rather than marked on one of the buttons, so that reordering it
+  // moves the default with it and the two cannot drift apart.
+  //
+  // That it is only set HERE is the rest of the behaviour, and it is the
+  // instance's lifetime doing the work rather than anything remembering: this
+  // clone is parked and reused while the tab is on the strip, so leaving the
+  // tab and coming back finds the view where you left it — and closing the
+  // tab destroys the instance (see hideTab), so the next open is a new clone
+  // that starts here again.
+  setNbView(root.querySelector(".nbtabs button").dataset.v);
 
   // ---- one History, three tabs ---------------------------------------------
   // The memory and bug views get the same log the roadmap has, through the

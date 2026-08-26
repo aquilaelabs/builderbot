@@ -1179,6 +1179,14 @@ findings for this project alone).
 **Unsaved work does not cross those four.** Leaving a view asks, and answering
 yes throws the change away rather than carrying it to the next tab.
 
+**It opens on the first tab of the strip** — Memory today, and whatever is
+first if the strip is ever reordered, since the default is read off the strip
+rather than marked on one of the buttons. After that it stays where you left
+it: the notebook is one instance per project, parked and reused, so going off
+to a terminal and coming back finds the view you were on. Closing the tab ends
+that instance, so the next open starts at the first tab again — which is the
+same rule that makes closing it drop whatever was staged in it.
+
 **The roadmap** is `bb roadmap` in a terminal. Saving does not close it; the
 Save buttons simply go dead until there is something to save again, and the
 button beside them is **Revert**, which throws away what has not been saved

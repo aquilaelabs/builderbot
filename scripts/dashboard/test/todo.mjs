@@ -4,7 +4,7 @@
 // `bb roadmap`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point — something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -55,6 +55,7 @@ ok(await page.$eval(`${row('alpha')} [data-m]`,
 
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
+await nbTab(page, 'roadmap');
 ok(await page.$eval('#memTitle', el => el.textContent === 'Notebook — alpha'),
    'the panel opens on the list');
 await page.waitForFunction(() => document.getElementById('todoHint').textContent.length > 0);
@@ -1298,6 +1299,8 @@ const phone = await newPage(browser, { viewport: { width: 400, height: 860 },
 await phone.goto(URL);
 await ready(phone);
 await phone.click(`${row('alpha')} [data-m]`);
+await nbShown(phone);
+await nbTab(phone, 'roadmap');
 await phone.waitForSelector('#todoList .todo', { timeout: 20000 });
 // The head reads the same way the other three tabs do: the view's own summary
 // and its History first, then the row of things that change the list.
