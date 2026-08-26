@@ -73,7 +73,13 @@ def tell(session, text, sessions=()):
     r = run(["tmux", "send-keys", "-t", session, "-l", "--", text], timeout=10)
     if r["code"] != 0:
         return r
-    for _ in range(LOOKS):
+    # Longer lines need longer to appear. A TUI re-renders as it takes input,
+    # and a few hundred characters do not finish inside the window a short one
+    # needs: a 704-character prompt was declared "typed but not sent" while it
+    # sat on screen perfectly well, because the look-window was a flat half
+    # second. Scaled by length, floored at the old value.
+    looks = LOOKS + len(text) // 120
+    for _ in range(looks):
         time.sleep(SETTLE)
         if _capture(session).count(mark) > was:
             e = run(["tmux", "send-keys", "-t", session, "Enter"], timeout=10)

@@ -838,6 +838,12 @@ MODELS = ("opus", "sonnet", "haiku", "fable")
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
 
 
+# What claude is already defaulting to, so a switch it does not need is not
+# typed. Injected rather than imported: prefs.py is the dashboard's, and the
+# CLI loads this module by path with no server around it.
+current_prefs = None
+
+
 def _switch(session, sessions, model, effort):
     """Type /model and /effort ahead of a step, when the panel asked for them.
 
@@ -853,8 +859,14 @@ def _switch(session, sessions, model, effort):
     with. Worth knowing about them: claude saves both as the default for new
     sessions, so this is not scoped to the conversation it is typed into.
     """
-    for cmd, val, table in (("/model", model, MODELS), ("/effort", effort, EFFORTS)):
+    now = current_prefs() if current_prefs else {}
+    for cmd, val, table, key in (("/model", model, MODELS, "model"),
+                                 ("/effort", effort, EFFORTS, "effort")):
         if not val:
+            continue
+        # Already there: typing it again is a line of noise in the transcript
+        # and one more thing that can fail to land.
+        if now.get(key) == val:
             continue
         if val not in table:
             return {"error": f"not a {cmd[1:]} this can set: {val}"}

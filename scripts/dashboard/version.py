@@ -955,50 +955,23 @@ def ask(project, sessions=(), comp="", model="", effort=""):
     what = f"the `{comp}` component of {project}" if comp else project
     forflag = f" --for {comp}" if comp else ""
     pol = policy(project)
-    may_set = pol != "locked"
-    line = (
-        f"From the operator, on {project}'s Artifacts tab: what version should "
-        f"{what} start at? "
-        f"Run `bb version suggest{forflag}` for the mechanical signals, then "
-        f"form your own view from the codebase, the roadmap and the changelog "
-        f"— what this actually does, how finished it is, whether anything has "
-        f"shipped. "
-        f"Reply with a number and your reasoning, then ASK before doing "
-        f"anything: the operator may want to negotiate it or decline. Do not "
-        f"propose 1.0.0 unless they raise it — a major version is a "
-        f"compatibility promise that is theirs to make. "
-        + (f"If they agree, set it with `bb version init <X.Y.Z>{forflag}` "
-           f"(this project's policy is `{pol}`, so that is allowed)."
-           if may_set else
-           f"This project's version policy is `locked`, so you cannot set it "
-           f"yourself — hand them the number and they will apply it from the "
-           f"Artifacts tab, where they asked from.")
-    )
+    # Short on purpose. This is TYPED into a terminal a character at a time,
+    # and the echo has to be seen before Enter can follow: the first cut ran
+    # to 704 characters, which a TUI does not finish rendering inside the
+    # window notify.tell waits, so it was left sitting in the input box
+    # unsent. The protocol it used to spell out lives in the project's
+    # CLAUDE.md now, which the session has already read.
+    line = (f"From the operator, on the Artifacts tab: what version should "
+            f"{what} start at? See the version section of CLAUDE.md "
+            f"— propose and ask, do not apply.")
     if tgt:
         # A different question once a version exists: not "what should this
         # start at" but "is {tgt} still where this is" — the judgment the
         # operator says is hard precisely because most of the work here
         # happened through prompts. The session can read what actually landed.
-        allowed = allows(pol)
-        line = (
-            f"From the operator, on {project}'s Artifacts tab: {what} is at "
-            f"{tgt} — is that still where it should be? "
-            f"Run `bb version{forflag}` for the evidence (commits since the "
-            f"target moved) and `bb changelog{forflag}` for what those changes "
-            f"meant, then judge from the code and the roadmap: features "
-            f"shipped read as a minor, fixes alone as a patch, nothing "
-            f"user-facing as no bump at all — and say which and why. "
-            f"Reply with your proposal and reasoning, then ASK before doing "
-            f"anything: the operator may negotiate or decline. Do not propose "
-            f"1.0.0 unless they raise it. "
-            + (f"If they agree, apply it with `bb version bump "
-               f"<part>{forflag}` — this project's policy is `{pol}`, so you "
-               f"may move {', '.join(allowed)}."
-               if allowed else
-               f"This project's version policy is `locked`, so you cannot "
-               f"move it yourself — hand them your proposal and they will "
-               f"press the bump on the Artifacts tab, where they asked from.")
-        )
+        line = (f"From the operator, on the Artifacts tab: {what} is at "
+                f"{tgt} — is that still right? See the version section of "
+                f"CLAUDE.md — propose and ask, do not apply.")
     session = tmux_name("claude-" + project)
     # The standing model/effort preference, applied the way a step send
     # applies it: as slash commands ahead of the question, and a switch that
