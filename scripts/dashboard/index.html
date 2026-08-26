@@ -73,14 +73,17 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 @media(max-width:600px){ .meta.host{display:none} }
-/* The About control: version-as-label where there is room, a ? where there is
-   not — a truncated version string answers nothing, so it stops pretending to,
-   and the word "About" was only ever standing in for an icon. */
+/* The About control: version-as-label where there is room, the word where
+   there is not — a truncated version string answers nothing, so it stops
+   pretending to. One of the two, never both: a rule that showed the label on
+   a desktop stacked it under the version and doubled the button's height.
+   (A circled ? was tried here and looked wrong beside the header's other
+   glyphs, which are all line art at 15px.) */
 #bAbout .alab{display:none}
 #bAbout #build{color:var(--dim)}
 @media(max-width:600px){
   #bAbout #build{display:none}
-  #bAbout .alab{display:block}
+  #bAbout .alab{display:inline}
 }
 
 /* The bell, and the panel it drops. Bare on purpose: it is a state light
@@ -217,6 +220,7 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
      the pointer crossed it. */
   .nbtabs button:hover,.nbtabs button.on:hover{background:none}
   .modal .danger:hover{background:#3a1d1b}
+  .nb .caution:hover{background:#33290f}
   button:disabled:hover{background:#232b34}
   .cmd button:hover{background:#2b3540}
   .cmd .tack:hover{color:var(--ink)}
@@ -414,6 +418,11 @@ button.on{background:#1f6f36;border-color:#2ea043}
   flex-wrap:wrap}
 .modal .foot .sp,.nb .foot .sp{flex:1}
 .modal .danger,.nb .danger{color:var(--bad);border-color:#4d2220}
+/* Revert is amber rather than red. It throws away what has not been saved
+   yet — a decision you might want back, and the colour this page already uses
+   for "wants a decision from you". Red is kept for the controls that destroy
+   something already on disk, which is the other two on this panel. */
+.nb .caution{color:var(--warn);border-color:#4a3a15}
 /* Two-way choice as two buttons, not radios: one tap on a phone, and the
    green .on state is the same vocabulary as everything else on the page. */
 .modal .pseg{display:flex;gap:8px}
@@ -535,6 +544,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .artrow .top b{overflow-wrap:anywhere}
 .artrow .dim{color:var(--dim);font:11px/1.4 var(--mono);overflow-wrap:anywhere}
 .artrow .dim.bad{color:var(--bad)}
+/* One fact per line, indented under the line that says what kind they are. */
+.artrow .dim.li{padding-left:12px}
+.artrow .top .state{font:var(--f-note)}
+.artrow .top .state.ok{color:var(--accent)}
 /* Pushed right on a desktop; on a phone the buttons take their own line, the
    same line, on every row — evenness beats compactness at that width. */
 .artrow .acts{display:flex;gap:6px;flex:0 0 auto;margin-left:auto}
@@ -891,7 +904,7 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 /* The header's icon buttons — the broom (reset) and the sign-out door —
    drawn to the same box as the ↻ glyph, same stroke voice as the eye and
    chain icons. */
-#bOut svg.out,#bCards svg.out,#bAbout svg.out{width:15px;height:15px;display:block;margin:auto;
+#bOut svg.out,#bCards svg.out{width:15px;height:15px;display:block;margin:auto;
   fill:none;stroke:currentColor;stroke-width:1.4;
   stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
@@ -1402,7 +1415,7 @@ body.dragging .tab .lbl{cursor:grabbing}
            looking at this" — it is "throw the unsaved changes away", which is
            the other half of a Save button and dead whenever there is nothing
            to throw. -->
-      <button id="todoRevert" class="danger" type="button" disabled>Revert</button>
+      <button id="todoRevert" class="caution" type="button" disabled>Revert</button>
     </div>
   </div>
 </template>
@@ -1551,12 +1564,7 @@ body.dragging .tab .lbl{cursor:grabbing}
        aria-label="notifications"></div>
   <button id="bAbout" aria-haspopup="dialog" aria-label="about this BuilderBot"
           title="about this BuilderBot">
-    <span class="meta" id="build"></span>
-    <svg class="out alab" viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="8" r="6.3"/>
-      <path d="M6.2 6.2a1.85 1.85 0 1 1 2.4 1.9c-.5.2-.8.6-.8 1.1v.3"/>
-      <circle cx="7.8" cy="11.9" r=".85" fill="currentColor" stroke="none"/>
-    </svg>
+    <span class="meta" id="build"></span><span class="alab">About</span>
   </button>
   <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" aria-label="reset the sidebar cards"
@@ -5944,15 +5952,27 @@ $("todoRevert").onclick = revertNotebook;
     // is exactly what this list already speaks.
     const da = art.devapp || {};
     const daJob = da.job;
+    // The same row the files use, because it IS one of the rows: kind on a
+    // pill, the thing's own name in bold, what is known about it underneath.
+    // The pill says what it is — docker — rather than what it is doing; the
+    // doing goes in parentheses after the name, where an artifact's size and
+    // age go. A list whose rows are shaped alike is read; one where every row
+    // argues its own case is scanned.
+    const devState = da.running ? "running" : da.exists ? "stopped" : "down";
+    // One line each, never a run-on joined by semicolons. These are separate
+    // facts about separate services and reading them is the whole point.
+    const devLines = (label, items, cls) => !items?.length ? "" :
+      `<div class="dim ${cls}">${label}</div>`
+      + items.map(x => `<div class="dim ${cls} li">${esc(x)}</div>`).join("");
     const devHtml = !da.compose ? "" : !da.available ? `
-      <div class="artrow job"><span class="pill">dev instance</span>
+      <div class="artrow job"><span class="pill">docker</span>
         <span class="grow">${esc(da.why || "docker is not reachable")}</span>
       </div>` : `
       <div class="artrow" id="devRow">
-        <span class="pill ${da.running ? "ok" : ""}">${
-          da.running ? "running" : da.exists ? "stopped" : "down"}</span>
         <div class="grow">
-          <div class="top"><b>dev instance</b></div>
+          <div class="top"><span class="pill">docker</span>
+            <b>${esc(da.name || "dev instance")}</b>
+            <span class="dim state ${da.running ? "ok" : ""}">(${devState})</span></div>
           <div class="dim">${
             daJob?.running ? esc(daJob.step || "working") + '<span class="dots"></span>'
             : daJob?.error ? "build failed — see below"
@@ -5965,10 +5985,8 @@ $("todoRevert").onclick = revertNotebook;
                 : da.changed_why === "dirty"
                   ? " — uncommitted changes are not in it" : ""}`
             : "never built — Build makes the first image"}</div>
-          ${(da.problems || []).length ? `<div class="dim bad">will not work as written — ${
-            esc(da.problems.join("; "))}</div>` : ""}
-          ${(da.risks || []).length ? `<div class="dim">asks for more than its own directory — ${
-            esc(da.risks.join("; "))}</div>` : ""}
+          ${devLines("will not work as written", da.problems, "bad")}
+          ${devLines("asks for more than its own directory", da.risks, "")}
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
             esc((daJob.log || "").slice(-600))}</div>` : ""}
         </div>

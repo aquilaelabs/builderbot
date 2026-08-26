@@ -44,15 +44,24 @@ const row = () => page.$eval('#devRow', e => ({
   down: e.querySelector('[data-devact="down"]').disabled,
   rebuild: e.querySelector('[data-devact="rebuild"]').disabled,
 }));
-// The pill on its own, never out of the row's text: that text carries the
-// buttons' own labels, so "down" in it could as easily be the Down button.
-const pill = () => page.$eval('#devRow .pill', e => e.textContent.trim());
+// The state, read from the parenthetical beside the name and never out of the
+// row's whole text: that text carries the buttons' own labels, so "down" in it
+// could as easily be the Down button. The pill says what the row IS — docker,
+// the way the file rows say apk or xpi — and never what it is doing.
+const pill = () => page.$eval('#devRow .state', e => e.textContent.replace(/[()]/g, '').trim());
 const pillIs = (want) => page.waitForFunction(
-  (w) => document.querySelector('#devRow .pill')?.textContent.trim() === w,
+  (w) => document.querySelector('#devRow .state')?.textContent.replace(/[()]/g, '').trim() === w,
   want, { timeout: 20000 });
 
 let r = await row();
 ok(/never built/.test(r.text), 'a project with a compose file gets the row, unbuilt');
+ok(await page.$eval('#devRow .top .pill', e => e.textContent.trim()) === 'docker'
+   && /^bbdev-/.test(await page.$eval('#devRow .top b', e => e.textContent.trim())),
+   '...shaped like the file rows: kind on the pill, its own name in bold');
+// One fact per line, never a run-on joined by semicolons — these are separate
+// facts about separate services, and reading them is the point of showing them.
+const devLines = (cls) => page.$$eval(`#devRow .dim.li${cls ? "." + cls : ""}`,
+  els => els.map(e => e.textContent.trim()));
 ok(await page.$eval('#devRow [data-devact="rebuild"]',
      e => e.textContent.trim()) === 'Build',
    'the button says Build before a first image exists — nothing auto-builds');
@@ -279,14 +288,19 @@ writeFileSync(stubCfg, JSON.stringify(
 await nudge();
 await page.waitForFunction(() => /will not work as written/.test(
   document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
-ok(/this container's path/.test(await page.$eval('#devRow', e => e.textContent)),
-   'a bind the host cannot resolve is named on the row, before anything starts');
+const probs = await devLines("bad");
+ok(probs.length === 1 && /this container's path/.test(probs[0]),
+   'a bind the host cannot resolve is named on its own line, before anything starts');
 
 risky(['/:/host']);
 await nudge();
 await page.waitForFunction(() => /asks for more than its own directory/.test(
   document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
 ok(true, 'a compose reaching past its own directory says so on the row');
+const risked = await devLines("");
+ok(risked.length === 2 && risked.some(l => /runs privileged/.test(l))
+   && risked.some(l => /mounts \/ from the host/.test(l)),
+   '...one line each, not a run-on joined by semicolons');
 
 let seen = page.dialogs.length;
 await page.click('#devRow [data-devact="up"]');

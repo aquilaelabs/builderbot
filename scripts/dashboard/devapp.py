@@ -751,6 +751,11 @@ def state(project):
     a = available()
     built = _load().get(project) or {}
     out = {"compose": True, "available": a["on"], "why": a["why"],
+           # The compose project name, which is what actually namespaces the
+           # containers, the network and the volumes. Not the container name:
+           # a compose file may set container_name to anything it likes, and
+           # there may be several. This is the one name that is always true.
+           "name": _pname(project),
            "needs_build": True,
            "built_rev": built.get("rev", ""), "built_at": built.get("at", 0),
            "missing_env": missing_env(project),
