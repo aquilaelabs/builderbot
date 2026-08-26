@@ -51,7 +51,12 @@ def read(d):
 
 def unreleased(d):
     """The entry lines waiting for a bump to date them."""
-    text = read(d)
+    return unreleased_text(read(d))
+
+
+def unreleased_text(text):
+    """The same, from text already in hand — so a caller that needs both the
+    file and the count pays for one read, not two."""
     if text is None:
         return []
     out, inside = [], False
@@ -134,10 +139,14 @@ def roll(d, version, date):
     if not unreleased(d):
         return False
     text = read(d)
-    out = []
+    out, renamed = [], False
     for ln in text.splitlines():
-        if ln.strip() == UNRELEASED:
+        if not renamed and ln.strip() == UNRELEASED:
+            # Only the first: unreleased() counted entries from the first
+            # heading, and a hand-edited file with a stray duplicate must not
+            # gain two identical version sections in one roll.
             out.append(f"## {version} — {date}")
+            renamed = True
         else:
             out.append(ln)
     try:
