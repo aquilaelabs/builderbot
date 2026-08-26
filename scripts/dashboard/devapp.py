@@ -56,6 +56,109 @@ write_json = None
 DOCKER = os.environ.get("BB_DOCKER_BIN", "docker")
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 
+# DOCKER_HOST=auto means "find the socket proxy yourself". The address is a
+# bridge-assigned container IP unless the operator published the port, and
+# bridge IPs move when containers restart in a different order — so this
+# resolves lazily and re-scans when the cached answer stops answering, rather
+# than being read once at boot and going quietly stale.
+_found = {"addr": "", "at": 0.0}
+FOUND_TTL = 300.0
+# The port a docker-socket-proxy listens on, and the raw daemon's two.
+SCAN_PORTS = (2375, 2376)
+SCAN_TIMEOUT = 0.4
+
+
+def _answers(addr):
+    """Whether a docker API is really there — the version endpoint is the one
+    a proxy leaves open at its most locked-down defaults."""
+    import urllib.error
+    import urllib.request
+    host = addr.split("://", 1)[-1]
+    try:
+        with urllib.request.urlopen(f"http://{host}/version",
+                                    timeout=SCAN_TIMEOUT) as r:
+            return b"ApiVersion" in r.read(4096)
+    except (OSError, urllib.error.URLError, ValueError):
+        # Every way a probe can miss: refused, timed out, not HTTP, or an
+        # address the operator typed that urllib will not parse.
+        return False
+
+
+def _scan():
+    """Look for the proxy: the gateway first (a published port), then the
+    bridge this container is on. Threaded, because thirty sequential timeouts
+    is half a minute of a dashboard poll."""
+    cands = []
+    # The default route is the host as this container sees it — where a
+    # published port lands, and the stable answer when one exists.
+    try:
+        import subprocess as sp
+        r = sp.run(["ip", "route"], capture_output=True, text=True,
+                   timeout=5, check=False)
+        gw = ""
+        mine = ""
+        for line in r.stdout.splitlines():
+            if line.startswith("default via "):
+                gw = line.split()[2]
+            if " src " in line:
+                mine = line.split(" src ")[1].split()[0]
+    except (OSError, sp.SubprocessError):
+        gw = mine = ""
+    for port in SCAN_PORTS:
+        if gw:
+            cands.append(f"{gw}:{port}")
+    # Then the bridge itself: a proxy with no published port is only
+    # reachable at its own container address.
+    if mine and mine.count(".") == 3:
+        base = mine.rsplit(".", 1)[0]
+        for i in range(2, 40):
+            ip = f"{base}.{i}"
+            if ip == mine:
+                continue
+            cands.append(f"{ip}:2375")
+    hits = []
+    lock = threading.Lock()
+
+    def check(addr):
+        if _answers(addr):
+            with lock:
+                hits.append(addr)
+
+    threads = [threading.Thread(target=check, args=(c,), daemon=True)
+               for c in cands]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=SCAN_TIMEOUT + 0.6)
+    # Candidate order is the preference order: the gateway beats a bridge IP,
+    # because a published port survives a restart and a bridge address does
+    # not.
+    for c in cands:
+        if c in hits:
+            return "tcp://" + c
+    return ""
+
+
+def docker_host():
+    """The address to talk to, resolving `auto` and caching what it found.
+
+    Anything other than `auto` is passed through untouched — an operator who
+    typed an address means it, and a scan that second-guessed them would be
+    the kind of help nobody asked for.
+    """
+    want = (os.environ.get("DOCKER_HOST") or "").strip()
+    if want.lower() != "auto":
+        return want
+    now = time.time()
+    if _found["addr"] and now - _found["at"] < FOUND_TTL:
+        return _found["addr"]
+    # Re-verify the cached answer before spending a scan on it.
+    if _found["addr"] and _answers(_found["addr"]):
+        _found["at"] = now
+        return _found["addr"]
+    _found.update(addr=_scan(), at=now)
+    return _found["addr"]
+
 COMPOSE_NAMES = ("docker-compose.yml", "docker-compose.yaml",
                  "compose.yml", "compose.yaml")
 
@@ -98,9 +201,16 @@ def available():
     DOCKER_HOST unset means the operator has not wired the proxy; the feature
     shows as absent-with-a-reason instead of a row of dead buttons.
     """
-    if not os.environ.get("DOCKER_HOST") and not Path("/var/run/docker.sock").exists():
+    want = (os.environ.get("DOCKER_HOST") or "").strip()
+    if not want and not Path("/var/run/docker.sock").exists():
         return {"on": False, "why": "no DOCKER_HOST set — the socket proxy is "
                                     "not wired up; see docs/unraid.md"}
+    if want.lower() == "auto" and not docker_host() \
+            and not Path("/var/run/docker.sock").exists():
+        return {"on": False,
+                "why": "DOCKER_HOST is auto and no socket proxy answered on "
+                       "this container's network — is it running, and does it "
+                       "allow /version? See docs/unraid.md"}
     r = _run([DOCKER, "version", "--format", "{{.Server.Version}}"], timeout=10)
     if r["code"] != 0:
         return {"on": False,
@@ -110,6 +220,13 @@ def available():
 
 def _run(argv, timeout=60, env_extra=None):
     env = dict(os.environ)
+    # The resolved address, so `auto` never reaches the docker CLI — it does
+    # not know the word.
+    host = docker_host()
+    if host:
+        env["DOCKER_HOST"] = host
+    else:
+        env.pop("DOCKER_HOST", None)
     if env_extra:
         env.update(env_extra)
     try:

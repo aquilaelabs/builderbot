@@ -31,8 +31,10 @@ services:
       PGID: ${PGID:-100}
       TZ: ${TZ:-America/New_York}
       # A docker-socket-proxy address powers the dashboard's dev-instance
-      # controls; empty keeps the feature off. See docs/unraid.md.
-      DOCKER_HOST: ${DOCKER_HOST:-}
+      # controls. `auto` finds one on this container's network and re-finds
+      # it when its address moves; an explicit address is used verbatim;
+      # empty turns the feature off. See docs/unraid.md.
+      DOCKER_HOST: ${DOCKER_HOST:-auto}
 
       # --- Claude Code ------------------------------------------------------
       # Leave ANTHROPIC_API_KEY empty to log in interactively with a Claude

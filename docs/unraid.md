@@ -601,12 +601,20 @@ is why the feature is off until you wire it.
 1. Install **docker-socket-proxy** from Community Applications (the
    `tecnativa` image is the usual one). Set its environment:
    `CONTAINERS=1`, `IMAGES=1`, `BUILD=1`, `NETWORKS=1`, `VOLUMES=1`,
-   `POST=1` — and leave `EXEC` and the swarm flags at their default `0`.
-   Map its port 2375 to the host.
-2. In BuilderBot's template, set **Docker proxy address** to
-   `tcp://<server-ip>:2375`, and (optionally) the **Dev instance data**
-   path — a cache/SSD folder that dev volumes land in when a project's
-   compose opts in with `${BB_DEV_DATA}/...`.
+   `INFO=1`, `POST=1` — and leave `EXEC` and the swarm flags at their
+   default `0`. **`POST=1` is the one people miss**: without it every call
+   is read-only and nothing can be built or started. A fresh proxy denies
+   all of these — that is it working, not it broken.
+2. In BuilderBot's template, leave **Docker proxy address** at `auto` — it
+   finds the proxy on its own network by asking each address for `/version`,
+   which is what a proxy answers even at its most locked-down defaults, and
+   re-finds it when the address moves. Bridge-assigned IPs *do* move, when
+   containers restart in a different order, which is why `auto` beats
+   pasting one in. Publish the proxy's port to the host and
+   `tcp://172.17.0.1:2375` becomes a stable explicit answer if you prefer
+   one. Optionally set the **Dev instance data** path — a cache/SSD folder
+   that dev volumes land in when a project's compose opts in with
+   `${BB_DEV_DATA}/...`.
 3. Restart BuilderBot. A project with a `docker-compose.yml` now shows the
    dev-instance row at the top of its Artifacts tab; one without shows
    nothing new.
