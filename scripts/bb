@@ -26,6 +26,9 @@ bb — BuilderBot helper
                          --msi, --pep440, --file, --semver, --json
   bb version bump PART   move the target: major|minor|patch, if policy allows
   bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
+  bb version suggest     estimate a starting version from what is already here
+  bb version unbump      take an unreleased bump back; its changelog section
+                         dissolves into Unreleased, the code stays
   bb version --list      every version this repo carries: its own, and any
                          component — a directory with its own VERSION file
   bb version --for DIR   ask about one component instead of the project
@@ -2471,6 +2474,23 @@ if argv and argv[0] == "bump":
           f"({r['part']}, committed {r['commit']}, not pushed)")
     if r.get("note"):
         print(f"note: {r['note']}")
+    raise SystemExit(0)
+
+if argv and argv[0] == "unbump":
+    r = version.unbump(proj, by="claude", comp=comp)
+    if r.get("error"):
+        fail(r["error"])
+    print(f"{proj}{'/' + comp if comp else ''} {r['was']} -> {r['target']}  "
+          f"(returned, committed {r['commit']}, not pushed) — its changelog "
+          "section is back in Unreleased")
+    raise SystemExit(0)
+
+if argv and argv[0] == "suggest":
+    r = version.suggest(proj, comp=comp)
+    if r.get("error"):
+        fail(r["error"])
+    print(f"{r['value']}")
+    print(f"  {r['why']}")
     raise SystemExit(0)
 
 if argv and argv[0] == "init":

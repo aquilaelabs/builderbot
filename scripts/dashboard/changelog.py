@@ -129,6 +129,63 @@ def add(d, text, sha=""):
         return {"error": f"could not write {FILE}: {e}"}
 
 
+def unroll(d, version):
+    """Dissolve a version's dated section back into Unreleased.
+
+    The undo of roll(), for a bump somebody thought better of: the section's
+    entries rejoin whatever has been logged since, so the next bump dates the
+    whole group together. Only sensible while the version is unreleased —
+    that judgment is the caller's, since tags are git's and this module is
+    deliberately path-pure.
+
+    The section's entries go at the TOP of Unreleased: add() appends, so the
+    section entries are older than anything logged after the bump, and the
+    oldest-first order the file keeps should survive the round trip.
+    """
+    text = read(d)
+    if text is None:
+        return False
+    lines = text.splitlines()
+    # The section: its heading, and its entry lines up to the next heading.
+    start = next((i for i, ln in enumerate(lines)
+                  if ln.startswith(f"## {version} —")), None)
+    if start is None:
+        return False
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].startswith("## ")), len(lines))
+    section = [ln for ln in lines[start + 1:end] if ln.strip().startswith("- ")]
+    rest = lines[:start] + lines[end:]
+    # Merge into an existing Unreleased, or the dissolved section becomes it.
+    at = next((i for i, ln in enumerate(rest)
+               if ln.strip() == UNRELEASED), None)
+    if at is None:
+        out = rest[:start] + [UNRELEASED, ""] + section + [""] + rest[start:]
+    else:
+        # Immediately before the first existing entry, so the merged run is
+        # one contiguous list rather than two groups with a seam.
+        j = next((i for i in range(at + 1, len(rest))
+                  if rest[i].strip().startswith("- ")
+                  or rest[i].startswith("## ")), len(rest))
+        out = rest[:j] + section + rest[j:]
+    try:
+        path(d).write_text("\n".join(_tidy(out)) + "\n", encoding="utf-8")
+    except OSError:
+        return False
+    return True
+
+
+def _tidy(lines):
+    """Collapse the blank-line runs the surgery above can leave behind."""
+    out = []
+    for ln in lines:
+        if not ln.strip() and out and not out[-1].strip():
+            continue
+        out.append(ln)
+    while out and not out[-1].strip():
+        out.pop()
+    return out
+
+
 def roll(d, version, date):
     """Date the Unreleased section as `version`, ready to commit with it.
 

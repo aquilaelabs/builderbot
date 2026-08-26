@@ -5669,6 +5669,17 @@ $("todoRevert").onclick = revertNotebook;
     const all = [ver, ...(ver.versions || [])];
     box.innerHTML = all.map(v => verSection(v, all.length > 1)).join(
       `<div class="versep"></div>`);
+    box.querySelectorAll("[data-verunbump]").forEach(b => b.onclick = async () => {
+      const comp = b.dataset.verunbump || "";
+      const blk = all.find(x => (x.component || "") === comp);
+      if (!confirm(`Take ${comp ? comp + "'s" : "this project's"} version back `
+                   + `from ${blk?.target} to ${blk?.prev}?\n\n`
+                   + `The code stays. The ${blk?.target} changelog section `
+                   + `dissolves into Unreleased, and the next bump dates the `
+                   + `whole group together.`)) return;
+      box.querySelectorAll("button,select").forEach(x => x.disabled = true);
+      await postVersion({action: "unbump", component: comp});
+    });
     box.querySelectorAll("[data-verlog]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verlog || "";
       const pane = box.querySelector(`[data-verlogpane="${CSS.escape(comp)}"]`);
@@ -5738,6 +5749,30 @@ $("todoRevert").onclick = revertNotebook;
       add.disabled = true;
       await postVersion({action: "init", value: val, component: dir});
     };
+    // Asked of the session rather than answered here, and then the tab gets
+    // out of the way — the same shape as sending a step, because it is the
+    // same thing: a question that wants a conversation, not a field filled in
+    // behind the operator's back.
+    box.querySelectorAll("[data-verask]").forEach(b => b.onclick = async () => {
+      const comp = b.dataset.verask === "@fold"
+        ? b.closest(".verinit").querySelector(".vdir").value
+        : (b.dataset.verask || "");
+      b.disabled = true;
+      try{
+        const r = await fetch("/api/version", {method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({project, action: "ask", component: comp})});
+        const j = await r.json();
+        if (j.error){ notify(j.error, true); b.disabled = false; return; }
+        if (!j.sent){
+          notify("typed into the session but not sent — something else has the "
+                 + "keyboard there; press Enter in that tab when it is clear",
+                 true);
+        }
+        startClaude(project, null);   // opens the tab, or goes to the one there
+      }catch(e){ notify("ask: " + e, true); }
+      b.disabled = false;
+    });
     const pol = $("verPolicy");
     if (pol) pol.onchange = () => postVersion({action: "policy", policy: pol.value});
   }
@@ -5793,6 +5828,12 @@ $("todoRevert").onclick = revertNotebook;
             <button type="button" data-verbump="${pt}" data-vercomp="${esc(v.component || "")}"
               title="set VERSION to ${esc(v.next[pt] || "")} and commit that one file">
               ${pt[0].toUpperCase() + pt.slice(1)} → ${esc(v.next[pt] || "")}</button>`).join("")}
+          ${v.prev && !v.sealed ? `
+          <button type="button" data-verunbump="${esc(v.component || "")}"
+            title="the code stays — the number returns to ${esc(v.prev)} and this
+version's changelog section dissolves back into Unreleased, so the next bump
+dates the whole group together. Only possible while ${esc(v.target)} is
+unreleased.">↩ ${esc(v.prev)}</button>` : ""}
           <button type="button" class="verlogbtn" data-verlog="${esc(v.component || "")}"
             title="the user-facing record of what changed here — sessions add to
 it as work lands, and a bump dates the accumulated lines">Changelog${
@@ -5823,7 +5864,11 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
                 inputmode="decimal" aria-label="starting version"
                 pattern="[0-9]+\.[0-9]+\.[0-9]+">
               <button type="button" data-veradd>Give it its own version</button>
+              <button type="button" data-verask="@fold"
+                title="put the question to this project's Claude session, for
+this directory">Ask Claude</button>
             </div>
+
           </details>` : ""}`}` : `
         <p class="verwhy">This project has no version yet. Giving it one writes
           a <code>VERSION</code> file and commits it — after that the buttons
@@ -5831,6 +5876,12 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
           change${v.unreleased === 1 ? "" : "s"} below become the first
           version's section.` : ""}</p>
         <div class="verbtns">
+          ${v.prev && !v.sealed ? `
+          <button type="button" data-verunbump="${esc(v.component || "")}"
+            title="the code stays — the number returns to ${esc(v.prev)} and this
+version's changelog section dissolves back into Unreleased, so the next bump
+dates the whole group together. Only possible while ${esc(v.target)} is
+unreleased.">↩ ${esc(v.prev)}</button>` : ""}
           <button type="button" class="verlogbtn" data-verlog="${esc(v.component || "")}"
             title="entries logged before the first version wait here, and
 become that version's section when it is created">Changelog${
@@ -5843,7 +5894,12 @@ become that version's section when it is created">Changelog${
             pattern="[0-9]+\.[0-9]+\.[0-9]+">
           <button type="button" data-verinit="${esc(v.component || "")}">Give it
             this version</button>
-        </div>`);
+          <button type="button" data-verask="${esc(v.component || "")}"
+            title="put the question to this project's Claude session — it can read
+the code, the roadmap and the changelog, and you can argue with the answer.
+It proposes and asks before doing anything.">Ask Claude</button>
+        </div>
+`);
 
   }
 
@@ -5858,6 +5914,8 @@ become that version's section when it is created">Changelog${
         notify(`version ${j.bumped.was} → ${j.bumped.target}`);
         if (j.bumped.note) notify(j.bumped.note, true);
       }
+      else if (j.unbumped) notify(`version returned: ${j.unbumped.was} → ${
+        j.unbumped.target} — its changelog is back in Unreleased`);
       else if (j.created) notify(`${j.created.component || "this project"} `
                                  + `is now ${j.created.target}`);
     }catch(e){ notify("version: " + e, true); }

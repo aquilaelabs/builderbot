@@ -1656,7 +1656,8 @@ import changelog                                                 # noqa: E402
 import version                                                   # noqa: E402
 
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
-                  todo_mod=todo, bugs_mod=bugs, changelog_mod=changelog)
+                  todo_mod=todo, bugs_mod=bugs, changelog_mod=changelog,
+                  tell_fn=notify.tell, tmux_name_fn=tmux_name)
 
 # ---- new project, and linking one ------------------------------------------
 # Creating and cloning, and the worker that runs the ones that touch the
@@ -2466,6 +2467,22 @@ class Handler(BaseHTTPRequestHandler):
             if r.get("error"):
                 return self._json(r, 400)
             return self._json(version.payload(name) | {"created": r})
+        if act == "unbump":
+            r = version.unbump(name, by="operator",
+                               comp=field(req, "component") or "")
+            if r.get("error"):
+                return self._json(r, 400)
+            return self._json(version.payload(name) | {"unbumped": r})
+        if act == "suggest":
+            r = version.suggest(name, comp=field(req, "component") or "")
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "ask":
+            # Put to the project's own session rather than answered here: it
+            # can read the code and be argued with, and neither is true of a
+            # function counting commits.
+            live = [x["name"] for x in tmux_sessions()]
+            r = version.ask(name, live, comp=field(req, "component") or "")
+            return self._json(r, 400 if r.get("error") else 200)
         if act == "policy":
             r = version.set_policy(name, field(req, "policy"))
             if r.get("error"):
