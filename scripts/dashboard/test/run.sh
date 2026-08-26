@@ -367,10 +367,13 @@ case "$1" in
       [ "${args[$i]}" = "--project-name" ] && proj="${args[$((i+1))]}"
     done
     verb=""
-    for a in ps build up down; do
+    for a in ps build up down config; do
       for x in "$@"; do [ "$x" = "$a" ] && verb="$a"; done
     done
     case "$verb" in
+      config)
+        # A service that declares a build, which is what the fixture has.
+        echo '{"services":{"app":{"build":{"context":"."}}}}'; exit 0 ;;
       ps)   [ -f "$ST/$proj.up" ] && echo "stubcontainer"; exit 0 ;;
       build)
         echo "BUILDKIT=${DOCKER_BUILDKIT:-unset}" >> "$ST/docker.log"
