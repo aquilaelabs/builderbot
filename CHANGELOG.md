@@ -20,3 +20,4 @@
 - The dev instance's env editor opens on the project's own .env.example, comments and all (cf0b1ef)
 - A build interrupted by a restart says so, instead of looking like a button you never pressed (f686077)
 - Committing now wakes the Rebuild button and the version evidence without a refresh (f686077)
+- Re-running the image build by hand no longer forces the whole image to be downloaded again — tick Rebuild every layer when that is what you want (aca730b)
