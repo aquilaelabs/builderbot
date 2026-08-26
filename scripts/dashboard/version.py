@@ -96,6 +96,7 @@ bugs = None
 changelog = None
 tell = None
 tmux_name = None
+switch = None
 
 # The file a project declares its target in. One line, at the repo root.
 VERSION_FILE = "VERSION"
@@ -119,11 +120,12 @@ _lock = threading.Lock()
 
 
 def configure(*, workspace, state, write_json, todo_mod=None, bugs_mod=None,
-              changelog_mod=None, tell_fn=None, tmux_name_fn=None):
+              changelog_mod=None, tell_fn=None, tmux_name_fn=None,
+              switch_fn=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
                      write_json=write_json, todo=todo_mod, bugs=bugs_mod,
                      changelog=changelog_mod, tell=tell_fn,
-                     tmux_name=tmux_name_fn)
+                     tmux_name=tmux_name_fn, switch=switch_fn)
     globals()["FILE"] = Path(state) / "versions.json"
 
 
@@ -924,7 +926,7 @@ def suggest(project, comp=""):
                    + ". 1.0.0 is a promise only you can make."}
 
 
-def ask(project, sessions=(), comp=""):
+def ask(project, sessions=(), comp="", model="", effort=""):
     """Put the version question to the project's own Claude session.
 
     Why this beats the estimate below it: suggest() can count commits and read
@@ -973,15 +975,39 @@ def ask(project, sessions=(), comp=""):
            f"Artifacts tab, where they asked from.")
     )
     if tgt:
-        # Not the usual case — the button only shows where there is no
-        # version — but a stale tab can send this anyway, and a session told
-        # to pick a starting number for something that already has one should
-        # know that.
-        line = (f"From the operator, on {project}'s Artifacts tab: {what} "
-                f"already reads {tgt}. They asked for a starting version "
-                f"anyway, so say so and ask what they meant before doing "
-                f"anything.")
+        # A different question once a version exists: not "what should this
+        # start at" but "is {tgt} still where this is" — the judgment the
+        # operator says is hard precisely because most of the work here
+        # happened through prompts. The session can read what actually landed.
+        allowed = allows(pol)
+        line = (
+            f"From the operator, on {project}'s Artifacts tab: {what} is at "
+            f"{tgt} — is that still where it should be? "
+            f"Run `bb version{forflag}` for the evidence (commits since the "
+            f"target moved) and `bb changelog{forflag}` for what those changes "
+            f"meant, then judge from the code and the roadmap: features "
+            f"shipped read as a minor, fixes alone as a patch, nothing "
+            f"user-facing as no bump at all — and say which and why. "
+            f"Reply with your proposal and reasoning, then ASK before doing "
+            f"anything: the operator may negotiate or decline. Do not propose "
+            f"1.0.0 unless they raise it. "
+            + (f"If they agree, apply it with `bb version bump "
+               f"<part>{forflag}` — this project's policy is `{pol}`, so you "
+               f"may move {', '.join(allowed)}."
+               if allowed else
+               f"This project's version policy is `locked`, so you cannot "
+               f"move it yourself — hand them your proposal and they will "
+               f"press the bump on the Artifacts tab, where they asked from.")
+        )
     session = tmux_name("claude-" + project)
+    # The standing model/effort preference, applied the way a step send
+    # applies it: as slash commands ahead of the question, and a switch that
+    # does not land stops the send — otherwise the question would be typed
+    # onto the end of an unsent /model line.
+    if switch is not None:
+        failed = switch(session, sessions, model, effort)
+        if failed is not None:
+            return failed
     r = tell(session, line, sessions)
     if r.get("error"):
         return r

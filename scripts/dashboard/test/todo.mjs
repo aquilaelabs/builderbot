@@ -138,12 +138,12 @@ ok(!read().projects.alpha.find(r => String(r.id) === mine.id).sent,
 
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
 await page.waitForSelector('.sendbox');
-// Both pickers start on "leave as is", so an ordinary send types no slash
-// command at all — the session keeps whatever it was started with.
-ok(await page.$eval('#sendModelSel', e => e.value) === ''
-   && await page.$eval('#sendEffortSel', e => e.value) === ''
+// Model and effort are no longer questions in this box — they moved to the
+// Claude card in the sidebar. With nothing set there, the box says nothing
+// about switching and an ordinary send types no slash command at all.
+ok(await page.$('#sendModelSel') === null
    && await page.$eval('#sendNote', e => e.hidden),
-   'model and effort default to leaving the session alone');
+   'no pickers here, and no switch line while the Claude card is unset');
 // The note field rides with the step on the same line, so a session gets one
 // message rather than a step and then an afterthought glued behind it.
 await page.fill('#sendMore', 'the select is the one on the left');
@@ -189,13 +189,19 @@ ok(items.findIndex(i => i.id === mine.id) === wasAt,
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'C-u']);
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'clear']);
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
+// The card sets the standing preference; the send box only reports it.
+await page.selectOption('#prefModel', 'sonnet');
+await page.selectOption('#prefEffort', 'xhigh');
+await page.waitForFunction(async () => {
+  const r = await fetch('/api/status');
+  const j = await r.json();
+  return j.claude_prefs?.model === 'sonnet' && j.claude_prefs?.effort === 'xhigh';
+}, { timeout: 20000 });
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
 await page.waitForSelector('.sendbox');
-await page.selectOption('#sendModelSel', 'sonnet');
-await page.selectOption('#sendEffortSel', 'xhigh');
 ok(!await page.$eval('#sendNote', e => e.hidden)
-   && /default for new sessions/.test(await page.$eval('#sendNote', e => e.textContent)),
-   'picking one says out loud that claude keeps it as the new default');
+   && /sonnet · xhigh/.test(await page.$eval('#sendNote', e => e.textContent)),
+   'the box says which switch the Claude card will apply to this send');
 await page.click('#todoGo');
 await page.waitForFunction(() => !document.querySelector('.sendbox'),
                            null, { timeout: 20000 });
@@ -213,16 +219,19 @@ ok(!/\/model sonnet.*delete a project/s.test(switched.split('\n')
 await page.click(`${row('alpha')} [data-m]`);
 await page.waitForSelector('#todoList .todo', { timeout: 20000 });
 sendPicksReset: {
+  ok(await page.$eval('#prefModel', e => e.value) === 'sonnet',
+     'the card holds the standing pick rather than forgetting it');
   await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
   await page.waitForSelector('.sendbox');
-  ok(await page.$eval('#sendModelSel', e => e.value) === 'sonnet',
-     'the box reopens on the last pick rather than forgetting it');
   ok(await page.$eval('#sendMore', e => e.value) === '',
-     '...but not on the last note, which belonged to the step it went with');
-  await page.selectOption('#sendModelSel', '');
-  await page.selectOption('#sendEffortSel', '');
-  ok(await page.$eval('#sendNote', e => e.hidden),
-     '...and putting both back to "leave as is" takes the warning away');
+     '...and the note starts empty, having belonged to the step it went with');
+  await page.selectOption('#prefModel', '');
+  await page.selectOption('#prefEffort', '');
+  await page.waitForFunction(async () => {
+    const r = await fetch('/api/status');
+    const j = await r.json();
+    return j.claude_prefs?.model === '' && j.claude_prefs?.effort === '';
+  }, { timeout: 20000 });
   await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
   await page.waitForFunction(() => !document.querySelector('.sendbox'));
 }

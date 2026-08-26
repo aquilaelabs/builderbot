@@ -329,7 +329,7 @@ TABS_FILE = STATE / "tabs.json"
 CARDS_FILE = STATE / "cards.json"
 # Doctor first: this order is the default an unwritten (or reset) sidebar
 # gets, and the verdict on the whole box outranks any one card below it.
-CARD_KEYS = ["doctor", "runner", "projects", "tools", "phone", "findings", "sessions",
+CARD_KEYS = ["doctor", "runner", "projects", "tools", "claude", "phone", "findings", "sessions",
              "linux", "commands", "git", "custom"]
 
 
@@ -1647,6 +1647,13 @@ import todo                                                      # noqa: E402
 todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
                tmux_name=tmux_name)
 
+# ---- the standing model and effort -----------------------------------------
+# One preference for every send, on its own card — see the module docstring
+# for why it stopped being a question inside each send box.
+import prefs                                                     # noqa: E402
+
+prefs.configure(write_json=write_json, state=STATE)
+
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
 # why one literal string cannot work. Handed the two notebook halves as well:
@@ -1657,7 +1664,8 @@ import version                                                   # noqa: E402
 
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   todo_mod=todo, bugs_mod=bugs, changelog_mod=changelog,
-                  tell_fn=notify.tell, tmux_name_fn=tmux_name)
+                  tell_fn=notify.tell, tmux_name_fn=tmux_name,
+                  switch_fn=todo._switch)
 
 # ---- new project, and linking one ------------------------------------------
 # Creating and cloning, and the worker that runs the ones that touch the
@@ -1807,6 +1815,7 @@ def revisions():
         # stats; neither shells out to git.
         revs[f"ver:{n}"] = _mtime(WORKSPACE / n / "VERSION")
     revs["vpolicy"] = _mtime(STATE / "versions.json")
+    revs["prefs"] = _mtime(STATE / "claude-prefs.json")
     return revs
 
 
@@ -1834,6 +1843,9 @@ def snapshot():
         # the Phone card knows when to go and fetch the real thing. Reading it
         # is a length() on a list in memory — no adb, nothing to pay for.
         "phone_asks": len(phone.requests_open()),
+        # The standing model/effort every send applies — the card's state,
+        # riding the poll it already reads.
+        "claude_prefs": prefs.get(),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.
@@ -2260,6 +2272,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._packages(req)
         if path.startswith("/api/memory"):
             return self._memory(req)
+        if path.startswith("/api/prefs"):
+            r = prefs.set_prefs(model=req.get("model"), effort=req.get("effort"))
+            return self._json(r, 400 if r.get("error") else 200)
         if path.startswith("/api/version"):
             return self._version(req)
         if path.startswith("/api/artifacts"):
@@ -2368,9 +2383,11 @@ class Handler(BaseHTTPRequestHandler):
         if act == "add":
             r = todo.add(name, field(req, "text"), steps=field_list(req, "steps"))
         elif act == "send":
+            pref = prefs.get()
             r = todo.send(name, req.get("id"), req.get("step"), live,
                           also_told=todo.unsaved(name) if req.get("tell") else False,
-                          model=field(req, "model"), effort=field(req, "effort"),
+                          model=field(req, "model") or pref["model"],
+                          effort=field(req, "effort") or pref["effort"],
                           note=field(req, "note"))
             if r.get("sent") and req.get("tell"):
                 todo.mark_told(name)
@@ -2481,7 +2498,9 @@ class Handler(BaseHTTPRequestHandler):
             # can read the code and be argued with, and neither is true of a
             # function counting commits.
             live = [x["name"] for x in tmux_sessions()]
-            r = version.ask(name, live, comp=field(req, "component") or "")
+            pref = prefs.get()
+            r = version.ask(name, live, comp=field(req, "component") or "",
+                            model=pref["model"], effort=pref["effort"])
             return self._json(r, 400 if r.get("error") else 200)
         if act == "policy":
             r = version.set_policy(name, field(req, "policy"))
@@ -2613,9 +2632,11 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "remove":
             r = bugs.remove(name, req.get("id"), why=field(req, "why"))
         elif act == "send":
+            pref = prefs.get()
             r = bugs.send(name, req.get("id"),
                           [s["name"] for s in tmux_sessions()],
-                          model=field(req, "model"), effort=field(req, "effort"),
+                          model=field(req, "model") or pref["model"],
+                          effort=field(req, "effort") or pref["effort"],
                           note=field(req, "note"))
             if r.get("error"):
                 return self._json(r, 400)

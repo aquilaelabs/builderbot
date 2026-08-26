@@ -451,6 +451,25 @@ const openAsk = JSON.parse(askText('askme', ['claude-askme']));
 ok(/bb version init <X\.Y\.Z>/.test(openAsk.text)
    && /policy is `open`, so that is allowed/.test(openAsk.text),
    'under a delegating policy the prompt says it may apply the agreed number');
+
+// Once a version exists the question changes: not "what should this start
+// at" but "is this still where it should be" — and what the session may do
+// about the answer still tracks the policy.
+writeFileSync(`${AK}/VERSION`, '0.4.0\n');
+execFileSync('git', ['-C', AK, 'add', '-A'], { env });
+execFileSync('git', ['-C', AK, 'commit', '-qm', 'v'], { env });
+setPolicyFor('askme', 'locked');
+const holds = JSON.parse(askText('askme', ['claude-askme']));
+ok(/is at 0\.4\.0 — is that still where it should be\?/.test(holds.text)
+   && /bb changelog/.test(holds.text) && /ASK before doing anything/.test(holds.text),
+   'with a version, the ask becomes "is this still right", evidence first');
+ok(/`locked`, so you cannot move it yourself/.test(holds.text),
+   '...and under locked it hands the proposal back instead of bumping');
+setPolicyFor('askme', 'minor');
+const holdsOpen = JSON.parse(askText('askme', ['claude-askme']));
+ok(/bb version bump <part>/.test(holdsOpen.text)
+   && /you may move patch, minor/.test(holdsOpen.text),
+   '...and a delegating policy names exactly the parts it may move');
 rmSync(AK, { recursive: true, force: true });
 
 // ---- the same module, in the Artifacts tab head --------------------------
@@ -625,6 +644,8 @@ ok(execFileSync('git', ['-C', B, 'log', '-1', '--format=%s'], { env }).toString(
    '...committing it, with no "(session)" mark since the operator did it');
 ok((await page.$$(`${NB} #verBox [data-verbump]`)).length === 3,
    '...and the bump buttons appear once there is something to bump');
+ok((await page.$$(`${NB} #verBox [data-verask]:not([data-verask="@fold"])`)).length === 1,
+   '...with Ask Claude still there — the question changes, the door stays');
 
 // A component is created the same way, from what is actually on disk rather
 // than a path typed from memory.
@@ -648,6 +669,13 @@ ok(/no CHANGELOG\.md here yet/.test(paneText),
 
 // The real delivery path, against the harness's own tmux server: alpha has a
 // claude-alpha session, so this exercises notify.tell rather than a stub.
+// With a standing preference on the Claude card, the ask switches the
+// session first, the same way a step send does.
+await page.evaluate(async () => {
+  await fetch('/api/prefs', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({model: 'haiku', effort: 'low'})});
+});
 const askSent = await page.evaluate(async () => {
   const r = await fetch('/api/version', {method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -656,8 +684,17 @@ const askSent = await page.evaluate(async () => {
 });
 ok(askSent.ok && askSent.sent,
    'the question reaches a running session for real, not just in principle');
-ok(tmuxCapture('claude-alpha').includes("Artifacts tab"),
+const askPane = tmuxCapture('claude-alpha');
+ok(askPane.includes("Artifacts tab"),
    '...and the prompt is what actually lands in that pane');
+ok(/\/model haiku/.test(askPane) && /\/effort low/.test(askPane)
+   && askPane.indexOf('/model haiku') < askPane.indexOf('Artifacts tab'),
+   '...behind the Claude card\u2019s standing switch, model first');
+await page.evaluate(async () => {
+  await fetch('/api/prefs', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({model: '', effort: ''})});
+});
 
 // Checked before the deliberate refusal below: that one answers 400, which
 // the browser logs as a failed resource. An expected refusal is not a defect,

@@ -354,6 +354,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
   border:1px solid var(--line);border-radius:6px;padding:10px 12px;
   margin-top:8px;max-height:16em;overflow-y:auto}
 .verlogbtn{font:600 11px/1 system-ui,sans-serif}
+.prefrow{display:flex;gap:10px;flex-wrap:wrap}
+.prefrow .pick{display:flex;gap:6px;align-items:center;
+  font:11px/1.5 system-ui,sans-serif;color:var(--dim)}
+.prefwhy{color:var(--dim);font:11px/1.6 system-ui,sans-serif;margin:8px 0 0}
 .veradd{margin-top:10px}
 .veradd summary{color:var(--dim);font:11px/1.6 system-ui,sans-serif;
   cursor:pointer;min-height:var(--tap);display:flex;align-items:center}
@@ -1426,6 +1430,24 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="macros">
         <button id="bPkgs" onclick="openPackages()">Additional packages…</button>
       </div>
+    </div>
+    <!-- The standing model and effort for everything the dashboard sends to
+         a session — a roadmap step, a bug, the version question. This used
+         to be a pair of pickers inside every send box; which model to work
+         on is the operator's standing preference, not a per-step question,
+         so it is set once here and every send applies it. -->
+    <div class="card" data-card="claude">
+      <h2>Claude</h2>
+      <div class="prefrow">
+        <label class="pick">Model <select id="prefModel"
+          aria-label="model every send switches the session to"></select></label>
+        <label class="pick">Effort <select id="prefEffort"
+          aria-label="effort every send switches the session to"></select></label>
+      </div>
+      <p class="prefwhy">Applied to everything sent from here — a roadmap
+        step, a bug, the version question — as <code>/model</code> and
+        <code>/effort</code> ahead of it. Claude keeps a switch as the default
+        for new sessions too. <i>Leave as is</i> sends nothing.</p>
     </div>
     <!-- A phone on the end of wireless adb. USB is not an option here: there
          is no /dev/bus/usb in the container, and even passed through the
@@ -2522,6 +2544,50 @@ window.addEventListener("focus", nudgeTerminals);
 // whatever it last pulled, so "how long has this been up" and "what is this"
 // are different questions, and only one of them used to be answerable. The
 // stamp is what /opt is serving; bb drift is what a checkout has changed since.
+// The Claude card: the standing model/effort every send applies. Options are
+// the same tables the send box used to carry; "leave as is" is the empty
+// value, which sends no switch at all.
+const MODELS = [["", "leave as is"], ["opus", "Opus"], ["sonnet", "Sonnet"],
+                ["haiku", "Haiku"], ["fable", "Fable"]];
+const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
+                 ["high", "high"], ["xhigh", "xhigh"], ["max", "max"]];
+let prefTouched = 0;
+function drawPrefs(p){
+  const fill = (id, table, cur) => {
+    const el = $(id);
+    if (!el) return;
+    // Never redraw under a pick: the poll answering mid-decision would snap
+    // the menu shut. Recently-touched wins; the poll catches up next round.
+    // prefTouched is checked only once set — performance.now() starts near
+    // zero at page load, and an unguarded "recently" would swallow the very
+    // first build.
+    if (document.activeElement === el
+        || (prefTouched && performance.now() - prefTouched < 3000)) return;
+    const want = table.map(([v, l]) =>
+      `<option value="${v}">${esc(l)}</option>`).join("");
+    if (el.dataset.built !== "1"){ el.innerHTML = want; el.dataset.built = "1"; }
+    el.value = cur || "";
+  };
+  fill("prefModel", MODELS, p?.model);
+  fill("prefEffort", EFFORTS, p?.effort);
+}
+["prefModel", "prefEffort"].forEach(id => {
+  const el = $(id);
+  if (!el) return;
+  el.onchange = async () => {
+    prefTouched = performance.now();
+    const body = id === "prefModel" ? {model: el.value} : {effort: el.value};
+    try{
+      const r = await fetch("/api/prefs", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(body)});
+      const j = await r.json();
+      if (j.error) notify(j.error, true);
+      else if (state) state.claude_prefs = {model: j.model, effort: j.effort};
+    }catch(e){ notify("prefs: " + e, true); }
+  };
+});
+
 function drawBuild(img){
   const el = $("build"), rev = img?.rev || "", ver = img?.version || "";
   // The version when there is one, because it is the half that can be
@@ -4406,34 +4472,29 @@ function drawTodo(j){
 // What a session can be switched to on the way in. Tables, not free text:
 // these become part of a command typed into a terminal, and the server keeps
 // its own copy of both lists rather than trusting the one that arrives.
-const MODELS = [["", "leave as is"], ["opus", "Opus"], ["sonnet", "Sonnet"],
-                ["haiku", "Haiku"], ["fable", "Fable"]];
-const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
-                 ["high", "high"], ["xhigh", "xhigh"], ["max", "max"]];
 // Remembered outside the box, because the box is rebuilt from scratch every
-// time its list is redrawn — a picker that forgot itself, or a half-typed
-// note that vanished, whenever something else on the panel moved would be
-// worse than useless.
-let sendModel = "", sendEffort = "", sendNoteText = "";
+// time its list is redrawn — a half-typed note that vanished whenever
+// something else on the panel moved would be worse than useless.
+let sendNoteText = "";
 
 // The box itself, built once and used by both lists.
 //
 // The roadmap hands a step to a session and the tracker hands it a bug; the
-// question either asks is the same one — which session settings, anything to
-// add, go or don't — so it is one box rather than two that drift apart.
+// question either asks is the same one — anything to add, go or don't — so it
+// is one box rather than two that drift apart. Model and effort are NOT
+// asked here any more: they moved to the Claude card in the sidebar, because
+// which model to work on is a standing preference, not a per-step question,
+// and a question asked at every send is either answered identically every
+// time or left on the default out of fatigue. The line under the buttons
+// says what this send will apply, so the choice is visible where it acts
+// without being a question here.
 function sendBoxEl({label, sub, placeholder, onSend, onCancel}){
-  const sel = (id, table, cur) =>
-    `<select id="${id}">${table.map(([v, l]) =>
-      `<option value="${v}"${v === cur ? " selected" : ""}>${esc(l)}</option>`
-    ).join("")}</select>`;
   const box = document.createElement("div");
   box.className = "sendbox";
+  const pref = state?.claude_prefs || {};
+  const applying = [pref.model, pref.effort].filter(Boolean).join(" · ");
   box.innerHTML = `<div class="q">${esc(label)}${
       sub ? ` <span>— ${esc(sub)}</span>` : ""}</div>
-    <div class="picks">
-      <label class="pick">Model ${sel("sendModelSel", MODELS, sendModel)}</label>
-      <label class="pick">Effort ${sel("sendEffortSel", EFFORTS, sendEffort)}</label>
-    </div>
     <textarea id="sendMore" rows="2" maxlength="500"
       placeholder="${esc(placeholder)}"></textarea>
     <div class="note" id="sendNote" hidden></div>
@@ -4448,21 +4509,11 @@ function sendBoxEl({label, sub, placeholder, onSend, onCancel}){
   more.onkeydown = e => {
     if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); onCancel(); }
   };
-  // Claude says it itself when you run either one: the pick is saved as the
-  // default for new sessions, not scoped to the conversation it is typed
-  // into. That is a thing to know before picking, not after.
   const note = box.querySelector("#sendNote");
-  const say = () => {
-    const on = [sendModel && "model", sendEffort && "effort"].filter(Boolean);
-    note.hidden = !on.length;
-    note.textContent = on.length
-      ? `typed into the session as a slash command first — claude saves the `
-        + `${on.join(" and ")} as the default for new sessions too`
-      : "";
-  };
-  say();
-  box.querySelector("#sendModelSel").onchange = e => { sendModel = e.target.value; say(); };
-  box.querySelector("#sendEffortSel").onchange = e => { sendEffort = e.target.value; say(); };
+  note.hidden = !applying;
+  note.textContent = applying
+    ? `will switch the session to ${applying} first — set on the Claude card`
+    : "";
   box.querySelector(".stop").onclick = onCancel;
   box.querySelector("#todoGo").onclick = onSend;
   return box;
@@ -4668,7 +4719,7 @@ async function reallySend(){
   // end of this function, so the button read back at the end is not
   // necessarily the one that was pressed — but a switch that was asked for
   // still has to be the one that gets sent.
-  const model = sendModel, effort = sendEffort, note = sendNoteText;
+  const note = sendNoteText;
   const go = $("todoGo");
   go.disabled = true; go.textContent = "Sending…"; go.classList.add("busy");
   // Staged changes go first, always — not only when "also save" is ticked.
@@ -4682,8 +4733,7 @@ async function reallySend(){
   }
   // The note rides on the same line as the step rather than chasing it: two
   // messages into one input box is how the second ends up glued to the first.
-  const j = await postTodo({action: "send", id, step, tell: true,
-                            model, effort, note});
+  const j = await postTodo({action: "send", id, step, tell: true, note});
   go.textContent = "Send"; go.classList.remove("busy"); go.disabled = false;
   if (!j) { drawSendBox(!!todoSession); return; }
   if (!j.sent){
@@ -5828,6 +5878,10 @@ $("todoRevert").onclick = revertNotebook;
             <button type="button" data-verbump="${pt}" data-vercomp="${esc(v.component || "")}"
               title="set VERSION to ${esc(v.next[pt] || "")} and commit that one file">
               ${pt[0].toUpperCase() + pt.slice(1)} → ${esc(v.next[pt] || "")}</button>`).join("")}
+          <button type="button" data-verask="${esc(v.component || "")}"
+            title="ask this project's Claude session whether ${esc(v.target)} is
+still where this should be — it reads the code, the changelog and the roadmap,
+proposes, and asks before touching anything">Ask Claude</button>
           ${v.prev && !v.sealed ? `
           <button type="button" data-verunbump="${esc(v.component || "")}"
             title="the code stays — the number returns to ${esc(v.prev)} and this
@@ -5876,12 +5930,6 @@ this directory">Ask Claude</button>
           change${v.unreleased === 1 ? "" : "s"} below become the first
           version's section.` : ""}</p>
         <div class="verbtns">
-          ${v.prev && !v.sealed ? `
-          <button type="button" data-verunbump="${esc(v.component || "")}"
-            title="the code stays — the number returns to ${esc(v.prev)} and this
-version's changelog section dissolves back into Unreleased, so the next bump
-dates the whole group together. Only possible while ${esc(v.target)} is
-unreleased.">↩ ${esc(v.prev)}</button>` : ""}
           <button type="button" class="verlogbtn" data-verlog="${esc(v.component || "")}"
             title="entries logged before the first version wait here, and
 become that version's section when it is created">Changelog${
@@ -6185,8 +6233,7 @@ It proposes and asks before doing anything.">Ask Claude</button>
           onSend: async () => {
             const go = box.querySelector("#todoGo");
             go.disabled = true; go.textContent = "Sending…"; go.classList.add("busy");
-            const j = await postBug({action: "send", id, model: sendModel,
-                                     effort: sendEffort, note: sendNoteText});
+            const j = await postBug({action: "send", id, note: sendNoteText});
             go.disabled = false; go.textContent = "Send"; go.classList.remove("busy");
             if (!j) return;
             if (!j.sent){
@@ -6854,6 +6901,7 @@ async function refresh(){
     $("host").textContent = state.host;
     $("uptime").textContent = "up " + state.uptime;
     drawBuild(state.image);
+    drawPrefs(state.claude_prefs);
     adoptLayout(state.layout);
     // Not mid-drag: adopting the server's order under a moving pointer would
     // snap the card out of the operator's hand.
@@ -7127,6 +7175,7 @@ function drawPhone(){
 // A request arriving or being answered, and a phone connecting or going away.
 // Both are facts this card displays and neither is a fact it owns — which is
 // exactly the shape that used to go stale.
+onRev("prefs", () => refresh());
 onRev("phone.asks", () => phFetch());
 // The badge follows the count directly rather than waiting for the fetch, so
 // the tab strip is right even if the page is throttled too hard to redraw.
