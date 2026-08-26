@@ -301,6 +301,27 @@ def read_env(project):
         return ""
 
 
+def starter(project):
+    """What an empty editor opens on: the repo's .env.example, seeded.
+
+    A blank box under a list of six key names asks the operator to type out
+    what the example already spells — with its own comments explaining each
+    one, which is the half a list of names throws away. Seeded, not saved:
+    nothing reaches disk until Save, so `missing_env` keeps answering about
+    the stored file and Up stays honestly dead until the values are real.
+    """
+    try:
+        example = (WORKSPACE / project / ".env.example").read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if not example.strip():
+        return ""
+    return ("# Started from this project's .env.example. Fill in the values\n"
+            "# and press Save — nothing is written until you do.\n\n"
+            + example.rstrip() + "\n")
+
+
 def write_env(project, text):
     if len(text or "") > 65536:
         return {"error": "that env file is over 64KB — this holds settings, "
@@ -388,6 +409,15 @@ def state(project):
            "built_rev": built.get("rev", ""), "built_at": built.get("at", 0),
            "missing_env": missing_env(project),
            "await_env": bool(built.get("await_env")),
+           # A marker with no build running behind it means the container went
+           # away mid-build: docker compose build is a subprocess of the
+           # dashboard, so it died with it. Everything else already recovers
+           # correctly — the last SUCCESSFUL build is still what built_rev
+           # says, and Rebuild is live because the code has moved — but
+           # without this the operator sees a button they thought they had
+           # already pressed and is told nothing.
+           "interrupted": bool(built.get("building_since")
+                               and not _job["running"]),
            "job": dict(_job) if _job["project"] == project else None}
     if a["on"]:
         out["running"] = _running(project)
@@ -440,11 +470,27 @@ def rebuild(project):
         return {"error": "a build is already running — one at a time"}
     if compose_file(project) is None:
         return {"error": "no compose file here"}
+    # On disk before the work starts, so a restart can tell "this build never
+    # finished" from "no build has been asked for". The job dict is memory and
+    # dies with the container; this outlives it.
+    with _lock:
+        d = _load()
+        d.setdefault(project, {})["building_since"] = int(time.time())
+        write_json(FILE, d)
     _job.update(running=True, project=project, step="building", log="",
                 error="", await_env=False)
     _bump()
     threading.Thread(target=_worker, args=(project,), daemon=True).start()
     return {"ok": True, "started": True}
+
+
+def _clear_marker(project):
+    """Drop the started-marker — the build reached an end, whichever end."""
+    with _lock:
+        d = _load()
+        if project in d:
+            d[project].pop("building_since", None)
+            write_json(FILE, d)
 
 
 def _worker(project):
@@ -484,5 +530,9 @@ def _worker(project):
             return
         _job["step"] = ""
     finally:
+        # Whatever happened — built, failed, gated — the build is no longer in
+        # flight, so the marker goes. Only a killed process leaves it behind,
+        # which is exactly what it is for.
+        _clear_marker(project)
         _job["running"] = False
         _bump()

@@ -17,3 +17,6 @@
 - Changing the Claude model no longer swallows the message sent right after it (42a9338)
 - A project with a compose file can be built and run on the box from its Artifacts tab — Up, Down, Env and Rebuild, no GitHub minutes (b2b6055)
 - The dev-instance controls find the Docker socket proxy on their own — no address to look up (fb8e28d)
+- The dev instance's env editor opens on the project's own .env.example, comments and all (cf0b1ef)
+- A build interrupted by a restart says so, instead of looking like a button you never pressed (f686077)
+- Committing now wakes the Rebuild button and the version evidence without a refresh (f686077)

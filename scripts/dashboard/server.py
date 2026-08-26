@@ -1823,6 +1823,13 @@ def revisions():
         # policy file moves when they change who may bump. Both are cheap
         # stats; neither shells out to git.
         revs[f"ver:{n}"] = _mtime(WORKSPACE / n / "VERSION")
+        # The project's reflog: it moves on every commit, which is what the
+        # dev row's "the code has moved since the last build" is derived
+        # from. Without it that verdict only refreshed when something else
+        # happened to move — a Rebuild button that wakes on the next poll
+        # rather than the next time you happen to touch the tab. A stat, not
+        # a git call.
+        revs[f"git:{n}"] = _mtime(WORKSPACE / n / ".git" / "logs" / "HEAD")
     revs["vpolicy"] = _mtime(STATE / "versions.json")
     revs["prefs"] = _mtime(STATE / "claude-prefs.json")
     # The dev-instance job and its files. In-memory counter plus mtimes — the
@@ -2490,7 +2497,12 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "rebuild":
             r = devapp.rebuild(name)
         elif act == "env-get":
-            return self._json({"text": devapp.read_env(name),
+            # An empty env opens on the example rather than on nothing. The
+            # `missing` list still answers about what is STORED, so the hint
+            # under the box stays true while the box is only a draft.
+            stored = devapp.read_env(name)
+            return self._json({"text": stored or devapp.starter(name),
+                               "seeded": not stored,
                                "missing": devapp.missing_env(name)})
         elif act == "env-set":
             r = devapp.write_env(name, req.get("text") or "")
