@@ -300,6 +300,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
 | `DOCKER_HOST` | `auto` | Powers the Artifacts tab's dev-instance controls. `auto` finds a running docker-socket-proxy on this container's network and re-finds it when its address moves; an explicit `tcp://host:2375` is used verbatim; empty turns the feature off. See `docs/unraid.md` |
+| `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on the host, as `/here:/there` pairs — the daemon resolves bind-mount sources on its own filesystem, not this one. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree. Empty leaves `BB_DEV_DATA` unset, so a compose that wants it fails loudly |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
@@ -419,7 +420,7 @@ bb favicon SVG [DIR]  favicon set (ico + touch icon) from one mark
 bb sdk             SDKs kept outside the image: status, check, install X, update X, remove X
 ```
 
-The dashboard's Commands card is this same list in this same order.
+The dashboard's Commands flyout carries this same list in this same order.
 
 `bb shot` is the container's camera: one URL with an optional output file
 keeps the simple shape, several URLs share one browser and land in a
@@ -898,7 +899,9 @@ on that header, and dragging a header reorders the cards; both are remembered
 in `/config/cards.json`, so the phone and the desktop agree about the
 arrangement and it survives restarts and image updates. The **▤** button in
 the top bar puts it all back: default order — Doctor on top — with every
-card expanded. On a touch screen, hold a header for half a second to pick
+card expanded. The sidebar is what the *box* is doing; the command lists and
+the session list are about the shell in front of you, and hang off the
+terminal instead — see below. On a touch screen, hold a header for half a second to pick
 the card up; a finger that moves sooner is scrolling, and the sidebar scrolls
 under it as if the header were not there — a fast flick that happens to land
 on a header is never a misfire. The
@@ -1508,6 +1511,21 @@ convention. BuilderBot itself gets the row too — the dev instance is
 `up` to refuse while the real one holds the same host ports, which is the env
 file's job to change.
 
+**The daemon's filesystem is not this container's**, and that is the one thing
+about a remote daemon easy to forget and impossible to see: a bind mount's
+*source* is resolved by whoever runs the container, which is the host.
+`/workspace/alpha` and `/devdata/bbdev-alpha` mean something here and nothing
+over there — and docker answers a missing bind source by creating an empty
+directory and mounting that, so on Unraid, whose root filesystem is RAM, the
+result is an app that starts with no data and loses it again at reboot. It
+reads as a bug in the app. `DOCKER_HOST_PATHS` states the mapping once — the
+same one you made when you mounted the volumes — and BuilderBot both hands
+over host paths (that is what `BB_DEV_DATA` now carries) and names any of a
+compose file's *own* paths the host will not find, on the row, before you
+press Up. Absolute host paths, which is what a working compose here already
+writes, are unaffected. Build contexts are unaffected too: the classic builder
+streams those from this side.
+
 Two things bound what that row can reach, and they answer different halves of
 the question. The **namespace** is enforced rather than conventional: every
 docker call goes through one function, which refuses any argv that is not a
@@ -1659,7 +1677,8 @@ Thirty open items is the ceiling, because the list is read at the start of
 every conversation and one nobody can take in at a glance is one nobody reads.
 Ticked items stay a week, then go.
 
-- **Ending a session for good is the ✕ in the Sessions card.** That one asks,
+- **Ending a session for good is the ✕ in the Sessions list**, under the
+  terminal. That one asks,
   because that is where something is actually lost: the shell and everything
   in it, or the Claude conversation (its transcript is kept and can be resumed).
 - **Switching between terminals is instant**, because a pane keeps the last
@@ -1694,12 +1713,11 @@ Ticked items stay a week, then go.
   back to it. The strip stays one row — swipe it, or page it with the **‹ ›**
   arrows (grayed at the end you cannot page past) — instead of wrapping, so
   the terminal keeps its screen space; a tab you open is scrolled into view.
-  Under the terminal sit three buttons, **Keys**, **Commands** and
-  **Sessions**: the on-screen keys, the `bb` and custom command macros, and
-  the session list — which on a phone live here rather than in dashboard
-  cards (those three cards are hidden there). One flyout at a time — there is
-  not the height for two — and a flyout that has done its job gets out of the
-  way: picking a session or sending a command closes it. Which of the two
+  Under the terminal sit **Keys**, **Commands** and **Sessions** — and on a
+  phone all three, since the ⌨ leaves the tab strip there. One flyout at a
+  time on a phone, because there is not the height for two, and a flyout that
+  has done its job gets out of the way: picking a session or sending a command
+  closes it. Which of the two
   views, Dashboard or Terminal, a phone was on is remembered across a reload,
   and while the dashboard is in front the **Terminal** switch carries the
   worst Claude state — amber if a session is waiting on you, blue if they are
@@ -1776,6 +1794,19 @@ the transcript, which is still on disk.
 
 ### Commands run in the terminal
 
+They live under the terminal rather than in the sidebar, at every width:
+**Commands** and **Sessions** in the bar below the panes, opening a flyout
+over the terminal they act on. That is where they belong — a command list is
+about the shell in front of you, not about the box — and it is also what keeps
+the sidebar to seven cards you can read instead of twelve you scroll past. On
+a wide screen the buttons sit at the bar's left edge and the flyout is capped
+rather than stretched: a short list read across two thousand pixels is worse
+than one read in a column.
+
+Nothing about the graying-out below depends on where they live. It is computed
+from the *active pane* — which is why the same markup served the phone's bar
+and the desktop's cards for as long as it did.
+
 The `bb` commands worth a button are buttons. Clicking one clears whatever is half-typed at
 the prompt, types the command into the terminal you are looking at and presses
 Enter, rather than reporting into a box of its own. The
@@ -1793,7 +1824,7 @@ terminal, which is not something a button labeled `bb status` should be able to
 do.
 
 They are listed in `bb help`'s own order, so the card and the CLI read the
-same. If the list outgrows the card it is cut off at eight with a **Show all**
+same. If the list outgrows its space it is cut off at eight with a **Show all**
 button after the cut. The **thumbtack** on each command keeps it above that
 cut — pinning moves a command up, it does not re-sort it into an order the CLI
 never uses. Pins live in `/config/pinned-commands.json` — one machine, one
@@ -1809,13 +1840,13 @@ that only means anything from a checkout of the BuilderBot repo (`bb drift`,
 left is what an operator actually reaches for from a terminal: status, update,
 login, the emulator, lint, and the logs.
 
-Two more command cards flank the `bb` one, following the same rules. **Linux
-commands** is the general toolkit — `ls -lah`, disk usage here and per mount,
+Two more lists flank the `bb` one in the same flyout, following the same
+rules. **Linux commands** is the general toolkit — `ls -lah`, disk usage here and per mount,
 memory, the biggest processes, listening ports — live on any shell tab. **Git
 & GitHub** shows its commands verbatim (`git status`, log, diff, branches,
 fetch, pull; `gh pr list`, `gh run list`, …) and ghosts against the directory
 the active shell is *in*, not just whether it is a shell: outside a git
-repository the whole card grays out, and in a repository whose remotes do not
+repository the whole list grays out, and in a repository whose remotes do not
 include GitHub, just the `gh` half does — the hover text says which it is.
 The verdict follows a `cd` on the next status poll, and the ghosting only
 reflects the repo; `gh` itself still needs its own auth (`GIT_PAT` or
@@ -1823,12 +1854,12 @@ reflects the repo; `gh` itself still needs its own auth (`GIT_PAT` or
 
 ### Your own commands
 
-The **Custom commands** card starts empty with a **+**. It takes a title and a
+**Custom commands**, the last section of the same flyout, starts empty with a **+**. It takes a title and a
 box of command lines, and the button it makes types those lines into the
 terminal you are looking at, in order, exactly as if you had typed them — one
 line or twenty. The pencil beside each one edits or deletes it.
 
-Long titles are cut with an ellipsis so the card keeps its shape; hovering shows
+Long titles are cut with an ellipsis so the list keeps its shape; hovering shows
 the full title *and* the commands it will run, which is the thing you will want
 six months later. They live in `/config/custom-commands.json`, so they survive
 restarts and image updates and are the same on every device.

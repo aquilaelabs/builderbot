@@ -36,6 +36,11 @@ services:
       # empty turns the feature off. See docs/unraid.md.
       DOCKER_HOST: ${DOCKER_HOST:-auto}
 
+      # What this container's paths are called on the host, as /here:/there
+      # pairs — the daemon above resolves bind-mount sources on its own
+      # filesystem, not this one. See .env.example.
+      DOCKER_HOST_PATHS: ${DOCKER_HOST_PATHS:-}
+
       # --- Claude Code ------------------------------------------------------
       # Leave ANTHROPIC_API_KEY empty to log in interactively with a Claude
       # subscription instead (`docker exec -it builderbot bb login`).

@@ -329,8 +329,15 @@ TABS_FILE = STATE / "tabs.json"
 CARDS_FILE = STATE / "cards.json"
 # Doctor first: this order is the default an unwritten (or reset) sidebar
 # gets, and the verdict on the whole box outranks any one card below it.
-CARD_KEYS = ["doctor", "runner", "projects", "tools", "claude", "phone", "findings", "sessions",
-             "linux", "commands", "git", "custom"]
+#
+# The command lists and Sessions are NOT here any more: they live under the
+# terminal, in the bar that used to be the phone's alone, because they are
+# about the shell in front of you rather than about the box — and seven cards
+# is a sidebar you can read where twelve was a list you scrolled past. Their
+# keys dropping out of this list is also the migration: load_layout filters an
+# existing cards.json against it, so a file still naming them is cleaned on
+# the next read rather than needing anything done to it.
+CARD_KEYS = ["doctor", "runner", "projects", "tools", "claude", "phone", "findings"]
 
 
 # Every state file is written the same way: to a temp file in the same

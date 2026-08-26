@@ -635,7 +635,15 @@ path for good reasons, and nothing here can tell which.
    `tcp://172.17.0.1:2375` becomes a stable explicit answer if you prefer
    one. Optionally set the **Dev instance data** path — a cache/SSD folder
    that dev volumes land in when a project's compose opts in with
-   `${BB_DEV_DATA}/...`.
+   `${BB_DEV_DATA}/...`. Set **Host path mapping** in the same section if you
+   changed either of those Path settings from its default: the daemon is the
+   host's and resolves a compose file's bind-mount *sources* on its own
+   filesystem, so it has to be told what `/workspace` and `/devdata` are
+   called over there. Docker does not fail on a source that is missing — it
+   creates an empty directory and mounts that, and on Unraid the root
+   filesystem is RAM, so the app starts with no data and loses it again at
+   reboot. Get this wrong and BuilderBot says so on the project's row rather
+   than letting it happen quietly.
 3. Restart BuilderBot. A project with a `docker-compose.yml` now shows the
    dev-instance row at the top of its Artifacts tab; one without shows
    nothing new.
