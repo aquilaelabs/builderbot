@@ -1365,16 +1365,20 @@ step has gone, where the pickers stay: a note belongs to the one thing it was
 written for, and finding it still sitting there on the next step is how it
 gets sent twice.
 
-**Model and effort** are pickers in that box, both starting at *leave as is*.
-A running session's model cannot be changed by a flag it was not started with —
-`--model` and `--effort` only apply at startup — so a pick is typed into the
-session as its own slash command, `/model sonnet` then `/effort xhigh`, each on
-its own line and both ahead of the step, which is what makes the step run on
-what was picked. If either line does not submit (something else has the
-keyboard in that tab) the step is **not** sent after it, because a step typed
-onto the end of an unsent `/model` line is one line that is neither. Worth
-knowing before picking: claude saves both as the default for new sessions, so
-this is not scoped to the conversation it is typed into — the box says so.
+**Model and effort** are not questions in that box: they are the **Claude
+card** in the sidebar, one standing preference every send applies — a roadmap
+step, a bug, the version question alike. A running session's model cannot be
+changed by a flag it was not started with — `--model` and `--effort` only
+apply at startup — so the card's picks are typed into the session as its own
+slash commands, `/model sonnet` then `/effort xhigh`, each on its own line
+and ahead of what is being sent, which is what makes it run on what was
+picked. If either line does not submit (something else has the keyboard in
+that tab) the send stops there, because a step typed onto the end of an
+unsent `/model` line is one line that is neither. Worth knowing: claude saves
+both as the default for new sessions, so a switch is never scoped to the
+conversation it is typed into — the card says so, once. *Leave as is* sends
+no switch at all, and the send box notes which switch will apply, so the
+choice is visible where it acts.
 
 A group's own arrow **stands for its next step**: picking either lights both,
 because they are one choice. A crossed-off line cannot be sent at all — put it
@@ -1548,8 +1552,9 @@ and leaves the reason in the log. The template CLAUDE.md tells sessions that
 this is the only case for it; anything that was a real bug gets closed.
 
 **Send to Claude** hands one bug to the session running there, from the same
-box the roadmap opens under a step — the same Model and Effort pickers, the
-same field for anything to send with it — opened under the report instead.
+box the roadmap opens under a step — the same note field for anything to send
+with it — opened under the report instead. Model and effort come from the
+sidebar's Claude card, the same as every send.
 
 What goes over is **a number and an instruction, never a copy of the report**.
 The line asks the session to run `bb bug show N` for the area, the repro,

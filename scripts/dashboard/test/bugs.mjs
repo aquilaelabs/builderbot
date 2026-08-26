@@ -323,9 +323,9 @@ await page.click(`#bugList .bug[data-id="${first}"] .bSend`);
 await page.waitForSelector('.sendbox');
 ok(await page.$eval('.sendbox', b => b.closest('.bug')?.dataset.id) === first,
    'the send box opens inside the report it would send');
-ok(await page.$('#sendModelSel') !== null && await page.$('#sendEffortSel') !== null
-   && await page.$('#sendMore') !== null,
-   '...with the same pickers and note field the roadmap uses');
+// Model and effort are set once on the Claude card now, not asked per send.
+ok(await page.$('#sendModelSel') === null && await page.$('#sendMore') !== null,
+   '...with the note field, and no pickers — those moved to the Claude card');
 ok(await page.$eval('#sendMore', e => e.value) === '',
    '...and the note starts empty, never carrying words written for something else');
 await page.fill('#sendMore', 'it happens on the second run, not the first');
