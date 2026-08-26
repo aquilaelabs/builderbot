@@ -372,6 +372,23 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
 
+/* The disclosure marker, once, for every <details> on the page — a memory, a
+   bug report, a findings group, the component fold. All four set display:flex
+   on their summary, which REMOVES the native marker in Chromium, so each had
+   grown its own hand-copied ::before; the component fold was added without
+   one and silently had no triangle at all. Grouped here so a fold cannot be
+   built without the arrow that says it opens. */
+.mem>summary,.bug>summary,.fx .grp>summary,.veradd>summary{
+  cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.mem>summary::-webkit-details-marker,.bug>summary::-webkit-details-marker,
+.fx .grp>summary::-webkit-details-marker,
+.veradd>summary::-webkit-details-marker{display:none}
+.mem>summary::before,.bug>summary::before,.fx .grp>summary::before,
+.veradd>summary::before{content:"\25B8";color:var(--dim);font-size:11px;
+  width:9px;flex:0 0 auto}
+.mem[open]>summary::before,.bug[open]>summary::before,
+.fx .grp[open]>summary::before,.veradd[open]>summary::before{content:"\25BE"}
+
 /* ---- the shared to-do list -------------------------------------------- */
 /* The Artifacts view: rows in the notebook, same voice as the bug rows.
    Two stacked lines rather than one wrapping group — a row whose parts rewrap
@@ -405,8 +422,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .prefrow .pick{display:flex;gap:6px;align-items:center;
   font:var(--f-note);color:var(--dim)}
 .veradd{margin-top:10px}
-.veradd summary{color:var(--dim);font:var(--f-note);
-  cursor:pointer;min-height:var(--tap);display:flex;align-items:center}
+.veradd>summary{color:var(--dim);font:var(--f-note);min-height:var(--tap)}
+@media(hover:hover){ .veradd>summary:hover{color:var(--ink)} }
 @media(max-width:520px){
   .verinit .vstart,.verinit .vdir{flex:1 1 100%;width:auto}
   .verinit button{flex:1 1 100%}
@@ -675,11 +692,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
    our own — this page has no framework and does not need one for a fold. */
 .mem{border:1px solid var(--line);border-radius:8px;margin-bottom:6px;
   background:#161b22}
-.mem>summary{display:flex;gap:8px;align-items:center;padding:8px 10px;
-  cursor:pointer;list-style:none;min-height:var(--tap);box-sizing:border-box}
-.mem>summary::-webkit-details-marker{display:none}
-.mem>summary::before{content:"▸";color:var(--dim);font-size:11px;width:9px}
-.mem[open]>summary::before{content:"▾"}
+.mem>summary{padding:8px 10px;min-height:var(--tap);box-sizing:border-box}
 .mem .mname{font:600 12px/1.4 var(--mono);color:var(--ink)}
 .mem .mwhen{margin-left:auto;color:var(--dim);font:var(--f-note);
   white-space:nowrap}
@@ -726,11 +739,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
    leads a memory's. */
 .bug{border-top:1px solid var(--line);padding:2px 0}
 .bug:first-child{border-top:0}
-.bug>summary{display:flex;gap:8px;align-items:center;padding:8px 2px;
-  cursor:pointer;list-style:none}
-.bug>summary::-webkit-details-marker{display:none}
-.bug>summary::before{content:"▸";color:var(--dim);font-size:11px;width:9px}
-.bug[open]>summary::before{content:"▾"}
+.bug>summary{padding:8px 2px}
 .bug .btitle{flex:1;min-width:0;font:13px/1.4 system-ui,sans-serif;
   overflow-wrap:anywhere}
 .bug .btitle.done{color:var(--dim);text-decoration:line-through}
@@ -1057,12 +1066,8 @@ body.dragging .tab .lbl{cursor:grabbing}
    whose groups really are separate documents. */
 .fx:not(.nbhost) .grp{border:1px solid var(--line);border-radius:8px;
   margin-bottom:10px;background:var(--panel);overflow:hidden}
-.fx .grp>summary{padding:9px 11px;cursor:pointer;font-weight:600;
-  display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none;
+.fx .grp>summary{padding:9px 11px;font-weight:600;flex-wrap:wrap;
   transition:background-color .15s ease}
-.fx .grp>summary::-webkit-details-marker{display:none}
-.fx .grp>summary::before{content:"▸";color:var(--dim);font-size:11px}
-.fx .grp[open]>summary::before{content:"▾"}
 .fx .bust{padding:9px 11px;color:var(--bad);font-weight:600}
 .fx .rule{border-top:1px solid var(--line);padding:9px 11px}
 .fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
@@ -5858,6 +5863,14 @@ $("todoRevert").onclick = revertNotebook;
     // out of the way — the same shape as sending a step, because it is the
     // same thing: a question that wants a conversation, not a field filled in
     // behind the operator's back.
+    // The fold opens the way every other fold on the page does — driven, not
+    // the browser's instant snap. Same helper as a memory and a bug report.
+    box.querySelectorAll("details.veradd > summary").forEach(sum => {
+      sum.onclick = e => {
+        e.preventDefault();
+        slideDetails(sum.parentElement, !sum.parentElement.open);
+      };
+    });
     box.querySelectorAll("[data-verask]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verask === "@fold"
         ? b.closest(".verinit").querySelector(".vdir").value
