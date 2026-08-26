@@ -168,6 +168,31 @@ ok(r.code !== 0 && /MAJOR\.MINOR\.PATCH/.test(r.out),
    'a malformed VERSION is reported, not guessed around');
 git('checkout', '-q', '--', 'VERSION');
 
+// The changelog does not wait for a VERSION to exist: entries logged before
+// the first version describe the work that BECOMES it, so init dates them as
+// its section. Left unreleased they would ride into the next bump and be
+// labeled as changes since a release they are part of.
+const Y = `${WS}/young`;
+rmSync(Y, { recursive: true, force: true });
+mkdirSync(Y, { recursive: true });
+execFileSync('git', ['-C', Y, 'init', '-q', '.'], { env });
+writeFileSync(`${Y}/f`, 'x');
+execFileSync('git', ['-C', Y, 'add', '-A'], { env });
+execFileSync('git', ['-C', Y, 'commit', '-qm', 'init'], { env });
+const yb = (...a) => {
+  try {
+    return { out: execFileSync('bash', [BB, ...a], { cwd: Y, env }).toString(), code: 0 };
+  } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; }
+};
+ok(yb('changelog', 'add', 'Worked before any version existed').code === 0,
+   'a change can be logged before the project has a VERSION at all');
+setPolicyFor('young', 'open');
+yb('version', 'init', '0.1.0');
+const born = yb('changelog').out;
+ok(/## 0\.1\.0 — \d{4}-\d{2}-\d{2}/.test(born) && !/## Unreleased/.test(born),
+   '...and init dates the accrued entries as the first version\u2019s section');
+rmSync(Y, { recursive: true, force: true });
+
 // A project that has not adopted this still answers — the point is that every
 // project can be asked, not that every project has opted in.
 const BARE = `${WS}/unversioned`;
@@ -433,6 +458,8 @@ await page.waitForSelector(`${NB} #verBox .verln`, { timeout: 20000 });
 const fallback = (await page.$eval(`${NB} #verBox`, e => e.textContent)).replace(/\s+/g, ' ');
 ok(/no version yet/.test(fallback),
    '...and its tab says so rather than showing an invented one');
+ok((await page.$$(`${NB} #verBox [data-verlog]`)).length === 1,
+   '...while the changelog stays reachable — entries accrue before a version exists');
 ok((await page.$$(`${NB} #verBox [data-verbump]`)).length === 0,
    '...offering no bump buttons for a version that does not exist');
 

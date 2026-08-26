@@ -412,8 +412,18 @@ def init(project, value, by="claude", comp=""):
     rel = str(p.relative_to(root(project).resolve()))
     msg = (f"Add {comp} VERSION at {value}" if comp
            else f"Add VERSION at {value}") + ("" if by == "operator" else " (session)")
-    _git(project, "add", "--", rel)
-    if _git(project, "commit", "-m", msg, "--", rel, timeout=30) is None:
+    # Entries logged before the project had a version describe the work that
+    # BECAME this first version, so they are dated here as its section. Left
+    # unreleased they would ride into the NEXT bump and be labeled as changes
+    # since a release they are actually part of — a mislabel in the one file
+    # that ships to be believed.
+    paths = [rel]
+    if changelog is not None and changelog.roll(
+            where, value, time.strftime("%Y-%m-%d")):
+        paths.append(str((where / changelog.FILE)
+                         .relative_to(root(project).resolve())))
+    _git(project, "add", "--", *paths)
+    if _git(project, "commit", "-m", msg, "--", *paths, timeout=30) is None:
         return {"error": f"{rel} now reads {value}, but committing it failed — "
                          f"commit it by hand", "target": value}
     return {"ok": True, "target": value, "component": comp,

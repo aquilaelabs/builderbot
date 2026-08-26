@@ -5827,7 +5827,16 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
           </details>` : ""}`}` : `
         <p class="verwhy">This project has no version yet. Giving it one writes
           a <code>VERSION</code> file and commits it — after that the buttons
-          above move it.</p>
+          above move it.${v.unreleased ? ` The ${v.unreleased} logged
+          change${v.unreleased === 1 ? "" : "s"} below become the first
+          version's section.` : ""}</p>
+        <div class="verbtns">
+          <button type="button" class="verlogbtn" data-verlog="${esc(v.component || "")}"
+            title="entries logged before the first version wait here, and
+become that version's section when it is created">Changelog${
+            v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
+        </div>
+        <div class="verlogpane" data-verlogpane="${esc(v.component || "")}" hidden></div>
         <div class="verinit">
           <input class="vstart" value="0.1.0" size="8" maxlength="20"
             inputmode="decimal" aria-label="starting version"
