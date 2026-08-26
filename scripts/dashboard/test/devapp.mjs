@@ -47,7 +47,10 @@ const row = () => page.$eval('#devRow', e => ({
 
 let r = await row();
 ok(/never built/.test(r.text), 'a project with a compose file gets the row, unbuilt');
-ok(!r.rebuild, 'Rebuild is live for the first build');
+ok(await page.$eval('#devRow [data-devact="rebuild"]',
+     e => e.textContent.trim()) === 'Build',
+   'the button says Build before a first image exists — nothing auto-builds');
+ok(!r.rebuild, '...and it is live for that first build');
 ok(r.up, '...and Up is dead: the env is missing PORT, and starting against a '
         + 'known-missing env is a crash with extra steps');
 ok(r.down, '...and Down is dead with nothing running');
@@ -78,6 +81,9 @@ const log = dockerLog();
 ok(/compose --project-name bbdev-ep-silon .*build/.test(log)
    && /compose --project-name bbdev-ep-silon .*up -d/.test(log),
    'rebuild runs table-lookup compose commands under the bbdev- namespace');
+ok(await page.$eval('#devRow [data-devact="rebuild"]',
+     e => e.textContent.trim()) === 'Rebuild',
+   '...and the button says Rebuild once an image exists');
 ok(/--env-file/.test(log), '...with the dev env handed over as --env-file');
 r = await row();
 ok(!r.down && r.up, 'running: Down is live, Up is dead');
