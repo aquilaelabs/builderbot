@@ -17,6 +17,32 @@ await page.goto(URL);
 await page.waitForSelector('#mSessions');
 await page.click('#mSessions');
 await page.waitForFunction(() => document.querySelectorAll('#sessions .row').length >= 2, { timeout: 40000 });
+// On a desktop the flyout is an OVERLAY: the terminal keeps its height, and
+// with it its fit and its scrollback — a resize costs a terminal a refit and a
+// reflow of everything on screen, which is a lot to charge for looking at a
+// list. The phone pushes instead, because there is not the screen to cover one
+// thing with another.
+//
+// Measured on a CLOSE-then-open, not on the first open, and after the strip has
+// stopped moving: the first render that puts a tab pill on the strip grows it
+// by a row, and measuring across that reads 30px of tab strip as if the panel
+// had taken it. Both heights in one task, for the reason at the phone's own
+// version of this below.
+await page.click('#mSessions');
+await page.waitForFunction(() => !document.getElementById('sespanel').classList.contains('show'));
+await page.waitForFunction(
+  () => !document.getAnimations().some(a => a.playState === 'running'), { timeout: 10000 });
+const deskOpen = await page.evaluate(() => {
+  const panes = document.getElementById('panes');
+  const before = panes.offsetHeight;
+  document.getElementById('mSessions').click();
+  const el = document.getElementById('sespanel');
+  return { before, after: panes.offsetHeight, anim: el.getAnimations().length > 0,
+    over: el.classList.contains('over') && getComputedStyle(el).position === 'absolute' };
+});
+ok(deskOpen.over && deskOpen.anim, 'a desktop flyout opens as an animated overlay');
+ok(deskOpen.after === deskOpen.before,
+   `...and the terminal is not pushed up for it (${deskOpen.after} vs ${deskOpen.before}px)`);
 const row = n => page.locator('#sessions .row', { has: page.locator(`[data-go="${n}"]`) });
 const btn = n => row(n).locator('button').first();
 
@@ -197,9 +223,15 @@ const phone = await newPage(browser, { viewport: { width: 400, height: 800 } });
 await phone.goto(URL);
 await phone.waitForFunction(() => document.getElementById('sessions').parentElement.id === 'sespanel', { timeout: 30000 });
 await phone.evaluate(() => setView('terminal'));
-await phone.waitForSelector('#bKeys', { state: 'attached' });
-ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && await phone.$eval('#bKeys', el => getComputedStyle(el).display === 'none'),
-   'phone shows the bottom bar and hides the strip ⌨');
+await phone.waitForSelector('#mKeys', { state: 'visible' });
+ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && !await phone.$('#bKeys'),
+   'the phone bar carries the keys, and the strip has no ⌨ anywhere to hide');
+// A truncated version string answers nothing, so where it will not fit the
+// About control is a ? instead — an icon, not the word it used to be.
+ok(await phone.$eval('#bAbout .alab', el => getComputedStyle(el).display !== 'none')
+   && await phone.$eval('#bAbout #build', el => getComputedStyle(el).display === 'none')
+   && await phone.$eval('#bAbout .alab', el => el.tagName.toLowerCase() === 'svg'),
+   'a narrow header shows About as a ?, not as a version it would have to cut');
 // Measure the terminal before, mid-slide and after: it must hold still
 // through the slide (the panel is an overlay then) and shrink once at the end.
 //
@@ -213,8 +245,15 @@ ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') &&
 // passed in the same breath, so the panel was still absolute and cannot have
 // been what moved the terminal — the baseline was simply stale. The likeliest
 // mover is setView('terminal') just above, a 220ms slide that holds overflow-x
-// on <main> for its duration, but the fix does not depend on which it was:
-// nothing at all can intervene between two reads in the same task.
+// on <main> for its duration — and it was. One task keeps anything from
+// landing BETWEEN the two reads and does nothing about a baseline taken while
+// that slide is still running; what had been holding THAT off was the round
+// trips of the assertion above, which is not a thing to depend on and stopped
+// being true the moment that assertion needed one fewer of them. So wait for
+// the page to stop moving, which is what the baseline actually wants.
+await phone.waitForFunction(
+  () => !document.getAnimations().some(a => a.playState === 'running'),
+  { timeout: 10000 });
 const mid = await phone.evaluate(() => {
   const panes = document.getElementById('panes');
   const before = panes.offsetHeight;

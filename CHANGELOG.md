@@ -27,3 +27,5 @@
 - A project's dev instance now says what its compose file reaches for beyond the project — a host mount, privileged, extra capabilities — and asks once before starting it (b910384)
 - The command lists and Sessions moved out of the sidebar and under the terminal, where the phone has always had them — seven cards on the left instead of twelve (76ecf27)
 - A dev instance whose compose file uses paths only BuilderBot can see is told so on its row, rather than starting with an empty directory mounted in its place (76ecf27)
+- The header has a bell: errors and messages are kept there instead of vanishing with their toast, and a session waiting to reach your phone can be approved or denied from it wherever you are on the page (395fe92)
+- On a desktop the Commands and Sessions flyouts now slide open over the terminal instead of pushing it up, and the on-screen keyboard button is gone where there is a real keyboard (395fe92)

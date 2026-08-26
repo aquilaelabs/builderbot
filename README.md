@@ -894,7 +894,27 @@ API, and the browser terminals, which are proxied under `/term` so one
 sign-in covers them all. Signing in is a login page that sets a 30-day
 cookie — a real form, so password managers work — not the browser's own
 credentials dialog, and there is no second prompt for the terminal port
-because there is no second port. The sign-out button beside ↻ and ▤ in the header ends the session (`/logout` does the same). Every sidebar card collapses to its header with a click
+because there is no second port. The sign-out button beside ↻ and ▤ in the header ends the session (`/logout` does the same).
+
+**The bell** in the header is where messages go to stay. A toast says a thing
+once, for four seconds, to whoever happened to be looking — the right deal for
+*saved*, and the wrong one for anything that failed while you were in another
+tab. So every message the page shows lands behind the bell as well and stays
+until you clear it, errors marked as errors. It is bare rather than boxed
+because it is a state light first and a control second: a red dot means
+something unread, an **amber** one means a session is blocked on an answer.
+That second case is the reason it exists — a request to reach the phone shows
+up there with **Approve** and **Deny** on it, so answering does not depend on
+which of the two views you happen to be looking at, or on the Phone card being
+scrolled into sight. Clearing empties the page's own log and never an ask: a
+question somebody is still waiting on is not this button's to dismiss. The log
+is this tab's, so a reload draws a line under it; the asks are the server's and
+are read live, which is why they leave the list the moment they are answered or
+time out.
+
+The **About** control beside it is the version, and where the header is too
+narrow for a version string it becomes a **?** rather than a truncated number
+that answers nothing — either way the popup behind it carries the whole stamp. Every sidebar card collapses to its header with a click
 on that header, and dragging a header reorders the cards; both are remembered
 in `/config/cards.json`, so the phone and the desktop agree about the
 arrangement and it survives restarts and image updates. The **▤** button in
@@ -1713,11 +1733,11 @@ Ticked items stay a week, then go.
   back to it. The strip stays one row — swipe it, or page it with the **‹ ›**
   arrows (grayed at the end you cannot page past) — instead of wrapping, so
   the terminal keeps its screen space; a tab you open is scrolled into view.
-  Under the terminal sit **Keys**, **Commands** and **Sessions** — and on a
-  phone all three, since the ⌨ leaves the tab strip there. One flyout at a
-  time on a phone, because there is not the height for two, and a flyout that
-  has done its job gets out of the way: picking a session or sending a command
-  closes it. Which of the two
+  Under the terminal sit **Keys**, **Commands** and **Sessions**. Keys is the
+  phone's alone — a desktop has a keyboard, so it carries no on-screen one at
+  all. One flyout at a time on a phone, because there is not the height for
+  two, and a flyout that has done its job gets out of the way: picking a
+  session or sending a command closes it. Which of the two
   views, Dashboard or Terminal, a phone was on is remembered across a reload,
   and while the dashboard is in front the **Terminal** switch carries the
   worst Claude state — amber if a session is waiting on you, blue if they are
@@ -1796,7 +1816,11 @@ the transcript, which is still on disk.
 
 They live under the terminal rather than in the sidebar, at every width:
 **Commands** and **Sessions** in the bar below the panes, opening a flyout
-over the terminal they act on. That is where they belong — a command list is
+over the terminal they act on. On a desktop it really is *over* — the panel is
+an overlay and the terminal keeps its height, because a resize costs a terminal
+a refit and a reflow of everything on screen, which is a lot to charge for
+looking at a list. A phone pushes the terminal up for it instead, there being
+no screen to spare for covering one thing with another. Both slide. That is where they belong — a command list is
 about the shell in front of you, not about the box — and it is also what keeps
 the sidebar to seven cards you can read instead of twelve you scroll past. On
 a wide screen the buttons sit at the bar's left edge and the flyout is capped
