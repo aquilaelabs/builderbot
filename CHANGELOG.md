@@ -23,3 +23,4 @@
 - Re-running the image build by hand no longer forces the whole image to be downloaded again — tick Rebuild every layer when that is what you want (aca730b)
 - New: 'bb catchup' prints what has happened here lately — recent commits and why, what moved in the roadmap and bug tracker, the builds, and which image this box is running (8253d8a)
 - The container now keeps a record of every image it has run, so 'which build was I on when I saw that?' has an answer after the fact (8253d8a)
+- The dev instance's Down button now works when the app has crashed rather than been stopped, and the row says which of the two happened (181b40b)
