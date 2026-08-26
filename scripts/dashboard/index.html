@@ -36,6 +36,22 @@
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",
          "Noto Sans Mono","Droid Sans Mono",monospace;
   --tap:38px;
+  --doc-w:1080px;
+  /* The page's three secondary voices, named once. Before this they were
+     retyped at every use — 11px/1.4, /1.45, /1.5 and /1.6 all coexisted for
+     the same "quiet explainer under a control", which is the kind of drift
+     nobody chooses and everybody inherits. */
+  --f-note:11px/1.5 system-ui,sans-serif;      /* the quiet explainer */
+  --f-ui:12px/1.5 system-ui,sans-serif;        /* secondary UI text */
+  --f-tag:600 10px/1 system-ui,sans-serif;     /* pills and badges */
+  /* The badge palette: who/what colors used by tags across the notebook.
+     Hex was retyped at every site, and the day one shade drifts is the day
+     "reference" and "na" stop looking like the same family. */
+  --purple:#b79ae0; --purple-edge:#38294a;
+  --green2:#7fc08a; --green2-edge:#1f3f28;
+  --blue2:#77b7e8;  --blue2-edge:#1e3a4a;
+  --gold:#d8b25c;   --gold-edge:#4a3c1e;
+  --red2:#e0796f;   --red2-edge:#4d2220;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -143,6 +159,11 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
      come later and win) — which meant no hover at all. A lighter green and a
      brighter border are their version of the same lift. */
   button.primary:hover,button.on:hover{background:#26853f;border-color:#3fb950}
+  /* The notebook's tab strip borrows .on for its active view, but its
+     buttons are underlined text, not green blocks — the generic green-button
+     hover leaking in here painted the active tab as a filled pill the moment
+     the pointer crossed it. */
+  .nbtabs button:hover,.nbtabs button.on:hover{background:none}
   .modal .danger:hover{background:#3a1d1b}
   button:disabled:hover{background:#232b34}
   .cmd button:hover{background:#2b3540}
@@ -176,9 +197,6 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* The Linux and git cards show commands verbatim; mono keeps them readable
    as commands, and slightly smaller keeps the pipelines on one line. */
 #linux button,#git button{font-family:var(--mono);font-size:12px}
-/* One package: a checkbox that owns the whole row (label wraps it), the
-   size beside the name, and the resolved install path underneath — the
-   question "where did that actually go" is the one this card exists for. */
 /* The packages document. One row per package: a checkbox that owns the whole
    row (the label wraps it), the size beside the name, and the resolved
    install path underneath — "where did that actually go" is the question a
@@ -189,7 +207,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
    padding matches a row's too, so every rule on the page has the same air
    above and below it. */
 .pkghead{margin:0 12px;padding:13px 0;color:var(--dim);
-  font:12px/1.5 system-ui,sans-serif;border-bottom:1px solid var(--line)}
+  font:var(--f-ui);border-bottom:1px solid var(--line)}
 .pkghead code{font-family:var(--mono);color:var(--ink)}
 .pkgs{padding:0 12px}
 .pkg{display:flex;gap:10px;align-items:flex-start;padding:13px 0;margin:0;
@@ -197,7 +215,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg:last-child{border-bottom:0}
 .pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto;accent-color:#2ea043}
 .pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
-.pkg .sub{display:block;color:var(--dim);font:11px/1.45 system-ui,sans-serif}
+.pkg .sub{display:block;color:var(--dim);font:var(--f-note)}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
 /* An image row has no checkbox, so the text starts where the others' does. */
 .pkg.img{padding-left:26px}
@@ -209,7 +227,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* How old the version answers are, beside the button that refreshes them:
    they survive a restart now, and a number with no date on it is the kind of
    thing that quietly goes stale. */
-.pkgwhen{align-self:center;color:var(--dim);font:11px system-ui,sans-serif}
+.pkgwhen{align-self:center;color:var(--dim);font:var(--f-note)}
 /* A word and an ellipsis, never a bar — no percentage is read out of a
    job any more, so there is nothing for one to show. */
 .pkg .prog.plain{display:block}
@@ -220,7 +238,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
    three characters so the line does not twitch as they come and go. */
 /* The row's and the button's alike: three characters of reserved width so the
    line does not twitch as the dots come and go. */
-.doc .dots{display:inline-block;width:3ch;text-align:left;white-space:pre}
+.doc .dots,.row .dots{display:inline-block;width:3ch;text-align:left;white-space:pre}
 .pkg .where.on{color:var(--accent)}
 .pkg .sub.bad{color:var(--bad);overflow-wrap:anywhere}
 .pkg .upd{color:var(--warn)}
@@ -239,17 +257,16 @@ button.on{background:#1f6f36;border-color:#2ea043}
    "API 36-ext19 · 1.8 GB" was pushing the whole tab wider than the screen,
    which clipped every paragraph on it. */
 .imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:13px 12px}
-.imgadd select{flex:1 1 190px;min-width:0;background:#161b22;color:var(--ink);
-  border:1px solid var(--line);border-radius:6px;padding:6px 8px;
+.imgadd select{flex:1 1 190px;min-width:0;padding:6px 8px;
   font:12px/1.3 inherit;min-height:var(--tap)}
 #imgFlavor{flex-basis:210px}
 .imgadd button{flex:0 0 auto;min-height:var(--tap)}
 .imgadd .imgabout{flex:0 0 100%;color:var(--dim);margin:0;
-  font:12px/1.5 system-ui,sans-serif;max-width:70ch}
+  font:var(--f-ui);max-width:70ch}
 /* The one job at a time, said beside the button that started it rather than
    written into the button — a package id is longer than any button should be,
    and as a label it turned Install into a green banner across the tab. */
-.pkgworking{flex:0 0 100%;color:var(--accent);font:12px/1.5 system-ui,sans-serif;
+.pkgworking{flex:0 0 100%;color:var(--accent);font:var(--f-ui);
   overflow-wrap:anywhere}
 .macros .pkgworking{flex:1 1 100%}
 @media(max-width:900px){ .imgadd select{font-size:16px} }
@@ -300,11 +317,27 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .field,.nb .field{padding:11px 14px}
 .modal label,.nb label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
   margin-bottom:5px}
+/* The field skin, once: every text control on the page — modal, notebook,
+   sidebar rows and cards, the inline boxes — shares its ground, edge and
+   radius here. A site declares only what is its own: font, padding, size. */
+.modal input,.modal textarea,.modal select,
+.row input,.row select,
+.nb input,.nb textarea,.nb select,
+.dropbox input,.dropbox textarea,.addstep input,.codebox input,
+.imgadd select,.side .card select{
+  background:#161b22;color:var(--ink);border:1px solid var(--line);
+  border-radius:6px}
 .modal input,.modal textarea,.modal select,
 .row input,.row select,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
-  background:#161b22;color:var(--ink);border:1px solid var(--line);border-radius:6px;
   padding:8px 9px;font:13px/1.5 var(--mono)}
+/* The sidebar's own selects — the Claude card's pickers. Same phone rules as
+   every other field: finger-height, and 16px so iOS does not zoom the page
+   into them. */
+.side .card select{padding:6px 8px;font:12px/1.3 inherit;min-height:30px}
+@media(max-width:900px){
+  .side .card select{font-size:16px;min-height:var(--tap)}
+}
 .modal textarea{min-height:132px;resize:vertical;white-space:pre}
 /* 16px on a phone: iOS Safari zooms the page into any smaller field on
    focus, and this fixed layout has no way to zoom back out. */
@@ -314,7 +347,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal input:focus,.modal textarea:focus,.modal select:focus,
 .nb input:focus,.nb textarea:focus,.nb select:focus{
   outline:2px solid #2f4d6d;outline-offset:-1px}
-.modal .hint,.nb .hint{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-top:6px}
+.modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:6px}
 /* Wrapping, because a footer that does not fit does not merely look cramped:
    the box scrolls sideways and the whole panel slides under your thumb. */
 .modal .foot,.nb .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
@@ -353,27 +386,29 @@ button.on{background:#1f6f36;border-color:#2ea043}
   overflow-wrap:anywhere;background:var(--well,rgba(0,0,0,.15));
   border:1px solid var(--line);border-radius:6px;padding:10px 12px;
   margin-top:8px;max-height:16em;overflow-y:auto}
-.verlogbtn{font:600 11px/1 system-ui,sans-serif}
+/* A card body that is prose-and-controls rather than rows: the same inner
+   air .macros and .docbar give their cards. The Claude card ran its content
+   to the card edge for want of exactly this. */
+.card .pad{padding:9px 12px}
 .prefrow{display:flex;gap:10px;flex-wrap:wrap}
 .prefrow .pick{display:flex;gap:6px;align-items:center;
-  font:11px/1.5 system-ui,sans-serif;color:var(--dim)}
-.prefwhy{color:var(--dim);font:11px/1.6 system-ui,sans-serif;margin:8px 0 0}
+  font:var(--f-note);color:var(--dim)}
 .veradd{margin-top:10px}
-.veradd summary{color:var(--dim);font:11px/1.6 system-ui,sans-serif;
+.veradd summary{color:var(--dim);font:var(--f-note);
   cursor:pointer;min-height:var(--tap);display:flex;align-items:center}
 @media(max-width:520px){
   .verinit .vstart,.verinit .vdir{flex:1 1 100%;width:auto}
   .verinit button{flex:1 1 100%}
 }
 .verln{display:flex;gap:8px;align-items:baseline;padding:2px 0;flex-wrap:wrap}
-.verln span:first-child{flex:0 0 118px;color:var(--dim);font:11px/1.5 system-ui,sans-serif}
+.verln span:first-child{flex:0 0 118px;color:var(--dim);font:var(--f-note)}
 .verln code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
 .verln.off code{color:var(--dim)}
-.vermark{font:11px/1.5 system-ui,sans-serif;color:var(--warn,#d29922)}
-.verwhy{color:var(--dim);font:11px/1.6 system-ui,sans-serif;margin:7px 0 0}
+.vermark{font:var(--f-note);color:var(--warn)}
+.verwhy,.prefwhy{color:var(--dim);font:var(--f-note);margin:7px 0 0;max-width:70ch}
 .verbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
 .verbtns .sp{flex:1 1 auto}
-.verpol{display:flex;gap:6px;align-items:center;font:11px/1.5 system-ui,sans-serif;
+.verpol{display:flex;gap:6px;align-items:center;font:var(--f-note);
   color:var(--dim);flex-wrap:wrap}
 @media(max-width:520px){
   .verln span:first-child{flex:0 0 100%}
@@ -398,10 +433,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* A download is a link wearing the button suit, because the browser has to
    navigate to it — fetch would buffer the file into JS for nothing. */
 .artrow a.btn{display:inline-flex;align-items:center;min-height:var(--tap);
-  padding:6px 12px;background:#21262d;color:var(--ink);border:1px solid var(--line);
+  padding:6px 12px;background:#232b34;color:var(--ink);border:1px solid var(--line);
   border-radius:6px;font:600 12px/1 system-ui,sans-serif;text-decoration:none}
 @media(hover:hover){ .artrow a.btn:hover{border-color:#8b949e} }
-.artrow.job .grow{font:12px/1.5 system-ui,sans-serif;color:var(--dim)}
+.artrow.job .grow{font:var(--f-ui);color:var(--dim)}
 
 /* The phone card. Almost nothing of its own: it is .row like Projects, and
    these are the few things a list of rows does not already say. */
@@ -412,7 +447,6 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* A question somebody is blocked on. Bordered rather than merely spaced,
    because a question on a dashboard is easy to scroll past. */
 .row.phask{border-left:2px solid var(--accent)}
-.row .dots{display:inline-block;width:3ch;text-align:left;white-space:pre}
 .todoadd{display:flex;gap:8px}
 /* display:flex beats the hidden attribute; the log hides this row. */
 .todoadd[hidden]{display:none}
@@ -434,27 +468,30 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .histbar[hidden]{display:none}
 .histbar input{flex:1;min-width:0}
 .histbar select{flex:0 0 auto;width:auto}
-.histbar label{flex:0 0 auto;margin:0;color:var(--dim);
-  font:11px/1.5 system-ui,sans-serif}
+.histbar label{flex:0 0 auto;margin:0;color:var(--dim);font:var(--f-note)}
 @media(max-width:560px){ .histbar{flex-wrap:wrap} .histbar input{flex:1 1 100%} }
 /* The reason a line went, under the line it went with — indented, because it
    is a note about the event above it and not an event of its own. */
-.hist .note{display:block;color:#d8b25c;font:11.5px/1.5 system-ui,sans-serif;
-  margin-top:2px}
-.hist{font:12px/1.5 system-ui,sans-serif;padding:7px 0;
+.hist .note{display:block;color:var(--gold);font:var(--f-note);margin-top:2px}
+.hist{font:var(--f-ui);color:var(--ink);padding:7px 0;
   border-top:1px dashed #232b34;display:flex;gap:8px;align-items:baseline}
 .hist:first-child{border-top:0}
 .hist .when{flex:0 0 auto;color:var(--dim);font:11px/1.5 var(--mono);
   min-width:8.5em}
-.hist .act{flex:0 0 auto;font:600 10px/1 system-ui,sans-serif;
-  text-transform:uppercase;letter-spacing:.4px;padding:3px 5px;border-radius:4px;
-  border:1px solid var(--line);color:var(--dim);white-space:nowrap}
-.hist .act.gone{color:#e0796f;border-color:#4d2220}
-.hist .act.new{color:#7fc08a;border-color:#1f3f28}
+/* The badge: one voice for every small uppercase chip in the notebook —
+   the log's verb, the who-mark, a memory's type, a bug's severity and
+   status. They were four hand-copied rules before, which is how "the same
+   design language" quietly stops being the same. */
+.hist .act,.todo .who,.mem .mtype,.bug .sev,.bug .bstat{flex:0 0 auto;
+  font:var(--f-tag);text-transform:uppercase;letter-spacing:.4px;
+  padding:3px 5px;border-radius:4px;border:1px solid var(--line);
+  color:var(--dim);white-space:nowrap}
+.hist .act.gone{color:var(--red2);border-color:var(--red2-edge)}
+.hist .act.new{color:var(--green2);border-color:var(--green2-edge)}
 .hist .what{flex:1;min-width:0;overflow-wrap:anywhere}
 /* Set off from the words rather than trailing them: without the gap the name
    reads as the last word of the line it is labelling. */
-.hist .who{color:#b79ae0;margin-left:6px}
+.hist .who{color:var(--purple);margin-left:6px}
 .hist .who.you{color:var(--dim)}
 .hist .was{color:var(--dim);text-decoration:line-through}
 @media(max-width:560px){ .hist{display:block}
@@ -515,9 +552,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 @media(hover:hover){ .todo .go:not([disabled]):hover{color:#7ee08a;border-color:#2ea043} }
 /* Items a session raised, marked so the operator can see what was flagged at
    them rather than by them — the reason the list exists at all. */
-.todo .who{flex:0 0 auto;font:600 10px/1 system-ui,sans-serif;text-transform:uppercase;
-  letter-spacing:.4px;padding:3px 5px;border-radius:4px;border:1px solid #38294a;
-  color:#b79ae0;white-space:nowrap;margin-top:1px}
+.todo .who{border-color:var(--purple-edge);color:var(--purple);margin-top:1px}
 .todo .rm{color:var(--dim)}
 @media(hover:hover){ .todo .rm:hover{color:var(--bad);border-color:#4d2220} }
 /* Four controls and a number on one line is tight on a phone; the buttons
@@ -541,7 +576,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
    the click-time guards are the enforcement, this is the reading of it. */
 .nb.held #bugAdd,.nb.held .bug .macts,.nb.held #memAdd,
 .nb.held .mem .macts{opacity:.4}
-.nb .nbhead{color:var(--dim);font:12px/1.5 system-ui,sans-serif}
+.nb .nbhead{color:var(--dim);font:var(--f-ui)}
 /* Every view opens the same way: its one-line summary left, its controls
    right — the same shape on all four tabs, which is most of what "the same
    design language" means. */
@@ -573,12 +608,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
   margin:0 0 9px 26px;background:#1a1113}
 .dropbox .q{font:12px/1.5 system-ui,sans-serif;color:var(--ink);margin-bottom:7px}
 .dropbox .q span{color:var(--dim)}
-.dropbox input{width:100%;box-sizing:border-box;background:#161b22;color:var(--ink);
-  border:1px solid var(--line);border-radius:6px;padding:6px 8px;
+.dropbox input{width:100%;box-sizing:border-box;padding:6px 8px;
   font:12.5px/1.4 system-ui,sans-serif;min-height:var(--tap)}
 @media(max-width:900px){ .dropbox input{font-size:16px} }
-.dropbox textarea{width:100%;box-sizing:border-box;background:#161b22;
-  color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:7px 8px;
+.dropbox textarea{width:100%;box-sizing:border-box;padding:7px 8px;
   font:12.5px/1.5 system-ui,sans-serif;min-height:86px;resize:vertical;
   white-space:pre-wrap}
 @media(max-width:900px){ .dropbox textarea{font-size:16px} }
@@ -592,8 +625,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .addstep .link{background:none;border:0;color:var(--dim);padding:2px 0;
   font:12px/1.4 system-ui,sans-serif;min-height:24px}
 @media(hover:hover){ .addstep .link:hover{color:var(--accent)} }
-.addstep input{flex:1;min-width:0;background:#161b22;color:var(--ink);
-  border:1px solid var(--line);border-radius:6px;padding:5px 8px;
+.addstep input{flex:1;min-width:0;padding:5px 8px;
   font:12.5px/1.4 system-ui,sans-serif;min-height:var(--tap)}
 .addstep button{flex:0 0 auto;min-height:var(--tap)}
 @media(max-width:900px){ .addstep input{font-size:16px} }
@@ -608,22 +640,11 @@ button.on{background:#1f6f36;border-color:#2ea043}
    from the line, with nothing on it naming which one. */
 .sendbox{background:#161d26;border:1px solid var(--line);border-radius:8px;
   margin:6px 0 2px;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
-.sendbox .q{color:var(--fg);font:600 12px/1.4 system-ui,sans-serif}
+.sendbox .q{color:var(--ink);font:600 12px/1.4 system-ui,sans-serif}
 .sendbox .q span{font-weight:400;color:var(--dim)}
-/* Two pickers side by side while there is room, stacked when there is not —
-   an ultrawide should not stretch a select to a foot wide, and a phone should
-   not put half of one off the edge. */
-.sendbox .picks{display:flex;gap:8px;flex-wrap:wrap}
-.sendbox label.pick{display:flex;gap:6px;align-items:center;flex:0 1 240px;
-  color:var(--dim);font:12px/1.4 system-ui,sans-serif}
-.sendbox label.pick select{flex:1 1 auto;min-width:0;min-height:var(--tap)}
-.sendbox .also{display:flex;gap:8px;align-items:center;margin:0;
-  color:var(--dim);font:12px/1.4 system-ui,sans-serif;cursor:pointer}
-.sendbox .also.off{opacity:.4;cursor:default}
-.sendbox .also input{width:18px;height:18px;accent-color:#2ea043;flex:0 0 auto}
 .sendbox textarea{width:100%;box-sizing:border-box;resize:vertical;
   min-height:calc(var(--tap) + 6px)}
-.sendbox .note{color:var(--dim);font:11px/1.4 system-ui,sans-serif}
+.sendbox .note{color:var(--dim);font:var(--f-note)}
 .sendbox .acts{display:flex;gap:8px;align-items:center}
 /* The spacer is per-context here, not global — without this rule it collapses
    and the two buttons sit left while every other box on the panel puts them
@@ -649,24 +670,20 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .mem>summary::before{content:"▸";color:var(--dim);font-size:11px;width:9px}
 .mem[open]>summary::before{content:"▾"}
 .mem .mname{font:600 12px/1.4 var(--mono);color:var(--ink)}
-.mem .mwhen{margin-left:auto;color:var(--dim);font:11px/1.4 system-ui,sans-serif;
+.mem .mwhen{margin-left:auto;color:var(--dim);font:var(--f-note);
   white-space:nowrap}
 /* The four types Claude files a memory under, colored so a glance separates
    "who Sean is" from "what I was told to do differently". */
-.mem .mtype{font:600 10px/1 system-ui,sans-serif;text-transform:uppercase;
-  letter-spacing:.4px;padding:3px 5px;border-radius:4px;border:1px solid var(--line);
-  color:var(--dim);white-space:nowrap}
-.mem .mtype.feedback{color:#d8b25c;border-color:#4a3c1e}
-.mem .mtype.user{color:#77b7e8;border-color:#1e3a4a}
-.mem .mtype.project{color:#7fc08a;border-color:#1f3f28}
-.mem .mtype.reference{color:#b79ae0;border-color:#38294a}
+.mem .mtype.feedback{color:var(--gold);border-color:var(--gold-edge)}
+.mem .mtype.user{color:var(--blue2);border-color:var(--blue2-edge)}
+.mem .mtype.project{color:var(--green2);border-color:var(--green2-edge)}
+.mem .mtype.reference{color:var(--purple);border-color:var(--purple-edge)}
 /* Wrapped, unlike the command editor's textarea: those are shell lines where a
    wrap would lie about what runs, these are prose with an 80-column habit and
    a description line that is nobody's idea of scrollable. */
-.mem textarea{white-space:pre-wrap}
+.mem textarea{white-space:pre-wrap;min-height:190px}
 .mem .body{padding:0 10px 10px}
-.mem .mdesc{color:var(--dim);font:12px/1.5 system-ui,sans-serif;margin-bottom:8px}
-.mem textarea{min-height:190px}
+.mem .mdesc{color:var(--dim);font:var(--f-ui);margin-bottom:8px}
 .mem .macts{display:flex;gap:8px;margin-top:8px}
 .mem .macts .sp{flex:1}
 /* The memory's line in the index, on the memory it belongs to. Two fields
@@ -678,8 +695,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .mem .ix .ixh{flex:1;min-width:0}
 @media(max-width:560px){ .mem .ix{display:block}
   .mem .ix .ixt{margin-bottom:6px} }
-.mem .ixnote{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin-bottom:8px}
-.mem .ixnote.bad{color:#d8b25c}
+.mem .ixnote{color:var(--dim);font:var(--f-note);margin-bottom:8px}
+.mem .ixnote.bad{color:var(--gold)}
 #memAdd .link{background:none;border:0;color:var(--dim);padding:2px 0;
   font:12px/1.4 system-ui,sans-serif;min-height:var(--tap)}
 @media(hover:hover){ #memAdd .link:hover{color:var(--accent)} }
@@ -706,23 +723,20 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .bug .btitle{flex:1;min-width:0;font:13px/1.4 system-ui,sans-serif;
   overflow-wrap:anywhere}
 .bug .btitle.done{color:var(--dim);text-decoration:line-through}
-.bug .sev,.bug .bstat{flex:0 0 auto;font:600 10px/1 system-ui,sans-serif;
-  text-transform:uppercase;letter-spacing:.4px;padding:3px 5px;border-radius:4px;
-  border:1px solid var(--line);color:var(--dim);white-space:nowrap}
 .bug .sev.high{color:#e8a04c;border-color:#4a331e}
-.bug .sev.critical{color:#e0796f;border-color:#4d2220}
-.bug .bstat.open{color:#77b7e8;border-color:#1e3a4a}
-.bug .bstat.fixed{color:#7fc08a;border-color:#1f3f28}
+.bug .sev.critical{color:var(--red2);border-color:var(--red2-edge)}
+.bug .bstat.open{color:var(--blue2);border-color:var(--blue2-edge)}
+.bug .bstat.fixed{color:var(--green2);border-color:var(--green2-edge)}
 /* Neither green nor red: it was real and it stopped applying, which is not a
    success and not a refusal. */
-.bug .bstat.na{color:#b79ae0;border-color:#38294a}
+.bug .bstat.na{color:var(--purple);border-color:var(--purple-edge)}
 .bug .body{padding:0 2px 10px 17px}
 .bug .bfield{margin-bottom:7px}
 .bug .bfield label{font:600 10px/1.6 system-ui,sans-serif;color:var(--dim);
   text-transform:uppercase;letter-spacing:.4px;display:block}
 .bug .bval{font:12.5px/1.5 system-ui,sans-serif;white-space:pre-wrap;
   overflow-wrap:anywhere}
-.bug .bwho{color:var(--dim);font:11px/1.5 system-ui,sans-serif;margin:6px 0}
+.bug .bwho{color:var(--dim);font:var(--f-note);margin:6px 0}
 .bugform .two{display:flex;gap:6px}
 .bugform .two>*{flex:1;min-width:0}
 /* Drift between the index and the files: never fatal, which is exactly why it
@@ -749,11 +763,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 #todoBatch{padding:0 14px 8px}
 #todoBatch button{margin-top:6px}
 .mdrift{padding:0 14px 4px}
-.mdrift div{color:var(--warn);font:12px/1.5 system-ui,sans-serif;margin-bottom:4px}
-.modal select{width:100%;box-sizing:border-box;background:#161b22;color:var(--ink);
-  border:1px solid var(--line);border-radius:6px;padding:8px 9px;
-  font:13px/1.5 var(--mono)}
-@media(max-width:900px){ .modal select{font-size:16px} }
+.mdrift div{color:var(--warn);font:var(--f-ui);margin-bottom:4px}
 /* The public key: one unbroken base64 line nobody should read, only copy. */
 #pPub{margin-top:8px;min-height:0;white-space:pre;overflow-x:auto;resize:none;
   font-size:11px;color:var(--dim)}
@@ -816,8 +826,7 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
    because a hundred characters beside a button is four visible ones. */
 #docAuth{flex-wrap:wrap}
 .codebox{display:flex;gap:8px;flex:1 1 100%}
-.codebox input{flex:1;min-width:0;background:#161b22;color:var(--ink);
-  border:1px solid var(--line);border-radius:6px;padding:7px 9px;
+.codebox input{flex:1;min-width:0;padding:7px 9px;
   font:12px/1.4 var(--mono);min-height:var(--tap)}
 .codebox button{flex:0 0 auto;min-height:var(--tap)}
 @media(max-width:900px){ .codebox input{font-size:16px} }
@@ -965,8 +974,7 @@ body.dragging .tab .lbl{cursor:grabbing}
    eye travelling the whole way between them. Capped and left-aligned rather
    than centred: the pane's own bar is at this edge, and the content should
    start where the label naming it does. */
-.pane .doc > *{max-width:var(--doc-w);}
-:root{--doc-w:1080px}
+.pane .doc > *{max-width:var(--doc-w)}
 /* Every child of the stack occupies the whole of it, and one is visible. See
    paneStack(): the frames behind stay loaded and stay the same size. */
 .pane .stack{position:relative;flex:1;min-height:0}
@@ -1047,12 +1055,11 @@ body.dragging .tab .lbl{cursor:grabbing}
 .fx .bust{padding:9px 11px;color:var(--bad);font-weight:600}
 .fx .rule{border-top:1px solid var(--line);padding:9px 11px}
 .fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
-.fx .rule .desc{margin:3px 0 6px}
+.fx .rule .desc{margin:3px 0 6px;overflow-wrap:anywhere}
 .fx .loc{font:12px/1.7 var(--mono);color:#cbd5e1;overflow-wrap:anywhere}
 .fx .msg{font:12px/1.5 var(--mono);color:var(--dim);white-space:pre-wrap;
   margin:5px 0 0;padding-left:9px;border-left:2px solid var(--line);
   overflow-wrap:anywhere}
-.fx .rule .desc{overflow-wrap:anywhere}
 .fx a{color:var(--note)}
 .fx .cve{display:inline-block;font:11px/1 var(--mono);padding:3px 7px;
   border-radius:99px;border:1px solid #4d2220;color:var(--bad);
@@ -1438,6 +1445,7 @@ body.dragging .tab .lbl{cursor:grabbing}
          so it is set once here and every send applies it. -->
     <div class="card" data-card="claude">
       <h2>Claude</h2>
+      <div class="pad">
       <div class="prefrow">
         <label class="pick">Model <select id="prefModel"
           aria-label="model every send switches the session to"></select></label>
@@ -1448,6 +1456,7 @@ body.dragging .tab .lbl{cursor:grabbing}
         step, a bug, the version question — as <code>/model</code> and
         <code>/effort</code> ahead of it. Claude keeps a switch as the default
         for new sessions too. <i>Leave as is</i> sends nothing.</p>
+      </div>
     </div>
     <!-- A phone on the end of wireless adb. USB is not an option here: there
          is no /dev/bus/usb in the container, and even passed through the

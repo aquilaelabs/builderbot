@@ -67,12 +67,18 @@ claude_scope() {
     mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)"; mkdir -p "$dir"; }
     out="$dir/claude-scope-${proj}.json"
 
-    # Every tool that reaches a file by path, not just the two that seemed
-    # obvious. A rule names one tool: Read and Edit do not cover Write, so the
-    # first version of this left a session able to CREATE a file in a sibling
-    # project — it could not read one or change one, because Write refuses on
-    # a file it has not read and Read was denied, but a new path was reachable.
-    # NotebookEdit is the same tool wearing a different name for .ipynb.
+    # Read for reading, Edit for every tool that writes. Two eras of Claude
+    # Code semantics meet here, and both left a mark. Originally a rule named
+    # one tool — Read and Edit did not cover Write — so the first version of
+    # this left a session able to CREATE a file in a sibling project, and the
+    # fix was four rules per path (Write, and NotebookEdit, the same tool
+    # wearing a different name for .ipynb). Claude Code has since inverted
+    # that: an Edit(path) rule now covers ALL file-editing tools, and a
+    # Write() or NotebookEdit() rule is IGNORED with a startup warning — a
+    # wall of yellow at the top of every session, one line per dead rule.
+    # So: Edit carries the whole write-side deny, and the two dead spellings
+    # are gone. If the semantics ever move again, the warning wall is the
+    # tell, and this comment is the map.
     #
     # Build beside the target and move into place. Writing straight to $out
     # would leave a truncated file if jq failed, and claude would then be
@@ -99,16 +105,10 @@ claude_scope() {
     if siblings_of "$proj" | jq -R . | jq -s --arg ws "$WORKSPACE" --arg proj "$proj" '
            {permissions: {
               additionalDirectories: [],
-              deny: (map("Read(\(.)/**)", "Edit(\(.)/**)",
-                         "Write(\(.)/**)", "NotebookEdit(\(.)/**)")
+              deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
                      + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)",
-                        "Write(\($ws)/_work/**)", "NotebookEdit(\($ws)/_work/**)",
                         "Edit(\($ws)/\($proj)/VERSION)",
-                        "Write(\($ws)/\($proj)/VERSION)",
-                        "NotebookEdit(\($ws)/\($proj)/VERSION)",
-                        "Edit(\($ws)/\($proj)/**/VERSION)",
-                        "Write(\($ws)/\($proj)/**/VERSION)",
-                        "NotebookEdit(\($ws)/\($proj)/**/VERSION)"])
+                        "Edit(\($ws)/\($proj)/**/VERSION)"])
            }}' > "$tmp" && [ -s "$tmp" ]; then
         mv -f "$tmp" "$out"
         printf '%s' "$out"
