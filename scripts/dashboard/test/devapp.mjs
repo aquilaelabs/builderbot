@@ -61,6 +61,13 @@ await page.waitForSelector('#devEnvModal:not([hidden])');
 ok(/missing against \.env\.example: PORT/.test(
      await page.$eval('#devEnvModal .hint', e => e.textContent)),
    'the env editor says which keys the example declares and this does not');
+// An empty env opens on the example rather than on a blank box under a list
+// of names the operator would have to type out.
+const seeded = await page.$eval('#devEnvModal textarea', e => e.value);
+ok(/PORT=8080/.test(seeded) && /Started from this project/.test(seeded),
+   '...and opens on the example, seeded, when nothing is stored yet');
+ok(/nothing saved yet/.test(await page.$eval('#devEnvModal .hint', e => e.textContent)),
+   '...saying it is a draft, since a seeded box has not been written');
 await page.fill('#devEnvModal textarea', 'PORT=9090\n');
 await page.click('#devEnvModal .primary');
 await page.waitForSelector('#devEnvModal', { state: 'hidden' });

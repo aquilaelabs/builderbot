@@ -350,6 +350,14 @@ button.on{background:#1f6f36;border-color:#2ea043}
   .side .card select{font-size:16px;min-height:var(--tap)}
 }
 .modal textarea{min-height:132px;resize:vertical;white-space:pre}
+/* The env editor wraps where the command editor does not. The rule above is
+   pre because a wrapped shell line lies about what runs — but this is an env
+   file whose own lines are short KEY=value pairs, and what overflows is the
+   seeded example's explanatory comments. Wrapping is display only inside a
+   textarea (nothing but Enter makes a newline), so the file is untouched and
+   a phone stops needing a sideways scroll to read the notes that are the
+   whole reason the box is seeded. */
+#devEnvModal textarea{white-space:pre-wrap;overflow-wrap:anywhere}
 /* 16px on a phone: iOS Safari zooms the page into any smaller field on
    focus, and this fixed layout has no way to zoom back out. */
 @media(max-width:900px){ .modal input,.modal textarea,.modal select,
@@ -5926,9 +5934,14 @@ $("todoRevert").onclick = revertNotebook;
       }catch(e){ notify("env: " + e, true); return; }
       const m = document.getElementById("devEnvModal");
       m.querySelector("textarea").value = j.text || "";
-      m.querySelector(".hint").textContent = (j.missing || []).length
-        ? "missing against .env.example: " + j.missing.join(", ")
-        : "everything .env.example declares is set";
+      // Both halves: whether this is a draft off the example, and what the
+      // STORED file is still missing — the second stays true while the box
+      // holds an unsaved draft, which is exactly when it matters.
+      m.querySelector(".hint").textContent =
+        (j.seeded ? "started from .env.example — nothing saved yet. " : "")
+        + ((j.missing || []).length
+           ? "missing against .env.example: " + j.missing.join(", ")
+           : "everything .env.example declares is set");
       m.hidden = false;
       m.querySelector(".primary").onclick = async () => {
         try{

@@ -2490,7 +2490,12 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "rebuild":
             r = devapp.rebuild(name)
         elif act == "env-get":
-            return self._json({"text": devapp.read_env(name),
+            # An empty env opens on the example rather than on nothing. The
+            # `missing` list still answers about what is STORED, so the hint
+            # under the box stays true while the box is only a draft.
+            stored = devapp.read_env(name)
+            return self._json({"text": stored or devapp.starter(name),
+                               "seeded": not stored,
                                "missing": devapp.missing_env(name)})
         elif act == "env-set":
             r = devapp.write_env(name, req.get("text") or "")

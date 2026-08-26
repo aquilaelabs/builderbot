@@ -301,6 +301,27 @@ def read_env(project):
         return ""
 
 
+def starter(project):
+    """What an empty editor opens on: the repo's .env.example, seeded.
+
+    A blank box under a list of six key names asks the operator to type out
+    what the example already spells — with its own comments explaining each
+    one, which is the half a list of names throws away. Seeded, not saved:
+    nothing reaches disk until Save, so `missing_env` keeps answering about
+    the stored file and Up stays honestly dead until the values are real.
+    """
+    try:
+        example = (WORKSPACE / project / ".env.example").read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if not example.strip():
+        return ""
+    return ("# Started from this project's .env.example. Fill in the values\n"
+            "# and press Save — nothing is written until you do.\n\n"
+            + example.rstrip() + "\n")
+
+
 def write_env(project, text):
     if len(text or "") > 65536:
         return {"error": "that env file is over 64KB — this holds settings, "
