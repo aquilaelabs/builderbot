@@ -5867,6 +5867,8 @@ $("todoRevert").onclick = revertNotebook;
                 : da.changed_why === "dirty"
                   ? " — uncommitted changes are not in it" : ""}`
             : "never built — Build makes the first image"}</div>
+          ${(da.risks || []).length ? `<div class="dim">asks for more than its own directory — ${
+            esc(da.risks.join("; "))}</div>` : ""}
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
             esc((daJob.log || "").slice(-600))}</div>` : ""}
         </div>
@@ -5956,11 +5958,25 @@ $("todoRevert").onclick = revertNotebook;
             : "Rebuild the dev instance?\n\nBuilds the image, then down and up. ")
           + "If the build finds new env settings it stops before up, and "
           + "the Env editor will hold your old values in comments.")) return;
+      // What the compose file asks for beyond its own directory, once, before
+      // anything starts. A namespace bounds which containers this can touch;
+      // it cannot bound what a container is handed, and a file that mounts /
+      // produces a bbdev- container like any other. Asked once per set: the
+      // digest goes back with the action, so a file that gains a mount later
+      // asks again rather than inheriting the last yes.
+      let ack = "";
+      if ((act === "up" || act === "rebuild") && !da.risks_ack){
+        if (!confirm("This compose file asks for more than its own directory:"
+            + "\n\n" + (da.risks || []).map(x => "\u2022 " + x).join("\n")
+            + "\n\nA container it starts can reach those. Start it anyway?"))
+          return;
+        ack = da.risks_digest || "";
+      }
       b.disabled = true;
       try{
         const r = await fetch("/api/devapp", {method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({project, action: act})});
+          body: JSON.stringify({project, action: act, ack})});
         const j = await r.json();
         if (j.error) notify(j.error, true);
       }catch(e){ notify("dev instance: " + e, true); }

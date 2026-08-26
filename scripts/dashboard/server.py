@@ -2490,12 +2490,16 @@ class Handler(BaseHTTPRequestHandler):
         if name not in {p["name"] for p in project_list()}:
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
+        # `ack` is the digest of the risk list the operator was actually
+        # shown — not a bare yes. A compose file that gains a mount between
+        # the row rendering and the button being pressed does not inherit the
+        # acknowledgement of the one before it.
         if act == "up":
-            r = devapp.up(name)
+            r = devapp.up(name, field(req, "ack"))
         elif act == "down":
             r = devapp.down(name)
         elif act == "rebuild":
-            r = devapp.rebuild(name)
+            r = devapp.rebuild(name, field(req, "ack"))
         elif act == "env-get":
             # An empty env opens on the example rather than on nothing. The
             # `missing` list still answers about what is STORED, so the hint

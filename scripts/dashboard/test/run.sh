@@ -372,8 +372,12 @@ case "$1" in
     done
     case "$verb" in
       config)
-        # A service that declares a build, which is what the fixture has.
-        echo '{"services":{"app":{"build":{"context":"."}}}}'; exit 0 ;;
+        # A service that declares a build, which is what the fixture has —
+        # unless a test wants a different shape, which it leaves here.
+        if [ -f "$ST/$proj.config" ]; then cat "$ST/$proj.config"
+        else echo '{"services":{"app":{"build":{"context":"."}}}}'
+        fi
+        exit 0 ;;
       ps)
         # -a asks "does anything exist here", bare ps asks "what is running":
         # an exited container answers yes to the first and no to the second,
