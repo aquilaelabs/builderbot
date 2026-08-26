@@ -396,18 +396,13 @@ ub('version', 'unbump');
 ok(/already returned/.test(ub('version', 'unbump').out),
    'a second unbump refuses instead of quietly re-bumping');
 
-// ---- a starting version, estimated instead of guessed --------------------
-// Adoption beats judgment: a declared identity wins outright, then a release
-// tag, and only a project declaring nothing gets a maturity estimate — which
-// never proposes 1.0.0, a promise only the operator can make.
-rmSync(`${U}/VERSION`, { force: true });
-writeFileSync(`${U}/package.json`, JSON.stringify({ version: '2.3.1' }));
-ok(ub('version', 'suggest').out.startsWith('2.3.1'),
-   'a manifest that declares a version is adopted, not second-guessed');
-rmSync(`${U}/package.json`, { force: true });
-const est = ub('version', 'suggest').out;
-ok(/^0\.[123]\.0/.test(est) && /estimate/.test(est) && /1\.0\.0 is a promise/.test(est),
-   'with nothing declared, the estimate stays under 1.0.0 and says why');
+// The mechanical estimate that used to live here is gone. `bb version
+// suggest` counted commits and read a manifest, and the judgment it produced
+// was worth less than nothing once Ask Claude existed: a number handed to a
+// session ANCHORS it, inviting it to justify 0.2.0 rather than read the code.
+const goneVerb = ub('version', 'suggest');
+ok(goneVerb.code !== 0, 'the mechanical estimate is gone, not merely unused');
+
 rmSync(U, { recursive: true, force: true });
 
 // ---- putting the question to the session ---------------------------------

@@ -213,6 +213,27 @@ ok(switched.indexOf('/model sonnet') < switched.indexOf('/effort xhigh'),
 ok(!/\/model sonnet.*delete a project/s.test(switched.split('\n')
      .find(l => l.includes('/model sonnet')) || ''),
    '...each on its own line, never glued to the step');
+// A switch the session is already on is not typed again. `/effort` is
+// explicitly "this session only" and never reaches claude's settings file,
+// so without an in-memory record of what this dashboard typed it would be
+// re-sent on every message forever — printing its explanation into the pane
+// immediately before the next line is typed into it, which is exactly how a
+// message ends up "typed but not sent".
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'C-u']);
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'clear']);
+execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
+await page.click(`${row('alpha')} [data-m]`);
+await page.waitForSelector('#todoList .todo', { timeout: 20000 });
+await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
+await page.waitForSelector('.sendbox');
+await page.click('#todoGo');
+await page.waitForFunction(() => !document.querySelector('.sendbox'),
+                           null, { timeout: 20000 });
+const again = tmuxCapture('claude-alpha');
+ok(!/\/model sonnet/.test(again) && !/\/effort xhigh/.test(again),
+   'the same switch is not typed a second time into a session already on it');
+ok(/delete a project/.test(again),
+   '...and the step itself still goes');
 // A send with nothing picked types no slash command at all — the pickers hold
 // their choice for the next one, but "leave as is" has to stay possible.
 // Back into the notebook first: sending lands you in the session's tab.

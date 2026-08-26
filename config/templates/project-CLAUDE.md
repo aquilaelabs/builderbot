@@ -286,11 +286,12 @@ under the default `locked` it is the operator's, from the Artifacts tab. Do
 not write the file by hand; that is the one path deliberately closed.
 
 **The operator may ask you what it should start at.** Pressing *Ask Claude*
-on that tab sends the question here, the way a roadmap step arrives. Run
-`bb version suggest` for the mechanical signals, then form your own view from
-the code, the roadmap and the changelog — and **propose, then ask**. They came
-to negotiate; a number applied on arrival skips the conversation they wanted.
-Do not propose `1.0.0` unless they raise it.
+on that tab sends the question here, the way a roadmap step arrives. The
+judgment is the whole of what they are asking for: read the code, the
+roadmap and the changelog, decide how finished this actually is and what has
+shipped, and say what you concluded and why. Then **propose, and ask** —
+they came to negotiate, and a number applied on arrival skips the
+conversation they wanted. Do not propose `1.0.0` unless they raise it.
 
 **A repo that ships two products has two versions.** An APK and a browser
 extension do not share a maturity, so a directory with its own `VERSION` file

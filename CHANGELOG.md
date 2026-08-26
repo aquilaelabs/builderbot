@@ -14,3 +14,4 @@
 - A version bump now stages until you press Save — Revert or leaving the page discards it (7a6cf2d)
 - The Claude card now says which model Claude is actually on, not just what it would switch to (b38d4db)
 - Asking Claude about a version now lands in the session instead of sitting unsent in the prompt (b38d4db)
+- Changing the Claude model no longer swallows the message sent right after it (42a9338)

@@ -52,6 +52,27 @@ def live(session, sessions):
     return session in set(sessions)
 
 
+def settle(session, tries=12, quiet=2):
+    """Wait until the pane stops changing, or give up.
+
+    A slash command is not finished when Enter is pressed — claude answers it
+    and re-renders, and `/effort` in particular prints six lines about what
+    the level means. Typing the next thing into that is how a message ends up
+    in a box that is busy being redrawn: it does not echo inside the window
+    tell() watches, so a line that arrived perfectly well is reported as
+    unsent. Two identical captures in a row is the cheapest honest "done".
+    """
+    last, same = None, 0
+    for _ in range(tries):
+        now = _capture(session)
+        same = same + 1 if now == last else 0
+        if same >= quiet - 1 and last is not None:
+            return True
+        last = now
+        time.sleep(SETTLE)
+    return False
+
+
 def tell(session, text, sessions=()):
     """Type one line into a session and submit it if it visibly arrived.
 

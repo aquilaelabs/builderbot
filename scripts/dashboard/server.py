@@ -1645,7 +1645,7 @@ memory.configure(run=run, workspace=WORKSPACE,
 import todo                                                      # noqa: E402
 
 todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
-               tmux_name=tmux_name)
+               tmux_name=tmux_name, settle=notify.settle)
 
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card — see the module docstring
@@ -2492,9 +2492,6 @@ class Handler(BaseHTTPRequestHandler):
             if r.get("error"):
                 return self._json(r, 400)
             return self._json(version.payload(name) | {"unbumped": r})
-        if act == "suggest":
-            r = version.suggest(name, comp=field(req, "component") or "")
-            return self._json(r, 400 if r.get("error") else 200)
         if act == "ask":
             # Put to the project's own session rather than answered here: it
             # can read the code and be argued with, and neither is true of a
