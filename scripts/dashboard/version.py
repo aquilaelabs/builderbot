@@ -34,6 +34,12 @@ main can produce the same number — fine, because only main builds publish a
 code. And it only rises while history does: a squash or a force-push that
 drops commits from main lowers it, which for an app already on Play is
 unrecoverable. Do not rewrite the trunk of a project that ships an APK.
+And adopting this scheme in a CLONED repo that already published elsewhere
+needs one check first: Play requires the next versionCode to exceed the last
+one ever uploaded, and this repo's commit count bears no relation to codes a
+previous maintainer picked by hand. Compare `bb version --code` against the
+app's last published code before shipping — if it is not higher, the store
+will refuse the build, and nothing here can know that.
 
 **A tag on HEAD drops the -dev suffix.** `0.4.0-dev.390` sorts before `0.4.0`
 under semver, which is the correct relationship between heading for something
@@ -412,8 +418,18 @@ def init(project, value, by="claude", comp=""):
     rel = str(p.relative_to(root(project).resolve()))
     msg = (f"Add {comp} VERSION at {value}" if comp
            else f"Add VERSION at {value}") + ("" if by == "operator" else " (session)")
-    _git(project, "add", "--", rel)
-    if _git(project, "commit", "-m", msg, "--", rel, timeout=30) is None:
+    # Entries logged before the project had a version describe the work that
+    # BECAME this first version, so they are dated here as its section. Left
+    # unreleased they would ride into the NEXT bump and be labeled as changes
+    # since a release they are actually part of — a mislabel in the one file
+    # that ships to be believed.
+    paths = [rel]
+    if changelog is not None and changelog.roll(
+            where, value, time.strftime("%Y-%m-%d")):
+        paths.append(str((where / changelog.FILE)
+                         .relative_to(root(project).resolve())))
+    _git(project, "add", "--", *paths)
+    if _git(project, "commit", "-m", msg, "--", *paths, timeout=30) is None:
         return {"error": f"{rel} now reads {value}, but committing it failed — "
                          f"commit it by hand", "target": value}
     return {"ok": True, "target": value, "component": comp,
