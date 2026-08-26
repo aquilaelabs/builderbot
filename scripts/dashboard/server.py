@@ -2492,9 +2492,6 @@ class Handler(BaseHTTPRequestHandler):
             if r.get("error"):
                 return self._json(r, 400)
             return self._json(version.payload(name) | {"unbumped": r})
-        if act == "suggest":
-            r = version.suggest(name, comp=field(req, "component") or "")
-            return self._json(r, 400 if r.get("error") else 200)
         if act == "ask":
             # Put to the project's own session rather than answered here: it
             # can read the code and be argued with, and neither is true of a

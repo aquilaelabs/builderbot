@@ -352,7 +352,6 @@ bb version --code  one form only: --code (Android versionCode), --quad (= --win:
                    --file, --semver, --json
 bb version bump major|minor|patch    move the target, if the policy allows it
 bb version init X.Y.Z  give this project (or --for DIR) its first VERSION
-bb version suggest     estimate a starting version from what is already here
 bb version unbump      take an unreleased bump back; its changelog section
                    dissolves into Unreleased, the code stays
 bb version --list  every version this repo carries: its own, and any component

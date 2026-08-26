@@ -838,107 +838,19 @@ def unbump(project, by="claude", comp=""):
             "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
 
 
-# What a fresh project's number should start at is the one question this
-# module cannot compute — but it can be estimated, and the operator asked for
-# the estimate to live beside the field: judging a codebase by hand is
-# exactly the guessing the rest of this system exists to remove.
-_MANIFESTS = (
-    ("package.json", "json"), ("manifest.json", "json"),
-    ("pyproject.toml", "toml"), ("Cargo.toml", "toml"),
-)
-
-
-def suggest(project, comp=""):
-    """A starting version and the reasons, strongest evidence first.
-
-    Adoption beats judgment: a manifest or a release tag already DECLARES an
-    identity, and suggesting anything else would fork it. Only when nothing
-    declares one does this fall back to reading maturity — commit count,
-    shipped artifacts, the roadmap — and it never proposes 1.0.0, because a
-    major version is a compatibility promise only the operator can make.
-    """
-    where = _sub(project, comp)
-    if where is None:
-        return {"error": f"no such component here: {comp}"}
-    # 1. A version something in the directory already declares.
-    for fname, kind in _MANIFESTS:
-        f = where / fname
-        try:
-            raw = f.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        val = None
-        if kind == "json":
-            try:
-                val = json.loads(raw).get("version")
-            except ValueError:
-                pass
-        else:
-            m = re.search(r'^\s*version\s*=\s*["\']([^"\']+)', raw, re.MULTILINE)
-            val = m.group(1) if m else None
-        norm = _normalize(val)
-        if norm:
-            return {"value": norm,
-                    "why": f"{fname} already declares {val} — adopting it "
-                           "beats inventing a second identity"}
-    # 2. A release tag in this thing's namespace.
-    pat = f"{comp}-v*" if comp else "v*"
-    tags = (_git(project, "tag", "-l", pat) or "").splitlines()
-    best = None
-    for t in tags:
-        norm = _normalize(t.removeprefix(f"{comp}-") if comp else t)
-        if norm:
-            key = tuple(int(x) for x in norm.split("."))
-            if best is None or key > best[0]:
-                best = (key, norm, t)
-    if best:
-        return {"value": best[1],
-                "why": f"the newest release tag here is {best[2]}"}
-    # 3. Maturity, judged from what is visible.
-    reasons = []
-    rel = _relspec(project, where) if comp else None
-    n = _git(project, "rev-list", "--count", "HEAD",
-             *(["--", rel] if rel else []))
-    n = int(n) if (n or "").isdigit() else 0
-    minor = 1 if n < 30 else (2 if n < 300 else 3)
-    reasons.append(f"{n} commit{'s' if n != 1 else ''}")
-    if not comp:
-        try:
-            shipped = any((root(project) / "dist").iterdir())
-        except OSError:
-            shipped = False
-        if shipped and minor < 2:
-            minor = 2
-        if shipped:
-            reasons.append("dist/ already holds builds")
-        if todo is not None:
-            # The injected module is trusted to answer; a project with no
-            # notebook yet answers with empty lists, not an exception.
-            open_items = len(todo.items(project))
-            done = sum(1 for x in todo.history(project)
-                       if x.get("act") == "done")
-            if done or open_items:
-                reasons.append(f"roadmap: {done} done, {open_items} open")
-            if done > open_items and minor < 3:
-                minor += 1
-    return {"value": f"0.{minor}.0",
-            "why": "an estimate — " + ", ".join(reasons)
-                   + ". 1.0.0 is a promise only you can make."}
-
-
 def ask(project, sessions=(), comp="", model="", effort=""):
     """Put the version question to the project's own Claude session.
 
-    Why this beats the estimate below it: suggest() can count commits and read
-    a manifest, and that is the whole of what it knows. A session in the
-    project can read the code, the roadmap, the changelog and what the thing
-    actually does — and, more to the point, the operator can argue with it.
-    A number that arrives with reasoning you can push back on is worth more
-    than a number that arrives with a rule.
+    There used to be a `bb version suggest` beside this — commit count, does
+    dist/ hold anything, how the roadmap's done-to-open ratio reads. It was
+    removed rather than kept as an input, and the reason is worth recording:
+    a mechanical number does not merely fail to help, it ANCHORS. Handing a
+    session "0.2.0, from 21 commits" invites it to justify that number
+    instead of reading the code and forming a view. The judgment is the whole
+    product here, and half a judgment arriving first is worse than none.
 
-    So the mechanical answer becomes the session's input rather than the
-    operator's answer: the prompt hands over `bb version suggest` to run, and
-    asks for judgment on top of it.
+    So the prompt asks the question and points at the protocol, and the
+    session does the reading.
 
     Deliberately proposes rather than acts. The prompt says what the policy
     here allows, and tells the session to wait for a clear yes either way —
@@ -986,16 +898,6 @@ def ask(project, sessions=(), comp="", model="", effort=""):
         return r
     return {"ok": True, "sent": bool(r.get("sent")), "session": session,
             "text": line}
-
-
-def _normalize(val):
-    """v2.3 / 2.3.1 / 2.3.1.4 → MAJOR.MINOR.PATCH, or None for anything else."""
-    if not isinstance(val, str):
-        return None
-    m = re.match(r"^v?(\d{1,6})\.(\d{1,6})(?:\.(\d{1,6}))?(?:[.+-]|$)", val.strip())
-    if not m:
-        return None
-    return f"{m.group(1)}.{m.group(2)}.{m.group(3) or 0}"
 
 
 def since_bump(project, comp=""):
