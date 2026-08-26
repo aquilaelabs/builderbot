@@ -791,6 +791,15 @@ the short commit beside the uptime (`bb status` prints the same line first), so
 the question is a glance rather than an inference: check it before concluding
 anything from a report of behavior you thought you had already changed.
 
+The version of that question which spans days — *what was the box on when I
+saw that?* — is `bb catchup`. The entrypoint appends a line to
+`/config/image-log.tsv` every time the stamp changes, so the images this
+container has actually run are a list rather than a guess, and the same
+command prints recent commits with the first line of their bodies, what moved
+in the notebook, and the builds this box archived. Reach for it when the
+operator opens with *"it finally built"*; it exists because reconstructing that
+by hand cost four commands and still could not see the failed builds.
+
 - **Build:** the image, and nothing else. `.github/workflows/build-image.yml`
   builds and pushes `ghcr.io/stencil-projects/builderbot` on pushes to `main`
   that touch the image's inputs (Dockerfile, `scripts/`, `config/`) — plus a

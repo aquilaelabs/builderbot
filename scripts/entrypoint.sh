@@ -217,6 +217,40 @@ setup_logging() {
     log "===== container start $(date -Is) — logging to ${logfile} ====="
 }
 
+# Append this image to the ledger, unless it is already the last line.
+#
+# Deduplicated on the stamp rather than written per boot: a restart is not
+# news, a different image is. A rollback appends too, which is the point — the
+# question this answers is "what was the box running on Tuesday", and pointing
+# the Repository field back at an older tag is one of the ways the answer
+# stops being obvious.
+#
+# Best-effort throughout: a container started without a /config volume should
+# lose the ledger, not the boot.
+record_image() {
+    local f rev ver built line last
+    f="$(bb_image_log)"
+    rev="${BB_IMAGE_REV:-unstamped}"
+    ver="${BB_VERSION:-unstamped}"
+    built="${BB_IMAGE_BUILT:--}"
+    mkdir -p "$(dirname "$f")" 2>/dev/null || return 0
+    line="$(date -Is)"$'\t'"$rev"$'\t'"$ver"$'\t'"$built"
+    if [ -s "$f" ]; then
+        # Fields 2-4 only: field 1 is when this image was FIRST seen, and
+        # comparing it would append a line on every boot.
+        last="$(tail -1 "$f" 2>/dev/null || true)"
+        [ "$(printf '%s' "$last" | cut -f2-4)" = "$(printf '%s' "$line" | cut -f2-4)" ] \
+            && return 0
+    else
+        printf '# first-seen\trev\tversion\tbuilt\n' > "$f" 2>/dev/null || return 0
+    fi
+    printf '%s\n' "$line" >> "$f" 2>/dev/null || return 0
+    # Everything else in /config belongs to the builder; keep this the same so
+    # a later reader is not the one to find out it is root's.
+    chown "${PUID:-99}:${PGID:-100}" "$f" 2>/dev/null || true
+    log "image changed: ${rev:0:7} (${ver}) — recorded in ${f}"
+}
+
 banner() {
     cat <<'EOF'
   ___        _  _     _            ___       _   
@@ -479,6 +513,11 @@ main() {
     else
         warn "not running as root — skipping user remap, ownership fixes and root hooks"
     fi
+
+    # After the timezone, so the ledger's stamps read as local time like every
+    # other timestamp this container prints, and before the hooks, so a hook
+    # that wants to know what it is running on can read it.
+    record_image
 
     run_hooks
 

@@ -55,7 +55,22 @@ jobs:
       contents: read
       packages: write
 
+    # Read by the `record` job below, which is the only consumer: it runs on
+    # the self-hosted runner and writes them somewhere a session inside the
+    # container can read without a token.
+    outputs:
+      version: ${{ steps.ver.outputs.v }}
+      digest: ${{ steps.push.outputs.digest }}
+      elapsed: ${{ steps.elapsed.outputs.s }}
+
     steps:
+      # Elapsed time is the only signal here for whether the layer cache was
+      # actually used — nothing in the API reports a cache hit — and the two
+      # cases are minutes apart: a scripts-only build reuses every toolchain
+      # layer, a from-scratch one rebuilds all of them. Worth one variable.
+      - name: Start the clock
+        run: echo "T0=$(date +%s)" >> "$GITHUB_ENV"
+
       # Full history, not the default depth-1: the version's ordinal is
       # `git rev-list --count HEAD`, and a shallow clone answers that with 1.
       # It would not fail — every build would just silently call itself
@@ -152,6 +167,7 @@ jobs:
           echo "v=$v" >> "$GITHUB_OUTPUT"
 
       - name: Build and push
+        id: push
         uses: docker/build-push-action@v7
         with:
           context: .
@@ -188,3 +204,90 @@ jobs:
           # opposite answers. `inputs.no_cache` is null on a push, and
           # `null == true` is false, so every other trigger stays cached.
           no-cache: ${{ github.event_name == 'schedule' || inputs.no_cache == true }}
+
+      - name: Stop the clock
+        id: elapsed
+        # always(), because the run worth reading afterwards is the one that
+        # failed, and how long it got before dying is half of what it says.
+        if: always()
+        run: echo "s=$(( $(date +%s) - T0 ))" >> "$GITHUB_OUTPUT"
+
+  # The build runs on a hosted runner — out of reach of the container that
+  # will eventually run its image, and invisible from inside it. So this job
+  # comes back to the box and writes the outcome where `bb ci-log` reads it.
+  #
+  # It is the answer to a question that had none: a session was asked why the
+  # host re-pulled every layer, and could not see that three builds had failed
+  # before this one, or which of them was a dispatch. Seconds of work on the
+  # self-hosted runner, and the alternative is a PAT.
+  record:
+    needs: build
+    # Failed, cancelled and skipped are exactly the outcomes worth recording.
+    if: always()
+    # The image is pushed by the time this runs, so nothing waits on it: with
+    # the box down the job simply queues until the box is back, and records a
+    # build that finished half an hour earlier.
+    runs-on: [self-hosted, builderbot]
+    # A bookkeeping job must not be able to paint a successful build red. It
+    # still shows as failed on its own row, which is where a broken recorder
+    # belongs — the run's status stays the build's.
+    continue-on-error: true
+    steps:
+      - name: Archive the outcome where the container can read it
+        shell: bash
+        # Through env rather than interpolated into the script: the same rule
+        # the dashboard follows for anything the web can reach, and it keeps
+        # a workflow input out of a command line.
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+          BUILD_VERSION: ${{ needs.build.outputs.version }}
+          BUILD_DIGEST: ${{ needs.build.outputs.digest }}
+          BUILD_ELAPSED: ${{ needs.build.outputs.elapsed }}
+          NO_CACHE: ${{ inputs.no_cache }}
+        run: |
+          dir="/config/ci-logs/${GITHUB_REPOSITORY##*/}"
+          # A box with no /config volume should lose the record, not fail the
+          # build over it — but it should say so rather than look successful.
+          mkdir -p "$dir" || { echo "no writable /config — nothing archived"; exit 0; }
+          log="$dir/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
+
+          case "$BUILD_ELAPSED" in
+            ''|*[!0-9]*) took="unknown" ;;
+            *) took="$((BUILD_ELAPSED / 60))m $((BUILD_ELAPSED % 60))s" ;;
+          esac
+          case "$GITHUB_EVENT_NAME" in
+            schedule) cache="off — the weekly rebuild always is" ;;
+            *) if [ "$NO_CACHE" = true ]; then
+                 cache="off — the run asked for a full rebuild, so the host re-pulls everything"
+               else
+                 cache="seeded from :latest"
+               fi ;;
+          esac
+
+          # The same header the lint workflow writes, because `bb ci-log` reads
+          # both out of this directory and tells them apart by the first line.
+          {
+            echo "# ${GITHUB_WORKFLOW} — ${GITHUB_REPOSITORY}"
+            echo "run:    ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}"
+            echo "event:  ${GITHUB_EVENT_NAME}  ref: ${GITHUB_REF}"
+            echo "commit: ${GITHUB_SHA}"
+            echo "opened: $(date -Is)"
+            echo
+            echo "version: ${BUILD_VERSION:--}"
+            echo "digest:  ${BUILD_DIGEST:-not pushed}"
+            echo "took:    ${took}"
+            echo "cache:   ${cache}"
+            echo
+            echo "This is the build's outcome, not its console output: the build"
+            echo "itself ran on a hosted runner, which keeps nothing this box can"
+            echo "reach. The run page on GitHub has the log."
+            echo
+            printf 'result: %s\n' "$BUILD_RESULT"
+            printf 'closed: %s\n' "$(date -Is)"
+          } > "$log"
+          cat "$log"
+
+          # Twenty kept, the same as the lint workflow's, and counted over the
+          # whole directory because both workflows write into it.
+          find "$dir" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' \
+            | sort -rn | tail -n +21 | cut -d' ' -f2- | xargs -r rm -f
