@@ -30,3 +30,4 @@
 - The header has a bell: errors and messages are kept there instead of vanishing with their toast, and a session waiting to reach your phone can be approved or denied from it wherever you are on the page (395fe92)
 - On a desktop the Commands and Sessions flyouts now slide open over the terminal instead of pushing it up, and the on-screen keyboard button is gone where there is a real keyboard (395fe92)
 - A project's notebook opens on Memory, keeps the tab you were on while it stays open, and starts fresh at Memory once you close it (0bb10d2)
+- The dev instance now reads like the rest of the Artifacts list: a docker pill, the container's own name, and whether it is running beside it (ea944dd)
