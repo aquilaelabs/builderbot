@@ -1330,6 +1330,22 @@ body.dragging .tab .lbl{cursor:grabbing}
      the whole staging model keeps working without being made per-pane. It used
      to be a modal, which on a desktop meant reading a list, a plan, a log and
      a memory editor through a 760px slot. -->
+<div id="devEnvModal" class="modal" hidden role="dialog" aria-modal="true"
+     aria-labelledby="devEnvTitle">
+  <div class="box wide">
+    <h3 id="devEnvTitle">Dev instance env</h3>
+    <div class="field">
+      <label>This project's dev env — kept in <code>/config/devenv/</code>,
+        never in the repo. Handed to compose as <code>--env-file</code>.</label>
+      <textarea rows="14" spellcheck="false"></textarea>
+      <div class="hint"></div>
+    </div>
+    <div class="foot"><span class="sp"></span>
+      <button type="button" onclick="$('devEnvModal').hidden = true">Cancel</button>
+      <button type="button" class="primary">Save</button>
+    </div>
+  </div>
+</div>
 <div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true"
      aria-labelledby="aboutTitle">
   <div class="box">
@@ -5736,6 +5752,7 @@ $("todoRevert").onclick = revertNotebook;
   // call to notice.
   onRev(() => `ver:${project}`, () => { if (showing("artifacts")) loadVersion(); });
   onRev("vpolicy", () => { if (showing("artifacts")) loadVersion(); });
+  onRev("devapp", () => { if (showing("artifacts")) loadArtifacts(); });
   onRev("phone.dev", () => { if (showing("artifacts")) loadArtifacts(); });
   onRev("reports", () => { if (showing("analysis")) loadAnalysis(); });
   onRev("bugs", () => { if (bugs && showing("bugs")) loadBugs(); });
@@ -5781,6 +5798,49 @@ $("todoRevert").onclick = revertNotebook;
                      : n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + " MB"
                      : n >= 1 << 10 ? Math.round(n / (1 << 10)) + " KB"
                      : n + " B";
+    // The dev instance: a service in the file list's row language. Not a
+    // file — nothing in dist/ backs it — but the operator asked for it where
+    // the push and download buttons live, and a row with state and actions
+    // is exactly what this list already speaks.
+    const da = art.devapp || {};
+    const daJob = da.job;
+    const devHtml = !da.compose ? "" : !da.available ? `
+      <div class="artrow job"><span class="pill">dev instance</span>
+        <span class="grow">${esc(da.why || "docker is not reachable")}</span>
+      </div>` : `
+      <div class="artrow" id="devRow">
+        <span class="pill ${da.running ? "ok" : ""}">${
+          da.running ? "running" : "stopped"}</span>
+        <div class="grow">
+          <div class="top"><b>dev instance</b></div>
+          <div class="dim">${
+            daJob?.running ? esc(daJob.step || "working") + '<span class="dots"></span>'
+            : daJob?.error ? "build failed — see below"
+            : da.await_env ? "built — fill in the env (Env), then Up"
+            : da.built_rev ? `built from ${esc(da.built_rev)}${
+                da.changed ? " — the code has moved since" : ""}`
+            : "never built — Rebuild makes the first image"}</div>
+          ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
+            esc((daJob.log || "").slice(-600))}</div>` : ""}
+        </div>
+        <span class="acts">
+          <button type="button" data-devact="up" ${
+            da.running || daJob?.running || (da.missing_env || []).length ? "disabled" : ""}
+            title="${(da.missing_env || []).length
+              ? "the env is missing " + esc(da.missing_env.join(", "))
+              : "docker compose up -d"}">Up</button>
+          <button type="button" data-devact="down" ${
+            !da.running || daJob?.running ? "disabled" : ""}
+            title="docker compose down">Down</button>
+          <button type="button" data-devact="env"
+            title="the dev instance's env file — kept in /config, never in the repo">Env</button>
+          <button type="button" data-devact="rebuild" ${
+            !da.changed || daJob?.running ? "disabled" : ""}
+            title="${da.changed
+              ? "build the image, then down and up — unless new env settings appear, where it stops for you to fill them in"
+              : "the last build is current — this wakes when the code moves"}">Rebuild</button>
+        </span>
+      </div>`;
     const jobHtml = job.running ? `
       <div class="artrow job">
         <span class="pill ${job.state === "running" ? "ok" : "go"}">${
@@ -5801,7 +5861,7 @@ $("todoRevert").onclick = revertNotebook;
         <span class="grow">${esc(inst.what)}${
           inst.error ? ` — ${esc(inst.error)}` : ""}</span>
       </div>` : "";
-    list.innerHTML = !rows.length
+    list.innerHTML = devHtml + (!rows.length
       ? `<div class="hint">Nothing in <b>dist/</b>. The deal is one word long:
            a build worth keeping gets copied to the project's dist/ directory,
            and this tab lists dist/ and nothing else. An empty tab on a project
@@ -5829,10 +5889,56 @@ $("todoRevert").onclick = revertNotebook;
             <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)
               }&path=${encodeURIComponent(a.path)}" download>Download</a>
           </span>
-        </div>`).join("");
+        </div>`).join(""));
     paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
     if (!pkgDotsTimer && list.querySelector(".dots"))
       pkgDotsTimer = setInterval(pkgTickDots, 400);
+    list.querySelectorAll("[data-devact]").forEach(b => b.onclick = async () => {
+      const act = b.dataset.devact;
+      if (act === "env"){ openDevEnv(); return; }
+      if (act === "down" && !confirm("Take the dev instance down?")) return;
+      if (act === "rebuild" && !confirm(
+          "Rebuild the dev instance?\n\nBuilds the image, then down and up. "
+          + "If the rebuild finds new env settings it stops after down, and "
+          + "the Env editor will hold your old values in comments.")) return;
+      b.disabled = true;
+      try{
+        const r = await fetch("/api/devapp", {method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({project, action: act})});
+        const j = await r.json();
+        if (j.error) notify(j.error, true);
+      }catch(e){ notify("dev instance: " + e, true); }
+      await loadArtifacts();
+    });
+    async function openDevEnv(){
+      let j;
+      try{
+        const r = await fetch("/api/devapp", {method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({project, action: "env-get"})});
+        j = await r.json();
+      }catch(e){ notify("env: " + e, true); return; }
+      const m = document.getElementById("devEnvModal");
+      m.querySelector("textarea").value = j.text || "";
+      m.querySelector(".hint").textContent = (j.missing || []).length
+        ? "missing against .env.example: " + j.missing.join(", ")
+        : "everything .env.example declares is set";
+      m.hidden = false;
+      m.querySelector(".primary").onclick = async () => {
+        try{
+          const r = await fetch("/api/devapp", {method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({project, action: "env-set",
+                                  text: m.querySelector("textarea").value})});
+          const k = await r.json();
+          if (k.error){ notify(k.error, true); return; }
+          m.hidden = true;
+          notify("env saved");
+          await loadArtifacts();
+        }catch(e){ notify("env: " + e, true); }
+      };
+    }
     list.querySelectorAll("[data-artpush]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artpush)];
       b.disabled = true;
@@ -5849,7 +5955,7 @@ $("todoRevert").onclick = revertNotebook;
     clearInterval(artTimer); artTimer = null;
     // Polled while either thing is in flight. An install is the slower of the
     // two — a 24MB APK over wifi — and is the reason this exists at all.
-    if ((job.running || inst.running)
+    if ((job.running || inst.running || daJob?.running)
         && !root.querySelector('[data-view="artifacts"]').hidden)
       artTimer = setTimeout(loadArtifacts, 2000);
   }

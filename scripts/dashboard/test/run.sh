@@ -349,6 +349,40 @@ fi
 exit 0
 ADBEOF
 chmod +x "$S/bin/adb"
+
+# docker, stubbed the way adb is: every call lands in docker.log, and a tiny
+# state machine under dockerstate/ answers compose ps/up/down/build so the
+# dev-instance row can be driven end to end with no daemon anywhere.
+mkdir -p "$S/dockerstate"
+cat > "$S/bin/docker" <<'DOCKEREOF'
+#!/usr/bin/env bash
+ST="${DOCKER_STUB_STATE:?}"
+echo "$*" >> "$ST/docker.log"
+case "$1" in
+  version) echo "99.stub"; exit 0 ;;
+  compose)
+    proj=""
+    args=("$@")
+    for ((i=0;i<${#args[@]};i++)); do
+      [ "${args[$i]}" = "--project-name" ] && proj="${args[$((i+1))]}"
+    done
+    verb=""
+    for a in ps build up down; do
+      for x in "$@"; do [ "$x" = "$a" ] && verb="$a"; done
+    done
+    case "$verb" in
+      ps)   [ -f "$ST/$proj.up" ] && echo "stubcontainer"; exit 0 ;;
+      build)
+        [ -f "$ST/build.fail" ] && { echo "stub build exploded"; exit 1; }
+        echo "stub built ok"; exit 0 ;;
+      up)   touch "$ST/$proj.up"; exit 0 ;;
+      down) rm -f "$ST/$proj.up"; exit 0 ;;
+    esac
+    exit 0 ;;
+esac
+exit 0
+DOCKEREOF
+chmod +x "$S/bin/docker"
 # web-ext that installs and then sits there, the way the real one does.
 cat > "$S/bin/web-ext" <<'WEEOF'
 #!/usr/bin/env bash
@@ -402,6 +436,7 @@ fresh() {
         ! -name alpha ! -name beta ! -name gamma ! -name delta ! -name ep.silon \
         ! -name toolstore ! -name vendored-junk -exec rm -rf {} +
     rm -rf "$S/home/.ssh"           # deploy-key selectors a test wrote
+    rm -rf "$S/dockerstate"; mkdir -p "$S/dockerstate"
     rm -rf "$S/sdk" "$S/androidsdk"; mkdir -p "$S/sdk" "$S/androidsdk"
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
     cp "$S/auth-in.json" "$S/auth.json"   # a test that signs out must not hand that on
@@ -431,6 +466,8 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     CLAUDE_AUTH_IN="$S/auth-in.json" \
     BB_LOGIN_DONE="$S/login-finished" \
     PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" BB_ADB_BIN="$S/bin/adb" \
+    BB_DOCKER_BIN="$S/bin/docker" DOCKER_STUB_STATE="$S/dockerstate" \
+    DOCKER_HOST="tcp://stub:2375" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
 pid=$!
 for _ in $(seq 40); do
