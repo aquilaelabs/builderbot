@@ -15,20 +15,20 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
 // headers are title + chevron only; doctor sits first
 const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
-ok(hs.length === 12 && hs.every(h => h.buttons === 0 && h.chev),
+ok(hs.length === 7 && hs.every(h => h.buttons === 0 && h.chev),
    `headers are title + chevron only (${hs.length} cards)`);
 ok((await order())[0] === 'doctor', 'doctor is first by default');
 ok(await page.$eval('#bDocTog', el => el.textContent.trim() === 'all 3 ok'), 'doctor status row folded green');
 
 // collapse animates, persists across reload
 const collapsed = await animatedDuring(page,
-  () => page.click('.card[data-card="sessions"] h2'));
-ok(collapsed.some(k => k.includes('sessions'))
-   && !await page.$eval('.card[data-card="sessions"]', el => el.classList.contains('closed')),
+  () => page.click('.card[data-card="tools"] h2'));
+ok(collapsed.some(k => k.includes('tools'))
+   && !await page.$eval('.card[data-card="tools"]', el => el.classList.contains('closed')),
    'collapse runs a height tween before the class lands');
-await page.waitForFunction(() => document.querySelector('.card[data-card="sessions"]').classList.contains('closed'));
+await page.waitForFunction(() => document.querySelector('.card[data-card="tools"]').classList.contains('closed'));
 await page.reload(); await ready(page);
-ok(await page.$eval('.card[data-card="sessions"]', el => el.classList.contains('closed')), 'collapsed state survives a reload');
+ok(await page.$eval('.card[data-card="tools"]', el => el.classList.contains('closed')), 'collapsed state survives a reload');
 
 // doctor: card collapse is the operator's; the verdict only drives the inner detail
 await page.click('.card[data-card="doctor"] h2');

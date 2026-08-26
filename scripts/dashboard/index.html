@@ -493,6 +493,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .artrow .top{display:flex;gap:7px;align-items:center;min-width:0}
 .artrow .top b{overflow-wrap:anywhere}
 .artrow .dim{color:var(--dim);font:11px/1.4 var(--mono);overflow-wrap:anywhere}
+.artrow .dim.bad{color:var(--bad)}
 /* Pushed right on a desktop; on a phone the buttons take their own line, the
    same line, on every row — evenness beats compactness at that width. */
 .artrow .acts{display:flex;gap:6px;flex:0 0 auto;margin-left:auto}
@@ -1066,39 +1067,51 @@ body.dragging .tab .lbl{cursor:grabbing}
 .keys button{font-family:var(--mono);min-width:40px;min-height:var(--tap);padding:6px 8px}
 .keys .gap{flex-basis:100%;height:0}
 
-/* Phone bottom bar ---------------------------------------------------- */
-/* On a phone the terminal view carries its own two toggles at the bottom —
-   the on-screen keys, and the command macros, which move here out of the
-   dashboard's cards. One panel at a time: there is not the height for both.
-   Desktop keeps ⌨ on the tab strip and the macros in their cards. */
-.mobar,.mpanel{display:none}
+/* The terminal's own bottom bar --------------------------------------- */
+/* The command lists and Sessions hang off the terminal, at every width, in
+   the bar that used to be the phone's alone. They are about the shell in
+   front of you and not about the box, and at the bottom of a twelve-card
+   sidebar they were being scrolled past. Ghosting is unaffected by the move:
+   wireMacros reads the ACTIVE PANE, not the parent element.
+   One panel at a time — they share the same strip of space — but on a
+   desktop the keys row is not part of that trade, because there is room for
+   it and a panel at once. */
+.mpanel{display:none}
+.mobar{display:flex;gap:6px;padding:6px;flex:0 0 auto;background:var(--panel);
+  border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}
+.mobar button{min-height:var(--tap)}
+.mobar button.on{background:#1f6f36;border-color:#2ea043}
+.keys,.panes{border-radius:0}   /* the bar below them owns the bottom corners */
+/* flex-shrink 1, unlike the strip and the bar: on a phone held sideways the
+   fixed chrome plus a flyout can be taller than the screen, and since the
+   body cannot scroll, whatever overflowed was simply gone — the bar included,
+   with no way to close what had opened. The flyout scrolls inside itself
+   instead, and the terminal keeps a strip of screen. */
+.mpanel.show{display:block;flex:0 1 auto;max-height:45vh;overflow:auto;
+  background:var(--panel);border:1px solid var(--line);border-top:0}
+.keys.show{flex:0 1 auto;overflow:auto;max-height:45vh}
+/* Mid-slide a flyout is an overlay pinned above the bottom bar (bottom set
+   inline to the bar's height), so the terminal under it holds still until the
+   slide lands and the panel drops back into the flow. */
+.col.term{position:relative}
+.keys.sliding,.mpanel.sliding{position:absolute;left:0;right:0;z-index:5;
+  box-shadow:0 -6px 18px rgba(0,0,0,.35)}
+.mpanel .lab{font-size:10px;text-transform:uppercase;letter-spacing:.6px;
+  color:var(--dim);padding:8px 10px 0}
+@media(min-width:901px){
+  /* A row of buttons at the bar's left edge, not a set of stretched thirds:
+     on an ultrawide each third is several hundred pixels of empty button.
+     The panel is capped for the same reason — a macro list is a short list,
+     and one read across two thousand pixels is worse than one read in a
+     column. */
+  .mobar #mKeys{display:none}   /* the tab strip already carries ⌨ here */
+  .mpanel{max-width:min(760px,100%)}
+}
 @media(max-width:900px){
   .tabbar #bKeys,.tabbar .sep{display:none}
-  .card[data-card="linux"],.card[data-card="commands"],.card[data-card="git"],
-  .card[data-card="custom"],.card[data-card="sessions"]{display:none}
   .pill.att{display:none}   /* one pane on a phone: nothing to say */
-  .mobar{display:flex;gap:6px;padding:6px;flex:0 0 auto;background:var(--panel);
-    border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}
-  .mobar button{flex:1;min-height:var(--tap)}
-  .mobar button.on{background:#1f6f36;border-color:#2ea043}
-  .keys,.panes{border-radius:0}   /* the bar below them owns the bottom corners */
-  /* flex-shrink 1, unlike the strip and the bar: on a phone held sideways
-     the fixed chrome plus a flyout can be taller than the screen, and since
-     the body cannot scroll, whatever overflowed was simply gone — the bar
-     included, with no way to close what had opened. The flyout scrolls
-     inside itself instead, and the terminal keeps a strip of screen. */
-  .mpanel.show{display:block;flex:0 1 auto;max-height:45vh;overflow:auto;
-    background:var(--panel);border:1px solid var(--line);border-top:0}
-  .keys.show{flex:0 1 auto;overflow:auto;max-height:45vh}
+  .mobar button{flex:1}     /* thumbs, and only three of them */
   .panes{min-height:90px}
-  /* Mid-slide a flyout is an overlay pinned above the bottom bar (bottom set
-     inline to the bar's height), so the terminal under it holds still until
-     the slide lands and the panel drops back into the flow. */
-  .col.term{position:relative}
-  .keys.sliding,.mpanel.sliding{position:absolute;left:0;right:0;z-index:5;
-    box-shadow:0 -6px 18px rgba(0,0,0,.35)}
-  .mpanel .lab{font-size:10px;text-transform:uppercase;letter-spacing:.6px;
-    color:var(--dim);padding:8px 10px 0}
 }
 
 /* Findings view ------------------------------------------------------ */
@@ -1583,31 +1596,6 @@ body.dragging .tab .lbl{cursor:grabbing}
            they turn into. -->
       <div id="findingsSum"></div>
     </div>
-    <div class="card" data-card="sessions">
-      <h2>Sessions</h2>
-      <div id="sessions"><div class="empty">loading…</div></div>
-    </div>
-    <!-- The Linux and git/GitHub cards flank the bb one: their lists come
-         from the server's tables (LINUX_MACROS / GIT_MACROS / GH_MACROS),
-         and the git card ghosts against the directory the active shell is
-         in — not a repo greys the lot, a repo without a GitHub remote greys
-         just the gh half. -->
-    <div class="card" data-card="linux">
-      <h2>Linux commands</h2>
-      <div class="macros" id="linux"><div class="empty">loading…</div></div>
-    </div>
-    <div class="card" data-card="commands">
-      <h2>bb commands</h2>
-      <div class="macros" id="commands"><div class="empty">loading…</div></div>
-    </div>
-    <div class="card" data-card="git">
-      <h2>Git &amp; GitHub</h2>
-      <div class="macros" id="git"><div class="empty">loading…</div></div>
-    </div>
-    <div class="card" data-card="custom">
-      <h2>Custom commands</h2>
-      <div class="macros" id="custom"></div>
-    </div>
   </div>
 
   <div class="col term">
@@ -1621,13 +1609,25 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="pane hidden" id="pane1"></div>
     </div>
     <div class="keys" id="keys"></div>
+    <!-- The lists live here now rather than being moved here at a
+         breakpoint. Linux and git/GitHub flank the bb one: their contents
+         come from the server's tables (LINUX_MACROS / GIT_MACROS /
+         GH_MACROS), and the git half ghosts against the directory the active
+         shell is in — not a repo greys the lot, a repo without a GitHub
+         remote greys just the gh part. -->
     <div class="mpanel" id="macpanel">
-      <div class="lab">linux</div><div id="mpLinux"></div>
-      <div class="lab">bb commands</div><div id="mpCmd"></div>
-      <div class="lab">git &amp; github</div><div id="mpGit"></div>
-      <div class="lab">custom commands</div><div id="mpCustom"></div>
+      <div class="lab">linux</div>
+      <div class="macros" id="linux"><div class="empty">loading…</div></div>
+      <div class="lab">bb commands</div>
+      <div class="macros" id="commands"><div class="empty">loading…</div></div>
+      <div class="lab">git &amp; github</div>
+      <div class="macros" id="git"><div class="empty">loading…</div></div>
+      <div class="lab">custom commands</div>
+      <div class="macros" id="custom"></div>
     </div>
-    <div class="mpanel" id="sespanel"><div id="mpSessions"></div></div>
+    <div class="mpanel" id="sespanel">
+      <div id="sessions"><div class="empty">loading…</div></div>
+    </div>
     <div class="mobar" id="mobar">
       <button id="mKeys">⌨ Keys</button>
       <button id="mMacros">» Commands</button>
@@ -2776,27 +2776,22 @@ const KEYS = [
 
 // The phone's second panel. Keys and macros are exclusive there — see the
 // toggles below — and the macro lists are the dashboard's own #commands and
-// #custom elements, moved between their cards and this panel as the viewport
-// crosses the phone breakpoint: one DOM, one set of handlers, no second copy
-// to drift. Desktop never shows the panel, so nothing moves there.
+// The lists used to be moved between their sidebar cards and this panel every
+// time the viewport crossed the phone breakpoint. They just live here now, at
+// every width — one DOM, one set of handlers, and no breakpoint to be on the
+// wrong side of.
 let showMacros = false, showSessions = false;
 
-function placeMacros(){
-  const phone = isPhone();
-  for (const [id, mp] of [["linux", "mpLinux"], ["commands", "mpCmd"],
-                          ["git", "mpGit"], ["custom", "mpCustom"],
-                          ["sessions", "mpSessions"]]){
-    const home = phone ? $(mp) : document.querySelector(`.card[data-card="${id}"]`);
-    if ($(id).parentElement !== home) home.appendChild($(id));
-  }
-}
-placeMacros();
-window.matchMedia("(max-width:900px)").addEventListener("change", () => { placeMacros(); render(); });
+window.matchMedia("(max-width:900px)").addEventListener("change", () => render());
 
 // One panel at a time on the phone: opening any of the three closes the others.
 function mobPanel(which){
   const on = {keys: showKeys, macros: showMacros, sessions: showSessions}[which];
-  showKeys = which === "keys" ? !on : false;
+  // The two panels always take turns: they are the same strip of space. The
+  // keys row only joins that trade on a phone, where the three of them plus
+  // a terminal do not fit — on a desktop it stays where it was put.
+  if (which === "keys") showKeys = !on;
+  else if (isPhone()) showKeys = false;
   showMacros = which === "macros" ? !on : false;
   showSessions = which === "sessions" ? !on : false;
   render();
@@ -2977,7 +2972,11 @@ function findingsRulesHtml(rows){
 // server like the pins do — the phone and the desktop are looking at one
 // machine and should agree about how its dashboard is arranged.
 // Doctor first: the verdict on the whole box outranks any one card below it.
-const CARD_ORDER = ["doctor","runner","projects","tools","phone","findings","sessions","linux","commands","git","custom"];
+// Must agree with CARD_KEYS in server.py — the server heals a saved order by
+// re-inserting anything missing at its own position, so a disagreement here
+// self-corrects on the next save and is invisible until a drag lands on the
+// card it forgot. This list was missing `claude` for exactly that reason.
+const CARD_ORDER = ["doctor","runner","projects","tools","claude","phone","findings"];
 let cards = {order: CARD_ORDER.slice(), closed: []};
 let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
                                            // the arrangement here: a poll
@@ -5867,6 +5866,8 @@ $("todoRevert").onclick = revertNotebook;
                 : da.changed_why === "dirty"
                   ? " — uncommitted changes are not in it" : ""}`
             : "never built — Build makes the first image"}</div>
+          ${(da.problems || []).length ? `<div class="dim bad">will not work as written — ${
+            esc(da.problems.join("; "))}</div>` : ""}
           ${(da.risks || []).length ? `<div class="dim">asks for more than its own directory — ${
             esc(da.risks.join("; "))}</div>` : ""}
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${

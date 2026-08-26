@@ -334,10 +334,97 @@ def _compose(project, *args):
     return argv + list(args)
 
 
+# ---------------------------------------------------------------------------
+# this container's paths are not the daemon's
+#
+# The one thing about a remote daemon that is easy to forget and impossible to
+# see: a bind mount's SOURCE is resolved by whoever runs the container, and
+# that is the host. `/workspace/alpha` and `/devdata/bbdev-alpha` mean
+# something here and nothing over there — docker does not error on a missing
+# bind source, it creates an empty directory and mounts that. On Unraid the
+# root filesystem is RAM, so the failure is an app that starts with no data
+# and loses it again at reboot, which reads as a bug in the app.
+#
+# So the operator states the mapping once, and it is checked rather than
+# trusted. Only the paths BuilderBot itself hands over can be fixed by it;
+# what a project's own compose file writes is the project's to get right, and
+# is named on the row when it is a path the host will not find.
+
+
+def _mount_roots():
+    """{mount point: the path that mount has inside its own filesystem}.
+
+    mountinfo's fourth field is the half that survives the trip: /devdata is
+    mounted from /appdata/builderbot-dev of some pool, whatever that pool is
+    called over on the host.
+    """
+    out = {}
+    try:
+        with open(os.environ.get("BB_MOUNTINFO", "/proc/self/mountinfo"),
+                  encoding="utf-8") as f:
+            for line in f:
+                p = line.split()
+                if len(p) > 4:
+                    out[p[4]] = p[3]
+    except OSError:
+        pass
+    return out
+
+
+def host_map():
+    """(container path -> host path, complaints about the pairs given).
+
+    From DOCKER_HOST_PATHS, "/container:/host" pairs separated by commas. Each
+    is checked against the mount it claims to describe: a host path has to end
+    with that mount's own root path, so /devdata (root /appdata/builderbot-dev)
+    accepts /mnt/cache/appdata/builderbot-dev and rejects /mnt/user/something.
+    That is not proof — two shares can end alike — but it catches the case
+    this has to catch, which is a template whose two sides were edited apart.
+    A rejected pair is dropped rather than used: no answer beats a wrong one,
+    because a wrong one is the silent failure above wearing a fix.
+    """
+    roots, out, bad = _mount_roots(), {}, []
+    for pair in (os.environ.get("DOCKER_HOST_PATHS") or "").split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        here, _, there = pair.partition(":")
+        here, there = here.rstrip("/"), there.strip().rstrip("/")
+        if not here.startswith("/") or not there.startswith("/"):
+            bad.append(f"{pair} is not a /container:/host pair")
+            continue
+        root = roots.get(here)
+        if root is None:
+            bad.append(f"{here} is not mounted in this container")
+        elif root != "/" and not there.endswith(root):
+            bad.append(f"{here} is mounted from {root}, which {there} "
+                       f"does not end with — one side of the mapping moved")
+        else:
+            out[here] = there
+    return out, bad
+
+
+def to_host(path, mapping=None):
+    """The host's name for a path of ours, or None when nobody has said."""
+    mapping = host_map()[0] if mapping is None else mapping
+    p = str(path).rstrip("/")
+    # Longest prefix, so a mapping of a directory inside another one wins.
+    for here in sorted(mapping, key=len, reverse=True):
+        if p == here or p.startswith(here + "/"):
+            return mapping[here] + p[len(here):]
+    return None
+
+
 def _dev_data_env(project):
     """BB_DEV_DATA for a compose that opts in with ${BB_DEV_DATA}/... —
     cache-backed volumes by convention, nothing forced on a compose that
-    never mentions it."""
+    never mentions it.
+
+    Handed over as the HOST's path, because the daemon that reads it is the
+    host's. Unset when that is unknown: a compose referencing an unset
+    variable fails loudly, and loudly is the whole improvement over mounting
+    an empty directory in the host's RAM and calling it the cache drive.
+    """
     root = Path(DEVDATA)
     if not root.is_dir():
         return {}
@@ -346,7 +433,8 @@ def _dev_data_env(project):
         d.mkdir(parents=True, exist_ok=True)
     except OSError:
         return {}
-    return {"BB_DEV_DATA": str(d)}
+    host = to_host(d)
+    return {"BB_DEV_DATA": host} if host else {}
 
 
 # ---------------------------------------------------------------------------
@@ -571,6 +659,35 @@ def risks(project, cfg):
     return out
 
 
+def problems(project, cfg):
+    """Paths this compose gives the daemon that the daemon will not find.
+
+    A different thing from risks(): those are decisions the operator may
+    reasonably make, this is a compose file that cannot work. Kept apart so
+    the confirmation stays about the first kind — asking someone to confirm a
+    configuration error teaches them to confirm without reading.
+
+    Only OUR paths are judged. Anything else is taken for a host path, which
+    it usually is and which nothing here can check anyway.
+    """
+    if cfg is None:
+        return []
+    mapping = host_map()[0]
+    ours = [str(WORKSPACE), str(Path(DEVDATA))]
+    out = []
+    for name, sv in sorted(_services(cfg).items()):
+        for src in _binds(sv, project):
+            if not any(src == o or src.startswith(o + "/") for o in ours):
+                continue
+            there = to_host(src, mapping)
+            out.append(
+                f"{name} mounts {src}, which is this container's path — the "
+                + (f"daemon is the host's and wants {there}" if there else
+                   "daemon is the host's and has no such path; say where it "
+                   "is with DOCKER_HOST_PATHS"))
+    return out
+
+
 def risk_digest(rs):
     """A stable name for one set of risks, so that acknowledging them stops
     counting the moment the compose file asks for something new."""
@@ -653,6 +770,7 @@ def state(project):
         out["needs_build"] = needs_build(cfg)
         rs = risks(project, cfg)
         out["risks"] = rs
+        out["problems"] = problems(project, cfg) + host_map()[1]
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way — either the file asks for
         # nothing beyond its own directory, or the operator has already said
@@ -680,6 +798,7 @@ def state(project):
         out["exists"] = False
         out["changed"] = False
         out["risks"] = []
+        out["problems"] = []
         out["risks_digest"] = ""
         out["risks_ack"] = True
     return out

@@ -11,6 +11,11 @@ import { dirname, join } from 'node:path';
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
+// Sessions hangs off the terminal now, at every width, so a desktop page has
+// to open the panel before there is a list to click — the sidebar card it
+// used to live in is gone.
+await page.waitForSelector('#mSessions');
+await page.click('#mSessions');
 await page.waitForFunction(() => document.querySelectorAll('#sessions .row').length >= 2, { timeout: 40000 });
 const row = n => page.locator('#sessions .row', { has: page.locator(`[data-go="${n}"]`) });
 const btn = n => row(n).locator('button').first();
@@ -136,6 +141,9 @@ await page.reload();
 await page.waitForFunction(() => document.querySelector('.pane .nb') !== null,
                            { timeout: 30000 });
 ok(true, 'a notebook tab restored from the layout loads itself');
+// A reload closes the flyout, the way it always has on a phone — the panel
+// is a toggle, not a card that is simply there. Open it again for the rest.
+await page.click('#mSessions');
 await page.evaluate(() => hideTab(tabs.find(t => t.kind === 'todo').id));
 
 // The rest needs shell-9 on the strip; reopen it if the restore above failed.
@@ -187,7 +195,7 @@ ok(page.dialogs.length === nd2 + 1, 'middle-click asks, then ends the session an
 
 const phone = await newPage(browser, { viewport: { width: 400, height: 800 } });
 await phone.goto(URL);
-await phone.waitForFunction(() => document.getElementById('sessions').parentElement.id === 'mpSessions', { timeout: 30000 });
+await phone.waitForFunction(() => document.getElementById('sessions').parentElement.id === 'sespanel', { timeout: 30000 });
 await phone.evaluate(() => setView('terminal'));
 await phone.waitForSelector('#bKeys', { state: 'attached' });
 ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && await phone.$eval('#bKeys', el => getComputedStyle(el).display === 'none'),
@@ -234,7 +242,7 @@ await phone.click('#mMacros');
 // the close is a slide now: the class drops when the tween lands
 await phone.waitForFunction(() => !document.getElementById('sespanel').classList.contains('show'));
 ok(await phone.$eval('#macpanel', el => el.classList.contains('show')), 'Commands closes it and opens the macros');
-ok(await phone.$eval('#commands', el => el.parentElement.id === 'mpCmd' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
+ok(await phone.$eval('#commands', el => el.parentElement.id === 'macpanel' && el.querySelectorAll('[data-m]').length > 0), 'bb list lives in the panel');
 ok(await phone.$eval('.tab [data-pin]', el => getComputedStyle(el).display === 'none'), 'pin buttons hidden on a phone');
 // Claude on a project with a transcript opens the Resume/New chooser — which
 // must be visible on a phone (it once shared the hidden pin menu's class).
@@ -305,10 +313,10 @@ await phone.waitForFunction(() => !document.getElementById('macpanel').classList
 // sessions above, so make one to pick.)
 tmuxNew('shell-7');
 await phone.evaluate(() => refresh());
-await phone.waitForFunction(() => document.querySelector('#mpSessions [data-go="shell-7"]'), { timeout: 15000 });
+await phone.waitForFunction(() => document.querySelector('#sessions [data-go="shell-7"]'), { timeout: 15000 });
 await phone.click('#mSessions');
 await phone.waitForFunction(() => document.getElementById('sespanel').classList.contains('show') && !document.getElementById('sespanel').classList.contains('sliding'));
-await phone.click('#mpSessions [data-go="shell-7"]');
+await phone.click('#sessions [data-go="shell-7"]');
 ok(await phone.evaluate(() => !showSessions), 'picking a session closes the Sessions flyout');
 
 // Keys over a document tab: the toggle is disabled and says why.

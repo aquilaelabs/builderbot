@@ -250,6 +250,15 @@ rmSync(`${DIR}/dockerstate/build.fail`, { force: true });
 // made on a name. So the file is read, and what it reaches for is put in
 // front of the operator once, before anything starts.
 const stubCfg = `${DIR}/dockerstate/bbdev-ep-silon.config`;
+// The dev row reloads on job_rev — the in-memory counter plus devapps.json's
+// mtime — and a stub config file moves neither, so a plain refresh() would
+// leave the row showing the answer to the previous question. Touch the file
+// the poll actually watches.
+const nudge = async () => {
+  const f = `${DIR}/state/devapps.json`;
+  writeFileSync(f, readFileSync(f, 'utf8'));
+  await page.evaluate(() => refresh());
+};
 const risky = (vols) => writeFileSync(stubCfg, JSON.stringify(
   { services: { app: { build: { context: '.' }, privileged: true, volumes: vols } } }));
 
@@ -259,8 +268,22 @@ if (await pill() !== 'down') {
   await page.click('#devRow [data-devact="down"]');
   await pillIs('down');
 }
+// A path of OURS handed to the host's daemon: it resolves bind-mount sources
+// on its own filesystem, where /workspace/<project> does not exist — and
+// docker answers a missing source by creating an empty directory rather than
+// by failing, so the app starts with no data and it reads as the app's bug.
+// Said on the row, kept apart from the risks below: those are decisions the
+// operator may reasonably make, this is a compose that cannot work.
+writeFileSync(stubCfg, JSON.stringify(
+  { services: { app: { build: { context: '.' }, volumes: ['./data:/data'] } } }));
+await nudge();
+await page.waitForFunction(() => /will not work as written/.test(
+  document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
+ok(/this container's path/.test(await page.$eval('#devRow', e => e.textContent)),
+   'a bind the host cannot resolve is named on the row, before anything starts');
+
 risky(['/:/host']);
-await page.evaluate(() => refresh());
+await nudge();
 await page.waitForFunction(() => /asks for more than its own directory/.test(
   document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
 ok(true, 'a compose reaching past its own directory says so on the row');
@@ -284,7 +307,7 @@ ok(!page.dialogs.slice(seen).some(d => /asks for more/.test(d)),
 
 // ...but a file that gains one does not inherit the last yes.
 risky(['/:/host', '/var/run/docker.sock:/s']);
-await page.evaluate(() => refresh());
+await nudge();
 await page.waitForFunction(() => /docker\.sock/.test(
   document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
 await page.click('#devRow [data-devact="down"]');
@@ -321,6 +344,52 @@ ok(g.theirs && g.unnamed && g.bare,
 await page.click('#devRow [data-devact="down"]');
 await pillIs('down');
 rmSync(stubCfg, { force: true });
+
+// The mapping itself, at the module: checked against this container's own
+// mount table rather than trusted, because a template edited on one side only
+// is otherwise a wrong answer that looks like a right one. Driven off a
+// fixture mount table so the assertion does not depend on how this box
+// happens to be mounted.
+const mi = `${DIR}/mountinfo`;
+writeFileSync(mi, [
+  '1 0 0:1 / / rw - overlay overlay rw',
+  '2 1 0:2 /development /workspace rw - btrfs /dev/x rw',
+  '3 1 0:3 /appdata/builderbot-dev /devdata rw - btrfs /dev/x rw',
+].join('\n') + '\n');
+const paths = execFileSync('python3', ['-c', `
+import importlib.util, json, os
+os.environ['BB_MOUNTINFO'] = ${JSON.stringify(mi)}
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.configure(workspace='/workspace', state='/tmp', write_json=lambda *a: None)
+out = {}
+os.environ['DOCKER_HOST_PATHS'] = '/workspace:/mnt/user/development,/devdata:/mnt/cache/appdata/builderbot-dev'
+mp, bad = m.host_map()
+out['good'] = [mp, bad, m.to_host('/workspace/alpha/data', mp),
+               m.to_host('/mnt/user/plex', mp)]
+# The half of the mapping that moved: /workspace is mounted from /development,
+# so a host path not ending in it describes a different share.
+os.environ['DOCKER_HOST_PATHS'] = '/workspace:/mnt/user/somethingelse'
+out['moved'] = m.host_map()
+os.environ['DOCKER_HOST_PATHS'] = '/nope:/mnt/x,garbage'
+out['junk'] = m.host_map()
+os.environ['DOCKER_HOST_PATHS'] = ''
+out['unset'] = m.host_map()
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const hp = JSON.parse(paths.trim().split('\n').pop());
+ok(hp.good[0]['/workspace'] === '/mnt/user/development' && !hp.good[1].length
+   && hp.good[2] === '/mnt/user/development/alpha/data',
+   'a mapping that matches the mount table translates our paths to the host\'s');
+ok(hp.good[3] === null,
+   '...and leaves a path that is already the host\'s alone');
+ok(!Object.keys(hp.moved[0]).length && /one side of the mapping moved/.test(hp.moved[1][0]),
+   'a mapping whose two sides disagree is dropped and complained about, not used');
+ok(hp.junk[1].length === 2 && !Object.keys(hp.junk[0]).length,
+   '...as is a path not mounted here, and a pair that is not one');
+ok(!Object.keys(hp.unset[0]).length && !hp.unset[1].length,
+   'and saying nothing is quiet: no mapping, no complaint');
 
 // DOCKER_HOST=auto resolves by asking candidates for /version, caches what
 // it found, and re-scans when that stops answering — a bridge-assigned IP
