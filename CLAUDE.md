@@ -285,6 +285,13 @@ Giving it one is `bb version init 0.1.0` — which the same policy governs, so
 under the default `locked` it is the operator's, from the Artifacts tab. Do
 not write the file by hand; that is the one path deliberately closed.
 
+**The operator may ask you what it should start at.** Pressing *Ask Claude*
+on that tab sends the question here, the way a roadmap step arrives. Run
+`bb version suggest` for the mechanical signals, then form your own view from
+the code, the roadmap and the changelog — and **propose, then ask**. They came
+to negotiate; a number applied on arrival skips the conversation they wanted.
+Do not propose `1.0.0` unless they raise it.
+
 **A repo that ships two products has two versions.** An APK and a browser
 extension do not share a maturity, so a directory with its own `VERSION` file
 is a *component* and answers for itself: `bb version --for extension`, and

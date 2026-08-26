@@ -5749,28 +5749,28 @@ $("todoRevert").onclick = revertNotebook;
       add.disabled = true;
       await postVersion({action: "init", value: val, component: dir});
     };
-    box.querySelectorAll("[data-versuggest]").forEach(b => b.onclick = async () => {
-      // The fold's suggestion is about whichever directory is picked; the
-      // block's is about the block. Either way it only fills the field —
-      // adopting the estimate stays a press of the real button.
-      const inFold = b.dataset.versuggest === "@fold";
-      const comp = inFold
+    // Asked of the session rather than answered here, and then the tab gets
+    // out of the way — the same shape as sending a step, because it is the
+    // same thing: a question that wants a conversation, not a field filled in
+    // behind the operator's back.
+    box.querySelectorAll("[data-verask]").forEach(b => b.onclick = async () => {
+      const comp = b.dataset.verask === "@fold"
         ? b.closest(".verinit").querySelector(".vdir").value
-        : (b.dataset.versuggest || "");
+        : (b.dataset.verask || "");
       b.disabled = true;
       try{
         const r = await fetch("/api/version", {method: "POST",
           headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({project, action: "suggest", component: comp})});
+          body: JSON.stringify({project, action: "ask", component: comp})});
         const j = await r.json();
-        const why = box.querySelector(
-          `[data-versuggestwhy="${CSS.escape(b.dataset.versuggest)}"]`);
-        if (j.error){ notify(j.error, true); }
-        else {
-          b.closest(".verinit").querySelector(".vstart").value = j.value;
-          if (why){ why.textContent = `${j.value}: ${j.why}`; why.hidden = false; }
+        if (j.error){ notify(j.error, true); b.disabled = false; return; }
+        if (!j.sent){
+          notify("typed into the session but not sent — something else has the "
+                 + "keyboard there; press Enter in that tab when it is clear",
+                 true);
         }
-      }catch(e){ notify("suggest: " + e, true); }
+        startClaude(project, null);   // opens the tab, or goes to the one there
+      }catch(e){ notify("ask: " + e, true); }
       b.disabled = false;
     });
     const pol = $("verPolicy");
@@ -5864,11 +5864,11 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
                 inputmode="decimal" aria-label="starting version"
                 pattern="[0-9]+\.[0-9]+\.[0-9]+">
               <button type="button" data-veradd>Give it its own version</button>
-              <button type="button" data-versuggest="@fold"
-                title="estimate one from what that directory already declares
-or how much history it has">Suggest</button>
+              <button type="button" data-verask="@fold"
+                title="put the question to this project's Claude session, for
+this directory">Ask Claude</button>
             </div>
-            <p class="verwhy" data-versuggestwhy="@fold" hidden></p>
+
           </details>` : ""}`}` : `
         <p class="verwhy">This project has no version yet. Giving it one writes
           a <code>VERSION</code> file and commits it — after that the buttons
@@ -5894,13 +5894,12 @@ become that version's section when it is created">Changelog${
             pattern="[0-9]+\.[0-9]+\.[0-9]+">
           <button type="button" data-verinit="${esc(v.component || "")}">Give it
             this version</button>
-          <button type="button" data-versuggest="${esc(v.component || "")}"
-            title="estimate one from what is already here — a manifest or release
-tag that declares a version, or failing that the history, the artifacts and
-the roadmap. It only fills the field; nothing happens until you press the
-button beside it.">Suggest</button>
+          <button type="button" data-verask="${esc(v.component || "")}"
+            title="put the question to this project's Claude session — it can read
+the code, the roadmap and the changelog, and you can argue with the answer.
+It proposes and asks before doing anything.">Ask Claude</button>
         </div>
-        <p class="verwhy" data-versuggestwhy="${esc(v.component || "")}" hidden></p>`);
+`);
 
   }
 

@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { launch, newPage, ready, ok, done, sleep, DIR, URL as DURL } from './lib.mjs';
+import { launch, newPage, ready, ok, done, sleep, tmuxCapture, DIR, URL as DURL } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -410,6 +410,49 @@ ok(/^0\.[123]\.0/.test(est) && /estimate/.test(est) && /1\.0\.0 is a promise/.te
    'with nothing declared, the estimate stays under 1.0.0 and says why');
 rmSync(U, { recursive: true, force: true });
 
+// ---- putting the question to the session ---------------------------------
+// The estimate a function can make is a starting input, not the answer: a
+// session can read the code and be argued with. The prompt has to carry the
+// policy, because what it may do about the answer differs.
+const AK = `${WS}/askme`;
+rmSync(AK, { recursive: true, force: true });
+mkdirSync(AK, { recursive: true });
+execFileSync('git', ['-C', AK, 'init', '-q', '.'], { env });
+writeFileSync(`${AK}/f`, 'x');
+execFileSync('git', ['-C', AK, 'add', '-A'], { env });
+execFileSync('git', ['-C', AK, 'commit', '-qm', 'one'], { env });
+const askText = (proj, sessions) => {
+  const py = fileURLToPath(new URL('../version.py', import.meta.url));
+  return execFileSync('python3', ['-c', `
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location('v', ${JSON.stringify(py)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+sent = {}
+m.configure(workspace=${JSON.stringify(WS)}, state=${JSON.stringify(`${DIR}/state`)},
+            write_json=lambda p, o: open(str(p), 'w').write(json.dumps(o)),
+            tell_fn=lambda s, t, live: (sent.update(t=t), {'sent': True})[1],
+            tmux_name_fn=lambda n: n)
+r = m.ask(${JSON.stringify(proj)}, ${JSON.stringify(sessions)})
+print(json.dumps({'ok': r.get('ok'), 'text': r.get('text', '')}))`], { env }).toString();
+};
+setPolicyFor('askme', 'locked');
+const lockedAsk = JSON.parse(askText('askme', ['claude-askme']));
+ok(/bb version suggest/.test(lockedAsk.text),
+   'the prompt hands the mechanical estimate over as the session\u2019s input');
+ok(/ASK before doing anything/.test(lockedAsk.text)
+   && /negotiate it or decline/.test(lockedAsk.text),
+   '...and tells it to propose and wait, not to act');
+ok(/policy is `locked`, so you cannot set it/.test(lockedAsk.text),
+   '...saying plainly that it may not set the version here');
+ok(/Do not propose 1\.0\.0/.test(lockedAsk.text),
+   '...and that a major version is the operator\u2019s to raise');
+setPolicyFor('askme', 'open');
+const openAsk = JSON.parse(askText('askme', ['claude-askme']));
+ok(/bb version init <X\.Y\.Z>/.test(openAsk.text)
+   && /policy is `open`, so that is allowed/.test(openAsk.text),
+   'under a delegating policy the prompt says it may apply the agreed number');
+rmSync(AK, { recursive: true, force: true });
+
 // ---- the same module, in the Artifacts tab head --------------------------
 // The display answers "what is this at" and needs no decision. The buttons
 // answer "what next", which is the rare half — and the evidence beside them
@@ -564,6 +607,8 @@ ok((await page.$$(`${NB} #verBox [data-verbump]`)).length === 0,
 // one people route around.
 ok((await page.$$(`${NB} #verBox [data-verinit]`)).length === 1,
    '...but offering to create one, since nothing else can');
+ok((await page.$$(`${NB} #verBox [data-verask]`)).length === 1,
+   '...and offering to put the question to the project\u2019s own session');
 
 // A starting number is arbitrary — nothing can derive it — so it is the one
 // value here that is typed. Which means it has to be checked.
@@ -601,7 +646,37 @@ for (let t = 0; t < 50; t++){
 ok(/no CHANGELOG\.md here yet/.test(paneText),
    'the changelog pane says how to opt in when there is no file');
 
-ok((await page.errors).length === 0, 'no console errors from the version block');
+// The real delivery path, against the harness's own tmux server: alpha has a
+// claude-alpha session, so this exercises notify.tell rather than a stub.
+const askSent = await page.evaluate(async () => {
+  const r = await fetch('/api/version', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({project: 'alpha', action: 'ask'})});
+  return await r.json();
+});
+ok(askSent.ok && askSent.sent,
+   'the question reaches a running session for real, not just in principle');
+ok(tmuxCapture('claude-alpha').includes("Artifacts tab"),
+   '...and the prompt is what actually lands in that pane');
+
+// Checked before the deliberate refusal below: that one answers 400, which
+// the browser logs as a failed resource. An expected refusal is not a defect,
+// and folding it into this assertion would blunt the thing it exists to catch.
+const cleanSoFar = [...(await page.errors)];
+ok(cleanSoFar.length === 0, 'no console errors from the version block');
+
+// A project with no session says so rather than silently doing nothing.
+const askDead = await page.evaluate(async () => {
+  const r = await fetch('/api/version', {method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({project: 'beta', action: 'ask'})});
+  return await r.json();
+});
+ok(/no session is running/.test(askDead.error || ''),
+   'asking a project with no session reports it instead of failing quietly');
+
+ok((await page.errors).every(e => /400/.test(e)),
+   '...and the only failed request afterwards is the refusal just asked for');
 
 // fresh() removes stray projects but does not reach inside a fixture, so the
 // commits and the VERSION file this planted in alpha and beta have to go —

@@ -94,6 +94,8 @@ write_json = None
 todo = None
 bugs = None
 changelog = None
+tell = None
+tmux_name = None
 
 # The file a project declares its target in. One line, at the repo root.
 VERSION_FILE = "VERSION"
@@ -117,10 +119,11 @@ _lock = threading.Lock()
 
 
 def configure(*, workspace, state, write_json, todo_mod=None, bugs_mod=None,
-              changelog_mod=None):
+              changelog_mod=None, tell_fn=None, tmux_name_fn=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
                      write_json=write_json, todo=todo_mod, bugs=bugs_mod,
-                     changelog=changelog_mod)
+                     changelog=changelog_mod, tell=tell_fn,
+                     tmux_name=tmux_name_fn)
     globals()["FILE"] = Path(state) / "versions.json"
 
 
@@ -919,6 +922,71 @@ def suggest(project, comp=""):
     return {"value": f"0.{minor}.0",
             "why": "an estimate — " + ", ".join(reasons)
                    + ". 1.0.0 is a promise only you can make."}
+
+
+def ask(project, sessions=(), comp=""):
+    """Put the version question to the project's own Claude session.
+
+    Why this beats the estimate below it: suggest() can count commits and read
+    a manifest, and that is the whole of what it knows. A session in the
+    project can read the code, the roadmap, the changelog and what the thing
+    actually does — and, more to the point, the operator can argue with it.
+    A number that arrives with reasoning you can push back on is worth more
+    than a number that arrives with a rule.
+
+    So the mechanical answer becomes the session's input rather than the
+    operator's answer: the prompt hands over `bb version suggest` to run, and
+    asks for judgment on top of it.
+
+    Deliberately proposes rather than acts. The prompt says what the policy
+    here allows, and tells the session to wait for a clear yes either way —
+    negotiating the number is the point of asking a session instead of a
+    function, and a session that set it on arrival would have skipped the
+    conversation the operator came for.
+    """
+    if tell is None or tmux_name is None:
+        return {"error": "no way to reach a session from here"}
+    where = _sub(project, comp)
+    if where is None:
+        return {"error": f"no such component here: {comp}"}
+    tgt, _err = target(project, comp)
+    what = f"the `{comp}` component of {project}" if comp else project
+    forflag = f" --for {comp}" if comp else ""
+    pol = policy(project)
+    may_set = pol != "locked"
+    line = (
+        f"From the operator, on {project}'s Artifacts tab: what version should "
+        f"{what} start at? "
+        f"Run `bb version suggest{forflag}` for the mechanical signals, then "
+        f"form your own view from the codebase, the roadmap and the changelog "
+        f"— what this actually does, how finished it is, whether anything has "
+        f"shipped. "
+        f"Reply with a number and your reasoning, then ASK before doing "
+        f"anything: the operator may want to negotiate it or decline. Do not "
+        f"propose 1.0.0 unless they raise it — a major version is a "
+        f"compatibility promise that is theirs to make. "
+        + (f"If they agree, set it with `bb version init <X.Y.Z>{forflag}` "
+           f"(this project's policy is `{pol}`, so that is allowed)."
+           if may_set else
+           f"This project's version policy is `locked`, so you cannot set it "
+           f"yourself — hand them the number and they will apply it from the "
+           f"Artifacts tab, where they asked from.")
+    )
+    if tgt:
+        # Not the usual case — the button only shows where there is no
+        # version — but a stale tab can send this anyway, and a session told
+        # to pick a starting number for something that already has one should
+        # know that.
+        line = (f"From the operator, on {project}'s Artifacts tab: {what} "
+                f"already reads {tgt}. They asked for a starting version "
+                f"anyway, so say so and ask what they meant before doing "
+                f"anything.")
+    session = tmux_name("claude-" + project)
+    r = tell(session, line, sessions)
+    if r.get("error"):
+        return r
+    return {"ok": True, "sent": bool(r.get("sent")), "session": session,
+            "text": line}
 
 
 def _normalize(val):
