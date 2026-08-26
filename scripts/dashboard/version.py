@@ -718,6 +718,13 @@ def one(project, comp="", repo=None):
         # bump to date them, and whether the file exists at all.
         "unreleased": len(changelog.unreleased_text(text)) if text is not None else 0,
         "has_changelog": text is not None,
+        # For the undo control: where an unbump would land, and whether the
+        # current number is already a release somewhere in history — HEAD's
+        # tags say "is this build the release", this says "was this NUMBER
+        # ever released", and only the second makes it immutable.
+        "prev": prev_target(project, comp) if v["target"] else None,
+        "sealed": (_release_tag_exists(project, v["target"], comp)
+                   if v["target"] else False),
     }
 
 
@@ -725,6 +732,203 @@ def _running_here(project):
     if not (root(project) / "config/templates/project-CLAUDE.md").is_file():
         return None
     return os.environ.get("BB_VERSION", "").strip() or None
+
+
+def prev_target(project, comp=""):
+    """What VERSION held before its last change — the value an unbump returns
+    to. None where there is nothing earlier: the file's first commit."""
+    where = _sub(project, comp)
+    if where is None:
+        return None
+    rel = str((where / VERSION_FILE).relative_to(root(project).resolve()))
+    last = _git(project, "log", "-1", "--format=%H", "--", rel)
+    if not last:
+        return None
+    old = (_git(project, "show", f"{last}~1:{rel}") or "").strip()
+    return old if TARGET_RE.match(old) else None
+
+
+def _release_tag_exists(project, tgt, comp=""):
+    """Whether this version was ever tagged as a release — anywhere in
+    history, not just on HEAD. Released numbers are immutable."""
+    want = f"{comp}-v{tgt}" if comp else f"v{tgt}"
+    tags = (_git(project, "tag", "-l", want) or "").strip()
+    if tags:
+        return True
+    # The root convention tolerates an unprefixed tag too.
+    return bool(not comp and (_git(project, "tag", "-l", tgt) or "").strip())
+
+
+def unbump(project, by="claude", comp=""):
+    """Take the target back to its previous value — the code stays.
+
+    For a bump somebody thought better of: nothing about the tree reverts,
+    the number returns to what it was, and the changelog section the bump
+    dated dissolves back into Unreleased alongside anything logged since — so
+    the next bump dates the whole group together as one release.
+
+    Only while unreleased. A version that has a release tag is a number
+    somebody may have installed, and installed numbers are immutable — the
+    answer there is to bump forward, not to reuse.
+    """
+    tgt, err = target(project, comp)
+    if err:
+        return {"error": err}
+    if tgt is None:
+        return {"error": "no VERSION here to take back"}
+    prev = prev_target(project, comp)
+    if prev is None:
+        return {"error": f"{tgt} is this {'component' if comp else 'project'}'s "
+                         "first version — there is nothing earlier to return to"}
+    if tuple(map(int, prev.split("."))) >= tuple(map(int, tgt.split("."))):
+        # The last change was itself a return (or a hand edit downward), and
+        # "undoing" it would move the target UP while claiming to take it
+        # back. An unbump only ever goes down; forward is what bump is for.
+        return {"error": f"the last change here already returned the version "
+                         f"(from {prev}) — bump forward when it is ready again"}
+    # The policy question is the same one the bump asked: undoing a minor
+    # moves the minor, and a session allowed to move it forward is allowed to
+    # move it back.
+    part = next((n for n, a, b in zip(PARTS, tgt.split("."), prev.split("."))
+                 if a != b), "patch")
+    why = may(project, part, by)
+    if why:
+        return {"error": why}
+    if _release_tag_exists(project, tgt, comp):
+        return {"error": f"{tgt} is released — a tagged number may be on "
+                         "somebody's device, so it cannot be reused. Bump "
+                         "forward instead."}
+    where = _sub(project, comp)
+    rel = str((where / VERSION_FILE).relative_to(root(project).resolve()))
+    staged = (_git(project, "diff", "--cached", "--name-only") or "").splitlines()
+    if rel in staged:
+        return {"error": f"{VERSION_FILE} is already staged for another "
+                         "commit — commit or unstage that first"}
+    if (_git(project, "diff", "--name-only", "--", rel) or "").strip():
+        return {"error": f"{VERSION_FILE} has uncommitted changes — commit "
+                         "or discard those first"}
+    cl_rel = None
+    if changelog is not None:
+        cl_rel = str((where / changelog.FILE)
+                     .relative_to(root(project).resolve()))
+        if cl_rel in staged:
+            return {"error": f"{cl_rel} is staged for another commit, and "
+                             "dissolving the section would sweep that edit — "
+                             "commit or unstage it first"}
+    try:
+        (where / VERSION_FILE).write_text(prev + "\n", encoding="utf-8")
+    except OSError as e:
+        return {"error": f"could not write {VERSION_FILE}: {e}"}
+    paths = [rel]
+    if changelog is not None and changelog.unroll(where, tgt):
+        _git(project, "add", "--", cl_rel)
+        paths.append(cl_rel)
+    _git(project, "add", "--", rel)
+    msg = (f"Return the {comp + ' ' if comp else ''}version to {prev}"
+           + ("" if by == "operator" else " (session)"))
+    if _git(project, "commit", "-m", msg, "--", *paths, timeout=30) is None:
+        return {"error": f"{rel} now reads {prev}, but committing failed — "
+                         "commit by hand", "target": prev}
+    return {"ok": True, "was": tgt, "target": prev, "component": comp,
+            "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
+
+
+# What a fresh project's number should start at is the one question this
+# module cannot compute — but it can be estimated, and the operator asked for
+# the estimate to live beside the field: judging a codebase by hand is
+# exactly the guessing the rest of this system exists to remove.
+_MANIFESTS = (
+    ("package.json", "json"), ("manifest.json", "json"),
+    ("pyproject.toml", "toml"), ("Cargo.toml", "toml"),
+)
+
+
+def suggest(project, comp=""):
+    """A starting version and the reasons, strongest evidence first.
+
+    Adoption beats judgment: a manifest or a release tag already DECLARES an
+    identity, and suggesting anything else would fork it. Only when nothing
+    declares one does this fall back to reading maturity — commit count,
+    shipped artifacts, the roadmap — and it never proposes 1.0.0, because a
+    major version is a compatibility promise only the operator can make.
+    """
+    where = _sub(project, comp)
+    if where is None:
+        return {"error": f"no such component here: {comp}"}
+    # 1. A version something in the directory already declares.
+    for fname, kind in _MANIFESTS:
+        f = where / fname
+        try:
+            raw = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        val = None
+        if kind == "json":
+            try:
+                val = json.loads(raw).get("version")
+            except ValueError:
+                pass
+        else:
+            m = re.search(r'^\s*version\s*=\s*["\']([^"\']+)', raw, re.MULTILINE)
+            val = m.group(1) if m else None
+        norm = _normalize(val)
+        if norm:
+            return {"value": norm,
+                    "why": f"{fname} already declares {val} — adopting it "
+                           "beats inventing a second identity"}
+    # 2. A release tag in this thing's namespace.
+    pat = f"{comp}-v*" if comp else "v*"
+    tags = (_git(project, "tag", "-l", pat) or "").splitlines()
+    best = None
+    for t in tags:
+        norm = _normalize(t.removeprefix(f"{comp}-") if comp else t)
+        if norm:
+            key = tuple(int(x) for x in norm.split("."))
+            if best is None or key > best[0]:
+                best = (key, norm, t)
+    if best:
+        return {"value": best[1],
+                "why": f"the newest release tag here is {best[2]}"}
+    # 3. Maturity, judged from what is visible.
+    reasons = []
+    rel = _relspec(project, where) if comp else None
+    n = _git(project, "rev-list", "--count", "HEAD",
+             *(["--", rel] if rel else []))
+    n = int(n) if (n or "").isdigit() else 0
+    minor = 1 if n < 30 else (2 if n < 300 else 3)
+    reasons.append(f"{n} commit{'s' if n != 1 else ''}")
+    if not comp:
+        try:
+            shipped = any((root(project) / "dist").iterdir())
+        except OSError:
+            shipped = False
+        if shipped and minor < 2:
+            minor = 2
+        if shipped:
+            reasons.append("dist/ already holds builds")
+        if todo is not None:
+            # The injected module is trusted to answer; a project with no
+            # notebook yet answers with empty lists, not an exception.
+            open_items = len(todo.items(project))
+            done = sum(1 for x in todo.history(project)
+                       if x.get("act") == "done")
+            if done or open_items:
+                reasons.append(f"roadmap: {done} done, {open_items} open")
+            if done > open_items and minor < 3:
+                minor += 1
+    return {"value": f"0.{minor}.0",
+            "why": "an estimate — " + ", ".join(reasons)
+                   + ". 1.0.0 is a promise only you can make."}
+
+
+def _normalize(val):
+    """v2.3 / 2.3.1 / 2.3.1.4 → MAJOR.MINOR.PATCH, or None for anything else."""
+    if not isinstance(val, str):
+        return None
+    m = re.match(r"^v?(\d{1,6})\.(\d{1,6})(?:\.(\d{1,6}))?(?:[.+-]|$)", val.strip())
+    if not m:
+        return None
+    return f"{m.group(1)}.{m.group(2)}.{m.group(3) or 0}"
 
 
 def since_bump(project, comp=""):

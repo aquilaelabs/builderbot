@@ -354,6 +354,62 @@ ok(deep.code !== 0 && /one level under/.test(deep.out),
    '...and init refuses to create one there');
 rmSync(M, { recursive: true, force: true });
 
+// ---- taking a bump back, while it is still nobody's release --------------
+// The code never reverts; the number returns and the changelog section the
+// bump dated dissolves into Unreleased with whatever was logged after — so
+// the next bump dates the whole group as one release.
+const U = `${WS}/rethink`;
+rmSync(U, { recursive: true, force: true });
+mkdirSync(U, { recursive: true });
+execFileSync('git', ['-C', U, 'init', '-q', '.'], { env });
+writeFileSync(`${U}/f`, 'x');
+execFileSync('git', ['-C', U, 'add', '-A'], { env });
+execFileSync('git', ['-C', U, 'commit', '-qm', 'one'], { env });
+setPolicyFor('rethink', 'open');
+const ub = (...a) => {
+  try {
+    return { out: execFileSync('bash', [BB, ...a], { cwd: U, env }).toString(), code: 0 };
+  } catch (e) { return { out: (e.stdout + '' + e.stderr).toString(), code: e.status }; }
+};
+ub('version', 'init', '0.2.0');
+ub('changelog', 'add', 'went into the bump');
+ub('version', 'bump', 'minor');
+ub('changelog', 'add', 'logged after the bump');
+ok(/0\.3\.0 -> 0\.2\.0/.test(ub('version', 'unbump').out),
+   'an unreleased bump can be taken back without touching the code');
+const merged = ub('changelog').out;
+ok(!/## 0\.3\.0/.test(merged)
+   && merged.indexOf('went into the bump') < merged.indexOf('logged after the bump')
+   && /## Unreleased/.test(merged),
+   '...its section dissolves into Unreleased, oldest first');
+ub('version', 'bump', 'minor');
+const redone = ub('changelog').out;
+ok(/## 0\.3\.0/.test(redone) && !/## Unreleased/.test(redone),
+   '...and the next bump dates the whole group as one release');
+// Released numbers are immutable — somebody may have installed one.
+execFileSync('git', ['-C', U, 'tag', '-a', 'v0.3.0', '-m', 'r'], { env });
+ok(/released/.test(ub('version', 'unbump').out),
+   'a released version refuses to be taken back');
+execFileSync('git', ['-C', U, 'tag', '-d', 'v0.3.0'], { env });
+// An unbump of an unbump would walk UP while claiming to go back.
+ub('version', 'unbump');
+ok(/already returned/.test(ub('version', 'unbump').out),
+   'a second unbump refuses instead of quietly re-bumping');
+
+// ---- a starting version, estimated instead of guessed --------------------
+// Adoption beats judgment: a declared identity wins outright, then a release
+// tag, and only a project declaring nothing gets a maturity estimate — which
+// never proposes 1.0.0, a promise only the operator can make.
+rmSync(`${U}/VERSION`, { force: true });
+writeFileSync(`${U}/package.json`, JSON.stringify({ version: '2.3.1' }));
+ok(ub('version', 'suggest').out.startsWith('2.3.1'),
+   'a manifest that declares a version is adopted, not second-guessed');
+rmSync(`${U}/package.json`, { force: true });
+const est = ub('version', 'suggest').out;
+ok(/^0\.[123]\.0/.test(est) && /estimate/.test(est) && /1\.0\.0 is a promise/.test(est),
+   'with nothing declared, the estimate stays under 1.0.0 and says why');
+rmSync(U, { recursive: true, force: true });
+
 // ---- the same module, in the Artifacts tab head --------------------------
 // The display answers "what is this at" and needs no decision. The buttons
 // answer "what next", which is the rare half — and the evidence beside them

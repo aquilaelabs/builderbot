@@ -2466,6 +2466,15 @@ class Handler(BaseHTTPRequestHandler):
             if r.get("error"):
                 return self._json(r, 400)
             return self._json(version.payload(name) | {"created": r})
+        if act == "unbump":
+            r = version.unbump(name, by="operator",
+                               comp=field(req, "component") or "")
+            if r.get("error"):
+                return self._json(r, 400)
+            return self._json(version.payload(name) | {"unbumped": r})
+        if act == "suggest":
+            r = version.suggest(name, comp=field(req, "component") or "")
+            return self._json(r, 400 if r.get("error") else 200)
         if act == "policy":
             r = version.set_policy(name, field(req, "policy"))
             if r.get("error"):
