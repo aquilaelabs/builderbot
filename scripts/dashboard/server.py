@@ -1645,7 +1645,7 @@ memory.configure(run=run, workspace=WORKSPACE,
 import todo                                                      # noqa: E402
 
 todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
-               tmux_name=tmux_name)
+               tmux_name=tmux_name, settle=notify.settle)
 
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card — see the module docstring

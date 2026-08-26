@@ -36,14 +36,17 @@ from pathlib import Path
 # `tell` is notify.tell: the one way a line reaches a running Claude session.
 write_json = None
 tell = None
+# Injected beside tell, from the same module. Optional: the CLI configures
+# this without one, and a switch there simply does not wait.
+settle = None
 tmux_name = None
 STATE = None
 FILE = None
 
 
-def configure(*, write_json, state, tell=None, tmux_name=None):
+def configure(*, write_json, state, tell=None, tmux_name=None, settle=None):
     globals().update(write_json=write_json, STATE=Path(state),
-                     tell=tell, tmux_name=tmux_name)
+                     tell=tell, tmux_name=tmux_name, settle=settle)
     globals()["FILE"] = Path(state) / "todos.json"
 
 
@@ -843,6 +846,14 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 # CLI loads this module by path with no server around it.
 current_prefs = None
 
+# What THIS dashboard last switched each session to, {session: {model, effort}}.
+# The saved default cannot answer for effort: `/effort` is explicitly "this
+# session only" and never reaches settings.json, so a check against the file
+# would re-send it on every message forever — six lines of explanation printed
+# into the pane immediately before the real text is typed into it, which is
+# the collision this exists to avoid. What we typed, we know.
+_switched = {}
+
 
 def _switch(session, sessions, model, effort):
     """Type /model and /effort ahead of a step, when the panel asked for them.
@@ -860,19 +871,26 @@ def _switch(session, sessions, model, effort):
     sessions, so this is not scoped to the conversation it is typed into.
     """
     now = current_prefs() if current_prefs else {}
+    mine = _switched.setdefault(session, {})
     for cmd, val, table, key in (("/model", model, MODELS, "model"),
                                  ("/effort", effort, EFFORTS, "effort")):
         if not val:
             continue
-        # Already there: typing it again is a line of noise in the transcript
-        # and one more thing that can fail to land.
-        if now.get(key) == val:
+        # Already there — either claude's own saved default says so, or this
+        # dashboard put it there. Typing it again is a line of noise and one
+        # more thing that can fail to land.
+        if now.get(key) == val or mine.get(key) == val:
             continue
         if val not in table:
             return {"error": f"not a {cmd[1:]} this can set: {val}"}
         r = tell(session, f"{cmd} {val}", sessions)
         if r.get("error") or not r.get("sent"):
             return r | {"switching": cmd[1:]}
+        mine[key] = val
+        # Let the answer finish before anything else is typed. This is the
+        # whole reason a switch used to eat the message behind it.
+        if settle:
+            settle(session)
     return None
 
 
