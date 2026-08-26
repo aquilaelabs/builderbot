@@ -92,6 +92,13 @@ ok(await page.$eval('#devRow [data-devact="rebuild"]',
      e => e.textContent.trim()) === 'Rebuild',
    '...and the button says Rebuild once an image exists');
 ok(/--env-file/.test(log), '...with the dev env handed over as --env-file');
+// The classic builder, deliberately: compose's default boots a buildx helper
+// container and attaches to it, and attach is a hijacked connection a socket
+// proxy worth having refuses. Measured against a real proxy — buildx dies
+// with "unable to upgrade to tcp, received 403", classic succeeds — so the
+// build asks for exactly the POST /build permission the setup docs grant.
+ok(/BUILDKIT=0/.test(log),
+   '...and builds with the classic builder, which needs no helper container');
 r = await row();
 ok(!r.down && r.up, 'running: Down is live, Up is dead');
 ok(r.rebuild && /the code has moved since/.test(r.text) === false,

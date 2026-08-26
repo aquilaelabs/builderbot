@@ -373,6 +373,7 @@ case "$1" in
     case "$verb" in
       ps)   [ -f "$ST/$proj.up" ] && echo "stubcontainer"; exit 0 ;;
       build)
+        echo "BUILDKIT=${DOCKER_BUILDKIT:-unset}" >> "$ST/docker.log"
         [ -f "$ST/build.fail" ] && { echo "stub build exploded"; exit 1; }
         echo "stub built ok"; exit 0 ;;
       up)   touch "$ST/$proj.up"; exit 0 ;;

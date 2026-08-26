@@ -1,4 +1,9 @@
 # syntax=docker/dockerfile:1
+# SecretsUsedInArgOrEnv fires on ENV SSH_AUTH_SOCK, whose value is a socket
+# PATH — the rule pattern-matches names containing AUTH/KEY/TOKEN/SECRET. The
+# reasoning lives at the line itself; the directive has to be up here, because
+# BuildKit only reads check= before the first instruction.
+# check=skip=SecretsUsedInArgOrEnv
 # DS-0002 (image runs as root) suppressed: no USER on purpose. The entrypoint
 # must start as root to load shielded secrets into a root-owned agent and set
 # up the runner, and only then hands sessions to `builder`; a USER here would
@@ -405,8 +410,13 @@ RUN set -eux; \
 # loaded shielded keys from /secrets/ssh into the root-owned agent, every
 # session's ssh/git picks them up through this socket. Harmless when no
 # agent is running — ssh falls back to ~/.ssh key files.
-# DS-0031 suppressed: a socket path, not a secret; the name trips the
-# scanner's credential-shaped-variable heuristic.
+# Two scanners flag this and both are wrong in the same way: the value is a
+# PATH, and the rules pattern-match names containing AUTH/KEY/TOKEN/SECRET.
+# Nothing sensitive is in the image — `docker history` shows a string — and
+# the keys it leads to are root-owned in /secrets, mounted at runtime and
+# unreadable to sessions by design. The socket being public is the point:
+# everyone needs to reach an agent nobody can extract from.
+# trivy: AVD-DS-0031. buildkit: SecretsUsedInArgOrEnv.
 #trivy:ignore:AVD-DS-0031
 ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 

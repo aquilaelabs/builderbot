@@ -218,6 +218,17 @@ def available():
     return {"on": True, "why": ""}
 
 
+# The classic builder, not BuildKit. `compose build` defaults to buildx,
+# which boots a helper container and then ATTACHES to it — and attach is a
+# hijacked connection, near enough to exec that a socket proxy worth having
+# refuses it. Measured against the operator's own proxy: buildx dies with
+# "unable to upgrade to tcp, received 403", the classic builder succeeds.
+# It runs entirely daemon-side through POST /build, which is the endpoint
+# the proxy's own BUILD flag governs — so this asks for exactly the
+# permission the setup documentation tells people to grant, and no more.
+_CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
+
+
 def _run(argv, timeout=60, env_extra=None):
     env = dict(os.environ)
     # The resolved address, so `auto` never reaches the docker CLI — it does
@@ -496,7 +507,7 @@ def _clear_marker(project):
 def _worker(project):
     try:
         r = _run(_compose(project, "build"), timeout=3600,
-                 env_extra=_dev_data_env(project))
+                 env_extra=_dev_data_env(project) | _CLASSIC_BUILD)
         _job["log"] = r["out"][-2000:]
         if r["code"] != 0:
             _job.update(error="build failed — the tail of its output is below",

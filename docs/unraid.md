@@ -605,6 +605,14 @@ is why the feature is off until you wire it.
    default `0`. **`POST=1` is the one people miss**: without it every call
    is read-only and nothing can be built or started. A fresh proxy denies
    all of these — that is it working, not it broken.
+
+   You do **not** need to allow container attach, and should not: builds go
+   through the classic builder, which runs entirely daemon-side on the
+   `POST /build` endpoint `BUILD=1` governs. Compose's default BuildKit path
+   boots a helper container and attaches to it — a hijacked connection near
+   enough to `exec` that a proxy worth having refuses it (`unable to upgrade
+   to tcp, received 403`). BuilderBot asks for the classic builder on
+   purpose, so the permission set above is the whole of what it needs.
 2. In BuilderBot's template, leave **Docker proxy address** at `auto` — it
    finds the proxy on its own network by asking each address for `/version`,
    which is what a proxy answers even at its most locked-down defaults, and
