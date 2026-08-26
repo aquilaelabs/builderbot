@@ -43,8 +43,11 @@ ok(await page.$eval('.slot.on iframe', el => {
      const c = getComputedStyle(el).backgroundColor;
      return c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent';
    }), 'a terminal frame is not transparent while it loads');
-await page.click('#bKeys');
-ok(await page.$eval('#keys', el => el.classList.contains('show')), 'strip ⌨ toggles the keys on desktop');
+// A desktop has a keyboard, so it has no on-screen one: the strip carries no
+// ⌨ at all and the bar hides the one it keeps for phones.
+ok(!await page.$('#bKeys')
+   && await page.$eval('#mKeys', el => getComputedStyle(el).display === 'none'),
+   'no on-screen keys control on a desktop, from either place it used to be');
 
 // A poll that changes nothing rebuilds nothing: the same elements stay put
 // (so :hover survives), and a mid-action edit to one is not wiped.

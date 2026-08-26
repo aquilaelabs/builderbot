@@ -62,7 +62,8 @@ body{margin:0;background:var(--bg);color:var(--ink);display:flex;
           env(safe-area-inset-bottom) env(safe-area-inset-left)}
 
 header{display:flex;align-items:center;gap:10px;padding:8px 12px;
-  background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto}
+  background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;
+  position:relative}   /* the bell's panel hangs from it */
 header h1{font-size:15px;margin:0;font-weight:600}
 .logo{width:22px;height:22px;flex:0 0 auto;color:var(--accent);display:block;
   transition:color .2s ease}
@@ -72,14 +73,54 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 @media(max-width:600px){ .meta.host{display:none} }
-/* The About control: version-as-label on a desktop, the word on a phone —
-   a truncated version string answers nothing, so it stops pretending to. */
+/* The About control: version-as-label where there is room, a ? where there is
+   not — a truncated version string answers nothing, so it stops pretending to,
+   and the word "About" was only ever standing in for an icon. */
 #bAbout .alab{display:none}
 #bAbout #build{color:var(--dim)}
 @media(max-width:600px){
   #bAbout #build{display:none}
-  #bAbout .alab{display:inline}
+  #bAbout .alab{display:block}
 }
+
+/* The bell, and the panel it drops. Bare on purpose: it is a state light
+   first and a control second, and the header already carries four buttons
+   with boxes around them. Still a real button — a bell only a mouse can
+   reach is decoration. The dot says which kind of attention: red for
+   something that went wrong and is sitting unread, amber for a session
+   blocked on an answer, because "look when you like" and "somebody is
+   waiting" are not the same message. */
+#bBell{background:none;border:0;padding:0 2px;position:relative;color:var(--dim);
+  min-width:auto;min-height:var(--tap)}
+#bBell.has{color:var(--ink)}
+@media(hover:hover){ #bBell:hover{color:var(--ink)} }
+#bBell svg{width:17px;height:17px;display:block;margin:auto;fill:none;
+  stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+#bBell .dot{position:absolute;top:7px;right:0;width:7px;height:7px;border-radius:50%;
+  background:var(--bad);border:2px solid var(--panel)}
+#bBell .dot.ask{background:var(--warn)}
+.bellpanel{position:absolute;right:8px;top:100%;z-index:40;
+  width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
+  background:var(--panel);border:1px solid var(--line);border-top:0;
+  border-radius:0 0 8px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45)}
+.bnote{padding:8px 10px;border-bottom:1px solid var(--line);font:var(--f-ui)}
+.bnote:last-of-type{border-bottom:0}
+.bnote .bwhy{overflow-wrap:anywhere}
+.bnote.bad .bwhy{color:var(--bad)}
+/* Amber, and a left edge, because this one is not a record of something that
+   happened — it is a question with a deadline on it. */
+.bnote.ask{border-left:3px solid var(--warn);background:#20222060}
+.bnote.ask .bwhy{color:var(--warn)}
+.bnote .bcmd{font:11px/1.5 var(--mono);color:var(--dim);overflow-wrap:anywhere;
+  margin-top:3px}
+.bnote .bfoot{display:flex;gap:10px;align-items:center;margin-top:5px;
+  color:var(--dim);font:var(--f-note)}
+.bnote .bfoot .acts{margin-left:auto;display:flex;gap:12px}
+.bnote .bfoot a{color:var(--dim)}
+.bnote.ask .bfoot a[data-ballow]{color:var(--accent)}
+.bempty{padding:14px 10px;color:var(--dim);font:var(--f-note);text-align:center}
+.bfootbar{display:flex;justify-content:flex-end;padding:6px 8px;
+  border-top:1px solid var(--line)}
 .about .aline{display:flex;gap:10px;align-items:baseline;padding:3px 0}
 .about .aline span{flex:0 0 96px;color:var(--dim);font:var(--f-note)}
 .about .aline code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
@@ -850,7 +891,7 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 /* The header's icon buttons — the broom (reset) and the sign-out door —
    drawn to the same box as the ↻ glyph, same stroke voice as the eye and
    chain icons. */
-#bOut svg.out,#bCards svg.out{width:15px;height:15px;display:block;margin:auto;
+#bOut svg.out,#bCards svg.out,#bAbout svg.out{width:15px;height:15px;display:block;margin:auto;
   fill:none;stroke:currentColor;stroke-width:1.4;
   stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
@@ -1094,8 +1135,15 @@ body.dragging .tab .lbl{cursor:grabbing}
    inline to the bar's height), so the terminal under it holds still until the
    slide lands and the panel drops back into the flow. */
 .col.term{position:relative}
-.keys.sliding,.mpanel.sliding{position:absolute;left:0;right:0;z-index:5;
+/* `over` is where a desktop flyout LIVES; `sliding` is where any flyout is
+   for the length of its tween. Same geometry, and sliding outranks it so that
+   an opening panel passes over the one it is replacing — on a phone the one
+   being replaced is in the flow and loses on its own, on a desktop both are
+   overlays and the z-index is the only thing deciding it. */
+.keys.sliding,.mpanel.sliding,.mpanel.over{position:absolute;left:0;right:0;
   box-shadow:0 -6px 18px rgba(0,0,0,.35)}
+.mpanel.over{z-index:5}
+.keys.sliding,.mpanel.sliding{z-index:6}
 .mpanel .lab{font-size:10px;text-transform:uppercase;letter-spacing:.6px;
   color:var(--dim);padding:8px 10px 0}
 @media(min-width:901px){
@@ -1108,7 +1156,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   .mpanel{max-width:min(760px,100%)}
 }
 @media(max-width:900px){
-  .tabbar #bKeys,.tabbar .sep{display:none}
+  .tabbar .sep{display:none}
   .pill.att{display:none}   /* one pane on a phone: nothing to say */
   .mobar button{flex:1}     /* thumbs, and only three of them */
   .panes{min-height:90px}
@@ -1487,9 +1535,29 @@ body.dragging .tab .lbl{cursor:grabbing}
        (the glance is the point of having it in the header); on a phone it
        collapses to the word About, and either way the popup carries what the
        tooltip used to. -->
-  <button id="bAbout" aria-haspopup="dialog" title="about this BuilderBot">
-    <span class="meta" id="build"></span><span class="alab">About</span>
+  <button id="bAbout" aria-haspopup="dialog" aria-label="about this BuilderBot"
+          title="about this BuilderBot">
+    <span class="meta" id="build"></span>
+    <svg class="out alab" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.3"/>
+      <path d="M6.2 6.2a1.85 1.85 0 1 1 2.4 1.9c-.5.2-.8.6-.8 1.1v.3"/>
+      <circle cx="7.8" cy="11.9" r=".85" fill="currentColor" stroke="none"/>
+    </svg>
   </button>
+  <!-- Everything the page has said that was worth saying twice, plus anything
+       a session is blocked on. See logNote: a toast is seen by whoever was
+       looking at the time, which is the wrong deal for the messages that
+       matter most. -->
+  <button id="bBell" aria-haspopup="dialog" aria-expanded="false"
+          aria-label="notifications" title="notifications">
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M8 1.9a3.7 3.7 0 0 0-3.7 3.7c0 3.1-1.3 4-1.3 4h10s-1.3-.9-1.3-4A3.7 3.7 0 0 0 8 1.9Z"/>
+      <path d="M6.5 12a1.6 1.6 0 0 0 3 0"/>
+    </svg>
+    <span class="dot" hidden></span>
+  </button>
+  <div id="bellPanel" class="bellpanel" hidden role="dialog"
+       aria-label="notifications"></div>
   <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" aria-label="reset the sidebar cards"
           title="reset the sidebar cards — default order, all expanded">
@@ -2216,10 +2284,11 @@ function drawTabs(){
   const full =
     `<button id="bNew" class="ic newtab" title="new terminal at /workspace">+</button>` +
     html +
+    // The spacer stays: reorderTabEls inserts before it, and it is what
+    // keeps the tabs left-packed. What was after it — the ⌨ toggle — is
+    // gone, because a desktop has a keyboard. The on-screen keys are the
+    // phone's, and live on the phone's own bar.
     `<span class="sep"></span>` +
-    `<button id="bKeys" class="${showKeys?"on":""}"${
-        isShellTab(tabOf(panes[active])) ? "" : " disabled"
-      } title="on-screen keys — a shell tab only">⌨</button>` +
     (pinFor ? `<span class="pinmenu" id="pinmenu">
         <button data-l="${esc(pinFor)}">◧ Left</button>
         <button data-r="${esc(pinFor)}">◨ Right</button>
@@ -2272,7 +2341,6 @@ function drawTabs(){
   bar.querySelectorAll("[data-close]").forEach(b => b.onclick = e => hideTab(b.dataset.close, e));
   bar.querySelectorAll("[data-l]").forEach(b => b.onclick = e => pinTo(b.dataset.l, 0, e));
   bar.querySelectorAll("[data-r]").forEach(b => b.onclick = e => pinTo(b.dataset.r, 1, e));
-  $("bKeys").onclick = () => { showKeys = !showKeys; render(); };
   $("bNew").onclick = () => newShell("");
   if (pinFor) placePinMenu();
 
@@ -2827,18 +2895,38 @@ function slidePanel(el, show, swap){
   const running = el.getAnimations();
   const mid = running.length ? el.getBoundingClientRect().height : null;
   running.forEach(a => a.cancel());
-  const settle = () => { el.style.overflow = ""; el.style.bottom = ""; el.classList.remove("sliding"); };
-  if (noMotion() || !isPhone()){
-    settle(); el.classList.toggle("show", show);
+  // Where it ends up is the difference between the two screens. On a phone it
+  // lands IN the flow and the terminal gives up the height, because there is
+  // not enough screen to cover one thing with another. On a desktop it never
+  // lands: it stays an overlay, and the terminal keeps its size — which is
+  // what a terminal wants, since a resize costs it a refit and a reflow of
+  // everything on screen. The TWEEN is an overlay either way, or the iframe
+  // would reflow on every frame of it.
+  const overlay = !isPhone();
+  if (show && overlay) el.classList.add("over");
+  const pin = () => { el.style.bottom = $("mobar").offsetHeight + "px"; };
+  const settle = () => {
+    el.style.overflow = "";
+    el.classList.remove("sliding");
+    if (!overlay) el.style.bottom = "";        // an overlay stays pinned
+  };
+  const done = () => { if (!show) el.classList.remove("show", "over"); };
+  if (noMotion()){
+    if (overlay) pin();
+    settle(); el.classList.toggle("show", show); done();
     return null;
   }
-  if (!show && swap){
+  // The one being replaced holds still at full height and is dropped when the
+  // opener lands over it — cheaper than two tweens, and nothing shows through
+  // between them. Only in the flow: two overlays would have to agree about
+  // which is on top, which the z-index above already settles.
+  if (!show && swap && !overlay){
     settle();                                   // full height, in the flow
     swap.then(() => { if (el.dataset.shown === "0") el.classList.remove("show"); });
     return null;
   }
   el.classList.add("show", "sliding");
-  el.style.bottom = $("mobar").offsetHeight + "px";   // pinned just above the bar
+  pin();                                        // pinned just above the bar
   const h = el.offsetHeight;
   el.style.overflow = "hidden";
   const anim = el.animate(show ? [{height: (mid ?? 0) + "px"}, {height: h + "px"}]
@@ -2846,8 +2934,8 @@ function slidePanel(el, show, swap){
                           {duration: 200, easing: "ease"});
   return new Promise(res => {
     anim.onfinish = () => {
-      settle();                                 // back into the flow: the snap
-      if (!show) el.classList.remove("show");
+      settle();                                 // into the flow, or staying put
+      done();
       res();
     };
     // Canceled by a newer slide: whoever is waiting must not wait forever,
@@ -7087,7 +7175,107 @@ function notify(msg, bad){
   el.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove("show"), bad ? 7000 : 4000);
+  logNote(msg, bad);
 }
+
+// ---- what the page has said, and what is waiting on you ----------------
+// A toast says a thing once, for four seconds, to whoever happened to be
+// looking. That is the right deal for "saved" and the wrong one for every
+// message that matters — a failure you were not at the screen for did not
+// happen, as far as you can tell afterwards. So every notify() lands here as
+// well and stays until it is cleared.
+//
+// It is a page-lifetime log, deliberately: these are things this tab said,
+// and a reload is a fair line to draw under them. What is NOT from here is
+// the asks — a session blocked on the phone is the server's fact, read live,
+// so it leaves the list the moment it is answered or times out rather than
+// sitting there as a record of a decision already made.
+const NOTE_CAP = 50;
+let notes = [], notesSeen = 0, bellOpen = false;
+
+function logNote(msg, bad){
+  notes.unshift({msg: String(msg), bad: !!bad, at: Date.now()});
+  if (notes.length > NOTE_CAP) notes.length = NOTE_CAP;
+  drawBell();
+}
+
+function drawBell(){
+  const bell = $("bBell"), panel = $("bellPanel");
+  if (!bell) return;
+  const asks = ph?.asks || [];
+  const unread = Math.max(0, notes.length - notesSeen);
+  const dot = bell.querySelector(".dot");
+  dot.hidden = !(asks.length || unread);
+  dot.classList.toggle("ask", asks.length > 0);   // amber outranks red: one is
+  bell.classList.toggle("has", !!(asks.length || unread));   // a record, the
+  bell.title = asks.length                                   // other a wait
+    ? `${asks.length} waiting on an answer`
+    : unread ? `${unread} new` : "notifications";
+  if (!bellOpen) return;
+  const when = t => new Date(t).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
+  const rows = [
+    // Above everything the page merely said: somebody is blocked on these.
+    ...asks.map(a => `<div class="bnote ask">
+        <div class="bwhy">${esc(a.why)}</div>
+        <div class="bcmd">adb ${esc(a.cmd.join(" "))}</div>
+        <div class="bfoot"><span>${a.left > 60
+          ? `${Math.floor(a.left / 60)} min left to answer`
+          : `${a.left}s left to answer`}</span>
+          <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>
+            <a href="#" data-ballow="${a.id}">Approve</a></span></div></div>`),
+    ...notes.map(n => `<div class="bnote${n.bad ? " bad" : ""}">
+        <div class="bwhy">${esc(n.msg)}</div>
+        <div class="bfoot"><span>${when(n.at)}</span></div></div>`),
+  ];
+  panel.innerHTML = rows.length
+    ? rows.join("") + (notes.length
+        ? `<div class="bfootbar"><button type="button" id="bellClear">Clear</button></div>` : "")
+    : `<div class="bempty">nothing to report</div>`;
+  const clear = $("bellClear");
+  // Only the page's own log clears: an ask is not this button's to dismiss.
+  if (clear) clear.onclick = () => { notes = []; notesSeen = 0; drawBell(); };
+  panel.querySelectorAll("[data-ballow]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    phBusy = "running it"; drawPhone();
+    phFetch({action: "allow", id: Number(a.dataset.ballow)});
+  });
+  panel.querySelectorAll("[data-bdeny]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    phFetch({action: "deny", id: Number(a.dataset.bdeny)});
+  });
+}
+
+function toggleBell(open){
+  const panel = $("bellPanel"), bell = $("bBell");
+  bellOpen = open === undefined ? !bellOpen : open;
+  bell.setAttribute("aria-expanded", bellOpen ? "true" : "false");
+  if (bellOpen){
+    notesSeen = notes.length;          // opening it is reading it
+    panel.hidden = false;
+    drawBell();
+    if (!noMotion())
+      panel.animate([{opacity: 0, transform: "translateY(-10px)"},
+                     {opacity: 1, transform: "none"}], {duration: 160, easing: "ease"});
+  } else if (!panel.hidden){
+    const hide = () => { panel.hidden = true; };
+    if (noMotion()) hide();
+    else panel.animate([{opacity: 1, transform: "none"},
+                        {opacity: 0, transform: "translateY(-10px)"}],
+                       {duration: 120, easing: "ease"}).onfinish = hide;
+  }
+  drawBell();
+}
+
+$("bBell").onclick = e => { e.stopPropagation(); toggleBell(); };
+// Anywhere else closes it, including the header around it — a panel you have
+// to aim at the bell again to shut is a panel in the way.
+document.addEventListener("click", e => {
+  if (bellOpen && !$("bellPanel").contains(e.target) && !$("bBell").contains(e.target))
+    toggleBell(false);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && bellOpen) toggleBell(false);
+});
 
 // Where a macro should be typed: the tab being looked at, and only if it is a
 // plain shell. Never a Claude one, where the command would not run at all but
@@ -7463,6 +7651,7 @@ async function phFetch(body){
   }catch(e){ notify("phone: " + e, true); }
   phBusy = "";
   drawPhone();
+  drawBell();          // the same asks, in the header
 }
 
 function drawPhone(){

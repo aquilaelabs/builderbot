@@ -89,6 +89,35 @@ ok(/getprop/.test(await page.$eval('.phask .phcmd', e => e.textContent)),
 ok(/left to answer/.test(await page.$eval('.phask', e => e.textContent)),
    '...and how long is left, since an Allow that has quietly stopped working '
    + 'is worse than one that says it has gone');
+// The bell carries the same ask, because the Phone card is one card on one of
+// two views and a session blocked on an answer should not depend on which one
+// you are looking at. Amber rather than red: a record of something that went
+// wrong and a question with a deadline are different messages.
+await page.waitForFunction(
+  () => { const d = document.querySelector('#bBell .dot');
+          return d && !d.hidden && d.classList.contains('ask'); },
+  null, { timeout: 15000 });
+ok(true, 'an ask lights the bell, in the colour that means somebody is waiting');
+await page.click('#bBell');
+await page.waitForSelector('#bellPanel .bnote.ask', { timeout: 10000 });
+ok(/read the Firefox version/.test(await page.$eval('#bellPanel .bnote.ask', e => e.textContent))
+   && /getprop/.test(await page.$eval('#bellPanel .bnote.ask .bcmd', e => e.textContent)),
+   '...and the panel carries the reason and the exact command, as the card does');
+// The page's own log lands here too, and an error reads as one.
+await page.evaluate(() => notify('something went wrong', true));
+await page.waitForSelector('#bellPanel .bnote.bad', { timeout: 10000 });
+ok(/something went wrong/.test(await page.$eval('#bellPanel .bnote.bad', e => e.textContent)),
+   'a notification is kept after its toast has gone, and an error is marked as one');
+// Clear is the log's, not the ask's: nothing here dismisses a question
+// somebody is still blocked on.
+await page.click('#bellClear');
+await page.waitForFunction(() => !document.querySelector('#bellPanel .bnote.bad'));
+ok(await page.$('#bellPanel .bnote.ask') !== null,
+   '...and clearing the log leaves the ask, which is not this button\'s to dismiss');
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => document.getElementById('bellPanel').hidden);
+ok(true, '...and Escape closes the panel');
+
 await page.click('.phask [data-allow]');
 await page.waitForFunction(() => !document.querySelector('.phask'),
                            null, { timeout: 20000 });
@@ -101,7 +130,11 @@ const denied = await post({ action: 'ask', why: 'wipe something',
                             cmd: ['shell', 'rm', '-rf', '/sdcard/x'] });
 await page.evaluate(() => phFetch());
 await page.waitForSelector('.phask', { timeout: 15000 });
-await page.click('.phask [data-deny]');
+// Answered from the bell this time: the two surfaces drive the same endpoint,
+// and the one in the header is the one you have when the card is not in front.
+await page.click('#bBell');
+await page.waitForSelector('#bellPanel .bnote.ask [data-bdeny]', { timeout: 10000 });
+await page.click('#bellPanel .bnote.ask [data-bdeny]');
 await page.waitForFunction(() => !document.querySelector('.phask'),
                            null, { timeout: 20000 });
 ok((await post({ action: 'outcome', id: denied.body.id })).body.state === 'denied',
