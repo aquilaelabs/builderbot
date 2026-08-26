@@ -1652,7 +1652,9 @@ todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
 # for why it stopped being a question inside each send box.
 import prefs                                                     # noqa: E402
 
-prefs.configure(write_json=write_json, state=STATE)
+todo.current_prefs = prefs.current
+prefs.configure(write_json=write_json, state=STATE,
+                home=os.environ.get("BUILDER_HOME", str(Path.home())))
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
@@ -1845,7 +1847,7 @@ def snapshot():
         "phone_asks": len(phone.requests_open()),
         # The standing model/effort every send applies — the card's state,
         # riding the poll it already reads.
-        "claude_prefs": prefs.get(),
+        "claude_prefs": prefs.get() | {"now": prefs.current()},
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.

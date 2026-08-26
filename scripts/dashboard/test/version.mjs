@@ -437,39 +437,30 @@ print(json.dumps({'ok': r.get('ok'), 'text': r.get('text', '')}))`], { env }).to
 };
 setPolicyFor('askme', 'locked');
 const lockedAsk = JSON.parse(askText('askme', ['claude-askme']));
-ok(/bb version suggest/.test(lockedAsk.text),
-   'the prompt hands the mechanical estimate over as the session\u2019s input');
-ok(/ASK before doing anything/.test(lockedAsk.text)
-   && /negotiate it or decline/.test(lockedAsk.text),
-   '...and tells it to propose and wait, not to act');
-ok(/policy is `locked`, so you cannot set it/.test(lockedAsk.text),
-   '...saying plainly that it may not set the version here');
-ok(/Do not propose 1\.0\.0/.test(lockedAsk.text),
-   '...and that a major version is the operator\u2019s to raise');
-setPolicyFor('askme', 'open');
-const openAsk = JSON.parse(askText('askme', ['claude-askme']));
-ok(/bb version init <X\.Y\.Z>/.test(openAsk.text)
-   && /policy is `open`, so that is allowed/.test(openAsk.text),
-   'under a delegating policy the prompt says it may apply the agreed number');
+ok(/what version should askme start at/.test(lockedAsk.text),
+   'the ask names the thing it is asking about');
+ok(/CLAUDE\.md/.test(lockedAsk.text),
+   '...and points at the protocol rather than restating it');
+ok(/propose and ask, do not apply/.test(lockedAsk.text),
+   '...saying plainly that this is a proposal, not an instruction');
+// The length IS the contract. This is typed into a terminal a character at a
+// time and the echo has to be seen before Enter can follow; the first cut ran
+// to 704 characters and was left sitting in the input box unsent, which read
+// to the operator as the button doing nothing. Keep it short.
+ok(lockedAsk.text.length < 250,
+   `...and stays short enough to type and land (${lockedAsk.text.length} chars)`);
 
-// Once a version exists the question changes: not "what should this start
-// at" but "is this still where it should be" — and what the session may do
-// about the answer still tracks the policy.
+// Once a version exists the question changes: not "what should this start at"
+// but "is this still right".
 writeFileSync(`${AK}/VERSION`, '0.4.0\n');
 execFileSync('git', ['-C', AK, 'add', '-A'], { env });
 execFileSync('git', ['-C', AK, 'commit', '-qm', 'v'], { env });
-setPolicyFor('askme', 'locked');
 const holds = JSON.parse(askText('askme', ['claude-askme']));
-ok(/is at 0\.4\.0 — is that still where it should be\?/.test(holds.text)
-   && /bb changelog/.test(holds.text) && /ASK before doing anything/.test(holds.text),
-   'with a version, the ask becomes "is this still right", evidence first');
-ok(/`locked`, so you cannot move it yourself/.test(holds.text),
-   '...and under locked it hands the proposal back instead of bumping');
-setPolicyFor('askme', 'minor');
-const holdsOpen = JSON.parse(askText('askme', ['claude-askme']));
-ok(/bb version bump <part>/.test(holdsOpen.text)
-   && /you may move patch, minor/.test(holdsOpen.text),
-   '...and a delegating policy names exactly the parts it may move');
+ok(/is at 0\.4\.0 — is that still right\?/.test(holds.text)
+   && /propose and ask, do not apply/.test(holds.text),
+   'with a version, the ask becomes "is this still right"');
+ok(holds.text.length < 250,
+   `...and that one is short too (${holds.text.length} chars)`);
 rmSync(AK, { recursive: true, force: true });
 
 // ---- the same module, in the Artifacts tab head --------------------------

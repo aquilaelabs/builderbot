@@ -18,11 +18,16 @@ to the conversation it is typed into. That note lives on the card now, once,
 instead of appearing in every send box.
 """
 import json
+import os
 import threading
 from pathlib import Path
 
 write_json = None
 FILE = None
+# Claude Code's own settings, where a /model or /effort switch is saved as the
+# default for new sessions. Read-only here, and never written: it is claude's
+# file, and the switch that changes it is claude's own command.
+CLAUDE_SETTINGS = None
 
 # The canonical tables. todo.py and bugs.py carry copies for their own
 # switching; a value stored here must satisfy theirs, so keep them equal.
@@ -32,9 +37,41 @@ EFFORTS = ("low", "medium", "high", "xhigh", "max")
 _lock = threading.Lock()
 
 
-def configure(*, write_json, state):
+def configure(*, write_json, state, home=None):
     globals().update(write_json=write_json)
     globals()["FILE"] = Path(state) / "claude-prefs.json"
+    h = Path(home or os.environ.get("BUILDER_HOME") or Path.home())
+    globals()["CLAUDE_SETTINGS"] = h / ".claude" / "settings.json"
+
+
+def current():
+    """What claude itself is defaulting to right now — the answer to "so what
+    IS it?", which the preference alone cannot give.
+
+    A preference of "" means "send no switch", and a card showing only that
+    says nothing about what a session will actually run on. This reads the
+    default claude saves when /model or /effort is used, so the card can state
+    the fact beside the choice. Best-effort: an unreadable or unfamiliar file
+    means the card simply does not claim to know.
+    """
+    try:
+        with open(CLAUDE_SETTINGS) as f:
+            d = json.load(f)
+    except (OSError, ValueError, TypeError):
+        return {"model": "", "effort": ""}
+    model = d.get("model")
+    model = model if isinstance(model, str) else ""
+    # The effort is filed under the resolved model id, not the short name.
+    effort = ""
+    ms = d.get("modelSettings")
+    if isinstance(ms, dict):
+        for key, val in ms.items():
+            if isinstance(val, dict) and (model in key or not model):
+                got = val.get("effortLevel")
+                if isinstance(got, str):
+                    effort = got
+                    break
+    return {"model": model, "effort": effort}
 
 
 def get():

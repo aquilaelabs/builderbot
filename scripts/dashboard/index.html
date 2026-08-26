@@ -427,6 +427,11 @@ button.on{background:#1f6f36;border-color:#2ea043}
    to the card edge for want of exactly this. */
 .card .pad{padding:9px 12px}
 .prefrow{display:flex;gap:10px;flex-wrap:wrap}
+/* The fact, above the explanation: what claude is running now, and whether
+   this card is about to change it. */
+.prefnow{color:var(--dim);font:var(--f-note);margin:8px 0 0}
+.prefnow.differs{color:var(--warn)}
+.prefnow:empty{display:none}
 .prefrow .pick{display:flex;gap:6px;align-items:center;
   font:var(--f-note);color:var(--dim)}
 .veradd{margin-top:10px}
@@ -1507,6 +1512,7 @@ body.dragging .tab .lbl{cursor:grabbing}
         <label class="pick">Effort <select id="prefEffort"
           aria-label="effort every send switches the session to"></select></label>
       </div>
+      <p class="prefnow" id="prefNow"></p>
       <p class="prefwhy">Applied to everything sent from here — a roadmap
         step, a bug, the version question — as <code>/model</code> and
         <code>/effort</code> ahead of it. Claude keeps a switch as the default
@@ -2634,6 +2640,23 @@ function drawPrefs(p){
   };
   fill("prefModel", MODELS, p?.model);
   fill("prefEffort", EFFORTS, p?.effort);
+  // What claude is ACTUALLY defaulting to, beside what this card will switch
+  // it to. The preference alone cannot answer "so what is it?" — "leave as
+  // is" is a choice, not a status — and that was the whole confusion: a card
+  // that only says what it would change tells you nothing about what is.
+  const el = $("prefNow");
+  if (!el) return;
+  const now = p?.now || {};
+  const label = v => (MODELS.find(m => m[0] === v) || [])[1] || v;
+  el.textContent = now.model
+    ? `Claude is on ${label(now.model)}${now.effort ? ` · ${now.effort}` : ""} now`
+    : "";
+  // Said only when the card would change it: a preference that matches what
+  // is already running is not news.
+  const willSwitch = (p?.model && p.model !== now.model)
+                  || (p?.effort && p.effort !== now.effort);
+  el.classList.toggle("differs", !!willSwitch);
+  if (willSwitch) el.textContent += " — the next send switches it";
 }
 ["prefModel", "prefEffort"].forEach(id => {
   const el = $(id);
@@ -5988,7 +6011,10 @@ $("todoRevert").onclick = revertNotebook;
         }
         startClaude(project, null);   // opens the tab, or goes to the one there
       }catch(e){ notify("ask: " + e, true); }
-      b.disabled = false;
+      // finally, not after the try: an exception on the way to the session
+      // used to leave this dead, and a button that will not fire twice is
+      // indistinguishable from one that did nothing.
+      finally { b.disabled = false; }
     });
     const pol = $("verPolicy");
     if (pol) pol.onchange = () => postVersion({action: "policy", policy: pol.value});
