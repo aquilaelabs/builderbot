@@ -136,7 +136,7 @@ def root(project):
 # Never treat these as a component. dist/ holds outputs, not sources, and
 # the rest are other people's trees.
 _SKIP = {"node_modules", "vendor", "dist", "build", "target", ".git",
-         "__pycache__", "venv", ".venv"}
+         "__pycache__", "venv", ".venv", "gradle", "test", "tests", "docs"}
 
 
 def components(project):
