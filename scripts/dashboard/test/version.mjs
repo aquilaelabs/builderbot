@@ -544,15 +544,28 @@ ok(labels.some(l => /Patch → 0\.4\.1/.test(l)) && labels.some(l => /Minor → 
    'each button previews the value it would set');
 
 // The operator's bump is allowed regardless of the policy — the policy is
-// about sessions. It should also commit, so the tree is not left dirty.
-// newPage auto-accepts dialogs and records them, so the confirm is checked
-// rather than merely dismissed: a bump is a commit, and should be asked about.
+// about sessions. And it STAGES: pressing Minor records the intent, git is
+// untouched until the notebook's Save — a misclicked "Major → 1.0.0" must
+// never be a commit before the finger has left the button.
 await page.click(`${NB} #verBox [data-verbump="minor"]`);
+await page.waitForFunction(sel => {
+  const b = document.querySelectorAll(sel);
+  return [...b].some(x => x.offsetParent && /staged: 0\.5\.0/.test(x.textContent));
+}, `${NB} .vermark`.replace(NB, '.nb'), { timeout: 20000 }).catch(() => {});
+ok(/staged: 0\.5\.0 on Save/.test(await page.$eval(`${NB} #verBox`, e => e.textContent)),
+   'pressing a bump stages it, saying what Save will do');
+ok(execFileSync('git', ['-C', A, 'show', 'HEAD:VERSION'], { env }).toString().trim()
+     === '0.4.0',
+   '...and git holds the old number until Save');
+// Pressing the same part again clears the stage — the undialog misclick path.
+await page.click(`${NB} #verBox [data-verbump="minor"]`);
+ok(!/staged:/.test(await page.$eval(`${NB} #verBox`, e => e.textContent)),
+   '...and pressing it again unstages, no dialog needed');
+await page.click(`${NB} #verBox [data-verbump="minor"]`);
+await page.click(`${NB} #todoSaveQuiet`);
 await waitTarget('0.5.0');
 ok((await rows())['building towards'] === '0.5.0',
-   'the operator can bump even while the policy is locked to them');
-ok(page.dialogs.some(d => /0\.5\.0/.test(d) && /commits/i.test(d)),
-   '...having been asked first, and told it commits');
+   'Save commits the staged bump — the operator can, whatever the policy');
 ok(execFileSync('git', ['-C', A, 'log', '-1', '--format=%s'], { env }).toString().trim()
      === 'Set version to 0.5.0',
    '...and the commit says the operator moved it, with no "(session)" mark');
