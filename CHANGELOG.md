@@ -25,3 +25,5 @@
 - The container now keeps a record of every image it has run, so 'which build was I on when I saw that?' has an answer after the fact (8253d8a)
 - The dev instance's Down button now works when the app has crashed rather than been stopped, and the row says which of the two happened (181b40b)
 - A project's dev instance now says what its compose file reaches for beyond the project — a host mount, privileged, extra capabilities — and asks once before starting it (b910384)
+- The command lists and Sessions moved out of the sidebar and under the terminal, where the phone has always had them — seven cards on the left instead of twelve (76ecf27)
+- A dev instance whose compose file uses paths only BuilderBot can see is told so on its row, rather than starting with an empty directory mounted in its place (76ecf27)
