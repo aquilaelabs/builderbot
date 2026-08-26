@@ -372,6 +372,31 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
 
+/* The disclosure marker, once, for every <details> on the page — a memory, a
+   bug report, a findings group, the component fold. All four set display:flex
+   on their summary, which REMOVES the native marker in Chromium, so each had
+   grown its own hand-copied ::before; the component fold was added without
+   one and silently had no triangle at all. Grouped here so a fold cannot be
+   built without the arrow that says it opens. */
+.mem>summary,.bug>summary,.fx .grp>summary,.veradd>summary{
+  cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
+.mem>summary::-webkit-details-marker,.bug>summary::-webkit-details-marker,
+.fx .grp>summary::-webkit-details-marker,
+.veradd>summary::-webkit-details-marker{display:none}
+.mem>summary::before,.bug>summary::before,.fx .grp>summary::before,
+.veradd>summary::before{content:"\25B8";color:var(--dim);font-size:11px;
+  width:9px;flex:0 0 auto}
+.mem[open]>summary::before,.bug[open]>summary::before,
+.fx .grp[open]>summary::before,.veradd[open]>summary::before{content:"\25BE"}
+
+/* The "showing N of M" footer under a long list. Quiet: it is a fact about
+   the list plus the control that changes it, not a section of its own. */
+.pagemore{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:10px 0 2px;border-top:1px dashed #232b34;margin-top:6px}
+.pagemore span{color:var(--dim);font:var(--f-note)}
+.pagemore button{margin-left:auto}
+.pagemore button+button{margin-left:0}
+
 /* ---- the shared to-do list -------------------------------------------- */
 /* The Artifacts view: rows in the notebook, same voice as the bug rows.
    Two stacked lines rather than one wrapping group — a row whose parts rewrap
@@ -405,8 +430,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .prefrow .pick{display:flex;gap:6px;align-items:center;
   font:var(--f-note);color:var(--dim)}
 .veradd{margin-top:10px}
-.veradd summary{color:var(--dim);font:var(--f-note);
-  cursor:pointer;min-height:var(--tap);display:flex;align-items:center}
+.veradd>summary{color:var(--dim);font:var(--f-note);min-height:var(--tap)}
+@media(hover:hover){ .veradd>summary:hover{color:var(--ink)} }
 @media(max-width:520px){
   .verinit .vstart,.verinit .vdir{flex:1 1 100%;width:auto}
   .verinit button{flex:1 1 100%}
@@ -451,6 +476,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
 
 /* The phone card. Almost nothing of its own: it is .row like Projects, and
    these are the few things a list of rows does not already say. */
+/* A pill used as a row's name sits flush on the explainer under it — a chip
+   has a border where a line of text has a descender, so it needs the air a
+   text line gets for free. */
+.row .name .pill{display:inline-block;margin-bottom:5px}
 .phcmd{font:11px/1.4 var(--mono);color:var(--dim);overflow-wrap:anywhere}
 /* The one warning on this card that is about what the operator is doing right
    now rather than about the machine's state. */
@@ -675,11 +704,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
    our own — this page has no framework and does not need one for a fold. */
 .mem{border:1px solid var(--line);border-radius:8px;margin-bottom:6px;
   background:#161b22}
-.mem>summary{display:flex;gap:8px;align-items:center;padding:8px 10px;
-  cursor:pointer;list-style:none;min-height:var(--tap);box-sizing:border-box}
-.mem>summary::-webkit-details-marker{display:none}
-.mem>summary::before{content:"▸";color:var(--dim);font-size:11px;width:9px}
-.mem[open]>summary::before{content:"▾"}
+.mem>summary{padding:8px 10px;min-height:var(--tap);box-sizing:border-box}
 .mem .mname{font:600 12px/1.4 var(--mono);color:var(--ink)}
 .mem .mwhen{margin-left:auto;color:var(--dim);font:var(--f-note);
   white-space:nowrap}
@@ -726,11 +751,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
    leads a memory's. */
 .bug{border-top:1px solid var(--line);padding:2px 0}
 .bug:first-child{border-top:0}
-.bug>summary{display:flex;gap:8px;align-items:center;padding:8px 2px;
-  cursor:pointer;list-style:none}
-.bug>summary::-webkit-details-marker{display:none}
-.bug>summary::before{content:"▸";color:var(--dim);font-size:11px;width:9px}
-.bug[open]>summary::before{content:"▾"}
+.bug>summary{padding:8px 2px}
 .bug .btitle{flex:1;min-width:0;font:13px/1.4 system-ui,sans-serif;
   overflow-wrap:anywhere}
 .bug .btitle.done{color:var(--dim);text-decoration:line-through}
@@ -1057,12 +1078,8 @@ body.dragging .tab .lbl{cursor:grabbing}
    whose groups really are separate documents. */
 .fx:not(.nbhost) .grp{border:1px solid var(--line);border-radius:8px;
   margin-bottom:10px;background:var(--panel);overflow:hidden}
-.fx .grp>summary{padding:9px 11px;cursor:pointer;font-weight:600;
-  display:flex;gap:8px;align-items:center;flex-wrap:wrap;list-style:none;
+.fx .grp>summary{padding:9px 11px;font-weight:600;flex-wrap:wrap;
   transition:background-color .15s ease}
-.fx .grp>summary::-webkit-details-marker{display:none}
-.fx .grp>summary::before{content:"▸";color:var(--dim);font-size:11px}
-.fx .grp[open]>summary::before{content:"▾"}
 .fx .bust{padding:9px 11px;color:var(--bad);font-weight:600}
 .fx .rule{border-top:1px solid var(--line);padding:9px 11px}
 .fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
@@ -3012,6 +3029,59 @@ function slideDetails(el, willOpen){
   foldHeight(el, from, to, () => { el.open = willOpen; });
 }
 
+// ---- long lists, shown a page at a time ---------------------------------
+// Not numbered pages. These lists are read in an order that means something —
+// bugs by severity, findings by rule, the roadmap by the order the work has
+// to happen in — so "page 4" names nothing, and paging away from the top
+// hides the rows that matter most. A page of rows and a control that adds
+// another keeps the order intact, keeps the browser's own find working over
+// everything already shown, and is one tap rather than a bar of them.
+//
+// Applied to the DOM after a list draws rather than woven into each renderer:
+// five lists render five different ways, and one function that hides
+// overflow rows is the only shape that cannot drift between them.
+const PAGE = 25;
+const pageState = {};      // list id -> how many rows are currently shown
+
+function paginate(host, rowSel, opts = {}){
+  if (!host) return;
+  const key = opts.key || host.id;
+  const rows = [...host.querySelectorAll(rowSel)];
+  host.querySelector(":scope > .pagemore")?.remove();
+  const size = opts.size || PAGE;
+  // A list that only just crosses the line is worse paginated than whole:
+  // one hidden row behind a button is a click to see nothing much.
+  if (rows.length <= size + 5){
+    rows.forEach(r => r.hidden = false);
+    delete pageState[key];
+    return;
+  }
+  const shown = Math.min(pageState[key] || size, rows.length);
+  rows.forEach((r, i) => { r.hidden = i >= shown; });
+  const left = rows.length - shown;
+  const bar = document.createElement("div");
+  bar.className = "pagemore";
+  // With nothing left there is no "more" to offer — a "Show 0 more" button is
+  // a control that does nothing, and the count alone is the honest footer.
+  bar.innerHTML = `<span>${left ? `${shown} of ${rows.length}` : `all ${rows.length}`}${
+      opts.noun ? " " + esc(opts.noun) : ""}</span>
+    ${left ? `<button type="button" class="more">Show ${
+      Math.min(size, left)} more</button>` : ""}
+    ${left > size ? `<button type="button" class="all">Show all</button>` : ""}
+    ${shown > size ? `<button type="button" class="fewer">Fewer</button>` : ""}`;
+  bar.querySelector(".more")?.addEventListener("click", () => {
+    pageState[key] = shown + size; paginate(host, rowSel, opts);
+  });
+  bar.querySelector(".all")?.addEventListener("click", () => {
+    pageState[key] = rows.length; paginate(host, rowSel, opts);
+  });
+  bar.querySelector(".fewer")?.addEventListener("click", () => {
+    pageState[key] = size; paginate(host, rowSel, opts);
+    host.scrollIntoView({block: "nearest"});
+  });
+  host.appendChild(bar);
+}
+
 // A plain block that is shown and hidden. Same tween, collapsed height zero.
 function slideHidden(el, willShow, after){
   const done = () => { el.hidden = !willShow; after?.(); };
@@ -4522,6 +4592,10 @@ function drawTodo(j){
   $("todoOrder").classList.toggle("on", todoOrdering);
   $("todoLog").classList.toggle("on", todoLogOn);
   drawSendBox(live);
+  // Groups, not steps: a plan cut in half by a page boundary is a plan
+  // nobody can read. The roadmap caps at 30 open items anyway, so this only
+  // ever bites a list that has grown its steps.
+  paginate($("todoList"), ":scope > .grp", {noun: "items"});
 }
 
 // What a session can be switched to on the way in. Tables, not free text:
@@ -4692,7 +4766,7 @@ function syncSave(){
   const b = $("todoSave"), q = $("todoSaveQuiet");
   if (!b || !q) return;
   const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
-                || todoPending.length > 0;
+                || todoPending.length > 0 || verStagedCount() > 0;
   // Held while a session is mid-batch, and again until the list is re-read
   // after one finishes. Reverting is still allowed either way: throwing away
   // your own unsaved work never depends on what anybody else is doing.
@@ -4701,7 +4775,7 @@ function syncSave(){
   // Revert answers the same question the Saves do, from the other side.
   const rv = $("todoRevert");
   if (rv){
-    rv.disabled = !(todoPending.length || memDirty());
+    rv.disabled = !(todoPending.length || memDirty() || verStagedCount());
     rv.title = rv.disabled ? "nothing unsaved to throw away"
       : "throw away what has not been saved — the list and the memory editors "
         + "go back to what is on disk";
@@ -4969,9 +5043,17 @@ async function addTodo(){
 // both Saves write both and a Revert that left one behind would be a trap.
 function nbUnsaved(){
   const n = todoPending.length;
+  const v = verStagedCount();
   return [n ? `${n} change${n === 1 ? "" : "s"} to the list` : "",
-          memDirty() ? "an edited memory" : ""].filter(Boolean).join(" and ");
+          memDirty() ? "an edited memory" : "",
+          v ? `${v} staged version bump${v === 1 ? "" : "s"}` : ""]
+    .filter(Boolean).join(" and ");
 }
+// Set by the notebook's version block; the panel-level Save and Revert are
+// outside its closure and need a way to ask.
+let verStagedCount = () => 0;
+let verCommitStaged = async () => {};
+let verClearStaged = () => {};
 
 // Throw the unsaved changes away. What Close used to do on the way out, now
 // that there is no way out to do it on: the tab stays, so this is the only
@@ -4981,6 +5063,7 @@ async function revertNotebook(){
   if (!what) return;
   if (!confirm(`Revert ${what}?\n\nIt goes back to what is on disk.`)) return;
   revertPending();
+  verClearStaged();
   todoOrdering = false;
   redrawTodo();
   await loadMemory(memGen);       // drops whatever the editors were holding
@@ -5058,6 +5141,7 @@ function drawMemory(j){
              </div>`}
       </div>
     </details>`).join("");
+  paginate($("memList"), ":scope > .mem", {noun: "memories"});
   // The fold, driven rather than left to the browser's instant one — the same
   // height tween the sidebar cards use, so a memory opens the way a card does.
   $("memList").querySelectorAll(".mem > summary").forEach(sum => {
@@ -5482,14 +5566,18 @@ async function saveAll(tellIt){
   // Everything staged, replayed in the order it was made — which is what makes
   // the server arrive at what is on screen.
   await flushPending();
+  // Before the memory write and the settle: a bump is a git commit, and if it
+  // is going to refuse — a staged VERSION, a hand edit in the worktree — the
+  // operator should hear that instead of "saved".
+  const verMsg = await verCommitStaged();
   if (memDirty()) await saveMemory(true);
   const j = await postTodo({action: tellIt ? "tell" : "save"});
   await loadMemory(memGen);
   b.textContent = was;
   // Committed, so there is nothing left for a Cancel to go back to.
   todoWas = null;
-  if (j) notify(j.told ? "saved, and told " + (todoSession || "the session")
-                       : "saved");
+  if (j) notify([verMsg, j.told ? "saved, and told " + (todoSession || "the session")
+                                : "saved"].filter(Boolean).join(" · "));
 }
 $("todoSave").onclick = () => saveAll(true);
 $("todoSaveQuiet").onclick = () => saveAll(false);
@@ -5532,6 +5620,7 @@ $("todoRevert").onclick = revertNotebook;
                  + "Unsaved work does not carry across the tabs — Save it "
                  + "first if you want to keep it.")) return false;
     revertPending();
+    verClearStaged();
     todoOrdering = false;
     redrawTodo();
     await loadMemory(memGen);     // drops whatever the editors were holding
@@ -5571,6 +5660,8 @@ $("todoRevert").onclick = revertNotebook;
               <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}</span>${
               e.note ? `<span class="note">${esc(e.note)}</span>` : ""}</span>
           </div>`).join("");
+      // Every history through one pane means one place to page them.
+      paginate(pane, ":scope > .hist", {key: paneId, noun: "entries"});
     };
     const load = async () => {
       draw(null);
@@ -5716,6 +5807,7 @@ $("todoRevert").onclick = revertNotebook;
               }&path=${encodeURIComponent(a.path)}" download>Download</a>
           </span>
         </div>`).join("");
+    paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
     if (!pkgDotsTimer && list.querySelector(".dots"))
       pkgDotsTimer = setInterval(pkgTickDots, 400);
     list.querySelectorAll("[data-artpush]").forEach(b => b.onclick = async () => {
@@ -5748,6 +5840,13 @@ $("todoRevert").onclick = revertNotebook;
   // contained. Hence the evidence line — that is the half that makes the
   // decision two seconds instead of a scroll through git log.
   let ver = null;
+  // A bump is staged, not written. Pressing Patch/Minor/Major only records
+  // the intent — Save commits it, Revert and leaving the tab throw it away.
+  // Everything else in this notebook works that way, and a bump is the one
+  // control here that reaches outside the panel: a misclicked "Major → 1.0.0"
+  // used to be a commit before the finger left the button.
+  // {component -> part}, "" being the project's own.
+  let verPending = {};
 
   async function loadVersion(){
     const box = $("verBox");
@@ -5785,6 +5884,23 @@ $("todoRevert").onclick = revertNotebook;
       box.querySelectorAll("button,select").forEach(x => x.disabled = true);
       await postVersion({action: "unbump", component: comp});
     });
+    // Published to the panel-level Save/Revert, which live outside this
+    // closure. Rebound on every draw so they always close over this
+    // notebook's own state rather than whichever one drew last.
+    verStagedCount = () => Object.keys(verPending).length;
+    verClearStaged = () => { verPending = {}; drawVersion(); };
+    verCommitStaged = async () => {
+      const parts = Object.entries(verPending);
+      if (!parts.length) return "";
+      verPending = {};
+      const done = [];
+      for (const [comp, part] of parts){
+        const j = await postVersion({action: "bump", part, component: comp},
+                                    true);
+        if (j?.bumped) done.push(`${comp || "version"} ${j.bumped.was} → ${j.bumped.target}`);
+      }
+      return done.join(" · ");
+    };
     box.querySelectorAll("[data-verlog]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verlog || "";
       const pane = box.querySelector(`[data-verlogpane="${CSS.escape(comp)}"]`);
@@ -5804,25 +5920,13 @@ $("todoRevert").onclick = revertNotebook;
       const part = b.dataset.verbump, comp = b.dataset.vercomp || "";
       const blk = all.find(x => (x.component || "") === comp);
       const to = blk?.next?.[part];
-      const what = comp ? `${comp}'s version` : "this project's version";
-      // The empty-cycle warning, at the moment it is actionable. Warn and
-      // allow rather than refuse: a housekeeping bump legitimately has
-      // nothing user-facing to say, and a gate here would be paid in junk
-      // entries written to get past it.
-      const gap = !blk?.unreleased
-        ? `\n\n⚠ Nothing in the changelog since ${blk?.target}`
-          + (blk?.since?.commits ? ` — ${blk.since.commits} commit`
-             + `${blk.since.commits === 1 ? "" : "s"} landed unlogged` : "")
-          + `.\n${to} will get no changelog section.`
-        : `\n\nIts ${blk.unreleased} logged change${blk.unreleased === 1 ? "" : "s"}`
-          + ` become the ${to} section, dated today.`;
-      // Typed confirmation is for destroying things; this is one reviewable
-      // line in a commit of its own, so a plain confirm is the right weight.
-      if (!confirm(`Set ${what} to ${to}?${gap}\n\n`
-                   + `Writes ${comp ? comp + "/" : ""}VERSION and commits that `
-                   + `one file. Not pushed.`)) return;
-      box.querySelectorAll("button,select").forEach(x => x.disabled = true);
-      await postVersion({action: "bump", part, component: comp});
+      // Staged, not done: no confirm here, because nothing has happened yet
+      // and Save is the question. Pressing the same part again clears it,
+      // which is how a misclick is undone without a dialog.
+      verPending[comp] = verPending[comp] === part ? undefined : part;
+      if (verPending[comp] === undefined) delete verPending[comp];
+      drawVersion();
+      syncSave();
     });
     // Creating the first VERSION, and creating a component's. Both exist
     // because the file tools are denied on VERSION: without a sanctioned path
@@ -5858,6 +5962,14 @@ $("todoRevert").onclick = revertNotebook;
     // out of the way — the same shape as sending a step, because it is the
     // same thing: a question that wants a conversation, not a field filled in
     // behind the operator's back.
+    // The fold opens the way every other fold on the page does — driven, not
+    // the browser's instant snap. Same helper as a memory and a bug report.
+    box.querySelectorAll("details.veradd > summary").forEach(sum => {
+      sum.onclick = e => {
+        e.preventDefault();
+        slideDetails(sum.parentElement, !sum.parentElement.open);
+      };
+    });
     box.querySelectorAll("[data-verask]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verask === "@fold"
         ? b.closest(".verinit").querySelector(".vdir").value
@@ -5911,6 +6023,7 @@ this directory">Ask Claude</button>
 
   function verSection(v, named){
     const f = v.forms || {};
+    const staged = verPending[v.component || ""];
     const line = (label, value, cls = "") => value
       ? `<div class="verln ${cls}"><span>${label}</span><code>${esc(value)}</code></div>`
       : "";
@@ -5944,6 +6057,11 @@ this directory">Ask Claude</button>
     return (named ? `<div class="vername">${
         esc(v.component || v.project)}${v.component ? "" : "  (the project)"}</div>` : "")
       + line("building towards", v.target || "no VERSION file")
+      + (staged ? `<div class="verln"><span></span><span class="vermark">
+           staged: ${esc(v.next[staged] || "")} on Save — ${esc(staged)}${
+             v.unreleased ? `, dating ${v.unreleased} changelog entr${
+               v.unreleased === 1 ? "y" : "ies"}`
+             : `, with no changelog entries to date`}</span></div>` : "")
       + line("a build now", f.semver)
       + (v.running ? line("running here", v.running, stale ? "" : "off") : "")
       + (stale ? `<div class="verln"><span></span><span class="vermark">${
@@ -5958,7 +6076,10 @@ this directory">Ask Claude</button>
         <div class="verbtns">
           ${["patch", "minor", "major"].map(pt => `
             <button type="button" data-verbump="${pt}" data-vercomp="${esc(v.component || "")}"
-              title="set VERSION to ${esc(v.next[pt] || "")} and commit that one file">
+              class="${staged === pt ? "on" : ""}"
+              title="${staged === pt
+                ? "staged — Save writes VERSION and commits it; press again to unstage"
+                : `stage ${esc(v.next[pt] || "")}; nothing is written until Save`}">
               ${pt[0].toUpperCase() + pt.slice(1)} → ${esc(v.next[pt] || "")}</button>`).join("")}
           <button type="button" data-verask="${esc(v.component || "")}"
             title="ask this project's Claude session whether ${esc(v.target)} is
@@ -5983,8 +6104,8 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
           </span>`}
         </div>
         <div class="verlogpane" data-verlogpane="${esc(v.component || "")}" hidden></div>
-        ${v.component ? "" : `<p class="verwhy">A bump writes VERSION and commits
-          that one path — it is never pushed. The policy stops
+        ${v.component ? "" : `<p class="verwhy">A bump is staged until Save,
+          which writes VERSION and commits that one path — it is never pushed. The policy stops
           <code>bb version bump</code> and a session's file tools; it does not
           stop Bash. It covers this project and its components alike.</p>
         ${verAddFold(v)}`}` : `
@@ -6015,7 +6136,7 @@ It proposes and asks before doing anything.">Ask Claude</button>
 
   }
 
-  async function postVersion(body){
+  async function postVersion(body, quiet){
     try{
       const r = await fetch("/api/version", {method: "POST",
         headers: {"Content-Type": "application/json"},
@@ -6023,7 +6144,7 @@ It proposes and asks before doing anything.">Ask Claude</button>
       const j = await r.json();
       if (j.error){ notify(j.error, true); }
       else if (j.bumped){
-        notify(`version ${j.bumped.was} → ${j.bumped.target}`);
+        if (!quiet) notify(`version ${j.bumped.was} → ${j.bumped.target}`);
         if (j.bumped.note) notify(j.bumped.note, true);
       }
       else if (j.unbumped) notify(`version returned: ${j.unbumped.was} → ${
@@ -6070,6 +6191,9 @@ It proposes and asks before doing anything.">Ask Claude</button>
       : "nothing attributed to this project in the current reports — which is "
         + "not the same as passing; SARIF records findings, not coverage";
     list.innerHTML = findingsRulesHtml(rows);
+    // By rule group, which is how the report is read — a rule split across a
+    // page boundary would separate its own occurrences.
+    paginate(list, ":scope > .grp", {key: "anaList", noun: "rules"});
   }
 
   // ---- bugs ----------------------------------------------------------------
@@ -6253,6 +6377,7 @@ It proposes and asks before doing anything.">Ask Claude</button>
           </div>
         </div>
       </details>`).join("");
+    paginate(list, ":scope > .bug", {key: "bugList", noun: "reports"});
     list.querySelectorAll(".bug").forEach(d => {
       const id = Number(d.dataset.id);
       // Opened with the same tween the cards and the memories use. Bound on
