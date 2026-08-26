@@ -161,6 +161,33 @@ ok(/stub build exploded/.test(await page.$eval('#devRow', e => e.textContent)),
    'a failed build shows its own last words, and nothing was started');
 rmSync(`${DIR}/dockerstate/build.fail`, { force: true });
 
+// DOCKER_HOST=auto resolves by asking candidates for /version, caches what
+// it found, and re-scans when that stops answering — a bridge-assigned IP
+// moves when containers restart in a different order, so an address read
+// once at boot goes stale. Driven at the module directly: the scan is
+// network behaviour, not something a stub docker binary can show.
+const dh = execFileSync('python3', ['-c', `
+import importlib.util, os, sys, json
+os.environ['DOCKER_HOST'] = 'auto'
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.configure(workspace='/tmp', state='/tmp', write_json=lambda *a: None)
+# Nothing answers on a made-up bridge, so this must come back empty rather
+# than inventing an address.
+m._found.update(addr='', at=0)
+found = m.docker_host()
+# An explicit address is passed through untouched — an operator who typed
+# one means it.
+os.environ['DOCKER_HOST'] = 'tcp://example.invalid:2375'
+print(json.dumps({'auto': found, 'explicit': m.docker_host()}))
+`], { encoding: 'utf8' });
+const dhj = JSON.parse(dh.trim().split('\n').pop());
+ok(dhj.explicit === 'tcp://example.invalid:2375',
+   'an explicit DOCKER_HOST is used verbatim, never second-guessed by a scan');
+ok(typeof dhj.auto === 'string',
+   'auto resolves to an address or to nothing, never to an error');
+
 ok((await page.errors).length === 0, 'no console errors from the dev row');
 
 // The fixture goes back the way artifacts.mjs leaves alpha.

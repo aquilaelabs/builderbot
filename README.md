@@ -297,7 +297,7 @@ and is always the big one. Rollback = point the Repository field at a
 | `DASHBOARD_PORT` | `8080` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
-| `DOCKER_HOST` | *(empty)* | A docker-socket-proxy address (`tcp://host:2375`) that powers the Artifacts tab's dev-instance controls; empty keeps the feature off. See `docs/unraid.md` |
+| `DOCKER_HOST` | `auto` | Powers the Artifacts tab's dev-instance controls. `auto` finds a running docker-socket-proxy on this container's network and re-finds it when its address moves; an explicit `tcp://host:2375` is used verbatim; empty turns the feature off. See `docs/unraid.md` |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
