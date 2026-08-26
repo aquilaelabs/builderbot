@@ -1494,10 +1494,13 @@ when the code has moved since the last build (a new commit, or a dirty tree)
 and runs build → down → up — unless the rebuild finds new settings in
 `.env.example`, where it stops after down, rewrites the env as the new
 example with the old values preserved in comments, and leaves Up for the
-operator. A compose that references `${BB_DEV_DATA}/...` gets its volumes on
-the cache drive by convention. BuilderBot's own image is excluded: rebuilding
-the box from inside the box kills the builder mid-flight, and CI is the only
-path that stamps the version.
+operator. Before the first build the button reads
+**Build**, and nothing is built until it is pressed. A compose that
+references `${BB_DEV_DATA}/...` gets its volumes on the cache drive by
+convention. BuilderBot itself gets the row too — the dev instance is
+`bbdev-builderbot`, a second container, never the one you are using; expect
+`up` to refuse while the real one holds the same host ports, which is the env
+file's job to change.
 
 An `.apk` can be **installed** on the paired phone. `adb install -r` replaces
 an existing copy in place and keeps its data, so install and update are one

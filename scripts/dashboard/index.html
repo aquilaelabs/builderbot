@@ -5819,7 +5819,7 @@ $("todoRevert").onclick = revertNotebook;
             : da.await_env ? "built — fill in the env (Env), then Up"
             : da.built_rev ? `built from ${esc(da.built_rev)}${
                 da.changed ? " — the code has moved since" : ""}`
-            : "never built — Rebuild makes the first image"}</div>
+            : "never built — Build makes the first image"}</div>
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
             esc((daJob.log || "").slice(-600))}</div>` : ""}
         </div>
@@ -5836,9 +5836,12 @@ $("todoRevert").onclick = revertNotebook;
             title="the dev instance's env file — kept in /config, never in the repo">Env</button>
           <button type="button" data-devact="rebuild" ${
             !da.changed || daJob?.running ? "disabled" : ""}
-            title="${da.changed
+            title="${!da.built_rev
+              ? "build the first image, then bring it up"
+              : da.changed
               ? "build the image, then down and up — unless new env settings appear, where it stops for you to fill them in"
-              : "the last build is current — this wakes when the code moves"}">Rebuild</button>
+              : "the last build is current — this wakes when the code moves"}">${
+            da.built_rev ? "Rebuild" : "Build"}</button>
         </span>
       </div>`;
     const jobHtml = job.running ? `
@@ -5898,8 +5901,10 @@ $("todoRevert").onclick = revertNotebook;
       if (act === "env"){ openDevEnv(); return; }
       if (act === "down" && !confirm("Take the dev instance down?")) return;
       if (act === "rebuild" && !confirm(
-          "Rebuild the dev instance?\n\nBuilds the image, then down and up. "
-          + "If the rebuild finds new env settings it stops after down, and "
+          (b.textContent.trim() === "Build"
+            ? "Build the dev instance?\n\nBuilds the first image and brings it up. "
+            : "Rebuild the dev instance?\n\nBuilds the image, then down and up. ")
+          + "If the build finds new env settings it stops before up, and "
           + "the Env editor will hold your old values in comments.")) return;
       b.disabled = true;
       try{

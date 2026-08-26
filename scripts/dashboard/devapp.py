@@ -26,9 +26,15 @@ with the old values preserved in comments, and leaves Up for the operator —
 starting a service against an env it is known to be missing would just be a
 crash with extra steps.
 
-**BuilderBot itself is excluded.** Rebuilding the box from inside the box
-kills the builder mid-flight, and a hand-built image carries no version
-stamp — CI stays that image's only path.
+**BuilderBot itself is NOT excluded**, and the reason is worth a line: the
+dev instance is `bbdev-builderbot`, a second container from the same compose
+file — building or bouncing it never touches the container this dashboard is
+running in, whose lifecycle belongs to Unraid. The first cut excluded it on a
+stale argument (replacing the running container kills the builder mid-flight
+— true, and not what this does). Expect `up` to refuse while the real
+instance holds the same host ports; that refusal is compose saying so, and
+the env file is where a second instance gets different ones. A dev build
+shows `unstamped` for its version, which is honest: it is one.
 
 State: /config/devapps.json ({project: built_rev/built_at}), the env files in
 /config/devenv/, one build job at a time in memory.
@@ -46,7 +52,6 @@ STATE = None
 FILE = None
 ENVDIR = None
 write_json = None
-project_name = ""          # the container's own source project — excluded
 
 DOCKER = os.environ.get("BB_DOCKER_BIN", "docker")
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
@@ -68,7 +73,6 @@ def configure(*, workspace, state, write_json):
                      write_json=write_json)
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
-    globals()["project_name"] = os.environ.get("PROJECT_NAME", "BuilderBot")
 
 
 def job_rev():
@@ -259,9 +263,6 @@ def _dirty(project):
 
 def state(project):
     """Everything the Artifacts row needs, or the reason there is no row."""
-    if project == project_name:
-        # The box's own source: its image is CI's, deliberately.
-        return {"compose": False}
     if compose_file(project) is None:
         return {"compose": False}
     a = available()
