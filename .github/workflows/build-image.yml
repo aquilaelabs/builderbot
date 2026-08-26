@@ -25,7 +25,18 @@ on:
   schedule:
     # Weekly rebuild so the base image, Claude Code and the runner stay fresh.
     - cron: "0 6 * * 1"
+  # The checkbox is off by default so a manual run is a cheap retry of a build
+  # that failed. It used to be implicit — every dispatch rebuilt from scratch,
+  # which gives every layer a new digest and makes the host re-pull the whole
+  # image — and that is a surprise when the intent was only "run that again".
+  # Worth knowing beside it: GitHub's *Re-run all jobs* keeps the original
+  # `push` event, so a re-run always used the cache; only this button differed.
   workflow_dispatch:
+    inputs:
+      no_cache:
+        description: "Rebuild every layer from scratch (slow; the host then re-pulls the whole image)"
+        type: boolean
+        default: false
 
 # Pushing twice to a PR queued two 40-minute builds; only the newest result
 # means anything, so cancel the superseded one.
@@ -170,7 +181,10 @@ jobs:
           cache-to: type=inline
           # The weekly build exists to pick up fresh packages, and a fully
           # cached rebuild of an unchanged Dockerfile would reuse every layer
-          # and refresh nothing. Scheduled runs — and manual dispatches,
-          # whose usual intent is "freshen it now" — pay for the full
+          # and refresh nothing — so the schedule always pays for the full
           # rebuild; that is the once a week the big download buys something.
-          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          # A dispatch pays it only when asked: "freshen it now" and "that run
+          # died, run it again" arrive through the same button and want
+          # opposite answers. `inputs.no_cache` is null on a push, and
+          # `null == true` is false, so every other trigger stays cached.
+          no-cache: ${{ github.event_name == 'schedule' || inputs.no_cache == true }}

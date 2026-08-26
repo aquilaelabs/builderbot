@@ -252,7 +252,9 @@ image's inputs (Dockerfile, `scripts/`, `config/`) + a weekly freshness
 rebuild. Unraid's *Check for Updates* flips the container to **update ready**
 — click it. Builds seed their layer cache from the previous `:latest`, so a
 scripts-only change is a small pull; the Monday rebuild is uncached on purpose
-and is always the big one. Rollback = point the Repository field at a
+and is always the big one. *Run workflow* takes a **Rebuild every layer** box
+for the same effect on demand — leave it off and a manual run is a cheap retry,
+tick it to force a fresh pull of everything. Rollback = point the Repository field at a
 `sha-<commit>` tag. Compose: `docker compose pull && docker compose up -d`.
 
 ---

@@ -902,7 +902,8 @@ anything from a report of behavior you thought you had already changed.
     of the Dockerfile, not in the top block, unless a build step needs it;
     two env vars added to the top block once turned a two-line change into a
     full multi-gigabyte pull. The weekly Monday build is uncached by design and
-    is always a full pull.
+    is always a full pull; a manual dispatch is cached unless its `no_cache`
+    box is ticked, so re-running a build that failed costs the host nothing.
   - Secrets never reach a log unredacted — the entrypoint builds
     `/run/builderbot/redact.sed` from both token shapes and literal values, and
     everything the container prints goes through it.
