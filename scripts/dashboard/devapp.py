@@ -422,6 +422,19 @@ def _running(project):
     return r["code"] == 0 and bool(r["out"].strip())
 
 
+def _exists(project):
+    """Does compose know about any container here, running or not?
+
+    A container that EXITED — a crash, a bad entrypoint, an OOM — is still
+    there, still holding its name and the project's network, and `down` is the
+    only thing that clears it. Asking only about RUNNING containers is what
+    left a crashed instance with a greyed-out Down and no way out of the
+    dashboard at all.
+    """
+    r = _run(_compose(project, "ps", "-aq"), timeout=20)
+    return r["code"] == 0 and bool(r["out"].strip())
+
+
 def _head(project):
     r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", "--short=7",
               "HEAD"], timeout=10)
@@ -458,6 +471,9 @@ def state(project):
     if a["on"]:
         out["needs_build"] = needs_build(project)
         out["running"] = _running(project)
+        # Only worth a second call when nothing is running: a running stack
+        # self-evidently has containers, and this is on the artifacts poll.
+        out["exists"] = out["running"] or _exists(project)
         head = _head(project)
         dirty = _dirty(project)
         moved = bool(built.get("rev")) and built.get("rev") != head
@@ -472,6 +488,7 @@ def state(project):
                               else "")
     else:
         out["running"] = False
+        out["exists"] = False
         out["changed"] = False
     return out
 

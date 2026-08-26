@@ -374,13 +374,22 @@ case "$1" in
       config)
         # A service that declares a build, which is what the fixture has.
         echo '{"services":{"app":{"build":{"context":"."}}}}'; exit 0 ;;
-      ps)   [ -f "$ST/$proj.up" ] && echo "stubcontainer"; exit 0 ;;
+      ps)
+        # -a asks "does anything exist here", bare ps asks "what is running":
+        # an exited container answers yes to the first and no to the second,
+        # and that gap is the whole reason Down has to stay live.
+        all=0
+        for x in "$@"; do case "$x" in -a|-aq) all=1 ;; esac; done
+        if [ -f "$ST/$proj.up" ]; then echo "stubcontainer"
+        elif [ "$all" = 1 ] && [ -f "$ST/$proj.exited" ]; then echo "stubexited"
+        fi
+        exit 0 ;;
       build)
         echo "BUILDKIT=${DOCKER_BUILDKIT:-unset}" >> "$ST/docker.log"
         [ -f "$ST/build.fail" ] && { echo "stub build exploded"; exit 1; }
         echo "stub built ok"; exit 0 ;;
       up)   touch "$ST/$proj.up"; exit 0 ;;
-      down) rm -f "$ST/$proj.up"; exit 0 ;;
+      down) rm -f "$ST/$proj.up" "$ST/$proj.exited"; exit 0 ;;
     esac
     exit 0 ;;
 esac

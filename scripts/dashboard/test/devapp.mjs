@@ -44,6 +44,12 @@ const row = () => page.$eval('#devRow', e => ({
   down: e.querySelector('[data-devact="down"]').disabled,
   rebuild: e.querySelector('[data-devact="rebuild"]').disabled,
 }));
+// The pill on its own, never out of the row's text: that text carries the
+// buttons' own labels, so "down" in it could as easily be the Down button.
+const pill = () => page.$eval('#devRow .pill', e => e.textContent.trim());
+const pillIs = (want) => page.waitForFunction(
+  (w) => document.querySelector('#devRow .pill')?.textContent.trim() === w,
+  want, { timeout: 20000 });
 
 let r = await row();
 ok(/never built/.test(r.text), 'a project with a compose file gets the row, unbuilt');
@@ -136,8 +142,8 @@ await page.waitForFunction(() => {
   const e = document.querySelector('#devRow');
   return e && /fill in the env/.test(e.textContent);
 }, { timeout: 30000 });
-r = await row();
-ok(/stopped/.test(r.text), 'the gated rebuild stops after down rather than starting broken');
+ok(await pill() === 'down',
+   'the gated rebuild stops after down rather than starting broken');
 await page.click('#devRow [data-devact="env"]');
 await page.waitForSelector('#devEnvModal:not([hidden])');
 const gated = await page.$eval('#devEnvModal textarea', e => e.value);
@@ -159,12 +165,25 @@ ok(true, '...and Up is manual after the gate, exactly as asked');
 
 // Down, from the row.
 await page.click('#devRow [data-devact="down"]');
-await page.waitForFunction(() => {
-  const e = document.querySelector('#devRow');
-  return e && /stopped/.test(e.textContent);
-}, { timeout: 20000 });
+await pillIs('down');
 ok(/compose --project-name bbdev-ep-silon .*down/.test(dockerLog()),
    'Down runs compose down, nothing else');
+ok((await row()).down, '...and goes dead after it: there is nothing left to remove');
+
+// A container that EXITED still exists — it holds its name and the project's
+// network, and `down` is the only thing that clears it. Asking compose only
+// about RUNNING containers left a crashed instance with a greyed-out Down and
+// no way out except a shell, which is the one thing these buttons are for.
+writeFileSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`, '1');
+await page.evaluate(() => refresh());
+await pillIs('stopped');
+r = await row();
+ok(!r.down, 'a crashed instance offers Down — its containers are still there');
+ok(!r.up, '...and Up, which recreates them rather than colliding with them');
+await page.click('#devRow [data-devact="down"]');
+await pillIs('down');
+ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`),
+   '...and Down is what clears them');
 
 // A build in flight when BuilderBot restarts is lost — compose build is a
 // subprocess of the dashboard and dies with it. Everything already recovered

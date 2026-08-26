@@ -5852,7 +5852,7 @@ $("todoRevert").onclick = revertNotebook;
       </div>` : `
       <div class="artrow" id="devRow">
         <span class="pill ${da.running ? "ok" : ""}">${
-          da.running ? "running" : "stopped"}</span>
+          da.running ? "running" : da.exists ? "stopped" : "down"}</span>
         <div class="grow">
           <div class="top"><b>dev instance</b></div>
           <div class="dim">${
@@ -5879,8 +5879,9 @@ $("todoRevert").onclick = revertNotebook;
                 ? "docker compose up -d — builds the image first, as compose does"
                 : "docker compose up -d"}">Up</button>
           <button type="button" data-devact="down" ${
-            !da.running || daJob?.running ? "disabled" : ""}
-            title="docker compose down">Down</button>
+            !da.exists || daJob?.running ? "disabled" : ""}
+            title="${da.running ? "docker compose down"
+              : "docker compose down — the containers are still there, exited"}">Down</button>
           <button type="button" data-devact="env"
             title="the dev instance's env file — kept in /config, never in the repo">Env</button>
           <button type="button" data-devact="rebuild" ${
