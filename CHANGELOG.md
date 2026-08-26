@@ -15,3 +15,4 @@
 - The Claude card now says which model Claude is actually on, not just what it would switch to (b38d4db)
 - Asking Claude about a version now lands in the session instead of sitting unsent in the prompt (b38d4db)
 - Changing the Claude model no longer swallows the message sent right after it (42a9338)
+- A project with a compose file can be built and run on the box from its Artifacts tab — Up, Down, Env and Rebuild, no GitHub minutes (b2b6055)
