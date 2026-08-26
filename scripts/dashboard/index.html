@@ -446,8 +446,13 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .veradd>summary{color:var(--dim);font:var(--f-note);min-height:var(--tap)}
 @media(hover:hover){ .veradd>summary:hover{color:var(--ink)} }
 @media(max-width:520px){
-  .verinit .vstart,.verinit .vdir{flex:1 1 100%;width:auto}
-  .verinit button{flex:1 1 100%}
+  /* The component fold's picker and field earn a line each on a phone — a
+     directory name plus a version plus two buttons will not share one. The
+     starting-version line is the exception: a short field and a one-word
+     button fit beside each other at any width, and stacking them turned two
+     controls into two full-width bars. */
+  .veradd .verinit .vstart,.veradd .verinit .vdir{flex:1 1 100%;width:auto}
+  .veradd .verinit button{flex:1 1 100%}
 }
 .verln{display:flex;gap:8px;align-items:baseline;padding:2px 0;flex-wrap:wrap}
 .verln span:first-child{flex:0 0 118px;color:var(--dim);font:var(--f-note)}
@@ -457,8 +462,23 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .verwhy,.prefwhy{color:var(--dim);font:var(--f-note);margin:7px 0 0;max-width:70ch}
 .verbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
 .verbtns .sp{flex:1 1 auto}
-.verpol{display:flex;gap:6px;align-items:center;font:var(--f-note);
-  color:var(--dim);flex-wrap:wrap}
+/* Claude access: a labelled control on its own line rather than a stray
+   caption with a naked select under it. The label sits in the same 118px
+   column the value lines use, so the select starts where every value on the
+   block starts and the eye keeps one edge to run down. */
+.verpol{display:flex;gap:8px;align-items:center;margin-top:10px;
+  font:var(--f-note);color:var(--dim)}
+.verpol > span{flex:0 0 118px}
+.verpol select{flex:1 1 auto;min-width:0;max-width:22em}
+@media(max-width:520px){
+  .verpol{flex-wrap:wrap}
+  .verpol > span{flex:0 0 100%}
+  .verpol select{max-width:none}
+}
+/* The starting-version field lives in a value line, so it lines up with the
+   values above it instead of being a full-width bar of its own. */
+.verln .verinit{margin-top:0;flex:1 1 auto}
+.verln .verinit .vstart{width:7em}
 @media(max-width:520px){
   .verln span:first-child{flex:0 0 100%}
   .verln{padding:3px 0}
@@ -2641,6 +2661,15 @@ window.addEventListener("focus", nudgeTerminals);
 // The Claude card: the standing model/effort every send applies. Options are
 // the same tables the send box used to carry; "leave as is" is the empty
 // value, which sends no switch at all.
+// What each policy MEANS, since the stored word is a permission level and
+// the question the operator is answering is "how much of this may Claude
+// move?". The values are unchanged — only the reading is.
+const POLICY_LABEL = {
+  locked: "locked — only me",
+  patch: "patch only",
+  minor: "patch and minor",
+  open: "anything, including major",
+};
 const MODELS = [["", "leave as is"], ["opus", "Opus"], ["sonnet", "Sonnet"],
                 ["haiku", "Haiku"], ["fable", "Fable"]];
 const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
@@ -5761,6 +5790,11 @@ $("todoRevert").onclick = revertNotebook;
   onRev(() => `ver:${project}`, () => { if (showing("artifacts")) loadVersion(); });
   onRev("vpolicy", () => { if (showing("artifacts")) loadVersion(); });
   onRev("devapp", () => { if (showing("artifacts")) loadArtifacts(); });
+  // A commit changes what the dev row says about the build being current,
+  // and what the version block computes since the target last moved.
+  onRev(() => `git:${project}`, () => {
+    if (showing("artifacts")){ loadArtifacts(); loadVersion(); }
+  });
   onRev("phone.dev", () => { if (showing("artifacts")) loadArtifacts(); });
   onRev("reports", () => { if (showing("analysis")) loadAnalysis(); });
   onRev("bugs", () => { if (bugs && showing("bugs")) loadBugs(); });
@@ -5825,6 +5859,9 @@ $("todoRevert").onclick = revertNotebook;
             daJob?.running ? esc(daJob.step || "working") + '<span class="dots"></span>'
             : daJob?.error ? "build failed — see below"
             : da.await_env ? "built — fill in the env (Env), then Up"
+            : da.interrupted ? `a build was interrupted — BuilderBot restarted
+                while it was running${da.built_rev
+                  ? `; still on ${esc(da.built_rev)}` : ", and nothing was built"}`
             : da.built_rev ? `built from ${esc(da.built_rev)}${
                 da.changed ? " — the code has moved since" : ""}`
             : "never built — Build makes the first image"}</div>
@@ -6245,43 +6282,45 @@ unreleased.">↩ ${esc(v.prev)}</button>` : ""}
             title="the user-facing record of what changed here — sessions add to
 it as work lands, and a bump dates the accumulated lines">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
-          ${v.component ? "" : `<span class="sp"></span>
-          <span class="verpol">who may bump
-            <select id="verPolicy" aria-label="who may bump this project's version">
-              ${(v.policies || []).map(o => `<option value="${o}"${
-                o === v.policy ? " selected" : ""}>${o}</option>`).join("")}
-            </select>
-          </span>`}
         </div>
+        ${v.component ? "" : `<label class="verpol">
+          <span>Claude access</span>
+          <select id="verPolicy"
+            aria-label="which parts of the version a Claude session may move">
+            ${(v.policies || []).map(o => `<option value="${o}"${
+              o === v.policy ? " selected" : ""}>${esc(POLICY_LABEL[o] || o)}</option>`
+            ).join("")}
+          </select>
+        </label>`}
         <div class="verlogpane" data-verlogpane="${esc(v.component || "")}" hidden></div>
         ${v.component ? "" : `<p class="verwhy">A bump is staged until Save,
           which writes VERSION and commits that one path — it is never pushed. The policy stops
           <code>bb version bump</code> and a session's file tools; it does not
           stop Bash. It covers this project and its components alike.</p>
         ${verAddFold(v)}`}` : `
-        <p class="verwhy">This project has no version yet. Giving it one writes
-          a <code>VERSION</code> file and commits it — after that the buttons
-          above move it.${v.unreleased ? ` The ${v.unreleased} logged
-          change${v.unreleased === 1 ? "" : "s"} below become the first
-          version's section.` : ""}</p>
+        <div class="verln"><span>start at</span>
+          <span class="verinit">
+            <input class="vstart" value="0.1.0" size="8" maxlength="20"
+              inputmode="decimal" aria-label="starting version"
+              pattern="[0-9]+\.[0-9]+\.[0-9]+">
+            <button type="button" data-verinit="${esc(v.component || "")}"
+              title="write a VERSION file at this number and commit it">Set</button>
+          </span></div>
         <div class="verbtns">
-          <button type="button" class="verlogbtn" data-verlog="${esc(v.component || "")}"
+          <button type="button" data-verask="${esc(v.component || "")}"
+            title="put the question to this project's Claude session — it can read
+the code, the roadmap and the changelog, and you can argue with the answer.
+It proposes and asks before doing anything.">Ask Claude</button>
+          <button type="button" data-verlog="${esc(v.component || "")}"
             title="entries logged before the first version wait here, and
 become that version's section when it is created">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
         </div>
         <div class="verlogpane" data-verlogpane="${esc(v.component || "")}" hidden></div>
-        <div class="verinit">
-          <input class="vstart" value="0.1.0" size="8" maxlength="20"
-            inputmode="decimal" aria-label="starting version"
-            pattern="[0-9]+\.[0-9]+\.[0-9]+">
-          <button type="button" data-verinit="${esc(v.component || "")}">Give it
-            this version</button>
-          <button type="button" data-verask="${esc(v.component || "")}"
-            title="put the question to this project's Claude session — it can read
-the code, the roadmap and the changelog, and you can argue with the answer.
-It proposes and asks before doing anything.">Ask Claude</button>
-        </div>
+        <p class="verwhy">No version yet. Setting one writes a
+          <code>VERSION</code> file and commits it${v.unreleased
+            ? `, dating the ${v.unreleased} logged change${
+                v.unreleased === 1 ? "" : "s"} as its first section` : ""}.</p>
         ${verAddFold(v)}`);
 
   }

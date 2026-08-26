@@ -148,6 +148,45 @@ await page.waitForFunction(() => {
 ok(/compose --project-name bbdev-ep-silon .*down/.test(dockerLog()),
    'Down runs compose down, nothing else');
 
+// A build in flight when BuilderBot restarts is lost — compose build is a
+// subprocess of the dashboard and dies with it. Everything already recovered
+// correctly (the last SUCCESSFUL build is still what built_rev says, and
+// Rebuild is live because the code moved), but the operator was told nothing
+// and saw a button they thought they had pressed. Simulated by leaving the
+// on-disk marker behind, which is exactly what a killed process leaves.
+const devFile = `${DIR}/state/devapps.json`;
+const before = JSON.parse(readFileSync(devFile, 'utf8'));
+before['ep.silon'].building_since = Math.floor(Date.now() / 1000);
+writeFileSync(devFile, JSON.stringify(before));
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => {
+  const e = document.querySelector('#devRow');
+  return e && /a build was interrupted/.test(e.textContent);
+}, { timeout: 20000 });
+ok(/still on [0-9a-f]{7}/.test(await page.$eval('#devRow', e => e.textContent)),
+   'an interrupted build says so, and still names the last one that finished');
+// And it clears the moment a build reaches any end, rather than sticking.
+// The code has to move first: Rebuild is correctly asleep while the last
+// build matches HEAD, interrupted marker or not — the marker says what
+// happened, it does not invent work to do.
+writeFileSync(`${D}/after-interrupt.txt`, 'x');
+execFileSync('git', ['-C', D, 'add', '-A'], { env });
+execFileSync('git', ['-C', D, 'commit', '-qm', 'moves on'], { env });
+// No nudge: the commit moves the project's reflog, and the poll watches it.
+// Before that key existed this verdict only refreshed when something else
+// happened to move, so Rebuild slept through the commit that should wake it.
+await page.waitForFunction(() => {
+  const b = document.querySelector('#devRow [data-devact="rebuild"]');
+  return b && !b.disabled;
+}, { timeout: 20000 });
+await page.click('#devRow [data-devact="rebuild"]');
+await page.waitForFunction(() => {
+  const e = document.querySelector('#devRow');
+  return e && !/a build was interrupted/.test(e.textContent);
+}, { timeout: 30000 });
+ok(!JSON.parse(readFileSync(devFile, 'utf8'))['ep.silon'].building_since,
+   '...and the marker is gone once a build reaches an end, whichever end');
+
 // A failed build says so and starts nothing.
 mkdirSync(`${DIR}/dockerstate`, { recursive: true });
 writeFileSync(`${DIR}/dockerstate/build.fail`, '1');
@@ -195,6 +234,7 @@ ok(dhj.explicit === 'tcp://example.invalid:2375',
 ok(typeof dhj.auto === 'string',
    'auto resolves to an address or to nothing, never to an error');
 
+
 ok((await page.errors).length === 0, 'no console errors from the dev row');
 
 // The fixture goes back the way artifacts.mjs leaves alpha.
@@ -202,6 +242,7 @@ rmSync(`${D}/docker-compose.yml`, { force: true });
 rmSync(`${D}/.env.example`, { force: true });
 rmSync(`${D}/newfile.txt`, { force: true });
 rmSync(`${D}/again.txt`, { force: true });
+rmSync(`${D}/after-interrupt.txt`, { force: true });
 rmSync(`${D}/.git`, { recursive: true, force: true });
 execFileSync('git', ['-C', D, 'init', '-q', '.'], { env });
 await done(browser);

@@ -1823,6 +1823,13 @@ def revisions():
         # policy file moves when they change who may bump. Both are cheap
         # stats; neither shells out to git.
         revs[f"ver:{n}"] = _mtime(WORKSPACE / n / "VERSION")
+        # The project's reflog: it moves on every commit, which is what the
+        # dev row's "the code has moved since the last build" is derived
+        # from. Without it that verdict only refreshed when something else
+        # happened to move — a Rebuild button that wakes on the next poll
+        # rather than the next time you happen to touch the tab. A stat, not
+        # a git call.
+        revs[f"git:{n}"] = _mtime(WORKSPACE / n / ".git" / "logs" / "HEAD")
     revs["vpolicy"] = _mtime(STATE / "versions.json")
     revs["prefs"] = _mtime(STATE / "claude-prefs.json")
     # The dev-instance job and its files. In-memory counter plus mtimes — the
