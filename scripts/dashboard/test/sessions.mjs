@@ -227,11 +227,15 @@ await phone.waitForSelector('#mKeys', { state: 'visible' });
 ok(await phone.$eval('#mobar', el => getComputedStyle(el).display === 'flex') && !await phone.$('#bKeys'),
    'the phone bar carries the keys, and the strip has no ⌨ anywhere to hide');
 // A truncated version string answers nothing, so where it will not fit the
-// About control is a ? instead — an icon, not the word it used to be.
+// About control carries the word instead — and exactly one of the two, never
+// both: showing the label on a desktop as well stacked it under the version
+// and doubled the button's height.
 ok(await phone.$eval('#bAbout .alab', el => getComputedStyle(el).display !== 'none')
-   && await phone.$eval('#bAbout #build', el => getComputedStyle(el).display === 'none')
-   && await phone.$eval('#bAbout .alab', el => el.tagName.toLowerCase() === 'svg'),
-   'a narrow header shows About as a ?, not as a version it would have to cut');
+   && await phone.$eval('#bAbout #build', el => getComputedStyle(el).display === 'none'),
+   'a narrow header shows About as the word, not as a version it would have to cut');
+ok(await page.$eval('#bAbout .alab', el => getComputedStyle(el).display === 'none')
+   && await page.$eval('#bAbout #build', el => getComputedStyle(el).display !== 'none'),
+   '...and a wide one shows the version, with no second label under it');
 // Measure the terminal before, mid-slide and after: it must hold still
 // through the slide (the panel is an overlay then) and shrink once at the end.
 //

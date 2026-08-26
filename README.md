@@ -1517,7 +1517,14 @@ things means the copy step is missing, and it says so.
 Each row is labeled by kind — apk, xpi, whatever the extension says — with
 its size and age, newest first. Everything can be **downloaded**.
 
-**The dev instance** heads the list when the project carries a compose file
+**The dev instance** heads the list, shaped like every other row in it — the
+kind on a pill (`docker`, where a file says `apk` or `xpi`), the compose
+project's own name in bold, and whether it is `(running)`, `(stopped)` or
+`(down)` in parentheses after it, where a file carries its size and age. The
+name is the compose project's rather than a container's: a compose file may
+set `container_name` to anything it likes and may declare several, and this is
+the one name that is always true of all of them. It appears when the project
+carries a compose file
 and `DOCKER_HOST` points at a socket proxy (see the configuration reference
 and `docs/unraid.md`): the project's compose app, built on the host daemon
 and controlled in the file rows' own language. **Up** and **Down** are
