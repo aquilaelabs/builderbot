@@ -30,6 +30,9 @@ services:
       PUID: ${PUID:-99}
       PGID: ${PGID:-100}
       TZ: ${TZ:-America/New_York}
+      # A docker-socket-proxy address powers the dashboard's dev-instance
+      # controls; empty keeps the feature off. See docs/unraid.md.
+      DOCKER_HOST: ${DOCKER_HOST:-}
 
       # --- Claude Code ------------------------------------------------------
       # Leave ANTHROPIC_API_KEY empty to log in interactively with a Claude
@@ -190,6 +193,8 @@ services:
       # Claude/CI run `docker build` / `docker compose` against the Unraid
       # daemon.
       # - /var/run/docker.sock:/var/run/docker.sock
+      # Dev-instance volumes on fast storage; pairs with DOCKER_HOST below.
+      # - /mnt/cache/appdata/builderbot-dev:/devdata
 
     # Hardware acceleration for the Android emulator. Uncomment if your CPU
     # has virtualization enabled (it does if Unraid can run VMs).

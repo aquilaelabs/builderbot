@@ -297,6 +297,7 @@ and is always the big one. Rollback = point the Repository field at a
 | `DASHBOARD_PORT` | `8080` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
+| `DOCKER_HOST` | *(empty)* | A docker-socket-proxy address (`tcp://host:2375`) that powers the Artifacts tab's dev-instance controls; empty keeps the feature off. See `docs/unraid.md` |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
@@ -1478,6 +1479,25 @@ things means the copy step is missing, and it says so.
 
 Each row is labeled by kind — apk, xpi, whatever the extension says — with
 its size and age, newest first. Everything can be **downloaded**.
+
+**The dev instance** heads the list when the project carries a compose file
+and `DOCKER_HOST` points at a socket proxy (see the configuration reference
+and `docs/unraid.md`): the project's compose app, built on the host daemon
+and controlled in the file rows' own language. **Up** and **Down** are
+compose against the project's own file, namespaced `bbdev-<project>` so a dev
+instance can never collide with a container run for real. **Env** edits the
+instance's env file — kept in `/config/devenv/`, never in the repo, handed to
+compose as `--env-file`; Up stays dead while the repo's `.env.example`
+declares keys the env does not answer, because starting a service against an
+env known to be missing is a crash with extra steps. **Rebuild** un-ghosts
+when the code has moved since the last build (a new commit, or a dirty tree)
+and runs build → down → up — unless the rebuild finds new settings in
+`.env.example`, where it stops after down, rewrites the env as the new
+example with the old values preserved in comments, and leaves Up for the
+operator. A compose that references `${BB_DEV_DATA}/...` gets its volumes on
+the cache drive by convention. BuilderBot's own image is excluded: rebuilding
+the box from inside the box kills the builder mid-flight, and CI is the only
+path that stamps the version.
 
 An `.apk` can be **installed** on the paired phone. `adb install -r` replaces
 an existing copy in place and keeps its data, so install and update are one

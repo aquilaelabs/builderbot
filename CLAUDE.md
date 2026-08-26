@@ -357,6 +357,21 @@ pushes an `.xpi` to it. Nothing auto-pushes: a push is a decision the operator
 makes each time, so do not design around the extension on the handset staying
 current — say when a rebuild is worth pushing instead.
 
+## The dev instance, if this project has a compose file
+
+The Artifacts tab may carry a **dev instance** row: the operator builds this
+project's compose app on the host's Docker daemon and brings it up and down
+from there. Those controls are the operator's. The daemon is reached through
+a filtering proxy whose address is in `DOCKER_HOST`, and it is **not yours**:
+do not drive `docker` at it from a session — the same rule, for the same
+reason, as the phone. If a build or the instance's env needs changing, say
+so and let the operator press the buttons; the env file lives outside the
+repo on purpose.
+
+What is yours: keeping `docker-compose.yml` and `.env.example` true. The
+rebuild flow reads `.env.example` to know when new settings need filling in,
+so a new variable your code reads belongs there in the same commit.
+
 ## The roadmap
 
 Every project has a notebook in the dashboard — memory, roadmap, bugs, one

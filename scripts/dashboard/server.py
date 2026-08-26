@@ -1656,6 +1656,13 @@ todo.current_prefs = prefs.current
 prefs.configure(write_json=write_json, state=STATE,
                 home=os.environ.get("BUILDER_HOME", str(Path.home())))
 
+# ---- the dev instance ------------------------------------------------------
+# A project's compose app, built and run on the host's daemon through the
+# socket proxy. The module's docstring carries the security reasoning.
+import devapp                                                    # noqa: E402
+
+devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
+
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
 # why one literal string cannot work. Handed the two notebook halves as well:
@@ -1818,6 +1825,9 @@ def revisions():
         revs[f"ver:{n}"] = _mtime(WORKSPACE / n / "VERSION")
     revs["vpolicy"] = _mtime(STATE / "versions.json")
     revs["prefs"] = _mtime(STATE / "claude-prefs.json")
+    # The dev-instance job and its files. In-memory counter plus mtimes — the
+    # poll never spawns docker.
+    revs["devapp"] = devapp.job_rev()
     return revs
 
 
@@ -2163,7 +2173,8 @@ class Handler(BaseHTTPRequestHandler):
             name = q.get("project", [""])[0]
             if name not in {p["name"] for p in project_list()}:
                 return self._json({"error": "not a project"}, 400)
-            return self._json({"artifacts": artifacts.listing(name)}
+            return self._json({"artifacts": artifacts.listing(name),
+                               "devapp": devapp.state(name)}
                               | phone.summary())
         if self.path.startswith("/api/artifact?"):
             # The download. Resolved and prefix-checked in artifacts.resolve —
@@ -2277,6 +2288,8 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/prefs"):
             r = prefs.set_prefs(model=req.get("model"), effort=req.get("effort"))
             return self._json(r, 400 if r.get("error") else 200)
+        if path.startswith("/api/devapp"):
+            return self._devapp(req)
         if path.startswith("/api/version"):
             return self._version(req)
         if path.startswith("/api/artifacts"):
@@ -2461,6 +2474,31 @@ class Handler(BaseHTTPRequestHandler):
             except (ValueError, IndexError):
                 pass
         return out
+
+    def _devapp(self, req):
+        """The dev-instance controls. Operator-only by construction — these
+        buttons live on the panel, and a session's path to docker is the
+        proxy's allowlist, not this endpoint."""
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list()}:
+            return self._json({"error": f"not a project: {name}"}, 400)
+        act = field(req, "action")
+        if act == "up":
+            r = devapp.up(name)
+        elif act == "down":
+            r = devapp.down(name)
+        elif act == "rebuild":
+            r = devapp.rebuild(name)
+        elif act == "env-get":
+            return self._json({"text": devapp.read_env(name),
+                               "missing": devapp.missing_env(name)})
+        elif act == "env-set":
+            r = devapp.write_env(name, req.get("text") or "")
+        else:
+            return self._json({"error": f"unknown action: {act}"}, 400)
+        if r.get("error"):
+            return self._json(r, 400)
+        return self._json(r | {"state": devapp.state(name)})
 
     def _version(self, req):
         """Move a project's version, or change who is allowed to.

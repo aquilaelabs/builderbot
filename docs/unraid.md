@@ -583,6 +583,39 @@ itself must send it; and `NPM_TOKEN` lands in `~/.npmrc` if you use it.
 Shielding covers the credentials with real blast radius: the PAT and the
 SSH private keys.
 
+## Dev instances: building a project's app on this box
+
+The dashboard's Artifacts tab can build a project's compose app locally and
+bring it up and down — no GitHub minutes, no registry round trip. It reaches
+the host's Docker daemon through a **socket proxy**, not the raw socket:
+`build`, `images`, `containers`, `networks` and `volumes` pass, `exec` and
+the swarm surface do not.
+
+Say the honest part before the steps: build + run + bind mounts is
+root-shaped power over the host however it is filtered. The proxy narrows
+the surface; it does not make the daemon safe to hand to something you do
+not trust. On a sole-operator box, with the dashboard's controls being fixed
+compose commands, that trade is reasonable — and it is yours to make, which
+is why the feature is off until you wire it.
+
+1. Install **docker-socket-proxy** from Community Applications (the
+   `tecnativa` image is the usual one). Set its environment:
+   `CONTAINERS=1`, `IMAGES=1`, `BUILD=1`, `NETWORKS=1`, `VOLUMES=1`,
+   `POST=1` — and leave `EXEC` and the swarm flags at their default `0`.
+   Map its port 2375 to the host.
+2. In BuilderBot's template, set **Docker proxy address** to
+   `tcp://<server-ip>:2375`, and (optionally) the **Dev instance data**
+   path — a cache/SSD folder that dev volumes land in when a project's
+   compose opts in with `${BB_DEV_DATA}/...`.
+3. Restart BuilderBot. A project with a `docker-compose.yml` now shows the
+   dev-instance row at the top of its Artifacts tab; one without shows
+   nothing new.
+
+The instance's env file lives in `/config/devenv/<project>.env` — edit it
+from the row's **Env** button. Rebuild stops for you when the repo's
+`.env.example` gains keys your env does not set, with your old values
+preserved in comments.
+
 ## First-run checks
 
 ```bash
