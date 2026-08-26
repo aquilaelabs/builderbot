@@ -313,6 +313,45 @@ const reopened = cl().out;
 ok(reopened.indexOf('## Unreleased') !== -1
    && reopened.indexOf('## Unreleased') < reopened.indexOf('## 0.4.1'),
    'the next entry reopens Unreleased above the dated history');
+// ---- what a review pass caught, kept caught ------------------------------
+// A project release tag must not stamp a component: the repo-wide vX.Y.Z
+// says nothing about the extension, even when the numbers coincide.
+execFileSync('git', ['-C', M, 'tag', '-a', 'v2.2.0', '-m', 'r'], { env });
+// the root target is 0.4.x so the root stays -dev; the extension's target IS
+// 2.2.0 now, and the trap is that this tag would have released it.
+ok(/2\.2\.0-dev\./.test(mb('--for', 'extension', '--semver').out),
+   "a project tag matching a component's number does not release the component");
+execFileSync('git', ['-C', M, 'tag', '-a', 'extension-v2.2.0', '-m', 'r'], { env });
+// startsWith, not equals: the flow above leaves an uncommitted changelog
+// entry in the tree, so the released form honestly carries +dirty.
+const relSem = mb('--for', 'extension', '--semver').out;
+ok(relSem.startsWith('2.2.0') && !relSem.includes('-dev.'),
+   "...its own extension-vX.Y.Z tag does");
+// The pathspec is the resolved directory, not the caller's spelling.
+ok(mb('--for', './extension', '--code').out === mb('--for', 'extension', '--code').out,
+   'a sloppy --for spelling counts the same commits as the clean one');
+// A component bump with no VERSION names the component and the sanctioned door.
+const noVer2 = mb('--for', 'app', 'bump', 'patch');
+ok(noVer2.code !== 0 && /two-products\/app has no VERSION/.test(noVer2.out)
+   && /init 0\.1\.0 --for app/.test(noVer2.out),
+   'a component bump without a VERSION points at init, not at hand-creation');
+// A staged changelog edit refuses the bump before anything mutates.
+writeFileSync(`${M}/CHANGELOG.md`,
+  '# Changelog\n\n## Unreleased\n\n- pending entry (x)\n');
+execFileSync('git', ['-C', M, 'add', 'CHANGELOG.md'], { env });
+const swept = mb('bump', 'patch');
+ok(swept.code !== 0 && /staged for another commit/.test(swept.out),
+   'a staged changelog edit blocks the bump instead of being swept');
+execFileSync('git', ['-C', M, 'reset', '-q', 'HEAD', 'CHANGELOG.md'], { env });
+rmSync(`${M}/CHANGELOG.md`, { force: true });
+// A VERSION two levels down is nobody's component, and cannot become one.
+mkdirSync(`${M}/deep/lib`, { recursive: true });
+writeFileSync(`${M}/deep/lib/VERSION`, '9.9.9\n');
+ok(!/deep/.test(mb('--list').out),
+   'a VERSION two levels down is not discovered as a component');
+const deep = mb('init', '0.1.0', '--for', 'deep/lib');
+ok(deep.code !== 0 && /one level under/.test(deep.out),
+   '...and init refuses to create one there');
 rmSync(M, { recursive: true, force: true });
 
 // ---- the same module, in the Artifacts tab head --------------------------

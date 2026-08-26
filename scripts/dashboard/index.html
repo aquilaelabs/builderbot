@@ -5854,7 +5854,10 @@ become that version's section when it is created">Changelog${
         body: JSON.stringify({project, ...body})});
       const j = await r.json();
       if (j.error){ notify(j.error, true); }
-      else if (j.bumped) notify(`version ${j.bumped.was} → ${j.bumped.target}`);
+      else if (j.bumped){
+        notify(`version ${j.bumped.was} → ${j.bumped.target}`);
+        if (j.bumped.note) notify(j.bumped.note, true);
+      }
       else if (j.created) notify(`${j.created.component || "this project"} `
                                  + `is now ${j.created.target}`);
     }catch(e){ notify("version: " + e, true); }

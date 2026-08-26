@@ -79,9 +79,9 @@ makes a bad bump recoverable is that VERSION is committed: every move is in
 import json
 import os
 import re
-import time
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 WORKSPACE = None
@@ -128,43 +128,33 @@ def root(project):
     return WORKSPACE / project
 
 
-# How deep to look for a component. One level below the root, the same reach
-# artifacts.py allows inside dist/: enough for app/ and extension/ side by
-# side, not enough to invite a vendored tree's own VERSION file to show up as
-# a product this project ships.
-COMPONENT_DEPTH = 1
-
-# Never descend into these looking for a component. dist/ holds outputs, not
-# sources, and the rest are other people's trees.
+# Never treat these as a component. dist/ holds outputs, not sources, and
+# the rest are other people's trees.
 _SKIP = {"node_modules", "vendor", "dist", "build", "target", ".git",
          "__pycache__", "venv", ".venv"}
 
 
 def components(project):
-    """Directories under the project that carry their own VERSION file.
+    """Directories one level under the project that carry their own VERSION.
+
+    Exactly one level, and the same one candidates() offers and init()
+    accepts — three functions with three different ideas of where a component
+    may live is how a VERSION file ends up created somewhere the tab never
+    finds. One level also keeps a vendored tree's own VERSION two levels down
+    from showing up as a product this project ships.
 
     Empty for the overwhelming majority of projects, which ship one thing and
     want one number. A component exists because somebody put a file there.
     """
     base = root(project)
-    out = []
-    stack = [(base, 0)]
-    while stack:
-        d, depth = stack.pop()
-        if depth > COMPONENT_DEPTH:
-            continue
-        try:
-            entries = sorted(d.iterdir())
-        except OSError:
-            continue
-        for p in entries:
-            if not p.is_dir() or p.name.startswith(".") or p.name in _SKIP:
-                continue
-            if (p / VERSION_FILE).is_file():
-                out.append(str(p.relative_to(base)))
-            if depth < COMPONENT_DEPTH:
-                stack.append((p, depth + 1))
-    return sorted(out)
+    try:
+        entries = sorted(base.iterdir())
+    except OSError:
+        return []
+    return sorted(p.name for p in entries
+                  if p.is_dir() and not p.name.startswith(".")
+                  and p.name not in _SKIP
+                  and (p / VERSION_FILE).is_file())
 
 
 def _git(project, *args, timeout=10):
@@ -219,31 +209,79 @@ def target(project, comp=""):
     return line, None
 
 
-def parts(project, comp=""):
+def _relspec(project, where):
+    """The pathspec git is asked about — from the RESOLVED directory.
+
+    Never the caller's raw spelling: `--for ./extension`, a trailing slash, or
+    a symlinked alias all resolve to the same directory but name different
+    pathspecs, and rev-list against the raw string counts the wrong commits
+    or none. The file being read and the history being counted have to be the
+    same place.
+    """
+    try:
+        return str(where.relative_to(root(project).resolve()))
+    except (AttributeError, ValueError):
+        return None
+
+
+def _repo(project):
+    """The repo-wide facts, gathered once. None where there is no repo.
+
+    Everything here is identical for the project and every component — only
+    the target and the ordinal are per-directory — so callers rendering
+    several blocks pass this in rather than paying four subprocesses per
+    block for the same four answers.
+    """
+    sha = _git(project, "rev-parse", "--short=7", "HEAD")
+    if sha is None:
+        return None
+    return {"sha": sha,
+            "dirty": bool(_git(project, "status", "--porcelain")),
+            "describe": _git(project, "describe", "--tags", "--always", "--dirty"),
+            # Every tag on HEAD, not describe --exact-match's single pick:
+            # release detection has to ask "is THIS thing's tag here", and a
+            # component's answer is a differently named tag than the root's.
+            "tags": (_git(project, "tag", "--points-at", "HEAD") or "").splitlines()}
+
+
+def parts(project, comp="", repo=None):
     """Everything the renderings are built from, plus why any of it is missing."""
     tgt, err = target(project, comp)
+    repo = _repo(project) if repo is None else repo
+    if repo is None:
+        return {"target": tgt, "error": err or "not a git repository, or no commits yet",
+                "ordinal": None, "sha": None, "tag": "", "dirty": False,
+                "describe": None, "released": False}
+    where = _sub(project, comp)
+    rel = _relspec(project, where) if comp else None
     # A component counts only the commits that touched it. Still monotonic —
     # commits accumulate, they do not un-happen — so versionCode and AMO are
     # as satisfied as before; but the extension stops appearing to change
     # every time the app beside it is edited.
-    ordinal = _git(project, "rev-list", "--count", "HEAD",
-                   *(["--", comp] if comp else []))
-    sha = _git(project, "rev-parse", "--short=7", "HEAD")
-    if sha is None:
-        return {"target": tgt, "error": err or "not a git repository, or no commits yet",
-                "ordinal": None, "sha": None, "tag": "", "dirty": False,
-                "describe": None}
-    # --exact-match so this is "is HEAD *itself* released", not "what was the
-    # last release" — the whole question the -dev suffix turns on.
-    tag = _git(project, "describe", "--tags", "--exact-match", "HEAD") or ""
-    dirty = bool(_git(project, "status", "--porcelain"))
+    ordinal = None
+    if not comp or rel:
+        ordinal = _git(project, "rev-list", "--count", "HEAD",
+                       *(["--", rel] if rel else []))
+    # Released means a tag for THIS thing is on HEAD. The root's is vX.Y.Z;
+    # a component's is <dir>-vX.Y.Z, because the repo-wide tag says nothing
+    # about the component — a project release that happens to share the
+    # extension's number must not stamp a mid-cycle extension build as its
+    # release.
+    if tgt is None:
+        tag = ""
+    elif comp:
+        want = f"{comp}-v{tgt}"
+        tag = want if want in repo["tags"] else ""
+    else:
+        tag = next((t for t in repo["tags"]
+                    if t.removeprefix("v") == tgt), "")
     return {"target": tgt, "error": err,
             "ordinal": int(ordinal) if (ordinal or "").isdigit() else None,
-            "sha": sha, "tag": tag, "dirty": dirty,
-            "describe": _git(project, "describe", "--tags", "--always", "--dirty")}
+            "sha": repo["sha"], "tag": tag, "dirty": repo["dirty"],
+            "describe": repo["describe"], "released": bool(tag)}
 
 
-def render(project, comp=""):
+def render(project, comp="", repo=None):
     """Every form of this project's version, and the parts they came from.
 
     A form that cannot honestly be produced is None rather than a guess. The
@@ -251,12 +289,11 @@ def render(project, comp=""):
     file would put a wrong number in a shipped artifact, which is the one
     outcome worth more than a missing field.
     """
-    p = dict(parts(project, comp))
+    p = dict(parts(project, comp, repo=repo))
     p["component"] = comp
     tgt, ordinal, sha = p["target"], p["ordinal"], p["sha"]
     forms = {"semver": None, "code": None, "quad": None, "msi": None,
              "pep440": None, "file": None}
-    p["released"] = bool(p["tag"]) and tgt is not None and p["tag"].removeprefix("v") == tgt
     # The ordinal is the one form that needs no VERSION file: it is pure git,
     # and it is the one Android cannot ship without.
     if ordinal is not None:
@@ -378,6 +415,67 @@ def next_version(tgt, part):
     return f"{a}.{b}.{c + 1}"
 
 
+def _cl_guard(project, where):
+    """Refuse, before anything is mutated, a roll that would sweep a staged
+    changelog edit.
+
+    The bump commit takes the changelog's worktree state along with VERSION,
+    which is right for unreleased entry lines — dating them is what a bump
+    means for them — but an edit the operator staged for a commit of their
+    own (a typo fix in a dated section, say) would be silently absorbed into
+    "Set version to X" and vanish from their pending commit. Same sweep, same
+    refusal, as the VERSION guards beside it. Checked only when a roll would
+    actually happen: with nothing unreleased the commit never touches the
+    file, and a staged edit is none of this function's business.
+    """
+    if changelog is None or where is None or not changelog.unreleased(where):
+        return None
+    rel = str((where / changelog.FILE).relative_to(root(project).resolve()))
+    staged = (_git(project, "diff", "--cached", "--name-only") or "").splitlines()
+    if rel in staged:
+        return (f"{rel} is staged for another commit, and this would sweep "
+                "that edit into the version commit — commit or unstage it first")
+    return None
+
+
+def _seal(project, where, ver_rel, value, msg):
+    """Roll the changelog, stage, and commit — the tail init and bump share.
+
+    Every failure names what actually happened to BOTH files, because by this
+    point the worktree is already mutated: an error that mentions only
+    VERSION leaves a silently dated changelog for somebody to find later. A
+    changelog that cannot be staged — gitignored, most likely — does not take
+    the whole commit down with it: VERSION still commits, and the note says
+    what was left behind.
+    """
+    cl_rel = None
+    note = ""
+    if changelog is not None and changelog.roll(
+            where, value, time.strftime("%Y-%m-%d")):
+        cl_rel = str((where / changelog.FILE)
+                     .relative_to(root(project).resolve()))
+    if _git(project, "add", "--", ver_rel) is None:
+        return {"error": f"could not stage {ver_rel} — is it gitignored? It "
+                         f"now reads {value}"
+                         + (f", and {cl_rel} is dated for it" if cl_rel else ""),
+                "target": value}
+    paths = [ver_rel]
+    if cl_rel is not None:
+        if _git(project, "add", "--", cl_rel) is None:
+            note = (f"{cl_rel} was dated for {value} but could not be staged "
+                    "— gitignored? — so it is not in the commit")
+        else:
+            paths.append(cl_rel)
+    if _git(project, "commit", "-m", msg, "--", *paths, timeout=30) is None:
+        return {"error": f"{ver_rel} now reads {value}"
+                         + (f" and {cl_rel} is dated for it" if cl_rel else "")
+                         + ", but committing failed — commit by hand",
+                "target": value}
+    return {"ok": True, "target": value,
+            "commit": _git(project, "rev-parse", "--short=7", "HEAD") or "",
+            **({"note": note} if note else {})}
+
+
 def init(project, value, by="claude", comp=""):
     """Give a project — or a component — its first VERSION, and commit it.
 
@@ -402,6 +500,14 @@ def init(project, value, by="claude", comp=""):
     where = _sub(project, comp)
     if where is None:
         return {"error": f"no such directory here: {comp}"}
+    rel_dir = _relspec(project, where) if comp else ""
+    if comp and (("/" in (rel_dir or "")) or where.name in _SKIP):
+        # One level, matching where components() looks and candidates()
+        # offers: a VERSION created deeper would sit orphaned — real on disk,
+        # invisible on the tab, unrollable from anywhere.
+        return {"error": "a component lives one level under the project — "
+                         f"{rel_dir or comp} is somewhere the tab would never "
+                         "show"}
     p = where / VERSION_FILE
     if p.exists():
         # Not an error worth dressing up: the thing being asked for is already
@@ -411,6 +517,9 @@ def init(project, value, by="claude", comp=""):
     if _git(project, "rev-parse", "--short=7", "HEAD") is None:
         return {"error": "not a git repository, or no commits yet — a version "
                          "needs history to count"}
+    why = _cl_guard(project, where)
+    if why:
+        return {"error": why}
     try:
         p.write_text(value + "\n", encoding="utf-8")
     except OSError as e:
@@ -419,21 +528,13 @@ def init(project, value, by="claude", comp=""):
     msg = (f"Add {comp} VERSION at {value}" if comp
            else f"Add VERSION at {value}") + ("" if by == "operator" else " (session)")
     # Entries logged before the project had a version describe the work that
-    # BECAME this first version, so they are dated here as its section. Left
+    # BECAME this first version, so _seal dates them as its section. Left
     # unreleased they would ride into the NEXT bump and be labeled as changes
-    # since a release they are actually part of — a mislabel in the one file
-    # that ships to be believed.
-    paths = [rel]
-    if changelog is not None and changelog.roll(
-            where, value, time.strftime("%Y-%m-%d")):
-        paths.append(str((where / changelog.FILE)
-                         .relative_to(root(project).resolve())))
-    _git(project, "add", "--", *paths)
-    if _git(project, "commit", "-m", msg, "--", *paths, timeout=30) is None:
-        return {"error": f"{rel} now reads {value}, but committing it failed — "
-                         f"commit it by hand", "target": value}
-    return {"ok": True, "target": value, "component": comp,
-            "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
+    # since a release they are actually part of.
+    r = _seal(project, where, rel, value, msg)
+    if r.get("ok"):
+        r["component"] = comp
+    return r
 
 
 def candidates(project):
@@ -472,8 +573,15 @@ def bump(project, part, by="claude", comp=""):
     if err:
         return {"error": err}
     if tgt is None:
-        return {"error": f"{project} has no {VERSION_FILE} file yet — create "
-                         f"one holding a line like 0.1.0 first"}
+        # Naming the component when there is one: telling somebody the
+        # PROJECT has no VERSION while bumping the extension blames a file
+        # that exists — and "create one" points at the exact hand-written
+        # path the file-tool deny list closes. init is the sanctioned door.
+        thing = f"{project}/{comp}" if comp else project
+        forflag = f" --for {comp}" if comp else ""
+        return {"error": f"{thing} has no {VERSION_FILE} yet — give it one "
+                         f"with `bb version init 0.1.0{forflag}`, or from "
+                         "the Artifacts tab"}
     where = _sub(project, comp)
     if where is None:
         return {"error": f"no such component here: {comp}"}
@@ -497,6 +605,9 @@ def bump(project, part, by="claude", comp=""):
         return {"error": f"{VERSION_FILE} has uncommitted changes — commit "
                          "or discard those first, so this bump's commit "
                          "records only its own move"}
+    why = _cl_guard(project, where)
+    if why:
+        return {"error": why}
     new = next_version(tgt, part)
     p = where / VERSION_FILE
     try:
@@ -507,30 +618,15 @@ def bump(project, part, by="claude", comp=""):
     # distinction survives: the commit identity is the container's either way.
     msg = (f"Set {comp} version to {new}" if comp
            else f"Set version to {new}") + ("" if by == "operator" else " (session)")
-    # The changelog's Unreleased section becomes this version's, dated today,
-    # in the same commit — the bump is the date break, and splitting the two
-    # across commits would let one land without the other. Uncommitted entry
-    # lines are swept in deliberately: everything in that file is changelog,
-    # and dating it is exactly what a bump means for it. Nothing rolls when
-    # nothing was logged — an empty cycle gets no section, and the warning
-    # about that belongs in the confirm, not in the shipped file.
-    paths = [rel]
-    if changelog is not None and changelog.roll(
-            where, new, time.strftime("%Y-%m-%d")):
-        paths.append(str((where / changelog.FILE)
-                         .relative_to(root(project).resolve())))
-    # `git commit -- path` only knows tracked paths, so a VERSION that has
-    # never been committed — created by hand five minutes ago — needs the add.
-    # For a tracked file this is a no-op as far as the partial commit cares.
-    _git(project, "add", "--", *paths)
-    out = _git(project, "commit", "-m", msg, "--", *paths, timeout=30)
-    if out is None:
-        # The file is written but uncommitted. Say both halves — a caller told
-        # only "commit failed" would not know the target had already moved.
-        return {"error": f"{VERSION_FILE} now reads {new}, but committing it "
-                         f"failed — commit it by hand", "target": new}
-    return {"ok": True, "was": tgt, "target": new, "part": part, "component": comp,
-            "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
+    # _seal dates the changelog's Unreleased section as this version and
+    # commits it with VERSION — the bump is the date break, and splitting the
+    # two across commits would let one land without the other. Uncommitted
+    # ENTRY lines are swept in deliberately (dating them is what a bump means
+    # for them); a STAGED edit was refused above, before anything moved.
+    r = _seal(project, where, rel, new, msg)
+    if r.get("ok"):
+        r.update(was=tgt, part=part, component=comp)
+    return r
 
 
 def evidence(project, comp=""):
@@ -551,6 +647,14 @@ def evidence(project, comp=""):
     e = dict(since_bump(project, comp))
     at = e.get("at")
     e["done"] = e["fixed"] = None
+    if comp:
+        # The notebook's logs are per project, with no way to say which
+        # product a done item or a fixed bug belonged to — so for a component
+        # they would present the sibling's work as this one's case for a
+        # bump, the exact mislabeling the split exists to prevent. The commit
+        # count above is honestly narrowed; these two are omitted rather than
+        # wrong.
+        return e
     if at is None:
         # No commit has ever touched VERSION, so there is no window to count
         # over. None rather than 0: "nothing happened" and "there is nothing
@@ -568,19 +672,29 @@ def evidence(project, comp=""):
 def payload(project):
     """Everything the Artifacts tab head needs, in one read.
 
-    `versions` is the project's own first, then one per component. Almost
-    always a list of one — a component exists only because somebody put a
-    VERSION file in a directory.
+    The project's own block is the top level; `versions` holds ONLY the
+    components' blocks, almost always none — a component exists because
+    somebody put a VERSION file in a directory. The repo-wide git facts are
+    gathered once and shared: they are identical for every block, and a tab
+    fetch should not pay four subprocesses per component for the same four
+    answers.
     """
-    out = one(project)
-    out["versions"] = [one(project, c) for c in components(project)]
+    repo = _repo(project)
+    out = one(project, repo=repo)
+    out["versions"] = [one(project, c, repo=repo) for c in components(project)]
     return out
 
 
-def one(project, comp=""):
+def one(project, comp="", repo=None):
     """One version block: the project's, or a component's."""
-    v = render(project, comp)
+    v = render(project, comp, repo=repo)
     pol = policy(project)
+    d = _sub(project, comp)
+    # One read serves both changelog fields. `has_changelog` is False both
+    # when there is no file and when the directory itself failed to resolve —
+    # the tab treats the two the same, and a component that vanished mid-read
+    # already surfaces through its render error.
+    text = changelog.read(d) if (changelog is not None and d) else None
     return {
         "component": comp,
         "project": project, "target": v["target"], "forms": v["forms"],
@@ -600,14 +714,10 @@ def one(project, comp=""):
         # Only on the project's own block: a component is added from the one
         # place that lists what could become one.
         "candidates": [] if comp else candidates(project),
-        # The changelog beside this VERSION: how many entries are waiting for
-        # a bump to date them, and whether the file exists at all. None for
-        # has_changelog is honest — a directory that failed to resolve has no
-        # answer, not a no.
-        "unreleased": (len(changelog.unreleased(_sub(project, comp)))
-                       if changelog is not None and _sub(project, comp) else 0),
-        "has_changelog": (changelog.read(_sub(project, comp)) is not None
-                          if changelog is not None and _sub(project, comp) else False),
+        # The changelog beside this VERSION: how many entries wait for a
+        # bump to date them, and whether the file exists at all.
+        "unreleased": len(changelog.unreleased_text(text)) if text is not None else 0,
+        "has_changelog": text is not None,
     }
 
 
@@ -633,7 +743,10 @@ def since_bump(project, comp=""):
         return {"at": None, "commits": None}
     last = _git(project, "log", "-1", "--format=%H", "--", rel)
     # Narrowed to the component too: "what has happened here since" should not
-    # count the app's commits when the question is about the extension.
+    # count the app's commits when the question is about the extension. The
+    # RESOLVED spec, for the same reason parts() uses it — the raw spelling
+    # can name a different pathspec than the file just read.
+    spec = _relspec(project, where) if comp else None
     n = _git(project, "rev-list", "--count", f"{last}..HEAD",
-             *(["--", comp] if comp else [])) if last else None
+             *(["--", spec] if spec else [])) if last else None
     return {"at": int(at), "commits": int(n) if (n or "").isdigit() else None}

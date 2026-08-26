@@ -292,7 +292,9 @@ is a *component* and answers for itself: `bb version --for extension`, and
 the commits that touched that directory, so a shipped extension stops
 appearing to change every time the app beside it is edited. **Stamp each
 artifact from its own component** — using the project's number for all of them
-tells whoever installed the extension that it moved when it did not.
+tells whoever installed the extension that it moved when it did not. A
+component's release tag is `<dir>-vX.Y.Z`; the repo's own `vX.Y.Z` says
+nothing about a component, even when the numbers coincide.
 
 **Log what a change means for the person using the product.** Beside the
 version sits its changelog, and you write it:
