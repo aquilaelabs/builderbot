@@ -10,3 +10,5 @@
 - Model and effort for everything sent to Claude are set once on a sidebar card instead of being asked at every send (9b8c1b2)
 - The version stamp in the header became an About popup — no more truncated string on a phone (3accee0)
 - Sessions no longer open on a wall of yellow permission warnings (d9508b0)
+- Long lists in the notebook show a page at a time, with a Show more control (7a6cf2d)
+- A version bump now stages until you press Save — Revert or leaving the page discards it (7a6cf2d)
