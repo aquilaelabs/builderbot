@@ -71,11 +71,22 @@ ok(/nothing saved yet/.test(await page.$eval('#devEnvModal .hint', e => e.textCo
 await page.fill('#devEnvModal textarea', 'PORT=9090\n');
 await page.click('#devEnvModal .primary');
 await page.waitForSelector('#devEnvModal', { state: 'hidden' });
+// Wait for the save to land: the hint stops calling it a draft.
 await page.waitForFunction(() => {
-  const b = document.querySelector('#devRow [data-devact="up"]');
-  return b && !b.disabled;
-}, { timeout: 20000 });
-ok(true, 'saving an env that answers the example brings Up alive');
+  const r = document.querySelector('#devRow');
+  return r && !/fill in the env/.test(r.textContent);
+}, { timeout: 20000 }).catch(() => {});
+await page.waitForTimeout(1200);
+// The buttons map to the compose commands, no rules of this dashboard's
+// invention on top: `compose up` builds an image that is missing, so Up on a
+// never-built project does what the CLI does rather than refusing. The
+// classic builder rides along for exactly that case, since an implicit build
+// through buildx would 403 against a socket proxy.
+ok(!await page.$eval('#devRow [data-devact="up"]', b => b.disabled),
+   'a filled env wakes Up — compose builds what is missing, so it would work');
+ok(/builds the image first, as compose does/.test(
+     await page.$eval('#devRow [data-devact="up"]', b => b.title)),
+   '...and Up says that is what it will do');
 
 // First build: build → down → up, and the argv trail proves the shape.
 // (newPage auto-accepts dialogs and records them — no handler of our own.)

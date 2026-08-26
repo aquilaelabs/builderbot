@@ -5863,7 +5863,9 @@ $("todoRevert").onclick = revertNotebook;
                 while it was running${da.built_rev
                   ? `; still on ${esc(da.built_rev)}` : ", and nothing was built"}`
             : da.built_rev ? `built from ${esc(da.built_rev)}${
-                da.changed ? " — the code has moved since" : ""}`
+                da.changed_why === "moved" ? " — the code has moved since"
+                : da.changed_why === "dirty"
+                  ? " — uncommitted changes are not in it" : ""}`
             : "never built — Build makes the first image"}</div>
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
             esc((daJob.log || "").slice(-600))}</div>` : ""}
@@ -5873,7 +5875,9 @@ $("todoRevert").onclick = revertNotebook;
             da.running || daJob?.running || (da.missing_env || []).length ? "disabled" : ""}
             title="${(da.missing_env || []).length
               ? "the env is missing " + esc(da.missing_env.join(", "))
-              : "docker compose up -d"}">Up</button>
+              : da.needs_build && !da.built_rev
+                ? "docker compose up -d — builds the image first, as compose does"
+                : "docker compose up -d"}">Up</button>
           <button type="button" data-devact="down" ${
             !da.running || daJob?.running ? "disabled" : ""}
             title="docker compose down">Down</button>

@@ -393,6 +393,30 @@ def _load():
     return {}
 
 
+def needs_build(project):
+    """Whether this compose has anything to build at all.
+
+    A compose that only runs published images — `image: postgres` and no
+    `build:` — has nothing for Build to do, and Up should not wait on one.
+    A compose that declares a build must not be brought up before it has
+    been: `compose up` would build it ITSELF, silently, through the buildx
+    path this feature deliberately avoids, and the operator would get the
+    403 from a button that never mentioned building.
+    """
+    r = _run(_compose(project, "config", "--format", "json"), timeout=30)
+    if r["code"] != 0:
+        # Unreadable compose: assume it builds, which is the cautious way
+        # round — Up stays gated rather than firing an implicit build.
+        return True
+    try:
+        d = json.loads(r["out"])
+    except ValueError:
+        return True
+    return any(bool(sv.get("build"))
+               for sv in (d.get("services") or {}).values()
+               if isinstance(sv, dict))
+
+
 def _running(project):
     r = _run(_compose(project, "ps", "--status", "running", "-q"), timeout=20)
     return r["code"] == 0 and bool(r["out"].strip())
@@ -417,6 +441,7 @@ def state(project):
     a = available()
     built = _load().get(project) or {}
     out = {"compose": True, "available": a["on"], "why": a["why"],
+           "needs_build": True,
            "built_rev": built.get("rev", ""), "built_at": built.get("at", 0),
            "missing_env": missing_env(project),
            "await_env": bool(built.get("await_env")),
@@ -431,10 +456,20 @@ def state(project):
                                and not _job["running"]),
            "job": dict(_job) if _job["project"] == project else None}
     if a["on"]:
+        out["needs_build"] = needs_build(project)
         out["running"] = _running(project)
         head = _head(project)
-        out["changed"] = (not built.get("rev")
-                          or built.get("rev") != head or _dirty(project))
+        dirty = _dirty(project)
+        moved = bool(built.get("rev")) and built.get("rev") != head
+        out["changed"] = not built.get("rev") or moved or dirty
+        # WHICH of the two, because they are different facts and the row was
+        # saying the wrong one: a commit since the build means the image is
+        # behind the branch; an uncommitted edit means it is behind the
+        # working tree. Both are reasons to offer Rebuild, and only one of
+        # them is "the code has moved".
+        out["changed_why"] = ("moved" if moved
+                              else "dirty" if dirty and built.get("rev")
+                              else "")
     else:
         out["running"] = False
         out["changed"] = False
@@ -452,13 +487,24 @@ def up(project):
         return {"error": "the env is missing " + ", ".join(miss[:4])
                          + (" …" if len(miss) > 4 else "")
                          + " — fill it in first (Env)"}
-    r = _run(_compose(project, "up", "-d"), timeout=180,
-             env_extra=_dev_data_env(project))
+
+    # `compose up -d`, and nothing more clever: compose builds an image that
+    # is missing, so Up on a never-built project does what the CLI does
+    # rather than refusing on a rule of this dashboard's invention. The
+    # classic builder rides along for exactly that case — an implicit build
+    # through buildx would 403 against a socket proxy.
+    r = _run(_compose(project, "up", "-d"), timeout=1800,
+             env_extra=_dev_data_env(project) | _CLASSIC_BUILD)
     if r["code"] != 0:
         return {"error": ("compose up failed:\n" + r["out"])[-500:]}
     with _lock:
         d = _load()
-        d.setdefault(project, {}).pop("await_env", None)
+        row = d.setdefault(project, {})
+        row.pop("await_env", None)
+        # An implicit build is still a build, so the row stops claiming the
+        # project was never built while a container from it is running.
+        if not row.get("rev"):
+            row.update(rev=_head(project), at=int(time.time()))
         write_json(FILE, d)
     _bump()
     return {"ok": True}
