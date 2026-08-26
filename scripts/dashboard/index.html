@@ -72,6 +72,17 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 @media(max-width:600px){ .meta.host{display:none} }
+/* The About control: version-as-label on a desktop, the word on a phone —
+   a truncated version string answers nothing, so it stops pretending to. */
+#bAbout .alab{display:none}
+#bAbout #build{color:var(--dim)}
+@media(max-width:600px){
+  #bAbout #build{display:none}
+  #bAbout .alab{display:inline}
+}
+.about .aline{display:flex;gap:10px;align-items:baseline;padding:3px 0}
+.about .aline span{flex:0 0 96px;color:var(--dim);font:var(--f-note)}
+.about .aline code{font:12px/1.5 var(--mono);overflow-wrap:anywhere;min-width:0}
 
 .switch{display:none;gap:6px;padding:6px 12px;background:var(--panel);
   border-bottom:1px solid var(--line);flex:0 0 auto}
@@ -1297,6 +1308,25 @@ body.dragging .tab .lbl{cursor:grabbing}
      the whole staging model keeps working without being made per-pane. It used
      to be a modal, which on a desktop meant reading a list, a plan, a log and
      a memory editor through a 760px slot. -->
+<div id="aboutModal" class="modal" hidden role="dialog" aria-modal="true"
+     aria-labelledby="aboutTitle">
+  <div class="box">
+    <h3 id="aboutTitle">About</h3>
+    <div class="field about">
+      <div class="aline"><span>version</span><code id="aVer"></code></div>
+      <div class="aline"><span>image commit</span><code id="aRev"></code></div>
+      <div class="aline"><span>built</span><code id="aBuilt"></code></div>
+      <div class="aline"><span>host</span><code id="aHost"></code></div>
+      <div class="aline"><span>up</span><code id="aUp"></code></div>
+      <p class="hint">This is what <code>/opt</code> is serving — an update
+        pulls whatever <code>:latest</code> is now, and <code>bb drift</code>
+        says what a checkout has changed since.</p>
+    </div>
+    <div class="foot"><span class="sp"></span>
+      <button type="button" onclick="$('aboutModal').hidden = true">Close</button>
+    </div>
+  </div>
+</div>
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
@@ -1372,7 +1402,15 @@ body.dragging .tab .lbl{cursor:grabbing}
   <span class="meta host" id="host"></span>
   <span class="spacer"></span>
   <span class="meta" id="uptime"></span>
-  <span class="meta" id="build"></span>
+  <!-- The build stamp, as a control. It used to be a bare span whose detail
+       lived in a hover tooltip — which a phone cannot hover, and whose text
+       truncated there anyway. The label is still the version on a desktop
+       (the glance is the point of having it in the header); on a phone it
+       collapses to the word About, and either way the popup carries what the
+       tooltip used to. -->
+  <button id="bAbout" aria-haspopup="dialog" title="about this BuilderBot">
+    <span class="meta" id="build"></span><span class="alab">About</span>
+  </button>
   <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" aria-label="reset the sidebar cards"
           title="reset the sidebar cards — default order, all expanded">
@@ -2601,17 +2639,25 @@ function drawBuild(img){
   const el = $("build"), rev = img?.rev || "", ver = img?.version || "";
   // The version when there is one, because it is the half that can be
   // ordered: two shas do not say which came first, which is the question
-  // being asked whenever anybody looks at this. The commit stays one hover
-  // away rather than being dropped — it is what `bb drift` compares against.
+  // being asked whenever anybody looks at this. The rest moved from a hover
+  // tooltip into the About popup — a phone cannot hover, and the truncated
+  // string it showed instead answered nothing.
   el.textContent = ver || (rev ? rev.slice(0, 7) : "unstamped");
-  el.title = rev
-    ? `${ver ? `version ${ver}\n` : ""}image ${rev}`
-      + `${img.built ? `\nbuilt ${img.built}` : ""}`
-      + `\n\nthis is what /opt is serving — \`bb drift\` says what a checkout`
-      + `\nhas changed since, and an update pulls whatever :latest is now`
-    : "this image carries no build stamp — built outside CI, or older than the"
-      + " stamp itself";
+  $("aVer").textContent = ver || "(no version stamp)";
+  $("aRev").textContent = rev
+    || "unstamped — built outside CI, or older than the stamp itself";
+  $("aBuilt").textContent = img?.built || "—";
 }
+$("bAbout").onclick = () => {
+  // Host and uptime read at open, not at draw: the popup should say what is
+  // true now, and uptime in particular moves while the page sits.
+  $("aHost").textContent = state?.host || "—";
+  $("aUp").textContent = state?.uptime || "—";
+  $("aboutModal").hidden = false;
+};
+$("aboutModal").onclick = e => {
+  if (e.target.id === "aboutModal") $("aboutModal").hidden = true;
+};
 
 // Which pane of a split is active decides where the keys and the commands
 // go, and clicking into a terminal is the natural way to say "this one" —

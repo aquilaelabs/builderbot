@@ -144,30 +144,36 @@ ok(fav.links.includes('/favicon.svg') && fav.links.includes('/favicon.ico')
 // last pulled: "up two hours" and "has the fix" are different questions, and
 // answering the second by inferring from the first is how a published fix and
 // a stale container looked identical for a whole afternoon.
-const build = await page.$eval('#build', e => ({ text: e.textContent.trim(),
-                                                 title: e.title }));
+const build = await page.$eval('#build', e => ({ text: e.textContent.trim() }));
 // The version rather than the commit, because it is the half that can be
 // ordered: two shas do not say which came first, which is the question
 // anybody reading this is actually asking.
 ok(build.text === '0.4.0-dev.390+abc1234',
    'the header carries the ordered version the image was stamped with');
-ok(build.title.includes('abc1234def5678901234567890abcdef12345678')
-   && build.title.includes('2026-08-21T19:30Z'),
-   '...with the whole commit and when it was built, on hover');
+// The detail lives in the About popup now — a phone cannot hover a tooltip,
+// and the truncated string it showed instead answered nothing.
+await page.click('#bAbout');
+await page.waitForSelector('#aboutModal:not([hidden])');
+const about = await page.$eval('#aboutModal', e => e.textContent);
+ok(about.includes('abc1234def5678901234567890abcdef12345678')
+   && about.includes('2026-08-21T19:30Z') && /bb drift/.test(about),
+   '...and About carries the whole commit, the build time and where to look');
+await page.click('#aboutModal >> text=Close');
+await page.waitForSelector('#aboutModal', { state: 'hidden' });
 // An image built before versions existed still has a commit, and the header
 // falls back to it rather than going blank.
 ok(await page.evaluate(() => { drawBuild({ rev: 'deadbee1234', built: '' });
                                return document.getElementById('build')
                                       .textContent === 'deadbee'; }),
    '...falling back to the commit for an image with no version');
-ok(/bb drift/.test(build.title),
-   '...and says where to look for what a checkout has changed since');
 // An image built outside CI carries no stamp, and says so rather than leaving
-// a gap that reads as "this dashboard is too old to tell you".
+// a gap that reads as "this dashboard is too old to tell you" — in the label
+// and in the popup both.
 ok(await page.evaluate(() => { drawBuild({ rev: '', built: '' });
-                               const e = document.getElementById('build');
-                               return e.textContent === 'unstamped'
-                                   && /no build stamp/.test(e.title); }),
+                               return document.getElementById('build')
+                                        .textContent === 'unstamped'
+                                 && /built outside CI/.test(
+                                      document.getElementById('aRev').textContent); }),
    'an unstamped image says so, rather than showing nothing');
 await page.evaluate(() => refresh());
 
