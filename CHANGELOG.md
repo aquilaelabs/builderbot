@@ -38,3 +38,4 @@
 - The changelog fills the window it opens in and reads like a History does, instead of sitting in a small box at the top of it (63ce9a7)
 - The notebook's tab strip no longer runs off the side of a phone (98e1f03)
 - Panels, menus and confirmation boxes now slide or fade in rather than appearing, and something still loading looks different from something that is empty (98e1f03)
+- Claude can now use the sandbox VM's Docker daemon directly — build, run and wreck containers there, while the dev-instance buttons stay yours (4af2d2c)
