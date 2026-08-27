@@ -150,10 +150,47 @@ Five things in it differ from Unraid's placeholder, each for a reason:
 
 - **Network model: `virtio-net`.** The others are emulated legacy NICs, for
   guests without virtio drivers. Ubuntu and Debian both have them.
-- **Shares: pass them to the VM** rather than exporting NFS, where your Unraid
-  version offers it — that is virtiofs on recent releases and 9p on older
-  ones, and either beats a network filesystem on the same host. NFS is the
-  fallback, and `provision.sh --nfs` writes those entries instead.
+- **Shares: NFS first, virtiofs once it is up.** virtiofs is the faster
+  answer — same host, no network stack — and it is what you want in the end.
+  It is not what you want on the first boot: `virtiofsd` is a host-side
+  daemon, and when it refuses to start the VM will not start either, with
+
+  ```
+  internal error: virtiofsd died unexpectedly
+  ```
+
+  which says nothing about which of its several reasons applied. The two
+  usual ones are a source directory that does not exist yet, and `/mnt/user`
+  being shfs, whose FUSE layer does not give `passthrough` mode the `openat2`
+  and xattr behaviour it expects — pointing it at `/mnt/cache/...` or a disk
+  path instead often settles it. `virtiofsd`'s own complaint is in
+  `/var/log/libvirt/qemu/<vm-name>.log`, and is worth reading before changing
+  anything.
+
+  So bring the machine up with NFS, which needs no host-side daemon:
+
+  ```bash
+  sudo bash provision.sh --user bb --key "ssh-ed25519 …" \
+      --nfs 192.168.1.15:/mnt/user/development:/workspace \
+      --nfs 192.168.1.15:/mnt/cache/appdata/builderbot-dev:/devdata
+  ```
+
+  (Export both from Unraid: *Shares → share → NFS Security Settings*.)
+
+  To move to virtiofs later, add a `<filesystem>` block per share — the
+  `<memoryBacking>` it needs is already in the XML for exactly this — and
+  drop the matching `fstab` lines:
+
+  ```xml
+  <filesystem type="mount" accessmode="passthrough">
+    <driver type="virtiofs"/>
+    <source dir="/mnt/user/development"/>
+    <target dir="workspace"/>
+  </filesystem>
+  ```
+
+  The `target dir` is the *tag*, not a path; `provision.sh --share
+  workspace:/workspace` is what mounts it.
 - **Guest agent.** `qemu-guest-agent` is installed by both paths so Unraid can
   shut the VM down cleanly instead of pulling the plug.
 

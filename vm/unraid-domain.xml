@@ -42,9 +42,11 @@
     <feature policy="require" name="topoext"/>
   </cpu>
 
-  <!-- virtiofs needs the guest's memory to be shareable with virtiofsd, and
-       fails quietly without it: the mounts simply never appear. This replaces
-       the placeholder's <nosharepages/>, which is the opposite instruction. -->
+  <!-- Shared memory backing, which is what virtiofs needs and what the
+       placeholder's <nosharepages/> is the opposite of. Kept even though no
+       virtiofs share is configured below: it costs nothing, and it means
+       adding one later is a <filesystem> block rather than a block plus a
+       memory change nobody remembers is required. -->
   <memoryBacking>
     <source type="memfd"/>
     <access mode="shared"/>
@@ -95,23 +97,23 @@
       <boot order="1"/>
     </disk>
 
-    <!-- The shares, at the tags provision.sh mounts with its "share"
-         option: workspace at /workspace, devdata at /devdata.
-         The target dir IS the tag, not a path. Mounting them at the same
-         paths BuilderBot uses is the point of the whole design: a compose
-         file's bind source is resolved by whoever runs the container, so
-         identical paths mean a relative bind is the same directory on both
-         sides and nothing has to translate. -->
-    <filesystem type="mount" accessmode="passthrough">
-      <driver type="virtiofs"/>
-      <source dir="/mnt/user/development"/>
-      <target dir="workspace"/>
-    </filesystem>
-    <filesystem type="mount" accessmode="passthrough">
-      <driver type="virtiofs"/>
-      <source dir="/mnt/cache/appdata/builderbot-dev"/>
-      <target dir="devdata"/>
-    </filesystem>
+    <!-- No virtiofs shares here on purpose. They belong in this file and
+         they are the faster answer, but virtiofsd is a host-side daemon that
+         can refuse to start ("internal error: virtiofsd died unexpectedly")
+         for reasons that are about the host and not about this XML — a
+         source directory that is not there, or shfs under /mnt/user not
+         giving it the xattrs passthrough mode wants. A recipe whose first
+         step can fail that way is a bad recipe.
+
+         So the shares come in over NFS instead, which needs nothing on the
+         host side and is what provision.sh mounts with its "nfs" option. See
+         docs/sandbox-vm.md for both, including how to put virtiofs back once
+         the machine is up and you can read a log if it complains.
+
+         Either way they land at the SAME paths BuilderBot uses. That is the
+         point of the design: a compose file's bind source is resolved by
+         whoever runs the container, so identical paths mean a relative bind
+         is the same directory on both sides and nothing has to translate. -->
 
     <!-- br0 gives the VM its own LAN address, which is what makes a
          container's web UI reachable from your browser AND lets BuilderBot
