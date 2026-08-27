@@ -85,7 +85,7 @@ cleanup() {
 }
 
 # ---- fixtures --------------------------------------------------------------
-mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk}
+mkdir -p "$S"/{ws,reports,state,bin,sdk,androidsdk,devdata}
 # ep.silon: a project whose name tmux would rewrite in a session name (`.` →
 # `_`), so the page, the server and bb-tty have to agree on the substitution.
 ( cd "$S/ws" && mkdir -p alpha beta gamma delta ep.silon \
@@ -470,6 +470,13 @@ fresh() {
 fresh
 
 # ---- server ----------------------------------------------------------------
+# BB_DEV_DATA_DIR belongs in here with the rest: devapp.py defaults the
+# dev-data root to /devdata, and everything else was redirected while that
+# was not — so the ep.silon fixture's instance did an mkdir in the operator's
+# REAL /devdata, which this suite's whole story is that it cannot do. It is
+# per-command env, deliberately: the node tests further down still see the
+# container's own /devdata, which is what the module-level host_map() and
+# problems() snippets in devapp.mjs are written against.
 env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     TEMPLATE_MD="$DASH/../../config/templates/project-CLAUDE.md" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
@@ -485,6 +492,7 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" BB_ADB_BIN="$S/bin/adb" \
     BB_DOCKER_BIN="$S/bin/docker" DOCKER_STUB_STATE="$S/dockerstate" \
     DOCKER_HOST="tcp://stub:2375" \
+    BB_DEV_DATA_DIR="$S/devdata" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
 pid=$!
 for _ in $(seq 40); do

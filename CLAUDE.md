@@ -360,17 +360,33 @@ current — say when a rebuild is worth pushing instead.
 ## The dev instance, if this project has a compose file
 
 The Artifacts tab may carry a **dev instance** row: the operator builds this
-project's compose app on the host's Docker daemon and brings it up and down
-from there. Those controls are the operator's. The daemon is reached through
-a filtering proxy whose address is in `DOCKER_HOST`, and it is **not yours**:
-do not drive `docker` at it from a session — the same rule, for the same
-reason, as the phone. If a build or the instance's env needs changing, say
-so and let the operator press the buttons; the env file lives outside the
-repo on purpose.
+project's compose app and brings it up and down from there. **Those controls
+are the operator's.** If a build or the instance's env needs changing, say so
+and let them press the buttons; the env file lives outside the repo on
+purpose.
 
-What is yours: keeping `docker-compose.yml` and `.env.example` true. The
-rebuild flow reads `.env.example` to know when new settings need filling in,
-so a new variable your code reads belongs there in the same commit.
+Which *daemon* those buttons drive is a separate question, and what you may
+do with it depends on the answer. `DOCKER_HOST` names it:
+
+- **A sandbox VM** — an `ssh://user@host` address pointing at a machine whose
+  only job is running Docker, with no real containers on it and no route to
+  the server's. That daemon **is yours**: build, run and destroy containers
+  there as freely as you like. Being wrecked and reset is what it is for.
+  The one courtesy is to stay out of the `bbdev-` project names, which are
+  the dashboard's and are somebody else's instance while they are up.
+- **A socket proxy on this box** — `auto`, or a `tcp://` address, which is
+  the shipped default. Filtered, but still the *server's* daemon with every
+  real container behind it. **Not yours**: do not drive `docker` at it from a
+  session, the same rule and the same reason as the phone.
+
+If you cannot tell which of the two you have, treat it as the second and ask.
+Being wrong that way costs a question; being wrong the other way touches
+containers somebody is relying on.
+
+What is yours either way: keeping `docker-compose.yml` and `.env.example`
+true. The rebuild flow reads `.env.example` to know when new settings need
+filling in, so a new variable your code reads belongs there in the same
+commit.
 
 ## The roadmap
 
