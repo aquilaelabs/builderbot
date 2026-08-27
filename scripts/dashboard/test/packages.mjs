@@ -31,7 +31,13 @@ ok(await page.$eval('.card[data-card="tools"] #bPkgs', b => !b.hidden),
 // to keep the pane's doc id, and the packages view then rendered into that
 // hidden node — a blank tab. The id has one owner now: whatever is shown.
 await page.click('#projects .row:has(.name:text-is("alpha")) [data-m]');
-await page.waitForFunction(() => document.querySelectorAll('#todoList .todo, #todoList .hint').length > 0,
+await page.waitForFunction(
+  // Loaded, whatever it holds — not merely started. This used to match the
+  // "loading…" placeholder, so it was satisfied the instant the panel opened
+  // and said nothing about the list arriving; that only came to light when
+  // the placeholder stopped sharing a class with the empty state.
+  () => { const l = document.querySelector('#todoList');
+          return !!l && !l.querySelector('.loading'); },
                            { timeout: 20000 });
 await page.click('#bPkgs');
 await page.waitForFunction(() => document.querySelectorAll('.doc .pkg:not(.img)').length > 0);

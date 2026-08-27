@@ -1,7 +1,7 @@
 // The notebook's Artifacts view: what a project has built, from its dist/.
 // The convention IS the feature — the tab lists dist/ and nothing else, so a
 // build worth keeping has to be copied there, and an empty tab says that.
-import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, URL, DIR, refreshUntil } from './lib.mjs';
 import { mkdirSync, writeFileSync, symlinkSync, rmSync, renameSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -142,18 +142,22 @@ ok(true, '...and the sentence is what the tab shows');
   // poll do the work — no tab switching, which is the thing that used to be
   // required.
   renameSync(`${DIR}/bin/adb`, `${DIR}/bin/adb.hidden`);
-  await page.evaluate(() => refresh());
-  await page.waitForFunction(() => {
+  // Asked again each pass: the phone verdict is cached for 3s and the page
+  // polls every 15, so one refresh right after hiding adb can be answered from
+  // the cache. See refreshUntil — the same shape as the auth waits in cards.
+  await refreshUntil(page, () => {
     const b = document.querySelector('[data-artpush]');
-    return b && b.disabled;
-  }, null, { timeout: 20000 });
+    return !!b && b.disabled;
+  });
   ok(true, 'with the phone gone, Push goes dead on its own');
   renameSync(`${DIR}/bin/adb.hidden`, `${DIR}/bin/adb`);
-  await page.evaluate(() => refresh());
-  await page.waitForFunction(() => {
+  // The mirror of the wait above, and cached the same way — converting only
+  // the going-away half left the coming-back half to time out in the very
+  // next run.
+  await refreshUntil(page, () => {
     const b = document.querySelector('[data-artpush]');
-    return b && !b.disabled;
-  }, null, { timeout: 20000 });
+    return !!b && !b.disabled;
+  });
   ok(true, '...and comes back when it returns, without touching the tab');
 }
 

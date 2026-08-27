@@ -1,8 +1,8 @@
 // Sidebar cards: universal collapse with a height tween, header-only
 // controls, drag-to-reorder, ▤ reset, doctor's inner fold vs the card fold,
 // per-project findings, valid-projects filter, and server-side persistence.
-import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, tmuxNew, tmuxKill, tmuxFmt,
-         URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
+         tmuxNew, tmuxKill, tmuxFmt, URL, DIR } from './lib.mjs';
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
@@ -210,9 +210,10 @@ ok(true, 'with the last one ended, it comes alive');
 // Signed out: the offer flips, and signing in opens a terminal, because the
 // flow is a URL to open and a code to paste back.
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-out.json`));
-await page.evaluate(() => refresh());
-await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
-                           { timeout: 25000 });
+// Kept asking rather than asked once: the verdict is cached for 20s and the
+// page polls every 15, which together outlast any patience worth calling a
+// timeout. See refreshUntil.
+await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
 ok(await page.$('#bSignOut') === null
    && (await page.$eval('#docAuth', e => e.textContent)).includes('not signed in'),
    'signed out, it says so where the verdict is and offers the way in');
@@ -223,9 +224,7 @@ ok(await page.$$eval('#projects [data-c]', bs => bs.length > 0 && bs.every(b => 
 // And back: the stub's logout rewrites its own fixture, so this proves the
 // button reaches the command without going near anybody's credentials.
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
-await page.evaluate(() => refresh());
-await page.waitForFunction(() => document.getElementById('bSignOut') !== null,
-                           { timeout: 25000 });
+await refreshUntil(page, () => document.getElementById('bSignOut') !== null);
 page.dialogs = [];
 await page.click('#bSignOut');
 await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
@@ -242,9 +241,7 @@ writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-in.json`));
 // tmux session behind ttyd. The stub claude is shaped like the real one: a
 // URL, a prompt with no newline after it, and a line read back.
 writeFileSync(`${DIR}/auth.json`, readFileSync(`${DIR}/auth-out.json`));
-await page.evaluate(() => refresh());
-await page.waitForFunction(() => document.getElementById('bSignIn') !== null,
-                           { timeout: 25000 });
+await refreshUntil(page, () => document.getElementById('bSignIn') !== null);
 await page.click('#bSignIn');
 await page.waitForFunction(() => document.getElementById('authCode') !== null,
                            { timeout: 25000 });
