@@ -1575,15 +1575,16 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button id="pClone" type="button">Clone from GitHub</button>
       </div>
     </div>
-    <!-- A clone is not asked for a name or a description: the URL already
-         carries the name, and the notes are drafted from the repository's own
-         README and build files after the clone lands. -->
+    <!-- A clone is not asked for a description — the notes are drafted from
+         the repository's own README and build files after it lands — but it
+         IS asked for a name, prefilled from the address. Deriving it and
+         nothing else made two checkouts of one repository impossible, which
+         is the ordinary case for deploying an app rather than developing it. -->
     <div class="field" id="pNameField">
       <label for="pName">Name</label>
       <input id="pName" maxlength="100" autocomplete="off" spellcheck="false"
              placeholder="e.g. my-app">
-      <div class="hint">Becomes the directory under /workspace. Letters, digits,
-        dots, dashes, underscores.</div>
+      <div class="hint" id="pNameHint"></div>
     </div>
     <div class="field" id="pUrlField" hidden>
       <label for="pUrl">Repository</label>
@@ -4458,7 +4459,7 @@ const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
-           fields: ["pSrcField", "pUrlField", "pKeyField"] },
+           fields: ["pSrcField", "pNameField", "pUrlField", "pKeyField"] },
   link:  { title: () => `Link ${pLink} to GitHub`, btn: "Link", focus: "pUrl",
            fields: ["pUrlField", "pKeyField"] },
 };
@@ -4483,9 +4484,14 @@ function pDraw(){
       + `touches a repo that already has commits.`
       + (pPat ? " One that does not exist yet is created for you, private." : "")
     : "Fetched with the container's own access — a deploy key or PAT that can "
-      + "already reach it; private repos need that set up first. The directory "
-      + "takes the repository's name, and a CLAUDE.md is drafted from its "
-      + "README and build files (kept as-is if it already has one).";
+      + "already reach it; private repos need that set up first. A CLAUDE.md is "
+      + "drafted from its README and build files (kept as-is if it already has "
+      + "one).";
+  $("pNameHint").textContent = pMode === "clone"
+    ? "The directory to clone into. Fills itself in from the address — change "
+      + "it to keep more than one checkout of the same repository."
+    : "One path segment under /workspace: letters, digits, dots, dashes and "
+      + "underscores.";
   $("pKeyHint").textContent =
     (pMode === "link"
       ? "The key the push (and every later one) will offer. "
@@ -4540,6 +4546,7 @@ function pOpen(mode){
   const gen = ++pGen;
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
+  pNameTyped = false;
   // The select is emptied, not left as-is: a key picked during a previous
   // open must not ride along invisibly into this one's submit.
   $("pKey").innerHTML = "";
@@ -7149,6 +7156,18 @@ $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 
 for (const f of ["pName", "pUrl"])
   $(f).onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("pCreate").click(); } };
+
+// The name follows the address until somebody types one. Tracked rather than
+// guessed from emptiness: clearing the field is itself a choice, and refilling
+// it on the next keystroke of the URL would fight whoever did it.
+let pNameTyped = false;
+$("pName").oninput = () => { pNameTyped = true; };
+$("pUrl").oninput = () => {
+  if (pMode !== "clone" || pNameTyped) return;
+  const u = $("pUrl").value.trim().replace(/\/+$/, "");
+  const last = u.split(/[/:]/).pop() || "";
+  $("pName").value = last.endsWith(".git") ? last.slice(0, -4) : last;
+};
 
 $("pCreate").onclick = async () => {
   // Captured at the click: the dialog can be closed, reopened and switched

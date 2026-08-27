@@ -209,11 +209,18 @@ def create(req):
             return {"error": "not a GitHub repository address — "
                              "use https://github.com/owner/repo or "
                              "git@github.com:owner/repo.git"}, 400
-        # The repository already knows its name; asking again would just
-        # invite a second spelling of the same thing. Notes are not asked for
-        # either — they are drafted from the code after the clone.
-        name = re.split(r"[/:]", url.rstrip("/"))[-1]
-        name = name[:-4] if name.endswith(".git") else name
+        # The repository's own name, unless the operator gave one. It used to
+        # be derived and nothing else, on the reasoning that the repo already
+        # knows what it is called — which is true right up until you want two
+        # checkouts of it. Deploying an app from a public repo is exactly that
+        # case: three Radarrs are three directories and one repository. So the
+        # field is optional and defaults to this, and typing nothing still
+        # gets the old behaviour. Notes are not asked for either way — they
+        # are drafted from the code after the clone.
+        name = _field(req, "name").strip()
+        if not name:
+            name = re.split(r"[/:]", url.rstrip("/"))[-1]
+            name = name[:-4] if name.endswith(".git") else name
         # An optional deploy key, by name. The name is only ever matched
         # against what the agent actually holds — nothing from the request is
         # written into a file or a config line; the matched key's own public

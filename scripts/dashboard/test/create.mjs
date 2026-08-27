@@ -26,11 +26,29 @@ ok(await page.$eval('#pUrlField', el => !el.hidden)
    'clone mode shows the URL field and takes the green');
 ok(cloneSlide.some(k => k.includes('pUrlField')),
    '...sliding in from its tab\'s side, like the view switch');
-ok(await page.$eval('#pNameField', el => el.hidden)
+ok(await page.$eval('#pNameField', el => !el.hidden)
    && await page.$eval('#pAboutField', el => el.hidden),
-   'clone mode asks for nothing but the URL — name and notes come from the repo');
+   'clone mode asks for a name as well as the URL — only the notes come from the repo');
+// The name follows the address, so the common case is still no typing...
+await page.fill('#pUrl', 'https://github.com/owner/radarr.git');
+ok(await page.$eval('#pName', el => el.value) === 'radarr',
+   '...prefilled from the address, .git and all stripped off');
+// ...and stops following the moment somebody wants two of the same repo.
+await page.fill('#pName', 'radarr-4k');
+await page.fill('#pUrl', 'https://github.com/owner/radarr');
+ok(await page.$eval('#pName', el => el.value) === 'radarr-4k',
+   '...but a name typed by hand is not overwritten by the next keystroke');
+await page.fill('#pUrl', '');
 await page.click('#pLocal');
-ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local brings the name field back');
+ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local keeps the name field');
+// Put the field back as it was found. A mode switch does not clear it — only
+// reopening does — and the refusal test below needs the name genuinely empty,
+// or it submits a valid one and closes the dialog out from under everything
+// after it.
+// Set, not filled: page.fill focuses the input, and the very next assertion
+// is that switching tabs leaves no cursor anywhere (an on-screen keyboard over
+// half the dialog is the thing it guards).
+await page.$eval('#pName', el => { el.value = ''; });
 // Neither tab puts a cursor anywhere. A focused field brings the on-screen
 // keyboard up with it, over half of the dialog that just opened — so the
 // field is picked by whoever wants to type in it.
@@ -87,11 +105,21 @@ for (const url of ['https://evil.example/owner/repo', 'ext::sh -c id',
                    'git@github.com:owner/repo extra'])
   ok(await post({ mode: 'clone', url }) === 400, `clone refused: ${url}`);
 ok(!existsSync(`${DIR}/ws/repo`), 'a refused clone leaves no directory behind');
-// The name comes off the URL, not the request — proven without touching the
-// network: a URL naming a repo that already exists here is refused by the
-// mkdir claim before git ever runs.
+// The name still comes off the URL when none is given — proven without
+// touching the network: a URL naming a repo that already exists here is
+// refused by the mkdir claim before git ever runs.
 for (const url of ['https://github.com/owner/alpha', 'git@github.com:owner/alpha.git'])
   ok(await post({ mode: 'clone', url }) === 400, `derived name collides, refused: ${url}`);
+// ...and a name that IS given wins, which is what makes two checkouts of one
+// repository possible. Same proof: it collides where the derived name would not.
+ok(await post({ mode: 'clone', url: 'https://github.com/owner/somethingelse',
+                name: 'alpha' }) === 400,
+   'a supplied name is used instead of the repository\'s own');
+// A supplied name is held to the same rule as an init's, rather than being
+// trusted because a URL was alongside it.
+for (const name of ['../oops', 'a/b', 'a b'])
+  ok(await post({ mode: 'clone', url: 'https://github.com/owner/repo', name }) === 400,
+     `clone name refused: ${name}`);
 for (const name of ['../oops', 'a/b', '.hidden', '_work', 'a b', ''])
   ok(await post({ name, mode: 'init' }) === 400,
      `name refused: ${name || '(empty)'}`);
