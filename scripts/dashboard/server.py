@@ -2647,6 +2647,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(r, 400 if r.get("error") else 200)
         if inst not in devapp.instances(name):
             return self._json({"error": f"no instance {inst} of {name}"}, 400)
+        if act == "remove":
+            r = devapp.remove_instance(name, inst)
+            return self._json(r, 400 if r.get("error") else 200)
         if act == "state":
             # The full picture for one instance — risks, problems, the parsed
             # compose — which overview() deliberately does not compute for

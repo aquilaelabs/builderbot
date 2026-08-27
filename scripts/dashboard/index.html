@@ -970,6 +970,9 @@ button.eye.acc.on,button.eye.acc.on:hover{color:var(--accent)}
    Dim at rest: it sits in a row of six and should not be the thing the eye
    lands on first. */
 @media(hover:hover){ button.eye.rm:hover{color:var(--bad)} }
+/* Remove, on a manager row: a text button among text buttons, red only under
+   the pointer. It is the one control there that takes something away. */
+@media(hover:hover){ .dmtab .acts button.rm:hover{color:var(--bad);border-color:#4d2220} }
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the broom (reset) and the sign-out door —
@@ -4569,10 +4572,12 @@ async function dnSubmit(){
     if (j.error){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
                   return fail(j.error); }
     closeSendToDocker();
-    notify(`${j.name} is in the Docker manager — build it there`);
-    // Straight to it: the button said "send to", and landing back on the
-    // artifacts tab would leave the operator to go and find what they made.
+    // ...and build it. The manager lists what exists, so a container that was
+    // only registered would not appear there — "send to" has to produce
+    // something, or it sends you to a page that does not mention it. The
+    // build carries the same confirmations pressing Build there would.
     openDocker();
+    await dmAction(project, j.instance, "rebuild");
   }catch(e){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
              return fail("could not create it: " + e); }
 }
@@ -4630,6 +4635,12 @@ function dockerJob(){
 async function dmAction(project, instance, act, btn){
   if (act === "env"){ openDevEnv(project, instance); return; }
   if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
+  if (act === "remove" && !confirm(
+      `Remove ${project}/${instance} from the manager?\n\n`
+      + `It is taken down first. Its env file and its data directory stay, so `
+      + `sending it again under the same name finds them.\n\n`
+      + `The project keeps its Artifacts tab either way — that is where it `
+      + `comes back from.`)) return;
   let ack = "";
   if (act === "up" || act === "rebuild"){
     // The full state for this one instance, asked now rather than computed
@@ -4718,6 +4729,9 @@ function renderDockerInto(i){
         <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
           title="docker compose down">Down</button>
         <button type="button" data-dm="env" title="this container's env file">Env</button>
+        <button type="button" class="rm" data-dm="remove" ${busy ? "disabled" : ""}
+          title="take it down and drop it from this list. Its env and its data
+directory stay, so remaking it under the same name finds them">Remove</button>
         <button type="button" data-dm="rebuild" ${!d.changed || busy ? "disabled" : ""}
           title="${!d.built_rev
             ? "build the first image, then bring it up"

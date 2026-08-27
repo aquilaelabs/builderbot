@@ -71,6 +71,16 @@ async function dmRefresh(){
   await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
   await openManager();
 }
+// The manager lists what has been SENT to it — a project with a compose file
+// no longer gets a phantom row there — so the fixture's instance has to exist
+// before anything can be pressed on it. Through the API rather than the modal:
+// the modal builds as well as creates, which is its whole point and exactly
+// what the tests below want to watch happening for the first time.
+await page.evaluate(async () => {
+  await fetch('/api/devapp', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'ep.silon', action: 'new', instance: 'main' }) });
+});
 
 const row = async () => ({
   text: await page.$eval('#devRow', e => e.textContent.replace(/\s+/g, ' ').trim()),
@@ -618,14 +628,17 @@ ok(/bbdev-ep-silon-staging-two/.test(
 await page.click('#dnGo');
 await page.waitForSelector('.dmtab .row[data-inst="ep.silon|staging-two"]',
                            { timeout: 20000 });
-ok(true, 'creating one lands you in the manager, with it listed');
+ok(true, 'sending one lands you in the manager, with it listed');
+// Send BUILDS: the manager lists what exists, so registering alone would send
+// you to a page that does not mention what you just made.
+await page.waitForFunction(() => /built from [0-9a-f]{7}/.test(
+  document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"]')?.textContent || ''),
+  { timeout: 40000 });
+ok(true, '...and it is built, not merely named');
 const both = await page.$$eval('.dmtab .row[data-inst^="ep.silon|"]',
   rs => rs.map(r => r.dataset.inst));
 ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
    '...beside the one the project already had');
-ok(await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"]',
-     r => /never built/.test(r.textContent)),
-   '...and it is a container to build, not one built by naming it');
 ok((await page.errors).length === 0, 'no console errors from the dev row');
 
 // The same name twice is refused rather than silently reusing the first.
@@ -638,6 +651,21 @@ await page.waitForSelector('#dnErrWrap:not([hidden])', { timeout: 10000 });
 ok(/already has an instance/.test(await page.$eval('#dnErr', e => e.textContent)),
    'a name the project already uses is refused, in place');
 await page.click('#dnCancel');
+
+// Removing takes it down and drops it from the list — and the project's
+// Artifacts tab is untouched, which is where it comes back from.
+await openManager();
+await page.click('.dmtab .row[data-inst="ep.silon|staging-two"] [data-dm="remove"]');
+await page.waitForFunction(() =>
+  !document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"]'),
+  { timeout: 20000 });
+ok(true, 'Remove takes a container out of the manager');
+ok(/compose --project-name bbdev-ep-silon-staging-two .*down/.test(dockerLog()),
+   '...taking it down first, rather than orphaning its containers');
+await showRow();
+ok(await page.$('#devSend'),
+   '...and the project can still send another: the artifact row persists');
+
 
 
 // The fixture goes back the way artifacts.mjs leaves alpha.

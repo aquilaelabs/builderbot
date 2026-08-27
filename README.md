@@ -1123,6 +1123,13 @@ manager…**, which names a container and takes you there; every container of a
 project is built from that project's codebase, and rebuilding takes whatever
 that codebase says at the time.
 
+It lists what has been sent to it, not every project that could be sent: a
+project with a compose file does not appear there until you send one, and
+**Remove** takes a container down and drops it from the list again. Removing
+keeps its env file and its data directory, so sending it again under the same
+name finds them — and the project's Artifacts tab is untouched either way,
+which is where it comes back from.
+
 The same tab lists every container on whichever daemon `DOCKER_HOST` names — not only the ones this
 dashboard started. A port taken by something else is exactly what you open a
 list like this to find out about, so the others are shown and marked *not ours*
