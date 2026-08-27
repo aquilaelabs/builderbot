@@ -628,9 +628,9 @@ ok(/this one is kept/.test(bugLog) && !/a first thought/.test(bugLog),
 // leaves, the log is what keeps a deletion from being final.
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.click('#todoLog');
-await page.waitForFunction(() => document.querySelectorAll('#todoList .hist').length > 0,
+await page.waitForFunction(() => document.querySelectorAll('#todoHist .hist').length > 0,
                            { timeout: 10000 });
-const log = await page.$$eval('#todoList .hist', hs => hs.map(h => ({
+const log = await page.$$eval('#todoHist .hist', hs => hs.map(h => ({
   when: h.querySelector('.when').textContent.trim(),
   act: h.querySelector('.act').textContent.trim(),
   was: h.querySelector('.was')?.textContent.trim() || '',
@@ -662,41 +662,43 @@ ok(log.some(e => e.act === 'sent'),
 // the operator scrolling a phone pays too. The search reads the words, what a
 // line used to say, and the reason it went.
 await page.fill('#histFind', 'nothing to widen');
-await page.waitForFunction(() => document.querySelectorAll('#todoList .hist').length === 1,
+await page.waitForFunction(() => document.querySelectorAll('#todoHist .hist').length === 1,
                            { timeout: 10000 });
-ok(await page.$eval('#todoList .hist .note', n => /nothing to widen/.test(n.textContent)),
+ok(await page.$eval('#todoHist .hist .note', n => /nothing to widen/.test(n.textContent)),
    'searching finds a line by the reason it was dropped, not just by its words');
 await page.fill('#histFind', 'rework the picker');
-await page.waitForFunction(() => document.querySelectorAll('#todoList .hist').length > 1,
+await page.waitForFunction(() => document.querySelectorAll('#todoHist .hist').length > 1,
                            { timeout: 10000 });
 ok(true, '...and by its words');
 await page.fill('#histFind', 'zzz nothing at all');
 await page.waitForFunction(() => /matches that/.test(
-  document.getElementById('todoList').textContent), { timeout: 10000 });
+  document.getElementById('todoHist').textContent), { timeout: 10000 });
 ok(true, '...and says so plainly when nothing does');
 await page.fill('#histFind', '');
 await page.selectOption('#histN', '25');
-await page.waitForFunction(() => document.querySelectorAll('#todoList .hist').length > 1,
+await page.waitForFunction(() => document.querySelectorAll('#todoHist .hist').length > 1,
                            { timeout: 10000 });
-const capped = await page.$$eval('#todoList .hist', hs => hs.length);
+const capped = await page.$$eval('#todoHist .hist', hs => hs.length);
 ok(capped <= 25, `the window caps what comes back (${capped} of them)`);
 await page.selectOption('#histWhen', '0');
 await page.waitForTimeout(500);
-ok(await page.$$eval('#todoList .hist', hs => hs.length) >= capped,
+ok(await page.$$eval('#todoHist .hist', hs => hs.length) >= capped,
    '...and widening it to all time brings back at least as much');
 
-// The log is a view, not a mode you can edit from: the add row and the send
-// box go while it is up, so nothing is armed against a list you cannot see.
-ok(await page.$eval('#todoAdd', b => !b.checkVisibility())
+// It opens OVER the list rather than in place of it: the line you wanted to
+// read the log against is still there behind, and the send box is put away
+// only because a send aimed at a list you are reading about is not the
+// gesture you meant.
+ok(!await page.$eval('#todoList', el => el.hidden)
+   && await page.$eval('#todoHist', el => el.closest('.sheetslot') !== null)
    && await page.$('.sendbox') === null,
-   'the add row and the send box are put away while the log is up');
-ok(await page.$eval('#todoOrder', b => b.hidden),
-   '...and so is Reorder, since there is nothing here to arrange');
-await page.click('#todoLog');
-await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').length > 0,
+   'the log opens over the list, with the list still behind it');
+await page.click('#sheetClose');
+await page.waitForFunction(() => document.querySelector('.nbsheet').hidden,
                            { timeout: 10000 });
-ok(await page.$eval('#todoAdd', b => b.checkVisibility()),
-   'and the same button puts the list back');
+ok(await page.$eval('#todoHist', el => el.hidden && el.closest('.sheetslot') === null)
+   && await page.$eval('#todoLog', b => !b.classList.contains('on')),
+   'and Close puts it back where it came from, and un-presses History');
 
 // ---- a session mid-batch holds the operator's Save -----------------------
 // Not the other way round: the panel is a copy of the list taken when it was
@@ -778,6 +780,11 @@ const scrollers = await page.evaluate(() => {
   for (const el of document.querySelectorAll('.pane .nb, .pane .nb *')){
     // A textarea scrolling its own text is the point of a textarea.
     if (el.tagName === 'TEXTAREA') continue;
+    // The reading room is not the panel: it is a modal over the whole screen,
+    // it is the only thing on it, and a log too long for it has to scroll
+    // somewhere. The rule this enforces is about the panel's own content,
+    // where the pane underneath is the scroller.
+    if (el.closest('.nbsheet')) continue;
     const s = getComputedStyle(el);
     if (/auto|scroll/.test(s.overflowY))
       out.push(`${el.id || el.className}:${s.overscrollBehaviorY}`);

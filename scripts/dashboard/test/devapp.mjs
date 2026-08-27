@@ -62,10 +62,8 @@ ok(await page.$eval('#devRow .top .pill', e => e.textContent.trim()) === 'docker
 // side left, host side right, and the arrow saying which way it goes. Read off
 // the resolved compose config, so a path built out of variables shows as the
 // value rather than as the spelling.
-ok(await page.$eval('#devRow .devmap>summary', e => e.textContent.trim()) === '1 port · 2 mounts',
-   '...with what it publishes and mounts behind a fold, counted on the summary');
-await page.click('#devRow .devmap>summary');
-const wiring = await page.$$eval('#devRow .devmap .li', els => els.map(e => e.textContent.trim()));
+const wiring = await page.$$eval('#devRow .grow > .dim.li',
+  els => els.map(e => e.textContent.trim()));
 ok(wiring[0] === `7474:TCP ← ${new globalThis.URL(URL).hostname}:7475`,
    '...the published port against the address this page was reached at');
 ok(wiring[1] === '/library ← /mnt/user/plex-media'
@@ -77,9 +75,9 @@ ok(!await page.$('#devRow a.btn'),
    'no Open link while the instance is down, whatever it publishes');
 // One fact per line, never a run-on joined by semicolons — these are separate
 // facts about separate services, and reading them is the point of showing them.
-// Direct children of .grow: the wiring fold's lines carry .li too, and they
-// are not what these two are counting.
-const devLines = (cls) => page.$$eval(`#devRow .grow > .dim.li${cls ? "." + cls : ""}`,
+// The wiring lines carry .li too and are not what these two are counting, so
+// they are told apart by their class rather than by where they sit.
+const devLines = (cls) => page.$$eval(`#devRow .grow > .dim.li.${cls}`,
   els => els.map(e => e.textContent.trim()));
 ok(await page.$eval('#devRow [data-devact="rebuild"]',
      e => e.textContent.trim()) === 'Build',
@@ -316,16 +314,14 @@ await nudge();
 await page.waitForFunction(() => /asks for more than its own directory/.test(
   document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
 ok(true, 'a compose reaching past its own directory says so on the row');
-const risked = await devLines("");
-ok(risked.length === 2 && risked.some(l => /runs privileged/.test(l))
-   && risked.some(l => /mounts \/ from the host/.test(l)),
-   '...one line each, not a run-on joined by semicolons');
+const risked = await devLines("risk");
+ok(risked.length === 1 && /runs privileged/.test(risked[0]),
+   '...one line each, and only the things the mount list does not already show');
 
 let seen = page.dialogs.length;
 await page.click('#devRow [data-devact="up"]');
 await pillIs('running');
-ok(page.dialogs.slice(seen).some(
-     d => /runs privileged/.test(d) && /mounts \/ from the host/.test(d)),
+ok(page.dialogs.slice(seen).some(d => /runs privileged/.test(d)),
    '...and Up asks first, naming what it found rather than warning in general');
 // ...and once it is up, the one port it publishes is a link to it. The stub's
 // risky config publishes nothing, so this reads the earlier shape back.
@@ -340,8 +336,20 @@ writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.'
   ports: [{ target: 80, published: '8080', protocol: 'tcp' },
           { target: 81, published: '8081', protocol: 'tcp' }] } } }));
 await nudge();
-await page.waitForFunction(() => !document.querySelector('#devRow a.btn'), { timeout: 20000 });
-ok(true, '...and two of them get none: a link that is a coin toss costs more than no link');
+await page.waitForSelector('#devOpen', { timeout: 20000 });
+ok(!await page.$('#devRow a.btn'),
+   '...and two of them get a chooser instead: nothing here knows which is the web UI');
+await page.click('#devOpen');
+await page.waitForSelector('.nbsheet .portpick a', { timeout: 10000 });
+const picks = await page.$$eval('.nbsheet .portpick a', as => as.map(a => a.getAttribute('href')));
+const host = new globalThis.URL(URL).hostname;
+ok(picks.length === 2 && picks[0] === `http://${host}:8080/`
+   && picks[1] === `http://${host}:8081/`,
+   '...listing every published port, for the operator to answer');
+await page.click('#sheetClose');
+await page.waitForFunction(() => document.querySelector('.nbsheet').hidden);
+ok(await page.$('.nbsheet .portpick') === null,
+   '...and the list, built for the sheet, goes when the sheet does');
 
 // Asked once per set, not once per press: an acknowledgement the operator has
 // to give again every time is one they stop reading.
@@ -354,16 +362,17 @@ ok(!page.dialogs.slice(seen).some(d => /asks for more/.test(d)),
    '...and does not ask again for the same set');
 
 // ...but a file that gains one does not inherit the last yes.
-risky(['/:/host', '/var/run/docker.sock:/s']);
+writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
+  privileged: true, pid: 'host', volumes: ['/:/host'] } } }));
 await nudge();
-await page.waitForFunction(() => /docker\.sock/.test(
+await page.waitForFunction(() => /process namespace/.test(
   document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
 await page.click('#devRow [data-devact="down"]');
 await pillIs('down');
 seen = page.dialogs.length;
 await page.click('#devRow [data-devact="up"]');
 await pillIs('running');
-ok(page.dialogs.slice(seen).some(d => /docker\.sock/.test(d)),
+ok(page.dialogs.slice(seen).some(d => /process namespace/.test(d)),
    '...and asks again the moment the file asks for something new');
 
 // A docker call that is not a namespaced compose call does not run at all —

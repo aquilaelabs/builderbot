@@ -629,10 +629,6 @@ def risks(project, cfg):
     """
     if cfg is None:
         return []
-    ours = [WORKSPACE / project]
-    root = Path(DEVDATA)
-    if root.is_dir():
-        ours.append(root)
     out = []
     for name, sv in sorted(_services(cfg).items()):
         if sv.get("privileged"):
@@ -653,9 +649,12 @@ def risks(project, cfg):
             out.append(f"{name} shares the host's process namespace")
         if str(sv.get("network_mode") or "") == "host":
             out.append(f"{name} is on the host's own network")
-        for src in _binds(sv, project):
-            if not any(_within(src, b) for b in ours):
-                out.append(f"{name} mounts {src} from the host")
+    # Bind mounts are NOT listed here any more, and their absence is the
+    # design rather than an oversight. wiring() puts every one of them on the
+    # row, always, with the path it lands on — so repeating the ones that
+    # reach outside the project restated what was already on screen two lines
+    # above it, in worse words. What is left is the set that is invisible
+    # otherwise: the flags that make a container more than a container.
     return out
 
 

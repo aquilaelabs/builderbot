@@ -247,8 +247,12 @@ ok(true, 'Check now lifts the hold and the Bugs tab has the session\'s report on
 await page.click('#bugLog');
 await page.waitForFunction(() => document.querySelectorAll('#bugHist .hist').length > 0,
                            { timeout: 10000 });
-ok(await page.$eval('#bugList', el => el.hidden),
-   'History swaps the list out, the way the roadmap\'s does');
+// It opens OVER the tracker rather than in place of it: the report you wanted
+// to read the log against is still there behind it.
+ok(!await page.$eval('#bugList', el => el.hidden)
+   && await page.$eval('.nbsheet', el => !el.hidden)
+   && await page.$eval('#bugHist', el => el.closest('.sheetslot') !== null),
+   'History opens over the tracker, which is still there behind it');
 const acts = await page.$$eval('#bugHist .hist .act', as => as.map(a => a.textContent));
 ok(acts.includes('filed') && acts.includes('fixed') && acts.includes('noted')
    && acts.includes('reopened') && acts.includes('deleted'),

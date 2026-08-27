@@ -144,9 +144,10 @@ ok(await page.$$eval('.pane .nb .rule .rid .pill', ps => ps.length > 0),
 await page.click('.pane .nb #anaLog');
 await page.waitForFunction(() => !document.getElementById('anaHist').hidden,
                            null, { timeout: 15000 });
-ok(await page.$eval('.pane .nb #anaList', el => el.hidden)
-   && await page.$eval('.pane .nb #anaHistBar', el => !el.hidden),
-   'Analysis has a History that swaps the findings out, the way the other three do');
+ok(!await page.$eval('.pane .nb #anaList', el => el.hidden)
+   && await page.$eval('.pane .nb #anaHistBar', el => !el.hidden)
+   && await page.$eval('.pane .nb #anaHist', el => el.closest('.sheetslot') !== null),
+   'Analysis has a History, opening over the findings the way the other three do');
 ok((await page.$eval('.pane .nb #anaHistBar input', i => i.placeholder)).includes('search')
    && await page.$$eval('.pane .nb #anaHistBar select', ss => ss.length === 2),
    '...with the same search box and the same two filters');

@@ -368,6 +368,19 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* The memory book holds prose, not form fields: 520px wraps a description
    every other line. */
 .modal .box.wide{width:min(760px,100%)}
+/* A log is lines, and lines want width: wider still than the book, and the
+   whole screen on a phone, where a log in a 520px box with a page showing
+   round it is a keyhole. The slot scrolls, not the box, so the title and the
+   way out stay put however long the log is. */
+.modal .box.sheet{width:min(980px,100%);max-height:88vh;
+  display:flex;flex-direction:column}
+.box.sheet .sheetslot{overflow:auto;min-height:0;flex:1 1 auto}
+.box.sheet .sheetslot>*{display:block}
+@media(max-width:900px){
+  .nbsheet{padding:0}
+  .modal .box.sheet{width:100%;height:100%;max-height:none;
+    border:0;border-radius:0}
+}
 .modal h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
   font:600 13px/1.2 system-ui,sans-serif;letter-spacing:.3px;text-transform:uppercase}
 .modal .field,.nb .field{padding:11px 14px}
@@ -436,17 +449,16 @@ button.on{background:#1f6f36;border-color:#2ea043}
    grown its own hand-copied ::before; the component fold was added without
    one and silently had no triangle at all. Grouped here so a fold cannot be
    built without the arrow that says it opens. */
-.mem>summary,.bug>summary,.fx .grp>summary,.veradd>summary,.devmap>summary{
+.mem>summary,.bug>summary,.fx .grp>summary,.veradd>summary{
   cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
 .mem>summary::-webkit-details-marker,.bug>summary::-webkit-details-marker,
-.fx .grp>summary::-webkit-details-marker,.devmap>summary::-webkit-details-marker,
+.fx .grp>summary::-webkit-details-marker,
 .veradd>summary::-webkit-details-marker{display:none}
 .mem>summary::before,.bug>summary::before,.fx .grp>summary::before,
-.veradd>summary::before,.devmap>summary::before{content:"\25B8";
-  color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
+.veradd>summary::before{content:"\25B8";color:var(--dim);font-size:11px;
+  width:9px;flex:0 0 auto}
 .mem[open]>summary::before,.bug[open]>summary::before,
-.fx .grp[open]>summary::before,.veradd[open]>summary::before,
-.devmap[open]>summary::before{content:"\25BE"}
+.fx .grp[open]>summary::before,.veradd[open]>summary::before{content:"\25BE"}
 
 /* The "showing N of M" footer under a long list. Quiet: it is a fact about
    the list plus the control that changes it, not a section of its own. */
@@ -547,8 +559,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .artrow .dim.bad{color:var(--bad)}
 /* One fact per line, indented under the line that says what kind they are. */
 .artrow .dim.li{padding-left:12px}
-.devmap>summary{color:var(--dim);font:var(--f-note);padding:2px 0}
-@media(hover:hover){ .devmap>summary:hover{color:var(--ink)} }
+/* One published port is a link; several is a question, asked in the sheet. */
+.portpick{display:flex;flex-direction:column;gap:8px;padding:12px 14px}
+.portpick a.btn{justify-content:flex-start;gap:8px;font:12px/1.4 var(--mono)}
 .artrow .top .state{font:var(--f-note)}
 .artrow .top .state.ok{color:var(--accent)}
 /* Pushed right on a desktop; on a phone the buttons take their own line, the
@@ -1298,6 +1311,10 @@ body.dragging .tab .lbl{cursor:grabbing}
         <option value="0">all</option>
       </select>
     </div>
+    <!-- Its own pane rather than the list's. The log used to be written into
+         #todoList, which is why reading it meant the list going away; both
+         are on screen at once now, one of them in the sheet. -->
+    <div id="todoHist" hidden></div>
     <div class="field" id="todoField"><div id="todoList"></div></div>
     </div>
     <!-- What Claude remembers, on its own tab: a handful of files nobody
@@ -1419,6 +1436,27 @@ body.dragging .tab .lbl{cursor:grabbing}
            the other half of a Save button and dead whenever there is nothing
            to throw. -->
       <button id="todoRevert" class="caution" type="button" disabled>Revert</button>
+    </div>
+    <!-- The reading room. A history and the changelog are things you READ,
+         and they were opening in place of whatever you were looking at: the
+         list you wanted to compare against got out of the way for the log
+         about it, and leaving meant pressing the same button a second time
+         to get the list back. They open over the panel now, with the thing
+         behind still there.
+
+         Inside the template, not beside it: what goes in is the real element,
+         moved, and this notebook's $ only searches this notebook's clone — an
+         element parked in a page-level sheet would stop being findable by the
+         code that owns it. One per notebook is also simply right, two of them
+         in a split being two different projects. -->
+    <div class="modal nbsheet" hidden role="dialog" aria-modal="true"
+         aria-labelledby="sheetTitle">
+      <div class="box sheet">
+        <h3 id="sheetTitle"></h3>
+        <div class="sheetslot" id="sheetSlot"></div>
+        <div class="foot"><span class="sp"></span>
+          <button type="button" id="sheetClose">Close</button></div>
+      </div>
     </div>
   </div>
 </template>
@@ -4482,6 +4520,53 @@ function makeNotebook(project){
   const $ = id => root.querySelector('[id="' + CSS.escape(id) + '"]');
   let loaded = false;
 
+  // ---- the reading room --------------------------------------------------
+  // What goes in is the real element, MOVED: every handler bound to a filter
+  // bar keeps working and there is no second copy to drift out of step with
+  // the first. They go home on close, to the exact place they left — parent
+  // AND next sibling, because "append it back" is how an element ends up
+  // under the wrong heading.
+  const sheet = root.querySelector(".nbsheet");
+  let sheetHome = [], sheetClosed = null;
+
+  function openSheet(title, els, onClose){
+    closeSheet();                    // one at a time, like the env editor
+    $("sheetTitle").textContent = title;
+    const slot = $("sheetSlot");
+    sheetHome = els.map(el => [el, el.parentElement, el.nextSibling, el.hidden]);
+    els.forEach(el => { el.hidden = false; slot.appendChild(el); });
+    sheetClosed = onClose || null;
+    sheet.hidden = false;
+    if (!noMotion())
+      sheet.querySelector(".box").animate(
+        [{opacity: 0, transform: "translateY(8px) scale(.99)"},
+         {opacity: 1, transform: "none"}], {duration: 140, easing: "ease"});
+  }
+
+  function closeSheet(){
+    if (sheet.hidden) return;
+    sheet.hidden = true;
+    for (const [el, parent, next, wasHidden] of sheetHome){
+      el.hidden = wasHidden;
+      // No parent means it was built for the sheet and has nowhere to go back
+      // to. next is null for "it was last".
+      if (parent) parent.insertBefore(el, next); else el.remove();
+    }
+    sheetHome = [];
+    const done = sheetClosed; sheetClosed = null;
+    done?.();
+  }
+
+  $("sheetClose").onclick = closeSheet;
+  // The backdrop, and not the box on it: a click landing inside is aimed at
+  // something in there.
+  sheet.onclick = e => { if (e.target === sheet) closeSheet(); };
+  root.addEventListener("keydown", e => {
+    // A filter field holding a search clears the field on Escape and stops
+    // the event, so this never sees that one.
+    if (e.key === "Escape" && !sheet.hidden){ e.preventDefault(); closeSheet(); }
+  });
+
 let memProj = null;      // set by openMemory; always this project
 let memGen  = 0;         // bumped on close, so a slow load cannot repaint it
 
@@ -4692,13 +4777,9 @@ function drawTodo(j){
           esc(j.session)} is running, so the arrows are live`
       : `${left} still to send${parked ? `, ${parked} shelved` : ""} — no session `
         + `is running here, so nothing can be sent yet`;
-  if (todoLogOn)
-    $("todoHint").textContent = "every change to this list, newest first — "
-      + "the only place a dropped line is still written down";
-  $("todoField").hidden = !rows.length && !todoLogOn;
-  $("histBar").hidden = !todoLogOn;
-  $("todoAdd").parentElement.hidden = todoLogOn;
-  if (todoLogOn) drawHistory(); else {
+  $("todoField").hidden = !rows.length;
+  if (todoLogOn) drawHistory();
+  {
   $("todoList").innerHTML = rows.map(r =>
     // The group's own row gets the same `live` as its steps now: its arrow
     // stands for the next one, so it is as clickable as that one is.
@@ -4762,7 +4843,7 @@ function drawTodo(j){
   if (j.batch !== undefined) noteBatch(j.batch);
   drawBatchNote();
   syncSave();
-  $("todoOrder").hidden = !rows.length || todoLogOn;
+  $("todoOrder").hidden = !rows.length;
   $("todoOrder").classList.toggle("on", todoOrdering);
   $("todoLog").classList.toggle("on", todoLogOn);
   drawSendBox(live);
@@ -5531,18 +5612,18 @@ const stamp = t => new Date(t * 1000).toLocaleString(undefined,
 
 function drawHistory(){
   if (!todoLog){
-    $("todoList").innerHTML = `<div class="hint">loading…</div>`;
+    $("todoHist").innerHTML = `<div class="hint">loading…</div>`;
     return;
   }
   if (!todoLog.length){
     const narrowed = $("histFind").value.trim() || $("histWhen").value !== "0";
-    $("todoList").innerHTML = `<div class="hint">${narrowed
+    $("todoHist").innerHTML = `<div class="hint">${narrowed
       ? "Nothing in the log matches that. Widen the window, or clear the search."
       : `Nothing has happened to this list yet. Every add, reword, send, shelve
          and drop lands here from now on.`}</div>`;
     return;
   }
-  $("todoList").innerHTML = todoLog.map(e => {
+  $("todoHist").innerHTML = todoLog.map(e => {
     const [word, tone] = ACT[e.act] || [e.act || "changed", ""];
     const where = e.step != null ? `step ${e.step + 1} of #${e.id}` : `#${e.id}`;
     return `<div class="hist">
@@ -5555,6 +5636,8 @@ function drawHistory(){
         e.why ? `<span class="note">why: ${esc(e.why)}</span>` : ""}</span>
     </div>`;
   }).join("");
+  // Paged like the other three, now that it has a pane to page.
+  paginate($("todoHist"), ":scope > .hist", {key: "todoHist", noun: "entries"});
 }
 
 // The window the panel is asking for. Narrowed on the server, not here: the
@@ -5595,10 +5678,13 @@ $("histWhen").onchange = loadHistory;
 $("histN").onchange = loadHistory;
 
 $("todoLog").onclick = () => {
+  if (todoLogOn){ closeSheet(); return; }
   todoOrdering = false;
-  todoLogOn = !todoLogOn;
-  if (todoLogOn){ cancelSend(); loadHistory(); }
-  else { todoLog = null; redrawTodo(); }
+  todoLogOn = true;
+  cancelSend();
+  openSheet("Roadmap — history", [$("histBar"), $("todoHist")],
+            () => { todoLogOn = false; todoLog = null; $("todoLog").classList.remove("on"); });
+  loadHistory();
 };
 
 // ---- staging -------------------------------------------------------------
@@ -5827,7 +5913,7 @@ $("todoRevert").onclick = revertNotebook;
     found: "new", gone: "gone", changed: "",
   };
 
-  function logPane({btnId, barId, paneId, showIds, fetchLog, emptyText}){
+  function logPane({btnId, barId, paneId, title, fetchLog, emptyText}){
     const btn = $(btnId), bar = $(barId), pane = $(paneId);
     let on = false, timer = null;
     const draw = rows => {
@@ -5858,12 +5944,13 @@ $("todoRevert").onclick = revertNotebook;
       draw(j?.history || []);
     };
     const toggle = () => {
-      on = !on;
-      btn.classList.toggle("on", on);
-      bar.hidden = !on;
-      pane.hidden = !on;
-      showIds.forEach(id => { const el = $(id); if (el) el.hidden = on; });
-      if (on) load();
+      if (on){ closeSheet(); return; }
+      on = true;
+      btn.classList.toggle("on", true);
+      // The bar and the pane go into the sheet together and come back
+      // together; the button un-presses itself whichever way it is closed.
+      openSheet(title, [bar, pane], () => { on = false; btn.classList.remove("on"); });
+      load();
     };
     btn.onclick = toggle;
     const find = bar.querySelector("input");
@@ -5879,11 +5966,11 @@ $("todoRevert").onclick = revertNotebook;
   }
 
   logPane({btnId: "memLog", barId: "memHistBar", paneId: "memHist",
-           showIds: ["memDrift", "memListField", "memAdd"],
+           title: "Memory — history",
            fetchLog: q => postMemory({action: "history", ...q})});
   $("bugSort").onchange = drawBugs;
   logPane({btnId: "bugLog", barId: "bugHistBar", paneId: "bugHist",
-           showIds: ["bugList", "bugAdd", "bugSortBar"],
+           title: "Bugs — history",
            fetchLog: q => postBug({action: "history", ...q})});
   // The fourth, so all four answer "what happened here" the same way.
   // What this notebook watches. Registered once per instance, and only ever
@@ -5910,7 +5997,7 @@ $("todoRevert").onclick = revertNotebook;
   onRev("findings", () => { if (showing("analysis")) loadAnalysis(); });
 
   logPane({btnId: "anaLog", barId: "anaHistBar", paneId: "anaHist",
-           showIds: ["anaList"],
+           title: "Analysis — what the scanner started and stopped saying",
            emptyText: "Nothing has changed here between scans yet. The first "
              + "scan of a project is taken as the starting point rather than "
              + "logged, so this fills in from the second one onwards.",
@@ -5973,26 +6060,25 @@ $("todoRevert").onclick = revertNotebook;
     // "where do I reach that port": the dashboard and the published port are
     // on the same machine, and this is the name the operator got there by.
     const devPorts = da.ports || [], devMounts = da.mounts || [];
-    // A link to the thing, when there is exactly one thing it could mean.
-    // Unraid does not discover this either — its own tab reads a WebUI line
-    // somebody wrote in a template, or the net.unraid.docker.webui label. We
-    // can do better than a written-down answer for the single-port case and
-    // must not guess past it: two published ports and a link is a coin toss,
-    // and a wrong one costs more than an absent one. Only while it is up,
-    // because a link to a port with nothing behind it is a broken link.
+    // A way in. One published port is a link straight there; several is a
+    // question, and the answer is the operator's — nothing here knows which
+    // of them is the web UI, and Unraid does not either: its own tab reads a
+    // port somebody wrote into a template, or the net.unraid.docker.webui
+    // label. So the single case is known, and the rest is asked rather than
+    // guessed. Only while it is up: a link to a port with nothing behind it
+    // is a broken link.
     const devTcp = devPorts.filter(p => p.proto === "TCP" && p.published);
-    const devWeb = da.running && devTcp.length === 1
-      ? `http://${location.hostname}:${devTcp[0].published}/` : "";
-    const devWiring = !(devPorts.length + devMounts.length) ? "" : `
-      <details class="devmap"><summary>${
-        [devPorts.length ? `${devPorts.length} port${devPorts.length > 1 ? "s" : ""}` : "",
-         devMounts.length ? `${devMounts.length} mount${devMounts.length > 1 ? "s" : ""}` : ""]
-          .filter(Boolean).join(" · ")}</summary>
-        ${devPorts.map(p => `<div class="dim li">${esc(p.target)}:${esc(p.proto)} ← ${
-          esc(location.hostname)}:${esc(p.published || "picked at start")}</div>`).join("")}
-        ${devMounts.map(m => `<div class="dim li">${esc(m.target)} ${
-          m.ro ? "←" : "↔"} ${esc(m.source)}</div>`).join("")}
-      </details>`;
+    const devUrl = p => `http://${location.hostname}:${p.published}/`;
+    const devWeb = da.running && devTcp.length === 1 ? devUrl(devTcp[0]) : "";
+    const devAsk = da.running && devTcp.length > 1;
+    // Not behind a fold. These are what the instance IS — where it answers and
+    // what it can see — and a fold is for the thing you occasionally want,
+    // not the thing you came to read.
+    const devWiring =
+      devPorts.map(p => `<div class="dim li">${esc(p.target)}:${esc(p.proto)} ← ${
+        esc(location.hostname)}:${esc(p.published || "picked at start")}</div>`).join("")
+      + devMounts.map(m => `<div class="dim li">${esc(m.target)} ${
+        m.ro ? "←" : "↔"} ${esc(m.source)}</div>`).join("");
     // One line each, never a run-on joined by semicolons. These are separate
     // facts about separate services and reading them is the whole point.
     const devLines = (label, items, cls) => !items?.length ? "" :
@@ -6021,13 +6107,15 @@ $("todoRevert").onclick = revertNotebook;
             : "never built — Build makes the first image"}</div>
           ${devWiring}
           ${devLines("will not work as written", da.problems, "bad")}
-          ${devLines("asks for more than its own directory", da.risks, "")}
+          ${devLines("asks for more than its own directory", da.risks, "risk")}
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
             esc((daJob.log || "").slice(-600))}</div>` : ""}
         </div>
         <span class="acts">
           ${devWeb ? `<a class="btn" href="${esc(devWeb)}" target="_blank"
             rel="noreferrer" title="open ${esc(devWeb)}">Open</a>` : ""}
+          ${devAsk ? `<button type="button" id="devOpen"
+            title="it publishes ${devTcp.length} ports — pick one">Open…</button>` : ""}
           <button type="button" data-devact="up" ${
             da.running || daJob?.running || (da.missing_env || []).length ? "disabled" : ""}
             title="${(da.missing_env || []).length
@@ -6103,6 +6191,18 @@ $("todoRevert").onclick = revertNotebook;
     paginate(list, ":scope > .artrow", {key: "artList", noun: "files"});
     if (!pkgDotsTimer && list.querySelector(".dots"))
       pkgDotsTimer = setInterval(pkgTickDots, 400);
+    const devOpenBtn = $("devOpen");
+    if (devOpenBtn) devOpenBtn.onclick = () => {
+      const box = document.createElement("div");
+      box.className = "portpick";
+      box.innerHTML = `<div class="hint">It publishes ${devTcp.length} ports and
+        nothing here knows which one is the web UI. Pick the one you meant.</div>`
+        + devTcp.map(p => `<a class="btn" href="${esc(devUrl(p))}" target="_blank"
+            rel="noreferrer">${esc(location.hostname)}:${esc(p.published)}
+            <span class="dim">→ ${esc(p.target)}:${esc(p.proto)}</span></a>`).join("");
+      box.querySelectorAll("a").forEach(a => a.addEventListener("click", closeSheet));
+      openSheet("Open which port?", [box]);
+    };
     list.querySelectorAll("[data-devact]").forEach(b => b.onclick = async () => {
       const act = b.dataset.devact;
       if (act === "env"){ openDevEnv(); return; }
@@ -6264,8 +6364,14 @@ $("todoRevert").onclick = revertNotebook;
     box.querySelectorAll("[data-verlog]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verlog || "";
       const pane = box.querySelector(`[data-verlogpane="${CSS.escape(comp)}"]`);
-      if (!pane.hidden){ pane.hidden = true; return; }
-      pane.textContent = "loading…"; pane.hidden = false;
+      if (b.classList.contains("on")){ closeSheet(); return; }
+      // A changelog is prose someone wrote to be read, and it was opening as a
+      // block wedged between the version's own controls. Over the panel, like
+      // the four histories, with room for the lines it is made of.
+      b.classList.add("on");
+      openSheet(`Changelog${comp ? " — " + comp : ""}`, [pane],
+                () => b.classList.remove("on"));
+      pane.textContent = "loading…";
       try{
         const r = await fetch(`/api/changelog?project=${encodeURIComponent(project)}`
                               + `&component=${encodeURIComponent(comp)}`);
