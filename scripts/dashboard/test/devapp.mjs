@@ -429,6 +429,14 @@ out['good'] = [mp, bad, m.to_host('/workspace/alpha/data', mp),
 # so a host path not ending in it describes a different share.
 os.environ['DOCKER_HOST_PATHS'] = '/workspace:/mnt/user/somethingelse'
 out['moved'] = m.host_map()
+# The sandbox-VM arrangement: the daemon is elsewhere and the shares are
+# mounted over there at the paths used over here, so the mapping is an
+# identity. It is not a translation and there is nothing in THIS container's
+# mount table to check it against, so it must not be run through the check
+# that catches a half-edited one.
+os.environ['DOCKER_HOST_PATHS'] = '/workspace:/workspace'
+mp2, bad2 = m.host_map()
+out['parity'] = [mp2, bad2, m.problems('alpha', {'services': {'a': {'volumes': ['./data:/data']}}})]
 os.environ['DOCKER_HOST_PATHS'] = '/nope:/mnt/x,garbage'
 out['junk'] = m.host_map()
 os.environ['DOCKER_HOST_PATHS'] = ''
@@ -447,6 +455,12 @@ ok(hp.junk[1].length === 2 && !Object.keys(hp.junk[0]).length,
    '...as is a path not mounted here, and a pair that is not one');
 ok(!Object.keys(hp.unset[0]).length && !hp.unset[1].length,
    'and saying nothing is quiet: no mapping, no complaint');
+// The whole reason the sandbox VM is worth building: give the daemon the same
+// paths and the translation problem stops existing rather than being managed.
+ok(hp.parity[0]['/workspace'] === '/workspace' && !hp.parity[1].length,
+   'an identity mapping is accepted without being checked against our mounts');
+ok(!hp.parity[2].length,
+   '...and a bind under it is no longer a problem, because it is not one');
 
 // DOCKER_HOST=auto resolves by asking candidates for /version, caches what
 // it found, and re-scans when that stops answering — a bridge-assigned IP

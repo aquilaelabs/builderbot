@@ -384,6 +384,7 @@ def host_map():
     because a wrong one is the silent failure above wearing a fix.
     """
     roots, out, bad = _mount_roots(), {}, []
+    root = None
     for pair in (os.environ.get("DOCKER_HOST_PATHS") or "").split(","):
         pair = pair.strip()
         if not pair:
@@ -393,8 +394,15 @@ def host_map():
         if not here.startswith("/") or not there.startswith("/"):
             bad.append(f"{pair} is not a /container:/host pair")
             continue
-        root = roots.get(here)
-        if root is None:
+        # An identity pair is not a translation and there is nothing to check
+        # it against: it says the daemon calls this path what we call it, which
+        # is the sandbox-VM arrangement — the shares mounted over there at the
+        # paths used over here. This container's mount table describes its own
+        # mounts and says nothing about that machine's, so running the check
+        # below on one would reject a mapping that is correct by construction.
+        if here == there:
+            out[here] = there
+        elif (root := roots.get(here)) is None:
             bad.append(f"{here} is not mounted in this container")
         elif root != "/" and not there.endswith(root):
             bad.append(f"{here} is mounted from {root}, which {there} "
@@ -679,11 +687,20 @@ def problems(project, cfg):
             if not any(src == o or src.startswith(o + "/") for o in ours):
                 continue
             there = to_host(src, mapping)
+            # Identity means the daemon calls it the same thing we do, and
+            # there is nothing wrong. That is the whole point of running the
+            # daemon in a sandbox VM with the shares mounted at the paths
+            # BuilderBot uses: the translation table becomes /workspace to
+            # /workspace, and this check has nothing left to say. Without this
+            # line the parity arrangement reports every correct compose file
+            # as broken, and tells it to use the path it is already using.
+            if there == src:
+                continue
             out.append(
                 f"{name} mounts {src}, which is this container's path — the "
-                + (f"daemon is the host's and wants {there}" if there else
-                   "daemon is the host's and has no such path; say where it "
-                   "is with DOCKER_HOST_PATHS"))
+                + (f"daemon calls that {there}" if there else
+                   "daemon does not have it; say where it is with "
+                   "DOCKER_HOST_PATHS"))
     return out
 
 

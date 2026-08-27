@@ -309,20 +309,43 @@ Five things in it differ from Unraid's placeholder, each for a reason:
 
 ## Pointing BuilderBot at it
 
-One variable in the container's template:
+Three settings on the container's template, then the proxy comes off.
 
+**1. Teach BuilderBot the VM's host key first.** This is the step that will
+otherwise stop you with nothing useful in the log: `docker -H ssh://…` shells
+out to `ssh`, the dashboard runs it non-interactively, and an unknown host key
+makes ssh refuse rather than ask. From a session:
+
+```bash
+ssh-keyscan -H <vm-ip> >> ~/.ssh/known_hosts
 ```
-DOCKER_HOST=ssh://bb@<vm-ip>
-```
 
-ssh rather than an open Docker port: authentication is the key you installed,
-and nothing has to listen. `provision.sh --tcp` will expose `2375`
-unauthenticated if ssh proves awkward — that is root on the sandbox to anyone
-who can reach it, which is tolerable only because the sandbox holds nothing.
-Keep it off the LAN either way.
+`~` is the home volume, so this survives a container restart.
 
-Then remove the socket proxy's address, and the proxy itself. BuilderBot no
-longer needs the host's daemon.
+**2. `DOCKER_HOST=ssh://bb@<vm-ip>`.** ssh rather than an open Docker port:
+authentication is the key you installed, and nothing has to listen.
+`provision.sh --tcp` exposes `2375` unauthenticated if ssh proves awkward —
+that is root on the sandbox to anyone who can reach it, tolerable only because
+the sandbox holds nothing. Keep it off the LAN either way.
+
+**3. `DOCKER_HOST_PATHS=/workspace:/workspace`** — and `/devdata:/devdata` if
+you mounted that too. An identity mapping, because the VM has the shares at
+the same paths this container does. It is accepted without being checked
+against this container's mount table, which describes its own mounts and says
+nothing about the VM's, and it makes the path checks fall silent: a bind the
+daemon resolves to the same directory is not a problem, and is no longer
+reported as one.
+
+Then delete the socket proxy container. BuilderBot has no remaining reason to
+reach the host's daemon, which is the actual prize here — not another layer of
+filtering, but one fewer thing holding the keys to the real containers.
+
+**What does not change:** the classic builder stays on. BuilderBot forces
+`DOCKER_BUILDKIT=0` because buildx attaches to a helper container and a socket
+proxy refuses that; against the VM's own daemon buildx would work, and with it
+the inline layer cache. That is worth doing and is not part of this switch —
+it needs its own verification, and the classic builder is correct against a
+real daemon, only slower to rebuild.
 
 ## What is deliberately not in it
 
