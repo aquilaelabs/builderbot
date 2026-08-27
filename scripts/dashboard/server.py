@@ -308,6 +308,11 @@ EXCLUDES_FILE = STATE / "excluded-projects.json"   # STATE is set up top
 # mine to run" — the row stays whole, the operator keeps every control, and
 # the only thing that goes is a session starting here.
 LOCKS_FILE = STATE / "locked-projects.json"
+# Which projects the sidebar card shows. A THIRD axis, and independent of the
+# other two: pinning says nothing about what may run, only about what is worth
+# looking at from the sidebar. Everything unpinned is still on the Projects
+# tab, whole and with every control.
+PINS_FILE = STATE / "pinned-projects.json"
 
 # Which commands the operator keeps at the top of the card. Stored beside the
 # other state for the same reason the tab strip is: this is one machine with one
@@ -415,7 +420,7 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
-TAB_KINDS = {"term", "packages", "todo"}
+TAB_KINDS = {"term", "packages", "todo", "projects"}
 
 
 def load_layout():
@@ -609,6 +614,26 @@ def load_locks():
 
 def save_locks(names):
     write_json(LOCKS_FILE, sorted(set(names)))
+
+
+def load_pins():
+    """The pinned set, or None when nobody has ever pinned anything.
+
+    None is not the same as empty and the difference decides what a fresh
+    install looks like. No file means the operator has not had this thought
+    yet, so every project is pinned and the card is what it always was; an
+    empty LIST means they unpinned the last one on purpose, and a sidebar that
+    quietly refilled itself would be arguing with them.
+    """
+    try:
+        v = json.loads(PINS_FILE.read_text())
+    except (OSError, ValueError):
+        return None
+    return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else None
+
+
+def save_pins(names):
+    write_json(PINS_FILE, sorted(set(names)))
 
 
 def _project_of(uri, known, nonproject=frozenset()):
@@ -1064,6 +1089,7 @@ def project_list():
         pass                    # unreadable: reported by the listing below
     excluded = set(load_excludes())
     locked = set(load_locks())
+    pins = load_pins()
     stopped = last_stop()
     try:
         here = sorted(WORKSPACE.iterdir())
@@ -1202,6 +1228,7 @@ def project_list():
                     "linked": linked, "github": github,
                     "claude_md": has_md, "excluded": d.name in excluded,
                     "locked": d.name in locked,
+                    "pinned": True if pins is None else d.name in pins,
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
@@ -2300,6 +2327,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._exclude(req)
         if path.startswith("/api/lock"):
             return self._lock(req)
+        if path.startswith("/api/pin"):
+            return self._pin(req)
         if path.startswith("/api/session"):
             return self._session(req)
         if path.startswith("/api/keys"):
@@ -2819,6 +2848,21 @@ class Handler(BaseHTTPRequestHandler):
     def _create(self, req):
         """New project — a fresh local repo, or a clone. See projects.py."""
         body, code = projects.create(req)
+        # Pinned on arrival, once anything has ever been pinned. Without this a
+        # project made while a pins file exists is absent from it, so it lands
+        # on disk and never reaches the sidebar — created, and apparently gone.
+        # No file still means "all of them", so there is nothing to write then
+        # and writing one would turn the first create into an unasked-for
+        # decision about every other project.
+        if code == 200 and body.get("name") and load_pins() is not None:
+            with _state_lock:
+                pins = load_pins()
+                if pins is not None:
+                    try:
+                        save_pins(set(pins) | {body["name"]})
+                    except OSError:
+                        pass          # the project exists; the sidebar is not
+                                      # worth failing the create over
         return self._json(body, code)
 
     def _link(self, req):
@@ -3039,6 +3083,36 @@ class Handler(BaseHTTPRequestHandler):
             run(["tmux", "kill-session", "-t", sess], timeout=10)
             killed = sess
         return self._json({"locked": sorted(names), "killed": killed})
+
+    def _pin(self, req):
+        """Pin or unpin a project: whether the sidebar card shows it.
+
+        No session is touched and nothing is blocked — this is the one control
+        of the three that is purely about the view. Unpinning something running
+        a build leaves it running, and the Projects tab still has every button.
+
+        The first unpin has to write the whole current set, not just remove
+        one: until then there is no file, which means "all of them", and
+        saving a single removal would have read as "only this one is pinned".
+        """
+        name, on = req.get("name", ""), bool(req.get("pinned"))
+        try:
+            here = {d.name for d in WORKSPACE.iterdir()
+                    if d.is_dir() and d.name != "_work"
+                    and not d.name.startswith(".")}
+        except OSError:
+            here = set()
+        if name not in here:
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        with _state_lock:
+            pins = load_pins()
+            names = here.copy() if pins is None else set(pins)
+            names.add(name) if on else names.discard(name)
+            try:
+                save_pins(names)
+            except OSError as e:
+                return self._json({"error": f"could not save: {e}"}, 500)
+        return self._json({"pinned": sorted(names)})
 
     def _session(self, req):
         """Kill a session. Closing a tab that owns a Claude conversation should

@@ -98,6 +98,24 @@ ok(marker > 0, 'its CLAUDE.md carries the environment block');
 ok(md.indexOf('A widget frobnicator') > marker,
    '...with the given notes below the end marker');
 
+// A project made after anything has been pinned is pinned itself. Without
+// that it lands on disk and never reaches the sidebar — created, and to the
+// operator indistinguishable from gone. Unpinning first is what brings the
+// pins file into existence; while there is none, everything is pinned anyway
+// and this would prove nothing.
+await page.evaluate(() => setPinned('beta', false));
+await page.waitForFunction(
+  () => ![...document.querySelectorAll('#projects .row .name')]
+          .some(n => n.textContent.trim() === 'beta'), { timeout: 15000 });
+await page.click('#bNewProj');           // zeta's create closed the dialog
+await page.waitForSelector('#pmodal:not([hidden])');
+await page.fill('#pName', 'pinme');
+await page.click('#pCreate');
+await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+  .some(n => n.textContent === 'pinme'), { timeout: 15000 });
+ok(true, 'a project created while a pins file exists still reaches the sidebar');
+await page.evaluate(() => setPinned('beta', true));
+
 // ---- the allow-lists ---------------------------------------------------
 // Straight at the API: git accepts transports (ext:: runs commands) that must
 // never get past the server, whatever the page's own form checks.

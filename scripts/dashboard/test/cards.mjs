@@ -379,5 +379,35 @@ await page.waitForFunction(
   { timeout: 10000 });
 ok(true, 'unlocking gives it back');
 
+// The Projects tab: every project, pinned or not, and the same controls on
+// each. The thumbtack decides only where a project is met, not what it can do.
+await page.click('#projects #bAllProj');
+await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
+const inTab = await page.$$eval('.doc .projtab .row .name', ns => ns.map(n => n.textContent.trim()));
+const inCard = await page.$$eval('#projects .row .name', ns => ns.map(n => n.textContent.trim()));
+ok(inTab.length >= inCard.length && inCard.every(n => inTab.includes(n)),
+   'the Projects tab lists at least what the card does');
+ok(await page.$eval('.doc .projtab .row', r =>
+     !!r.querySelector('[data-m]') && !!r.querySelector('[data-s]')
+     && !!r.querySelector('[data-k]') && !!r.querySelector('[data-p]')),
+   '...with the same buttons on a row: notebook, shell, padlock, thumbtack');
+
+// Unpinning takes a project off the sidebar and leaves it on the tab, whole.
+await page.evaluate(() => setPinned('alpha', false));
+await page.waitForFunction(
+  () => ![...document.querySelectorAll('#projects .row .name')]
+          .some(n => n.textContent.trim() === 'alpha'), { timeout: 15000 });
+ok(await page.$$eval('.doc .projtab .row .name',
+     ns => ns.some(n => n.textContent.trim() === 'alpha')),
+   'an unpinned project leaves the sidebar and stays on the tab');
+ok(await page.$eval('.doc .projtab .row:has([data-p="alpha"])',
+     r => !!r.querySelector('[data-c]') && !!r.querySelector('[data-m]')),
+   '...still carrying every control, which is the whole promise of the pin');
+await page.evaluate(() => setPinned('alpha', true));
+await page.waitForFunction(
+  () => [...document.querySelectorAll('#projects .row .name')]
+          .some(n => n.textContent.trim() === 'alpha'), { timeout: 15000 });
+ok(true, 'pinning it puts it back on the sidebar');
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

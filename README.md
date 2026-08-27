@@ -1096,6 +1096,12 @@ lives in its body. The cards:
   blocks Claude sessions for that directory — see below. A row that is excluded
   or has an error carries **no Claude button at all**, because a session cannot
   start there; **Shell** stays, since that is often how you would fix it
+- a **thumbtack** per project, which decides whether the sidebar shows it at
+  all. Unpinning takes a project off this card and nothing else: it keeps every
+  control on the **All projects** tab at the foot of the card, which lists
+  everything under `/workspace` with the same buttons on each row. Pins live in
+  `/config/pinned-projects.json`; no file at all means everything is pinned,
+  which is what a fresh install sees
 - a **padlock** per project, which locks it: the row stays whole and every
   control you use stays live — notebook, artifacts, dev instance, shell — and
   the only thing that goes is Claude starting a session there. For a project
