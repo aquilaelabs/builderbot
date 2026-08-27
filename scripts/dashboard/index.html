@@ -3629,7 +3629,9 @@ function wireProjectRows(root){
   root.querySelectorAll("[data-k]").forEach(b => b.onclick = () =>
     setLocked(b.dataset.k, b.dataset.on === "1"));
   root.querySelectorAll("[data-p]").forEach(b => b.onclick = () =>
-    setPinned(b.dataset.p, b.dataset.on === "1"));
+    setProjectPinned(b.dataset.p, b.dataset.on === "1"));
+  root.querySelectorAll("[data-rn]").forEach(b => b.onclick = () =>
+    renameProject(b.dataset.rn));
 }
 
 // One project's row. Extracted so the sidebar card and the Projects tab
@@ -3682,6 +3684,10 @@ function projectRow(p, live, cls){
          data-m="${esc(p.name)}"
          title="${nbOpen(p.name) ? "its notebook is open — go to the tab"
                 : "roadmap, memory and bugs for this project"}">Notebook</button>`}
+      <button class="eye" data-rn="${esc(p.name)}" aria-label="rename"
+        title="rename — moves the directory and everything keyed to its name: the
+roadmap, the bugs, the versions, the dev instance's data and env, the CI logs,
+and Claude's own transcripts and memories">${PENCIL}</button>
       <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
         data-on="${p.pinned ? "0" : "1"}"
         aria-label="${p.pinned ? "unpin" : "pin"}"
@@ -7518,13 +7524,47 @@ async function setLocked(name, on){
   refresh();
 }
 
+// Renaming asks, because it moves a directory and a dozen keyed stores with
+// it, and because the answer it gives back is worth reading: what moved, and
+// anything that did not. A rename that half-worked is the case this reports
+// rather than hides — the alternative is a project whose roadmap silently
+// stayed behind under a name nothing points at any more.
+async function renameProject(name){
+  const to = prompt(`Rename ${name} to:\n\n`
+    + `The directory moves, and so does everything keyed to its name — the `
+    + `roadmap and bugs, the versions, the dev instance's data and env, the `
+    + `CI logs, and Claude's transcripts and memories for it.\n\n`
+    + `Close its terminals first, and bring its dev instance down.`, name);
+  if (to === null) return;
+  if (!to.trim() || to.trim() === name) return;
+  try{
+    const r = await fetch("/api/rename", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name, to})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+    // Named rather than assumed: sanitizing may have changed what was typed,
+    // and the operator should see the name that actually exists.
+    notify(j.failed?.length
+      ? `${name} is now ${j.name}, but ${j.failed.length} thing(s) did not `
+        + `move: ${j.failed.join("; ")}`
+      : `${name} is now ${j.name}`, !!j.failed?.length);
+  }catch(e){ notify("rename failed: " + e, true); }
+  refresh();
+}
+
 // Pinning asks nothing and ends nothing: no session is touched, no control is
 // taken away, and the project is still whole on the Projects tab. It is the
 // one of the three that only moves where a row is seen — so no confirmation,
 // which would teach somebody to click through the two that do matter.
-async function setPinned(name, on){
+//
+// setProjectPinned, not setPinned: that name — and /api/pin, and the server's
+// _pin — were the COMMAND pin's already, and taking them shadowed it in all
+// three places at once. Nothing failed loudly; the commands card simply began
+// asking the projects endpoint about a command.
+async function setProjectPinned(name, on){
   try{
-    const r = await fetch("/api/pin", {method:"POST",
+    const r = await fetch("/api/project-pin", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({name, pinned:on})});
     const j = await r.json();

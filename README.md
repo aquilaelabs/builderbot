@@ -1102,6 +1102,11 @@ lives in its body. The cards:
   everything under `/workspace` with the same buttons on each row. Pins live in
   `/config/pinned-projects.json`; no file at all means everything is pinned,
   which is what a fresh install sees
+- a **pencil** per project, which renames it — the directory, and everything
+  keyed to its old name: the roadmap and bugs, the versions, the dev instance's
+  data and env, the archived CI logs, and Claude's own transcripts and
+  memories. It refuses while a terminal is open on it or its dev instance still
+  has containers, and it reports what moved rather than only that it worked
 - a **padlock** per project, which locks it: the row stays whole and every
   control you use stays live — notebook, artifacts, dev instance, shell — and
   the only thing that goes is Claude starting a session there. For a project

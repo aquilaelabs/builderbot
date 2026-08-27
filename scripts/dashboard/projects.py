@@ -81,22 +81,243 @@ repo_path = None
 build_claude_md = None
 PROJECT_NAME = None
 GITHUB_URL = None
+# Renaming's own share of the injection: where the state, the home volume and
+# the dev-instance data live, and how a compose project name is spelled.
+STATE = None
+HOME = None
+DEVDATA = None
+write_json = None
+pname = None
 
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
-              repo_path, build_claude_md, project_name, github_url):
+              repo_path, build_claude_md, project_name, github_url,
+              state, home, devdata, write_json, pname):
     """Hand over the server's helpers."""
     globals().update(
         run=run, WORKSPACE=Path(workspace), agent_keys=agent_keys,
         gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
         repo_path=repo_path, build_claude_md=build_claude_md,
-        PROJECT_NAME=project_name, GITHUB_URL=github_url)
+        PROJECT_NAME=project_name, GITHUB_URL=github_url,
+        STATE=Path(state), HOME=Path(home), DEVDATA=Path(devdata),
+        write_json=write_json, pname=pname)
+
+
+# ---------------------------------------------------------------------------
+# renaming
+#
+# A project's NAME is its key in a dozen places, and every one of them fails
+# the same quiet way when it is missed: the directory is there under its new
+# name, and its roadmap, its bugs, its dev-instance data or its version history
+# simply are not. Nothing errors. So the places are a table rather than a
+# sequence of statements — the defence against forgetting one is being able to
+# read the whole list in a single screen — and what moved is reported back
+# rather than summarised as success.
+
+# {file: [the keys inside it whose sub-dicts are keyed by project]}. None means
+# the file's own top level is the keyed dict.
+_KEYED = {
+    "todos.json":         ["projects", "unsaved", "history", "batch"],
+    "bugs.json":          ["projects", "history", "batch"],
+    "versions.json":      ["projects"],
+    "findings-log.json":  ["projects"],
+    "last-sessions.json": ["sessions"],
+    "devapps.json":       [None],
+}
+
+# Files holding a flat list of project names.
+_LISTED = ["excluded-projects.json", "locked-projects.json",
+           "pinned-projects.json"]
+
+
+def _rename_in_json(path, old, new):
+    """Move a project's entries inside one state file. True if anything moved."""
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(d, dict):
+        return False
+    moved = False
+    for key in _KEYED.get(path.name, []):
+        holder = d if key is None else d.get(key)
+        if isinstance(holder, dict) and old in holder:
+            holder[new] = holder.pop(old)
+            moved = True
+    if moved:
+        write_json(path, d)
+    return moved
+
+
+def _rename_in_list(path, old, new):
+    """The same, for a file that is a flat list of names."""
+    try:
+        with open(path) as f:
+            v = json.load(f)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(v, list) or old not in v:
+        return False
+    write_json(path, sorted({new if x == old else x for x in v}))
+    return True
+
+
+def _rename_tabs(old, new):
+    """Open tabs naming the project. Returns (rewritten, dropped).
+
+    A notebook tab is rewritten — its arg IS the project name, and the operator
+    would expect to come back to it. A terminal tab is dropped instead: its arg
+    encodes a session name (`claude:X:r:<id>`, `sh:2:X`) that no longer exists,
+    and rewriting one would offer a Resume onto a transcript recorded under the
+    old directory. Dropping is the honest answer, and it is reported.
+    """
+    path = STATE / "tabs.json"
+    try:
+        with open(path) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return 0, 0
+    tabs = d.get("tabs")
+    if not isinstance(tabs, list):
+        return 0, 0
+    keep, rewritten, dropped = [], 0, 0
+    for t in tabs:
+        if not isinstance(t, dict):
+            keep.append(t)
+            continue
+        if t.get("kind") == "todo" and t.get("arg") == old:
+            t["arg"] = new
+            t["label"] = "Notebook: " + new
+            rewritten += 1
+        elif t.get("kind") == "term" and _names_project(t.get("arg", ""), old):
+            dropped += 1
+            continue
+        keep.append(t)
+    if rewritten or dropped:
+        d["tabs"] = keep
+        # The panes reference tab ids, and a dropped tab leaves a dangling one.
+        # The page already tolerates that (it renders "no tab here"), so this
+        # does not try to rebuild the layout — it would be guessing at what the
+        # operator wants on screen.
+        write_json(path, d)
+    return rewritten, dropped
+
+
+def _names_project(arg, name):
+    """Whether a terminal tab's argument is a session in this project.
+
+    The two shapes bb-tty accepts: `claude:<project>[:...]` and
+    `sh:<n>:<project>`. Split rather than matched with a prefix, because a
+    project called `app` must not claim `app-2`'s tabs.
+    """
+    parts = str(arg).split(":")
+    if len(parts) >= 2 and parts[0] == "claude":
+        return parts[1] == name
+    if len(parts) >= 3 and parts[0] == "sh":
+        return parts[2] == name
+    return False
 
 
 # Prompts off, and ssh in batch mode: a key the agent does not hold has to
 # fail with a message rather than block on a username prompt no HTTP request
 # can answer. accept-new because the first contact with github.com on a fresh
 # home volume is expected, not an attack to refuse.
+def _mv(src, dst, label, moved, failed):
+    """Move one path, recording which it was. Missing is not a failure — most
+    projects have never had a dev instance or a CI log."""
+    try:
+        if not src.exists():
+            return
+        if dst.exists():
+            failed.append(f"{label}: {dst.name} was already there")
+            return
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        src.rename(dst)
+        moved.append(label)
+    except OSError as e:
+        failed.append(f"{label}: {e}")
+
+
+def rename(req):
+    """Rename a project — the directory, and everything keyed to its old name.
+
+    Guarded rather than clever. A live session, a dev instance with containers
+    still on the daemon, or another project job in flight all mean the answer
+    is "not now": each of them holds the old name somewhere this cannot reach,
+    and renaming underneath one produces a mess with no single owner. Those
+    three are checked by the caller, which can see tmux and the daemon.
+
+    The directory moves first. It is the step most likely to fail and the only
+    one that fails cleanly — if it does, nothing else has been touched. Every
+    store after it is best-effort and reported: a project whose roadmap did not
+    follow is worth knowing about, and is still better than one that says it
+    renamed successfully and quietly dropped it.
+    """
+    old = _field(req, "name").strip()
+    new = sanitize_name(_field(req, "to"))
+    if not old or not PROJECT_NAME.fullmatch(old):
+        return {"error": "unknown project"}, 400
+    src = WORKSPACE / old
+    if not src.is_dir():
+        return {"error": f"{old} is not a project under the workspace"}, 400
+    if not new:
+        return {"error": "a name needs at least one letter or digit in it"}, 400
+    if new == old:
+        return {"error": f"{old} is already its name"}, 400
+    dest = WORKSPACE / new
+    if dest.exists():
+        return {"error": f"{new} already exists in the workspace"}, 400
+    with _lock:
+        if _job["running"]:
+            return {"error": f"already {DOING.get(_job['kind'], 'working on')} "
+                             f"{_job['name']}"}, 409
+    try:
+        src.rename(dest)
+    except OSError as e:
+        return {"error": f"could not rename the directory: {e}"}, 500
+
+    moved, failed = [], []
+    for name in _KEYED:
+        try:
+            if _rename_in_json(STATE / name, old, new):
+                moved.append(name)
+        except OSError as e:                       # write_json can fail
+            failed.append(f"{name}: {e}")
+    for name in _LISTED:
+        try:
+            if _rename_in_list(STATE / name, old, new):
+                moved.append(name)
+        except OSError as e:
+            failed.append(f"{name}: {e}")
+    try:
+        rewritten, dropped = _rename_tabs(old, new)
+        if rewritten:
+            moved.append(f"{rewritten} open notebook tab(s)")
+        if dropped:
+            moved.append(f"{dropped} terminal tab(s) closed — their sessions "
+                         f"were named for the old directory")
+    except OSError as e:
+        failed.append(f"tabs.json: {e}")
+
+    _mv(STATE / "devenv" / f"{old}.env", STATE / "devenv" / f"{new}.env",
+        "the dev instance's env", moved, failed)
+    _mv(STATE / "ci-logs" / old, STATE / "ci-logs" / new,
+        "archived CI logs", moved, failed)
+    # The compose project name is derived and sanitized, so these two are not
+    # simply the project's name with a prefix on it.
+    _mv(DEVDATA / pname(old), DEVDATA / pname(new),
+        "the dev instance's data", moved, failed)
+    # Claude Code's own directory: the transcripts AND the memories, which live
+    # inside it. Its slug is the working directory's path with the slashes
+    # turned into dashes — the same rule memory.py reads it by.
+    _mv(HOME / ".claude" / "projects" / str(src).replace("/", "-"),
+        HOME / ".claude" / "projects" / str(dest).replace("/", "-"),
+        "Claude's transcripts and memories", moved, failed)
+    return {"ok": True, "name": new, "from": old,
+            "moved": moved, "failed": failed}, 200
+
+
 def _git_env():
     return dict(os.environ, GIT_TERMINAL_PROMPT="0",
                 GIT_SSH_COMMAND="ssh -o BatchMode=yes "

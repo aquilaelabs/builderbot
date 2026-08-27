@@ -312,7 +312,14 @@ LOCKS_FILE = STATE / "locked-projects.json"
 # other two: pinning says nothing about what may run, only about what is worth
 # looking at from the sidebar. Everything unpinned is still on the Projects
 # tab, whole and with every control.
-PINS_FILE = STATE / "pinned-projects.json"
+#
+# PROJECT_PINS_FILE and not PINS_FILE, which is the command pin's a few lines
+# below — as were load_pins, save_pins, _pin, /api/pin and the page's
+# setPinned. Taking all five split this feature across two files: the constant
+# resolved to theirs, the functions to mine, and project names were written
+# into pinned-commands.json while nothing went red, because the command pin has
+# no test (bug #20).
+PROJECT_PINS_FILE = STATE / "pinned-projects.json"
 
 # Which commands the operator keeps at the top of the card. Stored beside the
 # other state for the same reason the tab strip is: this is one machine with one
@@ -616,7 +623,7 @@ def save_locks(names):
     write_json(LOCKS_FILE, sorted(set(names)))
 
 
-def load_pins():
+def load_project_pins():
     """The pinned set, or None when nobody has ever pinned anything.
 
     None is not the same as empty and the difference decides what a fresh
@@ -626,14 +633,14 @@ def load_pins():
     quietly refilled itself would be arguing with them.
     """
     try:
-        v = json.loads(PINS_FILE.read_text())
+        v = json.loads(PROJECT_PINS_FILE.read_text())
     except (OSError, ValueError):
         return None
     return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else None
 
 
-def save_pins(names):
-    write_json(PINS_FILE, sorted(set(names)))
+def save_project_pins(names):
+    write_json(PROJECT_PINS_FILE, sorted(set(names)))
 
 
 def _project_of(uri, known, nonproject=frozenset()):
@@ -1089,7 +1096,7 @@ def project_list():
         pass                    # unreadable: reported by the listing below
     excluded = set(load_excludes())
     locked = set(load_locks())
-    pins = load_pins()
+    pins = load_project_pins()
     stopped = last_stop()
     try:
         here = sorted(WORKSPACE.iterdir())
@@ -1744,7 +1751,10 @@ import projects                                                  # noqa: E402
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
                    repo_path=repo_path, build_claude_md=build_claude_md,
-                   project_name=PROJECT_NAME, github_url=GITHUB_URL)
+                   project_name=PROJECT_NAME, github_url=GITHUB_URL,
+                   state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
+                   devdata=devapp.DEVDATA, write_json=write_json,
+                   pname=devapp._pname)
 
 
 def _doctor_loop():
@@ -2327,8 +2337,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._exclude(req)
         if path.startswith("/api/lock"):
             return self._lock(req)
-        if path.startswith("/api/pin"):
-            return self._pin(req)
+        # NOT /api/pin, which is the command pin and has been since long before
+        # this: startswith() means a route added above it silently takes every
+        # path it prefixes, and both handlers were called _pin, so the later
+        # definition quietly replaced the earlier one in the class body too.
+        if path.startswith("/api/project-pin"):
+            return self._project_pin(req)
+        if path.startswith("/api/rename"):
+            return self._rename(req)
         if path.startswith("/api/session"):
             return self._session(req)
         if path.startswith("/api/keys"):
@@ -2854,12 +2870,12 @@ class Handler(BaseHTTPRequestHandler):
         # No file still means "all of them", so there is nothing to write then
         # and writing one would turn the first create into an unasked-for
         # decision about every other project.
-        if code == 200 and body.get("name") and load_pins() is not None:
+        if code == 200 and body.get("name") and load_project_pins() is not None:
             with _state_lock:
-                pins = load_pins()
+                pins = load_project_pins()
                 if pins is not None:
                     try:
-                        save_pins(set(pins) | {body["name"]})
+                        save_project_pins(set(pins) | {body["name"]})
                     except OSError:
                         pass          # the project exists; the sidebar is not
                                       # worth failing the create over
@@ -3084,7 +3100,38 @@ class Handler(BaseHTTPRequestHandler):
             killed = sess
         return self._json({"locked": sorted(names), "killed": killed})
 
-    def _pin(self, req):
+    def _rename(self, req):
+        """Rename a project. The guards live here; the work is in projects.py.
+
+        These two are checked here rather than there because they are the ones
+        that need to see outside the filesystem — tmux, and the daemon. Both
+        are refusals rather than things to tidy away automatically: a running
+        session holds the old path as its working directory and would carry on
+        writing to it, and a dev instance's containers are named for the old
+        project on a machine this may not even be able to reach. Ending either
+        on the operator's behalf, to complete a rename, is a larger decision
+        than the rename.
+        """
+        name = req.get("name", "")
+        live = {s["name"] for s in tmux_sessions()}
+        held = sorted(s for s in live
+                      if s == tmux_name(f"claude-{name}")
+                      or s.startswith(tmux_name(f"shell-{name}") + "-"))
+        if held:
+            return self._json({"error": "close its terminals first — "
+                                        + ", ".join(held[:3])
+                                        + (" …" if len(held) > 3 else "")}, 409)
+        try:
+            if devapp.state(name).get("exists"):
+                return self._json({"error": "its dev instance still has "
+                                            "containers — press Down on the "
+                                            "Artifacts tab first"}, 409)
+        except Exception:
+            pass          # no daemon, or no compose file: nothing to protect
+        body, code = projects.rename(req)
+        return self._json(body, code)
+
+    def _project_pin(self, req):
         """Pin or unpin a project: whether the sidebar card shows it.
 
         No session is touched and nothing is blocked — this is the one control
@@ -3105,11 +3152,11 @@ class Handler(BaseHTTPRequestHandler):
         if name not in here:
             return self._json({"error": f"unknown project: {name}"}, 400)
         with _state_lock:
-            pins = load_pins()
+            pins = load_project_pins()
             names = here.copy() if pins is None else set(pins)
             names.add(name) if on else names.discard(name)
             try:
-                save_pins(names)
+                save_project_pins(names)
             except OSError as e:
                 return self._json({"error": f"could not save: {e}"}, 500)
         return self._json({"pinned": sorted(names)})

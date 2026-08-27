@@ -393,7 +393,7 @@ ok(await page.$eval('.doc .projtab .row', r =>
    '...with the same buttons on a row: notebook, shell, padlock, thumbtack');
 
 // Unpinning takes a project off the sidebar and leaves it on the tab, whole.
-await page.evaluate(() => setPinned('alpha', false));
+await page.evaluate(() => setProjectPinned('alpha', false));
 await page.waitForFunction(
   () => ![...document.querySelectorAll('#projects .row .name')]
           .some(n => n.textContent.trim() === 'alpha'), { timeout: 15000 });
@@ -403,11 +403,33 @@ ok(await page.$$eval('.doc .projtab .row .name',
 ok(await page.$eval('.doc .projtab .row:has([data-p="alpha"])',
      r => !!r.querySelector('[data-c]') && !!r.querySelector('[data-m]')),
    '...still carrying every control, which is the whole promise of the pin');
-await page.evaluate(() => setPinned('alpha', true));
+await page.evaluate(() => setProjectPinned('alpha', true));
 await page.waitForFunction(
   () => [...document.querySelectorAll('#projects .row .name')]
           .some(n => n.textContent.trim() === 'alpha'), { timeout: 15000 });
 ok(true, 'pinning it puts it back on the sidebar');
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+
+// The command pin and the project pin are different features that spent an
+// afternoon sharing four names — /api/pin, _pin, PINS_FILE and setPinned — and
+// nothing went red, because pinning a command had no test at all (bug #20).
+// This is that test: the two write to their own files and neither can be
+// reached through the other's endpoint.
+const api = (path, body) => page.evaluate(async ([p, b]) => {
+  const r = await fetch(p, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  return { status: r.status, body: await r.json().catch(() => ({})) };
+}, [path, body]);
+const cmdPin = await api('/api/pin', { name: 'status', pinned: true });
+ok(cmdPin.status === 200 && (cmdPin.body.pinned || []).includes('status'),
+   'a command can be pinned');
+ok(JSON.parse(readFileSync(`${DIR}/state/pinned-commands.json`, 'utf8')).includes('status'),
+   '...into pinned-commands.json, which is its own file');
+ok(!JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8')).includes('status'),
+   '...and not into the projects one');
+ok((await api('/api/pin', { name: 'alpha', pinned: true })).status === 400,
+   'a project name is not a command, and the command pin says so');
+ok((await api('/api/project-pin', { name: 'status', pinned: true })).status === 400,
+   '...and a command name is not a project');
 await done(browser);

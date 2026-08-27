@@ -11,6 +11,22 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
 await ready(page);
 
+// Declared here, not down beside the allow-list tests where they began:
+// the rename section above those uses them, and `const` in a module has a
+// temporal dead zone rather than being hoisted.
+const post = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
+  const r = await fetch(u, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  return r.status;
+}, [body, api]);
+// The same call, keeping the body: sanitizing is asserted on the name that
+// comes back, which is the only place the answer actually exists.
+const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
+  const r = await fetch(u, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  return { status: r.status, body: await r.json().catch(() => ({})) };
+}, [body, api]);
+
 // ---- the dialog --------------------------------------------------------
 ok(await page.$eval('#projects #bNewProj', b => b.textContent.includes('New project')),
    'New project sits at the foot of the Projects card');
@@ -103,7 +119,7 @@ ok(md.indexOf('A widget frobnicator') > marker,
 // operator indistinguishable from gone. Unpinning first is what brings the
 // pins file into existence; while there is none, everything is pinned anyway
 // and this would prove nothing.
-await page.evaluate(() => setPinned('beta', false));
+await page.evaluate(() => setProjectPinned('beta', false));
 await page.waitForFunction(
   () => ![...document.querySelectorAll('#projects .row .name')]
           .some(n => n.textContent.trim() === 'beta'), { timeout: 15000 });
@@ -114,23 +130,51 @@ await page.click('#pCreate');
 await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
   .some(n => n.textContent === 'pinme'), { timeout: 15000 });
 ok(true, 'a project created while a pins file exists still reaches the sidebar');
-await page.evaluate(() => setPinned('beta', true));
+
+// ---- renaming ----------------------------------------------------------
+// The button is nothing; the migration is the job. A project's name is its key
+// in a dozen stores, and every one of them fails the same quiet way when it is
+// missed — the directory is there under its new name and its roadmap is not.
+// The pins file is the one that is trivial to seed and to read back, so it
+// stands in for the table: if the name moved there it moved by the same code
+// path everywhere else.
+ok(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8')).includes('pinme'),
+   'the pins file knows the project before the rename');
+const rn = await postJson({ name: 'pinme', to: 'pinned-again' }, '/api/rename');
+ok(rn.status === 200 && rn.body.name === 'pinned-again',
+   'renaming answers with the name it actually made');
+ok(existsSync(`${DIR}/ws/pinned-again/.git`) && !existsSync(`${DIR}/ws/pinme`),
+   '...the directory moved, and nothing was left behind under the old name');
+const pins = JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'));
+ok(pins.includes('pinned-again') && !pins.includes('pinme'),
+   '...and the state keyed to the old name came with it');
+ok(Array.isArray(rn.body.moved) && rn.body.moved.length > 0 && !rn.body.failed.length,
+   '...reporting what moved rather than only that it worked');
+await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+  .some(n => n.textContent === 'pinned-again'), { timeout: 15000 });
+ok(true, '...and the row is the new name');
+
+// The refusals. A name already taken, a project that is not there, and the
+// name it already has — each answered rather than half-done.
+ok(await post({ name: 'pinned-again', to: 'alpha' }, '/api/rename') === 400,
+   'renaming onto a name already in the workspace is refused');
+ok(await post({ name: 'nosuchproject', to: 'whatever' }, '/api/rename') === 400,
+   'renaming something that is not a project is refused');
+ok(await post({ name: 'pinned-again', to: 'pinned-again' }, '/api/rename') === 400,
+   'renaming to the name it already has is refused');
+ok(await post({ name: 'pinned-again', to: '///' }, '/api/rename') === 400,
+   'a new name with nothing in it is refused');
+// ...and a messy one is sanitized on the way through, exactly as creating is.
+const rn2 = await postJson({ name: 'pinned-again', to: 'Two Words!' }, '/api/rename');
+ok(rn2.status === 200 && rn2.body.name === 'Two-Words',
+   'a new name goes through the same sanitizing a created one does');
+ok(existsSync(`${DIR}/ws/Two-Words/.git`), '...and that is the directory');
+
+await page.evaluate(() => setProjectPinned('beta', true));
 
 // ---- the allow-lists ---------------------------------------------------
 // Straight at the API: git accepts transports (ext:: runs commands) that must
 // never get past the server, whatever the page's own form checks.
-const post = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
-  const r = await fetch(u, { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
-  return r.status;
-}, [body, api]);
-// The same call, keeping the body: sanitizing is asserted on the name that
-// comes back, which is the only place the answer actually exists.
-const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
-  const r = await fetch(u, { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
-  return { status: r.status, body: await r.json().catch(() => ({})) };
-}, [body, api]);
 for (const url of ['https://evil.example/owner/repo', 'ext::sh -c id',
                    'file:///etc', 'https://github.com/owner-only',
                    'git@github.com:owner/repo extra'])
