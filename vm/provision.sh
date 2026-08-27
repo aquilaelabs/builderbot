@@ -35,7 +35,11 @@ usage: provision.sh [options]
   --share TAG:PATH     a virtiofs/9p share Unraid passes in, mounted at PATH.
                        Repeatable. PATH MUST match the path BuilderBot uses.
   --nfs HOST:EXPORT:PATH   the same thing over NFS, when a share cannot be
-                       passed directly. Repeatable.
+                       passed directly. Repeatable. EXPORT is the exported
+                       share path — on Unraid /mnt/user/<share>/... — and not
+                       a pool path like /mnt/cache/...: that spelling is for
+                       bind mounts and is not what the server offers, so the
+                       mount fails, quietly, because of nofail.
   --tcp                also listen on 2375, unauthenticated, for hosts that
                        cannot use ssh. Off by default and worth leaving off.
 
