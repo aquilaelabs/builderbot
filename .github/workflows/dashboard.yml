@@ -1,0 +1,86 @@
+name: dashboard tests
+
+# Its own workflow rather than a step inside lint, because the two go red for
+# different reasons and one was hiding the other. The browser suite is
+# timing-sensitive and this runner shares its box with the live dashboard, any
+# session and any build, so it fails here far more often than it does when run
+# by hand — and while it was a step in the lint job it took shellcheck,
+# hadolint and actionlint's verdict down with it, and the compose and XML
+# checks that came after it never ran at all. Twelve consecutive lint runs were
+# red on exactly that, and the deterministic half of them had passed every
+# time.
+#
+# So: a red run here says "the browser tests are flaky again", and a red lint
+# says the code is actually wrong. Two answers, two checks.
+#
+# This does NOT make the suite reliable on a loaded box — see bug #19. It makes
+# its unreliability stop costing the checks that are reliable.
+on:
+  pull_request:
+    # Replaces the git-diff test the old step did by hand. Same intent — only
+    # worth running when it could have changed — expressed where GitHub can
+    # act on it, so the job is never queued rather than started and skipped.
+    paths:
+      - "scripts/dashboard/**"
+      - ".github/workflows/dashboard.yml"
+  workflow_dispatch:
+
+# A superseded push's result is worthless — cancel it rather than make the
+# (single) self-hosted runner work through the backlog serially.
+concurrency:
+  group: dashboard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dashboard:
+    # The BuilderBot container itself: the image already carries Playwright and
+    # Chromium, and the harness reports [skip] on an image that predates them
+    # rather than passing by omission.
+    runs-on: [self-hosted, builderbot]
+    # `bash` rather than the default `bash -e`, because that one difference is
+    # pipefail — and the run below is piped into tee. Without it the tee's exit
+    # status is the step's, and a failing suite would report success.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Open a log this container can read afterwards
+        # The same archive lint.yml keeps, and for the same reason: the runner
+        # streams a step's output to GitHub and keeps none of it on disk, so a
+        # session in this container — which has no PAT — could see that CI was
+        # red and nothing about why. `bb ci-log` reads what this writes.
+        #
+        # The run id is unique per workflow, so this cannot collide with the
+        # lint run beside it even when both fire on the same push.
+        run: |
+          dir="/config/ci-logs/${GITHUB_REPOSITORY##*/}"
+          mkdir -p "$dir"
+          log="$dir/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
+          echo "CI_LOG=$log" >> "$GITHUB_ENV"
+          echo "CI_LOG_DIR=$dir" >> "$GITHUB_ENV"
+          {
+            echo "# ${GITHUB_WORKFLOW} — ${GITHUB_REPOSITORY}"
+            echo "run:    ${GITHUB_RUN_ID} attempt ${GITHUB_RUN_ATTEMPT}"
+            echo "event:  ${GITHUB_EVENT_NAME}  ref: ${GITHUB_REF}"
+            echo "commit: ${GITHUB_SHA}"
+            echo "opened: $(date -Is)"
+            echo
+          } > "$log"
+
+      - name: Dashboard browser tests
+        # An isolated instance on a spare port with a private tmux server and a
+        # scratch state dir — nothing it does can reach the live dashboard this
+        # runner's container is also serving.
+        run: bash scripts/dashboard/test/run.sh 2>&1 | tee -a "$CI_LOG"
+
+      - name: Close the log
+        if: always()
+        # Written whatever happened, because "it failed and said nothing" is
+        # the case this exists for.
+        run: |
+          printf '\nresult: %s\nclosed: %s\n' "${{ job.status }}" "$(date -Is)" \
+            >> "$CI_LOG"
+          find "$CI_LOG_DIR" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' \
+            | sort -rn | tail -n +21 | cut -d' ' -f2- | xargs -r rm -f

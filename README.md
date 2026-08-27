@@ -2046,7 +2046,9 @@ failed and its exit code — and not one line of what that step printed. With
 `GIT_PAT` unset there is no API to ask either, so *"CI is red, why?"* had no
 answer in here for a job that ran in this very container.
 
-So the lint workflow archives its own output: each check is teed into
+So the lint workflow archives its own output — and so does the `dashboard
+tests` workflow beside it, which carries the browser suite that used to be a
+step here: each check is teed into
 `/config/ci-logs/<repo>/<run-id>-<attempt>.log`, with a header naming the
 commit, ref and event, and a `result:` line written by an `if: always()` step
 so a job that died still says so. `bb ci-log` prints the newest, `--list` shows

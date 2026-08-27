@@ -842,8 +842,14 @@ by hand cost four commands and still could not see the failed builds.
 
   The dashboard suite runs the checkout's `server.py` on a spare port with a
   scratch state dir, fake projects and a **private tmux server** — it cannot
-  touch the live dashboard, and CI runs it on this runner for any push that
-  changes `scripts/dashboard/`. **Add to it when you change the dashboard**;
+  touch the live dashboard, and its own `dashboard tests` workflow runs it on
+  this runner for a PR that changes `scripts/dashboard/`. That is a separate
+  workflow from `lint` on purpose: the suite is timing-sensitive and this
+  runner shares its box with everything else, so it goes red for reasons that
+  are not the code's — and while it was a step in the lint job it took the
+  linters' verdict with it. Do not read a red `dashboard tests` as a
+  regression without checking `bb ci-log`; see bug #19.
+  **Add to it when you change the dashboard**;
   the pattern in `lib.mjs` (real touch via CDP, dialogs recorded, console
   errors collected) is the one to follow. Never write ad-hoc harnesses that
   create tmux sessions: inside a tmux session the client ignores
@@ -866,11 +872,12 @@ by hand cost four commands and still could not see the failed builds.
   the environment for the dashboard's own pages. `tools/readme-shots.sh`
   regenerates the README's screenshots from a staged instance.
 
-- **Lint:** CI runs shellcheck, hadolint and actionlint — on *this* runner,
+- **Lint:** CI runs shellcheck, hadolint, actionlint, compose validation and
+  XML well-formedness — every one of them deterministic, so a red run here
+  means something is genuinely wrong — on *this* runner,
   where minutes are free and the image already carries the tools (the job
   fetches any that are missing, so it stays green on a container whose image
-  predates a newly added tool); `bb lint` runs the same three (plus compose
-  validation and XML well-formedness) in-container.
+  predates a newly added tool); `bb lint` runs the same set in-container.
   **When it fails, `bb ci-log` is the first place to look** — the runner keeps
   no console output, so the workflow tees each check into
   `/config/ci-logs/<repo>/` and that command reads it. `--list` shows the runs
