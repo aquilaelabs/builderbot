@@ -350,6 +350,14 @@ Then delete the socket proxy container. BuilderBot has no remaining reason to
 reach the host's daemon, which is the actual prize here — not another layer of
 filtering, but one fewer thing holding the keys to the real containers.
 
+**What this changes for a session.** The rule in every project's `CLAUDE.md`
+is written against the daemon, not against the buttons: a socket proxy is the
+server's daemon and is off limits, while a sandbox VM's is a session's to
+build on, run on and wreck. So this switch hands Claude a Docker host it can
+actually use, which is the half that is easy to miss while thinking about
+what it takes away. The dev-instance *controls* stay the operator's either
+way, and the `bbdev-` project names stay the dashboard's.
+
 **What does not change:** the classic builder stays on. BuilderBot forces
 `DOCKER_BUILDKIT=0` because buildx attaches to a helper container and a socket
 proxy refuses that; against the VM's own daemon buildx would work, and with it
