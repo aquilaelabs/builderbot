@@ -123,14 +123,34 @@ pages, and this is a box you will eventually log into to work something out.
 
 Then run one script inside it:
 
+The repository is private, so the VM cannot fetch the script itself. Copy it
+from the array, or pipe it straight in without copying anything:
+
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/vm/provision.sh
-sudo bash provision.sh \
-    --user bb \
-    --key "ssh-ed25519 AAAA…"          # BuilderBot's public key
-    --share workspace:/workspace \
-    --share devdata:/devdata
+# from the Unraid terminal
+ssh bb@<vm-ip> 'sudo bash -s -- --user bb --key "ssh-ed25519 AAAA…" \
+    --nfs 192.168.1.15:/mnt/user/development:/workspace' \
+    < /mnt/user/development/BuilderBot/vm/provision.sh
 ```
+
+**`--key` is a PUBLIC key** — the `.pub` half, appended to the VM's
+`authorized_keys`. Nothing private is ever put on this machine. The private
+key stays on BuilderBot in `/secrets/ssh`, loaded into the root-owned agent,
+where sessions can use it to connect but cannot read it; the VM holds only the
+line that authorises the connection and never dials out itself.
+
+Give the sandbox its **own** key rather than reusing a GitHub deploy key. Both
+are safe — the private half of a deploy key never leaves the agent either —
+but one key authorising two unrelated things means rotating it for a GitHub
+reason silently breaks the sandbox. On the host:
+
+```bash
+ssh-keygen -t ed25519 -N "" -C bb-sandbox \
+    -f /mnt/user/appdata/BuilderBot/secrets/ssh/bb_sandbox
+```
+
+The private half lands where the entrypoint loads it into the agent at boot;
+the contents of `bb_sandbox.pub` are what you pass as `--key`.
 
 It is safe to run again; every step checks before it acts.
 
