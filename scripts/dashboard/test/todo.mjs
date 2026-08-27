@@ -4,7 +4,7 @@
 // `bb roadmap`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point — something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -76,7 +76,12 @@ ok(!(read().projects.alpha || []).length,
    '...but nothing is on disk yet — the panel writes on Save and not before');
 ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
    '...which is what arms Save');
-ok(await page.$eval('#todoList .todo[data-step="-1"] .n', n => n.textContent) === 'new',
+// A locator, not $eval: $eval resolves once and throws if the row is not there
+// at that instant, and this list repaints. Seen for real — a full run on 27 Aug
+// died here with "Failed to find element matching selector" while the same run
+// alone passed. A locator re-resolves until it is there or the timeout is.
+ok((await page.locator('#todoList .todo[data-step="-1"] .n').first()
+      .textContent({ timeout: 10000 })).trim() === 'new',
    '...and it wears "new" rather than a number, because it has not got one yet');
 await saveList();
 ok(read().projects.alpha.length === 1,
@@ -116,10 +121,20 @@ ok(items.every(i => i.can), 'with a session running, the arrows are live');
 // that tab — and one tap for all four is a mis-tap you cannot take back.
 ok(await page.$('.sendbox') === null,
    'with nothing armed there is no send box at all');
-await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
-await page.waitForSelector('.sendbox');
+// The box unrolls rather than appearing, on the same height tween the folds
+// use, so the lines under it ride down instead of jumping out of the way.
+const armed = await animatedDuring(page, async () => {
+  await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
+  await page.waitForSelector('.sendbox');
+});
+ok(armed.some(k => k.includes('sendbox')), 'arming an arrow unrolls the box');
 ok((await open()).find(i => i.id === mine.id).sel,
    'picking an arrow highlights it — that is the whole confirmation');
+// ...once. It is rebuilt on every draw, and a poll landing while it is open
+// must not replay the arrival.
+const reArmed = await animatedDuring(page, () => page.evaluate(() => refresh()));
+ok(!reArmed.some(k => k.includes('sendbox')),
+   '...and a redraw underneath it does not play that again');
 // Under the row it would send, not at the foot of the panel: the confirmation
 // for handing a line over belongs beside the line, which on a phone is the
 // difference between reading it and scrolling for it.
@@ -1222,7 +1237,13 @@ await ultra.goto(URL);
 await ready(ultra);
 await ultra.click(`${row('alpha')} [data-m]`);
 await nbShown(ultra);
-await ultra.waitForFunction(() => document.querySelectorAll('#todoList .todo, #todoList .hint').length > 0,
+await ultra.waitForFunction(
+  // Loaded, whatever it holds — not merely started. This used to match the
+  // "loading…" placeholder, so it was satisfied the instant the panel opened
+  // and said nothing about the list arriving; that only came to light when
+  // the placeholder stopped sharing a class with the empty state.
+  () => { const l = document.querySelector('#todoList');
+          return !!l && !l.querySelector('.loading'); },
                            { timeout: 20000 });
 const spread = await ultra.evaluate(() => {
   const nb = document.querySelector('.pane .nb');
@@ -1322,6 +1343,21 @@ ok(await phone.evaluate(() => {
        && head.compareDocumentPosition(add) & Node.DOCUMENT_POSITION_FOLLOWING;
    }),
    'the summary and History sit above the add row, with Add and Reorder beside the field');
+// The strip does not spill off a phone. Five labels are wider than 360px and
+// flex items will not shrink below their text, so it scrolls sideways instead
+// — and the tab that is current has to be inside the visible part of it.
+const strip = await phone.evaluate(() => {
+  const el = document.querySelector('.pane .nb .nbtabs');
+  const on = el.querySelector('button.on');
+  const e = el.getBoundingClientRect(), b = on.getBoundingClientRect();
+  return { spills: el.scrollWidth > el.clientWidth,
+           clipped: el.clientWidth >= el.scrollWidth
+                    || getComputedStyle(el).overflowX === 'auto',
+           onScreen: b.left >= e.left - 1 && b.right <= e.right + 1 };
+});
+ok(strip.clipped && strip.onScreen,
+   'the notebook strip scrolls rather than spilling, with the current tab in view');
+
 await phone.click('.pane .nb .nbtabs [data-v="memory"]'); // every control on screen at once
 await phone.waitForFunction(() => document.getElementById('memList').checkVisibility());
 const wide = await phone.evaluate(() => {

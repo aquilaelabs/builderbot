@@ -723,10 +723,22 @@ button.on{background:#1f6f36;border-color:#2ea043}
   .todo{gap:5px} }
 /* The notebook's own tab strip: three views under one roof. Underlined, not
    boxed — these switch what the page shows, they do not open anything. */
-.nbtabs{display:flex;border-bottom:1px solid var(--line);padding:0 8px}
+/* Scrolls sideways rather than spilling. Five labels are 404px of content in
+   a 360px phone, and flex items will not shrink below their text — so without
+   this the tail of the strip simply hung outside the box, unreachable. A
+   sixth tab is planned, which would make it 544px. Horizontal, so the rule
+   about nothing inside the notebook trapping a VERTICAL scroll still holds —
+   but only because overflow-y is set to hidden by hand. Setting one axis to
+   auto computes the OTHER one from visible to auto, so `overflow-x:auto`
+   alone made this a vertical scroller too, and the suite caught it. The bar
+   is hidden because a scrollbar under a row of tabs reads as a divider. */
+.nbtabs{display:flex;border-bottom:1px solid var(--line);padding:0 8px;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+  -webkit-overflow-scrolling:touch}
+.nbtabs::-webkit-scrollbar{display:none}
 .nbtabs button{background:none;border:0;border-bottom:2px solid transparent;
   color:var(--dim);padding:11px 13px;font:600 12px/1 system-ui,sans-serif;
-  min-height:var(--tap);border-radius:0}
+  min-height:var(--tap);border-radius:0;flex:0 0 auto}
 .nbtabs button.on{color:var(--ink);border-bottom-color:var(--accent)}
 @media(hover:hover){ .nbtabs button:hover{color:var(--ink)} }
 .nbview[hidden]{display:none}
@@ -1014,6 +1026,22 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   word-break:break-word;max-height:300px;overflow:auto;color:#cbd5e1}
 .empty{color:var(--dim);padding:9px 11px;font-style:italic}
+/* Loading and empty are not the same thing and had been wearing the same
+   clothes — .empty, italic and still, for both "there is nothing here" and
+   "this has not arrived yet". A placeholder that is waiting says so by
+   breathing. Not a bar and not a percentage: nothing here knows one, and
+   inventing one would be a lie about progress. */
+@keyframes waiting{0%,100%{opacity:.35} 50%{opacity:.75}}
+.loading{color:var(--dim);padding:9px 11px;font-style:italic;
+  animation:waiting 1.4s ease-in-out infinite}
+/* Content, once it is there. Short and only on the first real paint — see
+   paint(): a fade on every poll that changed a word would be a flicker, not
+   a transition. */
+@keyframes contentIn{from{opacity:0;transform:translateY(3px)} to{opacity:1;transform:none}}
+.justpainted{animation:contentIn .18s ease}
+@media(prefers-reduced-motion:reduce){
+  .loading{animation:none} .justpainted{animation:none}
+}
 
 /* Macros run in the terminal now, so there is no output pane to put a message
    in. Anything the page needs to say is transient and says it here. */
@@ -1679,11 +1707,11 @@ body.dragging .tab .lbl{cursor:grabbing}
     </div>
     <div class="card" data-card="runner">
       <h2>Runner</h2>
-      <div id="runner"><div class="empty">loading…</div></div>
+      <div id="runner"><div class="loading">loading…</div></div>
     </div>
     <div class="card" data-card="projects">
       <h2>Projects</h2>
-      <div id="projects"><div class="empty">loading…</div></div>
+      <div id="projects"><div class="loading">loading…</div></div>
     </div>
     <!-- What this container can install. Its own card rather than a corner
          of the findings one: a scanner report and a package manager answer
@@ -1726,7 +1754,7 @@ body.dragging .tab .lbl{cursor:grabbing}
          which is what .row already is. -->
     <div class="card" data-card="phone">
       <h2>Phone</h2>
-      <div id="phBody"><div class="empty">loading…</div></div>
+      <div id="phBody"><div class="loading">loading…</div></div>
     </div>
     <div class="card" id="cardFindings" data-card="findings" hidden>
       <h2>Static analysis</h2>
@@ -1757,16 +1785,16 @@ body.dragging .tab .lbl{cursor:grabbing}
          remote greys just the gh part. -->
     <div class="mpanel" id="macpanel">
       <div class="lab">linux</div>
-      <div class="macros" id="linux"><div class="empty">loading…</div></div>
+      <div class="macros" id="linux"><div class="loading">loading…</div></div>
       <div class="lab">bb commands</div>
-      <div class="macros" id="commands"><div class="empty">loading…</div></div>
+      <div class="macros" id="commands"><div class="loading">loading…</div></div>
       <div class="lab">git &amp; github</div>
-      <div class="macros" id="git"><div class="empty">loading…</div></div>
+      <div class="macros" id="git"><div class="loading">loading…</div></div>
       <div class="lab">custom commands</div>
       <div class="macros" id="custom"></div>
     </div>
     <div class="mpanel" id="sespanel">
-      <div id="sessions"><div class="empty">loading…</div></div>
+      <div id="sessions"><div class="loading">loading…</div></div>
     </div>
     <div class="mobar" id="mobar">
       <button id="mKeys">⌨ Keys</button>
@@ -2319,10 +2347,29 @@ let tabsDrawn = false, lastCur = null;
 // difference touches the DOM. Returns whether it did, for the callers that
 // bind handlers or animate only on a real change.
 const painted = new WeakMap();
+// Every redraw on the page goes through here, which is what makes it the one
+// place worth teaching about arriving. It already skips the write when
+// nothing changed — that is what keeps :hover alive and stops a mid-edit
+// field being wiped by a poll — and now the FIRST real content fades in.
+//
+// First only, deliberately. Fading on every change would flicker a list every
+// time a poll moved one word in it, which is worse than not animating at all.
+// "First" means: nothing has been painted here yet, or what was here was a
+// placeholder saying it had not arrived.
+const WAITING = /class="(loading|empty)"|loading…/;
 function paint(el, html){
-  if (painted.get(el) === html) return false;
+  const was = painted.get(el);
+  if (was === html) return false;
+  const arriving = was === undefined || WAITING.test(was);
   painted.set(el, html);
   el.innerHTML = html;
+  if (arriving && !WAITING.test(html) && !noMotion()){
+    // Restarted rather than added-once: an element can arrive more than once
+    // in a session, and a class already on it would not replay.
+    el.classList.remove("justpainted");
+    void el.offsetWidth;
+    el.classList.add("justpainted");
+  }
   return true;
 }
 
@@ -3318,6 +3365,16 @@ function paginate(host, rowSel, opts = {}){
 }
 
 // A plain block that is shown and hidden. Same tween, collapsed height zero.
+// One arrival for every box that opens under a row — the send box, a reword,
+// a delete confirm, the bug tracker's two. They unroll from nothing on the
+// same height tween the folds use, so the lines below ride down instead of
+// jumping out of the way. Height rather than opacity, because those lines
+// have to move either way and moving them smoothly is the whole point.
+function arriveBox(el){
+  if (noMotion() || !el) return;
+  foldHeight(el, 0, el.offsetHeight, () => {});
+}
+
 function slideHidden(el, willShow, after){
   const done = () => { el.hidden = !willShow; after?.(); };
   if (noMotion()){ done(); return; }
@@ -3960,7 +4017,7 @@ function drawCommands(){
 // data-need for wireMacros to ghost against the active shell's directory.
 function drawShellCard(id, list){
   const el = $(id);
-  if (!list.length){ paint(el, `<div class="empty">loading…</div>`); return; }
+  if (!list.length){ paint(el, `<div class="loading">loading…</div>`); return; }
   paint(el, list.map(m => `<button data-m="${esc(m.name)}"${
       m.need ? ` data-need="${esc(m.need)}"` : ""
     } title="${esc(m.label)} — runs in the terminal">${esc(m.label)}</button>`).join(""));
@@ -4236,7 +4293,7 @@ function renderPackagesInto(i){
   const el = $("doc" + i);
   if (!el) return;
   const d = packages;
-  if (!d){ el.innerHTML = `<div class="empty">loading…</div>`; return; }
+  if (!d){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
   if (d.error){ el.innerHTML = `<div class="empty">could not read the package list: ${esc(d.error)}</div>`; return; }
 
   const job = d.job || {}, busy = !!job.running;
@@ -4605,7 +4662,7 @@ async function openMemory(name){
   $("histFind").value = "";
   cancelSend();
   $("todoText").value = "";
-  $("todoList").innerHTML = `<div class="hint">loading…</div>`;
+  $("todoList").innerHTML = `<div class="loading">loading…</div>`;
   // Opening it is a re-read: both halves come off disk again, and the card
   // gets the same treatment so the number on the row you just pressed is not
   // the one from the last poll.
@@ -4937,18 +4994,25 @@ function shutSendBoxes(){
 function drawSendBox(live){
   const list = $("todoList");
   list.querySelectorAll(".sendbox").forEach(b => b.remove());
-  if (!todoSel || !live || todoOrdering || todoLogOn) return;
+  if (!todoSel || !live || todoOrdering || todoLogOn){ sendShownFor = ""; return; }
   const step = todoSel.step === null ? -1 : todoSel.step;
   const row = list.querySelector(
     `.todo[data-id="${CSS.escape(String(todoSel.id))}"][data-step="${step}"]`);
-  if (!row) return;
-  row.after(sendBoxEl({
+  if (!row){ sendShownFor = ""; return; }
+  const box = sendBoxEl({
     label: "Send this one?",
     sub: step >= 0 ? `step ${step + 1}` : "",
     placeholder: "anything to send with it (optional)",
     onSend: reallySend,
     onCancel: () => pickTodo(todoSel.id, todoSel.step),
-  }));
+  });
+  row.after(box);
+  // Only the first time this arrow arms, never again while it stays armed:
+  // the box is rebuilt on every draw, and a poll landing while it is open
+  // would otherwise replay the arrival two or three times a minute.
+  const key = `${todoSel.id}:${step}`;
+  if (key !== sendShownFor) arriveBox(box);
+  sendShownFor = key;
 }
 
 // A batch opening is news; a batch closing is news of a different kind — the
@@ -5071,6 +5135,11 @@ let todoItems = [];
 let todoSession = null;
 let todoUnsaved = {};       // {todo, memory} — what a session has not been told
 let todoSel = null;         // {id, step} — the arrow that is armed, if any
+// Which arrow's box has already unrolled. The box is rebuilt on every draw
+// (see drawSendBox), so without this a poll landing while it is open would
+// replay the arrival two or three times a minute — the animation belongs to
+// the arrow being pressed, not to the box being drawn.
+let sendShownFor = "";
 let todoOrdering = false;   // the rows are showing move controls instead
 // Reordering is the one edit held back. Everything else here is a decision —
 // ticked, crossed, dropped — and is written the moment it is made; arranging
@@ -5200,6 +5269,7 @@ function openDrop(row, id, step){
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="danger">Drop it</button></div>`;
   row.after(box);
+  arriveBox(box);
   const shut = () => box.remove();
   box.querySelector(".stop").onclick = shut;
   box.querySelector(".danger").onclick = () => {
@@ -5236,6 +5306,7 @@ function openReword(row, id, step){
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="primary">Save</button></div>`;
   row.after(box);
+  arriveBox(box);
   const ta = box.querySelector("textarea");
   ta.value = was;
   const dta = box.querySelector(".dta");
@@ -5631,7 +5702,7 @@ const stamp = t => new Date(t * 1000).toLocaleString(undefined,
 
 function drawHistory(){
   if (!todoLog){
-    $("todoHist").innerHTML = `<div class="hint">loading…</div>`;
+    $("todoHist").innerHTML = `<div class="loading">loading…</div>`;
     return;
   }
   if (!todoLog.length){
@@ -5871,9 +5942,26 @@ $("todoRevert").onclick = revertNotebook;
 
   // ---- the four views ------------------------------------------------------
   function setNbView(v){
-    root.querySelectorAll(".nbtabs button").forEach(b =>
-      b.classList.toggle("on", b.dataset.v === v));
-    root.querySelectorAll(".nbview").forEach(x => x.hidden = x.dataset.view !== v);
+    root.querySelectorAll(".nbtabs button").forEach(b => {
+      const on = b.dataset.v === v;
+      b.classList.toggle("on", on);
+      // The strip scrolls on a narrow screen, so the tab that just became
+      // current has to be brought into it — arriving on a view whose own tab
+      // is off the end of the strip reads as nothing having happened.
+      if (on) b.scrollIntoView({block: "nearest", inline: "nearest"});
+    });
+    // The incoming view arrives on the same fade content does — one vocabulary
+    // for "this is here now", rather than a tab switch being the one place on
+    // the page where something simply appears.
+    root.querySelectorAll(".nbview").forEach(x => {
+      const show = x.dataset.view === v, wasHidden = x.hidden;
+      x.hidden = !show;
+      if (show && wasHidden && !noMotion()){
+        x.classList.remove("justpainted");
+        void x.offsetWidth;
+        x.classList.add("justpainted");
+      }
+    });
     if (v === "bugs" && !bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
@@ -5937,7 +6025,7 @@ $("todoRevert").onclick = revertNotebook;
     let on = false, timer = null;
     const draw = rows => {
       pane.innerHTML = rows === null
-        ? `<div class="hint">loading…</div>`
+        ? `<div class="loading">loading…</div>`
         : !rows.length
         ? `<div class="hint">${bar.querySelector("input").value.trim()
              || bar.querySelector(".hwhen").value !== "0"
@@ -6930,6 +7018,7 @@ become that version's section when it is created">Changelog${
           },
         });
         body.appendChild(box);
+        arriveBox(box);   // appended by the click; nothing redraws it under us
       });
       // Same box the roadmap's bin opens, for the same reason: nothing here
       // can be undone, so the only thing between a deleted report and its
@@ -6947,6 +7036,7 @@ become that version's section when it is created">Changelog${
             <button type="button" class="stop">Cancel</button>
             <button type="button" class="danger">Delete it</button></div>`;
         body.appendChild(box);
+        arriveBox(box);
         box.querySelector(".stop").onclick = () => box.remove();
         box.querySelector(".danger").onclick = () => {
           const why = box.querySelector("input").value;

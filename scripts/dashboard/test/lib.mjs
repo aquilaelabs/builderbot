@@ -161,6 +161,31 @@ export async function animatedDuring(page, act){
 // opened report failed on "element is not stable" under load. Waiting on the
 // element's own animations is exact: no sleep to tune, and nothing to
 // re-tune when the duration changes.
+// Change a fixture out of band, then wait for the page to notice — asking
+// again each time instead of asking once and waiting.
+//
+// The server caches several verdicts behind short TTLs. The Claude auth
+// answer is 20 seconds, deliberately: reading it costs a whole node runtime
+// (357MB, 0.68s), and bypassing the cache once put the container out of
+// memory. The page re-asks on its own fifteen-second poll. So a single
+// refresh() straight after rewriting a fixture can be answered from the
+// cache, and the next honest answer is up to TTL-plus-a-poll away — a test
+// that refreshes once and then waits 25s is waiting on a question it has
+// already had answered, and 20 + 15 is more than 25.
+//
+// Nothing here holds a handle across a repaint either: the condition is
+// evaluated in the page on every pass.
+export async function refreshUntil(page, fn, { timeout = 45000, every = 1000 } = {}){
+  const until = Date.now() + timeout;
+  for (;;){
+    if (await page.evaluate(fn)) return;
+    if (Date.now() > until)
+      throw new Error(`refreshUntil: the condition never held in ${timeout}ms`);
+    await page.evaluate(() => refresh()).catch(() => {});
+    await sleep(every);
+  }
+}
+
 export async function openFold(page, sel){
   // Resolved to a handle first, and the wait done through that rather than
   // through the selector: these are often Playwright's own selector flavour
