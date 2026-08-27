@@ -12,7 +12,8 @@
 #   curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/vm/provision.sh
 #   sudo bash provision.sh --user bb --key "ssh-ed25519 AAAA..."
 #
-# It is safe to run again: every step checks before it acts.
+# It is safe to run again: every step checks before it acts, and a mount whose
+# source has CHANGED since last time is rewritten rather than left alone.
 set -euo pipefail
 
 USER_NAME="bb"
@@ -72,6 +73,7 @@ case "${ID:-}" in
 esac
 
 say() { printf '\n== %s\n' "$*"; }
+warn() { printf '\n!! %s\n' "$*" >&2; }
 
 say "packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -147,22 +149,77 @@ say "shares"
 # from a reboot without the projects share is a sandbox that builds the wrong
 # thing rather than failing.
 add_fstab() {
-    local line="$1" path="$2"
+    local line="$1" path="$2" hit lineno old tmp
     mkdir -p "$path"
-    grep -qsF " $path " /etc/fstab || echo "$line" >> /etc/fstab
+    # Matched on the MOUNTPOINT and then compared in full. The guard used to
+    # stop at "is this mountpoint mentioned", which made re-provisioning with a
+    # CHANGED source a silent no-op: the old entry stayed, `mount -a` remounted
+    # the old export, and the summary at the end listed the path as though the
+    # new one had taken. Somebody moved a share, ran this, and was told it had
+    # worked — which is the one outcome worse than an error.
+    # `|| true` is load-bearing under `set -o pipefail`: no match is the
+    # normal first-run case, and grep's exit 1 would otherwise take the whole
+    # script down before it had written a single mount.
+    hit="$(grep -nsF " $path " /etc/fstab | head -1 || true)"
+    if [ -z "$hit" ]; then
+        echo "$line" >> /etc/fstab
+        return
+    fi
+    lineno="${hit%%:*}"; old="${hit#*:}"
+    [ "$old" = "$line" ] && return
+    tmp="$(mktemp)"
+    awk -v n="$lineno" -v repl="$line" 'NR==n {print repl; next} {print}' \
+        /etc/fstab > "$tmp"
+    # cat rather than mv, so /etc/fstab keeps its own inode and permissions.
+    cat "$tmp" > /etc/fstab
+    rm -f "$tmp"
+    say "fstab: $path now comes from ${line%% *}"
+    printf '   it was %s\n' "${old%% *}"
 }
+declare -a MOUNTED=()
 for s in "${SHARES[@]:-}"; do
     [ -n "$s" ] || continue
     tag="${s%%:*}"; path="${s#*:}"
+    case "$path" in /*) ;; *) echo "--share mountpoint must be absolute — got '$path'" >&2; exit 1 ;; esac
     add_fstab "$tag $path virtiofs defaults,nofail 0 0" "$path"
+    MOUNTED+=("$path")
 done
 for n in "${NFS[@]:-}"; do
     [ -n "$n" ] || continue
     host="${n%%:*}"; rest="${n#*:}"; export_="${rest%%:*}"; path="${rest#*:}"
+    # HOST:EXPORT:PATH is three fields, and getting two produces nonsense
+    # rather than an error: export_ and path both come out as the export, so
+    # the mount lands on a directory named after the server's filesystem. A
+    # mountpoint that is not absolute is the same accident one colon further
+    # along, where mkdir -p then makes it relative to $PWD. Both have happened.
+    case "$rest" in
+        *:*) ;;
+        *) echo "--nfs wants HOST:EXPORT:PATH — '$n' has no mountpoint" >&2; exit 1 ;;
+    esac
+    case "$path" in
+        /*) ;;
+        *) echo "--nfs mountpoint must be absolute — got '$path' in '$n'" >&2; exit 1 ;;
+    esac
     add_fstab "$host:$export_ $path nfs defaults,nofail,_netdev 0 0" "$path"
+    MOUNTED+=("$path")
 done
-if [ "${#SHARES[@]}" -gt 0 ] || [ "${#NFS[@]}" -gt 0 ]; then
-    mount -a || echo "one of the mounts did not come up — see 'mount -a' above" >&2
+if [ "${#MOUNTED[@]}" -gt 0 ]; then
+    mount -a || true
+    # `nofail` is right at boot and wrong here: it means a share that cannot
+    # mount does so quietly, and `mount -a` still succeeds. Everything after
+    # this — the summary, and every compose file that resolves a bind against
+    # one of these paths — then behaves as though it had worked. So each one
+    # is checked rather than assumed, which is the difference between finding
+    # out now and finding out from an app that came up with no data.
+    for path in "${MOUNTED[@]}"; do
+        findmnt -rno TARGET -- "$path" >/dev/null 2>&1 && continue
+        warn "$path did NOT mount, and nofail means nothing said so."
+        printf '   Check the export exists and allows this host:\n'
+        printf '     showmount -e <server>\n'
+        printf '   On Unraid an export is a SHARE — /mnt/user/<share> — never a\n'
+        printf '   pool path like /mnt/cache/<share>, which is right for a bind\n'
+        printf '   mount and is not exported.\n'
+    done
 fi
 
 if [ -n "$TCP_ON" ]; then
