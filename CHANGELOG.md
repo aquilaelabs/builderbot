@@ -34,3 +34,5 @@
 - The dev instance lists what it publishes and what it mounts, in the same notation Unraid's Docker tab uses, and offers an Open link when there is exactly one port it could mean (1a98111)
 - A History and the changelog now open over the panel rather than replacing it — a large window on a desktop, the whole screen on a phone — so what you were reading them against is still there (112db93)
 - The dev instance lists its ports and mounts outright instead of behind a fold, and Open offers a choice when it publishes more than one port (112db93)
+- Modals fade in over a dimmed page, and the Resume / New conversation chooser arrives rather than snapping into place (63ce9a7)
+- The changelog fills the window it opens in and reads like a History does, instead of sitting in a small box at the top of it (63ce9a7)

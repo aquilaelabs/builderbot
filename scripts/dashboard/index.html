@@ -68,7 +68,10 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .logo{width:22px;height:22px;flex:0 0 auto;color:var(--accent);display:block;
   transition:color .2s ease}
 .logo.off{color:var(--bad)}
-@media(prefers-reduced-motion:reduce){ .logo{transition:none} }
+@media(prefers-reduced-motion:reduce){
+  .logo{transition:none}
+  .modal:not([hidden]),.modal:not([hidden])>.box,.pinmenu{animation:none}
+}
 .spacer{flex:1}
 .meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
@@ -358,9 +361,18 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* The dialogs — the command editor and the new-project form. Dialogs rather
    than cards of their own: each is a detour, and should hand the page back
    when it is done. */
-.modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.55);
+.modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.68);
   display:flex;align-items:safe center;justify-content:center;padding:16px;
   overflow:auto}   /* a soft keyboard can leave less height than the box */
+/* Every modal arrives rather than appearing: the room dims, and the box rises
+   into it. As an animation and not a transition, because these are toggled by
+   `hidden` — there is no frame in which a transition could start. One rule
+   covers all of them, so a modal cannot be added without it. */
+@keyframes modalIn{from{opacity:0} to{opacity:1}}
+@keyframes modalBoxIn{from{opacity:0;transform:translateY(10px) scale(.985)}
+  to{opacity:1;transform:none}}
+.modal:not([hidden]){animation:modalIn .16s ease}
+.modal:not([hidden])>.box{animation:modalBoxIn .19s cubic-bezier(.2,.7,.3,1)}
 .modal[hidden]{display:none}
 .modal .box{background:var(--panel);border:1px solid var(--line);border-radius:10px;
   width:min(520px,100%);max-height:90vh;overflow:auto;
@@ -374,8 +386,14 @@ button.on{background:#1f6f36;border-color:#2ea043}
    way out stay put however long the log is. */
 .modal .box.sheet{width:min(980px,100%);max-height:88vh;
   display:flex;flex-direction:column}
-.box.sheet .sheetslot{overflow:auto;min-height:0;flex:1 1 auto}
-.box.sheet .sheetslot>*{display:block}
+/* A column, so that what is being read fills the window rather than sitting
+   in a strip at the top of it: the filter bar keeps its own height and the
+   pane under it takes the rest. A log longer than the box grows past it and
+   the slot scrolls, which is why this is flex-grow and not a height. */
+.box.sheet .sheetslot{overflow:auto;min-height:0;flex:1 1 auto;
+  display:flex;flex-direction:column}
+.box.sheet .sheetslot>*{display:block;flex:0 0 auto}
+.box.sheet .sheetslot>*:last-child{flex:1 1 auto}
 @media(max-width:900px){
   .nbsheet{padding:0}
   .modal .box.sheet{width:100%;height:100%;max-height:none;
@@ -487,12 +505,12 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .verinit{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}
 .verinit .vstart{font:12px/1.5 var(--mono);flex:0 0 auto;width:8em}
 .verinit .vdir{flex:0 1 auto;min-width:0}
-/* The changelog, read in place. pre-wrap keeps the file's own line breaks —
-   it is a document someone wrote, not data to reflow. */
+/* The changelog. pre-wrap keeps the file's own line breaks — it is a document
+   someone wrote, not data to reflow. Otherwise it is a history: same padding,
+   no well and no border and no height of its own, because it is read in the
+   same window they are and a box inside that window is a box too many. */
 .verlogpane{font:12px/1.6 var(--mono);color:var(--ink);white-space:pre-wrap;
-  overflow-wrap:anywhere;background:var(--well,rgba(0,0,0,.15));
-  border:1px solid var(--line);border-radius:6px;padding:10px 12px;
-  margin-top:8px;max-height:16em;overflow-y:auto}
+  overflow-wrap:anywhere;padding:11px 14px}
 /* A card body that is prose-and-controls rather than rows: the same inner
    air .macros and .docbar give their cards. The Claude card ran its content
    to the card edge for want of exactly this. */
@@ -1056,9 +1074,14 @@ body.dragging .tab .lbl{cursor:grabbing}
   #tabR{border-radius:0 8px 0 0;border-left:0}
 }
 
+/* Built fresh each time it is opened, so the animation runs on the element
+   coming into being — the Resume/New chooser under a Claude button, and the
+   pane chooser under a tab, both of which used to snap into place. */
+@keyframes menuIn{from{opacity:0;transform:translateY(-5px)} to{opacity:1;transform:none}}
 .pinmenu{position:absolute;z-index:20;background:var(--panel);
   border:1px solid var(--line);border-radius:8px;padding:5px;display:flex;
-  gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+  gap:5px;box-shadow:0 6px 18px rgba(0,0,0,.5);
+  animation:menuIn .14s cubic-bezier(.2,.7,.3,1)}
 .pinmenu button{min-height:var(--tap)}
 /* The resume label can be a sentence, and the sidebar is narrow — wrap inside
    the card rather than hanging off its edge. */
@@ -1314,7 +1337,7 @@ body.dragging .tab .lbl{cursor:grabbing}
     <!-- Its own pane rather than the list's. The log used to be written into
          #todoList, which is why reading it meant the list going away; both
          are on screen at once now, one of them in the sheet. -->
-    <div id="todoHist" hidden></div>
+    <div class="field" id="todoHist" hidden></div>
     <div class="field" id="todoField"><div id="todoList"></div></div>
     </div>
     <!-- What Claude remembers, on its own tab: a handful of files nobody
@@ -4536,11 +4559,7 @@ function makeNotebook(project){
     sheetHome = els.map(el => [el, el.parentElement, el.nextSibling, el.hidden]);
     els.forEach(el => { el.hidden = false; slot.appendChild(el); });
     sheetClosed = onClose || null;
-    sheet.hidden = false;
-    if (!noMotion())
-      sheet.querySelector(".box").animate(
-        [{opacity: 0, transform: "translateY(8px) scale(.99)"},
-         {opacity: 1, transform: "none"}], {duration: 140, easing: "ease"});
+    sheet.hidden = false;   // the fade is the stylesheet's, for every modal
   }
 
   function closeSheet(){
