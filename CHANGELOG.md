@@ -32,3 +32,5 @@
 - A project's notebook opens on Memory, keeps the tab you were on while it stays open, and starts fresh at Memory once you close it (0bb10d2)
 - The dev instance now reads like the rest of the Artifacts list: a docker pill, the container's own name, and whether it is running beside it (ea944dd)
 - The dev instance lists what it publishes and what it mounts, in the same notation Unraid's Docker tab uses, and offers an Open link when there is exactly one port it could mean (1a98111)
+- A History and the changelog now open over the panel rather than replacing it — a large window on a desktop, the whole screen on a phone — so what you were reading them against is still there (112db93)
+- The dev instance lists its ports and mounts outright instead of behind a fold, and Open offers a choice when it publishes more than one port (112db93)
