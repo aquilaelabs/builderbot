@@ -4,10 +4,40 @@
 // upstream is dead in the harness (nothing listens on the ttyd port), which
 // pins the 502 path; the live relay is covered by using the dashboard.
 import { launch, newPage, ok, done, URL } from './lib.mjs';
+import http from 'node:http';
 
 // Plain fetches first — no credentials at all, straight from node.
 const bare = async (path, opts = {}) =>
   fetch(URL.replace(/\/$/, '') + path, { redirect: 'manual', ...opts });
+
+// ...but not for the page itself, which needs node:http instead of fetch.
+// undici's parser asserts — `assert(!this.paused)` — and takes the whole
+// process down when a body bigger than its buffer meets a connection close,
+// and every response here ends in one: Python's BaseHTTPRequestHandler speaks
+// HTTP/1.0 and closes after each. It is latent until the body is large enough,
+// so this file died the day the dashboard page crossed 128KiB gzipped, having
+// sat 119 bytes under it — and it died by CRASHING, after printing that every
+// test passed, so the file's own tally said 21/21 while the suite went red.
+//
+// The bytes are not in question: curl gets Content-Length and exactly that
+// many, gunzipping to the file byte for byte, and browsers are unaffected.
+// This is the client, and only in tests.
+const bigGet = (path, headers = {}) => new Promise((resolve, reject) => {
+  const u = new global.URL(URL.replace(/\/$/, '') + path);
+  const req = http.request(
+    { hostname: u.hostname, port: u.port, path: u.pathname, headers },
+    (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => resolve({
+        status: res.statusCode,
+        headers: { get: (k) => res.headers[k.toLowerCase()] ?? null },
+        body: Buffer.concat(chunks),
+      }));
+    });
+  req.on('error', reject);
+  req.end();
+});
 
 let r = await bare('/');
 ok(r.status === 302 && r.headers.get('location').startsWith('/login'),
@@ -53,9 +83,9 @@ ok(/Max-Age=0/.test(r.headers.get('set-cookie') || ''), 'logout clears the cooki
 const AUTHH = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
 r = await bare('/api/status', { headers: { ...AUTHH, 'Accept-Encoding': 'gzip' } });
 ok(r.headers.get('content-encoding') === 'gzip', 'the status snapshot travels gzipped');
-r = await bare('/', { headers: { ...AUTHH, 'Accept-Encoding': 'gzip' } });
+r = await bigGet('/', { ...AUTHH, 'Accept-Encoding': 'gzip' });
 const zipped = +r.headers.get('content-length');
-const plain = (await (await bare('/', { headers: AUTHH })).text()).length;
+const plain = (await bigGet('/', AUTHH)).body.length;
 // A ratio, not a byte count: the point is that the one file is compressed to
 // a fraction of itself, and a fixed ceiling set to whatever the page happened
 // to weigh becomes a tripwire that the next feature trips. The absolute
