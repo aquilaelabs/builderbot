@@ -81,16 +81,47 @@ Two paths. The second needs no tooling on your side at all.
 
 ### From a cloud image (automatic)
 
-Download a Debian 12 **genericcloud** qcow2, resize it, and boot it with the
-seed in `vm/cloud-init/` attached as a second drive labelled `cidata`. Fill in
+Download an Ubuntu 26.04 **cloud** image (or a Debian **genericcloud** qcow2),
+resize it, and boot it with the seed in `vm/cloud-init/` attached as a second
+drive labelled `cidata`. Fill in
 the ssh key and the share tags first. `growpart` sizes the root filesystem,
 cloud-init installs Docker and mounts the shares, and the machine is ready on
 first boot.
 
 ### From an ordinary install (reliable)
 
-Install Debian 12 or Ubuntu in an Unraid VM the way you would any other, then
-run one script inside it:
+Install **Ubuntu Server 26.04 LTS** (`ubuntu-26.04-live-server-amd64.iso`) —
+headless, no desktop. It is what most Docker instructions assume, it turns on
+unattended security updates by default, which is worth having on a box nobody
+logs into, and Docker's repository already publishes for it (`resolute`).
+Debian 13 works identically if you would rather have the leaner machine;
+`provision.sh` accepts either.
+
+Take the installer's defaults except for four screens, where the default is
+wrong for this particular machine:
+
+- **Storage — use an entire disk, but untick *Set up this disk as an LVM
+  group*.** Guided LVM has a long habit of leaving much of the volume group
+  unallocated, so a 64G disk becomes a ~32G root and you find out when Docker
+  fills it. Check the root filesystem's size on the summary screen before
+  confirming. Plain ext4 is also simpler to grow later — `qemu-img resize`,
+  `growpart`, `resize2fs`, with no `lvextend` in the middle — and the
+  snapshots LVM would give you are already available a layer down, in qcow2.
+  No encryption: it would want a passphrase at every boot on a headless box.
+- **Install OpenSSH server — tick it.** It is off by default and it is how
+  BuilderBot reaches the daemon; skip it and you are fixing that through the
+  VNC console. Import or paste the key here.
+- **Featured snaps — do not tick Docker.** The snap is not what
+  `provision.sh` installs, and two Dockers will argue.
+- **Network — DHCP is fine, but pin the address.** `DOCKER_HOST` and every
+  web UI you open point at it, so a lease that moves breaks both. Set it
+  static, or reserve it on the router against the MAC in the domain XML.
+
+Use `bb` as the username so it matches `--user bb` below, and take the normal
+Ubuntu Server rather than *minimized* — minimized strips editors and man
+pages, and this is a box you will eventually log into to work something out.
+
+Then run one script inside it:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/vm/provision.sh
@@ -103,15 +134,113 @@ sudo bash provision.sh \
 
 It is safe to run again; every step checks before it acts.
 
+One thing it does that is worth knowing about, because it is the failure a
+fresh release usually hands you: Docker's apt repository can lag a new Ubuntu
+or Debian by weeks, and the symptom is an `apt` 404 naming a URL and not a
+reason. The script asks the repository which suites exist before committing to
+one, and falls back to the newest that does — the packages are the same build,
+only the suite name differs — saying so when it does.
+
+## The domain XML
+
+`vm/unraid-domain.xml` is the whole machine. Create the VM in **Form view**
+first so Unraid makes the domain folder and the vdisk, then switch to **XML
+view** and paste it over what is there — keeping the `<uuid>` Unraid gave you,
+because the OVMF nvram file is named after it and a new one orphans it.
+
+Five things in it differ from Unraid's placeholder, each for a reason:
+
+| | placeholder | this | why |
+|---|---|---|---|
+| machine | `pc-i440fx` | `q35` | UEFI firmware paired with a 1996 chipset; q35 is what OVMF is for |
+| clock | `localtime` | `utc` | localtime is a Windows guest's convention |
+| memory backing | `nosharepages` | `memfd` + `shared` | virtiofs cannot work without it, and fails *silently* — the mounts simply never appear |
+| cputune | vCPU 0 pinned to cpuset 0 | none | that is the host's busiest core |
+| disk | *(absent)* | qcow2, `discard=unmap` | so the image shrinks again when Docker prunes, instead of only ever growing |
+
 ## Unraid settings that matter
 
 - **Network: bridged (`br0`).** The VM gets its own address on your LAN, which
   is what makes a container's web UI reachable at `http://<vm-ip>:<port>` from
-  your browser with no forwarding and no proxy.
-- **Shares: pass them to the VM** rather than exporting NFS, where your Unraid
-  version offers it — that is virtiofs on recent releases and 9p on older
-  ones, and either beats a network filesystem on the same host. NFS is the
-  fallback, and `provision.sh --nfs` writes those entries instead.
+  your browser with no forwarding and no proxy — *and* lets BuilderBot reach
+  the daemon.
+
+  **`br0` exists only if bridging is on**: Settings → Network Settings →
+  *Enable bridging* → Yes, which needs the array stopped. If the VM dialog
+  offers you `virbr0` and `bond0` but no `br0`, that is what is missing.
+  `virbr0` is libvirt's NAT network — BuilderBot can still reach the VM, but
+  your browser needs a port forward for every web UI. Avoid `bond0` unless you
+  can confirm it gives a real bridge rather than **macvtap**, which blocks
+  host-to-guest traffic by design and would leave BuilderBot unable to reach
+  the daemon at all. That failure is quiet: everything looks up.
+
+- **Network model: `virtio-net`.** The others are emulated legacy NICs, for
+  guests without virtio drivers. Ubuntu and Debian both have them.
+- **Shares: NFS first, virtiofs once it is up.** virtiofs is the faster
+  answer — same host, no network stack — and it is what you want in the end.
+  It is not what you want on the first boot: `virtiofsd` is a host-side
+  daemon, and when it refuses to start the VM will not start either, with
+
+  ```
+  internal error: virtiofsd died unexpectedly
+  ```
+
+  which says nothing about which of its several reasons applied. Read
+  `/var/log/libvirt/qemu/<vm-name>.log` before changing anything — where the
+  failure lands in that log tells you which kind you have.
+
+  Observed once, on libvirt 12.2.0 with QEMU 10.2.3:
+
+  ```
+  Starting external device: virtiofsd
+  /usr/libexec/virtiofsd --fd=40 --shared-dir /mnt/user/development
+  ...
+  libvirt:  error : libvirtd quit during handshake: Input/output error
+  ```
+
+  Both directories were accepted and it died at the *handshake*, before
+  touching a file — so that one is not about the paths, and not about shfs.
+  It is virtiofsd and libvirt failing to talk. The thing to try there is
+  telling virtiofsd not to sandbox itself with user namespaces, which is what
+  it does by default and what a host can refuse:
+
+  ```xml
+  <binary path="/usr/libexec/virtiofsd">
+    <sandbox mode="chroot"/>
+  </binary>
+  ```
+
+  inside the `<filesystem>` element. If that does not settle it, suspect the
+  virtiofsd shipped against a very new libvirt rather than anything in this
+  XML, and stay on NFS — it costs a little throughput and nothing else.
+
+  So bring the machine up with NFS, which needs no host-side daemon:
+
+  ```bash
+  sudo bash provision.sh --user bb --key "ssh-ed25519 …" \
+      --nfs 192.168.1.15:/mnt/user/development:/workspace \
+      --nfs 192.168.1.15:/mnt/cache/appdata/builderbot-dev:/devdata
+  ```
+
+  (Export both from Unraid: *Shares → share → NFS Security Settings*.)
+
+  To move to virtiofs later, add a `<filesystem>` block per share — the
+  `<memoryBacking>` it needs is already in the XML for exactly this — and
+  drop the matching `fstab` lines:
+
+  ```xml
+  <filesystem type="mount" accessmode="passthrough">
+    <driver type="virtiofs"/>
+    <binary path="/usr/libexec/virtiofsd">
+      <sandbox mode="chroot"/>
+    </binary>
+    <source dir="/mnt/user/development"/>
+    <target dir="workspace"/>
+  </filesystem>
+  ```
+
+  The `target dir` is the *tag*, not a path; `provision.sh --share
+  workspace:/workspace` is what mounts it.
 - **Guest agent.** `qemu-guest-agent` is installed by both paths so Unraid can
   shut the VM down cleanly instead of pulling the plug.
 

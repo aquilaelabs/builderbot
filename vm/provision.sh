@@ -75,13 +75,44 @@ say "docker"
 # Docker's own repository rather than the distribution's: the compose plugin
 # and a current engine are the entire point of this machine, and Debian's
 # docker.io lags both.
+# Which suite to ask Docker for. Normally this release's own codename — but
+# Docker's repository can lag a brand-new Ubuntu or Debian by weeks, and the
+# symptom is an apt 404 that names a URL and not a reason. So the suite is
+# checked before it is committed to, and falls back to the newest stable one
+# that exists: the packages are the same build, only the suite name differs.
+docker_suite() {
+    local try
+    for try in "$@"; do
+        [ -n "$try" ] || continue
+        # -fs and not -fsS: a miss here is the normal path into the fallback,
+        # and curl announcing its own 404 first would read as the failure.
+        if curl -fs -o /dev/null --max-time 15 \
+            "https://download.docker.com/linux/${ID}/dists/${try}/Release"; then
+            printf '%s' "$try"
+            return 0
+        fi
+    done
+    return 1
+}
+
 if ! command -v docker >/dev/null 2>&1; then
+    case "$ID" in
+        ubuntu) suite="$(docker_suite "$VERSION_CODENAME" noble jammy)" || true ;;
+        *)      suite="$(docker_suite "$VERSION_CODENAME" bookworm bullseye)" || true ;;
+    esac
+    [ -n "${suite:-}" ] || {
+        echo "docker publishes nothing this machine can use (tried ${VERSION_CODENAME})" >&2
+        exit 1
+    }
+    [ "$suite" = "$VERSION_CODENAME" ] \
+        || echo "note: docker has no ${VERSION_CODENAME} suite yet — using ${suite}, which is the same build"
+
     install -m 0755 -d /etc/apt/keyrings
     curl -fsSL "https://download.docker.com/linux/${ID}/gpg" \
         | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     chmod a+r /etc/apt/keyrings/docker.gpg
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg]" \
-         "https://download.docker.com/linux/${ID} ${VERSION_CODENAME} stable" \
+         "https://download.docker.com/linux/${ID} ${suite} stable" \
         > /etc/apt/sources.list.d/docker.list
     apt-get update -qq
     apt-get install -y -qq docker-ce docker-ce-cli containerd.io \
