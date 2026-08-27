@@ -123,15 +123,32 @@ pages, and this is a box you will eventually log into to work something out.
 
 Then run one script inside it:
 
-The repository is private, so the VM cannot fetch the script itself. Copy it
-from the array, or pipe it straight in without copying anything:
+The repository is private, so the VM cannot fetch the script itself — copy it
+over. **From the Unraid terminal**, where that path is the host's own; inside
+BuilderBot the same file is `/workspace/BuilderBot/vm/provision.sh`.
 
 ```bash
-# from the Unraid terminal
-ssh bb@<vm-ip> 'sudo bash -s -- --user bb --key "ssh-ed25519 AAAA…" \
-    --nfs 192.168.1.15:/mnt/user/development:/workspace' \
-    < /mnt/user/development/BuilderBot/vm/provision.sh
+scp /mnt/user/development/BuilderBot/vm/provision.sh bb@<vm-ip>:
+ssh bb@<vm-ip>
 ```
+
+then, in that session:
+
+```bash
+sudo bash provision.sh --user bb \
+    --key "ssh-ed25519 AAAA… bb-sandbox" \
+    --nfs 192.168.1.15:/mnt/user/development:/workspace \
+    --nfs 192.168.1.15:/mnt/cache/appdata/builderbot-dev:/devdata
+```
+
+Both steps ask for the password you set in the installer, because the VM has
+no `authorized_keys` yet — `--key` is what puts one there, so the first
+connection is necessarily password-based. After this, BuilderBot gets in
+without one.
+
+Do not try to save the copy by piping the script into `ssh`: `sudo` wants a
+tty to prompt on, a non-interactive `ssh` gives it none, and stdin is already
+carrying the script.
 
 **`--key` is a PUBLIC key** — the `.pub` half, appended to the VM's
 `authorized_keys`. Nothing private is ever put on this machine. The private
@@ -242,7 +259,33 @@ Five things in it differ from Unraid's placeholder, each for a reason:
       --nfs 192.168.1.15:/mnt/cache/appdata/builderbot-dev:/devdata
   ```
 
-  (Export both from Unraid: *Shares → share → NFS Security Settings*.)
+  Export them from Unraid first: *Shares → share → NFS Security Settings*,
+  **Security: Private**, with a rule naming only the VM:
+
+  ```
+  192.168.1.151(sec=sys,rw,all_squash,anonuid=99,anongid=100)
+  ```
+
+  `all_squash` with `anonuid=99,anongid=100` is the part that matters beyond
+  access control. BuilderBot runs as uid 99 / gid 100, which is what the array
+  files already are; the VM's own user is uid 1000 and containers inside it
+  often write as root. Without squashing, anything the sandbox creates lands
+  owned by 1000 or 0 and **BuilderBot cannot modify it** — a permission error
+  in a session, on a file it made a minute earlier. Most Unraid examples show
+  `no_root_squash`, which produces exactly that.
+
+  **Do not export `appdata`.** Unraid exports *shares*, not folders, so
+  exporting `/mnt/cache/appdata/builderbot-dev` means exporting all of
+  appdata — every other container's configuration, handed to the sandbox.
+  That is the reach the VM exists to remove. Either skip `/devdata` until
+  something needs it (a compose that never mentions `${BB_DEV_DATA}` does
+  not care), or give it a share of its own and repoint BuilderBot's
+  `/devdata` at the same place so both sides still agree on the path.
+
+  `ro` instead of `rw` on the projects share is worth knowing about: the
+  sandbox could build from your source and never alter it. It breaks any
+  compose that writes to a bind mount inside the project, which is common
+  enough that it is not where I would start.
 
   To move to virtiofs later, add a `<filesystem>` block per share — the
   `<memoryBacking>` it needs is already in the XML for exactly this — and
@@ -266,20 +309,43 @@ Five things in it differ from Unraid's placeholder, each for a reason:
 
 ## Pointing BuilderBot at it
 
-One variable in the container's template:
+Three settings on the container's template, then the proxy comes off.
 
+**1. Teach BuilderBot the VM's host key first.** This is the step that will
+otherwise stop you with nothing useful in the log: `docker -H ssh://…` shells
+out to `ssh`, the dashboard runs it non-interactively, and an unknown host key
+makes ssh refuse rather than ask. From a session:
+
+```bash
+ssh-keyscan -H <vm-ip> >> ~/.ssh/known_hosts
 ```
-DOCKER_HOST=ssh://bb@<vm-ip>
-```
 
-ssh rather than an open Docker port: authentication is the key you installed,
-and nothing has to listen. `provision.sh --tcp` will expose `2375`
-unauthenticated if ssh proves awkward — that is root on the sandbox to anyone
-who can reach it, which is tolerable only because the sandbox holds nothing.
-Keep it off the LAN either way.
+`~` is the home volume, so this survives a container restart.
 
-Then remove the socket proxy's address, and the proxy itself. BuilderBot no
-longer needs the host's daemon.
+**2. `DOCKER_HOST=ssh://bb@<vm-ip>`.** ssh rather than an open Docker port:
+authentication is the key you installed, and nothing has to listen.
+`provision.sh --tcp` exposes `2375` unauthenticated if ssh proves awkward —
+that is root on the sandbox to anyone who can reach it, tolerable only because
+the sandbox holds nothing. Keep it off the LAN either way.
+
+**3. `DOCKER_HOST_PATHS=/workspace:/workspace`** — and `/devdata:/devdata` if
+you mounted that too. An identity mapping, because the VM has the shares at
+the same paths this container does. It is accepted without being checked
+against this container's mount table, which describes its own mounts and says
+nothing about the VM's, and it makes the path checks fall silent: a bind the
+daemon resolves to the same directory is not a problem, and is no longer
+reported as one.
+
+Then delete the socket proxy container. BuilderBot has no remaining reason to
+reach the host's daemon, which is the actual prize here — not another layer of
+filtering, but one fewer thing holding the keys to the real containers.
+
+**What does not change:** the classic builder stays on. BuilderBot forces
+`DOCKER_BUILDKIT=0` because buildx attaches to a helper container and a socket
+proxy refuses that; against the VM's own daemon buildx would work, and with it
+the inline layer cache. That is worth doing and is not part of this switch —
+it needs its own verification, and the classic builder is correct against a
+real daemon, only slower to rebuild.
 
 ## What is deliberately not in it
 
