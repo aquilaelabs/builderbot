@@ -25,8 +25,13 @@ usage() {
 usage: provision.sh [options]
 
   --user NAME          the account Docker runs under and ssh lands on (bb)
-  --key "ssh-ed25519 …"  public key allowed to reach it — this is how
-                       BuilderBot connects, and the reason no port is opened
+  --key "ssh-ed25519 …"  a PUBLIC key, appended to this machine's
+                       authorized_keys. It is the .pub half and nothing else:
+                       the private key stays on BuilderBot, shielded in
+                       /secrets/ssh where no session can read it, and this
+                       machine never holds it and never connects out. This is
+                       how BuilderBot reaches the daemon, and the reason no
+                       Docker port has to be opened at all.
   --share TAG:PATH     a virtiofs/9p share Unraid passes in, mounted at PATH.
                        Repeatable. PATH MUST match the path BuilderBot uses.
   --nfs HOST:EXPORT:PATH   the same thing over NFS, when a share cannot be
