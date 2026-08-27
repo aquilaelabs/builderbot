@@ -89,7 +89,7 @@
          this whole block so it stops booting from the ISO. -->
     <disk type="file" device="cdrom">
       <driver name="qemu" type="raw"/>
-      <source file="/mnt/user/isos/ubuntu-24.04-live-server-amd64.iso"/>
+      <source file="/mnt/user/isos/ubuntu-26.04-live-server-amd64.iso"/>
       <target dev="sda" bus="sata"/>
       <readonly/>
       <boot order="1"/>

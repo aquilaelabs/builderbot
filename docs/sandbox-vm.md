@@ -81,19 +81,21 @@ Two paths. The second needs no tooling on your side at all.
 
 ### From a cloud image (automatic)
 
-Download a Debian 12 **genericcloud** qcow2, resize it, and boot it with the
-seed in `vm/cloud-init/` attached as a second drive labelled `cidata`. Fill in
+Download an Ubuntu 26.04 **cloud** image (or a Debian **genericcloud** qcow2),
+resize it, and boot it with the seed in `vm/cloud-init/` attached as a second
+drive labelled `cidata`. Fill in
 the ssh key and the share tags first. `growpart` sizes the root filesystem,
 cloud-init installs Docker and mounts the shares, and the machine is ready on
 first boot.
 
 ### From an ordinary install (reliable)
 
-Install **Ubuntu Server 24.04 LTS** — headless, no desktop; it is what most
-Docker instructions assume and it turns on unattended security updates by
-default, which is worth having on a box nobody logs into. Debian 12 works
-identically if you would rather have the leaner machine; `provision.sh`
-accepts either. Then run one script inside it:
+Install **Ubuntu Server 26.04 LTS** (`ubuntu-26.04-live-server-amd64.iso`) —
+headless, no desktop. It is what most Docker instructions assume, it turns on
+unattended security updates by default, which is worth having on a box nobody
+logs into, and Docker's repository already publishes for it (`resolute`).
+Debian 13 works identically if you would rather have the leaner machine;
+`provision.sh` accepts either. Then run one script inside it:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/vm/provision.sh
@@ -105,6 +107,13 @@ sudo bash provision.sh \
 ```
 
 It is safe to run again; every step checks before it acts.
+
+One thing it does that is worth knowing about, because it is the failure a
+fresh release usually hands you: Docker's apt repository can lag a new Ubuntu
+or Debian by weeks, and the symptom is an `apt` 404 naming a URL and not a
+reason. The script asks the repository which suites exist before committing to
+one, and falls back to the newest that does — the packages are the same build,
+only the suite name differs — saying so when it does.
 
 ## The domain XML
 
