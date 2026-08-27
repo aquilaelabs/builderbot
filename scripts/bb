@@ -393,6 +393,31 @@ emu_avd() {
 #
 # Prints the vendor string on success and nothing on failure; the caller reads
 # the exit status.
+# Is anything actually listening on :0?
+#
+# The socket FILE outliving the server is the case this exists for. Xorg leaves
+# /tmp/.X11-unix/X0 behind when it dies, so `[ -S ... ]` answers yes for a
+# display nothing is behind — and every check downstream then blames EGL for a
+# missing X server. Observed on 27 Aug: the doctor said "nvidia EGL is
+# installed but gave no vendor driver on the X display" while the truth was
+# that Xorg had exited hours before, which cost a diagnosis working outwards
+# from the driver rather than inwards from the process.
+#
+# So connect to it rather than stat it. Python because it is guaranteed here
+# and bash cannot open a unix socket.
+x_display_up() {
+    [ -S /tmp/.X11-unix/X0 ] || return 1
+    python3 - <<'XPY' 2>/dev/null
+import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(2)
+try:
+    s.connect("/tmp/.X11-unix/X0")
+except OSError:
+    sys.exit(1)
+XPY
+}
+
 gpu_gles_ok() {
     [ -n "${DISPLAY:-}" ] || return 1
     command -v python3 >/dev/null 2>&1 || return 1
@@ -465,7 +490,7 @@ cmd_emu() {
             local gpu vendor
             if [ -n "${ANDROID_EMULATOR_GPU:-}" ]; then
                 gpu="$ANDROID_EMULATOR_GPU"
-            elif [ -S /tmp/.X11-unix/X0 ] && vendor="$(DISPLAY="${DISPLAY:-:0}" gpu_gles_ok)"; then
+            elif x_display_up && vendor="$(DISPLAY="${DISPLAY:-:0}" gpu_gles_ok)"; then
                 gpu=host
                 export DISPLAY="${DISPLAY:-:0}"
                 log "hardware rendering: EGL answers on ${DISPLAY} (${vendor})"
@@ -545,7 +570,7 @@ cmd_emu() {
             local v
             if [ -n "${ANDROID_EMULATOR_GPU:-}" ]; then
                 printf 'ANDROID_EMULATOR_GPU is set: %s (used as given)\n' "$ANDROID_EMULATOR_GPU"
-            elif [ ! -S /tmp/.X11-unix/X0 ]; then
+            elif ! x_display_up; then
                 printf 'software (swiftshader_indirect): no X display for the GPU\n'
                 command -v Xorg >/dev/null 2>&1 \
                     || printf '  this image has no X server — the GPU path needs one (see 48-gpu-display)\n'
@@ -2500,14 +2525,16 @@ cmd_doctor() {
         # server carrying its own GLX module and there was none. So ask EGL.
         elif vendor="$(DISPLAY="${DISPLAY:-:0}" gpu_gles_ok)"; then
             printf '  [ok]   nvidia graphics stack usable (EGL vendor: %s)\n' "$vendor"
-        elif [ -S /tmp/.X11-unix/X0 ]; then
+        elif x_display_up; then
             printf '  [warn] nvidia EGL is installed but gave no vendor driver on the X display\n'
             printf '         — Mesa answering means llvmpipe; the emulator will use software\n'
         else
             printf '  [warn] nvidia EGL is installed but has no display to render on\n'
             printf '         — %s; the emulator will use software (bb emu gpu)\n' \
                 "$(command -v Xorg >/dev/null 2>&1 \
-                   && echo "the X server did not start, see /var/log/xorg-builderbot.log" \
+                   && { [ -S /tmp/.X11-unix/X0 ] \
+                        && echo "the X server started and has gone — a stale socket is all that is left, see /var/log/xorg-builderbot.log" \
+                        || echo "the X server did not start, see /var/log/xorg-builderbot.log"; } \
                    || echo "this image has no X server")"
         fi
     elif command -v nvidia-smi >/dev/null 2>&1; then
