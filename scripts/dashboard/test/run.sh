@@ -447,6 +447,8 @@ fresh() {
     rm -f "$S/state/tabs.json" "$S/state/cards.json" "$S/state/todos.json" \
           "$S/state/bugs.json"
     echo '["delta"]' > "$S/state/excluded-projects.json"   # a test that excludes must not hand that on
+    rm -f "$S/state/locked-projects.json"                  # ...nor one that locks
+    rm -f "$S/state/pinned-projects.json"                  # ...nor one that unpins
     # Projects a test created through /api/create go too — anything that is
     # not one of the five fixtures. Scoped to $S, like every rm in this file.
     find "$S/ws" -maxdepth 1 -mindepth 1 -type d \

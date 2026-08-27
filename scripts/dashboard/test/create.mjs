@@ -11,6 +11,22 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
 await page.goto(URL);
 await ready(page);
 
+// Declared here, not down beside the allow-list tests where they began:
+// the rename section above those uses them, and `const` in a module has a
+// temporal dead zone rather than being hoisted.
+const post = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
+  const r = await fetch(u, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  return r.status;
+}, [body, api]);
+// The same call, keeping the body: sanitizing is asserted on the name that
+// comes back, which is the only place the answer actually exists.
+const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
+  const r = await fetch(u, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  return { status: r.status, body: await r.json().catch(() => ({})) };
+}, [body, api]);
+
 // ---- the dialog --------------------------------------------------------
 ok(await page.$eval('#projects #bNewProj', b => b.textContent.includes('New project')),
    'New project sits at the foot of the Projects card');
@@ -26,11 +42,35 @@ ok(await page.$eval('#pUrlField', el => !el.hidden)
    'clone mode shows the URL field and takes the green');
 ok(cloneSlide.some(k => k.includes('pUrlField')),
    '...sliding in from its tab\'s side, like the view switch');
-ok(await page.$eval('#pNameField', el => el.hidden)
+ok(await page.$eval('#pNameField', el => !el.hidden)
    && await page.$eval('#pAboutField', el => el.hidden),
-   'clone mode asks for nothing but the URL — name and notes come from the repo');
+   'clone mode asks for a name as well as the URL — only the notes come from the repo');
+// The name follows the address, so the common case is still no typing...
+await page.fill('#pUrl', 'https://github.com/owner/radarr.git');
+ok(await page.$eval('#pName', el => el.value) === 'radarr',
+   '...prefilled from the address, .git and all stripped off');
+// ...and stops following the moment somebody wants two of the same repo.
+await page.fill('#pName', 'radarr-4k');
+await page.fill('#pUrl', 'https://github.com/owner/radarr');
+ok(await page.$eval('#pName', el => el.value) === 'radarr-4k',
+   '...but a name typed by hand is not overwritten by the next keystroke');
+await page.fill('#pUrl', '');
 await page.click('#pLocal');
-ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local brings the name field back');
+ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local keeps the name field');
+// The preview says what the directory will be called, and only when that is
+// not what was typed.
+await page.fill('#pName', 'My New App');
+ok(await page.$eval('#pNamePreview', el => !el.hidden && /My-New-App/.test(el.textContent)),
+   'a name GitHub would rewrite is previewed as the directory it becomes');
+await page.fill('#pName', 'plain');
+ok(await page.$eval('#pNamePreview', el => el.hidden),
+   '...and stays quiet when there is nothing to say');
+// Put the field back as it was found: a mode switch does not clear it, only
+// reopening does, and the refusal below needs the name genuinely empty or it
+// submits a valid one and closes the dialog out from under everything after.
+// Set rather than filled, because page.fill focuses the input and the very
+// next assertion is that switching tabs leaves no cursor anywhere.
+await page.$eval('#pName', el => { el.value = ''; el.blur(); });
 // Neither tab puts a cursor anywhere. A focused field brings the on-screen
 // keyboard up with it, over half of the dialog that just opened — so the
 // field is picked by whoever wants to type in it.
@@ -74,27 +114,107 @@ ok(marker > 0, 'its CLAUDE.md carries the environment block');
 ok(md.indexOf('A widget frobnicator') > marker,
    '...with the given notes below the end marker');
 
+// A project made after anything has been pinned is pinned itself. Without
+// that it lands on disk and never reaches the sidebar — created, and to the
+// operator indistinguishable from gone. Unpinning first is what brings the
+// pins file into existence; while there is none, everything is pinned anyway
+// and this would prove nothing.
+await page.evaluate(() => setProjectPinned('beta', false));
+await page.waitForFunction(
+  () => ![...document.querySelectorAll('#projects .row .name')]
+          .some(n => n.textContent.trim() === 'beta'), { timeout: 15000 });
+await page.click('#bNewProj');           // zeta's create closed the dialog
+await page.waitForSelector('#pmodal:not([hidden])');
+await page.fill('#pName', 'pinme');
+await page.click('#pCreate');
+await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+  .some(n => n.textContent === 'pinme'), { timeout: 15000 });
+ok(true, 'a project created while a pins file exists still reaches the sidebar');
+
+// ---- renaming ----------------------------------------------------------
+// The button is nothing; the migration is the job. A project's name is its key
+// in a dozen stores, and every one of them fails the same quiet way when it is
+// missed — the directory is there under its new name and its roadmap is not.
+// The pins file is the one that is trivial to seed and to read back, so it
+// stands in for the table: if the name moved there it moved by the same code
+// path everywhere else.
+ok(JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8')).includes('pinme'),
+   'the pins file knows the project before the rename');
+const rn = await postJson({ name: 'pinme', to: 'pinned-again' }, '/api/rename');
+ok(rn.status === 200 && rn.body.name === 'pinned-again',
+   'renaming answers with the name it actually made');
+ok(existsSync(`${DIR}/ws/pinned-again/.git`) && !existsSync(`${DIR}/ws/pinme`),
+   '...the directory moved, and nothing was left behind under the old name');
+const pins = JSON.parse(readFileSync(`${DIR}/state/pinned-projects.json`, 'utf8'));
+ok(pins.includes('pinned-again') && !pins.includes('pinme'),
+   '...and the state keyed to the old name came with it');
+ok(Array.isArray(rn.body.moved) && rn.body.moved.length > 0 && !rn.body.failed.length,
+   '...reporting what moved rather than only that it worked');
+await page.waitForFunction(() => [...document.querySelectorAll('#projects .name')]
+  .some(n => n.textContent === 'pinned-again'), { timeout: 15000 });
+ok(true, '...and the row is the new name');
+
+// The refusals. A name already taken, a project that is not there, and the
+// name it already has — each answered rather than half-done.
+ok(await post({ name: 'pinned-again', to: 'alpha' }, '/api/rename') === 400,
+   'renaming onto a name already in the workspace is refused');
+ok(await post({ name: 'nosuchproject', to: 'whatever' }, '/api/rename') === 400,
+   'renaming something that is not a project is refused');
+ok(await post({ name: 'pinned-again', to: 'pinned-again' }, '/api/rename') === 400,
+   'renaming to the name it already has is refused');
+ok(await post({ name: 'pinned-again', to: '///' }, '/api/rename') === 400,
+   'a new name with nothing in it is refused');
+// ...and a messy one is sanitized on the way through, exactly as creating is.
+const rn2 = await postJson({ name: 'pinned-again', to: 'Two Words!' }, '/api/rename');
+ok(rn2.status === 200 && rn2.body.name === 'Two-Words',
+   'a new name goes through the same sanitizing a created one does');
+ok(existsSync(`${DIR}/ws/Two-Words/.git`), '...and that is the directory');
+
+await page.evaluate(() => setProjectPinned('beta', true));
+
 // ---- the allow-lists ---------------------------------------------------
 // Straight at the API: git accepts transports (ext:: runs commands) that must
 // never get past the server, whatever the page's own form checks.
-const post = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
-  const r = await fetch(u, { method: 'POST',
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
-  return r.status;
-}, [body, api]);
 for (const url of ['https://evil.example/owner/repo', 'ext::sh -c id',
                    'file:///etc', 'https://github.com/owner-only',
                    'git@github.com:owner/repo extra'])
   ok(await post({ mode: 'clone', url }) === 400, `clone refused: ${url}`);
 ok(!existsSync(`${DIR}/ws/repo`), 'a refused clone leaves no directory behind');
-// The name comes off the URL, not the request — proven without touching the
-// network: a URL naming a repo that already exists here is refused by the
-// mkdir claim before git ever runs.
+// The name still comes off the URL when none is given — proven without
+// touching the network: a URL naming a repo that already exists here is
+// refused by the mkdir claim before git ever runs.
 for (const url of ['https://github.com/owner/alpha', 'git@github.com:owner/alpha.git'])
   ok(await post({ mode: 'clone', url }) === 400, `derived name collides, refused: ${url}`);
-for (const name of ['../oops', 'a/b', '.hidden', '_work', 'a b', ''])
+// ...and a name that IS given wins, which is what makes two checkouts of one
+// repository possible. Same proof: it collides where the derived name would not.
+ok(await post({ mode: 'clone', url: 'https://github.com/owner/somethingelse',
+                name: 'alpha' }) === 400,
+   'a supplied name is used instead of the repository\'s own');
+// A supplied name goes through the same sanitizing an init's does, rather
+// than being trusted because a URL was alongside it. Proven by collision
+// again: each of these sanitizes to `alpha`, which already exists, so the
+// mkdir claim refuses it before git runs — and a name that had NOT been
+// sanitized would not have collided.
+for (const name of ['../alpha', 'alpha/', 'alpha ', '.alpha', '_alpha'])
+  ok(await post({ mode: 'clone', url: 'https://github.com/owner/repo', name }) === 400,
+     `clone name sanitized to an existing one, refused: ${name}`);
+// Every one of these sanitizes to `alpha`, which exists — so the refusal
+// proves the transformation rather than a rejection, and nothing is created.
+for (const name of ['../alpha', 'alpha!', '.alpha', '_alpha', 'alpha '])
+  ok(await post({ name, mode: 'init' }) === 400,
+     `init name sanitized to an existing one, refused: ${name}`);
+// ...and the one thing that is still refused outright: a name with nothing in
+// it to name a directory after.
+for (const name of ['', '   ', '---', '...', '/'])
   ok(await post({ name, mode: 'init' }) === 400,
      `name refused: ${name || '(empty)'}`);
+// The positive case, and the only place the sanitized name is observable:
+// a messy one is accepted and the directory is what GitHub would have made.
+const made = await postJson({ name: 'My New App!', mode: 'init' });
+ok(made.status === 200 && made.body.name === 'My-New-App',
+   'a name with spaces and punctuation is created as GitHub would spell it');
+ok(existsSync(`${DIR}/ws/My-New-App/.git`),
+   '...and that is the directory on disk');
 ok(await post({ name: 'q2', mode: 'sideways' }) === 400, 'unknown mode refused');
 
 // ---- deploy keys -------------------------------------------------------

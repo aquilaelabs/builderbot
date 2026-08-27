@@ -1096,6 +1096,21 @@ lives in its body. The cards:
   blocks Claude sessions for that directory — see below. A row that is excluded
   or has an error carries **no Claude button at all**, because a session cannot
   start there; **Shell** stays, since that is often how you would fix it
+- a **thumbtack** per project, which decides whether the sidebar shows it at
+  all. Unpinning takes a project off this card and nothing else: it keeps every
+  control on the **All projects** tab at the foot of the card, which lists
+  everything under `/workspace` with the same buttons on each row. Pins live in
+  `/config/pinned-projects.json`; no file at all means everything is pinned,
+  which is what a fresh install sees
+- a **pencil** per project, which renames it — the directory, and everything
+  keyed to its old name: the roadmap and bugs, the versions, the dev instance's
+  data and env, the archived CI logs, and Claude's own transcripts and
+  memories. It refuses while a terminal is open on it or its dev instance still
+  has containers, and it reports what moved rather than only that it worked
+- a **padlock** per project, which locks it: the row stays whole and every
+  control you use stays live — notebook, artifacts, dev instance, shell — and
+  the only thing that goes is Claude starting a session there. For a project
+  you keep in `/workspace` to deploy and run rather than to develop
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD.
   Project groups start collapsed — the severity pills on each are the overview,
@@ -2130,6 +2145,25 @@ would be advice. Specifically, excluding a project:
   "next time"
 - folds the row away behind **Show projects with errors**, and puts it at the
   *bottom* of that list — an exclusion is a decision already made, not a problem
+
+### Locking a project
+
+The **padlock** beside the eye is the other half of that idea, for a project
+you keep in `/workspace` to *run* rather than to develop — a compose app you
+deploy from the Artifacts tab, say. Locking it refuses `claude:<project>` and
+ends any session already there, exactly as excluding does, and it is enforced
+in the same place and for the same reason; the list lives in
+`/config/locked-projects.json`.
+
+Everything else is the difference. A locked row is not folded away, not grayed
+out, and keeps every control you use: the notebook, the artifacts and dev
+instance, the version block, the shell. Excluding says *this is not a project*;
+locking says *this one is mine*.
+
+One limit worth stating, because it is the same one the sibling-project rule
+carries: this stops a session **starting here**, and the file tools are already
+denied on every project but a session's own. It is not a sandbox — a session in
+another project can still reach this directory through Bash.
   waiting for someone
 - grays the row out and takes the click off anything in it. A `no CLAUDE.md —
   create one` line stays as text, because nothing acts on an excluded project

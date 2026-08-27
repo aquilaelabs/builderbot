@@ -945,6 +945,13 @@ button.eye i{font:600 10px/1 system-ui,sans-serif;font-style:normal;margin-left:
 .row.job{background:#161d26}
 .row.job .name{color:var(--dim)}
 button.eye.none{opacity:.45}
+/* A locked padlock is gold rather than dim: it is a state somebody chose and
+   is still in, not a control waiting to be pressed. Deliberately not --accent,
+   which is the colour of the buttons that act, and not --warn, because nothing
+   is wrong — the operator meant this. */
+button.eye.on{color:var(--gold)}
+button.eye.on:hover{color:var(--gold)}
+button.eye.pin.on,button.eye.pin.on:hover{color:var(--accent)}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the broom (reset) and the sign-out door —
@@ -1569,15 +1576,17 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button id="pClone" type="button">Clone from GitHub</button>
       </div>
     </div>
-    <!-- A clone is not asked for a name or a description: the URL already
-         carries the name, and the notes are drafted from the repository's own
-         README and build files after the clone lands. -->
+    <!-- A clone is not asked for a description — the notes are drafted from
+         the repository's own README and build files after it lands — but it
+         IS asked for a name, prefilled from the address. Deriving it and
+         nothing else made two checkouts of one repository impossible, which
+         is the ordinary case for deploying an app rather than developing it. -->
     <div class="field" id="pNameField">
       <label for="pName">Name</label>
       <input id="pName" maxlength="100" autocomplete="off" spellcheck="false"
              placeholder="e.g. my-app">
-      <div class="hint">Becomes the directory under /workspace. Letters, digits,
-        dots, dashes, underscores.</div>
+      <div class="hint" id="pNameHint"></div>
+      <div class="hint" id="pNamePreview" hidden></div>
     </div>
     <div class="field" id="pUrlField" hidden>
       <label for="pUrl">Repository</label>
@@ -2706,6 +2715,7 @@ function drawPanes(){
       if (!packages) loadPackages();      // same, for a restored packages tab
     }
     if (t.kind === "todo") renderNotebookInto(i, t.arg);
+    if (t.kind === "projects") renderProjectsInto(i);
   }
 }
 
@@ -3600,8 +3610,117 @@ function hiddenLabel(flagged){
 
 const nbOpen = name => tabs.some(t => t.kind === "todo" && t.arg === name);
 
-function drawProjects(ps){
+
+// ...and its handlers, for the same reason. A row rendered into the tab has
+// to DO the same things as one in the card, and a second copy of this list is
+// how one of them quietly stops offering Notebook.
+function wireProjectRows(root){
+  root.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
+    if (a.dataset.fix === "claude-md-init")   claudeMd(a.dataset.proj, "init", a);
+  });
+  root.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
+  root.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
+  root.querySelectorAll("[data-l]").forEach(b => b.onclick = () => openLinkProject(b.dataset.l));
+  root.querySelectorAll("[data-m]").forEach(b => b.onclick = () => openNotebook(b.dataset.m));
+  root.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
+    setExcluded(b.dataset.x, b.dataset.on === "1"));
+  root.querySelectorAll("[data-k]").forEach(b => b.onclick = () =>
+    setLocked(b.dataset.k, b.dataset.on === "1"));
+  root.querySelectorAll("[data-p]").forEach(b => b.onclick = () =>
+    setProjectPinned(b.dataset.p, b.dataset.on === "1"));
+  root.querySelectorAll("[data-rn]").forEach(b => b.onclick = () =>
+    renameProject(b.dataset.rn));
+}
+
+// One project's row. Extracted so the sidebar card and the Projects tab
+// render the SAME markup from the same place: two copies of this would
+// have drifted within a week, and the whole point of the tab is that a
+// project offers the same controls wherever you meet it.
+//
+// `live` and `cls` are passed rather than recomputed per row: liveSessions()
+// walks the session list, and doing that once per project turned a redraw
+// into O(projects x sessions) for no gain.
+function projectRow(p, live, cls){
+  return `
+    <div class="row stack2${p.excluded ? " off" : ""}">
+      <div class="grow">
+        <div class="name">${esc(p.name)}</div>
+        ${p.git ? `<div class="sub">git: ${esc(p.git)}</div>` : ""}
+        ${p.issues.map(i => i.action && !p.excluded
+          // An issue with a fix that takes no decisions says so, and is the
+          // control that applies it — underlined, because a line you can click
+          // should look like one. Not on an excluded project: nothing acts on
+          // one of those until it is let back in, and a link that would refuse
+          // is worse than plain text saying what is wrong.
+          ? `<div class="sub ${cls[i.level] || ""}"><a href="#" class="fix"
+               data-fix="${esc(i.action)}" data-proj="${esc(p.name)}"
+               title="runs bb claude-md ${i.action === "claude-md-init" ? "--init" : "--update"
+                     } in ${esc(p.name)}"
+               >${esc(i.text)}</a></div>`
+          : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
+      </div>
+      <span class="acts">
+      ${isBroken(p) ? "" : `<button class="${live.has(tmuxName("claude-"+p.name)) ? "primary" : ""}"
+         data-c="${esc(p.name)}"${(p.locked || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
+           ? " disabled" : ""}
+         title="${p.locked
+                   ? "locked — you run this one. The padlock lets Claude back in"
+                 : !signedIn() && !live.has(tmuxName("claude-"+p.name))
+                   ? "this container is not signed in to Claude — the Doctor card has the way in"
+                 : live.has(tmuxName("claude-"+p.name)) ? "session running — go to its tab"
+                 : p.last_claude ? "no session running — resume or start one"
+                 : "start a Claude session here"}">${
+           // The same working/waiting dot the tab wears, so a phone showing
+           // the dashboard still answers "is it waiting on me?" per project.
+           stateDot(claudeOf(tmuxName("claude-" + p.name)))}Claude</button>`}
+      <button data-s="${esc(p.name)}" title="open another terminal here">Shell</button>
+      ${p.git_ok && !p.linked && !isBroken(p)
+        ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
+             title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
+        : ""}
+      ${isBroken(p) ? "" : `<button class="${nbOpen(p.name) ? "primary" : ""}"
+         data-m="${esc(p.name)}"
+         title="${nbOpen(p.name) ? "its notebook is open — go to the tab"
+                : "roadmap, memory and bugs for this project"}">Notebook</button>`}
+      <button class="eye" data-rn="${esc(p.name)}" aria-label="rename"
+        title="rename — moves the directory and everything keyed to its name: the
+roadmap, the bugs, the versions, the dev instance's data and env, the CI logs,
+and Claude's own transcripts and memories">${PENCIL}</button>
+      <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
+        data-on="${p.pinned ? "0" : "1"}"
+        aria-label="${p.pinned ? "unpin" : "pin"}"
+        title="${p.pinned
+          ? "unpin — take it off the sidebar. It keeps every control on the "
+            + "Projects tab; this is only about where you meet it"
+          : "pin — show it on the sidebar's Projects card"}"
+        >${TACK}</button>
+      <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
+        data-on="${p.locked ? "0" : "1"}"
+        aria-label="${p.locked ? "unlock" : "lock"}"
+        title="${p.locked
+          ? "unlock — let Claude sessions start here again"
+          : "lock — keep this project and run it yourself: no Claude session "
+            + "starts here. Your own controls all still work"}"
+        >${p.locked ? LOCK : LOCK_OPEN}</button>
+      <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
+        aria-label="${p.excluded ? "include" : "exclude"}"
+        title="${p.excluded ? "include — allow Claude sessions here again"
+                            : "exclude — block Claude sessions for this directory, and keep it blocked"}"
+        >${p.excluded ? EYE : EYE_OFF}</button>
+      </span>
+    </div>
+`;
+}
+
+function drawProjects(all){
   const el = $("projects");
+  // The card is the pinned view; the Projects tab is the whole list. Filtered
+  // here rather than by the server, which reports every project to everything
+  // that asks — the findings card and the SARIF attribution both need the full
+  // set, and a payload that quietly shrank would take them with it.
+  const ps = all.filter(p => p.pinned);
   const flagged = ps.filter(isBroken);
   const hidden = hiddenLabel(flagged);
   // Excluded last: it is not a problem waiting to be fixed like the rest of
@@ -3614,7 +3733,8 @@ function drawProjects(ps){
   // New project lives here too — present even when the list is empty, since
   // an empty workspace is exactly where it is needed most.
   const togHtml = `<div class="macros"><button id="bNewProj"
-       title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach">New project…</button>${
+       title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach">New project…</button><button id="bAllProj"
+       title="every project under /workspace, pinned or not, with the same controls">All projects</button>${
        flagged.length
        ? `<button id="bAll">${showAllProjects ? "Hide" : "Show"} ${hidden}</button>` : ""}</div>`;
 
@@ -3622,11 +3742,13 @@ function drawProjects(ps){
     // state.projects at click time, not the `ps` this draw was given: the
     // handler outlives the draw now that unchanged markup is kept.
     if (paint(el, jobHtml + `<div class="empty">${
-      !ps.length ? "nothing mounted under /workspace"
+      !all.length ? "nothing mounted under /workspace"
+      : !ps.length ? "nothing pinned — open the Projects tab to pin what you want here"
                  : `nothing to show — everything here is folded away under Show ${hidden}`
     }</div>` + togHtml)){
       pJobWire();
       $("bNewProj").onclick = openNewProject;
+      $("bAllProj").onclick = openProjectsTab;
       if (flagged.length)
         $("bAll").onclick = () => { showAllProjects = !showAllProjects;
                                   slideBody(el, () => drawProjects(state?.projects || ps)); };
@@ -3665,68 +3787,14 @@ function drawProjects(ps){
     : "";
   // Handlers bind on a real change only; an unchanged card keeps its
   // elements, and their handlers, from last time.
-  if (paint(el, jobHtml + shown.map(p => `
-    <div class="row stack2${p.excluded ? " off" : ""}">
-      <div class="grow">
-        <div class="name">${esc(p.name)}</div>
-        ${p.git ? `<div class="sub">git: ${esc(p.git)}</div>` : ""}
-        ${p.issues.map(i => i.action && !p.excluded
-          // An issue with a fix that takes no decisions says so, and is the
-          // control that applies it — underlined, because a line you can click
-          // should look like one. Not on an excluded project: nothing acts on
-          // one of those until it is let back in, and a link that would refuse
-          // is worse than plain text saying what is wrong.
-          ? `<div class="sub ${cls[i.level] || ""}"><a href="#" class="fix"
-               data-fix="${esc(i.action)}" data-proj="${esc(p.name)}"
-               title="runs bb claude-md ${i.action === "claude-md-init" ? "--init" : "--update"
-                     } in ${esc(p.name)}"
-               >${esc(i.text)}</a></div>`
-          : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
-      </div>
-      <span class="acts">
-      ${isBroken(p) ? "" : `<button class="${live.has(tmuxName("claude-"+p.name)) ? "primary" : ""}"
-         data-c="${esc(p.name)}"${!signedIn() && !live.has(tmuxName("claude-"+p.name))
-           ? " disabled" : ""}
-         title="${!signedIn() && !live.has(tmuxName("claude-"+p.name))
-                   ? "this container is not signed in to Claude — the Doctor card has the way in"
-                 : live.has(tmuxName("claude-"+p.name)) ? "session running — go to its tab"
-                 : p.last_claude ? "no session running — resume or start one"
-                 : "start a Claude session here"}">${
-           // The same working/waiting dot the tab wears, so a phone showing
-           // the dashboard still answers "is it waiting on me?" per project.
-           stateDot(claudeOf(tmuxName("claude-" + p.name)))}Claude</button>`}
-      <button data-s="${esc(p.name)}" title="open another terminal here">Shell</button>
-      ${p.git_ok && !p.linked && !isBroken(p)
-        ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
-             title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
-        : ""}
-      ${isBroken(p) ? "" : `<button class="${nbOpen(p.name) ? "primary" : ""}"
-         data-m="${esc(p.name)}"
-         title="${nbOpen(p.name) ? "its notebook is open — go to the tab"
-                : "roadmap, memory and bugs for this project"}">Notebook</button>`}
-      <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
-        aria-label="${p.excluded ? "include" : "exclude"}"
-        title="${p.excluded ? "include — allow Claude sessions here again"
-                            : "exclude — block Claude sessions for this directory, and keep it blocked"}"
-        >${p.excluded ? EYE : EYE_OFF}</button>
-      </span>
-    </div>`).join("") + togHtml)){
+  if (paint(el, jobHtml + shown.map(p => projectRow(p, live, cls)).join("") + togHtml)){
     $("bNewProj").onclick = openNewProject;
+    $("bAllProj").onclick = openProjectsTab;
     if (flagged.length)
       $("bAll").onclick = () => { showAllProjects = !showAllProjects;
                                   slideBody(el, () => drawProjects(state?.projects || ps)); };
-    el.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
-      e.preventDefault();
-      if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
-      if (a.dataset.fix === "claude-md-init")   claudeMd(a.dataset.proj, "init", a);
-    });
-    el.querySelectorAll("[data-c]").forEach(b => b.onclick = e => openClaude(b.dataset.c, e));
-    el.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
-    el.querySelectorAll("[data-l]").forEach(b => b.onclick = () => openLinkProject(b.dataset.l));
-    el.querySelectorAll("[data-m]").forEach(b => b.onclick = () => openNotebook(b.dataset.m));
+    wireProjectRows(el);
     pJobWire();
-    el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
-      setExcluded(b.dataset.x, b.dataset.on === "1"));
   }
   // The chooser is positioned against the card, so it is a sibling of the list
   // rather than part of it — replacing the list's innerHTML does not remove it,
@@ -4289,6 +4357,36 @@ function imgRow(im, busy){
   </label>`;
 }
 
+// Every project, and the whole of each one. The card is a view of this filtered
+// to what is pinned — so a project that is not on the sidebar has lost nothing
+// but its place there, which is the only promise the thumbtack makes.
+function openProjectsTab(){
+  openTab({kind: "projects", arg: "__projects", label: "Projects"});
+}
+
+function renderProjectsInto(i){
+  const el = $("doc" + i);
+  if (!el) return;
+  const ps = state?.projects || [];
+  if (!ps.length){
+    el.innerHTML = `<div class="empty">nothing mounted under /workspace</div>`;
+    return;
+  }
+  const live = liveSessions();
+  const cls = {error:"bad", warning:"warn", excluded:"off"};
+  // Pinned first, then by name: the sidebar's order, so moving between the two
+  // does not mean finding everything again. Sorted here rather than by the
+  // server, which reports the directory order every other reader wants.
+  const ordered = ps.slice().sort((a, b) =>
+    (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || a.name.localeCompare(b.name));
+  // paint() rather than innerHTML, the same as the card: this runs on every
+  // render pass, and rebuilding a list of rows nobody changed throws away the
+  // handlers on it for no reason.
+  if (paint(el, `<div class="card projtab">${
+    ordered.map(p => projectRow(p, live, cls)).join("")}</div>`))
+    wireProjectRows(el);
+}
+
 function renderPackagesInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -4440,7 +4538,7 @@ const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
-           fields: ["pSrcField", "pUrlField", "pKeyField"] },
+           fields: ["pSrcField", "pNameField", "pUrlField", "pKeyField"] },
   link:  { title: () => `Link ${pLink} to GitHub`, btn: "Link", focus: "pUrl",
            fields: ["pUrlField", "pKeyField"] },
 };
@@ -4465,9 +4563,15 @@ function pDraw(){
       + `touches a repo that already has commits.`
       + (pPat ? " One that does not exist yet is created for you, private." : "")
     : "Fetched with the container's own access — a deploy key or PAT that can "
-      + "already reach it; private repos need that set up first. The directory "
-      + "takes the repository's name, and a CLAUDE.md is drafted from its "
-      + "README and build files (kept as-is if it already has one).";
+      + "already reach it; private repos need that set up first. A CLAUDE.md is "
+      + "drafted from its README and build files (kept as-is if it already has "
+      + "one).";
+  $("pNameHint").textContent = pMode === "clone"
+    ? "The directory to clone into. Fills itself in from the address — change "
+      + "it to keep more than one checkout of the same repository."
+    : "Named the way GitHub names a repository: anything it cannot use becomes "
+      + "a dash, so you are shown the directory you are about to get rather "
+      + "than being sent back to retype it.";
   $("pKeyHint").textContent =
     (pMode === "link"
       ? "The key the push (and every later one) will offer. "
@@ -4522,6 +4626,8 @@ function pOpen(mode){
   const gen = ++pGen;
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
+  pNameTyped = false;
+  $("pNamePreview").hidden = true;
   // The select is emptied, not left as-is: a key picked during a previous
   // open must not ride along invisibly into this one's submit.
   $("pKey").innerHTML = "";
@@ -7132,6 +7238,39 @@ $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 for (const f of ["pName", "pUrl"])
   $(f).onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("pCreate").click(); } };
 
+// What a typed name becomes. The server sanitizes for real — this is the same
+// rule in the other language, so the operator can see the answer before
+// pressing anything, and the two agreeing is checked by a test rather than
+// hoped for. If they ever disagree the server wins, and the row that appears
+// carries the name it actually made.
+const projName = (raw) => (raw || "").trim()
+  .replace(/[^A-Za-z0-9._-]/g, "-")
+  .replace(/-{2,}/g, "-")
+  .replace(/^[._-]+/, "").replace(/-+$/, "").slice(0, 100);
+
+function pNameShow(){
+  const raw = $("pName").value, clean = projName(raw);
+  // Shown only when it differs: repeating a name back unchanged is noise on a
+  // dialog that already has three hints on it.
+  $("pNamePreview").hidden = !raw.trim() || clean === raw.trim();
+  $("pNamePreview").textContent = clean
+    ? `Will be created as ${clean}`
+    : "That leaves nothing to name a directory after";
+}
+
+// The name follows the address until somebody types one. Tracked rather than
+// guessed from emptiness: clearing the field is itself a choice, and refilling
+// it on the next keystroke of the URL would fight whoever did it.
+let pNameTyped = false;
+$("pName").oninput = () => { pNameTyped = true; pNameShow(); };
+$("pUrl").oninput = () => {
+  if (pMode !== "clone" || pNameTyped) return;
+  const u = $("pUrl").value.trim().replace(/\/+$/, "");
+  const last = u.split(/[/:]/).pop() || "";
+  $("pName").value = last.endsWith(".git") ? last.slice(0, -4) : last;
+  pNameShow();
+};
+
 $("pCreate").onclick = async () => {
   // Captured at the click: the dialog can be closed, reopened and switched
   // to another mode while this request runs, and everything below must keep
@@ -7227,6 +7366,15 @@ const EYE_PATH = `<path d="M1 8s2.7-4.5 7-4.5S15 8 15 8s-2.7 4.5-7 4.5S1 8 1 8z"
 const EYE = `<svg viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}</svg>`;
 const EYE_OFF = `<svg viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}
   <path d="M2.5 13.5 13.5 2.5"/></svg>`;
+// A padlock, for a project the operator keeps and runs themselves. Only the
+// shackle differs between the two states — the body stays put — so which one
+// a row is wearing reads at a glance without comparing it to its neighbours.
+const LOCK_BODY = `<rect x="3.4" y="7" width="9.2" height="6.4" rx="1.3"/>`;
+const LOCK = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
+  <path d="M5.7 7V5.1a2.3 2.3 0 0 1 4.6 0V7"/></svg>`;
+const LOCK_OPEN = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
+  <path d="M5.7 7V5.1a2.3 2.3 0 0 1 4.6 0"/></svg>`;
+
 // A chain link, for a repo with no remote: the action is "link this to
 // GitHub", and it disappears once the repo has anywhere to push to.
 const LINK = `<svg viewBox="0 0 16 16" aria-hidden="true">
@@ -7350,6 +7498,78 @@ async function setExcluded(name, on){
       if (t) dropTab(t.id);
     }
   }catch(e){ notify("exclude failed: " + e, true); }
+  refresh();
+}
+
+// Locking is the same write and the same session-ending as excluding, and the
+// confirmation says the one thing that is different: the row survives whole.
+// Somebody reaching for this wants to keep the project, so the dialog has to
+// make clear it is not the other button.
+async function setLocked(name, on){
+  if (on && !confirm(`Lock ${name}?\n\n`
+        + `No Claude session will start here, and any running one ends now. `
+        + `Everything else stays: the notebook, the artifacts, the dev `
+        + `instance and a shell are all still yours. Unlock reverses this.`)) return;
+  try{
+    const r = await fetch("/api/lock", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name, locked:on})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+    if (j.killed){
+      const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
+      if (t) dropTab(t.id);
+    }
+  }catch(e){ notify("lock failed: " + e, true); }
+  refresh();
+}
+
+// Renaming asks, because it moves a directory and a dozen keyed stores with
+// it, and because the answer it gives back is worth reading: what moved, and
+// anything that did not. A rename that half-worked is the case this reports
+// rather than hides — the alternative is a project whose roadmap silently
+// stayed behind under a name nothing points at any more.
+async function renameProject(name){
+  const to = prompt(`Rename ${name} to:\n\n`
+    + `The directory moves, and so does everything keyed to its name — the `
+    + `roadmap and bugs, the versions, the dev instance's data and env, the `
+    + `CI logs, and Claude's transcripts and memories for it.\n\n`
+    + `Close its terminals first, and bring its dev instance down.`, name);
+  if (to === null) return;
+  if (!to.trim() || to.trim() === name) return;
+  try{
+    const r = await fetch("/api/rename", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name, to})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+    // Named rather than assumed: sanitizing may have changed what was typed,
+    // and the operator should see the name that actually exists.
+    notify(j.failed?.length
+      ? `${name} is now ${j.name}, but ${j.failed.length} thing(s) did not `
+        + `move: ${j.failed.join("; ")}`
+      : `${name} is now ${j.name}`, !!j.failed?.length);
+  }catch(e){ notify("rename failed: " + e, true); }
+  refresh();
+}
+
+// Pinning asks nothing and ends nothing: no session is touched, no control is
+// taken away, and the project is still whole on the Projects tab. It is the
+// one of the three that only moves where a row is seen — so no confirmation,
+// which would teach somebody to click through the two that do matter.
+//
+// setProjectPinned, not setPinned: that name — and /api/pin, and the server's
+// _pin — were the COMMAND pin's already, and taking them shadowed it in all
+// three places at once. Nothing failed loudly; the commands card simply began
+// asking the projects endpoint about a command.
+async function setProjectPinned(name, on){
+  try{
+    const r = await fetch("/api/project-pin", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name, pinned:on})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+  }catch(e){ notify("pin failed: " + e, true); }
   refresh();
 }
 

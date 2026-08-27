@@ -303,6 +303,23 @@ REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 # rule only the dashboard honored would be advice, since the terminal URL is
 # reachable on its own.
 EXCLUDES_FILE = STATE / "excluded-projects.json"   # STATE is set up top
+# Locked is exclude's sibling, not a stronger form of it. Excluded means
+# "this is not a project, stop showing it work"; locked means "this one is
+# mine to run" — the row stays whole, the operator keeps every control, and
+# the only thing that goes is a session starting here.
+LOCKS_FILE = STATE / "locked-projects.json"
+# Which projects the sidebar card shows. A THIRD axis, and independent of the
+# other two: pinning says nothing about what may run, only about what is worth
+# looking at from the sidebar. Everything unpinned is still on the Projects
+# tab, whole and with every control.
+#
+# PROJECT_PINS_FILE and not PINS_FILE, which is the command pin's a few lines
+# below — as were load_pins, save_pins, _pin, /api/pin and the page's
+# setPinned. Taking all five split this feature across two files: the constant
+# resolved to theirs, the functions to mine, and project names were written
+# into pinned-commands.json while nothing went red, because the command pin has
+# no test (bug #20).
+PROJECT_PINS_FILE = STATE / "pinned-projects.json"
 
 # Which commands the operator keeps at the top of the card. Stored beside the
 # other state for the same reason the tab strip is: this is one machine with one
@@ -410,7 +427,7 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
-TAB_KINDS = {"term", "packages", "todo"}
+TAB_KINDS = {"term", "packages", "todo", "projects"}
 
 
 def load_layout():
@@ -592,6 +609,38 @@ def load_excludes():
 
 def save_excludes(names):
     write_json(EXCLUDES_FILE, sorted(set(names)))
+
+
+def load_locks():
+    try:
+        v = json.loads(LOCKS_FILE.read_text())
+        return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def save_locks(names):
+    write_json(LOCKS_FILE, sorted(set(names)))
+
+
+def load_project_pins():
+    """The pinned set, or None when nobody has ever pinned anything.
+
+    None is not the same as empty and the difference decides what a fresh
+    install looks like. No file means the operator has not had this thought
+    yet, so every project is pinned and the card is what it always was; an
+    empty LIST means they unpinned the last one on purpose, and a sidebar that
+    quietly refilled itself would be arguing with them.
+    """
+    try:
+        v = json.loads(PROJECT_PINS_FILE.read_text())
+    except (OSError, ValueError):
+        return None
+    return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else None
+
+
+def save_project_pins(names):
+    write_json(PROJECT_PINS_FILE, sorted(set(names)))
 
 
 def _project_of(uri, known, nonproject=frozenset()):
@@ -1046,6 +1095,8 @@ def project_list():
     except OSError:
         pass                    # unreadable: reported by the listing below
     excluded = set(load_excludes())
+    locked = set(load_locks())
+    pins = load_project_pins()
     stopped = last_stop()
     try:
         here = sorted(WORKSPACE.iterdir())
@@ -1174,9 +1225,17 @@ def project_list():
         if d.name in excluded:
             issues.append({"level": "excluded",
                            "text": "excluded — no Claude session can start here"})
+        elif d.name in locked:
+            # Said differently from excluded on purpose: the two block the same
+            # thing and mean opposite things about the directory. One is "not a
+            # project"; this one is "a project somebody else runs".
+            issues.append({"level": "locked",
+                           "text": "locked — yours to run; no Claude session starts here"})
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
                     "claude_md": has_md, "excluded": d.name in excluded,
+                    "locked": d.name in locked,
+                    "pinned": True if pins is None else d.name in pins,
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
@@ -1692,7 +1751,10 @@ import projects                                                  # noqa: E402
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
                    repo_path=repo_path, build_claude_md=build_claude_md,
-                   project_name=PROJECT_NAME, github_url=GITHUB_URL)
+                   project_name=PROJECT_NAME, github_url=GITHUB_URL,
+                   state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
+                   devdata=devapp.DEVDATA, write_json=write_json,
+                   pname=devapp._pname)
 
 
 def _doctor_loop():
@@ -2273,6 +2335,16 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path.startswith("/api/exclude"):
             return self._exclude(req)
+        if path.startswith("/api/lock"):
+            return self._lock(req)
+        # NOT /api/pin, which is the command pin and has been since long before
+        # this: startswith() means a route added above it silently takes every
+        # path it prefixes, and both handlers were called _pin, so the later
+        # definition quietly replaced the earlier one in the class body too.
+        if path.startswith("/api/project-pin"):
+            return self._project_pin(req)
+        if path.startswith("/api/rename"):
+            return self._rename(req)
         if path.startswith("/api/session"):
             return self._session(req)
         if path.startswith("/api/keys"):
@@ -2792,6 +2864,21 @@ class Handler(BaseHTTPRequestHandler):
     def _create(self, req):
         """New project — a fresh local repo, or a clone. See projects.py."""
         body, code = projects.create(req)
+        # Pinned on arrival, once anything has ever been pinned. Without this a
+        # project made while a pins file exists is absent from it, so it lands
+        # on disk and never reaches the sidebar — created, and apparently gone.
+        # No file still means "all of them", so there is nothing to write then
+        # and writing one would turn the first create into an unasked-for
+        # decision about every other project.
+        if code == 200 and body.get("name") and load_project_pins() is not None:
+            with _state_lock:
+                pins = load_project_pins()
+                if pins is not None:
+                    try:
+                        save_project_pins(set(pins) | {body["name"]})
+                    except OSError:
+                        pass          # the project exists; the sidebar is not
+                                      # worth failing the create over
         return self._json(body, code)
 
     def _link(self, req):
@@ -2976,6 +3063,103 @@ class Handler(BaseHTTPRequestHandler):
             run(["tmux", "kill-session", "-t", sess], timeout=10)
             killed = sess
         return self._json({"excluded": sorted(names), "killed": killed})
+
+    def _lock(self, req):
+        """Lock or unlock a project: keep it, stop Claude running in it.
+
+        The same name-checked write as _exclude, and deliberately the same
+        enforcement — bb-tty reads the file, because a rule only this UI
+        honors is a suggestion when the ttyd URL is reachable directly.
+
+        What it does NOT claim: a session in ANOTHER project still reaches this
+        directory through Bash. The file tools are denied on every sibling
+        already, and that is the whole of the guarantee here too — locking adds
+        "no session of its own", not a sandbox. The tooltip says so.
+        """
+        name, on = req.get("name", ""), bool(req.get("locked"))
+        try:
+            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
+        except OSError:
+            here = set()
+        if name not in here:
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        with _state_lock:
+            names = set(load_locks())
+            names.add(name) if on else names.discard(name)
+            try:
+                save_locks(names)
+            except OSError as e:
+                return self._json({"error": f"could not save: {e}"}, 500)
+
+        # Same reasoning as _exclude: a lock that waits for the current session
+        # to end is a lock that did not take, and the button does not say that.
+        killed = None
+        sess = tmux_name(f"claude-{name}")
+        if on and sess in {s["name"] for s in tmux_sessions()}:
+            run(["tmux", "kill-session", "-t", sess], timeout=10)
+            killed = sess
+        return self._json({"locked": sorted(names), "killed": killed})
+
+    def _rename(self, req):
+        """Rename a project. The guards live here; the work is in projects.py.
+
+        These two are checked here rather than there because they are the ones
+        that need to see outside the filesystem — tmux, and the daemon. Both
+        are refusals rather than things to tidy away automatically: a running
+        session holds the old path as its working directory and would carry on
+        writing to it, and a dev instance's containers are named for the old
+        project on a machine this may not even be able to reach. Ending either
+        on the operator's behalf, to complete a rename, is a larger decision
+        than the rename.
+        """
+        name = req.get("name", "")
+        live = {s["name"] for s in tmux_sessions()}
+        held = sorted(s for s in live
+                      if s == tmux_name(f"claude-{name}")
+                      or s.startswith(tmux_name(f"shell-{name}") + "-"))
+        if held:
+            return self._json({"error": "close its terminals first — "
+                                        + ", ".join(held[:3])
+                                        + (" …" if len(held) > 3 else "")}, 409)
+        try:
+            if devapp.state(name).get("exists"):
+                return self._json({"error": "its dev instance still has "
+                                            "containers — press Down on the "
+                                            "Artifacts tab first"}, 409)
+        except Exception:
+            pass          # no daemon, or no compose file: nothing to protect
+        body, code = projects.rename(req)
+        return self._json(body, code)
+
+    def _project_pin(self, req):
+        """Pin or unpin a project: whether the sidebar card shows it.
+
+        No session is touched and nothing is blocked — this is the one control
+        of the three that is purely about the view. Unpinning something running
+        a build leaves it running, and the Projects tab still has every button.
+
+        The first unpin has to write the whole current set, not just remove
+        one: until then there is no file, which means "all of them", and
+        saving a single removal would have read as "only this one is pinned".
+        """
+        name, on = req.get("name", ""), bool(req.get("pinned"))
+        try:
+            here = {d.name for d in WORKSPACE.iterdir()
+                    if d.is_dir() and d.name != "_work"
+                    and not d.name.startswith(".")}
+        except OSError:
+            here = set()
+        if name not in here:
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        with _state_lock:
+            pins = load_project_pins()
+            names = here.copy() if pins is None else set(pins)
+            names.add(name) if on else names.discard(name)
+            try:
+                save_project_pins(names)
+            except OSError as e:
+                return self._json({"error": f"could not save: {e}"}, 500)
+        return self._json({"pinned": sorted(names)})
 
     def _session(self, req):
         """Kill a session. Closing a tab that owns a Claude conversation should

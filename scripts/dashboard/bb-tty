@@ -33,6 +33,15 @@ is_excluded() {
     jq -e --arg n "$1" 'index($n) != null' "$EXCLUDES_FILE" >/dev/null 2>&1
 }
 
+# Projects the operator keeps but runs themselves. Same file shape, same
+# writer, same reason for being enforced here rather than in the page.
+LOCKS_FILE="${DASHBOARD_STATE:-/config}/locked-projects.json"
+
+is_locked() {
+    [ -f "$LOCKS_FILE" ] || return 1
+    jq -e --arg n "$1" 'index($n) != null' "$LOCKS_FILE" >/dev/null 2>&1
+}
+
 # Every project directory except this one. Excluded by exact path rather than
 # `-not -name "$1"`, because find treats that as a glob: a project called
 # `app[1]` or `web*` would silently exclude its neighbors from the deny list,
@@ -290,6 +299,11 @@ case "$target" in
         if is_excluded "$proj"; then
             bad "'${proj}' is excluded: no Claude session can be started here." \
                 "Clear it from the dashboard's Projects card to allow one again."
+        fi
+        if is_locked "$proj"; then
+            bad "'${proj}' is locked: the operator runs this one, so no Claude" \
+                "session starts here. Unlock it from the Projects card if that" \
+                "was not what you meant."
         fi
         # Attaching to a session that is already running is always fine — the
         # conversation is there, and this is how a tab comes back to it.
