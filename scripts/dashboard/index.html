@@ -1602,6 +1602,18 @@ body.dragging .tab .lbl{cursor:grabbing}
          the per-repo ssh alias itself — the by-hand step this replaces — and
          shows the public key so it can be added on GitHub's deploy-key page.
          The private halves stay where they are: unreadable. -->
+    <!-- A token for THIS project. Not the container's: one GIT_PAT in the
+         environment is shared by every repo and every session, so a token
+         minted to reach one private repo reaches all of them from anywhere.
+         This is written into git's credential-store format under /config,
+         named for the project, and referenced from that repository's
+         .git/config and nowhere else. -->
+    <div class="field" id="pTokenField" hidden>
+      <label for="pToken">Access token <span class="dim">— optional</span></label>
+      <input id="pToken" type="password" autocomplete="off" spellcheck="false"
+             placeholder="ghp_… or github_pat_…">
+      <div class="hint" id="pTokenHint"></div>
+    </div>
     <div class="field" id="pKeyField" hidden>
       <label for="pKey">Deploy key</label>
       <select id="pKey"></select>
@@ -4540,7 +4552,8 @@ const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
-           fields: ["pSrcField", "pNameField", "pUrlField", "pKeyField"] },
+           fields: ["pSrcField", "pNameField", "pUrlField", "pTokenField",
+                    "pKeyField"] },
   link:  { title: () => `Link ${pLink} to GitHub`, btn: "Link", focus: "pUrl",
            fields: ["pUrlField", "pKeyField"] },
 };
@@ -4555,7 +4568,8 @@ function pDraw(){
   $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
-  for (const f of ["pSrcField", "pNameField", "pUrlField", "pKeyField", "pAboutField"])
+  for (const f of ["pSrcField", "pNameField", "pUrlField", "pTokenField",
+                   "pKeyField", "pAboutField"])
     $(f).hidden = !m.fields.includes(f);
   // The deploy-key picker only appears when the agent actually holds keys:
   // an empty dropdown would be a question with no answers.
@@ -4574,6 +4588,11 @@ function pDraw(){
     : "Named the way GitHub names a repository: anything it cannot use becomes "
       + "a dash, so you are shown the directory you are about to get rather "
       + "than being sent back to retype it.";
+  $("pTokenHint").textContent =
+    "Leave empty for a public repository. A token here is used for THIS "
+    + "project and no other, even if it opens more — it is kept in /config and "
+    + "named in this repo's own git config. It is not shielded the way a deploy "
+    + "key is: a shell in this container can read it.";
   $("pKeyHint").textContent =
     (pMode === "link"
       ? "The key the push (and every later one) will offer. "
@@ -4628,6 +4647,7 @@ function pOpen(mode){
   const gen = ++pGen;
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
+  $("pToken").value = "";
   pNameTyped = false;
   $("pNamePreview").hidden = true;
   // The select is emptied, not left as-is: a key picked during a previous
@@ -7309,7 +7329,8 @@ $("pCreate").onclick = async () => {
       : await fetch("/api/create", {method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name, mode, url, about: $("pAbout").value,
-                                key: mode === "clone" ? key : ""})});
+                                key: mode === "clone" ? key : "",
+                                token: mode === "clone" ? $("pToken").value.trim() : ""})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return fail(j.error || `${mode} failed (HTTP ${r.status})`);
     if (gen === pGen) closeNewProject();

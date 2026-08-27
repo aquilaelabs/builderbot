@@ -24,6 +24,7 @@ operator is still looking at, not in a job they have to go and read.
 The server imports this and hands it the helpers it needs; nothing here reaches
 back into the server.
 """
+import contextlib
 import json
 import os
 import re
@@ -32,6 +33,68 @@ import signal
 import threading
 import time
 from pathlib import Path
+
+# A personal access token belonging to ONE project.
+#
+# The alternative this replaces is a single GIT_PAT in the container's
+# environment, which every repo and every session shares: a token minted to
+# reach one private repo then reaches every repo it was scoped to, from
+# anywhere, forever. Here it is written into git's own credential-store format
+# under /config, named for the project, and referenced from that repository's
+# .git/config and nowhere else. A token that opens twelve repositories still
+# only opens the one this project points at.
+#
+# The honest limit, said here because it is said in the UI too: this is not
+# shielded the way the ssh keys are. Those are served by a root-owned agent
+# and cannot be read; this is a 0600 file owned by the same user a shell runs
+# as, so a session with Bash in this container can read it. It is better than
+# an environment variable every process inherits, and it is not a secret store.
+TOKEN_RE = re.compile(r"[A-Za-z0-9_.-]{8,255}")
+
+
+def _creds_dir():
+    d = STATE / "gitcreds"
+    d.mkdir(parents=True, exist_ok=True)
+    os.chmod(d, 0o700)
+    return d
+
+
+def write_token(project, token):
+    """Store one project's token, and return the git helper that reads it."""
+    f = _creds_dir() / project
+    # Opened with the mode rather than chmod'd after: between creat and chmod
+    # the file is briefly world-readable, and this is the one file here where
+    # that window matters.
+    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(f"https://x-access-token:{token}@github.com\n")
+    return f"store --file={f}"
+
+
+def token_helper(project):
+    """The helper line for a project that has a token, or "" if it has none."""
+    f = STATE / "gitcreds" / project
+    return f"store --file={f}" if f.is_file() else ""
+
+
+def forget_token(project):
+    with contextlib.suppress(OSError):
+        (STATE / "gitcreds" / project).unlink()
+
+
+def _scope_to_token(dest, helper):
+    """Point one repository at one token, and at nothing else.
+
+    The empty value first is git's own way of resetting a multi-valued key:
+    without it the helper `gh auth setup-git` installs globally answers first
+    and the repository quietly authenticates with the shared PAT instead —
+    which is the arrangement this exists to get away from.
+    """
+    run(["git", "-C", str(dest), "config", "--local",
+         "--replace-all", "credential.helper", ""], timeout=15)
+    run(["git", "-C", str(dest), "config", "--local",
+         "--add", "credential.helper", helper], timeout=15)
+
 
 def sanitize_name(raw):
     """A typed name, as the directory it will become — GitHub's own behaviour.
@@ -304,6 +367,13 @@ def rename(req):
         "the dev instance's env", moved, failed)
     _mv(STATE / "ci-logs" / old, STATE / "ci-logs" / new,
         "archived CI logs", moved, failed)
+    # ...and the repository's own access token, which its .git/config names by
+    # absolute path — so the config has to be rewritten to the new one, or the
+    # rename leaves a repo pointing at a file that is no longer there.
+    _mv(STATE / "gitcreds" / old, STATE / "gitcreds" / new,
+        "its access token", moved, failed)
+    if (STATE / "gitcreds" / new).is_file():
+        _scope_to_token(dest, token_helper(new))
     # The compose project name is derived and sanitized, so these two are not
     # simply the project's name with a prefix on it.
     _mv(DEVDATA / pname(old), DEVDATA / pname(new),
@@ -477,6 +547,15 @@ def create(req):
         # line is. When one is chosen the clone goes through a per-repo alias,
         # which also leaves the remote pointing at that alias, so pushes keep
         # using the right key without anyone re-doing this by hand.
+        # A token for this project alone. Checked for shape before it is
+        # written: it goes into a file whose format is one line, so whitespace
+        # or a newline in it would produce a credential store git reads as
+        # something else entirely.
+        token = _field(req, "token").strip()
+        if token and not TOKEN_RE.fullmatch(token):
+            return {"error": "that does not look like an access token — "
+                             "letters, digits, dots, dashes and underscores, "
+                             "and no spaces"}, 400
         keyname = _field(req, "key").strip()
         if keyname:
             match = next((k for k in agent_keys() if k["name"] == keyname), None)
@@ -513,8 +592,10 @@ def create(req):
         return _init(dest, name, about)
     global _dest
     _dest = dest
-    if not _start("clone", name, lambda: _clone(dest, key_url or url)):
+    helper = write_token(name, token) if mode == "clone" and token else ""
+    if not _start("clone", name, lambda: _clone(dest, key_url or url, helper)):
         shutil.rmtree(dest, ignore_errors=True)             # made a moment ago
+        forget_token(name)                                  # written a moment ago
         return {"error": "another project job is already running"}, 409
     return {"ok": True, "name": name, "started": True}, 200
 
@@ -530,17 +611,28 @@ def _init(dest, name, about):
     return {"ok": True, "name": name, "note": _write_md(dest, about, False)}, 200
 
 
-def _clone(dest, url):
-    """The worker half of a clone: fetch, then draft the CLAUDE.md."""
+def _clone(dest, url, helper=""):
+    """The worker half of a clone: fetch, then draft the CLAUDE.md.
+
+    With a token, the fetch itself runs under this project's helper and nothing
+    else — the empty value ahead of it resets the list, so the globally
+    configured one never gets asked. The same pair is then written into the
+    repository, so every later fetch and push from a terminal uses it too.
+    """
     _step("cloning")
-    r = run(["git", "clone", "--progress", "--", url, str(dest)],
+    scope = ["-c", "credential.helper=", "-c", f"credential.helper={helper}"] if helper else []
+    r = run(["git", "clone", *scope, "--progress", "--", url, str(dest)],
             timeout=1800, env=_git_env(), register=_register)
     if _aborted():
         shutil.rmtree(dest, ignore_errors=True)             # made by this job
+        forget_token(dest.name)
         return "stopped — the half-cloned directory was removed", ""
     if r["code"] != 0:
         shutil.rmtree(dest, ignore_errors=True)
+        forget_token(dest.name)
         return r["out"].strip()[-2000:] or "git clone failed", ""
+    if helper:
+        _scope_to_token(dest, helper)
     _step("reading the repository")
     return "", _write_md(dest, "", True)
 

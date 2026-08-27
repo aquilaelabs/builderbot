@@ -301,6 +301,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `DASHBOARD_PORT` | `8080` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
+| `GIT_PAT` | *(empty)* | A GitHub token for the whole container — every repo, every session. Still read, but a per-project token typed into the clone dialog is the better answer: it is scoped to the one repository that names it, so a token that opens twelve does not open twelve here. See below |
 | `DOCKER_HOST` | `auto` | Which Docker daemon the Artifacts tab's dev-instance controls drive. `auto` finds a running docker-socket-proxy on this container's network and re-finds it when its address moves; an explicit `tcp://host:2375` or `ssh://user@vm` is used verbatim; empty turns the feature off. An `ssh://` address pointing at a [sandbox VM](docs/sandbox-vm.md) is the arrangement where BuilderBot cannot reach the server's real containers at all. See `docs/unraid.md` |
 | `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation. Empty leaves `BB_DEV_DATA` unset, so a compose that wants it fails loudly |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
@@ -2145,6 +2146,25 @@ would be advice. Specifically, excluding a project:
   "next time"
 - folds the row away behind **Show projects with errors**, and puts it at the
   *bottom* of that list — an exclusion is a decision already made, not a problem
+
+### An access token for one project
+
+Cloning a private repository asks for an optional **access token**. It is
+written in git's own credential-store format to `/config/gitcreds/<project>`,
+mode `0600`, and named from that repository's `.git/config` and nowhere else —
+with git's empty-value reset ahead of it, so the globally configured helper is
+never asked and the container's `GIT_PAT` is not what authenticates the fetch.
+
+That last part is the point. A token minted to reach one private repo usually
+reaches every repo it was scoped to; in the environment it also reaches them
+from every project and every session. Here it opens the one project you gave it
+to, and renaming that project takes it along.
+
+**It is not shielded the way a deploy key is.** Those are served by a root-owned
+agent and cannot be read at all. This is a file owned by the same user your
+shells run as, so a session with Bash can read it. Better than an environment
+variable every process inherits, and not a secret store — for a repository
+where that matters, use a deploy key.
 
 ### Locking a project
 

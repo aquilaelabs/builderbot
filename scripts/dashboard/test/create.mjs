@@ -5,6 +5,7 @@
 // test, and a real clone would need GitHub on the other end.
 import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -216,6 +217,63 @@ ok(made.status === 200 && made.body.name === 'My-New-App',
 ok(existsSync(`${DIR}/ws/My-New-App/.git`),
    '...and that is the directory on disk');
 ok(await post({ name: 'q2', mode: 'sideways' }) === 400, 'unknown mode refused');
+
+// ---- a token that belongs to one project -------------------------------
+// The dialog offers it only where it means something.
+await page.click('#bNewProj');
+await page.waitForSelector('#pmodal:not([hidden])');
+ok(await page.$eval('#pTokenField', el => el.hidden),
+   'a local repo is not asked for an access token');
+await page.click('#pClone');
+ok(await page.$eval('#pTokenField', el => !el.hidden)
+   && await page.$eval('#pToken', el => el.type === 'password'),
+   'cloning is, and it is not typed in the clear');
+await page.click('#pmodalClose').catch(() => page.keyboard.press('Escape'));
+
+// Shape is checked before it is written: the store is a one-line format, so a
+// token with a space or a newline in it would produce a file git reads as
+// something else.
+for (const token of ['has space', 'two\nlines', 'sh', '#{}!'])
+  ok(await post({ mode: 'clone', url: 'https://github.com/owner/tok', token }) === 400,
+     `a token that is not one is refused: ${JSON.stringify(token)}`);
+
+// The store itself, at the module: a real clone would need GitHub on the other
+// end, and this is the half that decides whether the token stays this
+// project's alone.
+const tok = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('p', ${
+  JSON.stringify(new globalThis.URL('../projects.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
+            agent_keys=lambda: [], gh_authed=lambda: False,
+            ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
+            build_claude_md=lambda *a, **k: '', project_name=None,
+            github_url=None, state=d, home=d, devdata=d,
+            write_json=lambda *a: None, pname=lambda n: 'bbdev-' + n)
+helper = m.write_token('alpha', 'ghp_ExampleTokenValue123')
+f = os.path.join(d, 'gitcreds', 'alpha')
+out = {'helper': helper,
+       'line': open(f).read().strip(),
+       'mode': oct(os.stat(f).st_mode & 0o777),
+       'dirmode': oct(os.stat(os.path.dirname(f)).st_mode & 0o777),
+       'lookup': m.token_helper('alpha'),
+       'other': m.token_helper('beta')}
+m.forget_token('alpha')
+out['gone'] = not os.path.exists(f)
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const tj = JSON.parse(tok.trim().split('\n').pop());
+ok(tj.line === 'https://x-access-token:ghp_ExampleTokenValue123@github.com',
+   'a token is stored in git\'s own credential-store format');
+ok(tj.mode === '0o600' && tj.dirmode === '0o700',
+   '...readable only by the user that runs git, in a directory to match');
+ok(tj.helper.startsWith('store --file=') && tj.helper.endsWith('/gitcreds/alpha'),
+   '...and the helper git is given names that one file');
+ok(tj.lookup === tj.helper && tj.other === '',
+   'a project with no token gets no helper — it is not shared, it is absent');
+ok(tj.gone, 'and forgetting one removes it');
 
 // ---- deploy keys -------------------------------------------------------
 // The harness agent holds one throwaway key. The endpoint lists its public
