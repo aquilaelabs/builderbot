@@ -1613,6 +1613,27 @@ body.dragging .tab .lbl{cursor:grabbing}
   </div>
 </div>
 
+<!-- Naming a container to build from a project. It is always THAT project's:
+     the name picks which of its containers this is, not what it is built from,
+     so two instances of one project are two containers from one codebase. -->
+<div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dnTitle">
+  <div class="box">
+    <h3 id="dnTitle">Send to Docker manager</h3>
+    <div class="field">
+      <label for="dnName">Container name</label>
+      <input id="dnName" maxlength="60" autocomplete="off" spellcheck="false"
+             placeholder="e.g. staging">
+      <div class="hint" id="dnHint"></div>
+      <div class="hint" id="dnPreview" hidden></div>
+    </div>
+    <div class="field" id="dnErrWrap" hidden><div class="hint bad" id="dnErr"></div></div>
+    <div class="btns">
+      <button id="dnGo" class="primary">Create</button>
+      <button id="dnCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
@@ -4491,12 +4512,166 @@ function openDocker(){
 
 async function loadDocker(){
   try{
-    dockerList = await (await fetch("/api/containers")).json();
+    dockerList = await (await fetch("/api/docker")).json();
   }catch(e){ dockerList = {error: String(e), containers: []}; }
   dockerRev++;
   // drawPanes rather than reaching into a pane by index: which pane holds this
   // tab is the layout's business, and packages already refreshes this way.
   drawPanes();
+}
+
+// Naming a container from a project. The name says WHICH of that project's
+// containers this is; what it is built from is settled by the project, which
+// is why there is nothing else to fill in here.
+let dnFor = null;
+
+function openSendToDocker(project){
+  dnFor = project;
+  $("dnTitle").textContent = "New container from " + project;
+  $("dnName").value = "";
+  $("dnErrWrap").hidden = true;
+  $("dnPreview").hidden = true;
+  $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+  $("dnHint").textContent =
+    "It is built from " + project + "'s codebase, and rebuilding it takes "
+    + "whatever that codebase says then. A project can have several — give "
+    + "each one a name you will recognise in the manager.";
+  $("dnmodal").hidden = false;
+  $("dnName").focus();
+}
+
+// The compose slug, which is NOT the project-name rule: that one keeps dots,
+// and a compose project name may not have them. Mirrors _slug() in devapp.py,
+// and a test asserts the two agree on the fixture whose name has a dot in it.
+const dockerSlug = (s) => (s || "").toLowerCase()
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+function dnShow(){
+  const raw = $("dnName").value, clean = dockerSlug(raw);
+  $("dnPreview").hidden = !raw.trim() || clean === raw.trim();
+  $("dnPreview").textContent = clean
+    ? `Will be created as bbdev-${dockerSlug(dnFor || "")}-${clean}`
+    : "That leaves nothing to name a container after";
+}
+
+function closeSendToDocker(){ $("dnmodal").hidden = true; dnFor = null; }
+
+async function dnSubmit(){
+  const project = dnFor, name = $("dnName").value.trim();
+  const fail = m => ($("dnErr").textContent = m, $("dnErrWrap").hidden = false);
+  if (!name) return fail("a name is needed");
+  $("dnGo").disabled = true; $("dnGo").textContent = "Creating…";
+  try{
+    const r = await fetch("/api/devapp", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({project, action:"new", instance:name})});
+    const j = await r.json();
+    if (j.error){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+                  return fail(j.error); }
+    closeSendToDocker();
+    notify(`${j.name} is in the Docker manager — build it there`);
+    // Straight to it: the button said "send to", and landing back on the
+    // artifacts tab would leave the operator to go and find what they made.
+    openDocker();
+  }catch(e){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+             return fail("could not create it: " + e); }
+}
+
+// The job, if it belongs to any instance on this page. overview() does not
+// carry it — one job runs at a time across the whole dashboard, and it reaches
+// here through the artifacts poll like everything else.
+// The env editor, at module scope because two places open it now: the manager,
+// where the controls live, and nothing else — it used to close over the
+// artifacts renderer's `project`, which is why it had to move rather than be
+// called from there.
+async function openDevEnv(project, instance){
+  let j;
+  try{
+    const r = await fetch("/api/devapp", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({project, instance, action: "env-get"})});
+    j = await r.json();
+  }catch(e){ notify("env: " + e, true); return; }
+  const m = document.getElementById("devEnvModal");
+  m.querySelector("textarea").value = j.text || "";
+  // Both halves: whether this is a draft off the example, and what the STORED
+  // file is still missing — the second stays true while the box holds an
+  // unsaved draft, which is exactly when it matters.
+  m.querySelector(".hint").textContent =
+    (j.seeded ? "started from .env.example — nothing saved yet. " : "")
+    + ((j.missing || []).length
+       ? "missing against .env.example: " + j.missing.join(", ")
+       : "everything .env.example declares is set");
+  m.hidden = false;
+  m.querySelector(".primary").onclick = async () => {
+    try{
+      const r = await fetch("/api/devapp", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, instance, action: "env-set",
+                              text: m.querySelector("textarea").value})});
+      const k = await r.json();
+      if (k.error){ notify(k.error, true); return; }
+      m.hidden = true;
+      notify("env saved");
+      dockerList = null; dockerRev++; loadDocker();
+    }catch(e){ notify("env: " + e, true); }
+  };
+}
+
+function dockerJob(){
+  const j = state?.devapp_job;
+  return j && j.running ? j : null;
+}
+
+// What the artifact row's buttons used to do, moved here with them. The
+// confirmations come with it: taking something down and handing a compose
+// file more than its own directory are both decisions, and moving a button
+// is not a reason to stop asking.
+async function dmAction(project, instance, act, btn){
+  if (act === "env"){ openDevEnv(project, instance); return; }
+  if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
+  let ack = "";
+  if (act === "up" || act === "rebuild"){
+    // The full state for this one instance, asked now rather than computed
+    // for every instance on every paint — risks and problems cost a compose
+    // config parse each, and the manager lists them all.
+    let st;
+    try{
+      const r = await fetch("/api/devapp", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({project, instance, action:"state"})});
+      st = (await r.json()).state || {};
+    }catch(e){ notify("could not read its state: " + e, true); return; }
+    if ((st.problems || []).length){
+      notify(`${project}/${instance} will not work as written: `
+             + st.problems.join("; "), true);
+      return;
+    }
+    if ((st.missing_env || []).length && act === "up"){
+      notify(`the env is missing ${st.missing_env.join(", ")} — press Env`, true);
+      return;
+    }
+    if (act === "rebuild" && !confirm(
+        (st.built_rev ? `Rebuild ${project}/${instance}?\n\nBuilds the image, then down and up. `
+                      : `Build ${project}/${instance}?\n\nBuilds the first image and brings it up. `)
+        + "If the build finds new env settings it stops before up, and the Env "
+        + "editor will hold your old values in comments.")) return;
+    if (!st.risks_ack){
+      if (!confirm("This compose file asks for more than its own directory:"
+          + "\n\n" + (st.risks || []).map(x => "\u2022 " + x).join("\n")
+          + "\n\nA container it starts can reach those. Start it anyway?")) return;
+      ack = st.risks_digest || "";
+    }
+  }
+  if (btn) btn.disabled = true;
+  try{
+    const r = await fetch("/api/devapp", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({project, instance, action:act, ack})});
+    const j = await r.json();
+    if (j.error) notify(j.error, true);
+  }catch(e){ notify(`${act} failed: ` + e, true); }
+  dockerList = null; dockerRev++; loadDocker();
 }
 
 function renderDockerInto(i){
@@ -4507,12 +4682,55 @@ function renderDockerInto(i){
     el.innerHTML = `<div class="empty">could not reach the daemon: ${esc(dockerList.error)}</div>`;
     return;
   }
+  const ins = dockerList.instances || [];
   const cs = dockerList.containers || [];
-  const rows = cs.map(c => `
-    <div class="row stack2${c.ours ? "" : " off"}">
+  const job = dockerJob();
+  // The dashboard's own first, each with the controls that used to live on the
+  // artifact row — this is where they went, and the row now only sends you
+  // here. Grouped by nothing: the project is on every line, and a heading per
+  // project would put a lot of chrome around lists that are usually one long.
+  const rows = ins.map(d => {
+    const busy = job && job.project === d.project && job.instance === d.instance;
+    return `
+    <div class="row stack2" data-inst="${esc(d.project)}|${esc(d.instance)}">
       <div class="grow">
-        <div class="name">${esc(c.name || c.id)}${
-          c.ours ? "" : ` <span class="pill">not ours</span>`}</div>
+        <div class="name">${esc(d.name)}
+          <span class="dim state ${d.running ? "ok" : ""}">(${
+            d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
+        <div class="sub">${esc(d.project)} · ${esc(d.instance)}</div>
+        <div class="sub ${d.running ? "ok" : ""}">${
+          busy ? esc(job.step || "working") + '<span class="dots"></span>'
+          : d.running ? `running · ${d.containers} container(s)`
+          : d.exists ? "stopped — its containers are still there"
+          : d.built_rev ? `built from ${esc(d.built_rev)}, not running`
+          : "never built"}</div>
+        ${d.ports.length ? `<div class="sub">${d.ports.map(esc).join(" · ")}</div>` : ""}
+        ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
+      </div>
+      <span class="acts">
+        <button type="button" data-dm="up" ${
+          d.running || busy || (d.missing_env || []).length ? "disabled" : ""}
+          title="${(d.missing_env || []).length
+            ? "the env is missing " + esc(d.missing_env.join(", "))
+            : !d.built_rev
+              ? "docker compose up -d — builds the image first, as compose does"
+              : "docker compose up -d"}">Up</button>
+        <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
+          title="docker compose down">Down</button>
+        <button type="button" data-dm="env" title="this container's env file">Env</button>
+        <button type="button" data-dm="rebuild" ${!d.changed || busy ? "disabled" : ""}
+          title="${!d.built_rev
+            ? "build the first image, then bring it up"
+            : d.changed
+              ? "build from " + esc(d.project) + "'s codebase, then down and up"
+              : "the last build is current — this wakes when the code moves"}">${
+          d.built_rev ? "Rebuild" : "Build"}</button>
+      </span>
+    </div>`;
+  }).join("") + cs.map(c => `
+    <div class="row stack2 off">
+      <div class="grow">
+        <div class="name">${esc(c.name || c.id)} <span class="pill">not ours</span></div>
         <div class="sub">${esc(c.image)}</div>
         <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
           c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
@@ -4526,6 +4744,10 @@ function renderDockerInto(i){
     <div class="macros"><button id="bDockerRe">Refresh</button></div></div>`;
   const b = el.querySelector("#bDockerRe");
   if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
+    const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
+    dmAction(project, instance, btn.dataset.dm, btn);
+  });
 }
 
 function renderPackagesInto(i){
@@ -6487,27 +6709,10 @@ $("todoRevert").onclick = revertNotebook;
             rel="noreferrer" title="open ${esc(devWeb)}">Open</a>` : ""}
           ${devAsk ? `<button type="button" id="devOpen"
             title="it publishes ${devTcp.length} ports — pick one">Open…</button>` : ""}
-          <button type="button" data-devact="up" ${
-            da.running || daJob?.running || (da.missing_env || []).length ? "disabled" : ""}
-            title="${(da.missing_env || []).length
-              ? "the env is missing " + esc(da.missing_env.join(", "))
-              : da.needs_build && !da.built_rev
-                ? "docker compose up -d — builds the image first, as compose does"
-                : "docker compose up -d"}">Up</button>
-          <button type="button" data-devact="down" ${
-            !da.exists || daJob?.running ? "disabled" : ""}
-            title="${da.running ? "docker compose down"
-              : "docker compose down — the containers are still there, exited"}">Down</button>
-          <button type="button" data-devact="env"
-            title="the dev instance's env file — kept in /config, never in the repo">Env</button>
-          <button type="button" data-devact="rebuild" ${
-            !da.changed || daJob?.running ? "disabled" : ""}
-            title="${!da.built_rev
-              ? "build the first image, then bring it up"
-              : da.changed
-              ? "build the image, then down and up — unless new env settings appear, where it stops for you to fill them in"
-              : "the last build is current — this wakes when the code moves"}">${
-            da.built_rev ? "Rebuild" : "Build"}</button>
+          <button type="button" id="devSend" class="primary"
+            title="name a container built from this project and manage it there — a
+project can have several, and they are all built from this codebase"
+            >Send to Docker manager…</button>
         </span>
       </div>`;
     const jobHtml = job.running ? `
@@ -6574,73 +6779,8 @@ $("todoRevert").onclick = revertNotebook;
       box.querySelectorAll("a").forEach(a => a.addEventListener("click", closeSheet));
       openSheet("Open which port?", [box]);
     };
-    list.querySelectorAll("[data-devact]").forEach(b => b.onclick = async () => {
-      const act = b.dataset.devact;
-      if (act === "env"){ openDevEnv(); return; }
-      if (act === "down" && !confirm("Take the dev instance down?")) return;
-      if (act === "rebuild" && !confirm(
-          (b.textContent.trim() === "Build"
-            ? "Build the dev instance?\n\nBuilds the first image and brings it up. "
-            : "Rebuild the dev instance?\n\nBuilds the image, then down and up. ")
-          + "If the build finds new env settings it stops before up, and "
-          + "the Env editor will hold your old values in comments.")) return;
-      // What the compose file asks for beyond its own directory, once, before
-      // anything starts. A namespace bounds which containers this can touch;
-      // it cannot bound what a container is handed, and a file that mounts /
-      // produces a bbdev- container like any other. Asked once per set: the
-      // digest goes back with the action, so a file that gains a mount later
-      // asks again rather than inheriting the last yes.
-      let ack = "";
-      if ((act === "up" || act === "rebuild") && !da.risks_ack){
-        if (!confirm("This compose file asks for more than its own directory:"
-            + "\n\n" + (da.risks || []).map(x => "\u2022 " + x).join("\n")
-            + "\n\nA container it starts can reach those. Start it anyway?"))
-          return;
-        ack = da.risks_digest || "";
-      }
-      b.disabled = true;
-      try{
-        const r = await fetch("/api/devapp", {method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({project, action: act, ack})});
-        const j = await r.json();
-        if (j.error) notify(j.error, true);
-      }catch(e){ notify("dev instance: " + e, true); }
-      await loadArtifacts();
-    });
-    async function openDevEnv(){
-      let j;
-      try{
-        const r = await fetch("/api/devapp", {method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({project, action: "env-get"})});
-        j = await r.json();
-      }catch(e){ notify("env: " + e, true); return; }
-      const m = document.getElementById("devEnvModal");
-      m.querySelector("textarea").value = j.text || "";
-      // Both halves: whether this is a draft off the example, and what the
-      // STORED file is still missing — the second stays true while the box
-      // holds an unsaved draft, which is exactly when it matters.
-      m.querySelector(".hint").textContent =
-        (j.seeded ? "started from .env.example — nothing saved yet. " : "")
-        + ((j.missing || []).length
-           ? "missing against .env.example: " + j.missing.join(", ")
-           : "everything .env.example declares is set");
-      m.hidden = false;
-      m.querySelector(".primary").onclick = async () => {
-        try{
-          const r = await fetch("/api/devapp", {method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({project, action: "env-set",
-                                  text: m.querySelector("textarea").value})});
-          const k = await r.json();
-          if (k.error){ notify(k.error, true); return; }
-          m.hidden = true;
-          notify("env saved");
-          await loadArtifacts();
-        }catch(e){ notify("env: " + e, true); }
-      };
-    }
+    const send = list.querySelector("#devSend");
+    if (send) send.onclick = () => openSendToDocker(project);
     list.querySelectorAll("[data-artpush]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artpush)];
       b.disabled = true;
@@ -7448,6 +7588,11 @@ $("pUrl").oninput = () => {
 // ...and when a name HAS been typed, the URL still decides nothing — but the
 // warning has to keep up with a URL edited afterwards.
 $("pUrl").addEventListener("input", pNameShow);
+
+$("dnName").oninput = dnShow;
+$("dnGo").onclick = dnSubmit;
+$("dnCancel").onclick = closeSendToDocker;
+$("dnmodal").onclick = e => { if (e.target === $("dnmodal")) closeSendToDocker(); };
 
 $("rnName").oninput = rnShow;
 $("rnGo").onclick = rnSubmit;
@@ -8322,6 +8467,14 @@ let revs = {};
 // `key` may be a name or a function returning one, because half of these are
 // per project and the project is not known when the watch is registered.
 function onRev(key, fn){ revWatch.push({key, fn}); }
+
+// The Docker manager follows the same revision every dev-instance control
+// already moved on. Without this it is a snapshot: correct when it loaded and
+// stale from the first Up, with a Refresh button as the only way back — which
+// is a page that tells you what used to be running.
+onRev("devapp", () => {
+  if (tabs.some(x => x.kind === "docker")){ dockerList = null; dockerRev++; loadDocker(); }
+});
 
 async function pollRevs(){
   let now;

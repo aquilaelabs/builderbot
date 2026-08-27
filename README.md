@@ -1116,8 +1116,14 @@ lives in its body. The cards:
   control you use stays live — notebook, artifacts, dev instance, shell — and
   the only thing that goes is Claude starting a session there. For a project
   you keep in `/workspace` to deploy and run rather than to develop
-The **Tools** card carries **Docker manager…**, which opens a tab listing every
-container on whichever daemon `DOCKER_HOST` names — not only the ones this
+The **Tools** card carries **Docker manager…**, which is where a project's
+containers are built, started, stopped and given their env. A project can have
+several — the Artifacts tab's dev row is one button now, **Send to Docker
+manager…**, which names a container and takes you there; every container of a
+project is built from that project's codebase, and rebuilding takes whatever
+that codebase says at the time.
+
+The same tab lists every container on whichever daemon `DOCKER_HOST` names — not only the ones this
 dashboard started. A port taken by something else is exactly what you open a
 list like this to find out about, so the others are shown and marked *not ours*
 rather than hidden. It is a read: `docker ps` is one of two verbs the dev

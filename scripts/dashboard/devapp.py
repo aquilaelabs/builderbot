@@ -735,6 +735,105 @@ def _gate_env(project, instance=MAIN):
 # ---------------------------------------------------------------------------
 # state
 
+def _with_compose():
+    """Projects that have a compose file, so could have an instance at all."""
+    out = []
+    try:
+        for d in sorted(WORKSPACE.iterdir()):
+            if d.is_dir() and not d.name.startswith(".") and d.name != "_work" \
+                    and compose_file(d.name) is not None:
+                out.append(d.name)
+    except OSError:
+        pass
+    return out
+
+
+def overview():
+    """Every instance, and everything else on the daemon, from ONE ps.
+
+    state() asks the daemon twice per instance — is it running, does anything
+    exist — which is fine for one row and absurd for a manager listing all of
+    them. The container list already answers both for everything at once: an
+    instance's containers are the ones whose compose project is its name. So
+    the whole page costs one docker call plus what is already on disk.
+
+    What it deliberately does NOT compute is the expensive half: risks,
+    problems, the parsed compose config. Those are per-instance questions
+    asked when somebody acts on one, and state() still answers them.
+    """
+    cs = containers()
+    by_proj = {}
+    for c in cs["containers"]:
+        by_proj.setdefault(c["project"], []).append(c)
+    store = _load()
+    out = []
+    for project in sorted(set(list(store) + _with_compose())):
+        # Once per PROJECT, not per instance: every instance of a project is
+        # built from the same working copy, so the answer cannot differ
+        # between them and asking git twice for it would be waste.
+        head, dirty = _head(project), _dirty(project)
+        for inst in instances(project):
+            pn = _pname(project, inst)
+            mine = by_proj.get(pn, [])
+            rec = _read_rec(project, inst)
+            same_daemon = rec.get("daemon") == daemon_id()
+            out.append({
+                "project": project, "instance": inst, "name": pn,
+                "running": any(c["state"] == "running" for c in mine),
+                "exists": bool(mine),
+                "containers": len(mine),
+                # Ports from the containers themselves rather than from the
+                # compose file: what is published is what the daemon says it
+                # published, and a stopped instance publishes nothing.
+                "ports": sorted({p for c in mine for p in c["ports"]}),
+                # The same rule state() uses — a build belongs to the daemon
+                # it happened on, and a record from another names nothing here.
+                "built_rev": rec.get("rev", "") if same_daemon else "",
+                "built_at": rec.get("at", 0) if same_daemon else 0,
+                "await_env": bool(rec.get("await_env")) if same_daemon else False,
+                "compose": compose_file(project) is not None,
+                # Both are file reads and one git call, which is why they are
+                # here and risks/problems are not: those parse the compose
+                # file, and the manager lists every instance at once.
+                "missing_env": missing_env(project, inst),
+                "changed": (not (rec.get("rev") if same_daemon else "")
+                            or (same_daemon and rec.get("rev") != head) or dirty),
+                "changed_why": ("moved" if same_daemon and rec.get("rev")
+                                and rec.get("rev") != head
+                                else "dirty" if dirty and same_daemon and rec.get("rev")
+                                else ""),
+            })
+    return {"error": cs["error"], "instances": out,
+            # Only the ones that are not an instance of ours: the instances
+            # above already account for those, and listing them twice would
+            # make the page look like the daemon is running double.
+            "containers": [c for c in cs["containers"] if not c["ours"]]}
+
+
+def create_instance(project, name):
+    """Register a new instance of a project. Nothing is built or started.
+
+    The name is slugged the same way it will be when it reaches a compose
+    call, and checked against the slug rather than the typing — `My App` and
+    `my-app` are the same instance and the second should be refused rather
+    than silently becoming the first.
+    """
+    slug = _slug(name) or ""
+    if not slug:
+        return {"error": "an instance needs a name with a letter or digit in it"}
+    if compose_file(project) is None:
+        return {"error": f"{project} has no compose file to make an instance of"}
+    with _lock:
+        d = _load()
+        if slug in (d.get(project) or {}):
+            return {"error": f"{project} already has an instance called {slug}"}
+        _rec(d, project, slug)
+        write_json(FILE, d)
+    _bump()
+    return {"ok": True, "project": project, "instance": slug,
+            "name": _pname(project, slug)}
+
+
 def instances(project):
     """The instance names this project has, oldest record first.
 

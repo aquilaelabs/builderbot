@@ -2335,6 +2335,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._phone_payload())
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
+        if self.path.startswith("/api/docker"):
+            # The manager's whole page in one answer: every instance, and
+            # every container that is not one of them.
+            return self._json(devapp.overview())
         if self.path.startswith("/api/containers"):
             # A read, and the only one this dashboard makes of the daemon
             # beyond `docker version` — see the guard in devapp.py, which
@@ -2634,8 +2638,20 @@ class Handler(BaseHTTPRequestHandler):
         # the name decides a compose project and a data directory, and those
         # are not places to let an arbitrary string reach.
         inst = field(req, "instance") or devapp.MAIN
+        # `new` is the one action whose instance does not exist yet — that is
+        # what it is for. Everything else names one that must exist, because
+        # the string decides a compose project and a data directory and is not
+        # somewhere an arbitrary one should reach.
+        if act == "new":
+            r = devapp.create_instance(name, inst)
+            return self._json(r, 400 if r.get("error") else 200)
         if inst not in devapp.instances(name):
             return self._json({"error": f"no instance {inst} of {name}"}, 400)
+        if act == "state":
+            # The full picture for one instance — risks, problems, the parsed
+            # compose — which overview() deliberately does not compute for
+            # every instance at once. Asked when somebody is about to act.
+            return self._json({"state": devapp.state(name, inst)})
         # `ack` is the digest of the risk list the operator was actually
         # shown — not a bare yes. A compose file that gains a mount between
         # the row rendering and the button being pressed does not inherit the

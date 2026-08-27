@@ -361,11 +361,29 @@ echo "$*" >> "$ST/docker.log"
 case "$1" in
   version) echo "99.stub"; exit 0 ;;
   ps)
-    # The bare `docker ps` the Docker manager reads — one container this
-    # dashboard started and one it did not, which is the distinction the
-    # listing is for. A file lets a test ask for the daemon to be unreachable.
+    # The bare `docker ps` the Docker manager reads. Stateful, because the
+    # manager derives running/stopped from it: a compose `up` leaves a marker
+    # and this turns each marker into the container that `up` would have
+    # started. A fixed list made the manager disagree with the compose stub
+    # about what was running, which is a test lying in the shape of a bug.
     [ -f "$ST/ps.fail" ] && { echo "cannot connect to the daemon"; exit 1; }
-    printf '%s\n' '{"ID":"aaaaaaaaaaaabbbb","Names":"bbdev-alpha-app-1","Image":"alpha-dev","State":"running","Status":"Up 3 minutes","Ports":"0.0.0.0:7475->7474/tcp, [::]:7475->7474/tcp","Labels":"com.docker.compose.project=bbdev-alpha,com.docker.compose.service=app"}'
+    for f in "$ST"/*.up; do
+      [ -e "$f" ] || continue
+      pn="$(basename "$f" .up)"
+      printf '{"ID":"aaaa%s","Names":"%s-app-1","Image":"%s-img","State":"running","Status":"Up 3 minutes","Ports":"0.0.0.0:7475->7474/tcp, [::]:7475->7474/tcp","Labels":"com.docker.compose.project=%s,com.docker.compose.service=app"}\n' \
+        "$pn" "$pn" "$pn" "$pn"
+    done
+    # An exited container is still THERE — holding its name and its network —
+    # which is why Down stays live for one and why the manager has to see it.
+    for f in "$ST"/*.exited; do
+      [ -e "$f" ] || continue
+      pn="$(basename "$f" .exited)"
+      [ -e "$ST/$pn.up" ] && continue          # up wins: it is the same one
+      printf '{"ID":"bbbb%s","Names":"%s-app-1","Image":"%s-img","State":"exited","Status":"Exited (1) 1 minute ago","Ports":"","Labels":"com.docker.compose.project=%s,com.docker.compose.service=app"}\n' \
+        "$pn" "$pn" "$pn" "$pn"
+    done
+    # And one this dashboard did not start, which is the distinction the
+    # listing exists to draw.
     printf '%s\n' '{"ID":"ccccccccccccdddd","Names":"someone-elses","Image":"redis:7","State":"exited","Status":"Exited (0) 2 hours ago","Ports":"","Labels":"com.docker.compose.project=other"}'
     exit 0 ;;
   compose)
