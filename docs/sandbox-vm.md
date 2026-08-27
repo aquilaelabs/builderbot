@@ -259,7 +259,33 @@ Five things in it differ from Unraid's placeholder, each for a reason:
       --nfs 192.168.1.15:/mnt/cache/appdata/builderbot-dev:/devdata
   ```
 
-  (Export both from Unraid: *Shares → share → NFS Security Settings*.)
+  Export them from Unraid first: *Shares → share → NFS Security Settings*,
+  **Security: Private**, with a rule naming only the VM:
+
+  ```
+  192.168.1.151(sec=sys,rw,all_squash,anonuid=99,anongid=100)
+  ```
+
+  `all_squash` with `anonuid=99,anongid=100` is the part that matters beyond
+  access control. BuilderBot runs as uid 99 / gid 100, which is what the array
+  files already are; the VM's own user is uid 1000 and containers inside it
+  often write as root. Without squashing, anything the sandbox creates lands
+  owned by 1000 or 0 and **BuilderBot cannot modify it** — a permission error
+  in a session, on a file it made a minute earlier. Most Unraid examples show
+  `no_root_squash`, which produces exactly that.
+
+  **Do not export `appdata`.** Unraid exports *shares*, not folders, so
+  exporting `/mnt/cache/appdata/builderbot-dev` means exporting all of
+  appdata — every other container's configuration, handed to the sandbox.
+  That is the reach the VM exists to remove. Either skip `/devdata` until
+  something needs it (a compose that never mentions `${BB_DEV_DATA}` does
+  not care), or give it a share of its own and repoint BuilderBot's
+  `/devdata` at the same place so both sides still agree on the path.
+
+  `ro` instead of `rw` on the projects share is worth knowing about: the
+  sandbox could build from your source and never alter it. It breaks any
+  compose that writes to a bind mount inside the project, which is common
+  enough that it is not where I would start.
 
   To move to virtiofs later, add a `<filesystem>` block per share — the
   `<memoryBacking>` it needs is already in the XML for exactly this — and
