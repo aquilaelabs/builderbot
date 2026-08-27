@@ -697,8 +697,33 @@ trim_line() {
 # workflow's name comes off the header line because two workflows archive here
 # now — the lint job and the image build's outcome — and a list that cannot
 # tell them apart is a list of numbers.
+ci_log_reason() {
+    # The first thing that went wrong in an archived run, and which check it
+    # was under. A row that says only "failure" is easy to scroll past — which
+    # is how twelve consecutive red lint runs went unnoticed here, taking the
+    # deterministic linters' signal down with them.
+    awk '
+        /^\[builderbot\] == / {
+            sec = $0
+            sub(/^\[builderbot\] == /, "", sec)
+            sub(/ ==[ \t]*$/, "", sec)
+            next
+        }
+        /Timeout [0-9]+ms exceeded/ || /^[ \t]*\[FAIL\]/ \
+            || /^\[builderbot\] ERROR:/ || /^[ \t]*throw new Error/ \
+            || /: error:/ || /^Error:/ {
+            line = $0
+            sub(/^[ \t]+/, "", line)
+            if (sec != "") printf "%s: ", sec
+            print line
+            exit
+        }
+    ' "$1" 2>/dev/null | head -1
+}
+
+
 ci_log_rows() {
-    local d="$1" limit="${2:-0}" rows f
+    local d="$1" limit="${2:-0}" rows f reason
     [ -d "$d" ] || return 0
     rows="$(find "$d" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' 2>/dev/null \
             | sort -rn | cut -d' ' -f2-)"
@@ -718,6 +743,15 @@ ci_log_rows() {
             "$(date -r "$f" '+%d %b %H:%M')" \
             "$(sed -n '1s/^# \(.*\) — .*/\1/p' "$f")" \
             "${result:-(unfinished)}"
+        # ...and why, when it is not a success. Which check failed and what it
+        # said is the difference between a row somebody chases and a row
+        # somebody scrolls past.
+        if [ "${result:-}" != success ]; then
+            reason="$(ci_log_reason "$f")"
+            if [ -n "$reason" ]; then
+                printf '  %-20s %s\n' "" "↳ $(trim_line "$reason" 88)"
+            fi
+        fi
     done <<< "$rows"
 }
 
@@ -783,7 +817,20 @@ cmd_catchup() {
                 if [ "$behind" = 0 ]; then
                     printf '  %-9s %s\n' serving "origin/main exactly — what is merged is what is running"
                 else
-                    printf '  %-9s %s\n' serving "$behind commit(s) behind origin/main — anything merged since is NOT live in here"
+                    # Being behind only matters if the missing commits are ones
+                    # the image is BUILT from — the paths build-image.yml
+                    # triggers on. Three merged doc commits leave the code in
+                    # here current, and saying only "3 behind" sends somebody
+                    # to `bb drift` to find that out.
+                    local moved_inputs
+                    moved_inputs="$(git diff --name-only "${BB_IMAGE_REV}..${main}" -- \
+                        Dockerfile .dockerignore scripts config \
+                        .github/workflows/build-image.yml 2>/dev/null | head -1)"
+                    if [ -n "$moved_inputs" ]; then
+                        printf '  %-9s %s\n' serving "$behind commit(s) behind origin/main, and they change the image — what is merged is NOT what is running"
+                    else
+                        printf '  %-9s %s\n' serving "$behind commit(s) behind origin/main, none of them image inputs — the code in here is current"
+                    fi
                 fi
             else
                 printf '  %-9s %s\n' serving "an image built from a commit that is not on origin/main"
@@ -798,6 +845,22 @@ cmd_catchup() {
             printf '  %-9s %s\n' branch "$br — ${ahead} ahead / ${behind} behind ${up}"
         else
             printf '  %-9s %s\n' branch "$br — no upstream"
+        fi
+        # And where it stands against MAIN, which is the half that decides
+        # whether there is anything here to finish. "0 ahead / 0 behind its own
+        # remote" reads as live work when the work is in fact merged and the
+        # branch is parked — and a branch name reused across many PRs carries
+        # nothing else to tell those apart.
+        local mainref nahead
+        mainref="$(git rev-parse --verify -q origin/main >/dev/null 2>&1 \
+                   && echo origin/main || true)"
+        if [ -n "$mainref" ] && [ "$br" != main ] && [ "$br" != '-' ]; then
+            nahead="$(git rev-list --count "${mainref}..HEAD" 2>/dev/null || echo '?')"
+            if [ "$nahead" = 0 ]; then
+                printf '  %-9s %s\n' "vs main" "already in $mainref — nothing here is unmerged"
+            else
+                printf '  %-9s %s\n' "vs main" "$nahead commit(s) not in $mainref"
+            fi
         fi
         dirty="$(git status --porcelain 2>/dev/null | grep -cv '^??' || true)"
         untracked="$(git status --porcelain 2>/dev/null | grep -c '^??' || true)"
@@ -850,13 +913,28 @@ cmd_catchup() {
         # text — which for a roadmap `info` is a page — and three of those is
         # the screen this command exists to be.
         local moved
-        moved="$(cmd_history --since "$since" -n 8 2>/dev/null | while IFS= read -r line; do
+        # -n is generous because the filter below throws lines away, and a
+        # section starved to two rows is worse than one that scrolls.
+        moved="$(cmd_history --since "$since" -n 24 2>/dev/null | while IFS= read -r line; do
                      case "$line" in
                          '  '[0-9][0-9]' '[A-Za-z][A-Za-z][A-Za-z]' '*) ;;
                          *) continue ;;
                      esac
+                     # A roadmap `add` or `info` is already in the session's
+                     # prompt verbatim — the whole open list is — so printing
+                     # it here charges for it twice. What is NOT in the prompt
+                     # is an item that has LEFT the list, which is exactly what
+                     # `done` and `dropped` are, and they are the roadmap moves
+                     # a cold session cannot otherwise discover. Bugs and
+                     # memories stay whatever they did: neither arrives whole.
+                     if [[ "$line" =~ ^\ \ [0-9]{2}\ [A-Za-z]{3}\ [0-9]{2}:[0-9]{2}\ \ roadmap\ \ [^\ ]+\ \ (add|info|edit)\  ]]; then
+                         continue
+                     fi
                      printf '%s\n' "$(trim_line "$line" 108)"
-                 done)"
+                 # sed, not head: head closes the pipe as soon as it has its
+                 # eight lines and the loop above dies of SIGPIPE, taking the
+                 # whole command out with rc=141 under `set -e`.
+                 done | sed -n '1,8p')"
         if [ -n "$moved" ]; then
             printf '%s\n' "$moved"
             echo "  ('bb history' for these in full — the text is cut short here)"
