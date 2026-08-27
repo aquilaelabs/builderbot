@@ -360,6 +360,14 @@ ST="${DOCKER_STUB_STATE:?}"
 echo "$*" >> "$ST/docker.log"
 case "$1" in
   version) echo "99.stub"; exit 0 ;;
+  ps)
+    # The bare `docker ps` the Docker manager reads — one container this
+    # dashboard started and one it did not, which is the distinction the
+    # listing is for. A file lets a test ask for the daemon to be unreachable.
+    [ -f "$ST/ps.fail" ] && { echo "cannot connect to the daemon"; exit 1; }
+    printf '%s\n' '{"ID":"aaaaaaaaaaaabbbb","Names":"bbdev-alpha-app-1","Image":"alpha-dev","State":"running","Status":"Up 3 minutes","Ports":"0.0.0.0:7475->7474/tcp, [::]:7475->7474/tcp","Labels":"com.docker.compose.project=bbdev-alpha,com.docker.compose.service=app"}'
+    printf '%s\n' '{"ID":"ccccccccccccdddd","Names":"someone-elses","Image":"redis:7","State":"exited","Status":"Exited (0) 2 hours ago","Ports":"","Labels":"com.docker.compose.project=other"}'
+    exit 0 ;;
   compose)
     proj=""
     args=("$@")

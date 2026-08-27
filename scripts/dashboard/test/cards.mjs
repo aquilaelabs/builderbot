@@ -411,6 +411,29 @@ ok(true, 'pinning it puts it back on the sidebar');
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 
+// The docker manager: what is on the daemon, all of it. Reading it is the one
+// thing beyond `docker version` this dashboard asks of docker outside compose,
+// and the guard allows it precisely because it changes nothing.
+await page.click('#bDocker');
+await page.waitForSelector('.dmtab .row', { timeout: 15000 });
+const dm = await page.$$eval('.dmtab .row', rs => rs.map(r => ({
+  text: r.textContent.replace(/\s+/g, ' ').trim(),
+  off: r.classList.contains('off'),
+})));
+ok(dm.length === 2, 'the manager lists every container on the daemon');
+ok(/bbdev-alpha-app-1/.test(dm[0].text) && !dm[0].off,
+   '...this dashboard\'s first, and not greyed');
+ok(/someone-elses/.test(dm[1].text) && dm[1].off && /not ours/.test(dm[1].text),
+   '...and one it did not start, shown and marked rather than hidden');
+ok((dm[0].text.match(/7475->7474/g) || []).length === 1,
+   '...with its published port once, not once per address family');
+ok(/Up 3 minutes/.test(dm[0].text) && /Exited/.test(dm[1].text),
+   '...and what each one is doing');
+// Back to the projects tab: the docker one is in front of it now, and every
+// assertion below is about a project row.
+await page.click('#projects #bAllProj');
+await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
+
 const api = (path, body) => page.evaluate(async ([p, b]) => {
   const r = await fetch(p, { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });

@@ -1799,6 +1799,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <h2>Tools</h2>
       <div class="macros">
         <button id="bPkgs" onclick="openPackages()">Additional packages…</button>
+        <button id="bDocker" onclick="openDocker()">Docker manager…</button>
       </div>
     </div>
     <!-- The standing model and effort for everything the dashboard sends to
@@ -2727,6 +2728,15 @@ function drawPanes(){
         pane.dataset.rev = String(pkgRev);
         renderPackagesInto(i);
       }
+      // The docker manager fetches its list AFTER the pane is first drawn, so
+      // without this it renders once — empty — and the `same` short-circuit
+      // above skips every redraw that would have filled it. Same shape as
+      // packages, and the same reason for the counter: a document pane is
+      // refilled when its report changes, not on every status poll.
+      if (t.kind === "docker" && pane.dataset.drev !== String(dockerRev)){
+        pane.dataset.drev = String(dockerRev);
+        renderDockerInto(i);
+      }
       continue;
     }
     if (same) continue;
@@ -2785,6 +2795,10 @@ function drawPanes(){
     }
     if (t.kind === "todo") renderNotebookInto(i, t.arg);
     if (t.kind === "projects") renderProjectsInto(i);
+    if (t.kind === "docker"){
+      pane.dataset.drev = String(dockerRev); renderDockerInto(i);
+      if (!dockerList) loadDocker();        // same, for a restored docker tab
+    }
   }
 }
 
@@ -4459,6 +4473,59 @@ function renderProjectsInto(i){
   if (paint(el, `<div class="card projtab">${
     ordered.map(p => projectRow(p, live, cls, true)).join("")}</div>`))
     wireProjectRows(el);
+}
+
+// ---- the docker manager -------------------------------------------------
+// What is actually running on the daemon the dev instances use. All of it,
+// not only what this dashboard started: a port taken by something else is
+// exactly what you open a list like this to find out about, and a listing
+// that showed half would be lying by omission.
+let dockerList = null;                   // last answer, or null before the first
+let dockerRev = 0;                       // bumped when it changes, so a pane
+                                         // showing the same tab still repaints
+
+function openDocker(){
+  openTab({kind: "docker", arg: "__docker", label: "Docker"});
+  loadDocker();
+}
+
+async function loadDocker(){
+  try{
+    dockerList = await (await fetch("/api/containers")).json();
+  }catch(e){ dockerList = {error: String(e), containers: []}; }
+  dockerRev++;
+  // drawPanes rather than reaching into a pane by index: which pane holds this
+  // tab is the layout's business, and packages already refreshes this way.
+  drawPanes();
+}
+
+function renderDockerInto(i){
+  const el = $("doc" + i);
+  if (!el) return;
+  if (!dockerList){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
+  if (dockerList.error){
+    el.innerHTML = `<div class="empty">could not reach the daemon: ${esc(dockerList.error)}</div>`;
+    return;
+  }
+  const cs = dockerList.containers || [];
+  const rows = cs.map(c => `
+    <div class="row stack2${c.ours ? "" : " off"}">
+      <div class="grow">
+        <div class="name">${esc(c.name || c.id)}${
+          c.ours ? "" : ` <span class="pill">not ours</span>`}</div>
+        <div class="sub">${esc(c.image)}</div>
+        <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
+          c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
+        ${c.ports.length ? `<div class="sub">${c.ports.map(esc).join(" · ")}</div>` : ""}
+      </div>
+    </div>`).join("");
+  // Its own class rather than the projects tab's: the two look alike and a
+  // selector that matched both would be a test passing on the wrong tab.
+  el.innerHTML = `<div class="card dmtab">${
+    rows || `<div class="empty">nothing on this daemon yet</div>`}
+    <div class="macros"><button id="bDockerRe">Refresh</button></div></div>`;
+  const b = el.querySelector("#bDockerRe");
+  if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
 }
 
 function renderPackagesInto(i){

@@ -1116,6 +1116,14 @@ lives in its body. The cards:
   control you use stays live — notebook, artifacts, dev instance, shell — and
   the only thing that goes is Claude starting a session there. For a project
   you keep in `/workspace` to deploy and run rather than to develop
+The **Tools** card carries **Docker manager…**, which opens a tab listing every
+container on whichever daemon `DOCKER_HOST` names — not only the ones this
+dashboard started. A port taken by something else is exactly what you open a
+list like this to find out about, so the others are shown and marked *not ours*
+rather than hidden. It is a read: `docker ps` is one of two verbs the dev
+instance's guard allows outside compose, and nothing on the tab acts on a
+container.
+
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD.
   Project groups start collapsed — the severity pills on each are the overview,

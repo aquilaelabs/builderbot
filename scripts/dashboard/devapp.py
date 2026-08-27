@@ -255,18 +255,30 @@ def available():
 _CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
 
 
-# Every docker call this module makes is a compose call inside the project's
-# own bbdev- namespace, plus one `docker version`. That is the whole of what
-# keeps the blast radius to containers this dashboard created — and until this
-# guard it was true only because every call site happened to go through
-# _compose(). The socket proxy cannot help with it: its flags are per
-# ENDPOINT, so CONTAINERS=1 is the entire /containers API for every container
-# on the host, and no arrangement of them means "only ours".
+# Every docker call that CHANGES anything is a compose call inside the
+# project's own bbdev- namespace. That is what keeps the blast radius to
+# containers this dashboard created — and until this guard it was true only
+# because every call site happened to go through _compose(). A socket proxy
+# cannot help with it: its flags are per ENDPOINT, so CONTAINERS=1 is the
+# entire /containers API for every container on the host, and no arrangement
+# of them means "only ours".
 #
 # So the invariant is asserted at the one place every call passes through,
 # which turns "the code always passes --project-name" into "the code cannot
 # not". It says nothing about what a compose FILE asks for — see risks().
-_BARE_OK = {"version"}
+#
+# `ps` is allowed alongside `version`, and the reason it was not is worth
+# keeping rather than deleting: this list used to be one verb long because
+# DOCKER_HOST was a socket proxy onto the SERVER's daemon, where listing
+# containers meant listing the operator's real ones. That is no longer where
+# it points. Against a sandbox VM the containers are this dashboard's and
+# whatever else was put there deliberately, and being unable to see them is
+# not safety, it is a blind spot — the Docker Manager exists to show what is
+# actually running.
+#
+# Both are READS. Nothing here lets a verb that changes something in, and the
+# namespace rule below is untouched: seeing a container is not touching it.
+_BARE_OK = {"version", "ps"}
 
 
 def _guard(argv):
@@ -279,7 +291,8 @@ def _guard(argv):
     if not verb:
         return "a bare `docker` with no subcommand"
     if verb != "compose":
-        return f"`docker {verb}` — only compose and version are reachable here"
+        return (f"`docker {verb}` — only compose, and the reads in "
+                f"{'/'.join(sorted(_BARE_OK))}, are reachable here")
     try:
         name = argv[argv.index("--project-name") + 1]
     except (ValueError, IndexError):
@@ -320,6 +333,95 @@ def _run(argv, timeout=60, env_extra=None):
     except (OSError, subprocess.SubprocessError) as e:
         return {"code": 1, "out": str(e)}
     return {"code": r.returncode, "out": (r.stdout or "") + (r.stderr or "")}
+
+
+# The compose label every container started by compose carries. Read rather
+# than parsed out of the name: a compose file may set container_name to
+# anything, and the name is then not the namespace at all.
+COMPOSE_LABEL = "com.docker.compose.project"
+SERVICE_LABEL = "com.docker.compose.service"
+
+
+def containers():
+    """Everything on the daemon, and whose it is.
+
+    All of them, not only ours. The operator asked to see what is running on
+    that machine and showing half of it would be a listing that lies by
+    omission — a port conflict with something this dashboard did not start is
+    exactly the thing you open a list to find out about.
+
+    `ours` is the honest part: a container is this dashboard's when its compose
+    project sits in the bbdev- namespace, which is the same rule _guard()
+    enforces on every call that changes anything. Everything else is shown and
+    marked as not ours, and nothing here offers to act on it.
+    """
+    r = _run([DOCKER, "ps", "--all", "--no-trunc", "--format", "{{json .}}"],
+             timeout=25)
+    if r["code"] != 0:
+        return {"error": " ".join((r["out"] or "docker did not answer").split())[:200],
+                "containers": []}
+    out = []
+    for line in r["out"].splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            c = json.loads(line)
+        except ValueError:
+            continue
+        labels = _labels(c.get("Labels", ""))
+        proj = labels.get(COMPOSE_LABEL, "")
+        out.append({
+            # Short, because the full id is 64 characters of nothing anyone
+            # reads — and the whole one is still what docker was asked for, so
+            # this is a display choice rather than a lossy fetch.
+            "id": (c.get("ID") or "")[:12],
+            "name": c.get("Names", ""),
+            "image": c.get("Image", ""),
+            "state": (c.get("State") or "").lower(),
+            "status": c.get("Status", ""),
+            "ports": _ports(c.get("Ports", "")),
+            "project": proj,
+            "service": labels.get(SERVICE_LABEL, ""),
+            "ours": proj.startswith("bbdev-"),
+        })
+    out.sort(key=lambda c: (not c["ours"], c["project"], c["name"]))
+    return {"error": "", "containers": out}
+
+
+def _labels(raw):
+    """docker's comma-separated k=v label string, as a dict.
+
+    Split on the first = only: a label value may contain one, and the compose
+    labels this cares about are paths and names often enough for that to
+    matter.
+    """
+    d = {}
+    for bit in (raw or "").split(","):
+        k, sep, v = bit.partition("=")
+        if sep:
+            d[k.strip()] = v.strip()
+    return d
+
+
+def _ports(raw):
+    """The published ports, deduplicated and without the noise.
+
+    docker prints each mapping once per address family, so a single published
+    port arrives twice — as 0.0.0.0:8080->80/tcp and [::]:8080->80/tcp. Shown
+    both ways it reads as two ports.
+    """
+    seen = []
+    for bit in (raw or "").split(","):
+        bit = bit.strip()
+        if "->" not in bit:
+            continue
+        host, _, rest = bit.partition("->")
+        port = host.rsplit(":", 1)[-1]
+        entry = f"{port}->{rest}"
+        if entry not in seen:
+            seen.append(entry)
+    return seen
 
 
 def compose_file(project):

@@ -427,7 +427,7 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
-TAB_KINDS = {"term", "packages", "todo", "projects"}
+TAB_KINDS = {"term", "packages", "todo", "projects", "docker"}
 
 
 def load_layout():
@@ -2331,6 +2331,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._phone_payload())
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
+        if self.path.startswith("/api/containers"):
+            # A read, and the only one this dashboard makes of the daemon
+            # beyond `docker version` — see the guard in devapp.py, which
+            # allows it and still refuses anything that would change something.
+            return self._json(devapp.containers())
         if self.path.startswith("/api/project-job"):
             return self._json(projects.job())
         if self.path.startswith("/api/todo"):
