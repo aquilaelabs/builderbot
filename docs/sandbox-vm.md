@@ -138,7 +138,7 @@ then, in that session:
 sudo bash provision.sh --user bb \
     --key "ssh-ed25519 AAAA… bb-sandbox" \
     --nfs 192.168.1.15:/mnt/user/development:/workspace \
-    --nfs 192.168.1.15:/mnt/cache/appdata/builderbot-dev:/devdata
+    --nfs 192.168.1.15:/mnt/user/appdata/builderbot-dev:/devdata
 ```
 
 Both steps ask for the password you set in the installer, because the VM has
@@ -256,7 +256,7 @@ Five things in it differ from Unraid's placeholder, each for a reason:
   ```bash
   sudo bash provision.sh --user bb --key "ssh-ed25519 …" \
       --nfs 192.168.1.15:/mnt/user/development:/workspace \
-      --nfs 192.168.1.15:/mnt/cache/appdata/builderbot-dev:/devdata
+      --nfs 192.168.1.15:/mnt/user/appdata/builderbot-dev:/devdata
   ```
 
   Export them from Unraid first: *Shares → share → NFS Security Settings*,
@@ -274,13 +274,23 @@ Five things in it differ from Unraid's placeholder, each for a reason:
   in a session, on a file it made a minute earlier. Most Unraid examples show
   `no_root_squash`, which produces exactly that.
 
-  **Do not export `appdata`.** Unraid exports *shares*, not folders, so
+  **An NFS source is the exported SHARE path, not a pool path.** Unraid
+  exports `/mnt/user/<share>`, so a directory on the cache pool is reached as
+  `/mnt/user/appdata/thing`, never as `/mnt/cache/appdata/thing` — the latter
+  is right for a bind mount and simply is not exported. The mount fails, and
+  with `nofail` it fails quietly.
+
+  **Think before exporting `appdata`.** Unraid exports *shares*, not folders, so
   exporting `/mnt/cache/appdata/builderbot-dev` means exporting all of
   appdata — every other container's configuration, handed to the sandbox.
-  That is the reach the VM exists to remove. Either skip `/devdata` until
-  something needs it (a compose that never mentions `${BB_DEV_DATA}` does
-  not care), or give it a share of its own and repoint BuilderBot's
-  `/devdata` at the same place so both sides still agree on the path.
+  That is a large part of the reach the VM exists to remove: a session driving
+  the sandbox could then read and write every other container's
+  configuration through it. Three options, in the order I would take them —
+  skip `/devdata` until something needs it (a compose that never mentions
+  `${BB_DEV_DATA}` does not care); give it a share of its own and repoint
+  BuilderBot's `/devdata` at the same place so both sides still agree on the
+  path; or export `appdata` anyway, scoped to the VM's address, having
+  decided that trade deliberately rather than by accident.
 
   `ro` instead of `rw` on the projects share is worth knowing about: the
   sandbox could build from your source and never alter it. It breaks any
