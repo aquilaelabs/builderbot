@@ -1240,6 +1240,7 @@ def project_list():
                     # dialog can offer to change one without offering to
                     # invent one for a local repo that never had any.
                     "has_token": (STATE / "gitcreds" / d.name).is_file(),
+                    "push": projects.may_push(d.name),
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
@@ -1752,6 +1753,47 @@ version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 # this box's, not any one project's — and is handed over.
 import projects                                                  # noqa: E402
 
+def _seed_push_rights():
+    """One-off: the projects that were already being pushed to keep pushing.
+
+    Before this existed, whether a working copy could push was whatever its
+    remote and the agent's keys happened to allow — and on this box that means
+    every repo addressed over ssh through a deploy-key alias. Starting to
+    refuse those would be taking away something that worked, to enforce a rule
+    made afterwards, which is not what a new rule is for.
+
+    So: absent the file, every project whose GitHub remote is an ssh one is
+    granted, recorded as `key`, and the file exists from then on. https
+    remotes are not seeded — those authenticated with the container-wide PAT,
+    which is the arrangement being moved away from, and a token of their own
+    is the way back to pushing.
+    """
+    if (STATE / "push-rights.json").exists() or not WORKSPACE.is_dir():
+        return
+    seeded = {}
+    try:
+        here = sorted(WORKSPACE.iterdir())
+    except OSError:
+        return
+    for d in here:
+        if not d.is_dir() or d.name == "_work" or d.name.startswith("."):
+            continue
+        remotes = run(["git", "-C", str(d), "remote", "-v"], timeout=10)["out"]
+        if not remotes.strip() or not _github_remote(remotes):
+            continue
+        # ssh, in either spelling — an https remote is the PAT arrangement.
+        if not any(l.split()[1].startswith(("git@", "ssh://"))
+                   for l in remotes.splitlines() if len(l.split()) > 1):
+            continue
+        repo = projects.repo_of_remotes(remotes)
+        if repo and repo not in {v["repo"] for v in seeded.values()}:
+            seeded[d.name] = {"repo": repo, "how": "key", "at": int(time.time())}
+    write_json(STATE / "push-rights.json", seeded)
+    if seeded:
+        print(f"[dashboard] push rights seeded for {len(seeded)} project(s) "
+              f"already pushing over ssh", flush=True)
+
+
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
                    repo_path=repo_path, build_claude_md=build_claude_md,
@@ -1759,6 +1801,8 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
                    devdata=devapp.DEVDATA, write_json=write_json,
                    pname=devapp._pname)
+
+_seed_push_rights()
 
 
 def _doctor_loop():

@@ -464,6 +464,13 @@ button.on{background:#1f6f36;border-color:#2ea043}
    too makes what you typed hard to read at the moment you are being asked to
    look at it. */
 .modal input.bad{border-color:var(--bad)}
+/* A checkbox and its sentence on one line, and the sentence clickable with it:
+   a tick box three words from its label is a target nobody hits on a phone. */
+.modal label.row-label{display:flex;align-items:center;gap:8px;cursor:pointer}
+.modal label.row-label input{width:auto;margin:0;flex:0 0 auto}
+/* "push" on a project row. Green because it is a capability the project has,
+   and plain text because it is not a control — it cannot be toggled here. */
+.row .sub .ok{color:var(--accent)}
 
 /* The disclosure marker, once, for every <details> on the page — a memory, a
    bug report, a findings group, the component fold. All four set display:flex
@@ -1645,6 +1652,16 @@ body.dragging .tab .lbl{cursor:grabbing}
          This is written into git's credential-store format under /config,
          named for the project, and referenced from that repository's
          .git/config and nowhere else. -->
+    <!-- Push rights. Granted once and never revoked: a working copy that
+         could push yesterday and cannot today explains nothing to whoever is
+         standing in it, so deleting the project is the way out. One project
+         per repository, because two copies pushing to one remote is how a
+         branch ends up racing itself. -->
+    <div class="field" id="pPushField" hidden>
+      <label class="row-label"><input type="checkbox" id="pPush">
+        <span>I want to push to this repository</span></label>
+      <div class="hint" id="pPushHint"></div>
+    </div>
     <div class="field" id="pTokenField" hidden>
       <label for="pToken">Access token <span class="dim">— optional</span></label>
       <input id="pToken" type="password" autocomplete="off" spellcheck="false"
@@ -3701,7 +3718,8 @@ function projectRow(p, live, cls, inTab){
     <div class="row stack2${p.excluded ? " off" : ""}">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
-        ${p.git ? `<div class="sub">git: ${esc(p.git)}</div>` : ""}
+        ${p.git ? `<div class="sub">git: ${esc(p.git)}${
+          p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
         ${p.issues.map(i => i.action && !p.excluded
           // An issue with a fix that takes no decisions says so, and is the
           // control that applies it — underlined, because a line you can click
@@ -4594,8 +4612,8 @@ const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
-           fields: ["pSrcField", "pNameField", "pUrlField", "pTokenField",
-                    "pKeyField"] },
+           fields: ["pSrcField", "pNameField", "pUrlField", "pPushField",
+                    "pTokenField", "pKeyField"] },
   link:  { title: () => `Link ${pLink} to GitHub`, btn: "Link", focus: "pUrl",
            fields: ["pUrlField", "pKeyField"] },
 };
@@ -4610,8 +4628,8 @@ function pDraw(){
   $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
-  for (const f of ["pSrcField", "pNameField", "pUrlField", "pTokenField",
-                   "pKeyField", "pAboutField"])
+  for (const f of ["pSrcField", "pNameField", "pUrlField", "pPushField",
+                   "pTokenField", "pKeyField", "pAboutField"])
     $(f).hidden = !m.fields.includes(f);
   // The deploy-key picker only appears when the agent actually holds keys:
   // an empty dropdown would be a question with no answers.
@@ -4630,6 +4648,12 @@ function pDraw(){
     : "Named the way GitHub names a repository: anything it cannot use becomes "
       + "a dash, so you are shown the directory you are about to get rather "
       + "than being sent back to retype it.";
+  $("pPushHint").textContent =
+    "Off means read-only: a pre-push hook refuses, so nobody pushes from here "
+    + "by accident. It cannot be turned on later — delete the project and "
+    + "clone it again — and only one project at a time may push to a given "
+    + "repository. Needs a token or a deploy key; the token is checked against "
+    + "GitHub before the clone starts.";
   $("pTokenHint").textContent =
     "Leave empty for a public repository. A token here is used for THIS "
     + "project and no other, even if it opens more — it is kept in /config and "
@@ -4690,6 +4714,7 @@ function pOpen(mode){
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
   $("pToken").value = "";
+  $("pPush").checked = false;
   pNameTyped = false;
   $("pNamePreview").hidden = true;
   $("pName").classList.remove("bad");
@@ -7399,7 +7424,8 @@ $("pCreate").onclick = async () => {
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name, mode, url, about: $("pAbout").value,
                                 key: mode === "clone" ? key : "",
-                                token: mode === "clone" ? $("pToken").value.trim() : ""})});
+                                token: mode === "clone" ? $("pToken").value.trim() : "",
+                                push: mode === "clone" && $("pPush").checked})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return fail(j.error || `${mode} failed (HTTP ${r.status})`);
     if (gen === pGen) closeNewProject();

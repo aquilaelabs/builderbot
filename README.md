@@ -2151,6 +2151,35 @@ would be advice. Specifically, excluding a project:
 - folds the row away behind **Show projects with errors**, and puts it at the
   *bottom* of that list — an exclusion is a decision already made, not a problem
 
+### Push rights
+
+A clone is read-only unless you tick **I want to push to this repository**, and
+that decision is made once. Three rules, all deliberate:
+
+- **It cannot be turned off.** A working copy that could push yesterday and
+  cannot today explains nothing to whoever is standing in it. Deleting the
+  project is the way out — which never touches GitHub.
+- **One project per repository.** Two working copies pushing to one remote is
+  how a branch ends up racing itself, and here both may be the same session on
+  different days. Deleting the holder frees it.
+- **The token is checked first.** Before the clone starts, GitHub is asked
+  whether that token can actually push to that repository — a missing scope
+  otherwise surfaces days later as a failure with nothing connecting it to the
+  box you ticked. A deploy key cannot be checked this way short of pushing, so
+  it is taken at its word.
+
+Enforcement is a `pre-push` hook, which is transport-agnostic — it catches an
+ssh push through a deploy key exactly as it catches an https one — and refuses
+with a sentence rather than an auth error. Like the sibling-project rule it is
+a guardrail, not a sandbox: a shell in the container can delete it.
+
+Projects that already existed when this arrived are granted retroactively if
+their GitHub remote is an ssh one, recorded as `key`. Those are the repos that
+were already being pushed to with deploy keys, and a new rule is not a reason
+to take away something that worked. https remotes are not seeded: those
+authenticated with the container-wide `GIT_PAT`, and a token of their own is
+the way back.
+
 ### An access token for one project
 
 Cloning a private repository asks for an optional **access token**. It is

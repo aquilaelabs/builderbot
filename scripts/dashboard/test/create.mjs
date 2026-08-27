@@ -239,6 +239,65 @@ ok(await page.$eval('#pName', el => el.classList.contains('bad')),
    '...a typed name that is taken is marked too');
 await page.keyboard.press('Escape');
 
+// ---- push rights -------------------------------------------------------
+// Off by default, and the box only exists where pushing could mean anything.
+await page.click('#bNewProj');
+await page.waitForSelector('#pmodal:not([hidden])');
+ok(await page.$eval('#pPushField', el => el.hidden),
+   'a local repo is not asked about push rights');
+await page.click('#pClone');
+ok(await page.$eval('#pPushField', el => !el.hidden)
+   && await page.$eval('#pPush', el => !el.checked),
+   'cloning is, and read-only is the default');
+await page.keyboard.press('Escape');
+
+// A public clone cannot push, and is told so rather than being given rights
+// that would fail at the first attempt.
+ok(await post({ mode: 'clone', url: 'https://github.com/owner/pushless',
+                push: true }) === 400,
+   'asking to push with neither a token nor a key is refused');
+
+// One project per repository. Driven at the module, because claiming the
+// second would otherwise need two real clones.
+const rights = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('p', ${
+  JSON.stringify(new globalThis.URL('../projects.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+saved = {}
+m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
+            agent_keys=lambda: [], gh_authed=lambda: False,
+            ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
+            build_claude_md=lambda *a, **k: '', project_name=None,
+            github_url=None, state=d, home=d, devdata=d,
+            write_json=lambda p, o: open(p, 'w').write(json.dumps(o)),
+            pname=lambda n: 'bbdev-' + n)
+out = {}
+# The remote's identity, however it is spelled — a deploy-key alias hides the
+# host but the path is still owner/repo, and case does not distinguish repos.
+out['ssh_alias'] = m.repo_of_remotes('origin\tgit@bb-thing:Owner/Repo.git (fetch)')
+out['https'] = m.repo_of_remotes('origin\thttps://github.com/owner/repo (push)')
+out['not_a_repo'] = m.repo_of_remotes('origin\tgit@host:one/two/three.git (fetch)')
+m.grant_push('first', 'owner/repo', 'key')
+out['holder'] = m.push_holder('owner/repo')
+out['free'] = m.push_holder('owner/other')
+out['may'] = [m.may_push('first'), m.may_push('second')]
+m.drop_push('first')
+out['after_drop'] = m.push_holder('owner/repo')
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const rj = JSON.parse(rights.trim().split('\n').pop());
+ok(rj.ssh_alias === 'owner/repo' && rj.https === 'owner/repo',
+   'a deploy-key alias and an https remote name the same repository');
+ok(rj.not_a_repo === '',
+   '...and something that is not an owner/repo path is not guessed at');
+ok(rj.holder === 'first' && rj.free === '',
+   'a granted repository names its holder, and an ungranted one names nobody');
+ok(rj.may[0] === true && rj.may[1] === false, 'only the granted project may push');
+ok(rj.after_drop === '',
+   'deleting the project is what frees the repository for another');
+
 // ---- a token that belongs to one project -------------------------------
 // The dialog offers it only where it means something.
 await page.click('#bNewProj');
