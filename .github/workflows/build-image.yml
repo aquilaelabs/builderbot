@@ -1,21 +1,23 @@
 name: build image
 
-# A 40-minute hosted build bills against the plan's included minutes, so it
-# runs only when something the image is actually built FROM changes: the
-# allowlist below is exactly the Dockerfile's COPY sources plus the build
-# definition itself. This used to be a paths-ignore, which charged a full
-# build for every change to a workflow, dashboard doc or lint config that
-# could not have altered the image.
+# A hosted build bills against the plan's included minutes, so it runs only
+# when something the image is actually built FROM changes: the allowlist below
+# is exactly the Dockerfile's COPY sources plus the build definition itself.
+# This used to be a paths-ignore, which charged a full build for every change
+# to a workflow, dashboard doc or lint config that could not have altered the
+# image.
+#
+# And only on the way IN, not on the way there. This used to build the pull
+# request too — the same build, minutes earlier, publishing nothing, and then
+# again on the merge that followed it: two hosted builds for one answer, of
+# which only the second produces the image anybody runs. What it bought was
+# learning about a broken Dockerfile before the merge instead of after, and
+# after is cheap here: the build fails on main, :latest does not move, and
+# nothing broken is served — you fix forward instead of finding out early.
+# The lint workflow still runs on every PR; it is self-hosted, so it is free.
 on:
   push:
     branches: ["main"]
-    paths:
-      - "Dockerfile"
-      - ".dockerignore"
-      - "scripts/**"
-      - "config/**"
-      - ".github/workflows/build-image.yml"
-  pull_request:
     paths:
       - "Dockerfile"
       - ".dockerignore"
@@ -38,8 +40,9 @@ on:
         type: boolean
         default: false
 
-# Pushing twice to a PR queued two 40-minute builds; only the newest result
-# means anything, so cancel the superseded one.
+# Two merges in quick succession queue two builds of the same branch, and only
+# the newest result means anything — cancel the superseded one rather than pay
+# for an image that is already out of date when it lands.
 concurrency:
   group: build-image-${{ github.ref }}
   cancel-in-progress: true
@@ -101,9 +104,8 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
-      # PR builds log in too, although they never push: they read the cache
-      # manifest out of :latest, and the package is private. Same-repo PRs
-      # get a token that can; this repo takes no fork PRs.
+      # For the push, and for reading the cache manifest out of :latest before
+      # it — the package is private, so even the read needs the token.
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -176,7 +178,9 @@ jobs:
             IMAGE_REV=${{ github.sha }}
             IMAGE_BUILT=${{ steps.stamp.outputs.at }}
             IMAGE_VERSION=${{ steps.ver.outputs.v }}
-          push: ${{ github.event_name != 'pull_request' }}
+          # Every trigger left publishes: a merge to main, the weekly refresh,
+          # and a dispatch. Nothing builds here without meaning to ship.
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # Inline cache, not the GHA cache. The GHA quota is 10GB per repo
