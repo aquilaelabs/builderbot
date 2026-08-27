@@ -159,13 +159,34 @@ Five things in it differ from Unraid's placeholder, each for a reason:
   internal error: virtiofsd died unexpectedly
   ```
 
-  which says nothing about which of its several reasons applied. The two
-  usual ones are a source directory that does not exist yet, and `/mnt/user`
-  being shfs, whose FUSE layer does not give `passthrough` mode the `openat2`
-  and xattr behaviour it expects — pointing it at `/mnt/cache/...` or a disk
-  path instead often settles it. `virtiofsd`'s own complaint is in
-  `/var/log/libvirt/qemu/<vm-name>.log`, and is worth reading before changing
-  anything.
+  which says nothing about which of its several reasons applied. Read
+  `/var/log/libvirt/qemu/<vm-name>.log` before changing anything — where the
+  failure lands in that log tells you which kind you have.
+
+  Observed once, on libvirt 12.2.0 with QEMU 10.2.3:
+
+  ```
+  Starting external device: virtiofsd
+  /usr/libexec/virtiofsd --fd=40 --shared-dir /mnt/user/development
+  ...
+  libvirt:  error : libvirtd quit during handshake: Input/output error
+  ```
+
+  Both directories were accepted and it died at the *handshake*, before
+  touching a file — so that one is not about the paths, and not about shfs.
+  It is virtiofsd and libvirt failing to talk. The thing to try there is
+  telling virtiofsd not to sandbox itself with user namespaces, which is what
+  it does by default and what a host can refuse:
+
+  ```xml
+  <binary path="/usr/libexec/virtiofsd">
+    <sandbox mode="chroot"/>
+  </binary>
+  ```
+
+  inside the `<filesystem>` element. If that does not settle it, suspect the
+  virtiofsd shipped against a very new libvirt rather than anything in this
+  XML, and stay on NFS — it costs a little throughput and nothing else.
 
   So bring the machine up with NFS, which needs no host-side daemon:
 
@@ -184,6 +205,9 @@ Five things in it differ from Unraid's placeholder, each for a reason:
   ```xml
   <filesystem type="mount" accessmode="passthrough">
     <driver type="virtiofs"/>
+    <binary path="/usr/libexec/virtiofsd">
+      <sandbox mode="chroot"/>
+    </binary>
     <source dir="/mnt/user/development"/>
     <target dir="workspace"/>
   </filesystem>
