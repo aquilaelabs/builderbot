@@ -47,11 +47,12 @@ const open = () => page.$$eval('#todoList .todo', ts => ts.map(t => ({
   claude: !!t.querySelector('.who:not(.fin)') })));
 
 // ---- adding ------------------------------------------------------------
-// The button is a word now, no count: the number was the panel's business and
-// the row's job is to say the notebook exists and whether it is open.
+// An icon now, and no count: the number was the panel's business, and the
+// row's job is to say the notebook exists and whether it is open. Lit is a
+// colour class rather than a filled button, so that is what is asserted.
 ok(await page.$eval(`${row('alpha')} [data-m]`,
-     b => b.textContent.trim() === 'Notebook' && !b.classList.contains('primary')),
-   'the row offers a Notebook button, unlit while no tab is open');
+     b => !!b.querySelector('svg') && !b.classList.contains('on')),
+   'the row offers a notebook icon, unlit while no tab is open');
 
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);
@@ -1220,9 +1221,9 @@ await page.waitForFunction(() => document.querySelectorAll('#todoList .todo').le
 // ---- the row's button lights while the tab is open -----------------------
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => document.querySelector(
-  '#projects .row:has(.name) [data-m]')?.classList.contains('primary'),
+  '#projects .row:has(.name) [data-m]')?.classList.contains('on'),
   { timeout: 15000 });
-ok(true, 'the Notebook button takes the green while its tab is open');
+ok(true, 'the notebook icon takes the green while its tab is open');
 ok(await page.$eval(`${row('alpha')} .acts`, a => {
      const r = a.getBoundingClientRect();
      const n = a.closest('.row').querySelector('.name').getBoundingClientRect();

@@ -952,6 +952,9 @@ button.eye.none{opacity:.45}
 button.eye.on{color:var(--gold)}
 button.eye.on:hover{color:var(--gold)}
 button.eye.pin.on,button.eye.pin.on:hover{color:var(--accent)}
+/* A running session and an open notebook: the same green, because both mean
+   "this is live, and the button takes you to it" rather than "press to start". */
+button.eye.acc.on,button.eye.acc.on:hover{color:var(--accent)}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the broom (reset) and the sign-out door —
@@ -3662,40 +3665,31 @@ function projectRow(p, live, cls){
           : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
       <span class="acts">
-      ${isBroken(p) ? "" : `<button class="${live.has(tmuxName("claude-"+p.name)) ? "primary" : ""}"
-         data-c="${esc(p.name)}"${(p.locked || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
+      ${isBroken(p) ? "" : `<button class="eye${live.has(tmuxName("claude-"+p.name)) ? " on acc" : ""}"
+         data-c="${esc(p.name)}" aria-label="Claude session"${
+         (p.locked || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
            ? " disabled" : ""}
          title="${p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
                  : !signedIn() && !live.has(tmuxName("claude-"+p.name))
                    ? "this container is not signed in to Claude — the Doctor card has the way in"
-                 : live.has(tmuxName("claude-"+p.name)) ? "session running — go to its tab"
-                 : p.last_claude ? "no session running — resume or start one"
-                 : "start a Claude session here"}">${
-           // The same working/waiting dot the tab wears, so a phone showing
-           // the dashboard still answers "is it waiting on me?" per project.
-           stateDot(claudeOf(tmuxName("claude-" + p.name)))}Claude</button>`}
-      <button data-s="${esc(p.name)}" title="open another terminal here">Shell</button>
+                 : live.has(tmuxName("claude-"+p.name)) ? "Claude — session running, go to its tab"
+                 : p.last_claude ? "Claude — no session running; resume or start one"
+                 : "Claude — start a session here"}">${SPARK}</button>`}
+      <button class="eye" data-s="${esc(p.name)}" aria-label="shell"
+        title="shell — open another terminal here">${TERM}</button>
       ${p.git_ok && !p.linked && !isBroken(p)
         ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
              title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
         : ""}
-      ${isBroken(p) ? "" : `<button class="${nbOpen(p.name) ? "primary" : ""}"
-         data-m="${esc(p.name)}"
-         title="${nbOpen(p.name) ? "its notebook is open — go to the tab"
-                : "roadmap, memory and bugs for this project"}">Notebook</button>`}
+      ${isBroken(p) ? "" : `<button class="eye${nbOpen(p.name) ? " on acc" : ""}"
+         data-m="${esc(p.name)}" aria-label="notebook"
+         title="${nbOpen(p.name) ? "notebook — open, go to its tab"
+                : "notebook — roadmap, memory and bugs for this project"}">${BOOK}</button>`}
       <button class="eye" data-rn="${esc(p.name)}" aria-label="rename"
         title="rename — moves the directory and everything keyed to its name: the
 roadmap, the bugs, the versions, the dev instance's data and env, the CI logs,
 and Claude's own transcripts and memories">${PENCIL}</button>
-      <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
-        data-on="${p.pinned ? "0" : "1"}"
-        aria-label="${p.pinned ? "unpin" : "pin"}"
-        title="${p.pinned
-          ? "unpin — take it off the sidebar. It keeps every control on the "
-            + "Projects tab; this is only about where you meet it"
-          : "pin — show it on the sidebar's Projects card"}"
-        >${TACK}</button>
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
         data-on="${p.locked ? "0" : "1"}"
         aria-label="${p.locked ? "unlock" : "lock"}"
@@ -3709,6 +3703,14 @@ and Claude's own transcripts and memories">${PENCIL}</button>
         title="${p.excluded ? "include — allow Claude sessions here again"
                             : "exclude — block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? EYE : EYE_OFF}</button>
+      <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
+        data-on="${p.pinned ? "0" : "1"}"
+        aria-label="${p.pinned ? "unpin" : "pin"}"
+        title="${p.pinned
+          ? "unpin — take it off the sidebar. It keeps every control on the "
+            + "Projects tab; this is only about where you meet it"
+          : "pin — show it on the sidebar's Projects card"}"
+        >${TACK}</button>
       </span>
     </div>
 `;
@@ -7381,6 +7383,17 @@ const LINK = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.7 9.3 9.3 6.7"/>
   <path d="M7.5 4.9 9.2 3.2a2.6 2.6 0 0 1 3.6 3.6L11.1 8.5"/>
   <path d="M8.5 11.1 6.8 12.8a2.6 2.6 0 0 1-3.6-3.6L4.9 7.5"/></svg>`;
+
+// Claude's asterisk, for starting or returning to a session. Eight strokes
+// rather than the filled four-pointed spark: at 16px a fill reads as a blob,
+// and every other icon on this row is a stroke.
+const SPARK = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M8 2.3v11.4"/><path d="M2.3 8h11.4"/>
+  <path d="M4 4l8 8"/><path d="M12 4l-8 8"/></svg>`;
+
+// A prompt, for a plain terminal: the chevron and the line you type on.
+const TERM = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M3.2 4.6 6.6 8l-3.4 3.4"/><path d="M8.4 11.8h4.4"/></svg>`;
 
 // A ticked list, for the project's to-do. The panel behind it also holds what
 // Claude remembers here, folded away — but the number worth putting on a row
