@@ -688,6 +688,59 @@ def problems(project, cfg):
     return out
 
 
+def wiring(cfg):
+    """What this compose publishes and what it mounts.
+
+    Shaped the way Unraid's own Docker tab shows it, because that is where the
+    operator reads the same facts about every other container on the box: the
+    container's side on the left, the host's on the right, and an arrow that
+    says which way it goes — one way into the container for a read-only mount,
+    both ways for a writable one.
+
+    Off the resolved config, so a path or a port assembled out of variables is
+    the value compose arrived at and not the spelling. Both spellings of each
+    are handled for the same reason _binds does it: depending on one shape of
+    somebody else's JSON is how a reader quietly stops reading.
+    """
+    if cfg is None:
+        return {"ports": [], "mounts": []}
+    ports, mounts = [], []
+    for _name, sv in sorted(_services(cfg).items()):
+        for p in sv.get("ports") or []:
+            pub = tgt = proto = ""
+            if isinstance(p, dict):
+                pub, tgt = str(p.get("published") or ""), str(p.get("target") or "")
+                proto = str(p.get("protocol") or "")
+            elif isinstance(p, str):
+                # "7475:7474/udp", "127.0.0.1:7475:7474", or a bare "7474"
+                # for one the daemon picks.
+                spec, _, proto = p.partition("/")
+                bits = spec.split(":")
+                tgt = bits[-1]
+                pub = bits[-2] if len(bits) > 1 else ""
+            if tgt:
+                ports.append({"target": tgt, "published": pub,
+                              "proto": (proto or "tcp").upper()})
+        for v in sv.get("volumes") or []:
+            src = tgt = ""
+            ro = False
+            if isinstance(v, dict):
+                if (v.get("type") or "") != "bind":
+                    continue           # a named volume has no host side to show
+                src, tgt = str(v.get("source") or ""), str(v.get("target") or "")
+                ro = bool(v.get("read_only"))
+            elif isinstance(v, str):
+                bits = v.split(":")
+                if len(bits) < 2 or not (bits[0].startswith("/")
+                                         or bits[0].startswith(".")):
+                    continue
+                src, tgt = bits[0], bits[1]
+                ro = len(bits) > 2 and "ro" in bits[2].split(",")
+            if src and tgt:
+                mounts.append({"target": tgt, "source": src, "ro": ro})
+    return {"ports": ports, "mounts": mounts}
+
+
 def risk_digest(rs):
     """A stable name for one set of risks, so that acknowledging them stops
     counting the moment the compose file asks for something new."""
@@ -776,6 +829,7 @@ def state(project):
         rs = risks(project, cfg)
         out["risks"] = rs
         out["problems"] = problems(project, cfg) + host_map()[1]
+        out.update(wiring(cfg))
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way — either the file asks for
         # nothing beyond its own directory, or the operator has already said
@@ -804,6 +858,8 @@ def state(project):
         out["changed"] = False
         out["risks"] = []
         out["problems"] = []
+        out["ports"] = []
+        out["mounts"] = []
         out["risks_digest"] = ""
         out["risks_ack"] = True
     return out

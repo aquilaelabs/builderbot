@@ -375,7 +375,7 @@ case "$1" in
         # A service that declares a build, which is what the fixture has —
         # unless a test wants a different shape, which it leaves here.
         if [ -f "$ST/$proj.config" ]; then cat "$ST/$proj.config"
-        else echo '{"services":{"app":{"build":{"context":"."}}}}'
+        else echo '{"services":{"app":{"build":{"context":"."},"ports":[{"target":7474,"published":"7475","protocol":"tcp"}],"volumes":[{"type":"bind","source":"/mnt/user/plex-media","target":"/library","read_only":true},{"type":"bind","source":"/mnt/user/appdata/x/config","target":"/config"}]}}}'
         fi
         exit 0 ;;
       ps)
