@@ -591,6 +591,11 @@ the host's Docker daemon through a **socket proxy**, not the raw socket:
 `build`, `images`, `containers`, `networks` and `volumes` pass, `exec` and
 the swarm surface do not.
 
+There is a way to avoid this trade rather than accept it: give the dev
+instances a Docker daemon of their own, in a VM, and BuilderBot never touches
+the server's at all — see [sandbox-vm.md](sandbox-vm.md). What follows is the
+arrangement for pointing it at *this* box's daemon.
+
 Say the honest part before the steps: build + run + bind mounts is
 root-shaped power over the host however it is filtered. The proxy narrows
 the surface; it does not make the daemon safe to hand to something you do
