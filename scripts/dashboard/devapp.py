@@ -192,8 +192,11 @@ _lock = threading.Lock()
 
 # One job at a time, like the package installer: two parallel builds on one
 # daemon help nobody, and a queue would hide which click did what.
-_job = {"running": False, "project": "", "step": "", "log": "", "error": "",
-        "await_env": False}
+# One job at a time across the whole dashboard, and it now names the instance
+# as well as the project: two instances of one project are two builds, and a
+# row watching "is my build running" must not light up for its neighbour's.
+_job = {"running": False, "project": "", "instance": "", "step": "", "log": "",
+        "error": "", "await_env": False}
 _rev = 0
 
 
@@ -202,6 +205,52 @@ def configure(*, workspace, state, write_json):
                      write_json=write_json)
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
+    _migrate_paths()
+
+
+def _migrate_paths():
+    """Move what the old one-instance-per-project layout named after a project.
+
+    _load() migrates the JSON on read, which costs nothing and needs no write.
+    These two cannot be done that way — they are a file and a directory whose
+    NAMES were the project's, and the code that reads them now asks for the
+    instance's name instead. Left alone, a dev instance would come up with an
+    empty env and an empty data directory and look like a fresh one: the
+    silent-empty-directory failure this module already warns about twice.
+
+    Idempotent, and quiet when there is nothing to move — which is every run
+    after the first, and every install that never had a dev instance.
+    """
+    try:
+        for f in sorted(ENVDIR.glob("*.env")):
+            if f.stem.startswith("bbdev-"):
+                continue                       # already an instance's
+            dst = env_path(f.stem, MAIN)
+            if not dst.exists():
+                f.rename(dst)
+                print(f"[devapp] moved {f.name} to {dst.name} for the "
+                      f"{MAIN} instance", flush=True)
+    except OSError:
+        pass
+    try:
+        root = Path(DEVDATA)
+        for d in sorted(root.iterdir()) if root.is_dir() else []:
+            # bbdev-<project> with no instance suffix cannot be told from
+            # bbdev-<project>-<instance> by shape, so this asks the store:
+            # a directory whose name is exactly a known project's old pname
+            # is the one to move.
+            if not d.is_dir():
+                continue
+            for proj in _load():
+                if d.name == f"bbdev-{_slug(proj)}":
+                    dst = root / _pname(proj, MAIN)
+                    if not dst.exists():
+                        d.rename(dst)
+                        print(f"[devapp] moved {d.name} to {dst.name}",
+                              flush=True)
+                    break
+    except OSError:
+        pass
 
 
 def job_rev():
@@ -432,23 +481,55 @@ def compose_file(project):
     return None
 
 
-def _pname(project):
+# The instance a project has always had, before instances were a thing. Every
+# call that does not name one means this, which is what keeps the migration
+# from being visible anywhere but here.
+MAIN = "main"
+
+
+def _slug(s):
+    return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
+
+
+def _pname(project, instance=MAIN):
     """The compose project name: namespaced, so a dev instance can never
-    collide with a container the operator runs for real."""
-    return "bbdev-" + re.sub(r"[^a-z0-9]+", "-", project.lower()).strip("-")
+    collide with a container the operator runs for real — and now carrying
+    which instance of the project it is, because a project may have several.
+
+    Both halves are slugged and joined with a dash, which means two different
+    pairs could in principle collide (`a-b`/`c` and `a`/`b-c`). They cannot in
+    practice: the project half is a directory name under /workspace and the
+    instance half is chosen against the names already taken for that project,
+    so a collision would need two projects to exist whose slugs overlap that
+    way. Worth knowing rather than worth encoding around.
+    """
+    return f"bbdev-{_slug(project)}-{_slug(instance) or MAIN}"
 
 
-def env_path(project):
-    return ENVDIR / f"{project}.env"
+def env_path(project, instance=MAIN):
+    """One env file per INSTANCE, not per project.
+
+    Two instances of one codebase exist to differ — different ports at the very
+    least, or they cannot both run — so sharing an env would make the second
+    one impossible. Named for the compose project, which is already unique and
+    already slugged.
+    """
+    return ENVDIR / f"{_pname(project, instance)}.env"
 
 
-def _compose(project, *args):
-    """The one shape every action runs: compose, pinned to this project's
-    file, name and env. A table of verbs, not a command string."""
+def _compose(project, instance, *args):
+    """The one shape every action runs: compose, pinned to this instance's
+    name and env and to its project's file. A table of verbs, not a command
+    string.
+
+    The project directory and the compose file are the PROJECT's — every
+    instance of a project is built from the same codebase, which is the whole
+    point of having more than one of them.
+    """
     cf = compose_file(project)
-    argv = [DOCKER, "compose", "--project-name", _pname(project),
+    argv = [DOCKER, "compose", "--project-name", _pname(project, instance),
             "--project-directory", str(WORKSPACE / project), "-f", str(cf)]
-    ep = env_path(project)
+    ep = env_path(project, instance)
     if ep.is_file():
         argv += ["--env-file", str(ep)]
     return argv + list(args)
@@ -543,7 +624,7 @@ def to_host(path, mapping=None):
     return None
 
 
-def _dev_data_env(project):
+def _dev_data_env(project, instance=MAIN):
     """BB_DEV_DATA for a compose that opts in with ${BB_DEV_DATA}/... —
     cache-backed volumes by convention, nothing forced on a compose that
     never mentions it.
@@ -556,7 +637,7 @@ def _dev_data_env(project):
     root = Path(DEVDATA)
     if not root.is_dir():
         return {}
-    d = root / _pname(project)
+    d = root / _pname(project, instance)
     try:
         d.mkdir(parents=True, exist_ok=True)
     except OSError:
@@ -577,14 +658,14 @@ def _keys(text):
     return out
 
 
-def read_env(project):
+def read_env(project, instance=MAIN):
     try:
-        return env_path(project).read_text(encoding="utf-8", errors="replace")
+        return env_path(project, instance).read_text(encoding="utf-8", errors="replace")
     except OSError:
         return ""
 
 
-def starter(project):
+def starter(project, instance=MAIN):
     """What an empty editor opens on: the repo's .env.example, seeded.
 
     A blank box under a list of six key names asks the operator to type out
@@ -605,37 +686,37 @@ def starter(project):
             + example.rstrip() + "\n")
 
 
-def write_env(project, text):
+def write_env(project, text, instance=MAIN):
     if len(text or "") > 65536:
         return {"error": "that env file is over 64KB — this holds settings, "
                          "not data"}
     try:
         ENVDIR.mkdir(parents=True, exist_ok=True)
-        env_path(project).write_text(text or "", encoding="utf-8")
+        env_path(project, instance).write_text(text or "", encoding="utf-8")
     except OSError as e:
         return {"error": f"could not write the env file: {e}"}
     _bump()
     return {"ok": True}
 
 
-def missing_env(project):
+def missing_env(project, instance=MAIN):
     """Keys the repo's example declares that the dev env does not set."""
     try:
         example = (WORKSPACE / project / ".env.example").read_text(
             encoding="utf-8", errors="replace")
     except OSError:
         return []
-    have = set(_keys(read_env(project)))
+    have = set(_keys(read_env(project, instance)))
     return [k for k in _keys(example) if k not in have]
 
 
-def _gate_env(project):
+def _gate_env(project, instance=MAIN):
     """Rewrite the env as the new example, old values kept in comments.
 
     The operator fills the new keys in and presses Up; their old answers are
     right there to copy rather than remembered or lost.
     """
-    old = read_env(project)
+    old = read_env(project, instance)
     try:
         example = (WORKSPACE / project / ".env.example").read_text(
             encoding="utf-8", errors="replace")
@@ -654,18 +735,67 @@ def _gate_env(project):
 # ---------------------------------------------------------------------------
 # state
 
+def instances(project):
+    """The instance names this project has, oldest record first.
+
+    `main` is always offered even where nothing has been built yet: a project
+    with a compose file has one instance conceptually from the moment it has
+    the file, and a list that was empty until the first build would make the
+    first build impossible to start from.
+    """
+    have = list((_load().get(project) or {}).keys())
+    return have or [MAIN]
+
+
+def states(project):
+    """Every instance of a project, in one call, for the manager."""
+    return [state(project, i) for i in instances(project)]
+
+
+def _rec(d, project, instance):
+    """One instance's record inside the store, created if it is not there.
+
+    Every write goes through this rather than reaching in with two setdefaults,
+    which is how the second level gets forgotten on one path and not another.
+    """
+    return d.setdefault(project, {}).setdefault(instance, {})
+
+
+def _read_rec(project, instance):
+    """The same, read-only and never creating anything."""
+    return (_load().get(project) or {}).get(instance) or {}
+
+
 def _load():
+    """The store, always in its two-level shape: {project: {instance: record}}.
+
+    Migrated on read rather than by a one-off script: the old shape is one
+    record per project, and a record is recognisable — it has a rev, or a
+    daemon, or an ack. Anything whose values are not dicts of dicts is the old
+    layout and becomes the `main` instance, which is the name every call that
+    does not ask for one uses. Nothing is written back here; the next save
+    writes the new shape, and until then reading is enough.
+    """
     try:
         with open(FILE) as f:
             d = json.load(f)
-        if isinstance(d, dict):
-            return d
     except (OSError, ValueError):
-        pass
-    return {}
+        return {}
+    if not isinstance(d, dict):
+        return {}
+    out = {}
+    for proj, val in d.items():
+        if not isinstance(val, dict):
+            continue
+        # A dict of dicts is already instances; anything else is one record.
+        if val and all(isinstance(v, dict) for v in val.values()):
+            out[proj] = val
+        else:
+            out[proj] = {MAIN: val}
+    return out
 
 
-def _config(project):
+def _config(project, instance=MAIN):
     """The compose file as compose itself resolves it: variables substituted,
     relative paths made absolute against the project directory.
 
@@ -673,7 +803,7 @@ def _config(project):
     cautious answer rather than as "nothing here". Fetched once per poll
     because state() asks it two separate questions.
     """
-    r = _run(_compose(project, "config", "--format", "json"), timeout=30)
+    r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30)
     if r["code"] != 0:
         return None
     try:
@@ -885,30 +1015,30 @@ def risk_digest(rs):
     return hashlib.sha256("\n".join(sorted(rs)).encode()).hexdigest()[:12]
 
 
-def _risk_gate(project, ack=""):
+def _risk_gate(project, instance=MAIN, ack=""):
     """The reason to stop before starting anything, or "" to go ahead."""
-    rs = risks(project, _config(project))
+    rs = risks(project, _config(project, instance))
     if not rs:
         return ""
     d = risk_digest(rs)
-    if ((_load().get(project) or {}).get("risks_ack")) == d:
+    if _read_rec(project, instance).get("risks_ack") == d:
         return ""
     if ack and ack == d:
         with _lock:
             store = _load()
-            store.setdefault(project, {})["risks_ack"] = d
+            _rec(store, project, instance)["risks_ack"] = d
             write_json(FILE, store)
         return ""
     return ("this compose asks for more than its own directory — "
             + "; ".join(rs[:3]) + (" …" if len(rs) > 3 else ""))
 
 
-def _running(project):
-    r = _run(_compose(project, "ps", "--status", "running", "-q"), timeout=20)
+def _running(project, instance=MAIN):
+    r = _run(_compose(project, instance, "ps", "--status", "running", "-q"), timeout=20)
     return r["code"] == 0 and bool(r["out"].strip())
 
 
-def _exists(project):
+def _exists(project, instance=MAIN):
     """Does compose know about any container here, running or not?
 
     A container that EXITED — a crash, a bad entrypoint, an OOM — is still
@@ -917,7 +1047,7 @@ def _exists(project):
     left a crashed instance with a greyed-out Down and no way out of the
     dashboard at all.
     """
-    r = _run(_compose(project, "ps", "-aq"), timeout=20)
+    r = _run(_compose(project, instance, "ps", "-aq"), timeout=20)
     return r["code"] == 0 and bool(r["out"].strip())
 
 
@@ -933,12 +1063,12 @@ def _dirty(project):
     return r["code"] == 0 and bool(r["out"].strip())
 
 
-def state(project):
+def state(project, instance=MAIN):
     """Everything the Artifacts row needs, or the reason there is no row."""
     if compose_file(project) is None:
         return {"compose": False}
     a = available()
-    built = _load().get(project) or {}
+    built = _read_rec(project, instance)
     # A build only counts on the daemon it happened on. Swinging DOCKER_HOST
     # from a socket proxy to a sandbox VM leaves the image and the containers
     # behind on a machine this container can no longer see, and the row went
@@ -959,10 +1089,11 @@ def state(project):
            # containers, the network and the volumes. Not the container name:
            # a compose file may set container_name to anything it likes, and
            # there may be several. This is the one name that is always true.
-           "name": _pname(project),
+           "instance": instance,
+           "name": _pname(project, instance),
            "needs_build": True,
            "built_rev": built.get("rev", ""), "built_at": built.get("at", 0),
-           "missing_env": missing_env(project),
+           "missing_env": missing_env(project, instance),
            "await_env": bool(built.get("await_env")),
            # A marker with no build running behind it means the container went
            # away mid-build: docker compose build is a subprocess of the
@@ -973,9 +1104,10 @@ def state(project):
            # already pressed and is told nothing.
            "interrupted": bool(built.get("building_since")
                                and not _job["running"]),
-           "job": dict(_job) if _job["project"] == project else None}
+           "job": (dict(_job) if _job["project"] == project
+                   and _job["instance"] == instance else None)}
     if a["on"]:
-        cfg = _config(project)
+        cfg = _config(project, instance)
         out["needs_build"] = needs_build(cfg)
         rs = risks(project, cfg)
         out["risks"] = rs
@@ -987,10 +1119,10 @@ def state(project):
         # yes to exactly this set.
         out["risks_ack"] = (not rs
                             or built.get("risks_ack") == out["risks_digest"])
-        out["running"] = _running(project)
+        out["running"] = _running(project, instance)
         # Only worth a second call when nothing is running: a running stack
         # self-evidently has containers, and this is on the artifacts poll.
-        out["exists"] = out["running"] or _exists(project)
+        out["exists"] = out["running"] or _exists(project, instance)
         head = _head(project)
         dirty = _dirty(project)
         moved = bool(built.get("rev")) and built.get("rev") != head
@@ -1019,13 +1151,13 @@ def state(project):
 # ---------------------------------------------------------------------------
 # actions
 
-def up(project, ack=""):
+def up(project, instance=MAIN, ack=""):
     if _job["running"]:
         return {"error": "a build is already running — one at a time"}
-    gate = _risk_gate(project, ack)
+    gate = _risk_gate(project, instance, ack)
     if gate:
         return {"error": gate}
-    miss = missing_env(project)
+    miss = missing_env(project, instance)
     if miss:
         return {"error": "the env is missing " + ", ".join(miss[:4])
                          + (" …" if len(miss) > 4 else "")
@@ -1036,13 +1168,13 @@ def up(project, ack=""):
     # rather than refusing on a rule of this dashboard's invention. The
     # classic builder rides along for exactly that case — an implicit build
     # through buildx would 403 against a socket proxy.
-    r = _run(_compose(project, "up", "-d"), timeout=1800,
-             env_extra=_dev_data_env(project) | _CLASSIC_BUILD)
+    r = _run(_compose(project, instance, "up", "-d"), timeout=1800,
+             env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD)
     if r["code"] != 0:
         return {"error": ("compose up failed:\n" + r["out"])[-500:]}
     with _lock:
         d = _load()
-        row = d.setdefault(project, {})
+        row = _rec(d, project, instance)
         row.pop("await_env", None)
         # An implicit build is still a build, so the row stops claiming the
         # project was never built while a container from it is running. Also
@@ -1057,17 +1189,17 @@ def up(project, ack=""):
     return {"ok": True}
 
 
-def down(project):
+def down(project, instance=MAIN):
     if _job["running"]:
         return {"error": "a build is already running — one at a time"}
-    r = _run(_compose(project, "down"), timeout=180)
+    r = _run(_compose(project, instance, "down"), timeout=180)
     if r["code"] != 0:
         return {"error": ("compose down failed:\n" + r["out"])[-500:]}
     _bump()
     return {"ok": True}
 
 
-def rebuild(project, ack=""):
+def rebuild(project, instance=MAIN, ack=""):
     """Build, then bounce — or stop at the env gate. In a thread: a build is
     minutes, and the poll watches it through job_rev."""
     if _job["running"]:
@@ -1076,7 +1208,7 @@ def rebuild(project, ack=""):
         return {"error": "no compose file here"}
     # Before the build, not before the `up` inside it: a build runs this
     # project's Dockerfile, which is the same trust either way.
-    gate = _risk_gate(project, ack)
+    gate = _risk_gate(project, instance, ack)
     if gate:
         return {"error": gate}
     # On disk before the work starts, so a restart can tell "this build never
@@ -1084,28 +1216,29 @@ def rebuild(project, ack=""):
     # dies with the container; this outlives it.
     with _lock:
         d = _load()
-        d.setdefault(project, {})["building_since"] = int(time.time())
+        _rec(d, project, instance)["building_since"] = int(time.time())
         write_json(FILE, d)
-    _job.update(running=True, project=project, step="building", log="",
-                error="", await_env=False)
+    _job.update(running=True, project=project, instance=instance,
+                step="building", log="", error="", await_env=False)
     _bump()
-    threading.Thread(target=_worker, args=(project,), daemon=True).start()
+    threading.Thread(target=_worker, args=(project, instance), daemon=True).start()
     return {"ok": True, "started": True}
 
 
-def _clear_marker(project):
+def _clear_marker(project, instance=MAIN):
     """Drop the started-marker — the build reached an end, whichever end."""
     with _lock:
         d = _load()
-        if project in d:
-            d[project].pop("building_since", None)
+        rec = (d.get(project) or {}).get(instance)
+        if rec is not None:
+            rec.pop("building_since", None)
             write_json(FILE, d)
 
 
-def _worker(project):
+def _worker(project, instance=MAIN):
     try:
-        r = _run(_compose(project, "build"), timeout=3600,
-                 env_extra=_dev_data_env(project) | _CLASSIC_BUILD)
+        r = _run(_compose(project, instance, "build"), timeout=3600,
+                 env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD)
         _job["log"] = r["out"][-2000:]
         if r["code"] != 0:
             _job.update(error="build failed — the tail of its output is below",
@@ -1113,28 +1246,28 @@ def _worker(project):
             return
         with _lock:
             d = _load()
-            d.setdefault(project, {}).update(rev=_head(project),
-                                             at=int(time.time()),
-                                             daemon=daemon_id())
+            _rec(d, project, instance).update(rev=_head(project),
+                                              at=int(time.time()),
+                                              daemon=daemon_id())
             write_json(FILE, d)
         _job["step"] = "stopping"
         _bump()
-        _run(_compose(project, "down"), timeout=180)
-        if missing_env(project):
+        _run(_compose(project, instance, "down"), timeout=180)
+        if missing_env(project, instance):
             # The gate: new settings exist that the env does not answer.
             # Rewrite the env with the old values in comments and leave Up
             # to the operator — see the module docstring.
-            _gate_env(project)
+            _gate_env(project, instance)
             with _lock:
                 d = _load()
-                d.setdefault(project, {})["await_env"] = True
+                _rec(d, project, instance)["await_env"] = True
                 write_json(FILE, d)
             _job.update(await_env=True, step="")
             return
         _job["step"] = "starting"
         _bump()
-        r = _run(_compose(project, "up", "-d"), timeout=180,
-                 env_extra=_dev_data_env(project))
+        r = _run(_compose(project, instance, "up", "-d"), timeout=180,
+                 env_extra=_dev_data_env(project, instance))
         if r["code"] != 0:
             _job.update(error=("up failed:\n" + r["out"])[-500:], step="")
             return
@@ -1143,6 +1276,6 @@ def _worker(project):
         # Whatever happened — built, failed, gated — the build is no longer in
         # flight, so the marker goes. Only a killed process leaves it behind,
         # which is exactly what it is for.
-        _clear_marker(project)
+        _clear_marker(project, instance)
         _job["running"] = False
         _bump()

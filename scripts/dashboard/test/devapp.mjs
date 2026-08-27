@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 
 // ep.silon gets the compose file — delta is the harness's EXCLUDED fixture
 // and never shows a notebook button. The dot in the name is a bonus: it
-// proves the compose project-name sanitizer (bbdev-ep-silon) with the same
+// proves the compose project-name sanitizer (bbdev-ep-silon-main) with the same
 // fixture that proves tmux's.
 const D = `${DIR}/ws/ep.silon`;
 writeFileSync(`${D}/docker-compose.yml`,
@@ -128,8 +128,8 @@ await page.waitForFunction(() => {
   return e && /running/.test(e.textContent) && /built from [0-9a-f]{7}/.test(e.textContent);
 }, { timeout: 30000 });
 const log = dockerLog();
-ok(/compose --project-name bbdev-ep-silon .*build/.test(log)
-   && /compose --project-name bbdev-ep-silon .*up -d/.test(log),
+ok(/compose --project-name bbdev-ep-silon-main .*build/.test(log)
+   && /compose --project-name bbdev-ep-silon-main .*up -d/.test(log),
    'rebuild runs table-lookup compose commands under the bbdev- namespace');
 ok(await page.$eval('#devRow [data-devact="rebuild"]',
      e => e.textContent.trim()) === 'Rebuild',
@@ -155,10 +155,11 @@ ok(r.rebuild && /the code has moved since/.test(r.text) === false,
 // what is being asserted is that the RECORD is read against today's daemon.
 const devapps = `${DIR}/state/devapps.json`;
 const wasBuilt = JSON.parse(readFileSync(devapps, 'utf8'));
-ok(wasBuilt['ep.silon'].daemon === 'tcp://stub:2375',
+ok(wasBuilt['ep.silon'].main.daemon === 'tcp://stub:2375',
    'a build records which daemon it landed on');
-writeFileSync(devapps, JSON.stringify(
-  { ...wasBuilt, 'ep.silon': { ...wasBuilt['ep.silon'], daemon: 'ssh://bb@sandbox' } }));
+writeFileSync(devapps, JSON.stringify({ ...wasBuilt, 'ep.silon': {
+  ...wasBuilt['ep.silon'],
+  main: { ...wasBuilt['ep.silon'].main, daemon: 'ssh://bb@sandbox' } } }));
 await page.reload();
 await ready(page);
 await page.click(`#projects .row:has(.name:text-is("ep.silon")) [data-m]`);
@@ -221,7 +222,7 @@ ok(true, '...and Up is manual after the gate, exactly as asked');
 // Down, from the row.
 await page.click('#devRow [data-devact="down"]');
 await pillIs('down');
-ok(/compose --project-name bbdev-ep-silon .*down/.test(dockerLog()),
+ok(/compose --project-name bbdev-ep-silon-main .*down/.test(dockerLog()),
    'Down runs compose down, nothing else');
 ok((await row()).down, '...and goes dead after it: there is nothing left to remove');
 
@@ -229,7 +230,7 @@ ok((await row()).down, '...and goes dead after it: there is nothing left to remo
 // network, and `down` is the only thing that clears it. Asking compose only
 // about RUNNING containers left a crashed instance with a greyed-out Down and
 // no way out except a shell, which is the one thing these buttons are for.
-writeFileSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`, '1');
+writeFileSync(`${DIR}/dockerstate/bbdev-ep-silon-main.exited`, '1');
 await page.evaluate(() => refresh());
 await pillIs('stopped');
 r = await row();
@@ -237,7 +238,7 @@ ok(!r.down, 'a crashed instance offers Down — its containers are still there')
 ok(!r.up, '...and Up, which recreates them rather than colliding with them');
 await page.click('#devRow [data-devact="down"]');
 await pillIs('down');
-ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`),
+ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon-main.exited`),
    '...and Down is what clears them');
 
 // A build in flight when BuilderBot restarts is lost — compose build is a
@@ -248,7 +249,9 @@ ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`),
 // on-disk marker behind, which is exactly what a killed process leaves.
 const devFile = `${DIR}/state/devapps.json`;
 const before = JSON.parse(readFileSync(devFile, 'utf8'));
-before['ep.silon'].building_since = Math.floor(Date.now() / 1000);
+// Two levels now: a project holds instances, and `main` is the one every
+// project has until another is made.
+before['ep.silon'].main.building_since = Math.floor(Date.now() / 1000);
 writeFileSync(devFile, JSON.stringify(before));
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => {
@@ -304,7 +307,7 @@ rmSync(`${DIR}/dockerstate/build.fail`, { force: true });
 // labelled bbdev- like every other one and passes every check that can be
 // made on a name. So the file is read, and what it reaches for is put in
 // front of the operator once, before anything starts.
-const stubCfg = `${DIR}/dockerstate/bbdev-ep-silon.config`;
+const stubCfg = `${DIR}/dockerstate/bbdev-ep-silon-main.config`;
 // The dev row reloads on job_rev — the in-memory counter plus devapps.json's
 // mtime — and a stub config file moves neither, so a plain refresh() would
 // leave the row showing the answer to the previous question. Touch the file
@@ -490,6 +493,45 @@ ok(hp.parity[0]['/workspace'] === '/workspace' && !hp.parity[1].length,
    'an identity mapping is accepted without being checked against our mounts');
 ok(!hp.parity[2].length,
    '...and a bind under it is no longer a problem, because it is not one');
+
+// An instance is (project, name) now, and the old layout is one record per
+// project. Driven at the module: the migration happens on read, so it is the
+// read that has to be asserted, and a stub docker cannot show a rename.
+const inst = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+os.makedirs(os.path.join(d, 'devenv'))
+# The OLD shape: one record per project, no instance level at all.
+open(os.path.join(d, 'devapps.json'), 'w').write(json.dumps(
+    {'alpha': {'rev': 'abc1234', 'daemon': 'tcp://x', 'risks_ack': 'deadbeef'}}))
+open(os.path.join(d, 'devenv', 'alpha.env'), 'w').write('PORT=1')
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: open(p, 'w').write(json.dumps(o)))
+out = {}
+out['loaded'] = m._load()
+out['instances'] = m.instances('alpha')
+out['envmoved'] = [os.path.basename(f) for f in sorted(os.listdir(os.path.join(d, 'devenv')))]
+out['pnames'] = [m._pname('alpha'), m._pname('alpha', 'staging'), m._pname('My Proj', 'Two Words')]
+out['envpaths'] = [os.path.basename(str(m.env_path('alpha'))),
+                   os.path.basename(str(m.env_path('alpha', 'staging')))]
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const ij = JSON.parse(inst.trim().split('\n').pop());
+ok(JSON.stringify(ij.loaded) === JSON.stringify(
+     { alpha: { main: { rev: 'abc1234', daemon: 'tcp://x', risks_ack: 'deadbeef' } } }),
+   'a store written before instances reads back as the project\'s main instance');
+ok(JSON.stringify(ij.instances) === JSON.stringify(['main']),
+   '...and that is the instance the project has');
+ok(ij.envmoved.length === 1 && ij.envmoved[0] === 'bbdev-alpha-main.env',
+   '...with its env file moved to the name the instance is read by');
+ok(ij.pnames[0] === 'bbdev-alpha' + '-main' && ij.pnames[1] === 'bbdev-alpha-staging',
+   'two instances of one project are two compose projects');
+ok(ij.pnames[2] === 'bbdev-my-proj-two-words',
+   '...both halves slugged, so a name with spaces cannot reach a compose call');
+ok(ij.envpaths[0] !== ij.envpaths[1],
+   'and they do not share an env file — two instances exist to differ');
 
 // DOCKER_HOST=auto resolves by asking candidates for /version, caches what
 // it found, and re-scans when that stops answering — a bridge-assigned IP

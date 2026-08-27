@@ -2297,8 +2297,12 @@ class Handler(BaseHTTPRequestHandler):
             name = q.get("project", [""])[0]
             if name not in {p["name"] for p in project_list()}:
                 return self._json({"error": "not a project"}, 400)
+            # `devapp` is the main instance, which is what the row shows;
+            # `devapps` is every instance, which the manager reads. Both, so
+            # the row keeps working while the manager grows around it.
             return self._json({"artifacts": artifacts.listing(name),
-                               "devapp": devapp.state(name)}
+                               "devapp": devapp.state(name),
+                               "devapps": devapp.states(name)}
                               | phone.summary())
         if self.path.startswith("/api/artifact?"):
             # The download. Resolved and prefix-checked in artifacts.resolve —
@@ -2624,31 +2628,39 @@ class Handler(BaseHTTPRequestHandler):
         if name not in {p["name"] for p in project_list()}:
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
+        # Which instance of that project. Absent means the one every project
+        # has always had, so a caller that predates instances still works and
+        # a request that names a strange one is answered rather than obeyed:
+        # the name decides a compose project and a data directory, and those
+        # are not places to let an arbitrary string reach.
+        inst = field(req, "instance") or devapp.MAIN
+        if inst not in devapp.instances(name):
+            return self._json({"error": f"no instance {inst} of {name}"}, 400)
         # `ack` is the digest of the risk list the operator was actually
         # shown — not a bare yes. A compose file that gains a mount between
         # the row rendering and the button being pressed does not inherit the
         # acknowledgement of the one before it.
         if act == "up":
-            r = devapp.up(name, field(req, "ack"))
+            r = devapp.up(name, inst, field(req, "ack"))
         elif act == "down":
-            r = devapp.down(name)
+            r = devapp.down(name, inst)
         elif act == "rebuild":
-            r = devapp.rebuild(name, field(req, "ack"))
+            r = devapp.rebuild(name, inst, field(req, "ack"))
         elif act == "env-get":
             # An empty env opens on the example rather than on nothing. The
             # `missing` list still answers about what is STORED, so the hint
             # under the box stays true while the box is only a draft.
-            stored = devapp.read_env(name)
-            return self._json({"text": stored or devapp.starter(name),
+            stored = devapp.read_env(name, inst)
+            return self._json({"text": stored or devapp.starter(name, inst),
                                "seeded": not stored,
-                               "missing": devapp.missing_env(name)})
+                               "missing": devapp.missing_env(name, inst)})
         elif act == "env-set":
-            r = devapp.write_env(name, req.get("text") or "")
+            r = devapp.write_env(name, req.get("text") or "", inst)
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
             return self._json(r, 400)
-        return self._json(r | {"state": devapp.state(name)})
+        return self._json(r | {"state": devapp.state(name, inst)})
 
     def _version(self, req):
         """Move a project's version, or change who is allowed to.
