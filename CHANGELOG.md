@@ -36,3 +36,5 @@
 - The dev instance lists its ports and mounts outright instead of behind a fold, and Open offers a choice when it publishes more than one port (112db93)
 - Modals fade in over a dimmed page, and the Resume / New conversation chooser arrives rather than snapping into place (63ce9a7)
 - The changelog fills the window it opens in and reads like a History does, instead of sitting in a small box at the top of it (63ce9a7)
+- The notebook's tab strip no longer runs off the side of a phone (98e1f03)
+- Panels, menus and confirmation boxes now slide or fade in rather than appearing, and something still loading looks different from something that is empty (98e1f03)
