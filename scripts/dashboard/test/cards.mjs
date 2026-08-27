@@ -436,8 +436,24 @@ await page.click('.doc .projtab [data-rn="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnName', el => el.value) === 'alpha',
    'the rename dialog opens on the current name');
+// alpha can push — the retroactive seeding granted it, on the deploy key its
+// remote uses — so it is offered a token, and told what setting one does and
+// does not do. beta cannot push, and is not offered one at all.
+ok(!await page.$eval('#rnTokenField', el => el.hidden),
+   'a project pushing with a deploy key is offered a token');
+const kh = await page.$eval('#rnTokenHint', e => e.textContent);
+ok(/deploy key/.test(kh) && /https/.test(kh),
+   '...told plainly that git keeps using the key until the remote is https');
+await page.click('#rnCancel');
+await page.evaluate(() => renameProject('beta'));
+await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnTokenField', el => el.hidden),
-   '...with no token field on a project that has none');
+   '...and a read-only project is offered nothing: a credential there grants nothing');
+// Back to alpha's dialog: everything below is about the name field, and a
+// collision check run against the wrong project's name proves nothing.
+await page.click('#rnCancel');
+await page.evaluate(() => renameProject('alpha'));
+await page.waitForSelector('#rnmodal:not([hidden])');
 await page.fill('#rnName', 'gamma');
 ok(await page.$eval('#rnName', el => el.classList.contains('bad')),
    '...and a name already taken is marked red before you press anything');

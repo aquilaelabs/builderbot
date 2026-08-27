@@ -1241,6 +1241,7 @@ def project_list():
                     # invent one for a local repo that never had any.
                     "has_token": (STATE / "gitcreds" / d.name).is_file(),
                     "push": projects.may_push(d.name),
+                    "push_how": projects.push_how(d.name),
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.

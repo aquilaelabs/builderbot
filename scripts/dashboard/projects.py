@@ -510,6 +510,17 @@ def may_push(project):
     return isinstance(load_push().get(project), dict)
 
 
+def push_how(project):
+    """"token", "key", or "" — what a project's push rights were granted on.
+
+    The rename dialog asks, because the answer changes what setting a token
+    there means: for a key-based project it is the first half of moving off
+    deploy keys, and the second half is the remote itself.
+    """
+    rec = load_push().get(project)
+    return rec.get("how", "") if isinstance(rec, dict) else ""
+
+
 def drop_push(project):
     """Release the grant. Only ever because the project is going away — there
     is no path from here that turns it off on a project that stays."""
