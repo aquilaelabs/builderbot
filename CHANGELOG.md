@@ -40,3 +40,4 @@
 - Panels, menus and confirmation boxes now slide or fade in rather than appearing, and something still loading looks different from something that is empty (98e1f03)
 - Claude can now use the sandbox VM's Docker daemon directly — build, run and wreck containers there, while the dev-instance buttons stay yours (4af2d2c)
 - A dev instance no longer claims it was built when that build was on a daemon you have since replaced — the row says never built, and the button says Build (1013c5d)
+- bb doctor now says which Docker daemon you are on — the mounted socket, a socket proxy, or a sandbox VM — and whether it actually answers (1d14545)
