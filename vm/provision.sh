@@ -150,7 +150,21 @@ say "shares"
 # thing rather than failing.
 add_fstab() {
     local line="$1" path="$2" hit lineno old tmp
-    mkdir -p "$path"
+    # A mountpoint whose export has gone away answers every syscall with
+    # ESTALE — including the stat that `mkdir -p` begins with. That used to
+    # abort the whole run on a path that merely needed unmounting, and it did
+    # so partway through: the entries before it were already written, the ones
+    # after it never were, and `mount -a` at the end of the loop never ran, so
+    # even the paths that HAD been rewritten stayed on their old source.
+    if ! mkdir -p "$path" 2>/dev/null; then
+        if findmnt -rno TARGET -- "$path" >/dev/null 2>&1; then
+            warn "$path is mounted but unreadable — a stale handle, left by a share that moved or stopped being exported."
+            printf '   Clear it and run this again:\n     umount -l %s\n' "$path"
+        else
+            warn "could not create the mountpoint $path"
+        fi
+        exit 1
+    fi
     # Matched on the MOUNTPOINT and then compared in full. The guard used to
     # stop at "is this mountpoint mentioned", which made re-provisioning with a
     # CHANGED source a silent no-op: the old entry stayed, `mount -a` remounted
@@ -212,7 +226,19 @@ if [ "${#MOUNTED[@]}" -gt 0 ]; then
     # is checked rather than assumed, which is the difference between finding
     # out now and finding out from an app that came up with no data.
     for path in "${MOUNTED[@]}"; do
-        findmnt -rno TARGET -- "$path" >/dev/null 2>&1 && continue
+        # The SOURCE, not merely that something is mounted. `mount -a` skips a
+        # mountpoint that is already busy, so a path whose entry was just
+        # rewritten stays on the old share and looks perfectly mounted — which
+        # is the shape this whole check exists to catch.
+        want="$(awk -v p=" $path " 'index($0, p) {print $1; exit}' /etc/fstab)"
+        got="$(findmnt -rno SOURCE -- "$path" 2>/dev/null || true)"
+        [ -n "$got" ] && [ "$got" = "$want" ] && continue
+        if [ -n "$got" ]; then
+            warn "$path is mounted from $got, but fstab now says $want."
+            printf '   It was already mounted, so mount -a left it alone:\n'
+            printf '     umount -l %s && mount -a\n' "$path"
+            continue
+        fi
         warn "$path did NOT mount, and nofail means nothing said so."
         printf '   Check the export exists and allows this host:\n'
         printf '     showmount -e <server>\n'
