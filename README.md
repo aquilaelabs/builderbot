@@ -1560,8 +1560,10 @@ warnings keep is the set that is invisible otherwise: `privileged`, added
 capabilities, host devices, and the host's process or network namespace —
 the flags that make a container more than a container. It appears when the project
 carries a compose file
-and `DOCKER_HOST` points at a socket proxy (see the configuration reference
-and `docs/unraid.md`): the project's compose app, built on the host daemon
+and `DOCKER_HOST` points at a Docker daemon (see the configuration reference
+and `docs/unraid.md` — or [docs/sandbox-vm.md](docs/sandbox-vm.md), which
+moves that daemon into a VM of its own so none of this reaches the server's
+real containers): the project's compose app, built on the host daemon
 and controlled in the file rows' own language. **Up** and **Down** are
 compose against the project's own file, namespaced `bbdev-<project>` so a dev
 instance can never collide with a container run for real. **Env** edits the
