@@ -123,15 +123,32 @@ pages, and this is a box you will eventually log into to work something out.
 
 Then run one script inside it:
 
-The repository is private, so the VM cannot fetch the script itself. Copy it
-from the array, or pipe it straight in without copying anything:
+The repository is private, so the VM cannot fetch the script itself — copy it
+over. **From the Unraid terminal**, where that path is the host's own; inside
+BuilderBot the same file is `/workspace/BuilderBot/vm/provision.sh`.
 
 ```bash
-# from the Unraid terminal
-ssh bb@<vm-ip> 'sudo bash -s -- --user bb --key "ssh-ed25519 AAAA…" \
-    --nfs 192.168.1.15:/mnt/user/development:/workspace' \
-    < /mnt/user/development/BuilderBot/vm/provision.sh
+scp /mnt/user/development/BuilderBot/vm/provision.sh bb@<vm-ip>:
+ssh bb@<vm-ip>
 ```
+
+then, in that session:
+
+```bash
+sudo bash provision.sh --user bb \
+    --key "ssh-ed25519 AAAA… bb-sandbox" \
+    --nfs 192.168.1.15:/mnt/user/development:/workspace \
+    --nfs 192.168.1.15:/mnt/cache/appdata/builderbot-dev:/devdata
+```
+
+Both steps ask for the password you set in the installer, because the VM has
+no `authorized_keys` yet — `--key` is what puts one there, so the first
+connection is necessarily password-based. After this, BuilderBot gets in
+without one.
+
+Do not try to save the copy by piping the script into `ssh`: `sudo` wants a
+tty to prompt on, a non-interactive `ssh` gives it none, and stdin is already
+carrying the script.
 
 **`--key` is a PUBLIC key** — the `.pub` half, appended to the VM's
 `authorized_keys`. Nothing private is ever put on this machine. The private
