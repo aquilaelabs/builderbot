@@ -671,6 +671,18 @@ for (let t = 0; t < 50; t++){
 }
 ok(/no CHANGELOG\.md here yet/.test(paneText),
    'the changelog pane says how to opt in when there is no file');
+// It reads in the same window a history does, and fills it: a document in a
+// strip at the top of an empty screen is the shape this move was undoing.
+// $eval, not evaluate: NB is a Playwright selector — :text-is() is theirs,
+// and querySelector has never heard of it.
+const clog = await page.$eval(`${NB} .verlogpane`, (pane) => {
+  const slot = pane.closest('.sheetslot');
+  return { inSheet: !!slot,
+           tall: !!slot && pane.offsetHeight >= slot.clientHeight - 1,
+           boxed: getComputedStyle(pane).borderTopWidth !== '0px' };
+});
+ok(clog.inSheet && clog.tall && !clog.boxed,
+   '...filling the window it opens in, with no second box drawn inside it');
 
 // The real delivery path, against the harness's own tmux server: alpha has a
 // claude-alpha session, so this exercises notify.tell rather than a stub.
