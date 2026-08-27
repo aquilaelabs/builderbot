@@ -95,7 +95,33 @@ headless, no desktop. It is what most Docker instructions assume, it turns on
 unattended security updates by default, which is worth having on a box nobody
 logs into, and Docker's repository already publishes for it (`resolute`).
 Debian 13 works identically if you would rather have the leaner machine;
-`provision.sh` accepts either. Then run one script inside it:
+`provision.sh` accepts either.
+
+Take the installer's defaults except for four screens, where the default is
+wrong for this particular machine:
+
+- **Storage — use an entire disk, but untick *Set up this disk as an LVM
+  group*.** Guided LVM has a long habit of leaving much of the volume group
+  unallocated, so a 64G disk becomes a ~32G root and you find out when Docker
+  fills it. Check the root filesystem's size on the summary screen before
+  confirming. Plain ext4 is also simpler to grow later — `qemu-img resize`,
+  `growpart`, `resize2fs`, with no `lvextend` in the middle — and the
+  snapshots LVM would give you are already available a layer down, in qcow2.
+  No encryption: it would want a passphrase at every boot on a headless box.
+- **Install OpenSSH server — tick it.** It is off by default and it is how
+  BuilderBot reaches the daemon; skip it and you are fixing that through the
+  VNC console. Import or paste the key here.
+- **Featured snaps — do not tick Docker.** The snap is not what
+  `provision.sh` installs, and two Dockers will argue.
+- **Network — DHCP is fine, but pin the address.** `DOCKER_HOST` and every
+  web UI you open point at it, so a lease that moves breaks both. Set it
+  static, or reserve it on the router against the MAC in the domain XML.
+
+Use `bb` as the username so it matches `--user bb` below, and take the normal
+Ubuntu Server rather than *minimized* — minimized strips editors and man
+pages, and this is a box you will eventually log into to work something out.
+
+Then run one script inside it:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/vm/provision.sh
