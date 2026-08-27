@@ -42,3 +42,4 @@
 - A dev instance no longer claims it was built when that build was on a daemon you have since replaced — the row says never built, and the button says Build (1013c5d)
 - bb doctor now says which Docker daemon you are on — the mounted socket, a socket proxy, or a sandbox VM — and whether it actually answers (1d14545)
 - bb catchup now says whether your branch is already merged, whether being behind the image actually matters, and why a CI run failed instead of just that it did (cc4d641)
+- Projects have a padlock: keep a project and run it yourself, with everything except a Claude session starting there (246b3f6)
