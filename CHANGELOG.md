@@ -51,3 +51,4 @@
 - Project rows are icons now — Claude, shell, notebook, rename, lock, exclude and pin — with the pin beside the eye (252d01f)
 - Projects can be deleted from the All projects tab — moved to /workspace/.trash with every file kept, so putting one back is a move (af1a31e)
 - Renaming a project is a dialog now, with room to change its access token, and a name already taken is marked red as you type it (af1a31e)
+- Cloning can grant push rights: checked against GitHub first, one project per repository, and read-only otherwise (111a07a)
