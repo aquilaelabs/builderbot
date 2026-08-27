@@ -1103,6 +1103,10 @@ lives in its body. The cards:
   everything under `/workspace` with the same buttons on each row. Pins live in
   `/config/pinned-projects.json`; no file at all means everything is pinned,
   which is what a fresh install sees
+- a **bin**, on the **All projects** tab only, which moves a project to
+  `/workspace/.trash/<name>` with every file kept — a second delete of the same
+  name is numbered rather than overwriting the first, and `/config` is not
+  touched, so putting one back is a `mv`. Deliberately not on the sidebar card
 - a **pencil** per project, which renames it — the directory, and everything
   keyed to its old name: the roadmap and bugs, the versions, the dev instance's
   data and env, the archived CI logs, and Claude's own transcripts and

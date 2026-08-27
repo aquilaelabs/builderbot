@@ -1236,6 +1236,10 @@ def project_list():
                     "claude_md": has_md, "excluded": d.name in excluded,
                     "locked": d.name in locked,
                     "pinned": True if pins is None else d.name in pins,
+                    # Whether it carries its own access token — so the rename
+                    # dialog can offer to change one without offering to
+                    # invent one for a local repo that never had any.
+                    "has_token": (STATE / "gitcreds" / d.name).is_file(),
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
@@ -2345,6 +2349,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._project_pin(req)
         if path.startswith("/api/rename"):
             return self._rename(req)
+        if path.startswith("/api/trash"):
+            return self._trash(req)
         if path.startswith("/api/session"):
             return self._session(req)
         if path.startswith("/api/keys"):
@@ -3099,6 +3105,34 @@ class Handler(BaseHTTPRequestHandler):
             run(["tmux", "kill-session", "-t", sess], timeout=10)
             killed = sess
         return self._json({"locked": sorted(names), "killed": killed})
+
+    def _trash(self, req):
+        """Move a project out of the workspace. The same guards as renaming.
+
+        A live session holds the directory as its working directory and would
+        carry on writing into it wherever it went; a dev instance's containers
+        are bound to paths that would stop existing. Neither is ended here for
+        the same reason renaming does not: that is a bigger decision than the
+        one being asked for.
+        """
+        name = req.get("name", "")
+        live = {s["name"] for s in tmux_sessions()}
+        held = sorted(s for s in live
+                      if s == tmux_name(f"claude-{name}")
+                      or s.startswith(tmux_name(f"shell-{name}") + "-"))
+        if held:
+            return self._json({"error": "close its terminals first — "
+                                        + ", ".join(held[:3])
+                                        + (" …" if len(held) > 3 else "")}, 409)
+        try:
+            if devapp.state(name).get("exists"):
+                return self._json({"error": "its dev instance still has "
+                                            "containers — press Down on the "
+                                            "Artifacts tab first"}, 409)
+        except Exception:
+            pass
+        body, code = projects.trash(req)
+        return self._json(body, code)
 
     def _rename(self, req):
         """Rename a project. The guards live here; the work is in projects.py.

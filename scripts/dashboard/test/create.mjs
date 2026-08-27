@@ -218,6 +218,27 @@ ok(existsSync(`${DIR}/ws/My-New-App/.git`),
    '...and that is the directory on disk');
 ok(await post({ name: 'q2', mode: 'sideways' }) === 400, 'unknown mode refused');
 
+// ---- a name already taken ----------------------------------------------
+// Said in the dialog rather than only by the server, because the server can
+// only answer after Create — and the case that needs it most is the one with
+// the field left EMPTY, where the name comes from the repository and is never
+// typed at all.
+await page.click('#bNewProj');
+await page.waitForSelector('#pmodal:not([hidden])');
+await page.click('#pClone');
+await page.fill('#pUrl', 'https://github.com/owner/alpha.git');
+await page.fill('#pName', '');
+ok(await page.$eval('#pName', el => el.classList.contains('bad'))
+   && await page.$eval('#pNamePreview', el => !el.hidden && /already exists/.test(el.textContent)),
+   'an empty name whose repository collides is marked red in the dialog');
+await page.fill('#pName', 'alpha-two');
+ok(await page.$eval('#pName', el => !el.classList.contains('bad')),
+   '...and clears the moment the name is free');
+await page.fill('#pName', 'beta');
+ok(await page.$eval('#pName', el => el.classList.contains('bad')),
+   '...a typed name that is taken is marked too');
+await page.keyboard.press('Escape');
+
 // ---- a token that belongs to one project -------------------------------
 // The dialog offers it only where it means something.
 await page.click('#bNewProj');

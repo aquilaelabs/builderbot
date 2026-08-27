@@ -319,6 +319,7 @@ def rename(req):
     """
     old = _field(req, "name").strip()
     new = sanitize_name(_field(req, "to"))
+    token = _field(req, "token").strip()
     if not old or not PROJECT_NAME.fullmatch(old):
         return {"error": "unknown project"}, 400
     src = WORKSPACE / old
@@ -326,8 +327,19 @@ def rename(req):
         return {"error": f"{old} is not a project under the workspace"}, 400
     if not new:
         return {"error": "a name needs at least one letter or digit in it"}, 400
+    if token and not TOKEN_RE.fullmatch(token):
+        return {"error": "that does not look like an access token — letters, "
+                         "digits, dots, dashes and underscores, no spaces"}, 400
     if new == old:
-        return {"error": f"{old} is already its name"}, 400
+        # Not an error when a token came with it: replacing the credential
+        # without moving the directory is a thing somebody will want, and the
+        # dialog offers both fields at once precisely so they can.
+        if not token:
+            return {"error": f"{old} is already its name"}, 400
+        write_token(old, token)
+        _scope_to_token(src, token_helper(old))
+        return {"ok": True, "name": old, "from": old,
+                "moved": ["its access token"], "failed": []}, 200
     dest = WORKSPACE / new
     if dest.exists():
         return {"error": f"{new} already exists in the workspace"}, 400
@@ -372,6 +384,11 @@ def rename(req):
     # rename leaves a repo pointing at a file that is no longer there.
     _mv(STATE / "gitcreds" / old, STATE / "gitcreds" / new,
         "its access token", moved, failed)
+    # A new token replaces whatever moved, and is written under the NEW name —
+    # so the order matters: the move first, this second.
+    if token:
+        write_token(new, token)
+        moved.append("a new access token")
     if (STATE / "gitcreds" / new).is_file():
         _scope_to_token(dest, token_helper(new))
     # The compose project name is derived and sanitized, so these two are not
@@ -386,6 +403,56 @@ def rename(req):
         "Claude's transcripts and memories", moved, failed)
     return {"ok": True, "name": new, "from": old,
             "moved": moved, "failed": failed}, 200
+
+
+TRASH = ".trash"
+
+
+def trash(req):
+    """Take a project out of the workspace without destroying it.
+
+    Moved, not deleted, and the wording everywhere says so: the files are still
+    there, under /workspace/.trash, and getting one back is a `mv`. The project
+    scan skips anything starting with a dot, so the directory stops being a
+    project the moment it lands there.
+
+    A second delete of the same name does not overwrite the first. It is
+    numbered, because the two are different work and the older one is exactly
+    the copy somebody would be trying to get back.
+
+    What is deliberately left alone is /config: the roadmap, the bugs, the
+    versions and the memories all stay where they are. Deleting from here is a
+    reversible act, and taking the notebook with it would make it the one thing
+    that cannot be undone by moving a directory back.
+    """
+    name = _field(req, "name").strip()
+    if not name or not PROJECT_NAME.fullmatch(name):
+        return {"error": "unknown project"}, 400
+    src = WORKSPACE / name
+    if not src.is_dir():
+        return {"error": f"{name} is not a project under the workspace"}, 400
+    with _lock:
+        if _job["running"]:
+            return {"error": f"already {DOING.get(_job['kind'], 'working on')} "
+                             f"{_job['name']}"}, 409
+    bin_ = WORKSPACE / TRASH
+    try:
+        bin_.mkdir(exist_ok=True)
+    except OSError as e:
+        return {"error": f"could not make {TRASH}: {e}"}, 500
+    dest = bin_ / name
+    n = 2
+    while dest.exists():
+        dest = bin_ / f"{name}-{n}"
+        n += 1
+        if n > 999:                       # a loop that cannot run away
+            return {"error": f"too many deleted copies of {name}"}, 500
+    try:
+        src.rename(dest)
+    except OSError as e:
+        return {"error": f"could not move it: {e}"}, 500
+    return {"ok": True, "name": name,
+            "to": f"{TRASH}/{dest.name}"}, 200
 
 
 def _git_env():

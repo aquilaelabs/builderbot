@@ -460,6 +460,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+/* A field whose value cannot work. Only the border moves: tinting the text
+   too makes what you typed hard to read at the moment you are being asked to
+   look at it. */
+.modal input.bad{border-color:var(--bad)}
 
 /* The disclosure marker, once, for every <details> on the page — a memory, a
    bug report, a findings group, the component fold. All four set display:flex
@@ -955,6 +959,10 @@ button.eye.pin.on,button.eye.pin.on:hover{color:var(--accent)}
 /* A running session and an open notebook: the same green, because both mean
    "this is live, and the button takes you to it" rather than "press to start". */
 button.eye.acc.on,button.eye.acc.on:hover{color:var(--accent)}
+/* The bin turns red under the pointer, the same as every other rm on the page.
+   Dim at rest: it sits in a row of six and should not be the thing the eye
+   lands on first. */
+@media(hover:hover){ button.eye.rm:hover{color:var(--bad)} }
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the broom (reset) and the sign-out door —
@@ -1569,6 +1577,35 @@ body.dragging .tab .lbl{cursor:grabbing}
     </div>
   </div>
 </div>
+<!-- Renaming. Its own dialog rather than a prompt(), because a prompt carries
+     one field and this needs two — and because the second only exists for a
+     repository that already has a token: offering to set one on a local repo
+     would be offering a credential to something with nothing to authenticate
+     against. -->
+<div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rnTitle">
+  <div class="box">
+    <h3 id="rnTitle">Rename</h3>
+    <div class="field">
+      <label for="rnName">New name</label>
+      <input id="rnName" maxlength="100" autocomplete="off" spellcheck="false">
+      <div class="hint" id="rnHint"></div>
+      <div class="hint" id="rnPreview" hidden></div>
+    </div>
+    <div class="field" id="rnTokenField" hidden>
+      <label for="rnToken">Access token <span class="dim">— leave empty to keep the current one</span></label>
+      <input id="rnToken" type="password" autocomplete="off" spellcheck="false"
+             placeholder="ghp_… or github_pat_…">
+      <div class="hint">Replaces the token this project uses. It stays this
+        project's alone, and is not shielded — a shell here can read it.</div>
+    </div>
+    <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
+    <div class="btns">
+      <button id="rnGo" class="primary">Rename</button>
+      <button id="rnCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
@@ -3647,6 +3684,8 @@ function wireProjectRows(root){
     setProjectPinned(b.dataset.p, b.dataset.on === "1"));
   root.querySelectorAll("[data-rn]").forEach(b => b.onclick = () =>
     renameProject(b.dataset.rn));
+  root.querySelectorAll("[data-del]").forEach(b => b.onclick = () =>
+    deleteProject(b.dataset.del));
 }
 
 // One project's row. Extracted so the sidebar card and the Projects tab
@@ -3657,7 +3696,7 @@ function wireProjectRows(root){
 // `live` and `cls` are passed rather than recomputed per row: liveSessions()
 // walks the session list, and doing that once per project turned a redraw
 // into O(projects x sessions) for no gain.
-function projectRow(p, live, cls){
+function projectRow(p, live, cls, inTab){
   return `
     <div class="row stack2${p.excluded ? " off" : ""}">
       <div class="grow">
@@ -3715,6 +3754,9 @@ and Claude's own transcripts and memories">${PENCIL}</button>
         title="${p.excluded ? "include — allow Claude sessions here again"
                             : "exclude — block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? EYE : EYE_OFF}</button>
+      ${inTab ? `<button class="eye rm" data-del="${esc(p.name)}" aria-label="delete"
+        title="delete — moves it to /workspace/.trash and keeps every file. Its
+roadmap, bugs and memories stay where they are, so putting it back is a mv">${BIN}</button>` : ""}
       <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
         data-on="${p.pinned ? "0" : "1"}"
         aria-label="${p.pinned ? "unpin" : "pin"}"
@@ -4397,7 +4439,7 @@ function renderProjectsInto(i){
   // render pass, and rebuilding a list of rows nobody changed throws away the
   // handlers on it for no reason.
   if (paint(el, `<div class="card projtab">${
-    ordered.map(p => projectRow(p, live, cls)).join("")}</div>`))
+    ordered.map(p => projectRow(p, live, cls, true)).join("")}</div>`))
     wireProjectRows(el);
 }
 
@@ -4650,6 +4692,8 @@ function pOpen(mode){
   $("pToken").value = "";
   pNameTyped = false;
   $("pNamePreview").hidden = true;
+  $("pName").classList.remove("bad");
+  $("pNamePreview").classList.remove("bad");
   // The select is emptied, not left as-is: a key picked during a previous
   // open must not ride along invisibly into this one's submit.
   $("pKey").innerHTML = "";
@@ -7272,12 +7316,29 @@ const projName = (raw) => (raw || "").trim()
 
 function pNameShow(){
   const raw = $("pName").value, clean = projName(raw);
-  // Shown only when it differs: repeating a name back unchanged is noise on a
-  // dialog that already has three hints on it.
-  $("pNamePreview").hidden = !raw.trim() || clean === raw.trim();
-  $("pNamePreview").textContent = clean
-    ? `Will be created as ${clean}`
+  // Cloning with the field left empty still takes the repository's name, so
+  // the collision has to be checked against THAT and not against an empty
+  // string — otherwise the one case that needs the warning most is the one
+  // that never gets it.
+  const eff = clean || (pMode === "clone" ? projName(repoOfUrl($("pUrl").value)) : "");
+  const taken = eff && (state?.projects || []).some(p => p.name === eff);
+  $("pName").classList.toggle("bad", !!taken);
+  $("pNamePreview").classList.toggle("bad", !!taken);
+  // Shown when it differs from what was typed, when it is taken, or when
+  // there is nothing left of it — and quiet otherwise, because repeating a
+  // name back unchanged is noise on a dialog that already carries three hints.
+  $("pNamePreview").hidden = !taken && (!raw.trim() || clean === raw.trim());
+  $("pNamePreview").textContent = taken
+    ? `${eff} already exists under /workspace — give this one another name`
+    : clean ? `Will be created as ${clean}`
     : "That leaves nothing to name a directory after";
+}
+
+// The repository's own name out of a clone URL — the same rule the server
+// falls back to when the name field is empty.
+function repoOfUrl(url){
+  const last = (url || "").trim().replace(/\/+$/, "").split(/[/:]/).pop() || "";
+  return last.endsWith(".git") ? last.slice(0, -4) : last;
 }
 
 // The name follows the address until somebody types one. Tracked rather than
@@ -7292,6 +7353,14 @@ $("pUrl").oninput = () => {
   $("pName").value = last.endsWith(".git") ? last.slice(0, -4) : last;
   pNameShow();
 };
+// ...and when a name HAS been typed, the URL still decides nothing — but the
+// warning has to keep up with a URL edited afterwards.
+$("pUrl").addEventListener("input", pNameShow);
+
+$("rnName").oninput = rnShow;
+$("rnGo").onclick = rnSubmit;
+$("rnCancel").onclick = closeRename;
+$("rnmodal").onclick = e => { if (e.target === $("rnmodal")) closeRename(); };
 
 $("pCreate").onclick = async () => {
   // Captured at the click: the dialog can be closed, reopened and switched
@@ -7563,27 +7632,96 @@ async function setLocked(name, on){
 // anything that did not. A rename that half-worked is the case this reports
 // rather than hides — the alternative is a project whose roadmap silently
 // stayed behind under a name nothing points at any more.
-async function renameProject(name){
-  const to = prompt(`Rename ${name} to:\n\n`
-    + `The directory moves, and so does everything keyed to its name — the `
-    + `roadmap and bugs, the versions, the dev instance's data and env, the `
-    + `CI logs, and Claude's transcripts and memories for it.\n\n`
-    + `Close its terminals first, and bring its dev instance down.`, name);
-  if (to === null) return;
-  if (!to.trim() || to.trim() === name) return;
+let rnFor = null;                        // the project the dialog is open on
+
+function renameProject(name){
+  rnFor = name;
+  const p = (state?.projects || []).find(x => x.name === name);
+  $("rnTitle").textContent = "Rename " + name;
+  $("rnName").value = name;
+  $("rnToken").value = "";
+  $("rnErrWrap").hidden = true;
+  $("rnPreview").hidden = true;
+  $("rnName").classList.remove("bad");
+  $("rnHint").textContent =
+    "The directory moves, and so does everything keyed to its name: the "
+    + "roadmap and bugs, the versions, the dev instance's data and env, the "
+    + "CI logs, and Claude's transcripts and memories. Close its terminals "
+    + "first, and bring its dev instance down.";
+  // Only where there is one to change. A repo cloned without a token, or one
+  // that was never cloned at all, has nothing this field would apply to.
+  $("rnTokenField").hidden = !p?.has_token;
+  $("rnGo").disabled = false;
+  $("rnGo").textContent = "Rename";
+  $("rnmodal").hidden = false;
+  $("rnName").focus();
+  $("rnName").select();
+}
+
+function rnShow(){
+  const raw = $("rnName").value, clean = projName(raw);
+  const taken = clean && clean !== rnFor
+                && (state?.projects || []).some(p => p.name === clean);
+  $("rnName").classList.toggle("bad", !!taken);
+  $("rnPreview").classList.toggle("bad", !!taken);
+  $("rnPreview").hidden = !taken && (!raw.trim() || clean === raw.trim());
+  $("rnPreview").textContent = taken
+    ? `${clean} already exists under /workspace`
+    : clean ? `Will be renamed to ${clean}`
+    : "That leaves nothing to name a directory after";
+}
+
+function closeRename(){ $("rnmodal").hidden = true; rnFor = null; }
+
+async function rnSubmit(){
+  const name = rnFor, to = $("rnName").value, token = $("rnToken").value.trim();
+  const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
+  if (!to.trim()) return fail("a new name is needed");
+  // A token change with no name change is a legitimate thing to want, so this
+  // does not refuse the same name — the server treats it as a no-op rename.
+  $("rnGo").disabled = true; $("rnGo").textContent = "Renaming…";
   try{
     const r = await fetch("/api/rename", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, to})});
+      body: JSON.stringify({name, to, token})});
     const j = await r.json();
-    if (j.error){ notify(j.error, true); return; }
+    if (j.error){ $("rnGo").disabled = false; $("rnGo").textContent = "Rename";
+                  return fail(j.error); }
+    closeRename();
     // Named rather than assumed: sanitizing may have changed what was typed,
     // and the operator should see the name that actually exists.
     notify(j.failed?.length
       ? `${name} is now ${j.name}, but ${j.failed.length} thing(s) did not `
         + `move: ${j.failed.join("; ")}`
       : `${name} is now ${j.name}`, !!j.failed?.length);
-  }catch(e){ notify("rename failed: " + e, true); }
+  }catch(e){ $("rnGo").disabled = false; $("rnGo").textContent = "Rename";
+             return fail("rename failed: " + e); }
+  refresh();
+}
+
+// Deleting asks once and says where the files go, rather than asking twice or
+// making somebody type the name. The roadmap item this came from called for a
+// typed confirmation, on the reasoning that it would be the one control here
+// destroying work outside /config — and it is not that any more: the directory
+// is moved to /workspace/.trash with everything in it, and the notebook is not
+// touched at all. Putting one back is a mv. Friction proportionate to a
+// reversible act, and the dialog names the path so the reversal is obvious.
+async function deleteProject(name){
+  if (!confirm(`Delete ${name}?\n\n`
+      + `It moves to /workspace/.trash/${name}, with every file kept. Its `
+      + `roadmap, bugs, versions and memories stay where they are.\n\n`
+      + `Close its terminals first, and bring its dev instance down.`)) return;
+  try{
+    const r = await fetch("/api/trash", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+    // The path is named back because it may not be the one the dialog said:
+    // a second delete of the same name is numbered rather than overwriting the
+    // first, and the first is exactly the copy somebody would want back.
+    notify(`${name} moved to ${j.to}`);
+  }catch(e){ notify("delete failed: " + e, true); }
   refresh();
 }
 

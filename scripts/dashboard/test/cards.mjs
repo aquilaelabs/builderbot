@@ -411,16 +411,55 @@ ok(true, 'pinning it puts it back on the sidebar');
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 
-// The command pin and the project pin are different features that spent an
-// afternoon sharing four names — /api/pin, _pin, PINS_FILE and setPinned — and
-// nothing went red, because pinning a command had no test at all (bug #20).
-// This is that test: the two write to their own files and neither can be
-// reached through the other's endpoint.
 const api = (path, body) => page.evaluate(async ([p, b]) => {
   const r = await fetch(p, { method: 'POST',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
   return { status: r.status, body: await r.json().catch(() => ({})) };
 }, [path, body]);
+
+// Renaming is a dialog now, not a prompt — it has two fields. The token one
+// appears only for a project that already has a token: offering to set one on
+// a local repo would be offering a credential to nothing.
+await page.click('.doc .projtab [data-rn="alpha"]');
+await page.waitForSelector('#rnmodal:not([hidden])');
+ok(await page.$eval('#rnName', el => el.value) === 'alpha',
+   'the rename dialog opens on the current name');
+ok(await page.$eval('#rnTokenField', el => el.hidden),
+   '...with no token field on a project that has none');
+await page.fill('#rnName', 'gamma');
+ok(await page.$eval('#rnName', el => el.classList.contains('bad')),
+   '...and a name already taken is marked red before you press anything');
+await page.fill('#rnName', 'alpha');
+ok(await page.$eval('#rnName', el => !el.classList.contains('bad')),
+   '...its own name is not a collision with itself');
+await page.click('#rnCancel');
+ok(await page.$eval('#rnmodal', el => el.hidden), 'Cancel closes it');
+
+// Deleting: on the full list only, and it moves rather than destroys.
+ok(!await page.$('#projects [data-del]'),
+   'the sidebar card has no delete — that one is brushed past on a phone');
+ok(await page.$('.doc .projtab [data-del]'),
+   '...and the Projects tab does');
+const gone = await api('/api/trash', { name: 'beta' });
+ok(gone.status === 200 && gone.body.to === '.trash/beta',
+   'deleting names where the files went');
+ok(existsSync(`${DIR}/ws/.trash/beta`) && !existsSync(`${DIR}/ws/beta`),
+   '...and they are there, moved rather than removed');
+// Put it back, then delete again: the second copy is numbered, because the
+// first is exactly the one somebody would be trying to recover.
+execFileSync('mv', [`${DIR}/ws/.trash/beta`, `${DIR}/ws/beta`]);
+execFileSync('mkdir', ['-p', `${DIR}/ws/.trash/beta`]);
+const again = await api('/api/trash', { name: 'beta' });
+ok(again.status === 200 && again.body.to === '.trash/beta-2',
+   'a second delete of the same name is numbered, not an overwrite');
+execFileSync('mv', [`${DIR}/ws/.trash/beta-2`, `${DIR}/ws/beta`]);
+execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
+
+// The command pin and the project pin are different features that spent an
+// afternoon sharing four names — /api/pin, _pin, PINS_FILE and setPinned — and
+// nothing went red, because pinning a command had no test at all (bug #20).
+// This is that test: the two write to their own files and neither can be
+// reached through the other's endpoint.
 const cmdPin = await api('/api/pin', { name: 'status', pinned: true });
 ok(cmdPin.status === 200 && (cmdPin.body.pinned || []).includes('status'),
    'a command can be pinned');
