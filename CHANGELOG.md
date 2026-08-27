@@ -47,3 +47,5 @@
 - Project names now work like GitHub repository names: type what you like, see the directory it becomes, instead of being sent back to retype it (5e2afa1)
 - An All projects tab lists everything under /workspace with the same controls on each row, and a thumbtack decides which of them the sidebar shows (996b03e)
 - Projects can be renamed from their row: the directory moves and so does everything keyed to its name — roadmap, bugs, versions, dev-instance data, CI logs and Claude's memories (128945d)
+- Cloning a private repo can take its own access token, used for that project alone instead of one shared token for the whole container (252d01f)
+- Project rows are icons now — Claude, shell, notebook, rename, lock, exclude and pin — with the pin beside the eye (252d01f)
