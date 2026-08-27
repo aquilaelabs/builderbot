@@ -303,6 +303,11 @@ REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 # rule only the dashboard honored would be advice, since the terminal URL is
 # reachable on its own.
 EXCLUDES_FILE = STATE / "excluded-projects.json"   # STATE is set up top
+# Locked is exclude's sibling, not a stronger form of it. Excluded means
+# "this is not a project, stop showing it work"; locked means "this one is
+# mine to run" — the row stays whole, the operator keeps every control, and
+# the only thing that goes is a session starting here.
+LOCKS_FILE = STATE / "locked-projects.json"
 
 # Which commands the operator keeps at the top of the card. Stored beside the
 # other state for the same reason the tab strip is: this is one machine with one
@@ -592,6 +597,18 @@ def load_excludes():
 
 def save_excludes(names):
     write_json(EXCLUDES_FILE, sorted(set(names)))
+
+
+def load_locks():
+    try:
+        v = json.loads(LOCKS_FILE.read_text())
+        return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def save_locks(names):
+    write_json(LOCKS_FILE, sorted(set(names)))
 
 
 def _project_of(uri, known, nonproject=frozenset()):
@@ -1046,6 +1063,7 @@ def project_list():
     except OSError:
         pass                    # unreadable: reported by the listing below
     excluded = set(load_excludes())
+    locked = set(load_locks())
     stopped = last_stop()
     try:
         here = sorted(WORKSPACE.iterdir())
@@ -1174,9 +1192,16 @@ def project_list():
         if d.name in excluded:
             issues.append({"level": "excluded",
                            "text": "excluded — no Claude session can start here"})
+        elif d.name in locked:
+            # Said differently from excluded on purpose: the two block the same
+            # thing and mean opposite things about the directory. One is "not a
+            # project"; this one is "a project somebody else runs".
+            issues.append({"level": "locked",
+                           "text": "locked — yours to run; no Claude session starts here"})
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
                     "claude_md": has_md, "excluded": d.name in excluded,
+                    "locked": d.name in locked,
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
@@ -2273,6 +2298,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path.startswith("/api/exclude"):
             return self._exclude(req)
+        if path.startswith("/api/lock"):
+            return self._lock(req)
         if path.startswith("/api/session"):
             return self._session(req)
         if path.startswith("/api/keys"):
@@ -2976,6 +3003,42 @@ class Handler(BaseHTTPRequestHandler):
             run(["tmux", "kill-session", "-t", sess], timeout=10)
             killed = sess
         return self._json({"excluded": sorted(names), "killed": killed})
+
+    def _lock(self, req):
+        """Lock or unlock a project: keep it, stop Claude running in it.
+
+        The same name-checked write as _exclude, and deliberately the same
+        enforcement — bb-tty reads the file, because a rule only this UI
+        honors is a suggestion when the ttyd URL is reachable directly.
+
+        What it does NOT claim: a session in ANOTHER project still reaches this
+        directory through Bash. The file tools are denied on every sibling
+        already, and that is the whole of the guarantee here too — locking adds
+        "no session of its own", not a sandbox. The tooltip says so.
+        """
+        name, on = req.get("name", ""), bool(req.get("locked"))
+        try:
+            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
+        except OSError:
+            here = set()
+        if name not in here:
+            return self._json({"error": f"unknown project: {name}"}, 400)
+        with _state_lock:
+            names = set(load_locks())
+            names.add(name) if on else names.discard(name)
+            try:
+                save_locks(names)
+            except OSError as e:
+                return self._json({"error": f"could not save: {e}"}, 500)
+
+        # Same reasoning as _exclude: a lock that waits for the current session
+        # to end is a lock that did not take, and the button does not say that.
+        killed = None
+        sess = tmux_name(f"claude-{name}")
+        if on and sess in {s["name"] for s in tmux_sessions()}:
+            run(["tmux", "kill-session", "-t", sess], timeout=10)
+            killed = sess
+        return self._json({"locked": sorted(names), "killed": killed})
 
     def _session(self, req):
         """Kill a session. Closing a tab that owns a Claude conversation should

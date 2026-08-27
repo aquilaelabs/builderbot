@@ -945,6 +945,12 @@ button.eye i{font:600 10px/1 system-ui,sans-serif;font-style:normal;margin-left:
 .row.job{background:#161d26}
 .row.job .name{color:var(--dim)}
 button.eye.none{opacity:.45}
+/* A locked padlock is gold rather than dim: it is a state somebody chose and
+   is still in, not a control waiting to be pressed. Deliberately not --accent,
+   which is the colour of the buttons that act, and not --warn, because nothing
+   is wrong — the operator meant this. */
+button.eye.on{color:var(--gold)}
+button.eye.on:hover{color:var(--gold)}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the broom (reset) and the sign-out door —
@@ -3685,9 +3691,11 @@ function drawProjects(ps){
       </div>
       <span class="acts">
       ${isBroken(p) ? "" : `<button class="${live.has(tmuxName("claude-"+p.name)) ? "primary" : ""}"
-         data-c="${esc(p.name)}"${!signedIn() && !live.has(tmuxName("claude-"+p.name))
+         data-c="${esc(p.name)}"${(p.locked || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
            ? " disabled" : ""}
-         title="${!signedIn() && !live.has(tmuxName("claude-"+p.name))
+         title="${p.locked
+                   ? "locked — you run this one. The padlock lets Claude back in"
+                 : !signedIn() && !live.has(tmuxName("claude-"+p.name))
                    ? "this container is not signed in to Claude — the Doctor card has the way in"
                  : live.has(tmuxName("claude-"+p.name)) ? "session running — go to its tab"
                  : p.last_claude ? "no session running — resume or start one"
@@ -3704,6 +3712,14 @@ function drawProjects(ps){
          data-m="${esc(p.name)}"
          title="${nbOpen(p.name) ? "its notebook is open — go to the tab"
                 : "roadmap, memory and bugs for this project"}">Notebook</button>`}
+      <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
+        data-on="${p.locked ? "0" : "1"}"
+        aria-label="${p.locked ? "unlock" : "lock"}"
+        title="${p.locked
+          ? "unlock — let Claude sessions start here again"
+          : "lock — keep this project and run it yourself: no Claude session "
+            + "starts here. Your own controls all still work"}"
+        >${p.locked ? LOCK : LOCK_OPEN}</button>
       <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
         aria-label="${p.excluded ? "include" : "exclude"}"
         title="${p.excluded ? "include — allow Claude sessions here again"
@@ -3727,6 +3743,8 @@ function drawProjects(ps){
     pJobWire();
     el.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
       setExcluded(b.dataset.x, b.dataset.on === "1"));
+    el.querySelectorAll("[data-k]").forEach(b => b.onclick = () =>
+      setLocked(b.dataset.k, b.dataset.on === "1"));
   }
   // The chooser is positioned against the card, so it is a sibling of the list
   // rather than part of it — replacing the list's innerHTML does not remove it,
@@ -7227,6 +7245,15 @@ const EYE_PATH = `<path d="M1 8s2.7-4.5 7-4.5S15 8 15 8s-2.7 4.5-7 4.5S1 8 1 8z"
 const EYE = `<svg viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}</svg>`;
 const EYE_OFF = `<svg viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}
   <path d="M2.5 13.5 13.5 2.5"/></svg>`;
+// A padlock, for a project the operator keeps and runs themselves. Only the
+// shackle differs between the two states — the body stays put — so which one
+// a row is wearing reads at a glance without comparing it to its neighbours.
+const LOCK_BODY = `<rect x="3.4" y="7" width="9.2" height="6.4" rx="1.3"/>`;
+const LOCK = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
+  <path d="M5.7 7V5.1a2.3 2.3 0 0 1 4.6 0V7"/></svg>`;
+const LOCK_OPEN = `<svg viewBox="0 0 16 16" aria-hidden="true">${LOCK_BODY}
+  <path d="M5.7 7V5.1a2.3 2.3 0 0 1 4.6 0"/></svg>`;
+
 // A chain link, for a repo with no remote: the action is "link this to
 // GitHub", and it disappears once the repo has anywhere to push to.
 const LINK = `<svg viewBox="0 0 16 16" aria-hidden="true">
@@ -7350,6 +7377,29 @@ async function setExcluded(name, on){
       if (t) dropTab(t.id);
     }
   }catch(e){ notify("exclude failed: " + e, true); }
+  refresh();
+}
+
+// Locking is the same write and the same session-ending as excluding, and the
+// confirmation says the one thing that is different: the row survives whole.
+// Somebody reaching for this wants to keep the project, so the dialog has to
+// make clear it is not the other button.
+async function setLocked(name, on){
+  if (on && !confirm(`Lock ${name}?\n\n`
+        + `No Claude session will start here, and any running one ends now. `
+        + `Everything else stays: the notebook, the artifacts, the dev `
+        + `instance and a shell are all still yours. Unlock reverses this.`)) return;
+  try{
+    const r = await fetch("/api/lock", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name, locked:on})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+    if (j.killed){
+      const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
+      if (t) dropTab(t.id);
+    }
+  }catch(e){ notify("lock failed: " + e, true); }
   refresh();
 }
 

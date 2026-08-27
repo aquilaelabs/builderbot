@@ -353,5 +353,31 @@ ok(rp.cls.includes('ok') && /listening for jobs/.test(rp.text),
    'and a healthy one says so');
 await page.evaluate(() => refresh());
 
+// The padlock: a project the operator keeps and runs themselves. Its whole
+// point is being the OTHER button — excluding hides a row, this one leaves it
+// intact and takes away only the session, so that is what gets asserted.
+await page.evaluate(() => refresh());
+await page.waitForSelector('#projects [data-k="alpha"]', { timeout: 10000 });
+ok(await page.$$eval('#projects [data-k]', bs => bs.length > 0),
+   'every project row carries a padlock');
+await page.evaluate(() => setLocked('alpha', true));
+await page.waitForFunction(
+  () => document.querySelector('#projects [data-c="alpha"]')?.disabled === true,
+  { timeout: 10000 });
+const locked = await page.$eval('#projects .row:has([data-k="alpha"])', r => ({
+  claude: r.querySelector('[data-c="alpha"]')?.disabled,
+  shell:  !!r.querySelector('[data-s="alpha"]'),
+  note:   r.textContent.replace(/\s+/g, ' '),
+}));
+ok(locked.claude === true, 'locking a project takes its Claude button away');
+ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in');
+ok(/locked/.test(locked.note) && !/excluded/.test(locked.note),
+   '...saying locked rather than excluded, which is the other thing entirely');
+await page.evaluate(() => setLocked('alpha', false));
+await page.waitForFunction(
+  () => document.querySelector('#projects [data-c="alpha"]')?.disabled === false,
+  { timeout: 10000 });
+ok(true, 'unlocking gives it back');
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

@@ -12,7 +12,7 @@
 // that says so.
 import { ok, done, sleep, URL, DIR, tmuxKill, tmuxFmt } from './lib.mjs';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, writeFileSync, chmodSync, readFileSync, existsSync } from 'fs';
+import { mkdtempSync, writeFileSync, chmodSync, readFileSync, existsSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -115,6 +115,25 @@ out = connect(0);
 await sleep(400);
 ok(alive('claude-alpha') && /claude-run-alpha\.sh$/.test(paneCmd()),
    'a project with no roadmap starts the same way');
+
+// A locked project. Enforced HERE rather than by graying the button out,
+// because the ttyd URL is reachable directly and a rule only the page honors
+// is a suggestion — the same reason `excluded` is checked in this script.
+const LOCKS = join(DIR, 'state', 'locked-projects.json');
+writeFileSync(LOCKS, JSON.stringify(['alpha']));
+out = connect(0);
+await sleep(400);
+ok(/locked/.test(out) && !alive('claude-alpha'),
+   'a locked project refuses a Claude session, whatever the URL asks for');
+ok(/Projects card/.test(out),
+   '...and says where to undo it, rather than only that it said no');
+
+// And unlocking really lets it back in: a gate that cannot be opened again is
+// a different bug, and one nobody notices until they need it.
+rmSync(LOCKS, { force: true });
+out = connect(0);
+await sleep(400);
+ok(alive('claude-alpha'), 'unlocking lets a session start there again');
 
 tmuxKill('claude-alpha');
 await done();
