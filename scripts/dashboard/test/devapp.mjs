@@ -147,6 +147,35 @@ ok(!r.down && r.up, 'running: Down is live, Up is dead');
 ok(r.rebuild && /the code has moved since/.test(r.text) === false,
    'Rebuild goes back to sleep once the build matches the code');
 
+// A build belongs to the daemon it ran on. Retiring a socket proxy for a
+// sandbox VM leaves the image and the containers behind on a machine the
+// dashboard can no longer reach, and the row went on saying "built from
+// <rev>" and offering Rebuild for something never built here. Driven through
+// the state file rather than by restarting the server on a second DOCKER_HOST:
+// what is being asserted is that the RECORD is read against today's daemon.
+const devapps = `${DIR}/state/devapps.json`;
+const wasBuilt = JSON.parse(readFileSync(devapps, 'utf8'));
+ok(wasBuilt['ep.silon'].daemon === 'tcp://stub:2375',
+   'a build records which daemon it landed on');
+writeFileSync(devapps, JSON.stringify(
+  { ...wasBuilt, 'ep.silon': { ...wasBuilt['ep.silon'], daemon: 'ssh://bb@sandbox' } }));
+await page.reload();
+await ready(page);
+await page.click(`#projects .row:has(.name:text-is("ep.silon")) [data-m]`);
+await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
+await page.click('.nbtabs [data-v="artifacts"]:visible');
+await page.waitForSelector('#devRow', { timeout: 20000 });
+r = await row();
+ok(/never built/.test(r.text),
+   'a record from another daemon reads as never built here, not as built there');
+ok(await page.$eval('#devRow [data-devact="rebuild"]', e => e.textContent.trim())
+   === 'Build',
+   '...so the button offers Build, which is what pressing it would do');
+writeFileSync(devapps, JSON.stringify(wasBuilt));
+await page.waitForFunction(
+  () => /built from [0-9a-f]{7}/.test(document.querySelector('#devRow')?.textContent || ''),
+  { timeout: 20000 });
+
 // The code moves — Rebuild wakes.
 writeFileSync(`${D}/newfile.txt`, 'x');
 execFileSync('git', ['-C', D, 'add', '-A'], { env });

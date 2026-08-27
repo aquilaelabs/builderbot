@@ -172,6 +172,19 @@ def docker_host():
     _found.update(addr=_scan(), at=now)
     return _found["addr"]
 
+
+def daemon_id():
+    """A stable name for the daemon a build landed on.
+
+    The CONFIGURED address, not the resolved one. Under `auto` the proxy's
+    bridge IP moves whenever containers restart in a different order — that
+    is the whole reason docker_host() re-scans — and a build is not
+    invalidated by its address changing underneath it. What does invalidate
+    one is the operator repointing the setting.
+    """
+    return (os.environ.get("DOCKER_HOST") or "").strip().lower() or "socket"
+
+
 COMPOSE_NAMES = ("docker-compose.yml", "docker-compose.yaml",
                  "compose.yml", "compose.yaml")
 
@@ -819,6 +832,21 @@ def state(project):
         return {"compose": False}
     a = available()
     built = _load().get(project) or {}
+    # A build only counts on the daemon it happened on. Swinging DOCKER_HOST
+    # from a socket proxy to a sandbox VM leaves the image and the containers
+    # behind on a machine this container can no longer see, and the row went
+    # on saying "built from <rev>" and offering Rebuild for something that had
+    # never been built here. A record written before this field says nothing
+    # about which daemon it was, and not knowing is not yes.
+    #
+    # Everything claiming a build goes: the rev and its date, the env gate a
+    # build tripped, the marker saying one is in flight. What stays is the
+    # operator's risk acknowledgement, which is about what the compose file
+    # asks for and would be true on any daemon. Dropping the env gate costs
+    # nothing — up() refuses on a live missing_env() rather than on the flag.
+    if built.get("daemon") != daemon_id():
+        built = {k: v for k, v in built.items()
+                 if k not in ("rev", "at", "await_env", "building_since")}
     out = {"compose": True, "available": a["on"], "why": a["why"],
            # The compose project name, which is what actually namespaces the
            # containers, the network and the volumes. Not the container name:
@@ -910,9 +938,13 @@ def up(project, ack=""):
         row = d.setdefault(project, {})
         row.pop("await_env", None)
         # An implicit build is still a build, so the row stops claiming the
-        # project was never built while a container from it is running.
-        if not row.get("rev"):
-            row.update(rev=_head(project), at=int(time.time()))
+        # project was never built while a container from it is running. Also
+        # when the record belongs to a daemon we no longer talk to: state()
+        # reads that as never-built-here, and without the second test the row
+        # would go on saying so with the instance up in front of it.
+        if not row.get("rev") or row.get("daemon") != daemon_id():
+            row.update(rev=_head(project), at=int(time.time()),
+                       daemon=daemon_id())
         write_json(FILE, d)
     _bump()
     return {"ok": True}
@@ -975,7 +1007,8 @@ def _worker(project):
         with _lock:
             d = _load()
             d.setdefault(project, {}).update(rev=_head(project),
-                                             at=int(time.time()))
+                                             at=int(time.time()),
+                                             daemon=daemon_id())
             write_json(FILE, d)
         _job["step"] = "stopping"
         _bump()
