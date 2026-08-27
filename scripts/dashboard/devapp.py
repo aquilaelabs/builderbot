@@ -767,12 +767,17 @@ def overview():
         by_proj.setdefault(c["project"], []).append(c)
     store = _load()
     out = []
-    for project in sorted(set(list(store) + _with_compose())):
+    # The STORE's instances, not instances() — that one synthesises `main` for
+    # any project with a compose file, which is right for "what may I act on"
+    # and wrong here: it filled the manager with a row per project that had
+    # never been sent anywhere, indistinguishable from ones that had. A record
+    # exists because somebody pressed Send.
+    for project in sorted(store):
         # Once per PROJECT, not per instance: every instance of a project is
         # built from the same working copy, so the answer cannot differ
         # between them and asking git twice for it would be waste.
         head, dirty = _head(project), _dirty(project)
-        for inst in instances(project):
+        for inst in sorted(store[project]):
             pn = _pname(project, inst)
             mine = by_proj.get(pn, [])
             rec = _read_rec(project, inst)
@@ -832,6 +837,32 @@ def create_instance(project, name):
     _bump()
     return {"ok": True, "project": project, "instance": slug,
             "name": _pname(project, slug)}
+
+
+def remove_instance(project, instance):
+    """Take a container out of the manager: down it, then forget the record.
+
+    What is NOT removed is the env file and the data directory. Removing is
+    the way to tidy the list, not a way to destroy work — and an instance
+    remade under the same name finding its old env there is the behaviour
+    somebody who removed one by mistake would want. Deleting those is a shell
+    away and is not something a button here should do quietly.
+    """
+    if instance not in (_load().get(project) or {}):
+        return {"error": f"{project} has no instance called {instance}"}
+    r = _run(_compose(project, instance, "down"), timeout=180)
+    if r["code"] != 0:
+        return {"error": ("could not take it down, so it was left alone:\n"
+                          + r["out"])[-500:]}
+    with _lock:
+        d = _load()
+        if instance in (d.get(project) or {}):
+            del d[project][instance]
+            if not d[project]:
+                del d[project]
+            write_json(FILE, d)
+    _bump()
+    return {"ok": True, "project": project, "instance": instance}
 
 
 def instances(project):
