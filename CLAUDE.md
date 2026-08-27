@@ -806,7 +806,11 @@ by hand cost four commands and still could not see the failed builds.
   weekly cron rebuild, so the base image, Claude Code and the runner stay
   fresh. It runs on `ubuntu-latest`, deliberately: hosted minutes cost more,
   but building the image on the box that runs the image is circular — a bad
-  image would take down the runner that has to build the fix. Locally,
+  image would take down the runner that has to build the fix. **A pull request
+  does not build it** — that used to be two hosted builds for one answer, the
+  second of which is the only one that ships — so a change that breaks the
+  Dockerfile fails on `main` rather than before the merge. Nothing broken is
+  served when it does: `:latest` simply does not move. Locally,
   `docker compose build` needs the host Docker socket, which is not mounted by
   default; `bb doctor` says whether it is.
 - **Test:** the dashboard has a browser suite; the rest is verified by the lint
