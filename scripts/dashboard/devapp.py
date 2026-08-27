@@ -312,6 +312,11 @@ def _run(argv, timeout=60, env_extra=None):
     try:
         r = subprocess.run(argv, capture_output=True, text=True,
                            timeout=timeout, env=env, check=False)
+    except subprocess.TimeoutExpired:
+        # Ahead of the general case, which it is a subclass of. str() on this
+        # one dumps the whole argv, and the argv is this module's own doing —
+        # noise in a row or a doctor line that has room for a sentence.
+        return {"code": 1, "out": f"timed out after {timeout}s"}
     except (OSError, subprocess.SubprocessError) as e:
         return {"code": 1, "out": str(e)}
     return {"code": r.returncode, "out": (r.stdout or "") + (r.stderr or "")}

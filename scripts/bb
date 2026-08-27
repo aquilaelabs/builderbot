@@ -2501,11 +2501,62 @@ cmd_doctor() {
     # These endpoints answer a bare GET with 4xx, which -f would treat as an error.
     check "anthropic api reachable"   curl -sS -m 10 -o /dev/null https://api.anthropic.com/
     check "github api reachable"      curl -sS -m 10 -o /dev/null https://api.github.com/
-    if [ -S /var/run/docker.sock ]; then
-        check "docker socket usable"  docker info
-    else
-        printf '  [skip] docker socket not mounted\n'
-    fi
+    # The daemon the dashboard's dev instances are built and run on. Three
+    # arrangements answer to DOCKER_HOST — a mounted socket, a socket proxy on
+    # this box, or a sandbox VM's own daemon over ssh — and this reported only
+    # the first, as "docker socket not mounted". True, and misleading: it reads
+    # as "no docker here" on a box with a working daemon one variable away,
+    # which is exactly the question somebody asks after repointing it.
+    #
+    # The probe is devapp.available(), the same call the Artifacts tab makes on
+    # its own poll, so doctor cannot drift into disagreeing with the tab about
+    # whether the thing is up.
+    local docker_line dst dmsg
+    docker_line="$(BB_DEVAPP="$(dirname "$(readlink -f "$0")")/dashboard/devapp.py" \
+        python3 - <<'DOCKPY' 2>/dev/null
+import importlib.util
+import os
+import sys
+
+path = os.environ["BB_DEVAPP"]
+if not os.path.isfile(path):
+    print("skip docker daemon: devapp.py is not beside this bb")
+    sys.exit()
+spec = importlib.util.spec_from_file_location("devapp", path)
+m = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(m)
+
+want = (os.environ.get("DOCKER_HOST") or "").strip()
+sock = os.path.exists("/var/run/docker.sock")
+if not want and not sock:
+    print("skip no docker daemon configured: DOCKER_HOST is unset and no "
+          "socket is mounted — dev instances are off")
+elif want.lower() == "auto" and not sock and not m.docker_host():
+    # `auto` is discovery, not a promise. Nothing answering means the feature
+    # is off, which is the shipped default and not a fault to report — a red
+    # line on every doctor run of a box that never wanted dev instances is
+    # noise, and noise is how a check stops being read.
+    print("skip no docker daemon found: DOCKER_HOST is auto and nothing "
+          "answered — dev instances are off")
+else:
+    kind = ("the mounted socket" if not want
+            else "a sandbox VM" if want.lower().startswith("ssh://")
+            else "a socket proxy")
+    where = m.docker_host() or "/var/run/docker.sock"
+    a = m.available()
+    why = " ".join((a["why"] or "").split())     # one line, whatever it said
+    print(("ok " if a["on"] else "FAIL ")
+          + f"docker daemon: {kind} at {where}"
+          + ("" if a["on"] else f" — {why}"))
+DOCKPY
+    )"
+    read -r dst dmsg <<<"$docker_line"
+    case "$dst" in
+        ok)   printf '  [ok]   %s\n' "$dmsg" ;;
+        FAIL) printf '  [FAIL] %s\n' "$dmsg"; ok=1 ;;
+        skip) printf '  [skip] %s\n' "$dmsg" ;;
+        *)    printf '  [skip] docker daemon: could not be probed\n' ;;
+    esac
     # nvidia-smi is injected by the container runtime, never installed in the
     # image — its absence means no GPU was passed through.
     if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then

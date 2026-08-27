@@ -204,8 +204,10 @@ docker exec -it BuilderBot bb doctor
 Every `bb doctor` line should be `[ok]` or an expected `[skip]`. It verifies:
 Claude on PATH, connectivity to Anthropic/GitHub, git identity, **runner
 credential mode** (shielded vs in-environment), **SSH auth against GitHub**
-(agent key vs file key), and — when a GPU is passed through — whether its
-**graphics stack** is usable or only CUDA is.
+(agent key vs file key), the **Docker daemon** behind `DOCKER_HOST` — which of
+the three arrangements is in effect and whether it actually answers — and —
+when a GPU is passed through — whether its **graphics stack** is usable or
+only CUDA is.
 
 If you're on a Claude subscription (no API key):
 
