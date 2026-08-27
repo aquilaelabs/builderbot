@@ -1179,6 +1179,16 @@ findings for this project alone).
 **Unsaved work does not cross those four.** Leaving a view asks, and answering
 yes throws the change away rather than carrying it to the next tab.
 
+**A History, and the changelog, open over the panel rather than in place of
+it** — a large box on a desktop, the whole screen on a phone. They are things
+you *read*, and they used to take the panel's place: the list you wanted to
+read the log against got out of the way for the log about it, and leaving
+meant pressing the same button a second time to get the list back. Now the
+thing behind is still there, and **Close**, Escape or a click outside puts the
+log back where it came from. What goes into the sheet is the real element,
+moved — so the filter bar keeps every handler it had and there is no second
+copy of it to drift.
+
 **It opens on the first tab of the strip** — Memory today, and whatever is
 first if the strip is ever reordered, since the default is read off the strip
 rather than marked on one of the buttons. After that it stays where you left
@@ -1525,8 +1535,8 @@ name is the compose project's rather than a container's: a compose file may
 set `container_name` to anything it likes and may declare several, and this is
 the one name that is always true of all of them.
 
-Under it, behind a fold that counts them, are **what it publishes and what it
-mounts, written the way Unraid's own Docker tab writes them** — container side
+Under it, and not behind a fold, are **what it publishes and what it mounts,
+written the way Unraid's own Docker tab writes them** — container side
 on the left, host side on the right, and the arrow saying which way it goes:
 `/library ← /mnt/user/plex-media` for a read-only mount, `↔` for a writable
 one, `7474:TCP ← 192.168.1.15:7475` for a published port. That is deliberately
@@ -1536,12 +1546,19 @@ a path or a port assembled out of variables shows as the value compose arrived
 at rather than as the spelling — which is also how the checks below can judge
 a mount without knowing anything about the variables that built it.
 
-A service publishing exactly one TCP port also gets an **Open** link while it
-is running, pointed at this page's own host and that port. Unraid does not
-discover this either — its tab reads a `WebUI` line somebody wrote into a
-template, or the `net.unraid.docker.webui` label — and one port is the only
-case where it can be known rather than declared. Two published ports get no
-link, because a link that is a coin toss costs more than an absent one. It appears when the project
+A running service gets **Open** beside its buttons. One published TCP port
+links straight there, pointed at this page's own host; several open a chooser
+listing every `host:port` for you to pick from. Unraid does not discover this
+either — its tab reads a `WebUI` line somebody wrote into a template, or the
+`net.unraid.docker.webui` label — so one port is the only case where it can be
+known rather than asked, and asking beats guessing for the rest.
+
+The mounts are not repeated in the warnings below. They are all on the row
+already, with the path each one lands on, so naming the ones that reach past
+the project restated what was two lines above in worse words. What the
+warnings keep is the set that is invisible otherwise: `privileged`, added
+capabilities, host devices, and the host's process or network namespace —
+the flags that make a container more than a container. It appears when the project
 carries a compose file
 and `DOCKER_HOST` points at a socket proxy (see the configuration reference
 and `docs/unraid.md`): the project's compose app, built on the host daemon
