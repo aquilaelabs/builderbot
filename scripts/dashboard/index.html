@@ -1605,8 +1605,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <label for="rnToken">Access token <span class="dim">— leave empty to keep the current one</span></label>
       <input id="rnToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
-      <div class="hint">Replaces the token this project uses. It stays this
-        project's alone, and is not shielded — a shell here can read it.</div>
+      <div class="hint" id="rnTokenHint"></div>
     </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="btns">
@@ -7900,9 +7899,30 @@ function renameProject(name){
     + "roadmap and bugs, the versions, the dev instance's data and env, the "
     + "CI logs, and Claude's transcripts and memories. Close its terminals "
     + "first, and bring its dev instance down.";
-  // Only where there is one to change. A repo cloned without a token, or one
-  // that was never cloned at all, has nothing this field would apply to.
-  $("rnTokenField").hidden = !p?.has_token;
+  // Offered where a token would mean something: a project that already has
+  // one, and a project that may push but pushes with a deploy key — that
+  // second case is the way off deploy keys, and without it there was no way
+  // to give such a project a token at all.
+  //
+  // Still hidden for a read-only clone and for a local repo: a credential
+  // there has nothing to authenticate against, and offering one would imply
+  // it grants something. Push rights are granted once, at clone.
+  const how = p?.push_how || "";
+  $("rnTokenField").hidden = !(p?.has_token || p?.push);
+  // The deploy-key case is tested FIRST and stays true after a token is set:
+  // storing one does not change what git uses, and a hint that stopped saying
+  // so the moment a token existed would be wrong exactly when it mattered.
+  $("rnTokenHint").textContent = how === "key"
+    ? "This project pushes with a deploy key" + (p?.has_token
+        ? ", and already has a token stored. " : ". ")
+      + "A token here is kept for it alone and is the first half of moving off "
+      + "keys — git goes on using the key until the remote is an https one, "
+      + "because a credential helper is never asked about an ssh remote."
+    : p?.has_token
+      ? "Replaces the token this project uses. It stays this project's alone, "
+        + "and is not shielded — a shell here can read it."
+      : "Stored for this project alone, and not shielded — a shell here can "
+        + "read it.";
   $("rnGo").disabled = false;
   $("rnGo").textContent = "Rename";
   $("rnmodal").hidden = false;

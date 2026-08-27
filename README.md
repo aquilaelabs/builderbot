@@ -2214,6 +2214,12 @@ reaches every repo it was scoped to; in the environment it also reaches them
 from every project and every session. Here it opens the one project you gave it
 to, and renaming that project takes it along.
 
+A project that already has push rights can be given a token from the **rename**
+dialog — including one that pushes with a **deploy key**, which is how you
+start moving off keys. Setting one there does not switch anything by itself:
+git never asks a credential helper about an ssh remote, so such a project goes
+on using its key until its origin is an https URL. The dialog says so.
+
 **It is not shielded the way a deploy key is.** Those are served by a root-owned
 agent and cannot be read at all. This is a file owned by the same user your
 shells run as, so a session with Bash can read it. Better than an environment
