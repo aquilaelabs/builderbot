@@ -89,8 +89,11 @@ first boot.
 
 ### From an ordinary install (reliable)
 
-Install Debian 12 or Ubuntu in an Unraid VM the way you would any other, then
-run one script inside it:
+Install **Ubuntu Server 24.04 LTS** — headless, no desktop; it is what most
+Docker instructions assume and it turns on unattended security updates by
+default, which is worth having on a box nobody logs into. Debian 12 works
+identically if you would rather have the leaner machine; `provision.sh`
+accepts either. Then run one script inside it:
 
 ```bash
 curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/vm/provision.sh
@@ -103,11 +106,41 @@ sudo bash provision.sh \
 
 It is safe to run again; every step checks before it acts.
 
+## The domain XML
+
+`vm/unraid-domain.xml` is the whole machine. Create the VM in **Form view**
+first so Unraid makes the domain folder and the vdisk, then switch to **XML
+view** and paste it over what is there — keeping the `<uuid>` Unraid gave you,
+because the OVMF nvram file is named after it and a new one orphans it.
+
+Five things in it differ from Unraid's placeholder, each for a reason:
+
+| | placeholder | this | why |
+|---|---|---|---|
+| machine | `pc-i440fx` | `q35` | UEFI firmware paired with a 1996 chipset; q35 is what OVMF is for |
+| clock | `localtime` | `utc` | localtime is a Windows guest's convention |
+| memory backing | `nosharepages` | `memfd` + `shared` | virtiofs cannot work without it, and fails *silently* — the mounts simply never appear |
+| cputune | vCPU 0 pinned to cpuset 0 | none | that is the host's busiest core |
+| disk | *(absent)* | qcow2, `discard=unmap` | so the image shrinks again when Docker prunes, instead of only ever growing |
+
 ## Unraid settings that matter
 
 - **Network: bridged (`br0`).** The VM gets its own address on your LAN, which
   is what makes a container's web UI reachable at `http://<vm-ip>:<port>` from
-  your browser with no forwarding and no proxy.
+  your browser with no forwarding and no proxy — *and* lets BuilderBot reach
+  the daemon.
+
+  **`br0` exists only if bridging is on**: Settings → Network Settings →
+  *Enable bridging* → Yes, which needs the array stopped. If the VM dialog
+  offers you `virbr0` and `bond0` but no `br0`, that is what is missing.
+  `virbr0` is libvirt's NAT network — BuilderBot can still reach the VM, but
+  your browser needs a port forward for every web UI. Avoid `bond0` unless you
+  can confirm it gives a real bridge rather than **macvtap**, which blocks
+  host-to-guest traffic by design and would leave BuilderBot unable to reach
+  the daemon at all. That failure is quiet: everything looks up.
+
+- **Network model: `virtio-net`.** The others are emulated legacy NICs, for
+  guests without virtio drivers. Ubuntu and Debian both have them.
 - **Shares: pass them to the VM** rather than exporting NFS, where your Unraid
   version offers it — that is virtiofs on recent releases and 9p on older
   ones, and either beats a network filesystem on the same host. NFS is the

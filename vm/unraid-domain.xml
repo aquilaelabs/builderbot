@@ -1,0 +1,169 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!--
+  The Docker sandbox VM, as Unraid's VM manager wants it.
+
+  Create the VM in Form view first so Unraid makes the domain folder and the
+  vdisk, then switch to XML view and paste this over what is there. Keep the
+  <uuid> Unraid gave you: the OVMF nvram file below is named after it, and a
+  new uuid orphans it.
+
+  Three things here differ from Unraid's placeholder for reasons, and are
+  called out where they sit: q35 rather than i440fx, shared memory backing,
+  and no CPU pinning.
+-->
+<domain xmlns:qemu="http://libvirt.org/schemas/domain/qemu/1.0" type="kvm">
+  <uuid>b091db01-cbdd-07b7-c797-79ca40d31a00</uuid>
+  <name>bb-sandbox</name>
+  <description>Docker sandbox for BuilderBot — containers it can wreck</description>
+  <metadata>
+    <vmtemplate xmlns="http://unraid" name="Ubuntu" icon="ubuntu.png" os="ubuntu" storage="default"/>
+  </metadata>
+
+  <!-- 8 GiB and 4 cores: this box builds container images, which is memory
+       and parallelism, and the balloon below hands memory back when it is
+       idle. Turn both down if the server is tight; nothing here needs them. -->
+  <memory unit="KiB">8388608</memory>
+  <currentMemory unit="KiB">8388608</currentMemory>
+  <vcpu placement="static">4</vcpu>
+
+  <!-- No <cputune>. Unraid's placeholder pins the single vCPU to cpuset 0,
+       which is the host's busiest core; a sandbox that only occasionally
+       builds something is better left to the scheduler than pinned onto the
+       one core everything else is already contending for. Pin it from the
+       Form view later if it starts competing with the emulator. -->
+
+  <cpu mode="host-passthrough" migratable="on">
+    <topology sockets="1" cores="4" threads="1"/>
+    <cache mode="passthrough"/>
+    <maxphysaddr mode="passthrough"/>
+    <!-- topoext is AMD's. Unraid put it in the placeholder, so this host is
+         AMD; delete this line if you ever move the XML to an Intel box,
+         where "require" will refuse to start. -->
+    <feature policy="require" name="topoext"/>
+  </cpu>
+
+  <!-- virtiofs needs the guest's memory to be shareable with virtiofsd, and
+       fails quietly without it: the mounts simply never appear. This replaces
+       the placeholder's <nosharepages/>, which is the opposite instruction. -->
+  <memoryBacking>
+    <source type="memfd"/>
+    <access mode="shared"/>
+  </memoryBacking>
+
+  <os>
+    <loader readonly="yes" type="pflash">/usr/share/qemu/ovmf-x64/OVMF_CODE-pure-efi.fd</loader>
+    <nvram>/etc/libvirt/qemu/nvram/b091db01-cbdd-07b7-c797-79ca40d31a00_VARS-pure-efi.fd</nvram>
+    <!-- q35, not i440fx. The placeholder pairs UEFI firmware with a 1996
+         chipset; q35 is the machine OVMF is meant for and the one that gives
+         PCIe and sane virtio placement. Bare "q35" resolves to the newest
+         your QEMU has, which is what you want. -->
+    <type arch="x86_64" machine="q35">hvm</type>
+  </os>
+
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+
+  <!-- utc, not localtime. localtime is for Windows guests; a Linux guest that
+       believes the hardware clock is local time drifts by your offset. -->
+  <clock offset="utc"/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+
+  <devices>
+    <emulator>/usr/local/sbin/qemu</emulator>
+
+    <!-- The disk. qcow2 so it grows rather than being claimed up front, and
+         discard='unmap' so the file SHRINKS again when Docker prunes images —
+         without it a sandbox only ever gets bigger. -->
+    <disk type="file" device="disk">
+      <driver name="qemu" type="qcow2" cache="writeback" discard="unmap"/>
+      <source file="/mnt/user/domains/bb-sandbox/vdisk1.qcow2"/>
+      <target dev="vda" bus="virtio"/>
+      <boot order="2"/>
+    </disk>
+
+    <!-- The Ubuntu Server installer. Correct the path, install, then delete
+         this whole block so it stops booting from the ISO. -->
+    <disk type="file" device="cdrom">
+      <driver name="qemu" type="raw"/>
+      <source file="/mnt/user/isos/ubuntu-24.04-live-server-amd64.iso"/>
+      <target dev="sda" bus="sata"/>
+      <readonly/>
+      <boot order="1"/>
+    </disk>
+
+    <!-- The shares, at the tags provision.sh mounts with its "share"
+         option: workspace at /workspace, devdata at /devdata.
+         The target dir IS the tag, not a path. Mounting them at the same
+         paths BuilderBot uses is the point of the whole design: a compose
+         file's bind source is resolved by whoever runs the container, so
+         identical paths mean a relative bind is the same directory on both
+         sides and nothing has to translate. -->
+    <filesystem type="mount" accessmode="passthrough">
+      <driver type="virtiofs"/>
+      <source dir="/mnt/user/development"/>
+      <target dir="workspace"/>
+    </filesystem>
+    <filesystem type="mount" accessmode="passthrough">
+      <driver type="virtiofs"/>
+      <source dir="/mnt/cache/appdata/builderbot-dev"/>
+      <target dir="devdata"/>
+    </filesystem>
+
+    <!-- br0 gives the VM its own LAN address, which is what makes a
+         container's web UI reachable from your browser AND lets BuilderBot
+         reach the daemon. It exists only if Settings -> Network Settings ->
+         Enable bridging is on. If it is not, change this to virbr0 and reach
+         web UIs through a port forward instead. -->
+    <interface type="bridge">
+      <mac address="52:54:00:46:d2:fb"/>
+      <source bridge="br0"/>
+      <model type="virtio-net"/>
+    </interface>
+
+    <controller type="usb" index="0" model="ich9-ehci1">
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x07" function="0x7"/>
+    </controller>
+    <controller type="usb" index="0" model="ich9-uhci1">
+      <master startport="0"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x07" function="0x0" multifunction="on"/>
+    </controller>
+    <controller type="usb" index="0" model="ich9-uhci2">
+      <master startport="2"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x07" function="0x1"/>
+    </controller>
+    <controller type="usb" index="0" model="ich9-uhci3">
+      <master startport="4"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x07" function="0x2"/>
+    </controller>
+
+    <input type="tablet" bus="usb"/>
+    <input type="mouse" bus="ps2"/>
+    <input type="keyboard" bus="ps2"/>
+
+    <!-- Kept even though the machine is headless: it is the console for the
+         day networking is broken and ssh will not answer. Nothing installs a
+         desktop behind it. -->
+    <graphics type="vnc" sharePolicy="ignore" port="-1" autoport="yes" websocket="-1" listen="0.0.0.0">
+      <listen type="address" address="0.0.0.0"/>
+    </graphics>
+    <video>
+      <model type="qxl" ram="65536" vram="16384" vgamem="16384" heads="1" primary="yes"/>
+      <address type="pci" domain="0x0000" bus="0x00" slot="0x1e" function="0x0"/>
+    </video>
+
+    <audio id="1" type="none"/>
+    <console type="pty"/>
+    <!-- The guest agent both provisioning paths install, so Unraid can shut
+         this down cleanly rather than pulling the plug. -->
+    <channel type="unix">
+      <target type="virtio" name="org.qemu.guest_agent.0"/>
+    </channel>
+    <memballoon model="virtio">
+      <alias name="balloon0"/>
+    </memballoon>
+  </devices>
+</domain>
