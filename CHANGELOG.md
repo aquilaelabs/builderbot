@@ -31,3 +31,4 @@
 - On a desktop the Commands and Sessions flyouts now slide open over the terminal instead of pushing it up, and the on-screen keyboard button is gone where there is a real keyboard (395fe92)
 - A project's notebook opens on Memory, keeps the tab you were on while it stays open, and starts fresh at Memory once you close it (0bb10d2)
 - The dev instance now reads like the rest of the Artifacts list: a docker pill, the container's own name, and whether it is running beside it (ea944dd)
+- The dev instance lists what it publishes and what it mounts, in the same notation Unraid's Docker tab uses, and offers an Open link when there is exactly one port it could mean (1a98111)

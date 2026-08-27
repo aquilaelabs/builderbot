@@ -436,16 +436,17 @@ button.on{background:#1f6f36;border-color:#2ea043}
    grown its own hand-copied ::before; the component fold was added without
    one and silently had no triangle at all. Grouped here so a fold cannot be
    built without the arrow that says it opens. */
-.mem>summary,.bug>summary,.fx .grp>summary,.veradd>summary{
+.mem>summary,.bug>summary,.fx .grp>summary,.veradd>summary,.devmap>summary{
   cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px}
 .mem>summary::-webkit-details-marker,.bug>summary::-webkit-details-marker,
-.fx .grp>summary::-webkit-details-marker,
+.fx .grp>summary::-webkit-details-marker,.devmap>summary::-webkit-details-marker,
 .veradd>summary::-webkit-details-marker{display:none}
 .mem>summary::before,.bug>summary::before,.fx .grp>summary::before,
-.veradd>summary::before{content:"\25B8";color:var(--dim);font-size:11px;
-  width:9px;flex:0 0 auto}
+.veradd>summary::before,.devmap>summary::before{content:"\25B8";
+  color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
 .mem[open]>summary::before,.bug[open]>summary::before,
-.fx .grp[open]>summary::before,.veradd[open]>summary::before{content:"\25BE"}
+.fx .grp[open]>summary::before,.veradd[open]>summary::before,
+.devmap[open]>summary::before{content:"\25BE"}
 
 /* The "showing N of M" footer under a long list. Quiet: it is a fact about
    the list plus the control that changes it, not a section of its own. */
@@ -546,6 +547,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .artrow .dim.bad{color:var(--bad)}
 /* One fact per line, indented under the line that says what kind they are. */
 .artrow .dim.li{padding-left:12px}
+.devmap>summary{color:var(--dim);font:var(--f-note);padding:2px 0}
+@media(hover:hover){ .devmap>summary:hover{color:var(--ink)} }
 .artrow .top .state{font:var(--f-note)}
 .artrow .top .state.ok{color:var(--accent)}
 /* Pushed right on a desktop; on a phone the buttons take their own line, the
@@ -5959,6 +5962,37 @@ $("todoRevert").onclick = revertNotebook;
     // age go. A list whose rows are shaped alike is read; one where every row
     // argues its own case is scanned.
     const devState = da.running ? "running" : da.exists ? "stopped" : "down";
+    // The ports and the mounts, written the way Unraid's own Docker tab writes
+    // them — because that is where the operator reads the same two facts about
+    // every other container on the box, and a second notation for them would
+    // be one to translate every time. Container side on the left, host side on
+    // the right, and the arrow says which way it goes: one way in for a
+    // read-only mount and for a published port, both ways for a writable one.
+    //
+    // The host is this page's own address, which is the honest answer to
+    // "where do I reach that port": the dashboard and the published port are
+    // on the same machine, and this is the name the operator got there by.
+    const devPorts = da.ports || [], devMounts = da.mounts || [];
+    // A link to the thing, when there is exactly one thing it could mean.
+    // Unraid does not discover this either — its own tab reads a WebUI line
+    // somebody wrote in a template, or the net.unraid.docker.webui label. We
+    // can do better than a written-down answer for the single-port case and
+    // must not guess past it: two published ports and a link is a coin toss,
+    // and a wrong one costs more than an absent one. Only while it is up,
+    // because a link to a port with nothing behind it is a broken link.
+    const devTcp = devPorts.filter(p => p.proto === "TCP" && p.published);
+    const devWeb = da.running && devTcp.length === 1
+      ? `http://${location.hostname}:${devTcp[0].published}/` : "";
+    const devWiring = !(devPorts.length + devMounts.length) ? "" : `
+      <details class="devmap"><summary>${
+        [devPorts.length ? `${devPorts.length} port${devPorts.length > 1 ? "s" : ""}` : "",
+         devMounts.length ? `${devMounts.length} mount${devMounts.length > 1 ? "s" : ""}` : ""]
+          .filter(Boolean).join(" · ")}</summary>
+        ${devPorts.map(p => `<div class="dim li">${esc(p.target)}:${esc(p.proto)} ← ${
+          esc(location.hostname)}:${esc(p.published || "picked at start")}</div>`).join("")}
+        ${devMounts.map(m => `<div class="dim li">${esc(m.target)} ${
+          m.ro ? "←" : "↔"} ${esc(m.source)}</div>`).join("")}
+      </details>`;
     // One line each, never a run-on joined by semicolons. These are separate
     // facts about separate services and reading them is the whole point.
     const devLines = (label, items, cls) => !items?.length ? "" :
@@ -5985,12 +6019,15 @@ $("todoRevert").onclick = revertNotebook;
                 : da.changed_why === "dirty"
                   ? " — uncommitted changes are not in it" : ""}`
             : "never built — Build makes the first image"}</div>
+          ${devWiring}
           ${devLines("will not work as written", da.problems, "bad")}
           ${devLines("asks for more than its own directory", da.risks, "")}
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
             esc((daJob.log || "").slice(-600))}</div>` : ""}
         </div>
         <span class="acts">
+          ${devWeb ? `<a class="btn" href="${esc(devWeb)}" target="_blank"
+            rel="noreferrer" title="open ${esc(devWeb)}">Open</a>` : ""}
           <button type="button" data-devact="up" ${
             da.running || daJob?.running || (da.missing_env || []).length ? "disabled" : ""}
             title="${(da.missing_env || []).length

@@ -1523,7 +1523,25 @@ project's own name in bold, and whether it is `(running)`, `(stopped)` or
 `(down)` in parentheses after it, where a file carries its size and age. The
 name is the compose project's rather than a container's: a compose file may
 set `container_name` to anything it likes and may declare several, and this is
-the one name that is always true of all of them. It appears when the project
+the one name that is always true of all of them.
+
+Under it, behind a fold that counts them, are **what it publishes and what it
+mounts, written the way Unraid's own Docker tab writes them** — container side
+on the left, host side on the right, and the arrow saying which way it goes:
+`/library ← /mnt/user/plex-media` for a read-only mount, `↔` for a writable
+one, `7474:TCP ← 192.168.1.15:7475` for a published port. That is deliberately
+not a second notation to learn; it is the one already used for every other
+container on the box. All of it is read from the *resolved* compose config, so
+a path or a port assembled out of variables shows as the value compose arrived
+at rather than as the spelling — which is also how the checks below can judge
+a mount without knowing anything about the variables that built it.
+
+A service publishing exactly one TCP port also gets an **Open** link while it
+is running, pointed at this page's own host and that port. Unraid does not
+discover this either — its tab reads a `WebUI` line somebody wrote into a
+template, or the `net.unraid.docker.webui` label — and one port is the only
+case where it can be known rather than declared. Two published ports get no
+link, because a link that is a coin toss costs more than an absent one. It appears when the project
 carries a compose file
 and `DOCKER_HOST` points at a socket proxy (see the configuration reference
 and `docs/unraid.md`): the project's compose app, built on the host daemon

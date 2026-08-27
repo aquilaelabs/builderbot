@@ -58,9 +58,28 @@ ok(/never built/.test(r.text), 'a project with a compose file gets the row, unbu
 ok(await page.$eval('#devRow .top .pill', e => e.textContent.trim()) === 'docker'
    && /^bbdev-/.test(await page.$eval('#devRow .top b', e => e.textContent.trim())),
    '...shaped like the file rows: kind on the pill, its own name in bold');
+// The ports and the mounts, in the notation Unraid writes them in — container
+// side left, host side right, and the arrow saying which way it goes. Read off
+// the resolved compose config, so a path built out of variables shows as the
+// value rather than as the spelling.
+ok(await page.$eval('#devRow .devmap>summary', e => e.textContent.trim()) === '1 port · 2 mounts',
+   '...with what it publishes and mounts behind a fold, counted on the summary');
+await page.click('#devRow .devmap>summary');
+const wiring = await page.$$eval('#devRow .devmap .li', els => els.map(e => e.textContent.trim()));
+ok(wiring[0] === `7474:TCP ← ${new globalThis.URL(URL).hostname}:7475`,
+   '...the published port against the address this page was reached at');
+ok(wiring[1] === '/library ← /mnt/user/plex-media'
+   && wiring[2] === '/config ↔ /mnt/user/appdata/x/config',
+   '...and one arrow for a read-only mount, two for a writable one');
+// The single published port earns a link. Not before it is up: a link to a
+// port with nothing behind it is a broken link.
+ok(!await page.$('#devRow a.btn'),
+   'no Open link while the instance is down, whatever it publishes');
 // One fact per line, never a run-on joined by semicolons — these are separate
 // facts about separate services, and reading them is the point of showing them.
-const devLines = (cls) => page.$$eval(`#devRow .dim.li${cls ? "." + cls : ""}`,
+// Direct children of .grow: the wiring fold's lines carry .li too, and they
+// are not what these two are counting.
+const devLines = (cls) => page.$$eval(`#devRow .grow > .dim.li${cls ? "." + cls : ""}`,
   els => els.map(e => e.textContent.trim()));
 ok(await page.$eval('#devRow [data-devact="rebuild"]',
      e => e.textContent.trim()) === 'Build',
@@ -308,6 +327,21 @@ await pillIs('running');
 ok(page.dialogs.slice(seen).some(
      d => /runs privileged/.test(d) && /mounts \/ from the host/.test(d)),
    '...and Up asks first, naming what it found rather than warning in general');
+// ...and once it is up, the one port it publishes is a link to it. The stub's
+// risky config publishes nothing, so this reads the earlier shape back.
+writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
+  ports: [{ target: 7474, published: '7475', protocol: 'tcp' }] } } }));
+await nudge();
+await page.waitForSelector('#devRow a.btn', { timeout: 20000 });
+ok(await page.$eval('#devRow a.btn', a => a.getAttribute('href'))
+     === `http://${new globalThis.URL(URL).hostname}:7475/`,
+   'a running instance with one published port gets an Open link to it');
+writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
+  ports: [{ target: 80, published: '8080', protocol: 'tcp' },
+          { target: 81, published: '8081', protocol: 'tcp' }] } } }));
+await nudge();
+await page.waitForFunction(() => !document.querySelector('#devRow a.btn'), { timeout: 20000 });
+ok(true, '...and two of them get none: a link that is a coin toss costs more than no link');
 
 // Asked once per set, not once per press: an acknowledgement the operator has
 // to give again every time is one they stop reading.
