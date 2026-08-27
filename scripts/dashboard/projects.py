@@ -33,6 +33,35 @@ import threading
 import time
 from pathlib import Path
 
+def sanitize_name(raw):
+    """A typed name, as the directory it will become — GitHub's own behaviour.
+
+    GitHub does not refuse "My New App": it replaces what it cannot use with a
+    dash and shows you what you are about to get. This refused it, which is
+    friction for nothing — the operator retypes what the machine had already
+    worked out. So the same rule, applied here, and the name a repository
+    would have had is the name the directory gets.
+
+    Three departures, all because this ends up as a directory rather than a
+    repository:
+
+    - a leading dot, dash or underscore is dropped. GitHub is happy with
+      `.github`; the project scan skips anything starting with a dot, so such
+      a directory would be created and then never appear. Dropping `_` also
+      keeps `_work` — the runner's tree, which the scan skips by name — from
+      being reachable through a name that sanitizes into it.
+    - runs of dashes collapse. GitHub leaves `my---app` alone; nobody means it.
+    - trailing dashes go, which are always an artifact of the replacement
+      rather than anything typed on purpose.
+
+    Empty is returned as empty and refused by the caller: there is a
+    difference between "that is not a name" and a name this quietly invented.
+    """
+    s = re.sub(r"[^A-Za-z0-9._-]", "-", (raw or "").strip())
+    s = re.sub(r"-{2,}", "-", s)
+    return s.lstrip("._-").rstrip("-")[:100]
+
+
 def _field(req, key):
     """One string field out of a request body — see server.field, which is the
     same rule at the same boundary. JSON carries types, and a name that
@@ -217,10 +246,10 @@ def create(req):
         # field is optional and defaults to this, and typing nothing still
         # gets the old behaviour. Notes are not asked for either way — they
         # are drafted from the code after the clone.
-        name = _field(req, "name").strip()
+        name = sanitize_name(_field(req, "name"))
         if not name:
             name = re.split(r"[/:]", url.rstrip("/"))[-1]
-            name = name[:-4] if name.endswith(".git") else name
+            name = sanitize_name(name[:-4] if name.endswith(".git") else name)
         # An optional deploy key, by name. The name is only ever matched
         # against what the agent actually holds — nothing from the request is
         # written into a file or a config line; the matched key's own public
@@ -235,12 +264,15 @@ def create(req):
             alias = ensure_deploy_alias(match["name"], match["pub"])
             key_url = f"git@{alias}:{repo_path(url)}.git"
     else:
-        name = _field(req, "name").strip()
+        name = sanitize_name(_field(req, "name"))
         about = _field(req, "about").strip()
+    # After sanitizing, the only way to fail this is an empty name — every
+    # other shape has already been turned into something legal. Kept as the
+    # gate rather than replaced by `if not name`, because it is the invariant
+    # the rest of this file and the path handling below rely on, and an
+    # assertion that cannot fire is cheaper than one that was removed.
     if not PROJECT_NAME.fullmatch(name):
-        return {"error": "a project name is one path segment: letters, digits, "
-                         "dots, dashes, underscores, starting with a letter "
-                         "or digit"}, 400
+        return {"error": "a name needs at least one letter or digit in it"}, 400
     # Asked before the directory is claimed, so a refused second job does not
     # leave an empty directory behind it.
     if mode == "clone":

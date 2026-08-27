@@ -41,14 +41,20 @@ ok(await page.$eval('#pName', el => el.value) === 'radarr-4k',
 await page.fill('#pUrl', '');
 await page.click('#pLocal');
 ok(await page.$eval('#pNameField', el => !el.hidden), 'back to local keeps the name field');
-// Put the field back as it was found. A mode switch does not clear it — only
-// reopening does — and the refusal test below needs the name genuinely empty,
-// or it submits a valid one and closes the dialog out from under everything
-// after it.
-// Set, not filled: page.fill focuses the input, and the very next assertion
-// is that switching tabs leaves no cursor anywhere (an on-screen keyboard over
-// half the dialog is the thing it guards).
-await page.$eval('#pName', el => { el.value = ''; });
+// The preview says what the directory will be called, and only when that is
+// not what was typed.
+await page.fill('#pName', 'My New App');
+ok(await page.$eval('#pNamePreview', el => !el.hidden && /My-New-App/.test(el.textContent)),
+   'a name GitHub would rewrite is previewed as the directory it becomes');
+await page.fill('#pName', 'plain');
+ok(await page.$eval('#pNamePreview', el => el.hidden),
+   '...and stays quiet when there is nothing to say');
+// Put the field back as it was found: a mode switch does not clear it, only
+// reopening does, and the refusal below needs the name genuinely empty or it
+// submits a valid one and closes the dialog out from under everything after.
+// Set rather than filled, because page.fill focuses the input and the very
+// next assertion is that switching tabs leaves no cursor anywhere.
+await page.$eval('#pName', el => { el.value = ''; el.blur(); });
 // Neither tab puts a cursor anywhere. A focused field brings the on-screen
 // keyboard up with it, over half of the dialog that just opened — so the
 // field is picked by whoever wants to type in it.
@@ -100,6 +106,13 @@ const post = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
   return r.status;
 }, [body, api]);
+// The same call, keeping the body: sanitizing is asserted on the name that
+// comes back, which is the only place the answer actually exists.
+const postJson = (body, api = '/api/create') => page.evaluate(async ([b, u]) => {
+  const r = await fetch(u, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+  return { status: r.status, body: await r.json().catch(() => ({})) };
+}, [body, api]);
 for (const url of ['https://evil.example/owner/repo', 'ext::sh -c id',
                    'file:///etc', 'https://github.com/owner-only',
                    'git@github.com:owner/repo extra'])
@@ -115,14 +128,31 @@ for (const url of ['https://github.com/owner/alpha', 'git@github.com:owner/alpha
 ok(await post({ mode: 'clone', url: 'https://github.com/owner/somethingelse',
                 name: 'alpha' }) === 400,
    'a supplied name is used instead of the repository\'s own');
-// A supplied name is held to the same rule as an init's, rather than being
-// trusted because a URL was alongside it.
-for (const name of ['../oops', 'a/b', 'a b'])
+// A supplied name goes through the same sanitizing an init's does, rather
+// than being trusted because a URL was alongside it. Proven by collision
+// again: each of these sanitizes to `alpha`, which already exists, so the
+// mkdir claim refuses it before git runs — and a name that had NOT been
+// sanitized would not have collided.
+for (const name of ['../alpha', 'alpha/', 'alpha ', '.alpha', '_alpha'])
   ok(await post({ mode: 'clone', url: 'https://github.com/owner/repo', name }) === 400,
-     `clone name refused: ${name}`);
-for (const name of ['../oops', 'a/b', '.hidden', '_work', 'a b', ''])
+     `clone name sanitized to an existing one, refused: ${name}`);
+// Every one of these sanitizes to `alpha`, which exists — so the refusal
+// proves the transformation rather than a rejection, and nothing is created.
+for (const name of ['../alpha', 'alpha!', '.alpha', '_alpha', 'alpha '])
+  ok(await post({ name, mode: 'init' }) === 400,
+     `init name sanitized to an existing one, refused: ${name}`);
+// ...and the one thing that is still refused outright: a name with nothing in
+// it to name a directory after.
+for (const name of ['', '   ', '---', '...', '/'])
   ok(await post({ name, mode: 'init' }) === 400,
      `name refused: ${name || '(empty)'}`);
+// The positive case, and the only place the sanitized name is observable:
+// a messy one is accepted and the directory is what GitHub would have made.
+const made = await postJson({ name: 'My New App!', mode: 'init' });
+ok(made.status === 200 && made.body.name === 'My-New-App',
+   'a name with spaces and punctuation is created as GitHub would spell it');
+ok(existsSync(`${DIR}/ws/My-New-App/.git`),
+   '...and that is the directory on disk');
 ok(await post({ name: 'q2', mode: 'sideways' }) === 400, 'unknown mode refused');
 
 // ---- deploy keys -------------------------------------------------------

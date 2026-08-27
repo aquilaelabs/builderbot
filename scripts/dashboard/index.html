@@ -1585,6 +1585,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <input id="pName" maxlength="100" autocomplete="off" spellcheck="false"
              placeholder="e.g. my-app">
       <div class="hint" id="pNameHint"></div>
+      <div class="hint" id="pNamePreview" hidden></div>
     </div>
     <div class="field" id="pUrlField" hidden>
       <label for="pUrl">Repository</label>
@@ -4490,8 +4491,9 @@ function pDraw(){
   $("pNameHint").textContent = pMode === "clone"
     ? "The directory to clone into. Fills itself in from the address — change "
       + "it to keep more than one checkout of the same repository."
-    : "One path segment under /workspace: letters, digits, dots, dashes and "
-      + "underscores.";
+    : "Named the way GitHub names a repository: anything it cannot use becomes "
+      + "a dash, so you are shown the directory you are about to get rather "
+      + "than being sent back to retype it.";
   $("pKeyHint").textContent =
     (pMode === "link"
       ? "The key the push (and every later one) will offer. "
@@ -4547,6 +4549,7 @@ function pOpen(mode){
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
   pNameTyped = false;
+  $("pNamePreview").hidden = true;
   // The select is emptied, not left as-is: a key picked during a previous
   // open must not ride along invisibly into this one's submit.
   $("pKey").innerHTML = "";
@@ -7157,16 +7160,37 @@ $("pmodal").onclick = e => { if (e.target.id === "pmodal") closeNewProject(); };
 for (const f of ["pName", "pUrl"])
   $(f).onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); $("pCreate").click(); } };
 
+// What a typed name becomes. The server sanitizes for real — this is the same
+// rule in the other language, so the operator can see the answer before
+// pressing anything, and the two agreeing is checked by a test rather than
+// hoped for. If they ever disagree the server wins, and the row that appears
+// carries the name it actually made.
+const projName = (raw) => (raw || "").trim()
+  .replace(/[^A-Za-z0-9._-]/g, "-")
+  .replace(/-{2,}/g, "-")
+  .replace(/^[._-]+/, "").replace(/-+$/, "").slice(0, 100);
+
+function pNameShow(){
+  const raw = $("pName").value, clean = projName(raw);
+  // Shown only when it differs: repeating a name back unchanged is noise on a
+  // dialog that already has three hints on it.
+  $("pNamePreview").hidden = !raw.trim() || clean === raw.trim();
+  $("pNamePreview").textContent = clean
+    ? `Will be created as ${clean}`
+    : "That leaves nothing to name a directory after";
+}
+
 // The name follows the address until somebody types one. Tracked rather than
 // guessed from emptiness: clearing the field is itself a choice, and refilling
 // it on the next keystroke of the URL would fight whoever did it.
 let pNameTyped = false;
-$("pName").oninput = () => { pNameTyped = true; };
+$("pName").oninput = () => { pNameTyped = true; pNameShow(); };
 $("pUrl").oninput = () => {
   if (pMode !== "clone" || pNameTyped) return;
   const u = $("pUrl").value.trim().replace(/\/+$/, "");
   const last = u.split(/[/:]/).pop() || "";
   $("pName").value = last.endsWith(".git") ? last.slice(0, -4) : last;
+  pNameShow();
 };
 
 $("pCreate").onclick = async () => {
