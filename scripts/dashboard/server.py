@@ -427,7 +427,7 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
-TAB_KINDS = {"term", "packages", "todo", "projects"}
+TAB_KINDS = {"term", "packages", "todo", "projects", "docker"}
 
 
 def load_layout():
@@ -1236,6 +1236,11 @@ def project_list():
                     "claude_md": has_md, "excluded": d.name in excluded,
                     "locked": d.name in locked,
                     "pinned": True if pins is None else d.name in pins,
+                    # Whether it carries its own access token — so the rename
+                    # dialog can offer to change one without offering to
+                    # invent one for a local repo that never had any.
+                    "has_token": (STATE / "gitcreds" / d.name).is_file(),
+                    "push": projects.may_push(d.name),
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
@@ -1748,6 +1753,47 @@ version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
 # this box's, not any one project's — and is handed over.
 import projects                                                  # noqa: E402
 
+def _seed_push_rights():
+    """One-off: the projects that were already being pushed to keep pushing.
+
+    Before this existed, whether a working copy could push was whatever its
+    remote and the agent's keys happened to allow — and on this box that means
+    every repo addressed over ssh through a deploy-key alias. Starting to
+    refuse those would be taking away something that worked, to enforce a rule
+    made afterwards, which is not what a new rule is for.
+
+    So: absent the file, every project whose GitHub remote is an ssh one is
+    granted, recorded as `key`, and the file exists from then on. https
+    remotes are not seeded — those authenticated with the container-wide PAT,
+    which is the arrangement being moved away from, and a token of their own
+    is the way back to pushing.
+    """
+    if (STATE / "push-rights.json").exists() or not WORKSPACE.is_dir():
+        return
+    seeded = {}
+    try:
+        here = sorted(WORKSPACE.iterdir())
+    except OSError:
+        return
+    for d in here:
+        if not d.is_dir() or d.name == "_work" or d.name.startswith("."):
+            continue
+        remotes = run(["git", "-C", str(d), "remote", "-v"], timeout=10)["out"]
+        if not remotes.strip() or not _github_remote(remotes):
+            continue
+        # ssh, in either spelling — an https remote is the PAT arrangement.
+        if not any(l.split()[1].startswith(("git@", "ssh://"))
+                   for l in remotes.splitlines() if len(l.split()) > 1):
+            continue
+        repo = projects.repo_of_remotes(remotes)
+        if repo and repo not in {v["repo"] for v in seeded.values()}:
+            seeded[d.name] = {"repo": repo, "how": "key", "at": int(time.time())}
+    write_json(STATE / "push-rights.json", seeded)
+    if seeded:
+        print(f"[dashboard] push rights seeded for {len(seeded)} project(s) "
+              f"already pushing over ssh", flush=True)
+
+
 projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
                    repo_path=repo_path, build_claude_md=build_claude_md,
@@ -1755,6 +1801,8 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
                    devdata=devapp.DEVDATA, write_json=write_json,
                    pname=devapp._pname)
+
+_seed_push_rights()
 
 
 def _doctor_loop():
@@ -2249,8 +2297,12 @@ class Handler(BaseHTTPRequestHandler):
             name = q.get("project", [""])[0]
             if name not in {p["name"] for p in project_list()}:
                 return self._json({"error": "not a project"}, 400)
+            # `devapp` is the main instance, which is what the row shows;
+            # `devapps` is every instance, which the manager reads. Both, so
+            # the row keeps working while the manager grows around it.
             return self._json({"artifacts": artifacts.listing(name),
-                               "devapp": devapp.state(name)}
+                               "devapp": devapp.state(name),
+                               "devapps": devapp.states(name)}
                               | phone.summary())
         if self.path.startswith("/api/artifact?"):
             # The download. Resolved and prefix-checked in artifacts.resolve —
@@ -2283,6 +2335,15 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._phone_payload())
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
+        if self.path.startswith("/api/docker"):
+            # The manager's whole page in one answer: every instance, and
+            # every container that is not one of them.
+            return self._json(devapp.overview())
+        if self.path.startswith("/api/containers"):
+            # A read, and the only one this dashboard makes of the daemon
+            # beyond `docker version` — see the guard in devapp.py, which
+            # allows it and still refuses anything that would change something.
+            return self._json(devapp.containers())
         if self.path.startswith("/api/project-job"):
             return self._json(projects.job())
         if self.path.startswith("/api/todo"):
@@ -2345,6 +2406,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._project_pin(req)
         if path.startswith("/api/rename"):
             return self._rename(req)
+        if path.startswith("/api/trash"):
+            return self._trash(req)
         if path.startswith("/api/session"):
             return self._session(req)
         if path.startswith("/api/keys"):
@@ -2569,31 +2632,51 @@ class Handler(BaseHTTPRequestHandler):
         if name not in {p["name"] for p in project_list()}:
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
+        # Which instance of that project. Absent means the one every project
+        # has always had, so a caller that predates instances still works and
+        # a request that names a strange one is answered rather than obeyed:
+        # the name decides a compose project and a data directory, and those
+        # are not places to let an arbitrary string reach.
+        inst = field(req, "instance") or devapp.MAIN
+        # `new` is the one action whose instance does not exist yet — that is
+        # what it is for. Everything else names one that must exist, because
+        # the string decides a compose project and a data directory and is not
+        # somewhere an arbitrary one should reach.
+        if act == "new":
+            r = devapp.create_instance(name, inst)
+            return self._json(r, 400 if r.get("error") else 200)
+        if inst not in devapp.instances(name):
+            return self._json({"error": f"no instance {inst} of {name}"}, 400)
+        if act == "state":
+            # The full picture for one instance — risks, problems, the parsed
+            # compose — which overview() deliberately does not compute for
+            # every instance at once. Asked when somebody is about to act.
+            return self._json({"state": devapp.state(name, inst)})
         # `ack` is the digest of the risk list the operator was actually
         # shown — not a bare yes. A compose file that gains a mount between
         # the row rendering and the button being pressed does not inherit the
         # acknowledgement of the one before it.
         if act == "up":
-            r = devapp.up(name, field(req, "ack"))
+            r = devapp.up(name, inst, field(req, "ack"))
         elif act == "down":
-            r = devapp.down(name)
+            r = devapp.down(name, inst)
         elif act == "rebuild":
-            r = devapp.rebuild(name, field(req, "ack"))
+            r = devapp.rebuild(name, inst, field(req, "ack"))
         elif act == "env-get":
             # An empty env opens on the example rather than on nothing. The
             # `missing` list still answers about what is STORED, so the hint
             # under the box stays true while the box is only a draft.
-            stored = devapp.read_env(name)
-            return self._json({"text": stored or devapp.starter(name),
+            stored = devapp.read_env(name, inst)
+            return self._json({"text": stored or devapp.starter(name, inst),
                                "seeded": not stored,
-                               "missing": devapp.missing_env(name)})
+                               "missing": devapp.missing_env(name, inst)})
         elif act == "env-set":
-            r = devapp.write_env(name, req.get("text") or "")
+            r = devapp.write_env(name, req.get("text") or "", inst)
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
             return self._json(r, 400)
-        return self._json(r | {"state": devapp.state(name)})
+        return self._json(r | {"state": devapp.state(name, inst)})
 
     def _version(self, req):
         """Move a project's version, or change who is allowed to.
@@ -3099,6 +3182,34 @@ class Handler(BaseHTTPRequestHandler):
             run(["tmux", "kill-session", "-t", sess], timeout=10)
             killed = sess
         return self._json({"locked": sorted(names), "killed": killed})
+
+    def _trash(self, req):
+        """Move a project out of the workspace. The same guards as renaming.
+
+        A live session holds the directory as its working directory and would
+        carry on writing into it wherever it went; a dev instance's containers
+        are bound to paths that would stop existing. Neither is ended here for
+        the same reason renaming does not: that is a bigger decision than the
+        one being asked for.
+        """
+        name = req.get("name", "")
+        live = {s["name"] for s in tmux_sessions()}
+        held = sorted(s for s in live
+                      if s == tmux_name(f"claude-{name}")
+                      or s.startswith(tmux_name(f"shell-{name}") + "-"))
+        if held:
+            return self._json({"error": "close its terminals first — "
+                                        + ", ".join(held[:3])
+                                        + (" …" if len(held) > 3 else "")}, 409)
+        try:
+            if devapp.state(name).get("exists"):
+                return self._json({"error": "its dev instance still has "
+                                            "containers — press Down on the "
+                                            "Artifacts tab first"}, 409)
+        except Exception:
+            pass
+        body, code = projects.trash(req)
+        return self._json(body, code)
 
     def _rename(self, req):
         """Rename a project. The guards live here; the work is in projects.py.

@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 
 // ep.silon gets the compose file — delta is the harness's EXCLUDED fixture
 // and never shows a notebook button. The dot in the name is a bonus: it
-// proves the compose project-name sanitizer (bbdev-ep-silon) with the same
+// proves the compose project-name sanitizer (bbdev-ep-silon-main) with the same
 // fixture that proves tmux's.
 const D = `${DIR}/ws/ep.silon`;
 writeFileSync(`${D}/docker-compose.yml`,
@@ -36,22 +36,56 @@ await ready(page);
 await page.click(`#projects .row:has(.name:text-is("ep.silon")) [data-m]`);
 await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
-await page.waitForSelector('#devRow', { timeout: 20000 });
+await page.waitForSelector('#devRow', { state: 'attached', timeout: 20000 });
 
-const row = () => page.$eval('#devRow', e => ({
-  text: e.textContent.replace(/\s+/g, ' ').trim(),
-  up: e.querySelector('[data-devact="up"]').disabled,
-  down: e.querySelector('[data-devact="down"]').disabled,
-  rebuild: e.querySelector('[data-devact="rebuild"]').disabled,
-}));
+// The controls live on the Docker manager now — the artifact row only sends
+// you there — so everything that presses one drives it from that tab.
+const DM = '.dmtab .row[data-inst^="ep.silon|"]';
+// Unconditional, because openTab focuses a tab that is already open and
+// openDocker reloads the list either way. A guard on "is the row already
+// there" broke the moment another tab took the pane: the row was absent, the
+// guard did not re-open it, and the click waited for something never coming.
+async function openManager(){
+  await page.click('#bDocker');
+  await page.waitForSelector(DM, { timeout: 20000 });
+}
+async function dmClick(act){
+  await openManager();
+  await page.click(`${DM} [data-dm="${act}"]`);
+}
+async function dmDisabled(act){
+  await openManager();
+  return page.$eval(`${DM} [data-dm="${act}"]`, b => b.disabled);
+}
+// The manager repaints from its own fetch, not the artifacts poll, so a test
+// that acted through the API has to ask it to look again.
+// Bring the artifact row's tab back in front. openManager leaves the manager
+// there, and anything that CLICKS on the row needs it visible again — reading
+// what the row rendered does not, which is why most assertions here wait on
+// attachment instead.
+async function showRow(){
+  await page.click('#projects .row:has(.name:text-is("ep.silon")) [data-m]');
+  await page.waitForSelector('#devRow', { timeout: 20000 });
+}
+async function dmRefresh(){
+  await page.evaluate(() => { dockerList = null; dockerRev++; loadDocker(); });
+  await openManager();
+}
+
+const row = async () => ({
+  text: await page.$eval('#devRow', e => e.textContent.replace(/\s+/g, ' ').trim()),
+  up: await dmDisabled('up'),
+  down: await dmDisabled('down'),
+  rebuild: await dmDisabled('rebuild'),
+});
 // The state, read from the parenthetical beside the name and never out of the
 // row's whole text: that text carries the buttons' own labels, so "down" in it
 // could as easily be the Down button. The pill says what the row IS — docker,
 // the way the file rows say apk or xpi — and never what it is doing.
-const pill = () => page.$eval('#devRow .state', e => e.textContent.replace(/[()]/g, '').trim());
-const pillIs = (want) => page.waitForFunction(
-  (w) => document.querySelector('#devRow .state')?.textContent.replace(/[()]/g, '').trim() === w,
-  want, { timeout: 20000 });
+const pill = () => page.$eval(`${DM} .state`, e => e.textContent.replace(/[()]/g, '').trim());
+const pillIs = async (want) => { await openManager(); return page.waitForFunction(
+  ([w, sel]) => document.querySelector(sel + ' .state')?.textContent.replace(/[()]/g, '').trim() === w,
+  [want, DM], { timeout: 20000 }); };
 
 let r = await row();
 ok(/never built/.test(r.text), 'a project with a compose file gets the row, unbuilt');
@@ -79,7 +113,7 @@ ok(!await page.$('#devRow a.btn'),
 // they are told apart by their class rather than by where they sit.
 const devLines = (cls) => page.$$eval(`#devRow .grow > .dim.li.${cls}`,
   els => els.map(e => e.textContent.trim()));
-ok(await page.$eval('#devRow [data-devact="rebuild"]',
+ok(await page.$eval(`${DM} [data-dm="rebuild"]`,
      e => e.textContent.trim()) === 'Build',
    'the button says Build before a first image exists — nothing auto-builds');
 ok(!r.rebuild, '...and it is live for that first build');
@@ -88,7 +122,7 @@ ok(r.up, '...and Up is dead: the env is missing PORT, and starting against a '
 ok(r.down, '...and Down is dead with nothing running');
 
 // Fill the env through the editor.
-await page.click('#devRow [data-devact="env"]');
+await dmClick('env');
 await page.waitForSelector('#devEnvModal:not([hidden])');
 ok(/missing against \.env\.example: PORT/.test(
      await page.$eval('#devEnvModal .hint', e => e.textContent)),
@@ -114,24 +148,24 @@ await page.waitForTimeout(1200);
 // never-built project does what the CLI does rather than refusing. The
 // classic builder rides along for exactly that case, since an implicit build
 // through buildx would 403 against a socket proxy.
-ok(!await page.$eval('#devRow [data-devact="up"]', b => b.disabled),
+ok(!await page.$eval(`${DM} [data-dm="up"]`, b => b.disabled),
    'a filled env wakes Up — compose builds what is missing, so it would work');
 ok(/builds the image first, as compose does/.test(
-     await page.$eval('#devRow [data-devact="up"]', b => b.title)),
+     await page.$eval(`${DM} [data-dm="up"]`, b => b.title)),
    '...and Up says that is what it will do');
 
 // First build: build → down → up, and the argv trail proves the shape.
 // (newPage auto-accepts dialogs and records them — no handler of our own.)
-await page.click('#devRow [data-devact="rebuild"]');
+await dmClick('rebuild');
 await page.waitForFunction(() => {
   const e = document.querySelector('#devRow');
   return e && /running/.test(e.textContent) && /built from [0-9a-f]{7}/.test(e.textContent);
 }, { timeout: 30000 });
 const log = dockerLog();
-ok(/compose --project-name bbdev-ep-silon .*build/.test(log)
-   && /compose --project-name bbdev-ep-silon .*up -d/.test(log),
+ok(/compose --project-name bbdev-ep-silon-main .*build/.test(log)
+   && /compose --project-name bbdev-ep-silon-main .*up -d/.test(log),
    'rebuild runs table-lookup compose commands under the bbdev- namespace');
-ok(await page.$eval('#devRow [data-devact="rebuild"]',
+ok(await page.$eval(`${DM} [data-dm="rebuild"]`,
      e => e.textContent.trim()) === 'Rebuild',
    '...and the button says Rebuild once an image exists');
 ok(/--env-file/.test(log), '...with the dev env handed over as --env-file');
@@ -155,20 +189,21 @@ ok(r.rebuild && /the code has moved since/.test(r.text) === false,
 // what is being asserted is that the RECORD is read against today's daemon.
 const devapps = `${DIR}/state/devapps.json`;
 const wasBuilt = JSON.parse(readFileSync(devapps, 'utf8'));
-ok(wasBuilt['ep.silon'].daemon === 'tcp://stub:2375',
+ok(wasBuilt['ep.silon'].main.daemon === 'tcp://stub:2375',
    'a build records which daemon it landed on');
-writeFileSync(devapps, JSON.stringify(
-  { ...wasBuilt, 'ep.silon': { ...wasBuilt['ep.silon'], daemon: 'ssh://bb@sandbox' } }));
+writeFileSync(devapps, JSON.stringify({ ...wasBuilt, 'ep.silon': {
+  ...wasBuilt['ep.silon'],
+  main: { ...wasBuilt['ep.silon'].main, daemon: 'ssh://bb@sandbox' } } }));
 await page.reload();
 await ready(page);
 await page.click(`#projects .row:has(.name:text-is("ep.silon")) [data-m]`);
 await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20000 });
 await page.click('.nbtabs [data-v="artifacts"]:visible');
-await page.waitForSelector('#devRow', { timeout: 20000 });
+await page.waitForSelector('#devRow', { state: 'attached', timeout: 20000 });
 r = await row();
 ok(/never built/.test(r.text),
    'a record from another daemon reads as never built here, not as built there');
-ok(await page.$eval('#devRow [data-devact="rebuild"]', e => e.textContent.trim())
+ok(await page.$eval(`${DM} [data-dm="rebuild"]`, e => e.textContent.trim())
    === 'Build',
    '...so the button offers Build, which is what pressing it would do');
 writeFileSync(devapps, JSON.stringify(wasBuilt));
@@ -181,10 +216,11 @@ writeFileSync(`${D}/newfile.txt`, 'x');
 execFileSync('git', ['-C', D, 'add', '-A'], { env });
 execFileSync('git', ['-C', D, 'commit', '-qm', 'more'], { env });
 await page.evaluate(() => refresh());
-await page.waitForFunction(() => {
-  const b = document.querySelector('#devRow [data-devact="rebuild"]');
+await dmRefresh();
+await page.waitForFunction((SEL) => {
+  const b = document.querySelector(SEL + ' [data-dm="rebuild"]');
   return b && !b.disabled;
-}, { timeout: 20000 });
+}, DM, { timeout: 20000 });
 ok(true, 'a commit unghosts Rebuild — the code has moved since the build');
 
 // The env gate: the example gains a key, and the rebuild stops after down
@@ -192,14 +228,14 @@ ok(true, 'a commit unghosts Rebuild — the code has moved since the build');
 writeFileSync(`${D}/.env.example`, 'PORT=8080\nAPI_KEY=\n');
 execFileSync('git', ['-C', D, 'add', '-A'], { env });
 execFileSync('git', ['-C', D, 'commit', '-qm', 'needs a key'], { env });
-await page.click('#devRow [data-devact="rebuild"]');
+await dmClick('rebuild');
 await page.waitForFunction(() => {
   const e = document.querySelector('#devRow');
   return e && /fill in the env/.test(e.textContent);
 }, { timeout: 30000 });
 ok(await pill() === 'down',
    'the gated rebuild stops after down rather than starting broken');
-await page.click('#devRow [data-devact="env"]');
+await dmClick('env');
 await page.waitForSelector('#devEnvModal:not([hidden])');
 const gated = await page.$eval('#devEnvModal textarea', e => e.value);
 ok(/API_KEY=/.test(gated) && /# old: PORT=9090/.test(gated),
@@ -207,11 +243,12 @@ ok(/API_KEY=/.test(gated) && /# old: PORT=9090/.test(gated),
 await page.fill('#devEnvModal textarea', 'PORT=9090\nAPI_KEY=abc\n');
 await page.click('#devEnvModal .primary');
 await page.waitForSelector('#devEnvModal', { state: 'hidden' });
-await page.waitForFunction(() => {
-  const b = document.querySelector('#devRow [data-devact="up"]');
+await dmRefresh();
+await page.waitForFunction((SEL) => {
+  const b = document.querySelector(SEL + ' [data-dm="up"]');
   return b && !b.disabled;
-}, { timeout: 20000 });
-await page.click('#devRow [data-devact="up"]');
+}, DM, { timeout: 20000 });
+await dmClick('up');
 await page.waitForFunction(() => {
   const e = document.querySelector('#devRow');
   return e && /running/.test(e.textContent);
@@ -219,9 +256,9 @@ await page.waitForFunction(() => {
 ok(true, '...and Up is manual after the gate, exactly as asked');
 
 // Down, from the row.
-await page.click('#devRow [data-devact="down"]');
+await dmClick('down');
 await pillIs('down');
-ok(/compose --project-name bbdev-ep-silon .*down/.test(dockerLog()),
+ok(/compose --project-name bbdev-ep-silon-main .*down/.test(dockerLog()),
    'Down runs compose down, nothing else');
 ok((await row()).down, '...and goes dead after it: there is nothing left to remove');
 
@@ -229,15 +266,15 @@ ok((await row()).down, '...and goes dead after it: there is nothing left to remo
 // network, and `down` is the only thing that clears it. Asking compose only
 // about RUNNING containers left a crashed instance with a greyed-out Down and
 // no way out except a shell, which is the one thing these buttons are for.
-writeFileSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`, '1');
+writeFileSync(`${DIR}/dockerstate/bbdev-ep-silon-main.exited`, '1');
 await page.evaluate(() => refresh());
 await pillIs('stopped');
 r = await row();
 ok(!r.down, 'a crashed instance offers Down — its containers are still there');
 ok(!r.up, '...and Up, which recreates them rather than colliding with them');
-await page.click('#devRow [data-devact="down"]');
+await dmClick('down');
 await pillIs('down');
-ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`),
+ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon-main.exited`),
    '...and Down is what clears them');
 
 // A build in flight when BuilderBot restarts is lost — compose build is a
@@ -248,7 +285,9 @@ ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`),
 // on-disk marker behind, which is exactly what a killed process leaves.
 const devFile = `${DIR}/state/devapps.json`;
 const before = JSON.parse(readFileSync(devFile, 'utf8'));
-before['ep.silon'].building_since = Math.floor(Date.now() / 1000);
+// Two levels now: a project holds instances, and `main` is the one every
+// project has until another is made.
+before['ep.silon'].main.building_since = Math.floor(Date.now() / 1000);
 writeFileSync(devFile, JSON.stringify(before));
 await page.evaluate(() => refresh());
 await page.waitForFunction(() => {
@@ -267,11 +306,12 @@ execFileSync('git', ['-C', D, 'commit', '-qm', 'moves on'], { env });
 // No nudge: the commit moves the project's reflog, and the poll watches it.
 // Before that key existed this verdict only refreshed when something else
 // happened to move, so Rebuild slept through the commit that should wake it.
-await page.waitForFunction(() => {
-  const b = document.querySelector('#devRow [data-devact="rebuild"]');
+await dmRefresh();
+await page.waitForFunction((SEL) => {
+  const b = document.querySelector(SEL + ' [data-dm="rebuild"]');
   return b && !b.disabled;
-}, { timeout: 20000 });
-await page.click('#devRow [data-devact="rebuild"]');
+}, DM, { timeout: 20000 });
+await dmClick('rebuild');
 await page.waitForFunction(() => {
   const e = document.querySelector('#devRow');
   return e && !/a build was interrupted/.test(e.textContent);
@@ -286,11 +326,12 @@ writeFileSync(`${D}/again.txt`, 'x');
 execFileSync('git', ['-C', D, 'add', '-A'], { env });
 execFileSync('git', ['-C', D, 'commit', '-qm', 'again'], { env });
 await page.evaluate(() => refresh());
-await page.waitForFunction(() => {
-  const b = document.querySelector('#devRow [data-devact="rebuild"]');
+await dmRefresh();
+await page.waitForFunction((SEL) => {
+  const b = document.querySelector(SEL + ' [data-dm="rebuild"]');
   return b && !b.disabled;
-}, { timeout: 20000 });
-await page.click('#devRow [data-devact="rebuild"]');
+}, DM, { timeout: 20000 });
+await dmClick('rebuild');
 await page.waitForFunction(() => {
   const e = document.querySelector('#devRow');
   return e && /build failed/.test(e.textContent);
@@ -304,7 +345,7 @@ rmSync(`${DIR}/dockerstate/build.fail`, { force: true });
 // labelled bbdev- like every other one and passes every check that can be
 // made on a name. So the file is read, and what it reaches for is put in
 // front of the operator once, before anything starts.
-const stubCfg = `${DIR}/dockerstate/bbdev-ep-silon.config`;
+const stubCfg = `${DIR}/dockerstate/bbdev-ep-silon-main.config`;
 // The dev row reloads on job_rev — the in-memory counter plus devapps.json's
 // mtime — and a stub config file moves neither, so a plain refresh() would
 // leave the row showing the answer to the previous question. Touch the file
@@ -320,7 +361,7 @@ const risky = (vols) => writeFileSync(stubCfg, JSON.stringify(
 // From stopped: the failed build above left the instance running, because a
 // build that never succeeded never reached the down-and-up.
 if (await pill() !== 'down') {
-  await page.click('#devRow [data-devact="down"]');
+  await dmClick('down');
   await pillIs('down');
 }
 // A path of OURS handed to the host's daemon: it resolves bind-mount sources
@@ -348,7 +389,7 @@ ok(risked.length === 1 && /runs privileged/.test(risked[0]),
    '...one line each, and only the things the mount list does not already show');
 
 let seen = page.dialogs.length;
-await page.click('#devRow [data-devact="up"]');
+await dmClick('up');
 await pillIs('running');
 ok(page.dialogs.slice(seen).some(d => /runs privileged/.test(d)),
    '...and Up asks first, naming what it found rather than warning in general');
@@ -357,7 +398,9 @@ ok(page.dialogs.slice(seen).some(d => /runs privileged/.test(d)),
 writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
   ports: [{ target: 7474, published: '7475', protocol: 'tcp' }] } } }));
 await nudge();
-await page.waitForSelector('#devRow a.btn', { timeout: 20000 });
+// attached, not visible: the manager tab is in front now, and what is being
+// asserted is what the row RENDERS, not which pane is on top.
+await page.waitForSelector('#devRow a.btn', { state: 'attached', timeout: 20000 });
 ok(await page.$eval('#devRow a.btn', a => a.getAttribute('href'))
      === `http://${new globalThis.URL(URL).hostname}:7475/`,
    'a running instance with one published port gets an Open link to it');
@@ -365,6 +408,7 @@ writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.'
   ports: [{ target: 80, published: '8080', protocol: 'tcp' },
           { target: 81, published: '8081', protocol: 'tcp' }] } } }));
 await nudge();
+await showRow();
 await page.waitForSelector('#devOpen', { timeout: 20000 });
 ok(!await page.$('#devRow a.btn'),
    '...and two of them get a chooser instead: nothing here knows which is the web UI');
@@ -382,10 +426,10 @@ ok(await page.$('.nbsheet .portpick') === null,
 
 // Asked once per set, not once per press: an acknowledgement the operator has
 // to give again every time is one they stop reading.
-await page.click('#devRow [data-devact="down"]');
+await dmClick('down');
 await pillIs('down');
 seen = page.dialogs.length;
-await page.click('#devRow [data-devact="up"]');
+await dmClick('up');
 await pillIs('running');
 ok(!page.dialogs.slice(seen).some(d => /asks for more/.test(d)),
    '...and does not ask again for the same set');
@@ -396,10 +440,10 @@ writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.'
 await nudge();
 await page.waitForFunction(() => /process namespace/.test(
   document.querySelector('#devRow')?.textContent || ''), { timeout: 20000 });
-await page.click('#devRow [data-devact="down"]');
+await dmClick('down');
 await pillIs('down');
 seen = page.dialogs.length;
-await page.click('#devRow [data-devact="up"]');
+await dmClick('up');
 await pillIs('running');
 ok(page.dialogs.slice(seen).some(d => /process namespace/.test(d)),
    '...and asks again the moment the file asks for something new');
@@ -427,7 +471,7 @@ ok(!g.git && !g.version && !g.ours,
    'git, docker version and a bbdev- compose call are what may run');
 ok(g.theirs && g.unnamed && g.bare,
    '...and another project name, a missing one, and any other docker verb are not');
-await page.click('#devRow [data-devact="down"]');
+await dmClick('down');
 await pillIs('down');
 rmSync(stubCfg, { force: true });
 
@@ -491,6 +535,45 @@ ok(hp.parity[0]['/workspace'] === '/workspace' && !hp.parity[1].length,
 ok(!hp.parity[2].length,
    '...and a bind under it is no longer a problem, because it is not one');
 
+// An instance is (project, name) now, and the old layout is one record per
+// project. Driven at the module: the migration happens on read, so it is the
+// read that has to be asserted, and a stub docker cannot show a rename.
+const inst = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+os.makedirs(os.path.join(d, 'devenv'))
+# The OLD shape: one record per project, no instance level at all.
+open(os.path.join(d, 'devapps.json'), 'w').write(json.dumps(
+    {'alpha': {'rev': 'abc1234', 'daemon': 'tcp://x', 'risks_ack': 'deadbeef'}}))
+open(os.path.join(d, 'devenv', 'alpha.env'), 'w').write('PORT=1')
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: open(p, 'w').write(json.dumps(o)))
+out = {}
+out['loaded'] = m._load()
+out['instances'] = m.instances('alpha')
+out['envmoved'] = [os.path.basename(f) for f in sorted(os.listdir(os.path.join(d, 'devenv')))]
+out['pnames'] = [m._pname('alpha'), m._pname('alpha', 'staging'), m._pname('My Proj', 'Two Words')]
+out['envpaths'] = [os.path.basename(str(m.env_path('alpha'))),
+                   os.path.basename(str(m.env_path('alpha', 'staging')))]
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const ij = JSON.parse(inst.trim().split('\n').pop());
+ok(JSON.stringify(ij.loaded) === JSON.stringify(
+     { alpha: { main: { rev: 'abc1234', daemon: 'tcp://x', risks_ack: 'deadbeef' } } }),
+   'a store written before instances reads back as the project\'s main instance');
+ok(JSON.stringify(ij.instances) === JSON.stringify(['main']),
+   '...and that is the instance the project has');
+ok(ij.envmoved.length === 1 && ij.envmoved[0] === 'bbdev-alpha-main.env',
+   '...with its env file moved to the name the instance is read by');
+ok(ij.pnames[0] === 'bbdev-alpha' + '-main' && ij.pnames[1] === 'bbdev-alpha-staging',
+   'two instances of one project are two compose projects');
+ok(ij.pnames[2] === 'bbdev-my-proj-two-words',
+   '...both halves slugged, so a name with spaces cannot reach a compose call');
+ok(ij.envpaths[0] !== ij.envpaths[1],
+   'and they do not share an env file — two instances exist to differ');
+
 // DOCKER_HOST=auto resolves by asking candidates for /version, caches what
 // it found, and re-scans when that stops answering — a bridge-assigned IP
 // moves when containers restart in a different order, so an address read
@@ -519,7 +602,43 @@ ok(typeof dhj.auto === 'string',
    'auto resolves to an address or to nothing, never to an error');
 
 
+// ---- one button, and a second container from one project ---------------
+// The artifact row's controls moved to the manager; what is left is a button
+// that names a container and sends you there. A project can have several, all
+// built from the same codebase, which is the whole reason instances exist.
+await showRow();
+ok(!await page.$('#devRow [data-devact]'),
+   'the artifact row carries no docker controls any more');
+await page.click('#devSend');
+await page.waitForSelector('#dnmodal:not([hidden])');
+await page.fill('#dnName', 'Staging Two');
+ok(/bbdev-ep-silon-staging-two/.test(
+     await page.$eval('#dnPreview', e => e.textContent)),
+   'the naming modal previews the container it will make, slugged');
+await page.click('#dnGo');
+await page.waitForSelector('.dmtab .row[data-inst="ep.silon|staging-two"]',
+                           { timeout: 20000 });
+ok(true, 'creating one lands you in the manager, with it listed');
+const both = await page.$$eval('.dmtab .row[data-inst^="ep.silon|"]',
+  rs => rs.map(r => r.dataset.inst));
+ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
+   '...beside the one the project already had');
+ok(await page.$eval('.dmtab .row[data-inst="ep.silon|staging-two"]',
+     r => /never built/.test(r.textContent)),
+   '...and it is a container to build, not one built by naming it');
 ok((await page.errors).length === 0, 'no console errors from the dev row');
+
+// The same name twice is refused rather than silently reusing the first.
+await showRow();
+await page.click('#devSend');
+await page.waitForSelector('#dnmodal:not([hidden])');
+await page.fill('#dnName', 'staging-two');
+await page.click('#dnGo');
+await page.waitForSelector('#dnErrWrap:not([hidden])', { timeout: 10000 });
+ok(/already has an instance/.test(await page.$eval('#dnErr', e => e.textContent)),
+   'a name the project already uses is refused, in place');
+await page.click('#dnCancel');
+
 
 // The fixture goes back the way artifacts.mjs leaves alpha.
 rmSync(`${D}/docker-compose.yml`, { force: true });

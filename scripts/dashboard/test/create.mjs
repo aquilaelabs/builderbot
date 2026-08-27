@@ -5,6 +5,7 @@
 // test, and a real clone would need GitHub on the other end.
 import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring } from './lib.mjs';
 import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -216,6 +217,143 @@ ok(made.status === 200 && made.body.name === 'My-New-App',
 ok(existsSync(`${DIR}/ws/My-New-App/.git`),
    '...and that is the directory on disk');
 ok(await post({ name: 'q2', mode: 'sideways' }) === 400, 'unknown mode refused');
+
+// ---- a name already taken ----------------------------------------------
+// Said in the dialog rather than only by the server, because the server can
+// only answer after Create — and the case that needs it most is the one with
+// the field left EMPTY, where the name comes from the repository and is never
+// typed at all.
+await page.click('#bNewProj');
+await page.waitForSelector('#pmodal:not([hidden])');
+await page.click('#pClone');
+await page.fill('#pUrl', 'https://github.com/owner/alpha.git');
+await page.fill('#pName', '');
+ok(await page.$eval('#pName', el => el.classList.contains('bad'))
+   && await page.$eval('#pNamePreview', el => !el.hidden && /already exists/.test(el.textContent)),
+   'an empty name whose repository collides is marked red in the dialog');
+await page.fill('#pName', 'alpha-two');
+ok(await page.$eval('#pName', el => !el.classList.contains('bad')),
+   '...and clears the moment the name is free');
+await page.fill('#pName', 'beta');
+ok(await page.$eval('#pName', el => el.classList.contains('bad')),
+   '...a typed name that is taken is marked too');
+await page.keyboard.press('Escape');
+
+// ---- push rights -------------------------------------------------------
+// Off by default, and the box only exists where pushing could mean anything.
+await page.click('#bNewProj');
+await page.waitForSelector('#pmodal:not([hidden])');
+ok(await page.$eval('#pPushField', el => el.hidden),
+   'a local repo is not asked about push rights');
+await page.click('#pClone');
+ok(await page.$eval('#pPushField', el => !el.hidden)
+   && await page.$eval('#pPush', el => !el.checked),
+   'cloning is, and read-only is the default');
+await page.keyboard.press('Escape');
+
+// A public clone cannot push, and is told so rather than being given rights
+// that would fail at the first attempt.
+ok(await post({ mode: 'clone', url: 'https://github.com/owner/pushless',
+                push: true }) === 400,
+   'asking to push with neither a token nor a key is refused');
+
+// One project per repository. Driven at the module, because claiming the
+// second would otherwise need two real clones.
+const rights = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('p', ${
+  JSON.stringify(new globalThis.URL('../projects.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+saved = {}
+m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
+            agent_keys=lambda: [], gh_authed=lambda: False,
+            ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
+            build_claude_md=lambda *a, **k: '', project_name=None,
+            github_url=None, state=d, home=d, devdata=d,
+            write_json=lambda p, o: open(p, 'w').write(json.dumps(o)),
+            pname=lambda n: 'bbdev-' + n)
+out = {}
+# The remote's identity, however it is spelled — a deploy-key alias hides the
+# host but the path is still owner/repo, and case does not distinguish repos.
+out['ssh_alias'] = m.repo_of_remotes('origin\tgit@bb-thing:Owner/Repo.git (fetch)')
+out['https'] = m.repo_of_remotes('origin\thttps://github.com/owner/repo (push)')
+out['not_a_repo'] = m.repo_of_remotes('origin\tgit@host:one/two/three.git (fetch)')
+m.grant_push('first', 'owner/repo', 'key')
+out['holder'] = m.push_holder('owner/repo')
+out['free'] = m.push_holder('owner/other')
+out['may'] = [m.may_push('first'), m.may_push('second')]
+m.drop_push('first')
+out['after_drop'] = m.push_holder('owner/repo')
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const rj = JSON.parse(rights.trim().split('\n').pop());
+ok(rj.ssh_alias === 'owner/repo' && rj.https === 'owner/repo',
+   'a deploy-key alias and an https remote name the same repository');
+ok(rj.not_a_repo === '',
+   '...and something that is not an owner/repo path is not guessed at');
+ok(rj.holder === 'first' && rj.free === '',
+   'a granted repository names its holder, and an ungranted one names nobody');
+ok(rj.may[0] === true && rj.may[1] === false, 'only the granted project may push');
+ok(rj.after_drop === '',
+   'deleting the project is what frees the repository for another');
+
+// ---- a token that belongs to one project -------------------------------
+// The dialog offers it only where it means something.
+await page.click('#bNewProj');
+await page.waitForSelector('#pmodal:not([hidden])');
+ok(await page.$eval('#pTokenField', el => el.hidden),
+   'a local repo is not asked for an access token');
+await page.click('#pClone');
+ok(await page.$eval('#pTokenField', el => !el.hidden)
+   && await page.$eval('#pToken', el => el.type === 'password'),
+   'cloning is, and it is not typed in the clear');
+await page.click('#pmodalClose').catch(() => page.keyboard.press('Escape'));
+
+// Shape is checked before it is written: the store is a one-line format, so a
+// token with a space or a newline in it would produce a file git reads as
+// something else.
+for (const token of ['has space', 'two\nlines', 'sh', '#{}!'])
+  ok(await post({ mode: 'clone', url: 'https://github.com/owner/tok', token }) === 400,
+     `a token that is not one is refused: ${JSON.stringify(token)}`);
+
+// The store itself, at the module: a real clone would need GitHub on the other
+// end, and this is the half that decides whether the token stays this
+// project's alone.
+const tok = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('p', ${
+  JSON.stringify(new globalThis.URL('../projects.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
+            agent_keys=lambda: [], gh_authed=lambda: False,
+            ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
+            build_claude_md=lambda *a, **k: '', project_name=None,
+            github_url=None, state=d, home=d, devdata=d,
+            write_json=lambda *a: None, pname=lambda n: 'bbdev-' + n)
+helper = m.write_token('alpha', 'ghp_ExampleTokenValue123')
+f = os.path.join(d, 'gitcreds', 'alpha')
+out = {'helper': helper,
+       'line': open(f).read().strip(),
+       'mode': oct(os.stat(f).st_mode & 0o777),
+       'dirmode': oct(os.stat(os.path.dirname(f)).st_mode & 0o777),
+       'lookup': m.token_helper('alpha'),
+       'other': m.token_helper('beta')}
+m.forget_token('alpha')
+out['gone'] = not os.path.exists(f)
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const tj = JSON.parse(tok.trim().split('\n').pop());
+ok(tj.line === 'https://x-access-token:ghp_ExampleTokenValue123@github.com',
+   'a token is stored in git\'s own credential-store format');
+ok(tj.mode === '0o600' && tj.dirmode === '0o700',
+   '...readable only by the user that runs git, in a directory to match');
+ok(tj.helper.startsWith('store --file=') && tj.helper.endsWith('/gitcreds/alpha'),
+   '...and the helper git is given names that one file');
+ok(tj.lookup === tj.helper && tj.other === '',
+   'a project with no token gets no helper — it is not shared, it is absent');
+ok(tj.gone, 'and forgetting one removes it');
 
 // ---- deploy keys -------------------------------------------------------
 // The harness agent holds one throwaway key. The endpoint lists its public

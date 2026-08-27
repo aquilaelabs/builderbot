@@ -301,6 +301,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `DASHBOARD_PORT` | `8080` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
+| `GIT_PAT` | *(empty)* | A GitHub token for the whole container — every repo, every session. Still read, but a per-project token typed into the clone dialog is the better answer: it is scoped to the one repository that names it, so a token that opens twelve does not open twelve here. See below |
 | `DOCKER_HOST` | `auto` | Which Docker daemon the Artifacts tab's dev-instance controls drive. `auto` finds a running docker-socket-proxy on this container's network and re-finds it when its address moves; an explicit `tcp://host:2375` or `ssh://user@vm` is used verbatim; empty turns the feature off. An `ssh://` address pointing at a [sandbox VM](docs/sandbox-vm.md) is the arrangement where BuilderBot cannot reach the server's real containers at all. See `docs/unraid.md` |
 | `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation. Empty leaves `BB_DEV_DATA` unset, so a compose that wants it fails loudly |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
@@ -1102,6 +1103,10 @@ lives in its body. The cards:
   everything under `/workspace` with the same buttons on each row. Pins live in
   `/config/pinned-projects.json`; no file at all means everything is pinned,
   which is what a fresh install sees
+- a **bin**, on the **All projects** tab only, which moves a project to
+  `/workspace/.trash/<name>` with every file kept — a second delete of the same
+  name is numbered rather than overwriting the first, and `/config` is not
+  touched, so putting one back is a `mv`. Deliberately not on the sidebar card
 - a **pencil** per project, which renames it — the directory, and everything
   keyed to its old name: the roadmap and bugs, the versions, the dev instance's
   data and env, the archived CI logs, and Claude's own transcripts and
@@ -1111,6 +1116,20 @@ lives in its body. The cards:
   control you use stays live — notebook, artifacts, dev instance, shell — and
   the only thing that goes is Claude starting a session there. For a project
   you keep in `/workspace` to deploy and run rather than to develop
+The **Tools** card carries **Docker manager…**, which is where a project's
+containers are built, started, stopped and given their env. A project can have
+several — the Artifacts tab's dev row is one button now, **Send to Docker
+manager…**, which names a container and takes you there; every container of a
+project is built from that project's codebase, and rebuilding takes whatever
+that codebase says at the time.
+
+The same tab lists every container on whichever daemon `DOCKER_HOST` names — not only the ones this
+dashboard started. A port taken by something else is exactly what you open a
+list like this to find out about, so the others are shown and marked *not ours*
+rather than hidden. It is a read: `docker ps` is one of two verbs the dev
+instance's guard allows outside compose, and nothing on the tab acts on a
+container.
+
 - a rendered **findings report** — the SARIF your scanner drops in `/reports`,
   grouped by project and rule, with severity counts and CVEs linked to NVD.
   Project groups start collapsed — the severity pills on each are the overview,
@@ -2145,6 +2164,54 @@ would be advice. Specifically, excluding a project:
   "next time"
 - folds the row away behind **Show projects with errors**, and puts it at the
   *bottom* of that list — an exclusion is a decision already made, not a problem
+
+### Push rights
+
+A clone is read-only unless you tick **I want to push to this repository**, and
+that decision is made once. Three rules, all deliberate:
+
+- **It cannot be turned off.** A working copy that could push yesterday and
+  cannot today explains nothing to whoever is standing in it. Deleting the
+  project is the way out — which never touches GitHub.
+- **One project per repository.** Two working copies pushing to one remote is
+  how a branch ends up racing itself, and here both may be the same session on
+  different days. Deleting the holder frees it.
+- **The token is checked first.** Before the clone starts, GitHub is asked
+  whether that token can actually push to that repository — a missing scope
+  otherwise surfaces days later as a failure with nothing connecting it to the
+  box you ticked. A deploy key cannot be checked this way short of pushing, so
+  it is taken at its word.
+
+Enforcement is a `pre-push` hook, which is transport-agnostic — it catches an
+ssh push through a deploy key exactly as it catches an https one — and refuses
+with a sentence rather than an auth error. Like the sibling-project rule it is
+a guardrail, not a sandbox: a shell in the container can delete it.
+
+Projects that already existed when this arrived are granted retroactively if
+their GitHub remote is an ssh one, recorded as `key`. Those are the repos that
+were already being pushed to with deploy keys, and a new rule is not a reason
+to take away something that worked. https remotes are not seeded: those
+authenticated with the container-wide `GIT_PAT`, and a token of their own is
+the way back.
+
+### An access token for one project
+
+Cloning a private repository asks for an optional **access token**. It is
+written in git's own credential-store format to `/config/gitcreds/<project>`,
+mode `0600`, and named from that repository's `.git/config` and nowhere else —
+with git's empty-value reset ahead of it, so the globally configured helper is
+never asked and the container's `GIT_PAT` is not what authenticates the fetch.
+
+That last part is the point. A token minted to reach one private repo usually
+reaches every repo it was scoped to; in the environment it also reaches them
+from every project and every session. Here it opens the one project you gave it
+to, and renaming that project takes it along.
+
+**It is not shielded the way a deploy key is.** Those are served by a root-owned
+agent and cannot be read at all. This is a file owned by the same user your
+shells run as, so a session with Bash can read it. Better than an environment
+variable every process inherits, and not a secret store — for a repository
+where that matters, use a deploy key.
 
 ### Locking a project
 

@@ -24,6 +24,7 @@ operator is still looking at, not in a job they have to go and read.
 The server imports this and hands it the helpers it needs; nothing here reaches
 back into the server.
 """
+import contextlib
 import json
 import os
 import re
@@ -32,6 +33,75 @@ import signal
 import threading
 import time
 from pathlib import Path
+
+# A personal access token belonging to ONE project.
+#
+# The alternative this replaces is a single GIT_PAT in the container's
+# environment, which every repo and every session shares: a token minted to
+# reach one private repo then reaches every repo it was scoped to, from
+# anywhere, forever. Here it is written into git's own credential-store format
+# under /config, named for the project, and referenced from that repository's
+# .git/config and nowhere else. A token that opens twelve repositories still
+# only opens the one this project points at.
+#
+# The honest limit, said here because it is said in the UI too: this is not
+# shielded the way the ssh keys are. Those are served by a root-owned agent
+# and cannot be read; this is a 0600 file owned by the same user a shell runs
+# as, so a session with Bash in this container can read it. It is better than
+# an environment variable every process inherits, and it is not a secret store.
+TOKEN_RE = re.compile(r"[A-Za-z0-9_.-]{8,255}")
+
+
+def _creds_dir():
+    d = STATE / "gitcreds"
+    d.mkdir(parents=True, exist_ok=True)
+    os.chmod(d, 0o700)
+    return d
+
+
+def write_token(project, token):
+    """Store one project's token, and return the git helper that reads it."""
+    f = _creds_dir() / project
+    # Opened with the mode rather than chmod'd after: between creat and chmod
+    # the file is briefly world-readable, and this is the one file here where
+    # that window matters.
+    fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(f"https://x-access-token:{token}@github.com\n")
+    return f"store --file={f}"
+
+
+def token_helper(project):
+    """The helper line for a project that has a token, or "" if it has none."""
+    f = STATE / "gitcreds" / project
+    return f"store --file={f}" if f.is_file() else ""
+
+
+def forget_token(project):
+    with contextlib.suppress(OSError):
+        (STATE / "gitcreds" / project).unlink()
+
+
+def _scope_to_token(dest, helper):
+    """Point one repository at one token, and at nothing else.
+
+    The empty value first is git's own way of resetting a multi-valued key:
+    without it the helper `gh auth setup-git` installs globally answers first
+    and the repository quietly authenticates with the shared PAT instead —
+    which is the arrangement this exists to get away from.
+    """
+    run(["git", "-C", str(dest), "config", "--local",
+         "--replace-all", "credential.helper", ""], timeout=15)
+    run(["git", "-C", str(dest), "config", "--local",
+         "--add", "credential.helper", helper], timeout=15)
+
+
+def keyname_ok(req):
+    """Whether a deploy key was picked — read here because the push check runs
+    before the key is resolved, and resolving it first would put a network
+    call ahead of a refusal that needs none."""
+    return bool(_field(req, "key").strip())
+
 
 def sanitize_name(raw):
     """A typed name, as the directory it will become — GitHub's own behaviour.
@@ -256,6 +326,7 @@ def rename(req):
     """
     old = _field(req, "name").strip()
     new = sanitize_name(_field(req, "to"))
+    token = _field(req, "token").strip()
     if not old or not PROJECT_NAME.fullmatch(old):
         return {"error": "unknown project"}, 400
     src = WORKSPACE / old
@@ -263,8 +334,19 @@ def rename(req):
         return {"error": f"{old} is not a project under the workspace"}, 400
     if not new:
         return {"error": "a name needs at least one letter or digit in it"}, 400
+    if token and not TOKEN_RE.fullmatch(token):
+        return {"error": "that does not look like an access token — letters, "
+                         "digits, dots, dashes and underscores, no spaces"}, 400
     if new == old:
-        return {"error": f"{old} is already its name"}, 400
+        # Not an error when a token came with it: replacing the credential
+        # without moving the directory is a thing somebody will want, and the
+        # dialog offers both fields at once precisely so they can.
+        if not token:
+            return {"error": f"{old} is already its name"}, 400
+        write_token(old, token)
+        _scope_to_token(src, token_helper(old))
+        return {"ok": True, "name": old, "from": old,
+                "moved": ["its access token"], "failed": []}, 200
     dest = WORKSPACE / new
     if dest.exists():
         return {"error": f"{new} already exists in the workspace"}, 400
@@ -304,6 +386,28 @@ def rename(req):
         "the dev instance's env", moved, failed)
     _mv(STATE / "ci-logs" / old, STATE / "ci-logs" / new,
         "archived CI logs", moved, failed)
+    # ...and the repository's own access token, which its .git/config names by
+    # absolute path — so the config has to be rewritten to the new one, or the
+    # rename leaves a repo pointing at a file that is no longer there.
+    _mv(STATE / "gitcreds" / old, STATE / "gitcreds" / new,
+        "its access token", moved, failed)
+    # Push rights follow the project, not the name: renaming is not a way to
+    # get a second pushing copy of one repository.
+    rights = load_push()
+    if old in rights:
+        rights[new] = rights.pop(old)
+        try:
+            save_push(rights)
+            moved.append("its push rights")
+        except OSError as e:
+            failed.append(f"push-rights.json: {e}")
+    # A new token replaces whatever moved, and is written under the NEW name —
+    # so the order matters: the move first, this second.
+    if token:
+        write_token(new, token)
+        moved.append("a new access token")
+    if (STATE / "gitcreds" / new).is_file():
+        _scope_to_token(dest, token_helper(new))
     # The compose project name is derived and sanitized, so these two are not
     # simply the project's name with a prefix on it.
     _mv(DEVDATA / pname(old), DEVDATA / pname(new),
@@ -316,6 +420,223 @@ def rename(req):
         "Claude's transcripts and memories", moved, failed)
     return {"ok": True, "name": new, "from": old,
             "moved": moved, "failed": failed}, 200
+
+
+# ---------------------------------------------------------------------------
+# push rights
+#
+# A clone is read-only unless it was asked for otherwise, and the asking is a
+# decision with three properties the operator set out:
+#
+#   - it cannot be taken back. Turning it off would leave a repository that
+#     could push yesterday and cannot today, with nothing to explain the
+#     difference to whoever is standing in it. Deleting the project is the way
+#     out, and that never touches GitHub.
+#   - exactly one project may push to a given GitHub repository. Two working
+#     copies both able to push to one remote is how two people's work ends up
+#     racing through the same branch, and here both "people" may be the same
+#     session on different days.
+#   - it is checked before it is granted, where a token can be checked at all.
+#
+# The enforcement is a pre-push hook and is honest about what it is: a session
+# with Bash can delete it, exactly as it can read the token file. What it buys
+# is that a push nobody asked for fails with a sentence saying so, instead of
+# succeeding.
+PUSH_FILE = None            # set in configure(), beside the rest
+
+
+def load_push():
+    try:
+        with open(STATE / "push-rights.json") as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_push(d):
+    write_json(STATE / "push-rights.json", d)
+
+
+def repo_of_remotes(remotes):
+    """owner/repo for the first GitHub remote in `git remote -v` output.
+
+    Lowercased, because GitHub treats owner and repo case-insensitively and
+    two clones differing only in case are the same repository — which is the
+    whole question being asked here.
+
+    The host is not what identifies it. A deploy-key setup addresses GitHub
+    through a ~/.ssh/config alias, so the hostname is bb-something and the
+    path after it is still owner/repo. Anything whose path is not exactly two
+    segments is not a repository address this can reason about, and is left
+    alone rather than guessed at.
+    """
+    for line in remotes.splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        url = parts[1]
+        path = ""
+        if "://" in url:
+            path = re.sub(r"^[a-z+]+://(?:[^@/]+@)?[^/]+/", "", url)
+        elif ":" in url:
+            path = url.split(":", 1)[1]
+        path = path.rstrip("/")
+        if path.endswith(".git"):
+            path = path[:-4]
+        bits = [b for b in path.split("/") if b]
+        if len(bits) == 2:
+            return "/".join(bits).lower()
+    return ""
+
+
+def push_holder(repo):
+    """The project that already holds push on this repository, or ""."""
+    if not repo:
+        return ""
+    for name, rec in load_push().items():
+        if isinstance(rec, dict) and rec.get("repo") == repo:
+            return name
+    return ""
+
+
+def grant_push(project, repo, how):
+    d = load_push()
+    d[project] = {"repo": repo, "how": how, "at": int(time.time())}
+    save_push(d)
+
+
+def may_push(project):
+    return isinstance(load_push().get(project), dict)
+
+
+def drop_push(project):
+    """Release the grant. Only ever because the project is going away — there
+    is no path from here that turns it off on a project that stays."""
+    d = load_push()
+    if d.pop(project, None) is not None:
+        save_push(d)
+
+
+HOOK = """#!/bin/sh
+# Written by BuilderBot. This working copy was cloned read-only: nobody asked
+# for push rights on it, so pushing is refused here rather than being allowed
+# to surprise somebody.
+#
+# Push rights are granted once, when a project is cloned, and cannot be turned
+# on afterwards — delete this project and clone it again asking for them. Only
+# one project at a time may push to a given GitHub repository.
+echo "refusing to push: this project was cloned without push rights." >&2
+echo "Delete it and clone again with push enabled if that is what you want." >&2
+exit 1
+"""
+
+
+def set_push_hook(dest, allowed):
+    """Install or remove the refusing pre-push hook."""
+    h = Path(dest) / ".git" / "hooks" / "pre-push"
+    try:
+        if allowed:
+            if h.is_file() and "Written by BuilderBot" in h.read_text():
+                h.unlink()
+            return
+        h.parent.mkdir(parents=True, exist_ok=True)
+        h.write_text(HOOK)
+        os.chmod(h, 0o755)
+    except OSError:
+        pass                    # a hook that could not be written is not a
+                                # reason to fail the clone that succeeded
+
+
+def check_token_push(token, repo):
+    """Ask GitHub whether this token can actually push to this repository.
+
+    Before granting, not after: a token missing the scope produces a failure
+    at the first push, days later, with nothing connecting it to the box that
+    was ticked. The API answers this directly — permissions.push on the repo —
+    and answering it costs one request.
+
+    Returns "" when the token is good, and the sentence to show otherwise.
+    """
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}",
+        headers={"Authorization": f"Bearer {token}",
+                 "Accept": "application/vnd.github+json",
+                 "User-Agent": "BuilderBot"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.loads(r.read(200000))
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            return ("GitHub rejected that token — it is wrong, expired, or "
+                    "not authorized for this repository")
+        if e.code == 404:
+            return (f"that token cannot see {repo} — a fine-grained token has "
+                    f"to list this repository explicitly")
+        return f"GitHub answered {e.code} when asked about {repo}"
+    except (OSError, ValueError) as e:
+        return f"could not reach GitHub to check the token: {e}"
+    if not data.get("permissions", {}).get("push"):
+        return (f"that token can read {repo} but not push to it — it needs "
+                f"write access to contents")
+    return ""
+
+
+TRASH = ".trash"
+
+
+def trash(req):
+    """Take a project out of the workspace without destroying it.
+
+    Moved, not deleted, and the wording everywhere says so: the files are still
+    there, under /workspace/.trash, and getting one back is a `mv`. The project
+    scan skips anything starting with a dot, so the directory stops being a
+    project the moment it lands there.
+
+    A second delete of the same name does not overwrite the first. It is
+    numbered, because the two are different work and the older one is exactly
+    the copy somebody would be trying to get back.
+
+    What is deliberately left alone is /config: the roadmap, the bugs, the
+    versions and the memories all stay where they are. Deleting from here is a
+    reversible act, and taking the notebook with it would make it the one thing
+    that cannot be undone by moving a directory back.
+    """
+    name = _field(req, "name").strip()
+    if not name or not PROJECT_NAME.fullmatch(name):
+        return {"error": "unknown project"}, 400
+    src = WORKSPACE / name
+    if not src.is_dir():
+        return {"error": f"{name} is not a project under the workspace"}, 400
+    with _lock:
+        if _job["running"]:
+            return {"error": f"already {DOING.get(_job['kind'], 'working on')} "
+                             f"{_job['name']}"}, 409
+    bin_ = WORKSPACE / TRASH
+    try:
+        bin_.mkdir(exist_ok=True)
+    except OSError as e:
+        return {"error": f"could not make {TRASH}: {e}"}, 500
+    dest = bin_ / name
+    n = 2
+    while dest.exists():
+        dest = bin_ / f"{name}-{n}"
+        n += 1
+        if n > 999:                       # a loop that cannot run away
+            return {"error": f"too many deleted copies of {name}"}, 500
+    try:
+        src.rename(dest)
+    except OSError as e:
+        return {"error": f"could not move it: {e}"}, 500
+    # The grant goes with it. This is the only way push rights are ever
+    # released, which is the point: another project can now be cloned with
+    # push on this repository, and this copy is still sitting in .trash if it
+    # turns out that was a mistake.
+    drop_push(name)
+    return {"ok": True, "name": name,
+            "to": f"{TRASH}/{dest.name}"}, 200
 
 
 def _git_env():
@@ -477,6 +798,35 @@ def create(req):
         # line is. When one is chosen the clone goes through a per-repo alias,
         # which also leaves the remote pointing at that alias, so pushes keep
         # using the right key without anyone re-doing this by hand.
+        # A token for this project alone. Checked for shape before it is
+        # written: it goes into a file whose format is one line, so whitespace
+        # or a newline in it would produce a credential store git reads as
+        # something else entirely.
+        token = _field(req, "token").strip()
+        if token and not TOKEN_RE.fullmatch(token):
+            return {"error": "that does not look like an access token — "
+                             "letters, digits, dots, dashes and underscores, "
+                             "and no spaces"}, 400
+        # Push rights, decided here and never again. Checked before the
+        # directory is claimed so a refusal leaves nothing behind, and checked
+        # in this order: is the repository already spoken for, then can this
+        # token actually do it. The second costs a network call and the first
+        # does not.
+        want_push = bool(req.get("push"))
+        repo_id = repo_path(url).lower()
+        if want_push:
+            holder = push_holder(repo_id)
+            if holder:
+                return {"error": f"{holder} already has push rights on "
+                                 f"{repo_id}. Only one project may push to a "
+                                 f"repository — delete that one first"}, 409
+            if token:
+                bad = check_token_push(token, repo_id)
+                if bad:
+                    return {"error": bad}, 400
+            elif not keyname_ok(req):
+                return {"error": "pushing needs either an access token or a "
+                                 "deploy key — a public clone cannot push"}, 400
         keyname = _field(req, "key").strip()
         if keyname:
             match = next((k for k in agent_keys() if k["name"] == keyname), None)
@@ -513,9 +863,14 @@ def create(req):
         return _init(dest, name, about)
     global _dest
     _dest = dest
-    if not _start("clone", name, lambda: _clone(dest, key_url or url)):
+    helper = write_token(name, token) if mode == "clone" and token else ""
+    if not _start("clone", name,
+                  lambda: _clone(dest, key_url or url, helper, want_push)):
         shutil.rmtree(dest, ignore_errors=True)             # made a moment ago
+        forget_token(name)                                  # written a moment ago
         return {"error": "another project job is already running"}, 409
+    if want_push:
+        grant_push(name, repo_id, "token" if token else "key")
     return {"ok": True, "name": name, "started": True}, 200
 
 
@@ -530,17 +885,29 @@ def _init(dest, name, about):
     return {"ok": True, "name": name, "note": _write_md(dest, about, False)}, 200
 
 
-def _clone(dest, url):
-    """The worker half of a clone: fetch, then draft the CLAUDE.md."""
+def _clone(dest, url, helper="", may_push_=False):
+    """The worker half of a clone: fetch, then draft the CLAUDE.md.
+
+    With a token, the fetch itself runs under this project's helper and nothing
+    else — the empty value ahead of it resets the list, so the globally
+    configured one never gets asked. The same pair is then written into the
+    repository, so every later fetch and push from a terminal uses it too.
+    """
     _step("cloning")
-    r = run(["git", "clone", "--progress", "--", url, str(dest)],
+    scope = ["-c", "credential.helper=", "-c", f"credential.helper={helper}"] if helper else []
+    r = run(["git", "clone", *scope, "--progress", "--", url, str(dest)],
             timeout=1800, env=_git_env(), register=_register)
     if _aborted():
         shutil.rmtree(dest, ignore_errors=True)             # made by this job
+        forget_token(dest.name); drop_push(dest.name)
         return "stopped — the half-cloned directory was removed", ""
     if r["code"] != 0:
         shutil.rmtree(dest, ignore_errors=True)
+        forget_token(dest.name); drop_push(dest.name)
         return r["out"].strip()[-2000:] or "git clone failed", ""
+    if helper:
+        _scope_to_token(dest, helper)
+    set_push_hook(dest, may_push_)
     _step("reading the repository")
     return "", _write_md(dest, "", True)
 

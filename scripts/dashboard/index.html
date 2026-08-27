@@ -460,6 +460,17 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
 .modal .hint.bad,.nb .hint.bad{color:var(--bad);white-space:pre-wrap;margin-top:0}
+/* A field whose value cannot work. Only the border moves: tinting the text
+   too makes what you typed hard to read at the moment you are being asked to
+   look at it. */
+.modal input.bad{border-color:var(--bad)}
+/* A checkbox and its sentence on one line, and the sentence clickable with it:
+   a tick box three words from its label is a target nobody hits on a phone. */
+.modal label.row-label{display:flex;align-items:center;gap:8px;cursor:pointer}
+.modal label.row-label input{width:auto;margin:0;flex:0 0 auto}
+/* "push" on a project row. Green because it is a capability the project has,
+   and plain text because it is not a control — it cannot be toggled here. */
+.row .sub .ok{color:var(--accent)}
 
 /* The disclosure marker, once, for every <details> on the page — a memory, a
    bug report, a findings group, the component fold. All four set display:flex
@@ -952,6 +963,13 @@ button.eye.none{opacity:.45}
 button.eye.on{color:var(--gold)}
 button.eye.on:hover{color:var(--gold)}
 button.eye.pin.on,button.eye.pin.on:hover{color:var(--accent)}
+/* A running session and an open notebook: the same green, because both mean
+   "this is live, and the button takes you to it" rather than "press to start". */
+button.eye.acc.on,button.eye.acc.on:hover{color:var(--accent)}
+/* The bin turns red under the pointer, the same as every other rm on the page.
+   Dim at rest: it sits in a row of six and should not be the thing the eye
+   lands on first. */
+@media(hover:hover){ button.eye.rm:hover{color:var(--bad)} }
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the broom (reset) and the sign-out door —
@@ -1566,6 +1584,56 @@ body.dragging .tab .lbl{cursor:grabbing}
     </div>
   </div>
 </div>
+<!-- Renaming. Its own dialog rather than a prompt(), because a prompt carries
+     one field and this needs two — and because the second only exists for a
+     repository that already has a token: offering to set one on a local repo
+     would be offering a credential to something with nothing to authenticate
+     against. -->
+<div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rnTitle">
+  <div class="box">
+    <h3 id="rnTitle">Rename</h3>
+    <div class="field">
+      <label for="rnName">New name</label>
+      <input id="rnName" maxlength="100" autocomplete="off" spellcheck="false">
+      <div class="hint" id="rnHint"></div>
+      <div class="hint" id="rnPreview" hidden></div>
+    </div>
+    <div class="field" id="rnTokenField" hidden>
+      <label for="rnToken">Access token <span class="dim">— leave empty to keep the current one</span></label>
+      <input id="rnToken" type="password" autocomplete="off" spellcheck="false"
+             placeholder="ghp_… or github_pat_…">
+      <div class="hint">Replaces the token this project uses. It stays this
+        project's alone, and is not shielded — a shell here can read it.</div>
+    </div>
+    <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
+    <div class="btns">
+      <button id="rnGo" class="primary">Rename</button>
+      <button id="rnCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Naming a container to build from a project. It is always THAT project's:
+     the name picks which of its containers this is, not what it is built from,
+     so two instances of one project are two containers from one codebase. -->
+<div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dnTitle">
+  <div class="box">
+    <h3 id="dnTitle">Send to Docker manager</h3>
+    <div class="field">
+      <label for="dnName">Container name</label>
+      <input id="dnName" maxlength="60" autocomplete="off" spellcheck="false"
+             placeholder="e.g. staging">
+      <div class="hint" id="dnHint"></div>
+      <div class="hint" id="dnPreview" hidden></div>
+    </div>
+    <div class="field" id="dnErrWrap" hidden><div class="hint bad" id="dnErr"></div></div>
+    <div class="btns">
+      <button id="dnGo" class="primary">Create</button>
+      <button id="dnCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
@@ -1599,6 +1667,28 @@ body.dragging .tab .lbl{cursor:grabbing}
          the per-repo ssh alias itself — the by-hand step this replaces — and
          shows the public key so it can be added on GitHub's deploy-key page.
          The private halves stay where they are: unreadable. -->
+    <!-- A token for THIS project. Not the container's: one GIT_PAT in the
+         environment is shared by every repo and every session, so a token
+         minted to reach one private repo reaches all of them from anywhere.
+         This is written into git's credential-store format under /config,
+         named for the project, and referenced from that repository's
+         .git/config and nowhere else. -->
+    <!-- Push rights. Granted once and never revoked: a working copy that
+         could push yesterday and cannot today explains nothing to whoever is
+         standing in it, so deleting the project is the way out. One project
+         per repository, because two copies pushing to one remote is how a
+         branch ends up racing itself. -->
+    <div class="field" id="pPushField" hidden>
+      <label class="row-label"><input type="checkbox" id="pPush">
+        <span>I want to push to this repository</span></label>
+      <div class="hint" id="pPushHint"></div>
+    </div>
+    <div class="field" id="pTokenField" hidden>
+      <label for="pToken">Access token <span class="dim">— optional</span></label>
+      <input id="pToken" type="password" autocomplete="off" spellcheck="false"
+             placeholder="ghp_… or github_pat_…">
+      <div class="hint" id="pTokenHint"></div>
+    </div>
     <div class="field" id="pKeyField" hidden>
       <label for="pKey">Deploy key</label>
       <select id="pKey"></select>
@@ -1730,6 +1820,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <h2>Tools</h2>
       <div class="macros">
         <button id="bPkgs" onclick="openPackages()">Additional packages…</button>
+        <button id="bDocker" onclick="openDocker()">Docker manager…</button>
       </div>
     </div>
     <!-- The standing model and effort for everything the dashboard sends to
@@ -2658,6 +2749,15 @@ function drawPanes(){
         pane.dataset.rev = String(pkgRev);
         renderPackagesInto(i);
       }
+      // The docker manager fetches its list AFTER the pane is first drawn, so
+      // without this it renders once — empty — and the `same` short-circuit
+      // above skips every redraw that would have filled it. Same shape as
+      // packages, and the same reason for the counter: a document pane is
+      // refilled when its report changes, not on every status poll.
+      if (t.kind === "docker" && pane.dataset.drev !== String(dockerRev)){
+        pane.dataset.drev = String(dockerRev);
+        renderDockerInto(i);
+      }
       continue;
     }
     if (same) continue;
@@ -2716,6 +2816,10 @@ function drawPanes(){
     }
     if (t.kind === "todo") renderNotebookInto(i, t.arg);
     if (t.kind === "projects") renderProjectsInto(i);
+    if (t.kind === "docker"){
+      pane.dataset.drev = String(dockerRev); renderDockerInto(i);
+      if (!dockerList) loadDocker();        // same, for a restored docker tab
+    }
   }
 }
 
@@ -3632,6 +3736,8 @@ function wireProjectRows(root){
     setProjectPinned(b.dataset.p, b.dataset.on === "1"));
   root.querySelectorAll("[data-rn]").forEach(b => b.onclick = () =>
     renameProject(b.dataset.rn));
+  root.querySelectorAll("[data-del]").forEach(b => b.onclick = () =>
+    deleteProject(b.dataset.del));
 }
 
 // One project's row. Extracted so the sidebar card and the Projects tab
@@ -3642,12 +3748,13 @@ function wireProjectRows(root){
 // `live` and `cls` are passed rather than recomputed per row: liveSessions()
 // walks the session list, and doing that once per project turned a redraw
 // into O(projects x sessions) for no gain.
-function projectRow(p, live, cls){
+function projectRow(p, live, cls, inTab){
   return `
     <div class="row stack2${p.excluded ? " off" : ""}">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
-        ${p.git ? `<div class="sub">git: ${esc(p.git)}</div>` : ""}
+        ${p.git ? `<div class="sub">git: ${esc(p.git)}${
+          p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
         ${p.issues.map(i => i.action && !p.excluded
           // An issue with a fix that takes no decisions says so, and is the
           // control that applies it — underlined, because a line you can click
@@ -3662,40 +3769,31 @@ function projectRow(p, live, cls){
           : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
       <span class="acts">
-      ${isBroken(p) ? "" : `<button class="${live.has(tmuxName("claude-"+p.name)) ? "primary" : ""}"
-         data-c="${esc(p.name)}"${(p.locked || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
+      ${isBroken(p) ? "" : `<button class="eye${live.has(tmuxName("claude-"+p.name)) ? " on acc" : ""}"
+         data-c="${esc(p.name)}" aria-label="Claude session"${
+         (p.locked || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
            ? " disabled" : ""}
          title="${p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
                  : !signedIn() && !live.has(tmuxName("claude-"+p.name))
                    ? "this container is not signed in to Claude — the Doctor card has the way in"
-                 : live.has(tmuxName("claude-"+p.name)) ? "session running — go to its tab"
-                 : p.last_claude ? "no session running — resume or start one"
-                 : "start a Claude session here"}">${
-           // The same working/waiting dot the tab wears, so a phone showing
-           // the dashboard still answers "is it waiting on me?" per project.
-           stateDot(claudeOf(tmuxName("claude-" + p.name)))}Claude</button>`}
-      <button data-s="${esc(p.name)}" title="open another terminal here">Shell</button>
+                 : live.has(tmuxName("claude-"+p.name)) ? "Claude — session running, go to its tab"
+                 : p.last_claude ? "Claude — no session running; resume or start one"
+                 : "Claude — start a session here"}">${SPARK}</button>`}
+      <button class="eye" data-s="${esc(p.name)}" aria-label="shell"
+        title="shell — open another terminal here">${TERM}</button>
       ${p.git_ok && !p.linked && !isBroken(p)
         ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
              title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
         : ""}
-      ${isBroken(p) ? "" : `<button class="${nbOpen(p.name) ? "primary" : ""}"
-         data-m="${esc(p.name)}"
-         title="${nbOpen(p.name) ? "its notebook is open — go to the tab"
-                : "roadmap, memory and bugs for this project"}">Notebook</button>`}
+      ${isBroken(p) ? "" : `<button class="eye${nbOpen(p.name) ? " on acc" : ""}"
+         data-m="${esc(p.name)}" aria-label="notebook"
+         title="${nbOpen(p.name) ? "notebook — open, go to its tab"
+                : "notebook — roadmap, memory and bugs for this project"}">${BOOK}</button>`}
       <button class="eye" data-rn="${esc(p.name)}" aria-label="rename"
         title="rename — moves the directory and everything keyed to its name: the
 roadmap, the bugs, the versions, the dev instance's data and env, the CI logs,
 and Claude's own transcripts and memories">${PENCIL}</button>
-      <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
-        data-on="${p.pinned ? "0" : "1"}"
-        aria-label="${p.pinned ? "unpin" : "pin"}"
-        title="${p.pinned
-          ? "unpin — take it off the sidebar. It keeps every control on the "
-            + "Projects tab; this is only about where you meet it"
-          : "pin — show it on the sidebar's Projects card"}"
-        >${TACK}</button>
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
         data-on="${p.locked ? "0" : "1"}"
         aria-label="${p.locked ? "unlock" : "lock"}"
@@ -3709,6 +3807,17 @@ and Claude's own transcripts and memories">${PENCIL}</button>
         title="${p.excluded ? "include — allow Claude sessions here again"
                             : "exclude — block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? EYE : EYE_OFF}</button>
+      ${inTab ? `<button class="eye rm" data-del="${esc(p.name)}" aria-label="delete"
+        title="delete — moves it to /workspace/.trash and keeps every file. Its
+roadmap, bugs and memories stay where they are, so putting it back is a mv">${BIN}</button>` : ""}
+      <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
+        data-on="${p.pinned ? "0" : "1"}"
+        aria-label="${p.pinned ? "unpin" : "pin"}"
+        title="${p.pinned
+          ? "unpin — take it off the sidebar. It keeps every control on the "
+            + "Projects tab; this is only about where you meet it"
+          : "pin — show it on the sidebar's Projects card"}"
+        >${TACK}</button>
       </span>
     </div>
 `;
@@ -4383,8 +4492,262 @@ function renderProjectsInto(i){
   // render pass, and rebuilding a list of rows nobody changed throws away the
   // handlers on it for no reason.
   if (paint(el, `<div class="card projtab">${
-    ordered.map(p => projectRow(p, live, cls)).join("")}</div>`))
+    ordered.map(p => projectRow(p, live, cls, true)).join("")}</div>`))
     wireProjectRows(el);
+}
+
+// ---- the docker manager -------------------------------------------------
+// What is actually running on the daemon the dev instances use. All of it,
+// not only what this dashboard started: a port taken by something else is
+// exactly what you open a list like this to find out about, and a listing
+// that showed half would be lying by omission.
+let dockerList = null;                   // last answer, or null before the first
+let dockerRev = 0;                       // bumped when it changes, so a pane
+                                         // showing the same tab still repaints
+
+function openDocker(){
+  openTab({kind: "docker", arg: "__docker", label: "Docker"});
+  loadDocker();
+}
+
+async function loadDocker(){
+  try{
+    dockerList = await (await fetch("/api/docker")).json();
+  }catch(e){ dockerList = {error: String(e), containers: []}; }
+  dockerRev++;
+  // drawPanes rather than reaching into a pane by index: which pane holds this
+  // tab is the layout's business, and packages already refreshes this way.
+  drawPanes();
+}
+
+// Naming a container from a project. The name says WHICH of that project's
+// containers this is; what it is built from is settled by the project, which
+// is why there is nothing else to fill in here.
+let dnFor = null;
+
+function openSendToDocker(project){
+  dnFor = project;
+  $("dnTitle").textContent = "New container from " + project;
+  $("dnName").value = "";
+  $("dnErrWrap").hidden = true;
+  $("dnPreview").hidden = true;
+  $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+  $("dnHint").textContent =
+    "It is built from " + project + "'s codebase, and rebuilding it takes "
+    + "whatever that codebase says then. A project can have several — give "
+    + "each one a name you will recognise in the manager.";
+  $("dnmodal").hidden = false;
+  $("dnName").focus();
+}
+
+// The compose slug, which is NOT the project-name rule: that one keeps dots,
+// and a compose project name may not have them. Mirrors _slug() in devapp.py,
+// and a test asserts the two agree on the fixture whose name has a dot in it.
+const dockerSlug = (s) => (s || "").toLowerCase()
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+function dnShow(){
+  const raw = $("dnName").value, clean = dockerSlug(raw);
+  $("dnPreview").hidden = !raw.trim() || clean === raw.trim();
+  $("dnPreview").textContent = clean
+    ? `Will be created as bbdev-${dockerSlug(dnFor || "")}-${clean}`
+    : "That leaves nothing to name a container after";
+}
+
+function closeSendToDocker(){ $("dnmodal").hidden = true; dnFor = null; }
+
+async function dnSubmit(){
+  const project = dnFor, name = $("dnName").value.trim();
+  const fail = m => ($("dnErr").textContent = m, $("dnErrWrap").hidden = false);
+  if (!name) return fail("a name is needed");
+  $("dnGo").disabled = true; $("dnGo").textContent = "Creating…";
+  try{
+    const r = await fetch("/api/devapp", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({project, action:"new", instance:name})});
+    const j = await r.json();
+    if (j.error){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+                  return fail(j.error); }
+    closeSendToDocker();
+    notify(`${j.name} is in the Docker manager — build it there`);
+    // Straight to it: the button said "send to", and landing back on the
+    // artifacts tab would leave the operator to go and find what they made.
+    openDocker();
+  }catch(e){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
+             return fail("could not create it: " + e); }
+}
+
+// The job, if it belongs to any instance on this page. overview() does not
+// carry it — one job runs at a time across the whole dashboard, and it reaches
+// here through the artifacts poll like everything else.
+// The env editor, at module scope because two places open it now: the manager,
+// where the controls live, and nothing else — it used to close over the
+// artifacts renderer's `project`, which is why it had to move rather than be
+// called from there.
+async function openDevEnv(project, instance){
+  let j;
+  try{
+    const r = await fetch("/api/devapp", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({project, instance, action: "env-get"})});
+    j = await r.json();
+  }catch(e){ notify("env: " + e, true); return; }
+  const m = document.getElementById("devEnvModal");
+  m.querySelector("textarea").value = j.text || "";
+  // Both halves: whether this is a draft off the example, and what the STORED
+  // file is still missing — the second stays true while the box holds an
+  // unsaved draft, which is exactly when it matters.
+  m.querySelector(".hint").textContent =
+    (j.seeded ? "started from .env.example — nothing saved yet. " : "")
+    + ((j.missing || []).length
+       ? "missing against .env.example: " + j.missing.join(", ")
+       : "everything .env.example declares is set");
+  m.hidden = false;
+  m.querySelector(".primary").onclick = async () => {
+    try{
+      const r = await fetch("/api/devapp", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, instance, action: "env-set",
+                              text: m.querySelector("textarea").value})});
+      const k = await r.json();
+      if (k.error){ notify(k.error, true); return; }
+      m.hidden = true;
+      notify("env saved");
+      dockerList = null; dockerRev++; loadDocker();
+    }catch(e){ notify("env: " + e, true); }
+  };
+}
+
+function dockerJob(){
+  const j = state?.devapp_job;
+  return j && j.running ? j : null;
+}
+
+// What the artifact row's buttons used to do, moved here with them. The
+// confirmations come with it: taking something down and handing a compose
+// file more than its own directory are both decisions, and moving a button
+// is not a reason to stop asking.
+async function dmAction(project, instance, act, btn){
+  if (act === "env"){ openDevEnv(project, instance); return; }
+  if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
+  let ack = "";
+  if (act === "up" || act === "rebuild"){
+    // The full state for this one instance, asked now rather than computed
+    // for every instance on every paint — risks and problems cost a compose
+    // config parse each, and the manager lists them all.
+    let st;
+    try{
+      const r = await fetch("/api/devapp", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({project, instance, action:"state"})});
+      st = (await r.json()).state || {};
+    }catch(e){ notify("could not read its state: " + e, true); return; }
+    if ((st.problems || []).length){
+      notify(`${project}/${instance} will not work as written: `
+             + st.problems.join("; "), true);
+      return;
+    }
+    if ((st.missing_env || []).length && act === "up"){
+      notify(`the env is missing ${st.missing_env.join(", ")} — press Env`, true);
+      return;
+    }
+    if (act === "rebuild" && !confirm(
+        (st.built_rev ? `Rebuild ${project}/${instance}?\n\nBuilds the image, then down and up. `
+                      : `Build ${project}/${instance}?\n\nBuilds the first image and brings it up. `)
+        + "If the build finds new env settings it stops before up, and the Env "
+        + "editor will hold your old values in comments.")) return;
+    if (!st.risks_ack){
+      if (!confirm("This compose file asks for more than its own directory:"
+          + "\n\n" + (st.risks || []).map(x => "\u2022 " + x).join("\n")
+          + "\n\nA container it starts can reach those. Start it anyway?")) return;
+      ack = st.risks_digest || "";
+    }
+  }
+  if (btn) btn.disabled = true;
+  try{
+    const r = await fetch("/api/devapp", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({project, instance, action:act, ack})});
+    const j = await r.json();
+    if (j.error) notify(j.error, true);
+  }catch(e){ notify(`${act} failed: ` + e, true); }
+  dockerList = null; dockerRev++; loadDocker();
+}
+
+function renderDockerInto(i){
+  const el = $("doc" + i);
+  if (!el) return;
+  if (!dockerList){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
+  if (dockerList.error){
+    el.innerHTML = `<div class="empty">could not reach the daemon: ${esc(dockerList.error)}</div>`;
+    return;
+  }
+  const ins = dockerList.instances || [];
+  const cs = dockerList.containers || [];
+  const job = dockerJob();
+  // The dashboard's own first, each with the controls that used to live on the
+  // artifact row — this is where they went, and the row now only sends you
+  // here. Grouped by nothing: the project is on every line, and a heading per
+  // project would put a lot of chrome around lists that are usually one long.
+  const rows = ins.map(d => {
+    const busy = job && job.project === d.project && job.instance === d.instance;
+    return `
+    <div class="row stack2" data-inst="${esc(d.project)}|${esc(d.instance)}">
+      <div class="grow">
+        <div class="name">${esc(d.name)}
+          <span class="dim state ${d.running ? "ok" : ""}">(${
+            d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
+        <div class="sub">${esc(d.project)} · ${esc(d.instance)}</div>
+        <div class="sub ${d.running ? "ok" : ""}">${
+          busy ? esc(job.step || "working") + '<span class="dots"></span>'
+          : d.running ? `running · ${d.containers} container(s)`
+          : d.exists ? "stopped — its containers are still there"
+          : d.built_rev ? `built from ${esc(d.built_rev)}, not running`
+          : "never built"}</div>
+        ${d.ports.length ? `<div class="sub">${d.ports.map(esc).join(" · ")}</div>` : ""}
+        ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
+      </div>
+      <span class="acts">
+        <button type="button" data-dm="up" ${
+          d.running || busy || (d.missing_env || []).length ? "disabled" : ""}
+          title="${(d.missing_env || []).length
+            ? "the env is missing " + esc(d.missing_env.join(", "))
+            : !d.built_rev
+              ? "docker compose up -d — builds the image first, as compose does"
+              : "docker compose up -d"}">Up</button>
+        <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
+          title="docker compose down">Down</button>
+        <button type="button" data-dm="env" title="this container's env file">Env</button>
+        <button type="button" data-dm="rebuild" ${!d.changed || busy ? "disabled" : ""}
+          title="${!d.built_rev
+            ? "build the first image, then bring it up"
+            : d.changed
+              ? "build from " + esc(d.project) + "'s codebase, then down and up"
+              : "the last build is current — this wakes when the code moves"}">${
+          d.built_rev ? "Rebuild" : "Build"}</button>
+      </span>
+    </div>`;
+  }).join("") + cs.map(c => `
+    <div class="row stack2 off">
+      <div class="grow">
+        <div class="name">${esc(c.name || c.id)} <span class="pill">not ours</span></div>
+        <div class="sub">${esc(c.image)}</div>
+        <div class="sub ${c.state === "running" ? "ok" : ""}">${esc(c.status || c.state)}${
+          c.project ? ` · ${esc(c.project)}${c.service ? "/" + esc(c.service) : ""}` : ""}</div>
+        ${c.ports.length ? `<div class="sub">${c.ports.map(esc).join(" · ")}</div>` : ""}
+      </div>
+    </div>`).join("");
+  // Its own class rather than the projects tab's: the two look alike and a
+  // selector that matched both would be a test passing on the wrong tab.
+  el.innerHTML = `<div class="card dmtab">${
+    rows || `<div class="empty">nothing on this daemon yet</div>`}
+    <div class="macros"><button id="bDockerRe">Refresh</button></div></div>`;
+  const b = el.querySelector("#bDockerRe");
+  if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
+    const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
+    dmAction(project, instance, btn.dataset.dm, btn);
+  });
 }
 
 function renderPackagesInto(i){
@@ -4538,7 +4901,8 @@ const PMODES = {
   init:  { title: () => "New project", btn: "Create", focus: "pName",
            fields: ["pSrcField", "pNameField", "pAboutField"] },
   clone: { title: () => "New project", btn: "Create", focus: "pUrl",
-           fields: ["pSrcField", "pNameField", "pUrlField", "pKeyField"] },
+           fields: ["pSrcField", "pNameField", "pUrlField", "pPushField",
+                    "pTokenField", "pKeyField"] },
   link:  { title: () => `Link ${pLink} to GitHub`, btn: "Link", focus: "pUrl",
            fields: ["pUrlField", "pKeyField"] },
 };
@@ -4553,7 +4917,8 @@ function pDraw(){
   $("pCreate").textContent = $("pCreate").disabled ? $("pCreate").textContent : m.btn;
   $("pLocal").classList.toggle("on", pMode === "init");
   $("pClone").classList.toggle("on", pMode === "clone");
-  for (const f of ["pSrcField", "pNameField", "pUrlField", "pKeyField", "pAboutField"])
+  for (const f of ["pSrcField", "pNameField", "pUrlField", "pPushField",
+                   "pTokenField", "pKeyField", "pAboutField"])
     $(f).hidden = !m.fields.includes(f);
   // The deploy-key picker only appears when the agent actually holds keys:
   // an empty dropdown would be a question with no answers.
@@ -4572,6 +4937,17 @@ function pDraw(){
     : "Named the way GitHub names a repository: anything it cannot use becomes "
       + "a dash, so you are shown the directory you are about to get rather "
       + "than being sent back to retype it.";
+  $("pPushHint").textContent =
+    "Off means read-only: a pre-push hook refuses, so nobody pushes from here "
+    + "by accident. It cannot be turned on later — delete the project and "
+    + "clone it again — and only one project at a time may push to a given "
+    + "repository. Needs a token or a deploy key; the token is checked against "
+    + "GitHub before the clone starts.";
+  $("pTokenHint").textContent =
+    "Leave empty for a public repository. A token here is used for THIS "
+    + "project and no other, even if it opens more — it is kept in /config and "
+    + "named in this repo's own git config. It is not shielded the way a deploy "
+    + "key is: a shell in this container can read it.";
   $("pKeyHint").textContent =
     (pMode === "link"
       ? "The key the push (and every later one) will offer. "
@@ -4626,8 +5002,12 @@ function pOpen(mode){
   const gen = ++pGen;
   pMode = mode; pKeys = []; pPat = false; pDraw();
   $("pName").value = $("pUrl").value = $("pAbout").value = "";
+  $("pToken").value = "";
+  $("pPush").checked = false;
   pNameTyped = false;
   $("pNamePreview").hidden = true;
+  $("pName").classList.remove("bad");
+  $("pNamePreview").classList.remove("bad");
   // The select is emptied, not left as-is: a key picked during a previous
   // open must not ride along invisibly into this one's submit.
   $("pKey").innerHTML = "";
@@ -6329,27 +6709,10 @@ $("todoRevert").onclick = revertNotebook;
             rel="noreferrer" title="open ${esc(devWeb)}">Open</a>` : ""}
           ${devAsk ? `<button type="button" id="devOpen"
             title="it publishes ${devTcp.length} ports — pick one">Open…</button>` : ""}
-          <button type="button" data-devact="up" ${
-            da.running || daJob?.running || (da.missing_env || []).length ? "disabled" : ""}
-            title="${(da.missing_env || []).length
-              ? "the env is missing " + esc(da.missing_env.join(", "))
-              : da.needs_build && !da.built_rev
-                ? "docker compose up -d — builds the image first, as compose does"
-                : "docker compose up -d"}">Up</button>
-          <button type="button" data-devact="down" ${
-            !da.exists || daJob?.running ? "disabled" : ""}
-            title="${da.running ? "docker compose down"
-              : "docker compose down — the containers are still there, exited"}">Down</button>
-          <button type="button" data-devact="env"
-            title="the dev instance's env file — kept in /config, never in the repo">Env</button>
-          <button type="button" data-devact="rebuild" ${
-            !da.changed || daJob?.running ? "disabled" : ""}
-            title="${!da.built_rev
-              ? "build the first image, then bring it up"
-              : da.changed
-              ? "build the image, then down and up — unless new env settings appear, where it stops for you to fill them in"
-              : "the last build is current — this wakes when the code moves"}">${
-            da.built_rev ? "Rebuild" : "Build"}</button>
+          <button type="button" id="devSend" class="primary"
+            title="name a container built from this project and manage it there — a
+project can have several, and they are all built from this codebase"
+            >Send to Docker manager…</button>
         </span>
       </div>`;
     const jobHtml = job.running ? `
@@ -6416,73 +6779,8 @@ $("todoRevert").onclick = revertNotebook;
       box.querySelectorAll("a").forEach(a => a.addEventListener("click", closeSheet));
       openSheet("Open which port?", [box]);
     };
-    list.querySelectorAll("[data-devact]").forEach(b => b.onclick = async () => {
-      const act = b.dataset.devact;
-      if (act === "env"){ openDevEnv(); return; }
-      if (act === "down" && !confirm("Take the dev instance down?")) return;
-      if (act === "rebuild" && !confirm(
-          (b.textContent.trim() === "Build"
-            ? "Build the dev instance?\n\nBuilds the first image and brings it up. "
-            : "Rebuild the dev instance?\n\nBuilds the image, then down and up. ")
-          + "If the build finds new env settings it stops before up, and "
-          + "the Env editor will hold your old values in comments.")) return;
-      // What the compose file asks for beyond its own directory, once, before
-      // anything starts. A namespace bounds which containers this can touch;
-      // it cannot bound what a container is handed, and a file that mounts /
-      // produces a bbdev- container like any other. Asked once per set: the
-      // digest goes back with the action, so a file that gains a mount later
-      // asks again rather than inheriting the last yes.
-      let ack = "";
-      if ((act === "up" || act === "rebuild") && !da.risks_ack){
-        if (!confirm("This compose file asks for more than its own directory:"
-            + "\n\n" + (da.risks || []).map(x => "\u2022 " + x).join("\n")
-            + "\n\nA container it starts can reach those. Start it anyway?"))
-          return;
-        ack = da.risks_digest || "";
-      }
-      b.disabled = true;
-      try{
-        const r = await fetch("/api/devapp", {method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({project, action: act, ack})});
-        const j = await r.json();
-        if (j.error) notify(j.error, true);
-      }catch(e){ notify("dev instance: " + e, true); }
-      await loadArtifacts();
-    });
-    async function openDevEnv(){
-      let j;
-      try{
-        const r = await fetch("/api/devapp", {method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify({project, action: "env-get"})});
-        j = await r.json();
-      }catch(e){ notify("env: " + e, true); return; }
-      const m = document.getElementById("devEnvModal");
-      m.querySelector("textarea").value = j.text || "";
-      // Both halves: whether this is a draft off the example, and what the
-      // STORED file is still missing — the second stays true while the box
-      // holds an unsaved draft, which is exactly when it matters.
-      m.querySelector(".hint").textContent =
-        (j.seeded ? "started from .env.example — nothing saved yet. " : "")
-        + ((j.missing || []).length
-           ? "missing against .env.example: " + j.missing.join(", ")
-           : "everything .env.example declares is set");
-      m.hidden = false;
-      m.querySelector(".primary").onclick = async () => {
-        try{
-          const r = await fetch("/api/devapp", {method: "POST",
-            headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({project, action: "env-set",
-                                  text: m.querySelector("textarea").value})});
-          const k = await r.json();
-          if (k.error){ notify(k.error, true); return; }
-          m.hidden = true;
-          notify("env saved");
-          await loadArtifacts();
-        }catch(e){ notify("env: " + e, true); }
-      };
-    }
+    const send = list.querySelector("#devSend");
+    if (send) send.onclick = () => openSendToDocker(project);
     list.querySelectorAll("[data-artpush]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artpush)];
       b.disabled = true;
@@ -7250,12 +7548,29 @@ const projName = (raw) => (raw || "").trim()
 
 function pNameShow(){
   const raw = $("pName").value, clean = projName(raw);
-  // Shown only when it differs: repeating a name back unchanged is noise on a
-  // dialog that already has three hints on it.
-  $("pNamePreview").hidden = !raw.trim() || clean === raw.trim();
-  $("pNamePreview").textContent = clean
-    ? `Will be created as ${clean}`
+  // Cloning with the field left empty still takes the repository's name, so
+  // the collision has to be checked against THAT and not against an empty
+  // string — otherwise the one case that needs the warning most is the one
+  // that never gets it.
+  const eff = clean || (pMode === "clone" ? projName(repoOfUrl($("pUrl").value)) : "");
+  const taken = eff && (state?.projects || []).some(p => p.name === eff);
+  $("pName").classList.toggle("bad", !!taken);
+  $("pNamePreview").classList.toggle("bad", !!taken);
+  // Shown when it differs from what was typed, when it is taken, or when
+  // there is nothing left of it — and quiet otherwise, because repeating a
+  // name back unchanged is noise on a dialog that already carries three hints.
+  $("pNamePreview").hidden = !taken && (!raw.trim() || clean === raw.trim());
+  $("pNamePreview").textContent = taken
+    ? `${eff} already exists under /workspace — give this one another name`
+    : clean ? `Will be created as ${clean}`
     : "That leaves nothing to name a directory after";
+}
+
+// The repository's own name out of a clone URL — the same rule the server
+// falls back to when the name field is empty.
+function repoOfUrl(url){
+  const last = (url || "").trim().replace(/\/+$/, "").split(/[/:]/).pop() || "";
+  return last.endsWith(".git") ? last.slice(0, -4) : last;
 }
 
 // The name follows the address until somebody types one. Tracked rather than
@@ -7270,6 +7585,19 @@ $("pUrl").oninput = () => {
   $("pName").value = last.endsWith(".git") ? last.slice(0, -4) : last;
   pNameShow();
 };
+// ...and when a name HAS been typed, the URL still decides nothing — but the
+// warning has to keep up with a URL edited afterwards.
+$("pUrl").addEventListener("input", pNameShow);
+
+$("dnName").oninput = dnShow;
+$("dnGo").onclick = dnSubmit;
+$("dnCancel").onclick = closeSendToDocker;
+$("dnmodal").onclick = e => { if (e.target === $("dnmodal")) closeSendToDocker(); };
+
+$("rnName").oninput = rnShow;
+$("rnGo").onclick = rnSubmit;
+$("rnCancel").onclick = closeRename;
+$("rnmodal").onclick = e => { if (e.target === $("rnmodal")) closeRename(); };
 
 $("pCreate").onclick = async () => {
   // Captured at the click: the dialog can be closed, reopened and switched
@@ -7307,7 +7635,9 @@ $("pCreate").onclick = async () => {
       : await fetch("/api/create", {method:"POST",
           headers:{"Content-Type":"application/json"},
           body: JSON.stringify({name, mode, url, about: $("pAbout").value,
-                                key: mode === "clone" ? key : ""})});
+                                key: mode === "clone" ? key : "",
+                                token: mode === "clone" ? $("pToken").value.trim() : "",
+                                push: mode === "clone" && $("pPush").checked})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return fail(j.error || `${mode} failed (HTTP ${r.status})`);
     if (gen === pGen) closeNewProject();
@@ -7381,6 +7711,17 @@ const LINK = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M6.7 9.3 9.3 6.7"/>
   <path d="M7.5 4.9 9.2 3.2a2.6 2.6 0 0 1 3.6 3.6L11.1 8.5"/>
   <path d="M8.5 11.1 6.8 12.8a2.6 2.6 0 0 1-3.6-3.6L4.9 7.5"/></svg>`;
+
+// Claude's asterisk, for starting or returning to a session. Eight strokes
+// rather than the filled four-pointed spark: at 16px a fill reads as a blob,
+// and every other icon on this row is a stroke.
+const SPARK = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M8 2.3v11.4"/><path d="M2.3 8h11.4"/>
+  <path d="M4 4l8 8"/><path d="M12 4l-8 8"/></svg>`;
+
+// A prompt, for a plain terminal: the chevron and the line you type on.
+const TERM = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M3.2 4.6 6.6 8l-3.4 3.4"/><path d="M8.4 11.8h4.4"/></svg>`;
 
 // A ticked list, for the project's to-do. The panel behind it also holds what
 // Claude remembers here, folded away — but the number worth putting on a row
@@ -7529,27 +7870,96 @@ async function setLocked(name, on){
 // anything that did not. A rename that half-worked is the case this reports
 // rather than hides — the alternative is a project whose roadmap silently
 // stayed behind under a name nothing points at any more.
-async function renameProject(name){
-  const to = prompt(`Rename ${name} to:\n\n`
-    + `The directory moves, and so does everything keyed to its name — the `
-    + `roadmap and bugs, the versions, the dev instance's data and env, the `
-    + `CI logs, and Claude's transcripts and memories for it.\n\n`
-    + `Close its terminals first, and bring its dev instance down.`, name);
-  if (to === null) return;
-  if (!to.trim() || to.trim() === name) return;
+let rnFor = null;                        // the project the dialog is open on
+
+function renameProject(name){
+  rnFor = name;
+  const p = (state?.projects || []).find(x => x.name === name);
+  $("rnTitle").textContent = "Rename " + name;
+  $("rnName").value = name;
+  $("rnToken").value = "";
+  $("rnErrWrap").hidden = true;
+  $("rnPreview").hidden = true;
+  $("rnName").classList.remove("bad");
+  $("rnHint").textContent =
+    "The directory moves, and so does everything keyed to its name: the "
+    + "roadmap and bugs, the versions, the dev instance's data and env, the "
+    + "CI logs, and Claude's transcripts and memories. Close its terminals "
+    + "first, and bring its dev instance down.";
+  // Only where there is one to change. A repo cloned without a token, or one
+  // that was never cloned at all, has nothing this field would apply to.
+  $("rnTokenField").hidden = !p?.has_token;
+  $("rnGo").disabled = false;
+  $("rnGo").textContent = "Rename";
+  $("rnmodal").hidden = false;
+  $("rnName").focus();
+  $("rnName").select();
+}
+
+function rnShow(){
+  const raw = $("rnName").value, clean = projName(raw);
+  const taken = clean && clean !== rnFor
+                && (state?.projects || []).some(p => p.name === clean);
+  $("rnName").classList.toggle("bad", !!taken);
+  $("rnPreview").classList.toggle("bad", !!taken);
+  $("rnPreview").hidden = !taken && (!raw.trim() || clean === raw.trim());
+  $("rnPreview").textContent = taken
+    ? `${clean} already exists under /workspace`
+    : clean ? `Will be renamed to ${clean}`
+    : "That leaves nothing to name a directory after";
+}
+
+function closeRename(){ $("rnmodal").hidden = true; rnFor = null; }
+
+async function rnSubmit(){
+  const name = rnFor, to = $("rnName").value, token = $("rnToken").value.trim();
+  const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
+  if (!to.trim()) return fail("a new name is needed");
+  // A token change with no name change is a legitimate thing to want, so this
+  // does not refuse the same name — the server treats it as a no-op rename.
+  $("rnGo").disabled = true; $("rnGo").textContent = "Renaming…";
   try{
     const r = await fetch("/api/rename", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, to})});
+      body: JSON.stringify({name, to, token})});
     const j = await r.json();
-    if (j.error){ notify(j.error, true); return; }
+    if (j.error){ $("rnGo").disabled = false; $("rnGo").textContent = "Rename";
+                  return fail(j.error); }
+    closeRename();
     // Named rather than assumed: sanitizing may have changed what was typed,
     // and the operator should see the name that actually exists.
     notify(j.failed?.length
       ? `${name} is now ${j.name}, but ${j.failed.length} thing(s) did not `
         + `move: ${j.failed.join("; ")}`
       : `${name} is now ${j.name}`, !!j.failed?.length);
-  }catch(e){ notify("rename failed: " + e, true); }
+  }catch(e){ $("rnGo").disabled = false; $("rnGo").textContent = "Rename";
+             return fail("rename failed: " + e); }
+  refresh();
+}
+
+// Deleting asks once and says where the files go, rather than asking twice or
+// making somebody type the name. The roadmap item this came from called for a
+// typed confirmation, on the reasoning that it would be the one control here
+// destroying work outside /config — and it is not that any more: the directory
+// is moved to /workspace/.trash with everything in it, and the notebook is not
+// touched at all. Putting one back is a mv. Friction proportionate to a
+// reversible act, and the dialog names the path so the reversal is obvious.
+async function deleteProject(name){
+  if (!confirm(`Delete ${name}?\n\n`
+      + `It moves to /workspace/.trash/${name}, with every file kept. Its `
+      + `roadmap, bugs, versions and memories stay where they are.\n\n`
+      + `Close its terminals first, and bring its dev instance down.`)) return;
+  try{
+    const r = await fetch("/api/trash", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({name})});
+    const j = await r.json();
+    if (j.error){ notify(j.error, true); return; }
+    // The path is named back because it may not be the one the dialog said:
+    // a second delete of the same name is numbered rather than overwriting the
+    // first, and the first is exactly the copy somebody would want back.
+    notify(`${name} moved to ${j.to}`);
+  }catch(e){ notify("delete failed: " + e, true); }
   refresh();
 }
 
@@ -8057,6 +8467,14 @@ let revs = {};
 // `key` may be a name or a function returning one, because half of these are
 // per project and the project is not known when the watch is registered.
 function onRev(key, fn){ revWatch.push({key, fn}); }
+
+// The Docker manager follows the same revision every dev-instance control
+// already moved on. Without this it is a snapshot: correct when it loaded and
+// stale from the first Up, with a Refresh button as the only way back — which
+// is a page that tells you what used to be running.
+onRev("devapp", () => {
+  if (tabs.some(x => x.kind === "docker")){ dockerList = null; dockerRev++; loadDocker(); }
+});
 
 async function pollRevs(){
   let now;
