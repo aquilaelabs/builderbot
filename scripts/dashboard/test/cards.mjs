@@ -449,7 +449,18 @@ await page.waitForFunction(() =>
   ![...document.querySelectorAll('#projects .row .name')]
     .some(n => n.textContent.trim() === 'ep.silon'), { timeout: 8000 });
 ok(true, 'a dotted project name unpins too, animation and all');
+// ...and back, which is the direction that used to be a plain redraw: pinning
+// is watched from the Projects tab, which on a desktop sits in the column
+// beside the sidebar, so the row has to unroll rather than shove the projects
+// under it down between two frames. The tween is caught while it runs — the
+// row exists before it, so waiting for the row alone would prove nothing.
+const unrolls = page.waitForFunction(() => {
+  const r = document.querySelector('#projects .row:has([data-p="ep.silon"])');
+  return !!r && r.getAnimations().length > 0;
+}, { timeout: 8000 });
 await page.evaluate(() => setProjectPinned('ep.silon', true));
+await unrolls;
+ok(true, '...and pinning it back unrolls the row instead of snapping it in');
 await page.waitForFunction(() =>
   [...document.querySelectorAll('#projects .row .name')]
     .some(n => n.textContent.trim() === 'ep.silon'), { timeout: 8000 });

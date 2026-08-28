@@ -4987,12 +4987,32 @@ function openNewContainer(){
   $("cmodal").hidden = false;
 }
 
+let cTab = "yml";                 // which pane the segment is showing
+
 function cSeg(which){
+  cTab = which;
   $("cTabYml").classList.toggle("on", which === "yml");
   $("cTabEnv").classList.toggle("on", which === "env");
   $("cYmlField").hidden = which !== "yml";
   $("cEnvField").hidden = which === "yml";
 }
+
+// Switching between them moves the way the New project dialog's source picker
+// does: the incoming pane slides in from its own tab's side (Compose is the
+// left tab, Environment the right), same 220ms ease, same reduced-motion gate.
+// One vocabulary for every two-tab switch on the page — see pSlide, which is
+// this in the other dialog. Not called from cSeg: an open draws its first pane
+// rather than switching to it, and sliding on arrival would animate a dialog
+// that is already animating itself in.
+function cSlide(which){
+  if (noMotion()) return;
+  $(which === "yml" ? "cYmlField" : "cEnvField").animate(
+    [{transform: `translateX(${which === "env" ? "18px" : "-18px"})`, opacity: 0},
+     {transform: "none", opacity: 1}],
+    {duration: 220, easing: "ease"});
+}
+
+const cSwitch = w => { if (cTab === w) return; cSeg(w); cSlide(w); };
 
 async function cSubmit(){
   const fail = m => ($("cErr").textContent = m, $("cErrWrap").hidden = false);
@@ -7990,8 +8010,8 @@ $("pUrl").oninput = () => {
 // warning has to keep up with a URL edited afterwards.
 $("pUrl").addEventListener("input", pNameShow);
 
-$("cTabYml").onclick = () => cSeg("yml");
-$("cTabEnv").onclick = () => cSeg("env");
+$("cTabYml").onclick = () => cSwitch("yml");
+$("cTabEnv").onclick = () => cSwitch("env");
 $("cGo").onclick = cSubmit;
 $("cCancel").onclick = () => { $("cmodal").hidden = true; };
 $("cmodal").onclick = e => { if (e.target === $("cmodal")) $("cmodal").hidden = true; };
@@ -8416,9 +8436,9 @@ async function setProjectPinned(name, on){
     // /api/status put a poll's latency between the click and the button
     // moving, on a control whose whole job is instant.
     const apply = p => { p.pinned = (j.pinned || []).includes(p.name); };
-    // Leaving the sidebar is the case worth animating; arriving is a row that
-    // was not there to watch.
-    if (on) applyNow(apply); else leaveRow(name, apply);
+    // Both directions are watched from the Projects tab, which sits beside the
+    // sidebar on a desktop: the row grows into the card or folds out of it.
+    if (on) arriveRow(name, apply); else leaveRow(name, apply);
   }catch(e){ notify("pin failed: " + e, true); }
   refresh();                       // ...and reconcile, in the background
 }
@@ -8435,6 +8455,15 @@ function applyNow(fn){
   drawPanes();                     // the Projects tab shows the same rows
 }
 
+// The sidebar row for one project. Escaped for a QUOTED attribute value, which
+// is a different job from CSS.escape: that one escapes identifiers, so a
+// project with a dot in its name came out as [data-p="ep\.silon"] — a literal
+// backslash inside the quotes, matching nothing. The row was then never found
+// and the change simply skipped its animation, quietly, for exactly the
+// fixture whose name exists to catch this.
+const pinRow = (card, name) => card?.querySelector(
+  `.row:has([data-p="${name.replace(/["\\]/g, "\\$&")}"])`);
+
 // The same, for a change that takes a row OUT of the sidebar — unpinning, and
 // excluding, which folds the row away behind Show excluded.
 //
@@ -8449,14 +8478,7 @@ function applyNow(fn){
 // page. slideBody already does that pairing for the Show-excluded toggle.
 function leaveRow(name, fn){
   const card = $("projects");
-  // Escaped for a QUOTED attribute value, which is a different job from
-  // CSS.escape: that one escapes identifiers, so a project with a dot in its
-  // name came out as [data-p="ep\.silon"] — a literal backslash inside the
-  // quotes, matching nothing. The row was then never found and the change
-  // simply skipped its animation, quietly, for exactly the fixture whose name
-  // exists to catch this.
-  const row = card?.querySelector(
-    `.row:has([data-p="${name.replace(/["\\]/g, "\\$&")}"])`);
+  const row = pinRow(card, name);
   if (!row || noMotion()){ applyNow(fn); return; }
   const from = card.offsetHeight;
   row.style.overflow = "hidden";
@@ -8475,6 +8497,48 @@ function leaveRow(name, fn){
     row.style.overflow = ""; row.style.opacity = ""; row.style.height = "";
     void from;
   };
+}
+
+// And the mirror of it, for a change that brings a row IN — pinning.
+//
+// This used to be a plain redraw, on the theory that an arriving row was not
+// there to be watched. That is only true if the sidebar is the thing you are
+// looking at: you pin from the Projects tab, which on a desktop sits in the
+// column beside the card, so the row lands in one frame and shoves every
+// project under it down with no warning. It unrolls from nothing instead, on
+// the same tween leaveRow uses backwards, and the rows below ride down.
+//
+// The redraw goes first here, which is the one real difference — a row cannot
+// grow before it exists — so the tween starts from the collapsed state in the
+// same frame rather than after it.
+function arriveRow(name, fn){
+  const card = $("projects");
+  if (!card || noMotion()){ applyNow(fn); return; }
+  const from = card.offsetHeight;
+  applyNow(fn);
+  const row = pinRow(card, name);
+  // Nothing to watch: the card is collapsed, a phone is on the terminal view,
+  // or the row drew straight into the fold behind Show broken. The draw stands.
+  if (!rendered(row)) return;
+  const to = card.offsetHeight, h = row.offsetHeight;
+  row.style.overflow = "hidden";
+  const anim = row.animate(
+    [{opacity: 0, height: "0px"}, {opacity: 1, height: h + "px"}],
+    {duration: 170, easing: "ease"});
+  anim.onfinish = anim.oncancel = () => {
+    row.style.overflow = ""; row.style.opacity = ""; row.style.height = "";
+  };
+  // The card is tweened alongside it for the same reason leaveRow does it: the
+  // cards below ride on this one's height. Measured across the redraw rather
+  // than derived from the row, because the first pin also drops the "nothing
+  // pinned" line, and a card sized to the row alone would jump by that much.
+  if (to === from) return;
+  card.getAnimations().forEach(a => { if (a.id === "body") a.cancel(); });
+  card.style.overflow = "hidden";
+  const grow = card.animate([{height: from + "px"}, {height: to + "px"}],
+                            {duration: 170, easing: "ease"});
+  grow.id = "body";
+  grow.onfinish = grow.oncancel = () => card.style.overflow = "";
 }
 
 // A session tmux knows as "claude-Foo" is the same thing the Projects card
