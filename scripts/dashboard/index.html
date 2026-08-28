@@ -434,6 +434,15 @@ button.on{background:#1f6f36;border-color:#2ea043}
    a phone stops needing a sideways scroll to read the notes that are the
    whole reason the box is seeded. */
 #devEnvModal textarea{white-space:pre-wrap;overflow-wrap:anywhere}
+/* The env on the send dialog is the same kind of content and gets the same
+   treatment: it wraps rather than running off the right edge, where an
+   .env.example's comment lines are long enough to lose half of themselves.
+   And it is given real height — an env file is thirty lines, and four of them
+   at a time is a box you scroll to read one screen's worth.
+   The 16px below is not a choice: iOS zooms the page into any smaller field on
+   focus and this layout cannot zoom back, so the answer to "the text is large"
+   is a wider box and wrapped lines rather than smaller type. */
+#dnEnv{min-height:38vh;resize:vertical}
 /* 16px on a phone: iOS Safari zooms the page into any smaller field on
    focus, and this fixed layout has no way to zoom back out. */
 @media(max-width:900px){ .modal input,.modal textarea,.modal select,
@@ -1628,7 +1637,7 @@ body.dragging .tab .lbl{cursor:grabbing}
      the name picks which of its containers this is, not what it is built from,
      so two instances of one project are two containers from one codebase. -->
 <div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dnTitle">
-  <div class="box">
+  <div class="box wide">
     <h3 id="dnTitle">Send to Docker manager</h3>
     <div class="field">
       <label for="dnName">Container name</label>
@@ -2093,7 +2102,15 @@ function setView(v){
   // Per device, not on the server: which side of the switch a phone was
   // looking at is about that phone, and a reload (or a tab the browser
   // evicted overnight) should come back to the same side.
-  try{ localStorage.setItem("bb.view", v); }catch(e){ /* private mode */ }
+  // Stamped with the run of the container it was chosen under. A reload comes
+  // back to the same side — that is the point of remembering it — but a
+  // container that has been REPLACED is a different situation: whatever was
+  // on the terminal side ended with it, so coming back there lands on tabs
+  // for sessions that are gone.
+  try{
+    localStorage.setItem("bb.view", v);
+    if (state?.boot) localStorage.setItem("bb.view.boot", state.boot);
+  }catch(e){ /* private mode */ }
   // The switch reads left-to-right (Dashboard | Terminal), so the incoming
   // view slides in from its own side. The outgoing one is display:none the
   // moment the attribute flips — only the entrance can be animated — and
@@ -2125,6 +2142,31 @@ if (isPhone()){
     document.body.dataset.view = v;
     $("vDash").classList.remove("on"); $("vTerm").classList.add("on");
   }
+}
+
+// Back to the Dashboard when the container this page remembers a side from is
+// not the one answering any more. Checked on the first status as well as on a
+// live restart: a page opened fresh after the container came back has no
+// memory of the previous boot to compare against, only what it stored.
+function viewAfterRestart(){
+  if (!isPhone() || !state?.boot) return;
+  let was = null;
+  try{ was = localStorage.getItem("bb.view.boot"); }catch(e){ return; }
+  if (was === state.boot) return;
+  // No stamp at all is not a restart — it is a browser that has never been
+  // here, or one upgrading from before this existed. Adopt the boot and leave
+  // the side alone: yanking somebody to the Dashboard once, on the strength
+  // of a value that was simply absent, is a worse bug than the one this fixes.
+  if (!was){
+    try{ localStorage.setItem("bb.view.boot", state.boot); }catch(e){ /* private */ }
+    return;
+  }
+  try{ localStorage.setItem("bb.view.boot", state.boot); }catch(e){ /* private */ }
+  // A view asked for in the URL outranks this, the same as it outranks the
+  // remembered side: something that can only speak URLs is making a request.
+  const qv = new URLSearchParams(location.search).get("view");
+  if (qv === "terminal" || qv === "dash") return;
+  if (document.body.dataset.view !== "dash") setView("dash");
 }
 
 // ---- tabs ------------------------------------------------------------
@@ -8544,6 +8586,12 @@ async function refresh(){
     if (state.boot && bootSeen && state.boot !== bootSeen)
       tabs.filter(t => String(t.arg).startsWith("claude:")).forEach(t => dropTab(t.id));
     if (state.boot) bootSeen = state.boot;
+    // ...and come back to the Dashboard side, once, for the same reason the
+    // Claude tabs went: the terminal side is a view of sessions this container
+    // does not have. Only on a phone, where the two are alternatives rather
+    // than columns side by side, and only when the boot actually changed —
+    // a plain reload still lands where it left off.
+    viewAfterRestart();
     $("dot").classList.remove("off");
     $("host").textContent = state.host;
     $("uptime").textContent = "up " + state.uptime;
