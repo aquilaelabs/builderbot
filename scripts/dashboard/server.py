@@ -2405,6 +2405,8 @@ class Handler(BaseHTTPRequestHandler):
         # definition quietly replaced the earlier one in the class body too.
         if path.startswith("/api/project-pin"):
             return self._project_pin(req)
+        if path.startswith("/api/container"):
+            return self._container(req)
         if path.startswith("/api/rename"):
             return self._rename(req)
         if path.startswith("/api/trash"):
@@ -2625,13 +2627,42 @@ class Handler(BaseHTTPRequestHandler):
                 pass
         return out
 
+    def _container(self, req):
+        """A container from a compose file written here, with no project.
+
+        Its own endpoint rather than an action on _devapp, because _devapp
+        starts by insisting the caller names a project and this one has none —
+        that is the whole of what it is.
+        """
+        act = field(req, "action")
+        name = field(req, "name")
+        if act == "read":
+            if name not in devapp.overview_names():
+                return self._json({"error": f"no container {name}"}, 400)
+            return self._json(devapp.read_container(name))
+        if act != "create":
+            return self._json({"error": f"unknown action: {act}"}, 400)
+        # A name that is also a project would collide in the store, which is
+        # keyed by one namespace for both kinds.
+        if name and name in {p["name"] for p in project_list()}:
+            return self._json({"error": f"{name} is a project — a container "
+                                        f"written here needs its own name"}, 400)
+        r = devapp.create_container(name, req.get("compose") or "",
+                                    req.get("env") or "")
+        return self._json(r, 400 if r.get("error") else 200)
+
     def _devapp(self, req):
         """The dev-instance controls. Operator-only by construction — these
         buttons live on the panel, and a session's path to docker is the
         proxy's allowlist, not this endpoint."""
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list()}:
-            return self._json({"error": f"not a project: {name}"}, 400)
+        # A project, OR a container written here — which is not a project and
+        # never will be, but carries every one of these controls. Checked
+        # against the store rather than waved through: this name reaches a
+        # compose call and a data directory either way.
+        if name not in {p["name"] for p in project_list()} \
+                and name not in devapp.overview_names():
+            return self._json({"error": f"not a project or container: {name}"}, 400)
         act = field(req, "action")
         # Which instance of that project. Absent means the one every project
         # has always had, so a caller that predates instances still works and

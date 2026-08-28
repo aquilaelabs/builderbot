@@ -443,6 +443,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
    focus and this layout cannot zoom back, so the answer to "the text is large"
    is a wider box and wrapped lines rather than smaller type. */
 #dnEnv{min-height:38vh;resize:vertical}
+/* Same reasoning for the compose editor: YAML is lines, and a box four of them
+   tall is one you scroll to read a service. */
+#cYml,#cEnv{min-height:40vh;resize:vertical;white-space:pre;overflow-wrap:normal}
 /* 16px on a phone: iOS Safari zooms the page into any smaller field on
    focus, and this fixed layout has no way to zoom back out. */
 @media(max-width:900px){ .modal input,.modal textarea,.modal select,
@@ -1678,6 +1681,49 @@ body.dragging .tab .lbl{cursor:grabbing}
 <!-- Naming a container to build from a project. It is always THAT project's:
      the name picks which of its containers this is, not what it is built from,
      so two instances of one project are two containers from one codebase. -->
+<!-- A container from a compose file written here. The shape every other
+     Docker front end uses — Portainer's stacks, Dockge's — is a name, a
+     compose file and an environment, and that is what this asks for. Labels
+     are not a fourth box: in compose they live in the YAML, and a separate
+     field for them would be inventing a concept the format does not have. -->
+<div id="cmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cTitle">
+  <div class="box wide">
+    <h3 id="cTitle">New container</h3>
+    <div class="field">
+      <label for="cName">Name</label>
+      <input id="cName" maxlength="60" autocomplete="off" spellcheck="false"
+             placeholder="e.g. radarr">
+      <div class="hint" id="cNameHint"></div>
+    </div>
+    <div class="field">
+      <label id="cSegLabel">Definition</label>
+      <div class="pseg" role="group" aria-labelledby="cSegLabel">
+        <button id="cTabYml" class="on" type="button">Compose</button>
+        <button id="cTabEnv" type="button">Environment</button>
+      </div>
+    </div>
+    <div class="field" id="cYmlField">
+      <label for="cYml">docker-compose.yml</label>
+      <textarea id="cYml" spellcheck="false"></textarea>
+      <div class="hint">Checked by compose itself before it is saved. Relative
+        bind sources resolve against this container's own data directory, which
+        both this container and the daemon can see.</div>
+    </div>
+    <div class="field" id="cEnvField" hidden>
+      <label for="cEnv">.env</label>
+      <textarea id="cEnv" spellcheck="false"
+                placeholder="PUID=99&#10;PGID=100&#10;TZ=America/New_York"></textarea>
+      <div class="hint">Read by the compose file above as ${VAR}. Kept beside
+        it in /config, never in a project.</div>
+    </div>
+    <div class="field" id="cErrWrap" hidden><div class="hint bad" id="cErr"></div></div>
+    <div class="foot">
+      <button id="cGo" class="primary">Create</button>
+      <button id="cCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dnTitle">
   <div class="box wide">
     <h3 id="dnTitle">Send to Docker manager</h3>
@@ -4881,6 +4927,67 @@ async function loadWire(d){
   if (d.open && before !== after && !noMotion()) foldHeight(d, before, after, () => {});
 }
 
+// A starting point rather than an empty box. Somebody opening this is about
+// to run a published image, and the three lines that always differ — image,
+// port, volume — are easier to edit than to remember the shape of.
+const COMPOSE_STARTER = `services:
+  app:
+    image: lscr.io/linuxserver/radarr:latest
+    restart: unless-stopped
+    environment:
+      - PUID=\${PUID}
+      - PGID=\${PGID}
+      - TZ=\${TZ}
+    ports:
+      - "7878:7878"
+    volumes:
+      - ./config:/config
+`;
+
+function openNewContainer(){
+  $("cName").value = "";
+  $("cYml").value = COMPOSE_STARTER;
+  $("cEnv").value = "PUID=99\nPGID=100\nTZ=America/New_York\n";
+  $("cErrWrap").hidden = true;
+  $("cGo").disabled = false; $("cGo").textContent = "Create";
+  cSeg("yml");
+  $("cNameHint").textContent =
+    "Its own name, not a project's. The compose project becomes bbdev-<name>, "
+    + "which is what the manager and the guard both go by.";
+  $("cmodal").hidden = false;
+}
+
+function cSeg(which){
+  $("cTabYml").classList.toggle("on", which === "yml");
+  $("cTabEnv").classList.toggle("on", which === "env");
+  $("cYmlField").hidden = which !== "yml";
+  $("cEnvField").hidden = which === "yml";
+}
+
+async function cSubmit(){
+  const fail = m => ($("cErr").textContent = m, $("cErrWrap").hidden = false);
+  if (!$("cName").value.trim()) return fail("a name is needed");
+  $("cGo").disabled = true; $("cGo").textContent = "Creating…";
+  try{
+    const r = await fetch("/api/container", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({action:"create", name: $("cName").value,
+                            compose: $("cYml").value, env: $("cEnv").value})});
+    const j = await r.json();
+    if (j.error){
+      $("cGo").disabled = false; $("cGo").textContent = "Create";
+      // Compose's own complaint, which names the line — shown on the tab the
+      // text is on, since that is where it has to be fixed.
+      cSeg("yml");
+      return fail(j.error);
+    }
+    $("cmodal").hidden = true;
+    notify(`${j.name} is in the manager — press Build to bring it up`);
+    dockerList = null; dockerRev++; loadDocker();
+  }catch(e){ $("cGo").disabled = false; $("cGo").textContent = "Create";
+             return fail("could not create it: " + e); }
+}
+
 function renderDockerInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -4904,7 +5011,9 @@ function renderDockerInto(i){
         <div class="name">${esc(d.name)}
           <span class="dim state ${d.running ? "ok" : ""}">(${
             d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
-        <div class="sub">${esc(d.project)} · ${esc(d.instance)}</div>
+        <div class="sub">${d.source === "file"
+          ? `compose written here`
+          : `${esc(d.project)} · ${esc(d.instance)}`}</div>
         <div class="sub ${d.running ? "ok" : ""}">${
           busy ? esc(job.step || "working") + '<span class="dots"></span>'
           : d.running ? `running · ${d.containers} container(s)`
@@ -4953,9 +5062,12 @@ directory stay, so remaking it under the same name finds them">Remove</button>
   // selector that matched both would be a test passing on the wrong tab.
   el.innerHTML = `<div class="card dmtab">${
     rows || `<div class="empty">nothing on this daemon yet</div>`}
-    <div class="macros"><button id="bDockerRe">Refresh</button></div></div>`;
+    <div class="macros"><button id="bDockerNew">New container…</button
+      ><button id="bDockerRe">Refresh</button></div></div>`;
   const b = el.querySelector("#bDockerRe");
   if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  const nb = el.querySelector("#bDockerNew");
+  if (nb) nb.onclick = openNewContainer;
   // The wiring, fetched when the fold is opened and not before. It needs the
   // compose file parsed, which is the one thing overview() refuses to do for
   // every instance at once — and it is the thing you want occasionally, which
@@ -7820,6 +7932,12 @@ $("pUrl").oninput = () => {
 // ...and when a name HAS been typed, the URL still decides nothing — but the
 // warning has to keep up with a URL edited afterwards.
 $("pUrl").addEventListener("input", pNameShow);
+
+$("cTabYml").onclick = () => cSeg("yml");
+$("cTabEnv").onclick = () => cSeg("env");
+$("cGo").onclick = cSubmit;
+$("cCancel").onclick = () => { $("cmodal").hidden = true; };
+$("cmodal").onclick = e => { if (e.target === $("cmodal")) $("cmodal").hidden = true; };
 
 $("dnName").oninput = dnShow;
 $("dnGo").onclick = dnSubmit;

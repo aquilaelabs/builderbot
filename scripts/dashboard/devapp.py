@@ -54,6 +54,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
@@ -67,6 +68,16 @@ ENVDIR = None
 write_json = None
 
 DOCKER = os.environ.get("BB_DOCKER_BIN", "docker")
+
+# The instance a project has always had, before instances were a thing. Every
+# call that does not name one means this, which is what keeps the migration
+# from being visible anywhere but here.
+MAIN = "main"
+
+
+def _slug(s):
+    return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
+
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 
 # DOCKER_HOST=auto means "find the socket proxy yourself". The address is a
@@ -473,22 +484,27 @@ def _ports(raw):
     return seen
 
 
-def compose_file(project):
+def containers_dir(name):
+    return STATE / "containers" / name
+
+
+def compose_file(project, instance=MAIN):
+    """The compose file behind an instance.
+
+    Two sources, and the record says which. A project's instance is built from
+    the working copy — that is the whole point of it. A container written here
+    has no working copy at all: its compose file lives in /config beside the
+    rest of the notebook's storage, where the project scan cannot see it and
+    the backup that takes /config takes it too.
+    """
+    if _read_rec(project, instance).get("source") == "file":
+        f = containers_dir(project) / "docker-compose.yml"
+        return f if f.is_file() else None
     for n in COMPOSE_NAMES:
         p = WORKSPACE / project / n
         if p.is_file():
             return p
     return None
-
-
-# The instance a project has always had, before instances were a thing. Every
-# call that does not name one means this, which is what keeps the migration
-# from being visible anywhere but here.
-MAIN = "main"
-
-
-def _slug(s):
-    return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
 
 
 def _pname(project, instance=MAIN):
@@ -526,9 +542,24 @@ def _compose(project, instance, *args):
     instance of a project is built from the same codebase, which is the whole
     point of having more than one of them.
     """
-    cf = compose_file(project)
+    cf = compose_file(project, instance)
+    # What a relative bind source resolves against, and it must be a path the
+    # DAEMON has. A project's own directory is one — /workspace has parity with
+    # the sandbox by construction. /config does not: it is this container's
+    # alone, so a container written here points at its data directory under
+    # /devdata instead, which both sides can see and which is where its data
+    # belongs anyway.
+    if _read_rec(project, instance).get("source") == "file":
+        root = Path(DEVDATA) / _pname(project, instance)
+        try:
+            root.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        pdir = to_host(root) or str(root)
+    else:
+        pdir = str(WORKSPACE / project)
     argv = [DOCKER, "compose", "--project-name", _pname(project, instance),
-            "--project-directory", str(WORKSPACE / project), "-f", str(cf)]
+            "--project-directory", pdir, "-f", str(cf)]
     ep = env_path(project, instance)
     if ep.is_file():
         argv += ["--env-file", str(ep)]
@@ -776,7 +807,8 @@ def overview():
         # Once per PROJECT, not per instance: every instance of a project is
         # built from the same working copy, so the answer cannot differ
         # between them and asking git twice for it would be waste.
-        head, dirty = _head(project), _dirty(project)
+        filed = is_file_source(project)
+        head, dirty = ("", False) if filed else (_head(project), _dirty(project))
         for inst in sorted(store[project]):
             pn = _pname(project, inst)
             mine = by_proj.get(pn, [])
@@ -796,13 +828,15 @@ def overview():
                 "built_rev": rec.get("rev", "") if same_daemon else "",
                 "built_at": rec.get("at", 0) if same_daemon else 0,
                 "await_env": bool(rec.get("await_env")) if same_daemon else False,
-                "compose": compose_file(project) is not None,
+                "compose": compose_file(project, inst) is not None,
+                "source": "file" if filed else "project",
                 # Both are file reads and one git call, which is why they are
                 # here and risks/problems are not: those parse the compose
                 # file, and the manager lists every instance at once.
                 "missing_env": missing_env(project, inst),
-                "changed": (not (rec.get("rev") if same_daemon else "")
-                            or (same_daemon and rec.get("rev") != head) or dirty),
+                "changed": True if filed else (
+                    not (rec.get("rev") if same_daemon else "")
+                    or (same_daemon and rec.get("rev") != head) or dirty),
                 "changed_why": ("moved" if same_daemon and rec.get("rev")
                                 and rec.get("rev") != head
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
@@ -813,6 +847,84 @@ def overview():
             # above already account for those, and listing them twice would
             # make the page look like the daemon is running double.
             "containers": [c for c in cs["containers"] if not c["ours"]]}
+
+
+COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
+
+
+def create_container(name, compose_text, env_text=""):
+    """A container from a compose file written here, with no project behind it.
+
+    The shape every other Docker front end uses: a stack is a name, a compose
+    file and an environment. Labels are not a third field — in compose they
+    live in the YAML, and a separate box for them would be inventing a concept
+    this format does not have.
+
+    Validated before it is registered, by asking compose itself to parse it:
+    a file that does not resolve is a container that cannot start, and finding
+    that out at Build time means the failure arrives one screen away from the
+    text that caused it.
+    """
+    slug = _slug(name)
+    if not slug:
+        return {"error": "a container needs a name with a letter or digit in it"}
+    if not (compose_text or "").strip():
+        return {"error": "a compose file is needed"}
+    if len(compose_text) > COMPOSE_MAX:
+        return {"error": f"that compose file is over {COMPOSE_MAX // 1000}kB"}
+    with _lock:
+        if slug in _load():
+            return {"error": f"{slug} already exists — pick another name"}
+    d = containers_dir(slug)
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "docker-compose.yml").write_text(compose_text, encoding="utf-8")
+    except OSError as e:
+        return {"error": f"could not write it: {e}"}
+    # Registered before the check, because the check goes through _compose()
+    # and that reads the record to know where the file is. Removed again if
+    # the file turns out not to parse, so a refusal leaves nothing behind.
+    with _lock:
+        d2 = _load()
+        _rec(d2, slug, MAIN)["source"] = "file"
+        write_json(FILE, d2)
+    if (env_text or "").strip():
+        write_env(slug, env_text, MAIN)
+    r = _run(_compose(slug, MAIN, "config", "-q"), timeout=30)
+    if r["code"] != 0:
+        forget_container(slug)
+        return {"error": ("compose will not read that:\n" + r["out"]).strip()[-600:]}
+    _bump()
+    return {"ok": True, "project": slug, "instance": MAIN,
+            "name": _pname(slug, MAIN)}
+
+
+def overview_names():
+    """Every name the store knows — what an endpoint checks a request against."""
+    return set(_load())
+
+
+def read_container(name):
+    """What was written, for the editor to open on."""
+    try:
+        compose = (containers_dir(name) / "docker-compose.yml").read_text(
+            encoding="utf-8", errors="replace")
+    except OSError:
+        compose = ""
+    return {"compose": compose, "env": read_env(name, MAIN)}
+
+
+def forget_container(name):
+    """Drop the record and the files. Only ever for one this wrote."""
+    with _lock:
+        d = _load()
+        if name in d:
+            del d[name]
+            write_json(FILE, d)
+    try:
+        shutil.rmtree(containers_dir(name), ignore_errors=True)
+    except OSError:
+        pass
 
 
 def create_instance(project, name):
@@ -854,6 +966,15 @@ def remove_instance(project, instance):
     if r["code"] != 0:
         return {"error": ("could not take it down, so it was left alone:\n"
                           + r["out"])[-500:]}
+    # A container written here has nowhere else to come back from — its
+    # compose file IS the thing, and leaving it behind would keep the name
+    # taken by something with no row to remove it from. A project's instance
+    # keeps its env and data, which is what that button already promises.
+    if is_file_source(project, instance):
+        forget_container(project)
+        _bump()
+        return {"ok": True, "project": project, "instance": instance,
+                "removed_files": True}
     with _lock:
         d = _load()
         if instance in (d.get(project) or {}):
@@ -1179,6 +1300,10 @@ def _exists(project, instance=MAIN):
     """
     r = _run(_compose(project, instance, "ps", "-aq"), timeout=20)
     return r["code"] == 0 and bool(r["out"].strip())
+
+
+def is_file_source(project, instance=MAIN):
+    return _read_rec(project, instance).get("source") == "file"
 
 
 def _head(project):
