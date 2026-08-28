@@ -81,3 +81,4 @@
 - The Docker tab says which daemon it is talking to, and tells you when a mounted socket is being ignored (dc6a44d)
 - Findings from the SDK share no longer count as unattributed, and the row names the paths it could not place (554f199)
 - A static-analysis report left behind by a failed scanner is no longer counted, and the card says which one and how far behind (8ec5295)
+- Text fields, the memory folds, the pane title bar and every checkbox now follow the colour scheme too (60c89dc)
