@@ -57,3 +57,5 @@
 - The Docker manager lists only containers you have sent to it, and Remove takes one back off the list without touching its env or data (b1dcab1)
 - A project that pushes with a deploy key can now be given its own access token from the rename dialog — the first step off deploy keys (4bf16ad)
 - Opening a second Projects, Docker or packages tab now just goes to the one already open; notebooks stay one per project (2d28119)
+- The dashboard comes up in the first seconds of a container start instead of at the end of it (cd94cd6)
+- bb logs now times each startup hook, so a slow boot says which part was the wait (cd94cd6)
