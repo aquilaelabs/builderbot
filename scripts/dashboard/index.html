@@ -2014,7 +2014,8 @@ function sessionLabels(){
 function tabLabel(t){
   // Computed for a notebook, not stored: a tab restored from a layout saved
   // before the rename would otherwise wear "To do:" forever.
-  if (t.kind === "todo") return "Notebook: " + t.arg;
+  const spec = TABKINDS[t.kind];
+  if (spec?.label) return spec.label(t);
   if (t.kind !== "term") return t.label;
   // Falls back to the stored label only while tmux has yet to register a
   // just-opened session.
@@ -2114,8 +2115,59 @@ if (isPhone()){
 // NOT the argument that produced it: "claude:FreshBoot" from the project list
 // and "claude-FreshBoot" from the session list are different strings naming
 // one session, and letting both exist puts two ✕ buttons on it.
+// Everything a tab kind needs, in one place, because it used to be seven and
+// three of them failed SILENTLY: a kind missing from the server's TAB_KINDS
+// vanished on the next reload, a kind missing from the render dispatch showed
+// nothing, and a kind missing from the repaint hatch drew once and then held
+// that drawing forever — which shipped twice, as an empty Docker tab and as a
+// Projects tab whose thumbtacks lied about what was pinned.
+//
+//   multi   several may be open at once. A notebook is per project; the rest
+//           are one window onto one thing and a second is only ever confusing.
+//   label   what the tab strip says. Computed, never stored: a tab restored
+//           from an older layout must not wear a name that has since changed.
+//   render  draw this kind into pane i.
+//   live    when to redraw. "always" for a kind that renders from `state`,
+//           which moves under it constantly; a function returning a revision
+//           for one whose data arrives on its own schedule, so a pane already
+//           showing it is left alone until that data actually changes.
+//   open    run when the tab is brought up — the fetch its first draw needs.
+//   reload  give its pane bar a reload button.
+const TABKINDS = {
+  term:     { multi: true },
+  todo:     { multi: true, label: t => "Notebook: " + t.arg,
+              render: (i, t) => renderNotebookInto(i, t.arg), live: "always" },
+  packages: { multi: false, label: () => "packages",
+              render: (i) => renderPackagesInto(i), live: () => pkgRev,
+              open: () => loadPackages(), reload: true },
+  projects: { multi: false, label: () => "Projects",
+              render: (i) => renderProjectsInto(i), live: "always" },
+  docker:   { multi: false, label: () => "Docker",
+              render: (i) => renderDockerInto(i), live: () => dockerRev,
+              open: () => { if (!dockerList) loadDocker(); } },
+};
+
+// A terminal is identified by the tmux session behind it, not by the argument
+// that opened it. A kind that may not have two open is identified by the kind
+// alone, so a second open focuses the first whatever argument it carries —
+// which is the rule, rather than a convention of passing the same magic arg.
 const identity = t => t.kind === "term" ? "tmux:" + sessionOf(t.arg)
-                                        : t.kind + ":" + t.arg;
+                    : TABKINDS[t.kind] && !TABKINDS[t.kind].multi ? t.kind
+                    : t.kind + ":" + t.arg;
+
+// Draw one document tab into its pane, if it is due a redraw. The one place
+// that decides, so the two call sites — a pane that just changed tab and a
+// pane that did not — cannot disagree about it.
+function renderDoc(i, t, pane){
+  const spec = TABKINDS[t.kind];
+  if (!spec || !spec.render) return;
+  if (spec.live === "always"){ spec.render(i, t); return; }
+  // Stamped with the kind as well as the number: one pane holds one tab, but
+  // it can be handed a different KIND of tab, and two counters that happened
+  // to agree would then read as "already drawn".
+  const rev = t.kind + ":" + (typeof spec.live === "function" ? spec.live() : "");
+  if (pane.dataset.rev !== rev){ pane.dataset.rev = rev; spec.render(i, t); }
+}
 
 // One tab per thing. A second click on Claude or Findings for something already
 // open is a request to go to it, not to open a duplicate. Shell tabs are the
@@ -2167,7 +2219,7 @@ function show(t){
   pinFor = null;
   render();
   if (isPhone()) setView("terminal");
-  if (t.kind === "packages") loadPackages();
+  TABKINDS[t.kind]?.open?.();
   // Only when it is a different project's: switching back to a notebook must
   // not reload it, or whatever is staged in it goes.
   refreshSoon();      // a just-opened terminal's session appears in Sessions
@@ -2651,7 +2703,7 @@ function newShell(proj){
 function paintBar(pane, t, i){
   const closeBtn = isSplit()
     ? `<span class="x" data-cp="${i}" title="close this pane">✕</span>` : "";
-  const reload = (t.kind === "packages")
+  const reload = TABKINDS[t.kind]?.reload
     ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
   bar.innerHTML = `<span title="${esc(tabTitle(t))}">${esc(tabLabel(t))}</span>${reload}${closeBtn}`;
@@ -2747,19 +2799,10 @@ function drawPanes(){
       paintBar(pane, t, i);
       // Refill a document pane only when the report itself changed. Doing it
       // on every status poll would fight the reader for control of the page.
-      if (t.kind === "packages" && pane.dataset.rev !== String(pkgRev)){
-        pane.dataset.rev = String(pkgRev);
-        renderPackagesInto(i);
-      }
-      // The docker manager fetches its list AFTER the pane is first drawn, so
-      // without this it renders once — empty — and the `same` short-circuit
-      // above skips every redraw that would have filled it. Same shape as
-      // packages, and the same reason for the counter: a document pane is
-      // refilled when its report changes, not on every status poll.
-      if (t.kind === "docker" && pane.dataset.drev !== String(dockerRev)){
-        pane.dataset.drev = String(dockerRev);
-        renderDockerInto(i);
-      }
+      // A pane still showing the same tab. Whether it redraws is the kind's
+      // own business — see TABKINDS.live — and this is the case that used to
+      // be forgotten, because a tab looks perfectly fine until its data moves.
+      renderDoc(i, t, pane);
       continue;
     }
     if (same) continue;
@@ -2812,16 +2855,11 @@ function drawPanes(){
       else nudgeTerminals();
     }
     paintBar(pane, t, i);
-    if (t.kind === "packages"){
-      pane.dataset.rev = String(pkgRev); renderPackagesInto(i);
-      if (!packages) loadPackages();      // same, for a restored packages tab
-    }
-    if (t.kind === "todo") renderNotebookInto(i, t.arg);
-    if (t.kind === "projects") renderProjectsInto(i);
-    if (t.kind === "docker"){
-      pane.dataset.drev = String(dockerRev); renderDockerInto(i);
-      if (!dockerList) loadDocker();        // same, for a restored docker tab
-    }
+    // ...and a pane that has just changed tab. Same decision, same place —
+    // plus the kind's own open hook, which is what a tab restored from a saved
+    // layout needs to fetch what it draws.
+    renderDoc(i, t, pane);
+    TABKINDS[t.kind]?.open?.();
   }
 }
 
@@ -7851,6 +7889,7 @@ async function setExcluded(name, on){
       const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
       if (t) dropTab(t.id);
     }
+    applyNow(p => { p.excluded = (j.excluded || []).includes(p.name); });
   }catch(e){ notify("exclude failed: " + e, true); }
   refresh();
 }
@@ -7874,6 +7913,7 @@ async function setLocked(name, on){
       const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
       if (t) dropTab(t.id);
     }
+    applyNow(p => { p.locked = (j.locked || []).includes(p.name); });
   }catch(e){ notify("lock failed: " + e, true); }
   refresh();
 }
@@ -8013,8 +8053,25 @@ async function setProjectPinned(name, on){
       body: JSON.stringify({name, pinned:on})});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
+    // The answer IS the new state — the server sends back the whole pinned
+    // set — so the page adopts it and redraws now. Waiting for the next
+    // /api/status put a poll's latency between the click and the button
+    // moving, on a control whose whole job is instant.
+    applyNow(p => { p.pinned = (j.pinned || []).includes(p.name); });
   }catch(e){ notify("pin failed: " + e, true); }
-  refresh();
+  refresh();                       // ...and reconcile, in the background
+}
+
+// Adopt a server answer into the projects already on screen and redraw.
+//
+// The rule this follows: an action's response is authoritative for what it
+// changed, so the page should not go and ask again before believing it. The
+// poll still runs and still wins in the end — this only removes the wait
+// between a click and the thing it clicked moving.
+function applyNow(fn){
+  (state?.projects || []).forEach(fn);
+  drawProjects(state?.projects || []);
+  drawPanes();                     // the Projects tab shows the same rows
 }
 
 // A session tmux knows as "claude-Foo" is the same thing the Projects card

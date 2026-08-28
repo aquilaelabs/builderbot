@@ -9,6 +9,7 @@
 // Same size matters as much as staying loaded: a hidden frame is still an
 // attached tmux client, and tmux sizes a window to its smallest client.
 import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
+import { readFileSync } from 'node:fs';
 
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 800 } });
@@ -120,4 +121,33 @@ ok(await page.$$eval('#pane0 .slot.on iframe', f => !f[0].dataset.stale),
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
+// One window onto one thing. A notebook is per project and several may be
+// open; everything else is a single view, and a second open focuses the first
+// whatever argument it carries — enforced by the kind's own entry rather than
+// by every caller remembering to pass the same magic arg.
+const kindCount = (k) => page.evaluate((kk) => tabs.filter(t => t.kind === kk).length, k);
+for (const k of ['projects', 'docker', 'packages']){
+  await page.evaluate((kk) => { openTab({kind: kk, arg: 'one', label: kk});
+                                openTab({kind: kk, arg: 'two', label: kk}); }, k);
+  ok(await kindCount(k) === 1, `only one ${k} tab, whatever it is opened with`);
+}
+await page.evaluate(() => { openTab({kind: 'todo', arg: 'alpha', label: 'a'});
+                            openTab({kind: 'todo', arg: 'beta', label: 'b'}); });
+ok(await kindCount('todo') >= 2,
+   '...while notebooks are one per project, which is the whole point of them');
+
+// Every tab kind the page knows must be one the SERVER will keep. A kind
+// missing from TAB_KINDS is dropped from the saved layout without a word, so
+// the tab comes back from a reload as if it had never been opened — which has
+// happened, and is invisible until somebody reloads. Compared against the
+// files rather than trusted, because the two are in different languages and
+// nothing else makes them agree.
+const html = readFileSync(new globalThis.URL('../index.html', import.meta.url).pathname, 'utf8');
+const py = readFileSync(new globalThis.URL('../server.py', import.meta.url).pathname, 'utf8');
+const inPage = [...html.matchAll(/^ {2}([a-z]+):\s*\{ multi:/gm)].map(m => m[1]).sort();
+const inServer = (py.match(/^TAB_KINDS = \{([^}]*)\}/m) || [, ''])[1]
+  .match(/"([a-z]+)"/g).map(s => s.replace(/"/g, '')).sort();
+ok(inPage.length > 3 && JSON.stringify(inPage) === JSON.stringify(inServer),
+   `every tab kind the page has is one the server keeps (page: ${inPage}, server: ${inServer})`);
+
 await done(browser);

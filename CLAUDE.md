@@ -913,6 +913,15 @@ by hand cost four commands and still could not see the failed builds.
     That density is the house style, not decoration; match it.
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
     `index.html` is one file of vanilla JS and CSS. No framework, no build step.
+  - **A new tab kind is one entry in `TABKINDS`** (scripts/dashboard/index.html)
+    plus its name in `TAB_KINDS` (server.py), and a test compares the two. It
+    used to be seven places, three of which failed silently — a kind missing
+    from the server's list vanished on the next reload, one missing from the
+    repaint hatch drew once and then held that drawing forever. Both shipped.
+    Declare `multi` (a notebook is per project; everything else is one window
+    onto one thing), `live` ("always" for a kind rendering from `state`, a
+    revision function for one whose data arrives on its own schedule), and
+    `open` for whatever its first draw has to fetch.
   - Anything the web UI can execute is a table lookup (`MACROS`, `TMUX_KEYS`,
     `TMUX_LITERALS`, `PACKAGES`) rather than a command string, and `bb-tty` validates its one
     URL argument against directories that actually exist. New surface keeps that

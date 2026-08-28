@@ -56,3 +56,4 @@
 - The Artifacts tab's docker controls became one Send to Docker manager button — a project can have several containers, all built from its codebase, managed from one tab (b1955b0)
 - The Docker manager lists only containers you have sent to it, and Remove takes one back off the list without touching its env or data (b1dcab1)
 - A project that pushes with a deploy key can now be given its own access token from the rename dialog — the first step off deploy keys (4bf16ad)
+- Opening a second Projects, Docker or packages tab now just goes to the one already open; notebooks stay one per project (2d28119)
