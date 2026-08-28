@@ -78,3 +78,4 @@
 - The Projects and Docker tabs now fill their pane like the notebook, instead of sitting in a rounded box (a32db3f)
 - Pinning a project is now done on the Projects tab only, and both tabs share the notebook's spacing (f0faecd)
 - With no Docker daemon reachable, the buttons that would drive one are disabled and say why (a763071)
+- The Docker tab says which daemon it is talking to, and tells you when a mounted socket is being ignored (dc6a44d)
