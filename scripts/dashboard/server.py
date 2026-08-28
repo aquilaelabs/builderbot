@@ -2640,6 +2640,12 @@ class Handler(BaseHTTPRequestHandler):
             if name not in devapp.overview_names():
                 return self._json({"error": f"no container {name}"}, 400)
             return self._json(devapp.read_container(name))
+        if act == "save":
+            if name not in devapp.overview_names():
+                return self._json({"error": f"no container {name}"}, 400)
+            r = devapp.update_container(name, req.get("compose") or "",
+                                        req.get("env") or "")
+            return self._json(r, 400 if r.get("error") else 200)
         if act != "create":
             return self._json({"error": f"unknown action: {act}"}, 400)
         # A name that is also a project would collide in the store, which is

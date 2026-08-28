@@ -51,6 +51,7 @@ State: /config/devapps.json ({project: built_rev/built_at}), the env files in
 /config/devenv/, one build job at a time in memory.
 """
 import hashlib
+import contextlib
 import json
 import os
 import re
@@ -902,6 +903,43 @@ def create_container(name, compose_text, env_text=""):
 def overview_names():
     """Every name the store knows — what an endpoint checks a request against."""
     return set(_load())
+
+
+def update_container(name, compose_text, env_text):
+    """Change what a container is, after it exists.
+
+    Ports move, a volume is added, an image is pinned — a compose file written
+    here is edited far more often than it is created, and without this the only
+    way to change one was to remove it and write it again from memory.
+
+    The old file is kept until the new one parses. A compose file that will not
+    read is not a state to leave a container in, and the operator is looking at
+    the text that caused it.
+    """
+    if not is_file_source(name):
+        return {"error": f"{name} is not a container written here"}
+    if not (compose_text or "").strip():
+        return {"error": "a compose file is needed"}
+    if len(compose_text) > COMPOSE_MAX:
+        return {"error": f"that compose file is over {COMPOSE_MAX // 1000}kB"}
+    f = containers_dir(name) / "docker-compose.yml"
+    try:
+        was = f.read_text(encoding="utf-8")
+    except OSError:
+        was = ""
+    try:
+        f.write_text(compose_text, encoding="utf-8")
+    except OSError as e:
+        return {"error": f"could not write it: {e}"}
+    r = _run(_compose(name, MAIN, "config", "-q"), timeout=30)
+    if r["code"] != 0:
+        with contextlib.suppress(OSError):
+            f.write_text(was, encoding="utf-8")
+        return {"error": ("compose will not read that:\n" + r["out"]).strip()[-600:]}
+    write_env(name, env_text or "", MAIN)
+    _bump()
+    return {"ok": True, "project": name, "instance": MAIN,
+            "note": "rebuild it to bring the change up"}
 
 
 def read_container(name):

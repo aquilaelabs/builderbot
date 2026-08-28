@@ -4848,6 +4848,7 @@ function dockerJob(){
 // is not a reason to stop asking.
 async function dmAction(project, instance, act, btn){
   if (act === "env"){ openDevEnv(project, instance); return; }
+  if (act === "edit"){ openEditContainer(project); return; }
   if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
   if (act === "remove" && !confirm(
       `Remove ${project}/${instance} from the manager?\n\n`
@@ -4944,7 +4945,36 @@ const COMPOSE_STARTER = `services:
       - ./config:/config
 `;
 
+let cEditing = null;              // the container being edited, or null for new
+
+async function openEditContainer(name){
+  cEditing = name;
+  $("cTitle").textContent = "Edit " + name;
+  $("cName").value = name;
+  $("cName").disabled = true;
+  $("cNameHint").textContent =
+    "Its name is what the compose project is called, so it does not change "
+    + "here — remove it and write it again under another one.";
+  $("cYml").value = $("cEnv").value = "";
+  $("cErrWrap").hidden = true;
+  $("cGo").disabled = false; $("cGo").textContent = "Save";
+  cSeg("yml");
+  $("cmodal").hidden = false;
+  try{
+    const r = await fetch("/api/container", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({action:"read", name})});
+    const j = await r.json();
+    if (cEditing !== name) return;          // reopened on another one meanwhile
+    $("cYml").value = j.compose || "";
+    $("cEnv").value = j.env || "";
+  }catch(e){ $("cErr").textContent = "could not read it: " + e;
+             $("cErrWrap").hidden = false; }
+}
+
 function openNewContainer(){
+  cEditing = null;
+  $("cName").disabled = false;
   $("cName").value = "";
   $("cYml").value = COMPOSE_STARTER;
   $("cEnv").value = "PUID=99\nPGID=100\nTZ=America/New_York\n";
@@ -4966,25 +4996,28 @@ function cSeg(which){
 
 async function cSubmit(){
   const fail = m => ($("cErr").textContent = m, $("cErrWrap").hidden = false);
+  const editing = cEditing, verb = editing ? "Save" : "Create";
   if (!$("cName").value.trim()) return fail("a name is needed");
-  $("cGo").disabled = true; $("cGo").textContent = "Creating…";
+  $("cGo").disabled = true; $("cGo").textContent = editing ? "Saving…" : "Creating…";
   try{
     const r = await fetch("/api/container", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({action:"create", name: $("cName").value,
+      body: JSON.stringify({action: editing ? "save" : "create",
+                            name: editing || $("cName").value,
                             compose: $("cYml").value, env: $("cEnv").value})});
     const j = await r.json();
     if (j.error){
-      $("cGo").disabled = false; $("cGo").textContent = "Create";
+      $("cGo").disabled = false; $("cGo").textContent = verb;
       // Compose's own complaint, which names the line — shown on the tab the
       // text is on, since that is where it has to be fixed.
       cSeg("yml");
       return fail(j.error);
     }
     $("cmodal").hidden = true;
-    notify(`${j.name} is in the manager — press Build to bring it up`);
+    notify(editing ? `${editing} saved — ${j.note || "rebuild it to bring the change up"}`
+                   : `${j.name} is in the manager — press Build to bring it up`);
     dockerList = null; dockerRev++; loadDocker();
-  }catch(e){ $("cGo").disabled = false; $("cGo").textContent = "Create";
+  }catch(e){ $("cGo").disabled = false; $("cGo").textContent = verb;
              return fail("could not create it: " + e); }
 }
 
@@ -5035,7 +5068,11 @@ function renderDockerInto(i){
               : "docker compose up -d"}">Up</button>
         <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
           title="docker compose down">Down</button>
-        <button type="button" data-dm="env" title="this container's env file">Env</button>
+        ${d.source === "file"
+          ? `<button type="button" data-dm="edit"
+               title="edit this container's compose file and env">Edit</button>`
+          : `<button type="button" data-dm="env"
+               title="this container's env file">Env</button>`}
         <button type="button" class="rm" data-dm="remove" ${busy ? "disabled" : ""}
           title="take it down and drop it from this list. Its env and its data
 directory stay, so remaking it under the same name finds them">Remove</button>
@@ -8392,7 +8429,14 @@ function applyNow(fn){
 // page. slideBody already does that pairing for the Show-excluded toggle.
 function leaveRow(name, fn){
   const card = $("projects");
-  const row = card?.querySelector(`.row:has([data-p="${CSS.escape(name)}"])`);
+  // Escaped for a QUOTED attribute value, which is a different job from
+  // CSS.escape: that one escapes identifiers, so a project with a dot in its
+  // name came out as [data-p="ep\.silon"] — a literal backslash inside the
+  // quotes, matching nothing. The row was then never found and the change
+  // simply skipped its animation, quietly, for exactly the fixture whose name
+  // exists to catch this.
+  const row = card?.querySelector(
+    `.row:has([data-p="${name.replace(/["\\]/g, "\\$&")}"])`);
   if (!row || noMotion()){ applyNow(fn); return; }
   const from = card.offsetHeight;
   row.style.overflow = "hidden";

@@ -711,6 +711,34 @@ ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
 ok(/compose written here/.test(await page.$eval(
      '.dmtab .row[data-inst="radarr|main"]', r => r.textContent)),
    '...and the manager says which kind it is');
+// Editing one: what it is changes far more often than it is created, and
+// without this the only way to move a port was to remove it and retype it.
+await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
+await page.waitForSelector('#cmodal:not([hidden])');
+await page.waitForFunction(() => /services:/.test(document.getElementById('cYml').value),
+                           { timeout: 10000 });
+ok(await page.$eval('#cName', e => e.disabled && e.value === 'radarr'),
+   'editing opens on the container, and its name is not a field any more');
+await page.fill('#cYml', 'services:\n  app:\n    image: alpine:latest\n');
+await page.click('#cGo');
+await page.waitForFunction(() => document.getElementById('cmodal').hidden,
+                           { timeout: 15000 });
+ok(/alpine:latest/.test(readFileSync(`${DIR}/state/containers/radarr/docker-compose.yml`, 'utf8')),
+   '...and Save writes the new compose file');
+// One that will not parse leaves the old file where it was.
+writeFileSync(`${DIR}/dockerstate/config.fail`, '1');
+await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
+await page.waitForSelector('#cmodal:not([hidden])');
+await page.waitForFunction(() => /alpine/.test(document.getElementById('cYml').value),
+                           { timeout: 10000 });
+await page.fill('#cYml', 'services:\n  broken');
+await page.click('#cGo');
+await page.waitForSelector('#cErrWrap:not([hidden])', { timeout: 15000 });
+ok(/alpine:latest/.test(readFileSync(`${DIR}/state/containers/radarr/docker-compose.yml`, 'utf8')),
+   'a save that will not parse puts the old compose file back');
+rmSync(`${DIR}/dockerstate/config.fail`, { force: true });
+await page.click('#cCancel');
+
 await page.click('#bDockerNew');
 await page.waitForSelector('#cmodal:not([hidden])');
 await page.fill('#cName', 'alpha');
