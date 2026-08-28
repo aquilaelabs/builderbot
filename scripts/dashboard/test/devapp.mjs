@@ -699,9 +699,17 @@ ok(/services:/.test(await page.$eval('#cYml', e => e.value)),
 ok(await page.$eval('#cEnvField', e => e.hidden)
    && !await page.$eval('#cYmlField', e => e.hidden),
    '...showing one of the two definitions at a time');
+// The incoming pane slides in from its own tab's side, the way the New project
+// dialog's source picker does. Caught while it runs rather than after: the
+// pane is visible either way, and the only thing being claimed here is that it
+// arrived moving.
+const slides = page.waitForFunction(
+  () => document.getElementById('cEnvField').getAnimations().length > 0,
+  { timeout: 8000 });
 await page.click('#cTabEnv');
+await slides;
 ok(!await page.$eval('#cEnvField', e => e.hidden),
-   '...and the segment swaps them');
+   '...and the segment swaps them, on the same slide as the project dialog');
 writeFileSync(`${DIR}/dockerstate/config.fail`, '1');
 await page.click('#cTabYml');
 await page.fill('#cName', 'radarr');
