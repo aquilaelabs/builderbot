@@ -1193,6 +1193,23 @@ deliberately does not do for every row at once. Lines wrap rather than scroll:
 a host path is long, and a row that scrolls sideways on a phone hides the half
 you were reading.
 
+**A long build says what it is doing, and can be stopped.** The command's
+output is streamed into the row as it arrives rather than handed over when it
+exits — a `compose build` that spends four minutes pulling layers used to be
+four minutes of a spinner and then everything at once, which is a download
+wearing a hang's clothes. The phase word above it still says *building* or
+*starting*; the tail below says what the phase is spending its time on. It is
+raw and deliberately not parsed into a bar: docker rewrites a line per layer
+per tick, and turning that into a percentage is the thing the packages tab
+already gave up on.
+
+**Abort** sits beside it while a job runs, and asks nothing first. Stopping a
+build is not destructive — what is already built is kept, exactly as a failed
+build's work is — and the signal goes to the process *group*, because a compose
+CLI waiting on a pull leaves the download running if only the CLI is asked to
+stop. The row then says how the job ended rather than silently reverting to
+whatever state it was in, which is what it used to do for a failed build too.
+
 **New container…** on that tab runs something with no project behind it: a
 name, a compose file and an environment, which is the shape Portainer's stacks
 and Dockge use. Labels are not a fourth box — in compose they belong in the
