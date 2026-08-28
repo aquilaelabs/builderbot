@@ -522,6 +522,56 @@ ok(await page.$eval('#rnAuthToken', b => b.classList.contains('on'))
 ok(/stay where they are|stays stored/.test(await page.$eval('#rnAuthHint', e => e.textContent)),
    '...promising in words that switching removes neither');
 await page.fill('#rnToken', '');
+// Clearing, which is the other half of a stored token: it cannot be shown and
+// must not be typed over blind, so the field is closed and this is the way in.
+await page.click('#rnCancel');
+await page.evaluate(() => renameProject('alpha'));
+await page.waitForSelector('#rnAuthField:not([hidden])', { timeout: 8000 });
+ok(await page.$eval('#rnTokenClear', b => b.hidden),
+   'a project with no token stored is offered nothing to clear');
+
+// The remaining states need a project holding both credentials, which no
+// fixture here does — so the answer the dialog was given is set directly and
+// the real draw runs against the real DOM. What is being tested is the state
+// machine, and it takes exactly this one input.
+const authState = (opts, now) => page.evaluate(([o, n]) => {
+  rnAuthOpts = o; rnAuthNow = n; rnAuthPick = n; rnClearToken = false;
+  document.getElementById('rnToken').value = '';
+  rnDrawAuth();
+}, [opts, now]);
+const seen = () => page.evaluate(() => ({
+  closed: document.getElementById('rnToken').disabled,
+  clear: !document.getElementById('rnTokenClear').hidden,
+  key: document.getElementById('rnAuthKey').disabled,
+  token: document.getElementById('rnAuthToken').disabled,
+  onKey: document.getElementById('rnAuthKey').classList.contains('on'),
+  onToken: document.getElementById('rnAuthToken').classList.contains('on'),
+  hint: document.getElementById('rnAuthHint').textContent,
+}));
+
+await authState({ now: 'ssh', token: true, ssh: true }, 'ssh');
+let v = await seen();
+ok(v.closed && v.clear && !v.key && !v.token && v.onKey,
+   'a stored token closes the field and offers a way to clear it, both sides live');
+await page.click('#rnTokenClear');
+v = await seen();
+ok(!v.closed && v.token && v.onKey && !v.onToken,
+   '...and clearing opens the field, ghosts the token side and puts the pick back on the key');
+ok(await page.$eval('#rnTokenClear', b => /Keep the stored token/.test(b.textContent)),
+   '...with the way back offered, since nothing has happened to the project yet');
+
+// Only a token, no key: the side that does not exist is the ghosted one, and
+// the pick cannot leave the side that does.
+await authState({ now: 'https', token: true, ssh: false }, 'https');
+v = await seen();
+ok(v.closed && v.key && !v.token && v.onToken,
+   'with no deploy key the key side is ghosted and the pick stays on the token');
+await page.click('#rnTokenClear');
+v = await seen();
+ok(v.key && v.token && !v.onKey && !v.onToken && !v.closed,
+   'clearing the only credential ghosts both sides — there is nothing left to pick');
+ok(/cannot push to GitHub/.test(v.hint) && /locally/.test(v.hint),
+   '...and says so: the work still happens, it just stays on this box');
 await page.click('#rnCancel');
 await page.evaluate(() => renameProject('beta'));
 await page.waitForSelector('#rnmodal:not([hidden])');

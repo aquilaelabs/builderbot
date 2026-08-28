@@ -82,6 +82,19 @@ def forget_token(project):
         (STATE / "gitcreds" / project).unlink()
 
 
+def unscope(dest):
+    """Take the credential helper back off a repository.
+
+    The other half of forgetting a token: `store --file=...` naming a file that
+    is no longer there does not fail loudly, it finds no credentials and lets
+    git fall through to asking — which on a headless box is a push that hangs
+    or fails with a message about a terminal. Reset it and https simply has no
+    credential, which is the truth being recorded.
+    """
+    run(["git", "-C", str(dest), "config", "--local",
+         "--replace-all", "credential.helper", ""], timeout=15)
+
+
 def _scope_to_token(dest, helper):
     """Point one repository at one token, and at nothing else.
 
@@ -330,6 +343,10 @@ def rename(req):
     # "" leaves the remote's spelling alone, which is what every rename that is
     # only a rename sends.
     auth = _field(req, "auth").strip()
+    # Ignored when a token came with it: the dialog does not send both, and a
+    # request that did would be asking to write a credential and delete it in
+    # the same breath. The write is the intention worth honouring.
+    clear = bool(req.get("clear_token")) and not token
     if not old or not PROJECT_NAME.fullmatch(old):
         return {"error": "unknown project"}, 400
     if auth and auth not in ("https", "ssh"):
@@ -346,13 +363,17 @@ def rename(req):
         # Not an error when a token or an auth switch came with it: changing
         # the credential without moving the directory is a thing somebody will
         # want, and the dialog offers all three at once precisely so they can.
-        if not token and not auth:
+        if not token and not auth and not clear:
             return {"error": f"{old} is already its name"}, 400
         moved, failed = [], []
         if token:
             write_token(old, token)
             _scope_to_token(src, token_helper(old))
             moved.append("its access token")
+        elif clear:
+            forget_token(old)
+            unscope(src)
+            moved.append("its access token, removed")
         # After the token, always: switching to https needs the token that the
         # same submit may have just written.
         if auth:
@@ -422,8 +443,16 @@ def rename(req):
     if token:
         write_token(new, token)
         moved.append("a new access token")
+    elif clear:
+        forget_token(new)
+        moved.append("its access token, removed")
     if (STATE / "gitcreds" / new).is_file():
         _scope_to_token(dest, token_helper(new))
+    elif clear:
+        # Only when this request cleared one. A repository that never had a
+        # token may still have a helper somebody set by hand, and a rename is
+        # not the moment to take it away.
+        unscope(dest)
     # Last, and under the new name: set_auth reads and writes the push record,
     # which only moved a few lines above.
     if auth:

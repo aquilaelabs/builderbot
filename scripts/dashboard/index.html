@@ -468,6 +468,10 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .nb .caution{color:var(--warn);border-color:#4a3a15}
 /* Two-way choice as two buttons, not radios: one tap on a phone, and the
    green .on state is the same vocabulary as everything else on the page. */
+.modal .link{background:none;border:0;color:var(--dim);padding:2px 0;
+  font:12px/1.4 system-ui,sans-serif;min-height:var(--tap);text-align:left}
+.modal .link[hidden]{display:none}
+@media(hover:hover){ .modal .link:hover{color:var(--accent)} }
 .modal .pseg{display:flex;gap:8px}
 .modal .pseg button{flex:1;min-height:var(--tap)}
 /* pre-wrap: a failed clone reports with git's own message, which has lines. */
@@ -1668,6 +1672,11 @@ body.dragging .tab .lbl{cursor:grabbing}
       <label for="rnToken">Access token <span class="dim">— leave empty to keep the current one</span></label>
       <input id="rnToken" type="password" autocomplete="off" spellcheck="false"
              placeholder="ghp_… or github_pat_…">
+      <!-- A stored token is not shown and not typed over: the field is closed
+           and this is the way in. Clearing is staged like everything else in
+           this dialog — pressing it changes what the dialog says, and Rename
+           is what changes the project. -->
+      <button type="button" id="rnTokenClear" class="link" hidden></button>
       <div class="hint" id="rnTokenHint"></div>
     </div>
     <!-- Which of the two credentials git actually reaches for. A project can
@@ -8038,6 +8047,12 @@ $("dnmodal").onclick = e => { if (e.target === $("dnmodal")) closeSendToDocker()
 
 $("rnName").oninput = rnShow;
 $("rnGo").onclick = rnSubmit;
+$("rnTokenClear").onclick = () => {
+  rnClearToken = !rnClearToken;
+  if (rnClearToken) $("rnToken").value = "";   // whatever was typed was for the
+  rnDrawAuth();                                // token being thrown away
+  if (rnClearToken) $("rnToken").focus();
+};
 $("rnAuthKey").onclick = () => rnAuthSet("ssh");
 $("rnAuthToken").onclick = () => rnAuthSet("https");
 // Typing a token can turn the disabled side on: setting one and switching to
@@ -8374,12 +8389,17 @@ function renameProject(name){
 // them rather than waiting, because the name field is the reason most people
 // opened it and it should not be behind a request.
 let rnAuthNow = null, rnAuthPick = null, rnAuthOpts = null;
+// Staged, like the name and the token: pressing Clear changes what the dialog
+// says and nothing on disk. Rename is the only verb here that touches the
+// project, which is what makes Cancel mean something.
+let rnClearToken = false;
 
 // Fetched per open, like the new-project dialog's keys: a project's remote can
 // be rewritten from a terminal between two opens, and a cached answer here
 // would offer to switch to the side it is already on.
 function rnLoadAuth(name){
   rnAuthNow = rnAuthPick = rnAuthOpts = null;
+  rnClearToken = false;
   $("rnAuthField").hidden = true;
   fetch("/api/project-auth", {method:"POST",
     headers:{"Content-Type":"application/json"},
@@ -8395,8 +8415,6 @@ function rnLoadAuth(name){
 }
 
 function rnDrawAuth(){
-  // No origin means no question to ask: a local repo authenticates against
-  // nothing, and a segment there would imply it had a choice.
   // Gated on the token field as well as on having a remote: where a token
   // would mean nothing (a read-only clone, a local repo) the field above is
   // hidden, and a switch offering to use a credential the dialog will not let
@@ -8405,10 +8423,49 @@ function rnDrawAuth(){
     $("rnAuthField").hidden = true; return;
   }
   const typed = !!$("rnToken").value.trim();
-  // A token typed in this dialog counts as available: setting one and
-  // switching to it is one intention, and the submit does them in that order.
-  const canToken = rnAuthOpts.token || typed;
+  // What the project WILL have when Save lands, not what it has now — every
+  // control here is staged, so they all have to agree about the same future.
+  // A token survives unless it is being cleared; typing one is a new token
+  // either way, which is also how you replace one you just cleared.
+  const stored = rnAuthOpts.token && !rnClearToken;
+  const canToken = stored || typed;
   const canKey = rnAuthOpts.ssh;
+
+  // The stored token is closed rather than editable: it cannot be shown (only
+  // its file has it) and typing over an invisible value is how you replace a
+  // working credential by accident. Clearing opens it.
+  const closed = stored && !rnClearToken;
+  // Only a stored token closes the field. Closing it when NEITHER credential
+  // is available reads as the tidier rule and is a dead end: typing a token is
+  // the one way out of that state, and a project cloned over https whose token
+  // was cleared would have no way back to pushing at all.
+  $("rnToken").disabled = closed;
+  $("rnToken").placeholder = closed ? "stored — cleared below to replace it"
+                                    : "ghp_… or github_pat_…";
+  $("rnTokenClear").hidden = !(rnAuthOpts.token && !typed);
+  $("rnTokenClear").textContent = rnClearToken
+    ? "Keep the stored token after all"
+    : "Clear the stored token, and type another";
+
+  // Nothing left to authenticate with. Not an error — a project can be worked
+  // on perfectly well without pushing — so it is stated rather than refused,
+  // and both sides go quiet because neither is a choice any more.
+  if (!canToken && !canKey){
+    $("rnAuthField").hidden = false;
+    rnAuthPick = null;
+    $("rnAuthKey").classList.remove("on"); $("rnAuthToken").classList.remove("on");
+    $("rnAuthKey").disabled = $("rnAuthToken").disabled = true;
+    $("rnAuthHint").textContent =
+      "With no deploy key and no token this project cannot push to GitHub. "
+      + "Everything else still works — commit, branch and build locally — and "
+      + "pushing comes back the moment either credential is here.";
+    return;
+  }
+  // A pick that has stopped being available cannot stay lit: clearing the
+  // token while the segment is on it would otherwise leave Save promising an
+  // authentication that no longer exists.
+  if (rnAuthPick === "https" && !canToken) rnAuthPick = canKey ? "ssh" : null;
+  if (rnAuthPick === "ssh" && !canKey) rnAuthPick = canToken ? "https" : null;
   $("rnAuthField").hidden = false;
   $("rnAuthKey").classList.toggle("on", rnAuthPick === "ssh");
   $("rnAuthToken").classList.toggle("on", rnAuthPick === "https");
@@ -8425,10 +8482,10 @@ function rnDrawAuth(){
             ? "Renaming will point origin at https://github.com and use the "
               + "token. The key and its alias stay where they are."
             : "Renaming will point origin back at the deploy key. The token "
-              + "stays stored and unused.")
-        : !canToken && rnAuthNow === "ssh"
+              + (rnClearToken ? "is being cleared." : "stays stored and unused."))
+        : !canToken
           ? "No token is stored for it — set one above and this becomes a choice."
-        : !canKey && rnAuthNow === "https"
+        : !canKey
           ? "It has no deploy-key remote to go back to: it has only ever used https."
         : "Switching keeps both credentials — nothing is removed either way.");
 }
@@ -8456,6 +8513,9 @@ async function rnSubmit(){
   // rename — the server treats the field's absence and a no-op the same way,
   // but sending the current mode back would make every rename a rewrite.
   const auth = rnAuthPick && rnAuthPick !== rnAuthNow ? rnAuthPick : "";
+  // A typed token replaces rather than clears, so the two never both go: the
+  // server would otherwise write one and delete it in the same request.
+  const clear_token = rnClearToken && !token;
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
   // A token change with no name change is a legitimate thing to want, so this
@@ -8464,7 +8524,7 @@ async function rnSubmit(){
   try{
     const r = await fetch("/api/rename", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, to, token, auth})});
+      body: JSON.stringify({name, to, token, auth, clear_token})});
     const j = await r.json();
     if (j.error){ $("rnGo").disabled = false; $("rnGo").textContent = "Rename";
                   return fail(j.error); }
