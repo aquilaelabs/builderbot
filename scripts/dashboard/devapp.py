@@ -54,6 +54,7 @@ import hashlib
 import contextlib
 import json
 import os
+import signal
 import re
 import shutil
 import subprocess
@@ -208,8 +209,54 @@ _lock = threading.Lock()
 # as well as the project: two instances of one project are two builds, and a
 # row watching "is my build running" must not light up for its neighbour's.
 _job = {"running": False, "project": "", "instance": "", "step": "", "log": "",
-        "error": "", "await_env": False}
+        "error": "", "await_env": False, "aborting": False}
 _rev = 0
+
+# The process the job is inside right now, so Abort has something to interrupt.
+# A list rather than a value because the worker thread writes it and a request
+# thread reads it — the same shape, and the same reason, as the installer's.
+_child = [None]
+
+# How much of a long command's output the job carries. A pull writes a line per
+# layer per progress tick, so this is a tail and not a transcript: enough to
+# see what it is doing and where it stopped, not a log file kept in memory and
+# posted to every poller.
+LOG_TAIL = 4000
+
+
+def _hold_child(proc):
+    with _lock:
+        _child[0] = proc
+
+
+def _log_line(line):
+    """One line from a running command, appended and trimmed.
+
+    Written without the lock: this runs per line of a docker pull, the readers
+    are a poll loop copying a string, and python's own assignment is atomic
+    enough for a display. Correctness here is "the tail is recent", not "the
+    tail is a consistent snapshot".
+    """
+    _job["log"] = (_job["log"] + line)[-LOG_TAIL:]
+
+
+def abort_job():
+    """Stop the job that is running, if any.
+
+    Asks the process group rather than the process: a compose CLI waiting on a
+    pull leaves the download running if only the CLI is signalled. What is
+    already built stays — an abort is for the rest of the work, not for undoing
+    what finished, which is the same bargain the package installer's makes.
+    """
+    with _lock:
+        if not _job["running"]:
+            return False
+        _job["aborting"] = True
+        proc = _child[0]
+    if proc is not None:
+        _kill_group(proc)
+    _bump()
+    return True
 
 
 def configure(*, workspace, state, write_json):
@@ -433,7 +480,19 @@ def _guard(argv):
     return ""
 
 
-def _run(argv, timeout=60, env_extra=None):
+def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
+    """One docker or compose call.
+
+    `sink` and `hold` are what make a long one watchable and stoppable. Without
+    them the output arrives when the process exits, which for `compose build`
+    is minutes of nothing followed by everything at once — a pull that looks
+    like a hang. With a sink the lines are handed over as they are read, so
+    the row's tail fills while it runs; with `hold` the process is offered to
+    the caller so Abort has something to interrupt.
+
+    Both optional, and every short call still takes the simple path: a
+    `docker version` does not need a reader thread.
+    """
     bad = _guard(argv)
     if bad:
         # Refused rather than raised: _worker runs builds on a thread, where an
@@ -453,18 +512,73 @@ def _run(argv, timeout=60, env_extra=None):
         env.pop("DOCKER_HOST", None)
     if env_extra:
         env.update(env_extra)
+    if sink is None and hold is None:
+        try:
+            r = subprocess.run(argv, capture_output=True, text=True,
+                               timeout=timeout, env=env, check=False)
+        except subprocess.TimeoutExpired:
+            # Ahead of the general case, which it is a subclass of. str() on
+            # this one dumps the whole argv, and the argv is this module's own
+            # doing — noise in a row or a doctor line that has room for a
+            # sentence.
+            return {"code": 1, "out": f"timed out after {timeout}s"}
+        except (OSError, subprocess.SubprocessError) as e:
+            return {"code": 1, "out": str(e)}
+        return {"code": r.returncode, "out": (r.stdout or "") + (r.stderr or "")}
+    return _run_streamed(argv, timeout, env, sink, hold)
+
+
+def _run_streamed(argv, timeout, env, sink, hold):
+    """The watchable form: read as it goes, and let it be killed.
+
+    stderr is folded into stdout because that is where docker writes its
+    progress and where compose writes everything — two streams read separately
+    would interleave by luck rather than by time.
+
+    Its own process group, so a kill reaches what the CLI is waiting on rather
+    than only the CLI: the packages installer learned this against a `bb` that
+    was itself waiting on a curl, and a compose call waiting on a pull is the
+    same shape.
+    """
+    out = []
     try:
-        r = subprocess.run(argv, capture_output=True, text=True,
-                           timeout=timeout, env=env, check=False)
-    except subprocess.TimeoutExpired:
-        # Ahead of the general case, which it is a subclass of. str() on this
-        # one dumps the whole argv, and the argv is this module's own doing —
-        # noise in a row or a doctor line that has room for a sentence.
-        return {"code": 1, "out": f"timed out after {timeout}s"}
+        p = subprocess.Popen(argv, stdout=subprocess.PIPE,
+                             stderr=subprocess.STDOUT, text=True,
+                             bufsize=1, env=env, start_new_session=True)
     except (OSError, subprocess.SubprocessError) as e:
         return {"code": 1, "out": str(e)}
-    return {"code": r.returncode, "out": (r.stdout or "") + (r.stderr or "")}
+    if hold:
+        hold(p)
+    deadline = time.time() + timeout
+    try:
+        for line in p.stdout:
+            out.append(line)
+            if sink:
+                sink(line)
+            if time.time() > deadline:
+                _kill_group(p)
+                out.append(f"\ntimed out after {timeout}s\n")
+                break
+    except (OSError, ValueError):
+        pass                          # the pipe went with the process
+    finally:
+        if hold:
+            hold(None)
+    try:
+        code = p.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        _kill_group(p)
+        code = 1
+    return {"code": code, "out": "".join(out)}
 
+
+def _kill_group(p):
+    """The group, not the process: a compose CLI waiting on a pull leaves the
+    download running if only the CLI is signalled."""
+    try:
+        os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+    except (OSError, ProcessLookupError):
+        pass
 
 # The compose label every container started by compose carries. Read rather
 # than parsed out of the name: a compose file may set container_name to
@@ -920,7 +1034,13 @@ def overview():
             # through its own build, and Up/Rebuild/Remove stayed live for a
             # second click the server then refused. It belongs here, with the
             # rest of what this page draws from.
-            "job": dict(_job) if _job["running"] else None,
+            # While it is running OR while it has something to say about how it
+            # ended. Dropped the moment it stopped, a build that failed — or one
+            # stopped on purpose, which ends a job with no other trace — left
+            # the row showing whatever state it happened to be in and no account
+            # of why. It is replaced by the next job, which is when it stops
+            # being the answer to "what just happened here".
+            "job": dict(_job) if (_job["running"] or _job["error"]) else None,
             # Only the ones that are not an instance of ours: the instances
             # above already account for those, and listing them twice would
             # make the page look like the daemon is running double.
@@ -1589,7 +1709,8 @@ def rebuild(project, instance=MAIN, ack=""):
         _rec(d, project, instance)["building_since"] = int(time.time())
         write_json(FILE, d)
     _job.update(running=True, project=project, instance=instance,
-                step="building", log="", error="", await_env=False)
+                step="building", log="", error="", await_env=False,
+                aborting=False)
     _bump()
     threading.Thread(target=_worker, args=(project, instance), daemon=True).start()
     return {"ok": True, "started": True}
@@ -1608,8 +1729,12 @@ def _clear_marker(project, instance=MAIN):
 def _worker(project, instance=MAIN):
     try:
         r = _run(_compose(project, instance, "build"), timeout=3600,
-                 env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD)
-        _job["log"] = r["out"][-2000:]
+                 env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,
+                 sink=_log_line, hold=_hold_child)
+        if _job["aborting"]:
+            _job.update(error="stopped — what had already been built is kept",
+                        step="")
+            return
         if r["code"] != 0:
             _job.update(error="build failed — the tail of its output is below",
                         step="")
@@ -1636,8 +1761,16 @@ def _worker(project, instance=MAIN):
             return
         _job["step"] = "starting"
         _bump()
-        r = _run(_compose(project, instance, "up", "-d"), timeout=180,
-                 env_extra=_dev_data_env(project, instance))
+        # Streamed too: `up` pulls anything the build did not, which is the
+        # long wait on a compose file made of published images rather than a
+        # Dockerfile — exactly the case that looked like a hang.
+        r = _run(_compose(project, instance, "up", "-d"), timeout=600,
+                 env_extra=_dev_data_env(project, instance),
+                 sink=_log_line, hold=_hold_child)
+        if _job["aborting"]:
+            _job.update(error="stopped — the image is built; it was not started",
+                        step="")
+            return
         if r["code"] != 0:
             _job.update(error=("up failed:\n" + r["out"])[-500:], step="")
             return

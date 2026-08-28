@@ -424,6 +424,20 @@ case "$1" in
       build)
         echo "BUILDKIT=${DOCKER_BUILDKIT:-unset}" >> "$ST/docker.log"
         [ -f "$ST/build.fail" ] && { echo "stub build exploded"; exit 1; }
+        # A build that takes its time and says so, for the two properties a
+        # fast one cannot show: that its output arrives WHILE it runs, and
+        # that it can be interrupted. Line-buffered on purpose — a pull writes
+        # a line at a time and the reader is asserting it sees them early.
+        if [ -f "$ST/build.slow" ]; then
+          # Long enough that a test can see it running, open the manager and
+          # press Abort while it still is — the manager repaints on its own
+          # fetch, so "the log has a line in it" and "the click lands" are
+          # several seconds apart on a loaded box.
+          for i in $(seq 1 60); do
+            echo "pulling layer $i"
+            sleep 0.5
+          done
+        fi
         echo "stub built ok"; exit 0 ;;
       up)   touch "$ST/$proj.up"; exit 0 ;;
       down) rm -f "$ST/$proj.up" "$ST/$proj.exited"; exit 0 ;;

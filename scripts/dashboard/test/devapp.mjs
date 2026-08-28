@@ -237,6 +237,34 @@ await page.waitForFunction((SEL) => {
   return b && !b.disabled;
 }, DM, { timeout: 20000 });
 ok(true, 'a commit unghosts Rebuild — the code has moved since the build');
+// ---- a long build is watchable, and stoppable ---------------------------
+// Both were missing. The log was assigned after the command returned, so a
+// pull was minutes of nothing and then everything at once — a download that
+// looked like a hang — and there was no way to interrupt one at all.
+writeFileSync(`${DIR}/dockerstate/build.slow`, '1');
+await dmClick('rebuild');
+await page.waitForFunction(sel => {
+  const e = document.querySelector(sel + ' .dmlog');
+  return e && /pulling layer/.test(e.textContent);
+}, DM, { timeout: 20000 });
+ok(true, "the command's output appears while it is still running, not after");
+ok(await page.$(`${DM} [data-dm="abort"]`) !== null,
+   '...with an Abort beside it, which a build never had');
+await dmClick('abort');
+await page.waitForFunction(sel => {
+  const e = document.querySelector(sel);
+  return e && !e.querySelector('[data-dm="abort"]');
+}, DM, { timeout: 25000 });
+ok(true, '...and pressing it ends the job');
+const stoppedText = await page.$eval(DM, e => e.textContent.replace(/\s+/g, ' '));
+ok(/stopped/.test(stoppedText),
+   `...saying what was kept, because an abort is not an undo (${stoppedText.slice(0, 90)})`);
+rmSync(`${DIR}/dockerstate/build.slow`, { force: true });
+// Nothing to restore: an aborted build records no rev and never reaches down
+// or up, so it leaves the instance exactly as it found it — which is the
+// property being asserted anyway. A tidying rebuild here was worse than
+// nothing: it recorded a rev, unset "the code has moved", and the gate test
+// below then found Rebuild ghosted and never ran.
 
 // The env gate: the example gains a key, and the rebuild stops after down
 // with the old env preserved in comments.

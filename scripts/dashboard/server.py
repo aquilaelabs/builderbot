@@ -2966,6 +2966,11 @@ class Handler(BaseHTTPRequestHandler):
         # what it is for. Everything else names one that must exist, because
         # the string decides a compose project and a data directory and is not
         # somewhere an arbitrary one should reach.
+        if act == "abort":
+            # Before the instance check below: a job can be running against an
+            # instance that has since been removed, and stopping it must not
+            # depend on the thing it is building still existing.
+            return self._json({"ok": True, "stopped": devapp.abort_job()})
         if act == "starter":
             # The project's .env.example, for a container that does not exist
             # yet — the send dialog opens on it so the env is filled in before
