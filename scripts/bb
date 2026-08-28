@@ -393,31 +393,9 @@ emu_avd() {
 #
 # Prints the vendor string on success and nothing on failure; the caller reads
 # the exit status.
-# Is anything actually listening on :0?
 #
-# The socket FILE outliving the server is the case this exists for. Xorg leaves
-# /tmp/.X11-unix/X0 behind when it dies, so `[ -S ... ]` answers yes for a
-# display nothing is behind — and every check downstream then blames EGL for a
-# missing X server. Observed on 27 Aug: the doctor said "nvidia EGL is
-# installed but gave no vendor driver on the X display" while the truth was
-# that Xorg had exited hours before, which cost a diagnosis working outwards
-# from the driver rather than inwards from the process.
-#
-# So connect to it rather than stat it. Python because it is guaranteed here
-# and bash cannot open a unix socket.
-x_display_up() {
-    [ -S /tmp/.X11-unix/X0 ] || return 1
-    python3 - <<'XPY' 2>/dev/null
-import socket, sys
-s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-s.settimeout(2)
-try:
-    s.connect("/tmp/.X11-unix/X0")
-except OSError:
-    sys.exit(1)
-XPY
-}
-
+# x_display_up — "is anything listening on :0" — is in lib/common.sh, because
+# the GPU startup hook has to ask it too.
 gpu_gles_ok() {
     [ -n "${DISPLAY:-}" ] || return 1
     command -v python3 >/dev/null 2>&1 || return 1
