@@ -1172,6 +1172,11 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .projtab .empty,.dmtab .empty,
 .projtab .macros,.dmtab .macros,
 .projtab .loading,.dmtab .loading,.dmtab .dmsrc{padding:11px 14px}
+/* The findings card's footer: when the reports were written, and which were
+   left out of the counts. */
+.fnote{padding:7px 10px;color:var(--dim);font:var(--f-note);
+  border-top:1px solid var(--line)}
+.fnote .warn{color:var(--warn)}
 /* Which daemon, in the quiet voice the notebook uses for the same job — a
    statement of fact above the list, not a warning about one. */
 .dmsrc{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
@@ -9787,6 +9792,45 @@ phFetch();
 // directory this workspace does not mount, shown rather than hidden because
 // a finding with a bad path is still a finding.
 function drawFindingsSum(per){
+// When the reports were written, and which of them are not being counted.
+//
+// The card summed reports of different ages into one current-looking picture,
+// which is how a trivy that had been crashing for four days went on supplying
+// most of this box's findings — against a directory layout that had been
+// changed in between, so the operator's fix looked like it had not worked. A
+// scanner that dies leaves its PREVIOUS report in place, because a host script
+// worth having does not overwrite a good report with nothing; that is right,
+// and it makes a dead scanner indistinguishable from a live one here.
+//
+// So one a whole cycle behind is left out of the counts entirely, and this
+// line is what stops that being another silent thing: a number that dropped
+// with nothing to explain it is the same problem wearing the other face.
+// Coarser than dur(), which is the uptime clock: a report's age wants one
+// unit. "17m 25s ago" reads as a stopwatch and "94h 54m behind" reads as
+// arithmetic homework, where what is being said is "this morning" and "four
+// days". Mirrors ago() in bb's cmd_findings, which says the same words in the
+// other language — the tmuxName situation, and the same answer: state the rule
+// twice and keep them together in the mind.
+const coarse = s =>
+  s < 90     ? `${Math.round(s)}s` :
+  s < 5400   ? `${Math.round(s / 60)}m` :
+  s < 172800 ? `${Math.round(s / 3600)}h`
+             : `${Math.round(s / 86400)}d`;
+
+function reportAges(){
+  const rs = state?.reports_ages || [];
+  if (!rs.length) return "";
+  const newest = rs[0].when, now = Date.now() / 1000;
+  const out = rs.filter(r => r.stale);
+  // Not a .row: it is a note about the rows, and every selector that walks
+  // this card — its own tests included — reads a .row as "a project and its
+  // counts". A footer wearing that class is a row with no name in it.
+  return `<div class="fnote">scanned ${
+    esc(coarse(Math.max(0, now - newest)))} ago${
+    out.map(r => `<br><span class="warn">${esc(r.name)} left out — ${
+      esc(coarse(r.behind))} behind, its scanner may have failed</span>`).join("")}</div>`;
+}
+
   const el = $("findingsSum");
   const names = Object.keys(per).sort((a,b) => (a==="")-(b==="") || a.localeCompare(b));
   paint(el, names.length ? names.map(p => {
@@ -9809,9 +9853,10 @@ function drawFindingsSum(per){
       ${p ? `title="open ${esc(p)}'s notebook on its Analysis view"` : ""}>
       <div class="grow"><div class="name">${esc(p || "unattributed paths")}</div>${where}</div>
       <div class="acts">${pills}</div></div>`;
-  }).join("")
+  }).join("") + reportAges()
   : `<div class="empty">no findings in the current reports — which is not the
-     same as every project passing; SARIF records findings, not coverage</div>`)
+     same as every project passing; SARIF records findings, not coverage</div>`
+    + reportAges())
   && el.querySelectorAll("[data-ana]").forEach(r =>
        r.onclick = () => openNotebook(r.dataset.ana, "analysis"));
 }

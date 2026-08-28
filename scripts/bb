@@ -1982,6 +1982,18 @@ for e in h:
 PY
 }
 
+# ago SECONDS — a duration in the shortest form that is still honest. Its own
+# helper because two callers below want the same words: how old a report is,
+# and how far one has fallen behind its siblings.
+ago() {
+    local s="${1:-0}"
+    if   [ "$s" -lt 90 ];    then printf '%ss' "$s"
+    elif [ "$s" -lt 5400 ];  then printf '%sm' "$(( (s + 30) / 60 ))"
+    elif [ "$s" -lt 172800 ]; then printf '%sh' "$(( (s + 1800) / 3600 ))"
+    else printf '%sd' "$(( (s + 43200) / 86400 ))"
+    fi
+}
+
 cmd_findings() {
     local target="" scope=mine proj
     # `bb findings history` reads the notebook's fourth log — what the scanner
@@ -2020,9 +2032,45 @@ cmd_findings() {
     [ "${#files[@]}" -gt 0 ] \
         || die "no .sarif files under ${target} — has the scanner run yet?"
 
+    # When each report was written, and whether it is keeping up with the
+    # others. A scanner that dies leaves its PREVIOUS report in place — a host
+    # script worth having does not overwrite a good report with nothing — so a
+    # dead scanner and a live one look identical here, and the findings in the
+    # stale one describe a tree that may since have moved. That is not
+    # hypothetical: a trivy that had been crashing for four days was still
+    # supplying most of this box's findings, against a directory layout that
+    # had been changed in between.
+    local newest=0 m
+    for f in "${files[@]}"; do
+        m="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
+        if [ "$m" -gt "$newest" ]; then newest="$m"; fi
+    done
+    local now lag
+    now="$(date +%s)"
+
+    # A day, and the size is the argument. One scan run writes every report
+    # within minutes of itself, so anything measured in hours is the same run.
+    # Re-running ONE scanner by hand — the obvious thing to do after fixing
+    # one — leaves its siblings a few hours behind, and they must not vanish
+    # for it. A report left behind by a scanner that failed is behind by a
+    # whole cycle, which for any cadence anybody runs is more than this.
+    # Matches STALE_AFTER in the dashboard's server.py; the two answer the
+    # same question and would be worth nothing if they disagreed.
+    local stale_after=86400
     local f
     for f in "${files[@]}"; do
-        printf '<!-- %s -->\n' "$f"
+        m="$(stat -c %Y "$f" 2>/dev/null || echo 0)"
+        lag=$(( newest - m ))
+        if [ "$lag" -ge "$stale_after" ]; then
+            # Named on the command line it is still read — one file makes
+            # itself the newest, so there is nothing to be behind. That is the
+            # way to look at one deliberately.
+            printf '<!-- %s — LEFT OUT: %s behind the newest report, its scanner may have failed.\n' \
+                "$f" "$(ago "$lag")"
+            printf '     Read it anyway with: bb findings %s -->\n' "$f"
+            continue
+        fi
+        printf '<!-- %s — written %s ago -->\n' "$f" "$(ago $(( now - m )))"
         jq -r --arg proj "$proj" --arg scope "$scope" "$FINDINGS_JQ" "$f" \
             || warn "could not parse ${f} as SARIF"
     done

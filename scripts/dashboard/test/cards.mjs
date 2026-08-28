@@ -3,7 +3,7 @@
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
          tmuxNew, tmuxKill, tmuxFmt, URL, DIR } from './lib.mjs';
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
@@ -69,9 +69,32 @@ ok(await page.$eval('#findingsSum .row[data-ana="alpha"]', r => r.classList.cont
 
 // The unplaceable row says where, not only how many. A bare count sat at 276
 // through several passes without ever saying that 267 of them were one share.
-ok(/somewhere\/else/.test(await page.$eval('#findingsSum .row:last-child .sub',
-                                            e => e.textContent)),
+ok(/somewhere\/else/.test(await page.$eval(
+       '#findingsSum .row:not([data-ana]) .sub', e => e.textContent)),
    'the unattributed row names the paths it could not place');
+
+// A report a whole cycle behind its siblings is not counted, and the card says
+// so. A scanner that dies leaves its previous report in place — the host
+// script does not overwrite a good report with nothing — so without this a
+// dead scanner goes on supplying findings about a tree that has since moved,
+// which is how one sat four days stale while its numbers looked current.
+const before = await page.$$eval('#findingsSum .row .name', ns => ns.length);
+writeFileSync(`${DIR}/reports/old.sarif`, readFileSync(`${DIR}/reports/test.sarif`));
+// Three days behind: well past the day the rule allows, which is deliberately
+// wide enough that re-running one scanner by hand does not blank its siblings.
+const longAgo = Date.now() / 1000 - 3 * 86400;
+execFileSync('touch', ['-d', `@${Math.round(longAgo)}`, `${DIR}/reports/old.sarif`]);
+await refreshUntil(page, () => (state?.reports_ages || []).some(r => r.stale),
+                   { timeout: 20000 });
+ok(await page.$$eval('#findingsSum .row .name', ns => ns.length) === before,
+   'a stale copy of the same report adds nothing — it is not read at all');
+const foot = await page.$eval('#findingsSum .fnote', e => e.textContent);
+ok(/old\.sarif left out/.test(foot) && /3d behind/.test(foot),
+   '...and the card names it, so a number that did not move is not a mystery');
+ok(/scanned/.test(foot), '...beside when the reports that ARE counted were written');
+rmSync(`${DIR}/reports/old.sarif`, { force: true });
+await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
+                   { timeout: 20000 });
 
 // Which shares count as "not a project" no longer comes only from what sits
 // inside /workspace. That worked while /workspace was the whole development

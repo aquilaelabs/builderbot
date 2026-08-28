@@ -1810,6 +1810,22 @@ appdata directory called `BuilderBot` would otherwise teach it to ignore the
 BuilderBot project's own findings, which is the one mistake here that hides
 real work instead of noise.
 
+**A report a whole cycle behind its siblings is not counted**, and the card
+says which and by how much. A scanner that dies leaves its *previous* report in
+place — a host script worth having does not overwrite a good report with
+nothing — so a dead scanner and a live one are the same file to everything
+downstream. On 28 Aug a trivy that had been crashing for four days was still
+supplying most of this box's findings, against a directory layout that had been
+changed in between: the scanner's volume was fixed, the numbers did not move,
+and the fix looked broken. `bb findings` leaves the same file out and says so,
+and reads it anyway if you name it on the command line.
+
+A day is the line, and the size is the argument. One scan run writes every
+report within minutes of itself, so anything measured in hours is the same run
+— and re-running *one* scanner by hand, the obvious thing to do after fixing
+one, must not blank its siblings. A report left behind by a failed scanner is
+behind by a whole cycle, which for any cadence anybody runs is more than a day.
+
 **The row names what it could not place**, commonest first — `file:/src × 9`,
 which is mobsfscan reporting its own container path. A bare count said
 something was wrong and nothing about what, which is how it sat in the

@@ -1986,6 +1986,49 @@ def _doctor_loop():
         time.sleep(DOCTOR_EVERY)
 
 
+# How far behind the newest report a report may be and still be believed.
+#
+# A scanner that dies leaves its PREVIOUS report in place — a host script worth
+# having does not overwrite a good report with nothing — so a dead scanner and
+# a live one are the same file to everything downstream. On 28 Aug a trivy that
+# had been crashing for four days was still supplying most of this box's
+# findings, against a directory layout that had been changed in between: the
+# operator fixed the scanner's volume, the numbers did not move, and the fix
+# looked broken.
+#
+# A day, and the size is the argument. One scan run writes every report within
+# minutes of itself, so anything measured in hours is the same run. Re-running
+# ONE scanner by hand — the obvious thing to do after fixing one — leaves its
+# siblings a few hours behind, and they must not vanish for it. A report left
+# behind by a scanner that failed is behind by a whole cycle, which for any
+# cadence anybody runs is more than this.
+STALE_AFTER = 86400
+
+
+def reports_ages():
+    """Each report, when it was written, and whether it is too far behind."""
+    out = []
+    try:
+        for f in sorted(REPORTS.glob("*.sarif")) + sorted(REPORTS.glob("*.sarif.json")):
+            try:
+                out.append({"name": f.name, "when": int(f.stat().st_mtime)})
+            except OSError:
+                pass
+    except OSError:
+        return []
+    out.sort(key=lambda r: -r["when"])
+    newest = out[0]["when"] if out else 0
+    for r in out:
+        r["behind"] = newest - r["when"]
+        r["stale"] = r["behind"] >= STALE_AFTER
+    return out
+
+
+def stale_reports():
+    """The names of the reports being left out, as a set."""
+    return {r["name"] for r in reports_ages() if r["stale"]}
+
+
 def reports_mtime():
     """Newest mtime among the scanner reports, so a client showing the
     findings tab can notice a re-run scan without anyone pressing reload."""
@@ -2021,6 +2064,13 @@ def findings_counts(ps):
     if REPORTS.is_dir():
         files = sorted(REPORTS.glob("*.sarif")) + \
             sorted(REPORTS.glob("*.sarif.json"))
+    # A report a whole cycle behind its siblings is not read. Its scanner
+    # failed and the host left the previous file in place, so what it contains
+    # describes a tree that has since moved — counting it does not make the
+    # picture more complete, it makes it wrong, and quietly. Said on the card
+    # rather than merely done: see reports_ages.
+    dropped = stale_reports()
+    files = [f for f in files if f.name not in dropped]
     # Nanosecond mtime plus size, per file: a report parsed mid-write and
     # finished within the same second must not stay cached as "no findings"
     # until the next scan.
@@ -2029,7 +2079,8 @@ def findings_counts(ps):
     except OSError:
         stamp = ()
     nonproject = nonproject_dirs(valid)
-    key = (stamp, tuple(sorted(valid)), tuple(sorted(nonproject)))
+    key = (stamp, tuple(sorted(valid)), tuple(sorted(nonproject)),
+           tuple(sorted(dropped)))
     if _findings_counts["mtime"] != key:
         per, rows_by, broken = {}, {}, False
         # Where the unplaceable ones came from, counted by the head of their
@@ -2197,6 +2248,9 @@ def snapshot():
         # ...and, for the row they land on, what those paths actually look
         # like. Order matters: this reads what the call above computed.
         "findings_heads": findings_heads(),
+        # ...and when each report was written, so one left behind by a failed
+        # scanner is visible rather than silently counted as current.
+        "reports_ages": reports_ages(),
         "doctor": doctor_payload(),
         # Asked in this order: whether a sign-in is running decides whether
         # the answer to "signed in?" is worth re-reading rather than serving
