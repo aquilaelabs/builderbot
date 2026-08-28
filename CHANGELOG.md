@@ -61,3 +61,4 @@
 - bb logs now times each startup hook, so a slow boot says which part was the wait (cd94cd6)
 - Sending a container to the Docker manager now asks for its env up front, seeded from the project's .env.example, so it comes up instead of stopping half-built (d38ded8)
 - Dialogs no longer open the on-screen keyboard over themselves, and the two newest ones now match the rest (d38ded8)
+- Each row in the Docker manager folds open to show what it publishes and what it mounts (1ac8c32)
