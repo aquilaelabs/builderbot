@@ -83,3 +83,5 @@
 - A static-analysis report left behind by a failed scanner is no longer counted, and the card says which one and how far behind (8ec5295)
 - Text fields, the memory folds, the pane title bar and every checkbox now follow the colour scheme too (60c89dc)
 - The sidebar no longer scrolls sideways, and the Projects tab puts each project's buttons beside its name (a0bc90a)
+- Excluding a project is gone: the padlock does it all, and a locked project keeps its notebook read-only, its findings and its artifacts (bd0016e)
+- A locked project shows a padlock after its name, and its Claude button is greyed rather than removed (bd0016e)
