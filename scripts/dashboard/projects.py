@@ -482,35 +482,44 @@ def save_push(d):
     write_json(STATE / "push-rights.json", d)
 
 
-def repo_of_remotes(remotes):
-    """owner/repo for the first GitHub remote in `git remote -v` output.
-
-    Lowercased, because GitHub treats owner and repo case-insensitively and
-    two clones differing only in case are the same repository — which is the
-    whole question being asked here.
+def repo_path_of(url):
+    """owner/repo for one remote URL, as written. "" if it is not one.
 
     The host is not what identifies it. A deploy-key setup addresses GitHub
     through a ~/.ssh/config alias, so the hostname is bb-something and the
     path after it is still owner/repo. Anything whose path is not exactly two
     segments is not a repository address this can reason about, and is left
     alone rather than guessed at.
+
+    Case is preserved here and folded by the caller that wants it folded. The
+    two callers want opposite things: comparing two remotes needs Owner/Repo
+    and owner/repo to be equal, and building a URL to write into a remote must
+    not quietly rename the repository to its lowercase spelling.
+    """
+    path = ""
+    if "://" in url:
+        path = re.sub(r"^[a-z+]+://(?:[^@/]+@)?[^/]+/", "", url)
+    elif ":" in url:
+        path = url.split(":", 1)[1]
+    path = path.rstrip("/").removesuffix(".git")
+    bits = [b for b in path.split("/") if b]
+    return "/".join(bits) if len(bits) == 2 else ""
+
+
+def repo_of_remotes(remotes):
+    """owner/repo for the first GitHub remote in `git remote -v` output.
+
+    Lowercased, because GitHub treats owner and repo case-insensitively and
+    two clones differing only in case are the same repository — which is the
+    whole question being asked here.
     """
     for line in remotes.splitlines():
         parts = line.split()
         if len(parts) < 2:
             continue
-        url = parts[1]
-        path = ""
-        if "://" in url:
-            path = re.sub(r"^[a-z+]+://(?:[^@/]+@)?[^/]+/", "", url)
-        elif ":" in url:
-            path = url.split(":", 1)[1]
-        path = path.rstrip("/")
-        if path.endswith(".git"):
-            path = path[:-4]
-        bits = [b for b in path.split("/") if b]
-        if len(bits) == 2:
-            return "/".join(bits).lower()
+        path = repo_path_of(parts[1])
+        if path:
+            return path.lower()
     return ""
 
 
@@ -638,7 +647,12 @@ def set_auth(project, dest, mode):
         if not token_helper(project):
             return "", ("there is no access token stored for this project — "
                         "set one in the same dialog and it can use it")
-        repo = repo_of_remotes(f"origin {origin_url(dest)}")
+        # As written, NOT folded: repo_of_remotes lowercases for comparison,
+        # and building the URL with that turned Stencil-Projects/BuilderBot
+        # into stencil-projects/builderbot in the operator's own remote. GitHub
+        # accepts either, so nothing broke — it just no longer said the name of
+        # the repository it points at.
+        repo = repo_path_of(origin_url(dest))
         if not repo:
             return "", "could not read owner/repo from this project's remote"
         # Remembered BEFORE the rewrite, or switching back has nothing to go on.
