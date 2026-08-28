@@ -1479,20 +1479,28 @@ step has gone, where the pickers stay: a note belongs to the one thing it was
 written for, and finding it still sitting there on the next step is how it
 gets sent twice.
 
-**Model and effort** are not questions in that box: they are the **Claude
-card** in the sidebar, one standing preference every send applies — a roadmap
-step, a bug, the version question alike. A running session's model cannot be
-changed by a flag it was not started with — `--model` and `--effort` only
-apply at startup — so the card's picks are typed into the session as its own
-slash commands, `/model sonnet` then `/effort xhigh`, each on its own line
-and ahead of what is being sent, which is what makes it run on what was
-picked. If either line does not submit (something else has the keyboard in
-that tab) the send stops there, because a step typed onto the end of an
-unsent `/model` line is one line that is neither. Worth knowing: claude saves
-both as the default for new sessions, so a switch is never scoped to the
-conversation it is typed into — the card says so, once. *Leave as is* sends
-no switch at all, and the send box notes which switch will apply, so the
-choice is visible where it acts.
+**Model and effort** are not questions in that box and are not applied by it.
+They are the project's own setting, at the bottom of its **settings dialog**
+(the gear on its row), and `bb-tty` passes them as `--model` and `--effort`
+when it starts a session there — so a session that is up is already on them
+and a send is only ever the send.
+
+They used to be typed in as `/model` and `/effort` ahead of each message,
+because a running session cannot be changed by a flag it was not started
+with. That stopped working the day claude put a confirmation behind `/model`:
+the confirmation has the keyboard, the step goes into it, and no amount of
+waiting helps because a dialog is exactly what "the pane has stopped
+changing" looks like. It was also never scoped — claude saves a slash-command
+switch as the default for *new* sessions too, so a per-project pick would
+leak to every project. A launch flag is the process's own.
+
+**Changing it while a session is running restarts that session**, and the
+dialog says so before you save. The restart is `tmux respawn-pane`, so the
+browser stays attached and the pane simply comes back: the launcher re-reads
+the setting and resumes the newest transcript, which continues the
+conversation on the new model rather than replacing it. Anything mid-turn is
+lost, which is the whole reason it asks. *Leave as is* passes no flag, and
+claude uses its own default.
 
 A group's own arrow **stands for its next step**: picking either lights both,
 because they are one choice. A crossed-off line cannot be sent at all — put it
@@ -1756,8 +1764,8 @@ this is the only case for it; anything that was a real bug gets closed.
 
 **Send to Claude** hands one bug to the session running there, from the same
 box the roadmap opens under a step — the same note field for anything to send
-with it — opened under the report instead. Model and effort come from the
-sidebar's Claude card, the same as every send.
+with it — opened under the report instead. Nothing is switched on the way in:
+the session is already running on the project's own model and effort.
 
 What goes over is **a number and an instruction, never a copy of the report**.
 The line asks the session to run `bb bug show N` for the area, the repro,

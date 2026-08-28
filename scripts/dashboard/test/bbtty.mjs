@@ -12,7 +12,7 @@
 // that says so.
 import { ok, done, sleep, URL, DIR, tmuxKill, tmuxFmt } from './lib.mjs';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, writeFileSync, chmodSync, readFileSync, existsSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -134,6 +134,56 @@ rmSync(LOCKS, { force: true });
 out = connect(0);
 await sleep(400);
 ok(alive('claude-alpha'), 'unlocking lets a session start there again');
+
+
+// ---- what the project is set to run on ----------------------------------
+// The setting lives in the dashboard's state and is resolved by the launcher
+// at exec time rather than baked in by bb-tty, which is what lets a respawn
+// through the same file pick up a change. Asserted on the argv the stub
+// records, because that is the only place the answer is real.
+writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
+  { projects: { alpha: { model: 'sonnet', effort: 'xhigh' } } }));
+connect(0);
+await sleep(400);
+let a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
+ok(/--model\0sonnet\0/.test(a) && /--effort\0xhigh\0/.test(a),
+   "a project's model and effort reach claude as launch flags");
+ok(!/--resume/.test(a),
+   '...and an ordinary open is a fresh conversation, not a resumed one');
+
+// Junk in the file is not a command line. The launcher matches against the
+// same tables the dashboard writes from, so a hand-edited value is dropped
+// rather than passed to claude.
+writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
+  { projects: { alpha: { model: '--dangerously-skip-permissions', effort: 'max' } } }));
+connect(0);
+await sleep(400);
+a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
+ok(!/dangerously/.test(a) && /--effort\0max\0/.test(a),
+   'a model the tables do not know is dropped, and the valid half still goes');
+
+// --respawn is how the dashboard restarts a session onto a changed setting:
+// the same launcher, re-reading the file and resuming what was running.
+writeFileSync(join(DIR, 'state', 'claude-prefs.json'), JSON.stringify(
+  { projects: { alpha: { model: 'opus', effort: 'low' } } }));
+const tdir = join(DIR, 'home', '.claude', 'projects',
+                  join(DIR, 'ws', 'alpha').replaceAll('/', '-'));
+mkdirSync(tdir, { recursive: true });
+writeFileSync(join(tdir, 'old-one.jsonl'), '');
+await sleep(1100);                       // ls -t sorts by mtime, at 1s here
+writeFileSync(join(tdir, 'the-live-one.jsonl'), '');
+try {
+  execFileSync('timeout', ['5', 'bash', LAUNCHER, '--respawn'], {
+    encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+    env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+  });
+} catch { /* the stub holds the pane open; timeout ending it is the success */ }
+a = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
+ok(/--model\0opus\0/.test(a) && /--effort\0low\0/.test(a),
+   'a respawn re-reads the setting rather than repeating the one it started on');
+ok(/--resume\0the-live-one\0/.test(a),
+   '...and resumes the newest transcript, so the conversation continues');
+rmSync(join(DIR, 'state', 'claude-prefs.json'), { force: true });
 
 tmuxKill('claude-alpha');
 await done();

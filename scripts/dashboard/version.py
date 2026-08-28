@@ -96,7 +96,6 @@ bugs = None
 changelog = None
 tell = None
 tmux_name = None
-switch = None
 
 # The file a project declares its target in. One line, at the repo root.
 VERSION_FILE = "VERSION"
@@ -120,12 +119,11 @@ _lock = threading.Lock()
 
 
 def configure(*, workspace, state, write_json, todo_mod=None, bugs_mod=None,
-              changelog_mod=None, tell_fn=None, tmux_name_fn=None,
-              switch_fn=None):
+              changelog_mod=None, tell_fn=None, tmux_name_fn=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
                      write_json=write_json, todo=todo_mod, bugs=bugs_mod,
                      changelog=changelog_mod, tell=tell_fn,
-                     tmux_name=tmux_name_fn, switch=switch_fn)
+                     tmux_name=tmux_name_fn)
     globals()["FILE"] = Path(state) / "versions.json"
 
 
@@ -838,7 +836,7 @@ def unbump(project, by="claude", comp=""):
             "commit": _git(project, "rev-parse", "--short=7", "HEAD") or ""}
 
 
-def ask(project, sessions=(), comp="", model="", effort=""):
+def ask(project, sessions=(), comp=""):
     """Put the version question to the project's own Claude session.
 
     There used to be a `bb version suggest` beside this — commit count, does
@@ -884,15 +882,9 @@ def ask(project, sessions=(), comp="", model="", effort=""):
         line = (f"From the operator, on the Artifacts tab: {what} is at "
                 f"{tgt} — is that still right? See the version section of "
                 f"CLAUDE.md — propose and ask, do not apply.")
+    # No switch ahead of it: a project's model and effort are launch flags now,
+    # so the session this reaches is already running on them.
     session = tmux_name("claude-" + project)
-    # The standing model/effort preference, applied the way a step send
-    # applies it: as slash commands ahead of the question, and a switch that
-    # does not land stops the send — otherwise the question would be typed
-    # onto the end of an unsent /model line.
-    if switch is not None:
-        failed = switch(session, sessions, model, effort)
-        if failed is not None:
-            return failed
     r = tell(session, line, sessions)
     if r.get("error"):
         return r

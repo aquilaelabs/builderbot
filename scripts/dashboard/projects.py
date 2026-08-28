@@ -206,6 +206,10 @@ _KEYED = {
     "findings-log.json":  ["projects"],
     "last-sessions.json": ["sessions"],
     "devapps.json":       [None],
+    # What Claude runs on here. Keyed by project name like the rest, and it has
+    # to move with a rename or the renamed project silently reverts to claude's
+    # own default the next time a session starts in it.
+    "claude-prefs.json":  ["projects"],
 }
 
 # Files holding a flat list of project names.

@@ -155,12 +155,10 @@ ok(!read().projects.alpha.find(r => String(r.id) === mine.id).sent,
 
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
 await page.waitForSelector('.sendbox');
-// Model and effort are no longer questions in this box — they moved to the
-// Claude card in the sidebar. With nothing set there, the box says nothing
-// about switching and an ordinary send types no slash command at all.
-ok(await page.$('#sendModelSel') === null
-   && await page.$eval('#sendNote', e => e.hidden),
-   'no pickers here, and no switch line while the Claude card is unset');
+// Model and effort are not questions in this box and are not applied by it:
+// they are the project's own setting, applied when its session starts.
+ok(await page.$('#sendModelSel') === null && await page.$('#sendNote') === null,
+   'no pickers here, and nothing about switching either');
 // The note field rides with the step on the same line, so a session gets one
 // message rather than a step and then an afterthought glued behind it.
 await page.fill('#sendMore', 'the select is the one on the left');
@@ -197,48 +195,22 @@ ok(still.sent && still.can,
 ok(items.findIndex(i => i.id === mine.id) === wasAt,
    '...in the place it was, because the order is the record');
 
-// ---- switching the session on the way in --------------------------------
-// A running session's model cannot be changed by a flag it was not started
-// with, so the picks go in as claude's own slash commands, ahead of the step
-// and on their own lines. The fixture's session is a shell, so what lands in
-// the pane is the literal text — which is exactly what wants checking: the
-// order, and that the step is not glued onto the end of a /model line.
+// ---- nothing is switched on the way in ----------------------------------
+// Model and effort used to be typed here as claude's own slash commands,
+// because a running session cannot be changed by a flag it was not started
+// with. That stopped working the day /model grew a confirmation: the step
+// went into the dialog. They are the project's setting now, applied by bb-tty
+// at launch, so a send is only ever the step. The fixture's session is a
+// shell, so what lands in the pane is the literal text — which is what makes
+// "no slash command, ever" checkable at all.
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'C-u']);
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'clear']);
 execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
-// The card sets the standing preference; the send box only reports it.
-await page.selectOption('#prefModel', 'sonnet');
-await page.selectOption('#prefEffort', 'xhigh');
-await page.waitForFunction(async () => {
-  const r = await fetch('/api/status');
-  const j = await r.json();
-  return j.claude_prefs?.model === 'sonnet' && j.claude_prefs?.effort === 'xhigh';
-}, { timeout: 20000 });
-await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
-await page.waitForSelector('.sendbox');
-ok(!await page.$eval('#sendNote', e => e.hidden)
-   && /sonnet · xhigh/.test(await page.$eval('#sendNote', e => e.textContent)),
-   'the box says which switch the Claude card will apply to this send');
-await page.click('#todoGo');
-await page.waitForFunction(() => !document.querySelector('.sendbox'),
-                           null, { timeout: 20000 });
-const switched = tmuxCapture('claude-alpha');
-ok(/\/model sonnet/.test(switched) && /\/effort xhigh/.test(switched),
-   'the picks go in as /model and /effort');
-ok(switched.indexOf('/model sonnet') < switched.indexOf('/effort xhigh'),
-   '...model first, then effort');
-ok(!/\/model sonnet.*delete a project/s.test(switched.split('\n')
-     .find(l => l.includes('/model sonnet')) || ''),
-   '...each on its own line, never glued to the step');
-// A switch the session is already on is not typed again. `/effort` is
-// explicitly "this session only" and never reaches claude's settings file,
-// so without an in-memory record of what this dashboard typed it would be
-// re-sent on every message forever — printing its explanation into the pane
-// immediately before the next line is typed into it, which is exactly how a
-// message ends up "typed but not sent".
-execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'C-u']);
-execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', '-l', '--', 'clear']);
-execFileSync('tmux', ['send-keys', '-t', 'claude-alpha', 'Enter']);
+await page.evaluate(async () => {
+  await fetch('/api/prefs', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'alpha', model: 'sonnet', effort: 'xhigh' }) });
+});
 await page.click(`${row('alpha')} [data-m]`);
 await page.waitForSelector('#todoList .todo', { timeout: 20000 });
 await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
@@ -246,33 +218,14 @@ await page.waitForSelector('.sendbox');
 await page.click('#todoGo');
 await page.waitForFunction(() => !document.querySelector('.sendbox'),
                            null, { timeout: 20000 });
-const again = tmuxCapture('claude-alpha');
-ok(!/\/model sonnet/.test(again) && !/\/effort xhigh/.test(again),
-   'the same switch is not typed a second time into a session already on it');
-ok(/delete a project/.test(again),
-   '...and the step itself still goes');
-// A send with nothing picked types no slash command at all — the pickers hold
-// their choice for the next one, but "leave as is" has to stay possible.
-// Back into the notebook first: sending lands you in the session's tab.
+const sent = tmuxCapture('claude-alpha');
+ok(!/\/model/.test(sent) && !/\/effort/.test(sent),
+   'a send types no slash command, even with a model set for the project');
+ok(/delete a project/.test(sent), '...and the step itself goes on its own');
+// Back into the notebook: sending lands you in the session's tab, and what
+// follows is about the panel.
 await page.click(`${row('alpha')} [data-m]`);
 await page.waitForSelector('#todoList .todo', { timeout: 20000 });
-sendPicksReset: {
-  ok(await page.$eval('#prefModel', e => e.value) === 'sonnet',
-     'the card holds the standing pick rather than forgetting it');
-  await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
-  await page.waitForSelector('.sendbox');
-  ok(await page.$eval('#sendMore', e => e.value) === '',
-     '...and the note starts empty, having belonged to the step it went with');
-  await page.selectOption('#prefModel', '');
-  await page.selectOption('#prefEffort', '');
-  await page.waitForFunction(async () => {
-    const r = await fetch('/api/status');
-    const j = await r.json();
-    return j.claude_prefs?.model === '' && j.claude_prefs?.effort === '';
-  }, { timeout: 20000 });
-  await page.click(`#todoList .todo[data-id="${mine.id}"] .go`);
-  await page.waitForFunction(() => !document.querySelector('.sendbox'));
-}
 
 // ---- unsaved work blocks a send, and does not follow you to another tab --
 // Two rules with one reason: a step is a line typed into a session, and the
