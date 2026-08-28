@@ -4796,9 +4796,9 @@ async function dnSubmit(){
              return fail("could not create it: " + e); }
 }
 
-// The job, if it belongs to any instance on this page. overview() does not
-// carry it — one job runs at a time across the whole dashboard, and it reaches
-// here through the artifacts poll like everything else.
+// The job, if one is running. It comes with the overview rather than off the
+// status snapshot: this page redraws on the devapp revision, which is exactly
+// what a build moves, so the two arrive together and cannot disagree.
 // The env editor, at module scope because two places open it now: the manager,
 // where the controls live, and nothing else — it used to close over the
 // artifacts renderer's `project`, which is why it had to move rather than be
@@ -4838,7 +4838,7 @@ async function openDevEnv(project, instance){
 }
 
 function dockerJob(){
-  const j = state?.devapp_job;
+  const j = dockerList?.job;
   return j && j.running ? j : null;
 }
 
@@ -5493,7 +5493,22 @@ function makeNotebook(project){
       el.hidden = wasHidden;
       // No parent means it was built for the sheet and has nowhere to go back
       // to. next is null for "it was last".
-      if (parent) parent.insertBefore(el, next); else el.remove();
+      if (!parent){ el.remove(); continue; }
+      // The reference node is only good while its parent still holds it, and
+      // one of these parents does not: the changelog pane lives in #verBox,
+      // whose children drawVersion() replaces wholesale — which happens on a
+      // commit, a version poll or a dist change while the sheet is still open
+      // over the top. insertBefore then throws on a node that is no longer a
+      // child, mid-loop, so sheetHome was never cleared and sheetClosed never
+      // ran: the button stayed lit and the pane sat orphaned in the slot,
+      // reappearing inside the next sheet opened.
+      try{
+        parent.insertBefore(el, next && next.parentNode === parent ? next : null);
+      }catch(e){
+        // Parent gone from the document entirely — put it back where it can
+        // do no harm rather than leaving it in the sheet.
+        el.remove();
+      }
     }
     sheetHome = [];
     const done = sheetClosed; sheetClosed = null;
@@ -7514,8 +7529,9 @@ become that version's section when it is created">Changelog${
         j.unbumped.target} — its changelog is back in Unreleased`);
       else if (j.created) notify(`${j.created.component || "this project"} `
                                  + `is now ${j.created.target}`);
+      return j;
     }catch(e){ notify("version: " + e, true); }
-    await loadVersion();
+    finally{ await loadVersion(); }
   }
 
   async function postArtifacts(body){
@@ -7556,7 +7572,11 @@ become that version's section when it is created">Changelog${
     list.innerHTML = findingsRulesHtml(rows);
     // By rule group, which is how the report is read — a rule split across a
     // page boundary would separate its own occurrences.
-    paginate(list, ":scope > .grp", {key: "anaList", noun: "rules"});
+    // .rule, which is what findingsRulesHtml emits — .grp belongs to the other,
+    // per-file renderer, so this matched nothing and paginate returned early:
+    // a project with hundreds of findings drew every one of them at once while
+    // every list beside it paged.
+    paginate(list, ":scope > .rule", {key: "anaList", noun: "rules"});
   }
 
   // ---- bugs ----------------------------------------------------------------

@@ -615,6 +615,14 @@ ok(typeof dhj.auto === 'string',
    'auto resolves to an address or to nothing, never to an error');
 
 
+// A row knows its own build is running. The manager used to look for the job
+// on the status snapshot, under a key nothing has ever set — so `busy` was
+// permanently false: a row said "never built" through its own build, and its
+// buttons stayed live for a second click the server then refused.
+await openManager();
+ok(await page.evaluate(() => typeof dockerList?.job !== "undefined"),
+   'the manager is told about the running job with the rest of its page');
+
 // The wiring fold: what the container publishes and what it mounts, fetched
 // when it is opened and not before — parsing the compose file is the one thing
 // the manager's page deliberately does not do for every row at once.
