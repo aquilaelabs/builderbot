@@ -2760,6 +2760,14 @@ function drawPanes(){
         pane.dataset.drev = String(dockerRev);
         renderDockerInto(i);
       }
+      // The projects tab renders straight from `state`, which moves under it
+      // on every poll and on every action — so it repaints unconditionally
+      // rather than behind a counter. paint() is what makes that cheap: it
+      // diffs and writes nothing when the markup is the same. Without this the
+      // tab drew once and then lied: unpinning from the sidebar left its
+      // thumbtack lit, and clicking that stale button sent the state it was
+      // already in, which is why pinning "only worked sometimes".
+      if (t.kind === "projects") renderProjectsInto(i);
       continue;
     }
     if (same) continue;
@@ -7851,6 +7859,7 @@ async function setExcluded(name, on){
       const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
       if (t) dropTab(t.id);
     }
+    applyNow(p => { p.excluded = (j.excluded || []).includes(p.name); });
   }catch(e){ notify("exclude failed: " + e, true); }
   refresh();
 }
@@ -7874,6 +7883,7 @@ async function setLocked(name, on){
       const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
       if (t) dropTab(t.id);
     }
+    applyNow(p => { p.locked = (j.locked || []).includes(p.name); });
   }catch(e){ notify("lock failed: " + e, true); }
   refresh();
 }
@@ -8013,8 +8023,25 @@ async function setProjectPinned(name, on){
       body: JSON.stringify({name, pinned:on})});
     const j = await r.json();
     if (j.error){ notify(j.error, true); return; }
+    // The answer IS the new state — the server sends back the whole pinned
+    // set — so the page adopts it and redraws now. Waiting for the next
+    // /api/status put a poll's latency between the click and the button
+    // moving, on a control whose whole job is instant.
+    applyNow(p => { p.pinned = (j.pinned || []).includes(p.name); });
   }catch(e){ notify("pin failed: " + e, true); }
-  refresh();
+  refresh();                       // ...and reconcile, in the background
+}
+
+// Adopt a server answer into the projects already on screen and redraw.
+//
+// The rule this follows: an action's response is authoritative for what it
+// changed, so the page should not go and ask again before believing it. The
+// poll still runs and still wins in the end — this only removes the wait
+// between a click and the thing it clicked moving.
+function applyNow(fn){
+  (state?.projects || []).forEach(fn);
+  drawProjects(state?.projects || []);
+  drawPanes();                     // the Projects tab shows the same rows
 }
 
 // A session tmux knows as "claude-Foo" is the same thing the Projects card

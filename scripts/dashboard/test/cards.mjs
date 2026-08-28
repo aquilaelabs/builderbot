@@ -371,7 +371,15 @@ const locked = await page.$eval('#projects .row:has([data-k="alpha"])', r => ({
 }));
 ok(locked.claude === true, 'locking a project takes its Claude button away');
 ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in');
-ok(/locked/.test(locked.note) && !/excluded/.test(locked.note),
+// The control moves at once; the row's note comes from the server payload and
+// lands on the next poll. Instant feedback on the thing pressed, and the
+// derived text a beat behind it rather than the page re-implementing it.
+await page.waitForFunction(() => /locked/.test(
+  document.querySelector('#projects .row:has([data-k="alpha"])')?.textContent || ''),
+  { timeout: 15000 });
+const note = await page.$eval('#projects .row:has([data-k="alpha"])',
+  r => r.textContent.replace(/\s+/g, ' '));
+ok(/locked/.test(note) && !/excluded/.test(note),
    '...saying locked rather than excluded, which is the other thing entirely');
 await page.evaluate(() => setLocked('alpha', false));
 await page.waitForFunction(
@@ -410,6 +418,30 @@ await page.waitForFunction(
 ok(true, 'pinning it puts it back on the sidebar');
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+
+// Unpinning from the sidebar has to move the Projects TAB too: they render
+// the same rows from the same state, and a tab that drew once showed a lit
+// thumbtack for a project that was no longer pinned — then clicking it sent
+// the state it was already in, which is what "pinning only works sometimes"
+// was. No poll is waited for: the answer to the pin request is the new set.
+await page.click('#projects #bAllProj');
+await page.waitForSelector('.doc .projtab .row', { timeout: 15000 });
+const tackLit = () => page.$eval('.doc .projtab [data-p="beta"]',
+                                 b => b.classList.contains('on'));
+ok(await tackLit(), 'the Projects tab shows beta pinned');
+await page.evaluate(() => setProjectPinned('beta', false));
+await page.waitForFunction(() =>
+  !document.querySelector('.doc .projtab [data-p="beta"]')?.classList.contains('on'),
+  { timeout: 5000 });
+ok(true, '...and unpinning it there unlights the tab\'s thumbtack too');
+ok(!await page.$$eval('#projects .row .name',
+     ns => ns.some(n => n.textContent.trim() === 'beta')),
+   '...with the sidebar dropping it in the same breath');
+await page.evaluate(() => setProjectPinned('beta', true));
+await page.waitForFunction(() =>
+  document.querySelector('.doc .projtab [data-p="beta"]')?.classList.contains('on'),
+  { timeout: 5000 });
+ok(true, '...and pinning it back lights it again, first click');
 
 // The docker manager opens from Tools. What it LISTS is asserted in
 // devapp.mjs, where a project actually has a compose file and an instance —
