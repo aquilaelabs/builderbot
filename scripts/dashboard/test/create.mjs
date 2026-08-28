@@ -355,6 +355,65 @@ ok(tj.lookup === tj.helper && tj.other === '',
    'a project with no token gets no helper — it is not shared, it is absent');
 ok(tj.gone, 'and forgetting one removes it');
 
+// ---- which credential the remote actually uses -------------------------
+// At the module for the same reason as the store above: the interesting half
+// is what gets written into `git remote set-url`, and a real remote would put
+// GitHub on the other end of a unit test. `run` is stubbed to answer the one
+// question set_auth asks and to record the one command it issues.
+const authOut = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('p', ${
+  JSON.stringify(new globalThis.URL('../projects.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+state = {'url': 'git@bb-depkey:Owner/Repo.git'}
+issued = []
+def fake_run(cmd, **k):
+    if cmd[3:5] == ['remote', 'get-url']:
+        return {'code': 0, 'out': state['url'], 'err': ''}
+    if cmd[3:5] == ['remote', 'set-url']:
+        issued.append(cmd[-1]); state['url'] = cmd[-1]
+        return {'code': 0, 'out': '', 'err': ''}
+    return {'code': 0, 'out': '', 'err': ''}
+m.configure(run=fake_run, workspace='/tmp',
+            agent_keys=lambda: [], gh_authed=lambda: False,
+            ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
+            build_claude_md=lambda *a, **k: '', project_name=None,
+            github_url=None, state=d, home=d, devdata=d,
+            write_json=lambda p, v: open(p, 'w').write(json.dumps(v)),
+            pname=lambda n: 'bbdev-' + n)
+out = {}
+m.grant_push('alpha', 'owner/repo', 'key')
+out['ssh_seen'] = m.remote_auth('/tmp/alpha')
+# No token yet: the switch has to refuse rather than write a remote that
+# cannot authenticate.
+out['no_token'] = m.set_auth('alpha', '/tmp/alpha', 'https')[1]
+m.write_token('alpha', 'ghp_ExampleTokenValue123')
+out['opts_on_key'] = m.auth_options('alpha', '/tmp/alpha')
+out['to_https'] = m.set_auth('alpha', '/tmp/alpha', 'https')
+out['now_https'] = m.remote_auth('/tmp/alpha')
+out['opts_on_token'] = m.auth_options('alpha', '/tmp/alpha')
+out['token_kept'] = bool(m.token_helper('alpha'))
+out['back'] = m.set_auth('alpha', '/tmp/alpha', 'ssh')
+out['issued'] = issued
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const aj = JSON.parse(authOut.trim().split('\n').pop());
+ok(aj.ssh_seen === 'ssh',
+   'a deploy-key alias is read as ssh, host and all — it is the URL form that decides');
+ok(/no access token/.test(aj.no_token),
+   'switching to a token nobody stored is refused, not written');
+ok(aj.opts_on_key.now === 'ssh' && aj.opts_on_key.token && aj.opts_on_key.ssh,
+   'with both credentials present the dialog is offered a real choice');
+ok(aj.issued[0] === 'https://github.com/owner/repo.git',
+   'switching to the token rewrites origin to https, owner and repo intact');
+ok(aj.now_https === 'https' && aj.token_kept,
+   '...and the token file it now uses is still the project\'s own');
+ok(aj.opts_on_token.ssh,
+   '...with the deploy key still offered, because the ssh URL was remembered');
+ok(aj.issued[1] === 'git@bb-depkey:Owner/Repo.git',
+   'switching back restores the exact alias, which nothing could have guessed');
+
 // ---- deploy keys -------------------------------------------------------
 // The harness agent holds one throwaway key. The endpoint lists its public
 // half; the dialog offers it; picking it for a clone writes the .pub selector

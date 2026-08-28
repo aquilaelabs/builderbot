@@ -1670,6 +1670,21 @@ body.dragging .tab .lbl{cursor:grabbing}
              placeholder="ghp_… or github_pat_…">
       <div class="hint" id="rnTokenHint"></div>
     </div>
+    <!-- Which of the two credentials git actually reaches for. A project can
+         hold both — a deploy key in the agent and a token in /config — and
+         until this existed, storing the token was all you could do: git never
+         asks a credential helper about an ssh remote, so the key went on
+         winning and the only way to change that was `git remote set-url` by
+         hand. Switching here removes neither, so it is a switch and not a
+         migration. -->
+    <div class="field" id="rnAuthField" hidden>
+      <label id="rnAuthLabel">Authentication</label>
+      <div class="pseg" role="group" aria-labelledby="rnAuthLabel">
+        <button id="rnAuthKey" type="button">Deploy key</button>
+        <button id="rnAuthToken" type="button">Access token</button>
+      </div>
+      <div class="hint" id="rnAuthHint"></div>
+    </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
@@ -8023,6 +8038,11 @@ $("dnmodal").onclick = e => { if (e.target === $("dnmodal")) closeSendToDocker()
 
 $("rnName").oninput = rnShow;
 $("rnGo").onclick = rnSubmit;
+$("rnAuthKey").onclick = () => rnAuthSet("ssh");
+$("rnAuthToken").onclick = () => rnAuthSet("https");
+// Typing a token can turn the disabled side on: setting one and switching to
+// it is a single intention, and the submit does them in that order.
+$("rnToken").addEventListener("input", rnDrawAuth);
 $("rnCancel").onclick = closeRename;
 $("rnmodal").onclick = e => { if (e.target === $("rnmodal")) closeRename(); };
 
@@ -8335,18 +8355,85 @@ function renameProject(name){
   $("rnTokenHint").textContent = how === "key"
     ? "This project pushes with a deploy key" + (p?.has_token
         ? ", and already has a token stored. " : ". ")
-      + "A token here is kept for it alone and is the first half of moving off "
-      + "keys — git goes on using the key until the remote is an https one, "
-      + "because a credential helper is never asked about an ssh remote."
+      + "A token here is kept for it alone. It does not take effect on its "
+      + "own — a credential helper is never asked about an ssh remote — so "
+      + "the switch below is the half that makes git use it."
     : p?.has_token
       ? "Replaces the token this project uses. It stays this project's alone, "
         + "and is not shielded — a shell here can read it."
       : "Stored for this project alone, and not shielded — a shell here can "
         + "read it.";
+  rnLoadAuth(name);
   $("rnGo").disabled = false;
   $("rnGo").textContent = "Rename";
   $("rnmodal").hidden = false;
 }
+
+// What the remote uses now, and what the operator has picked instead. Both
+// null until this open's /api/project-auth answers — the dialog draws without
+// them rather than waiting, because the name field is the reason most people
+// opened it and it should not be behind a request.
+let rnAuthNow = null, rnAuthPick = null, rnAuthOpts = null;
+
+// Fetched per open, like the new-project dialog's keys: a project's remote can
+// be rewritten from a terminal between two opens, and a cached answer here
+// would offer to switch to the side it is already on.
+function rnLoadAuth(name){
+  rnAuthNow = rnAuthPick = rnAuthOpts = null;
+  $("rnAuthField").hidden = true;
+  fetch("/api/project-auth", {method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({name})})
+    .then(r => r.json())
+    .then(j => {
+      if (rnFor !== name || j.error) return;   // closed, or reopened elsewhere
+      rnAuthOpts = j;
+      rnAuthNow = rnAuthPick = j.now || null;
+      rnDrawAuth();
+    })
+    .catch(() => {});                          // the rename itself still works
+}
+
+function rnDrawAuth(){
+  // No origin means no question to ask: a local repo authenticates against
+  // nothing, and a segment there would imply it had a choice.
+  // Gated on the token field as well as on having a remote: where a token
+  // would mean nothing (a read-only clone, a local repo) the field above is
+  // hidden, and a switch offering to use a credential the dialog will not let
+  // you set is a dead end wearing a control's clothes.
+  if (!rnAuthOpts || !rnAuthNow || $("rnTokenField").hidden){
+    $("rnAuthField").hidden = true; return;
+  }
+  const typed = !!$("rnToken").value.trim();
+  // A token typed in this dialog counts as available: setting one and
+  // switching to it is one intention, and the submit does them in that order.
+  const canToken = rnAuthOpts.token || typed;
+  const canKey = rnAuthOpts.ssh;
+  $("rnAuthField").hidden = false;
+  $("rnAuthKey").classList.toggle("on", rnAuthPick === "ssh");
+  $("rnAuthToken").classList.toggle("on", rnAuthPick === "https");
+  $("rnAuthKey").disabled = !canKey;
+  $("rnAuthToken").disabled = !canToken;
+  const changed = rnAuthPick !== rnAuthNow;
+  $("rnAuthHint").textContent =
+    (rnAuthNow === "ssh"
+      ? "Pushes go out on the deploy key: origin is an ssh remote, so the "
+        + "stored token is never consulted. "
+      : "Pushes authenticate with this project's access token over https. ")
+    + (changed
+        ? (rnAuthPick === "https"
+            ? "Renaming will point origin at https://github.com and use the "
+              + "token. The key and its alias stay where they are."
+            : "Renaming will point origin back at the deploy key. The token "
+              + "stays stored and unused.")
+        : !canToken && rnAuthNow === "ssh"
+          ? "No token is stored for it — set one above and this becomes a choice."
+        : !canKey && rnAuthNow === "https"
+          ? "It has no deploy-key remote to go back to: it has only ever used https."
+        : "Switching keeps both credentials — nothing is removed either way.");
+}
+
+const rnAuthSet = m => { if (rnAuthPick === m) return; rnAuthPick = m; rnDrawAuth(); };
 
 function rnShow(){
   const raw = $("rnName").value, clean = projName(raw);
@@ -8365,6 +8452,10 @@ function closeRename(){ $("rnmodal").hidden = true; rnFor = null; }
 
 async function rnSubmit(){
   const name = rnFor, to = $("rnName").value, token = $("rnToken").value.trim();
+  // "" for "leave the remote alone", which is every rename that is only a
+  // rename — the server treats the field's absence and a no-op the same way,
+  // but sending the current mode back would make every rename a rewrite.
+  const auth = rnAuthPick && rnAuthPick !== rnAuthNow ? rnAuthPick : "";
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
   // A token change with no name change is a legitimate thing to want, so this
@@ -8373,7 +8464,7 @@ async function rnSubmit(){
   try{
     const r = await fetch("/api/rename", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, to, token})});
+      body: JSON.stringify({name, to, token, auth})});
     const j = await r.json();
     if (j.error){ $("rnGo").disabled = false; $("rnGo").textContent = "Rename";
                   return fail(j.error); }

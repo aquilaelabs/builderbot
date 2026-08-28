@@ -2456,6 +2456,8 @@ class Handler(BaseHTTPRequestHandler):
         # definition quietly replaced the earlier one in the class body too.
         if path.startswith("/api/project-pin"):
             return self._project_pin(req)
+        if path.startswith("/api/project-auth"):
+            return self._project_auth(req)
         if path.startswith("/api/container"):
             return self._container(req)
         if path.startswith("/api/rename"):
@@ -3345,6 +3347,22 @@ class Handler(BaseHTTPRequestHandler):
             pass          # no daemon, or no compose file: nothing to protect
         body, code = projects.rename(req)
         return self._json(body, code)
+
+    def _project_auth(self, req):
+        """What credential this project's remote uses, and what else it could.
+
+        Asked when the rename dialog opens rather than carried on the status
+        poll: answering it means running `git remote get-url` in the project,
+        and the poll already walks every project every fifteen seconds. One
+        subprocess per dialog is nothing; one per project per poll is not.
+        """
+        name = req.get("name", "")
+        if not PROJECT_NAME.fullmatch(name or ""):
+            return self._json({"error": "unknown project"}, 400)
+        d = WORKSPACE / name
+        if not d.is_dir():
+            return self._json({"error": "unknown project"}, 400)
+        return self._json(projects.auth_options(name, d))
 
     def _project_pin(self, req):
         """Pin or unpin a project: whether the sidebar card shows it.

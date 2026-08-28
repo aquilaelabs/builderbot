@@ -70,3 +70,4 @@
 - The new-container dialog's Compose and Environment tabs slide like the rest of the dashboard's (4b69167)
 - The Doctor card no longer reports a GPU fault it measured while the container was still starting (eca73da)
 - A restart now recovers the emulator's hardware rendering after the X server has died, instead of skipping it (eca73da)
+- A project with both a deploy key and an access token can now choose which one git uses, from the rename dialog (2ae19fd)
