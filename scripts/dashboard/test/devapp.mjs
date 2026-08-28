@@ -668,6 +668,12 @@ await page.click('#dnGo');
 await page.waitForSelector('.dmtab .row[data-inst="ep.silon|staging-two"]',
                            { timeout: 20000 });
 ok(true, 'sending one lands you in the manager, with it listed');
+// ...as a document filling the pane rather than a rounded card adrift in one.
+// It wore .card while the notebook beside it did not, which is the thing this
+// is here to stop coming back.
+ok(await page.$eval('.dmtab', e => !e.classList.contains('card'))
+   && await page.$eval('.doc:has(.dmtab)', e => e.classList.contains('flush')),
+   '...laid out like the notebook, not as a box floating in the pane');
 // Send BUILDS: the manager lists what exists, so registering alone would send
 // you to a page that does not mention what you just made.
 // Running, not merely built: the env went in before the build, so the gate

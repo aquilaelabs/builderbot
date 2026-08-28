@@ -75,3 +75,4 @@
 - Each project now sets which model and effort Claude runs on there, in its settings dialog (026d4be)
 - The pencil on a project row is a gear now, and its dialog is Project settings (026d4be)
 - The broom in the top bar opens a menu with twelve dark colour schemes, including an Alien-inspired Nostromo (5d99ac0)
+- The Projects and Docker tabs now fill their pane like the notebook, instead of sitting in a rounded box (a32db3f)
