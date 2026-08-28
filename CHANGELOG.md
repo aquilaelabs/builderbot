@@ -63,3 +63,5 @@
 - Dialogs no longer open the on-screen keyboard over themselves, and the two newest ones now match the rest (d38ded8)
 - Each row in the Docker manager folds open to show what it publishes and what it mounts (1ac8c32)
 - A phone comes back to the Dashboard after the container restarts, instead of the terminal side whose sessions ended with it (e385743)
+- The Docker manager can run a container from a compose file you write there — a name, a compose file and an environment, with no project needed (851015b)
+- Icons show their tooltip immediately, rows fade out when unpinned or excluded, and the ports/mounts fold animates (851015b)
