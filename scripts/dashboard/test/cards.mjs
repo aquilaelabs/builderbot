@@ -667,6 +667,8 @@ const seen = () => page.evaluate(() => ({
   token: document.getElementById('rnAuthToken').disabled,
   onKey: document.getElementById('rnAuthKey').classList.contains('on'),
   onToken: document.getElementById('rnAuthToken').classList.contains('on'),
+  onNone: document.getElementById('rnAuthNone').classList.contains('on'),
+  bad: document.getElementById('rnAuthHint').classList.contains('bad'),
   hint: document.getElementById('rnAuthHint').textContent,
 }));
 
@@ -687,12 +689,27 @@ await authState({ now: 'https', token: true, ssh: false }, 'https');
 v = await seen();
 ok(v.closed && v.key && !v.token && v.onToken,
    'with no deploy key the key side is ghosted and the pick stays on the token');
+// Clearing does NOT slide the pick somewhere else. It stays where it was put,
+// goes invalid, and Save refuses — being corrected without being asked is how
+// you end up on a credential you did not choose.
 await page.click('#rnTokenClear');
 v = await seen();
-ok(v.key && v.token && !v.onKey && !v.onToken && !v.closed,
-   'clearing the only credential ghosts both sides — there is nothing left to pick');
-ok(/cannot push to GitHub/.test(v.hint) && /locally/.test(v.hint),
-   '...and says so: the work still happens, it just stays on this box');
+ok(v.onToken && v.token,
+   'clearing the token leaves the pick where it was, and ghosts it');
+ok(v.bad && /no token to use/.test(v.hint),
+   '...saying in red that there will be nothing to authenticate with');
+await page.click('#rnGo');
+await page.waitForSelector('#rnErrWrap:not([hidden])', { timeout: 8000 });
+ok(/no access token after this save/.test(await page.$eval('#rnErr', e => e.textContent)),
+   '...and Save refuses rather than writing a remote with no credential');
+// Disabled is the third answer, and always takeable: it is the absence of a
+// credential rather than the presence of one.
+ok(!await page.$eval('#rnAuthNone', b => b.disabled),
+   'Disabled is always offered — turning pushing off is a real answer');
+await page.click('#rnAuthNone');
+v = await seen();
+ok(v.onNone && !v.bad,
+   '...and picking it settles the dialog, because nothing is missing any more');
 
 // What Claude runs on here, at the bottom of the same dialog. Per project, and
 // applied when a session starts rather than typed into a running one — so the

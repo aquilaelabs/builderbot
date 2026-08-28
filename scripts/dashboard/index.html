@@ -1964,6 +1964,7 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="field" id="rnAuthField" hidden>
       <label id="rnAuthLabel">Authentication</label>
       <div class="pseg" role="group" aria-labelledby="rnAuthLabel">
+        <button id="rnAuthNone" type="button">Disabled</button>
         <button id="rnAuthKey" type="button">Deploy key</button>
         <button id="rnAuthToken" type="button">Access token</button>
       </div>
@@ -8499,6 +8500,7 @@ $("rnTokenClear").onclick = () => {
   rnDrawAuth();                                // token being thrown away
   if (rnClearToken) $("rnToken").focus();
 };
+$("rnAuthNone").onclick = () => rnAuthSet("none");
 $("rnAuthKey").onclick = () => rnAuthSet("ssh");
 $("rnAuthToken").onclick = () => rnAuthSet("https");
 // Typing a token can turn the disabled side on: setting one and switching to
@@ -8848,14 +8850,7 @@ function rnDrawAuth(){
   const canToken = stored || typed;
   const canKey = rnAuthOpts.ssh;
 
-  // The stored token is closed rather than editable: it cannot be shown (only
-  // its file has it) and typing over an invisible value is how you replace a
-  // working credential by accident. Clearing opens it.
   const closed = stored && !rnClearToken;
-  // Only a stored token closes the field. Closing it when NEITHER credential
-  // is available reads as the tidier rule and is a dead end: typing a token is
-  // the one way out of that state, and a project cloned over https whose token
-  // was cleared would have no way back to pushing at all.
   $("rnToken").disabled = closed;
   $("rnToken").placeholder = closed ? "stored — cleared below to replace it"
                                     : "ghp_… or github_pat_…";
@@ -8864,47 +8859,53 @@ function rnDrawAuth(){
     ? "Keep the stored token after all"
     : "Clear the stored token, and type another";
 
-  // Nothing left to authenticate with. Not an error — a project can be worked
-  // on perfectly well without pushing — so it is stated rather than refused,
-  // and both sides go quiet because neither is a choice any more.
-  if (!canToken && !canKey){
-    $("rnAuthField").hidden = false;
-    rnAuthPick = null;
-    $("rnAuthKey").classList.remove("on"); $("rnAuthToken").classList.remove("on");
-    $("rnAuthKey").disabled = $("rnAuthToken").disabled = true;
-    $("rnAuthHint").textContent =
-      "With no deploy key and no token this project cannot push to GitHub. "
-      + "Everything else still works — commit, branch and build locally — and "
-      + "pushing comes back the moment either credential is here.";
-    return;
-  }
-  // A pick that has stopped being available cannot stay lit: clearing the
-  // token while the segment is on it would otherwise leave Save promising an
-  // authentication that no longer exists.
-  if (rnAuthPick === "https" && !canToken) rnAuthPick = canKey ? "ssh" : null;
-  if (rnAuthPick === "ssh" && !canKey) rnAuthPick = canToken ? "https" : null;
   $("rnAuthField").hidden = false;
-  $("rnAuthKey").classList.toggle("on", rnAuthPick === "ssh");
-  $("rnAuthToken").classList.toggle("on", rnAuthPick === "https");
+  // Disabled is always takeable: it is the absence of a credential rather than
+  // the presence of one, and it is the honest answer for a project you want
+  // pushing nowhere for now.
+  $("rnAuthNone").disabled = false;
   $("rnAuthKey").disabled = !canKey;
   $("rnAuthToken").disabled = !canToken;
+  for (const [id, mode] of [["rnAuthNone", "none"], ["rnAuthKey", "ssh"],
+                            ["rnAuthToken", "https"]]){
+    const on = rnAuthPick === mode;
+    $(id).classList.toggle("on", on);
+    $(id).setAttribute("aria-checked", on ? "true" : "false");
+  }
+  // The pick is NOT moved out from under the operator when clearing a token
+  // takes its ground away. It stays where they put it and Save refuses, which
+  // is the difference between being told and being corrected: silently sliding
+  // to another mode is how you end up on a credential you did not choose.
+  const invalid = rnAuthPick === "https" && !canToken;
   const changed = rnAuthPick !== rnAuthNow;
-  $("rnAuthHint").textContent =
-    (rnAuthNow === "ssh"
-      ? "Pushes go out on the deploy key: origin is an ssh remote, so the "
-        + "stored token is never consulted. "
-      : "Pushes authenticate with this project's access token over https. ")
-    + (changed
-        ? (rnAuthPick === "https"
-            ? "Renaming will point origin at https://github.com and use the "
-              + "token. The key and its alias stay where they are."
-            : "Renaming will point origin back at the deploy key. The token "
-              + (rnClearToken ? "is being cleared." : "stays stored and unused."))
+  $("rnAuthHint").classList.toggle("bad", invalid);
+  $("rnAuthHint").textContent = invalid
+    ? "Access token is picked and there will be no token to use. Type a "
+      + "replacement above, keep the stored one, or choose Deploy key or Disabled."
+    : (rnAuthNow === "ssh"
+        ? "Pushes go out on the deploy key: origin is an ssh remote, so a "
+          + "stored token is never consulted. "
+      : rnAuthNow === "https"
+        ? "Pushes authenticate with this project's access token over https. "
+        : "Nothing authenticates here: the remote is https with no token on "
+          + "it, so a push is refused. ")
+      + (changed
+          ? (rnAuthPick === "https"
+              ? "Saving points origin at https://github.com and uses the token. "
+                + "The key and its alias stay where they are."
+            : rnAuthPick === "ssh"
+              ? "Saving points origin back at the deploy key. The token "
+                + (rnClearToken ? "is being cleared." : "stays stored and unused.")
+              : "Saving takes the credential off it: the remote stays, and "
+                + "pushing is refused until you pick one again.")
+        : !canToken && !canKey
+          ? "Nothing is stored to switch to — set a token above, or clone it "
+            + "again with a deploy key."
         : !canToken
           ? "No token is stored for it — set one above and this becomes a choice."
         : !canKey
           ? "It has no deploy-key remote to go back to: it has only ever used https."
-        : "Switching keeps both credentials — nothing is removed either way.");
+        : "Switching keeps every credential it has — nothing is removed either way.");
 }
 
 const rnAuthSet = m => { if (rnAuthPick === m) return; rnAuthPick = m; rnDrawAuth(); };
@@ -8938,6 +8939,12 @@ async function rnSubmit(){
   const running = liveSessions().has(tmuxName("claude-" + name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
+  // The one combination the dialog will not write: authenticating with a token
+  // it is being told to throw away. The hint has been saying so; this is what
+  // makes it true rather than advice.
+  if (rnAuthPick === "https" && !((rnAuthOpts?.token && !rnClearToken) || token))
+    return fail("pick a credential that will exist: there will be no access "
+                + "token after this save");
   // Asked before anything is written, and only when it costs something: a
   // session that is not running has nothing to interrupt, and a dialog that
   // was opened and closed unchanged should never ask at all.

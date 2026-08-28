@@ -2289,6 +2289,99 @@ that goes looking: Bash still reaches the whole filesystem, and no in-process
 permission system changes that. If you need a hard boundary, do not mount the
 other projects into the same container.
 
+### Push rights
+
+A clone is read-only unless you tick **I want to push to this repository**, and
+that decision is made once. Three rules, all deliberate:
+
+- **It cannot be turned off.** A working copy that could push yesterday and
+  cannot today explains nothing to whoever is standing in it. Deleting the
+  project is the way out — which never touches GitHub.
+- **One project per repository.** Two working copies pushing to one remote is
+  how a branch ends up racing itself, and here both may be the same session on
+  different days. Deleting the holder frees it.
+- **The token is checked first.** Before the clone starts, GitHub is asked
+  whether that token can actually push to that repository — a missing scope
+  otherwise surfaces days later as a failure with nothing connecting it to the
+  box you ticked. A deploy key cannot be checked this way short of pushing, so
+  it is taken at its word.
+
+Enforcement is a `pre-push` hook, which is transport-agnostic — it catches an
+ssh push through a deploy key exactly as it catches an https one — and refuses
+with a sentence rather than an auth error. Like the sibling-project rule it is
+a guardrail, not a sandbox: a shell in the container can delete it.
+
+Projects that already existed when this arrived are granted retroactively if
+their GitHub remote is an ssh one, recorded as `key`. Those are the repos that
+were already being pushed to with deploy keys, and a new rule is not a reason
+to take away something that worked. https remotes are not seeded: those
+authenticated with the container-wide `GIT_PAT`, and a token of their own is
+the way back.
+
+### An access token for one project
+
+Cloning a private repository asks for an optional **access token**. It is
+written in git's own credential-store format to `/config/gitcreds/<project>`,
+mode `0600`, and named from that repository's `.git/config` and nowhere else —
+with git's empty-value reset ahead of it, so the globally configured helper is
+never asked and the container's `GIT_PAT` is not what authenticates the fetch.
+
+That last part is the point. A token minted to reach one private repo usually
+reaches every repo it was scoped to; in the environment it also reaches them
+from every project and every session. Here it opens the one project you gave it
+to, and renaming that project takes it along.
+
+A project that already has push rights can be given a token from the **rename**
+dialog — including one that pushes with a **deploy key**. Setting one there
+does not switch anything by itself: git never asks a credential helper about an
+ssh remote, so a project with an `ssh://` or `git@` origin goes on using its
+key however many tokens are stored for it.
+
+The **Authentication** segment beside that field is what changes it. Three
+answers, not two: *Disabled*, *Deploy key* and *Access token*. It shows which
+one the remote actually reaches for and lets you move between them; the change
+is applied when you press Save, which is also how a token typed in the same
+dialog gets written before the switch that needs it. Under the hood it is one
+`git remote set-url`, between `git@…:owner/repo.git` and
+`https://github.com/owner/repo.git`, plus the credential helper.
+
+*Disabled* is a real answer rather than the absence of one — the remote keeps
+its https form and the helper comes off it, so a push is refused instead of
+quietly falling back on whatever else git can find. It is also what makes the
+dangerous case sayable: **clearing a token while the switch still says
+*Access token* is refused at Save**, in those words. The pick is left exactly
+where you put it and the reason is stated, rather than sliding to another mode
+on your behalf — being corrected without being asked is how you end up on a
+credential you did not choose.
+
+**A stored token is closed, not shown.** Only its file has the value, so the
+field cannot be pre-filled and typing over an invisible one is how a working
+credential gets replaced by accident. It is disabled, with **Clear the stored
+token** under it: pressing that opens the field for a new one, ghosts the
+*Access token* side and puts the choice back on *Deploy key*. Like everything
+else in this dialog it is staged — the project changes when you press Rename,
+and the link offers the way back until you do.
+
+Clear the only credential a project has and both sides go quiet, with a line
+saying it cannot push to GitHub and that everything else — commit, branch,
+build — still works locally. The field stays typeable there deliberately:
+ghosting it would be tidier and would leave no way back to pushing.
+
+**Switching removes neither credential.** The token file stays in `/config`,
+the deploy key and its `~/.ssh/config` alias stay where they are, and the
+repository keeps its credential helper — an ssh remote simply never consults
+one. So going back costs nothing, and the exact alias is restored rather than
+guessed, because the alias is named after the *key* and there would be nothing
+in the project to guess it from. A side you cannot take is shown disabled with
+the reason: a project with no token stored, or one that has only ever been
+https and so has no key remote to return to.
+
+**It is not shielded the way a deploy key is.** Those are served by a root-owned
+agent and cannot be read at all. This is a file owned by the same user your
+shells run as, so a session with Bash can read it. Better than an environment
+variable every process inherits, and not a secret store — for a repository
+where that matters, use a deploy key.
+
 ### Locking a project
 
 The **padlock** on a project row is the one gate there is. There used to be two

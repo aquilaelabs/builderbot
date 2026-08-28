@@ -368,12 +368,24 @@ m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = tempfile.mkdtemp()
 state = {'url': 'git@bb-depkey:Owner/Repo.git'}
 issued = []
+state['helper'] = ''
 def fake_run(cmd, **k):
     if cmd[3:5] == ['remote', 'get-url']:
         return {'code': 0, 'out': state['url'], 'err': ''}
     if cmd[3:5] == ['remote', 'set-url']:
         issued.append(cmd[-1]); state['url'] = cmd[-1]
         return {'code': 0, 'out': '', 'err': ''}
+    # The credential helper, remembered: whether the repo is pointed at its own
+    # token is what tells "access token" from "disabled", so a stub that always
+    # answered empty would make every https remote read as disabled.
+    if cmd[3:6] == ['config', '--local', '--replace-all']:
+        state['helper'] = ''
+        return {'code': 0, 'out': '', 'err': ''}
+    if cmd[3:6] == ['config', '--local', '--add']:
+        state['helper'] = cmd[-1]
+        return {'code': 0, 'out': '', 'err': ''}
+    if cmd[3:6] == ['config', '--local', '--get-all']:
+        return {'code': 0, 'out': state['helper'], 'err': ''}
     return {'code': 0, 'out': '', 'err': ''}
 m.configure(run=fake_run, workspace='/tmp',
             agent_keys=lambda: [], gh_authed=lambda: False,
@@ -388,13 +400,18 @@ out['ssh_seen'] = m.remote_auth('/tmp/alpha')
 # No token yet: the switch has to refuse rather than write a remote that
 # cannot authenticate.
 out['no_token'] = m.set_auth('alpha', '/tmp/alpha', 'https')[1]
+out['bad_mode'] = m.set_auth('alpha', '/tmp/alpha', 'nonsense')[1]
 m.write_token('alpha', 'ghp_ExampleTokenValue123')
 out['opts_on_key'] = m.auth_options('alpha', '/tmp/alpha')
 out['to_https'] = m.set_auth('alpha', '/tmp/alpha', 'https')
-out['now_https'] = m.remote_auth('/tmp/alpha')
+out['now_https'] = m.remote_auth('/tmp/alpha', 'alpha')
 out['opts_on_token'] = m.auth_options('alpha', '/tmp/alpha')
 out['token_kept'] = bool(m.token_helper('alpha'))
 out['back'] = m.set_auth('alpha', '/tmp/alpha', 'ssh')
+# ...and off altogether, which is its own answer rather than a broken second
+# one: an https remote with the helper taken off it authenticates with nothing.
+out['off'] = m.set_auth('alpha', '/tmp/alpha', 'none')
+out['now_off'] = m.remote_auth('/tmp/alpha', 'alpha')
 out['issued'] = issued
 print(json.dumps(out))
 `], { encoding: 'utf8' });
@@ -413,6 +430,10 @@ ok(aj.opts_on_token.ssh,
    '...with the deploy key still offered, because the ssh URL was remembered');
 ok(aj.issued[1] === 'git@bb-depkey:Owner/Repo.git',
    'switching back restores the exact alias, which nothing could have guessed');
+ok(/not an authentication mode/.test(aj.bad_mode),
+   'a mode nobody offers is refused rather than written');
+ok(!aj.off[1] && /nothing/.test(aj.off[0]) && aj.now_off === 'none',
+   'and Disabled is a third answer: https with no token, authenticating with nothing');
 
 // ---- deploy keys -------------------------------------------------------
 // The harness agent holds one throwaway key. The endpoint lists its public
