@@ -86,3 +86,4 @@
 - Excluding a project is gone: the padlock does it all, and a locked project keeps its notebook read-only, its findings and its artifacts (bd0016e)
 - A locked project shows a padlock after its name, and its Claude button is greyed rather than removed (bd0016e)
 - A project's credential can be turned off entirely, and clearing its token with the token still selected is now refused rather than saved (2a1daa6)
+- The Packages tab is laid out like the other tabs, and a tooltip no longer breaks apart when you hold the button down (b39d5f6)

@@ -458,11 +458,15 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    than the ones below it reads as a mistake, because it is one. The vertical
    padding matches a row's too, so every rule on the page has the same air
    above and below it. */
-.pkghead{margin:0 12px;padding:13px 0;color:var(--dim);
+/* The same 11px/14px band the notebook and the other document tabs use. It
+   had a gutter of its own — 12px, applied to a wrapper instead of to the rows
+   — which put this tab a couple of pixels out of step with every other one and
+   left the bin against the right edge with nothing beyond it. */
+.pkghead{margin:0;padding:11px 14px;color:var(--dim);
   font:var(--f-ui);border-bottom:1px solid var(--line)}
 .pkghead code{font-family:var(--mono);color:var(--ink)}
-.pkgs{padding:0 12px}
-.pkg{display:flex;gap:10px;align-items:flex-start;padding:13px 0;margin:0;
+.pkgs{padding:0}
+.pkg{display:flex;gap:10px;align-items:flex-start;padding:11px 14px;margin:0;
   border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)}
 .pkg:last-child{border-bottom:0}
 .pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto}
@@ -470,7 +474,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .pkg .sub{display:block;color:var(--dim);font:var(--f-note)}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
 /* An image row has no checkbox, so the text starts where the others' does. */
-.pkg.img{padding-left:26px}
+.pkg.img{padding-left:40px}
 .imghead{margin-top:18px}
 .pkg .prog{color:var(--accent);font-family:var(--mono);overflow-wrap:anywhere}
 /* An image nothing is built on: said, but quietly. It is the answer to "can
@@ -500,15 +504,14 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    point; an empty dead box said only the second half. */
 .pkg.done input{opacity:.5}
 .pkg .rm{flex:0 0 auto;align-self:center;color:var(--dim)}
-@media(hover:hover){ .pkg .rm:hover{color:var(--bad);border-color:#4d2220} }
-@media(hover:hover){ .pkg:hover{background:#1b222b} }
+@media(hover:hover){ .pkg .rm:hover{color:var(--bad);border-color:var(--red2-edge)} }
 /* The image picker. Three controls that fit on one line on a desktop and wrap
    to two on a phone — the level and its Add button staying together, because
    they are one action. min-width:0 is the load-bearing part: a select is as
    wide as its longest option unless told otherwise, and
    "API 36-ext19 · 1.8 GB" was pushing the whole tab wider than the screen,
    which clipped every paragraph on it. */
-.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:13px 12px}
+.imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:11px 14px}
 .imgadd select{flex:1 1 190px;min-width:0;padding:6px 8px;
   font:12px/1.3 inherit;min-height:var(--tap)}
 #imgFlavor{flex-basis:210px}
@@ -730,6 +733,13 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
   .side .acts [data-tip]{position:static}
   .side .acts [data-tip]::after{left:10px;right:10px;
     transform:none;width:auto;max-width:none}
+  /* ...and not while the button is pressed. Every button here dips a pixel on
+     :active, and a transform makes the element the containing block for its
+     own absolutely positioned ::after — so a tip measured against the ROW
+     suddenly measures against a 32px button, wraps to one character per line
+     and runs down the whole sidebar. Holding the mouse down on an icon is
+     also the moment its label is least wanted, so it simply goes. */
+  [data-tip]:active::after{display:none}
 }
 @media(prefers-reduced-motion:reduce){
   [data-tip]::after{transition:none}
@@ -5629,6 +5639,10 @@ directory stay, so remaking it under the same name finds them">Remove</button>
 function renderPackagesInto(i){
   const el = $("doc" + i);
   if (!el) return;
+  // Fills its pane like the notebook and the other document tabs, rather than
+  // sitting on the darker ground with an inset — which is what made this one
+  // look like a different kind of screen.
+  el.classList.add("flush");
   const d = packages;
   if (!d){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
   if (d.error){ el.innerHTML = `<div class="empty">could not read the package list: ${esc(d.error)}</div>`; return; }

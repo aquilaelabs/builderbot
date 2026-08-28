@@ -348,6 +348,21 @@ ok(!list.find(r => r.name === 'android:emulator').installed
    'removing the ticked one leaves the other alone');
 ok(!existsSync(`${DIR}/androidsdk/emulator`), '...and it is gone from disk');
 
+// The tab is laid out like the notebook and the other document tabs. It was
+// the odd one out: an inset on the darker ground rather than filling its pane,
+// a 12px gutter applied to a wrapper instead of 14px on the rows, and a hover
+// highlight no other list here has — in a hardcoded colour no scheme reached.
+ok(await page.$eval('.doc:has(.pkg)', e => e.classList.contains('flush')),
+   'the packages tab fills its pane, like every other document tab');
+ok(await page.$eval('.pkg', e => getComputedStyle(e).padding) === '11px 14px',
+   '...on the same band the notebook uses, so the two do not disagree by two pixels');
+ok(await page.evaluate(() => {
+     const host = document.querySelector('.doc:has(.pkg)');
+     const bin = document.querySelector('.pkg .rm');
+     return bin && Math.round(host.getBoundingClientRect().right
+                              - bin.getBoundingClientRect().right) >= 12;
+   }), '...and the bin has a margin to sit in rather than the edge of the pane');
+
 // ---- what it is doing, beside what started it ---------------------------
 // The status used to be the Install button's label, which made a package id
 // into a green banner across the tab. It is green text beside the button now
