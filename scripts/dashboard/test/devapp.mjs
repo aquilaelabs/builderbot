@@ -612,6 +612,23 @@ ok(typeof dhj.auto === 'string',
    'auto resolves to an address or to nothing, never to an error');
 
 
+// The wiring fold: what the container publishes and what it mounts, fetched
+// when it is opened and not before — parsing the compose file is the one thing
+// the manager's page deliberately does not do for every row at once.
+await openManager();
+ok(await page.$eval(`${DM} .dmwire .wire`, e => /reading/.test(e.textContent)),
+   'the wiring fold says nothing until it is opened');
+await page.click(`${DM} .dmwire summary`);
+await page.waitForFunction((sel) => /7475/.test(
+  document.querySelector(sel + ' .dmwire .wire')?.textContent || ''), DM,
+  { timeout: 15000 });
+const wire = await page.$eval(`${DM} .dmwire .wire`, e => e.textContent.replace(/\s+/g, ' '));
+ok(/7474.*7475/.test(wire), '...then the port, the container\'s side first');
+ok(/\/library/.test(wire) && /←/.test(wire),
+   '...and a read-only mount with the arrow that says so');
+ok(/\/config/.test(wire) && /↔/.test(wire),
+   '...beside a writable one, which gets the other arrow');
+
 // ---- one button, and a second container from one project ---------------
 // The artifact row's controls moved to the manager; what is left is a button
 // that names a container and sends you there. A project can have several, all
@@ -621,6 +638,17 @@ ok(!await page.$('#devRow [data-devact]'),
    'the artifact row carries no docker controls any more');
 await page.click('#devSend');
 await page.waitForSelector('#dnmodal:not([hidden])');
+// No cursor anywhere: a focused field brings the on-screen keyboard up over
+// half the dialog the moment it opens, which is the rule the New project
+// dialog already followed and these two did not.
+ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT'
+   && await page.evaluate(() => document.activeElement?.tagName) !== 'TEXTAREA',
+   'the send dialog opens with the keyboard down');
+// The env comes with it, seeded from the project's own example, so the first
+// build has its values rather than stopping at the gate to ask for them.
+await page.waitForSelector('#dnEnvField:not([hidden])', { timeout: 10000 });
+ok(/PORT=8080/.test(await page.$eval('#dnEnv', e => e.value)),
+   '...carrying the env seeded from .env.example');
 await page.fill('#dnName', 'Staging Two');
 ok(/bbdev-ep-silon-staging-two/.test(
      await page.$eval('#dnPreview', e => e.textContent)),
@@ -631,10 +659,15 @@ await page.waitForSelector('.dmtab .row[data-inst="ep.silon|staging-two"]',
 ok(true, 'sending one lands you in the manager, with it listed');
 // Send BUILDS: the manager lists what exists, so registering alone would send
 // you to a page that does not mention what you just made.
-await page.waitForFunction(() => /built from [0-9a-f]{7}/.test(
-  document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"]')?.textContent || ''),
+// Running, not merely built: the env went in before the build, so the gate
+// that used to stop this one short had nothing to ask for. That is the whole
+// reason the box is on the send dialog rather than one screen later.
+await page.waitForFunction(() => /running/.test(
+  document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"] .state')?.textContent || ''),
   { timeout: 40000 });
-ok(true, '...and it is built, not merely named');
+ok(true, '...and it comes up, because its env went in before the build');
+ok(/--env-file/.test(dockerLog()),
+   '...with the env saved before that build, not asked for after it');
 const both = await page.$$eval('.dmtab .row[data-inst^="ep.silon|"]',
   rs => rs.map(r => r.dataset.inst));
 ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),

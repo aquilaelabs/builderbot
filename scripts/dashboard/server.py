@@ -2643,8 +2643,20 @@ class Handler(BaseHTTPRequestHandler):
         # what it is for. Everything else names one that must exist, because
         # the string decides a compose project and a data directory and is not
         # somewhere an arbitrary one should reach.
+        if act == "starter":
+            # The project's .env.example, for a container that does not exist
+            # yet — the send dialog opens on it so the env is filled in before
+            # the first build rather than after it stops at the gate. Reads
+            # nothing of the instance, which is the point: there is none.
+            return self._json({"text": devapp.starter(name)})
         if act == "new":
             r = devapp.create_instance(name, inst)
+            if not r.get("error") and isinstance(req.get("text"), str) \
+                    and req["text"].strip():
+                # Written before the build that follows, so the first one has
+                # the env it needs instead of stopping at the gate and asking
+                # for it afterwards.
+                devapp.write_env(name, req["text"], r["instance"])
             return self._json(r, 400 if r.get("error") else 200)
         if inst not in devapp.instances(name):
             return self._json({"error": f"no instance {inst} of {name}"}, 400)

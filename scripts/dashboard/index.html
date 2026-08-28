@@ -973,6 +973,15 @@ button.eye.acc.on,button.eye.acc.on:hover{color:var(--accent)}
 /* Remove, on a manager row: a text button among text buttons, red only under
    the pointer. It is the one control there that takes something away. */
 @media(hover:hover){ .dmtab .acts button.rm:hover{color:var(--bad);border-color:#4d2220} }
+/* The wiring fold. Its lines wrap rather than scroll: a host path is long, and
+   a row that scrolls sideways on a phone hides the half you were reading. */
+.dmtab .dmwire{margin-top:4px}
+.dmtab .dmwire summary{color:var(--dim);font:var(--f-note);cursor:pointer;
+  list-style:none}
+.dmtab .dmwire summary::-webkit-details-marker{display:none}
+.dmtab .dmwire summary::before{content:"▸ ";display:inline-block;width:1em}
+.dmtab .dmwire[open] summary::before{content:"▾ "}
+.dmtab .dmwire .li{overflow-wrap:anywhere}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the broom (reset) and the sign-out door —
@@ -1608,7 +1617,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint" id="rnTokenHint"></div>
     </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
-    <div class="btns">
+    <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
       <button id="rnCancel">Cancel</button>
     </div>
@@ -1628,8 +1637,16 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="hint" id="dnHint"></div>
       <div class="hint" id="dnPreview" hidden></div>
     </div>
+    <!-- The env, seeded from the project's .env.example. Here rather than
+         after the first build: without it the build runs, stops at the gate
+         for want of a value, and asks for the same thing one screen later. -->
+    <div class="field" id="dnEnvField" hidden>
+      <label for="dnEnv">Environment</label>
+      <textarea id="dnEnv" spellcheck="false"></textarea>
+      <div class="hint" id="dnEnvHint"></div>
+    </div>
     <div class="field" id="dnErrWrap" hidden><div class="hint bad" id="dnErr"></div></div>
-    <div class="btns">
+    <div class="foot">
       <button id="dnGo" class="primary">Create</button>
       <button id="dnCancel">Cancel</button>
     </div>
@@ -4576,8 +4593,23 @@ function openSendToDocker(project){
     "It is built from " + project + "'s codebase, and rebuilding it takes "
     + "whatever that codebase says then. A project can have several — give "
     + "each one a name you will recognise in the manager.";
+  $("dnEnvField").hidden = true;
+  $("dnEnv").value = "";
   $("dnmodal").hidden = false;
-  $("dnName").focus();
+  // Fetched per open, and only shown when the project actually declares an
+  // example: a blank Environment box on a project with nothing to fill in is
+  // a question with no answer.
+  fetch("/api/devapp", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({project, action:"starter"})})
+    .then(r => r.json()).then(j => {
+      if (dnFor !== project || !(j.text || "").trim()) return;
+      $("dnEnv").value = j.text;
+      $("dnEnvHint").textContent =
+        "Seeded from " + project + "'s .env.example, comments and all. Saved "
+        + "for this container alone when you press Create, so the first build "
+        + "has it.";
+      $("dnEnvField").hidden = false;
+    }).catch(() => {});
 }
 
 // The compose slug, which is NOT the project-name rule: that one keeps dots,
@@ -4604,7 +4636,8 @@ async function dnSubmit(){
   try{
     const r = await fetch("/api/devapp", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({project, action:"new", instance:name})});
+      body: JSON.stringify({project, action:"new", instance:name,
+                            text: $("dnEnvField").hidden ? "" : $("dnEnv").value})});
     const j = await r.json();
     if (j.error){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
                   return fail(j.error); }
@@ -4754,6 +4787,8 @@ function renderDockerInto(i){
           : "never built"}</div>
         ${d.ports.length ? `<div class="sub">${d.ports.map(esc).join(" · ")}</div>` : ""}
         ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
+        <details class="dmwire"><summary>ports and mounts</summary>
+          <div class="wire">reading…</div></details>
       </div>
       <span class="acts">
         <button type="button" data-dm="up" ${
@@ -4795,6 +4830,30 @@ directory stay, so remaking it under the same name finds them">Remove</button>
     <div class="macros"><button id="bDockerRe">Refresh</button></div></div>`;
   const b = el.querySelector("#bDockerRe");
   if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  // The wiring, fetched when the fold is opened and not before. It needs the
+  // compose file parsed, which is the one thing overview() refuses to do for
+  // every instance at once — and it is the thing you want occasionally, which
+  // is what a fold is for. Rendered the same way the artifact row renders it:
+  // the container's side on the left, the daemon's on the right, and an arrow
+  // saying which way a mount goes.
+  el.querySelectorAll("details.dmwire").forEach(d => d.ontoggle = async () => {
+    if (!d.open || d.dataset.done) return;
+    d.dataset.done = "1";
+    const [project, instance] = d.closest("[data-inst]").dataset.inst.split("|");
+    const box = d.querySelector(".wire");
+    try{
+      const r = await fetch("/api/devapp", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({project, instance, action:"state"})});
+      const st = (await r.json()).state || {};
+      const lines =
+        (st.ports || []).map(p => `<div class="dim li">${esc(p.target)}:${esc(p.proto)} ← ${
+          esc(location.hostname)}:${esc(p.published || "picked at start")}</div>`).join("")
+        + (st.mounts || []).map(m => `<div class="dim li">${esc(m.target)} ${
+          m.ro ? "←" : "↔"} ${esc(m.source)}</div>`).join("");
+      box.innerHTML = lines || `<div class="dim li">it publishes nothing and mounts nothing</div>`;
+    }catch(e){ box.innerHTML = `<div class="dim li bad">could not read it: ${esc(String(e))}</div>`; }
+  });
   el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
     dmAction(project, instance, btn.dataset.dm, btn);
@@ -7966,8 +8025,6 @@ function renameProject(name){
   $("rnGo").disabled = false;
   $("rnGo").textContent = "Rename";
   $("rnmodal").hidden = false;
-  $("rnName").focus();
-  $("rnName").select();
 }
 
 function rnShow(){
