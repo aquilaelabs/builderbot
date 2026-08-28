@@ -830,72 +830,7 @@ def next_step(row):
     return None
 
 
-# What the panel may ask a session to switch to, as tables rather than as
-# strings passed through. Everything the web UI can make this container run is
-# a lookup here for the same reason the macros are — a select is only as
-# trustworthy as the request it produces, and the request comes off the wire.
-#
-# Both are aliases claude's own CLI accepts (`--model`, `--effort`); an empty
-# pick means "leave it alone" and types nothing at all.
-MODELS = ("opus", "sonnet", "haiku", "fable")
-EFFORTS = ("low", "medium", "high", "xhigh", "max")
-
-
-# What claude is already defaulting to, so a switch it does not need is not
-# typed. Injected rather than imported: prefs.py is the dashboard's, and the
-# CLI loads this module by path with no server around it.
-current_prefs = None
-
-# What THIS dashboard last switched each session to, {session: {model, effort}}.
-# The saved default cannot answer for effort: `/effort` is explicitly "this
-# session only" and never reaches settings.json, so a check against the file
-# would re-send it on every message forever — six lines of explanation printed
-# into the pane immediately before the real text is typed into it, which is
-# the collision this exists to avoid. What we typed, we know.
-_switched = {}
-
-
-def _switch(session, sessions, model, effort):
-    """Type /model and /effort ahead of a step, when the panel asked for them.
-
-    Returns None when there is nothing to do or it all landed, and the failed
-    tell otherwise. Failing matters more than it looks: `tell` leaves a line it
-    could not submit sitting in the input box, so carrying on would type the
-    step onto the end of an unsent `/model opus` and hand over one line that is
-    neither. So the first one that does not land stops the send.
-
-    These are the session's own slash commands, which is the only door there
-    is — claude has no way in from outside the terminal it sits in, and a
-    running session's model cannot be changed by a flag it was not started
-    with. Worth knowing about them: claude saves both as the default for new
-    sessions, so this is not scoped to the conversation it is typed into.
-    """
-    now = current_prefs() if current_prefs else {}
-    mine = _switched.setdefault(session, {})
-    for cmd, val, table, key in (("/model", model, MODELS, "model"),
-                                 ("/effort", effort, EFFORTS, "effort")):
-        if not val:
-            continue
-        # Already there — either claude's own saved default says so, or this
-        # dashboard put it there. Typing it again is a line of noise and one
-        # more thing that can fail to land.
-        if now.get(key) == val or mine.get(key) == val:
-            continue
-        if val not in table:
-            return {"error": f"not a {cmd[1:]} this can set: {val}"}
-        r = tell(session, f"{cmd} {val}", sessions)
-        if r.get("error") or not r.get("sent"):
-            return r | {"switching": cmd[1:]}
-        mine[key] = val
-        # Let the answer finish before anything else is typed. This is the
-        # whole reason a switch used to eat the message behind it.
-        if settle:
-            settle(session)
-    return None
-
-
-def send(project, item_id, step=None, sessions=(), also_told=False,
-         model=None, effort=None, note=""):
+def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
     """Hand one step to the running Claude session and mark it sent.
 
     Marked only when it actually went: a line left sitting in the input box
@@ -960,13 +895,12 @@ def send(project, item_id, step=None, sessions=(), also_told=False,
         text += f"  (From the operator, with this step: {note})"
     extra = changed_line(also_told) if isinstance(also_told, dict) else ""
     line = text + (f"  (Also: {extra[0].lower()}{extra[1:]})" if extra else "")
+    # Nothing is switched here any more. The model and effort a project runs
+    # on are its own setting, applied by bb-tty as launch flags — so a session
+    # that is up is already on them, and a step is just the step. What used to
+    # sit here typed /model ahead of it, which stopped working the day claude
+    # put a confirmation behind that command: the step went into the dialog.
     session = tmux_name("claude-" + project)
-    # The switch goes first and on its own line: /model takes effect for the
-    # turn after it, so putting it in front of the step is what makes the step
-    # run on the model that was picked.
-    failed = _switch(session, sessions, model, effort)
-    if failed is not None:
-        return failed
     r = tell(session, line, sessions)
     if r.get("error") or not r.get("sent"):
         return r

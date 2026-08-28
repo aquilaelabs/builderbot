@@ -15,7 +15,7 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
 // headers are title + chevron only; doctor sits first
 const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
-ok(hs.length === 7 && hs.every(h => h.buttons === 0 && h.chev),
+ok(hs.length === 6 && hs.every(h => h.buttons === 0 && h.chev),
    `headers are title + chevron only (${hs.length} cards)`);
 ok((await order())[0] === 'doctor', 'doctor is first by default');
 ok(await page.$eval('#bDocTog', el => el.textContent.trim() === 'all 3 ok'), 'doctor status row folded green');
@@ -572,6 +572,39 @@ ok(v.key && v.token && !v.onKey && !v.onToken && !v.closed,
    'clearing the only credential ghosts both sides — there is nothing left to pick');
 ok(/cannot push to GitHub/.test(v.hint) && /locally/.test(v.hint),
    '...and says so: the work still happens, it just stays on this box');
+
+// What Claude runs on here, at the bottom of the same dialog. Per project, and
+// applied when a session starts rather than typed into a running one — so the
+// dialog's job is to say which of those two you are doing.
+ok(await page.$eval('#rnTitle', e => e.textContent.trim()) === 'alpha',
+   'the dialog is the project\'s settings, not a rename form wearing its name');
+ok(await page.$eval('#rnGo', e => e.textContent.trim()) === 'Save',
+   '...so its button saves rather than renames');
+await page.selectOption('#rnModel', 'sonnet');
+ok(!await page.$eval('#rnModel', e => e.disabled)
+   && /next time Claude starts/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
+   'with no session running it simply applies at the next start');
+await page.click('#rnCancel');
+
+// Ghosted where no session can start. Unlike the credential fields above there
+// is no typing that brings this back, so the reason is the whole message.
+await page.click(`.doc .projtab [data-k="gamma"]`);
+await page.waitForFunction(() => (state?.projects || [])
+  .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
+await page.evaluate(() => renameProject('gamma'));
+await page.waitForSelector('#rnmodal:not([hidden])');
+ok(await page.$eval('#rnModel', e => e.disabled)
+   && await page.$eval('#rnEffort', e => e.disabled),
+   'a locked project cannot be given a model — no session starts there to have one');
+ok(/Locked/.test(await page.$eval('#rnPrefHint', e => e.textContent)),
+   '...and says which of the two reasons it is');
+await page.click('#rnCancel');
+await page.click(`.doc .projtab [data-k="gamma"]`);
+await page.waitForFunction(() => !(state?.projects || [])
+  .some(p => p.name === 'gamma' && p.locked), { timeout: 15000 });
+// Back on alpha's, open, because what follows closes it and moves on.
+await page.evaluate(() => renameProject('alpha'));
+await page.waitForSelector('#rnmodal:not([hidden])');
 await page.click('#rnCancel');
 await page.evaluate(() => renameProject('beta'));
 await page.waitForSelector('#rnmodal:not([hidden])');

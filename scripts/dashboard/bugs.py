@@ -407,15 +407,7 @@ def edit(project, bug_id, by="you", act="edited", **fields):
     return _edit(project, bug_id, change, by)
 
 
-# What the panel may switch a session to on the way in. The same two tables
-# the roadmap keeps, and kept here rather than imported for the same reason
-# either has them: this becomes a command typed into a terminal, so the list
-# of what is allowed lives beside the code that types it.
-MODELS = ("opus", "sonnet", "haiku", "fable")
-EFFORTS = ("low", "medium", "high", "xhigh", "max")
-
-
-def send(project, bug_id, sessions=(), model=None, effort=None, note=""):
+def send(project, bug_id, sessions=(), note=""):
     """Point a running session at one bug, by number rather than by contents.
 
     The message deliberately does NOT carry the report. It says which bug and
@@ -444,15 +436,9 @@ def send(project, bug_id, sessions=(), model=None, effort=None, note=""):
     if row.get("status") != "open":
         return {"error": f"bug #{bug_id} is {STATUS_WORDS.get(row['status'], row['status'])}"
                          " — reopen it first if it needs work again"}
+    # No /model or /effort ahead of it: a project's pair are launch flags now,
+    # so the session this reaches is already running on them.
     session = tmux_name("claude-" + project)
-    for cmd, val, table in (("/model", model, MODELS), ("/effort", effort, EFFORTS)):
-        if not val:
-            continue
-        if val not in table:
-            return {"error": f"not a {cmd[1:]} this can set: {val}"}
-        r = tell(session, f"{cmd} {val}", sessions)
-        if r.get("error") or not r.get("sent"):
-            return r | {"switching": cmd[1:]}
     line = (f"Please look at bug #{bug_id} in this project's tracker. "
             f"Run `bb bug show {bug_id}` for the report — the area, how to "
             f"reproduce it, expected against actual, and the notes so far. "

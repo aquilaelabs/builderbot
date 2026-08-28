@@ -686,12 +686,12 @@ ok(clog.inSheet && clog.tall && !clog.boxed,
 
 // The real delivery path, against the harness's own tmux server: alpha has a
 // claude-alpha session, so this exercises notify.tell rather than a stub.
-// With a standing preference on the Claude card, the ask switches the
-// session first, the same way a step send does.
+// A preference set for the project changes nothing about this path: it is a
+// launch flag, so the session is already on it and the ask is only the ask.
 await page.evaluate(async () => {
   await fetch('/api/prefs', {method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({model: 'haiku', effort: 'low'})});
+    body: JSON.stringify({project: 'alpha', model: 'haiku', effort: 'low'})});
 });
 const askSent = await page.evaluate(async () => {
   const r = await fetch('/api/version', {method: 'POST',
@@ -704,13 +704,12 @@ ok(askSent.ok && askSent.sent,
 const askPane = tmuxCapture('claude-alpha');
 ok(askPane.includes("Artifacts tab"),
    '...and the prompt is what actually lands in that pane');
-ok(/\/model haiku/.test(askPane) && /\/effort low/.test(askPane)
-   && askPane.indexOf('/model haiku') < askPane.indexOf('Artifacts tab'),
-   '...behind the Claude card\u2019s standing switch, model first');
+ok(!/\/model/.test(askPane) && !/\/effort/.test(askPane),
+   '...with no slash command ahead of it, whatever the project is set to');
 await page.evaluate(async () => {
   await fetch('/api/prefs', {method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({model: '', effort: ''})});
+    body: JSON.stringify({project: 'alpha', model: '', effort: ''})});
 });
 
 // Checked before the deliberate refusal below: that one answers 400, which

@@ -1661,7 +1661,7 @@ body.dragging .tab .lbl{cursor:grabbing}
      against. -->
 <div id="rnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="rnTitle">
   <div class="box">
-    <h3 id="rnTitle">Rename</h3>
+    <h3 id="rnTitle">Project settings</h3>
     <div class="field">
       <label for="rnName">New name</label>
       <input id="rnName" maxlength="100" autocomplete="off" spellcheck="false">
@@ -1693,6 +1693,21 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button id="rnAuthToken" type="button">Access token</button>
       </div>
       <div class="hint" id="rnAuthHint"></div>
+    </div>
+    <!-- What this project's Claude sessions run on. Per project because the
+         session is: one long-lived conversation per directory, and which model
+         suits a Kotlin app is not which model suits a shell script. Applied as
+         launch flags by bb-tty rather than typed into a running session — see
+         prefs.py for why that stopped working. -->
+    <div class="field" id="rnPrefField">
+      <label id="rnPrefLabel">Claude runs on</label>
+      <div class="prefrow" role="group" aria-labelledby="rnPrefLabel">
+        <label class="pick">Model <select id="rnModel"
+          aria-label="model this project's sessions start on"></select></label>
+        <label class="pick">Effort <select id="rnEffort"
+          aria-label="effort this project's sessions start on"></select></label>
+      </div>
+      <div class="hint" id="rnPrefHint"></div>
     </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
@@ -1961,27 +1976,6 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="macros">
         <button id="bPkgs" onclick="openPackages()">Additional packages…</button>
         <button id="bDocker" onclick="openDocker()">Docker manager…</button>
-      </div>
-    </div>
-    <!-- The standing model and effort for everything the dashboard sends to
-         a session — a roadmap step, a bug, the version question. This used
-         to be a pair of pickers inside every send box; which model to work
-         on is the operator's standing preference, not a per-step question,
-         so it is set once here and every send applies it. -->
-    <div class="card" data-card="claude">
-      <h2>Claude</h2>
-      <div class="pad">
-      <div class="prefrow">
-        <label class="pick">Model <select id="prefModel"
-          aria-label="model every send switches the session to"></select></label>
-        <label class="pick">Effort <select id="prefEffort"
-          aria-label="effort every send switches the session to"></select></label>
-      </div>
-      <p class="prefnow" id="prefNow"></p>
-      <p class="prefwhy">Applied to everything sent from here — a roadmap
-        step, a bug, the version question — as <code>/model</code> and
-        <code>/effort</code> ahead of it. Claude keeps a switch as the default
-        for new sessions too. <i>Leave as is</i> sends nothing.</p>
       </div>
     </div>
     <!-- A phone on the end of wireless adb. USB is not an option here: there
@@ -3199,59 +3193,52 @@ const MODELS = [["", "leave as is"], ["opus", "Opus"], ["sonnet", "Sonnet"],
                 ["haiku", "Haiku"], ["fable", "Fable"]];
 const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
                  ["high", "high"], ["xhigh", "xhigh"], ["max", "max"]];
-let prefTouched = 0;
-function drawPrefs(p){
-  const fill = (id, table, cur) => {
+
+// What the dialog was opened showing, so Save can tell a real change from a
+// dialog that was merely looked at — the difference decides whether a running
+// session is restarted, which is not something to do because somebody opened
+// a menu.
+let rnPrefWas = {model: "", effort: ""};
+
+function rnFillPrefs(p){
+  rnPrefWas = {model: p?.prefs?.model || "", effort: p?.prefs?.effort || ""};
+  for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
+                                  ["rnEffort", EFFORTS, rnPrefWas.effort]]){
     const el = $(id);
-    if (!el) return;
-    // Never redraw under a pick: the poll answering mid-decision would snap
-    // the menu shut. Recently-touched wins; the poll catches up next round.
-    // prefTouched is checked only once set — performance.now() starts near
-    // zero at page load, and an unguarded "recently" would swallow the very
-    // first build.
-    if (document.activeElement === el
-        || (prefTouched && performance.now() - prefTouched < 3000)) return;
-    const want = table.map(([v, l]) =>
-      `<option value="${v}">${esc(l)}</option>`).join("");
-    if (el.dataset.built !== "1"){ el.innerHTML = want; el.dataset.built = "1"; }
-    el.value = cur || "";
-  };
-  fill("prefModel", MODELS, p?.model);
-  fill("prefEffort", EFFORTS, p?.effort);
-  // What claude is ACTUALLY defaulting to, beside what this card will switch
-  // it to. The preference alone cannot answer "so what is it?" — "leave as
-  // is" is a choice, not a status — and that was the whole confusion: a card
-  // that only says what it would change tells you nothing about what is.
-  const el = $("prefNow");
-  if (!el) return;
-  const now = p?.now || {};
-  const label = v => (MODELS.find(m => m[0] === v) || [])[1] || v;
-  el.textContent = now.model
-    ? `Claude is on ${label(now.model)}${now.effort ? ` · ${now.effort}` : ""} now`
-    : "";
-  // Said only when the card would change it: a preference that matches what
-  // is already running is not news.
-  const willSwitch = (p?.model && p.model !== now.model)
-                  || (p?.effort && p.effort !== now.effort);
-  el.classList.toggle("differs", !!willSwitch);
-  if (willSwitch) el.textContent += " — the next send switches it";
+    if (el.dataset.built !== "1"){
+      el.innerHTML = table.map(([v, l]) =>
+        `<option value="${v}">${esc(l)}</option>`).join("");
+      el.dataset.built = "1";
+    }
+    el.value = cur;
+  }
+  rnDrawPrefs();
 }
-["prefModel", "prefEffort"].forEach(id => {
-  const el = $(id);
-  if (!el) return;
-  el.onchange = async () => {
-    prefTouched = performance.now();
-    const body = id === "prefModel" ? {model: el.value} : {effort: el.value};
-    try{
-      const r = await fetch("/api/prefs", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify(body)});
-      const j = await r.json();
-      if (j.error) notify(j.error, true);
-      else if (state) state.claude_prefs = {model: j.model, effort: j.effort};
-    }catch(e){ notify("prefs: " + e, true); }
-  };
-});
+
+function rnDrawPrefs(){
+  const p = (state?.projects || []).find(x => x.name === rnFor);
+  // Ghosted where no session can start: an excluded project refuses one and a
+  // locked one is the operator's to run. Setting what a session that cannot
+  // exist would launch on is a control with nothing behind it — and unlike the
+  // credential fields above, there is no typing here that would bring it back.
+  const shut = !!(p?.excluded || p?.locked);
+  $("rnModel").disabled = $("rnEffort").disabled = shut;
+  const running = liveSessions().has(tmuxName("claude-" + rnFor));
+  const changed = $("rnModel").value !== rnPrefWas.model
+               || $("rnEffort").value !== rnPrefWas.effort;
+  $("rnPrefHint").textContent = shut
+    ? (p?.excluded
+        ? "Excluded — no Claude session starts here, so there is nothing to set."
+        : "Locked — this project is yours to run, so no session starts here.")
+    : running
+      ? (changed
+          ? "A session is running here. Saving restarts it onto this — the "
+            + "conversation is resumed, but anything mid-turn is lost."
+          : "Applied when a session starts. One is running here, so changing "
+            + "this restarts it onto the same conversation.")
+      : "Applied the next time Claude starts here, and kept until you change it.";
+  $("rnPrefHint").classList.toggle("bad", !shut && running && changed);
+}
 
 function drawBuild(img){
   const el = $("build"), rev = img?.rev || "", ver = img?.version || "";
@@ -3521,7 +3508,7 @@ function findingsRulesHtml(rows){
 // re-inserting anything missing at its own position, so a disagreement here
 // self-corrects on the next save and is invisible until a drag lands on the
 // card it forgot. This list was missing `claude` for exactly that reason.
-const CARD_ORDER = ["doctor","runner","projects","tools","claude","phone","findings"];
+const CARD_ORDER = ["doctor","runner","projects","tools","phone","findings"];
 let cards = {order: CARD_ORDER.slice(), closed: []};
 let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
                                            // the arrangement here: a poll
@@ -4015,10 +4002,11 @@ function projectRow(p, live, cls, inTab){
          data-m="${esc(p.name)}" aria-label="notebook"
          title="${nbOpen(p.name) ? "notebook — open, go to its tab"
                 : "notebook — roadmap, memory and bugs for this project"}">${BOOK}</button>`}
-      <button class="eye" data-rn="${esc(p.name)}" aria-label="rename"
-        title="rename — moves the directory and everything keyed to its name: the
-roadmap, the bugs, the versions, the dev instance's data and env, the CI logs,
-and Claude's own transcripts and memories">${PENCIL}</button>
+      <button class="eye" data-rn="${esc(p.name)}" aria-label="settings"
+        title="settings — the name, which credential its remote uses, and what
+Claude runs on here. Renaming moves the directory and everything keyed to its
+name: the roadmap, the bugs, the versions, the dev instance's data and env, the
+CI logs, and Claude's own transcripts and memories">${GEAR}</button>
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
         data-on="${p.locked ? "0" : "1"}"
         aria-label="${p.locked ? "unlock" : "lock"}"
@@ -4459,6 +4447,15 @@ async function claudeMd(name, action, link){
 const PENCIL = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M11.3 2.2 13.8 4.7 5.6 12.9 2.4 13.6 3.1 10.4z"/>
   <path d="M9.9 3.6 12.4 6.1"/></svg>`;
+
+// The project row's own button. It stopped being a pencil when the dialog
+// stopped being only a rename: it holds the credential switch and what Claude
+// runs on, and a pencil promises editing one thing. Drawn stroked at the same
+// 1.4 weight as its neighbours — an eight-toothed ring and a hub, which is the
+// only gear shape that stays legible at 16px.
+const GEAR = `<svg viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M6.6 1.9h2.8l.35 1.72 1.2.7 1.66-.57 1.4 2.42-1.3 1.16v1.4l1.3 1.16-1.4 2.42-1.66-.57-1.2.7-.35 1.72H6.6l-.35-1.72-1.2-.7-1.66.57-1.4-2.42 1.3-1.16v-1.4L1.99 6.17l1.4-2.42 1.66.57 1.2-.7z"/>
+  <circle cx="8" cy="8" r="2.1"/></svg>`;
 
 function drawCustom(){
   const el = $("custom"), list = state?.custom || [];
@@ -5867,23 +5864,19 @@ let sendNoteText = "";
 //
 // The roadmap hands a step to a session and the tracker hands it a bug; the
 // question either asks is the same one — anything to add, go or don't — so it
-// is one box rather than two that drift apart. Model and effort are NOT
-// asked here any more: they moved to the Claude card in the sidebar, because
-// which model to work on is a standing preference, not a per-step question,
-// and a question asked at every send is either answered identically every
-// time or left on the default out of fatigue. The line under the buttons
-// says what this send will apply, so the choice is visible where it acts
-// without being a question here.
+// is one box rather than two that drift apart. Model and effort are not asked
+// here and are no longer applied here either: they are the project's own
+// setting, in its settings dialog, and bb-tty passes them as launch flags — so
+// a session that is up is already on them and a send is just the send. What
+// used to sit here typed /model ahead of the step, which stopped working the
+// day claude put a confirmation behind that command.
 function sendBoxEl({label, sub, placeholder, onSend, onCancel}){
   const box = document.createElement("div");
   box.className = "sendbox";
-  const pref = state?.claude_prefs || {};
-  const applying = [pref.model, pref.effort].filter(Boolean).join(" · ");
   box.innerHTML = `<div class="q">${esc(label)}${
       sub ? ` <span>— ${esc(sub)}</span>` : ""}</div>
     <textarea id="sendMore" rows="2" maxlength="500"
       placeholder="${esc(placeholder)}"></textarea>
-    <div class="note" id="sendNote" hidden></div>
     <div class="acts"><span class="sp"></span>
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="primary" id="todoGo">Send</button></div>`;
@@ -5895,18 +5888,13 @@ function sendBoxEl({label, sub, placeholder, onSend, onCancel}){
   more.onkeydown = e => {
     if (e.key === "Escape"){ e.preventDefault(); e.stopPropagation(); onCancel(); }
   };
-  const note = box.querySelector("#sendNote");
-  note.hidden = !applying;
-  note.textContent = applying
-    ? `will switch the session to ${applying} first — set on the Claude card`
-    : "";
   box.querySelector(".stop").onclick = onCancel;
   box.querySelector("#todoGo").onclick = onSend;
   return box;
 }
 
-// Only ever one open, anywhere in the notebook: two boxes would mean two
-// answers to "what are the pickers set to", and the pickers are shared.
+// Only ever one open, anywhere in the notebook: two half-written notes with
+// one Send between them is a message going to the wrong place.
 function shutSendBoxes(){
   document.querySelectorAll(".sendbox").forEach(b => b.remove());
 }
@@ -8047,6 +8035,7 @@ $("dnmodal").onclick = e => { if (e.target === $("dnmodal")) closeSendToDocker()
 
 $("rnName").oninput = rnShow;
 $("rnGo").onclick = rnSubmit;
+["rnModel", "rnEffort"].forEach(id => { $(id).onchange = rnDrawPrefs; });
 $("rnTokenClear").onclick = () => {
   rnClearToken = !rnClearToken;
   if (rnClearToken) $("rnToken").value = "";   // whatever was typed was for the
@@ -8343,7 +8332,7 @@ let rnFor = null;                        // the project the dialog is open on
 function renameProject(name){
   rnFor = name;
   const p = (state?.projects || []).find(x => x.name === name);
-  $("rnTitle").textContent = "Rename " + name;
+  $("rnTitle").textContent = name;
   $("rnName").value = name;
   $("rnToken").value = "";
   $("rnErrWrap").hidden = true;
@@ -8379,8 +8368,9 @@ function renameProject(name){
       : "Stored for this project alone, and not shielded — a shell here can "
         + "read it.";
   rnLoadAuth(name);
+  rnFillPrefs(p);
   $("rnGo").disabled = false;
-  $("rnGo").textContent = "Rename";
+  $("rnGo").textContent = "Save";
   $("rnmodal").hidden = false;
 }
 
@@ -8509,34 +8499,69 @@ function closeRename(){ $("rnmodal").hidden = true; rnFor = null; }
 
 async function rnSubmit(){
   const name = rnFor, to = $("rnName").value, token = $("rnToken").value.trim();
-  // "" for "leave the remote alone", which is every rename that is only a
+  // "" for "leave the remote alone", which is every save that is only a
   // rename — the server treats the field's absence and a no-op the same way,
-  // but sending the current mode back would make every rename a rewrite.
+  // but sending the current mode back would make every save a rewrite.
   const auth = rnAuthPick && rnAuthPick !== rnAuthNow ? rnAuthPick : "";
   // A typed token replaces rather than clears, so the two never both go: the
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
+  const model = $("rnModel").value, effort = $("rnEffort").value;
+  const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
+  const running = liveSessions().has(tmuxName("claude-" + name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
-  // A token change with no name change is a legitimate thing to want, so this
-  // does not refuse the same name — the server treats it as a no-op rename.
-  $("rnGo").disabled = true; $("rnGo").textContent = "Renaming…";
+  // Asked before anything is written, and only when it costs something: a
+  // session that is not running has nothing to interrupt, and a dialog that
+  // was opened and closed unchanged should never ask at all.
+  if (prefChanged && running
+      && !confirm(`Restart the Claude session in ${name}?\n\n`
+        + `Changing what it runs on takes effect when it starts, so saving `
+        + `restarts it. The conversation is resumed — anything it is in the `
+        + `middle of doing right now is lost.`)) return;
+  // Only what actually changed goes to the server. A rename request is
+  // refused outright while a terminal is open, so a settings-only save must
+  // not make one: it would fail on a project you were sitting in.
+  const renaming = to.trim() !== name;
+  const needRename = renaming || !!token || !!auth || clear_token;
+  $("rnGo").disabled = true; $("rnGo").textContent = "Saving…";
+  const stop = m => { $("rnGo").disabled = false; $("rnGo").textContent = "Save";
+                      return fail(m); };
   try{
+    if (prefChanged){
+      const r = await fetch("/api/prefs", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({project: name, model, effort,
+                              restart: running})});
+      const j = await r.json();
+      if (j.error) return stop(j.error);
+      // Said out loud when it did not happen: the setting is saved either way,
+      // and a session quietly left on the old model is exactly the confusion
+      // this whole change exists to remove.
+      if (running && !j.restarted)
+        notify(`${name}: saved, but the session was not restarted — `
+               + (j.why || "it is still on what it started with"), true);
+    }
+    if (!needRename){
+      closeRename();
+      if (!prefChanged) return;              // nothing changed; nothing to say
+      refresh();
+      return;
+    }
     const r = await fetch("/api/rename", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({name, to, token, auth, clear_token})});
     const j = await r.json();
-    if (j.error){ $("rnGo").disabled = false; $("rnGo").textContent = "Rename";
-                  return fail(j.error); }
+    if (j.error) return stop(j.error);
     closeRename();
     // Named rather than assumed: sanitizing may have changed what was typed,
     // and the operator should see the name that actually exists.
     notify(j.failed?.length
       ? `${name} is now ${j.name}, but ${j.failed.length} thing(s) did not `
         + `move: ${j.failed.join("; ")}`
-      : `${name} is now ${j.name}`, !!j.failed?.length);
-  }catch(e){ $("rnGo").disabled = false; $("rnGo").textContent = "Rename";
-             return fail("rename failed: " + e); }
+      : renaming ? `${name} is now ${j.name}` : `${name} saved`,
+      !!j.failed?.length);
+  }catch(e){ return stop("save failed: " + e); }
   refresh();
 }
 
@@ -9115,7 +9140,6 @@ async function refresh(){
     $("host").textContent = state.host;
     $("uptime").textContent = "up " + state.uptime;
     drawBuild(state.image);
-    drawPrefs(state.claude_prefs);
     adoptLayout(state.layout);
     // Not mid-drag: adopting the server's order under a moving pointer would
     // snap the card out of the operator's hand.

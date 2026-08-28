@@ -354,7 +354,7 @@ CARDS_FILE = STATE / "cards.json"
 # keys dropping out of this list is also the migration: load_layout filters an
 # existing cards.json against it, so a file still naming them is cleaned on
 # the next read rather than needing anything done to it.
-CARD_KEYS = ["doctor", "runner", "projects", "tools", "claude", "phone", "findings"]
+CARD_KEYS = ["doctor", "runner", "projects", "tools", "phone", "findings"]
 
 
 # Every state file is written the same way: to a temp file in the same
@@ -1098,6 +1098,10 @@ def project_list():
     locked = set(load_locks())
     pins = load_project_pins()
     stopped = last_stop()
+    # One small file for the whole list, read here rather than per row: this
+    # runs on the fifteen-second poll and a per-project read would be a dozen
+    # opens for a dozen values that came from the same dictionary.
+    project_prefs = prefs.all_projects()
     try:
         here = sorted(WORKSPACE.iterdir())
     except OSError:
@@ -1241,6 +1245,10 @@ def project_list():
                     # invent one for a local repo that never had any.
                     "has_token": (STATE / "gitcreds" / d.name).is_file(),
                     "push": projects.may_push(d.name),
+                    # Which model and effort this project's sessions launch on.
+                    # On the row because the settings dialog draws from the poll
+                    # like every other field it shows.
+                    "prefs": project_prefs.get(d.name, {"model": "", "effort": ""}),
                     "push_how": projects.push_how(d.name),
                     "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
                     # What Claude remembers here. On the row because a memory
@@ -1449,6 +1457,49 @@ def last_claude(project_dir, name, stopped):
             # True when this is the conversation that was actually open when
             # the container was stopped, not merely the last file touched.
             "was_open": stopped.get(name) == newest.stem}
+
+
+def claude_launcher_path(project):
+    """The script bb-tty writes to start this project's session.
+
+    bb-tty owns the name and the directory; this mirrors them because the
+    restart below runs that same file. Mirrored rather than shared for the
+    reason tmux_name is mirrored in three places: one is bash, one is python,
+    and the rule is short enough to state twice and check with a test.
+    """
+    home = Path(os.environ.get("BUILDER_HOME", str(Path.home())))
+    d = os.environ.get("XDG_CACHE_HOME") or str(home / ".cache")
+    return Path(d) / "builderbot" / f"claude-run-{project}.sh"
+
+
+def respawn_claude(project):
+    """Restart a project's Claude session onto the setting just saved.
+
+    `tmux respawn-pane -k` replaces the pane's process and keeps the session,
+    so the browser stays attached and nothing has to reload — where killing the
+    session would leave a dead terminal in an iframe and a tab to repair. The
+    launcher re-reads the preference when it runs, and `--respawn` tells it to
+    resume the newest transcript, so the conversation continues on the new
+    model rather than being replaced by a fresh one.
+
+    What is lost is a turn in flight, which is why the dialog asks first.
+    """
+    session = tmux_name("claude-" + project)
+    if session not in {s["name"] for s in tmux_sessions()}:
+        return {"restarted": False, "why": "no session is running here"}
+    launcher = claude_launcher_path(project)
+    if not launcher.is_file():
+        # Started by an image that predates the self-resolving launcher, or the
+        # cache was cleared. Saying so beats killing the session to make a
+        # point: the setting is saved and the next start will use it.
+        return {"restarted": False,
+                "why": "this session predates the restartable launcher — "
+                       "it keeps its current model until you start a new one"}
+    r = run(["tmux", "respawn-pane", "-k", "-t", session,
+             str(launcher), "--respawn"], timeout=20)
+    if r["code"] != 0:
+        return {"restarted": False, "why": (r["out"] or "tmux refused").strip()[:200]}
+    return {"restarted": True}
 
 
 def _pidfile_alive(p):
@@ -1724,9 +1775,14 @@ todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
 # for why it stopped being a question inside each send box.
 import prefs                                                     # noqa: E402
 
-todo.current_prefs = prefs.current
-prefs.configure(write_json=write_json, state=STATE,
-                home=os.environ.get("BUILDER_HOME", str(Path.home())))
+prefs.configure(write_json=write_json, state=STATE)
+# The old shape was one global pair. Moved onto each project here, once, with
+# the project list this only has at runtime — so an install that had a standing
+# preference keeps exactly it, per project, and can then diverge.
+try:
+    prefs.migrate([d.name for d in WORKSPACE.iterdir() if d.is_dir()])
+except OSError:
+    pass                    # no workspace to read: nothing to migrate onto
 
 # ---- the dev instance ------------------------------------------------------
 # A project's compose app, built and run on the host's daemon through the
@@ -1746,7 +1802,7 @@ import version                                                   # noqa: E402
 version.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                   todo_mod=todo, bugs_mod=bugs, changelog_mod=changelog,
                   tell_fn=notify.tell, tmux_name_fn=tmux_name,
-                  switch_fn=todo._switch)
+                  )
 
 # ---- new project, and linking one ------------------------------------------
 # Creating and cloning, and the worker that runs the ones that touch the
@@ -2033,7 +2089,6 @@ def snapshot():
         "phone_asks": len(phone.requests_open()),
         # The standing model/effort every send applies — the card's state,
         # riding the poll it already reads.
-        "claude_prefs": prefs.get() | {"now": prefs.current()},
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.
@@ -2491,7 +2546,15 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/memory"):
             return self._memory(req)
         if path.startswith("/api/prefs"):
-            r = prefs.set_prefs(model=req.get("model"), effort=req.get("effort"))
+            name = req.get("project", "")
+            r = prefs.set_prefs(name, model=req.get("model"),
+                                effort=req.get("effort"))
+            # The restart is asked for by the dialog, which is where the
+            # operator was told what it costs — never inferred here from the
+            # change alone, because the same write happens when nothing is
+            # running and there is nothing to interrupt.
+            if not r.get("error") and req.get("restart"):
+                r |= respawn_claude(name)
             return self._json(r, 400 if r.get("error") else 200)
         if path.startswith("/api/devapp"):
             return self._devapp(req)
@@ -2603,11 +2666,8 @@ class Handler(BaseHTTPRequestHandler):
         if act == "add":
             r = todo.add(name, field(req, "text"), steps=field_list(req, "steps"))
         elif act == "send":
-            pref = prefs.get()
             r = todo.send(name, req.get("id"), req.get("step"), live,
                           also_told=todo.unsaved(name) if req.get("tell") else False,
-                          model=field(req, "model") or pref["model"],
-                          effort=field(req, "effort") or pref["effort"],
                           note=field(req, "note"))
             if r.get("sent") and req.get("tell"):
                 todo.mark_told(name)
@@ -2819,9 +2879,7 @@ class Handler(BaseHTTPRequestHandler):
             # can read the code and be argued with, and neither is true of a
             # function counting commits.
             live = [x["name"] for x in tmux_sessions()]
-            pref = prefs.get()
-            r = version.ask(name, live, comp=field(req, "component") or "",
-                            model=pref["model"], effort=pref["effort"])
+            r = version.ask(name, live, comp=field(req, "component") or "")
             return self._json(r, 400 if r.get("error") else 200)
         if act == "policy":
             r = version.set_policy(name, field(req, "policy"))
@@ -2953,11 +3011,8 @@ class Handler(BaseHTTPRequestHandler):
         elif act == "remove":
             r = bugs.remove(name, req.get("id"), why=field(req, "why"))
         elif act == "send":
-            pref = prefs.get()
             r = bugs.send(name, req.get("id"),
                           [s["name"] for s in tmux_sessions()],
-                          model=field(req, "model") or pref["model"],
-                          effort=field(req, "effort") or pref["effort"],
                           note=field(req, "note"))
             if r.get("error"):
                 return self._json(r, 400)

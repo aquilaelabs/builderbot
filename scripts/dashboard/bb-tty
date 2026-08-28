@@ -42,6 +42,11 @@ is_locked() {
     jq -e --arg n "$1" 'index($n) != null' "$LOCKS_FILE" >/dev/null 2>&1
 }
 
+# Where the dashboard keeps each project's model and effort. Read by the
+# launcher this writes rather than here, so a respawn re-reads it — see
+# claude_launcher.
+PREFS_FILE="${DASHBOARD_STATE:-/config}/claude-prefs.json"
+
 # Every project directory except this one. Excluded by exact path rather than
 # `-not -name "$1"`, because find treats that as a glob: a project called
 # `app[1]` or `web*` would silently exclude its neighbors from the deny list,
@@ -127,27 +132,22 @@ claude_scope() {
     return 1
 }
 
-# claude_launcher PROJECT COMMAND... — write COMMAND as a script and echo its
-# path, so tmux is handed one short argument instead of the whole command line.
+# claude_launcher PROJECT TRANSCRIPT_DIR COMMAND... — write COMMAND as a script
+# and echo its path.
 #
-# tmux's client sends `new-session`'s arguments to the server in a single
-# message capped at 16KB, and answers a longer one with `command too long` and
-# nothing else. The system prompt this appends carries the project's roadmap
-# and open bugs — every item, its details, and every step's details — so it
-# grows with the project, and a big enough notebook silently made every Claude
-# session on that project unstartable: bb-tty exited on the failed
-# new-session, ttyd reconnected five seconds later, and the pane filled with
-# `command too long` over and over. Measured on tmux 3.4: 16000 bytes of
-# argument starts, 20000 does not.
-#
-# One file per project, rewritten on every connection, in the same cache dir
-# and for the same reason as claude_scope's settings: this runs on every
-# browser connection, and mktemp here would leave a file per page load. The
 # name begins with `claude-` deliberately — the session-is-really-claude check
 # below reads pane_start_command, which is now this path.
+#
+# The script resolves the project's model and effort ITSELF, at exec time,
+# rather than having them baked in by the caller. That is what lets the
+# dashboard restart a session onto a changed setting: it runs this same file
+# through `tmux respawn-pane`, and the file reads the preference again. With
+# --respawn it also resumes the newest transcript, so changing the setting
+# continues the conversation instead of replacing it.
 claude_launcher() {
-    local proj="$1"; shift
-    local dir out tmp
+    local proj="$1" tdir="$2"; shift 2
+    local dir out tmp base_resumes=0 a
+    for a in "$@"; do [ "$a" = "--resume" ] && base_resumes=1; done
     dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
     dir="${dir:-/tmp/bb-scope-$(id -u)}/builderbot"
     mkdir -p "$dir" 2>/dev/null || { dir="/tmp/bb-scope-$(id -u)"; mkdir -p "$dir"; }
@@ -163,9 +163,28 @@ claude_launcher() {
         printf '# tmux takes a command in one 16KB message; this is how a long\n'
         printf '# system prompt gets past that. Not edited by hand — it is\n'
         printf '# overwritten on the next connection.\n'
+        printf '# The model and effort are read here rather than baked in, so a\n'
+        printf '# respawn through this file picks up a setting just changed.\n'
+        printf 'set -uo pipefail\n'
+        printf 'extra=()\n'
+        printf 'v="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
+            "$proj" '.projects[$n].model // empty' "$PREFS_FILE"
+        printf 'case "$v" in opus|sonnet|haiku|fable) extra+=(--model "$v") ;; esac\n'
+        printf 'v="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
+            "$proj" '.projects[$n].effort // empty' "$PREFS_FILE"
+        printf 'case "$v" in low|medium|high|xhigh|max) extra+=(--effort "$v") ;; esac\n'
+        # Only when the base command does not already name one: a session
+        # opened from the resume chooser carries its own --resume, and claude
+        # would be handed the flag twice.
+        if [ "$base_resumes" -eq 0 ]; then
+            printf 'if [ "${1:-}" = --respawn ]; then\n'
+            printf '  n="$(ls -1t %q/*.jsonl 2>/dev/null | head -1)"\n' "$tdir"
+            printf '  if [ -n "$n" ]; then n="${n##*/}"; extra+=(--resume "${n%%.jsonl}"); fi\n'
+            printf 'fi\n'
+        fi
         printf 'exec'
         printf ' %q' "$@"
-        printf '\n'
+        printf ' "${extra[@]}"\n'
     } > "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
     chmod +x "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
     mv -f "$tmp" "$out" 2>/dev/null || { rm -f "$tmp"; return 1; }
@@ -412,7 +431,9 @@ case "$target" in
         # until a notebook grows. If the file cannot be written, the command
         # goes to tmux directly, which is what used to happen and is still
         # right for a short one.
-        if launcher="$(claude_launcher "$proj" "${cmd[@]}" "${prompt[@]}")"; then
+        if launcher="$(claude_launcher "$proj" \
+                          "$HOME/.claude/projects/${dir//\//-}" \
+                          "${cmd[@]}" "${prompt[@]}")"; then
             start "claude-${proj}" "$dir" "$launcher"
         else
             # Nowhere to write it. The command without the block still fits on
@@ -420,7 +441,8 @@ case "$target" in
             # worth more than one that refuses to start at all — which is what
             # passing the block here would produce for any real roadmap.
             echo "WARNING: could not write the launcher for '${proj}'," >&2
-            echo "so this session starts without the project's roadmap and bugs." >&2
+            echo "so this session starts without the project's roadmap and bugs," >&2
+            echo "and on claude's own model rather than the one set for it." >&2
             echo "Everything else about it is the same. Check that ${HOME:-\$HOME}/.cache" >&2
             echo "is writable." >&2
             start "claude-${proj}" "$dir" "${cmd[@]}"
