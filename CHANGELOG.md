@@ -65,3 +65,4 @@
 - A phone comes back to the Dashboard after the container restarts, instead of the terminal side whose sessions ended with it (e385743)
 - The Docker manager can run a container from a compose file you write there — a name, a compose file and an environment, with no project needed (851015b)
 - Icons show their tooltip immediately, rows fade out when unpinned or excluded, and the ports/mounts fold animates (851015b)
+- Fixed: a Docker manager row now shows its own build running, a staged version bump says it moved when you save, and long findings lists page (a32d59a)

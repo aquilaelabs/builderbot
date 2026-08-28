@@ -844,6 +844,13 @@ def overview():
                                 else ""),
             })
     return {"error": cs["error"], "instances": out,
+            # The running job, if there is one. The manager used to look for
+            # it on the status snapshot under a key nothing has ever set, so
+            # `busy` was permanently false: a row kept saying "never built"
+            # through its own build, and Up/Rebuild/Remove stayed live for a
+            # second click the server then refused. It belongs here, with the
+            # rest of what this page draws from.
+            "job": dict(_job) if _job["running"] else None,
             # Only the ones that are not an instance of ours: the instances
             # above already account for those, and listing them twice would
             # make the page look like the daemon is running double.

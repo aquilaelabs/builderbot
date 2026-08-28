@@ -93,7 +93,11 @@ for (const [what, call] of [
   ['memory', 'paginate($("memList"), ":scope > .mem"'],
   ['bugs', 'paginate(list, ":scope > .bug"'],
   ['artifacts', 'paginate(list, ":scope > .artrow"'],
-  ['analysis', 'paginate(list, ":scope > .grp"'],
+  // .rule, which is what findingsRulesHtml emits. This line said .grp — the
+  // other renderer's class — so the check that exists to catch a silently
+  // wrong selector was pinning one: analysis drew every rule at once and the
+  // test agreed with it.
+  ['analysis', 'paginate(list, ":scope > .rule"'],
   ['every history', 'paginate(pane, ":scope > .hist"'],
 ]) ok(src.includes(call), what + ' is paged, by the rows it really renders');
 
