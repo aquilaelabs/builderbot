@@ -752,6 +752,28 @@ ok(await page.$('.doc .projtab [data-del]'),
 // on the crowded side.
 ok(!await page.$('#projects [data-p]') && await page.$('.doc .projtab [data-p]'),
    'pinning is the Projects tab\'s, not the card the pins are shown in');
+
+// The sidebar fits its column. It stopped doing so because a tooltip is laid
+// out even while hidden: a 280px box centred on an icon near the right edge of
+// 340px hangs past it, and the column grew a horizontal scrollbar with nothing
+// visibly in the way. Invisible until it is enough to move something, which is
+// why it went unnoticed until a tooltip got a longer sentence.
+ok(await page.evaluate(() => {
+     const s = document.querySelector('.col.side');
+     return s.scrollWidth <= s.clientWidth;
+   }), 'the sidebar fits its column, with no sideways scroll');
+// ...and still fits while a tip is actually up, which is the case that made
+// the first fix incomplete: display:none stopped the resting overflow and left
+// the hovered one.
+await page.hover('#projects .row .acts [data-tip]:last-child');
+await page.waitForTimeout(250);
+ok(await page.$eval('#projects .row .acts [data-tip]:last-child',
+                    e => getComputedStyle(e, '::after').display) === 'block',
+   '...while a tooltip still appears on hover');
+ok(await page.evaluate(() => {
+     const s = document.querySelector('.col.side');
+     return s.scrollWidth <= s.clientWidth;
+   }), '...and the sidebar still fits with that tooltip open');
 const gone = await api('/api/trash', { name: 'beta' });
 ok(gone.status === 200 && gone.body.to === '.trash/beta',
    'deleting names where the files went');

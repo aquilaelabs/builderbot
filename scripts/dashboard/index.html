@@ -693,13 +693,36 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
     padding:6px 8px;font:12px/1.45 system-ui,sans-serif;text-align:left;
     white-space:normal;overflow-wrap:anywhere;
     box-shadow:0 6px 18px rgba(0,0,0,.5);
-    opacity:0;visibility:hidden;pointer-events:none;z-index:90;
-    transition:opacity .09s ease,visibility 0s linear .09s}
+    /* display:none, not merely hidden. A hidden tip is still LAID OUT, and a
+       280px box centred on an icon near the right edge of a 340px sidebar
+       sticks out past it — which made the sidebar scroll sideways by 26px
+       with nothing visibly in the way. It got worse the day a tooltip got a
+       longer sentence, which is how it was noticed at all: the overflow is
+       invisible until it is enough to move something.
+       The fade survives on a browser that has allow-discrete, and a browser
+       that has not shows the tip at once, which is what it is for. */
+    display:none;
+    opacity:0;pointer-events:none;z-index:90;
+    transition:opacity .09s ease,display .09s allow-discrete}
   [data-tip]:hover::after,[data-tip]:focus-visible::after{
-    opacity:1;visibility:visible;transition:opacity .09s ease}
+    display:block;opacity:1}
+  @starting-style{
+    [data-tip]:hover::after,[data-tip]:focus-visible::after{opacity:0} }
   /* A row's own tips point down instead, or the first row's would be clipped
      by whatever is above the card. */
   .acts [data-tip]::after{bottom:auto;top:calc(100% + 6px)}
+  /* In the sidebar the tip is measured against the ROW rather than the icon.
+     340px of column cannot hold a 280px box centred on its rightmost icon, so
+     one hovered there hung past the edge and the sidebar grew a horizontal
+     scrollbar for as long as the pointer sat still. Anchored to the row it is
+     always inside, always fully readable, and points at the group rather than
+     the button — which in a strip of six icons is what you are reading
+     anyway. Needs the button to stop being the containing block, hence the
+     static: nothing else about these icons depends on being positioned. */
+  .side .row{position:relative}
+  .side .acts [data-tip]{position:static}
+  .side .acts [data-tip]::after{left:10px;right:10px;
+    transform:none;width:auto;max-width:none}
 }
 @media(prefers-reduced-motion:reduce){
   [data-tip]::after{transition:none}
@@ -1236,6 +1259,21 @@ button.eye.acc.on,button.eye.acc.on:hover{color:var(--accent)}
    Dim at rest: it sits in a row of six and should not be the thing the eye
    lands on first. */
 @media(hover:hover){ button.eye.rm:hover{color:var(--bad)} }
+/* No box around it, the way the bell in the header has none: the row's other
+   icons are things you do TO the project and sit together as a group; this one
+   removes it, and putting it in the same tray invited the hand that was going
+   for the one beside it. Set apart by having no chrome at all, and last. */
+button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
+/* On a pane's width the buttons belong beside the name, not under it: a
+   project row is a name and the things you can do to it, and stacking them
+   costs a line each for no reason once there is room. The sidebar keeps the
+   stack — 340px is not room — and so does a phone, where the whole layout is
+   one column anyway. */
+@media(min-width:901px){
+  .projtab .row.stack2{flex-direction:row;align-items:center}
+  .projtab .row.stack2 .grow{min-width:0}
+  .projtab .row.stack2 .acts{margin-left:auto;flex-wrap:nowrap}
+}
 /* Remove, on a manager row: a text button among text buttons, red only under
    the pointer. It is the one control there that takes something away. */
 @media(hover:hover){ .dmtab .acts button.rm:hover{color:var(--bad);border-color:#4d2220} }
@@ -4340,9 +4378,6 @@ CI logs, and Claude's own transcripts and memories">${GEAR}</button>
         title="${p.excluded ? "include — allow Claude sessions here again"
                             : "exclude — block Claude sessions for this directory, and keep it blocked"}"
         >${p.excluded ? EYE : EYE_OFF}</button>
-      ${inTab ? `<button class="eye rm" data-del="${esc(p.name)}" aria-label="delete"
-        title="delete — moves it to /workspace/.trash and keeps every file. Its
-roadmap, bugs and memories stay where they are, so putting it back is a mv">${BIN}</button>` : ""}
       ${inTab ? `<button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
         data-on="${p.pinned ? "0" : "1"}"
         aria-label="${p.pinned ? "unpin" : "pin"}"
@@ -4351,6 +4386,9 @@ roadmap, bugs and memories stay where they are, so putting it back is a mv">${BI
             + "the Projects tab; this is only about where you meet it"
           : "pin — show it on the sidebar's Projects card"}"
         >${TACK}</button>` : ""}
+      ${inTab ? `<button class="eye rm bare" data-del="${esc(p.name)}" aria-label="delete"
+        title="delete — moves it to /workspace/.trash and keeps every file. Its
+roadmap, bugs and memories stay where they are, so putting it back is a mv">${BIN}</button>` : ""}
       </span>
     </div>
 `;
