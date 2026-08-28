@@ -213,8 +213,7 @@ _KEYED = {
 }
 
 # Files holding a flat list of project names.
-_LISTED = ["excluded-projects.json", "locked-projects.json",
-           "pinned-projects.json"]
+_LISTED = ["locked-projects.json", "pinned-projects.json"]
 
 
 def _rename_in_json(path, old, new):

@@ -43,11 +43,11 @@ doctorFixture('ok');
 await page.evaluate(() => document.getElementById('bDoctor').onclick());
 await page.waitForFunction(() => document.getElementById('docDot').className.includes('ok'));
 
-// projects: fold-away toggle at the foot; slides the card. It names what it
-// is hiding rather than calling all of it errors — gamma has no git, delta was
-// excluded on purpose, and those are not the same kind of thing.
-ok(await page.$eval('#projects #bAll', el => el.textContent.trim()) === 'Show Excluded (1) / Error (2)',
-   'the toggle says what it is hiding, by kind');
+// projects: fold-away toggle at the foot; slides the card. It counts one kind
+// now — it used to have to split the number, because half of what it hid was
+// excluded, which was a decision rather than a fault. Only faults are folded.
+ok(await page.$eval('#projects #bAll', el => el.textContent.trim()) === 'Show Error (2)',
+   'the toggle says how many are folded away, and they are all faults');
 ok((await animatedDuring(page, () => page.click('#projects #bAll')))
      .some(k => k.includes('projects')),
    'in-card toggle slides the card');
@@ -56,12 +56,16 @@ await page.click('#projects #bAll');
 // findings card: per-project counts, valid projects only, plain button
 const rows = await page.$$eval('#findingsSum .row', rs => rs.map(r => r.querySelector('.name').textContent.trim()));
 // alpha and beta are the valid projects; the last row is the one path that
-// genuinely places nowhere. gamma (error), delta (excluded), toolstore and
+// genuinely places nowhere. gamma (error), toolstore and
 // vendored-junk all had findings in the fixture and none of them are here:
 // attribution only knows valid projects now, so everything else is set aside
 // rather than swelling the unattributed row it used to swamp.
-ok(rows.join(',') === 'alpha,beta,unattributed paths',
-   `findings card lists valid projects, and the one real orphan (${rows.join(',')})`);
+// delta is here now and that is the change: it is locked, not excluded, and a
+// locked project's findings are still worth reading — locking says who runs
+// it, not whether its code is worth knowing about. gamma stays out, as the
+// broken one.
+ok(rows.join(',') === 'alpha,beta,delta,unattributed paths',
+   `findings card lists valid projects, locked ones included (${rows.join(',')})`);
 ok(await page.$('#cardFindings .macros button') === null,
    'the card carries no report button — its rows open a notebook\'s Analysis view');
 ok(await page.$eval('#findingsSum .row[data-ana="alpha"]', r => r.classList.contains('go')),
@@ -752,6 +756,37 @@ ok(await page.$('.doc .projtab [data-del]'),
 // on the crowded side.
 ok(!await page.$('#projects [data-p]') && await page.$('.doc .projtab [data-p]'),
    'pinning is the Projects tab\'s, not the card the pins are shown in');
+
+// Locking, which is now the only gate there is. The eye that excluded a
+// project is gone: two buttons that looked alike, sat side by side and both
+// ended a session was a finer distinction than it was worth.
+ok(!await page.$('#projects [data-x]') && !await page.$('.doc .projtab [data-x]'),
+   'there is no exclude control anywhere any more');
+// delta is the fixture's locked project.
+const dRow = '#projects .row[data-row="delta"]';
+ok(await page.$$eval(`${dRow} .name .lockmark`, e => e.length) === 1,
+   'a locked project wears a closed padlock after its name');
+ok(await page.$eval(`${dRow} [data-c]`, e => e.disabled),
+   '...with its Claude button ghosted rather than taken away');
+ok(await page.$(`${dRow} [data-m]`) !== null && await page.$(`${dRow} [data-s]`) !== null,
+   '...and its notebook and shell still there, because locking is about who runs it');
+// The refusal is the server's. A read-only state enforced by a dimmed button
+// is a suggestion, and the endpoint behind it is reachable without the page.
+const refused = await page.evaluate(async () => {
+  const r = await fetch('/api/todo', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ project: 'delta', action: 'add', text: 'should not land' }) });
+  return { status: r.status, error: (await r.json()).error || '' };
+});
+ok(refused.status === 409 && /locked/.test(refused.error),
+   '...and the server refuses a write into its notebook, not just the button');
+const mdRefused = await page.evaluate(async () => {
+  const r = await fetch('/api/claude-md', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'delta', action: 'init' }) });
+  return r.status;
+});
+ok(mdRefused === 409, '...including writing a CLAUDE.md into it');
 
 // The sidebar fits its column. It stopped doing so because a tooltip is laid
 // out even while hidden: a 280px box centred on an icon near the right edge of

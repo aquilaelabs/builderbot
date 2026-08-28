@@ -3,7 +3,7 @@
 #
 # Nothing here touches the live dashboard: the server under test binds a spare
 # port with its own scratch state directory, a fake workspace of four projects
-# (one broken, one excluded), a crafted SARIF report, a stub `bb` whose doctor
+# (one broken, one locked), a crafted SARIF report, a stub `bb` whose doctor
 # output the tests can flip, and throwaway tmux sessions on a PRIVATE tmux
 # server (TMUX_TMPDIR under the scratch dir) — the live dashboard lists every
 # session on the shared server, and a test session showing up there as a
@@ -106,7 +106,8 @@ mkdir -p "$S/ws/toolstore" && : > "$S/ws/toolstore/.bbignore"
 # container about it. It is not a project because the Projects card did not
 # accept it, which is the only test that matters now.
 mkdir -p "$S/ws/vendored-junk/deep" && echo x > "$S/ws/vendored-junk/deep/thing.py"
-echo '["delta"]' > "$S/state/excluded-projects.json"
+# delta is the locked one: kept, run by the operator, and read-only.
+echo '["delta"]' > "$S/state/locked-projects.json"
 # A git that stalls on one magic URL and is the real git for everything else.
 # Cloning is a background job now, and the two properties that matters for —
 # it outlives the page, and it can be stopped — can only be checked against a
@@ -478,8 +479,7 @@ EOF
 fresh() {
     rm -f "$S/state/tabs.json" "$S/state/cards.json" "$S/state/todos.json" \
           "$S/state/bugs.json"
-    echo '["delta"]' > "$S/state/excluded-projects.json"   # a test that excludes must not hand that on
-    rm -f "$S/state/locked-projects.json"                  # ...nor one that locks
+    echo '["delta"]' > "$S/state/locked-projects.json"     # a test that locks must not hand that on
     rm -f "$S/state/pinned-projects.json"                  # ...nor one that unpins
     # Projects a test created through /api/create go too — anything that is
     # not one of the five fixtures. Scoped to $S, like every rm in this file.

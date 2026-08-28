@@ -199,11 +199,11 @@ await page.waitForFunction(() => tabs.some(t => t.arg === 'claude:ep.silon'));
 ok(true, 'dotted project: reopening from Sessions maps back to claude:ep.silon');
 ok(await page.evaluate(() => sessionOf('claude:ep.silon') === 'claude-ep_silon' && sessionOf('sh:2:ep.silon') === 'shell-ep_silon-2'), 'sessionOf applies the tmux rewrite');
 const ndx = page.dialogs.length;
-await page.click('#projects [data-x="ep.silon"]');            // exclude: asks, then the server ends the session
+await page.click('#projects [data-k="ep.silon"]');            // lock: asks, then the server ends the session
 await page.waitForFunction(() => !document.querySelector('#sessions [data-go="claude-ep_silon"]'), { timeout: 15000 });
 ok(page.dialogs.length === ndx + 1 && !(await page.evaluate(() => tabs.some(t => t.arg === 'claude:ep.silon'))),
-   'dotted project: excluding it ends the session and drops its tab');
-await page.evaluate(() => setExcluded('ep.silon', false));    // include again (its row is folded away now)
+   'dotted project: locking it ends the session and drops its tab');
+await page.evaluate(() => setLocked('ep.silon', false));      // and unlock it again
 await page.waitForFunction(() => document.querySelector('#projects [data-c="ep.silon"]'), { timeout: 15000 });
 
 // A back/forward-cache restore (persisted pageshow) reloads the terminal

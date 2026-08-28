@@ -1127,10 +1127,12 @@ lives in its body. The cards:
   **Edits land for the next session**, the same rule `bb claude-md` follows:
   the index is read at startup, and a running session is holding what it read
   then — which is what Save tells it, in the one line it spends
-- an **eye** per project, which excludes it: persists across restarts and
-  blocks Claude sessions for that directory — see below. A row that is excluded
-  or has an error carries **no Claude button at all**, because a session cannot
-  start there; **Shell** stays, since that is often how you would fix it
+- a **padlock** per project, which locks it: no Claude session starts there
+  and its notebook goes read-only — see below. A locked row keeps every
+  control, with its Claude button ghosted rather than removed and a closed
+  padlock after the name; a row with a repo *error* carries no Claude button at
+  all, because a session cannot start there. **Shell** stays either way, since
+  that is often how you would fix it
 - a **thumbtack** per project, which decides whether the sidebar shows it at
   all. Unpinning takes a project off this card and nothing else: it keeps every
   control on the **All projects** tab at the foot of the card, which lists
@@ -1222,8 +1224,9 @@ container.
   files' mtime, so you never triage stale findings. The sidebar card carries
   the headline: one row per project with its counts by severity, so "whose
   code, how bad" is answered without opening the report. Both leave out
-  projects that are excluded or have repo errors — those get fixed in the
-  Projects card first — and the report says how many findings that held back
+  projects with repo errors — those get fixed in the Projects card first, and
+  a *locked* one is not in that category — and the report says how many
+  findings that held back
   rather than quietly shrinking
 - a **Stop / Start** toggle for the runner, showing whichever one applies.
   Stopping waits for GitHub to release the runner's session rather than
@@ -1776,8 +1779,8 @@ project alone, worst level first, read-only — the scan runs on the host, and
 `bb findings` reads the same digest in a terminal. The whole-report findings
 tab is gone; the Static analysis card's per-project rows are the way in now,
 each opening its project's notebook on this view. Findings whose paths
-resolve into anything other than a **valid** project — one that is listed, not
-excluded, and free of error-level issues — are counted and set aside rather
+resolve into anything other than a **valid** project — one that is listed and
+free of error-level issues; a locked one still counts — are set aside rather
 than shown as "unattributed". The label is reserved for paths that genuinely
 place nowhere, which is the case worth a look.
 
@@ -1912,7 +1915,7 @@ so, in the prompt and in the pane: one argument cannot exceed the kernel's
 131072 bytes, and a list that big has outgrown being read at the start of every
 conversation anyway.
 
-The list lives in `/config/todos.json`, beside the tab strip and the excluded
+The list lives in `/config/todos.json`, beside the tab strip and the locked
 projects — deliberately **not** in the repository. A list like this churns far
 faster than commits, and a checkbox tapped on a phone should not turn into an
 uncommitted change. Anything that deserves to be permanent graduates out of it:
@@ -2286,132 +2289,45 @@ that goes looking: Bash still reaches the whole filesystem, and no in-process
 permission system changes that. If you need a hard boundary, do not mount the
 other projects into the same container.
 
-### Excluding a project
+### Locking a project
 
-The **eye** on a project row blocks Claude sessions for that directory — a
-struck-through eye excludes it, a plain eye lets it back in. The
-list lives in `/config/excluded-projects.json`, so it survives restarts and
-image updates, and it is enforced by the terminal launcher rather than the
-page — the ttyd URL is reachable on its own, so a rule only the UI honored
-would be advice. Specifically, excluding a project:
+The **padlock** on a project row is the one gate there is. There used to be two
+— an eye that *excluded* a directory and a padlock that *locked* it — and they
+looked alike, sat next to each other and both ended a session, which is a
+distinction finer than it was worth two buttons. Locked is the survivor and it
+carries the whole meaning.
+
+The list lives in `/config/locked-projects.json`, so it survives restarts and
+image updates, and it is enforced by the terminal launcher and the server
+rather than the page — the ttyd URL is reachable on its own, and so are the
+API paths, so a rule only the UI honored would be advice. Locking a project:
 
 - refuses `claude:<project>` at launch, with a message saying why
 - ends any Claude session already running there, rather than taking effect
   "next time"
-- folds the row away behind **Show projects with errors**, and puts it at the
-  *bottom* of that list — an exclusion is a decision already made, not a problem
+- makes its notebook **read-only** — the roadmap, the bugs and the memories
+  open and cannot be changed, by you or by anything else
+- refuses to write a `CLAUDE.md` into it, so the `no CLAUDE.md — create one`
+  line stays as plain text rather than being an offer
 
-### Push rights
+**What it deliberately does not touch is everything you do yourself.** A locked
+row is not folded away and not grayed out — it is a project you are actively
+running, and dimming it would say the opposite. A closed padlock sits after the
+name so the row reads *"StreamLift, locked"* without hunting for which of six
+icons is lit, and:
 
-A clone is read-only unless you tick **I want to push to this repository**, and
-that decision is made once. Three rules, all deliberate:
-
-- **It cannot be turned off.** A working copy that could push yesterday and
-  cannot today explains nothing to whoever is standing in it. Deleting the
-  project is the way out — which never touches GitHub.
-- **One project per repository.** Two working copies pushing to one remote is
-  how a branch ends up racing itself, and here both may be the same session on
-  different days. Deleting the holder frees it.
-- **The token is checked first.** Before the clone starts, GitHub is asked
-  whether that token can actually push to that repository — a missing scope
-  otherwise surfaces days later as a failure with nothing connecting it to the
-  box you ticked. A deploy key cannot be checked this way short of pushing, so
-  it is taken at its word.
-
-Enforcement is a `pre-push` hook, which is transport-agnostic — it catches an
-ssh push through a deploy key exactly as it catches an https one — and refuses
-with a sentence rather than an auth error. Like the sibling-project rule it is
-a guardrail, not a sandbox: a shell in the container can delete it.
-
-Projects that already existed when this arrived are granted retroactively if
-their GitHub remote is an ssh one, recorded as `key`. Those are the repos that
-were already being pushed to with deploy keys, and a new rule is not a reason
-to take away something that worked. https remotes are not seeded: those
-authenticated with the container-wide `GIT_PAT`, and a token of their own is
-the way back.
-
-### An access token for one project
-
-Cloning a private repository asks for an optional **access token**. It is
-written in git's own credential-store format to `/config/gitcreds/<project>`,
-mode `0600`, and named from that repository's `.git/config` and nowhere else —
-with git's empty-value reset ahead of it, so the globally configured helper is
-never asked and the container's `GIT_PAT` is not what authenticates the fetch.
-
-That last part is the point. A token minted to reach one private repo usually
-reaches every repo it was scoped to; in the environment it also reaches them
-from every project and every session. Here it opens the one project you gave it
-to, and renaming that project takes it along.
-
-A project that already has push rights can be given a token from the **rename**
-dialog — including one that pushes with a **deploy key**. Setting one there
-does not switch anything by itself: git never asks a credential helper about an
-ssh remote, so a project with an `ssh://` or `git@` origin goes on using its
-key however many tokens are stored for it.
-
-The **Authentication** segment beside that field is what changes it. It shows
-which credential the remote actually reaches for — *Deploy key* or *Access
-token* — and lets you move between them; the change is applied when you press
-Rename, which is also how a token typed in the same dialog gets written before
-the switch that needs it. Under the hood it is one `git remote set-url`,
-between `git@…:owner/repo.git` and `https://github.com/owner/repo.git`.
-
-**A stored token is closed, not shown.** Only its file has the value, so the
-field cannot be pre-filled and typing over an invisible one is how a working
-credential gets replaced by accident. It is disabled, with **Clear the stored
-token** under it: pressing that opens the field for a new one, ghosts the
-*Access token* side and puts the choice back on *Deploy key*. Like everything
-else in this dialog it is staged — the project changes when you press Rename,
-and the link offers the way back until you do.
-
-Clear the only credential a project has and both sides go quiet, with a line
-saying it cannot push to GitHub and that everything else — commit, branch,
-build — still works locally. The field stays typeable there deliberately:
-ghosting it would be tidier and would leave no way back to pushing.
-
-**Switching removes neither credential.** The token file stays in `/config`,
-the deploy key and its `~/.ssh/config` alias stay where they are, and the
-repository keeps its credential helper — an ssh remote simply never consults
-one. So going back costs nothing, and the exact alias is restored rather than
-guessed, because the alias is named after the *key* and there would be nothing
-in the project to guess it from. A side you cannot take is shown disabled with
-the reason: a project with no token stored, or one that has only ever been
-https and so has no key remote to return to.
-
-**It is not shielded the way a deploy key is.** Those are served by a root-owned
-agent and cannot be read at all. This is a file owned by the same user your
-shells run as, so a session with Bash can read it. Better than an environment
-variable every process inherits, and not a secret store — for a repository
-where that matters, use a deploy key.
-
-### Locking a project
-
-The **padlock** beside the eye is the other half of that idea, for a project
-you keep in `/workspace` to *run* rather than to develop — a compose app you
-deploy from the Artifacts tab, say. Locking it refuses `claude:<project>` and
-ends any session already there, exactly as excluding does, and it is enforced
-in the same place and for the same reason; the list lives in
-`/config/locked-projects.json`.
-
-Everything else is the difference. A locked row is not folded away, not grayed
-out, and keeps every control you use: the notebook, the artifacts and dev
-instance, the version block, the shell. Excluding says *this is not a project*;
-locking says *this one is mine*.
+- the **shell** still opens, which is how you go and look at it
+- its **static analysis** is still counted and still opens on the Analysis
+  view, with its history: locking says who runs a project, not whether its code
+  is worth knowing about
+- its **artifacts** are still listed, and a **dev instance** still builds and
+  runs — that is usually the reason a project is locked in the first place
+- the **version** block, the settings dialog and the rename all still work
 
 One limit worth stating, because it is the same one the sibling-project rule
 carries: this stops a session **starting here**, and the file tools are already
 denied on every project but a session's own. It is not a sandbox — a session in
 another project can still reach this directory through Bash.
-  waiting for someone
-- grays the row out and takes the click off anything in it. A `no CLAUDE.md —
-  create one` line stays as text, because nothing acts on an excluded project
-  until it is let back in. **Shell** and the **eye** keep their weight: those
-  are how you look at it and how you reverse it
-
-Other projects' sessions were already denied read access to it, the same as to
-any sibling — that comes from the scoping above, not from excluding it.
-
-A shell there is still offered, so you can go and look at what you excluded.
 
 ```
 ENABLE_DASHBOARD=true

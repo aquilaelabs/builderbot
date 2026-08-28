@@ -307,8 +307,9 @@ what is wrong with each one rather than hiding it. Errors fold away behind a
 button — no git repository, or ownership the container cannot work with, in red.
 Warnings stay in the list in amber, because they are asking for something: no
 `CLAUDE.md`, or one whose environment block has fallen behind the image. Both
-are underlined links that fix themselves in place. A row that is excluded or has
-an error carries no Claude button, since a session cannot start there.
+are underlined links that fix themselves in place. A row with an error carries
+no Claude button, since a session cannot start there; a *locked* one keeps its
+button, ghosted, and a closed padlock after the name.
 A directory with a `.bbignore` file in it is not treated as a project — the
 container marks its own paths that way (the SDK share, if you put it inside
 the projects share, as the default does), and you can drop the same file into
