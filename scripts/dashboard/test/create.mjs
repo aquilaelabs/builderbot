@@ -405,8 +405,8 @@ ok(/no access token/.test(aj.no_token),
    'switching to a token nobody stored is refused, not written');
 ok(aj.opts_on_key.now === 'ssh' && aj.opts_on_key.token && aj.opts_on_key.ssh,
    'with both credentials present the dialog is offered a real choice');
-ok(aj.issued[0] === 'https://github.com/owner/repo.git',
-   'switching to the token rewrites origin to https, owner and repo intact');
+ok(aj.issued[0] === 'https://github.com/Owner/Repo.git',
+   'switching to the token rewrites origin to https, with the repository still spelled the way it is spelled');
 ok(aj.now_https === 'https' && aj.token_kept,
    '...and the token file it now uses is still the project\'s own');
 ok(aj.opts_on_token.ssh,
