@@ -930,8 +930,33 @@ that answers nothing — either way the popup behind it carries the whole stamp.
 on that header, and dragging a header reorders the cards; both are remembered
 in `/config/cards.json`, so the phone and the desktop agree about the
 arrangement and it survives restarts and image updates. The **▤** button in
-the top bar puts it all back: default order — Doctor on top — with every
-card expanded. The sidebar is what the *box* is doing; the command lists and
+the top bar opens the appearance menu, whose first item puts it all back:
+default order — Doctor on top — with every card expanded.
+
+**Under it, twelve colour schemes**, all dark, because this page is read in a
+dim room beside a terminal and a light one would be a different design rather
+than a recolour of this one. A scheme is nine custom properties: every rule in
+the stylesheet draws from them, and the button and accent families are mixed
+from the scheme's own panel and accent (`color-mix`, with flat fallbacks), so
+a recolour reaches the tabs, the primaries and the active states rather than
+stopping at the background. Each swatch is defined for `.sw[data-theme=…]` as
+well as for the page, which means the preview *is* the palette rather than a
+second copy of it that can drift.
+
+**Nostromo** is the one that is more than a recolour: amber phosphor on a
+green-black hull, with a hazard decal along the header's bottom edge, a stencil
+tick on each card title, faint scanlines on the panels and a vignette on the
+page. All of it drawn — gradients and one pseudo-element, no image files. That
+is the persistence rule rather than taste: an image would be a binary in the
+repository, re-shipped in a weekly rebuild, for something two gradients say.
+Nothing in it moves the layout, so switching schemes never nudges the page.
+
+The choice is kept in the browser (`localStorage`, `bb.theme`) rather than on
+the server beside the card order — that describes the work and should follow
+you between machines; which colours are comfortable is about the room you are
+sitting in, and a phone in the dark may reasonably differ from a desktop at
+noon. It is also applied from a block in `<head>`, before the first paint,
+which a value fetched from the server could not be without a flash. The sidebar is what the *box* is doing; the command lists and
 the session list are about the shell in front of you, and hang off the
 terminal instead — see below. On a touch screen, hold a header for half a second to pick
 the card up; a finger that moves sooner is scrolling, and the sidebar scrolls

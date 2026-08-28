@@ -20,15 +20,37 @@
   // eventually inherited the page-load-era snapshot of the shared layout and
   // saved it over the real one. Found by the suite, kept as a warning.
   const preStatus = fetch("/api/status");
+
+  // The colour scheme, before anything is painted. It has to be here rather
+  // than with the rest of the theme code 150KB below: by the time that parses
+  // the page has already been drawn once, and a scheme applied then is a flash
+  // of the default followed by a jump. Written straight onto <html> because
+  // <body> does not exist yet — a matching selector pair below reads either.
+  try{
+    const t = localStorage.getItem("bb.theme");
+    if (t && t !== "default" && /^[a-z]{2,12}$/.test(t))
+      document.documentElement.dataset.theme = t;
+  }catch(e){ /* private mode: the default scheme is a fine answer */ }
 </script>
 <!-- Inline so the browser never asks the server for /favicon.ico — the only
      404 this page would otherwise produce. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b2027'/%3E%3Cg fill='%233fb950'%3E%3Crect x='4' y='8.5' width='24' height='17' rx='5.5'/%3E%3Crect x='15' y='3.5' width='2' height='6' rx='1'/%3E%3Ccircle cx='16' cy='3' r='2.3'/%3E%3C/g%3E%3Cg fill='%231b2027'%3E%3Ccircle cx='11.4' cy='15.4' r='2.1'/%3E%3Ccircle cx='20.6' cy='15.4' r='2.1'/%3E%3Crect x='10.6' y='19.6' width='10.8' height='2.6' rx='1.3'/%3E%3C/g%3E%3C/svg%3E">
 <style>
-:root{
+:root,.sw[data-theme="default"]{
   --bg:#14181d; --panel:#1b2027; --line:#2a323c; --ink:#e6edf3;
   --dim:#8b98a5; --accent:#3fb950; --warn:#d29922; --bad:#f85149;
   --note:#58a6ff;
+  /* Derived, not chosen. Buttons and the active/primary family were hardcoded
+     hex — #232b34 eleven times, #1f6f36 and #2ea043 across every tab, pane and
+     primary — which meant a scheme could repaint the page and leave every
+     control the colour it always was. They are mixed from the scheme's own
+     panel and accent instead, so eleven recolours cost nothing to maintain.
+     Each is declared twice on purpose: the flat value first for a browser with
+     no color-mix, the mix second where there is one. */
+  --btn:#232b34;        --btn:color-mix(in srgb, var(--panel), #ffffff 5%);
+  --btn-hi:#2b3540;     --btn-hi:color-mix(in srgb, var(--panel), #ffffff 9%);
+  --accent-mid:#2ea043; --accent-mid:color-mix(in srgb, var(--accent), #000000 14%);
+  --accent-deep:#1f6f36;--accent-deep:color-mix(in srgb, var(--accent), #000000 40%);
   /* The tail matters on Android: none of the named desktop faces exist
      there, and bare `monospace` lets Chrome and Firefox each pick their own
      default — the same page in two fonts. Roboto/Noto/Droid Mono are what
@@ -53,6 +75,113 @@
   --gold:#d8b25c;   --gold-edge:#4a3c1e;
   --red2:#e0796f;   --red2-edge:#4d2220;
 }
+/* ---- colour schemes ----------------------------------------------------
+   Twelve, all dark: this page is looked at in a dim room beside a terminal,
+   and a light one would be a different design rather than a recolour of this
+   one. A scheme is nine custom properties and nothing else — every rule in
+   the sheet already draws from them, which is what makes a recolour cheap and
+   a new one three lines.
+
+   Each palette is written once and claimed by two selectors: the page under
+   that theme, and that theme's own swatch in the menu. So a swatch is not a
+   picture of the scheme, it IS the scheme, rendered small — there is no second
+   copy of the colours to drift. Default's live on :root beside the tokens no
+   scheme touches (the fonts, the tap target, the badge family), because those
+   are the same in every scheme and a scheme that had to restate them would
+   invite them apart. */
+html[data-theme="nostromo"],.sw[data-theme="nostromo"]{
+  --bg:#0a0e0b; --panel:#101711; --line:#24331f; --ink:#d7e3c8;
+  --dim:#7d8f6e; --accent:#ffb000; --warn:#ffd166; --bad:#ff5f45; --note:#9ad07a}
+html[data-theme="slate"],.sw[data-theme="slate"]{
+  --bg:#12151a; --panel:#191d24; --line:#2b3139; --ink:#dfe5ec;
+  --dim:#8a929c; --accent:#6ea8fe; --warn:#d9a441; --bad:#ef6f6c; --note:#7fb8ff}
+html[data-theme="carbon"],.sw[data-theme="carbon"]{
+  --bg:#0d0d0f; --panel:#151517; --line:#26262a; --ink:#e8e8ea;
+  --dim:#8e8e96; --accent:#e5484d; --warn:#d9a441; --bad:#ff6b6b; --note:#7aa2f7}
+html[data-theme="nocturne"],.sw[data-theme="nocturne"]{
+  --bg:#12121c; --panel:#1a1a28; --line:#2b2b40; --ink:#e4e2f5;
+  --dim:#918eb5; --accent:#9d7cff; --warn:#e0b24d; --bad:#f2637b; --note:#7cb0ff}
+html[data-theme="moss"],.sw[data-theme="moss"]{
+  --bg:#101613; --panel:#172019; --line:#26332a; --ink:#dfe9df;
+  --dim:#86988a; --accent:#63c98a; --warn:#d6ad4e; --bad:#e8695f; --note:#74b3d8}
+html[data-theme="ember"],.sw[data-theme="ember"]{
+  --bg:#16110e; --panel:#1e1814; --line:#33291f; --ink:#f0e4d8;
+  --dim:#a08d7c; --accent:#f0873f; --warn:#e8bb50; --bad:#ef5f52; --note:#8fb4d9}
+html[data-theme="abyss"],.sw[data-theme="abyss"]{
+  --bg:#0c1416; --panel:#121d20; --line:#1f2f33; --ink:#dcecee;
+  --dim:#7d979b; --accent:#2fb8c6; --warn:#d7ab4c; --bad:#ef6a63; --note:#6fb3e0}
+html[data-theme="plum"],.sw[data-theme="plum"]{
+  --bg:#16101a; --panel:#1e1724; --line:#322639; --ink:#eddff2;
+  --dim:#a08bab; --accent:#c874d8; --warn:#dfae52; --bad:#ee6183; --note:#83aee8}
+html[data-theme="rust"],.sw[data-theme="rust"]{
+  --bg:#150f0e; --panel:#1d1614; --line:#322523; --ink:#ecdedb;
+  --dim:#a08b87; --accent:#cf6a4c; --warn:#d9a441; --bad:#e8544a; --note:#7fa8c9}
+html[data-theme="ice"],.sw[data-theme="ice"]{
+  --bg:#0f1418; --panel:#161d23; --line:#253039; --ink:#e3edf5;
+  --dim:#88989f; --accent:#58c7e8; --warn:#d3ab52; --bad:#ee6a68; --note:#7cc0ff}
+html[data-theme="sepia"],.sw[data-theme="sepia"]{
+  --bg:#16130e; --panel:#1e1a13; --line:#332c20; --ink:#ece0cb;
+  --dim:#a3937a; --accent:#d3a94f; --warn:#e3c069; --bad:#e0705f; --note:#9db98c}
+html[data-theme="ash"],.sw[data-theme="ash"]{
+  --bg:#131313; --panel:#1a1b1a; --line:#2c2e2c; --ink:#e2e4e0;
+  --dim:#8f938c; --accent:#a3b18a; --warn:#cfa94a; --bad:#e26d60; --note:#82a7b8}
+
+/* ---- Nostromo -----------------------------------------------------------
+   The one scheme that is more than a recolour. Amber phosphor on a green-black
+   hull, after the ship's own screens — and the flare is drawn rather than
+   fetched: gradients and one inline SVG, no image files. That is not an
+   aesthetic choice, it is the persistence rule. An image would be a binary in
+   the repository, shipped in the layer that gets rebuilt weekly, for something
+   two gradients say.
+
+   The restraint is deliberate and worth writing down, because the temptation
+   here is to keep going. Everything below is either at the edge of a surface
+   or under 6% opacity: this is a page somebody reads a stack trace on, and a
+   texture you notice twice is a texture that is in the way the third time. */
+
+/* Hazard striping, at the one place a ship would actually put a decal: the
+   bottom edge of the header, where the chrome ends and the work begins. */
+/* The border stays. Dropping it for the decal changed the header's height by
+   a pixel, so choosing a scheme nudged the whole page — and a colour scheme
+   that moves the layout is a colour scheme you can feel. The stripe is drawn
+   over the border instead. */
+/* Its own element rather than a background on the header: an inset box-shadow
+   paints ABOVE the background image, so the first version drew the stripe and
+   then covered it with the hairline that was supposed to sit under it. Four
+   pixels and a 12px period — at three it read as a solid line, which is a
+   different thing from a decal. */
+html[data-theme="nostromo"] header::after{
+  content:"";position:absolute;left:0;right:0;bottom:0;height:4px;z-index:1;
+  background:repeating-linear-gradient(-45deg,
+    rgba(255,176,0,.75) 0 6px, rgba(0,0,0,.55) 6px 12px)}
+
+/* A stencil tick on every card title, like a panel number. The card headers
+   are already uppercase and letter-spaced, which is most of the look. */
+html[data-theme="nostromo"] .card h2{
+  box-shadow:inset 3px 0 0 0 rgba(255,176,0,.5)}
+
+/* CRT scanlines, on the panels only — never over a terminal pane, where they
+   would sit on top of somebody's actual output at the exact size of its text.
+   3px pitch and 4% black: visible on a flat fill, gone under text. */
+html[data-theme="nostromo"] .card,
+html[data-theme="nostromo"] .modal>.box,
+html[data-theme="nostromo"] .pane .nb{
+  background-image:repeating-linear-gradient(180deg,
+    rgba(0,0,0,.04) 0 1px, rgba(0,0,0,0) 1px 3px)}
+
+/* Weathering on the page itself: a slow vignette so the hull darkens at the
+   edges. Fixed and behind everything, pointer-events off — it must never be
+   the thing a click lands on. */
+html[data-theme="nostromo"] body::before{
+  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(120% 100% at 50% 0%,
+    rgba(255,176,0,.05) 0%, rgba(0,0,0,0) 45%),
+    radial-gradient(140% 120% at 50% 120%, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 60%)}
+
+/* The buttons read as machined rather than drawn: a hairline highlight along
+   the top edge, which is what makes a flat rectangle look like a keycap. */
+html[data-theme="nostromo"] button:not(.link){
+  box-shadow:inset 0 1px 0 0 rgba(255,176,0,.12)}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);display:flex;
@@ -109,6 +238,43 @@ header h1{font-size:15px;margin:0;font-weight:600}
   width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
   background:var(--panel);border:1px solid var(--line);border-top:0;
   border-radius:0 0 8px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45)}
+/* The header's own menu, under the gear-adjacent broom. Same shape and the
+   same manners as the bell panel beside it: anchored to the header's bottom
+   edge, anything else closes it, Escape closes it. */
+.uimenu{position:absolute;right:8px;top:100%;z-index:40;
+  width:min(300px,calc(100vw - 16px));
+  background:var(--panel);border:1px solid var(--line);border-top:0;
+  border-radius:0 0 8px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45);padding:8px}
+.uimenu h4{margin:6px 2px 6px;font:var(--f-tag);letter-spacing:.6px;
+  text-transform:uppercase;color:var(--dim)}
+.uimenu>button{width:100%;min-height:var(--tap);justify-content:flex-start}
+/* Four across on a desktop, three on a phone, so a swatch stays a tap target
+   rather than becoming a pixel. */
+.swgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+@media(max-width:900px){ .swgrid{grid-template-columns:repeat(3,1fr)} }
+/* A swatch renders in its own scheme: the tokens above are defined for
+   .sw[data-theme=...] as well as for the page, so this is the palette itself
+   at 1cm rather than a hand-kept copy of it. */
+.sw{position:relative;display:block;padding:0;overflow:hidden;
+  height:44px;border-radius:6px;cursor:pointer;
+  background:var(--bg);border:1px solid var(--line)}
+.sw .swp{position:absolute;left:0;right:0;bottom:0;height:16px;
+  background:var(--panel);border-top:1px solid var(--line)}
+.sw .swa{position:absolute;left:6px;top:7px;width:10px;height:10px;
+  border-radius:50%;background:var(--accent)}
+.sw .swi{position:absolute;left:20px;top:10px;right:6px;height:4px;
+  border-radius:2px;background:var(--ink);opacity:.55}
+.sw .swn{position:absolute;left:0;right:0;bottom:0;height:16px;z-index:1;
+  font:var(--f-tag);letter-spacing:.3px;color:var(--ink);
+  display:flex;align-items:center;justify-content:center}
+.sw.on{outline:2px solid var(--accent);outline-offset:1px}
+@media(hover:hover){ .sw:hover{border-color:var(--ink)} }
+/* The one scheme whose swatch shows what it is: the same hazard stripe the
+   header wears, along the top of the chip. */
+.sw[data-theme="nostromo"]::after{content:"";position:absolute;
+  left:0;right:0;top:0;height:3px;
+  background:repeating-linear-gradient(-45deg,
+    rgba(255,176,0,.6) 0 5px, rgba(0,0,0,0) 5px 10px)}
 .bnote{padding:8px 10px;border-bottom:1px solid var(--line);font:var(--f-ui)}
 .bnote:last-of-type{border-bottom:0}
 .bnote .bwhy{overflow-wrap:anywhere}
@@ -197,7 +363,7 @@ body.dragging .side .card h2{cursor:grabbing}
 .row.off [data-s],.row.off .eye{opacity:1}
 .grow{flex:1;min-width:120px}
 
-button{background:#232b34;color:var(--ink);border:1px solid var(--line);
+button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
   border-radius:6px;padding:6px 10px;font:12px/1 inherit;cursor:pointer;
   white-space:nowrap;min-height:30px;touch-action:manipulation;
   -webkit-tap-highlight-color:transparent}
@@ -212,11 +378,13 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
   .side .card h2:hover{color:var(--ink)}
   .row .name.go:hover{text-decoration:underline}
   .row .sub a.fix:hover{color:var(--ink)}
-  button:hover{background:#2b3540}
+  button:hover{background:var(--btn-hi)}
   /* The green buttons kept their color through button:hover (their own rules
      come later and win) — which meant no hover at all. A lighter green and a
      brighter border are their version of the same lift. */
-  button.primary:hover,button.on:hover{background:#26853f;border-color:#3fb950}
+  button.primary:hover,button.on:hover{
+    background:color-mix(in srgb, var(--accent), #000000 28%);
+    border-color:var(--accent)}
   /* The notebook's tab strip borrows .on for its active view, but its
      buttons are underlined text, not green blocks — the generic green-button
      hover leaking in here painted the active tab as a filled pill the moment
@@ -224,14 +392,14 @@ button{background:#232b34;color:var(--ink);border:1px solid var(--line);
   .nbtabs button:hover,.nbtabs button.on:hover{background:none}
   .modal .danger:hover{background:#3a1d1b}
   .nb .caution:hover{background:#33290f}
-  button:disabled:hover{background:#232b34}
-  .cmd button:hover{background:#2b3540}
+  button:disabled:hover{background:var(--btn)}
+  .cmd button:hover{background:var(--btn-hi)}
   .cmd .tack:hover{color:var(--ink)}
   button.eye:hover{color:var(--ink)}
   .tabbar .newtab:hover{color:var(--ink)}
   .tab .ic:hover{background:rgba(255,255,255,.09);color:var(--ink)}
   .pane .bar .x:hover{background:rgba(255,255,255,.1);color:var(--ink)}
-  .fx .grp>summary:hover{background:#232b34}
+  .fx .grp>summary:hover{background:var(--btn)}
   .fx .cve:hover{background:#2a1a1a}
   .tscroll:disabled:hover{background:var(--panel)}
 }
@@ -250,8 +418,8 @@ button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
   button,.pane .bar .x,.tab .ic{transition:none}
 }
 button:disabled{opacity:.5;cursor:default}
-button.primary{background:#1f6f36;border-color:#2ea043}
-button.on{background:#1f6f36;border-color:#2ea043}
+button.primary{background:var(--accent-deep);border-color:var(--accent-mid)}
+button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
 /* The Linux and git cards show commands verbatim; mono keeps them readable
    as commands, and slightly smaller keeps the pipelines on one line. */
@@ -272,7 +440,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .pkg{display:flex;gap:10px;align-items:flex-start;padding:13px 0;margin:0;
   border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)}
 .pkg:last-child{border-bottom:0}
-.pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto;accent-color:#2ea043}
+.pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto;accent-color:var(--accent-mid)}
 .pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
 .pkg .sub{display:block;color:var(--dim);font:var(--f-note)}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
@@ -345,7 +513,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* A command and its thumbtack are one control with two halves, so the tack
    cannot be mistaken for a command of its own. */
 .cmd{display:inline-flex;align-items:stretch;border:1px solid var(--line);
-  border-radius:6px;overflow:hidden;background:#232b34}
+  border-radius:6px;overflow:hidden;background:var(--btn)}
 .cmd button{border:0;border-radius:0;background:transparent;min-height:28px}
 .cmd .tack{padding:4px 6px;color:#4b5563;border-left:1px solid var(--line);
   display:inline-flex;align-items:center}
@@ -542,7 +710,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* The "showing N of M" footer under a long list. Quiet: it is a fact about
    the list plus the control that changes it, not a section of its own. */
 .pagemore{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
-  padding:10px 0 2px;border-top:1px dashed #232b34;margin-top:6px}
+  padding:10px 0 2px;border-top:1px dashed var(--btn);margin-top:6px}
 .pagemore span{color:var(--dim);font:var(--f-note)}
 .pagemore button{margin-left:auto}
 .pagemore button+button{margin-left:0}
@@ -652,7 +820,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 /* A download is a link wearing the button suit, because the browser has to
    navigate to it — fetch would buffer the file into JS for nothing. */
 .artrow a.btn{display:inline-flex;align-items:center;min-height:var(--tap);
-  padding:6px 12px;background:#232b34;color:var(--ink);border:1px solid var(--line);
+  padding:6px 12px;background:var(--btn);color:var(--ink);border:1px solid var(--line);
   border-radius:6px;font:600 12px/1 system-ui,sans-serif;text-decoration:none}
 @media(hover:hover){ .artrow a.btn:hover{border-color:#8b949e} }
 .artrow.job .grow{font:var(--f-ui);color:var(--dim)}
@@ -680,7 +848,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .todo{display:flex;gap:9px;align-items:flex-start;padding:9px 0}
 /* A group's steps sit under its title, indented and hairlined, so the shape
    of "these go in this order" is visible without reading them. */
-.todo.step{padding:5px 0 5px 26px;border-top:1px dashed #232b34}
+.todo.step{padding:5px 0 5px 26px;border-top:1px dashed var(--btn)}
 /* The log. One line per change, newest first, and deliberately plain: it is
    read when something is not where it was left, which is a moment for facts
    and not for decoration. */
@@ -697,7 +865,7 @@ button.on{background:#1f6f36;border-color:#2ea043}
    is a note about the event above it and not an event of its own. */
 .hist .note{display:block;color:var(--gold);font:var(--f-note);margin-top:2px}
 .hist{font:var(--f-ui);color:var(--ink);padding:7px 0;
-  border-top:1px dashed #232b34;display:flex;gap:8px;align-items:baseline}
+  border-top:1px dashed var(--btn);display:flex;gap:8px;align-items:baseline}
 .hist:first-child{border-top:0}
 .hist .when{flex:0 0 auto;color:var(--dim);font:11px/1.5 var(--mono);
   min-width:8.5em}
@@ -772,7 +940,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .todo .x.on{color:var(--accent)}
 @media(hover:hover){ .todo .x:hover{color:var(--ink)} }
 .todo .go[disabled]{opacity:.35;color:var(--dim);cursor:default}
-@media(hover:hover){ .todo .go:not([disabled]):hover{color:#7ee08a;border-color:#2ea043} }
+@media(hover:hover){ .todo .go:not([disabled]):hover{
+  color:color-mix(in srgb, var(--accent), #ffffff 34%);border-color:var(--accent-mid)} }
 /* Items a session raised, marked so the operator can see what was flagged at
    them rather than by them — the reason the list exists at all. */
 .todo .who{border-color:var(--purple-edge);color:var(--purple);margin-top:1px}
@@ -817,7 +986,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
    design language" means. */
 .nb .vbar{display:flex;gap:8px;align-items:center}
 .nb .vbar .sp{flex:1}
-.nb .vbar button.on{background:#1f6f36;border-color:#2ea043;color:#d7ffe0}
+.nb .vbar button.on{background:var(--accent-deep);border-color:var(--accent-mid);
+  color:color-mix(in srgb, var(--accent), #ffffff 72%)}
 .nb .vbar button{flex:0 0 auto}
 /* Long lists scroll inside the panel rather than pushing the Add field and the
    footer off the screen. A cap in rough proportion to the window, so a desktop
@@ -888,7 +1058,8 @@ button.on{background:#1f6f36;border-color:#2ea043}
 .sendbox .acts button{flex:0 0 auto;min-height:var(--tap)}
 /* The armed arrow. Filled rather than outlined: it is the one control on the
    panel that is about to do something outside it. */
-.todo .go.sel{background:#1b5e2a;border-color:#2ea043;color:#d7ffe0}
+.todo .go.sel{background:color-mix(in srgb, var(--accent), #000000 49%);
+  border-color:var(--accent-mid);color:color-mix(in srgb, var(--accent), #ffffff 72%)}
 #todoList,#memList{max-height:min(46vh,420px);overflow:auto;
   overscroll-behavior:contain}
 #memList{max-height:min(38vh,340px)}
@@ -1113,7 +1284,7 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
   border:2px solid #1f3c5d;border-top-color:var(--note);
   animation:spin 900ms linear infinite}
 .spin.bad{border-color:#4d2220;border-top-color:var(--bad)}
-.row code{font:11px/1.5 var(--mono);background:#232b34;padding:1px 5px;
+.row code{font:11px/1.5 var(--mono);background:var(--btn);padding:1px 5px;
   border-radius:4px;white-space:nowrap}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){ .spin{animation:none} }
@@ -1144,7 +1315,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   top:calc(10px + env(safe-area-inset-top));z-index:80;   /* over the editor: its
                             save errors are shown here */
   max-width:min(560px,92vw);padding:9px 14px;border-radius:8px;overflow-wrap:anywhere;
-  background:#232b34;border:1px solid var(--line);color:var(--ink);
+  background:var(--btn);border:1px solid var(--line);color:var(--ink);
   font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.55);
   transition:transform .18s ease,opacity .18s ease;opacity:0;pointer-events:none}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
@@ -1162,8 +1333,8 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   border:1px solid var(--line);border-radius:8px 8px 0 0;flex:0 0 auto;
   align-items:center;position:relative}
 .tab{display:flex;align-items:center;gap:0;border:1px solid var(--line);
-  border-radius:6px;overflow:hidden;background:#232b34}
-.tab.on{background:#1f6f36;border-color:#2ea043}
+  border-radius:6px;overflow:hidden;background:var(--btn)}
+.tab.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .tab button{border:0;border-radius:0;background:transparent;min-height:28px}
 /* The tab and the command chip clip their contents, which would clip the
    focus ring off a button inside; drawn inside the edge instead. */
@@ -1230,7 +1401,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 }
 .pane{position:relative;background:#000;min-height:0;display:flex;flex-direction:column}
 .pane.hidden{display:none}
-.pane.active{outline:2px solid #2ea043;outline-offset:-2px}
+.pane.active{outline:2px solid var(--accent-mid);outline-offset:-2px}
 .pane .bar{display:flex;align-items:center;gap:6px;padding:3px 6px;
   background:rgba(20,24,29,.92);border-bottom:1px solid var(--line);
   font:11px/1.6 var(--mono);color:var(--dim);flex:0 0 auto}
@@ -1296,7 +1467,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 .mobar{display:flex;gap:6px;padding:6px;flex:0 0 auto;background:var(--panel);
   border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}
 .mobar button{min-height:var(--tap)}
-.mobar button.on{background:#1f6f36;border-color:#2ea043}
+.mobar button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .keys,.panes{border-radius:0}   /* the bar below them owns the bottom corners */
 /* flex-shrink 1, unlike the strip and the bar: on a phone held sideways the
    fixed chrome plus a flyout can be taller than the screen, and since the
@@ -1913,14 +2084,19 @@ body.dragging .tab .lbl{cursor:grabbing}
     <span class="meta" id="build"></span><span class="alab">About</span>
   </button>
   <button onclick="refresh()" title="refresh now">↻</button>
-  <button id="bCards" aria-label="reset the sidebar cards"
-          title="reset the sidebar cards — default order, all expanded">
+  <button id="bCards" aria-haspopup="menu" aria-expanded="false"
+          aria-label="appearance and layout"
+          title="appearance — the colour scheme, and resetting the cards">
     <svg class="out" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M13.5 2.5 8.5 7.5"/>
       <path d="M8.5 7.5c-2.4 0-4.6 1.1-6 3l2.5 2.5c1.9-1.4 3.5-3.1 3.5-5.5z"/>
       <path d="M6.6 9.4 5 12.4"/>
     </svg>
   </button>
+  <!-- Under the broom rather than behind it: resetting the cards was the only
+       thing here, and a colour scheme is the other thing somebody opens the
+       chrome to change. Built from a table so a new scheme is one entry. -->
+  <div id="uiMenu" class="uimenu" hidden role="menu" aria-label="appearance"></div>
   <!-- Sign out clears the session cookie via /logout. A browser signed in
        with cached basic auth has nothing to clear and comes straight back —
        that cache is the browser's own, and only it can forget it. -->
@@ -3826,15 +4002,113 @@ cardEls().forEach(el => {
 // The header's undo-everything: back to the default order, everything open.
 // Confirmed because an arrangement is minutes of fiddling and one stray tap.
 $("bOut").onclick = () => { location.href = "/logout"; };
-$("bCards").onclick = () => {
+// ---- the appearance menu ------------------------------------------------
+// Twelve schemes, and the one control that was already here. A table, not a
+// dozen branches: the label is the only thing JS knows about a scheme — the
+// colours live entirely in the stylesheet, keyed by the same id, which is what
+// keeps a swatch and the page it previews from ever disagreeing.
+const THEMES = [
+  ["default",  "Default"],  ["nostromo", "Nostromo"], ["slate", "Slate"],
+  ["carbon",   "Carbon"],   ["nocturne",  "Nocturne"], ["moss",  "Moss"],
+  ["ember",    "Ember"],    ["abyss",     "Abyss"],    ["plum",  "Plum"],
+  ["rust",     "Rust"],     ["ice",       "Ice"],      ["sepia", "Sepia"],
+];
+const THEME_IDS = new Set(THEMES.map(t => t[0]));
+
+// Kept in the browser rather than on the server, unlike the card order and the
+// tab layout beside it. Those describe the work and should follow you between
+// machines; which colours are comfortable is about the room you are sitting in,
+// and a phone in the dark and a desktop at noon are allowed to differ. It is
+// also the only way to have no flash: applied from the inline block in <head>,
+// before the first paint, where a value fetched from the server cannot be.
+function applyTheme(id){
+  const use = THEME_IDS.has(id) ? id : "default";
+  // Default carries no attribute at all, so its palette is the :root one and
+  // there is nothing to strip if every scheme is ever removed.
+  const root = document.documentElement;
+  if (use === "default") delete root.dataset.theme;
+  else root.dataset.theme = use;
+  try{ localStorage.setItem("bb.theme", use); }catch(e){ /* private mode */ }
+  markUiMenu();
+}
+
+// Only the marks, never a rebuild. Replacing the grid's innerHTML from inside
+// a swatch's own click handler detaches the node the click is still travelling
+// through — and the document listener that closes the menu on an outside click
+// then sees a target #uiMenu no longer contains, and shuts it. Picking a scheme
+// closed the menu, which is exactly wrong for a control somebody tries twice.
+function markUiMenu(){
+  const cur = currentTheme();
+  document.querySelectorAll("#uiMenu .sw").forEach(b => {
+    const on = b.dataset.theme === cur;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-checked", on ? "true" : "false");
+  });
+}
+
+function currentTheme(){
+  return document.documentElement.dataset.theme || "default";
+}
+
+function drawUiMenu(){
+  const el = $("uiMenu");
+  if (!el || el.hidden) return;
+  const cur = currentTheme();
+  el.innerHTML = `<h4>Layout</h4>
+    <button type="button" id="uiReset">Reset the sidebar cards</button>
+    <h4>Colour scheme</h4>
+    <div class="swgrid">${THEMES.map(([id, label]) => `
+      <button type="button" class="sw${id === cur ? " on" : ""}" data-theme="${id}"
+        role="menuitemradio" aria-checked="${id === cur}"
+        aria-label="${esc(label)}" title="${esc(label)}">
+        <span class="swa"></span><span class="swi"></span>
+        <span class="swp"></span><span class="swn">${esc(label)}</span>
+      </button>`).join("")}</div>`;
+  el.querySelector("#uiReset").onclick = resetCards;
+  el.querySelectorAll(".sw").forEach(b =>
+    b.onclick = () => applyTheme(b.dataset.theme));
+}
+
+let uiMenuOpen = false;
+function toggleUiMenu(open){
+  const el = $("uiMenu"), btn = $("bCards");
+  uiMenuOpen = open === undefined ? !uiMenuOpen : open;
+  btn.setAttribute("aria-expanded", uiMenuOpen ? "true" : "false");
+  if (uiMenuOpen){
+    el.hidden = false;
+    drawUiMenu();
+    if (!noMotion())
+      el.animate([{opacity: 0, transform: "translateY(-10px)"},
+                  {opacity: 1, transform: "none"}], {duration: 160, easing: "ease"});
+  } else if (!el.hidden){
+    const hide = () => { el.hidden = true; };
+    if (noMotion()) hide();
+    else el.animate([{opacity: 1, transform: "none"},
+                     {opacity: 0, transform: "translateY(-10px)"}],
+                    {duration: 120, easing: "ease"}).onfinish = hide;
+  }
+}
+
+// The broom's old job, now an item in the menu it opens.
+function resetCards(){
   if (!confirm("Reset the sidebar cards to their default order, all expanded?")) return;
+  toggleUiMenu(false);
   const shut = cards.closed.slice();
   cards = {order: CARD_ORDER.slice(), closed: []};
   // Folded cards unfold with the same tween as a click; the rest slide home.
   shut.forEach(k => slideCard(document.querySelector(`.card[data-card="${k}"]`), false));
   applyCards(true);
   saveCards();
-};
+}
+
+$("bCards").onclick = e => { e.stopPropagation(); toggleUiMenu(); };
+document.addEventListener("click", e => {
+  if (uiMenuOpen && !$("uiMenu").contains(e.target) && !$("bCards").contains(e.target))
+    toggleUiMenu(false);
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && uiMenuOpen) toggleUiMenu(false);
+});
 
 // ---- sidebar ---------------------------------------------------------
 function drawRunner(r){

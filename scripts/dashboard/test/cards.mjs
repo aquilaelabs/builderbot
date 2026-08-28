@@ -112,8 +112,49 @@ ok(!(await page.$eval('.card[data-card="runner"]', el => el.classList.contains('
 await page.reload(); await ready(page);
 ok((await order())[0] === 'runner', 'order survives a reload');
 
-// ▤ reset
+// ▤ reset, now an item in the menu the broom opens rather than the broom's
+// own action. The menu is the other half: twelve colour schemes, each swatch
+// rendered in the scheme it selects.
 await page.click('#bCards');
+await page.waitForSelector('#uiMenu:not([hidden])');
+ok(await page.$$eval('#uiMenu .sw', s => s.length) === 12,
+   'the broom opens a menu of twelve schemes');
+ok(await page.$eval('#uiMenu .sw[data-theme="default"]', b => b.classList.contains('on')),
+   '...with the one in use marked, which is Default until something says otherwise');
+// A swatch is the palette itself at 1cm — the stylesheet defines each scheme
+// for .sw[data-theme] as well as for the page — so this reads the computed
+// colour rather than trusting that two lists match.
+const swAccent = t => page.$eval(`#uiMenu .sw[data-theme="${t}"] .swa`,
+                                 e => getComputedStyle(e).backgroundColor);
+ok(await swAccent('default') !== await swAccent('nostromo'),
+   '...and two schemes really do preview differently, not just by label');
+
+await page.click('#uiMenu .sw[data-theme="nostromo"]');
+ok(await page.evaluate(() => document.documentElement.dataset.theme) === 'nostromo',
+   'picking one applies it to the page');
+ok(await page.evaluate(() => { try { return localStorage.getItem('bb.theme'); }
+                               catch (e) { return null; } }) === 'nostromo',
+   '...and remembers it here rather than on the server: it is about the room, not the work');
+// Nostromo's flare is drawn, not fetched — no image files in a repo whose
+// image is rebuilt weekly. The header's decal is the visible half.
+ok(await page.evaluate(() => {
+     const st = getComputedStyle(document.querySelector('header'), '::after');
+     return /repeating-linear-gradient/.test(st.backgroundImage);
+   }), '...and Nostromo brings its hazard stripe with it, as a gradient');
+
+await page.click('#uiMenu .sw[data-theme="default"]');
+ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefined,
+   'Default carries no attribute at all, so :root is simply left to stand');
+
+// Escape shuts it, like the bell panel it sits beside.
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => document.getElementById('uiMenu').hidden,
+                           null, { timeout: 5000 });
+ok(true, 'Escape closes the menu');
+
+await page.click('#bCards');
+await page.waitForSelector('#uiMenu:not([hidden])');
+await page.click('#uiReset');
 await page.waitForFunction(() => document.querySelector('.side .card[data-card]').dataset.card === 'doctor'
   && !document.querySelector('.side .card.closed'));
 ok(true, 'reset restores default order and expands everything');
