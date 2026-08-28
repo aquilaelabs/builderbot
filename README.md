@@ -1784,9 +1784,37 @@ place nowhere, which is the case worth a look.
 That rule is a subtraction, and deliberately so: rather than recognising each
 kind of thing that is not a project, findings attribute only to the projects
 worth reading them for, and everything else in the share falls out together.
-It matters because of how the SDK share is mapped here — inside the
-development folder, so the host's scanner walks it like anything else and one
-report grew nine thousand findings for a pile of downloaded toolchains. A
+It matters because of how the SDK share is mapped here — beside the projects
+folder in the same development share, so the host's scanner walks it like
+anything else and one report grew nine thousand findings for a pile of
+downloaded toolchains.
+
+**The subtraction alone stopped being enough when `/workspace` stopped being
+the whole share.** Pointing it at the projects folder — a better arrangement,
+and the one that cut most of this noise — put the SDK share *outside* the
+directory being subtracted from, and 267 trivy findings about vendored
+Flutter, Go and Android toolchains went straight to "unattributed": improving
+the layout regressed the classifier. So the wider question is asked as well.
+`/proc/self/mountinfo` says what this container mounts from beside its own
+projects folder —
+
+```
+/development/projects -> /workspace
+/development/SDK      -> /sdk
+```
+
+— so `SDK` is known to be a share rather than a project, wherever the shares
+are moved to next, and still without a list of what to skip. A name that is a
+valid project is never taken this way, whatever it is mounted from: an
+appdata directory called `BuilderBot` would otherwise teach it to ignore the
+BuilderBot project's own findings, which is the one mistake here that hides
+real work instead of noise.
+
+**The row names what it could not place**, commonest first — `file:/src × 9`,
+which is mobsfscan reporting its own container path. A bare count said
+something was wrong and nothing about what, which is how it sat in the
+hundreds through several passes when 267 of them were one share and 9 were a
+scanner's configuration. A
 marker file (`.bbignore`) handles the case where the container knows about the
 directory, but a share mapped in with nothing to mark it is still listed as a
 project — one with an error, because it is not a repository — so subtracting

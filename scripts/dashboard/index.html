@@ -9795,9 +9795,19 @@ function drawFindingsSum(per){
       .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l]}</span>`).join("");
     // Stacked, like the project rows above: the pills are about the name, and
     // beside it in a sidebar they crowded a long project name off its own row.
+    // The unplaceable row says WHERE, not just how many. A bare count told you
+    // something was wrong and nothing about what, which is how it sat at 276
+    // through several passes: 267 of those were the SDK share and 9 were a
+    // scanner reporting its own container path, and the row read the same
+    // either way. Named, the difference is obvious at a glance.
+    const heads = !p ? (state?.findings_heads || []) : [];
+    const where = heads.length
+      ? `<div class="sub">${heads.map(h =>
+          `${esc(h.head)} <span class="dim">× ${h.n}</span>`).join(" · ")}</div>`
+      : "";
     return `<div class="row stack2${p ? " go" : ""}"${p ? ` data-ana="${esc(p)}"` : ""}
       ${p ? `title="open ${esc(p)}'s notebook on its Analysis view"` : ""}>
-      <div class="grow name">${esc(p || "unattributed paths")}</div>
+      <div class="grow"><div class="name">${esc(p || "unattributed paths")}</div>${where}</div>
       <div class="acts">${pills}</div></div>`;
   }).join("")
   : `<div class="empty">no findings in the current reports — which is not the

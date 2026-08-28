@@ -18,6 +18,7 @@ import hmac
 import ipaddress
 import json
 import os
+import posixpath
 import re
 import selectors
 import shlex
@@ -676,6 +677,68 @@ def _project_of(uri, known, nonproject=frozenset()):
 IGNORED = "not/a/project"
 
 
+def share_siblings():
+    """Shares mounted beside the projects folder, by the name the host calls them.
+
+    The subtraction below derives "not a project" from what sits INSIDE
+    /workspace, which worked while /workspace was the whole development share:
+    the SDK share was a directory in it, so it fell out for free. Pointing
+    /workspace at the projects folder — a better arrangement, and the one that
+    cut most of this noise — took the SDK share outside it, and 267 findings
+    about downloaded Flutter, Go and Android toolchains went straight to
+    "unattributed", which is the label meant for a path that is genuinely
+    wrong. Improving the layout regressed the classifier.
+
+    So the wider question is asked instead: what does this container mount from
+    beside its own projects folder? /proc/self/mountinfo answers it —
+
+        /development/projects -> /workspace
+        /development/SDK      -> /sdk
+
+    — so `SDK` is a sibling of the projects folder, and a scanner sweeping the
+    share reports its paths as SDK/flutter/... . Derived, so it keeps working
+    wherever the shares are moved to next, and no list of what to skip.
+
+    Two things it deliberately will not do. A mount whose source is a whole
+    filesystem (root "/") says nothing about a directory name and is skipped.
+    And a name that IS a valid project never enters the set, whatever it is
+    mounted from — /mnt/user/appdata/BuilderBot would otherwise teach this to
+    ignore the BuilderBot project's own findings, which is the one mistake
+    here that would hide real work rather than noise.
+    """
+    try:
+        with open("/proc/self/mountinfo") as f:
+            return siblings_of(f.read(), str(WORKSPACE))
+    except OSError:
+        return set()
+
+
+def siblings_of(mountinfo, workspace):
+    """The parsing half of share_siblings, given the file's text.
+
+    Split out to be driven with a real mount table rather than this one: the
+    case that must not regress — a mount whose basename happens to be a
+    project's name — cannot be produced by mounting something here."""
+    src = {}
+    for line in mountinfo.splitlines():
+        bits = line.split()
+        if len(bits) > 4:
+            src[bits[4]] = bits[3]              # mount point -> path in source fs
+    ws = src.get(workspace)
+    if not ws or ws == "/":
+        return set()
+    parent = posixpath.dirname(ws)
+    out = set()
+    for point, path in src.items():
+        if point == workspace or path == "/":
+            continue
+        if posixpath.dirname(path) == parent:
+            name = posixpath.basename(path)
+            if name:
+                out.add(name)
+    return out
+
+
 def nonproject_dirs(valid):
     """Top-level workspace directories that are not projects.
 
@@ -700,7 +763,7 @@ def nonproject_dirs(valid):
     handful of genuinely unplaceable paths that the "unattributed" label is
     for. Nothing had to be excluded on the scanner to get there.
 
-    Listed fresh per parse; it is one readdir."""
+    Listed fresh per parse; it is one readdir and one small file."""
     out = set()
     try:
         for d in WORKSPACE.iterdir():
@@ -708,6 +771,10 @@ def nonproject_dirs(valid):
                 out.add(d.name)
     except OSError:
         pass
+    # ...plus the shares mounted beside the projects folder, which the
+    # subtraction above cannot see now that it is not the whole share.
+    out |= share_siblings()
+    out -= set(valid)               # never a project, whatever it is mounted from
     return out
 
 
@@ -1933,7 +2000,7 @@ def reports_mtime():
 # fetching and parsing the full reports, so the totals ride the status poll —
 # cached on report mtime, because the SARIF can run to megabytes and the poll
 # arrives every 15 seconds.
-_findings_counts = {"mtime": -1, "projects": {}}
+_findings_counts = {"mtime": -1, "projects": {}, "heads": []}
 
 
 def findings_counts(ps):
@@ -1965,6 +2032,13 @@ def findings_counts(ps):
     key = (stamp, tuple(sorted(valid)), tuple(sorted(nonproject)))
     if _findings_counts["mtime"] != key:
         per, rows_by, broken = {}, {}, False
+        # Where the unplaceable ones came from, counted by the head of their
+        # path. A bare number on that row says something is wrong and nothing
+        # about what: the honest answer for the nine left here is "mobsfscan
+        # reports file:/src, its own container path", which is a fact about a
+        # scanner's configuration and not about any project. Two components,
+        # because one is usually a scheme and three is usually a filename.
+        heads = {}
         for f in files:
             rep = parse_sarif(f, valid, nonproject)
             broken = broken or bool(rep.get("error"))
@@ -1974,6 +2048,13 @@ def findings_counts(ps):
                 lv = per.setdefault(row["project"] or "", {})
                 lv[row["level"]] = lv.get(row["level"], 0) + 1
                 rows_by.setdefault(row["project"] or "", []).append(row)
+                if not row["project"]:
+                    bits = [b for b in (row.get("path") or "").split("/") if b][:2]
+                    head = "/".join(bits) or "(no path)"
+                    heads[head] = heads.get(head, 0) + 1
+        _findings_counts["heads"] = sorted(
+            ({"head": k, "n": v} for k, v in heads.items()),
+            key=lambda h: -h["n"])[:4]
         # A report that failed to parse is not cached: half-written is the
         # usual reason, and the next poll should read it whole.
         _findings_counts.update(mtime=None if broken else key, projects=per)
@@ -1999,6 +2080,15 @@ def findings_counts(ps):
     # empty key, which is an unattributed path) can be in there at all, and
     # the cache is keyed on the valid set so a change to it re-parses.
     return dict(_findings_counts["projects"])
+
+
+def findings_heads():
+    """Where the unplaceable findings came from, commonest first.
+
+    Read after findings_counts, which is what fills it: the parse is cached and
+    doing it twice to answer a subtitle would be the expensive half of the poll
+    run for a line of text."""
+    return list(_findings_counts["heads"])
 
 
 # ---- revisions -------------------------------------------------------------
@@ -2104,6 +2194,9 @@ def snapshot():
         "reports": REPORTS.is_dir(),
         "reports_mtime": reports_mtime(),
         "findings_counts": findings_counts(ps),
+        # ...and, for the row they land on, what those paths actually look
+        # like. Order matters: this reads what the call above computed.
+        "findings_heads": findings_heads(),
         "doctor": doctor_payload(),
         # Asked in this order: whether a sign-in is running decides whether
         # the answer to "signed in?" is worth re-reading rather than serving
