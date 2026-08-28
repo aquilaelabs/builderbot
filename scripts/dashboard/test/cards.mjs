@@ -202,8 +202,16 @@ ok(await page.evaluate(() => {
      const st = getComputedStyle(document.querySelector('header'), '::after');
      return /repeating-linear-gradient/.test(st.backgroundImage);
    }), '...and Nostromo brings its hazard stripe with it, as a gradient');
+// A surface that stops following the scheme does it silently — the text
+// fields, the memory folds and the pane's title bar all sat in the default
+// scheme's blue-grey through the first twelve because their colour was typed
+// in rather than named. A field is the cheapest one to keep honest.
+const fieldBg = () => page.$eval('.side input', e => getComputedStyle(e).backgroundColor);
+const nosField = await fieldBg();
 
 await page.click('#uiMenu .sw[data-theme="default"]');
+ok(await fieldBg() !== nosField,
+   '...and a text field is painted from the scheme, not from a hardcoded hex');
 ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefined,
    'Default carries no attribute at all, so :root is simply left to stand');
 
