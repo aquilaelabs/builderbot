@@ -973,6 +973,15 @@ button.eye.acc.on,button.eye.acc.on:hover{color:var(--accent)}
 /* Remove, on a manager row: a text button among text buttons, red only under
    the pointer. It is the one control there that takes something away. */
 @media(hover:hover){ .dmtab .acts button.rm:hover{color:var(--bad);border-color:#4d2220} }
+/* The wiring fold. Its lines wrap rather than scroll: a host path is long, and
+   a row that scrolls sideways on a phone hides the half you were reading. */
+.dmtab .dmwire{margin-top:4px}
+.dmtab .dmwire summary{color:var(--dim);font:var(--f-note);cursor:pointer;
+  list-style:none}
+.dmtab .dmwire summary::-webkit-details-marker{display:none}
+.dmtab .dmwire summary::before{content:"▸ ";display:inline-block;width:1em}
+.dmtab .dmwire[open] summary::before{content:"▾ "}
+.dmtab .dmwire .li{overflow-wrap:anywhere}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the broom (reset) and the sign-out door —
@@ -4778,6 +4787,8 @@ function renderDockerInto(i){
           : "never built"}</div>
         ${d.ports.length ? `<div class="sub">${d.ports.map(esc).join(" · ")}</div>` : ""}
         ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
+        <details class="dmwire"><summary>ports and mounts</summary>
+          <div class="wire">reading…</div></details>
       </div>
       <span class="acts">
         <button type="button" data-dm="up" ${
@@ -4819,6 +4830,30 @@ directory stay, so remaking it under the same name finds them">Remove</button>
     <div class="macros"><button id="bDockerRe">Refresh</button></div></div>`;
   const b = el.querySelector("#bDockerRe");
   if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  // The wiring, fetched when the fold is opened and not before. It needs the
+  // compose file parsed, which is the one thing overview() refuses to do for
+  // every instance at once — and it is the thing you want occasionally, which
+  // is what a fold is for. Rendered the same way the artifact row renders it:
+  // the container's side on the left, the daemon's on the right, and an arrow
+  // saying which way a mount goes.
+  el.querySelectorAll("details.dmwire").forEach(d => d.ontoggle = async () => {
+    if (!d.open || d.dataset.done) return;
+    d.dataset.done = "1";
+    const [project, instance] = d.closest("[data-inst]").dataset.inst.split("|");
+    const box = d.querySelector(".wire");
+    try{
+      const r = await fetch("/api/devapp", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({project, instance, action:"state"})});
+      const st = (await r.json()).state || {};
+      const lines =
+        (st.ports || []).map(p => `<div class="dim li">${esc(p.target)}:${esc(p.proto)} ← ${
+          esc(location.hostname)}:${esc(p.published || "picked at start")}</div>`).join("")
+        + (st.mounts || []).map(m => `<div class="dim li">${esc(m.target)} ${
+          m.ro ? "←" : "↔"} ${esc(m.source)}</div>`).join("");
+      box.innerHTML = lines || `<div class="dim li">it publishes nothing and mounts nothing</div>`;
+    }catch(e){ box.innerHTML = `<div class="dim li bad">could not read it: ${esc(String(e))}</div>`; }
+  });
   el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
     dmAction(project, instance, btn.dataset.dm, btn);

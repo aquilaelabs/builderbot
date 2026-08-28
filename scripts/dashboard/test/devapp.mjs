@@ -612,6 +612,23 @@ ok(typeof dhj.auto === 'string',
    'auto resolves to an address or to nothing, never to an error');
 
 
+// The wiring fold: what the container publishes and what it mounts, fetched
+// when it is opened and not before — parsing the compose file is the one thing
+// the manager's page deliberately does not do for every row at once.
+await openManager();
+ok(await page.$eval(`${DM} .dmwire .wire`, e => /reading/.test(e.textContent)),
+   'the wiring fold says nothing until it is opened');
+await page.click(`${DM} .dmwire summary`);
+await page.waitForFunction((sel) => /7475/.test(
+  document.querySelector(sel + ' .dmwire .wire')?.textContent || ''), DM,
+  { timeout: 15000 });
+const wire = await page.$eval(`${DM} .dmwire .wire`, e => e.textContent.replace(/\s+/g, ' '));
+ok(/7474.*7475/.test(wire), '...then the port, the container\'s side first');
+ok(/\/library/.test(wire) && /←/.test(wire),
+   '...and a read-only mount with the arrow that says so');
+ok(/\/config/.test(wire) && /↔/.test(wire),
+   '...beside a writable one, which gets the other arrow');
+
 // ---- one button, and a second container from one project ---------------
 // The artifact row's controls moved to the manager; what is left is a button
 // that names a container and sends you there. A project can have several, all

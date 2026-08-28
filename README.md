@@ -1132,6 +1132,12 @@ manager…**, which names a container and takes you there; every container of a
 project is built from that project's codebase, and rebuilding takes whatever
 that codebase says at the time.
 
+Each row folds open to show what that container publishes and what it mounts,
+read only when you open it — parsing a compose file is the one thing the page
+deliberately does not do for every row at once. Lines wrap rather than scroll:
+a host path is long, and a row that scrolls sideways on a phone hides the half
+you were reading.
+
 It lists what has been sent to it, not every project that could be sent: a
 project with a compose file does not appear there until you send one, and
 **Remove** takes a container down and drops it from the list again. Removing
