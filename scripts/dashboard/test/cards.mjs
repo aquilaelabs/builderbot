@@ -468,6 +468,8 @@ await page.click('.doc .projtab [data-rn="alpha"]');
 await page.waitForSelector('#rnmodal:not([hidden])');
 ok(await page.$eval('#rnName', el => el.value) === 'alpha',
    'the rename dialog opens on the current name');
+ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
+   '...with the keyboard down, like every other dialog here');
 // alpha can push — the retroactive seeding granted it, on the deploy key its
 // remote uses — so it is offered a token, and told what setting one does and
 // does not do. beta cannot push, and is not offered one at all.
