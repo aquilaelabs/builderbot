@@ -161,7 +161,10 @@ await page.waitForTimeout(1200);
 ok(!await page.$eval(`${DM} [data-dm="up"]`, b => b.disabled),
    'a filled env wakes Up — compose builds what is missing, so it would work');
 ok(/builds the image first, as compose does/.test(
-     await page.$eval(`${DM} [data-dm="up"]`, b => b.title)),
+     // data-tip, not title: the manager's controls carry the page's own
+     // tooltip now, which is the same words moved off an attribute that waits
+     // a second before showing them.
+     await page.$eval(`${DM} [data-dm="up"]`, b => b.dataset.tip)),
    '...and Up says that is what it will do');
 
 // First build: build → down → up, and the argv trail proves the shape.
