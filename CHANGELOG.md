@@ -85,3 +85,4 @@
 - The sidebar no longer scrolls sideways, and the Projects tab puts each project's buttons beside its name (a0bc90a)
 - Excluding a project is gone: the padlock does it all, and a locked project keeps its notebook read-only, its findings and its artifacts (bd0016e)
 - A locked project shows a padlock after its name, and its Claude button is greyed rather than removed (bd0016e)
+- A project's credential can be turned off entirely, and clearing its token with the token still selected is now refused rather than saved (2a1daa6)
