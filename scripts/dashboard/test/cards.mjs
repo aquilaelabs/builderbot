@@ -826,6 +826,22 @@ ok(await page.evaluate(() => {
      const s = document.querySelector('.col.side');
      return s.scrollWidth <= s.clientWidth;
    }), '...and the sidebar still fits with that tooltip open');
+
+// ...and not while it is pressed. Every button dips a pixel on :active, and a
+// transform makes the element the containing block for its own absolutely
+// positioned ::after — so a sidebar tip measured against the ROW suddenly
+// measures against a 32px button, wraps to one character per line and runs
+// down the whole card. Reported as "something crazy with the tooltips".
+const tipBtn = '#projects .row .acts [data-tip]';
+const tipBox = await page.$(tipBtn);
+const tb = await tipBox.boundingBox();
+await page.mouse.move(tb.x + tb.width / 2, tb.y + tb.height / 2);
+await page.mouse.down();
+await page.waitForTimeout(300);
+const pressed = await page.$eval(tipBtn, e => getComputedStyle(e, '::after').display);
+await page.mouse.up();
+ok(pressed === 'none',
+   '...and goes away while the button is held, where a transform would mis-measure it');
 const gone = await api('/api/trash', { name: 'beta' });
 ok(gone.status === 200 && gone.body.to === '.trash/beta',
    'deleting names where the files went');
