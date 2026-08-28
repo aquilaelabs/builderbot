@@ -425,6 +425,19 @@ button,.pane .bar .x,.tab .ic{transition:background-color .15s ease,
    finger alike. :not(:disabled) so a dead button stays visibly inert. */
 button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
   transform:translateY(1px);filter:brightness(.82)}
+/* ...except the sidebar's row icons, which dim instead.
+   BOTH transform and filter make an element the containing block for its own
+   absolutely positioned ::after, and in the sidebar a tooltip is measured
+   against the ROW — 340px of column cannot hold a 280px box centred on its
+   rightmost button. Pressed, the tip re-measured itself against a 32px button:
+   twelve pixels wide, one character per line, running down the whole card.
+   Hiding it on :active was not enough, and the way it failed said why — the
+   press TRANSITIONS back over 100ms, so the button goes on being a containing
+   block after :active has stopped matching, and the tip reappeared mangled
+   just after the click instead of during it. Opacity creates no containing
+   block, so there is nothing left to be caught by. */
+.side .acts button:active:not(:disabled){
+  transform:none;filter:none;opacity:.65}
 @media(prefers-reduced-motion:reduce){
   button,.pane .bar .x,.tab .ic{transition:none}
 }
@@ -733,12 +746,8 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
   .side .acts [data-tip]{position:static}
   .side .acts [data-tip]::after{left:10px;right:10px;
     transform:none;width:auto;max-width:none}
-  /* ...and not while the button is pressed. Every button here dips a pixel on
-     :active, and a transform makes the element the containing block for its
-     own absolutely positioned ::after — so a tip measured against the ROW
-     suddenly measures against a 32px button, wraps to one character per line
-     and runs down the whole sidebar. Holding the mouse down on an icon is
-     also the moment its label is least wanted, so it simply goes. */
+  /* ...and not while the button is pressed, which is the moment its label is
+     least wanted anyway. */
   [data-tip]:active::after{display:none}
 }
 @media(prefers-reduced-motion:reduce){

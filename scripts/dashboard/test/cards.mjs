@@ -842,6 +842,17 @@ const pressed = await page.$eval(tipBtn, e => getComputedStyle(e, '::after').dis
 await page.mouse.up();
 ok(pressed === 'none',
    '...and goes away while the button is held, where a transform would mis-measure it');
+// The window that the first fix missed: the press TRANSITIONS back over 100ms,
+// so the button went on being a containing block after :active had stopped
+// matching and the tip came back mangled just AFTER the click. These icons dim
+// instead of transforming, so there is nothing left to be caught by.
+const after = [];
+for (let i = 0; i < 4; i++){
+  await page.waitForTimeout(30);
+  after.push(await page.$eval(tipBtn, e => getComputedStyle(e, '::after').width));
+}
+ok(after.every(w => w === after[0] && parseFloat(w) > 100),
+   `...and comes back its own size the moment it is released (${after.join(', ')})`);
 const gone = await api('/api/trash', { name: 'beta' });
 ok(gone.status === 200 && gone.body.to === '.trash/beta',
    'deleting names where the files went');
