@@ -51,12 +51,20 @@
   --btn-hi:#2b3540;     --btn-hi:color-mix(in srgb, var(--panel), #ffffff 9%);
   --accent-mid:#2ea043; --accent-mid:color-mix(in srgb, var(--accent), #000000 14%);
   --accent-deep:#1f6f36;--accent-deep:color-mix(in srgb, var(--accent), #000000 40%);
+  /* The sunk surface: a field, a memory row, a send box — anything that reads
+     as set INTO the panel rather than sitting on it. Hardcoded as #161b22 in
+     eight places, which is why every text field, the memory folds and the
+     pane's own title bar stayed the default scheme's blue-grey while the rest
+     of the page changed colour. Twelve percent of black against the panel is
+     what that hex was, to the byte. */
+  --sunk:#161b22;       --sunk:color-mix(in srgb, var(--panel), #000000 12%);
   /* The tail matters on Android: none of the named desktop faces exist
      there, and bare `monospace` lets Chrome and Firefox each pick their own
      default — the same page in two fonts. Roboto/Noto/Droid Mono are what
      Android devices actually carry. */
   --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Roboto Mono",
          "Noto Sans Mono","Droid Sans Mono",monospace;
+  color-scheme:dark;
   --tap:38px;
   --doc-w:1080px;
   /* The page's three secondary voices, named once. Before this they were
@@ -418,6 +426,20 @@ button:active:not(:disabled),.pane .bar .x:active,.tab .ic:active{
   button,.pane .bar .x,.tab .ic{transition:none}
 }
 button:disabled{opacity:.5;cursor:default}
+/* Every box and radio the page has, not just the one tab that remembered to
+   ask. The packages list set accent-color and nothing else did, so a checkbox
+   in a dialog stayed the browser's own blue under every scheme.
+
+   accent-color only paints a box that is TICKED. An empty one is drawn by the
+   browser, which without being told otherwise draws it for a light page: a
+   white square on a dark panel, which is what the unticked packages looked
+   like. color-scheme says which set of native controls to use — it belongs on
+   the root and it is every scheme's answer, since all twelve are dark. It also
+   darkens the scrollbars, which were the same tell.
+
+   Deliberately NOT on the terminal iframes: color-scheme:dark on one of those
+   turns its canvas white, which is documented where .pane iframe is styled. */
+input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
 button.primary{background:var(--accent-deep);border-color:var(--accent-mid)}
 button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
@@ -440,7 +462,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .pkg{display:flex;gap:10px;align-items:flex-start;padding:13px 0;margin:0;
   border-bottom:1px solid var(--line);cursor:pointer;color:var(--ink)}
 .pkg:last-child{border-bottom:0}
-.pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto;accent-color:var(--accent-mid)}
+.pkg input{margin:3px 0 0;width:16px;height:16px;flex:0 0 auto}
 .pkg .nm{font:600 13px/1.35 system-ui,sans-serif}
 .pkg .sub{display:block;color:var(--dim);font:var(--f-note)}
 .pkg .where{font-family:var(--mono);overflow-wrap:anywhere}
@@ -580,7 +602,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .nb input,.nb textarea,.nb select,
 .dropbox input,.dropbox textarea,.addstep input,.codebox input,
 .imgadd select,.side .card select{
-  background:#161b22;color:var(--ink);border:1px solid var(--line);
+  background:var(--sunk);color:var(--ink);border:1px solid var(--line);
   border-radius:6px}
 .modal input,.modal textarea,.modal select,
 .row input,.row select,
@@ -666,7 +688,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
        sideways: it slides along its own axis rather than off the edge. */
     transform:translateX(-50%);
     max-width:min(280px,60vw);width:max-content;
-    background:#0d1117;color:var(--ink);
+    background:color-mix(in srgb, var(--bg), #000000 22%);color:var(--ink);
     border:1px solid var(--line);border-radius:6px;
     padding:6px 8px;font:12px/1.45 system-ui,sans-serif;text-align:left;
     white-space:normal;overflow-wrap:anywhere;
@@ -1021,7 +1043,8 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
   white-space:pre-wrap}
 @media(max-width:900px){ .dropbox textarea{font-size:16px} }
 /* Rewording is not a deletion; it borrows the box and not the red. */
-.editbox{border-color:var(--line);background:#12171d}
+.editbox{border-color:var(--line);
+  background:color-mix(in srgb, var(--panel), #000000 22%)}
 .dropbox .acts{display:flex;gap:8px;margin-top:8px}
 .dropbox .acts .sp{flex:1}
 /* Giving an item a step, which is how a plain one becomes a plan. */
@@ -1043,7 +1066,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    about the same row. It used to be a bar pinned at the foot of the panel: on
    a phone that put the confirmation for "hand this line over" a screen away
    from the line, with nothing on it naming which one. */
-.sendbox{background:#161d26;border:1px solid var(--line);border-radius:8px;
+.sendbox{background:var(--sunk);border:1px solid var(--line);border-radius:8px;
   margin:6px 0 2px;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
 .sendbox .q{color:var(--ink);font:600 12px/1.4 system-ui,sans-serif}
 .sendbox .q span{font-weight:400;color:var(--dim)}
@@ -1069,7 +1092,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    itself, opened it is the file. Native disclosure rather than a toggle of
    our own — this page has no framework and does not need one for a fold. */
 .mem{border:1px solid var(--line);border-radius:8px;margin-bottom:6px;
-  background:#161b22}
+  background:var(--sunk)}
 .mem>summary{padding:8px 10px;min-height:var(--tap);box-sizing:border-box}
 .mem .mname{font:600 12px/1.4 var(--mono);color:var(--ink)}
 .mem .mwhen{margin-left:auto;color:var(--dim);font:var(--f-note);
@@ -1163,6 +1186,23 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 /* The same reading width the notebook's bands take, so a row's controls do
    not end up an ultrawide pane away from the name they act on. */
 .projtab,.dmtab{display:block;max-width:var(--doc-w)}
+/* ...and the same gutter. .row is shared with the sidebar card, where 7px/10px
+   is right — 340px of column wants tight rows — but in a pane it left these
+   tabs visibly narrower than the notebook next to them, which is the sort of
+   difference you only see once and then cannot stop seeing. The notebook's
+   bands are 11px/14px; so are these. */
+.projtab .row,.dmtab .row,
+.projtab .empty,.dmtab .empty,
+.projtab .macros,.dmtab .macros,
+.projtab .loading,.dmtab .loading,.dmtab .dmsrc{padding:11px 14px}
+/* The findings card's footer: when the reports were written, and which were
+   left out of the counts. */
+.fnote{padding:7px 10px;color:var(--dim);font:var(--f-note);
+  border-top:1px solid var(--line)}
+.fnote .warn{color:var(--warn)}
+/* Which daemon, in the quiet voice the notebook uses for the same job — a
+   statement of fact above the list, not a warning about one. */
+.dmsrc{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
 #todoBatch{padding:0 14px 8px}
 #todoBatch button{margin-top:6px}
 .mdrift{padding:0 14px 4px}
@@ -1179,7 +1219,7 @@ button.eye{padding:5px 7px;display:inline-flex;align-items:center;color:var(--di
 button.eye i{font:600 10px/1 system-ui,sans-serif;font-style:normal;margin-left:3px}
 /* The row for a project that does not exist yet — a clone still arriving.
    Marked, because it is the one row in this card that is not a directory. */
-.row.job{background:#161d26}
+.row.job{background:var(--sunk)}
 .row.job .name{color:var(--dim)}
 button.eye.none{opacity:.45}
 /* A locked padlock is gold rather than dim: it is a state somebody chose and
@@ -1408,7 +1448,8 @@ body.dragging .tab .lbl{cursor:grabbing}
 .pane.hidden{display:none}
 .pane.active{outline:2px solid var(--accent-mid);outline-offset:-2px}
 .pane .bar{display:flex;align-items:center;gap:6px;padding:3px 6px;
-  background:rgba(20,24,29,.92);border-bottom:1px solid var(--line);
+  background:color-mix(in srgb, var(--bg) 92%, transparent);
+  border-bottom:1px solid var(--line);
   font:11px/1.6 var(--mono);color:var(--dim);flex:0 0 auto}
 .pane .bar .x{margin-left:auto;cursor:pointer;padding:2px 7px;border-radius:4px}
 .pane .bar button{min-height:22px;padding:2px 8px;font-size:11px}
@@ -4241,7 +4282,7 @@ function wireProjectRows(root){
 // into O(projects x sessions) for no gain.
 function projectRow(p, live, cls, inTab){
   return `
-    <div class="row stack2${p.excluded ? " off" : ""}">
+    <div class="row stack2${p.excluded ? " off" : ""}" data-row="${esc(p.name)}">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
@@ -4302,14 +4343,14 @@ CI logs, and Claude's own transcripts and memories">${GEAR}</button>
       ${inTab ? `<button class="eye rm" data-del="${esc(p.name)}" aria-label="delete"
         title="delete — moves it to /workspace/.trash and keeps every file. Its
 roadmap, bugs and memories stay where they are, so putting it back is a mv">${BIN}</button>` : ""}
-      <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
+      ${inTab ? `<button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
         data-on="${p.pinned ? "0" : "1"}"
         aria-label="${p.pinned ? "unpin" : "pin"}"
         title="${p.pinned
-          ? "unpin — take it off the sidebar. It keeps every control on the "
-            + "Projects tab; this is only about where you meet it"
+          ? "unpin — take it off the sidebar. It keeps every control here on "
+            + "the Projects tab; this is only about where you meet it"
           : "pin — show it on the sidebar's Projects card"}"
-        >${TACK}</button>
+        >${TACK}</button>` : ""}
       </span>
     </div>
 `;
@@ -4998,6 +5039,42 @@ function renderProjectsInto(i){
     wireProjectRows(el);
 }
 
+// ---- no daemon, no Docker buttons ---------------------------------------
+// The controls that act on the daemon, in one list. Not the ones that only
+// read or explain: Refresh is how you retry after wiring one up, Edit and Env
+// open a compose file that is a file whether or not anything can run it, and
+// the manager tab itself is where the reason is written in words — disabling
+// the way to READ a diagnosis is how you get a dashboard that has gone quiet
+// for no visible cause.
+const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],[data-dm="remove"],'
+                  + '[data-dm="rebuild"],#devSend,#bDockerNew';
+
+// The one answer, from the poll. `on` absent (an older server, a payload that
+// has not landed yet) is not "off": a control the page has no opinion about
+// should behave as it always did rather than switch itself off on a hunch.
+const dockerWhy = () =>
+  state?.docker && state.docker.on === false
+    ? (state.docker.why || "no docker daemon is reachable from here") : "";
+
+// Applied to the DOM after a list draws rather than woven into each renderer —
+// four places render one of these controls, and one function that switches
+// them off is the only shape that cannot drift between them. Disable only:
+// every renderer here redraws from state, so a daemon coming back is picked up
+// by the next ordinary draw and nothing has to remember what it switched off.
+function gateDocker(root){
+  const why = dockerWhy();
+  if (!why) return;
+  (root || document).querySelectorAll(DOCKER_ACTS).forEach(b => {
+    b.disabled = true;
+    // As `title`, and left for the surface to do what it does with one: the
+    // manager tab runs tipify() after this and turns it into a data-tip, the
+    // dev row does not and keeps the native tooltip its neighbours use. Which
+    // means the reason is worn the same way as every other explanation on
+    // whichever surface it lands, rather than in a third style of its own.
+    b.title = why;
+  });
+}
+
 // ---- the docker manager -------------------------------------------------
 // What is actually running on the daemon the dev instances use. All of it,
 // not only what this dashboard started: a port taken by something else is
@@ -5419,10 +5496,25 @@ directory stay, so remaking it under the same name finds them">Remove</button>
     </div>`).join("");
   // Its own class rather than the projects tab's: the two look alike and a
   // selector that matched both would be a test passing on the wrong tab.
-  el.innerHTML = `<div class="dmtab">${
+  // Said in words at the top, not only in the tooltips below: a tooltip is
+  // not reachable on a phone, and "why is everything greyed out" should be
+  // answered by looking rather than by hovering.
+  const off = dockerWhy();
+  // Which daemon this is, stated rather than inferred. Two settings can name
+  // two — the socket mount and DOCKER_HOST are on different screens and
+  // neither can grey the other out — so the precedence is shown here instead
+  // of being something you work out from what happens.
+  const src = state?.docker || {};
+  const srcLine = !off && src.kind
+    ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
+        src.shadowed ? " — the mounted socket is unused" : ""}</div>`
+    : "";
+  el.innerHTML = `<div class="dmtab">${off
+      ? `<div class="empty">${esc(off)}</div>` : srcLine}${
     rows || `<div class="empty">nothing on this daemon yet</div>`}
     <div class="macros"><button id="bDockerNew">New container…</button
       ><button id="bDockerRe">Refresh</button></div></div>`;
+  gateDocker(el);
   const b = el.querySelector("#bDockerRe");
   if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
   const nb = el.querySelector("#bDockerNew");
@@ -7490,6 +7582,7 @@ project can have several, and they are all built from this codebase"
     };
     const send = list.querySelector("#devSend");
     if (send) send.onclick = () => openSendToDocker(project);
+    gateDocker(list);
     list.querySelectorAll("[data-artpush]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artpush)];
       b.disabled = true;
@@ -8912,14 +9005,18 @@ function applyNow(fn){
   drawPanes();                     // the Projects tab shows the same rows
 }
 
-// The sidebar row for one project. Escaped for a QUOTED attribute value, which
-// is a different job from CSS.escape: that one escapes identifiers, so a
-// project with a dot in its name came out as [data-p="ep\.silon"] — a literal
-// backslash inside the quotes, matching nothing. The row was then never found
-// and the change simply skipped its animation, quietly, for exactly the
-// fixture whose name exists to catch this.
+// The sidebar row for one project. By the row's own name rather than through
+// the thumbtack inside it: the card has no thumbtack now — pinning is the
+// Projects tab's, where the whole list is — and a lookup that went through the
+// control would have quietly stopped finding anything, taking both animations
+// with it and saying nothing.
+//
+// Escaped for a QUOTED attribute value, which is a different job from
+// CSS.escape: that one escapes identifiers, so a project with a dot in its
+// name came out as [data-row="ep\.silon"] — a literal backslash inside the
+// quotes, matching nothing.
 const pinRow = (card, name) => card?.querySelector(
-  `.row:has([data-p="${name.replace(/["\\]/g, "\\$&")}"])`);
+  `.row[data-row="${name.replace(/["\\]/g, "\\$&")}"]`);
 
 // The same, for a change that takes a row OUT of the sidebar — unpinning, and
 // excluding, which folds the row away behind Show excluded.
@@ -9719,6 +9816,45 @@ phFetch();
 // directory this workspace does not mount, shown rather than hidden because
 // a finding with a bad path is still a finding.
 function drawFindingsSum(per){
+// When the reports were written, and which of them are not being counted.
+//
+// The card summed reports of different ages into one current-looking picture,
+// which is how a trivy that had been crashing for four days went on supplying
+// most of this box's findings — against a directory layout that had been
+// changed in between, so the operator's fix looked like it had not worked. A
+// scanner that dies leaves its PREVIOUS report in place, because a host script
+// worth having does not overwrite a good report with nothing; that is right,
+// and it makes a dead scanner indistinguishable from a live one here.
+//
+// So one a whole cycle behind is left out of the counts entirely, and this
+// line is what stops that being another silent thing: a number that dropped
+// with nothing to explain it is the same problem wearing the other face.
+// Coarser than dur(), which is the uptime clock: a report's age wants one
+// unit. "17m 25s ago" reads as a stopwatch and "94h 54m behind" reads as
+// arithmetic homework, where what is being said is "this morning" and "four
+// days". Mirrors ago() in bb's cmd_findings, which says the same words in the
+// other language — the tmuxName situation, and the same answer: state the rule
+// twice and keep them together in the mind.
+const coarse = s =>
+  s < 90     ? `${Math.round(s)}s` :
+  s < 5400   ? `${Math.round(s / 60)}m` :
+  s < 172800 ? `${Math.round(s / 3600)}h`
+             : `${Math.round(s / 86400)}d`;
+
+function reportAges(){
+  const rs = state?.reports_ages || [];
+  if (!rs.length) return "";
+  const newest = rs[0].when, now = Date.now() / 1000;
+  const out = rs.filter(r => r.stale);
+  // Not a .row: it is a note about the rows, and every selector that walks
+  // this card — its own tests included — reads a .row as "a project and its
+  // counts". A footer wearing that class is a row with no name in it.
+  return `<div class="fnote">scanned ${
+    esc(coarse(Math.max(0, now - newest)))} ago${
+    out.map(r => `<br><span class="warn">${esc(r.name)} left out — ${
+      esc(coarse(r.behind))} behind, its scanner may have failed</span>`).join("")}</div>`;
+}
+
   const el = $("findingsSum");
   const names = Object.keys(per).sort((a,b) => (a==="")-(b==="") || a.localeCompare(b));
   paint(el, names.length ? names.map(p => {
@@ -9727,13 +9863,24 @@ function drawFindingsSum(per){
       .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l]}</span>`).join("");
     // Stacked, like the project rows above: the pills are about the name, and
     // beside it in a sidebar they crowded a long project name off its own row.
+    // The unplaceable row says WHERE, not just how many. A bare count told you
+    // something was wrong and nothing about what, which is how it sat at 276
+    // through several passes: 267 of those were the SDK share and 9 were a
+    // scanner reporting its own container path, and the row read the same
+    // either way. Named, the difference is obvious at a glance.
+    const heads = !p ? (state?.findings_heads || []) : [];
+    const where = heads.length
+      ? `<div class="sub">${heads.map(h =>
+          `${esc(h.head)} <span class="dim">× ${h.n}</span>`).join(" · ")}</div>`
+      : "";
     return `<div class="row stack2${p ? " go" : ""}"${p ? ` data-ana="${esc(p)}"` : ""}
       ${p ? `title="open ${esc(p)}'s notebook on its Analysis view"` : ""}>
-      <div class="grow name">${esc(p || "unattributed paths")}</div>
+      <div class="grow"><div class="name">${esc(p || "unattributed paths")}</div>${where}</div>
       <div class="acts">${pills}</div></div>`;
-  }).join("")
+  }).join("") + reportAges()
   : `<div class="empty">no findings in the current reports — which is not the
-     same as every project passing; SARIF records findings, not coverage</div>`)
+     same as every project passing; SARIF records findings, not coverage</div>`
+    + reportAges())
   && el.querySelectorAll("[data-ana]").forEach(r =>
        r.onclick = () => openNotebook(r.dataset.ana, "analysis"));
 }

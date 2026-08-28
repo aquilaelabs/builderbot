@@ -282,6 +282,42 @@ def _bump():
     _rev += 1
 
 
+def source():
+    """Which daemon is actually being talked to, and whether two were named.
+
+    Nothing stops an operator filling in both the socket mount and DOCKER_HOST
+    — they are two settings on two screens, and a template cannot make one
+    grey out the other. So the rule is precedence rather than refusal, and the
+    point of this function is that the rule is stated in one place and shown
+    where somebody looks, instead of being inferred differently by each reader:
+
+      an address in DOCKER_HOST wins, always. `auto` prefers a proxy it can
+      find and falls back to the socket. With neither, the feature is off.
+
+    `shadowed` is the case worth naming: both are configured, the address won,
+    and the mount is doing nothing. That is not an error — a socket left
+    mounted while you try a sandbox VM is a reasonable thing to be in the
+    middle of — but being told beats wondering, and it is the difference
+    between "I have two settings" and "I know which one is live".
+
+    Derived here rather than in each caller because both readers had their own
+    copy and one of them was wrong: with `auto` set, a mounted socket and no
+    proxy answering, `bb doctor` reported "a socket proxy at
+    /var/run/docker.sock" — the kind from the setting, the address from the
+    fallback, and a sentence contradicting itself.
+    """
+    sock = Path("/var/run/docker.sock").exists()
+    addr = docker_host()
+    if addr:
+        return {"kind": "a sandbox VM" if addr.lower().startswith("ssh://")
+                        else "a socket proxy",
+                "where": addr, "shadowed": sock}
+    if sock:
+        return {"kind": "the mounted socket", "where": "/var/run/docker.sock",
+                "shadowed": False}
+    return {"kind": "", "where": "", "shadowed": False}
+
+
 def available():
     """Whether the daemon answers, and if not, why — said rather than guessed.
 
@@ -301,8 +337,42 @@ def available():
     r = _run([DOCKER, "version", "--format", "{{.Server.Version}}"], timeout=10)
     if r["code"] != 0:
         return {"on": False,
-                "why": "docker does not answer: " + (r["out"] or "no daemon").strip()[:120]}
-    return {"on": True, "why": ""}
+                "why": "docker does not answer: " + (r["out"] or "no daemon").strip()[:120]} \
+            | source()
+    return {"on": True, "why": ""} | source()
+
+
+_avail = {"when": 0.0, "val": None}
+_avail_lock = threading.Lock()
+AVAIL_TTL = 30
+
+
+def available_cached():
+    """available(), memoised for AVAIL_TTL seconds.
+
+    available() shells out to `docker version` with a ten-second timeout, and
+    the status poll runs every fifteen. Asking it on the poll — and the poll is
+    what the page's Docker controls read — would put a subprocess and a network
+    round trip on the page's heartbeat, for an answer that changes when the
+    operator wires something up rather than between two polls.
+
+    Short enough that plugging the daemon in and pressing Refresh notices, long
+    enough that it is not on the critical path of anything.
+    """
+    now = time.time()
+    with _avail_lock:
+        if _avail["val"] is not None and now - _avail["when"] < AVAIL_TTL:
+            return _avail["val"]
+    val = available()
+    with _avail_lock:
+        _avail.update(when=now, val=val)
+    return val
+
+
+def forget_available():
+    """Drop the memo — for a control that has just been told to try again."""
+    with _avail_lock:
+        _avail["val"] = None
 
 
 # The classic builder, not BuildKit. `compose build` defaults to buildx,

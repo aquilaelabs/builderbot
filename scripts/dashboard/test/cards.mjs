@@ -3,7 +3,7 @@
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
          tmuxNew, tmuxKill, tmuxFmt, URL, DIR } from './lib.mjs';
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
@@ -66,6 +66,67 @@ ok(await page.$('#cardFindings .macros button') === null,
    'the card carries no report button — its rows open a notebook\'s Analysis view');
 ok(await page.$eval('#findingsSum .row[data-ana="alpha"]', r => r.classList.contains('go')),
    '...and a project\'s row says it is clickable');
+
+// The unplaceable row says where, not only how many. A bare count sat at 276
+// through several passes without ever saying that 267 of them were one share.
+ok(/somewhere\/else/.test(await page.$eval(
+       '#findingsSum .row:not([data-ana]) .sub', e => e.textContent)),
+   'the unattributed row names the paths it could not place');
+
+// A report a whole cycle behind its siblings is not counted, and the card says
+// so. A scanner that dies leaves its previous report in place — the host
+// script does not overwrite a good report with nothing — so without this a
+// dead scanner goes on supplying findings about a tree that has since moved,
+// which is how one sat four days stale while its numbers looked current.
+const before = await page.$$eval('#findingsSum .row .name', ns => ns.length);
+writeFileSync(`${DIR}/reports/old.sarif`, readFileSync(`${DIR}/reports/test.sarif`));
+// Three days behind: well past the day the rule allows, which is deliberately
+// wide enough that re-running one scanner by hand does not blank its siblings.
+const longAgo = Date.now() / 1000 - 3 * 86400;
+execFileSync('touch', ['-d', `@${Math.round(longAgo)}`, `${DIR}/reports/old.sarif`]);
+await refreshUntil(page, () => (state?.reports_ages || []).some(r => r.stale),
+                   { timeout: 20000 });
+ok(await page.$$eval('#findingsSum .row .name', ns => ns.length) === before,
+   'a stale copy of the same report adds nothing — it is not read at all');
+const foot = await page.$eval('#findingsSum .fnote', e => e.textContent);
+ok(/old\.sarif left out/.test(foot) && /3d behind/.test(foot),
+   '...and the card names it, so a number that did not move is not a mystery');
+ok(/scanned/.test(foot), '...beside when the reports that ARE counted were written');
+rmSync(`${DIR}/reports/old.sarif`, { force: true });
+await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
+                   { timeout: 20000 });
+
+// Which shares count as "not a project" no longer comes only from what sits
+// inside /workspace. That worked while /workspace was the whole development
+// share; pointing it at the projects folder took the SDK share outside it and
+// sent 267 findings about downloaded toolchains to the label meant for a path
+// that is genuinely wrong. The rule asks the mount table instead.
+//
+// Sliced out of server.py rather than imported: server.py is written to be
+// run, not imported — it configures modules and seeds state at import — and
+// the case that must not regress cannot be produced by mounting something on
+// this box.
+const sibOut = execFileSync('python3', ['-c', `
+import posixpath, re, json
+src = open(${JSON.stringify(new globalThis.URL('../server.py', import.meta.url).pathname)}).read()
+i = src.index('def siblings_of('); j = src.index('def nonproject_dirs(')
+ns = {'posixpath': posixpath}
+exec(src[i:j], ns)
+mi = """
+26 25 0:24 /development/projects /workspace rw - fuse.shfs x rw
+27 25 0:24 /development/SDK /sdk rw - fuse.shfs x rw
+28 25 0:25 /appdata/BuilderBot /config rw - xfs x rw
+29 25 0:26 / /reports ro - xfs x ro
+"""
+print(json.dumps(sorted(ns['siblings_of'](mi, '/workspace'))))
+`], { encoding: 'utf8' });
+const sib = JSON.parse(sibOut.trim().split('\n').pop());
+ok(sib.includes('SDK'),
+   'a share mounted beside the projects folder is known to be one');
+ok(!sib.includes('BuilderBot'),
+   '...while a mount from somewhere else is not, even named after a project');
+ok(!sib.includes('reports') && sib.length === 1,
+   '...and a whole-filesystem mount names no directory, so it says nothing');
 
 // .bbignore hides a directory from the card entirely — not listed, not
 // counted, not folded away under the Excluded/Error toggle either.
@@ -141,8 +202,16 @@ ok(await page.evaluate(() => {
      const st = getComputedStyle(document.querySelector('header'), '::after');
      return /repeating-linear-gradient/.test(st.backgroundImage);
    }), '...and Nostromo brings its hazard stripe with it, as a gradient');
+// A surface that stops following the scheme does it silently — the text
+// fields, the memory folds and the pane's title bar all sat in the default
+// scheme's blue-grey through the first twelve because their colour was typed
+// in rather than named. A field is the cheapest one to keep honest.
+const fieldBg = () => page.$eval('.side input', e => getComputedStyle(e).backgroundColor);
+const nosField = await fieldBg();
 
 await page.click('#uiMenu .sw[data-theme="default"]');
+ok(await fieldBg() !== nosField,
+   '...and a text field is painted from the scheme, not from a hardcoded hex');
 ok(await page.evaluate(() => document.documentElement.dataset.theme) === undefined,
    'Default carries no attribute at all, so :root is simply left to stand');
 
@@ -502,7 +571,8 @@ ok(true, 'a dotted project name unpins too, animation and all');
 // under it down between two frames. The tween is caught while it runs — the
 // row exists before it, so waiting for the row alone would prove nothing.
 const unrolls = page.waitForFunction(() => {
-  const r = document.querySelector('#projects .row:has([data-p="ep.silon"])');
+  // By the row's own name: the card has no thumbtack to reach it through.
+  const r = document.querySelector('#projects .row[data-row="ep.silon"]');
   return !!r && r.getAnimations().length > 0;
 }, { timeout: 8000 });
 await page.evaluate(() => setProjectPinned('ep.silon', true));
@@ -676,6 +746,12 @@ ok(!await page.$('#projects [data-del]'),
    'the sidebar card has no delete — that one is brushed past on a phone');
 ok(await page.$('.doc .projtab [data-del]'),
    '...and the Projects tab does');
+// The thumbtack went the same way. The card IS the pinned view, so a control
+// on it that takes a row off it is a button whose only effect is to remove
+// the thing you pressed — and the row it lived on is now one control shorter
+// on the crowded side.
+ok(!await page.$('#projects [data-p]') && await page.$('.doc .projtab [data-p]'),
+   'pinning is the Projects tab\'s, not the card the pins are shown in');
 const gone = await api('/api/trash', { name: 'beta' });
 ok(gone.status === 200 && gone.body.to === '.trash/beta',
    'deleting names where the files went');

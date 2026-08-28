@@ -1157,6 +1157,34 @@ manager…**, which names a container and takes you there; every container of a
 project is built from that project's codebase, and rebuilding takes whatever
 that codebase says at the time.
 
+**Both settings can be filled in, and precedence decides which is live.** The
+socket mount and `DOCKER_HOST` are two settings on two screens and neither can
+grey the other out, so the rule is stated rather than enforced: an address in
+`DOCKER_HOST` always wins, `auto` prefers a proxy it can find and falls back to
+a mounted socket, and with neither the feature is off. The manager tab says
+which one it is — *"on a sandbox VM at ssh://…"* — and adds *"the mounted
+socket is unused"* when an address has shadowed one, because a socket left
+mounted while you try a VM is a reasonable thing to be in the middle of and
+being told beats wondering. `bb doctor` prints the same line from the same
+function; it used to work the kind out from the setting and the address from
+the fallback, which with `auto`, a mounted socket and no proxy answering read
+*"a socket proxy at /var/run/docker.sock"*.
+
+**With no daemon reachable, the controls that would drive one are disabled**,
+each carrying the reason as its tooltip, and the manager tab says the same
+thing in words at the top — a tooltip is not reachable on a phone, and *"why is
+everything greyed out"* should be answered by looking. That is `DOCKER_HOST`
+unset, a socket proxy that does not answer, or a sandbox VM this container
+cannot reach; `available()` in `devapp.py` already distinguishes them, and the
+answer rides the status poll memoised, because asking it properly is a
+subprocess and the poll is the page's heartbeat.
+
+Three things deliberately stay live. **Refresh** is the retry — it drops the
+memo, so a daemon wired up a moment ago is noticed by pressing it rather than
+by waiting. **Edit** and **Env** open a compose file, which is a file whatever
+can run it. And the manager tab still opens, because disabling the way to
+*read* a diagnosis is how a dashboard goes quiet for no visible cause.
+
 Each row folds open to show what that container publishes and what it mounts,
 read only when you open it — parsing a compose file is the one thing the page
 deliberately does not do for every row at once. Lines wrap rather than scroll:
@@ -1756,9 +1784,53 @@ place nowhere, which is the case worth a look.
 That rule is a subtraction, and deliberately so: rather than recognising each
 kind of thing that is not a project, findings attribute only to the projects
 worth reading them for, and everything else in the share falls out together.
-It matters because of how the SDK share is mapped here — inside the
-development folder, so the host's scanner walks it like anything else and one
-report grew nine thousand findings for a pile of downloaded toolchains. A
+It matters because of how the SDK share is mapped here — beside the projects
+folder in the same development share, so the host's scanner walks it like
+anything else and one report grew nine thousand findings for a pile of
+downloaded toolchains.
+
+**The subtraction alone stopped being enough when `/workspace` stopped being
+the whole share.** Pointing it at the projects folder — a better arrangement,
+and the one that cut most of this noise — put the SDK share *outside* the
+directory being subtracted from, and 267 trivy findings about vendored
+Flutter, Go and Android toolchains went straight to "unattributed": improving
+the layout regressed the classifier. So the wider question is asked as well.
+`/proc/self/mountinfo` says what this container mounts from beside its own
+projects folder —
+
+```
+/development/projects -> /workspace
+/development/SDK      -> /sdk
+```
+
+— so `SDK` is known to be a share rather than a project, wherever the shares
+are moved to next, and still without a list of what to skip. A name that is a
+valid project is never taken this way, whatever it is mounted from: an
+appdata directory called `BuilderBot` would otherwise teach it to ignore the
+BuilderBot project's own findings, which is the one mistake here that hides
+real work instead of noise.
+
+**A report a whole cycle behind its siblings is not counted**, and the card
+says which and by how much. A scanner that dies leaves its *previous* report in
+place — a host script worth having does not overwrite a good report with
+nothing — so a dead scanner and a live one are the same file to everything
+downstream. On 28 Aug a trivy that had been crashing for four days was still
+supplying most of this box's findings, against a directory layout that had been
+changed in between: the scanner's volume was fixed, the numbers did not move,
+and the fix looked broken. `bb findings` leaves the same file out and says so,
+and reads it anyway if you name it on the command line.
+
+A day is the line, and the size is the argument. One scan run writes every
+report within minutes of itself, so anything measured in hours is the same run
+— and re-running *one* scanner by hand, the obvious thing to do after fixing
+one, must not blank its siblings. A report left behind by a failed scanner is
+behind by a whole cycle, which for any cadence anybody runs is more than a day.
+
+**The row names what it could not place**, commonest first — `file:/src × 9`,
+which is mobsfscan reporting its own container path. A bare count said
+something was wrong and nothing about what, which is how it sat in the
+hundreds through several passes when 267 of them were one share and 9 were a
+scanner's configuration. A
 marker file (`.bbignore`) handles the case where the container knows about the
 directory, but a share mapped in with nothing to mark it is still listed as a
 project — one with an error, because it is not a repository — so subtracting

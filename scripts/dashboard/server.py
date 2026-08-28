@@ -18,6 +18,7 @@ import hmac
 import ipaddress
 import json
 import os
+import posixpath
 import re
 import selectors
 import shlex
@@ -676,6 +677,68 @@ def _project_of(uri, known, nonproject=frozenset()):
 IGNORED = "not/a/project"
 
 
+def share_siblings():
+    """Shares mounted beside the projects folder, by the name the host calls them.
+
+    The subtraction below derives "not a project" from what sits INSIDE
+    /workspace, which worked while /workspace was the whole development share:
+    the SDK share was a directory in it, so it fell out for free. Pointing
+    /workspace at the projects folder — a better arrangement, and the one that
+    cut most of this noise — took the SDK share outside it, and 267 findings
+    about downloaded Flutter, Go and Android toolchains went straight to
+    "unattributed", which is the label meant for a path that is genuinely
+    wrong. Improving the layout regressed the classifier.
+
+    So the wider question is asked instead: what does this container mount from
+    beside its own projects folder? /proc/self/mountinfo answers it —
+
+        /development/projects -> /workspace
+        /development/SDK      -> /sdk
+
+    — so `SDK` is a sibling of the projects folder, and a scanner sweeping the
+    share reports its paths as SDK/flutter/... . Derived, so it keeps working
+    wherever the shares are moved to next, and no list of what to skip.
+
+    Two things it deliberately will not do. A mount whose source is a whole
+    filesystem (root "/") says nothing about a directory name and is skipped.
+    And a name that IS a valid project never enters the set, whatever it is
+    mounted from — /mnt/user/appdata/BuilderBot would otherwise teach this to
+    ignore the BuilderBot project's own findings, which is the one mistake
+    here that would hide real work rather than noise.
+    """
+    try:
+        with open("/proc/self/mountinfo") as f:
+            return siblings_of(f.read(), str(WORKSPACE))
+    except OSError:
+        return set()
+
+
+def siblings_of(mountinfo, workspace):
+    """The parsing half of share_siblings, given the file's text.
+
+    Split out to be driven with a real mount table rather than this one: the
+    case that must not regress — a mount whose basename happens to be a
+    project's name — cannot be produced by mounting something here."""
+    src = {}
+    for line in mountinfo.splitlines():
+        bits = line.split()
+        if len(bits) > 4:
+            src[bits[4]] = bits[3]              # mount point -> path in source fs
+    ws = src.get(workspace)
+    if not ws or ws == "/":
+        return set()
+    parent = posixpath.dirname(ws)
+    out = set()
+    for point, path in src.items():
+        if point == workspace or path == "/":
+            continue
+        if posixpath.dirname(path) == parent:
+            name = posixpath.basename(path)
+            if name:
+                out.add(name)
+    return out
+
+
 def nonproject_dirs(valid):
     """Top-level workspace directories that are not projects.
 
@@ -700,7 +763,7 @@ def nonproject_dirs(valid):
     handful of genuinely unplaceable paths that the "unattributed" label is
     for. Nothing had to be excluded on the scanner to get there.
 
-    Listed fresh per parse; it is one readdir."""
+    Listed fresh per parse; it is one readdir and one small file."""
     out = set()
     try:
         for d in WORKSPACE.iterdir():
@@ -708,6 +771,10 @@ def nonproject_dirs(valid):
                 out.add(d.name)
     except OSError:
         pass
+    # ...plus the shares mounted beside the projects folder, which the
+    # subtraction above cannot see now that it is not the whole share.
+    out |= share_siblings()
+    out -= set(valid)               # never a project, whatever it is mounted from
     return out
 
 
@@ -1919,6 +1986,49 @@ def _doctor_loop():
         time.sleep(DOCTOR_EVERY)
 
 
+# How far behind the newest report a report may be and still be believed.
+#
+# A scanner that dies leaves its PREVIOUS report in place — a host script worth
+# having does not overwrite a good report with nothing — so a dead scanner and
+# a live one are the same file to everything downstream. On 28 Aug a trivy that
+# had been crashing for four days was still supplying most of this box's
+# findings, against a directory layout that had been changed in between: the
+# operator fixed the scanner's volume, the numbers did not move, and the fix
+# looked broken.
+#
+# A day, and the size is the argument. One scan run writes every report within
+# minutes of itself, so anything measured in hours is the same run. Re-running
+# ONE scanner by hand — the obvious thing to do after fixing one — leaves its
+# siblings a few hours behind, and they must not vanish for it. A report left
+# behind by a scanner that failed is behind by a whole cycle, which for any
+# cadence anybody runs is more than this.
+STALE_AFTER = 86400
+
+
+def reports_ages():
+    """Each report, when it was written, and whether it is too far behind."""
+    out = []
+    try:
+        for f in sorted(REPORTS.glob("*.sarif")) + sorted(REPORTS.glob("*.sarif.json")):
+            try:
+                out.append({"name": f.name, "when": int(f.stat().st_mtime)})
+            except OSError:
+                pass
+    except OSError:
+        return []
+    out.sort(key=lambda r: -r["when"])
+    newest = out[0]["when"] if out else 0
+    for r in out:
+        r["behind"] = newest - r["when"]
+        r["stale"] = r["behind"] >= STALE_AFTER
+    return out
+
+
+def stale_reports():
+    """The names of the reports being left out, as a set."""
+    return {r["name"] for r in reports_ages() if r["stale"]}
+
+
 def reports_mtime():
     """Newest mtime among the scanner reports, so a client showing the
     findings tab can notice a re-run scan without anyone pressing reload."""
@@ -1933,7 +2043,7 @@ def reports_mtime():
 # fetching and parsing the full reports, so the totals ride the status poll —
 # cached on report mtime, because the SARIF can run to megabytes and the poll
 # arrives every 15 seconds.
-_findings_counts = {"mtime": -1, "projects": {}}
+_findings_counts = {"mtime": -1, "projects": {}, "heads": []}
 
 
 def findings_counts(ps):
@@ -1954,6 +2064,13 @@ def findings_counts(ps):
     if REPORTS.is_dir():
         files = sorted(REPORTS.glob("*.sarif")) + \
             sorted(REPORTS.glob("*.sarif.json"))
+    # A report a whole cycle behind its siblings is not read. Its scanner
+    # failed and the host left the previous file in place, so what it contains
+    # describes a tree that has since moved — counting it does not make the
+    # picture more complete, it makes it wrong, and quietly. Said on the card
+    # rather than merely done: see reports_ages.
+    dropped = stale_reports()
+    files = [f for f in files if f.name not in dropped]
     # Nanosecond mtime plus size, per file: a report parsed mid-write and
     # finished within the same second must not stay cached as "no findings"
     # until the next scan.
@@ -1962,9 +2079,17 @@ def findings_counts(ps):
     except OSError:
         stamp = ()
     nonproject = nonproject_dirs(valid)
-    key = (stamp, tuple(sorted(valid)), tuple(sorted(nonproject)))
+    key = (stamp, tuple(sorted(valid)), tuple(sorted(nonproject)),
+           tuple(sorted(dropped)))
     if _findings_counts["mtime"] != key:
         per, rows_by, broken = {}, {}, False
+        # Where the unplaceable ones came from, counted by the head of their
+        # path. A bare number on that row says something is wrong and nothing
+        # about what: the honest answer for the nine left here is "mobsfscan
+        # reports file:/src, its own container path", which is a fact about a
+        # scanner's configuration and not about any project. Two components,
+        # because one is usually a scheme and three is usually a filename.
+        heads = {}
         for f in files:
             rep = parse_sarif(f, valid, nonproject)
             broken = broken or bool(rep.get("error"))
@@ -1974,6 +2099,13 @@ def findings_counts(ps):
                 lv = per.setdefault(row["project"] or "", {})
                 lv[row["level"]] = lv.get(row["level"], 0) + 1
                 rows_by.setdefault(row["project"] or "", []).append(row)
+                if not row["project"]:
+                    bits = [b for b in (row.get("path") or "").split("/") if b][:2]
+                    head = "/".join(bits) or "(no path)"
+                    heads[head] = heads.get(head, 0) + 1
+        _findings_counts["heads"] = sorted(
+            ({"head": k, "n": v} for k, v in heads.items()),
+            key=lambda h: -h["n"])[:4]
         # A report that failed to parse is not cached: half-written is the
         # usual reason, and the next poll should read it whole.
         _findings_counts.update(mtime=None if broken else key, projects=per)
@@ -1999,6 +2131,15 @@ def findings_counts(ps):
     # empty key, which is an unattributed path) can be in there at all, and
     # the cache is keyed on the valid set so a change to it re-parses.
     return dict(_findings_counts["projects"])
+
+
+def findings_heads():
+    """Where the unplaceable findings came from, commonest first.
+
+    Read after findings_counts, which is what fills it: the parse is cached and
+    doing it twice to answer a subtitle would be the expensive half of the poll
+    run for a line of text."""
+    return list(_findings_counts["heads"])
 
 
 # ---- revisions -------------------------------------------------------------
@@ -2087,8 +2228,12 @@ def snapshot():
         # the Phone card knows when to go and fetch the real thing. Reading it
         # is a length() on a list in memory — no adb, nothing to pay for.
         "phone_asks": len(phone.requests_open()),
-        # The standing model/effort every send applies — the card's state,
-        # riding the poll it already reads.
+        # Whether there is a daemon behind any of the Docker controls, and if
+        # not, the sentence saying why. Memoised in devapp, because answering
+        # it properly is a subprocess: this rides the poll, and the poll is the
+        # page's heartbeat. Every Docker button on the page reads this one
+        # answer rather than each finding out by failing.
+        "docker": devapp.available_cached(),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.
@@ -2100,6 +2245,12 @@ def snapshot():
         "reports": REPORTS.is_dir(),
         "reports_mtime": reports_mtime(),
         "findings_counts": findings_counts(ps),
+        # ...and, for the row they land on, what those paths actually look
+        # like. Order matters: this reads what the call above computed.
+        "findings_heads": findings_heads(),
+        # ...and when each report was written, so one left behind by a failed
+        # scanner is visible rather than silently counted as current.
+        "reports_ages": reports_ages(),
         "doctor": doctor_payload(),
         # Asked in this order: whether a sign-in is running decides whether
         # the answer to "signed in?" is worth re-reading rather than serving
@@ -2443,6 +2594,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
         if self.path.startswith("/api/docker"):
+            # Refresh is the retry: drop the memoised availability first, so a
+            # daemon wired up thirty seconds ago is noticed by pressing the
+            # button rather than by waiting for the memo to lapse.
+            devapp.forget_available()
             # The manager's whole page in one answer: every instance, and
             # every container that is not one of them.
             return self._json(devapp.overview())
