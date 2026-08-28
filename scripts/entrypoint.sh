@@ -518,6 +518,13 @@ main() {
 
     # Stash + scrub before anything is logged or spawned.
     [ "$privileged" -eq 1 ] && stash_secrets
+    # Before anything can read it: this boot is not ready yet, and the file may
+    # be last boot's (see BOOT_READY_FILE in lib/common.sh). Tolerant of a
+    # failure, here and at the other end: /run is root's, this script has a
+    # documented unprivileged path, and `set -e` would turn "could not write a
+    # hint file" into "the container does not start". What reads the marker
+    # falls back to the container's age when it is missing.
+    rm -f "$BOOT_READY_FILE" 2>/dev/null || true
     setup_logging
     banner
 
@@ -538,6 +545,14 @@ main() {
 
     run_hooks
     log "hooks done (+${SECONDS}s from start)"
+    # The finish line, for anything a hook started that is now measuring a
+    # container it was itself part of building — the dashboard's doctor above
+    # all. World-readable: it is read by the builder user.
+    # Braced: bash performs the redirections left to right and reports a failed
+    # one itself, so `: > file 2>/dev/null` still prints "Permission denied".
+    if { : > "$BOOT_READY_FILE"; } 2>/dev/null; then
+        chmod 644 "$BOOT_READY_FILE" 2>/dev/null || true
+    fi
 
     local -a cmd=()
     mapfile -d '' -t cmd < <(resolve_command "$@")

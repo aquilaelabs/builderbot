@@ -6,6 +6,22 @@ BUILDER_HOME="${BUILDER_HOME:-/home/builder}"
 WORKSPACE="${WORKSPACE:-/workspace}"
 RUNNER_DIR="${RUNNER_DIR:-/opt/actions-runner}"
 
+# Boot's finish line, as a file rather than a log line.
+#
+# The dashboard is started BY a hook (15-dashboard.sh) and the hooks after it
+# keep running — 48-gpu-display.root.sh does not start Xorg for another few
+# seconds. So anything the dashboard measures in that window is measuring a
+# half-built container, and `bb doctor`'s answer there is not just early, it is
+# wrong: a healthy GPU read as "nvidia EGL is installed but has no display to
+# render on" and the dashboard cached it for half an hour.
+#
+# In /run rather than /run/builderbot, which is 0700 root because it holds the
+# redaction table — the marker is meant to be read by the builder user. Cleared
+# at the top of every boot: neither /run nor /tmp is a mount of its own here,
+# so both survive a `docker restart` and a marker left from last time would say
+# "ready" before this boot had done anything. server.py names the same path.
+BOOT_READY_FILE="${BOOT_READY_FILE:-/run/builderbot-ready}"
+
 log()  { printf '[builderbot] %s\n'      "$*"; }
 warn() { printf '[builderbot] WARN: %s\n' "$*" >&2; }
 die()  { printf '[builderbot] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -225,4 +241,33 @@ github_api() {
         404) die "GitHub returned 404 on ${path}. Either GITHUB_URL points somewhere that does not exist, or the token cannot see it — GitHub answers 404 rather than 403 for resources a token has no access to. This is ${scope_hint}." ;;
         *)   die "GitHub API returned ${code} on ${path}: $(printf '%s' "$body" | tr -d '\n' | head -c 200)" ;;
     esac
+}
+
+# Is anything actually listening on :0?
+#
+# The socket FILE outliving the server is the case this exists for. Xorg leaves
+# /tmp/.X11-unix/X0 behind when it dies, so `[ -S ... ]` answers yes for a
+# display nothing is behind — and every check downstream then blames EGL for a
+# missing X server. Observed on 27 Aug: the doctor said "nvidia EGL is
+# installed but gave no vendor driver on the X display" while the truth was
+# that Xorg had exited hours before, which cost a diagnosis working outwards
+# from the driver rather than inwards from the process.
+#
+# So connect to it rather than stat it. Python because it is guaranteed here
+# and bash cannot open a unix socket.
+#
+# Here rather than in `bb` because the GPU startup hook asks the same question
+# before deciding whether to start a server, and two spellings of "is X up"
+# that can disagree is exactly how a dead display kept looking like a live one.
+x_display_up() {
+    [ -S /tmp/.X11-unix/X0 ] || return 1
+    python3 - <<'XPY' 2>/dev/null
+import socket, sys
+s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+s.settimeout(2)
+try:
+    s.connect("/tmp/.X11-unix/X0")
+except OSError:
+    sys.exit(1)
+XPY
 }

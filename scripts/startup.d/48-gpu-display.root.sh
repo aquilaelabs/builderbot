@@ -42,8 +42,22 @@ if [ -z "$glx" ] || [ -z "$drv" ]; then
 fi
 
 # Already up (a dashboard restart re-runs the hooks; the server is not ours to
-# duplicate).
-[ -S /tmp/.X11-unix/X0 ] && exit 0
+# duplicate). Probed rather than stat'd: Xorg leaves /tmp/.X11-unix/X0 and
+# /tmp/.X0-lock behind when it dies, and neither /tmp nor /run is a mount of
+# its own here, so both survive a `docker restart`. A guard that only looked
+# for the socket therefore exited here on the boot AFTER a death and left the
+# emulator on software — making "restart the container", the operator's first
+# and most obvious remedy, the one thing that could not work.
+if x_display_up; then
+    exit 0
+fi
+# Nothing is listening, so anything left over is a corpse. It has to go before
+# Xorg will start at all: it refuses a display whose lock file is present with
+# "Server is already active for display 0".
+if [ -e /tmp/.X11-unix/X0 ] || [ -e /tmp/.X0-lock ]; then
+    log "gpu display: clearing a dead server's socket and lock on :0"
+    rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
+fi
 
 # Xorg needs the card's PCI address in its own notation: nvidia-smi gives
 # 00000000:01:00.0, the config wants PCI:1:0:0.

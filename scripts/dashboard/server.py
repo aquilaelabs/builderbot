@@ -1806,7 +1806,58 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
 _seed_push_rights()
 
 
+# Written by entrypoint.sh once every startup hook has finished. Named here as
+# well as in lib/common.sh, which is the cost of the marker crossing the
+# bash/python line; the comment there carries the reasoning.
+BOOT_READY_FILE = Path(os.environ.get("BOOT_READY_FILE", "/run/builderbot-ready"))
+BOOT_WAIT = 180
+BOOT_GRACE = 300
+
+
+def wait_for_boot():
+    """Hold until the container has finished starting, or give up.
+
+    This dashboard is started BY hook 15 and the hooks after it are still
+    running: 48-gpu-display.root.sh does not start Xorg for another few
+    seconds. A `bb doctor` run inside that window does not report an early
+    truth, it reports a falsehood — and DOCTOR_EVERY is half an hour, so it
+    stuck. Measured on the 27 Aug 23:31 boot: doctor cached at +46s, Xorg up at
+    +48s, and the card said the GPU had no display to render on until somebody
+    pressed refresh. The operator's remedy for that message is to restart the
+    container, which runs the same race again, so it read as the fault
+    recurring rather than as a stale answer.
+
+    It does not care whether the wait succeeded: a dashboard started outside the
+    entrypoint — `bb dashboard dev`, the test harness, an image whose entrypoint
+    predates the marker — has none coming, and checking anyway is the behavior
+    this has always had. So the wait ends on the container's own age as well as
+    on a clock: mid-boot is the only time a missing marker means anything, and
+    at that point pid 1 is under a minute old.
+    """
+    for _ in range(BOOT_WAIT * 2):
+        if BOOT_READY_FILE.exists():
+            return True
+        if _container_age() > BOOT_GRACE:
+            return False
+        time.sleep(0.5)
+    return False
+
+
+def _container_age():
+    """Seconds since pid 1 started, which is this container's own age.
+
+    Not /proc/uptime — under Docker that is the HOST's, four days here on a
+    container three minutes old, so it answers a different question entirely.
+    A /proc/<pid> directory carries the process's start time as its mtime.
+    """
+    try:
+        return max(0.0, time.time() - os.path.getmtime("/proc/1"))
+    except OSError:
+        return float("inf")     # cannot tell: treat it as "not booting"
+
+
 def _doctor_loop():
+    wait_for_boot()
     while True:
         run_doctor()
         time.sleep(DOCTOR_EVERY)
