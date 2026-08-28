@@ -72,3 +72,5 @@
 - A restart now recovers the emulator's hardware rendering after the X server has died, instead of skipping it (eca73da)
 - A project with both a deploy key and an access token can now choose which one git uses, from the rename dialog (2ae19fd)
 - A stored access token is now kept closed in the rename dialog, with a link to clear it and type another (40ea54e)
+- Each project now sets which model and effort Claude runs on there, in its settings dialog (026d4be)
+- The pencil on a project row is a gear now, and its dialog is Project settings (026d4be)
