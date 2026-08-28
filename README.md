@@ -2251,6 +2251,19 @@ Rename, which is also how a token typed in the same dialog gets written before
 the switch that needs it. Under the hood it is one `git remote set-url`,
 between `git@…:owner/repo.git` and `https://github.com/owner/repo.git`.
 
+**A stored token is closed, not shown.** Only its file has the value, so the
+field cannot be pre-filled and typing over an invisible one is how a working
+credential gets replaced by accident. It is disabled, with **Clear the stored
+token** under it: pressing that opens the field for a new one, ghosts the
+*Access token* side and puts the choice back on *Deploy key*. Like everything
+else in this dialog it is staged — the project changes when you press Rename,
+and the link offers the way back until you do.
+
+Clear the only credential a project has and both sides go quiet, with a line
+saying it cannot push to GitHub and that everything else — commit, branch,
+build — still works locally. The field stays typeable there deliberately:
+ghosting it would be tidier and would leave no way back to pushing.
+
 **Switching removes neither credential.** The token file stays in `/config`,
 the deploy key and its `~/.ssh/config` alias stay where they are, and the
 repository keeps its credential helper — an ssh remote simply never consults
