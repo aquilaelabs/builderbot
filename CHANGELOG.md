@@ -79,3 +79,4 @@
 - Pinning a project is now done on the Projects tab only, and both tabs share the notebook's spacing (f0faecd)
 - With no Docker daemon reachable, the buttons that would drive one are disabled and say why (a763071)
 - The Docker tab says which daemon it is talking to, and tells you when a mounted socket is being ignored (dc6a44d)
+- Findings from the SDK share no longer count as unattributed, and the row names the paths it could not place (554f199)
