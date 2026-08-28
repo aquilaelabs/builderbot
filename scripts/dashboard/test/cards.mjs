@@ -502,7 +502,8 @@ ok(true, 'a dotted project name unpins too, animation and all');
 // under it down between two frames. The tween is caught while it runs — the
 // row exists before it, so waiting for the row alone would prove nothing.
 const unrolls = page.waitForFunction(() => {
-  const r = document.querySelector('#projects .row:has([data-p="ep.silon"])');
+  // By the row's own name: the card has no thumbtack to reach it through.
+  const r = document.querySelector('#projects .row[data-row="ep.silon"]');
   return !!r && r.getAnimations().length > 0;
 }, { timeout: 8000 });
 await page.evaluate(() => setProjectPinned('ep.silon', true));
@@ -676,6 +677,12 @@ ok(!await page.$('#projects [data-del]'),
    'the sidebar card has no delete — that one is brushed past on a phone');
 ok(await page.$('.doc .projtab [data-del]'),
    '...and the Projects tab does');
+// The thumbtack went the same way. The card IS the pinned view, so a control
+// on it that takes a row off it is a button whose only effect is to remove
+// the thing you pressed — and the row it lived on is now one control shorter
+// on the crowded side.
+ok(!await page.$('#projects [data-p]') && await page.$('.doc .projtab [data-p]'),
+   'pinning is the Projects tab\'s, not the card the pins are shown in');
 const gone = await api('/api/trash', { name: 'beta' });
 ok(gone.status === 200 && gone.body.to === '.trash/beta',
    'deleting names where the files went');

@@ -1163,6 +1163,15 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 /* The same reading width the notebook's bands take, so a row's controls do
    not end up an ultrawide pane away from the name they act on. */
 .projtab,.dmtab{display:block;max-width:var(--doc-w)}
+/* ...and the same gutter. .row is shared with the sidebar card, where 7px/10px
+   is right — 340px of column wants tight rows — but in a pane it left these
+   tabs visibly narrower than the notebook next to them, which is the sort of
+   difference you only see once and then cannot stop seeing. The notebook's
+   bands are 11px/14px; so are these. */
+.projtab .row,.dmtab .row,
+.projtab .empty,.dmtab .empty,
+.projtab .macros,.dmtab .macros,
+.projtab .loading,.dmtab .loading{padding:11px 14px}
 #todoBatch{padding:0 14px 8px}
 #todoBatch button{margin-top:6px}
 .mdrift{padding:0 14px 4px}
@@ -4241,7 +4250,7 @@ function wireProjectRows(root){
 // into O(projects x sessions) for no gain.
 function projectRow(p, live, cls, inTab){
   return `
-    <div class="row stack2${p.excluded ? " off" : ""}">
+    <div class="row stack2${p.excluded ? " off" : ""}" data-row="${esc(p.name)}">
       <div class="grow">
         <div class="name">${esc(p.name)}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
@@ -4302,14 +4311,14 @@ CI logs, and Claude's own transcripts and memories">${GEAR}</button>
       ${inTab ? `<button class="eye rm" data-del="${esc(p.name)}" aria-label="delete"
         title="delete — moves it to /workspace/.trash and keeps every file. Its
 roadmap, bugs and memories stay where they are, so putting it back is a mv">${BIN}</button>` : ""}
-      <button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
+      ${inTab ? `<button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
         data-on="${p.pinned ? "0" : "1"}"
         aria-label="${p.pinned ? "unpin" : "pin"}"
         title="${p.pinned
-          ? "unpin — take it off the sidebar. It keeps every control on the "
-            + "Projects tab; this is only about where you meet it"
+          ? "unpin — take it off the sidebar. It keeps every control here on "
+            + "the Projects tab; this is only about where you meet it"
           : "pin — show it on the sidebar's Projects card"}"
-        >${TACK}</button>
+        >${TACK}</button>` : ""}
       </span>
     </div>
 `;
@@ -8912,14 +8921,18 @@ function applyNow(fn){
   drawPanes();                     // the Projects tab shows the same rows
 }
 
-// The sidebar row for one project. Escaped for a QUOTED attribute value, which
-// is a different job from CSS.escape: that one escapes identifiers, so a
-// project with a dot in its name came out as [data-p="ep\.silon"] — a literal
-// backslash inside the quotes, matching nothing. The row was then never found
-// and the change simply skipped its animation, quietly, for exactly the
-// fixture whose name exists to catch this.
+// The sidebar row for one project. By the row's own name rather than through
+// the thumbtack inside it: the card has no thumbtack now — pinning is the
+// Projects tab's, where the whole list is — and a lookup that went through the
+// control would have quietly stopped finding anything, taking both animations
+// with it and saying nothing.
+//
+// Escaped for a QUOTED attribute value, which is a different job from
+// CSS.escape: that one escapes identifiers, so a project with a dot in its
+// name came out as [data-row="ep\.silon"] — a literal backslash inside the
+// quotes, matching nothing.
 const pinRow = (card, name) => card?.querySelector(
-  `.row:has([data-p="${name.replace(/["\\]/g, "\\$&")}"])`);
+  `.row[data-row="${name.replace(/["\\]/g, "\\$&")}"]`);
 
 // The same, for a change that takes a row OUT of the sidebar — unpinning, and
 // excluding, which folds the row away behind Show excluded.
