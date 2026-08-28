@@ -68,3 +68,5 @@
 - Fixed: a Docker manager row now shows its own build running, a staged version bump says it moved when you save, and long findings lists page (a32d59a)
 - Pinning a project now unrolls it into the sidebar instead of shoving the list down (4b69167)
 - The new-container dialog's Compose and Environment tabs slide like the rest of the dashboard's (4b69167)
+- The Doctor card no longer reports a GPU fault it measured while the container was still starting (eca73da)
+- A restart now recovers the emulator's hardware rendering after the X server has died, instead of skipping it (eca73da)
