@@ -161,7 +161,10 @@ await page.waitForTimeout(1200);
 ok(!await page.$eval(`${DM} [data-dm="up"]`, b => b.disabled),
    'a filled env wakes Up — compose builds what is missing, so it would work');
 ok(/builds the image first, as compose does/.test(
-     await page.$eval(`${DM} [data-dm="up"]`, b => b.title)),
+     // data-tip, not title: the manager's controls carry the page's own
+     // tooltip now, which is the same words moved off an attribute that waits
+     // a second before showing them.
+     await page.$eval(`${DM} [data-dm="up"]`, b => b.dataset.tip)),
    '...and Up says that is what it will do');
 
 // First build: build → down → up, and the argv trail proves the shape.
@@ -673,6 +676,84 @@ const both = await page.$$eval('.dmtab .row[data-inst^="ep.silon|"]',
 ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
    '...beside the one the project already had');
 ok((await page.errors).length === 0, 'no console errors from the dev row');
+
+// ---- a container with no project behind it ------------------------------
+// The shape every other Docker front end uses: a name, a compose file and an
+// environment. It has no working copy, so its compose lives in /config and its
+// relative binds resolve against its own data directory.
+await openManager();
+await page.click('#bDockerNew');
+await page.waitForSelector('#cmodal:not([hidden])');
+ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
+   'the new-container dialog opens with the keyboard down');
+ok(/services:/.test(await page.$eval('#cYml', e => e.value)),
+   '...on a compose file worth editing rather than an empty box');
+ok(await page.$eval('#cEnvField', e => e.hidden)
+   && !await page.$eval('#cYmlField', e => e.hidden),
+   '...showing one of the two definitions at a time');
+await page.click('#cTabEnv');
+ok(!await page.$eval('#cEnvField', e => e.hidden),
+   '...and the segment swaps them');
+writeFileSync(`${DIR}/dockerstate/config.fail`, '1');
+await page.click('#cTabYml');
+await page.fill('#cName', 'radarr');
+await page.click('#cGo');
+await page.waitForSelector('#cErrWrap:not([hidden])', { timeout: 15000 });
+ok(/will not read that/.test(await page.$eval('#cErr', e => e.textContent)),
+   'a compose file that does not parse is refused with what compose said');
+ok(!existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
+   '...and nothing is left behind for a name that was refused');
+rmSync(`${DIR}/dockerstate/config.fail`, { force: true });
+await page.click('#cGo');
+await page.waitForSelector('.dmtab .row[data-inst="radarr|main"]', { timeout: 20000 });
+ok(existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
+   'one that parses is written to /config, where no project scan can see it');
+ok(/compose written here/.test(await page.$eval(
+     '.dmtab .row[data-inst="radarr|main"]', r => r.textContent)),
+   '...and the manager says which kind it is');
+// Editing one: what it is changes far more often than it is created, and
+// without this the only way to move a port was to remove it and retype it.
+await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
+await page.waitForSelector('#cmodal:not([hidden])');
+await page.waitForFunction(() => /services:/.test(document.getElementById('cYml').value),
+                           { timeout: 10000 });
+ok(await page.$eval('#cName', e => e.disabled && e.value === 'radarr'),
+   'editing opens on the container, and its name is not a field any more');
+await page.fill('#cYml', 'services:\n  app:\n    image: alpine:latest\n');
+await page.click('#cGo');
+await page.waitForFunction(() => document.getElementById('cmodal').hidden,
+                           { timeout: 15000 });
+ok(/alpine:latest/.test(readFileSync(`${DIR}/state/containers/radarr/docker-compose.yml`, 'utf8')),
+   '...and Save writes the new compose file');
+// One that will not parse leaves the old file where it was.
+writeFileSync(`${DIR}/dockerstate/config.fail`, '1');
+await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="edit"]');
+await page.waitForSelector('#cmodal:not([hidden])');
+await page.waitForFunction(() => /alpine/.test(document.getElementById('cYml').value),
+                           { timeout: 10000 });
+await page.fill('#cYml', 'services:\n  broken');
+await page.click('#cGo');
+await page.waitForSelector('#cErrWrap:not([hidden])', { timeout: 15000 });
+ok(/alpine:latest/.test(readFileSync(`${DIR}/state/containers/radarr/docker-compose.yml`, 'utf8')),
+   'a save that will not parse puts the old compose file back');
+rmSync(`${DIR}/dockerstate/config.fail`, { force: true });
+await page.click('#cCancel');
+
+await page.click('#bDockerNew');
+await page.waitForSelector('#cmodal:not([hidden])');
+await page.fill('#cName', 'alpha');
+await page.click('#cGo');
+await page.waitForSelector('#cErrWrap:not([hidden])', { timeout: 15000 });
+ok(/is a project/.test(await page.$eval('#cErr', e => e.textContent)),
+   'a name a project already has is refused');
+await page.click('#cCancel');
+await openManager();
+await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="remove"]');
+await page.waitForFunction(() =>
+  !document.querySelector('.dmtab .row[data-inst="radarr|main"]'), { timeout: 20000 });
+ok(!existsSync(`${DIR}/state/containers/radarr`),
+   'removing one written here takes its compose file with it');
+
 
 // The same name twice is refused rather than silently reusing the first.
 await showRow();

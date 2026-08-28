@@ -442,6 +442,17 @@ await page.waitForFunction(() =>
   document.querySelector('.doc .projtab [data-p="beta"]')?.classList.contains('on'),
   { timeout: 5000 });
 ok(true, '...and pinning it back lights it again, first click');
+// A project whose name has a dot in it: the row's own selector has to survive
+// one, or the change lands without its animation and nothing says why.
+await page.evaluate(() => setProjectPinned('ep.silon', false));
+await page.waitForFunction(() =>
+  ![...document.querySelectorAll('#projects .row .name')]
+    .some(n => n.textContent.trim() === 'ep.silon'), { timeout: 8000 });
+ok(true, 'a dotted project name unpins too, animation and all');
+await page.evaluate(() => setProjectPinned('ep.silon', true));
+await page.waitForFunction(() =>
+  [...document.querySelectorAll('#projects .row .name')]
+    .some(n => n.textContent.trim() === 'ep.silon'), { timeout: 8000 });
 
 // The docker manager opens from Tools. What it LISTS is asserted in
 // devapp.mjs, where a project actually has a compose file and an instance —

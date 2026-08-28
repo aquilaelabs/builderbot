@@ -443,6 +443,9 @@ button.on{background:#1f6f36;border-color:#2ea043}
    focus and this layout cannot zoom back, so the answer to "the text is large"
    is a wider box and wrapped lines rather than smaller type. */
 #dnEnv{min-height:38vh;resize:vertical}
+/* Same reasoning for the compose editor: YAML is lines, and a box four of them
+   tall is one you scroll to read a service. */
+#cYml,#cEnv{min-height:40vh;resize:vertical;white-space:pre;overflow-wrap:normal}
 /* 16px on a phone: iOS Safari zooms the page into any smaller field on
    focus, and this fixed layout has no way to zoom back out. */
 @media(max-width:900px){ .modal input,.modal textarea,.modal select,
@@ -473,6 +476,40 @@ button.on{background:#1f6f36;border-color:#2ea043}
    too makes what you typed hard to read at the moment you are being asked to
    look at it. */
 .modal input.bad{border-color:var(--bad)}
+
+/* Tooltips.
+   The native `title` waits roughly a second before it appears, cannot be
+   styled, and on a row of icons that delay is the difference between "what
+   does this one do" and giving up. So: our own, on [data-tip], shown at once
+   and faded in over 90ms — the fade is what keeps "at once" from reading as a
+   flicker when the pointer crosses a row.
+   Hover-capable pointers only. A touch device has no hover, and a tooltip that
+   appeared on tap would sit over the thing just tapped. */
+@media(hover:hover){
+  [data-tip]{position:relative}
+  [data-tip]::after{
+    content:attr(data-tip);
+    position:absolute;bottom:calc(100% + 6px);left:50%;
+    /* Clamped so a tip on an icon at either end of a row cannot push the page
+       sideways: it slides along its own axis rather than off the edge. */
+    transform:translateX(-50%);
+    max-width:min(280px,60vw);width:max-content;
+    background:#0d1117;color:var(--ink);
+    border:1px solid var(--line);border-radius:6px;
+    padding:6px 8px;font:12px/1.45 system-ui,sans-serif;text-align:left;
+    white-space:normal;overflow-wrap:anywhere;
+    box-shadow:0 6px 18px rgba(0,0,0,.5);
+    opacity:0;visibility:hidden;pointer-events:none;z-index:90;
+    transition:opacity .09s ease,visibility 0s linear .09s}
+  [data-tip]:hover::after,[data-tip]:focus-visible::after{
+    opacity:1;visibility:visible;transition:opacity .09s ease}
+  /* A row's own tips point down instead, or the first row's would be clipped
+     by whatever is above the card. */
+  .acts [data-tip]::after{bottom:auto;top:calc(100% + 6px)}
+}
+@media(prefers-reduced-motion:reduce){
+  [data-tip]::after{transition:none}
+}
 /* A checkbox and its sentence on one line, and the sentence clickable with it:
    a tick box three words from its label is a target nobody hits on a phone. */
 .modal label.row-label{display:flex;align-items:center;gap:8px;cursor:pointer}
@@ -988,9 +1025,17 @@ button.eye.acc.on,button.eye.acc.on:hover{color:var(--accent)}
 .dmtab .dmwire summary{color:var(--dim);font:var(--f-note);cursor:pointer;
   list-style:none}
 .dmtab .dmwire summary::-webkit-details-marker{display:none}
-.dmtab .dmwire summary::before{content:"▸ ";display:inline-block;width:1em}
-.dmtab .dmwire[open] summary::before{content:"▾ "}
+.dmtab .dmwire summary::before{content:"▸";display:inline-block;width:1.1em;
+  transition:transform .16s ease}
+.dmtab .dmwire[open] summary::before{transform:rotate(90deg)}
 .dmtab .dmwire .li{overflow-wrap:anywhere}
+/* <details> has no transition of its own: the content simply appears at full
+   height. So the panel is measured and animated, and `open` is left on for the
+   whole of the closing one — remove it first and the browser hides the content
+   before there is anything to animate. */
+@media(prefers-reduced-motion:reduce){
+  .dmtab .dmwire summary::before{transition:none}
+}
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the broom (reset) and the sign-out door —
@@ -1636,6 +1681,49 @@ body.dragging .tab .lbl{cursor:grabbing}
 <!-- Naming a container to build from a project. It is always THAT project's:
      the name picks which of its containers this is, not what it is built from,
      so two instances of one project are two containers from one codebase. -->
+<!-- A container from a compose file written here. The shape every other
+     Docker front end uses — Portainer's stacks, Dockge's — is a name, a
+     compose file and an environment, and that is what this asks for. Labels
+     are not a fourth box: in compose they live in the YAML, and a separate
+     field for them would be inventing a concept the format does not have. -->
+<div id="cmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="cTitle">
+  <div class="box wide">
+    <h3 id="cTitle">New container</h3>
+    <div class="field">
+      <label for="cName">Name</label>
+      <input id="cName" maxlength="60" autocomplete="off" spellcheck="false"
+             placeholder="e.g. radarr">
+      <div class="hint" id="cNameHint"></div>
+    </div>
+    <div class="field">
+      <label id="cSegLabel">Definition</label>
+      <div class="pseg" role="group" aria-labelledby="cSegLabel">
+        <button id="cTabYml" class="on" type="button">Compose</button>
+        <button id="cTabEnv" type="button">Environment</button>
+      </div>
+    </div>
+    <div class="field" id="cYmlField">
+      <label for="cYml">docker-compose.yml</label>
+      <textarea id="cYml" spellcheck="false"></textarea>
+      <div class="hint">Checked by compose itself before it is saved. Relative
+        bind sources resolve against this container's own data directory, which
+        both this container and the daemon can see.</div>
+    </div>
+    <div class="field" id="cEnvField" hidden>
+      <label for="cEnv">.env</label>
+      <textarea id="cEnv" spellcheck="false"
+                placeholder="PUID=99&#10;PGID=100&#10;TZ=America/New_York"></textarea>
+      <div class="hint">Read by the compose file above as ${VAR}. Kept beside
+        it in /config, never in a project.</div>
+    </div>
+    <div class="field" id="cErrWrap" hidden><div class="hint bad" id="cErr"></div></div>
+    <div class="foot">
+      <button id="cGo" class="primary">Create</button>
+      <button id="cCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div id="dnmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="dnTitle">
   <div class="box wide">
     <h3 id="dnTitle">Send to Docker manager</h3>
@@ -2196,7 +2284,7 @@ const TABKINDS = {
   term:     { multi: true },
   todo:     { multi: true, label: t => "Notebook: " + t.arg,
               render: (i, t) => renderNotebookInto(i, t.arg), live: "always" },
-  packages: { multi: false, label: () => "packages",
+  packages: { multi: false, label: () => "Packages",
               render: (i) => renderPackagesInto(i), live: () => pkgRev,
               open: () => loadPackages(), reload: true },
   projects: { multi: false, label: () => "Projects",
@@ -2213,6 +2301,19 @@ const TABKINDS = {
 const identity = t => t.kind === "term" ? "tmux:" + sessionOf(t.arg)
                     : TABKINDS[t.kind] && !TABKINDS[t.kind].multi ? t.kind
                     : t.kind + ":" + t.arg;
+
+// Move `title` to `data-tip` inside a container, so markup that already
+// carries the words gets the faster tooltip without being rewritten. The
+// title is removed rather than left in place: keeping both shows the native
+// one a second later, on top of ours.
+function tipify(root){
+  root.querySelectorAll("[title]:not([data-tip])").forEach(el => {
+    const s = el.getAttribute("title");
+    if (!s) return;
+    el.setAttribute("data-tip", s);
+    el.removeAttribute("title");
+  });
+}
 
 // Draw one document tab into its pane, if it is due a redraw. The one place
 // that decides, so the two call sites — a pane that just changed tab and a
@@ -3818,6 +3919,7 @@ const nbOpen = name => tabs.some(t => t.kind === "todo" && t.arg === name);
 // to DO the same things as one in the card, and a second copy of this list is
 // how one of them quietly stops offering Notebook.
 function wireProjectRows(root){
+  tipify(root);
   root.querySelectorAll("[data-fix]").forEach(a => a.onclick = e => {
     e.preventDefault();
     if (a.dataset.fix === "claude-md-update") claudeMd(a.dataset.proj, "update", a);
@@ -4746,6 +4848,7 @@ function dockerJob(){
 // is not a reason to stop asking.
 async function dmAction(project, instance, act, btn){
   if (act === "env"){ openDevEnv(project, instance); return; }
+  if (act === "edit"){ openEditContainer(project); return; }
   if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
   if (act === "remove" && !confirm(
       `Remove ${project}/${instance} from the manager?\n\n`
@@ -4797,6 +4900,127 @@ async function dmAction(project, instance, act, btn){
   dockerList = null; dockerRev++; loadDocker();
 }
 
+// The wiring itself, fetched on the first open. It arrives after the fold has
+// already animated to the height of "reading…", so the panel is grown a second
+// time when the real lines land — measured either side of the swap, which is
+// what keeps the rows below from jumping.
+async function loadWire(d){
+  d.dataset.done = "1";
+  const [project, instance] = d.closest("[data-inst]").dataset.inst.split("|");
+  const box = d.querySelector(".wire");
+  let html;
+  try{
+    const r = await fetch("/api/devapp", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({project, instance, action:"state"})});
+    const st = (await r.json()).state || {};
+    const lines =
+      (st.ports || []).map(p => `<div class="dim li">${esc(p.target)}:${esc(p.proto)} ← ${
+        esc(location.hostname)}:${esc(p.published || "picked at start")}</div>`).join("")
+      + (st.mounts || []).map(m => `<div class="dim li">${esc(m.target)} ${
+        m.ro ? "←" : "↔"} ${esc(m.source)}</div>`).join("");
+    html = lines || `<div class="dim li">it publishes nothing and mounts nothing</div>`;
+  }catch(e){ html = `<div class="dim li bad">could not read it: ${esc(String(e))}</div>`; }
+  if (!d.isConnected) return;                 // the manager repainted under it
+  const before = d.offsetHeight;
+  box.innerHTML = html;
+  const after = d.offsetHeight;
+  if (d.open && before !== after && !noMotion()) foldHeight(d, before, after, () => {});
+}
+
+// A starting point rather than an empty box. Somebody opening this is about
+// to run a published image, and the three lines that always differ — image,
+// port, volume — are easier to edit than to remember the shape of.
+const COMPOSE_STARTER = `services:
+  app:
+    image: lscr.io/linuxserver/radarr:latest
+    restart: unless-stopped
+    environment:
+      - PUID=\${PUID}
+      - PGID=\${PGID}
+      - TZ=\${TZ}
+    ports:
+      - "7878:7878"
+    volumes:
+      - ./config:/config
+`;
+
+let cEditing = null;              // the container being edited, or null for new
+
+async function openEditContainer(name){
+  cEditing = name;
+  $("cTitle").textContent = "Edit " + name;
+  $("cName").value = name;
+  $("cName").disabled = true;
+  $("cNameHint").textContent =
+    "Its name is what the compose project is called, so it does not change "
+    + "here — remove it and write it again under another one.";
+  $("cYml").value = $("cEnv").value = "";
+  $("cErrWrap").hidden = true;
+  $("cGo").disabled = false; $("cGo").textContent = "Save";
+  cSeg("yml");
+  $("cmodal").hidden = false;
+  try{
+    const r = await fetch("/api/container", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({action:"read", name})});
+    const j = await r.json();
+    if (cEditing !== name) return;          // reopened on another one meanwhile
+    $("cYml").value = j.compose || "";
+    $("cEnv").value = j.env || "";
+  }catch(e){ $("cErr").textContent = "could not read it: " + e;
+             $("cErrWrap").hidden = false; }
+}
+
+function openNewContainer(){
+  cEditing = null;
+  $("cName").disabled = false;
+  $("cName").value = "";
+  $("cYml").value = COMPOSE_STARTER;
+  $("cEnv").value = "PUID=99\nPGID=100\nTZ=America/New_York\n";
+  $("cErrWrap").hidden = true;
+  $("cGo").disabled = false; $("cGo").textContent = "Create";
+  cSeg("yml");
+  $("cNameHint").textContent =
+    "Its own name, not a project's. The compose project becomes bbdev-<name>, "
+    + "which is what the manager and the guard both go by.";
+  $("cmodal").hidden = false;
+}
+
+function cSeg(which){
+  $("cTabYml").classList.toggle("on", which === "yml");
+  $("cTabEnv").classList.toggle("on", which === "env");
+  $("cYmlField").hidden = which !== "yml";
+  $("cEnvField").hidden = which === "yml";
+}
+
+async function cSubmit(){
+  const fail = m => ($("cErr").textContent = m, $("cErrWrap").hidden = false);
+  const editing = cEditing, verb = editing ? "Save" : "Create";
+  if (!$("cName").value.trim()) return fail("a name is needed");
+  $("cGo").disabled = true; $("cGo").textContent = editing ? "Saving…" : "Creating…";
+  try{
+    const r = await fetch("/api/container", {method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({action: editing ? "save" : "create",
+                            name: editing || $("cName").value,
+                            compose: $("cYml").value, env: $("cEnv").value})});
+    const j = await r.json();
+    if (j.error){
+      $("cGo").disabled = false; $("cGo").textContent = verb;
+      // Compose's own complaint, which names the line — shown on the tab the
+      // text is on, since that is where it has to be fixed.
+      cSeg("yml");
+      return fail(j.error);
+    }
+    $("cmodal").hidden = true;
+    notify(editing ? `${editing} saved — ${j.note || "rebuild it to bring the change up"}`
+                   : `${j.name} is in the manager — press Build to bring it up`);
+    dockerList = null; dockerRev++; loadDocker();
+  }catch(e){ $("cGo").disabled = false; $("cGo").textContent = verb;
+             return fail("could not create it: " + e); }
+}
+
 function renderDockerInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -4820,7 +5044,9 @@ function renderDockerInto(i){
         <div class="name">${esc(d.name)}
           <span class="dim state ${d.running ? "ok" : ""}">(${
             d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
-        <div class="sub">${esc(d.project)} · ${esc(d.instance)}</div>
+        <div class="sub">${d.source === "file"
+          ? `compose written here`
+          : `${esc(d.project)} · ${esc(d.instance)}`}</div>
         <div class="sub ${d.running ? "ok" : ""}">${
           busy ? esc(job.step || "working") + '<span class="dots"></span>'
           : d.running ? `running · ${d.containers} container(s)`
@@ -4842,7 +5068,11 @@ function renderDockerInto(i){
               : "docker compose up -d"}">Up</button>
         <button type="button" data-dm="down" ${!d.exists || busy ? "disabled" : ""}
           title="docker compose down">Down</button>
-        <button type="button" data-dm="env" title="this container's env file">Env</button>
+        ${d.source === "file"
+          ? `<button type="button" data-dm="edit"
+               title="edit this container's compose file and env">Edit</button>`
+          : `<button type="button" data-dm="env"
+               title="this container's env file">Env</button>`}
         <button type="button" class="rm" data-dm="remove" ${busy ? "disabled" : ""}
           title="take it down and drop it from this list. Its env and its data
 directory stay, so remaking it under the same name finds them">Remove</button>
@@ -4869,32 +5099,31 @@ directory stay, so remaking it under the same name finds them">Remove</button>
   // selector that matched both would be a test passing on the wrong tab.
   el.innerHTML = `<div class="card dmtab">${
     rows || `<div class="empty">nothing on this daemon yet</div>`}
-    <div class="macros"><button id="bDockerRe">Refresh</button></div></div>`;
+    <div class="macros"><button id="bDockerNew">New container…</button
+      ><button id="bDockerRe">Refresh</button></div></div>`;
   const b = el.querySelector("#bDockerRe");
   if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  const nb = el.querySelector("#bDockerNew");
+  if (nb) nb.onclick = openNewContainer;
   // The wiring, fetched when the fold is opened and not before. It needs the
   // compose file parsed, which is the one thing overview() refuses to do for
   // every instance at once — and it is the thing you want occasionally, which
   // is what a fold is for. Rendered the same way the artifact row renders it:
   // the container's side on the left, the daemon's on the right, and an arrow
   // saying which way a mount goes.
-  el.querySelectorAll("details.dmwire").forEach(d => d.ontoggle = async () => {
-    if (!d.open || d.dataset.done) return;
-    d.dataset.done = "1";
-    const [project, instance] = d.closest("[data-inst]").dataset.inst.split("|");
-    const box = d.querySelector(".wire");
-    try{
-      const r = await fetch("/api/devapp", {method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body: JSON.stringify({project, instance, action:"state"})});
-      const st = (await r.json()).state || {};
-      const lines =
-        (st.ports || []).map(p => `<div class="dim li">${esc(p.target)}:${esc(p.proto)} ← ${
-          esc(location.hostname)}:${esc(p.published || "picked at start")}</div>`).join("")
-        + (st.mounts || []).map(m => `<div class="dim li">${esc(m.target)} ${
-          m.ro ? "←" : "↔"} ${esc(m.source)}</div>`).join("");
-      box.innerHTML = lines || `<div class="dim li">it publishes nothing and mounts nothing</div>`;
-    }catch(e){ box.innerHTML = `<div class="dim li bad">could not read it: ${esc(String(e))}</div>`; }
+  tipify(el);
+  // The summary's own click, not the toggle: <details> opens instantly by
+  // construction, so the flag has to be driven by slideDetails — the same
+  // helper the notebook's folds already use — rather than watched afterwards.
+  el.querySelectorAll("details.dmwire").forEach(d => {
+    const sum = d.querySelector("summary");
+    if (!sum) return;
+    sum.onclick = (e) => {
+      e.preventDefault();
+      const willOpen = !d.open;
+      slideDetails(d, willOpen);
+      if (willOpen && !d.dataset.done) loadWire(d);
+    };
   });
   el.querySelectorAll("[data-dm]").forEach(btn => btn.onclick = () => {
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
@@ -7741,6 +7970,12 @@ $("pUrl").oninput = () => {
 // warning has to keep up with a URL edited afterwards.
 $("pUrl").addEventListener("input", pNameShow);
 
+$("cTabYml").onclick = () => cSeg("yml");
+$("cTabEnv").onclick = () => cSeg("env");
+$("cGo").onclick = cSubmit;
+$("cCancel").onclick = () => { $("cmodal").hidden = true; };
+$("cmodal").onclick = e => { if (e.target === $("cmodal")) $("cmodal").hidden = true; };
+
 $("dnName").oninput = dnShow;
 $("dnGo").onclick = dnSubmit;
 $("dnCancel").onclick = closeSendToDocker;
@@ -7990,7 +8225,11 @@ async function setExcluded(name, on){
       const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
       if (t) dropTab(t.id);
     }
-    applyNow(p => { p.excluded = (j.excluded || []).includes(p.name); });
+    const apply = p => { p.excluded = (j.excluded || []).includes(p.name); };
+    // Both directions here: excluding folds the row away behind Show excluded,
+    // and including brings it back up the list from the bottom — each is a row
+    // moving out of where the eye last had it.
+    leaveRow(name, apply);
   }catch(e){ notify("exclude failed: " + e, true); }
   refresh();
 }
@@ -8156,7 +8395,10 @@ async function setProjectPinned(name, on){
     // set — so the page adopts it and redraws now. Waiting for the next
     // /api/status put a poll's latency between the click and the button
     // moving, on a control whose whole job is instant.
-    applyNow(p => { p.pinned = (j.pinned || []).includes(p.name); });
+    const apply = p => { p.pinned = (j.pinned || []).includes(p.name); };
+    // Leaving the sidebar is the case worth animating; arriving is a row that
+    // was not there to watch.
+    if (on) applyNow(apply); else leaveRow(name, apply);
   }catch(e){ notify("pin failed: " + e, true); }
   refresh();                       // ...and reconcile, in the background
 }
@@ -8171,6 +8413,48 @@ function applyNow(fn){
   (state?.projects || []).forEach(fn);
   drawProjects(state?.projects || []);
   drawPanes();                     // the Projects tab shows the same rows
+}
+
+// The same, for a change that takes a row OUT of the sidebar — unpinning, and
+// excluding, which folds the row away behind Show excluded.
+//
+// Done as a fade and a collapse rather than a redraw, because a row vanishing
+// between two frames leaves the eye hunting for what moved: everything below
+// jumps up by exactly one row's height and nothing says which one went. The
+// row fades where it stands, the list closes over it, and only then is the
+// real draw allowed to happen.
+//
+// The card's height is animated too, not just the row's — the cards below ride
+// on it, so animating only the row would collapse the gap and then snap the
+// page. slideBody already does that pairing for the Show-excluded toggle.
+function leaveRow(name, fn){
+  const card = $("projects");
+  // Escaped for a QUOTED attribute value, which is a different job from
+  // CSS.escape: that one escapes identifiers, so a project with a dot in its
+  // name came out as [data-p="ep\.silon"] — a literal backslash inside the
+  // quotes, matching nothing. The row was then never found and the change
+  // simply skipped its animation, quietly, for exactly the fixture whose name
+  // exists to catch this.
+  const row = card?.querySelector(
+    `.row:has([data-p="${name.replace(/["\\]/g, "\\$&")}"])`);
+  if (!row || noMotion()){ applyNow(fn); return; }
+  const from = card.offsetHeight;
+  row.style.overflow = "hidden";
+  const h = row.offsetHeight;
+  const anim = row.animate(
+    [{opacity: 1, height: h + "px"}, {opacity: 0, height: "0px"}],
+    {duration: 170, easing: "ease"});
+  // The redraw waits for the tween. If it landed first the row would be gone
+  // before it had faded, which is the jump this exists to remove.
+  anim.onfinish = anim.oncancel = () => {
+    (state?.projects || []).forEach(fn);
+    slideBody(card, () => drawProjects(state?.projects || []));
+    drawPanes();
+    // Belt and braces: a row that survived the change (excluding only folds it
+    // away, and Show excluded may be on) must not keep the tween's end state.
+    row.style.overflow = ""; row.style.opacity = ""; row.style.height = "";
+    void from;
+  };
 }
 
 // A session tmux knows as "claude-Foo" is the same thing the Projects card

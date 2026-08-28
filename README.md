@@ -1138,6 +1138,15 @@ deliberately does not do for every row at once. Lines wrap rather than scroll:
 a host path is long, and a row that scrolls sideways on a phone hides the half
 you were reading.
 
+**New container…** on that tab runs something with no project behind it: a
+name, a compose file and an environment, which is the shape Portainer's stacks
+and Dockge use. Labels are not a fourth box — in compose they belong in the
+YAML. The compose file is checked by compose itself before it is saved, and
+kept in `/config/containers/<name>/` where no project scan can see it; its
+relative bind sources resolve against its own data directory under `/devdata`,
+which this container and the daemon both have. Removing one takes its files
+with it, because its compose file *is* the thing.
+
 It lists what has been sent to it, not every project that could be sent: a
 project with a compose file does not appear there until you send one, and
 **Remove** takes a container down and drops it from the list again. Removing

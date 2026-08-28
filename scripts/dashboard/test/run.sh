@@ -398,6 +398,12 @@ case "$1" in
     done
     case "$verb" in
       config)
+        # -q is the validation the container-create path runs: no output, just
+        # a verdict. A file lets a test ask for a compose that will not parse.
+        for x in "$@"; do [ "$x" = "-q" ] && {
+          [ -f "$ST/config.fail" ] && { echo "yaml: line 2: mapping values are not allowed"; exit 1; }
+          exit 0; }
+        done
         # A service that declares a build, which is what the fixture has —
         # unless a test wants a different shape, which it leaves here.
         if [ -f "$ST/$proj.config" ]; then cat "$ST/$proj.config"
