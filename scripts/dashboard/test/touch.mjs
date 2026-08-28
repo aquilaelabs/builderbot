@@ -40,4 +40,29 @@ ok((await page.$$eval('.tab[data-id]', ts => ts.map(t => t.dataset.id)))[0] === 
 ok((await page.$eval('#tabbar', el => el.scrollLeft)) < 10, '...without scrolling the strip');
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+// A phone comes back to the side it left — but not across a container
+// restart. Whatever was on the terminal side ended with the container, so
+// landing there shows tabs for sessions that are gone. The boot the side was
+// chosen under is stored beside it, and a different one sends it back to the
+// Dashboard once.
+await page.evaluate(() => setView('terminal'));
+ok(await page.evaluate(() => document.body.dataset.view) === 'terminal',
+   'the terminal side can be chosen');
+ok(await page.evaluate(() => localStorage.getItem('bb.view.boot')) !== null,
+   '...and is remembered against the run of the container it was chosen under');
+// An absent stamp is a browser that has never been here, not a restart.
+await page.evaluate(() => localStorage.removeItem('bb.view.boot'));
+await page.evaluate(() => viewAfterRestart());
+ok(await page.evaluate(() => document.body.dataset.view) === 'terminal',
+   '...and no stamp at all leaves the side alone, rather than reading as a restart');
+// A reload of the SAME boot keeps it.
+await page.evaluate(() => viewAfterRestart());
+ok(await page.evaluate(() => document.body.dataset.view) === 'terminal',
+   '...which a plain reload leaves alone');
+// A different boot does not.
+await page.evaluate(() => { localStorage.setItem('bb.view.boot', 'someolderboot'); });
+await page.evaluate(() => viewAfterRestart());
+ok(await page.evaluate(() => document.body.dataset.view) === 'dash',
+   '...while a container that came back since puts it on the Dashboard');
+
 await done(browser);
