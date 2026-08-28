@@ -674,6 +674,37 @@ ok(true, 'sending one lands you in the manager, with it listed');
 ok(await page.$eval('.dmtab', e => !e.classList.contains('card'))
    && await page.$eval('.doc:has(.dmtab)', e => e.classList.contains('flush')),
    '...laid out like the notebook, not as a box floating in the pane');
+
+// With no daemon reachable, every control that would act on one goes quiet
+// and carries the reason. Forced through `state` rather than by taking the
+// fake daemon away: what is being tested is the gate, and it takes exactly
+// one input.
+await page.evaluate(() => {
+  state.docker = { on: false, why: 'no DOCKER_HOST set — nothing to talk to' };
+  dockerRev++; drawPanes();
+});
+await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled === true,
+                           null, { timeout: 8000 });
+ok(await page.$$eval('.dmtab [data-dm="up"],.dmtab [data-dm="down"]',
+                     bs => bs.length > 0 && bs.every(b => b.disabled)),
+   'with no daemon, the controls that would drive one are disabled');
+// data-tip, not title: tipify() runs after the gate on this surface and turns
+// one into the other, which is the point — the reason is worn the way every
+// other explanation here is.
+ok(await page.$eval('#bDockerNew', b => /no DOCKER_HOST/.test(b.dataset.tip || b.title)),
+   '...each carrying the reason rather than just refusing');
+ok(/no DOCKER_HOST/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
+   '...and the tab says it in words, since a tooltip is unreachable on a phone');
+ok(await page.$eval('#bDockerRe', b => !b.disabled),
+   'Refresh stays live — it is the retry, and disabling it would strand you');
+ok(await page.$$eval('.dmtab [data-dm="edit"],.dmtab [data-dm="env"]',
+                     bs => bs.every(b => !b.disabled)),
+   '...as do Edit and Env: a compose file is a file whatever can run it');
+await page.evaluate(() => { state.docker = { on: true, why: '' };
+                            dockerRev++; drawPanes(); });
+await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled === false,
+                           null, { timeout: 8000 });
+ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean');
 // Send BUILDS: the manager lists what exists, so registering alone would send
 // you to a page that does not mention what you just made.
 // Running, not merely built: the env went in before the build, so the gate

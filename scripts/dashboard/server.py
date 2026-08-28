@@ -2087,8 +2087,12 @@ def snapshot():
         # the Phone card knows when to go and fetch the real thing. Reading it
         # is a length() on a list in memory — no adb, nothing to pay for.
         "phone_asks": len(phone.requests_open()),
-        # The standing model/effort every send applies — the card's state,
-        # riding the poll it already reads.
+        # Whether there is a daemon behind any of the Docker controls, and if
+        # not, the sentence saying why. Memoised in devapp, because answering
+        # it properly is a subprocess: this rides the poll, and the poll is the
+        # page's heartbeat. Every Docker button on the page reads this one
+        # answer rather than each finding out by failing.
+        "docker": devapp.available_cached(),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.
@@ -2443,6 +2447,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
         if self.path.startswith("/api/docker"):
+            # Refresh is the retry: drop the memoised availability first, so a
+            # daemon wired up thirty seconds ago is noticed by pressing the
+            # button rather than by waiting for the memo to lapse.
+            devapp.forget_available()
             # The manager's whole page in one answer: every instance, and
             # every container that is not one of them.
             return self._json(devapp.overview())

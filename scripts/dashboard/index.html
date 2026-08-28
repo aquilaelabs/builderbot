@@ -5007,6 +5007,42 @@ function renderProjectsInto(i){
     wireProjectRows(el);
 }
 
+// ---- no daemon, no Docker buttons ---------------------------------------
+// The controls that act on the daemon, in one list. Not the ones that only
+// read or explain: Refresh is how you retry after wiring one up, Edit and Env
+// open a compose file that is a file whether or not anything can run it, and
+// the manager tab itself is where the reason is written in words — disabling
+// the way to READ a diagnosis is how you get a dashboard that has gone quiet
+// for no visible cause.
+const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],[data-dm="remove"],'
+                  + '[data-dm="rebuild"],#devSend,#bDockerNew';
+
+// The one answer, from the poll. `on` absent (an older server, a payload that
+// has not landed yet) is not "off": a control the page has no opinion about
+// should behave as it always did rather than switch itself off on a hunch.
+const dockerWhy = () =>
+  state?.docker && state.docker.on === false
+    ? (state.docker.why || "no docker daemon is reachable from here") : "";
+
+// Applied to the DOM after a list draws rather than woven into each renderer —
+// four places render one of these controls, and one function that switches
+// them off is the only shape that cannot drift between them. Disable only:
+// every renderer here redraws from state, so a daemon coming back is picked up
+// by the next ordinary draw and nothing has to remember what it switched off.
+function gateDocker(root){
+  const why = dockerWhy();
+  if (!why) return;
+  (root || document).querySelectorAll(DOCKER_ACTS).forEach(b => {
+    b.disabled = true;
+    // As `title`, and left for the surface to do what it does with one: the
+    // manager tab runs tipify() after this and turns it into a data-tip, the
+    // dev row does not and keeps the native tooltip its neighbours use. Which
+    // means the reason is worn the same way as every other explanation on
+    // whichever surface it lands, rather than in a third style of its own.
+    b.title = why;
+  });
+}
+
 // ---- the docker manager -------------------------------------------------
 // What is actually running on the daemon the dev instances use. All of it,
 // not only what this dashboard started: a port taken by something else is
@@ -5428,10 +5464,16 @@ directory stay, so remaking it under the same name finds them">Remove</button>
     </div>`).join("");
   // Its own class rather than the projects tab's: the two look alike and a
   // selector that matched both would be a test passing on the wrong tab.
-  el.innerHTML = `<div class="dmtab">${
+  // Said in words at the top, not only in the tooltips below: a tooltip is
+  // not reachable on a phone, and "why is everything greyed out" should be
+  // answered by looking rather than by hovering.
+  const off = dockerWhy();
+  el.innerHTML = `<div class="dmtab">${off
+      ? `<div class="empty">${esc(off)}</div>` : ""}${
     rows || `<div class="empty">nothing on this daemon yet</div>`}
     <div class="macros"><button id="bDockerNew">New container…</button
       ><button id="bDockerRe">Refresh</button></div></div>`;
+  gateDocker(el);
   const b = el.querySelector("#bDockerRe");
   if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
   const nb = el.querySelector("#bDockerNew");
@@ -7499,6 +7541,7 @@ project can have several, and they are all built from this codebase"
     };
     const send = list.querySelector("#devSend");
     if (send) send.onclick = () => openSendToDocker(project);
+    gateDocker(list);
     list.querySelectorAll("[data-artpush]").forEach(b => b.onclick = async () => {
       const a = rows[Number(b.dataset.artpush)];
       b.disabled = true;

@@ -1157,6 +1157,21 @@ manager…**, which names a container and takes you there; every container of a
 project is built from that project's codebase, and rebuilding takes whatever
 that codebase says at the time.
 
+**With no daemon reachable, the controls that would drive one are disabled**,
+each carrying the reason as its tooltip, and the manager tab says the same
+thing in words at the top — a tooltip is not reachable on a phone, and *"why is
+everything greyed out"* should be answered by looking. That is `DOCKER_HOST`
+unset, a socket proxy that does not answer, or a sandbox VM this container
+cannot reach; `available()` in `devapp.py` already distinguishes them, and the
+answer rides the status poll memoised, because asking it properly is a
+subprocess and the poll is the page's heartbeat.
+
+Three things deliberately stay live. **Refresh** is the retry — it drops the
+memo, so a daemon wired up a moment ago is noticed by pressing it rather than
+by waiting. **Edit** and **Env** open a compose file, which is a file whatever
+can run it. And the manager tab still opens, because disabling the way to
+*read* a diagnosis is how a dashboard goes quiet for no visible cause.
+
 Each row folds open to show what that container publishes and what it mounts,
 read only when you open it — parsing a compose file is the one thing the page
 deliberately does not do for every row at once. Lines wrap rather than scroll:
