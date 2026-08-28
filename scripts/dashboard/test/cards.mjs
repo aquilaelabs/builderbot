@@ -452,6 +452,12 @@ ok(await page.$$eval('.doc .projtab .row .name',
 ok(await page.$eval('.doc .projtab .row:has([data-p="alpha"])',
      r => !!r.querySelector('[data-c]') && !!r.querySelector('[data-m]')),
    '...still carrying every control, which is the whole promise of the pin');
+// The tab is a document, not a card adrift in one. It used to draw itself
+// inside .card — rounded, bordered, floating on a darker gutter — while the
+// notebook in the pane beside it filled the pane. One language.
+ok(await page.$eval('.doc .projtab', e => !e.classList.contains('card'))
+   && await page.$eval('.doc:has(.projtab)', e => e.classList.contains('flush')),
+   'the Projects tab fills its pane the way the notebook does');
 await page.evaluate(() => setProjectPinned('alpha', true));
 await page.waitForFunction(
   () => [...document.querySelectorAll('#projects .row .name')]

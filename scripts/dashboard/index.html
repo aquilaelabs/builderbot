@@ -1152,12 +1152,17 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .nb h3{display:none}
 .nb #todoList,.nb #memList{max-height:none;overflow:visible;
   overscroll-behavior:auto}
-/* No inset and no ceiling: the notebook is the pane's whole content, not a
-   box floating in it. The padding and the darker ground behind it read as a
-   window sitting inside the window it is already in. */
-/* Scoped through .pane, or `.pane .doc` further down the sheet wins on
+/* No inset and no ceiling: a document is the pane's whole content, not a box
+   floating in it. The padding and the darker ground behind it read as a window
+   sitting inside the window it is already in — and the Projects and Docker
+   tabs wore exactly that, a rounded card adrift on a darker gutter, while the
+   notebook beside them did not. One language, and this is it.
+   Scoped through .pane, or `.pane .doc` further down the sheet wins on
    source order at equal specificity and the inset comes back. */
-.pane .doc.nbhost{padding:0;background:var(--panel)}
+.pane .doc.nbhost,.pane .doc.flush{padding:0;background:var(--panel)}
+/* The same reading width the notebook's bands take, so a row's controls do
+   not end up an ultrawide pane away from the name they act on. */
+.projtab,.dmtab{display:block;max-width:var(--doc-w)}
 #todoBatch{padding:0 14px 8px}
 #todoBatch button{margin-top:6px}
 .mdrift{padding:0 14px 4px}
@@ -4972,6 +4977,7 @@ function openProjectsTab(){
 function renderProjectsInto(i){
   const el = $("doc" + i);
   if (!el) return;
+  el.classList.add("flush");
   const ps = state?.projects || [];
   if (!ps.length){
     el.innerHTML = `<div class="empty">nothing mounted under /workspace</div>`;
@@ -4987,7 +4993,7 @@ function renderProjectsInto(i){
   // paint() rather than innerHTML, the same as the card: this runs on every
   // render pass, and rebuilding a list of rows nobody changed throws away the
   // handlers on it for no reason.
-  if (paint(el, `<div class="card projtab">${
+  if (paint(el, `<div class="projtab">${
     ordered.map(p => projectRow(p, live, cls, true)).join("")}</div>`))
     wireProjectRows(el);
 }
@@ -5339,6 +5345,7 @@ async function cSubmit(){
 function renderDockerInto(i){
   const el = $("doc" + i);
   if (!el) return;
+  el.classList.add("flush");
   if (!dockerList){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
   if (dockerList.error){
     el.innerHTML = `<div class="empty">could not reach the daemon: ${esc(dockerList.error)}</div>`;
@@ -5412,7 +5419,7 @@ directory stay, so remaking it under the same name finds them">Remove</button>
     </div>`).join("");
   // Its own class rather than the projects tab's: the two look alike and a
   // selector that matched both would be a test passing on the wrong tab.
-  el.innerHTML = `<div class="card dmtab">${
+  el.innerHTML = `<div class="dmtab">${
     rows || `<div class="empty">nothing on this daemon yet</div>`}
     <div class="macros"><button id="bDockerNew">New container…</button
       ><button id="bDockerRe">Refresh</button></div></div>`;
