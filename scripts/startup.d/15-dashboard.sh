@@ -4,6 +4,26 @@
 # DASHBOARD_PORT. ttyd binds the loopback and is reached through the
 # dashboard's own /term proxy, so there is one port and one sign-in.
 #
+# Numbered 15 so it starts BEFORE the slow hooks rather than after them. It
+# needs nothing they produce — ttyd, tmux and python are in the image — and it
+# used to run second-to-last, which meant the whole boot was time the operator
+# spent looking at a browser that would not connect. Measured on this box: a
+# container start to the runner listening is about fifty seconds, and the
+# Claude Code update at hook 20 and any project's own setup.sh at hook 40 are
+# both ahead of where this used to sit.
+#
+# What that costs is a few seconds of a dashboard that does not know everything
+# yet: the SDK share is listed as a project until hook 41 marks it, git columns
+# are blank until 30, and Claude's version is unknown until 20. Every one of
+# those is a poll away from correcting itself, and none of them is worth the
+# whole page for.
+#
+# 61-sessions.sh restores saved terminals into this one's tmux and deliberately
+# does NOT move with it: a restored Claude session starting before hook 30 has
+# no ssh agent yet, so its first push would fail for a reason that has nothing
+# to do with the session. The dashboard being up early costs nothing; sessions
+# being up early costs that.
+#
 # Off unless ENABLE_DASHBOARD is true, and it refuses to start without
 # DASHBOARD_AUTH. That refusal is the point: this serves an interactive shell
 # into a container holding a loaded ssh-agent and read-write mounts of every

@@ -111,6 +111,15 @@ chown -R 99:100 /mnt/user/appdata/BuilderBot
 |---|---|
 | `home/` | Claude Code login, npm globals, shell history, AVDs — survives image updates |
 | `config/` | your custom startup hooks (`config/startup.d/*.sh`) + persistent logs (`config/logs/`) |
+
+The dashboard starts early in the boot, before the Claude Code update, any
+project's own `setup.sh` and the SDK/Playwright/Android hooks — so the web UI
+is reachable in seconds rather than after the whole start-up. For a few of
+those seconds it knows less than it will: the SDK share is listed as a project
+until the hook that marks it runs, git columns are blank, Claude's version is
+unknown. All of that corrects itself on the next poll. `bb logs` now times each
+hook and prints how far into the boot it started, so "what is the wait" is a
+question the log answers.
 | `work/` | GitHub Actions job checkouts + runner diagnostics |
 
 Keep these on a cache/SSD-backed share — `work/` and `home/` do heavy

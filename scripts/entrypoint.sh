@@ -450,30 +450,47 @@ persist_android_downloads() {
     return 0
 }
 
+# How long each hook took, and how far into the boot it started.
+#
+# The dashboard is a hook like any other, so everything before it is time the
+# operator spends looking at a browser that will not connect — and until this,
+# the log said which hooks ran and nothing about which one was the wait. A
+# guess about that is worth nothing; nine hooks run before the web UI and any
+# of them could be the one.
+#
+# SECONDS is bash's own counter, reset at the top of the boot, so both numbers
+# come free.
 run_hooks() {
-    local dir script
+    local dir script started took name
     for dir in /opt/builderbot/scripts/startup.d /config/startup.d; do
         [ -d "$dir" ] || continue
         for script in "$dir"/*.sh; do
             [ -e "$script" ] || continue
+            name="$(basename "$script")"
             case "$script" in
                 *.disabled.sh)
-                    log "skipping $(basename "$script") (disabled)"
+                    log "skipping $name (disabled)"
                     continue
                     ;;
             esac
             chmod +x "$script" 2>/dev/null || true
+            started=$SECONDS
             if [ "$(id -u)" -ne 0 ]; then
-                log "hook: $(basename "$script")"
-                "$script" || warn "hook $(basename "$script") exited $?"
+                log "hook: $name (+${started}s)"
+                "$script" || warn "hook $name exited $?"
             elif [[ "$script" == *.root.sh ]]; then
-                log "hook (root): $(basename "$script")"
-                "$script" || warn "hook $(basename "$script") exited $?"
+                log "hook (root): $name (+${started}s)"
+                "$script" || warn "hook $name exited $?"
             else
-                log "hook: $(basename "$script")"
+                log "hook: $name (+${started}s)"
                 gosu builder env HOME="$BUILDER_HOME" "$script" \
-                    || warn "hook $(basename "$script") exited $?"
+                    || warn "hook $name exited $?"
             fi
+            took=$(( SECONDS - started ))
+            # Only when it is worth reading. A hook that finishes inside a
+            # second is not the one anybody is waiting for, and a line per
+            # hook saying "0s" is noise over the ones that matter.
+            [ "$took" -ge 1 ] && log "  ...$name took ${took}s"
         done
     done
 }
@@ -520,6 +537,7 @@ main() {
     record_image
 
     run_hooks
+    log "hooks done (+${SECONDS}s from start)"
 
     local -a cmd=()
     mapfile -d '' -t cmd < <(resolve_command "$@")
