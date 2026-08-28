@@ -362,13 +362,16 @@ body.dragging .side .card h2{cursor:grabbing}
 /* A problem the page can fix is a link in the color of its own warning. */
 .row .sub a.fix{color:inherit;text-decoration:underline;cursor:pointer}
 .row .sub.warn{color:var(--warn)}
-/* Excluded is a decision, not a fault — stated plainly rather than alarming. */
-.row .sub.off{color:var(--dim);font-style:italic}
-/* An excluded project is grayed out because nothing acts on it. The two
-   controls that still do — Shell, and the eye that lets it back in — keep their
-   weight, or the row would look like it had been switched off entirely. */
-.row.off .name,.row.off .sub{opacity:.55}
-.row.off [data-s],.row.off .eye{opacity:1}
+/* Locked is a decision, not a fault — stated plainly rather than alarming.
+   Nothing about the row is dimmed for it: a locked project is one the operator
+   is actively running, and greying it out would say the opposite. */
+.row .sub.locked{color:var(--dim);font-style:italic}
+/* The padlock beside the name. Sized to the text it follows rather than to the
+   icon buttons, because it is a word in the name's sentence, not a control. */
+.row .name .lockmark{display:inline-flex;vertical-align:-2px;margin-left:5px;
+  color:var(--dim)}
+.row .name .lockmark svg{width:13px;height:13px;fill:none;stroke:currentColor;
+  stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
 .grow{flex:1;min-width:120px}
 
 button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
@@ -658,8 +661,12 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .nb .caution{color:var(--warn);border-color:#4a3a15}
 /* Two-way choice as two buttons, not radios: one tap on a phone, and the
    green .on state is the same vocabulary as everything else on the page. */
-.modal .link{background:none;border:0;color:var(--dim);padding:2px 0;
-  font:12px/1.4 system-ui,sans-serif;min-height:var(--tap);text-align:left}
+/* Underlined and in the warm colour, the way the CLAUDE.md fix link on a
+   project row is: both are a line of text you can press, and reading as one
+   is what tells you that. Dim and undecorated it read as a caption. */
+.modal .link{background:none;border:0;color:var(--warn);padding:2px 0;
+  font:12px/1.4 system-ui,sans-serif;min-height:var(--tap);text-align:left;
+  text-decoration:underline;cursor:pointer}
 .modal .link[hidden]{display:none}
 @media(hover:hover){ .modal .link:hover{color:var(--accent)} }
 .modal .pseg{display:flex;gap:8px}
@@ -1025,6 +1032,19 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    the click-time guards are the enforcement, this is the reading of it. */
 .nb.held #bugAdd,.nb.held .bug .macts,.nb.held #memAdd,
 .nb.held .mem .macts{opacity:.4}
+/* A locked project's notebook: readable, not writable. Everything that writes
+   goes quiet — the Saves, the add controls, the write-through buttons on the
+   bug and memory rows, and the send controls that hand work to a session that
+   cannot start here anyway. Reading is untouched: the views, the folds, the
+   History, the Analysis tab. */
+.nb.ro .rolock{margin:0;padding:11px 14px;color:var(--warn);font:var(--f-ui);
+  border-bottom:1px solid var(--line)}
+.nb.ro #todoSave,.nb.ro #todoSaveQuiet,.nb.ro #todoAdd,.nb.ro #todoText,
+.nb.ro #bugAdd,.nb.ro #memAdd,.nb.ro .addstep,.nb.ro .memadd,
+.nb.ro .bug .macts,.nb.ro .mem .macts,.nb.ro .todo .go,.nb.ro .todo .mv,
+.nb.ro .vbar .sp ~ button:not(#nbHistory){
+  opacity:.4;pointer-events:none}
+.nb.ro textarea,.nb.ro input:not([type="checkbox"]){pointer-events:none;opacity:.6}
 .nb .nbhead{color:var(--dim);font:var(--f-ui)}
 /* Every view opens the same way: its one-line summary left, its controls
    right — the same shape on all four tabs, which is most of what "the same
@@ -1944,6 +1964,7 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="field" id="rnAuthField" hidden>
       <label id="rnAuthLabel">Authentication</label>
       <div class="pseg" role="group" aria-labelledby="rnAuthLabel">
+        <button id="rnAuthNone" type="button">Disabled</button>
         <button id="rnAuthKey" type="button">Deploy key</button>
         <button id="rnAuthToken" type="button">Access token</button>
       </div>
@@ -3310,7 +3331,32 @@ function renderNotebookInto(i, project){
   if (!host) return;
   host.classList.add("nbhost");
   if (nb.root.parentElement !== host) host.appendChild(nb.root);
+  nbReadOnly(nb.root, project);
   nb.shown();
+}
+
+// A locked project's notebook opens and does not change. Applied on every draw
+// rather than at open, because the lock can be turned while the tab is sitting
+// there — and this kind renders from `state`, so every draw already happens.
+//
+// The class is the visible half; the refusal is server-side, in locked_out().
+// A read-only state enforced by a dimmed button is a suggestion, and this page
+// is not the only way to reach the endpoint behind it.
+function nbReadOnly(root, project){
+  const locked = !!(state?.projects || []).find(p => p.name === project)?.locked;
+  root.classList.toggle("ro", locked);
+  let note = root.querySelector(":scope > .rolock");
+  if (!locked){ if (note) note.remove(); return; }
+  if (!note){
+    note = document.createElement("div");
+    note.className = "rolock";
+    root.prepend(note);
+  }
+  // Says what still works, not only what does not: the point of locking a
+  // project is that everything you do yourself carries on.
+  note.textContent = "Locked — read-only. The roadmap, bugs and memories here "
+    + "cannot be changed while this project is locked. Its findings, artifacts "
+    + "and dev instance still work, and the padlock on its row unlocks it.";
 }
 
 // Back to its holder when no tab is showing it, so a stale copy is never left
@@ -3477,19 +3523,17 @@ function rnFillPrefs(p){
 
 function rnDrawPrefs(){
   const p = (state?.projects || []).find(x => x.name === rnFor);
-  // Ghosted where no session can start: an excluded project refuses one and a
-  // locked one is the operator's to run. Setting what a session that cannot
-  // exist would launch on is a control with nothing behind it — and unlike the
-  // credential fields above, there is no typing here that would bring it back.
-  const shut = !!(p?.excluded || p?.locked);
+  // Ghosted where no session can start: a locked project is the operator's to
+  // run. Setting what a session that cannot exist would launch on is a control
+  // with nothing behind it — and unlike the credential fields above, there is
+  // no typing here that would bring it back.
+  const shut = !!p?.locked;
   $("rnModel").disabled = $("rnEffort").disabled = shut;
   const running = liveSessions().has(tmuxName("claude-" + rnFor));
   const changed = $("rnModel").value !== rnPrefWas.model
                || $("rnEffort").value !== rnPrefWas.effort;
   $("rnPrefHint").textContent = shut
-    ? (p?.excluded
-        ? "Excluded — no Claude session starts here, so there is nothing to set."
-        : "Locked — this project is yours to run, so no session starts here.")
+    ? "Locked — this project is yours to run, so no session starts here."
     : running
       ? (changed
           ? "A session is running here. Saving restarts it onto this — the "
@@ -4260,24 +4304,20 @@ function drawRunner(r){
 }
 
 // What gets folded away is what the button says: projects with an *error*, and
-// ones excluded on purpose. A warning is not an error — a repo with no
+// ones the operator has locked. A warning is not an error — a repo with no
 // CLAUDE.md or one whose environment block has drifted still works, and hiding
 // it would bury the very thing the amber text is asking for. The only thing
 // never listed at all is an empty directory, which the server drops: it is not
 // a problem to fix but a mount point waiting for content.
-const isBroken = p => p.issues.some(i => i.level === "error" || i.level === "excluded");
+const isBroken = p => p.issues.some(i => i.level === "error");
 
 let showAllProjects = false;
 
-// What the fold-away button says: the count of each kind, because "projects
-// with errors (2)" was wrong about half of what it was hiding — an excluded
-// project is a decision, not a fault, and an operator looking at that number
-// deserves to know which it is before pressing anything.
-const isExcluded = p => p.excluded || p.issues.some(i => i.level === "excluded");
+// What the fold-away button says. It used to have to split its count two
+// ways, because half of what it hid was excluded — a decision — and half was
+// broken. Only the second kind exists now, so it says the one thing.
 function hiddenLabel(flagged){
-  const excl = flagged.filter(isExcluded).length;
-  return [excl ? `Excluded (${excl})` : "",
-          flagged.length - excl ? `Error (${flagged.length - excl})` : ""]
+  return [flagged.length ? `Error (${flagged.length})` : ""]
          .filter(Boolean).join(" / ");
 }
 
@@ -4298,8 +4338,6 @@ function wireProjectRows(root){
   root.querySelectorAll("[data-s]").forEach(b => b.onclick = () => newShell(b.dataset.s));
   root.querySelectorAll("[data-l]").forEach(b => b.onclick = () => openLinkProject(b.dataset.l));
   root.querySelectorAll("[data-m]").forEach(b => b.onclick = () => openNotebook(b.dataset.m));
-  root.querySelectorAll("[data-x]").forEach(b => b.onclick = () =>
-    setExcluded(b.dataset.x, b.dataset.on === "1"));
   root.querySelectorAll("[data-k]").forEach(b => b.onclick = () =>
     setLocked(b.dataset.k, b.dataset.on === "1"));
   root.querySelectorAll("[data-p]").forEach(b => b.onclick = () =>
@@ -4319,18 +4357,24 @@ function wireProjectRows(root){
 // walks the session list, and doing that once per project turned a redraw
 // into O(projects x sessions) for no gain.
 function projectRow(p, live, cls, inTab){
+  const nb = nbOpen(p.name);
   return `
-    <div class="row stack2${p.excluded ? " off" : ""}" data-row="${esc(p.name)}">
+    <div class="row stack2" data-row="${esc(p.name)}">
       <div class="grow">
-        <div class="name">${esc(p.name)}</div>
+        <div class="name">${esc(p.name)}${p.locked
+          // After the name, because it is a fact about the project rather
+          // than a control: the row reads "StreamLift, locked" at a glance
+          // without hunting for which of six icons is lit.
+          ? ` <span class="lockmark" aria-label="locked" data-tip="locked — you run this one">${LOCK}</span>`
+          : ""}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
           p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
-        ${p.issues.map(i => i.action && !p.excluded
+        ${p.issues.map(i => i.action && !p.locked
           // An issue with a fix that takes no decisions says so, and is the
           // control that applies it — underlined, because a line you can click
-          // should look like one. Not on an excluded project: nothing acts on
-          // one of those until it is let back in, and a link that would refuse
-          // is worse than plain text saying what is wrong.
+          // should look like one. Not on a locked project: writing a CLAUDE.md
+          // into one is exactly what locking refuses, and a link that would be
+          // turned down is worse than plain text saying what is wrong.
           ? `<div class="sub ${cls[i.level] || ""}"><a href="#" class="fix"
                data-fix="${esc(i.action)}" data-proj="${esc(p.name)}"
                title="runs bb claude-md ${i.action === "claude-md-init" ? "--init" : "--update"
@@ -4356,10 +4400,13 @@ function projectRow(p, live, cls, inTab){
         ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
              title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
         : ""}
-      ${isBroken(p) ? "" : `<button class="eye${nbOpen(p.name) ? " on acc" : ""}"
+      ${isBroken(p) ? "" : `<button class="eye${nb ? " on acc" : ""}"
          data-m="${esc(p.name)}" aria-label="notebook"
-         title="${nbOpen(p.name) ? "notebook — open, go to its tab"
-                : "notebook — roadmap, memory and bugs for this project"}">${BOOK}</button>`}
+         title="${p.locked
+                   ? (nb ? "notebook — open, go to its tab. Read-only: this project is locked"
+                         : "notebook — readable while this project is locked, not writable")
+                 : nb ? "notebook — open, go to its tab"
+                 : "notebook — roadmap, memory and bugs for this project"}">${BOOK}</button>`}
       <button class="eye" data-rn="${esc(p.name)}" aria-label="settings"
         title="settings — the name, which credential its remote uses, and what
 Claude runs on here. Renaming moves the directory and everything keyed to its
@@ -4369,15 +4416,11 @@ CI logs, and Claude's own transcripts and memories">${GEAR}</button>
         data-on="${p.locked ? "0" : "1"}"
         aria-label="${p.locked ? "unlock" : "lock"}"
         title="${p.locked
-          ? "unlock — let Claude sessions start here again"
-          : "lock — keep this project and run it yourself: no Claude session "
-            + "starts here. Your own controls all still work"}"
+          ? "unlock — let Claude start sessions here and write its notebook again"
+          : "lock — keep this project and run it yourself. No Claude session "
+            + "starts here and its notebook goes read-only. Everything you do "
+            + "yourself still works: the findings, the artifacts, a dev instance"}"
         >${p.locked ? LOCK : LOCK_OPEN}</button>
-      <button class="eye" data-x="${esc(p.name)}" data-on="${p.excluded ? "0" : "1"}"
-        aria-label="${p.excluded ? "include" : "exclude"}"
-        title="${p.excluded ? "include — allow Claude sessions here again"
-                            : "exclude — block Claude sessions for this directory, and keep it blocked"}"
-        >${p.excluded ? EYE : EYE_OFF}</button>
       ${inTab ? `<button class="eye pin${p.pinned ? " on" : ""}" data-p="${esc(p.name)}"
         data-on="${p.pinned ? "0" : "1"}"
         aria-label="${p.pinned ? "unpin" : "pin"}"
@@ -4406,7 +4449,7 @@ function drawProjects(all){
   // Excluded last: it is not a problem waiting to be fixed like the rest of
   // what is folded away here, it is a decision already made.
   const shown   = (showAllProjects ? ps : ps.filter(p => !isBroken(p)))
-                  .slice().sort((a, b) => (a.excluded ? 1 : 0) - (b.excluded ? 1 : 0));
+                  .slice();
 
   // At the foot of the card, not the header: headers hold nothing but the
   // title, because the whole header is the collapse control and drag handle.
@@ -4436,7 +4479,7 @@ function drawProjects(all){
     return;
   }
 
-  const cls = {error:"bad", warning:"warn", excluded:"off"};
+  const cls = {error:"bad", warning:"warn", locked:"locked"};
   const live = liveSessions();
   // A clone or a first push, drawn where its result will appear. An ellipsis
   // rather than a percentage: git's progress is a carriage-return animation
@@ -5063,7 +5106,7 @@ function renderProjectsInto(i){
     return;
   }
   const live = liveSessions();
-  const cls = {error:"bad", warning:"warn", excluded:"off"};
+  const cls = {error:"bad", warning:"warn", locked:"locked"};
   // Pinned first, then by name: the sidebar's order, so moving between the two
   // does not mean finding everything again. Sorted here rather than by the
   // server, which reports the directory order every other reader wants.
@@ -7491,7 +7534,7 @@ $("todoRevert").onclick = revertNotebook;
     // The host is this page's own address, which is the honest answer to
     // "where do I reach that port": the dashboard and the published port are
     // on the same machine, and this is the name the operator got there by.
-    const devPorts = da.ports || [], devMounts = da.mounts || [];
+    const devPorts = da.ports || [];
     // A way in. One published port is a link straight there; several is a
     // question, and the answer is the operator's — nothing here knows which
     // of them is the web UI, and Unraid does not either: its own tab reads a
@@ -7503,14 +7546,12 @@ $("todoRevert").onclick = revertNotebook;
     const devUrl = p => `http://${location.hostname}:${p.published}/`;
     const devWeb = da.running && devTcp.length === 1 ? devUrl(devTcp[0]) : "";
     const devAsk = da.running && devTcp.length > 1;
-    // Not behind a fold. These are what the instance IS — where it answers and
-    // what it can see — and a fold is for the thing you occasionally want,
-    // not the thing you came to read.
-    const devWiring =
-      devPorts.map(p => `<div class="dim li">${esc(p.target)}:${esc(p.proto)} ← ${
-        esc(location.hostname)}:${esc(p.published || "picked at start")}</div>`).join("")
-      + devMounts.map(m => `<div class="dim li">${esc(m.target)} ${
-        m.ro ? "←" : "↔"} ${esc(m.source)}</div>`).join("");
+    // The ports and mounts used to be listed here, unfolded, on the reasoning
+    // that they are what the instance IS. They are — and this is no longer the
+    // screen that runs it. Building, bringing up and taking down all moved to
+    // the Docker manager, where every container of every project lives; a
+    // second copy of a container's wiring on the tab you send it FROM is a
+    // thing to keep in step for no reader. The manager's rows fold it open.
     // One line each, never a run-on joined by semicolons. These are separate
     // facts about separate services and reading them is the whole point.
     const devLines = (label, items, cls) => !items?.length ? "" :
@@ -7536,8 +7577,13 @@ $("todoRevert").onclick = revertNotebook;
                 da.changed_why === "moved" ? " — the code has moved since"
                 : da.changed_why === "dirty"
                   ? " — uncommitted changes are not in it" : ""}`
-            : "never built — Build makes the first image"}</div>
-          ${devWiring}
+            // Nothing, where it used to say "never built — Build makes the
+            // first image". That sentence named a button this screen no longer
+            // has: building moved to the Docker manager with the rest of the
+            // running controls, and an instruction pointing at a control that
+            // is not here is worse than silence. The states that remain are
+            // facts about THIS project's build, which is what this tab is for.
+            : ""}</div>
           ${devLines("will not work as written", da.problems, "bad")}
           ${devLines("asks for more than its own directory", da.risks, "risk")}
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
@@ -8454,6 +8500,7 @@ $("rnTokenClear").onclick = () => {
   rnDrawAuth();                                // token being thrown away
   if (rnClearToken) $("rnToken").focus();
 };
+$("rnAuthNone").onclick = () => rnAuthSet("none");
 $("rnAuthKey").onclick = () => rnAuthSet("ssh");
 $("rnAuthToken").onclick = () => rnAuthSet("https");
 // Typing a token can turn the disabled side on: setting one and switching to
@@ -8551,14 +8598,6 @@ async function setPinned(name, on){
   }catch(e){ notify("could not save the pin: " + e, true); }
 }
 
-// Each icon shows the ACTION, not the state: a struck-through eye on a visible
-// project means "exclude this", a plain eye on an excluded one means "let it
-// back in".
-const EYE_PATH = `<path d="M1 8s2.7-4.5 7-4.5S15 8 15 8s-2.7 4.5-7 4.5S1 8 1 8z"/>
-  <circle cx="8" cy="8" r="2.1"/>`;
-const EYE = `<svg viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}</svg>`;
-const EYE_OFF = `<svg viewBox="0 0 16 16" aria-hidden="true">${EYE_PATH}
-  <path d="M2.5 13.5 13.5 2.5"/></svg>`;
 // A padlock, for a project the operator keeps and runs themselves. Only the
 // shackle differs between the two states — the body stays put — so which one
 // a row is wearing reads at a glance without comparing it to its neighbours.
@@ -8685,30 +8724,6 @@ function placeResumeMenu(){
   m.querySelector("[data-n]").onclick = () => startClaude(p.name, null);
 }
 
-async function setExcluded(name, on){
-  if (on && !confirm(`Exclude ${name}?\n\nNo Claude session will be able to start `
-        + `here, and any running one ends now. A shell is still available, and `
-        + `Include reverses this.`)) return;
-  try{
-    const r = await fetch("/api/exclude", {method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({name, excluded:on})});
-    const j = await r.json();
-    if (j.error){ notify(j.error, true); return; }
-    // The server ends a running session when excluding; drop its tab too, or
-    // the page keeps offering a terminal onto something that is gone.
-    if (j.killed){
-      const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === j.killed);
-      if (t) dropTab(t.id);
-    }
-    const apply = p => { p.excluded = (j.excluded || []).includes(p.name); };
-    // Both directions here: excluding folds the row away behind Show excluded,
-    // and including brings it back up the list from the bottom — each is a row
-    // moving out of where the eye last had it.
-    leaveRow(name, apply);
-  }catch(e){ notify("exclude failed: " + e, true); }
-  refresh();
-}
 
 // Locking is the same write and the same session-ending as excluding, and the
 // confirmation says the one thing that is different: the row survives whole.
@@ -8716,9 +8731,11 @@ async function setExcluded(name, on){
 // make clear it is not the other button.
 async function setLocked(name, on){
   if (on && !confirm(`Lock ${name}?\n\n`
-        + `No Claude session will start here, and any running one ends now. `
-        + `Everything else stays: the notebook, the artifacts, the dev `
-        + `instance and a shell are all still yours. Unlock reverses this.`)) return;
+        + `No Claude session will start here, any running one ends now, and its `
+        + `notebook goes read-only — no roadmap, bugs or memories can be `
+        + `changed while it is locked, and no CLAUDE.md written into it.\n\n`
+        + `Everything you do yourself still works: a shell, the findings and `
+        + `their history, the artifacts, a dev instance. Unlock reverses it.`)) return;
   try{
     const r = await fetch("/api/lock", {method:"POST",
       headers:{"Content-Type":"application/json"},
@@ -8833,14 +8850,7 @@ function rnDrawAuth(){
   const canToken = stored || typed;
   const canKey = rnAuthOpts.ssh;
 
-  // The stored token is closed rather than editable: it cannot be shown (only
-  // its file has it) and typing over an invisible value is how you replace a
-  // working credential by accident. Clearing opens it.
   const closed = stored && !rnClearToken;
-  // Only a stored token closes the field. Closing it when NEITHER credential
-  // is available reads as the tidier rule and is a dead end: typing a token is
-  // the one way out of that state, and a project cloned over https whose token
-  // was cleared would have no way back to pushing at all.
   $("rnToken").disabled = closed;
   $("rnToken").placeholder = closed ? "stored — cleared below to replace it"
                                     : "ghp_… or github_pat_…";
@@ -8849,47 +8859,53 @@ function rnDrawAuth(){
     ? "Keep the stored token after all"
     : "Clear the stored token, and type another";
 
-  // Nothing left to authenticate with. Not an error — a project can be worked
-  // on perfectly well without pushing — so it is stated rather than refused,
-  // and both sides go quiet because neither is a choice any more.
-  if (!canToken && !canKey){
-    $("rnAuthField").hidden = false;
-    rnAuthPick = null;
-    $("rnAuthKey").classList.remove("on"); $("rnAuthToken").classList.remove("on");
-    $("rnAuthKey").disabled = $("rnAuthToken").disabled = true;
-    $("rnAuthHint").textContent =
-      "With no deploy key and no token this project cannot push to GitHub. "
-      + "Everything else still works — commit, branch and build locally — and "
-      + "pushing comes back the moment either credential is here.";
-    return;
-  }
-  // A pick that has stopped being available cannot stay lit: clearing the
-  // token while the segment is on it would otherwise leave Save promising an
-  // authentication that no longer exists.
-  if (rnAuthPick === "https" && !canToken) rnAuthPick = canKey ? "ssh" : null;
-  if (rnAuthPick === "ssh" && !canKey) rnAuthPick = canToken ? "https" : null;
   $("rnAuthField").hidden = false;
-  $("rnAuthKey").classList.toggle("on", rnAuthPick === "ssh");
-  $("rnAuthToken").classList.toggle("on", rnAuthPick === "https");
+  // Disabled is always takeable: it is the absence of a credential rather than
+  // the presence of one, and it is the honest answer for a project you want
+  // pushing nowhere for now.
+  $("rnAuthNone").disabled = false;
   $("rnAuthKey").disabled = !canKey;
   $("rnAuthToken").disabled = !canToken;
+  for (const [id, mode] of [["rnAuthNone", "none"], ["rnAuthKey", "ssh"],
+                            ["rnAuthToken", "https"]]){
+    const on = rnAuthPick === mode;
+    $(id).classList.toggle("on", on);
+    $(id).setAttribute("aria-checked", on ? "true" : "false");
+  }
+  // The pick is NOT moved out from under the operator when clearing a token
+  // takes its ground away. It stays where they put it and Save refuses, which
+  // is the difference between being told and being corrected: silently sliding
+  // to another mode is how you end up on a credential you did not choose.
+  const invalid = rnAuthPick === "https" && !canToken;
   const changed = rnAuthPick !== rnAuthNow;
-  $("rnAuthHint").textContent =
-    (rnAuthNow === "ssh"
-      ? "Pushes go out on the deploy key: origin is an ssh remote, so the "
-        + "stored token is never consulted. "
-      : "Pushes authenticate with this project's access token over https. ")
-    + (changed
-        ? (rnAuthPick === "https"
-            ? "Renaming will point origin at https://github.com and use the "
-              + "token. The key and its alias stay where they are."
-            : "Renaming will point origin back at the deploy key. The token "
-              + (rnClearToken ? "is being cleared." : "stays stored and unused."))
+  $("rnAuthHint").classList.toggle("bad", invalid);
+  $("rnAuthHint").textContent = invalid
+    ? "Access token is picked and there will be no token to use. Type a "
+      + "replacement above, keep the stored one, or choose Deploy key or Disabled."
+    : (rnAuthNow === "ssh"
+        ? "Pushes go out on the deploy key: origin is an ssh remote, so a "
+          + "stored token is never consulted. "
+      : rnAuthNow === "https"
+        ? "Pushes authenticate with this project's access token over https. "
+        : "Nothing authenticates here: the remote is https with no token on "
+          + "it, so a push is refused. ")
+      + (changed
+          ? (rnAuthPick === "https"
+              ? "Saving points origin at https://github.com and uses the token. "
+                + "The key and its alias stay where they are."
+            : rnAuthPick === "ssh"
+              ? "Saving points origin back at the deploy key. The token "
+                + (rnClearToken ? "is being cleared." : "stays stored and unused.")
+              : "Saving takes the credential off it: the remote stays, and "
+                + "pushing is refused until you pick one again.")
+        : !canToken && !canKey
+          ? "Nothing is stored to switch to — set a token above, or clone it "
+            + "again with a deploy key."
         : !canToken
           ? "No token is stored for it — set one above and this becomes a choice."
         : !canKey
           ? "It has no deploy-key remote to go back to: it has only ever used https."
-        : "Switching keeps both credentials — nothing is removed either way.");
+        : "Switching keeps every credential it has — nothing is removed either way.");
 }
 
 const rnAuthSet = m => { if (rnAuthPick === m) return; rnAuthPick = m; rnDrawAuth(); };
@@ -8923,6 +8939,12 @@ async function rnSubmit(){
   const running = liveSessions().has(tmuxName("claude-" + name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
+  // The one combination the dialog will not write: authenticating with a token
+  // it is being told to throw away. The hint has been saying so; this is what
+  // makes it true rather than advice.
+  if (rnAuthPick === "https" && !((rnAuthOpts?.token && !rnClearToken) || token))
+    return fail("pick a credential that will exist: there will be no access "
+                + "token after this save");
   // Asked before anything is written, and only when it costs something: a
   // session that is not running has nothing to interrupt, and a dialog that
   // was opened and closed unchanged should never ask at all.
@@ -9056,8 +9078,7 @@ function applyNow(fn){
 const pinRow = (card, name) => card?.querySelector(
   `.row[data-row="${name.replace(/["\\]/g, "\\$&")}"]`);
 
-// The same, for a change that takes a row OUT of the sidebar — unpinning, and
-// excluding, which folds the row away behind Show excluded.
+// The same, for a change that takes a row OUT of the sidebar — unpinning.
 //
 // Done as a fade and a collapse rather than a redraw, because a row vanishing
 // between two frames leaves the eye hunting for what moved: everything below
@@ -9067,7 +9088,7 @@ const pinRow = (card, name) => card?.querySelector(
 //
 // The card's height is animated too, not just the row's — the cards below ride
 // on it, so animating only the row would collapse the gap and then snap the
-// page. slideBody already does that pairing for the Show-excluded toggle.
+// page. slideBody already does that pairing for the Show-broken toggle.
 function leaveRow(name, fn){
   const card = $("projects");
   const row = pinRow(card, name);
@@ -9084,8 +9105,8 @@ function leaveRow(name, fn){
     (state?.projects || []).forEach(fn);
     slideBody(card, () => drawProjects(state?.projects || []));
     drawPanes();
-    // Belt and braces: a row that survived the change (excluding only folds it
-    // away, and Show excluded may be on) must not keep the tween's end state.
+    // Belt and braces: a row that survived the change must not keep the
+    // tween's end state.
     row.style.overflow = ""; row.style.opacity = ""; row.style.height = "";
     void from;
   };

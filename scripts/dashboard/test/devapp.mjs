@@ -98,21 +98,17 @@ const pillIs = async (want) => { await openManager(); return page.waitForFunctio
   [want, DM], { timeout: 20000 }); };
 
 let r = await row();
-ok(/never built/.test(r.text), 'a project with a compose file gets the row, unbuilt');
 ok(await page.$eval('#devRow .top .pill', e => e.textContent.trim()) === 'docker'
    && /^bbdev-/.test(await page.$eval('#devRow .top b', e => e.textContent.trim())),
-   '...shaped like the file rows: kind on the pill, its own name in bold');
-// The ports and the mounts, in the notation Unraid writes them in — container
-// side left, host side right, and the arrow saying which way it goes. Read off
-// the resolved compose config, so a path built out of variables shows as the
-// value rather than as the spelling.
-const wiring = await page.$$eval('#devRow .grow > .dim.li',
-  els => els.map(e => e.textContent.trim()));
-ok(wiring[0] === `7474:TCP ← ${new globalThis.URL(URL).hostname}:7475`,
-   '...the published port against the address this page was reached at');
-ok(wiring[1] === '/library ← /mnt/user/plex-media'
-   && wiring[2] === '/config ↔ /mnt/user/appdata/x/config',
-   '...and one arrow for a read-only mount, two for a writable one');
+   'a project with a compose file gets the row: kind on the pill, its own name in bold');
+// What the row does NOT say any more. The build state and the wiring were here
+// while this screen ran the container; building, Up and Down all live in the
+// Docker manager now, and a second copy of a container's ports and mounts on
+// the tab you send it FROM is a thing to keep in step for no reader.
+ok(!/never built/.test(r.text),
+   '...and says nothing where it used to name a Build button this screen no longer has');
+ok(await page.$$eval('#devRow .grow > .dim.li', els => els.length) === 0,
+   '...nor its ports and mounts, which the manager folds open per container');
 // The single published port earns a link. Not before it is up: a link to a
 // port with nothing behind it is a broken link.
 ok(!await page.$('#devRow a.btn'),
@@ -170,9 +166,15 @@ ok(/builds the image first, as compose does/.test(
 // First build: build → down → up, and the argv trail proves the shape.
 // (newPage auto-accepts dialogs and records them — no handler of our own.)
 await dmClick('rebuild');
+// Watched on the MANAGER's row, which is where a container's state lives now.
+// The Artifacts row used to carry it and no longer does — building and running
+// moved here, and the state moved with them.
+// A running instance says so and counts its containers; "built from <sha>" is
+// what it says when it is NOT running, so waiting for both at once waits for a
+// state that cannot exist. The argv trail below is what proves the build ran.
 await page.waitForFunction(() => {
   const e = document.querySelector('#devRow');
-  return e && /running/.test(e.textContent) && /built from [0-9a-f]{7}/.test(e.textContent);
+  return e && /built from [0-9a-f]{7}/.test(e.textContent);
 }, { timeout: 30000 });
 const log = dockerLog();
 ok(/compose --project-name bbdev-ep-silon-main .*build/.test(log)
@@ -214,8 +216,8 @@ await page.waitForSelector('.nbtabs [data-v="artifacts"]:visible', { timeout: 20
 await page.click('.nbtabs [data-v="artifacts"]:visible');
 await page.waitForSelector('#devRow', { state: 'attached', timeout: 20000 });
 r = await row();
-ok(/never built/.test(r.text),
-   'a record from another daemon reads as never built here, not as built there');
+ok(!/built from/.test(r.text),
+   'a record from another daemon does not read as built here');
 ok(await page.$eval(`${DM} [data-dm="rebuild"]`, e => e.textContent.trim())
    === 'Build',
    '...so the button offers Build, which is what pressing it would do');

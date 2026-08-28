@@ -213,8 +213,7 @@ _KEYED = {
 }
 
 # Files holding a flat list of project names.
-_LISTED = ["excluded-projects.json", "locked-projects.json",
-           "pinned-projects.json"]
+_LISTED = ["locked-projects.json", "pinned-projects.json"]
 
 
 def _rename_in_json(path, old, new):
@@ -353,7 +352,7 @@ def rename(req):
     clear = bool(req.get("clear_token")) and not token
     if not old or not PROJECT_NAME.fullmatch(old):
         return {"error": "unknown project"}, 400
-    if auth and auth not in ("https", "ssh"):
+    if auth and auth not in ("https", "ssh", "none"):
         return {"error": "that is not an authentication mode"}, 400
     src = WORKSPACE / old
     if not src.is_dir():
@@ -609,19 +608,41 @@ def origin_url(dest):
     return r["out"].strip() if r["code"] == 0 else ""
 
 
-def remote_auth(dest):
-    """"https", "ssh", or "" — what origin's spelling means for credentials.
+def scoped_to_token(dest, project):
+    """Is this repository actually pointed at its own stored token?
+
+    An https remote with no helper naming that file authenticates with nothing
+    — which is a real state and a deliberate one, not a broken version of
+    having a token. Telling the two apart is what lets the dialog offer
+    "disabled" as its own answer rather than as the absence of an answer.
+    """
+    f = STATE / "gitcreds" / project
+    if not f.is_file():
+        return False
+    r = run(["git", "-C", str(dest), "config", "--local",
+             "--get-all", "credential.helper"], timeout=15)
+    return r["code"] == 0 and f"store --file={f}" in r["out"]
+
+
+def remote_auth(dest, project=""):
+    """"ssh", "https", "none", or "" — what actually authenticates here.
 
     The question is not which host: a deploy-key setup addresses GitHub through
     a `bb-<key>` alias, so the hostname is not github.com and it is still ssh.
     What decides it is the URL's form, which is exactly what git looks at when
     it decides whether a credential helper is involved at all.
+
+    "none" is an https remote with no token behind it. It is a third state and
+    not a half-broken second one: an operator who wants this project to push
+    nowhere for now can say so, and the dialog can then refuse to Save its way
+    into that state by accident — which is what clearing a token while the
+    switch still said "access token" used to do.
     """
     url = origin_url(dest)
     if not url:
         return ""
     if url.startswith(("https://", "http://")):
-        return "https"
+        return "https" if (project and scoped_to_token(dest, project)) else "none"
     if url.startswith("ssh://") or (":" in url and "://" not in url):
         return "ssh"
     return ""
@@ -651,13 +672,16 @@ def _remember_ssh(project, url):
 
 
 def auth_options(project, dest):
-    """What this project could authenticate with, for the rename dialog.
+    """What this project could authenticate with, for the settings dialog.
 
-    `now` is what it uses; `token` and `ssh` are whether the other one is even
-    available, so the dialog can show a choice that is real. An option nobody
-    can take is worse than no option: it reads as a thing that is broken.
+    `now` is what it uses — including "none", an https remote with no token
+    behind it. `token` and `ssh` say whether the other answers are even
+    available, so the dialog can show a choice that is real: an option nobody
+    can take is worse than no option, because it reads as a thing that is
+    broken. "Disabled" is always available, being the absence of a credential
+    rather than the presence of one.
     """
-    now = remote_auth(dest)
+    now = remote_auth(dest, project)
     return {"now": now,
             "token": bool(token_helper(project)),
             # Either it is on ssh already, or it was and we kept the URL. A
@@ -668,18 +692,29 @@ def auth_options(project, dest):
 
 
 def set_auth(project, dest, mode):
-    """Point origin at https or back at ssh. Returns (message, error)."""
-    now = remote_auth(dest)
-    if mode not in ("https", "ssh"):
+    """Point origin at a credential, or at none. Returns (message, error).
+
+    Three answers, not two. "none" is what an operator picks to turn pushing
+    off deliberately — the remote is left in its https form and the helper is
+    taken off it, so git has nothing to authenticate with and says so, rather
+    than quietly falling back on whatever else it can find.
+    """
+    now = remote_auth(dest, project)
+    if mode not in ("https", "ssh", "none"):
         return "", "that is not an authentication mode"
     if not now:
         return "", "this project has no origin remote to switch"
     if mode == now:
         return "", ""                       # already there; not worth an error
-    if mode == "https":
-        if not token_helper(project):
-            return "", ("there is no access token stored for this project — "
-                        "set one in the same dialog and it can use it")
+    if mode == "https" and not token_helper(project):
+        return "", ("there is no access token stored for this project — "
+                    "set one in the same dialog and it can use it")
+    if mode == "ssh":
+        url = _remembered_ssh(project)
+        if not url:
+            return "", ("this project has no deploy-key remote to go back to "
+                        "— it has only ever used https")
+    else:
         # As written, NOT folded: repo_of_remotes lowercases for comparison,
         # and building the URL with that turned Stencil-Projects/BuilderBot
         # into stencil-projects/builderbot in the operator's own remote. GitHub
@@ -689,13 +724,9 @@ def set_auth(project, dest, mode):
         if not repo:
             return "", "could not read owner/repo from this project's remote"
         # Remembered BEFORE the rewrite, or switching back has nothing to go on.
-        _remember_ssh(project, origin_url(dest))
+        if now == "ssh":
+            _remember_ssh(project, origin_url(dest))
         url = f"https://github.com/{repo}.git"
-    else:
-        url = _remembered_ssh(project)
-        if not url:
-            return "", ("this project has no deploy-key remote to go back to "
-                        "— it has only ever used https")
     r = run(["git", "-C", str(dest), "remote", "set-url", "origin", url],
             timeout=15)
     if r["code"] != 0:
@@ -705,7 +736,10 @@ def set_auth(project, dest, mode):
         # still ssh would have looked like it did something and done nothing.
         _scope_to_token(dest, token_helper(project))
         return "it now authenticates with its access token", ""
-    return "it now authenticates with its deploy key", ""
+    if mode == "ssh":
+        return "it now authenticates with its deploy key", ""
+    unscope(dest)
+    return "it authenticates with nothing now — pushing is off", ""
 
 
 def drop_push(project):

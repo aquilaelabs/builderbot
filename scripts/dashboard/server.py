@@ -299,15 +299,19 @@ def field_list(req, key):
 CVE_RE = re.compile(r"CVE-\d{4}-\d{4,7}")
 REPORTS = Path(os.environ.get("FINDINGS_DIR", "/reports"))
 
-# Excluded projects live on the /config volume so the list survives the image
+# Locked projects live on the /config volume so the list survives the image
 # updates this container is built to expect. bb-tty reads the same file — a
 # rule only the dashboard honored would be advice, since the terminal URL is
 # reachable on its own.
-EXCLUDES_FILE = STATE / "excluded-projects.json"   # STATE is set up top
-# Locked is exclude's sibling, not a stronger form of it. Excluded means
-# "this is not a project, stop showing it work"; locked means "this one is
-# mine to run" — the row stays whole, the operator keeps every control, and
-# the only thing that goes is a session starting here.
+#
+# There used to be two of these. "Excluded" meant "this is not a project, stop
+# showing it work" and locked meant "this one is mine to run", and the operator
+# found the distinction too fine to be worth two buttons that looked alike and
+# sat next to each other. Locked is the survivor and it carries the whole
+# meaning now: no session starts here, the notebook is readable but not
+# writable, and nothing may be created in the project on Claude's behalf. What
+# it does NOT touch is everything the operator does themselves — the artifacts,
+# a dev instance, the findings and their history.
 LOCKS_FILE = STATE / "locked-projects.json"
 # Which projects the sidebar card shows. A THIRD axis, and independent of the
 # other two: pinning says nothing about what may run, only about what is worth
@@ -600,18 +604,6 @@ def save_pins(names):
     write_json(PINS_FILE, sorted(set(names)))
 
 
-def load_excludes():
-    try:
-        v = json.loads(EXCLUDES_FILE.read_text())
-        return sorted({x for x in v if isinstance(x, str)}) if isinstance(v, list) else []
-    except (OSError, ValueError):
-        return []
-
-
-def save_excludes(names):
-    write_json(EXCLUDES_FILE, sorted(set(names)))
-
-
 def load_locks():
     try:
         v = json.loads(LOCKS_FILE.read_text())
@@ -841,14 +833,40 @@ def parse_sarif(path, known, nonproject=frozenset()):
     return {"file": path.name, "tool": " + ".join(tools) or "?", "findings": rows}
 
 
+# What a locked project refuses, in one place.
+#
+# The button being hidden is not the rule; this is. The dashboard's own URLs
+# are reachable without it, so a lock enforced only by a missing control is
+# advice — the same reasoning that put the lock file where bb-tty can read it
+# rather than keeping it in the page.
+#
+# READS are never refused, and the list of what stays is the point of the
+# feature: the notebook opens, the findings and their history are there, the
+# artifacts list and a dev instance still work. What goes is everything that
+# writes on Claude's behalf — the notebook's three tabs, and creating or
+# refreshing a CLAUDE.md, which is a file put into somebody else's project.
+LOCKED_REFUSAL = ("{name} is locked — yours to run. Unlock it to change its "
+                  "notebook or its CLAUDE.md; everything you read here still "
+                  "works while it stays locked.")
+
+
+def locked_out(name):
+    """The refusal for a write into a locked project, or None."""
+    if name and name in set(load_locks()):
+        return {"error": LOCKED_REFUSAL.format(name=name)}
+    return None
+
+
 def _valid_projects(ps):
-    """The projects whose findings are worth surfacing: not excluded, and no
-    error-level issue. A repo that is broken or deliberately shut out gets
-    triaged in the Projects card first — its findings would only pad the
-    numbers for code nobody can currently work on."""
+    """The projects whose findings are worth surfacing: no error-level issue.
+
+    A repo that is broken gets triaged in the Projects card first — its
+    findings would only pad the numbers for code nobody can currently work on.
+    A LOCKED one is not in that category and never was: locking says who runs
+    it, not whether its code is worth reading about, and the operator asked
+    for the analysis to keep working on a locked project."""
     return {p["name"] for p in ps
-            if not p["excluded"]
-            and not any(i["level"] == "error" for i in p["issues"])}
+            if not any(i["level"] == "error" for i in p["issues"])}
 
 
 def findings_payload():
@@ -859,7 +877,7 @@ def findings_payload():
     files = sorted(f for f in REPORTS.glob("*.sarif")) + \
             sorted(f for f in REPORTS.glob("*.sarif.json"))
     # Only the projects worth reading findings for get attributed to: listed,
-    # not excluded, no error-level issue. Everything else under the share —
+    # no error-level issue. Everything else under the share —
     # a project shut out, one that is broken, the SDK share, a directory
     # nobody has explained — attributes to IGNORED and is counted aside.
     #
@@ -1161,7 +1179,6 @@ def project_list():
             return out
     except OSError:
         pass                    # unreadable: reported by the listing below
-    excluded = set(load_excludes())
     locked = set(load_locks())
     pins = load_project_pins()
     stopped = last_stop()
@@ -1174,7 +1191,7 @@ def project_list():
     except OSError:
         # A workspace this user cannot list is a mount to fix, not a reason for
         # the runner card and the terminal to stop working too.
-        return [{"name": str(WORKSPACE), "git": None, "excluded": False,
+        return [{"name": str(WORKSPACE), "git": None,
                  "last_claude": None,
                  "issues": [{"level": "error",
                              "text": f"cannot list this directory as uid {uid}:{gid}"
@@ -1293,18 +1310,17 @@ def project_list():
         # Every directory is still reported. The dashboard decides what to show,
         # and SARIF paths are attributed by matching these names — dropping one
         # here would silently orphan its findings.
-        if d.name in excluded:
-            issues.append({"level": "excluded",
-                           "text": "excluded — no Claude session can start here"})
-        elif d.name in locked:
-            # Said differently from excluded on purpose: the two block the same
-            # thing and mean opposite things about the directory. One is "not a
-            # project"; this one is "a project somebody else runs".
+        if d.name in locked:
+            # The one gate there is. It says who runs this directory, not that
+            # anything is wrong with it — which is why it is a level of its own
+            # and never an error: the row keeps every control the operator uses
+            # themselves, and only the ones that act on Claude's behalf go.
             issues.append({"level": "locked",
-                           "text": "locked — yours to run; no Claude session starts here"})
+                           "text": "locked — yours to run; no Claude session, "
+                                   "and the notebook is read-only"})
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
-                    "claude_md": has_md, "excluded": d.name in excluded,
+                    "claude_md": has_md,
                     "locked": d.name in locked,
                     "pinned": True if pins is None else d.name in pins,
                     # Whether it carries its own access token — so the rename
@@ -1317,7 +1333,7 @@ def project_list():
                     # like every other field it shows.
                     "prefs": project_prefs.get(d.name, {"model": "", "effort": ""}),
                     "push_how": projects.push_how(d.name),
-                    "last_claude": None if d.name in excluded else last_claude(d, d.name, stopped),
+                    "last_claude": last_claude(d, d.name, stopped),
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
                     "memories": memory.count(d.name),
@@ -2656,8 +2672,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "bad request"}, 400)
 
         path = self.path.split("?")[0]
-        if path.startswith("/api/exclude"):
-            return self._exclude(req)
         if path.startswith("/api/lock"):
             return self._lock(req)
         # NOT /api/pin, which is the command pin and has been since long before
@@ -2806,6 +2820,10 @@ class Handler(BaseHTTPRequestHandler):
         if name not in {p["name"] for p in project_list()}:
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
+        # "send" is a write to the roadmap (it marks a step sent) and starts a
+        # session's turn, so it goes with the rest.
+        if (bad := locked_out(name)):
+            return self._json(bad, 409)
         live = [s["name"] for s in tmux_sessions()]
         if act in ("tell", "save"):
             # Two Saves, one difference: whether a line of the conversation is
@@ -3152,6 +3170,8 @@ class Handler(BaseHTTPRequestHandler):
         if name not in {p["name"] for p in project_list()}:
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
+        if (bad := locked_out(name)):
+            return self._json(bad, 409)
         fields = {k: field(req, k) for k in ("title", "area", "repro",
                                              "expected", "actual", "notes")}
         if act == "add":
@@ -3195,6 +3215,8 @@ class Handler(BaseHTTPRequestHandler):
         """
         act = field(req, "action")
         proj, file = field(req, "project"), field(req, "file")
+        if (bad := locked_out(proj)):
+            return self._json(bad, 409)
         if act == "save":
             r = memory.save(proj, file, field(req, "text"))
         elif act == "index":
@@ -3348,6 +3370,10 @@ class Handler(BaseHTTPRequestHandler):
         name, action = req.get("name", ""), req.get("action", "update")
         if action not in ("update", "init"):
             return self._json({"error": "unknown action"}, 400)
+        # A locked project does not get a file written into it on Claude's
+        # behalf, which is what both of these are.
+        if (bad := locked_out(name)):
+            return self._json(bad, 409)
         try:
             here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
         except OSError:
@@ -3429,39 +3455,6 @@ class Handler(BaseHTTPRequestHandler):
             # Re-read so the caller gets exactly what every other client will
             # see, including anything the validator dropped.
             return self._json(load_layout())
-
-    def _exclude(self, req):
-        """Add or remove a project from the exclusion list.
-
-        Names are checked against the directories that actually exist, so this
-        cannot be used to write arbitrary strings into a file another script
-        reads — and excluding something that has since been unmounted is a
-        no-op rather than a permanent stale entry.
-        """
-        name, on = req.get("name", ""), bool(req.get("excluded"))
-        try:
-            here = {d.name for d in WORKSPACE.iterdir() if d.is_dir()}
-        except OSError:
-            here = set()
-        if name not in here:
-            return self._json({"error": f"unknown project: {name}"}, 400)
-        with _state_lock:
-            names = set(load_excludes())
-            names.add(name) if on else names.discard(name)
-            try:
-                save_excludes(names)
-            except OSError as e:
-                return self._json({"error": f"could not save: {e}"}, 500)
-
-        # An excluded project must not keep a live session running — leaving one
-        # attached would mean the exclusion takes effect only next time, which
-        # is not what a button labeled "exclude" implies.
-        killed = None
-        sess = tmux_name(f"claude-{name}")
-        if on and sess in {s["name"] for s in tmux_sessions()}:
-            run(["tmux", "kill-session", "-t", sess], timeout=10)
-            killed = sess
-        return self._json({"excluded": sorted(names), "killed": killed})
 
     def _lock(self, req):
         """Lock or unlock a project: keep it, stop Claude running in it.

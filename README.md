@@ -1127,10 +1127,12 @@ lives in its body. The cards:
   **Edits land for the next session**, the same rule `bb claude-md` follows:
   the index is read at startup, and a running session is holding what it read
   then — which is what Save tells it, in the one line it spends
-- an **eye** per project, which excludes it: persists across restarts and
-  blocks Claude sessions for that directory — see below. A row that is excluded
-  or has an error carries **no Claude button at all**, because a session cannot
-  start there; **Shell** stays, since that is often how you would fix it
+- a **padlock** per project, which locks it: no Claude session starts there
+  and its notebook goes read-only — see below. A locked row keeps every
+  control, with its Claude button ghosted rather than removed and a closed
+  padlock after the name; a row with a repo *error* carries no Claude button at
+  all, because a session cannot start there. **Shell** stays either way, since
+  that is often how you would fix it
 - a **thumbtack** per project, which decides whether the sidebar shows it at
   all. Unpinning takes a project off this card and nothing else: it keeps every
   control on the **All projects** tab at the foot of the card, which lists
@@ -1222,8 +1224,9 @@ container.
   files' mtime, so you never triage stale findings. The sidebar card carries
   the headline: one row per project with its counts by severity, so "whose
   code, how bad" is answered without opening the report. Both leave out
-  projects that are excluded or have repo errors — those get fixed in the
-  Projects card first — and the report says how many findings that held back
+  projects with repo errors — those get fixed in the Projects card first, and
+  a *locked* one is not in that category — and the report says how many
+  findings that held back
   rather than quietly shrinking
 - a **Stop / Start** toggle for the runner, showing whichever one applies.
   Stopping waits for GitHub to release the runner's session rather than
@@ -1776,8 +1779,8 @@ project alone, worst level first, read-only — the scan runs on the host, and
 `bb findings` reads the same digest in a terminal. The whole-report findings
 tab is gone; the Static analysis card's per-project rows are the way in now,
 each opening its project's notebook on this view. Findings whose paths
-resolve into anything other than a **valid** project — one that is listed, not
-excluded, and free of error-level issues — are counted and set aside rather
+resolve into anything other than a **valid** project — one that is listed and
+free of error-level issues; a locked one still counts — are set aside rather
 than shown as "unattributed". The label is reserved for paths that genuinely
 place nowhere, which is the case worth a look.
 
@@ -1912,7 +1915,7 @@ so, in the prompt and in the pane: one argument cannot exceed the kernel's
 131072 bytes, and a list that big has outgrown being read at the start of every
 conversation anyway.
 
-The list lives in `/config/todos.json`, beside the tab strip and the excluded
+The list lives in `/config/todos.json`, beside the tab strip and the locked
 projects — deliberately **not** in the repository. A list like this churns far
 faster than commits, and a checkbox tapped on a phone should not turn into an
 uncommitted change. Anything that deserves to be permanent graduates out of it:
@@ -2286,21 +2289,6 @@ that goes looking: Bash still reaches the whole filesystem, and no in-process
 permission system changes that. If you need a hard boundary, do not mount the
 other projects into the same container.
 
-### Excluding a project
-
-The **eye** on a project row blocks Claude sessions for that directory — a
-struck-through eye excludes it, a plain eye lets it back in. The
-list lives in `/config/excluded-projects.json`, so it survives restarts and
-image updates, and it is enforced by the terminal launcher rather than the
-page — the ttyd URL is reachable on its own, so a rule only the UI honored
-would be advice. Specifically, excluding a project:
-
-- refuses `claude:<project>` at launch, with a message saying why
-- ends any Claude session already running there, rather than taking effect
-  "next time"
-- folds the row away behind **Show projects with errors**, and puts it at the
-  *bottom* of that list — an exclusion is a decision already made, not a problem
-
 ### Push rights
 
 A clone is read-only unless you tick **I want to push to this repository**, and
@@ -2349,12 +2337,22 @@ does not switch anything by itself: git never asks a credential helper about an
 ssh remote, so a project with an `ssh://` or `git@` origin goes on using its
 key however many tokens are stored for it.
 
-The **Authentication** segment beside that field is what changes it. It shows
-which credential the remote actually reaches for — *Deploy key* or *Access
-token* — and lets you move between them; the change is applied when you press
-Rename, which is also how a token typed in the same dialog gets written before
-the switch that needs it. Under the hood it is one `git remote set-url`,
-between `git@…:owner/repo.git` and `https://github.com/owner/repo.git`.
+The **Authentication** segment beside that field is what changes it. Three
+answers, not two: *Disabled*, *Deploy key* and *Access token*. It shows which
+one the remote actually reaches for and lets you move between them; the change
+is applied when you press Save, which is also how a token typed in the same
+dialog gets written before the switch that needs it. Under the hood it is one
+`git remote set-url`, between `git@…:owner/repo.git` and
+`https://github.com/owner/repo.git`, plus the credential helper.
+
+*Disabled* is a real answer rather than the absence of one — the remote keeps
+its https form and the helper comes off it, so a push is refused instead of
+quietly falling back on whatever else git can find. It is also what makes the
+dangerous case sayable: **clearing a token while the switch still says
+*Access token* is refused at Save**, in those words. The pick is left exactly
+where you put it and the reason is stated, rather than sliding to another mode
+on your behalf — being corrected without being asked is how you end up on a
+credential you did not choose.
 
 **A stored token is closed, not shown.** Only its file has the value, so the
 field cannot be pre-filled and typing over an invisible one is how a working
@@ -2386,32 +2384,43 @@ where that matters, use a deploy key.
 
 ### Locking a project
 
-The **padlock** beside the eye is the other half of that idea, for a project
-you keep in `/workspace` to *run* rather than to develop — a compose app you
-deploy from the Artifacts tab, say. Locking it refuses `claude:<project>` and
-ends any session already there, exactly as excluding does, and it is enforced
-in the same place and for the same reason; the list lives in
-`/config/locked-projects.json`.
+The **padlock** on a project row is the one gate there is. There used to be two
+— an eye that *excluded* a directory and a padlock that *locked* it — and they
+looked alike, sat next to each other and both ended a session, which is a
+distinction finer than it was worth two buttons. Locked is the survivor and it
+carries the whole meaning.
 
-Everything else is the difference. A locked row is not folded away, not grayed
-out, and keeps every control you use: the notebook, the artifacts and dev
-instance, the version block, the shell. Excluding says *this is not a project*;
-locking says *this one is mine*.
+The list lives in `/config/locked-projects.json`, so it survives restarts and
+image updates, and it is enforced by the terminal launcher and the server
+rather than the page — the ttyd URL is reachable on its own, and so are the
+API paths, so a rule only the UI honored would be advice. Locking a project:
+
+- refuses `claude:<project>` at launch, with a message saying why
+- ends any Claude session already running there, rather than taking effect
+  "next time"
+- makes its notebook **read-only** — the roadmap, the bugs and the memories
+  open and cannot be changed, by you or by anything else
+- refuses to write a `CLAUDE.md` into it, so the `no CLAUDE.md — create one`
+  line stays as plain text rather than being an offer
+
+**What it deliberately does not touch is everything you do yourself.** A locked
+row is not folded away and not grayed out — it is a project you are actively
+running, and dimming it would say the opposite. A closed padlock sits after the
+name so the row reads *"StreamLift, locked"* without hunting for which of six
+icons is lit, and:
+
+- the **shell** still opens, which is how you go and look at it
+- its **static analysis** is still counted and still opens on the Analysis
+  view, with its history: locking says who runs a project, not whether its code
+  is worth knowing about
+- its **artifacts** are still listed, and a **dev instance** still builds and
+  runs — that is usually the reason a project is locked in the first place
+- the **version** block, the settings dialog and the rename all still work
 
 One limit worth stating, because it is the same one the sibling-project rule
 carries: this stops a session **starting here**, and the file tools are already
 denied on every project but a session's own. It is not a sandbox — a session in
 another project can still reach this directory through Bash.
-  waiting for someone
-- grays the row out and takes the click off anything in it. A `no CLAUDE.md —
-  create one` line stays as text, because nothing acts on an excluded project
-  until it is let back in. **Shell** and the **eye** keep their weight: those
-  are how you look at it and how you reverse it
-
-Other projects' sessions were already denied read access to it, the same as to
-any sibling — that comes from the scoping above, not from excluding it.
-
-A shell there is still offered, so you can go and look at what you excluded.
 
 ```
 ENABLE_DASHBOARD=true

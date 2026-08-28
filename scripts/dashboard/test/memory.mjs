@@ -20,8 +20,10 @@ await ready(page);
 // The icon carries the to-do count (todo.mjs covers that); memory rides in
 // the same panel, folded under it.
 const row = n => `#projects .row:has(.name:text-is("${n}"))`;
-ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 0),
-   'an excluded project has no panel: nothing starts there to remember anything');
+// A locked project keeps its notebook — that is the whole difference from
+// the exclusion this replaced, which hid it. It opens read-only.
+ok(await page.$$eval(`${row('delta')} [data-m]`, b => b.length === 1),
+   'a locked project still has a notebook to open');
 
 await page.click(`${row('alpha')} [data-m]`);
 await nbShown(page);

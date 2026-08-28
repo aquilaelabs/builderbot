@@ -23,18 +23,14 @@ set -euo pipefail
 
 target="${1:-shell}"
 
-# Projects the operator has excluded. Shared with the dashboard, which writes
-# it; enforced here, because a rule only the UI honors is a suggestion — the
-# ttyd URL is reachable directly.
-EXCLUDES_FILE="${DASHBOARD_STATE:-/config}/excluded-projects.json"
-
-is_excluded() {
-    [ -f "$EXCLUDES_FILE" ] || return 1
-    jq -e --arg n "$1" 'index($n) != null' "$EXCLUDES_FILE" >/dev/null 2>&1
-}
-
-# Projects the operator keeps but runs themselves. Same file shape, same
-# writer, same reason for being enforced here rather than in the page.
+# Projects the operator keeps but runs themselves. Shared with the dashboard,
+# which writes it; enforced here, because a rule only the UI honors is a
+# suggestion — the ttyd URL is reachable directly.
+#
+# There was a second list beside this one, excluded-projects.json, blocking the
+# same thing for a different reason. Two buttons that looked alike, sat next to
+# each other and both ended a session was a distinction finer than it was worth,
+# so locked is the survivor and carries the whole meaning.
 LOCKS_FILE="${DASHBOARD_STATE:-/config}/locked-projects.json"
 
 is_locked() {
@@ -314,10 +310,6 @@ case "$target" in
                 | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" = false ]; then
             bad "This container is not signed in to Claude." \
                 "Sign in from the dashboard's Doctor card, or run: bb login"
-        fi
-        if is_excluded "$proj"; then
-            bad "'${proj}' is excluded: no Claude session can be started here." \
-                "Clear it from the dashboard's Projects card to allow one again."
         fi
         if is_locked "$proj"; then
             bad "'${proj}' is locked: the operator runs this one, so no Claude" \
