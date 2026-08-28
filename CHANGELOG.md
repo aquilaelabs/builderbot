@@ -71,3 +71,4 @@
 - The Doctor card no longer reports a GPU fault it measured while the container was still starting (eca73da)
 - A restart now recovers the emulator's hardware rendering after the X server has died, instead of skipping it (eca73da)
 - A project with both a deploy key and an access token can now choose which one git uses, from the rename dialog (2ae19fd)
+- A stored access token is now kept closed in the rename dialog, with a link to clear it and type another (40ea54e)
