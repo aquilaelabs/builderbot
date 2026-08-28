@@ -1157,6 +1157,19 @@ manager…**, which names a container and takes you there; every container of a
 project is built from that project's codebase, and rebuilding takes whatever
 that codebase says at the time.
 
+**Both settings can be filled in, and precedence decides which is live.** The
+socket mount and `DOCKER_HOST` are two settings on two screens and neither can
+grey the other out, so the rule is stated rather than enforced: an address in
+`DOCKER_HOST` always wins, `auto` prefers a proxy it can find and falls back to
+a mounted socket, and with neither the feature is off. The manager tab says
+which one it is — *"on a sandbox VM at ssh://…"* — and adds *"the mounted
+socket is unused"* when an address has shadowed one, because a socket left
+mounted while you try a VM is a reasonable thing to be in the middle of and
+being told beats wondering. `bb doctor` prints the same line from the same
+function; it used to work the kind out from the setting and the address from
+the fallback, which with `auto`, a mounted socket and no proxy answering read
+*"a socket proxy at /var/run/docker.sock"*.
+
 **With no daemon reachable, the controls that would drive one are disabled**,
 each carrying the reason as its tooltip, and the manager tab says the same
 thing in words at the top — a tooltip is not reachable on a phone, and *"why is

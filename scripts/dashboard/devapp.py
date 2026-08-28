@@ -282,6 +282,42 @@ def _bump():
     _rev += 1
 
 
+def source():
+    """Which daemon is actually being talked to, and whether two were named.
+
+    Nothing stops an operator filling in both the socket mount and DOCKER_HOST
+    — they are two settings on two screens, and a template cannot make one
+    grey out the other. So the rule is precedence rather than refusal, and the
+    point of this function is that the rule is stated in one place and shown
+    where somebody looks, instead of being inferred differently by each reader:
+
+      an address in DOCKER_HOST wins, always. `auto` prefers a proxy it can
+      find and falls back to the socket. With neither, the feature is off.
+
+    `shadowed` is the case worth naming: both are configured, the address won,
+    and the mount is doing nothing. That is not an error — a socket left
+    mounted while you try a sandbox VM is a reasonable thing to be in the
+    middle of — but being told beats wondering, and it is the difference
+    between "I have two settings" and "I know which one is live".
+
+    Derived here rather than in each caller because both readers had their own
+    copy and one of them was wrong: with `auto` set, a mounted socket and no
+    proxy answering, `bb doctor` reported "a socket proxy at
+    /var/run/docker.sock" — the kind from the setting, the address from the
+    fallback, and a sentence contradicting itself.
+    """
+    sock = Path("/var/run/docker.sock").exists()
+    addr = docker_host()
+    if addr:
+        return {"kind": "a sandbox VM" if addr.lower().startswith("ssh://")
+                        else "a socket proxy",
+                "where": addr, "shadowed": sock}
+    if sock:
+        return {"kind": "the mounted socket", "where": "/var/run/docker.sock",
+                "shadowed": False}
+    return {"kind": "", "where": "", "shadowed": False}
+
+
 def available():
     """Whether the daemon answers, and if not, why — said rather than guessed.
 
@@ -301,8 +337,9 @@ def available():
     r = _run([DOCKER, "version", "--format", "{{.Server.Version}}"], timeout=10)
     if r["code"] != 0:
         return {"on": False,
-                "why": "docker does not answer: " + (r["out"] or "no daemon").strip()[:120]}
-    return {"on": True, "why": ""}
+                "why": "docker does not answer: " + (r["out"] or "no daemon").strip()[:120]} \
+            | source()
+    return {"on": True, "why": ""} | source()
 
 
 _avail = {"when": 0.0, "val": None}

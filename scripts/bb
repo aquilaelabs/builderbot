@@ -2595,14 +2595,15 @@ elif want.lower() == "auto" and not sock and not m.docker_host():
     print("skip no docker daemon found: DOCKER_HOST is auto and nothing "
           "answered — dev instances are off")
 else:
-    kind = ("the mounted socket" if not want
-            else "a sandbox VM" if want.lower().startswith("ssh://")
-            else "a socket proxy")
-    where = m.docker_host() or "/var/run/docker.sock"
+    # Asked rather than re-derived: this used to work the kind out from the
+    # setting and the address from the fallback, which with `auto`, a mounted
+    # socket and no proxy answering printed "a socket proxy at
+    # /var/run/docker.sock" — a sentence contradicting itself.
     a = m.available()
     why = " ".join((a["why"] or "").split())     # one line, whatever it said
     print(("ok " if a["on"] else "FAIL ")
-          + f"docker daemon: {kind} at {where}"
+          + f"docker daemon: {a['kind']} at {a['where']}"
+          + (" (the mounted socket is unused)" if a.get("shadowed") else "")
           + ("" if a["on"] else f" — {why}"))
 DOCKPY
     )"

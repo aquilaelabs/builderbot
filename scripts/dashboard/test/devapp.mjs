@@ -705,6 +705,46 @@ await page.evaluate(() => { state.docker = { on: true, why: '' };
 await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled === false,
                            null, { timeout: 8000 });
 ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean');
+
+// ---- which daemon, when two are configured ------------------------------
+// Nothing stops both being filled in: the socket mount and DOCKER_HOST are two
+// settings on two screens and neither can grey the other out. So the rule is
+// precedence, and the rule has to be stated the same way by everything that
+// reads it — bb doctor and this dashboard each had their own copy, and one of
+// them printed "a socket proxy at /var/run/docker.sock".
+const srcOut = execFileSync('python3', ['-c', `
+import importlib.util, json, os
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+def fake_path(exists):
+    return lambda *a: type('P', (), {'exists': lambda s: exists})()
+out = []
+for want, sock, found in [('', True, ''), ('', False, ''),
+                          ('auto', True, ''), ('auto', True, 'tcp://10.0.0.2:2375'),
+                          ('auto', False, ''),
+                          ('tcp://1.2.3.4:2375', True, 'tcp://1.2.3.4:2375'),
+                          ('ssh://bb@vm', True, 'ssh://bb@vm')]:
+    os.environ['DOCKER_HOST'] = want
+    m.docker_host = (lambda v: (lambda: v))(found)
+    m.Path = fake_path(sock)
+    out.append(m.source())
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const sj = JSON.parse(srcOut.trim().split('\n').pop());
+ok(sj[0].kind === 'the mounted socket' && sj[0].where === '/var/run/docker.sock',
+   'an empty DOCKER_HOST with a socket mounted uses the socket');
+ok(!sj[1].kind && !sj[1].where,
+   '...and with neither, there is no daemon to name');
+ok(sj[2].kind === 'the mounted socket',
+   'auto that finds no proxy falls back to the socket, and SAYS socket');
+ok(sj[3].kind === 'a socket proxy' && sj[3].where === 'tcp://10.0.0.2:2375' && sj[3].shadowed,
+   '...while a proxy it does find wins, and the mount is called out as unused');
+ok(!sj[4].kind, 'auto with nothing to find and no socket is simply off');
+ok(sj[5].kind === 'a socket proxy' && sj[5].shadowed,
+   'an address always wins over a mounted socket');
+ok(sj[6].kind === 'a sandbox VM' && sj[6].shadowed,
+   '...including an ssh one, which is the arrangement you switch TO with the mount left behind');
 // Send BUILDS: the manager lists what exists, so registering alone would send
 // you to a page that does not mention what you just made.
 // Running, not merely built: the env went in before the build, so the gate

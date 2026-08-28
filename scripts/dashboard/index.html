@@ -1171,7 +1171,10 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .projtab .row,.dmtab .row,
 .projtab .empty,.dmtab .empty,
 .projtab .macros,.dmtab .macros,
-.projtab .loading,.dmtab .loading{padding:11px 14px}
+.projtab .loading,.dmtab .loading,.dmtab .dmsrc{padding:11px 14px}
+/* Which daemon, in the quiet voice the notebook uses for the same job — a
+   statement of fact above the list, not a warning about one. */
+.dmsrc{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
 #todoBatch{padding:0 14px 8px}
 #todoBatch button{margin-top:6px}
 .mdrift{padding:0 14px 4px}
@@ -5468,8 +5471,17 @@ directory stay, so remaking it under the same name finds them">Remove</button>
   // not reachable on a phone, and "why is everything greyed out" should be
   // answered by looking rather than by hovering.
   const off = dockerWhy();
+  // Which daemon this is, stated rather than inferred. Two settings can name
+  // two — the socket mount and DOCKER_HOST are on different screens and
+  // neither can grey the other out — so the precedence is shown here instead
+  // of being something you work out from what happens.
+  const src = state?.docker || {};
+  const srcLine = !off && src.kind
+    ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
+        src.shadowed ? " — the mounted socket is unused" : ""}</div>`
+    : "";
   el.innerHTML = `<div class="dmtab">${off
-      ? `<div class="empty">${esc(off)}</div>` : ""}${
+      ? `<div class="empty">${esc(off)}</div>` : srcLine}${
     rows || `<div class="empty">nothing on this daemon yet</div>`}
     <div class="macros"><button id="bDockerNew">New container…</button
       ><button id="bDockerRe">Refresh</button></div></div>`;
