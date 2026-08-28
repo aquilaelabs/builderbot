@@ -2239,10 +2239,26 @@ from every project and every session. Here it opens the one project you gave it
 to, and renaming that project takes it along.
 
 A project that already has push rights can be given a token from the **rename**
-dialog — including one that pushes with a **deploy key**, which is how you
-start moving off keys. Setting one there does not switch anything by itself:
-git never asks a credential helper about an ssh remote, so such a project goes
-on using its key until its origin is an https URL. The dialog says so.
+dialog — including one that pushes with a **deploy key**. Setting one there
+does not switch anything by itself: git never asks a credential helper about an
+ssh remote, so a project with an `ssh://` or `git@` origin goes on using its
+key however many tokens are stored for it.
+
+The **Authentication** segment beside that field is what changes it. It shows
+which credential the remote actually reaches for — *Deploy key* or *Access
+token* — and lets you move between them; the change is applied when you press
+Rename, which is also how a token typed in the same dialog gets written before
+the switch that needs it. Under the hood it is one `git remote set-url`,
+between `git@…:owner/repo.git` and `https://github.com/owner/repo.git`.
+
+**Switching removes neither credential.** The token file stays in `/config`,
+the deploy key and its `~/.ssh/config` alias stay where they are, and the
+repository keeps its credential helper — an ssh remote simply never consults
+one. So going back costs nothing, and the exact alias is restored rather than
+guessed, because the alias is named after the *key* and there would be nothing
+in the project to guess it from. A side you cannot take is shown disabled with
+the reason: a project with no token stored, or one that has only ever been
+https and so has no key remote to return to.
 
 **It is not shielded the way a deploy key is.** Those are served by a root-owned
 agent and cannot be read at all. This is a file owned by the same user your

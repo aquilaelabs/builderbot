@@ -327,8 +327,13 @@ def rename(req):
     old = _field(req, "name").strip()
     new = sanitize_name(_field(req, "to"))
     token = _field(req, "token").strip()
+    # "" leaves the remote's spelling alone, which is what every rename that is
+    # only a rename sends.
+    auth = _field(req, "auth").strip()
     if not old or not PROJECT_NAME.fullmatch(old):
         return {"error": "unknown project"}, 400
+    if auth and auth not in ("https", "ssh"):
+        return {"error": "that is not an authentication mode"}, 400
     src = WORKSPACE / old
     if not src.is_dir():
         return {"error": f"{old} is not a project under the workspace"}, 400
@@ -338,15 +343,26 @@ def rename(req):
         return {"error": "that does not look like an access token — letters, "
                          "digits, dots, dashes and underscores, no spaces"}, 400
     if new == old:
-        # Not an error when a token came with it: replacing the credential
-        # without moving the directory is a thing somebody will want, and the
-        # dialog offers both fields at once precisely so they can.
-        if not token:
+        # Not an error when a token or an auth switch came with it: changing
+        # the credential without moving the directory is a thing somebody will
+        # want, and the dialog offers all three at once precisely so they can.
+        if not token and not auth:
             return {"error": f"{old} is already its name"}, 400
-        write_token(old, token)
-        _scope_to_token(src, token_helper(old))
+        moved, failed = [], []
+        if token:
+            write_token(old, token)
+            _scope_to_token(src, token_helper(old))
+            moved.append("its access token")
+        # After the token, always: switching to https needs the token that the
+        # same submit may have just written.
+        if auth:
+            msg, err = set_auth(old, src, auth)
+            if err:
+                return {"error": err}, 400
+            if msg:
+                moved.append(msg)
         return {"ok": True, "name": old, "from": old,
-                "moved": ["its access token"], "failed": []}, 200
+                "moved": moved, "failed": failed}, 200
     dest = WORKSPACE / new
     if dest.exists():
         return {"error": f"{new} already exists in the workspace"}, 400
@@ -408,6 +424,14 @@ def rename(req):
         moved.append("a new access token")
     if (STATE / "gitcreds" / new).is_file():
         _scope_to_token(dest, token_helper(new))
+    # Last, and under the new name: set_auth reads and writes the push record,
+    # which only moved a few lines above.
+    if auth:
+        msg, err = set_auth(new, dest, auth)
+        if err:
+            failed.append(err)
+        elif msg:
+            moved.append(msg)
     # The compose project name is derived and sanitized, so these two are not
     # simply the project's name with a prefix on it.
     _mv(DEVDATA / pname(old), DEVDATA / pname(new),
@@ -519,6 +543,122 @@ def push_how(project):
     """
     rec = load_push().get(project)
     return rec.get("how", "") if isinstance(rec, dict) else ""
+
+
+# ---------------------------------------------------------------------------
+# which credential a project's remote actually uses
+#
+# Storing a token and using one are different things, and the gap between them
+# is where this used to sit: git never asks a credential helper about an ssh
+# remote, so a project cloned with a deploy key went on using the key however
+# many tokens were saved for it. The rename dialog said so honestly and left it
+# there, which meant the only way to move a project onto its token was to know
+# `git remote set-url` and type it yourself.
+#
+# So the remote's spelling becomes a control. Neither credential is removed by
+# switching: the token file stays where it is, the ssh alias and the key it
+# names stay in ~/.ssh/config, and the helper stays configured on the repo
+# (an ssh remote simply never consults it). That is what makes this a switch
+# rather than a migration — you can go back, and going back costs nothing.
+
+def origin_url(dest):
+    """The origin remote's URL, or "" if there is no origin to ask about."""
+    r = run(["git", "-C", str(dest), "remote", "get-url", "origin"], timeout=15)
+    return r["out"].strip() if r["code"] == 0 else ""
+
+
+def remote_auth(dest):
+    """"https", "ssh", or "" — what origin's spelling means for credentials.
+
+    The question is not which host: a deploy-key setup addresses GitHub through
+    a `bb-<key>` alias, so the hostname is not github.com and it is still ssh.
+    What decides it is the URL's form, which is exactly what git looks at when
+    it decides whether a credential helper is involved at all.
+    """
+    url = origin_url(dest)
+    if not url:
+        return ""
+    if url.startswith(("https://", "http://")):
+        return "https"
+    if url.startswith("ssh://") or (":" in url and "://" not in url):
+        return "ssh"
+    return ""
+
+
+def _remembered_ssh(project):
+    """The ssh URL this project last pushed with, if it has been switched.
+
+    Kept beside the push grant rather than in a store of its own: it is a fact
+    about how this project reaches its repository, the record is already keyed
+    by project name, and rename() already carries that record across. Without
+    it, switching back to a deploy key would have to guess the alias — and the
+    alias is named after the KEY, not the project, so there is nothing here to
+    guess it from.
+    """
+    rec = load_push().get(project)
+    return rec.get("ssh_url", "") if isinstance(rec, dict) else ""
+
+
+def _remember_ssh(project, url):
+    d = load_push()
+    rec = d.get(project)
+    if not isinstance(rec, dict):
+        return                  # no grant to hang it on; nothing to remember
+    rec["ssh_url"] = url
+    save_push(d)
+
+
+def auth_options(project, dest):
+    """What this project could authenticate with, for the rename dialog.
+
+    `now` is what it uses; `token` and `ssh` are whether the other one is even
+    available, so the dialog can show a choice that is real. An option nobody
+    can take is worse than no option: it reads as a thing that is broken.
+    """
+    now = remote_auth(dest)
+    return {"now": now,
+            "token": bool(token_helper(project)),
+            # Either it is on ssh already, or it was and we kept the URL. A
+            # project that has only ever been https has no alias and no key
+            # picked, and offering "deploy key" would be offering to build one
+            # — which is the clone dialog's job, not this one's.
+            "ssh": now == "ssh" or bool(_remembered_ssh(project))}
+
+
+def set_auth(project, dest, mode):
+    """Point origin at https or back at ssh. Returns (message, error)."""
+    now = remote_auth(dest)
+    if mode not in ("https", "ssh"):
+        return "", "that is not an authentication mode"
+    if not now:
+        return "", "this project has no origin remote to switch"
+    if mode == now:
+        return "", ""                       # already there; not worth an error
+    if mode == "https":
+        if not token_helper(project):
+            return "", ("there is no access token stored for this project — "
+                        "set one in the same dialog and it can use it")
+        repo = repo_of_remotes(f"origin {origin_url(dest)}")
+        if not repo:
+            return "", "could not read owner/repo from this project's remote"
+        # Remembered BEFORE the rewrite, or switching back has nothing to go on.
+        _remember_ssh(project, origin_url(dest))
+        url = f"https://github.com/{repo}.git"
+    else:
+        url = _remembered_ssh(project)
+        if not url:
+            return "", ("this project has no deploy-key remote to go back to "
+                        "— it has only ever used https")
+    r = run(["git", "-C", str(dest), "remote", "set-url", "origin", url],
+            timeout=15)
+    if r["code"] != 0:
+        return "", f"could not rewrite the remote: {r['out'].strip()[:200]}"
+    if mode == "https":
+        # Only now: scoping the repo to its own token while the remote was
+        # still ssh would have looked like it did something and done nothing.
+        _scope_to_token(dest, token_helper(project))
+        return "it now authenticates with its access token", ""
+    return "it now authenticates with its deploy key", ""
 
 
 def drop_push(project):

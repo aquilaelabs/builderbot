@@ -498,8 +498,30 @@ ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
 ok(!await page.$eval('#rnTokenField', el => el.hidden),
    'a project pushing with a deploy key is offered a token');
 const kh = await page.$eval('#rnTokenHint', e => e.textContent);
-ok(/deploy key/.test(kh) && /https/.test(kh),
-   '...told plainly that git keeps using the key until the remote is https');
+ok(/deploy key/.test(kh) && /ssh remote/.test(kh),
+   '...told plainly that a token does not take effect on an ssh remote by itself');
+// The switch that makes it take effect. alpha's remote is ssh and it has no
+// token, so the choice is real but one-sided until a token exists — and the
+// side you cannot take is disabled rather than absent, because a control that
+// silently does nothing is worse than one that says why.
+await page.waitForSelector('#rnAuthField:not([hidden])', { timeout: 8000 });
+ok(await page.$eval('#rnAuthKey', b => b.classList.contains('on') && !b.disabled),
+   'the authentication segment opens on the credential the remote actually uses');
+ok(await page.$eval('#rnAuthToken', b => b.disabled),
+   '...with the token side disabled while no token is stored');
+ok(/No token is stored/.test(await page.$eval('#rnAuthHint', e => e.textContent)),
+   '...saying so, rather than leaving a dead button to be poked at');
+await page.fill('#rnToken', 'ghp_ExampleTokenValue123');
+await page.waitForFunction(() => !document.getElementById('rnAuthToken').disabled,
+                           { timeout: 5000 });
+ok(true, 'typing a token turns the switch on: setting one and using it is one intention');
+await page.click('#rnAuthToken');
+ok(await page.$eval('#rnAuthToken', b => b.classList.contains('on'))
+   && !await page.$eval('#rnAuthKey', b => b.classList.contains('on')),
+   '...and picking it moves the segment without touching either credential');
+ok(/stay where they are|stays stored/.test(await page.$eval('#rnAuthHint', e => e.textContent)),
+   '...promising in words that switching removes neither');
+await page.fill('#rnToken', '');
 await page.click('#rnCancel');
 await page.evaluate(() => renameProject('beta'));
 await page.waitForSelector('#rnmodal:not([hidden])');
