@@ -148,7 +148,7 @@ curl -fsSL \
 Then in the WebUI: **Docker** tab → **Add Container** → in the *Template*
 dropdown pick **builderbot**. You get a form with everything already wired:
 
-* the projects folder (`/mnt/user/development`) mapped to `/workspace` — one
+* the projects folder (`/mnt/user/development/projects`) mapped to `/workspace` — one
   mapping for all of them, so every folder in that share is a project and
   adding one never means editing the container again
 * the appdata paths for home / config / runner work
@@ -163,7 +163,7 @@ time (`/workspace/MediaReducer-Dev`, `/workspace/FreshBoot`, …). Those mapping
 are stored on *your container*, and a template that no longer lists them does
 not remove them — Unraid never applies new template values to a container that
 already exists. Edit the container, **delete each per-project Path**, and add
-one mapping of `/mnt/user/development` → `/workspace`. Leaving both in place
+one mapping of `/mnt/user/development/projects` → `/workspace`. Leaving both in place
 mounts the same folder twice: the old mapping shadows the identically-named
 folder inside the new one, which works but hides any change to the parent.
 
@@ -291,7 +291,7 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 1. Container settings → **ENABLE_DASHBOARD** → `true`
 2. **DASHBOARD_AUTH** → `you:a-real-password` — the dashboard will not start
    without this, and says so in the log
-3. The port mapping (`8080`) is already in the template; change the host
+3. The port mapping (`7680`) is already in the template; change the host
    side if it collides with something else on the server. Terminals ride the
    same port, behind the same sign-in — a login page with a 30-day cookie,
    not the browser's credentials prompt, and only asked once
@@ -641,15 +641,20 @@ path for good reasons, and nothing here can tell which.
    `tcp://172.17.0.1:2375` becomes a stable explicit answer if you prefer
    one. Optionally set the **Dev instance data** path — a cache/SSD folder
    that dev volumes land in when a project's compose opts in with
-   `${BB_DEV_DATA}/...`. Set **Host path mapping** in the same section if you
-   changed either of those Path settings from its default: the daemon is the
-   host's and resolves a compose file's bind-mount *sources* on its own
-   filesystem, so it has to be told what `/workspace` and `/devdata` are
-   called over there. Docker does not fail on a source that is missing — it
+   `${BB_DEV_DATA}/...`. **Host path mapping** in the same section has to be
+   changed for this arrangement, and the template's value is the reason: it
+   ships as `/workspace:/workspace`, which is the [sandbox VM](sandbox-vm.md)
+   — the daemon on another machine, mounting the shares at the paths this
+   container uses. A daemon on *this* box resolves a compose file's bind-mount
+   *sources* on the host's own filesystem, so it has to be told what
+   `/workspace` and `/devdata` are called over there:
+   `/workspace:/mnt/user/development/projects`, plus a pair for the dev-data
+   path if you set one. Docker does not fail on a source that is missing — it
    creates an empty directory and mounts that, and on Unraid the root
    filesystem is RAM, so the app starts with no data and loses it again at
    reboot. Get this wrong and BuilderBot says so on the project's row rather
-   than letting it happen quietly.
+   than letting it happen quietly — including the shipped value left in
+   place, which is the one shape it cannot check by measurement.
 3. Restart BuilderBot. A project with a `docker-compose.yml` now shows the
    dev-instance row at the top of its Artifacts tab; one without shows
    nothing new.
@@ -780,7 +785,7 @@ the share before restarting again.
 
 **File ownership.** The container writes as `99:100` (`nobody:users`). If a
 project is owned differently, fix that project once
-(`chown -R 99:100 /mnt/user/development/FreshBoot`) or set
+(`chown -R 99:100 /mnt/user/development/projects/FreshBoot`) or set
 `CHOWN_PROJECTS=true` to do it for all of them at every start. The container
 never chowns the projects share itself — that folder is yours, and a container
 quietly changing the ownership of a share because it started is a surprise, not

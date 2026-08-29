@@ -18,7 +18,7 @@ now a thing noticed mid-task and left undone lived in the conversation and died
 with it.
 
 Where it lives is the other half. /config, beside the tab strip and the
-excluded projects — not the repository. A list like this churns far faster than
+locked projects — not the repository. A list like this churns far faster than
 commits, and a checkbox tapped on a phone must not turn into an uncommitted
 change. Anything that deserves to be permanent graduates out of here: into
 CLAUDE.md, a commit message, or a test that fails when it regresses.

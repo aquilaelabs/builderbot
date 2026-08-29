@@ -551,8 +551,16 @@ out['moved'] = m.host_map()
 # mount table to check it against, so it must not be run through the check
 # that catches a half-edited one.
 os.environ['DOCKER_HOST_PATHS'] = '/workspace:/workspace'
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
 mp2, bad2 = m.host_map()
 out['parity'] = [mp2, bad2, m.problems('alpha', {'services': {'a': {'volumes': ['./data:/data']}}})]
+# The same pair against a daemon on THIS box, which is the shipped default's
+# hazard: an identity skips the mount-table check by design, so nothing else
+# can catch a sandbox mapping left behind on a socket proxy — and the daemon
+# resolves /workspace on the host, where Unraid does not have one.
+os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
+out['falseparity'] = m.host_map()
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
 os.environ['DOCKER_HOST_PATHS'] = '/nope:/mnt/x,garbage'
 out['junk'] = m.host_map()
 os.environ['DOCKER_HOST_PATHS'] = ''
@@ -577,6 +585,9 @@ ok(hp.parity[0]['/workspace'] === '/workspace' && !hp.parity[1].length,
    'an identity mapping is accepted without being checked against our mounts');
 ok(!hp.parity[2].length,
    '...and a bind under it is no longer a problem, because it is not one');
+ok(hp.falseparity[0]['/workspace'] === '/workspace'
+   && /sandbox-VM mapping/.test(hp.falseparity[1][0] || ''),
+   '...but says so when that mapping is pointed at a daemon on this box');
 
 // Who makes the dev-data directory. It has to exist before a bind can use it,
 // docker's own attempt fails on a root-squashing share (it makes it, fails the

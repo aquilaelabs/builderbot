@@ -116,7 +116,7 @@ services:
       # start without a credential rather than defaulting to open.
       ENABLE_DASHBOARD: ${ENABLE_DASHBOARD:-false}
       DASHBOARD_AUTH: ${DASHBOARD_AUTH:-}
-      DASHBOARD_PORT: ${DASHBOARD_PORT:-8080}
+      DASHBOARD_PORT: ${DASHBOARD_PORT:-7680}
       # Loopback only: the browser reaches terminals through the dashboard
       # port under /term, behind the same single sign-in, so this port is
       # never published. (DASHBOARD_TTYD_PUBLIC_PORT is gone with the second
@@ -155,7 +155,7 @@ services:
       # Anything wrong with a directory (no git repository, no CLAUDE.md, an
       # ownership the container user cannot work with) is reported on the
       # dashboard rather than silently not showing up.
-      - ${WORKSPACE_PATH:-/mnt/user/development}:/workspace
+      - ${WORKSPACE_PATH:-/mnt/user/development/projects}:/workspace
 
       # --- the SDK share ----------------------------------------------------
       # Android platforms, build-tools, the 800MB emulator and the multi-GB
@@ -227,7 +227,7 @@ services:
     # Web dashboard + browser terminals, one port: terminals are proxied
     # through it under /term, behind the same sign-in.
     # ports:
-    #   - "8080:8080"
+    #   - "7680:7680"
 
     # Uncomment to reach the emulator's adb from other machines on your LAN
     # (e.g. Android Studio on your desktop: adb connect tower:5555).

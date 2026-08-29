@@ -1822,7 +1822,7 @@ PY
 # to remember, an address that was never given out.
 cmd_phone() {
     local sub="${1:-status}" why="" auth url
-    url="http://127.0.0.1:${DASHBOARD_PORT:-8080}/api/phone"
+    url="http://127.0.0.1:${DASHBOARD_PORT:-7680}/api/phone"
     auth="${DASHBOARD_AUTH:-}"
     [ -n "$auth" ] || die "DASHBOARD_AUTH is not set — this talks to the dashboard"
     shift || true

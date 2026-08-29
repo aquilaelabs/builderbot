@@ -525,6 +525,13 @@ fresh
 # per-command env, deliberately: the node tests further down still see the
 # container's own /devdata, which is what the module-level host_map() and
 # problems() snippets in devapp.mjs are written against.
+#
+# DOCKER_HOST_PATHS is cleared for the same reason and was found the same way.
+# Unset here, it inherited the REAL container's mapping, so what the dev row
+# said about a fixture's compose file depended on how the operator had wired
+# their own daemon — a suite that passes on one box and fails on the next with
+# nothing in the diff to explain it. Found when a check on an identity pair
+# started firing against this box's /workspace:/workspace.
 env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     TEMPLATE_MD="$DASH/../../config/templates/project-CLAUDE.md" \
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
@@ -540,6 +547,7 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" BB_ADB_BIN="$S/bin/adb" \
     BB_DOCKER_BIN="$S/bin/docker" DOCKER_STUB_STATE="$S/dockerstate" \
     DOCKER_HOST="tcp://stub:2375" \
+    DOCKER_HOST_PATHS="" \
     BB_DEV_DATA_DIR="$S/devdata" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
 pid=$!
