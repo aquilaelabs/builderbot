@@ -205,7 +205,17 @@ say "bb-sandbox"
 # VM is that a session can build and destroy containers without touching
 # anything that matters, and a path from the container into the VM's own
 # configuration would hand back exactly what the arrangement buys.
-install -m 0755 /dev/stdin /usr/local/sbin/bb-sandbox <<'BBSANDBOX'
+# Written to a temp file and installed from it, rather than
+# `install /dev/stdin` reading the heredoc directly. That form depends on
+# /dev/stdin being openable BY PATH, and whether it is depends on what bash
+# did with the here-document: a pipe reopens fine, a temp file that bash
+# unlinked does not, and opening it then fails with exactly the message this
+# produced on a real VM — "install: No such file or directory", naming
+# nothing. Which of the two bash picks is a size and version question, so the
+# form worked everywhere it was tried and failed on the machine it was for.
+# cat reads the descriptor it was given and asks no such question.
+BBSANDBOX_TMP="$(mktemp)"
+cat > "$BBSANDBOX_TMP" <<'BBSANDBOX'
 #!/usr/bin/env bash
 #
 # bb-sandbox — configure this Docker sandbox after it has been provisioned.
@@ -521,6 +531,13 @@ case "${1-}" in
     *) die "unknown command: $1 — try: bb-sandbox --help" ;;
 esac
 BBSANDBOX
+install -m 0755 "$BBSANDBOX_TMP" /usr/local/sbin/bb-sandbox
+rm -f "$BBSANDBOX_TMP"
+# Checked rather than assumed: this is the step that failed silently enough to
+# leave an old copy in place and a new one nowhere.
+[ -s /usr/local/sbin/bb-sandbox ] \
+    || { warn "bb-sandbox did not install"; exit 1; }
+
 # The account BuilderBot will ssh in as. Recorded now because it is decided
 # here and nowhere else: bb-sandbox prints it back in `settings`, and guessing
 # it from whoever ran sudo is wrong the moment this box is administered from
