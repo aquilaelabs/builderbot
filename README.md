@@ -1775,11 +1775,21 @@ which.
 **What a container is called** is the prefix and its own name — `bbdev-radarr`,
 not `bbdev-myproject-radarr`. The project used to be in there too, which for a
 project called MediaReducer-Dev with an instance named after it produced
-`bbdev-mediareducer-dev-mediareducer-dev`. The project half only ever bought
-uniqueness, and that is asked as a question now: a name is taken across every
-project, not just within one, because two instances sharing a name would share
-a compose project, an env file and a data directory. A project's *default*
-instance is named for the project, since nobody typed a name for it.
+`bbdev-mediareducer-dev-mediareducer-dev`.
+
+**Container names and project names are separate groups.** A project existing
+reserves nothing: a container may be called `mediareducer-dev` while a project
+is too, because they are not the same kind of thing. The one name that cannot
+be reused is another *container's* — two instances resolving to one compose
+project name would be one set of containers, one env file and one data
+directory with two rows driving them, so the second is refused and told which
+instance has it. A project's *default* instance is named for the project,
+since nobody typed a name for it.
+
+**Which project a container belongs to is tracked separately**, and is never
+read out of its name — it is the key it is stored under. That is what decides
+whose Claude session may touch it, so a project can stand up several
+containers, name them anything, and still own all of them.
 
 `BB_DEV_PREFIX` sets the prefix, and empty removes it — containers are then
 called exactly what you typed. That is honoured **only against a sandbox VM**:

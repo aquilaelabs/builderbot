@@ -781,8 +781,7 @@ spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
-m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None,
-            project_names=lambda: ['alpha'])
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
 out = {}
 os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
 m._PREFIX_WANT = 'bbdev'
@@ -810,6 +809,43 @@ ok(PF.none_on_proxy[0] === 'bbdev-' && /outside the bbdev- namespace/.test(PF.no
 ok(PF.renamed[0] === 'sandbox-' && PF.renamed[1] === 'sandbox-dev'
    && /outside the sandbox- namespace/.test(PF.renamed[2]),
    'a renamed prefix moves the guard with it, so it cannot check for the old one');
+
+// Container names and project names are separate groups. A project existing
+// reserves nothing — an earlier version checked that it did, and refused a
+// name the operator had every right to use. What is refused is two INSTANCES
+// resolving to one compose project, which is one set of containers with two
+// rows driving it.
+const nm = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
+open(d + '/devapps.json', 'w').write('{}')
+m.configure(workspace='/tmp', state=d,
+            write_json=lambda p, o: open(p, 'w').write(json.dumps(o)))
+m.compose_file = lambda *a, **k: '/tmp/x.yml'
+out = {}
+# 'ep.silon' is a project in this workspace. Naming a container after it from
+# a DIFFERENT project is allowed: the two are not the same kind of thing.
+out['after_a_project'] = m.create_instance('alpha', 'ep-silon')
+out['twice'] = m.create_instance('beta', 'ep-silon')
+out['owner'] = json.load(open(d + '/devapps.json'))
+# And the project itself is told who has the name, rather than silently
+# sharing the containers.
+out['project_told'] = m.name_clash('ep.silon', 'main')
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const NM = JSON.parse(nm.trim().split('\n').pop());
+ok(NM.after_a_project.name === 'bbdev-ep-silon',
+   'a container may be named after a project — they are separate name groups');
+ok(/already alpha/.test(NM.twice.error || ''),
+   '...but not twice, because that is one compose project with two rows on it');
+ok(Object.keys(NM.owner)[0] === 'alpha'
+   && Object.keys(NM.owner.alpha)[0] === 'ep-silon',
+   '...and the store keeps whose it is, which is what the name never decides');
+ok(/already alpha/.test(NM.project_told),
+   'a project whose own name was taken is told by whom, not quietly merged into it');
 
 // An instance is (project, name) now, and the old layout is one record per
 // project. Driven at the module: the migration happens on read, so it is the

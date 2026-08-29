@@ -82,8 +82,6 @@ def _slug(s):
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
 
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
-# Injected: the server owns what counts as a project. None until configure().
-project_names = None
 
 # DOCKER_HOST=auto means "find the socket proxy yourself". The address is a
 # bridge-assigned container IP unless the operator published the port, and
@@ -294,9 +292,9 @@ def abort_job():
     return True
 
 
-def configure(*, workspace, state, write_json, project_names=None):
+def configure(*, workspace, state, write_json):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
-                     write_json=write_json, project_names=project_names)
+                     write_json=write_json)
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
     _migrate_paths()
@@ -824,27 +822,33 @@ def _pname(project, instance=MAIN):
     return dev_prefix() + (_slug(project) if inst == MAIN else inst)
 
 
-def taken_pnames(skip=()):
-    """Every compose project name this manager already owns.
+def name_clash(project, instance=MAIN):
+    """Whether this instance's compose name is already a different one's.
 
-    The project name used to make these unique by construction. It no longer
-    does, so it is a question with an answer instead: two instances cannot
-    share a name, because sharing one means sharing a compose project, an env
-    file and a data directory.
+    Container names and PROJECT names are separate things. A project called
+    MediaReducer-Dev does not reserve `mediareducer-dev` for a container, and
+    an earlier version of this checked that it did — which made a name the
+    operator had every right to use come back refused. Nothing is reserved in
+    advance; a project blocks no name until it actually has an instance.
 
-    `project_names` is injected because "what counts as a project" is the
-    server's rule — a project with no record still has its default instance,
-    and that name is taken whether or not anything has been built.
+    What cannot happen is two INSTANCES resolving to one compose project name,
+    because that is one set of containers, one env file and one data directory
+    with two rows driving them. Asked at the moment an instance is created or
+    started, which is the moment the clash becomes real rather than possible.
+
+    Which project owns an instance is not this question and is never derived
+    from the name: it is the store's own key, which is what decides whose
+    session may touch it.
     """
-    out = set()
+    want = _pname(project, instance)
     for proj, insts in _load().items():
         for inst in insts:
-            if (proj, inst) not in skip:
-                out.add(_pname(proj, inst))
-    for proj in (project_names() if project_names else ()):
-        if (proj, MAIN) not in skip:
-            out.add(_pname(proj, MAIN))
-    return out
+            if (proj, inst) == (project, instance) or _pname(proj, inst) != want:
+                continue
+            whose = f"{proj}'s " + ("own" if inst == MAIN else f"'{inst}'")
+            return (f"{want} is already {whose} — two of them would drive one "
+                    f"set of containers, so this one needs another name")
+    return ""
 
 
 def env_path(project, instance=MAIN):
@@ -1345,8 +1349,9 @@ def create_container(name, compose_text, env_text=""):
     with _lock:
         if slug in _load():
             return {"error": f"{slug} already exists — pick another name"}
-        if _pname(slug, MAIN) in taken_pnames(skip={(slug, MAIN)}):
-            return {"error": f"{_pname(slug, MAIN)} is taken — pick another name"}
+        clash = name_clash(slug, MAIN)
+        if clash:
+            return {"error": clash}
     d = containers_dir(slug)
     try:
         d.mkdir(parents=True, exist_ok=True)
@@ -1458,14 +1463,9 @@ def create_instance(project, name):
         # compose project, one env file and one data directory wearing two
         # rows — which is the collision the old spelling prevented by being
         # long, and this prevents by asking.
-        # Skipping the pair being created, or a project registering the
-        # instance it already implicitly owns would collide with itself: the
-        # default instance of `alpha` IS bbdev-alpha, and writing that record
-        # down does not make it somebody else's.
-        want = _pname(project, slug)
-        if want in taken_pnames(skip={(project, slug)}):
-            return {"error": f"{want} is taken — names are shared across "
-                              f"projects now, so pick another"}
+        clash = name_clash(project, slug)
+        if clash:
+            return {"error": clash}
         _rec(d, project, slug)
         write_json(FILE, d)
     _bump()
@@ -1990,6 +1990,9 @@ def up(project, instance=MAIN, ack=""):
         return {"error": "the env is missing " + ", ".join(miss[:4])
                          + (" …" if len(miss) > 4 else "")
                          + " — fill it in first (Env)"}
+    clash = name_clash(project, instance)
+    if clash:
+        return {"error": clash}
     if not _claim(project, instance, "starting"):
         return dict(BUSY)
     try:
@@ -2059,6 +2062,9 @@ def rebuild(project, instance=MAIN, ack=""):
     gate = _risk_gate(project, instance, ack)
     if gate:
         return {"error": gate}
+    clash = name_clash(project, instance)
+    if clash:
+        return {"error": clash}
     if not _claim(project, instance, "building"):
         return dict(BUSY)
     # On disk before the work starts, so a restart can tell "this build never

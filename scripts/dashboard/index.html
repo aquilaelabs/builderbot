@@ -5261,8 +5261,8 @@ function openSendToDocker(project){
   $("dnHint").textContent =
     "It is built from " + project + "'s codebase, and rebuilding it takes "
     + "whatever that codebase says then. A project can have several — give "
-    + "each one a name you will recognise in the manager. Names are shared "
-    + "across projects, so it has to be one nothing else is using.";
+    + "each one a name you will recognise in the manager — anything, including "
+    + "a project's name, as long as no other container has it.";
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
   $("dnmodal").hidden = false;

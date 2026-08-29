@@ -1872,11 +1872,7 @@ except OSError:
 # socket proxy. The module's docstring carries the security reasoning.
 import devapp                                                    # noqa: E402
 
-# project_names: devapp checks that a container's name is not already some
-# other project's, and what counts as a project is this module's rule — a
-# project with no record still owns its default instance's name.
-devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
-                 project_names=lambda: [p["name"] for p in project_list()])
+devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
