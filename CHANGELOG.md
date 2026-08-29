@@ -93,3 +93,6 @@
 - The Docker sandbox VM no longer needs the dev-data share mounted in BuilderBot as well — it makes each instance's data directory itself, so /workspace is the only path the two machines have to share (729480e)
 - The dashboard's default port is 7680 rather than 8080, which collides with less on an Unraid box (29d3f96)
 - A tooltip disappears as soon as you click the button it belongs to, instead of hanging over whatever is underneath it (29d3f96)
+- Stopping a container build now actually stops it during the shutdown step, instead of starting the container anyway and reporting that it was stopped (2689ebf)
+- Up on a container that has to build first shows what it is doing as it goes, and can be stopped (2689ebf)
+- A container cannot be given a name that collides with an existing project once punctuation is stripped — it used to quietly take over that project's data (2689ebf)
