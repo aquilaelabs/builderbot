@@ -144,43 +144,77 @@ if [ -n "$SSH_KEY" ]; then
     chmod 0600 "$home/.ssh/authorized_keys"
 fi
 
-say "shares"
-# Written to fstab rather than mounted once, because a sandbox that comes back
-# from a reboot without the projects share is a sandbox that builds the wrong
-# thing rather than failing.
+say "bb-sandbox"
+# The tool that configures this machine after today: mounts, which one holds
+# container appdata, and the lines to paste into BuilderBot. Installed here and
+# then USED below, so the fstab logic has one implementation rather than a copy
+# in each entry point — its comments were paid for one silent failure at a time
+# and are not worth writing twice.
+#
+# Embedded rather than fetched: provision.sh is one file you curl onto a fresh
+# VM, and a second download is a second thing that can be unreachable at the
+# moment you are standing in front of a machine with no shares.
+#
+# Root-only, and deliberately not reachable from BuilderBot. The point of this
+# VM is that a session can build and destroy containers without touching
+# anything that matters, and a path from the container into the VM's own
+# configuration would hand back exactly what the arrangement buys.
+install -m 0755 /dev/stdin /usr/local/sbin/bb-sandbox <<'BBSANDBOX'
+#!/usr/bin/env bash
+#
+# bb-sandbox — configure this Docker sandbox after it has been provisioned.
+#
+# Installed by provision.sh, which also uses it for its own mounts: this is the
+# only copy of the fstab logic, so the wizard and the first run cannot drift.
+#
+# Root, on this machine, by a person. Deliberately NOT reachable from
+# BuilderBot: the whole reason this VM exists is that a session can build and
+# destroy containers without touching anything that matters, and a path from
+# the container into the VM's own configuration would hand back what the
+# arrangement was buying. The dashboard can see what is mounted; changing it
+# is a decision made here.
+set -euo pipefail
+
+CONF=/etc/bb-sandbox.conf
+# shellcheck source=/dev/null
+[ -f "$CONF" ] && . "$CONF"
+APPDATA="${APPDATA:-}"
+
+say()  { printf '\n== %s\n' "$*"; }
+warn() { printf '\n!! %s\n' "$*" >&2; }
+die()  { warn "$*"; exit 1; }
+[ "$(id -u)" -eq 0 ] || die "run this as root: sudo bb-sandbox"
+
+# Every mount this tool manages, by mountpoint. Read from fstab rather than
+# kept in a list of our own: fstab is what the machine actually boots from, and
+# a second list would be a claim about it rather than a reading of it.
+ours() {
+    awk '$3 == "virtiofs" || $3 == "nfs" {print $2}' /etc/fstab 2>/dev/null | sort -u
+}
+
+# --- the one copy of the fstab logic ------------------------------------
 add_fstab() {
     local line="$1" path="$2" hit lineno old tmp
     # A mountpoint whose export has gone away answers every syscall with
-    # ESTALE — including the stat that `mkdir -p` begins with. That used to
-    # abort the whole run on a path that merely needed unmounting, and it did
-    # so partway through: the entries before it were already written, the ones
-    # after it never were, and `mount -a` at the end of the loop never ran, so
-    # even the paths that HAD been rewritten stayed on their old source.
+    # ESTALE — including the stat that `mkdir -p` begins with.
     if ! mkdir -p "$path" 2>/dev/null; then
         if findmnt -rno TARGET -- "$path" >/dev/null 2>&1; then
             warn "$path is mounted but unreadable — a stale handle, left by a share that moved or stopped being exported."
-            printf '   Clear it and run this again:\n     umount -l %s\n' "$path"
+            printf '   Clear it and try again:\n     umount -l %s\n' "$path"
         else
             warn "could not create the mountpoint $path"
         fi
-        exit 1
+        return 1
     fi
-    # Matched on the MOUNTPOINT and then compared in full. The guard used to
-    # stop at "is this mountpoint mentioned", which made re-provisioning with a
-    # CHANGED source a silent no-op: the old entry stayed, `mount -a` remounted
-    # the old export, and the summary at the end listed the path as though the
-    # new one had taken. Somebody moved a share, ran this, and was told it had
-    # worked — which is the one outcome worse than an error.
-    # `|| true` is load-bearing under `set -o pipefail`: no match is the
-    # normal first-run case, and grep's exit 1 would otherwise take the whole
-    # script down before it had written a single mount.
+    # Matched on the MOUNTPOINT and then compared in full, so re-adding one
+    # whose SOURCE has changed rewrites it rather than silently doing nothing.
     hit="$(grep -nsF " $path " /etc/fstab | head -1 || true)"
     if [ -z "$hit" ]; then
         echo "$line" >> /etc/fstab
-        return
+        return 0
     fi
     lineno="${hit%%:*}"; old="${hit#*:}"
-    [ "$old" = "$line" ] && return
+    [ "$old" = "$line" ] && return 0
     tmp="$(mktemp)"
     awk -v n="$lineno" -v repl="$line" 'NR==n {print repl; next} {print}' \
         /etc/fstab > "$tmp"
@@ -190,62 +224,245 @@ add_fstab() {
     say "fstab: $path now comes from ${line%% *}"
     printf '   it was %s\n' "${old%% *}"
 }
-declare -a MOUNTED=()
-for s in "${SHARES[@]:-}"; do
-    [ -n "$s" ] || continue
-    tag="${s%%:*}"; path="${s#*:}"
-    case "$path" in /*) ;; *) echo "--share mountpoint must be absolute — got '$path'" >&2; exit 1 ;; esac
-    add_fstab "$tag $path virtiofs defaults,nofail 0 0" "$path"
-    MOUNTED+=("$path")
-done
-for n in "${NFS[@]:-}"; do
-    [ -n "$n" ] || continue
-    host="${n%%:*}"; rest="${n#*:}"; export_="${rest%%:*}"; path="${rest#*:}"
-    # HOST:EXPORT:PATH is three fields, and getting two produces nonsense
-    # rather than an error: export_ and path both come out as the export, so
-    # the mount lands on a directory named after the server's filesystem. A
-    # mountpoint that is not absolute is the same accident one colon further
-    # along, where mkdir -p then makes it relative to $PWD. Both have happened.
-    case "$rest" in
-        *:*) ;;
-        *) echo "--nfs wants HOST:EXPORT:PATH — '$n' has no mountpoint" >&2; exit 1 ;;
-    esac
-    case "$path" in
-        /*) ;;
-        *) echo "--nfs mountpoint must be absolute — got '$path' in '$n'" >&2; exit 1 ;;
-    esac
-    add_fstab "$host:$export_ $path nfs defaults,nofail,_netdev 0 0" "$path"
-    MOUNTED+=("$path")
-done
-if [ "${#MOUNTED[@]}" -gt 0 ]; then
+
+# mount_one PATH — mount it and say plainly whether it worked.
+#
+# `nofail` is right at boot and wrong here: it means a share that cannot mount
+# does so quietly and `mount -a` still succeeds. So the SOURCE is checked, not
+# merely that something is mounted — `mount -a` skips a busy mountpoint, so a
+# path whose entry was just rewritten stays on the old share and looks fine.
+mount_one() {
+    local path="$1" want got
     mount -a || true
-    # `nofail` is right at boot and wrong here: it means a share that cannot
-    # mount does so quietly, and `mount -a` still succeeds. Everything after
-    # this — the summary, and every compose file that resolves a bind against
-    # one of these paths — then behaves as though it had worked. So each one
-    # is checked rather than assumed, which is the difference between finding
-    # out now and finding out from an app that came up with no data.
-    for path in "${MOUNTED[@]}"; do
-        # The SOURCE, not merely that something is mounted. `mount -a` skips a
-        # mountpoint that is already busy, so a path whose entry was just
-        # rewritten stays on the old share and looks perfectly mounted — which
-        # is the shape this whole check exists to catch.
-        want="$(awk -v p=" $path " 'index($0, p) {print $1; exit}' /etc/fstab)"
-        got="$(findmnt -rno SOURCE -- "$path" 2>/dev/null || true)"
-        [ -n "$got" ] && [ "$got" = "$want" ] && continue
-        if [ -n "$got" ]; then
-            warn "$path is mounted from $got, but fstab now says $want."
-            printf '   It was already mounted, so mount -a left it alone:\n'
-            printf '     umount -l %s && mount -a\n' "$path"
-            continue
-        fi
-        warn "$path did NOT mount, and nofail means nothing said so."
-        printf '   Check the export exists and allows this host:\n'
-        printf '     showmount -e <server>\n'
-        printf '   On Unraid an export is a SHARE — /mnt/user/<share> — never a\n'
-        printf '   pool path like /mnt/cache/<share>, which is right for a bind\n'
-        printf '   mount and is not exported.\n'
+    want="$(awk -v p=" $path " 'index($0, p) {print $1; exit}' /etc/fstab)"
+    got="$(findmnt -rno SOURCE -- "$path" 2>/dev/null || true)"
+    if [ -n "$got" ] && [ "$got" = "$want" ]; then
+        say "$path is mounted from $got"
+        return 0
+    fi
+    if [ -n "$got" ]; then
+        warn "$path is mounted from $got, but fstab now says $want."
+        printf '   It was already mounted, so mount -a left it alone:\n'
+        printf '     umount -l %s && mount -a\n' "$path"
+        return 1
+    fi
+    warn "$path did NOT mount, and nofail means nothing said so."
+    printf '   On Unraid an export is a SHARE — /mnt/user/<share> — never a\n'
+    printf '   pool path like /mnt/cache/<share>, which is right for a bind\n'
+    printf '   mount and is not exported. Check it allows this host:\n'
+    printf '     showmount -e <server>\n'
+    return 1
+}
+
+# --- commands -----------------------------------------------------------
+cmd_add_share() {
+    local spec="${1:?usage: bb-sandbox add-share TAG:PATH}" tag path
+    tag="${spec%%:*}"; path="${spec#*:}"
+    [ "$tag" != "$spec" ] || die "add-share wants TAG:PATH — got '$spec'"
+    case "$path" in /*) ;; *) die "the mountpoint must be absolute — got '$path'" ;; esac
+    add_fstab "$tag $path virtiofs defaults,nofail 0 0" "$path" && mount_one "$path"
+}
+
+cmd_add_nfs() {
+    local spec="${1:?usage: bb-sandbox add-nfs HOST:EXPORT:PATH}" host rest exp path
+    host="${spec%%:*}"; rest="${spec#*:}"; exp="${rest%%:*}"; path="${rest#*:}"
+    # Three fields, and getting two produces nonsense rather than an error:
+    # the export and the mountpoint both come out as the export.
+    case "$rest" in *:*) ;; *) die "add-nfs wants HOST:EXPORT:PATH — '$spec' has no mountpoint" ;; esac
+    case "$path" in /*) ;; *) die "the mountpoint must be absolute — got '$path'" ;; esac
+    add_fstab "$host:$exp $path nfs defaults,nofail,_netdev 0 0" "$path" && mount_one "$path"
+}
+
+cmd_remove() {
+    local path="${1:?usage: bb-sandbox remove PATH}" tmp
+    grep -qsF " $path " /etc/fstab || die "$path is not one of this machine's mounts"
+    umount -l "$path" 2>/dev/null || true
+    tmp="$(mktemp)"
+    grep -vsF " $path " /etc/fstab > "$tmp" || true
+    cat "$tmp" > /etc/fstab
+    rm -f "$tmp"
+    # The mountpoint itself stays. It is empty now, and removing a directory
+    # that a share was mounted over is how you delete the thing you meant to
+    # detach if the umount above did not take.
+    say "$path is no longer mounted at boot; the empty directory is left behind"
+    [ "$APPDATA" = "$path" ] && cmd_appdata ""
+}
+
+cmd_list() {
+    local path src state
+    printf '\n%-24s %-34s %s\n' MOUNTPOINT SOURCE STATE
+    while read -r path; do
+        [ -n "$path" ] || continue
+        src="$(awk -v p=" $path " 'index($0, p) {print $1; exit}' /etc/fstab)"
+        if ! findmnt -rno TARGET -- "$path" >/dev/null 2>&1; then state="NOT MOUNTED"
+        elif [ ! -w "$path" ]; then state="mounted, read-only"
+        else state="mounted"; fi
+        [ "$APPDATA" = "$path" ] && state="$state · container appdata"
+        printf '%-24s %-34s %s\n' "$path" "$src" "$state"
+    done < <(ours)
+    [ -n "$(ours)" ] || printf '(none yet)\n'
+}
+
+cmd_check() {
+    local bad=0 path
+    while read -r path; do
+        [ -n "$path" ] || continue
+        mount_one "$path" || bad=1
+    done < <(ours)
+    [ "$bad" -eq 0 ] && say "every configured mount is present and comes from where fstab says"
+    return "$bad"
+}
+
+cmd_appdata() {
+    local path="${1-}"
+    if [ -z "$path" ]; then
+        printf '%s\n' "${APPDATA:-(not set)}"
+        return 0
+    fi
+    ours | grep -qxF "$path" || die "$path is not one of this machine's mounts — add it first"
+    printf 'APPDATA=%s\n' "$path" > "$CONF"
+    APPDATA="$path"
+    say "$path is where containers keep their data"
+}
+
+# The lines to put in BuilderBot's own template. This machine cannot set them —
+# they are the CONTAINER's environment, on the other box — so it prints them
+# rather than pretending. Derived from what is actually mounted here, which is
+# the half that is easy to get wrong by hand.
+cmd_settings() {
+    local ip pairs="" path
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    while read -r path; do
+        [ -n "$path" ] || continue
+        # Parity: BuilderBot mounts the same share at the same path, so the
+        # mapping is an identity and the translation falls silent. A path this
+        # VM has and BuilderBot does not still belongs in neither list.
+        pairs="${pairs:+$pairs,}$path:$path"
+    done < <(ours)
+    cat <<EOF
+
+Put these in BuilderBot's container template:
+
+  DOCKER_HOST=ssh://$(logname 2>/dev/null || echo bb)@${ip:-<this-vm>}
+  DOCKER_HOST_PATHS=${pairs:-<none yet>}
+
+Only for the paths BuilderBot ALSO mounts at the same place — a share that is
+this machine's alone belongs in neither list, and BuilderBot will say so.
+${APPDATA:+
+Container appdata is ${APPDATA}. Mount that same share in BuilderBot at that
+same path, and set its /devdata to it.}
+EOF
+}
+
+# --- the menu -----------------------------------------------------------
+# whiptail where the distro has it, plain prompts where it does not. Both ask
+# the same questions in the same order, so a screenshot of one explains the
+# other.
+menu_whiptail() {
+    local choice
+    while :; do
+        choice="$(whiptail --title "BuilderBot sandbox" --menu \
+            "This VM's Docker sandbox" 18 68 8 \
+            list     "what is mounted, and from where" \
+            nfs      "add an NFS mount" \
+            share    "add a virtiofs share" \
+            remove   "take a mount out of fstab" \
+            appdata  "choose which mount holds container appdata" \
+            check    "verify every mount is really there" \
+            settings "the lines to paste into BuilderBot" \
+            quit     "" 3>&1 1>&2 2>&3)" || return 0
+        case "$choice" in
+            list)  cmd_list; pause ;;
+            nfs)   ask "HOST:EXPORT:PATH" "192.168.1.15:/mnt/user/media:/auxiliary" \
+                       && cmd_add_nfs "$REPLY"; pause ;;
+            share) ask "TAG:PATH" "workspace:/workspace" \
+                       && cmd_add_share "$REPLY"; pause ;;
+            remove) ask "which mountpoint" "" && cmd_remove "$REPLY"; pause ;;
+            appdata) ask "which mountpoint holds container appdata" "${APPDATA:-/devdata}" \
+                       && cmd_appdata "$REPLY"; pause ;;
+            check) cmd_check || true; pause ;;
+            settings) cmd_settings; pause ;;
+            quit|"") return 0 ;;
+        esac
     done
+}
+
+ask() {
+    local prompt="$1" default="${2-}"
+    if have whiptail; then
+        REPLY="$(whiptail --inputbox "$prompt" 10 68 "$default" 3>&1 1>&2 2>&3)" || return 1
+    else
+        read -r -p "$prompt [${default}]: " REPLY || return 1
+        REPLY="${REPLY:-$default}"
+    fi
+    [ -n "$REPLY" ]
+}
+pause() { printf '\n'; read -r -p "press enter " _ || true; }
+have() { command -v "$1" >/dev/null 2>&1; }
+
+menu_plain() {
+    local n
+    while :; do
+        cat <<'EOF'
+
+  1) list what is mounted        5) choose the container appdata mount
+  2) add an NFS mount            6) check every mount
+  3) add a virtiofs share        7) the lines to paste into BuilderBot
+  4) remove a mount              q) quit
+EOF
+        read -r -p "> " n || return 0
+        case "$n" in
+            1) cmd_list ;;
+            2) ask "HOST:EXPORT:PATH" "" && cmd_add_nfs "$REPLY" ;;
+            3) ask "TAG:PATH" "" && cmd_add_share "$REPLY" ;;
+            4) ask "which mountpoint" "" && cmd_remove "$REPLY" ;;
+            5) ask "which mountpoint holds container appdata" "${APPDATA:-}" && cmd_appdata "$REPLY" ;;
+            6) cmd_check || true ;;
+            7) cmd_settings ;;
+            q|Q) return 0 ;;
+        esac
+    done
+}
+
+case "${1-}" in
+    "")          if have whiptail; then menu_whiptail; else menu_plain; fi ;;
+    list)        cmd_list ;;
+    add-nfs)     shift; cmd_add_nfs "${1-}" ;;
+    add-share)   shift; cmd_add_share "${1-}" ;;
+    remove)      shift; cmd_remove "${1-}" ;;
+    check)       cmd_check ;;
+    appdata)     shift; cmd_appdata "${1-}" ;;
+    settings)    cmd_settings ;;
+    -h|--help|help)
+        sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
+    *) die "unknown command: $1 — try: bb-sandbox --help" ;;
+esac
+BBSANDBOX
+printf '   /usr/local/sbin/bb-sandbox — run it as root to add mounts later\n'
+
+say "shares"
+# Written to fstab rather than mounted once, because a sandbox that comes back
+# from a reboot without the projects share is a sandbox that builds the wrong
+# thing rather than failing. bb-sandbox does the writing, and keeps doing it
+# every time a share is added after today — one implementation, not a copy per
+# entry point.
+declare -a MOUNTED=()
+for spec in "${SHARES[@]:-}"; do
+    [ -n "$spec" ] || continue
+    /usr/local/sbin/bb-sandbox add-share "$spec"
+    MOUNTED+=("${spec#*:}")
+done
+for spec in "${NFS[@]:-}"; do
+    [ -n "$spec" ] || continue
+    /usr/local/sbin/bb-sandbox add-nfs "$spec"
+    MOUNTED+=("${spec##*:}")
+done
+# Checked rather than assumed, which is the difference between finding out now
+# and finding out from an app that came up with no data. bb-sandbox owns the
+# check for the same reason it owns the writing — one implementation — and the
+# operator can run it again any day with `bb-sandbox check`.
+if [ "${#MOUNTED[@]}" -gt 0 ]; then
+    /usr/local/sbin/bb-sandbox check || true
 fi
 
 if [ -n "$TCP_ON" ]; then

@@ -204,6 +204,8 @@ services:
       # daemon.
       # - /var/run/docker.sock:/var/run/docker.sock
       # Dev-instance volumes on fast storage; pairs with DOCKER_HOST below.
+      # Only needed where the daemon is this box's: a sandbox VM mounts the
+      # share itself and makes the per-instance directory over there.
       # - /mnt/cache/appdata/builderbot-dev:/devdata
 
     # Hardware acceleration for the Android emulator. Uncomment if your CPU

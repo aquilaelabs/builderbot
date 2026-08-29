@@ -312,7 +312,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
 | `GIT_PAT` | *(empty)* | A GitHub token for the whole container — every repo, every session. Still read, but a per-project token typed into the clone dialog is the better answer: it is scoped to the one repository that names it, so a token that opens twelve does not open twelve here. See below |
 | `DOCKER_HOST` | `auto` | Which Docker daemon the Artifacts tab's dev-instance controls drive. `auto` finds a running docker-socket-proxy on this container's network and re-finds it when its address moves; an explicit `tcp://host:2375` or `ssh://user@vm` is used verbatim; empty turns the feature off. An `ssh://` address pointing at a [sandbox VM](docs/sandbox-vm.md) is the arrangement where BuilderBot cannot reach the server's real containers at all. See `docs/unraid.md` |
-| `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation. Empty leaves `BB_DEV_DATA` unset, so a compose that wants it fails loudly |
+| `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation. With the dev-data share mounted here, empty leaves `BB_DEV_DATA` unset so a compose that wants it fails loudly; with a sandbox daemon that share is the sandbox's alone and needs no pair |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
@@ -1216,7 +1216,8 @@ and Dockge use. Labels are not a fourth box — in compose they belong in the
 YAML. The compose file is checked by compose itself before it is saved, and
 kept in `/config/containers/<name>/` where no project scan can see it; its
 relative bind sources resolve against its own data directory under `/devdata`,
-which this container and the daemon both have. Removing one takes its files
+which is a path the daemon has — this container too where the share is
+mounted here, and only the sandbox where it is not. Removing one takes its files
 with it, because its compose file *is* the thing.
 
 It lists what has been sent to it, not every project that could be sent: a
@@ -1278,6 +1279,21 @@ container.
   verdict never overrides it
 
 ### Tabs and panes
+
+**A terminal tab closes itself when its session ends.** `bb-tty` execs claude,
+so the pane's process *is* the conversation: exit it — Ctrl+C twice, `/exit`,
+Ctrl+D, or a crash — and the tmux session goes with it, and the tab used to sit
+there holding a dead terminal until somebody pressed ✕. Shells too, for the
+same reason: one you typed `exit` in is just as dead.
+
+Nothing is lost by closing it. The transcript is on disk and the project's
+Claude button offers to resume it, which is a better way back than a corpse in
+a tab — the row knows the transcript id and the dead tab does not.
+
+The rule is *seen alive, then gone*, and the transition is load-bearing: "has
+no session" is also true of every tab restored from a saved layout before
+anything has started, and of all of them for a moment if a poll ever comes back
+empty. Reaping on absence would wipe the strip at every boot.
 
 The page starts with one tab — **workspace**, a shell at `/workspace` — and
 everything you open gets its own tab above the terminal. Every tab, the
@@ -1726,7 +1742,9 @@ example with the old values preserved in comments, and leaves Up for the
 operator. Before the first build the button reads
 **Build**, and nothing is built until it is pressed. A compose that
 references `${BB_DEV_DATA}/...` gets its volumes on the cache drive by
-convention. BuilderBot itself gets the row too — the dev instance is
+convention — in a per-instance directory made by whichever side can see it,
+which where the daemon is a sandbox VM is the sandbox, so that share is
+mounted there and not here. BuilderBot itself gets the row too — the dev instance is
 `bbdev-builderbot`, a second container, never the one you are using; expect
 `up` to refuse while the real one holds the same host ports, which is the env
 file's job to change.
@@ -1750,7 +1768,9 @@ Two things bound what that row can reach, and they answer different halves of
 the question. The **namespace** is enforced rather than conventional: every
 docker call goes through one function, which refuses any argv that is not a
 `compose` call carrying a `--project-name` beginning `bbdev-` (plus one
-`docker version`). The socket proxy cannot do this itself — its flags are per
+`docker version`, and — only where the daemon is a sandbox VM — the three
+one-shot commands that tend the dev-data directory, recognised by rebuilding
+the exact argv rather than by allowing the verb). The socket proxy cannot do this itself — its flags are per
 *endpoint*, so `CONTAINERS=1` is the whole `/containers` API for every
 container on the host — so the invariant is asserted at the one place every
 call passes through. The **compose file** is the other half, and the one no

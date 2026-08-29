@@ -41,7 +41,7 @@ Two things also get better on the way:
 ## Path parity, which is the whole design
 
 Mount the projects share into the VM **at the same path BuilderBot uses**:
-`/workspace`. Do the same for the dev-data path: `/devdata`.
+`/workspace`.
 
 This is not tidiness. A compose file's bind-mount *source* is resolved by
 whatever runs the container, so if both machines call the share `/workspace`,
@@ -53,6 +53,23 @@ an empty directory and mounts that, and the app comes up with no data.
 `DOCKER_HOST_PATHS` exists precisely because today's daemon is the host's and
 its paths are not BuilderBot's. Give the sandbox parity and that setting
 becomes an identity mapping you can leave empty.
+
+**The dev-data path is the sandbox's alone.** `/devdata` — where a compose
+that opts in with `${BB_DEV_DATA}/...` puts its volumes — needs mounting on
+the VM and **not** in BuilderBot. It used to need both, for one reason: the
+per-instance directory has to exist before a bind can use it, docker's own
+attempt fails on a share that squashes root, and this container was the only
+thing that could run `mkdir`. It is not any more — where the daemon is a
+sandbox, BuilderBot asks *it* to make the directory, in a one-shot `alpine`
+container owned by BuilderBot's own uid. So the share is configured once, on
+the machine that uses it, and `/workspace` is the only path the two sides
+have to agree about.
+
+That is a `docker run`, which is root on whichever daemon answers — allowed
+here because a sandbox VM's whole job is being wrecked, and refused outright
+when the daemon is the socket proxy onto the server's own. On that
+arrangement nothing changes: mount `/devdata` in BuilderBot as before, and it
+makes the directory itself.
 
 ## The disk
 
@@ -74,6 +91,41 @@ qemu-img resize /mnt/user/domains/bb-sandbox/vdisk1.qcow2 +32G
 then grow the partition inside the guest — or nothing at all, if you built it
 from a cloud image: `growpart` runs at every boot and takes the new space on
 its own.
+
+## Configuring it afterwards
+
+`provision.sh` installs **`bb-sandbox`**, and that is how the machine is
+changed after the day it was built:
+
+```bash
+sudo bb-sandbox                      # a menu, whiptail where the distro has it
+sudo bb-sandbox add-nfs 192.168.1.15:/mnt/user/media:/auxiliary
+sudo bb-sandbox add-share workspace:/workspace
+sudo bb-sandbox appdata /devdata     # which mount holds container appdata
+sudo bb-sandbox check                # is every mount really there
+sudo bb-sandbox settings             # the lines to paste into BuilderBot
+```
+
+It is the same code provisioning uses for its own `--share` and `--nfs` — one
+implementation of the fstab writing, not a copy per entry point, because the
+comments in it were paid for one silent failure at a time: a mountpoint left
+`ESTALE` by a share that moved, a re-provision whose source had changed being a
+silent no-op, `mount -a` skipping a busy mountpoint so a rewritten entry stayed
+on the old export and looked perfectly mounted.
+
+**It is root on this machine, run by a person, and BuilderBot cannot reach it.**
+That is the point rather than an omission. This VM exists so a session can
+build and destroy containers without touching anything that matters; a path
+from the container into the VM's own configuration would hand back exactly what
+the arrangement buys. The dashboard can *see* what is mounted — it asks the
+daemon — and changing it is a decision made here.
+
+`settings` is the seam between the two machines. This VM cannot set BuilderBot's
+environment, so it prints what to paste: `DOCKER_HOST`, and a
+`DOCKER_HOST_PATHS` built from the mounts that actually exist here. Only the
+paths BuilderBot *also* mounts at the same place belong in it — a share this
+machine alone has belongs in neither list, and BuilderBot will say so on the
+Docker manager tab rather than leaving the line looking like it does something.
 
 ## Building it
 
@@ -287,10 +339,10 @@ Five things in it differ from Unraid's placeholder, each for a reason:
   the sandbox could then read and write every other container's
   configuration through it. Three options, in the order I would take them —
   skip `/devdata` until something needs it (a compose that never mentions
-  `${BB_DEV_DATA}` does not care); give it a share of its own and repoint
-  BuilderBot's `/devdata` at the same place so both sides still agree on the
-  path; or export `appdata` anyway, scoped to the VM's address, having
-  decided that trade deliberately rather than by accident.
+  `${BB_DEV_DATA}` does not care); give it a share of its own, which is now
+  simply a mount on the VM and nothing on BuilderBot's side; or export
+  `appdata` anyway, scoped to the VM's address, having decided that trade
+  deliberately rather than by accident.
 
   `ro` instead of `rw` on the projects share is worth knowing about: the
   sandbox could build from your source and never alter it. It breaks any
@@ -338,8 +390,11 @@ authentication is the key you installed, and nothing has to listen.
 that is root on the sandbox to anyone who can reach it, tolerable only because
 the sandbox holds nothing. Keep it off the LAN either way.
 
-**3. `DOCKER_HOST_PATHS=/workspace:/workspace`** — and `/devdata:/devdata` if
-you mounted that too. An identity mapping, because the VM has the shares at
+**3. `DOCKER_HOST_PATHS=/workspace:/workspace`** — and a pair for any other
+share you mounted on *both* sides. `/devdata` is not one of them: it belongs
+to the VM alone, BuilderBot never touches it, and naming it here would be a
+line of configuration nothing acts on (the manager says so on the row when
+you leave one in). An identity mapping, because the VM has the shares at
 the same paths this container does. It is accepted without being checked
 against this container's mount table, which describes its own mounts and says
 nothing about the VM's, and it makes the path checks fall silent: a bind the
