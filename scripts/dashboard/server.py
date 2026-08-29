@@ -364,7 +364,7 @@ CARD_KEYS = ["doctor", "runner", "projects", "tools", "phone", "findings"]
 
 # Every state file is written the same way: to a temp file in the same
 # directory, then renamed over the real one, so a reader — including bb-tty,
-# which parses the exclusion list on every session launch — never sees half
+# which parses the lock list on every session launch — never sees half
 # a file. The temp name is unique per call. It used to be a fixed
 # "<name>.json.tmp", and this is a threading server: two saves landing
 # together (a slow poll and the page's debounced follow-up save were enough)
@@ -2069,7 +2069,7 @@ def findings_counts(ps):
     directory this workspace does not mount) counts under "", which the
     client labels rather than hiding — a finding with a bad path is still a
     finding. The cache holds the unfiltered counts: validity can change
-    (an exclusion toggled, a permission fixed) without any report changing,
+    (a project locked, a permission fixed) without any report changing,
     so the filter runs per call and only the parse is cached."""
     # Keyed on the valid project names too: attribution matches path components
     # against them, so a project that appears — or stops being valid — between

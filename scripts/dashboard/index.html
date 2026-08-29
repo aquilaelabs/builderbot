@@ -1861,7 +1861,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="field nbhead vbar"><span id="anaHint">loading…</span>
         <span class="sp"></span>
         <button type="button" id="anaLog"
-          title="what the scanner has stopped and started saying here — nobody writes these, so the log is the difference between one scan and the last">History</button>
+          title="what the scanner has stopped and started saying here — the difference between one scan and the last">History</button>
       </div>
       <div class="field histbar" id="anaHistBar" hidden>
         <input maxlength="80" autocomplete="off" placeholder="search the findings log">
@@ -4476,10 +4476,8 @@ function projectRow(p, live, cls, inTab){
                  : nb ? "notebook — open, go to its tab"
                  : "notebook — roadmap, memory and bugs for this project"}">${BOOK}</button>`}
       <button class="eye" data-rn="${esc(p.name)}" aria-label="settings"
-        title="settings — the name, which credential its remote uses, and what
-Claude runs on here. Renaming moves the directory and everything keyed to its
-name: the roadmap, the bugs, the versions, the dev instance's data and env, the
-CI logs, and Claude's own transcripts and memories">${GEAR}</button>
+        title="settings — the name, its git credential, and what Claude runs on
+here. Renaming moves the directory and everything keyed to it">${GEAR}</button>
       <button class="eye${p.locked ? " on" : ""}" data-k="${esc(p.name)}"
         data-on="${p.locked ? "0" : "1"}"
         aria-label="${p.locked ? "unlock" : "lock"}"
@@ -5667,7 +5665,7 @@ directory stay, so remaking it under the same name finds them">Remove</button>
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}
             title="stop this build. What is already built is kept — an abort is
-for the rest of the work, not for undoing what finished"
+for the rest of the work"
             >${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
         <button type="button" data-dm="rebuild" ${!d.changed || busy ? "disabled" : ""}
           title="${!d.built_rev
@@ -6309,7 +6307,7 @@ function stepRow(r, idx, live){
     ${idx >= 0 ? `<span class="n">${idx + 1}</span>`
                : r.id < 0
                  ? `<span class="n id new" title="not saved yet — it gets its number when you press Save">new</span>`
-                 : `<span class="n id" title="this item is #${r.id} wherever it sits — what a session means by that number, and what bb roadmap done ${r.id} takes">#${r.id}</span>`}
+                 : `<span class="n id" title="this item is #${r.id} wherever it sits — and what bb roadmap done ${r.id} takes">#${r.id}</span>`}
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
@@ -7728,7 +7726,7 @@ $("todoRevert").onclick = revertNotebook;
             title="it publishes ${devTcp.length} ports — pick one">Open…</button>` : ""}
           <button type="button" id="devSend" class="primary"
             title="name a container built from this project and manage it there — a
-project can have several, and they are all built from this codebase"
+project can have several"
             >Send to Docker manager…</button>
         </span>
       </div>`;
@@ -8367,16 +8365,15 @@ become that version's section when it is created">Changelog${
             <button type="button" class="bEdit">Edit</button>
             <button type="button" class="danger bRm"
               title="for a report that should not exist — mis-filed, a duplicate,
-                     the wrong project. A bug that was real and is dealt with is
-                     closed instead, which keeps it.">Delete</button>
+                     the wrong project. A real one that is dealt with gets
+                     closed instead.">Delete</button>
             <span class="sp"></span>
             ${b.status === "open"
               ? `<button type="button" class="bFix">Mark fixed</button>
                  <button type="button" class="bWont">Won't fix</button>
                  <button type="button" class="bNa"
-                   title="it was real and stopped applying — the feature it was
-                          about went away. Neither fixed nor a decision to leave
-                          it, and saying either would mislead the next reader."
+                   title="it was real and stopped applying — the feature went
+                          away. Not a fix, and not a decision to leave it."
                    >Not applicable</button>`
               : `<button type="button" class="bReopen">Reopen</button>`}
           </div>

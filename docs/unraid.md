@@ -158,14 +158,9 @@ Fill in `GITHUB_PAT` (and `GIT_USER_NAME`/`GIT_USER_EMAIL`), leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
 **Apply**. Unraid pulls the image and starts it.
 
-**Already running an older template?** The projects used to be mapped one at a
-time (`/workspace/MediaReducer-Dev`, `/workspace/FreshBoot`, …). Those mappings
-are stored on *your container*, and a template that no longer lists them does
-not remove them — Unraid never applies new template values to a container that
-already exists. Edit the container, **delete each per-project Path**, and add
-one mapping of `/mnt/user/development/projects` → `/workspace`. Leaving both in place
-mounts the same folder twice: the old mapping shadows the identically-named
-folder inside the new one, which works but hides any change to the parent.
+**Unraid never applies new template values to a container that already
+exists**, so changing a default here — a path, the dashboard port — does
+nothing to a running container until you edit that setting on it yourself.
 
 ### Give the container time to stop
 
@@ -325,12 +320,6 @@ Selecting text in a shell terminal copies it to your clipboard as you release
 the mouse. Claude tabs keep tmux's mouse mode instead, so they do not.
 Right-click gives you the browser's menu only — tmux's would be drawn
 underneath it — and Alt+right-click still opens tmux's if you want it.
-
-Upgrading from an image older than this one: BuilderBot used to write its tmux
-settings straight into `~/.tmux.conf`, which is on the persistent home volume.
-That copy is replaced on the next start (kept as `~/.tmux.conf.builderbot-old`),
-and the launcher sets mouse mode on each session anyway, so the clipboard
-behavior does not depend on it.
 
 The `bb` commands card sits between two more: **Linux commands** (disk,
 memory, processes, ports — live on any shell) above it, and **Git & GitHub**
@@ -529,11 +518,10 @@ placed in `~/.ssh` instead keep working too — that's the simple, unshielded
 option.)
 
 With several deploy keys loaded, one per private repo, ssh needs telling
-which key belongs to which repo — that used to mean hand-writing a
-`~/.ssh/config` alias and copying the `.pub` in as a selector. The
-dashboard's **New project…** clone form now does that side for you: it
-lists the loaded keys (their public halves, straight from the agent), and
-picking one writes the selector and alias and clones through them — the
+which key belongs to which repo. The dashboard's **New project…** clone
+form does that for you: it lists the loaded keys (their public halves,
+straight from the agent), and picking one writes the selector and alias
+and clones through them — the
 same picker also shows the public key to paste into the repo's
 **Settings → Deploy keys** on GitHub. Adding a *new* key is still the
 host-side flow above: drop the private key in `secrets/ssh/` and restart

@@ -305,6 +305,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `BB_LOG_DIR` | *(auto)* | Log location override; normally use the `/logs` mount instead |
+| `UNRAID_ICON_NAME` | `BuilderBot` | Only with the icon-cache mapping: Unraid names the cached icon after the container, and nothing inside one can see its own name — set this if you renamed it |
 | `ENABLE_DASHBOARD` | `false` | Web dashboard + browser terminal |
 | `DASHBOARD_AUTH` | *(empty)* | `user:password` — **required** when the dashboard is enabled; it will not start otherwise |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
@@ -1035,7 +1036,7 @@ lives in its body. The cards:
   listed — the container writes one into any path of its own that lands in
   the projects share (the SDK share, if you map it inside the projects
   folder rather than beside it), and you can create one by hand for anything else
-  you would rather not see. It *hides*; the eye below **blocks**, which is a
+  you would rather not see. It *hides*; the padlock **blocks**, which is a
   different promise.
   At the foot of the card, **New project…** creates one. A fresh local repo
   (`git init`) asks for a name and a free-text *About this project*, which
@@ -1051,8 +1052,8 @@ lives in its body. The cards:
   For a private repo with its own deploy key, a **Deploy key** picker lists
   what the shielded agent holds (public halves only, via `ssh-add -L`) and
   shows the selected key for copying into the repo's GitHub deploy-key page.
-  Picking one makes the server handle the container side that used to be
-  manual: it writes the `.pub` selector and an `IdentitiesOnly` ssh alias
+  Picking one makes the server handle the container side: it writes the
+  `.pub` selector and an `IdentitiesOnly` ssh alias
   (`bb-<key>`, in a namespace of its own so hand-maintained config is never
   touched) and clones through the alias — which the remote then keeps, so
   later pushes offer the right key too. Only the matched agent key's own
@@ -1168,9 +1169,7 @@ which one it is — *"on a sandbox VM at ssh://…"* — and adds *"the mounted
 socket is unused"* when an address has shadowed one, because a socket left
 mounted while you try a VM is a reasonable thing to be in the middle of and
 being told beats wondering. `bb doctor` prints the same line from the same
-function; it used to work the kind out from the setting and the address from
-the fallback, which with `auto`, a mounted socket and no proxy answering read
-*"a socket proxy at /var/run/docker.sock"*.
+function, so the two cannot disagree about which daemon is live.
 
 **With no daemon reachable, the controls that would drive one are disabled**,
 each carrying the reason as its tooltip, and the manager tab says the same
@@ -1195,9 +1194,8 @@ you were reading.
 
 **A long build says what it is doing, and can be stopped.** The command's
 output is streamed into the row as it arrives rather than handed over when it
-exits — a `compose build` that spends four minutes pulling layers used to be
-four minutes of a spinner and then everything at once, which is a download
-wearing a hang's clothes. The phase word above it still says *building* or
+exits, so a `compose build` spending four minutes pulling layers is not four
+minutes of a spinner. The phase word above it still says *building* or
 *starting*; the tail below says what the phase is spending its time on. It is
 raw and deliberately not parsed into a bar: docker rewrites a line per layer
 per tick, and turning that into a percentage is the thing the packages tab
@@ -1208,7 +1206,7 @@ build is not destructive — what is already built is kept, exactly as a failed
 build's work is — and the signal goes to the process *group*, because a compose
 CLI waiting on a pull leaves the download running if only the CLI is asked to
 stop. The row then says how the job ended rather than silently reverting to
-whatever state it was in, which is what it used to do for a failed build too.
+whatever state it was in.
 
 **New container…** on that tab runs something with no project behind it: a
 name, a compose file and an environment, which is the shape Portainer's stacks
@@ -1282,9 +1280,9 @@ container.
 
 **A terminal tab closes itself when its session ends.** `bb-tty` execs claude,
 so the pane's process *is* the conversation: exit it — Ctrl+C twice, `/exit`,
-Ctrl+D, or a crash — and the tmux session goes with it, and the tab used to sit
-there holding a dead terminal until somebody pressed ✕. Shells too, for the
-same reason: one you typed `exit` in is just as dead.
+Ctrl+D, or a crash — the tmux session goes with it, and the tab closes rather
+than holding a dead terminal until somebody presses ✕. Shells too: one you
+typed `exit` in is just as dead.
 
 Nothing is lost by closing it. The transcript is on disk and the project's
 Claude button offers to resume it, which is a better way back than a corpse in
@@ -1327,21 +1325,18 @@ Every project has one, reachable from the **Notebook** button on its row: a tab
 of its own, one per project, and as many open at once as you have projects —
 each is its own instance, so what is half-typed in one survives working in
 another, and the button lights green while that project's is open. Four views
-under its tab strip: **Memory** (what Claude remembers here, moved up from the
-fold it used to live in), the **Roadmap** (the shared list, renamed for what it
-is — design work and ordered plans), **Bugs**, and **Analysis** (the scanner's
-findings for this project alone).
+under its tab strip: **Memory** (what Claude remembers here), the **Roadmap**
+(the shared list of design work and ordered plans), **Bugs**, and **Analysis**
+(the scanner's findings for this project alone).
 
 **Unsaved work does not cross those four.** Leaving a view asks, and answering
 yes throws the change away rather than carrying it to the next tab.
 
 **A History, and the changelog, open over the panel rather than in place of
 it** — a large box on a desktop, the whole screen on a phone. They are things
-you *read*, and they used to take the panel's place: the list you wanted to
-read the log against got out of the way for the log about it, and leaving
-meant pressing the same button a second time to get the list back. Now the
-thing behind is still there, and **Close**, Escape or a click outside puts the
-log back where it came from. What goes into the sheet is the real element,
+you *read*, so the list you are reading them against stays behind them, and
+**Close**, Escape or a click outside puts the log back where it came from.
+What goes into the sheet is the real element,
 moved — so the filter bar keeps every handler it had and there is no second
 copy of it to drift.
 
@@ -1379,19 +1374,17 @@ reword shows both wordings, the old one struck through. `bb roadmap history`
 prints the same log in a terminal.
 
 That log is also what makes deleting safe, because the list now holds nothing
-but outstanding work. **A ticked-off item comes off it.** It used to sit
-there faded for a week, which is the same mistake crossing a line out was: a
-list is read to find out what is left, and a thing that is finished is not
-left. `bb roadmap done N` moves it into the log under *done*, where `rm N` would
-have put it under *dropped* — both leave, and the log is what says which
-happened. Only a session ticks things off; nothing in the dashboard can,
-because only the session that did the work knows. **Crossing a line off by hand is gone.** It used to sit
-beside the bin and leave exactly the mark that sending leaves, so a list
-filled up with things that looked dealt with and were not — and "I crossed
-that off" is not the same claim as "that is done". The strike icon is now
-only ever an undo: it appears on a line that *has* been sent, to put it back
-so it can go again. A line you handled yourself gets dropped, and its words
-stay in the log to be retyped if you were wrong.
+but outstanding work. **A ticked-off item comes off it** — a list is read to
+find out what is left, and a thing that is finished is not left. `bb roadmap
+done N` moves it into the log under *done*, where `rm N` would have put it
+under *dropped*; both leave, and the log says which happened. Only a session
+ticks things off, because only the session that did the work knows.
+
+**The strike icon is only ever an undo.** It appears on a line that *has* been
+sent, to put it back so it can go again — there is no crossing one off by
+hand, because "I crossed that off" is not the same claim as "that is done". A
+line you handled yourself gets dropped, and its words stay in the log to be
+retyped if you were wrong.
 
 **Nothing the panel does reaches the list until you press Save.** Type three
 steps, reword one, drop another, shuffle the order — it is all held on the
@@ -1522,11 +1515,9 @@ mistake that actually costs something: step three landing on a tree step two
 was supposed to have made.
 
 Editing is not constrained the same way, deliberately. The pencil rewords any
-row, and the **bin is on every row** — item or step, anywhere in a plan. It
-used to be the first step only, on the theory that things come off a plan from
-the front; in practice that meant a stale step three cost you steps one and
-two to reach, and left the list describing work nobody was going to do. A
-deletion cannot send anything out of order. It can only make a plan shorter —
+row, and the **bin is on every row** — item or step, anywhere in a plan, so a
+stale step three does not cost you steps one and two to reach. A deletion
+cannot send anything out of order. It can only make a plan shorter —
 and it now says why it did, in a note kept with the entry in the history.
 **The bin always asks; shelving never does**, because one is recoverable by
 pressing the same button again and the other is not.
@@ -1555,10 +1546,8 @@ in that session's tab. One tap for all four would be a mis-tap you could not
 take back, and the highlight is the confirmation — a sentence restating the
 line the arrow is sitting next to was not.
 
-The box sits **under the line it would send**, not at the foot of the panel.
-It used to be a strip down beside Save, which on a phone put the confirmation
-for handing a line over a screen away from the line, with nothing on it saying
-which one.
+The box sits **under the line it would send**, not at the foot of the panel,
+where on a phone it would be a screen away from the line it is asking about.
 
 **A note can ride with it.** The box carries a field for anything to send
 alongside — "the select is the one on the left" — and it goes on the *same*
@@ -1574,14 +1563,11 @@ They are the project's own setting, at the bottom of its **settings dialog**
 when it starts a session there — so a session that is up is already on them
 and a send is only ever the send.
 
-They used to be typed in as `/model` and `/effort` ahead of each message,
-because a running session cannot be changed by a flag it was not started
-with. That stopped working the day claude put a confirmation behind `/model`:
-the confirmation has the keyboard, the step goes into it, and no amount of
-waiting helps because a dialog is exactly what "the pane has stopped
-changing" looks like. It was also never scoped — claude saves a slash-command
-switch as the default for *new* sessions too, so a per-project pick would
-leak to every project. A launch flag is the process's own.
+A launch flag rather than a `/model` typed ahead of each message, for two
+reasons: claude puts a confirmation behind that command, and a dialog is
+exactly what "the pane has stopped changing" looks like — and it saves the
+switch as the default for *new* sessions, so a per-project pick would leak to
+every project.
 
 **Changing it while a session is running restarts that session**, and the
 dialog says so before you save. The restart is `tmux respawn-pane`, so the
@@ -1966,15 +1952,14 @@ Ticked items stay a week, then go.
   because that is where something is actually lost: the shell and everything
   in it, or the Claude conversation (its transcript is kept and can be resumed).
 - **Switching between terminals is instant**, because a pane keeps the last
-  three of them loaded behind the one on screen. It used to rebuild the pane
-  to change tabs, which threw the frame away — and the terminal is 700KB of
-  JavaScript that then had to parse, open a websocket, attach to tmux and
-  draw. On a phone that was a second and a half of blank pane, every switch;
-  it is now single-digit milliseconds. The frames sit exactly on top of one
-  another at the same size, which is not just tidiness: a hidden frame is
-  still an attached tmux client, and tmux sizes a window to its smallest one,
-  so different geometry would mean the terminals fighting over the width. The
-  fourth reloads, as all of them used to — the ceiling is there because each
+  three of them loaded behind the one on screen. Rebuilding the pane instead
+  would throw the frame away, and the terminal is 700KB of JavaScript that
+  then has to parse, open a websocket, attach to tmux and draw — a second and
+  a half of blank pane on a phone, every switch. The frames sit exactly on top
+  of one another at the same size, which is not just tidiness: a hidden frame
+  is still an attached tmux client, and tmux sizes a window to its smallest
+  one, so different geometry would mean the terminals fighting over the width.
+  The fourth reloads — the ceiling is there because each
   one is a live xterm and its own socket, the same reasoning as `DASHBOARD_MAX_TABS`.
   Killing a session also closes its tab, whichever tab that is — a tab left
   pointing at a dead session would only offer to recreate it.
@@ -2257,8 +2242,8 @@ failed and its exit code — and not one line of what that step printed. With
 answer in here for a job that ran in this very container.
 
 So the lint workflow archives its own output — and so does the `dashboard
-tests` workflow beside it, which carries the browser suite that used to be a
-step here: each check is teed into
+tests` workflow beside it, which carries the browser suite: each check is
+teed into
 `/config/ci-logs/<repo>/<run-id>-<attempt>.log`, with a header naming the
 commit, ref and event, and a `result:` line written by an `if: always()` step
 so a job that died still says so. `bb ci-log` prints the newest, `--list` shows
@@ -2421,11 +2406,8 @@ where that matters, use a deploy key.
 
 ### Locking a project
 
-The **padlock** on a project row is the one gate there is. There used to be two
-— an eye that *excluded* a directory and a padlock that *locked* it — and they
-looked alike, sat next to each other and both ended a session, which is a
-distinction finer than it was worth two buttons. Locked is the survivor and it
-carries the whole meaning.
+The **padlock** on a project row is the one gate there is, and it carries the
+whole meaning: no session, a read-only notebook, no CLAUDE.md.
 
 The list lives in `/config/locked-projects.json`, so it survives restarts and
 image updates, and it is enforced by the terminal launcher and the server
@@ -2471,14 +2453,11 @@ as much as the ssh keys are. It is not a convenience toggle; treat it like the
 Docker socket mount.
 
 Only the dashboard port is published. ttyd binds the loopback and the
-dashboard relays `/term` to it — an earlier revision kept the terminal on its
-own published port to avoid hand-relaying a PTY websocket, but the price was
-the browser asking for credentials twice and a second port on the router, and
-the relay that buys that back is deliberately dumb: after checking the
-session it splices the two sockets byte for byte and never parses a frame.
-Credentials are checked in one place either way — the cookie or basic auth
-this server already verifies; the old `DASHBOARD_TTYD_PUBLIC_PORT` knob is
-gone with the second port that needed it. curl and scripts can skip the
+dashboard relays `/term` to it, so the browser asks for credentials once and
+the router needs one port. The relay is deliberately dumb: after checking the
+session it splices the two sockets byte for byte and never parses a frame, and
+credentials are checked in one place — the cookie or basic auth this server
+already verifies. curl and scripts can skip the
 login page entirely: basic auth is honored preemptively on every request
 (`curl -u user:pass ...`), there is just no `WWW-Authenticate` challenge —
 that header is exactly what made browsers pop their own dialog.

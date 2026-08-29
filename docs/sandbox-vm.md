@@ -56,14 +56,12 @@ becomes an identity mapping you can leave empty.
 
 **The dev-data path is the sandbox's alone.** `/devdata` — where a compose
 that opts in with `${BB_DEV_DATA}/...` puts its volumes — needs mounting on
-the VM and **not** in BuilderBot. It used to need both, for one reason: the
-per-instance directory has to exist before a bind can use it, docker's own
-attempt fails on a share that squashes root, and this container was the only
-thing that could run `mkdir`. It is not any more — where the daemon is a
-sandbox, BuilderBot asks *it* to make the directory, in a one-shot `alpine`
-container owned by BuilderBot's own uid. So the share is configured once, on
-the machine that uses it, and `/workspace` is the only path the two sides
-have to agree about.
+the VM and **not** in BuilderBot. The per-instance directory has to exist
+before a bind can use it, and docker's own attempt fails on a share that
+squashes root — so BuilderBot asks the sandbox to make it, in a one-shot
+`alpine` container owned by BuilderBot's own uid. The share is configured
+once, on the machine that uses it, and `/workspace` is the only path the two
+sides have to agree about.
 
 That is a `docker run`, which is root on whichever daemon answers — allowed
 here because a sandbox VM's whole job is being wrecked, and refused outright

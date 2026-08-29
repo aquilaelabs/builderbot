@@ -176,7 +176,7 @@ services:
       # design: mounting only its output means nothing in this container can
       # run it, reconfigure it, or rewrite what it found. Read them with
       # `bb findings`.
-      # - /mnt/user/appdata/scanners/reports:/reports:ro
+      # - ${SCANNER_REPORTS_PATH:-/mnt/user/appdata/scanners/reports}:/reports:ro
 
       # Optional: send the persistent log somewhere else (e.g. an array
       # share). The container auto-detects a /logs mount; without it, logs
