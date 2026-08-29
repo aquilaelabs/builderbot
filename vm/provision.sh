@@ -65,15 +65,43 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+say() { printf '\n== %s\n' "$*"; }
+warn() { printf '\n!! %s\n' "$*" >&2; }
+
+# This is for a VM, and a container is not one. BuilderBot's own base is
+# Ubuntu and runs as root under `docker exec`, so both checks above pass there
+# and the script would go on to install seven packages before failing on
+# `systemctl enable --now docker` — a container has no systemd, and the error
+# it gives ("unit docker.service does not exist") names the symptom rather
+# than the mistake. Which is exactly how it went the first time somebody ran
+# this in the wrong shell.
+#
+# So: refused at the top, before anything is installed. There is no --force,
+# because provisioning a container as a Docker host has no working version to
+# fall back to.
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
+   || grep -qs -E '(docker|lxc|containerd)' /proc/1/cgroup 2>/dev/null; then
+    warn "this is a container, and this script provisions a VM."
+    if [ -d /opt/builderbot ]; then
+        printf '   You are inside BuilderBot. It is the thing that TALKS to the\n'
+        printf '   sandbox; the sandbox is the separate machine at DOCKER_HOST.\n'
+        printf '   Run this in a console on that VM, not in here.\n\n'
+        printf '   Nothing outside the volumes survives a restart here, so if a\n'
+        printf '   run got further than this: restart the container and it is\n'
+        printf '   gone. /etc, /usr and /var are all image layer.\n'
+    else
+        printf '   Run it in a console on the VM itself. It needs systemd, which\n'
+        printf '   a container does not have, and it edits fstab.\n'
+    fi
+    exit 1
+fi
+
 [ "$(id -u)" -eq 0 ] || { echo "run this with sudo" >&2; exit 1; }
 . /etc/os-release
 case "${ID:-}" in
     debian|ubuntu) ;;
     *) echo "this expects Debian or Ubuntu, not ${ID:-unknown}" >&2; exit 1 ;;
 esac
-
-say() { printf '\n== %s\n' "$*"; }
-warn() { printf '\n!! %s\n' "$*" >&2; }
 
 say "packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -177,7 +205,17 @@ say "bb-sandbox"
 # VM is that a session can build and destroy containers without touching
 # anything that matters, and a path from the container into the VM's own
 # configuration would hand back exactly what the arrangement buys.
-install -m 0755 /dev/stdin /usr/local/sbin/bb-sandbox <<'BBSANDBOX'
+# Written to a temp file and installed from it, rather than
+# `install /dev/stdin` reading the heredoc directly. That form depends on
+# /dev/stdin being openable BY PATH, and whether it is depends on what bash
+# did with the here-document: a pipe reopens fine, a temp file that bash
+# unlinked does not, and opening it then fails with exactly the message this
+# produced on a real VM — "install: No such file or directory", naming
+# nothing. Which of the two bash picks is a size and version question, so the
+# form worked everywhere it was tried and failed on the machine it was for.
+# cat reads the descriptor it was given and asks no such question.
+BBSANDBOX_TMP="$(mktemp)"
+cat > "$BBSANDBOX_TMP" <<'BBSANDBOX'
 #!/usr/bin/env bash
 #
 # bb-sandbox — configure this Docker sandbox after it has been provisioned.
@@ -493,6 +531,13 @@ case "${1-}" in
     *) die "unknown command: $1 — try: bb-sandbox --help" ;;
 esac
 BBSANDBOX
+install -m 0755 "$BBSANDBOX_TMP" /usr/local/sbin/bb-sandbox
+rm -f "$BBSANDBOX_TMP"
+# Checked rather than assumed: this is the step that failed silently enough to
+# leave an old copy in place and a new one nowhere.
+[ -s /usr/local/sbin/bb-sandbox ] \
+    || { warn "bb-sandbox did not install"; exit 1; }
+
 # The account BuilderBot will ssh in as. Recorded now because it is decided
 # here and nowhere else: bb-sandbox prints it back in `settings`, and guessing
 # it from whoever ran sudo is wrong the moment this box is administered from
