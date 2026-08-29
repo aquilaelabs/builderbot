@@ -89,3 +89,4 @@
 - The Packages tab is laid out like the other tabs, and a tooltip no longer breaks apart when you hold the button down (b39d5f6)
 - A container build shows its output as it happens and can be stopped, and the row says how a build ended (c771bf7)
 - A terminal tab now closes itself when its session ends, instead of leaving a dead terminal in the strip (fce723e)
+- A share mounted on both this container and the daemon is now checked like the others, and one only the daemon has is named rather than ignored (3e9ea7d)
