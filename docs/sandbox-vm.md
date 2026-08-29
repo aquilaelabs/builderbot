@@ -57,7 +57,10 @@ becomes an identity mapping you can leave empty.
 **The dev-data path is the sandbox's alone.** `/devdata` — where a compose
 that opts in with `${BB_DEV_DATA}/...` puts its volumes — needs mounting on
 the VM and **not** in BuilderBot. Leave the container's **Dev instance data**
-path empty: there is nothing for it to do.
+path empty — a mount there is not merely spare. It makes BuilderBot use its
+own copy of `/devdata` instead of the sandbox's, which then needs a
+`/devdata:/devdata` pair in the host path mapping as well; without one,
+`BB_DEV_DATA` is left unset and a compose that wants it refuses to start.
 
 The per-instance directory has to exist before a bind can use it, and docker's
 own attempt fails on a share that squashes root — so BuilderBot asks the
