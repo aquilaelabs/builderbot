@@ -135,6 +135,24 @@ say "user ${USER_NAME}"
 id -u "$USER_NAME" >/dev/null 2>&1 || useradd -m -s /bin/bash "$USER_NAME"
 usermod -aG docker "$USER_NAME"
 if [ -n "$SSH_KEY" ]; then
+    # Checked before it is installed, because both ways this goes wrong are
+    # expensive and neither says anything at the time. A key that does not
+    # parse leaves a VM nothing can ssh into, found from the console after
+    # provisioning has finished and you have walked away. And a PRIVATE key
+    # pasted here is a secret written onto the machine whose whole premise is
+    # that it holds nothing — authorized_keys wants the .pub half, and the
+    # private one never leaves BuilderBot's shielded agent.
+    case "$SSH_KEY" in
+        *"-----BEGIN"*)
+            echo "--key is a PRIVATE key. It wants the .pub half — the private" >&2
+            echo "one stays on BuilderBot and this machine never holds it." >&2
+            exit 1 ;;
+    esac
+    printf '%s\n' "$SSH_KEY" | ssh-keygen -l -f - >/dev/null 2>&1 || {
+        echo "--key does not parse as a public key. It is one line, starting" >&2
+        echo "ssh-ed25519 or ssh-rsa, from BuilderBot's own .pub file." >&2
+        exit 1
+    }
     home="$(getent passwd "$USER_NAME" | cut -d: -f6)"
     install -d -m 0700 -o "$USER_NAME" -g "$USER_NAME" "$home/.ssh"
     touch "$home/.ssh/authorized_keys"
