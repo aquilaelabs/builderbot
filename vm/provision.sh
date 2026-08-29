@@ -65,15 +65,43 @@ while [ $# -gt 0 ]; do
     esac
 done
 
+say() { printf '\n== %s\n' "$*"; }
+warn() { printf '\n!! %s\n' "$*" >&2; }
+
+# This is for a VM, and a container is not one. BuilderBot's own base is
+# Ubuntu and runs as root under `docker exec`, so both checks above pass there
+# and the script would go on to install seven packages before failing on
+# `systemctl enable --now docker` — a container has no systemd, and the error
+# it gives ("unit docker.service does not exist") names the symptom rather
+# than the mistake. Which is exactly how it went the first time somebody ran
+# this in the wrong shell.
+#
+# So: refused at the top, before anything is installed. There is no --force,
+# because provisioning a container as a Docker host has no working version to
+# fall back to.
+if [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
+   || grep -qs -E '(docker|lxc|containerd)' /proc/1/cgroup 2>/dev/null; then
+    warn "this is a container, and this script provisions a VM."
+    if [ -d /opt/builderbot ]; then
+        printf '   You are inside BuilderBot. It is the thing that TALKS to the\n'
+        printf '   sandbox; the sandbox is the separate machine at DOCKER_HOST.\n'
+        printf '   Run this in a console on that VM, not in here.\n\n'
+        printf '   Nothing outside the volumes survives a restart here, so if a\n'
+        printf '   run got further than this: restart the container and it is\n'
+        printf '   gone. /etc, /usr and /var are all image layer.\n'
+    else
+        printf '   Run it in a console on the VM itself. It needs systemd, which\n'
+        printf '   a container does not have, and it edits fstab.\n'
+    fi
+    exit 1
+fi
+
 [ "$(id -u)" -eq 0 ] || { echo "run this with sudo" >&2; exit 1; }
 . /etc/os-release
 case "${ID:-}" in
     debian|ubuntu) ;;
     *) echo "this expects Debian or Ubuntu, not ${ID:-unknown}" >&2; exit 1 ;;
 esac
-
-say() { printf '\n== %s\n' "$*"; }
-warn() { printf '\n!! %s\n' "$*" >&2; }
 
 say "packages"
 export DEBIAN_FRONTEND=noninteractive
