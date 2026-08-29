@@ -2695,11 +2695,39 @@ cmd_doctor() {
     else
         printf '  [skip] no runner credential (fine if ENABLE_RUNNER=false)\n'
     fi
+    # `gh auth status`, said as what it is. This line used to read "git over
+    # https not authenticated", which is a claim about pushing and this is not
+    # a test of pushing: a project with its own token in /config/gitcreds
+    # pushes over https perfectly well with gh logged out, and this repo does
+    # exactly that. What gh being logged out actually costs is the API — no
+    # `gh pr create`, no `gh release create` — and reporting that as broken git
+    # sends somebody to fix a credential that is already working.
     if gh auth status >/dev/null 2>&1; then
-        printf '  [ok]   git over https authenticated (gh)\n'
+        printf '  [ok]   gh (the GitHub API) is authenticated\n'
     else
-        printf '  [skip] git over https not authenticated (set GIT_PAT, or use an ssh key)\n'
+        printf '  [skip] gh (the GitHub API) is not authenticated — no gh pr/release.\n'
+        printf '         Git itself is unaffected: it uses an ssh key, or a\n'
+        printf '         per-project token from the clone dialog.\n'
     fi
+    # And whether THIS repo can actually reach its remote, which is the
+    # question the line above was being read as. Per-project tokens made the
+    # old answer wrong: the credential is per repository now, so it can only be
+    # answered about one.
+    local origin cred_project
+    origin="$(git remote get-url origin 2>/dev/null || true)"
+    case "$origin" in
+        https://*)
+            cred_project="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || echo .)")"
+            if [ -f "${DASHBOARD_STATE:-/config}/gitcreds/${cred_project}" ]; then
+                printf '  [ok]   this repo pushes over https with its own stored token\n'
+            elif [ -n "${GIT_PAT:-}" ]; then
+                printf '  [ok]   this repo pushes over https with GIT_PAT\n'
+            else
+                printf '  [FAIL] this repo has an https remote and no credential for it\n'
+                printf '         — add one in the dashboard, or switch it to ssh\n'
+                ok=1
+            fi ;;
+    esac
     local ssh_src=""
     if ssh-add -l >/dev/null 2>&1; then
         ssh_src="shielded agent key"
