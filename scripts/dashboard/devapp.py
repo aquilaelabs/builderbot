@@ -82,6 +82,8 @@ def _slug(s):
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
 
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
+# Injected: the server owns what counts as a project. None until configure().
+project_names = None
 
 # DOCKER_HOST=auto means "find the socket proxy yourself". The address is a
 # bridge-assigned container IP unless the operator published the port, and
@@ -292,9 +294,9 @@ def abort_job():
     return True
 
 
-def configure(*, workspace, state, write_json):
+def configure(*, workspace, state, write_json, project_names=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
-                     write_json=write_json)
+                     write_json=write_json, project_names=project_names)
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
     _migrate_paths()
@@ -322,6 +324,29 @@ def _migrate_paths():
                 f.rename(dst)
                 print(f"[devapp] moved {f.name} to {dst.name} for the "
                       f"{MAIN} instance", flush=True)
+    except OSError:
+        pass
+    # The project used to be spelled into every name — bbdev-<project>-<inst>
+    # — and is not any more. Driven off the store, which is the only thing that
+    # says which project and instance a file on disk belonged to; a pattern
+    # match on the names themselves cannot tell bbdev-a-b apart as (a, b) or
+    # (a-b, main). Anything the store does not describe is already an orphan
+    # and stays one.
+    try:
+        for proj, insts in _load().items():
+            for inst in insts:
+                was = f"bbdev-{_slug(proj)}-{_slug(inst) or MAIN}"
+                now = _pname(proj, inst)
+                if was == now:
+                    continue
+                a, b = ENVDIR / f"{was}.env", ENVDIR / f"{now}.env"
+                if a.is_file() and not b.exists():
+                    a.rename(b)
+                    print(f"[devapp] env {a.name} -> {b.name}", flush=True)
+                a, b = Path(DEVDATA) / was, Path(DEVDATA) / now
+                if a.is_dir() and not b.exists():
+                    a.rename(b)
+                    print(f"[devapp] data {was} -> {now}", flush=True)
     except OSError:
         pass
     try:
@@ -532,8 +557,9 @@ def _guard(argv):
         name = argv[argv.index("--project-name") + 1]
     except (ValueError, IndexError):
         return "a compose call carrying no --project-name"
-    if not name.startswith("bbdev-"):
-        return f"a compose call outside the bbdev- namespace ({name})"
+    pref = dev_prefix()
+    if pref and not name.startswith(pref):
+        return f"a compose call outside the {pref} namespace ({name})"
     return ""
 
 
@@ -685,7 +711,9 @@ def containers():
             "ports": _ports(c.get("Ports", "")),
             "project": proj,
             "service": labels.get(SERVICE_LABEL, ""),
-            "ours": proj.startswith("bbdev-"),
+            # With no prefix — a sandbox VM, where nothing else is worth
+            # protecting — every compose project on it is this manager's.
+            "ours": proj.startswith(dev_prefix()),
         })
     out.sort(key=lambda c: (not c["ours"], c["project"], c["name"]))
     return {"error": "", "containers": out}
@@ -749,19 +777,74 @@ def compose_file(project, instance=MAIN):
     return None
 
 
-def _pname(project, instance=MAIN):
-    """The compose project name: namespaced, so a dev instance can never
-    collide with a container the operator runs for real — and now carrying
-    which instance of the project it is, because a project may have several.
+# What every compose project name starts with, from BB_DEV_PREFIX.
+_PREFIX_WANT = os.environ.get("BB_DEV_PREFIX", "bbdev")
 
-    Both halves are slugged and joined with a dash, which means two different
-    pairs could in principle collide (`a-b`/`c` and `a`/`b-c`). They cannot in
-    practice: the project half is a directory name under /workspace and the
-    instance half is chosen against the names already taken for that project,
-    so a collision would need two projects to exist whose slugs overlap that
-    way. Worth knowing rather than worth encoding around.
+
+def dev_prefix():
+    """The namespace, and whether this arrangement is allowed to go without one.
+
+    The prefix exists because the daemon was the SERVER's: a socket proxy
+    passes whatever it is asked, its flags being per-endpoint rather than per
+    container, so `compose --project-name plex down` would work and the only
+    thing refusing it is _guard reading this. There, the prefix is the
+    protection and an empty one hands over every container on the box.
+
+    A sandbox VM is the other case and the reason this is a setting at all.
+    That machine's whole job is being wrecked; there is nothing on it to
+    protect, so a namespace buys nothing and only makes every name longer.
+
+    So empty is honoured against `ssh://` and refused anywhere else — read from
+    the raw setting rather than through source(), because this is called for
+    every name and `ssh://` is the only address that means another machine
+    (`auto` never resolves to one).
     """
-    return f"bbdev-{_slug(project)}-{_slug(instance) or MAIN}"
+    want = _slug(_PREFIX_WANT)
+    if want:
+        return want + "-"
+    if (os.environ.get("DOCKER_HOST") or "").strip().lower().startswith("ssh://"):
+        return ""
+    return "bbdev-"
+
+
+def _pname(project, instance=MAIN):
+    """The compose project name: the prefix, then what the thing is called.
+
+    The PROJECT used to be in here as well — bbdev-<project>-<instance> —
+    which for a project called MediaReducer-Dev with an instance named after
+    it read `bbdev-mediareducer-dev-mediareducer-dev`. The project half only
+    ever bought uniqueness, and uniqueness is checked directly now
+    (taken_pnames) rather than spelled out in every name forever.
+
+    A project's default instance is named for the PROJECT, because nobody
+    typed a name for it: `main` is implied rather than chosen, and
+    `bbdev-alpha-main` was saying the same thing twice too.
+    """
+    inst = _slug(instance) or MAIN
+    return dev_prefix() + (_slug(project) if inst == MAIN else inst)
+
+
+def taken_pnames(skip=()):
+    """Every compose project name this manager already owns.
+
+    The project name used to make these unique by construction. It no longer
+    does, so it is a question with an answer instead: two instances cannot
+    share a name, because sharing one means sharing a compose project, an env
+    file and a data directory.
+
+    `project_names` is injected because "what counts as a project" is the
+    server's rule — a project with no record still has its default instance,
+    and that name is taken whether or not anything has been built.
+    """
+    out = set()
+    for proj, insts in _load().items():
+        for inst in insts:
+            if (proj, inst) not in skip:
+                out.add(_pname(proj, inst))
+    for proj in (project_names() if project_names else ()):
+        if (proj, MAIN) not in skip:
+            out.add(_pname(proj, MAIN))
+    return out
 
 
 def env_path(project, instance=MAIN):
@@ -1262,6 +1345,8 @@ def create_container(name, compose_text, env_text=""):
     with _lock:
         if slug in _load():
             return {"error": f"{slug} already exists — pick another name"}
+        if _pname(slug, MAIN) in taken_pnames(skip={(slug, MAIN)}):
+            return {"error": f"{_pname(slug, MAIN)} is taken — pick another name"}
     d = containers_dir(slug)
     try:
         d.mkdir(parents=True, exist_ok=True)
@@ -1368,6 +1453,19 @@ def create_instance(project, name):
         d = _load()
         if slug in (d.get(project) or {}):
             return {"error": f"{project} already has an instance called {slug}"}
+        # And not one that another project has taken. The name no longer
+        # carries the project, so two of them asking for `dev` would be one
+        # compose project, one env file and one data directory wearing two
+        # rows — which is the collision the old spelling prevented by being
+        # long, and this prevents by asking.
+        # Skipping the pair being created, or a project registering the
+        # instance it already implicitly owns would collide with itself: the
+        # default instance of `alpha` IS bbdev-alpha, and writing that record
+        # down does not make it somebody else's.
+        want = _pname(project, slug)
+        if want in taken_pnames(skip={(project, slug)}):
+            return {"error": f"{want} is taken — names are shared across "
+                              f"projects now, so pick another"}
         _rec(d, project, slug)
         write_json(FILE, d)
     _bump()

@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 
 // ep.silon gets the compose file — delta is the harness's EXCLUDED fixture
 // and never shows a notebook button. The dot in the name is a bonus: it
-// proves the compose project-name sanitizer (bbdev-ep-silon-main) with the same
+// proves the compose project-name sanitizer (bbdev-ep-silon) with the same
 // fixture that proves tmux's.
 const D = `${DIR}/ws/ep.silon`;
 writeFileSync(`${D}/docker-compose.yml`,
@@ -177,8 +177,8 @@ await page.waitForFunction(() => {
   return e && /built from [0-9a-f]{7}/.test(e.textContent);
 }, { timeout: 30000 });
 const log = dockerLog();
-ok(/compose --project-name bbdev-ep-silon-main .*build/.test(log)
-   && /compose --project-name bbdev-ep-silon-main .*up -d/.test(log),
+ok(/compose --project-name bbdev-ep-silon .*build/.test(log)
+   && /compose --project-name bbdev-ep-silon .*up -d/.test(log),
    'rebuild runs table-lookup compose commands under the bbdev- namespace');
 ok(await page.$eval(`${DM} [data-dm="rebuild"]`,
      e => e.textContent.trim()) === 'Rebuild',
@@ -301,7 +301,7 @@ ok(true, '...and Up is manual after the gate, exactly as asked');
 // Down, from the row.
 await dmClick('down');
 await pillIs('down');
-ok(/compose --project-name bbdev-ep-silon-main .*down/.test(dockerLog()),
+ok(/compose --project-name bbdev-ep-silon .*down/.test(dockerLog()),
    'Down runs compose down, nothing else');
 ok((await row()).down, '...and goes dead after it: there is nothing left to remove');
 
@@ -309,7 +309,7 @@ ok((await row()).down, '...and goes dead after it: there is nothing left to remo
 // network, and `down` is the only thing that clears it. Asking compose only
 // about RUNNING containers left a crashed instance with a greyed-out Down and
 // no way out except a shell, which is the one thing these buttons are for.
-writeFileSync(`${DIR}/dockerstate/bbdev-ep-silon-main.exited`, '1');
+writeFileSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`, '1');
 await page.evaluate(() => refresh());
 await pillIs('stopped');
 r = await row();
@@ -317,7 +317,7 @@ ok(!r.down, 'a crashed instance offers Down — its containers are still there')
 ok(!r.up, '...and Up, which recreates them rather than colliding with them');
 await dmClick('down');
 await pillIs('down');
-ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon-main.exited`),
+ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`),
    '...and Down is what clears them');
 
 // A build in flight when BuilderBot restarts is lost — compose build is a
@@ -388,7 +388,7 @@ rmSync(`${DIR}/dockerstate/build.fail`, { force: true });
 // labelled bbdev- like every other one and passes every check that can be
 // made on a name. So the file is read, and what it reaches for is put in
 // front of the operator once, before anything starts.
-const stubCfg = `${DIR}/dockerstate/bbdev-ep-silon-main.config`;
+const stubCfg = `${DIR}/dockerstate/bbdev-ep-silon.config`;
 // The dev row reloads on job_rev — the in-memory counter plus devapps.json's
 // mtime — and a stub config file moves neither, so a plain refresh() would
 // leave the row showing the answer to the previous question. Touch the file
@@ -618,7 +618,7 @@ m.DEVDATA = os.path.join(d, 'devdata'); os.makedirs(m.DEVDATA)
 os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
 os.environ['DOCKER_HOST_PATHS'] = m.DEVDATA + ':' + m.DEVDATA
 out['local'] = [m.dev_data_dir('alpha'),
-                os.path.isdir(os.path.join(m.DEVDATA, 'bbdev-alpha-main')), calls[:]]
+                os.path.isdir(os.path.join(m.DEVDATA, 'bbdev-alpha')), calls[:]]
 
 # Not mounted here, daemon is a sandbox: it makes it, and BB_DEV_DATA is the
 # path on THAT machine — nothing has to be mounted on this side.
@@ -664,13 +664,13 @@ out['guard']['ours, on the proxy'] = m._guard(mk)
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const DDD = JSON.parse(dd.trim().split('\n').pop());
-ok(DDD.local[0].endsWith('/devdata/bbdev-alpha-main') && DDD.local[1] && !DDD.local[2].length,
+ok(DDD.local[0].endsWith('/devdata/bbdev-alpha') && DDD.local[1] && !DDD.local[2].length,
    'with the dev-data share mounted here the directory is made here, as before');
-ok(DDD.remote[0].BB_DEV_DATA === '/devdata-not-here/bbdev-alpha-main'
+ok(DDD.remote[0].BB_DEV_DATA === '/devdata-not-here/bbdev-alpha'
    && DDD.remote[1].length === 1 && !DDD.remote[1][0].refused
-   && DDD.remote[1][0].argv.slice(-3).join(' ') === 'mkdir -p /d/bbdev-alpha-main',
+   && DDD.remote[1][0].argv.slice(-3).join(' ') === 'mkdir -p /d/bbdev-alpha',
    'without it a sandbox daemon makes the directory itself, on its own disk');
-ok(DDD.named[0] === '/devdata-not-here/bbdev-alpha-main' && !DDD.named[1].length,
+ok(DDD.named[0] === '/devdata-not-here/bbdev-alpha' && !DDD.named[1].length,
    '...asked for by name it runs nothing, which is what keeps the poll off it');
 ok(!DDD.ours.includes('/devdata-not-here'),
    '...and that path is then the daemon\'s, so a bind under it is not judged here');
@@ -770,6 +770,47 @@ ok(!AB.phases.includes('up'),
 ok(/stopped/.test(AB.error) && !AB.running,
    '...and the row says so, which it was already saying with the thing running');
 
+// The namespace, and the one arrangement allowed to go without it. The prefix
+// is what _guard reads, and against a socket proxy it is the only thing
+// standing between this module and the operator's real containers — a proxy
+// passes whatever it is asked. Against a sandbox VM there is nothing on the
+// daemon to protect, which is the whole reason it became a setting.
+const pref = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None,
+            project_names=lambda: ['alpha'])
+out = {}
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+m._PREFIX_WANT = 'bbdev'
+out['default'] = [m.dev_prefix(), m._pname('alpha'), m._pname('alpha', 'dev')]
+m._PREFIX_WANT = ''
+out['none_on_vm'] = [m.dev_prefix(), m._pname('alpha'), m._pname('alpha', 'dev'),
+                     m._guard(['docker', 'compose', '--project-name', 'plex', 'down'])]
+os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
+out['none_on_proxy'] = [m.dev_prefix(),
+                        m._guard(['docker', 'compose', '--project-name', 'plex', 'down'])]
+m._PREFIX_WANT = 'sandbox'
+out['renamed'] = [m.dev_prefix(), m._pname('alpha', 'dev'),
+                  m._guard(['docker', 'compose', '--project-name', 'bbdev-a', 'down'])]
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const PF = JSON.parse(pref.trim().split('\n').pop());
+ok(PF.default[0] === 'bbdev-' && PF.default[1] === 'bbdev-alpha'
+   && PF.default[2] === 'bbdev-dev',
+   'by default a container is the prefix and its own name, with no project in it');
+ok(PF.none_on_vm[0] === '' && PF.none_on_vm[1] === 'alpha'
+   && PF.none_on_vm[2] === 'dev' && PF.none_on_vm[3] === '',
+   '...and an empty prefix against a sandbox VM gives exactly the name you typed');
+ok(PF.none_on_proxy[0] === 'bbdev-' && /outside the bbdev- namespace/.test(PF.none_on_proxy[1]),
+   '...but not against a socket proxy, where the namespace is the only protection');
+ok(PF.renamed[0] === 'sandbox-' && PF.renamed[1] === 'sandbox-dev'
+   && /outside the sandbox- namespace/.test(PF.renamed[2]),
+   'a renamed prefix moves the guard with it, so it cannot check for the old one');
+
 // An instance is (project, name) now, and the old layout is one record per
 // project. Driven at the module: the migration happens on read, so it is the
 // read that has to be asserted, and a stub docker cannot show a rename.
@@ -800,12 +841,17 @@ ok(JSON.stringify(ij.loaded) === JSON.stringify(
    'a store written before instances reads back as the project\'s main instance');
 ok(JSON.stringify(ij.instances) === JSON.stringify(['main']),
    '...and that is the instance the project has');
-ok(ij.envmoved.length === 1 && ij.envmoved[0] === 'bbdev-alpha-main.env',
+ok(ij.envmoved.length === 1 && ij.envmoved[0] === 'bbdev-alpha.env',
    '...with its env file moved to the name the instance is read by');
-ok(ij.pnames[0] === 'bbdev-alpha' + '-main' && ij.pnames[1] === 'bbdev-alpha-staging',
-   'two instances of one project are two compose projects');
-ok(ij.pnames[2] === 'bbdev-my-proj-two-words',
-   '...both halves slugged, so a name with spaces cannot reach a compose call');
+// The project is no longer spelled into the name. A default instance is
+// named for its project because nobody typed a name for it; a named one is
+// called what it was called, which is the whole of the change — the old
+// scheme rendered MediaReducer-Dev's instance of the same name as
+// bbdev-mediareducer-dev-mediareducer-dev.
+ok(ij.pnames[0] === 'bbdev-alpha' && ij.pnames[1] === 'bbdev-staging',
+   'a default instance is named for its project, a named one for itself');
+ok(ij.pnames[2] === 'bbdev-two-words',
+   '...slugged, so a name with spaces cannot reach a compose call');
 ok(ij.envpaths[0] !== ij.envpaths[1],
    'and they do not share an env file — two instances exist to differ');
 
@@ -883,9 +929,9 @@ await page.waitForSelector('#dnEnvField:not([hidden])', { timeout: 10000 });
 ok(/PORT=8080/.test(await page.$eval('#dnEnv', e => e.value)),
    '...carrying the env seeded from .env.example');
 await page.fill('#dnName', 'Staging Two');
-ok(/bbdev-ep-silon-staging-two/.test(
+ok(/Will be created as bbdev-staging-two\b/.test(
      await page.$eval('#dnPreview', e => e.textContent)),
-   'the naming modal previews the container it will make, slugged');
+   'the naming modal previews the container it will make: the prefix and the name');
 await page.click('#dnGo');
 await page.waitForSelector('.dmtab .row[data-inst="ep.silon|staging-two"]',
                            { timeout: 20000 });
@@ -1140,7 +1186,7 @@ await page.waitForFunction(() =>
   !document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"]'),
   { timeout: 20000 });
 ok(true, 'Remove takes a container out of the manager');
-ok(/compose --project-name bbdev-ep-silon-staging-two .*down/.test(dockerLog()),
+ok(/compose --project-name bbdev-staging-two .*down/.test(dockerLog()),
    '...taking it down first, rather than orphaning its containers');
 await showRow();
 ok(await page.$('#devSend'),

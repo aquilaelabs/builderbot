@@ -1872,7 +1872,11 @@ except OSError:
 # socket proxy. The module's docstring carries the security reasoning.
 import devapp                                                    # noqa: E402
 
-devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
+# project_names: devapp checks that a container's name is not already some
+# other project's, and what counts as a project is this module's rule — a
+# project with no record still owns its default instance's name.
+devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
+                 project_names=lambda: [p["name"] for p in project_list()])
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
@@ -2251,6 +2255,10 @@ def snapshot():
         # page's heartbeat. Every Docker button on the page reads this one
         # answer rather than each finding out by failing.
         "docker": devapp.available_cached(),
+        # The namespace compose project names start with, so the naming
+        # dialog can preview the name it is about to make rather than
+        # hardcoding a prefix the operator may have turned off.
+        "dev_prefix": devapp.dev_prefix(),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.
