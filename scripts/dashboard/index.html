@@ -9630,6 +9630,39 @@ function adoptLayout(v){
 let bootSeen = null;                      // which run of the container this page saw
 let preStatusUsed = false;                // the head's early fetch: once only
 
+// Terminal tabs whose session we have actually watched running.
+//
+// The transition is what closes a tab, not the absence: "no session" is also
+// true of a tab restored from a saved layout before anything has started, and
+// of every tab for a moment if a poll ever comes back empty. Seen-then-gone
+// happens exactly once, when the thing at the other end ended.
+const seenLive = new Set();
+
+// Close a terminal tab when its session has gone.
+//
+// bb-tty execs claude, so the pane's process IS the conversation: exit it —
+// Ctrl+C twice, /exit, Ctrl+D, or a crash — and the pane dies, the tmux
+// session goes with it, and the tab was left holding a dead terminal until
+// somebody pressed ✕ on it. Nothing is lost by closing it: the transcript is
+// on disk and the project's Claude button offers to resume it, which is a
+// better way back than a corpse in a tab, because the row knows the id.
+//
+// Shells too, and for the same reason — a shell you typed `exit` in is just as
+// dead, and one rule for terminal tabs is simpler than a carve-out.
+function reapDeadTerminals(){
+  const live = liveSessions();
+  const gone = [];
+  for (const t of tabs){
+    if (t.kind !== "term") continue;
+    const s = sessionOf(t.arg);
+    if (live.has(s)) seenLive.add(s);
+    else if (seenLive.has(s)){ seenLive.delete(s); gone.push(t.id); }
+  }
+  // Collected first: dropTab re-renders and repairs the panes, and doing that
+  // while walking the list it edits is how one of two dying tabs gets missed.
+  gone.forEach(dropTab);
+}
+
 async function refresh(){
   const asked = performance.now();
   try{
@@ -9648,6 +9681,9 @@ async function refresh(){
     if (state.boot && bootSeen && state.boot !== bootSeen)
       tabs.filter(t => String(t.arg).startsWith("claude:")).forEach(t => dropTab(t.id));
     if (state.boot) bootSeen = state.boot;
+    // After the boot check above, which drops every Claude tab on a restart:
+    // this would otherwise be reaping tabs that have already gone.
+    reapDeadTerminals();
     // ...and come back to the Dashboard side, once, for the same reason the
     // Claude tabs went: the terminal side is a view of sessions this container
     // does not have. Only on a phone, where the two are alternatives rather

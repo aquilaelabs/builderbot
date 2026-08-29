@@ -3,7 +3,8 @@
 // macros only on shell tabs, middle-click ends a session, findings tab
 // behavior, and the phone's bottom bar: flyout slides and swaps, the strip
 // arrows and reveal, and the remembered view.
-import { launch, newPage, ok, done, sleep, tmuxNew, tmuxFmt, layoutSettled, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, sleep, tmuxNew, tmuxKill, tmuxFmt, layoutSettled,
+         refreshUntil, URL, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -449,4 +450,38 @@ ok(!/before the container restarted/.test(tty('shell:nosuchproject:1')),
    'a shell carries no stamp and never did — it is safe to recreate in place');
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
+// ---- a terminal tab closes when its session ends ------------------------
+// bb-tty execs claude, so the pane's process IS the conversation: exiting it —
+// Ctrl+C twice, /exit, a crash — ends the tmux session, and the tab used to be
+// left holding a dead terminal until somebody pressed ✕. Nothing is lost by
+// closing it: the transcript is on disk and the project's Claude button offers
+// to resume it.
+tmuxNew('shell-reaped');
+await page.evaluate(() => openTab({kind: 'term', arg: 'shell:reaped'}));
+await page.waitForFunction(() => tabs.some(t => t.arg === 'shell:reaped'),
+                           null, { timeout: 15000 });
+// Seen alive first: the rule is seen-then-gone, because "no session" is also
+// true of a tab restored from a layout before anything has started.
+await refreshUntil(page, () => seenLive.has('shell-reaped'), { timeout: 20000 });
+ok(true, 'a terminal tab is noted once its session is actually running');
+tmuxKill('shell-reaped');
+await refreshUntil(page, () => !tabs.some(t => t.arg === 'shell:reaped'),
+                   { timeout: 20000 });
+ok(true, '...and the tab closes when that session ends');
+
+// The case the transition rule exists for: a tab whose session has NEVER been
+// seen is left alone, because that is what every tab looks like for a moment
+// after a restore — and reaping those would wipe the strip at every boot.
+await page.evaluate(() => openTab({kind: 'term', arg: 'shell:neverran'}));
+await page.waitForFunction(() => tabs.some(t => t.arg === 'shell:neverran'),
+                           null, { timeout: 15000 });
+await page.evaluate(() => refresh());
+await page.evaluate(() => refresh());
+ok(await page.evaluate(() => tabs.some(t => t.arg === 'shell:neverran')),
+   '...while one whose session was never seen is left where it is');
+await page.evaluate(() => {
+  const t = tabs.find(x => x.arg === 'shell:neverran');
+  if (t) dropTab(t.id);
+});
+
 await done(browser);

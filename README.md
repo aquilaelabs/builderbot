@@ -1279,6 +1279,21 @@ container.
 
 ### Tabs and panes
 
+**A terminal tab closes itself when its session ends.** `bb-tty` execs claude,
+so the pane's process *is* the conversation: exit it — Ctrl+C twice, `/exit`,
+Ctrl+D, or a crash — and the tmux session goes with it, and the tab used to sit
+there holding a dead terminal until somebody pressed ✕. Shells too, for the
+same reason: one you typed `exit` in is just as dead.
+
+Nothing is lost by closing it. The transcript is on disk and the project's
+Claude button offers to resume it, which is a better way back than a corpse in
+a tab — the row knows the transcript id and the dead tab does not.
+
+The rule is *seen alive, then gone*, and the transition is load-bearing: "has
+no session" is also true of every tab restored from a saved layout before
+anything has started, and of all of them for a moment if a poll ever comes back
+empty. Reaping on absence would wipe the strip at every boot.
+
 The page starts with one tab — **workspace**, a shell at `/workspace` — and
 everything you open gets its own tab above the terminal. Every tab, the
 workspace one included, can be minimized or closed; an empty strip just shows
