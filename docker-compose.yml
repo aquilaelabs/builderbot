@@ -203,10 +203,12 @@ services:
       # Claude/CI run `docker build` / `docker compose` against the Unraid
       # daemon.
       # - /var/run/docker.sock:/var/run/docker.sock
-      # Dev-instance volumes on fast storage; pairs with DOCKER_HOST below.
+      # Dev-instance volumes; pairs with DOCKER_HOST below. Its own share
+      # rather than a folder in appdata, because Unraid exports and backs up
+      # shares and not folders — see the template's note on this setting.
       # Only needed where the daemon is this box's: a sandbox VM mounts the
       # share itself and makes the per-instance directory over there.
-      # - /mnt/cache/appdata/builderbot-dev:/devdata
+      # - ${DEVDATA_PATH:-/mnt/user/bb-sandbox/devdata}:/devdata
 
     # Hardware acceleration for the Android emulator. Uncomment if your CPU
     # has virtualization enabled (it does if Unraid can run VMs).
