@@ -355,14 +355,21 @@ def source():
     """
     sock = Path("/var/run/docker.sock").exists()
     addr = docker_host()
+    # Mapped paths this container does not have. Said here because this is
+    # where the relationship with the daemon is described, and that is what a
+    # line of DOCKER_HOST_PATHS naming a path only the daemon has IS — a
+    # statement about the other machine that nothing on this one will ever act
+    # on. Harmless, and worth saying once rather than leaving in the variable
+    # looking like it does something.
+    strays = stray_map_entries(host_map()[0])
     if addr:
         return {"kind": "a sandbox VM" if addr.lower().startswith("ssh://")
                         else "a socket proxy",
-                "where": addr, "shadowed": sock}
+                "where": addr, "shadowed": sock, "strays": strays}
     if sock:
         return {"kind": "the mounted socket", "where": "/var/run/docker.sock",
-                "shadowed": False}
-    return {"kind": "", "where": "", "shadowed": False}
+                "shadowed": False, "strays": strays}
+    return {"kind": "", "where": "", "shadowed": False, "strays": strays}
 
 
 def available():
@@ -1402,6 +1409,41 @@ def risks(project, cfg):
     return out
 
 
+def our_paths(mapping):
+    """The paths this container has that the mapping speaks for.
+
+    Was a hardcoded pair — /workspace and /devdata — which is what the mapping
+    held on the day it was written and not what it holds now. A share added to
+    both sides (an /auxiliary for general storage, say) was then translated by
+    to_host and judged by nothing: a bind under it could name a directory the
+    daemon does not have, and the answer to a missing bind source is an empty
+    directory silently mounted in its place.
+
+    Derived instead, so adding a mount to both sides is a setting rather than a
+    code change. Existence is the filter, and it is the honest one: a mapping
+    may name a path that only the DAEMON has — which is fine and common, and is
+    not something this side can check anything about.
+    """
+    ours = [p for p in mapping if Path(p).is_dir()]
+    # The two the mapping is usually silent about. With DOCKER_HOST_PATHS unset
+    # there is no mapping at all, and these checks are exactly what says so.
+    for p in (str(WORKSPACE), str(Path(DEVDATA))):
+        if p not in ours:
+            ours.append(p)
+    return ours
+
+
+def stray_map_entries(mapping):
+    """Mapped paths this container does not have.
+
+    Not an error: /auxiliary can be a share the sandbox mounts and BuilderBot
+    has no business reading. But it is a line of configuration that nothing
+    else here will ever act on, and saying so once beats it sitting in the
+    variable looking like it does something.
+    """
+    return sorted(p for p in mapping if not Path(p).is_dir())
+
+
 def problems(project, cfg):
     """Paths this compose gives the daemon that the daemon will not find.
 
@@ -1410,13 +1452,14 @@ def problems(project, cfg):
     the confirmation stays about the first kind — asking someone to confirm a
     configuration error teaches them to confirm without reading.
 
-    Only OUR paths are judged. Anything else is taken for a host path, which
+    Only OUR paths are judged — every path this container has that the mapping
+    speaks for, see our_paths(). Anything else is taken for a host path, which
     it usually is and which nothing here can check anyway.
     """
     if cfg is None:
         return []
     mapping = host_map()[0]
-    ours = [str(WORKSPACE), str(Path(DEVDATA))]
+    ours = our_paths(mapping)
     out = []
     for name, sv in sorted(_services(cfg).items()):
         for src in _binds(sv, project):

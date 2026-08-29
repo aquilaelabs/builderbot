@@ -748,7 +748,10 @@ spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 def fake_path(exists):
-    return lambda *a: type('P', (), {'exists': lambda s: exists})()
+    # is_dir as well as exists: source() now names mapped paths this container
+    # does not have, and it asks about directories.
+    return lambda *a: type('P', (), {'exists': lambda s: exists,
+                                     'is_dir': lambda s: exists})()
 out = []
 for want, sock, found in [('', True, ''), ('', False, ''),
                           ('auto', True, ''), ('auto', True, 'tcp://10.0.0.2:2375'),
@@ -775,6 +778,37 @@ ok(sj[5].kind === 'a socket proxy' && sj[5].shadowed,
    'an address always wins over a mounted socket');
 ok(sj[6].kind === 'a sandbox VM' && sj[6].shadowed,
    '...including an ssh one, which is the arrangement you switch TO with the mount left behind');
+
+// Which paths a compose file is judged against. It was a hardcoded pair —
+// /workspace and /devdata — which is what the mapping held on the day it was
+// written and not what it holds now: a share added to BOTH sides was
+// translated by to_host and checked by nothing, so a bind under it could name
+// a directory the daemon does not have, and the answer to a missing bind
+// source is an empty directory silently mounted in its place.
+const pathsOut = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+ws = tempfile.mkdtemp(); dd = tempfile.mkdtemp(); aux = tempfile.mkdtemp()
+m.configure(workspace=ws, state=dd, write_json=lambda *a: None)
+m.DEVDATA = dd
+out = {}
+# A share on both sides is judged; one only the daemon has is named, not judged.
+mp = {ws: ws, dd: dd, aux: aux, '/only-over-there': '/only-over-there'}
+out['ours'] = sorted(p in m.our_paths(mp) for p in (ws, dd, aux))
+out['aux_judged'] = aux in m.our_paths(mp)
+out['ghost_judged'] = '/only-over-there' in m.our_paths(mp)
+out['strays'] = m.stray_map_entries(mp)
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const pj = JSON.parse(pathsOut.trim().split('\n').pop());
+ok(pj.aux_judged,
+   'a share mounted on both sides is judged, without anyone editing the code for it');
+ok(!pj.ghost_judged,
+   '...while one only the daemon has is not, because this side can check nothing about it');
+ok(pj.strays.join(',') === '/only-over-there',
+   '...and it is named instead, so a line of config that does nothing does not look like it does');
 // Send BUILDS: the manager lists what exists, so registering alone would send
 // you to a page that does not mention what you just made.
 // Running, not merely built: the env went in before the build, so the gate
