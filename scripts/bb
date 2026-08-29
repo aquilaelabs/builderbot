@@ -2122,6 +2122,22 @@ cmd_lint() {
             head -c 64 "$f" 2>/dev/null | head -1 | grep -qE '^#!.*\b(ba)?sh\b' \
                 && shells+=("$f")
         done < <(files '*')
+        # A script embedded in a QUOTED heredoc is a string to the shell and a
+        # string to shellcheck, so it was never checked at all — and one of
+        # them is vm/provision.sh's bb-sandbox, ~280 lines installed to a
+        # root-only path on another machine, where four bugs had been sitting.
+        # Extracted by the same rule the list above is built on — a shell
+        # shebang on its first line — so this stays a property of the content
+        # rather than a list of names to keep up to date. A finding names the
+        # extracted copy, whose filename carries the source and the tag.
+        local tmpd=""
+        if [ "${#shells[@]}" -gt 0 ]; then
+            tmpd="$(mktemp -d)"
+            while IFS= read -r f; do
+                [ -n "$f" ] && shells+=("$f")
+            done < <(python3 "${BB_LIB_DIR:-$(dirname "$(readlink -f "$0")")/lib}/embedded-shell.py" \
+                             "$tmpd" "${shells[@]}" 2>/dev/null)
+        fi
         if [ "${#shells[@]}" -eq 0 ]; then
             echo "  none found"
         elif shellcheck -x -S warning "${shells[@]}"; then
@@ -2130,6 +2146,7 @@ cmd_lint() {
             printf '  [FAIL] shellcheck findings above\n'
             rc=1
         fi
+        [ -n "$tmpd" ] && rm -rf "$tmpd"
     fi
 
     section "dockerfiles (hadolint)"

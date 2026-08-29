@@ -2936,10 +2936,17 @@ class Handler(BaseHTTPRequestHandler):
         if act != "create":
             return self._json({"error": f"unknown action: {act}"}, 400)
         # A name that is also a project would collide in the store, which is
-        # keyed by one namespace for both kinds.
-        if name and name in {p["name"] for p in project_list()}:
-            return self._json({"error": f"{name} is a project — a container "
-                                        f"written here needs its own name"}, 400)
+        # keyed by one namespace for both kinds — and the collision is on the
+        # SLUG, not the typing. `builderbot` is not the project `BuilderBot`
+        # by string comparison and is exactly it by the time _pname has run:
+        # same compose project name, same env file, same data directory, with
+        # nothing anywhere saying the two had met.
+        clash = next((p["name"] for p in project_list()
+                      if devapp._slug(p["name"]) == devapp._slug(name)), "")
+        if name and clash:
+            return self._json({"error": f"that is the project {clash} — a "
+                                        f"container written here needs a name "
+                                        f"of its own"}, 400)
         r = devapp.create_container(name, req.get("compose") or "",
                                     req.get("env") or "")
         return self._json(r, 400 if r.get("error") else 200)

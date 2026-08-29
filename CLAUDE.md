@@ -898,7 +898,12 @@ by hand cost four commands and still could not see the failed builds.
   `RUNNER_LABELS` and the CI jobs; a rule suppressed in only one place means
   CI and `bb lint` disagree, which is worse than either answer. The shellcheck
   file list is derived from shebangs, not filenames, so a new script is covered
-  the moment it exists — do not replace that with a name list.
+  the moment it exists — do not replace that with a name list. That includes a
+  script written *inside* another one: `scripts/lib/embedded-shell.py` pulls
+  the body of any quoted heredoc that opens with a shell shebang out to a temp
+  file so shellcheck sees it, which is how `vm/provision.sh`'s embedded
+  bb-sandbox is covered. A finding names the extracted copy
+  (`provision.sh-BBSANDBOX`), not the line in the outer file.
 - **Credentials here are what they are.** The operator uses SSH deploy keys
   and opens PRs from their own desktop; `GIT_PAT` is unset on purpose, not by
   oversight, so `gh` API calls will not work and a session should not keep

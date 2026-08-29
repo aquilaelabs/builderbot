@@ -686,6 +686,90 @@ ok(!DDD.guard.ours && Object.entries(DDD.guard).filter(([k]) => k !== 'ours')
 ok(/sandbox VM/.test(DDD.guard['ours, on the proxy']),
    '...and not even those when the daemon is the server\'s own');
 
+// One thing at a time on the daemon, and it now covers every verb that runs a
+// compose call. `up`, `down` and `remove` read the flag and never set it, so a
+// thirty-minute implicit build inside `up` was invisible to the guard: a
+// rebuild started on top of it, two compose calls ran on one project, and the
+// row showed neither. Driven at the module, because the race is between two
+// requests and a browser cannot hold one open on purpose.
+const slot = execFileSync('python3', ['-c', `
+import importlib.util, json, tempfile, threading, time
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+
+# A compose call that takes its time, so a second request lands during it.
+started = threading.Event()
+def slow(argv, timeout=60, **kw):
+    started.set(); time.sleep(0.6); return {'code': 0, 'out': ''}
+m._run = slow
+m._risk_gate = lambda *a, **k: ''
+m.missing_env = lambda *a, **k: []
+m.compose_file = lambda *a, **k: '/tmp/x.yml'
+m._load = lambda: {'alpha': {'main': {}}}
+
+out = {}
+t = threading.Thread(target=lambda: m.up('alpha', 'main'), daemon=True)
+t.start(); started.wait(2)
+out['job_while_up'] = dict(m._job)
+out['second_up'] = m.up('alpha', 'main')
+out['rebuild_during_up'] = m.rebuild('alpha', 'main')
+out['down_during_up'] = m.down('alpha', 'main')
+t.join(5)
+out['after'] = m._job['running']
+out['free_now'] = m._claim('alpha', 'main', 'x'); m._release()
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const SL = JSON.parse(slot.trim().split('\n').pop());
+ok(SL.job_while_up.running && SL.job_while_up.step === 'starting'
+   && SL.job_while_up.project === 'alpha',
+   'an up takes the job slot, so the row can say what is happening in it');
+ok([SL.second_up, SL.rebuild_during_up, SL.down_during_up]
+     .every(r => /one at a time/.test(r.error || '')),
+   '...and every other verb is refused while it holds it, not only a build');
+ok(SL.after === false && SL.free_now === true,
+   '...and the slot is given back when it ends, however it ends');
+
+// Abort during the stopping step. It reached nothing — the phase held no
+// process to signal, and nothing read the flag again until after `up` — so the
+// container came up and the job then reported that it had been stopped. Both
+// halves are asserted: that `up` never runs, and that what the row says
+// matches what happened.
+const ab = execFileSync('python3', ['-c', `
+import importlib.util, json, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+m.missing_env = lambda *a, **k: []
+m._head = lambda *a, **k: 'abc1234'
+m._load = lambda: {'alpha': {'main': {}}}
+
+phases = []
+def fake(argv, timeout=60, **kw):
+    verb = argv[argv.index('-f') + 2] if '-f' in argv else argv[-1]
+    phases.append(verb)
+    # Abort lands while the down is in flight, which is the window that was
+    # not covered: there is no held process for the signal to reach.
+    if verb == 'down':
+        m.abort_job()
+    return {'code': 0, 'out': ''}
+m._run = fake
+
+m._claim('alpha', 'main', 'building')
+m._worker('alpha', 'main')
+print(json.dumps({'phases': phases, 'error': m._job['error'],
+                  'running': m._job['running']}))
+`], { encoding: 'utf8' });
+const AB = JSON.parse(ab.trim().split('\n').pop());
+ok(!AB.phases.includes('up'),
+   'an abort during the stopping step stops there, rather than starting it anyway');
+ok(/stopped/.test(AB.error) && !AB.running,
+   '...and the row says so, which it was already saying with the thing running');
+
 // An instance is (project, name) now, and the old layout is one record per
 // project. Driven at the module: the migration happens on read, so it is the
 // read that has to be asserted, and a stub docker cannot show a rename.
@@ -1009,8 +1093,25 @@ await page.waitForSelector('#cmodal:not([hidden])');
 await page.fill('#cName', 'alpha');
 await page.click('#cGo');
 await page.waitForSelector('#cErrWrap:not([hidden])', { timeout: 15000 });
-ok(/is a project/.test(await page.$eval('#cErr', e => e.textContent)),
+ok(/the project alpha/.test(await page.$eval('#cErr', e => e.textContent)),
    'a name a project already has is refused');
+await page.fill('#cName', '');
+await page.click('#cCancel');
+
+// ...and one it has only after slugging. The guard compared the typing, and
+// everything downstream compares the slug: `ep-silon` is not the project
+// `ep.silon` by string and is exactly it by the time _pname has run — same
+// compose project name, same env file, same dev-data directory, with nothing
+// anywhere saying the two had met.
+await page.click('#bDockerNew');
+await page.waitForSelector('#cmodal:not([hidden])');
+await page.fill('#cName', 'ep-silon');
+await page.click('#cGo');
+await page.waitForSelector('#cErrWrap:not([hidden])', { timeout: 15000 });
+ok(/ep\.silon/.test(await page.$eval('#cErr', e => e.textContent)),
+   '...as is one that only collides once it is slugged, naming the project it hit');
+ok(!existsSync(`${DIR}/state/containers/ep-silon`),
+   '...and nothing is written for it');
 await page.click('#cCancel');
 await openManager();
 await page.click('.dmtab .row[data-inst="radarr|main"] [data-dm="remove"]');

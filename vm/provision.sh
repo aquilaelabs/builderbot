@@ -135,6 +135,24 @@ say "user ${USER_NAME}"
 id -u "$USER_NAME" >/dev/null 2>&1 || useradd -m -s /bin/bash "$USER_NAME"
 usermod -aG docker "$USER_NAME"
 if [ -n "$SSH_KEY" ]; then
+    # Checked before it is installed, because both ways this goes wrong are
+    # expensive and neither says anything at the time. A key that does not
+    # parse leaves a VM nothing can ssh into, found from the console after
+    # provisioning has finished and you have walked away. And a PRIVATE key
+    # pasted here is a secret written onto the machine whose whole premise is
+    # that it holds nothing — authorized_keys wants the .pub half, and the
+    # private one never leaves BuilderBot's shielded agent.
+    case "$SSH_KEY" in
+        *"-----BEGIN"*)
+            echo "--key is a PRIVATE key. It wants the .pub half — the private" >&2
+            echo "one stays on BuilderBot and this machine never holds it." >&2
+            exit 1 ;;
+    esac
+    printf '%s\n' "$SSH_KEY" | ssh-keygen -l -f - >/dev/null 2>&1 || {
+        echo "--key does not parse as a public key. It is one line, starting" >&2
+        echo "ssh-ed25519 or ssh-rsa, from BuilderBot's own .pub file." >&2
+        exit 1
+    }
     home="$(getent passwd "$USER_NAME" | cut -d: -f6)"
     install -d -m 0700 -o "$USER_NAME" -g "$USER_NAME" "$home/.ssh"
     touch "$home/.ssh/authorized_keys"
@@ -179,6 +197,12 @@ CONF=/etc/bb-sandbox.conf
 # shellcheck source=/dev/null
 [ -f "$CONF" ] && . "$CONF"
 APPDATA="${APPDATA:-}"
+# The account BuilderBot ssh's in as, recorded by provision.sh because this is
+# the one thing here it knows and the tool cannot work out. `logname` was the
+# guess before, and it answers with whoever ran sudo — a different name the
+# moment the operator administers this box from an account of their own, and
+# an empty one where there is no controlling terminal at all.
+DOCKER_USER="${DOCKER_USER:-bb}"
 
 say()  { printf '\n== %s\n' "$*"; }
 warn() { printf '\n!! %s\n' "$*" >&2; }
@@ -187,9 +211,26 @@ die()  { warn "$*"; exit 1; }
 
 # Every mount this tool manages, by mountpoint. Read from fstab rather than
 # kept in a list of our own: fstab is what the machine actually boots from, and
-# a second list would be a claim about it rather than a reading of it.
+# a second list would be a claim about it rather than a reading of it. Which
+# means the type list has to hold every type a share is really mounted with,
+# not only the two this tool writes — a /workspace mounted by hand with nfs4 is
+# invisible to a filter that knows only nfs, and `settings` then prints a
+# DOCKER_HOST_PATHS with the projects share missing from it.
 ours() {
-    awk '$3 == "virtiofs" || $3 == "nfs" {print $2}' /etc/fstab 2>/dev/null | sort -u
+    awk '$1 !~ /^#/ && $3 ~ /^(virtiofs|9p|nfs|nfs4|cifs)$/ {print $2}' \
+        /etc/fstab 2>/dev/null | sort -u
+}
+
+# The fstab line for a mountpoint, as "N:the whole line" — empty if there is
+# none. On field TWO, and skipping comments, because every caller below either
+# rewrites or deletes what this finds: matching ` $path ` anywhere on the line
+# also hits a comment that mentions the path, and `# /workspace comes from the
+# NAS` has it in field two of a line that is not a mount. Measured: add-nfs
+# against exactly that comment overwrote the comment and left fstab with TWO
+# entries for /workspace, and remove deleted the comment along with the mount.
+fstab_line() {
+    awk -v p="$1" '$1 !~ /^#/ && $2 == p {print NR": "$0; exit}' \
+        /etc/fstab 2>/dev/null || true
 }
 
 # --- the one copy of the fstab logic ------------------------------------
@@ -208,7 +249,7 @@ add_fstab() {
     fi
     # Matched on the MOUNTPOINT and then compared in full, so re-adding one
     # whose SOURCE has changed rewrites it rather than silently doing nothing.
-    hit="$(grep -nsF " $path " /etc/fstab | head -1 || true)"
+    hit="$(fstab_line "$path")"
     if [ -z "$hit" ]; then
         echo "$line" >> /etc/fstab
         return 0
@@ -234,7 +275,7 @@ add_fstab() {
 mount_one() {
     local path="$1" want got
     mount -a || true
-    want="$(awk -v p=" $path " 'index($0, p) {print $1; exit}' /etc/fstab)"
+    want="$(fstab_line "$path")"; want="${want#*: }"; want="${want%% *}"
     got="$(findmnt -rno SOURCE -- "$path" 2>/dev/null || true)"
     if [ -n "$got" ] && [ "$got" = "$want" ]; then
         say "$path is mounted from $got"
@@ -275,17 +316,23 @@ cmd_add_nfs() {
 
 cmd_remove() {
     local path="${1:?usage: bb-sandbox remove PATH}" tmp
-    grep -qsF " $path " /etc/fstab || die "$path is not one of this machine's mounts"
+    [ -n "$(fstab_line "$path")" ] || die "$path is not one of this machine's mounts"
     umount -l "$path" 2>/dev/null || true
     tmp="$(mktemp)"
-    grep -vsF " $path " /etc/fstab > "$tmp" || true
+    awk -v p="$path" '$1 ~ /^#/ || $2 != p' /etc/fstab > "$tmp" || true
     cat "$tmp" > /etc/fstab
     rm -f "$tmp"
     # The mountpoint itself stays. It is empty now, and removing a directory
     # that a share was mounted over is how you delete the thing you meant to
     # detach if the umount above did not take.
     say "$path is no longer mounted at boot; the empty directory is left behind"
-    [ "$APPDATA" = "$path" ] && cmd_appdata ""
+    # And it cannot still be where containers keep their data. Left set, `list`
+    # marks a mount that is gone and `settings` tells you to mirror a share
+    # this machine no longer has.
+    if [ "$APPDATA" = "$path" ]; then
+        write_conf ""
+        say "it was the container appdata mount, so that is unset too"
+    fi
 }
 
 cmd_list() {
@@ -293,7 +340,7 @@ cmd_list() {
     printf '\n%-24s %-34s %s\n' MOUNTPOINT SOURCE STATE
     while read -r path; do
         [ -n "$path" ] || continue
-        src="$(awk -v p=" $path " 'index($0, p) {print $1; exit}' /etc/fstab)"
+        src="$(fstab_line "$path")"; src="${src#*: }"; src="${src%% *}"
         if ! findmnt -rno TARGET -- "$path" >/dev/null 2>&1; then state="NOT MOUNTED"
         elif [ ! -w "$path" ]; then state="mounted, read-only"
         else state="mounted"; fi
@@ -313,6 +360,15 @@ cmd_check() {
     return "$bad"
 }
 
+# The only writer of $CONF. Quoted, because a mountpoint with a space in it
+# would otherwise be sourced back as a value and a command.
+write_conf() {
+    APPDATA="$1"
+    { printf '# written by bb-sandbox\n'
+      printf 'APPDATA=%q\n' "$APPDATA"
+      printf 'DOCKER_USER=%q\n' "$DOCKER_USER"; } > "$CONF"
+}
+
 cmd_appdata() {
     local path="${1-}"
     if [ -z "$path" ]; then
@@ -320,8 +376,7 @@ cmd_appdata() {
         return 0
     fi
     ours | grep -qxF "$path" || die "$path is not one of this machine's mounts — add it first"
-    printf 'APPDATA=%s\n' "$path" > "$CONF"
-    APPDATA="$path"
+    write_conf "$path"
     say "$path is where containers keep their data"
 }
 
@@ -343,7 +398,7 @@ cmd_settings() {
 
 Put these in BuilderBot's container template:
 
-  DOCKER_HOST=ssh://$(logname 2>/dev/null || echo bb)@${ip:-<this-vm>}
+  DOCKER_HOST=ssh://${DOCKER_USER}@${ip:-<this-vm>}
   DOCKER_HOST_PATHS=${pairs:-<none yet>}
 
 Only for the paths BuilderBot ALSO mounts at the same place — a share that is
@@ -438,6 +493,16 @@ case "${1-}" in
     *) die "unknown command: $1 — try: bb-sandbox --help" ;;
 esac
 BBSANDBOX
+# The account BuilderBot will ssh in as. Recorded now because it is decided
+# here and nowhere else: bb-sandbox prints it back in `settings`, and guessing
+# it from whoever ran sudo is wrong the moment this box is administered from
+# an account of its own.
+if [ -f /etc/bb-sandbox.conf ] \
+   && grep -q '^DOCKER_USER=' /etc/bb-sandbox.conf 2>/dev/null; then
+    sed -i "s|^DOCKER_USER=.*|DOCKER_USER=${USER_NAME}|" /etc/bb-sandbox.conf
+else
+    printf 'DOCKER_USER=%s\n' "$USER_NAME" >> /etc/bb-sandbox.conf
+fi
 printf '   /usr/local/sbin/bb-sandbox — run it as root to add mounts later\n'
 
 say "shares"
@@ -447,14 +512,18 @@ say "shares"
 # every time a share is added after today — one implementation, not a copy per
 # entry point.
 declare -a MOUNTED=()
+# A share that will not mount is reported, not fatal. set -e would otherwise
+# abandon the rest of provisioning — the tcp option, the closing summary — over
+# an NFS export that is not ready yet, which is the most ordinary way for this
+# to fail and the one the check below exists to report.
 for spec in "${SHARES[@]:-}"; do
     [ -n "$spec" ] || continue
-    /usr/local/sbin/bb-sandbox add-share "$spec"
+    /usr/local/sbin/bb-sandbox add-share "$spec" || warn "$spec did not mount — see the check below"
     MOUNTED+=("${spec#*:}")
 done
 for spec in "${NFS[@]:-}"; do
     [ -n "$spec" ] || continue
-    /usr/local/sbin/bb-sandbox add-nfs "$spec"
+    /usr/local/sbin/bb-sandbox add-nfs "$spec" || warn "$spec did not mount — see the check below"
     MOUNTED+=("${spec##*:}")
 done
 # Checked rather than assumed, which is the difference between finding out now
