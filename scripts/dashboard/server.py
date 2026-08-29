@@ -1940,6 +1940,7 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    project_name=PROJECT_NAME, github_url=GITHUB_URL,
                    state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
                    devdata=devapp.DEVDATA, write_json=write_json,
+                   rename_devdata=devapp.rename_dev_data,
                    pname=devapp._pname)
 
 _seed_push_rights()

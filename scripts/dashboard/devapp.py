@@ -54,6 +54,7 @@ import hashlib
 import contextlib
 import json
 import os
+import posixpath
 import signal
 import re
 import shutil
@@ -475,6 +476,23 @@ def _guard(argv):
         return ""
     if not verb:
         return "a bare `docker` with no subcommand"
+    # The runs that tend the dev-data directory, recognised by SHAPE and never
+    # by verb. `docker run` with a bind is root on the daemon, so allowing the
+    # verb would give away everything the namespace rule above protects;
+    # allowing these gives away a mkdir, a mv and a test on one directory.
+    # Every template is rebuilt from the names the argv itself carries and
+    # compared whole, so the only way through is a command _devdata_argv could
+    # have produced — and only where the daemon is a machine whose job is
+    # being wrecked.
+    if verb == "run":
+        if not sandbox_daemon():
+            return ("`docker run` — only where the daemon is a sandbox VM, "
+                    "and this one is not")
+        names = [a[3:] for a in argv if a.startswith("/d/")]
+        if names and all(_DEV_NAME.match(n) for n in names) and any(
+                argv == _devdata_argv(op, *names) for op in _DEVDATA_OPS):
+            return ""
+        return "a `docker run` this module did not build"
     if verb != "compose":
         return (f"`docker {verb}` — only compose, and the reads in "
                 f"{'/'.join(sorted(_BARE_OK))}, are reachable here")
@@ -739,15 +757,19 @@ def _compose(project, instance, *args):
     # DAEMON has. A project's own directory is one — /workspace has parity with
     # the sandbox by construction. /config does not: it is this container's
     # alone, so a container written here points at its data directory under
-    # /devdata instead, which both sides can see and which is where its data
-    # belongs anyway.
+    # DEVDATA instead, which the daemon has whichever side made it, and which
+    # is where its data belongs anyway.
     if _read_rec(project, instance).get("source") == "file":
-        root = Path(DEVDATA) / _pname(project, instance)
-        try:
-            root.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass
-        pdir = to_host(root) or str(root)
+        # The NAME of it, not a promise that it is there: _compose is on the
+        # poll path (`ps`, `config`) and where the daemon makes this directory
+        # itself, making it here would be a container launch every few seconds.
+        # Compose does not care — a missing --project-directory is only a
+        # problem for a bind that has to resolve, which is `up` and `build`,
+        # and those go through _dev_data_env, which does make it. Checked
+        # against compose rather than assumed: `config -q`, `config --format
+        # json` and `ps -aq` all exit 0 with the directory absent.
+        pdir = (dev_data_dir(project, instance, make=False)
+                or str(Path(DEVDATA) / _pname(project, instance)))
     else:
         pdir = str(WORKSPACE / project)
     argv = [DOCKER, "compose", "--project-name", _pname(project, instance),
@@ -847,26 +869,138 @@ def to_host(path, mapping=None):
     return None
 
 
+# ---------------------------------------------------------------------------
+# the dev-data directory, when only the daemon can see it
+#
+# BB_DEV_DATA points a compose file's volumes at a per-instance directory under
+# DEVDATA, and somebody has to CREATE that directory. For a long time the only
+# candidate was this container, which meant DEVDATA had to be mounted here as
+# well as over there purely so mkdir had somewhere to run.
+#
+# Docker will not do it itself: given a bind source that does not exist it
+# makes the directory as root and then chowns it, and on a share that squashes
+# root the chown fails and takes the run down with it — measured on this box,
+# "error while creating mount source path ...: chown ...: operation not
+# permitted". The directory is left behind, so the SECOND press works. An
+# intermittent-looking failure with a fixed cause.
+#
+# So the daemon makes it, in a container of its own. That is a `docker run`,
+# which is root-equivalent on whichever machine answers — fine on a sandbox VM
+# whose job is being wrecked, not fine on a socket proxy onto the server's own
+# daemon. Hence the gate below, and hence _guard recognising these commands by
+# rebuilding them rather than by allowing the verb.
+
+# Tiny, and on every registry. One pull per sandbox, the first time an instance
+# is created rather than on a poll.
+DEVDATA_IMAGE = "alpine"
+
+# Every operation this module will ask the daemon to perform on that share.
+_DEVDATA_OPS = {"mkdir": ["mkdir", "-p"], "mv": ["mv"], "test": ["test", "-d"]}
+
+# What may follow /d/. No slash, so nothing can climb out of the mount; no
+# leading dot, so `..` is not a name.
+_DEV_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+def sandbox_daemon():
+    """Is the daemon a sandbox VM — a machine whose whole job is being wrecked?
+
+    The one question that decides whether this module may run anything other
+    than compose. source() already works the answer out from DOCKER_HOST.
+    """
+    return source()["kind"] == "a sandbox VM"
+
+
+def _devdata_argv(op, *names):
+    """One of the commands above, as the exact argv it will be run as.
+
+    In one place because _guard rebuilds it from a candidate argv and compares
+    — so what is allowed is these commands, not the verb they begin with.
+    DEVDATA itself is the mount and the names are its children, which confines
+    every one of them to it by construction rather than by checking.
+
+    Owned by whoever BuilderBot runs as: the same ownership the local mkdir
+    this replaces produced, so an instance's data does not change hands when
+    the arrangement does.
+    """
+    return [DOCKER, "run", "--rm", "-u", f"{os.getuid()}:{os.getgid()}",
+            "-v", f"{DEVDATA.rstrip('/')}:/d", DEVDATA_IMAGE,
+            *_DEVDATA_OPS[op], *(f"/d/{n}" for n in names)]
+
+
+def _devdata_run(op, *names, quiet=False):
+    """Run one. True if it did what it was asked."""
+    r = _run(_devdata_argv(op, *names), timeout=300)
+    if r["code"] != 0:
+        if not quiet:
+            print(f"[devapp] {op} {' '.join(names)} failed on the daemon: "
+                  f"{r['out'].strip()[:200]}", file=sys.stderr, flush=True)
+        return False
+    return True
+
+
+def dev_data_dir(project, instance=MAIN, make=True):
+    """The instance's data directory, named the way the DAEMON names it.
+
+    Two arrangements, and the only difference is who runs mkdir:
+
+    - DEVDATA is mounted here. Make it here and translate through the mapping.
+      What a socket proxy onto the server's own daemon requires, there being
+      no safe way to ask that daemon to run a container.
+    - It is not, and the daemon is a sandbox. DEVDATA is then a path on that
+      machine and it makes the directory itself. Nothing has to be mounted
+      here at all, which is the point: one shared path instead of two.
+
+    None when neither applies — no mapping, or the mkdir failed. The caller
+    then leaves BB_DEV_DATA unset and the compose fails loudly, which beats
+    mounting an empty directory in the host's RAM and calling it the cache
+    drive.
+    """
+    name = _pname(project, instance)
+    root = Path(DEVDATA)
+    if root.is_dir():
+        d = root / name
+        if make:
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                return None
+        return to_host(d)
+    if sandbox_daemon():
+        if make and not _devdata_run("mkdir", name):
+            return None
+        return posixpath.join(DEVDATA, name)
+    return None
+
+
+def rename_dev_data(old, new):
+    """Move an instance's data when its project is renamed — (moved?, error).
+
+    The case projects.py cannot reach with a rename(2), because the directory
+    is on the daemon's disk and not on ours. It handles the mounted case
+    itself; this answers False with no error when that is the arrangement, so
+    nothing is done twice.
+
+    A project that never had a dev instance has nothing to move and is not a
+    failure — the same rule as the local move.
+    """
+    if Path(DEVDATA).is_dir() or not sandbox_daemon():
+        return False, ""
+    if not _devdata_run("test", old, quiet=True):
+        return False, ""
+    if not _devdata_run("mv", old, new):
+        return False, ("the dev instance's data is on the sandbox and could "
+                       "not be moved — it is still under the old name")
+    return True, ""
+
+
 def _dev_data_env(project, instance=MAIN):
     """BB_DEV_DATA for a compose that opts in with ${BB_DEV_DATA}/... —
-    cache-backed volumes by convention, nothing forced on a compose that
-    never mentions it.
-
-    Handed over as the HOST's path, because the daemon that reads it is the
-    host's. Unset when that is unknown: a compose referencing an unset
-    variable fails loudly, and loudly is the whole improvement over mounting
-    an empty directory in the host's RAM and calling it the cache drive.
+    cache-backed volumes by convention, nothing forced on a compose that never
+    mentions it.
     """
-    root = Path(DEVDATA)
-    if not root.is_dir():
-        return {}
-    d = root / _pname(project, instance)
-    try:
-        d.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        return {}
-    host = to_host(d)
-    return {"BB_DEV_DATA": host} if host else {}
+    d = dev_data_dir(project, instance)
+    return {"BB_DEV_DATA": d} if d else {}
 
 
 # ---------------------------------------------------------------------------
@@ -1427,8 +1561,11 @@ def our_paths(mapping):
     ours = [p for p in mapping if Path(p).is_dir()]
     # The two the mapping is usually silent about. With DOCKER_HOST_PATHS unset
     # there is no mapping at all, and these checks are exactly what says so.
+    # DEVDATA only when this container actually has it: where the daemon makes
+    # the dev-data directory itself that path is the DAEMON's, and judging it
+    # as one of ours reports every correct compose file as broken.
     for p in (str(WORKSPACE), str(Path(DEVDATA))):
-        if p not in ours:
+        if p not in ours and Path(p).is_dir():
             ours.append(p)
     return ours
 

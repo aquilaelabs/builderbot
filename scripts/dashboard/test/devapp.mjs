@@ -578,6 +578,103 @@ ok(hp.parity[0]['/workspace'] === '/workspace' && !hp.parity[1].length,
 ok(!hp.parity[2].length,
    '...and a bind under it is no longer a problem, because it is not one');
 
+// Who makes the dev-data directory. It has to exist before a bind can use it,
+// docker's own attempt fails on a root-squashing share (it makes it, fails the
+// chown, fails the run — and leaves it behind, so the second press works), and
+// for a long time the only candidate was this container. That is the entire
+// reason /devdata had to be mounted here as well as over there.
+const dd = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp()
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+os.environ['BB_MOUNTINFO'] = ${JSON.stringify(mi)}
+
+# Every docker call goes through the REAL guard and is recorded, so what is
+# asserted below is what the daemon would actually have been asked to do.
+calls = []
+def fake(argv, timeout=60, **kw):
+    bad = m._guard(argv)
+    calls.append({'argv': argv, 'refused': bad})
+    return {'code': 126 if bad else 0, 'out': bad}
+m._run = fake
+
+out = {}
+# Mounted here: made here, translated through the mapping, no run at all.
+m.DEVDATA = os.path.join(d, 'devdata'); os.makedirs(m.DEVDATA)
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+os.environ['DOCKER_HOST_PATHS'] = m.DEVDATA + ':' + m.DEVDATA
+out['local'] = [m.dev_data_dir('alpha'),
+                os.path.isdir(os.path.join(m.DEVDATA, 'bbdev-alpha-main')), calls[:]]
+
+# Not mounted here, daemon is a sandbox: it makes it, and BB_DEV_DATA is the
+# path on THAT machine — nothing has to be mounted on this side.
+calls.clear()
+m.DEVDATA = '/devdata-not-here'
+out['remote'] = [m._dev_data_env('alpha'), calls[:]]
+out['ours'] = m.our_paths({})
+# The name of it without a promise it is there. _compose asks this way because
+# it is on the poll path, and making it there would be a container launch every
+# few seconds for as long as the tab is open.
+calls.clear()
+out['named'] = [m.dev_data_dir('alpha', make=False), calls[:]]
+
+# Not mounted here, daemon is the server's own: nothing is run at all, and a
+# compose that wanted BB_DEV_DATA fails loudly instead of writing to a
+# directory docker invented.
+calls.clear()
+os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
+out['proxy'] = [m._dev_data_env('alpha'), calls[:]]
+
+# A rename reaches over there too, or the instance's data is orphaned under
+# the old name with nothing said about it.
+calls.clear()
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+out['renamed'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-beta'),
+                  [[a for a in c['argv'] if a.startswith('/d/')] for c in calls]]
+
+# What the guard lets through is these commands, rebuilt and compared — not
+# the verb. A run with a bind is root on whatever answers.
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+mk = m._devdata_argv('mkdir', 'bbdev-alpha')
+out['guard'] = {
+  'ours': m._guard(mk),
+  'traversal': m._guard(m._devdata_argv('mkdir', '../../etc')),
+  'other mount': m._guard([x.replace(m.DEVDATA + ':/d', '/:/d') for x in mk]),
+  'other image': m._guard([x if x != 'alpine' else 'evil' for x in mk]),
+  'extra flag': m._guard(mk[:2] + ['--privileged'] + mk[2:]),
+  'other command': m._guard([x if x != 'mkdir' else 'rm' for x in mk]),
+  'free run': m._guard([m.DOCKER, 'run', '--rm', '-v', '/:/host', 'alpine', 'sh']),
+}
+os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
+out['guard']['ours, on the proxy'] = m._guard(mk)
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const DDD = JSON.parse(dd.trim().split('\n').pop());
+ok(DDD.local[0].endsWith('/devdata/bbdev-alpha-main') && DDD.local[1] && !DDD.local[2].length,
+   'with the dev-data share mounted here the directory is made here, as before');
+ok(DDD.remote[0].BB_DEV_DATA === '/devdata-not-here/bbdev-alpha-main'
+   && DDD.remote[1].length === 1 && !DDD.remote[1][0].refused
+   && DDD.remote[1][0].argv.slice(-3).join(' ') === 'mkdir -p /d/bbdev-alpha-main',
+   'without it a sandbox daemon makes the directory itself, on its own disk');
+ok(DDD.named[0] === '/devdata-not-here/bbdev-alpha-main' && !DDD.named[1].length,
+   '...asked for by name it runs nothing, which is what keeps the poll off it');
+ok(!DDD.ours.includes('/devdata-not-here'),
+   '...and that path is then the daemon\'s, so a bind under it is not judged here');
+ok(!Object.keys(DDD.proxy[0]).length && !DDD.proxy[1].length,
+   'a socket proxy is never asked to run one: no path, and the compose says so');
+ok(DDD.renamed[0][0] === true && !DDD.renamed[0][1]
+   && JSON.stringify(DDD.renamed[1]) ===
+      JSON.stringify([['/d/bbdev-alpha'], ['/d/bbdev-alpha', '/d/bbdev-beta']]),
+   'a rename moves the data over there too, rather than orphaning it');
+ok(!DDD.guard.ours && Object.entries(DDD.guard).filter(([k]) => k !== 'ours')
+     .every(([, v]) => !!v),
+   'the guard allows those exact commands and nothing else wearing the same verb');
+ok(/sandbox VM/.test(DDD.guard['ours, on the proxy']),
+   '...and not even those when the daemon is the server\'s own');
+
 // An instance is (project, name) now, and the old layout is one record per
 // project. Driven at the module: the migration happens on read, so it is the
 // read that has to be asserted, and a stub docker cannot show a rename.

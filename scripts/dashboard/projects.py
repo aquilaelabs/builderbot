@@ -171,11 +171,16 @@ HOME = None
 DEVDATA = None
 write_json = None
 pname = None
+# The dev-data directory is not always ours to move: where the daemon is a
+# sandbox VM it lives on that machine's disk and this container never mounts
+# it. devapp knows how to reach it; injected rather than imported, so this
+# module keeps to the one thing it is about.
+rename_devdata = None
 
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
               repo_path, build_claude_md, project_name, github_url,
-              state, home, devdata, write_json, pname):
+              state, home, devdata, write_json, pname, rename_devdata=None):
     """Hand over the server's helpers."""
     globals().update(
         run=run, WORKSPACE=Path(workspace), agent_keys=agent_keys,
@@ -183,7 +188,7 @@ def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
         repo_path=repo_path, build_claude_md=build_claude_md,
         PROJECT_NAME=project_name, GITHUB_URL=github_url,
         STATE=Path(state), HOME=Path(home), DEVDATA=Path(devdata),
-        write_json=write_json, pname=pname)
+        write_json=write_json, pname=pname, rename_devdata=rename_devdata)
 
 
 # ---------------------------------------------------------------------------
@@ -465,9 +470,18 @@ def rename(req):
         elif msg:
             moved.append(msg)
     # The compose project name is derived and sanitized, so these two are not
-    # simply the project's name with a prefix on it.
-    _mv(DEVDATA / pname(old), DEVDATA / pname(new),
-        "the dev instance's data", moved, failed)
+    # simply the project's name with a prefix on it. And the directory is only
+    # ours to rename when it is mounted here — under a sandbox daemon it is on
+    # that machine, and devapp does the move over there.
+    if DEVDATA.is_dir():
+        _mv(DEVDATA / pname(old), DEVDATA / pname(new),
+            "the dev instance's data", moved, failed)
+    elif rename_devdata:
+        did, err = rename_devdata(pname(old), pname(new))
+        if did:
+            moved.append("the dev instance's data, on the sandbox")
+        elif err:
+            failed.append(err)
     # Claude Code's own directory: the transcripts AND the memories, which live
     # inside it. Its slug is the working directory's path with the slashes
     # turned into dashes — the same rule memory.py reads it by.
