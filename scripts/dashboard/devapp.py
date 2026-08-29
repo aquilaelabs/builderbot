@@ -241,6 +241,38 @@ def _log_line(line):
     _job["log"] = (_job["log"] + line)[-LOG_TAIL:]
 
 
+def _claim(project, instance, step):
+    """Take the one job slot, or say it is taken. True if this call has it.
+
+    The check and the claim under one lock, because they were two statements
+    before and the gap between them is a real one: the manager is shared by
+    every browser that has it open, so `if not running` in one request and
+    `running = True` in the next can interleave and start two compose calls on
+    the same project.
+
+    And it covers `up`, `down` and `remove` as well as a build, which the flag
+    did not. Those three read the flag and never set it, so a thirty-minute
+    implicit build inside `up` was invisible to the guard and to the row —
+    every other button stayed live in front of it.
+    """
+    with _lock:
+        if _job["running"]:
+            return False
+        _job.update(running=True, project=project, instance=instance,
+                    step=step, log="", error="", await_env=False,
+                    aborting=False)
+    _bump()
+    return True
+
+
+def _release():
+    _job["running"] = False
+    _bump()
+
+
+BUSY = {"error": "something is already running on this daemon — one at a time"}
+
+
 def abort_job():
     """Stop the job that is running, if any.
 
@@ -1354,7 +1386,19 @@ def remove_instance(project, instance):
     """
     if instance not in (_load().get(project) or {}):
         return {"error": f"{project} has no instance called {instance}"}
-    r = _run(_compose(project, instance, "down"), timeout=180)
+    if not _claim(project, instance, "stopping"):
+        return dict(BUSY)
+    # Bound before the try, so an exception on the way out reports itself
+    # rather than a NameError from the line that was about to describe it.
+    stopped = False
+    try:
+        r = _run(_compose(project, instance, "down"), timeout=180,
+                 sink=_log_line, hold=_hold_child)
+        stopped = _job["aborting"]
+    finally:
+        _release()
+    if stopped:
+        return {"error": "stopped — it is still in the manager"}
     if r["code"] != 0:
         return {"error": ("could not take it down, so it was left alone:\n"
                           + r["out"])[-500:]}
@@ -1838,8 +1882,8 @@ def state(project, instance=MAIN):
 # actions
 
 def up(project, instance=MAIN, ack=""):
-    if _job["running"]:
-        return {"error": "a build is already running — one at a time"}
+    # Refusals first, so a request that is going to be turned down does not
+    # flash a job at every other browser on its way to saying no.
     gate = _risk_gate(project, instance, ack)
     if gate:
         return {"error": gate}
@@ -1848,16 +1892,28 @@ def up(project, instance=MAIN, ack=""):
         return {"error": "the env is missing " + ", ".join(miss[:4])
                          + (" …" if len(miss) > 4 else "")
                          + " — fill it in first (Env)"}
-
-    # `compose up -d`, and nothing more clever: compose builds an image that
-    # is missing, so Up on a never-built project does what the CLI does
-    # rather than refusing on a rule of this dashboard's invention. The
-    # classic builder rides along for exactly that case — an implicit build
-    # through buildx would 403 against a socket proxy.
-    r = _run(_compose(project, instance, "up", "-d"), timeout=1800,
-             env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD)
-    if r["code"] != 0:
-        return {"error": ("compose up failed:\n" + r["out"])[-500:]}
+    if not _claim(project, instance, "starting"):
+        return dict(BUSY)
+    try:
+        # `compose up -d`, and nothing more clever: compose builds an image
+        # that is missing, so Up on a never-built project does what the CLI
+        # does rather than refusing on a rule of this dashboard's invention.
+        # The classic builder rides along for exactly that case — an implicit
+        # build through buildx would 403 against a socket proxy.
+        #
+        # Streamed, for the same reason the build is: that implicit build can
+        # pull for half an hour, and unstreamed it was half an hour of nothing
+        # with no way to stop it — a download wearing a hang's clothes, on the
+        # one button most likely to meet it.
+        r = _run(_compose(project, instance, "up", "-d"), timeout=1800,
+                 env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,
+                 sink=_log_line, hold=_hold_child)
+        if _job["aborting"]:
+            return {"error": "stopped"}
+        if r["code"] != 0:
+            return {"error": ("compose up failed:\n" + r["out"])[-500:]}
+    finally:
+        _release()
     with _lock:
         d = _load()
         row = _rec(d, project, instance)
@@ -1876,9 +1932,19 @@ def up(project, instance=MAIN, ack=""):
 
 
 def down(project, instance=MAIN):
-    if _job["running"]:
-        return {"error": "a build is already running — one at a time"}
-    r = _run(_compose(project, instance, "down"), timeout=180)
+    if not _claim(project, instance, "stopping"):
+        return dict(BUSY)
+    # Bound before the try, so an exception on the way out reports itself
+    # rather than a NameError from the line that was about to describe it.
+    stopped = False
+    try:
+        r = _run(_compose(project, instance, "down"), timeout=180,
+                 sink=_log_line, hold=_hold_child)
+        stopped = _job["aborting"]
+    finally:
+        _release()
+    if stopped:
+        return {"error": "stopped"}
     if r["code"] != 0:
         return {"error": ("compose down failed:\n" + r["out"])[-500:]}
     _bump()
@@ -1888,8 +1954,6 @@ def down(project, instance=MAIN):
 def rebuild(project, instance=MAIN, ack=""):
     """Build, then bounce — or stop at the env gate. In a thread: a build is
     minutes, and the poll watches it through job_rev."""
-    if _job["running"]:
-        return {"error": "a build is already running — one at a time"}
     if compose_file(project) is None:
         return {"error": "no compose file here"}
     # Before the build, not before the `up` inside it: a build runs this
@@ -1897,6 +1961,8 @@ def rebuild(project, instance=MAIN, ack=""):
     gate = _risk_gate(project, instance, ack)
     if gate:
         return {"error": gate}
+    if not _claim(project, instance, "building"):
+        return dict(BUSY)
     # On disk before the work starts, so a restart can tell "this build never
     # finished" from "no build has been asked for". The job dict is memory and
     # dies with the container; this outlives it.
@@ -1904,10 +1970,6 @@ def rebuild(project, instance=MAIN, ack=""):
         d = _load()
         _rec(d, project, instance)["building_since"] = int(time.time())
         write_json(FILE, d)
-    _job.update(running=True, project=project, instance=instance,
-                step="building", log="", error="", await_env=False,
-                aborting=False)
-    _bump()
     threading.Thread(target=_worker, args=(project, instance), daemon=True).start()
     return {"ok": True, "started": True}
 
@@ -1943,7 +2005,17 @@ def _worker(project, instance=MAIN):
             write_json(FILE, d)
         _job["step"] = "stopping"
         _bump()
-        _run(_compose(project, instance, "down"), timeout=180)
+        _run(_compose(project, instance, "down"), timeout=180,
+             sink=_log_line, hold=_hold_child)
+        # Checked here as well as after each of the other two. Abort during
+        # this step reached nothing — there was no held process to signal and
+        # nothing read the flag again until after `up` — so the container came
+        # up and the job then reported that it had been stopped. Every phase
+        # boundary asks now, and the phase itself is holdable.
+        if _job["aborting"]:
+            _job.update(error="stopped — the image is built; it was not started",
+                        step="")
+            return
         if missing_env(project, instance):
             # The gate: new settings exist that the env does not answer.
             # Rewrite the env with the old values in comments and leave Up
