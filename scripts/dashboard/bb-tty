@@ -26,11 +26,6 @@ target="${1:-shell}"
 # Projects the operator keeps but runs themselves. Shared with the dashboard,
 # which writes it; enforced here, because a rule only the UI honors is a
 # suggestion — the ttyd URL is reachable directly.
-#
-# There was a second list beside this one, excluded-projects.json, blocking the
-# same thing for a different reason. Two buttons that looked alike, sat next to
-# each other and both ended a session was a distinction finer than it was worth,
-# so locked is the survivor and carries the whole meaning.
 LOCKS_FILE="${DASHBOARD_STATE:-/config}/locked-projects.json"
 
 is_locked() {
