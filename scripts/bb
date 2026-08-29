@@ -2632,46 +2632,11 @@ cmd_doctor() {
     # The probe is devapp.available(), the same call the Artifacts tab makes on
     # its own poll, so doctor cannot drift into disagreeing with the tab about
     # whether the thing is up.
-    local docker_line dst dmsg
-    docker_line="$(BB_DEVAPP="$(dirname "$(readlink -f "$0")")/dashboard/devapp.py" \
-        python3 - <<'DOCKPY' 2>/dev/null
-import importlib.util
-import os
-import sys
-
-path = os.environ["BB_DEVAPP"]
-if not os.path.isfile(path):
-    print("skip docker daemon: devapp.py is not beside this bb")
-    sys.exit()
-spec = importlib.util.spec_from_file_location("devapp", path)
-m = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(m)
-
-want = (os.environ.get("DOCKER_HOST") or "").strip()
-sock = os.path.exists("/var/run/docker.sock")
-if not want and not sock:
-    print("skip no docker daemon configured: DOCKER_HOST is unset and no "
-          "socket is mounted — dev instances are off")
-elif want.lower() == "auto" and not sock and not m.docker_host():
-    # `auto` is discovery, not a promise. Nothing answering means the feature
-    # is off, which is the shipped default and not a fault to report — a red
-    # line on every doctor run of a box that never wanted dev instances is
-    # noise, and noise is how a check stops being read.
-    print("skip no docker daemon found: DOCKER_HOST is auto and nothing "
-          "answered — dev instances are off")
-else:
-    # Asked rather than re-derived: this used to work the kind out from the
-    # setting and the address from the fallback, which with `auto`, a mounted
-    # socket and no proxy answering printed "a socket proxy at
-    # /var/run/docker.sock" — a sentence contradicting itself.
-    a = m.available()
-    why = " ".join((a["why"] or "").split())     # one line, whatever it said
-    print(("ok " if a["on"] else "FAIL ")
-          + f"docker daemon: {a['kind']} at {a['where']}"
-          + (" (the mounted socket is unused)" if a.get("shadowed") else "")
-          + ("" if a["on"] else f" — {why}"))
-DOCKPY
-    )"
+    local docker_line dst dmsg lib
+    lib="$(dirname "$(readlink -f "$0")")/lib/docker-probe.py"
+    docker_line="$(python3 "$lib" \
+        "$(dirname "$(readlink -f "$0")")/dashboard/devapp.py" 2>/dev/null \
+        | head -1)"
     read -r dst dmsg <<<"$docker_line"
     case "$dst" in
         ok)   printf '  [ok]   %s\n' "$dmsg" ;;

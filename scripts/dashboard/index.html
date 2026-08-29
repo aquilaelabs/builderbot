@@ -37,8 +37,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b2027'/%3E%3Cg fill='%233fb950'%3E%3Crect x='4' y='8.5' width='24' height='17' rx='5.5'/%3E%3Crect x='15' y='3.5' width='2' height='6' rx='1'/%3E%3Ccircle cx='16' cy='3' r='2.3'/%3E%3C/g%3E%3Cg fill='%231b2027'%3E%3Ccircle cx='11.4' cy='15.4' r='2.1'/%3E%3Ccircle cx='20.6' cy='15.4' r='2.1'/%3E%3Crect x='10.6' y='19.6' width='10.8' height='2.6' rx='1.3'/%3E%3C/g%3E%3C/svg%3E">
 <style>
 :root,.sw[data-theme="default"]{
-  --bg:#14181d; --panel:#1b2027; --line:#2a323c; --ink:#e6edf3;
-  --dim:#8b98a5; --accent:#3fb950; --warn:#d29922; --bad:#f85149;
+  --bg:#1a1f26; --panel:#212730; --line:#4d5c6f; --ink:#e6edf3;
+  --dim:#9fa9b4; --accent:#3fb950; --warn:#d29922; --bad:#f8524a;
   --note:#58a6ff;
   /* Derived, not chosen. Buttons and the active/primary family were hardcoded
      hex — #232b34 eleven times, #1f6f36 and #2ea043 across every tab, pane and
@@ -81,7 +81,7 @@
   --green2:#7fc08a; --green2-edge:#1f3f28;
   --blue2:#77b7e8;  --blue2-edge:#1e3a4a;
   --gold:#d8b25c;   --gold-edge:#4a3c1e;
-  --red2:#e0796f;   --red2-edge:#4d2220;
+  --red2:#e0796f;   --red2-edge:#94423d;
 }
 /* ---- colour schemes ----------------------------------------------------
    Twelve, all dark: this page is looked at in a dim room beside a terminal,
@@ -98,41 +98,41 @@
    are the same in every scheme and a scheme that had to restate them would
    invite them apart. */
 html[data-theme="nostromo"],.sw[data-theme="nostromo"]{
-  --bg:#0a0e0b; --panel:#101711; --line:#24331f; --ink:#d7e3c8;
-  --dim:#7d8f6e; --accent:#ffb000; --warn:#ffd166; --bad:#ff5f45; --note:#9ad07a}
+  --bg:#101712; --panel:#162018; --line:#405b37; --ink:#d7e3c8;
+  --dim:#95a488; --accent:#ffb000; --warn:#ffd166; --bad:#ff5f45; --note:#9ad07a}
 html[data-theme="slate"],.sw[data-theme="slate"]{
-  --bg:#12151a; --panel:#191d24; --line:#2b3139; --ink:#dfe5ec;
-  --dim:#8a929c; --accent:#6ea8fe; --warn:#d9a441; --bad:#ef6f6c; --note:#7fb8ff}
+  --bg:#181c23; --panel:#1f242d; --line:#4f5a68; --ink:#dfe5ec;
+  --dim:#9fa6ae; --accent:#6ea8fe; --warn:#d9a441; --bad:#ef6f6c; --note:#7fb8ff}
 html[data-theme="carbon"],.sw[data-theme="carbon"]{
-  --bg:#0d0d0f; --panel:#151517; --line:#26262a; --ink:#e8e8ea;
-  --dim:#8e8e96; --accent:#e5484d; --warn:#d9a441; --bad:#ff6b6b; --note:#7aa2f7}
+  --bg:#141417; --panel:#1c1c1f; --line:#53535b; --ink:#e8e8ea;
+  --dim:#9d9da4; --accent:#e64e53; --warn:#d9a441; --bad:#ff6b6b; --note:#7aa2f7}
 html[data-theme="nocturne"],.sw[data-theme="nocturne"]{
-  --bg:#12121c; --panel:#1a1a28; --line:#2b2b40; --ink:#e4e2f5;
-  --dim:#918eb5; --accent:#9d7cff; --warn:#e0b24d; --bad:#f2637b; --note:#7cb0ff}
+  --bg:#181825; --panel:#202031; --line:#53537b; --ink:#e4e2f5;
+  --dim:#a2a0c1; --accent:#9d7cff; --warn:#e0b24d; --bad:#f2637b; --note:#7cb0ff}
 html[data-theme="moss"],.sw[data-theme="moss"]{
-  --bg:#101613; --panel:#172019; --line:#26332a; --ink:#dfe9df;
-  --dim:#86988a; --accent:#63c98a; --warn:#d6ad4e; --bad:#e8695f; --note:#74b3d8}
+  --bg:#161f1b; --panel:#1d2920; --line:#48604f; --ink:#dfe9df;
+  --dim:#9daba0; --accent:#63c98a; --warn:#d6ad4e; --bad:#e8695f; --note:#74b3d8}
 html[data-theme="ember"],.sw[data-theme="ember"]{
-  --bg:#16110e; --panel:#1e1814; --line:#33291f; --ink:#f0e4d8;
-  --dim:#a08d7c; --accent:#f0873f; --warn:#e8bb50; --bad:#ef5f52; --note:#8fb4d9}
+  --bg:#1f1814; --panel:#271f1a; --line:#67533e; --ink:#f0e4d8;
+  --dim:#af9f90; --accent:#f0873f; --warn:#e8bb50; --bad:#ef5f52; --note:#8fb4d9}
 html[data-theme="abyss"],.sw[data-theme="abyss"]{
-  --bg:#0c1416; --panel:#121d20; --line:#1f2f33; --ink:#dcecee;
-  --dim:#7d979b; --accent:#2fb8c6; --warn:#d7ab4c; --bad:#ef6a63; --note:#6fb3e0}
+  --bg:#111d20; --panel:#18262a; --line:#3e5e66; --ink:#dcecee;
+  --dim:#93a9ac; --accent:#2fb8c6; --warn:#d7ab4c; --bad:#ef6a63; --note:#6fb3e0}
 html[data-theme="plum"],.sw[data-theme="plum"]{
-  --bg:#16101a; --panel:#1e1724; --line:#322639; --ink:#eddff2;
-  --dim:#a08bab; --accent:#c874d8; --warn:#dfae52; --bad:#ee6183; --note:#83aee8}
+  --bg:#1e1623; --panel:#261d2d; --line:#654d73; --ink:#eddff2;
+  --dim:#ae9cb7; --accent:#c874d8; --warn:#dfae52; --bad:#ee6183; --note:#83aee8}
 html[data-theme="rust"],.sw[data-theme="rust"]{
-  --bg:#150f0e; --panel:#1d1614; --line:#322523; --ink:#ecdedb;
-  --dim:#a08b87; --accent:#cf6a4c; --warn:#d9a441; --bad:#e8544a; --note:#7fa8c9}
+  --bg:#1e1614; --panel:#261d1a; --line:#6a4e4a; --ink:#ecdedb;
+  --dim:#ae9d99; --accent:#cf6a4c; --warn:#d9a441; --bad:#e8544a; --note:#7fa8c9}
 html[data-theme="ice"],.sw[data-theme="ice"]{
-  --bg:#0f1418; --panel:#161d23; --line:#253039; --ink:#e3edf5;
-  --dim:#88989f; --accent:#58c7e8; --warn:#d3ab52; --bad:#ee6a68; --note:#7cc0ff}
+  --bg:#151c21; --panel:#1c252c; --line:#465b6c; --ink:#e3edf5;
+  --dim:#9aa8ae; --accent:#58c7e8; --warn:#d3ab52; --bad:#ee6a68; --note:#7cc0ff}
 html[data-theme="sepia"],.sw[data-theme="sepia"]{
-  --bg:#16130e; --panel:#1e1a13; --line:#332c20; --ink:#ece0cb;
-  --dim:#a3937a; --accent:#d3a94f; --warn:#e3c069; --bad:#e0705f; --note:#9db98c}
+  --bg:#1f1b14; --panel:#272219; --line:#63563e; --ink:#ece0cb;
+  --dim:#b0a28c; --accent:#d3a94f; --warn:#e3c069; --bad:#e0705f; --note:#9db98c}
 html[data-theme="ash"],.sw[data-theme="ash"]{
-  --bg:#131313; --panel:#1a1b1a; --line:#2c2e2c; --ink:#e2e4e0;
-  --dim:#8f938c; --accent:#a3b18a; --warn:#cfa94a; --bad:#e26d60; --note:#82a7b8}
+  --bg:#1b1b1b; --panel:#222322; --line:#555955; --ink:#e2e4e0;
+  --dim:#a1a59f; --accent:#a3b18a; --warn:#cfa94a; --bad:#e26d60; --note:#82a7b8}
 
 /* ---- Nostromo -----------------------------------------------------------
    The one scheme that is more than a recolour. Amber phosphor on a green-black
@@ -401,8 +401,8 @@ button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
      hover leaking in here painted the active tab as a filled pill the moment
      the pointer crossed it. */
   .nbtabs button:hover,.nbtabs button.on:hover{background:none}
-  .modal .danger:hover{background:#3a1d1b}
-  .nb .caution:hover{background:#33290f}
+  .modal .danger:hover{background:#6a3532}
+  .nb .caution:hover{background:#534318}
   button:disabled:hover{background:var(--btn)}
   .cmd button:hover{background:var(--btn-hi)}
   .cmd .tack:hover{color:var(--ink)}
@@ -411,7 +411,7 @@ button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
   .tab .ic:hover{background:rgba(255,255,255,.09);color:var(--ink)}
   .pane .bar .x:hover{background:rgba(255,255,255,.1);color:var(--ink)}
   .fx .grp>summary:hover{background:var(--btn)}
-  .fx .cve:hover{background:#2a1a1a}
+  .fx .cve:hover{background:#5f3b3b}
   .tscroll:disabled:hover{background:var(--panel)}
 }
 
@@ -669,12 +669,12 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .modal .foot,.nb .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
   flex-wrap:wrap}
 .modal .foot .sp,.nb .foot .sp{flex:1}
-.modal .danger,.nb .danger{color:var(--bad);border-color:#4d2220}
+.modal .danger,.nb .danger{color:var(--bad);border-color:#94423d}
 /* Revert is amber rather than red. It throws away what has not been saved
    yet — a decision you might want back, and the colour this page already uses
    for "wants a decision from you". Red is kept for the controls that destroy
    something already on disk, which is the other two on this panel. */
-.nb .caution{color:var(--warn);border-color:#4a3a15}
+.nb .caution{color:var(--warn);border-color:#705820}
 /* Two-way choice as two buttons, not radios: one tap on a phone, and the
    green .on state is the same vocabulary as everything else on the page. */
 /* Underlined and in the warm colour, the way the CLAUDE.md fix link on a
@@ -1025,7 +1025,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    them rather than by them — the reason the list exists at all. */
 .todo .who{border-color:var(--purple-edge);color:var(--purple);margin-top:1px}
 .todo .rm{color:var(--dim)}
-@media(hover:hover){ .todo .rm:hover{color:var(--bad);border-color:#4d2220} }
+@media(hover:hover){ .todo .rm:hover{color:var(--bad);border-color:#94423d} }
 /* Four controls and a number on one line is tight on a phone; the buttons
    lose their padding before the words lose their width. */
 @media(max-width:620px){ .todo .go,.todo .x,.todo .rm,.todo .ed{padding:5px 4px}
@@ -1101,7 +1101,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    the top of its view. */
 /* Confirming a drop, with the reason it is going. Red-edged rather than a
    browser dialog: it has to hold a field, and a phone's confirm() cannot. */
-.dropbox{border:1px solid #4d2220;border-radius:8px;padding:9px 10px;
+.dropbox{border:1px solid #94423d;border-radius:8px;padding:9px 10px;
   margin:0 0 9px 26px;background:#1a1113}
 .dropbox .q{font:12px/1.5 system-ui,sans-serif;color:var(--ink);margin-bottom:7px}
 .dropbox .q span{color:var(--dim)}
@@ -1214,7 +1214,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .bug .btitle{flex:1;min-width:0;font:13px/1.4 system-ui,sans-serif;
   overflow-wrap:anywhere}
 .bug .btitle.done{color:var(--dim);text-decoration:line-through}
-.bug .sev.high{color:#e8a04c;border-color:#4a331e}
+.bug .sev.high{color:#e8a04c;border-color:#785331}
 .bug .sev.critical{color:var(--red2);border-color:var(--red2-edge)}
 .bug .bstat.open{color:var(--blue2);border-color:var(--blue2-edge)}
 .bug .bstat.fixed{color:var(--green2);border-color:var(--green2-edge)}
@@ -1323,7 +1323,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 }
 /* Remove, on a manager row: a text button among text buttons, red only under
    the pointer. It is the one control there that takes something away. */
-@media(hover:hover){ .dmtab .acts button.rm:hover{color:var(--bad);border-color:#4d2220} }
+@media(hover:hover){ .dmtab .acts button.rm:hover{color:var(--bad);border-color:#94423d} }
 /* The wiring fold. Its lines wrap rather than scroll: a host path is long, and
    a row that scrolls sideways on a phone hides the half you were reading. */
 /* The running command's own output. Monospace and scrollable, capped so a
@@ -1412,15 +1412,15 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 
 .pill{font:11px/1 var(--mono);padding:3px 7px;border-radius:99px;
   border:1px solid var(--line);color:var(--dim)}
-.pill.ok{color:var(--accent);border-color:#22452c}
-.pill.bad{color:var(--bad);border-color:#4d2220}
-.pill.warn{color:var(--warn);border-color:#4a3a15}
-.pill.note{color:var(--note);border-color:#1f3c5d}
+.pill.ok{color:var(--accent);border-color:#326641}
+.pill.bad{color:var(--bad);border-color:#94423d}
+.pill.warn{color:var(--warn);border-color:#705820}
+.pill.note{color:var(--note);border-color:#305d8f}
 /* A job can run for many minutes; a still badge reads as a stale page. */
 .spin{width:11px;height:11px;border-radius:50%;flex:0 0 auto;
-  border:2px solid #1f3c5d;border-top-color:var(--note);
+  border:2px solid #305d8f;border-top-color:var(--note);
   animation:spin 900ms linear infinite}
-.spin.bad{border-color:#4d2220;border-top-color:var(--bad)}
+.spin.bad{border-color:#94423d;border-top-color:var(--bad)}
 .row code{font:11px/1.5 var(--mono);background:var(--btn);padding:1px 5px;
   border-radius:4px;white-space:nowrap}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -1456,7 +1456,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   font:13px/1.45 system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.55);
   transition:transform .18s ease,opacity .18s ease;opacity:0;pointer-events:none}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
-#toast.bad{border-color:#4d2220;color:var(--bad)}
+#toast.bad{border-color:#94423d;color:var(--bad)}
 @media(prefers-reduced-motion:reduce){ #toast{transition:none} }
 
 .tabbar .newtab{border:1px solid var(--line);border-radius:6px;font-size:15px;
@@ -1668,7 +1668,7 @@ body.dragging .tab .lbl{cursor:grabbing}
   overflow-wrap:anywhere}
 .fx a{color:var(--note)}
 .fx .cve{display:inline-block;font:11px/1 var(--mono);padding:3px 7px;
-  border-radius:99px;border:1px solid #4d2220;color:var(--bad);
+  border-radius:99px;border:1px solid #94423d;color:var(--bad);
   text-decoration:none;margin:0 4px 4px 0}
 </style>
 </head>

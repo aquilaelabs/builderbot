@@ -2561,6 +2561,8 @@ scripts/
   lib/common.sh                  shared shell helpers
   lib/sdk.sh                     the package manager: `bb sdk`, sourced by bb
   lib/sdkmeta.py                 reads config/packages.json for bb: fields, argv, versions
+  lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
+  lib/embedded-shell.py          pulls scripts out of quoted heredocs so `bb lint` sees them
   startup.d/*.sh                 startup hooks
   dashboard/                     web dashboard: server.py, index.html, bb-tty
     packages.py                  everything behind the Tools tab: catalog, sizes, the job worker

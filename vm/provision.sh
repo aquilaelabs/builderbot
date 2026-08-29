@@ -607,7 +607,22 @@ $([ -n "$TCP_ON" ] && echo "  ...or, if ssh is awkward:  DOCKER_HOST=tcp://${ip:
 A web UI a container here publishes is reachable at http://${ip:-<this-vm>}:<port>
 directly, because this VM has its own address on your network.
 
-Mounted for parity:
-$( { for s in "${SHARES[@]:-}"; do [ -n "$s" ] && echo "  ${s#*:}  (virtiofs ${s%%:*})"; done
-     for n in "${NFS[@]:-}"; do [ -n "$n" ] && echo "  ${n##*:}  (nfs)"; done; } || true)
+What this machine mounts:
+EOF
+
+# Asked of bb-sandbox rather than echoed back from the arguments. Re-running
+# with no --share and no --nfs is the ordinary way to pick up a newer
+# bb-sandbox, and the old summary then printed a heading with nothing under it
+# on a machine with three mounts — which reads as "none", on the exact question
+# this whole design turns on.
+/usr/local/sbin/bb-sandbox list || true
+
+cat <<'EOF'
+
+Those paths have to be the ones BuilderBot uses. A compose file resolves a
+relative bind against whoever runs the container, so a path that means
+something different on each side is an app that comes up with no data.
+
+  sudo bb-sandbox settings     the lines to paste into BuilderBot
+  sudo bb-sandbox check        is every mount really there
 EOF
