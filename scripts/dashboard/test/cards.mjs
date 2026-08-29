@@ -842,17 +842,33 @@ const pressed = await page.$eval(tipBtn, e => getComputedStyle(e, '::after').dis
 await page.mouse.up();
 ok(pressed === 'none',
    '...and goes away while the button is held, where a transform would mis-measure it');
-// The window that the first fix missed: the press TRANSITIONS back over 100ms,
-// so the button went on being a containing block after :active had stopped
-// matching and the tip came back mangled just AFTER the click. These icons dim
-// instead of transforming, so there is nothing left to be caught by.
+// ...and STAYS away with the pointer still on it. `:active` ends at the
+// release and `:hover` does not, so the tip used to come straight back and sit
+// over the next control down — the Resume button, in this strip. You have read
+// the label and acted on it; it has nothing left to tell you.
 const after = [];
 for (let i = 0; i < 4; i++){
   await page.waitForTimeout(30);
-  after.push(await page.$eval(tipBtn, e => getComputedStyle(e, '::after').width));
+  after.push(await page.$eval(tipBtn, e => getComputedStyle(e, '::after').display));
 }
-ok(after.every(w => w === after[0] && parseFloat(w) > 100),
-   `...and comes back its own size the moment it is released (${after.join(', ')})`);
+ok(after.every(d => d === 'none'),
+   `...and stays away once clicked, rather than covering what is under it (${after.join(', ')})`);
+// Cleared by reaching a different control, not by a timer: this is one button's
+// label being finished with, not tooltips being switched off. Its size is the
+// other half — the press TRANSITIONS back over 100ms, and while a transform was
+// what dipped the button it went on being the containing block for its own
+// ::after after :active stopped matching, so the next tip opened one character
+// wide and ran down the whole card. Reported as "something crazy with the
+// tooltips"; these icons dim instead, so there is nothing left to be caught by.
+const other = '#projects .row .acts [data-tip]:last-child';
+const ob = await (await page.$(other)).boundingBox();
+await page.mouse.move(ob.x + ob.width / 2, ob.y + ob.height / 2);
+await page.waitForTimeout(250);
+const moved = await page.$eval(other, e => {
+  const c = getComputedStyle(e, '::after'); return [c.display, parseFloat(c.width)];
+});
+ok(moved[0] === 'block' && moved[1] > 100,
+   `...and the next control's own tip opens at its own size (${moved.join(', ')})`);
 const gone = await api('/api/trash', { name: 'beta' });
 ok(gone.status === 200 && gone.body.to === '.trash/beta',
    'deleting names where the files went');

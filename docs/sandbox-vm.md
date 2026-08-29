@@ -180,7 +180,7 @@ over. **From the Unraid terminal**, where that path is the host's own; inside
 BuilderBot the same file is `/workspace/BuilderBot/vm/provision.sh`.
 
 ```bash
-scp /mnt/user/development/BuilderBot/vm/provision.sh bb@<vm-ip>:
+scp /mnt/user/development/projects/BuilderBot/vm/provision.sh bb@<vm-ip>:
 ssh bb@<vm-ip>
 ```
 
@@ -189,7 +189,7 @@ then, in that session:
 ```bash
 sudo bash provision.sh --user bb \
     --key "ssh-ed25519 AAAA… bb-sandbox" \
-    --nfs 192.168.1.15:/mnt/user/development:/workspace \
+    --nfs 192.168.1.15:/mnt/user/development/projects:/workspace \
     --nfs 192.168.1.15:/mnt/user/appdata/builderbot-dev:/devdata
 ```
 
@@ -282,7 +282,7 @@ Five things in it differ from Unraid's placeholder, each for a reason:
 
   ```
   Starting external device: virtiofsd
-  /usr/libexec/virtiofsd --fd=40 --shared-dir /mnt/user/development
+  /usr/libexec/virtiofsd --fd=40 --shared-dir /mnt/user/development/projects
   ...
   libvirt:  error : libvirtd quit during handshake: Input/output error
   ```
@@ -307,7 +307,7 @@ Five things in it differ from Unraid's placeholder, each for a reason:
 
   ```bash
   sudo bash provision.sh --user bb --key "ssh-ed25519 …" \
-      --nfs 192.168.1.15:/mnt/user/development:/workspace \
+      --nfs 192.168.1.15:/mnt/user/development/projects:/workspace \
       --nfs 192.168.1.15:/mnt/user/appdata/builderbot-dev:/devdata
   ```
 
@@ -359,7 +359,7 @@ Five things in it differ from Unraid's placeholder, each for a reason:
     <binary path="/usr/libexec/virtiofsd">
       <sandbox mode="chroot"/>
     </binary>
-    <source dir="/mnt/user/development"/>
+    <source dir="/mnt/user/development/projects"/>
     <target dir="workspace"/>
   </filesystem>
   ```

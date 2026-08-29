@@ -33,7 +33,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 WORKSPACE = Path(os.environ.get("WORKSPACE", "/workspace"))
-PORT = int(os.environ.get("DASHBOARD_PORT", "8080"))
+PORT = int(os.environ.get("DASHBOARD_PORT", "7680"))
 AUTH = os.environ.get("DASHBOARD_AUTH", "")
 # Loopback only: the browser reaches terminals through this server's own
 # /term proxy, so there is no second port for the page to be told about —
@@ -1224,10 +1224,10 @@ def project_list():
         # here an operator can drive: a directory holding that file is not a
         # project and is not listed. The container drops it into any path of
         # its own that lands inside the projects share — the SDK share, when
-        # someone maps it under /mnt/user/development — and anyone can create
-        # one by hand for a directory they would rather not see. It hides;
-        # excluding a project is the thing that *blocks*, and that is a
-        # different control with a different guarantee.
+        # someone maps it inside the projects folder rather than beside it —
+        # and anyone can create one by hand for a directory they would rather
+        # not see. It hides; locking a project is the thing that *blocks*, and
+        # that is a different control with a different guarantee.
         if (not d.is_dir() or d.name == "_work" or d.name.startswith(".")
                 or (d / IGNORE_MARKER).exists()):
             continue
@@ -3465,9 +3465,9 @@ class Handler(BaseHTTPRequestHandler):
     def _lock(self, req):
         """Lock or unlock a project: keep it, stop Claude running in it.
 
-        The same name-checked write as _exclude, and deliberately the same
-        enforcement — bb-tty reads the file, because a rule only this UI
-        honors is a suggestion when the ttyd URL is reachable directly.
+        A name-checked write, and the enforcement is deliberately not this
+        handler's — bb-tty reads the file, because a rule only this UI honors
+        is a suggestion when the ttyd URL is reachable directly.
 
         What it does NOT claim: a session in ANOTHER project still reaches this
         directory through Bash. The file tools are denied on every sibling
@@ -3489,8 +3489,8 @@ class Handler(BaseHTTPRequestHandler):
             except OSError as e:
                 return self._json({"error": f"could not save: {e}"}, 500)
 
-        # Same reasoning as _exclude: a lock that waits for the current session
-        # to end is a lock that did not take, and the button does not say that.
+        # A lock that waits for the current session to end is a lock that
+        # did not take, and the button does not say that.
         killed = None
         sess = tmux_name(f"claude-{name}")
         if on and sess in {s["name"] for s in tmux_sessions()}:

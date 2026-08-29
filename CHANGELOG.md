@@ -91,3 +91,5 @@
 - A terminal tab now closes itself when its session ends, instead of leaving a dead terminal in the strip (fce723e)
 - A share mounted on both this container and the daemon is now checked like the others, and one only the daemon has is named rather than ignored (3e9ea7d)
 - The Docker sandbox VM no longer needs the dev-data share mounted in BuilderBot as well — it makes each instance's data directory itself, so /workspace is the only path the two machines have to share (729480e)
+- The dashboard's default port is 7680 rather than 8080, which collides with less on an Unraid box (29d3f96)
+- A tooltip disappears as soon as you click the button it belongs to, instead of hanging over whatever is underneath it (29d3f96)

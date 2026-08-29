@@ -35,7 +35,7 @@ set -euo pipefail
 
 is_true "${ENABLE_DASHBOARD:-false}" || exit 0
 
-PORT="${DASHBOARD_PORT:-8080}"
+PORT="${DASHBOARD_PORT:-7680}"
 TTYD_PORT="${DASHBOARD_TTYD_PORT:-7681}"
 DASH=/opt/builderbot/scripts/dashboard
 

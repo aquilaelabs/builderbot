@@ -14,7 +14,7 @@ in.
   │                                                           │
   │  actions-runner ──► listens for jobs from GitHub          │
   │                                                           │
-  │  /workspace  ◄────────────────── /mnt/user/development    │
+  │  /workspace  ◄─────────  /mnt/user/development/projects   │
   │    every folder in there is a project                     │
   └───────────────────────────────────────────────────────────┘
 ```
@@ -173,7 +173,7 @@ Required / usually touched:
 
 | Field | Set it to |
 |---|---|
-| Projects folder | One mapping for all of them: `/mnt/user/development` → `/workspace`. Every folder inside it is a project |
+| Projects folder | One mapping for all of them: `/mnt/user/development/projects` → `/workspace`. Every folder inside it is a project |
 | State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config,work}` |
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
 | `TZ` | Your timezone |
@@ -195,7 +195,7 @@ Everything else has sane defaults — full reference below.
 | Want | Do |
 |---|---|
 | Android emulator | On by default; needs `--device=/dev/kvm` (pre-set in the template). Then `bb emu start` |
-| Web dashboard | Set `ENABLE_DASHBOARD=true` **and** `DASHBOARD_AUTH=user:pass`, map port 8080 — see [Web dashboard](#web-dashboard) |
+| Web dashboard | Set `ENABLE_DASHBOARD=true` **and** `DASHBOARD_AUTH=user:pass`, map port 7680 — see [Web dashboard](#web-dashboard) |
 | NVIDIA GPU | `--runtime=nvidia` is pre-set; add the Nvidia-Driver plugin and keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
@@ -307,12 +307,12 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `BB_LOG_DIR` | *(auto)* | Log location override; normally use the `/logs` mount instead |
 | `ENABLE_DASHBOARD` | `false` | Web dashboard + browser terminal |
 | `DASHBOARD_AUTH` | *(empty)* | `user:password` — **required** when the dashboard is enabled; it will not start otherwise |
-| `DASHBOARD_PORT` | `8080` | The one published port: page, API and terminals (proxied under `/term`) |
+| `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
 | `GIT_PAT` | *(empty)* | A GitHub token for the whole container — every repo, every session. Still read, but a per-project token typed into the clone dialog is the better answer: it is scoped to the one repository that names it, so a token that opens twelve does not open twelve here. See below |
 | `DOCKER_HOST` | `auto` | Which Docker daemon the Artifacts tab's dev-instance controls drive. `auto` finds a running docker-socket-proxy on this container's network and re-finds it when its address moves; an explicit `tcp://host:2375` or `ssh://user@vm` is used verbatim; empty turns the feature off. An `ssh://` address pointing at a [sandbox VM](docs/sandbox-vm.md) is the arrangement where BuilderBot cannot reach the server's real containers at all. See `docs/unraid.md` |
-| `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation. With the dev-data share mounted here, empty leaves `BB_DEV_DATA` unset so a compose that wants it fails loudly; with a sandbox daemon that share is the sandbox's alone and needs no pair |
+| `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation — which is what the Unraid template ships, and is flagged on the row if the daemon turns out to be this box's own. With the dev-data share mounted here, empty leaves `BB_DEV_DATA` unset so a compose that wants it fails loudly; with a sandbox daemon that share is the sandbox's alone and needs no pair |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
@@ -901,7 +901,7 @@ not the same as better code, and suppressing a finding satisfies that goal too.
 
 ## Web dashboard
 
-Off by default. When enabled it serves everything on `8080`: the page, the
+Off by default. When enabled it serves everything on `7680`: the page, the
 API, and the browser terminals, which are proxied under `/term` so one
 sign-in covers them all. Signing in is a login page that sets a 30-day
 cookie — a real form, so password managers work — not the browser's own
@@ -1033,8 +1033,8 @@ lives in its body. The cards:
   content is not a fault to report.
   A directory holding a **`.bbignore`** file is not a project and is not
   listed — the container writes one into any path of its own that lands in
-  the projects share (the SDK share, if you map it under
-  `/mnt/user/development`), and you can create one by hand for anything else
+  the projects share (the SDK share, if you map it inside the projects
+  folder rather than beside it), and you can create one by hand for anything else
   you would rather not see. It *hides*; the eye below **blocks**, which is a
   different promise.
   At the foot of the card, **New project…** creates one. A fresh local repo

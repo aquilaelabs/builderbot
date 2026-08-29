@@ -848,6 +848,22 @@ def host_map():
         # below on one would reject a mapping that is correct by construction.
         if here == there:
             out[here] = there
+            # ...which makes it the one shape nothing above can catch, and the
+            # shipped default is now one of them. So the daemon is asked
+            # instead: an identity is only TRUE of a daemon on another machine,
+            # and `ssh://` is the only address that means that — `auto` never
+            # resolves to one, so the raw setting answers it without a probe.
+            # Left in place while the daemon is this box's, the pair claims the
+            # host calls this path what we call it, which on Unraid it does
+            # not, and the compose comes up on an empty directory in RAM.
+            # Said rather than dropped: a host that really does mount the share
+            # at this path is unusual, not impossible.
+            if not (os.environ.get("DOCKER_HOST") or "").strip() \
+                    .lower().startswith("ssh://"):
+                bad.append(f"{here}:{there} is the sandbox-VM mapping, and "
+                           f"DOCKER_HOST names this box's own daemon — unless "
+                           f"the host really has {here}, name the host's path "
+                           f"instead")
         elif (root := roots.get(here)) is None:
             bad.append(f"{here} is not mounted in this container")
         elif root != "/" and not there.endswith(root):

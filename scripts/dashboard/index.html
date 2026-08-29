@@ -747,8 +747,16 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
   .side .acts [data-tip]::after{left:10px;right:10px;
     transform:none;width:auto;max-width:none}
   /* ...and not while the button is pressed, which is the moment its label is
-     least wanted anyway. */
+     least wanted anyway — nor after it, until the pointer reaches something
+     else. `:active` covers only the press: release it and the button is still
+     hovered, so the tip came straight back and sat over whatever is beneath
+     it. In a project row's strip of icons that is the Resume button, which is
+     the one you are most likely to be reaching for next. The flag goes on the
+     root rather than the button because a row repaints under a stationary
+     pointer and would otherwise arrive un-flagged; see tipOff(). */
   [data-tip]:active::after{display:none}
+  html[data-tipoff] [data-tip]:hover::after,
+  html[data-tipoff] [data-tip]:focus-visible::after{display:none}
 }
 @media(prefers-reduced-motion:reduce){
   [data-tip]::after{transition:none}
@@ -2639,6 +2647,40 @@ function tipify(root){
     el.removeAttribute("title");
   });
 }
+
+// A tooltip stops being wanted the moment its button is clicked: you have read
+// it, you have acted on it, and it is now a box sitting over the next thing you
+// want to press. CSS alone cannot say "since the last click" — `:active` ends
+// with the release and `:hover` is still true — so the state lives here.
+//
+// Held as the tip's TEXT rather than the element, because a row repaints on the
+// poll and the button under a motionless pointer is a different node a second
+// later. The replacement fires `pointerover` (the hit-test target changed) with
+// the same words on it, which is how the flag survives the repaint and clears
+// the moment the pointer genuinely reaches a different control.
+let tipHushed = null;
+function tipOff(){
+  const html = document.documentElement;
+  addEventListener("pointerdown", e => {
+    // A tap is not a hover and never raised a tip in the first place — the
+    // whole rule is inside @media(hover:hover). Left unguarded, tapping on the
+    // phone half of a hybrid would set a flag that then suppressed the mouse's
+    // tips until something else cleared it.
+    if (e.pointerType === "touch") return;
+    const el = e.target.closest && e.target.closest("[data-tip]");
+    if (!el) return;
+    tipHushed = el.getAttribute("data-tip");
+    html.setAttribute("data-tipoff", "");
+  }, true);
+  addEventListener("pointerover", e => {
+    if (tipHushed === null) return;
+    const el = e.target.closest && e.target.closest("[data-tip]");
+    if (el && el.getAttribute("data-tip") === tipHushed) return;
+    tipHushed = null;
+    html.removeAttribute("data-tipoff");
+  }, true);
+}
+tipOff();
 
 // Draw one document tab into its pane, if it is due a redraw. The one place
 // that decides, so the two call sites — a pane that just changed tab and a
