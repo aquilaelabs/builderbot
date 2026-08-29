@@ -75,6 +75,41 @@ then grow the partition inside the guest — or nothing at all, if you built it
 from a cloud image: `growpart` runs at every boot and takes the new space on
 its own.
 
+## Configuring it afterwards
+
+`provision.sh` installs **`bb-sandbox`**, and that is how the machine is
+changed after the day it was built:
+
+```bash
+sudo bb-sandbox                      # a menu, whiptail where the distro has it
+sudo bb-sandbox add-nfs 192.168.1.15:/mnt/user/media:/auxiliary
+sudo bb-sandbox add-share workspace:/workspace
+sudo bb-sandbox appdata /devdata     # which mount holds container appdata
+sudo bb-sandbox check                # is every mount really there
+sudo bb-sandbox settings             # the lines to paste into BuilderBot
+```
+
+It is the same code provisioning uses for its own `--share` and `--nfs` — one
+implementation of the fstab writing, not a copy per entry point, because the
+comments in it were paid for one silent failure at a time: a mountpoint left
+`ESTALE` by a share that moved, a re-provision whose source had changed being a
+silent no-op, `mount -a` skipping a busy mountpoint so a rewritten entry stayed
+on the old export and looked perfectly mounted.
+
+**It is root on this machine, run by a person, and BuilderBot cannot reach it.**
+That is the point rather than an omission. This VM exists so a session can
+build and destroy containers without touching anything that matters; a path
+from the container into the VM's own configuration would hand back exactly what
+the arrangement buys. The dashboard can *see* what is mounted — it asks the
+daemon — and changing it is a decision made here.
+
+`settings` is the seam between the two machines. This VM cannot set BuilderBot's
+environment, so it prints what to paste: `DOCKER_HOST`, and a
+`DOCKER_HOST_PATHS` built from the mounts that actually exist here. Only the
+paths BuilderBot *also* mounts at the same place belong in it — a share this
+machine alone has belongs in neither list, and BuilderBot will say so on the
+Docker manager tab rather than leaving the line looking like it does something.
+
 ## Building it
 
 Two paths. The second needs no tooling on your side at all.
