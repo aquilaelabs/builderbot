@@ -3,9 +3,11 @@
   The Docker sandbox VM, as Unraid's VM manager wants it.
 
   Create the VM in Form view first so Unraid makes the domain folder and the
-  vdisk, then switch to XML view and paste this over what is there. Keep the
-  <uuid> Unraid gave you: the OVMF nvram file below is named after it, and a
-  new uuid orphans it.
+  vdisk, then switch to XML view and paste this over what is there. Keep two
+  things Unraid generated: the <uuid>, because the OVMF nvram file below is
+  named after it and a new one orphans it, and the <mac>, because that is the
+  address your router hands a lease to and any reservation you made in Form
+  view was made against.
 
   Three things here differ from Unraid's placeholder for reasons, and are
   called out where they sit: q35 rather than i440fx, shared memory backing,
@@ -121,6 +123,10 @@
          Enable bridging is on. If it is not, change this to virbr0 and reach
          web UIs through a port forward instead. -->
     <interface type="bridge">
+      <!-- Replace with the MAC Unraid generated for your VM. This one is a
+           placeholder: pasting it over yours changes the address the VM asks
+           for a lease with, so a DHCP reservation stops applying and the IP
+           you put in DOCKER_HOST moves out from under you. -->
       <mac address="52:54:00:46:d2:fb"/>
       <source bridge="br0"/>
       <model type="virtio-net"/>
