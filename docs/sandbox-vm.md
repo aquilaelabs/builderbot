@@ -56,12 +56,22 @@ becomes an identity mapping you can leave empty.
 
 **The dev-data path is the sandbox's alone.** `/devdata` — where a compose
 that opts in with `${BB_DEV_DATA}/...` puts its volumes — needs mounting on
-the VM and **not** in BuilderBot. The per-instance directory has to exist
-before a bind can use it, and docker's own attempt fails on a share that
-squashes root — so BuilderBot asks the sandbox to make it, in a one-shot
-`alpine` container owned by BuilderBot's own uid. The share is configured
-once, on the machine that uses it, and `/workspace` is the only path the two
-sides have to agree about.
+the VM and **not** in BuilderBot. Leave the container's **Dev instance data**
+path empty: there is nothing for it to do.
+
+The per-instance directory has to exist before a bind can use it, and docker's
+own attempt fails on a share that squashes root — so BuilderBot asks the
+sandbox to make it, in a one-shot `alpine` container owned by BuilderBot's own
+uid. It never needs to read the directory, only to name it, so the share is
+configured once on the machine that uses it and `/workspace` is the only path
+the two sides have to agree about.
+
+That also answers the question the arrangement invites: no, BuilderBot does
+not ssh into the VM to do this, and it has no ssh dependency at all. Every
+call it makes goes through the docker CLI, which carries the ssh transport
+itself — so the one credential involved is the shielded key that already
+reaches the daemon, and `_guard()` still allows only compose, `version`, and
+the three fixed commands that tend this directory.
 
 That is a `docker run`, which is root on whichever daemon answers — allowed
 here because a sandbox VM's whole job is being wrecked, and refused outright
@@ -188,7 +198,7 @@ then, in that session:
 sudo bash provision.sh --user bb \
     --key "ssh-ed25519 AAAA… bb-sandbox" \
     --nfs 192.168.1.15:/mnt/user/development/projects:/workspace \
-    --nfs 192.168.1.15:/mnt/user/appdata/builderbot-dev:/devdata
+    --nfs 192.168.1.15:/mnt/user/bb-sandbox/devdata:/devdata
 ```
 
 Both steps ask for the password you set in the installer, because the VM has
@@ -306,7 +316,7 @@ Five things in it differ from Unraid's placeholder, each for a reason:
   ```bash
   sudo bash provision.sh --user bb --key "ssh-ed25519 …" \
       --nfs 192.168.1.15:/mnt/user/development/projects:/workspace \
-      --nfs 192.168.1.15:/mnt/user/appdata/builderbot-dev:/devdata
+      --nfs 192.168.1.15:/mnt/user/bb-sandbox/devdata:/devdata
   ```
 
   Export them from Unraid first: *Shares → share → NFS Security Settings*,
@@ -330,17 +340,14 @@ Five things in it differ from Unraid's placeholder, each for a reason:
   is right for a bind mount and simply is not exported. The mount fails, and
   with `nofail` it fails quietly.
 
-  **Think before exporting `appdata`.** Unraid exports *shares*, not folders, so
-  exporting `/mnt/cache/appdata/builderbot-dev` means exporting all of
-  appdata — every other container's configuration, handed to the sandbox.
-  That is a large part of the reach the VM exists to remove: a session driving
-  the sandbox could then read and write every other container's
-  configuration through it. Three options, in the order I would take them —
-  skip `/devdata` until something needs it (a compose that never mentions
-  `${BB_DEV_DATA}` does not care); give it a share of its own, which is now
-  simply a mount on the VM and nothing on BuilderBot's side; or export
-  `appdata` anyway, scoped to the VM's address, having decided that trade
-  deliberately rather than by accident.
+  **Never export `appdata` to reach the dev-data share.** Unraid exports
+  *shares*, not folders, so exporting a directory inside appdata means
+  exporting all of it — every other container's configuration, handed to the
+  machine the VM exists to keep away from them. Give the dev data a share of
+  its own, which is what the template now defaults to
+  (`/mnt/user/bb-sandbox/devdata`), or skip `/devdata` entirely until
+  something needs it: a compose that never mentions `${BB_DEV_DATA}` does not
+  care.
 
   `ro` instead of `rw` on the projects share is worth knowing about: the
   sandbox could build from your source and never alter it. It breaks any

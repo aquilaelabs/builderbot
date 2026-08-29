@@ -627,9 +627,12 @@ path for good reasons, and nothing here can tell which.
    containers restart in a different order, which is why `auto` beats
    pasting one in. Publish the proxy's port to the host and
    `tcp://172.17.0.1:2375` becomes a stable explicit answer if you prefer
-   one. Optionally set the **Dev instance data** path — a cache/SSD folder
-   that dev volumes land in when a project's compose opts in with
-   `${BB_DEV_DATA}/...`. **Host path mapping** in the same section has to be
+   one. Optionally set the **Dev instance data** path — where dev volumes
+   land when a project's compose opts in with `${BB_DEV_DATA}/...`. Give it a
+   share of its own rather than a folder inside `appdata`: Unraid exports and
+   backs up *shares*, so anything under appdata cannot be handed to a sandbox
+   VM or backed up without every other container's configuration coming with
+   it. **Host path mapping** in the same section has to be
    changed for this arrangement, and the template's value is the reason: it
    ships as `/workspace:/workspace`, which is the [sandbox VM](sandbox-vm.md)
    — the daemon on another machine, mounting the shares at the paths this

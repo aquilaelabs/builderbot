@@ -96,3 +96,4 @@
 - Stopping a container build now actually stops it during the shutdown step, instead of starting the container anyway and reporting that it was stopped (2689ebf)
 - Up on a container that has to build first shows what it is doing as it goes, and can be stopped (2689ebf)
 - A container cannot be given a name that collides with an existing project once punctuation is stripped — it used to quietly take over that project's data (2689ebf)
+- Dev-instance data defaults to its own share instead of a folder inside appdata, so it can be backed up and shared on its own terms (e5da442)
