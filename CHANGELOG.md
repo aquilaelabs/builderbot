@@ -99,3 +99,5 @@
 - Dev-instance data defaults to its own share instead of a folder inside appdata, so it can be backed up and shared on its own terms (e5da442)
 - Every colour scheme is a shade brighter, and card edges, buttons and input outlines are no longer nearly invisible against their background (828f635)
 - Dev containers are named after themselves — bbdev-radarr rather than bbdev-myproject-radarr — and the bbdev prefix can be turned off entirely when Docker runs on a sandbox VM (9b69d99)
+- The settings menu (now a gear) holds the log settings: how many days to keep, a download of this session or the whole archive, and a clear button (71e0916)
+- The Projects card shows its empty message instead of drawing nothing when no project is pinned (71e0916)
