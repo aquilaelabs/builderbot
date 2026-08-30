@@ -82,6 +82,11 @@ def _slug(s):
     return re.sub(r"[^a-z0-9]+", "-", (s or "").lower()).strip("-")
 
 DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
+# Injected rather than worked out here: three readers already answer "where do
+# the logs live" and a fourth copy of that rule is how they drift. None when
+# nothing injected one — `bb doctor` loads this module on its own to ask
+# available(), and a probe should not start writing files.
+log_dir = None
 
 # DOCKER_HOST=auto means "find the socket proxy yourself". The address is a
 # bridge-assigned container IP unless the operator published the port, and
@@ -292,9 +297,9 @@ def abort_job():
     return True
 
 
-def configure(*, workspace, state, write_json):
+def configure(*, workspace, state, write_json, log_dir=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
-                     write_json=write_json)
+                     write_json=write_json, log_dir=log_dir)
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
     _migrate_paths()
@@ -561,6 +566,25 @@ def _guard(argv):
     return ""
 
 
+def _docker_log(line):
+    """One line into the Docker manager's own log, best effort.
+
+    Its own file because these are somebody else's build output — minutes of
+    layer progress per press — and putting that in the boot log would bury the
+    session's own story in it. What DOES reach the boot log is the verdict: see
+    _run, which prints a failure to stderr as well.
+    """
+    if not log_dir:
+        return
+    try:
+        d = log_dir()
+        d.mkdir(parents=True, exist_ok=True)
+        with open(d / "docker.log", "a", encoding="utf-8") as f:
+            f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {line}\n")
+    except OSError:
+        pass
+
+
 def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     """One docker or compose call.
 
@@ -583,6 +607,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
         msg = "refused by BuilderBot, and this is a bug in it: " + bad
         print("[devapp] " + msg, file=sys.stderr, flush=True)
         return {"code": 126, "out": msg}
+    _docker_log("$ " + " ".join(argv))
     env = dict(os.environ)
     # The resolved address, so `auto` never reaches the docker CLI — it does
     # not know the word.
@@ -605,8 +630,28 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
             return {"code": 1, "out": f"timed out after {timeout}s"}
         except (OSError, subprocess.SubprocessError) as e:
             return {"code": 1, "out": str(e)}
-        return {"code": r.returncode, "out": (r.stdout or "") + (r.stderr or "")}
-    return _run_streamed(argv, timeout, env, sink, hold)
+        out = (r.stdout or "") + (r.stderr or "")
+        _docker_result(argv, r.returncode, out)
+        return {"code": r.returncode, "out": out}
+    res = _run_streamed(argv, timeout, env, sink, hold)
+    _docker_result(argv, res["code"], res["out"])
+    return res
+
+
+def _docker_result(argv, code, out):
+    """How a call ended, in the manager's log — and on stderr when it failed.
+
+    The failure goes to stderr because that is the container's own stream and
+    therefore the boot log: a compose call that did not work is exactly the
+    kind of thing you want to find when reading the session's story an hour
+    later, without having to know there is a second file.
+    """
+    tail = " ".join((out or "").split())[-300:]
+    _docker_log(f"  -> exit {code}" + (f": {tail}" if tail else ""))
+    if code != 0:
+        print(f"[devapp] WARN: {' '.join(argv[:4])}… exited {code}"
+              + (f": {tail[:200]}" if tail else ""),
+              file=sys.stderr, flush=True)
 
 
 def _run_streamed(argv, timeout, env, sink, hold):

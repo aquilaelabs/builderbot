@@ -315,7 +315,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `DOCKER_HOST` | `auto` | Which Docker daemon the Artifacts tab's dev-instance controls drive. `auto` finds a running docker-socket-proxy on this container's network and re-finds it when its address moves; an explicit `tcp://host:2375` or `ssh://user@vm` is used verbatim; empty turns the feature off. An `ssh://` address pointing at a [sandbox VM](docs/sandbox-vm.md) is the arrangement where BuilderBot cannot reach the server's real containers at all. See `docs/unraid.md` |
 | `BB_DEV_PREFIX` | `bbdev` | The namespace dev-instance compose projects are named in — `bbdev-myapp` rather than `myapp`. Load-bearing where the daemon is this box's: the dashboard refuses any compose call outside it, which is what stops it reaching your real containers. Empty drops the prefix, and is honoured only when `DOCKER_HOST` is a sandbox VM, where there is nothing on the daemon to protect |
 | `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation — which is what the Unraid template ships, and is flagged on the row if the daemon turns out to be this box's own. With the dev-data share mounted here, empty leaves `BB_DEV_DATA` unset so a compose that wants it fails loudly; with a sandbox daemon that share is the sandbox's alone and needs no pair |
-| `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
+| `BB_LOG_KEEP` | `60` | A ceiling on kept generations, not the retention policy — how long logs are kept is a number of days, set in the dashboard's settings menu. This exists so a crash loop cannot fill the directory |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
 Mounts: the projects folder, three state dirs (`home`, `config`, `work`), and
@@ -2556,12 +2556,48 @@ named but *not* offered the link, because `--update` refuses that file too.
 
 ## Logs
 
+**One file per container start, per stream.** All four rotate together on
+boot, so a generation number means the same boot in every one of them, and
+`.1` is the previous run of the container.
+
 | Log | Where |
 |---|---|
-| Startup + runner supervisor | `config/logs/builderbot.log` — one file per container start, `.1` … `.5` are previous boots. Persists across updates, secret-redacted. Or the `/logs` mount |
+| Startup, the runner supervisor, and every later warning | `config/logs/builderbot.log` |
+| The dashboard server, in full | `config/logs/dashboard.log` |
+| Every compose call the Docker manager made | `config/logs/docker.log` |
+| The terminal server | `config/logs/ttyd.log` |
 | Runner diagnostics | `work/_diag/` |
 | CI job output | GitHub → Actions → the run |
 | Emulator | `home/.android/emulator.log` |
+
+All of them persist across updates, are secret-redacted, and move together to
+the `/logs` mount if you map one.
+
+**Start with `builderbot.log`.** It used to end when the startup hooks
+finished, so anything that broke an hour later was in a different file that
+nothing pointed at. The dashboard's output is now split as it is written: all
+of it into `dashboard.log`, and the warnings and errors copied into the boot
+log as they happen. So the session's story is in one file and the detail is
+next door — including a failed compose call, which the Docker manager reports
+in both places.
+
+**Kept for a number of days, not a number of boots.** Thirty by default, set
+in the dashboard's settings menu — the gear, beside the colour schemes. A
+count was the wrong unit for the question anybody has (*was that this week?*)
+and a container in a crash loop can burn five generations in a minute;
+`BB_LOG_KEEP` survives as the ceiling for exactly that case. The same menu
+downloads this session's logs as one file, or everything kept as a `.tar.gz`,
+and clears the kept generations without touching the ones being written.
+
+Two deliberate omissions from *this session*. `ttyd.log` is the terminal
+server's connection churn — 22,000 lines against 4KB of boot log on this box —
+so it is in the archive and not in the thing you open to read what happened.
+And the **CI logs stay where they are**, under `config/ci-logs/<repo>/`, one
+file per run: a CI run is not a container session, it belongs to a workflow
+run and spans whatever session was up. They are already grouped the way you
+would want and `bb ci-log` reads them by run id — what was missing is that the
+settings menu did not know they existed, so they are in the archive and under
+the same retention now.
 
 ## Building locally instead of pulling
 
@@ -2590,12 +2626,14 @@ scripts/
   lib/sdk.sh                     the package manager: `bb sdk`, sourced by bb
   lib/sdkmeta.py                 reads config/packages.json for bb: fields, argv, versions
   lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
+  lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log
   lib/embedded-shell.py          pulls scripts out of quoted heredocs so `bb lint` sees them
   startup.d/*.sh                 startup hooks
   dashboard/                     web dashboard: server.py, index.html, bb-tty
     packages.py                  everything behind the Tools tab: catalog, sizes, the job worker
     memory.py                    everything behind the memory book: what Claude remembers per project
     projects.py                  new project / link to GitHub, and the worker that clones and pushes
+    logs.py                      what is kept, for how long, and the downloads behind the gear menu
     todo.py                      the roadmap; `bb roadmap` drives the same file
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist

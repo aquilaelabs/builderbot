@@ -179,9 +179,13 @@ setup_ssh_agent() {
 # Rotating per start rather than per size means one file equals one container
 # lifetime, so "what happened on that boot" is answerable by opening a file
 # instead of hunting for the boundary in an appended stream. The cost is that a
-# crash loop burns through generations quickly; BB_LOG_KEEP buys headroom.
+# crash loop burns through generations quickly, which is what BB_LOG_KEEP is
+# now for: a ceiling, not the policy. How long logs are actually kept is a
+# number of DAYS, set in the dashboard's settings menu and applied by
+# dashboard/logs.py — a count is the wrong unit for "was that this week?", and
+# five generations of a crash loop is five minutes.
 rotate_log() {
-    local logfile="$1" keep="${BB_LOG_KEEP:-5}" i
+    local logfile="$1" keep="${BB_LOG_KEEP:-60}" i
     case "$keep" in
         ''|*[!0-9]*) keep=5 ;;
     esac
@@ -202,11 +206,17 @@ rotate_log() {
 }
 
 setup_logging() {
-    local logdir logfile
+    local logdir logfile f
     logdir="$(bb_log_dir)"
     logfile="$logdir/builderbot.log"
     mkdir -p "$logdir" 2>/dev/null || return 0
-    rotate_log "$logfile"
+    # All four, so one file means one container lifetime for every stream
+    # rather than only for this one. The other three used to be appended to
+    # forever, which made "what did docker do on that boot" unanswerable and
+    # left dashboard.log growing without limit.
+    for f in builderbot.log dashboard.log docker.log ttyd.log; do
+        rotate_log "$logdir/$f"
+    done
     # All output — the persistent file AND the docker-logs passthrough —
     # flows through the redaction rules built by stash_secrets.
     if [ -s /run/builderbot/redact.sed ]; then
