@@ -148,10 +148,17 @@ nohup ttyd --port "$TTYD_PORT" --interface 127.0.0.1 \
         "$DASH/bb-tty" \
     >> "$(bb_log_dir)/ttyd.log" 2>&1 &
 
+# Through log-split rather than straight into the file: the full stream stays
+# where it was, and the warnings are copied to this hook's own stdout, which is
+# the container's — and therefore the boot log. That is what makes the session
+# log carry what went wrong AFTER the hooks finished, which it never did.
+#
+# -u so a warning is in the file at the moment it happens rather than when a
+# 8kB buffer fills, which for a mostly-idle server can be hours.
 nohup env DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT="$TTYD_PORT" \
         DASHBOARD_AUTH="$DASHBOARD_AUTH" \
-        python3 "$DASH/server.py" \
-    >> "$(bb_log_dir)/dashboard.log" 2>&1 &
+        python3 -u "$DASH/server.py" 2>&1 \
+    | /opt/builderbot/scripts/lib/log-split.sh "$(bb_log_dir)/dashboard.log" dashboard &
 
 # Neither is supervised: a dashboard that dies should not take the workstation
 # with it, and the container is useful without it. `bb logs` names the files.

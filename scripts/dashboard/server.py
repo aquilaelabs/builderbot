@@ -1856,6 +1856,12 @@ todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
 # ---- the standing model and effort -----------------------------------------
 # One preference for every send, on its own card — see the module docstring
 # for why it stopped being a question inside each send box.
+import logs                                                      # noqa: E402
+logs.configure(state=STATE, write_json=write_json)
+# On boot, because that is when a generation was just rotated in and the oldest
+# one fell off the end of the policy. Nothing else runs on a schedule here.
+logs.prune()
+
 import prefs                                                     # noqa: E402
 
 prefs.configure(write_json=write_json, state=STATE)
@@ -1872,7 +1878,8 @@ except OSError:
 # socket proxy. The module's docstring carries the security reasoning.
 import devapp                                                    # noqa: E402
 
-devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json)
+devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
+                 log_dir=logs.log_dir)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
@@ -2255,6 +2262,7 @@ def snapshot():
         # dialog can preview the name it is about to make rather than
         # hardcoding a prefix the operator may have turned off.
         "dev_prefix": devapp.dev_prefix(),
+        "logs": logs.payload(),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.
@@ -2607,6 +2615,25 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(data)
             return None
+        if self.path.startswith("/logs/download"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            what = (q.get("what") or [""])[0]
+            if what == "archive":
+                data, err = logs.archive_bytes()
+                if data is None:
+                    return self._json({"error": err}, 500)
+                fname, ctype = "builderbot-logs.tar.gz", "application/gzip"
+            else:
+                data = logs.session_bytes()
+                fname, ctype = "builderbot-session.log", "text/plain; charset=utf-8"
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Disposition",
+                             f'attachment; filename="{fname}"')
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return None
         if self.path.startswith("/api/phone"):
             # Not on the status poll: this walks the projects looking for
             # extension manifests, and a filesystem walk every fifteen seconds
@@ -2717,6 +2744,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._todo(req)
         if path.startswith("/api/packages"):
             return self._packages(req)
+        if path.startswith("/api/logs"):
+            return self._logs(req)
         if path.startswith("/api/memory"):
             return self._memory(req)
         if path.startswith("/api/prefs"):
@@ -2954,6 +2983,21 @@ class Handler(BaseHTTPRequestHandler):
         r = devapp.create_container(name, req.get("compose") or "",
                                     req.get("env") or "")
         return self._json(r, 400 if r.get("error") else 200)
+
+    def _logs(self, req):
+        """The log policy, and the two things that can be done to the pile.
+
+        Reading is a download rather than a view: these are megabytes of
+        plain text, and a browser is better at saving one than this is at
+        paginating it.
+        """
+        act = field(req, "action")
+        if act == "days":
+            r = logs.set_days(req.get("days"))
+            return self._json(r, 400 if r.get("error") else 200)
+        if act == "clear":
+            return self._json(logs.clear())
+        return self._json({"error": f"unknown action: {act}"}, 400)
 
     def _devapp(self, req):
         """The dev-instance controls. Operator-only by construction — these

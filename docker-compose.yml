@@ -74,7 +74,7 @@ services:
       # Lines of each terminal's screen kept across a restart, and how many
       # boots' logs are kept.
       BB_SESSION_HISTORY: ${BB_SESSION_HISTORY:-2000}
-      BB_LOG_KEEP: ${BB_LOG_KEEP:-5}
+      BB_LOG_KEEP: ${BB_LOG_KEEP:-60}
 
       # --- git identity -----------------------------------------------------
       GIT_USER_NAME: ${GIT_USER_NAME:-Stencil923}

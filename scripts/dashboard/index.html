@@ -246,7 +246,7 @@ header h1{font-size:15px;margin:0;font-weight:600}
   width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
   background:var(--panel);border:1px solid var(--line);border-top:0;
   border-radius:0 0 8px 8px;box-shadow:0 8px 22px rgba(0,0,0,.45)}
-/* The header's own menu, under the gear-adjacent broom. Same shape and the
+/* The header's own menu, under the gear. Same shape and the
    same manners as the bell panel beside it: anchored to the header's bottom
    edge, anything else closes it, Escape closes it. */
 .uimenu{position:absolute;right:8px;top:100%;z-index:40;
@@ -260,6 +260,21 @@ header h1{font-size:15px;margin:0;font-weight:600}
    rather than becoming a pixel. */
 .swgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
 @media(max-width:900px){ .swgrid{grid-template-columns:repeat(3,1fr)} }
+/* The log settings. Two downloads and a destructive button on one row, which
+   wraps rather than shrinking below a tap target on a phone. */
+.logset{display:flex;flex-direction:column;gap:8px}
+.logset .dim{font:var(--f-note)}
+.logdays{display:flex;align-items:center;gap:8px;font:var(--f-note);color:var(--dim)}
+.logdays input{width:5.5em;min-height:var(--tap);text-align:center;flex:0 0 auto}
+.logacts{display:flex;flex-wrap:wrap;gap:6px}
+/* An anchor, because a download is a link and a link is what a browser knows
+   how to save. Dressed as a button so the row reads as three controls. */
+.logacts .btnish{display:inline-flex;align-items:center;justify-content:center;
+  flex:1 1 auto;min-height:var(--tap);padding:0 10px;border-radius:8px;
+  border:1px solid var(--line);background:var(--btn);color:var(--ink);
+  text-decoration:none;font:var(--f-body);cursor:pointer}
+.logacts button{flex:0 0 auto;min-height:var(--tap)}
+@media(hover:hover){ .logacts .btnish:hover{background:var(--btn-hi)} }
 /* A swatch renders in its own scheme: the tokens above are defined for
    .sw[data-theme=...] as well as for the page, so this is the palette itself
    at 1cm rather than a hand-kept copy of it. */
@@ -1350,7 +1365,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 }
 button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
   stroke-width:1.4;stroke-linecap:round}
-/* The header's icon buttons — the broom (reset) and the sign-out door —
+/* The header's icon buttons — the gear (settings) and the sign-out door —
    drawn to the same box as the ↻ glyph, same stroke voice as the eye and
    chain icons. */
 #bOut svg.out,#bCards svg.out{width:15px;height:15px;display:block;margin:auto;
@@ -2224,15 +2239,14 @@ body.dragging .tab .lbl{cursor:grabbing}
   </button>
   <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" aria-haspopup="menu" aria-expanded="false"
-          aria-label="appearance and layout"
-          title="appearance — the colour scheme, and resetting the cards">
+          aria-label="settings"
+          title="settings — the colour scheme, the cards, and the logs">
     <svg class="out" viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M13.5 2.5 8.5 7.5"/>
-      <path d="M8.5 7.5c-2.4 0-4.6 1.1-6 3l2.5 2.5c1.9-1.4 3.5-3.1 3.5-5.5z"/>
-      <path d="M6.6 9.4 5 12.4"/>
+      <circle cx="8" cy="8" r="2.1"/>
+      <path d="M8 1.6v1.7M8 12.7v1.7M14.4 8h-1.7M3.3 8H1.6M12.5 3.5l-1.2 1.2M4.7 11.3l-1.2 1.2M12.5 12.5l-1.2-1.2M4.7 4.7 3.5 3.5"/>
     </svg>
   </button>
-  <!-- Under the broom rather than behind it: resetting the cards was the only
+  <!-- Under the gear rather than behind it: resetting the cards was the only
        thing here, and a colour scheme is the other thing somebody opens the
        chrome to change. Built from a table so a new scheme is one entry. -->
   <div id="uiMenu" class="uimenu" hidden role="menu" aria-label="appearance"></div>
@@ -2289,8 +2303,8 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="card" data-card="tools">
       <h2>Tools</h2>
       <div class="macros">
-        <button id="bPkgs" onclick="openPackages()">Additional packages…</button>
-        <button id="bDocker" onclick="openDocker()">Docker manager…</button>
+        <button id="bPkgs" onclick="openPackages()">Additional packages</button>
+        <button id="bDocker" onclick="openDocker()">Docker manager</button>
       </div>
     </div>
     <!-- A phone on the end of wireless adb. USB is not an option here: there
@@ -4259,10 +4273,80 @@ function drawUiMenu(){
         aria-label="${esc(label)}" title="${esc(label)}">
         <span class="swa"></span><span class="swi"></span>
         <span class="swp"></span><span class="swn">${esc(label)}</span>
-      </button>`).join("")}</div>`;
+      </button>`).join("")}</div>
+    ${logSection()}`;
   el.querySelector("#uiReset").onclick = resetCards;
   el.querySelectorAll(".sw").forEach(b =>
     b.onclick = () => applyTheme(b.dataset.theme));
+  wireLogSection(el);
+}
+
+// ---- logs --------------------------------------------------------------
+// In this menu rather than on a card: it is a setting about the container,
+// which is what the gear now holds, and it is read far less often than
+// anything the sidebar is for.
+const humanBytes = n =>
+  n >= 1048576 ? (n / 1048576).toFixed(1) + "MB"
+  : n >= 1024 ? Math.round(n / 1024) + "kB" : (n || 0) + "B";
+
+function logSection(){
+  const L = state?.logs;
+  if (!L) return "";
+  // How far back the files actually reach, not the policy repeated back: on a
+  // box that has been up a week the honest answer is a week, whatever the
+  // setting says.
+  const back = L.oldest
+    ? Math.max(0, Math.round((Date.now() / 1000 - L.oldest) / 86400)) : 0;
+  return `<h4>Logs</h4>
+    <div class="logset">
+      <div class="dim">${L.files} file(s), ${humanBytes(L.bytes)}${
+        L.oldest ? ` · reaching back ${back} day${back === 1 ? "" : "s"}` : ""}</div>
+      <label class="logdays">Keep for
+        <input id="logDays" type="number" min="1" max="3650" step="1"
+               value="${L.days}" inputmode="numeric"> days</label>
+      <div class="logacts">
+        <a class="btnish" href="/logs/download?what=session" download
+           title="this container start: the boot, the dashboard and docker"
+           >This session</a>
+        <a class="btnish" href="/logs/download?what=archive" download
+           title="every log kept, as a .tar.gz">All logs</a>
+        <button type="button" id="logClear" class="rm"
+           title="delete every kept log except this session's">Clear</button>
+      </div>
+    </div>`;
+}
+
+function wireLogSection(el){
+  const inp = el.querySelector("#logDays");
+  if (!inp) return;
+  // On change rather than per keystroke: a number field typed through 3 on the
+  // way to 30 would prune to three days in passing.
+  inp.onchange = async () => {
+    const days = parseInt(inp.value, 10);
+    if (!(days >= 1)) return;
+    try{
+      const r = await fetch("/api/logs", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "days", days})});
+      const j = await r.json();
+      if (j.error) return notify(j.error, true);
+      notify(j.removed ? `keeping ${j.days} days — ${j.removed} file(s) removed`
+                       : `keeping ${j.days} days`);
+      refresh();
+    }catch(e){ notify("logs: " + e, true); }
+  };
+  el.querySelector("#logClear").onclick = async () => {
+    if (!confirm("Delete every kept log except this session's?\n\n"
+                 + "This session keeps writing to its own.")) return;
+    try{
+      const r = await fetch("/api/logs", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "clear"})});
+      const j = await r.json();
+      notify(j.error || `${j.removed} file(s) removed`, !!j.error);
+      refresh(); drawUiMenu();
+    }catch(e){ notify("logs: " + e, true); }
+  };
 }
 
 let uiMenuOpen = false;
@@ -4285,7 +4369,7 @@ function toggleUiMenu(open){
   }
 }
 
-// The broom's old job, now an item in the menu it opens.
+// The gear's oldest job, now one item in the menu it opens.
 function resetCards(){
   if (!confirm("Reset the sidebar cards to their default order, all expanded?")) return;
   toggleUiMenu(false);
@@ -4517,6 +4601,38 @@ function drawProjects(all){
   const shown   = (showAllProjects ? ps : ps.filter(p => !isBroken(p)))
                   .slice();
 
+  // Declared above the empty-list branch below, which READS it. It used to
+  // sit past that branch's `return`, so a card with nothing pinned threw
+  // "Cannot access 'jobHtml' before initialization" and drew nothing — the
+  // one state where the empty message is the whole point of the card.
+  // A clone or a first push, drawn where its result will appear. An ellipsis
+  // rather than a percentage: git's progress is a carriage-return animation
+  // on stderr, and parsing one to redraw it is the thing the packages tab
+  // gave up on. What it *is* doing is a phrase from the server.
+  const jobHtml = pJob?.running
+    ? `<div class="row job">
+         <div class="grow">
+           <div class="name">${esc(pJob.name)}</div>
+           <div class="sub">${esc(pJob.step || pJob.kind)}<span class="dots"></span>${
+             pJob.for > 4 ? ` · ${pJob.for}s` : ""}</div>
+         </div>
+         <span class="acts"><button id="bJobStop"${pJob.aborting ? " disabled" : ""}
+           title="stop it — a half-cloned directory is removed, a remote already set stays"
+           >${pJob.aborting ? "Stopping…" : "Abort"}</button></span>
+       </div>`
+    // The last outcome, if it went wrong. Kept until it is dismissed rather
+    // than shown in a toast that is gone in seven seconds: the page may not
+    // even have been open when it failed.
+    : pJob?.error
+    ? `<div class="row">
+         <div class="grow">
+           <div class="name">${esc(pJob.name)}</div>
+           <div class="sub bad">${esc(pJob.error)}</div>
+         </div>
+         <span class="acts"><button id="bJobOk">Dismiss</button></span>
+       </div>`
+    : "";
+
   // At the foot of the card, not the header: headers hold nothing but the
   // title, because the whole header is the collapse control and drag handle.
   // New project lives here too — present even when the list is empty, since
@@ -4547,33 +4663,6 @@ function drawProjects(all){
 
   const cls = {error:"bad", warning:"warn", locked:"locked"};
   const live = liveSessions();
-  // A clone or a first push, drawn where its result will appear. An ellipsis
-  // rather than a percentage: git's progress is a carriage-return animation
-  // on stderr, and parsing one to redraw it is the thing the packages tab
-  // gave up on. What it *is* doing is a phrase from the server.
-  const jobHtml = pJob?.running
-    ? `<div class="row job">
-         <div class="grow">
-           <div class="name">${esc(pJob.name)}</div>
-           <div class="sub">${esc(pJob.step || pJob.kind)}<span class="dots"></span>${
-             pJob.for > 4 ? ` · ${pJob.for}s` : ""}</div>
-         </div>
-         <span class="acts"><button id="bJobStop"${pJob.aborting ? " disabled" : ""}
-           title="stop it — a half-cloned directory is removed, a remote already set stays"
-           >${pJob.aborting ? "Stopping…" : "Abort"}</button></span>
-       </div>`
-    // The last outcome, if it went wrong. Kept until it is dismissed rather
-    // than shown in a toast that is gone in seven seconds: the page may not
-    // even have been open when it failed.
-    : pJob?.error
-    ? `<div class="row">
-         <div class="grow">
-           <div class="name">${esc(pJob.name)}</div>
-           <div class="sub bad">${esc(pJob.error)}</div>
-         </div>
-         <span class="acts"><button id="bJobOk">Dismiss</button></span>
-       </div>`
-    : "";
   // Handlers bind on a real change only; an unchanged card keeps its
   // elements, and their handlers, from last time.
   if (paint(el, jobHtml + shown.map(p => projectRow(p, live, cls)).join("") + togHtml)){

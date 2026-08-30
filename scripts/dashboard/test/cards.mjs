@@ -3,7 +3,7 @@
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
          tmuxNew, tmuxKill, tmuxFmt, URL, DIR } from './lib.mjs';
-import { writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
@@ -177,13 +177,13 @@ ok(!(await page.$eval('.card[data-card="runner"]', el => el.classList.contains('
 await page.reload(); await ready(page);
 ok((await order())[0] === 'runner', 'order survives a reload');
 
-// ▤ reset, now an item in the menu the broom opens rather than the broom's
+// ▤ reset, now an item in the menu the gear opens rather than theom's
 // own action. The menu is the other half: twelve colour schemes, each swatch
 // rendered in the scheme it selects.
 await page.click('#bCards');
 await page.waitForSelector('#uiMenu:not([hidden])');
 ok(await page.$$eval('#uiMenu .sw', s => s.length) === 12,
-   'the broom opens a menu of twelve schemes');
+   'the gear opens a menu of twelve schemes');
 ok(await page.$eval('#uiMenu .sw[data-theme="default"]', b => b.classList.contains('on')),
    '...with the one in use marked, which is Default until something says otherwise');
 // A swatch is the palette itself at 1cm — the stylesheet defines each scheme
@@ -883,6 +883,60 @@ ok(again.status === 200 && again.body.to === '.trash/beta-2',
    'a second delete of the same name is numbered, not an overwrite');
 execFileSync('mv', [`${DIR}/ws/.trash/beta-2`, `${DIR}/ws/beta`]);
 execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
+
+// ---- the logs, in the gear menu ---------------------------------------
+// The retention policy is days, not boots: a count is the wrong unit for "was
+// that this week?", and a crash loop can burn five generations in a minute.
+{
+  const LD = `${DIR}/state/logs`;
+  execFileSync('mkdir', ['-p', LD]);
+  const old = Date.now() / 1000 - 90 * 86400;
+  for (const [n, age] of [['builderbot.log', 0], ['builderbot.log.1', 0],
+                          ['builderbot.log.9', 90], ['docker.log', 0],
+                          ['not-ours.log.4', 90]]){
+    writeFileSync(`${LD}/${n}`, 'x'.repeat(64));
+    if (age) utimesSync(`${LD}/${n}`, old, old);
+  }
+  const st = await page.evaluate(() => fetch('/api/status').then(r => r.json()));
+  ok(st.logs && st.logs.days === 30,
+     'the log policy defaults to thirty days, and rides on the status poll');
+
+  const set = await api('/api/logs', { action: 'days', days: 30 });
+  ok(set.body.removed >= 1 && !existsSync(`${LD}/builderbot.log.9`),
+     'a generation past the policy is pruned when the policy is applied');
+  ok(existsSync(`${LD}/not-ours.log.4`),
+     '...and a file this container did not write is left alone, however old');
+  ok(existsSync(`${LD}/builderbot.log`),
+     '...as is the live one, which this session is still writing to');
+
+  const bad = await api('/api/logs', { action: 'days', days: 'soon' });
+  ok(bad.status === 400 && /number/.test(bad.body.error || ''),
+     'a policy that is not a number is refused rather than defaulted');
+
+  const cleared = await api('/api/logs', { action: 'clear' });
+  ok(cleared.body.removed === 1 && !existsSync(`${LD}/builderbot.log.1`)
+     && existsSync(`${LD}/builderbot.log`) && existsSync(`${LD}/not-ours.log.4`),
+     'Clear takes the kept generations and nothing else');
+
+  // Downloads are links, because a browser saves a link and this is megabytes
+  // of plain text rather than something to paginate into a view.
+  const dl = await page.evaluate(async () => {
+    const r = await fetch('/logs/download?what=session');
+    return { status: r.status, cd: r.headers.get('content-disposition'),
+             body: await r.text() };
+  });
+  ok(dl.status === 200 && /===== builderbot\.log =====/.test(dl.body)
+     && /===== docker\.log =====/.test(dl.body),
+     'the session download is every stream of this boot in one file');
+  ok(/attachment; filename="builderbot-session\.log"/.test(dl.cd || ''),
+     '...offered as a download rather than rendered into the tab');
+  const arc = await page.evaluate(async () => {
+    const r = await fetch('/logs/download?what=archive');
+    return { status: r.status, ct: r.headers.get('content-type') };
+  });
+  ok(arc.status === 200 && arc.ct === 'application/gzip',
+     'and the whole archive comes back as a tarball');
+}
 
 // The command pin and the project pin are different features that spent an
 // afternoon sharing four names — /api/pin, _pin, PINS_FILE and setPinned — and

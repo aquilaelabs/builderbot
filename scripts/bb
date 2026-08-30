@@ -940,8 +940,12 @@ cmd_logs() {
         case "$1" in
             -f) follow=1 ;;
             -l|--list)
-                # Newest first, so the top of the list is the current boot.
-                ls -1t "$base" "$base".[0-9]* 2>/dev/null \
+                # Every stream, newest first, so the top of the list is this
+                # boot. It used to list only builderbot.log's generations,
+                # which made the other three — the dashboard, docker and ttyd,
+                # all of which rotate the same way now — look like they did not
+                # exist.
+                ls -1t "$(bb_log_dir)"/*.log "$(bb_log_dir)"/*.log.[0-9]* 2>/dev/null \
                     || die "no logs in $(bb_log_dir)"
                 return 0
                 ;;
@@ -2344,7 +2348,9 @@ cmd_dashboard() {
             # Install button refuse, quoting a message that tells the operator
             # to use the dashboard.
             nohup env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT "${envs[@]}" \
-                python3 "$dir/server.py" >> "$(bb_log_dir)/dashboard.log" 2>&1 &
+                python3 -u "$dir/server.py" 2>&1 \
+                | "$(dirname "$(readlink -f "$0")")/lib/log-split.sh" \
+                    "$(bb_log_dir)/dashboard.log" dashboard &
             sleep 1
             [ -n "$(dashboard_pid)" ] || die "the new dashboard did not stay up — see $(bb_log_dir)/dashboard.log"
             log "dashboard: now serving from $dir (pid $(dashboard_pid))"
