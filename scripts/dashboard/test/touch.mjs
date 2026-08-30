@@ -65,4 +65,24 @@ await page.evaluate(() => viewAfterRestart());
 ok(await page.evaluate(() => document.body.dataset.view) === 'dash',
    '...while a container that came back since puts it on the Dashboard');
 
+// The tab strip's paging arrows do not ghost at the end they cannot go past.
+// Two half-there arrows on a strip too short to page read as broken rather than
+// as a limit. They stay `disabled` — pressing one still does nothing and a
+// screen reader is still told — so this asserts the LOOK and the behaviour
+// separately, which is exactly the pair a previous attempt got wrong: it
+// dropped an `opacity:.35` from the .tscroll rule and handed them straight back
+// to `button:disabled{opacity:.5}`, leaving them just as faded.
+await page.evaluate(() => { const b = [...document.querySelectorAll('button')]
+  .find(x => /^Terminal$/.test(x.textContent.trim())); b && b.click(); });
+await sleep(600);
+const arrows = await page.evaluate(() => ['#tabL', '#tabR'].map(sel => {
+  const e = document.querySelector(sel);
+  return e ? { sel, disabled: e.disabled, opacity: getComputedStyle(e).opacity } : null;
+}).filter(Boolean));
+ok(arrows.length === 2 && arrows.every(a => a.opacity === '1'),
+   `the tab arrows are full strength whether or not they can page (${
+     arrows.map(a => a.sel + ' ' + a.opacity).join(', ')})`);
+ok(arrows.some(a => a.disabled),
+   '...and still disabled at an end, so a dead press stays dead');
+
 await done(browser);
