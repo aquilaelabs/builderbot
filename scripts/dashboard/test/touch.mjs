@@ -79,6 +79,19 @@ const arrows = await page.evaluate(() => ['#tabL', '#tabR'].map(sel => {
   const e = document.querySelector(sel);
   return e ? { sel, disabled: e.disabled, opacity: getComputedStyle(e).opacity } : null;
 }).filter(Boolean));
+// The outline is the STRIP's, not the scroller's. A mask fades everything it
+// applies to, borders included, so masking the element that carried them broke
+// the line as it reached each arrow. Drawn by an ancestor that is not masked,
+// it runs the full width and only what scrolls fades.
+const frame = await page.evaluate(() => {
+  const strip = getComputedStyle(document.querySelector('.tabstrip'));
+  const bar = getComputedStyle(document.querySelector('#tabbar'));
+  return { strip: strip.borderTopWidth, bar: bar.borderTopWidth,
+           arrow: getComputedStyle(document.querySelector('#tabL')).borderTopWidth };
+});
+ok(frame.strip !== '0px' && frame.bar === '0px' && frame.arrow === '0px',
+   `the tab strip's outline is on the strip, so a fade cannot cut it (${
+     JSON.stringify(frame)})`);
 ok(arrows.length === 2 && arrows.every(a => a.opacity === '1'),
    `the tab arrows are full strength whether or not they can page (${
      arrows.map(a => a.sel + ' ' + a.opacity).join(', ')})`);
