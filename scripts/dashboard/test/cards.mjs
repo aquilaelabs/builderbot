@@ -909,6 +909,29 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   ok(existsSync(`${LD}/builderbot.log`),
      '...as is the live one, which this session is still writing to');
 
+  // Through the button, because that is the whole point of it: lowering the
+  // number CROPS, and a number field fires `change` on its way through every
+  // value the keyboard passes — typing 30 over 300 would have pruned at 3.
+  writeFileSync(`${LD}/docker.log.2`, 'x'.repeat(64));
+  const week = Date.now() / 1000 - 7 * 86400;
+  utimesSync(`${LD}/docker.log.2`, week, week);
+  await page.click('#bCards');
+  await page.waitForSelector('#logApply');
+  await page.fill('#logDays', '3');
+  await page.click('#logApply');
+  await page.waitForFunction(() => !document.querySelector('#logApply')?.disabled,
+                             { timeout: 10000 });
+  ok(!existsSync(`${LD}/docker.log.2`),
+     'Apply crops what the new number already excludes, then and there');
+  await page.fill('#logDays', '30');
+  await page.click('#logApply');
+  await page.waitForFunction(() => !document.querySelector('#logApply')?.disabled,
+                             { timeout: 10000 });
+  const back = await page.evaluate(() =>
+    fetch('/api/status').then(r => r.json()).then(j => j.logs.days));
+  ok(back === 30, '...and raising it again is just a setting, with nothing to crop');
+  await page.keyboard.press('Escape');
+
   const bad = await api('/api/logs', { action: 'days', days: 'soon' });
   ok(bad.status === 400 && /number/.test(bad.body.error || ''),
      'a policy that is not a number is refused rather than defaulted');

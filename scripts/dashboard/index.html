@@ -264,8 +264,12 @@ header h1{font-size:15px;margin:0;font-weight:600}
    wraps rather than shrinking below a tap target on a phone. */
 .logset{display:flex;flex-direction:column;gap:8px}
 .logset .dim{font:var(--f-note)}
-.logdays{display:flex;align-items:center;gap:8px;font:var(--f-note);color:var(--dim)}
-.logdays input{width:5.5em;min-height:var(--tap);text-align:center;flex:0 0 auto}
+.logdays{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  font:var(--f-note);color:var(--dim)}
+.logdays input{width:5em;min-height:var(--tap);text-align:center;flex:0 0 auto}
+/* Pushed to the end of the row so it reads as acting on the field beside it,
+   and never shrunk below a tap target. */
+.logdays button{margin-left:auto;flex:0 0 auto;min-height:var(--tap)}
 .logacts{display:flex;flex-wrap:wrap;gap:6px}
 /* An anchor, because a download is a link and a link is what a browser knows
    how to save. Dressed as a button so the row reads as three controls. */
@@ -4302,9 +4306,14 @@ function logSection(){
       <div class="dim">${L.files} file(s), ${humanBytes(L.bytes)}${
         L.ci ? ` · ${L.ci} CI run${L.ci === 1 ? "" : "s"}` : ""}${
         L.oldest ? ` · reaching back ${back} day${back === 1 ? "" : "s"}` : ""}</div>
-      <label class="logdays">Keep for
+      <div class="logdays">
+        <label for="logDays">Keep for</label>
         <input id="logDays" type="number" min="1" max="3650" step="1"
-               value="${L.days}" inputmode="numeric"> days</label>
+               value="${L.days}" inputmode="numeric">
+        <span>days</span>
+        <button type="button" id="logApply"
+          title="save it, and crop anything already past it">Apply</button>
+      </div>
       <div class="logacts">
         <a class="btnish" href="/logs/download?what=session" download
            title="this container start: the boot, the dashboard and docker"
@@ -4321,22 +4330,34 @@ function logSection(){
 function wireLogSection(el){
   const inp = el.querySelector("#logDays");
   if (!inp) return;
-  // On change rather than per keystroke: a number field typed through 3 on the
-  // way to 30 would prune to three days in passing.
-  inp.onchange = async () => {
+  // Applied on a press, not on change. Lowering the number CROPS — the files
+  // past it are deleted then and there — and a number field fires `change` on
+  // its way through every value the arrows and the keyboard pass, so typing 30
+  // over 300 would have pruned at 3 before reaching 30. A button is also the
+  // only way to say "crop now" without changing the number at all.
+  const apply = async () => {
     const days = parseInt(inp.value, 10);
-    if (!(days >= 1)) return;
+    if (!(days >= 1)) return notify("days has to be 1 or more", true);
+    const btn = el.querySelector("#logApply");
+    if (btn){ btn.disabled = true; btn.textContent = "Applying…"; }
     try{
       const r = await fetch("/api/logs", {method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({action: "days", days})});
       const j = await r.json();
       if (j.error) return notify(j.error, true);
-      notify(j.removed ? `keeping ${j.days} days — ${j.removed} file(s) removed`
-                       : `keeping ${j.days} days`);
-      refresh();
+      notify(j.removed
+        ? `keeping ${j.days} days — ${j.removed} file(s) removed`
+        : `keeping ${j.days} days — nothing was past it`);
+      refresh(); drawUiMenu();
     }catch(e){ notify("logs: " + e, true); }
+    finally{ if (btn && btn.isConnected){ btn.disabled = false;
+                                          btn.textContent = "Apply"; } }
   };
+  el.querySelector("#logApply").onclick = apply;
+  // Enter in the field does what the button does, because a number typed into
+  // a box and then pressed at is what everybody tries first.
+  inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); apply(); } };
   el.querySelector("#logClear").onclick = async () => {
     if (!confirm("Delete every kept log except this session's?\n\n"
                  + "This session keeps writing to its own.")) return;
