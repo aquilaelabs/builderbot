@@ -1533,11 +1533,15 @@ body.dragging .tab .lbl{cursor:grabbing}
   .tscroll{display:block;flex:0 0 auto;border:1px solid var(--line);
     background:var(--panel);padding:0 12px;font-size:16px;color:var(--dim)}
   /* NOT dimmed at the end it cannot go past. Two half-there arrows on a strip
-     that simply is not long enough to page read as something broken rather
+     that is simply not long enough to page read as something broken rather
      than as a limit, and pressing one at the end already says so by nothing
      moving. Still `disabled`, so it is not a tap target that does nothing and
-     a screen reader is told — only the look of it changes. */
-  .tscroll:disabled{background:var(--panel)}
+     a screen reader is told — only the look of it changes.
+     `opacity:1` explicitly, and that is the whole fix: the fade was never this
+     rule's, it is `button:disabled{opacity:.5}` up in the base sheet. Dropping
+     a `.35` from here only handed them back to the .5 and left them looking
+     exactly as ghosted, which is what happened the first time. */
+  .tscroll:disabled{background:var(--panel);opacity:1}
   #tabL{border-radius:8px 0 0 0;border-right:0}
   #tabR{border-radius:0 8px 0 0;border-left:0}
 }
