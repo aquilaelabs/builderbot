@@ -104,3 +104,4 @@
 - The log retention setting has an Apply button, and lowering it deletes the logs it excludes straight away (9b039a6)
 - The terminal's tab strip, body and bottom bar are one connected frame instead of three boxes with gaps between them (c3cfec2)
 - On a phone, About is a circled question mark rather than a word, and a locked project is marked by its padlock alone (c3cfec2)
+- Tabs cut off by the edge of the strip fade out instead of ending in a hard seam, and only on the side actually cutting one off (13364d0)
