@@ -433,7 +433,7 @@ button{background:var(--btn);color:var(--ink);border:1px solid var(--line);
   .pane .bar .x:hover{background:rgba(255,255,255,.1);color:var(--ink)}
   .fx .grp>summary:hover{background:var(--btn)}
   .fx .cve:hover{background:#5f3b3b}
-  .tscroll:disabled:hover{background:var(--panel)}
+  .tscroll:disabled:hover{background:transparent}
 }
 
 /* Hover states fade rather than snap. Background, border and color cover
@@ -1526,8 +1526,15 @@ body.dragging .tab .lbl{cursor:grabbing}
 /* On a phone the strip is one row: swipe it, or page it with the arrows —
    wrapping to more rows would eat the terminal's space. */
 @media(max-width:900px){
+  /* The BOX belongs to the strip, and the scroller inside it is transparent and
+     borderless. A mask fades everything it is applied to — background and
+     borders included — so masking the element that carried them dissolved the
+     outline as it reached each arrow. Drawn by an ancestor that is not masked,
+     the line runs the full width and only what scrolls fades. */
+  .tabstrip{background:var(--panel);border:1px solid var(--line);
+    border-radius:8px 8px 0 0;overflow:hidden}
   .tabbar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;
-    border-radius:0;border-left:0;border-right:0}
+    background:transparent;border:0;border-radius:0}
   .tabbar::-webkit-scrollbar{display:none}
   /* A tab cut off by the edge fades out instead of being sliced. Masked rather
      than an overlay gradient: the strip scrolls under its own paging arrows,
@@ -1547,8 +1554,12 @@ body.dragging .tab .lbl{cursor:grabbing}
     mask-image:linear-gradient(to right,transparent 0,#000 20px,
       #000 calc(100% - 20px),transparent 100%)}
   .tab{flex:0 0 auto}   /* overflow and scroll, rather than squeeze to fit */
-  .tscroll{display:block;flex:0 0 auto;border:1px solid var(--line);
-    background:var(--panel);padding:0 12px;font-size:16px;color:var(--dim)}
+  /* No box of their own any more: the strip around them draws it, so an arrow
+     is the glyph and the tap target and nothing else. Their borders used to
+     supply the left and right edges and the top corners, which is why they
+     had them. */
+  .tscroll{display:block;flex:0 0 auto;border:0;background:transparent;
+    padding:0 12px;font-size:16px;color:var(--dim)}
   /* NOT dimmed at the end it cannot go past. Two half-there arrows on a strip
      that is simply not long enough to page read as something broken rather
      than as a limit, and pressing one at the end already says so by nothing
@@ -1558,9 +1569,7 @@ body.dragging .tab .lbl{cursor:grabbing}
      rule's, it is `button:disabled{opacity:.5}` up in the base sheet. Dropping
      a `.35` from here only handed them back to the .5 and left them looking
      exactly as ghosted, which is what happened the first time. */
-  .tscroll:disabled{background:var(--panel);opacity:1}
-  #tabL{border-radius:8px 0 0 0;border-right:0}
-  #tabR{border-radius:0 8px 0 0;border-left:0}
+  .tscroll:disabled{background:transparent;opacity:1}
 }
 
 /* Built fresh each time it is opened, so the animation runs on the element
