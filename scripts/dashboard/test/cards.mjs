@@ -888,6 +888,35 @@ ok(again.status === 200 && again.body.to === '.trash/beta-2',
 execFileSync('mv', [`${DIR}/ws/.trash/beta-2`, `${DIR}/ws/beta`]);
 execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 
+// ---- one field skin, everywhere ----------------------------------------
+// Every text control on the page shares its ground, edge and radius from one
+// rule, and a site declares only what is its own — font aside, that is the
+// whole contract. A field in a context the rule does not list silently wears
+// the BROWSER's default instead, which is how the log-retention box ended up
+// a 2px grey square in Arial beside a page of sunk monospace fields.
+{
+  await page.click('#bCards');
+  await page.waitForTimeout(400);
+  const odd = await page.evaluate(() => {
+    // Every dialog at once, so this sees the fields that live inside them.
+    document.querySelectorAll('[hidden]').forEach(e => { e.hidden = false; });
+    const bad = [];
+    for (const el of document.querySelectorAll('input,select,textarea')){
+      const t = (el.type || el.tagName).toLowerCase();
+      if (t === 'checkbox' || t === 'radio' || t === 'hidden') continue;
+      if (!el.getBoundingClientRect().width) continue;
+      const c = getComputedStyle(el);
+      if (c.borderTopLeftRadius !== '6px' || c.borderTopWidth !== '1px'
+          || !/mono/i.test(c.fontFamily))
+        bad.push(`${el.id || el.className || t}: r=${c.borderTopLeftRadius} `
+                 + `b=${c.borderTopWidth} f=${c.fontFamily.split(',')[0]}`);
+    }
+    document.querySelectorAll('.modal,.uimenu').forEach(e => { e.hidden = true; });
+    return bad;
+  });
+  ok(odd.length === 0, `every text field wears the one skin (${odd.join(' | ') || 'all'})`);
+}
+
 // ---- one frame, three pieces ------------------------------------------
 // The tab strip, the panes and the bottom bar are drawn as one outline: the
 // strip owns the top corners and its own bottom edge, the panes carry the
