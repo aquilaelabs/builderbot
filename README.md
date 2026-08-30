@@ -2585,7 +2585,14 @@ in both places.
 in the dashboard's settings menu — the gear, beside the colour schemes. A
 count was the wrong unit for the question anybody has (*was that this week?*)
 and a container in a crash loop can burn five generations in a minute;
-`BB_LOG_KEEP` survives as the ceiling for exactly that case. The same menu
+`BB_LOG_KEEP` survives as the ceiling for exactly that case.
+
+**Apply crops.** Lowering the number deletes what it already excludes, then
+and there, rather than waiting for the next boot — which is why it is a button
+and not a field that saves itself: a number input fires `change` on its way
+through every value the keyboard passes, so typing `30` over `300` would have
+pruned at `3` in passing. Pressing it without changing anything is a
+crop-now, which is the other thing you sometimes want. The same menu
 downloads this session's logs as one file, or everything kept as a `.tar.gz`,
 and clears the kept generations without touching the ones being written.
 
