@@ -268,7 +268,17 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .logset .dim{font:var(--f-note)}
 .logdays{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   font:var(--f-note);color:var(--dim)}
-.logdays input{width:5em;min-height:var(--tap);text-align:center;flex:0 0 auto}
+/* Only what is its own. Ground, edge, radius, the mono face and the 16px that
+   stops iOS zooming into it all come from the field skin further down — which
+   this menu was simply not in the list for, so the box wore the browser's
+   default: a 2px grey edge, square corners and Arial, beside a page of 6px
+   sunk monospace fields. */
+/* Scoped to the menu so it outranks the skin's `width:100%`, which is right
+   for a field that owns its row and wrong for one sitting between a label and
+   a button — unscoped, this lost the tie on source order and the row broke
+   into four stacked lines. */
+.uimenu .logdays input{width:5em;min-height:var(--tap);text-align:center;
+  flex:0 0 auto}
 /* Pushed to the end of the row so it reads as acting on the field beside it,
    and never shrunk below a tap target. */
 .logdays button{margin-left:auto;flex:0 0 auto;min-height:var(--tap)}
@@ -640,12 +650,14 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .modal input,.modal textarea,.modal select,
 .row input,.row select,
 .nb input,.nb textarea,.nb select,
+.uimenu input,.uimenu textarea,.uimenu select,
 .dropbox input,.dropbox textarea,.addstep input,.codebox input,
 .imgadd select,.side .card select{
   background:var(--sunk);color:var(--ink);border:1px solid var(--line);
   border-radius:6px}
 .modal input,.modal textarea,.modal select,
 .row input,.row select,
+.uimenu input,.uimenu textarea,.uimenu select,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
   padding:8px 9px;font:13px/1.5 var(--mono)}
 /* The sidebar's own selects — the Claude card's pickers. Same phone rules as
@@ -680,8 +692,10 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    focus, and this fixed layout has no way to zoom back out. */
 @media(max-width:900px){ .modal input,.modal textarea,.modal select,
   .row input,.row select,
+  .uimenu input,.uimenu textarea,.uimenu select,
   .nb input,.nb textarea,.nb select{font-size:16px} }
 .modal input:focus,.modal textarea:focus,.modal select:focus,
+.uimenu input:focus,.uimenu textarea:focus,.uimenu select:focus,
 .nb input:focus,.nb textarea:focus,.nb select:focus{
   outline:2px solid #2f4d6d;outline-offset:-1px}
 .modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:6px}
