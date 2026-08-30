@@ -2298,9 +2298,13 @@ body.dragging .tab .lbl{cursor:grabbing}
   <button id="bCards" aria-haspopup="menu" aria-expanded="false"
           aria-label="settings"
           title="settings — the colour scheme, the cards, and the logs">
+    <!-- The same gear a project row's settings button uses (GEAR, below). The
+         first attempt drew a circle with eight spokes around it, which is a
+         sun, not a gear — and a header that already carries one icon language
+         should not invent a second. -->
     <svg class="out" viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M6.6 1.9h2.8l.35 1.72 1.2.7 1.66-.57 1.4 2.42-1.3 1.16v1.4l1.3 1.16-1.4 2.42-1.66-.57-1.2.7-.35 1.72H6.6l-.35-1.72-1.2-.7-1.66.57-1.4-2.42 1.3-1.16v-1.4L1.99 6.17l1.4-2.42 1.66.57 1.2-.7z"/>
       <circle cx="8" cy="8" r="2.1"/>
-      <path d="M8 1.6v1.7M8 12.7v1.7M14.4 8h-1.7M3.3 8H1.6M12.5 3.5l-1.2 1.2M4.7 11.3l-1.2 1.2M12.5 12.5l-1.2-1.2M4.7 4.7 3.5 3.5"/>
     </svg>
   </button>
   <!-- Under the gear rather than behind it: resetting the cards was the only
