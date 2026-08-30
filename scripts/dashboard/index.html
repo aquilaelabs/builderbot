@@ -213,17 +213,19 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 @media(max-width:600px){ .meta.host{display:none} }
-/* The About control: version-as-label where there is room, the word where
-   there is not — a truncated version string answers nothing, so it stops
-   pretending to. One of the two, never both: a rule that showed the label on
-   a desktop stacked it under the version and doubled the button's height.
-   (A circled ? was tried here and looked wrong beside the header's other
-   glyphs, which are all line art at 15px.) */
+/* The About control: version-as-label where there is room, an icon where there
+   is not — a truncated version string answers nothing, so it stops pretending
+   to. One of the two, never both: showing both stacked them and doubled the
+   button's height. The narrow half used to be the word "About", the only text
+   label in a header of icons, which made the button twice the width of its
+   neighbours. It is a circled ? now, drawn as line art at 15px like the gear
+   and the door beside it — an earlier attempt used the ? GLYPH, and that is
+   what looked wrong: a typeface character among stroked paths. */
 #bAbout .alab{display:none}
 #bAbout #build{color:var(--dim)}
 @media(max-width:600px){
   #bAbout #build{display:none}
-  #bAbout .alab{display:inline}
+  #bAbout .alab{display:block}
 }
 
 /* The bell, and the panel it drops. Bare on purpose: it is a state light
@@ -1375,6 +1377,14 @@ button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColo
 #bOut svg.out,#bCards svg.out{width:15px;height:15px;display:block;margin:auto;
   fill:none;stroke:currentColor;stroke-width:1.4;
   stroke-linecap:round;stroke-linejoin:round}
+/* The same drawing for About's ?, but WITHOUT display: whether it is shown is
+   the .alab rule's business and nothing else's. Setting display here too put
+   the two in a specificity tie that this rule won by being further down the
+   file, so the icon appeared under the version on a desktop and doubled the
+   button's height — the exact thing the comment up there warns about. */
+#bAbout svg.alab{width:15px;height:15px;margin:auto;
+  fill:none;stroke:currentColor;stroke-width:1.4;
+  stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:900px){ .row button,.macros button{min-height:var(--tap)} }
 
 /* What a Claude session is doing, at a glance. Blue matches the runner card's
@@ -1484,7 +1494,12 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
 /* Tabs --------------------------------------------------------------- */
 /* min-width:0 matters: a grid item's min-content width is the whole nowrap
    tab strip, which would push the column past the viewport on a phone. */
-.col.term{min-height:0;min-width:0}
+/* No gap between its parts, unlike the sidebar's stack of cards. The strip,
+   the panes and the bottom bar are one frame drawn in three pieces — the strip
+   owns the top corners and its bottom edge, the panes carry the sides with no
+   top border, the bar owns the bottom corners — and .col's 10px pushed them
+   apart into three separate boxes with the seams showing. */
+.col.term{min-height:0;min-width:0;gap:0}
 .tabbar{display:flex;gap:5px;flex-wrap:wrap;padding:6px 7px;background:var(--panel);
   border:1px solid var(--line);border-radius:8px 8px 0 0;flex:0 0 auto;
   align-items:center;position:relative}
@@ -1517,9 +1532,12 @@ body.dragging .tab .lbl{cursor:grabbing}
   .tab{flex:0 0 auto}   /* overflow and scroll, rather than squeeze to fit */
   .tscroll{display:block;flex:0 0 auto;border:1px solid var(--line);
     background:var(--panel);padding:0 12px;font-size:16px;color:var(--dim)}
-  /* Grayed at the end it cannot go past — and both grayed when the strip
-     fits, which is how the arrows say there is nothing to page. */
-  .tscroll:disabled{background:var(--panel);opacity:.35}
+  /* NOT dimmed at the end it cannot go past. Two half-there arrows on a strip
+     that simply is not long enough to page read as something broken rather
+     than as a limit, and pressing one at the end already says so by nothing
+     moving. Still `disabled`, so it is not a tap target that does nothing and
+     a screen reader is told — only the look of it changes. */
+  .tscroll:disabled{background:var(--panel)}
   #tabL{border-radius:8px 0 0 0;border-right:0}
   #tabR{border-radius:0 8px 0 0;border-left:0}
 }
@@ -2239,7 +2257,12 @@ body.dragging .tab .lbl{cursor:grabbing}
        aria-label="notifications"></div>
   <button id="bAbout" aria-haspopup="dialog" aria-label="about this BuilderBot"
           title="about this BuilderBot">
-    <span class="meta" id="build"></span><span class="alab">About</span>
+    <span class="meta" id="build"></span>
+    <svg class="alab" viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.3"/>
+      <path d="M6.2 6.1a1.85 1.85 0 1 1 2.2 2.2c-.5.2-.6.5-.6.9v.35"/>
+      <path d="M7.8 12.05h.02"/>
+    </svg>
   </button>
   <button onclick="refresh()" title="refresh now">↻</button>
   <button id="bCards" aria-haspopup="menu" aria-expanded="false"
@@ -5279,8 +5302,14 @@ function renderProjectsInto(i){
   if (!el) return;
   el.classList.add("flush");
   const ps = state?.projects || [];
+  // The empty case keeps the button, and needs it most: an empty workspace is
+  // exactly where somebody is about to make their first project, and a page
+  // that only says what is missing offers no way to fix it.
   if (!ps.length){
-    el.innerHTML = `<div class="empty">nothing mounted under /workspace</div>`;
+    el.innerHTML = `<div class="projtab"><div class="macros"><button
+        id="bNewProjTab">New project…</button></div>
+      <div class="empty">nothing mounted under /workspace</div></div>`;
+    el.querySelector("#bNewProjTab").onclick = openNewProject;
     return;
   }
   const live = liveSessions();
@@ -5293,9 +5322,19 @@ function renderProjectsInto(i){
   // paint() rather than innerHTML, the same as the card: this runs on every
   // render pass, and rebuilding a list of rows nobody changed throws away the
   // handlers on it for no reason.
-  if (paint(el, `<div class="projtab">${
-    ordered.map(p => projectRow(p, live, cls, true)).join("")}</div>`))
+  // At the TOP here, unlike the sidebar card where it sits at the foot. That
+  // card's header is its collapse control and drag handle, so nothing else can
+  // live in it; this tab has no such header, and the list of every project is
+  // exactly where somebody stands when they want another one — the bottom of a
+  // long scroll is the worst place for it.
+  if (paint(el, `<div class="projtab"><div class="macros"><button
+      id="bNewProjTab"
+      title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach"
+      >New project…</button></div>${
+    ordered.map(p => projectRow(p, live, cls, true)).join("")}</div>`)){
     wireProjectRows(el);
+    el.querySelector("#bNewProjTab").onclick = openNewProject;
+  }
 }
 
 // ---- no daemon, no Docker buttons ---------------------------------------
