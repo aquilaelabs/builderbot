@@ -1310,14 +1310,11 @@ def project_list():
         # Every directory is still reported. The dashboard decides what to show,
         # and SARIF paths are attributed by matching these names — dropping one
         # here would silently orphan its findings.
-        if d.name in locked:
-            # The one gate there is. It says who runs this directory, not that
-            # anything is wrong with it — which is why it is a level of its own
-            # and never an error: the row keeps every control the operator uses
-            # themselves, and only the ones that act on Claude's behalf go.
-            issues.append({"level": "locked",
-                           "text": "locked — yours to run; no Claude session, "
-                                   "and the notebook is read-only"})
+        # Locking is reported by the boolean below and nothing else. It used to
+        # add an issue too, which the row printed under the name: a whole
+        # sentence restating what the padlock beside the name already says, on
+        # every locked row, forever. It is also not a fault, and the issue list
+        # is where faults go.
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
                     "claude_md": has_md,

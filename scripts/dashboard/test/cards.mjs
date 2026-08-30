@@ -485,16 +485,20 @@ const locked = await page.$eval('#projects .row:has([data-k="alpha"])', r => ({
 }));
 ok(locked.claude === true, 'locking a project takes its Claude button away');
 ok(locked.shell, '...and leaves the shell, which is the operator\'s own way in');
-// The control moves at once; the row's note comes from the server payload and
-// lands on the next poll. Instant feedback on the thing pressed, and the
-// derived text a beat behind it rather than the page re-implementing it.
-await page.waitForFunction(() => /locked/.test(
-  document.querySelector('#projects .row:has([data-k="alpha"])')?.textContent || ''),
-  { timeout: 15000 });
-const note = await page.$eval('#projects .row:has([data-k="alpha"])',
-  r => r.textContent.replace(/\s+/g, ' '));
-ok(/locked/.test(note) && !/excluded/.test(note),
-   '...saying locked rather than excluded, which is the other thing entirely');
+  // The control moves at once; the padlock beside the NAME comes from the
+  // server payload and lands on the next poll. Instant feedback on the thing
+  // pressed, and the derived mark a beat behind it rather than the page
+  // re-implementing it.
+  //
+  // The MARK, not a sentence. The row used to carry a whole line under the
+  // name restating what the padlock already says, on every locked row forever.
+  await page.waitForFunction(
+    () => !!document.querySelector('#projects .row:has([data-k="alpha"]) .lockmark'),
+    { timeout: 15000 });
+  const note = await page.$eval('#projects .row:has([data-k="alpha"])',
+    r => r.textContent.replace(/\s+/g, ' '));
+  ok(!/read-only/.test(note) && !/no Claude session/.test(note),
+     '...marked with the padlock alone, not a sentence under the name as well');
 await page.evaluate(() => setLocked('alpha', false));
 await page.waitForFunction(
   () => document.querySelector('#projects [data-c="alpha"]')?.disabled === false,
@@ -883,6 +887,28 @@ ok(again.status === 200 && again.body.to === '.trash/beta-2',
    'a second delete of the same name is numbered, not an overwrite');
 execFileSync('mv', [`${DIR}/ws/.trash/beta-2`, `${DIR}/ws/beta`]);
 execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
+
+// ---- one frame, three pieces ------------------------------------------
+// The tab strip, the panes and the bottom bar are drawn as one outline: the
+// strip owns the top corners and its own bottom edge, the panes carry the
+// sides with no top border, the bar owns the bottom corners. .col's 10px gap
+// pushed them apart into three boxes with the seams showing, which is what
+// this measures — the pieces have to touch exactly.
+{
+  await page.evaluate(() => { const b = [...document.querySelectorAll('button')]
+    .find(x => /^Terminal$/.test(x.textContent.trim())); b && b.click(); });
+  await page.waitForTimeout(400);
+  const seams = await page.evaluate(() => {
+    const box = s => { const e = document.querySelector(s);
+      if (!e) return null; const r = e.getBoundingClientRect();
+      return r.height ? [r.top, r.bottom] : null; };
+    const parts = ['.tabstrip', '.panes', '.keys', '.mobar']
+      .map(s => [s, box(s)]).filter(p => p[1]);
+    return parts.slice(1).map((p, i) => p[1][0] - parts[i][1][1]);
+  });
+  ok(seams.length >= 1 && seams.every(g => Math.abs(g) < 0.6),
+     `the terminal frame is one outline, not three boxes (seams ${seams})`);
+}
 
 // ---- the logs, in the gear menu ---------------------------------------
 // The retention policy is days, not boots: a count is the wrong unit for "was
