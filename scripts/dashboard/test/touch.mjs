@@ -85,4 +85,32 @@ ok(arrows.length === 2 && arrows.every(a => a.opacity === '1'),
 ok(arrows.some(a => a.disabled),
    '...and still disabled at an end, so a dead press stays dead');
 
+// A tab cut off by the edge fades out rather than being sliced, and only on
+// the edge doing the cutting: hard against one end, that side is showing a
+// whole tab and fading a complete tab is worse than the seam was.
+await page.click('#tabbar .newtab').catch(() => {});
+await sleep(500);
+await page.click('#tabbar .newtab').catch(() => {});
+await sleep(700);
+const edge = async pos => page.$eval('#tabbar', (e, p) => {
+  e.scrollLeft = p === 'L' ? 0 : p === 'R' ? e.scrollWidth : (e.scrollWidth - e.clientWidth) / 2;
+  e.dispatchEvent(new Event('scroll'));
+  return { over: e.scrollWidth > e.clientWidth + 1,
+           l: e.classList.contains('fadeL'), r: e.classList.contains('fadeR') };
+}, pos);
+await edge('M'); await sleep(300);
+const mid = await edge('M');
+if (!mid.over){
+  ok(true, 'the strip does not overflow at this width — nothing to fade');
+} else {
+  ok(mid.l && mid.r, 'mid-scroll both edges of the tab strip fade');
+  await edge('L'); await sleep(300);
+  const left = await edge('L');
+  ok(!left.l && left.r,
+     '...hard left, only the right fades — the first tab is whole and stays crisp');
+  await edge('R'); await sleep(300);
+  const right = await edge('R');
+  ok(right.l && !right.r, '...and hard right, only the left');
+}
+
 await done(browser);
