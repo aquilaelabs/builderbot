@@ -4300,6 +4300,7 @@ function logSection(){
   return `<h4>Logs</h4>
     <div class="logset">
       <div class="dim">${L.files} file(s), ${humanBytes(L.bytes)}${
+        L.ci ? ` · ${L.ci} CI run${L.ci === 1 ? "" : "s"}` : ""}${
         L.oldest ? ` · reaching back ${back} day${back === 1 ? "" : "s"}` : ""}</div>
       <label class="logdays">Keep for
         <input id="logDays" type="number" min="1" max="3650" step="1"
@@ -4309,7 +4310,8 @@ function logSection(){
            title="this container start: the boot, the dashboard and docker"
            >This session</a>
         <a class="btnish" href="/logs/download?what=archive" download
-           title="every log kept, as a .tar.gz">All logs</a>
+           title="every log kept, plus the archived CI runs, as a .tar.gz"
+           >All logs</a>
         <button type="button" id="logClear" class="rm"
            title="delete every kept log except this session's">Clear</button>
       </div>

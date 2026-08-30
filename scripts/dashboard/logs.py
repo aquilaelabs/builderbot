@@ -132,12 +132,13 @@ def _entries():
 
 def payload():
     """What the settings panel shows: the policy, and what it is holding."""
-    es = _entries()
+    es, ci = _entries(), _ci_entries()
     return {
         "dir": str(log_dir()),
         "days": days(),
-        "files": len(es),
-        "bytes": sum(e["bytes"] for e in es),
+        "files": len(es) + len(ci),
+        "ci": len(ci),
+        "bytes": sum(e["bytes"] for e in es) + sum(e["bytes"] for e in ci),
         # This session's own, which is what Download reaches for first.
         "session": [e["name"] for e in es if e["generation"] == 0 and e["ours"]],
         "oldest": min((e["mtime"] for e in es), default=0),
@@ -168,6 +169,13 @@ def prune():
                 gone += 1
             except OSError:
                 pass
+    for e in _ci_entries():
+        if e["mtime"] < cutoff:
+            try:
+                e["path"].unlink()
+                gone += 1
+            except OSError:
+                pass
     return gone
 
 
@@ -192,14 +200,21 @@ def clear():
 
 # --- taking a copy ---------------------------------------------------------
 
-def session_bytes():
-    """This session's three logs as one text file, in stream order.
+# In the archive but not in the session bundle. ttyd.log is the terminal
+# server's connection churn — 22,000 lines and 1.5MB on this box against 4KB
+# of boot log — so bundling it means the thing somebody opens to read what
+# happened is 99% libwebsockets tagging its own sockets.
+SESSION_STREAMS = tuple(n for n in STREAMS if n != "ttyd.log")
 
-    One file rather than three downloads, because the question being asked is
-    "what happened in this session" and the answer is spread across them.
+
+def session_bytes():
+    """This session's logs as one text file, in stream order.
+
+    One file rather than several downloads, because the question being asked
+    is "what happened in this session" and the answer is spread across them.
     """
     out = []
-    for name in STREAMS:
+    for name in SESSION_STREAMS:
         p = log_dir() / name
         try:
             body = p.read_text(errors="replace")
@@ -221,7 +236,8 @@ def archive_bytes():
     """
     d = log_dir()
     es = [e for e in _entries()]
-    total = sum(e["bytes"] for e in es)
+    ci = _ci_entries()
+    total = sum(e["bytes"] for e in es) + sum(e["bytes"] for e in ci)
     if total > 256 * 1024 * 1024:
         return None, f"the log directory is {total // (1024*1024)}MB — too big to send"
     buf = io.BytesIO()
@@ -233,9 +249,51 @@ def archive_bytes():
                     info.size = e["bytes"]
                     info.mtime = e["mtime"]
                     tar.addfile(info, f)
+            for e in ci:
+                with open(e["path"], "rb") as f:
+                    info = tarfile.TarInfo(f"builderbot-logs/{e['arc']}")
+                    info.size = e["bytes"]
+                    info.mtime = e["mtime"]
+                    tar.addfile(info, f)
     except OSError as err:
         return None, str(err)
     return buf.getvalue(), ""
+
+
+# --- CI, which is already per project and per run ---------------------------
+#
+# Deliberately NOT moved in here. A CI run is not a container session — it
+# belongs to a workflow run, spans whatever session happened to be up, and is
+# already one file per run under a directory per repository, which is the
+# grouping somebody actually wants. `bb ci-log` reads them by run id.
+#
+# What was missing was only that the settings menu did not know they existed:
+# they were not in the archive and no retention reached them. Both now do.
+
+def ci_dir():
+    return Path(os.environ.get("BB_CI_LOG_DIR", "/config/ci-logs"))
+
+
+def _ci_entries():
+    out = []
+    root = ci_dir()
+    try:
+        repos = sorted(p for p in root.iterdir() if p.is_dir())
+    except OSError:
+        return out
+    for repo in repos:
+        try:
+            files = sorted(p for p in repo.iterdir() if p.is_file())
+        except OSError:
+            continue
+        for f in files:
+            try:
+                st = f.stat()
+            except OSError:
+                continue
+            out.append({"path": f, "arc": f"ci/{repo.name}/{f.name}",
+                        "bytes": st.st_size, "mtime": int(st.st_mtime)})
+    return out
 
 
 def disk_free():

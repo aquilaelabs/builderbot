@@ -2589,6 +2589,16 @@ and a container in a crash loop can burn five generations in a minute;
 downloads this session's logs as one file, or everything kept as a `.tar.gz`,
 and clears the kept generations without touching the ones being written.
 
+Two deliberate omissions from *this session*. `ttyd.log` is the terminal
+server's connection churn — 22,000 lines against 4KB of boot log on this box —
+so it is in the archive and not in the thing you open to read what happened.
+And the **CI logs stay where they are**, under `config/ci-logs/<repo>/`, one
+file per run: a CI run is not a container session, it belongs to a workflow
+run and spans whatever session was up. They are already grouped the way you
+would want and `bb ci-log` reads them by run id — what was missing is that the
+settings menu did not know they existed, so they are in the archive and under
+the same retention now.
+
 ## Building locally instead of pulling
 
 ```bash

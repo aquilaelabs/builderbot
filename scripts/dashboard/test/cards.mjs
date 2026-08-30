@@ -893,7 +893,7 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   const old = Date.now() / 1000 - 90 * 86400;
   for (const [n, age] of [['builderbot.log', 0], ['builderbot.log.1', 0],
                           ['builderbot.log.9', 90], ['docker.log', 0],
-                          ['not-ours.log.4', 90]]){
+                          ['ttyd.log', 0], ['not-ours.log.4', 90]]){
     writeFileSync(`${LD}/${n}`, 'x'.repeat(64));
     if (age) utimesSync(`${LD}/${n}`, old, old);
   }
@@ -930,11 +930,14 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
      'the session download is every stream of this boot in one file');
   ok(/attachment; filename="builderbot-session\.log"/.test(dl.cd || ''),
      '...offered as a download rather than rendered into the tab');
+  ok(!/ttyd/.test(dl.body),
+     '...without ttyd.log, which is 22k lines of websocket churn around it');
   const arc = await page.evaluate(async () => {
     const r = await fetch('/logs/download?what=archive');
-    return { status: r.status, ct: r.headers.get('content-type') };
+    return { status: r.status, ct: r.headers.get('content-type'),
+             len: (await r.arrayBuffer()).byteLength };
   });
-  ok(arc.status === 200 && arc.ct === 'application/gzip',
+  ok(arc.status === 200 && arc.ct === 'application/gzip' && arc.len > 0,
      'and the whole archive comes back as a tarball');
 }
 
