@@ -324,6 +324,29 @@ def _migrate_paths():
                       f"{MAIN} instance", flush=True)
     except OSError:
         pass
+    # The project used to be spelled into every name — bbdev-<project>-<inst>
+    # — and is not any more. Driven off the store, which is the only thing that
+    # says which project and instance a file on disk belonged to; a pattern
+    # match on the names themselves cannot tell bbdev-a-b apart as (a, b) or
+    # (a-b, main). Anything the store does not describe is already an orphan
+    # and stays one.
+    try:
+        for proj, insts in _load().items():
+            for inst in insts:
+                was = f"bbdev-{_slug(proj)}-{_slug(inst) or MAIN}"
+                now = _pname(proj, inst)
+                if was == now:
+                    continue
+                a, b = ENVDIR / f"{was}.env", ENVDIR / f"{now}.env"
+                if a.is_file() and not b.exists():
+                    a.rename(b)
+                    print(f"[devapp] env {a.name} -> {b.name}", flush=True)
+                a, b = Path(DEVDATA) / was, Path(DEVDATA) / now
+                if a.is_dir() and not b.exists():
+                    a.rename(b)
+                    print(f"[devapp] data {was} -> {now}", flush=True)
+    except OSError:
+        pass
     try:
         root = Path(DEVDATA)
         for d in sorted(root.iterdir()) if root.is_dir() else []:
@@ -532,8 +555,9 @@ def _guard(argv):
         name = argv[argv.index("--project-name") + 1]
     except (ValueError, IndexError):
         return "a compose call carrying no --project-name"
-    if not name.startswith("bbdev-"):
-        return f"a compose call outside the bbdev- namespace ({name})"
+    pref = dev_prefix()
+    if pref and not name.startswith(pref):
+        return f"a compose call outside the {pref} namespace ({name})"
     return ""
 
 
@@ -685,7 +709,9 @@ def containers():
             "ports": _ports(c.get("Ports", "")),
             "project": proj,
             "service": labels.get(SERVICE_LABEL, ""),
-            "ours": proj.startswith("bbdev-"),
+            # With no prefix — a sandbox VM, where nothing else is worth
+            # protecting — every compose project on it is this manager's.
+            "ours": proj.startswith(dev_prefix()),
         })
     out.sort(key=lambda c: (not c["ours"], c["project"], c["name"]))
     return {"error": "", "containers": out}
@@ -749,19 +775,80 @@ def compose_file(project, instance=MAIN):
     return None
 
 
-def _pname(project, instance=MAIN):
-    """The compose project name: namespaced, so a dev instance can never
-    collide with a container the operator runs for real — and now carrying
-    which instance of the project it is, because a project may have several.
+# What every compose project name starts with, from BB_DEV_PREFIX.
+_PREFIX_WANT = os.environ.get("BB_DEV_PREFIX", "bbdev")
 
-    Both halves are slugged and joined with a dash, which means two different
-    pairs could in principle collide (`a-b`/`c` and `a`/`b-c`). They cannot in
-    practice: the project half is a directory name under /workspace and the
-    instance half is chosen against the names already taken for that project,
-    so a collision would need two projects to exist whose slugs overlap that
-    way. Worth knowing rather than worth encoding around.
+
+def dev_prefix():
+    """The namespace, and whether this arrangement is allowed to go without one.
+
+    The prefix exists because the daemon was the SERVER's: a socket proxy
+    passes whatever it is asked, its flags being per-endpoint rather than per
+    container, so `compose --project-name plex down` would work and the only
+    thing refusing it is _guard reading this. There, the prefix is the
+    protection and an empty one hands over every container on the box.
+
+    A sandbox VM is the other case and the reason this is a setting at all.
+    That machine's whole job is being wrecked; there is nothing on it to
+    protect, so a namespace buys nothing and only makes every name longer.
+
+    So empty is honoured against `ssh://` and refused anywhere else — read from
+    the raw setting rather than through source(), because this is called for
+    every name and `ssh://` is the only address that means another machine
+    (`auto` never resolves to one).
     """
-    return f"bbdev-{_slug(project)}-{_slug(instance) or MAIN}"
+    want = _slug(_PREFIX_WANT)
+    if want:
+        return want + "-"
+    if (os.environ.get("DOCKER_HOST") or "").strip().lower().startswith("ssh://"):
+        return ""
+    return "bbdev-"
+
+
+def _pname(project, instance=MAIN):
+    """The compose project name: the prefix, then what the thing is called.
+
+    The PROJECT used to be in here as well — bbdev-<project>-<instance> —
+    which for a project called MediaReducer-Dev with an instance named after
+    it read `bbdev-mediareducer-dev-mediareducer-dev`. The project half only
+    ever bought uniqueness, and uniqueness is checked directly now
+    (taken_pnames) rather than spelled out in every name forever.
+
+    A project's default instance is named for the PROJECT, because nobody
+    typed a name for it: `main` is implied rather than chosen, and
+    `bbdev-alpha-main` was saying the same thing twice too.
+    """
+    inst = _slug(instance) or MAIN
+    return dev_prefix() + (_slug(project) if inst == MAIN else inst)
+
+
+def name_clash(project, instance=MAIN):
+    """Whether this instance's compose name is already a different one's.
+
+    Container names and PROJECT names are separate things. A project called
+    MediaReducer-Dev does not reserve `mediareducer-dev` for a container, and
+    an earlier version of this checked that it did — which made a name the
+    operator had every right to use come back refused. Nothing is reserved in
+    advance; a project blocks no name until it actually has an instance.
+
+    What cannot happen is two INSTANCES resolving to one compose project name,
+    because that is one set of containers, one env file and one data directory
+    with two rows driving them. Asked at the moment an instance is created or
+    started, which is the moment the clash becomes real rather than possible.
+
+    Which project owns an instance is not this question and is never derived
+    from the name: it is the store's own key, which is what decides whose
+    session may touch it.
+    """
+    want = _pname(project, instance)
+    for proj, insts in _load().items():
+        for inst in insts:
+            if (proj, inst) == (project, instance) or _pname(proj, inst) != want:
+                continue
+            whose = f"{proj}'s " + ("own" if inst == MAIN else f"'{inst}'")
+            return (f"{want} is already {whose} — two of them would drive one "
+                    f"set of containers, so this one needs another name")
+    return ""
 
 
 def env_path(project, instance=MAIN):
@@ -1262,6 +1349,9 @@ def create_container(name, compose_text, env_text=""):
     with _lock:
         if slug in _load():
             return {"error": f"{slug} already exists — pick another name"}
+        clash = name_clash(slug, MAIN)
+        if clash:
+            return {"error": clash}
     d = containers_dir(slug)
     try:
         d.mkdir(parents=True, exist_ok=True)
@@ -1368,6 +1458,14 @@ def create_instance(project, name):
         d = _load()
         if slug in (d.get(project) or {}):
             return {"error": f"{project} already has an instance called {slug}"}
+        # And not one that another project has taken. The name no longer
+        # carries the project, so two of them asking for `dev` would be one
+        # compose project, one env file and one data directory wearing two
+        # rows — which is the collision the old spelling prevented by being
+        # long, and this prevents by asking.
+        clash = name_clash(project, slug)
+        if clash:
+            return {"error": clash}
         _rec(d, project, slug)
         write_json(FILE, d)
     _bump()
@@ -1892,6 +1990,9 @@ def up(project, instance=MAIN, ack=""):
         return {"error": "the env is missing " + ", ".join(miss[:4])
                          + (" …" if len(miss) > 4 else "")
                          + " — fill it in first (Env)"}
+    clash = name_clash(project, instance)
+    if clash:
+        return {"error": clash}
     if not _claim(project, instance, "starting"):
         return dict(BUSY)
     try:
@@ -1961,6 +2062,9 @@ def rebuild(project, instance=MAIN, ack=""):
     gate = _risk_gate(project, instance, ack)
     if gate:
         return {"error": gate}
+    clash = name_clash(project, instance)
+    if clash:
+        return {"error": clash}
     if not _claim(project, instance, "building"):
         return dict(BUSY)
     # On disk before the work starts, so a restart can tell "this build never

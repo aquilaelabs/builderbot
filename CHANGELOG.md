@@ -98,3 +98,4 @@
 - A container cannot be given a name that collides with an existing project once punctuation is stripped — it used to quietly take over that project's data (2689ebf)
 - Dev-instance data defaults to its own share instead of a folder inside appdata, so it can be backed up and shared on its own terms (e5da442)
 - Every colour scheme is a shade brighter, and card edges, buttons and input outlines are no longer nearly invisible against their background (828f635)
+- Dev containers are named after themselves — bbdev-radarr rather than bbdev-myproject-radarr — and the bbdev prefix can be turned off entirely when Docker runs on a sandbox VM (9b69d99)

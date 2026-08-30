@@ -5261,7 +5261,8 @@ function openSendToDocker(project){
   $("dnHint").textContent =
     "It is built from " + project + "'s codebase, and rebuilding it takes "
     + "whatever that codebase says then. A project can have several — give "
-    + "each one a name you will recognise in the manager.";
+    + "each one a name you will recognise in the manager — anything, including "
+    + "a project's name, as long as no other container has it.";
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
   $("dnmodal").hidden = false;
@@ -5289,9 +5290,13 @@ const dockerSlug = (s) => (s || "").toLowerCase()
 
 function dnShow(){
   const raw = $("dnName").value, clean = dockerSlug(raw);
-  $("dnPreview").hidden = !raw.trim() || clean === raw.trim();
+  const pref = state?.dev_prefix ?? "bbdev-";
+  // Shown whenever the name it makes differs from what was typed, which with a
+  // prefix set is always: the prefix is the surprising half, and hiding the
+  // line because the slug happened to match the typing hid it too.
+  $("dnPreview").hidden = !raw.trim() || (!pref && clean === raw.trim());
   $("dnPreview").textContent = clean
-    ? `Will be created as bbdev-${dockerSlug(dnFor || "")}-${clean}`
+    ? `Will be created as ${pref}${clean}`
     : "That leaves nothing to name a container after";
 }
 

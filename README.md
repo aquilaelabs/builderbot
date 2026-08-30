@@ -313,6 +313,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
 | `GIT_PAT` | *(empty)* | A GitHub token for the whole container — every repo, every session. Still read, but a per-project token typed into the clone dialog is the better answer: it is scoped to the one repository that names it, so a token that opens twelve does not open twelve here. See below |
 | `DOCKER_HOST` | `auto` | Which Docker daemon the Artifacts tab's dev-instance controls drive. `auto` finds a running docker-socket-proxy on this container's network and re-finds it when its address moves; an explicit `tcp://host:2375` or `ssh://user@vm` is used verbatim; empty turns the feature off. An `ssh://` address pointing at a [sandbox VM](docs/sandbox-vm.md) is the arrangement where BuilderBot cannot reach the server's real containers at all. See `docs/unraid.md` |
+| `BB_DEV_PREFIX` | `bbdev` | The namespace dev-instance compose projects are named in — `bbdev-myapp` rather than `myapp`. Load-bearing where the daemon is this box's: the dashboard refuses any compose call outside it, which is what stops it reaching your real containers. Empty drops the prefix, and is honoured only when `DOCKER_HOST` is a sandbox VM, where there is nothing on the daemon to protect |
 | `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation — which is what the Unraid template ships, and is flagged on the row if the daemon turns out to be this box's own. With the dev-data share mounted here, empty leaves `BB_DEV_DATA` unset so a compose that wants it fails loudly; with a sandbox daemon that share is the sandbox's alone and needs no pair |
 | `BB_LOG_KEEP` | `5` | How many previous boots' logs to keep — the log rotates on every start |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
@@ -1715,7 +1716,7 @@ and `docs/unraid.md` — or [docs/sandbox-vm.md](docs/sandbox-vm.md), which
 moves that daemon into a VM of its own so none of this reaches the server's
 real containers): the project's compose app, built on the host daemon
 and controlled in the file rows' own language. **Up** and **Down** are
-compose against the project's own file, namespaced `bbdev-<project>` so a dev
+compose against the project's own file, namespaced `bbdev-<name>` so a dev
 instance can never collide with a container run for real. **Env** edits the
 instance's env file — kept in `/config/devenv/`, never in the repo, handed to
 compose as `--env-file`; Up stays dead while the repo's `.env.example`
@@ -1753,7 +1754,8 @@ streams those from this side.
 Two things bound what that row can reach, and they answer different halves of
 the question. The **namespace** is enforced rather than conventional: every
 docker call goes through one function, which refuses any argv that is not a
-`compose` call carrying a `--project-name` beginning `bbdev-` (plus one
+`compose` call carrying a `--project-name` beginning with the configured
+prefix, `bbdev-` by default (plus one
 `docker version`, and — only where the daemon is a sandbox VM — the three
 one-shot commands that tend the dev-data directory, recognised by rebuilding
 the exact argv rather than by allowing the verb). The socket proxy cannot do this itself — its flags are per
@@ -1769,6 +1771,32 @@ acknowledgement given every time is one nobody reads — and asked again the
 moment the file reaches for something new. It warns rather than refuses: a
 legitimate compose may genuinely want a host path, and nothing here can tell
 which.
+
+**What a container is called** is the prefix and its own name — `bbdev-radarr`,
+not `bbdev-myproject-radarr`. The project used to be in there too, which for a
+project called MediaReducer-Dev with an instance named after it produced
+`bbdev-mediareducer-dev-mediareducer-dev`.
+
+**Container names and project names are separate groups.** A project existing
+reserves nothing: a container may be called `mediareducer-dev` while a project
+is too, because they are not the same kind of thing. The one name that cannot
+be reused is another *container's* — two instances resolving to one compose
+project name would be one set of containers, one env file and one data
+directory with two rows driving them, so the second is refused and told which
+instance has it. A project's *default* instance is named for the project,
+since nobody typed a name for it.
+
+**Which project a container belongs to is tracked separately**, and is never
+read out of its name — it is the key it is stored under. That is what decides
+whose Claude session may touch it, so a project can stand up several
+containers, name them anything, and still own all of them.
+
+`BB_DEV_PREFIX` sets the prefix, and empty removes it — containers are then
+called exactly what you typed. That is honoured **only against a sandbox VM**:
+there, the daemon holds nothing worth protecting. Against a socket proxy the
+prefix is the protection — a proxy passes whatever it is asked, so `compose
+--project-name plex down` would work and the namespace check is the only thing
+refusing it — and an empty value falls back to `bbdev`.
 
 An `.apk` can be **installed** on the paired phone. `adb install -r` replaces
 an existing copy in place and keeps its data, so install and update are one
