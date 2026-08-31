@@ -1784,6 +1784,17 @@ def stray_map_entries(mapping):
     return sorted(p for p in mapping if not Path(p).is_dir())
 
 
+def _root_of(path):
+    """The first component of a path, which is the pair a mapping would name.
+
+    /devdata/binhex-sonarr/data is not what goes in DOCKER_HOST_PATHS —
+    /devdata is — and a message that suggests the bind's whole path teaches the
+    wrong shape.
+    """
+    parts = [p for p in str(path).split("/") if p]
+    return "/" + parts[0] if parts else str(path)
+
+
 def problems(project, cfg):
     """Paths this compose gives the daemon that the daemon will not find.
 
@@ -1815,11 +1826,18 @@ def problems(project, cfg):
             # as broken, and tells it to use the path it is already using.
             if there == src:
                 continue
+            # "the daemon does not have it" was the old wording, and it is a
+            # claim this side cannot make: nothing here can see the other
+            # machine's filesystem, which is the whole reason the mapping is a
+            # setting. Against a sandbox VM it was usually false as well — the
+            # share is mounted over there at the same path, and the honest
+            # answer is that BuilderBot has not been told so.
             out.append(
-                f"{name} mounts {src}, which is this container's path — the "
-                + (f"daemon calls that {there}" if there else
-                   "daemon does not have it; say where it is with "
-                   "DOCKER_HOST_PATHS"))
+                f"{name} mounts {src}, which is this container's path — "
+                + (f"the daemon calls that {there}" if there else
+                   f"and DOCKER_HOST_PATHS does not say what the daemon calls "
+                   f"it. Add a pair for it; {_root_of(src)}:{_root_of(src)} if "
+                   f"the daemon mounts the same share at the same path"))
     return out
 
 

@@ -1777,6 +1777,16 @@ not `bbdev-myproject-radarr`. The project used to be in there too, which for a
 project called MediaReducer-Dev with an instance named after it produced
 `bbdev-mediareducer-dev-mediareducer-dev`.
 
+**A path this container also mounts needs a pair, even on a sandbox VM.**
+`/workspace:/workspace` covers the projects share and nothing else. If you also
+map the dev-data share here — so you can create a compose file's bind
+directories from a shell, which is the usual reason to — then a compose
+mounting `/devdata/...` is naming a path BuilderBot has, and it will say so
+until the mapping answers for it. `/devdata:/devdata` is that answer when both
+machines mount the same share at the same path, which is the arrangement the
+sandbox is for. The alternative is to not map it here at all: what BuilderBot
+cannot see, it does not check.
+
 **Container names and project names are separate groups.** A project existing
 reserves nothing: a container may be called `mediareducer-dev` while a project
 is too, because they are not the same kind of thing. The one name that cannot

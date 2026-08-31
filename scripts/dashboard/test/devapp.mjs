@@ -561,6 +561,14 @@ out['parity'] = [mp2, bad2, m.problems('alpha', {'services': {'a': {'volumes': [
 os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
 out['falseparity'] = m.host_map()
 os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+# A bind under a path this container has that the mapping is silent about.
+# The complaint used to say "the daemon does not have it", which is a claim
+# this side cannot make — nothing here can see the other machine's filesystem,
+# which is the whole reason the mapping is a setting at all. Against a sandbox
+# VM it was usually false as well.
+os.environ['DOCKER_HOST_PATHS'] = '/workspace:/workspace'
+out['unmapped'] = m.problems('alpha', {'services': {'a': {'volumes':
+    ['/devdata/thing/data:/data']}}})
 os.environ['DOCKER_HOST_PATHS'] = '/nope:/mnt/x,garbage'
 out['junk'] = m.host_map()
 os.environ['DOCKER_HOST_PATHS'] = ''
@@ -585,6 +593,10 @@ ok(hp.parity[0]['/workspace'] === '/workspace' && !hp.parity[1].length,
    'an identity mapping is accepted without being checked against our mounts');
 ok(!hp.parity[2].length,
    '...and a bind under it is no longer a problem, because it is not one');
+ok(hp.unmapped.length === 1 && !/does not have it/.test(hp.unmapped[0])
+   && /\/devdata:\/devdata/.test(hp.unmapped[0]),
+   'an unmapped path says the mapping is silent, not that the daemon lacks it — '
+   + 'and names the pair to add');
 ok(hp.falseparity[0]['/workspace'] === '/workspace'
    && /sandbox-VM mapping/.test(hp.falseparity[1][0] || ''),
    '...but says so when that mapping is pointed at a daemon on this box');
