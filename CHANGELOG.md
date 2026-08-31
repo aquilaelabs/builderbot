@@ -108,3 +108,8 @@
 - Changing the colour scheme crossfades instead of switching instantly (4c2157a)
 - The Docker manager lists a compose file's missing bind directories and offers to create them, instead of letting docker try and fail on a share that squashes root (3f72992)
 - Dev containers have no name prefix by default, and the manager offers to migrate one whose name changed instead of leaving its data behind under the old name (f309b60)
+- Dev containers are called what you name them — no bbdev- in front. An instance built under the old name offers to migrate, and will not do it behind your back (ef31fd6)
+- The sandbox VM's address is the whole setting now: DOCKER_HOST=10.0.0.9 rather than ssh://bb@10.0.0.9 (ef31fd6)
+- Docker controls say plainly when there is no sandbox VM to run on, instead of failing once you press one (ef31fd6)
+- A compose file that mounts the dev-data share no longer reports a path error the daemon does not actually have (ef31fd6)
+- A git token is asked for per project, in the clone dialog, and nowhere else (ef31fd6)
