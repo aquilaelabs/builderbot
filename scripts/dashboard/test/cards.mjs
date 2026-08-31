@@ -13,6 +13,49 @@ await ready(page);
 const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.dataset.card));
 
 // headers are title + chevron only; doctor sits first
+// A card whose body repaints WHILE it folds. contentIn starts at opacity 0
+// and lasts 180ms, the same as the fold, so an entrance animation landing on
+// a collapsing card blanked its body at full height and faded it back in as
+// the card shut — the flicker seen on Runner and Projects, the two cards
+// whose bodies redraw from the poll and so the two a fold can collide with.
+{
+  const trace = await page.evaluate(async () => {
+    const el = document.querySelector('.card[data-card="runner"]');
+    const body = el.querySelector('#runner');
+    const out = [];
+    const sample = () => out.push({
+      h: el.offsetHeight,
+      op: Number(getComputedStyle(body).opacity).toFixed(2),
+      shown: getComputedStyle(body).display,
+    });
+    // The real order: a poll repaints the body, and the click lands inside
+    // the 180ms the entrance animation takes.
+    painted.delete(body);            // make the next paint an ARRIVING one
+    paint(body, '<div class="row"><span class="pill ok">running a job</span></div>');
+    await new Promise(r => requestAnimationFrame(r));
+    sample();
+    el.querySelector('h2').click();
+    for (let i = 0; i < 13; i++){
+      await new Promise(r => requestAnimationFrame(r));
+      sample();
+    }
+    return out;
+  });
+  const mid = trace.slice(1, -2);
+  ok(mid.every(f => f.op === '1.00'),
+     'a repaint while a card folds does not blank its body — the fold is the motion that matters');
+  ok(trace[0].h > trace[trace.length - 1].h
+     && mid.some(f => f.shown === 'block' && f.h < trace[0].h && f.h > trace[trace.length - 1].h),
+     '...and the body stays visible while the height comes down, rather than after it');
+  // Put it back: the tests below this one drag this card and read its folded
+  // state, and a card left shut by a probe is a probe changing their subject.
+  await page.click('.card[data-card="runner"] h2');
+  await page.waitForFunction(() => {
+    const c = document.querySelector('.card[data-card="runner"]');
+    return !c.classList.contains('closed') && !c.getAnimations().length;
+  }, null, { timeout: 8000 });
+}
+
 const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
 ok(hs.length === 6 && hs.every(h => h.buttons === 0 && h.chev),

@@ -240,10 +240,19 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 /* The bell, and the panel it drops. Bare on purpose: it is a state light
    first and a control second, and the header already carries four buttons
    with boxes around them. Still a real button — a bell only a mouse can
-   reach is decoration. The dot says which kind of attention: red for
-   something that went wrong and is sitting unread, amber for a session
-   blocked on an answer, because "look when you like" and "somebody is
-   waiting" are not the same message. */
+   reach is decoration.
+
+   The dot says which kind of attention, in the same three colours the rest of
+   the page uses for the same three meanings: blue for something worth
+   knowing, amber for a warning, red for a failure. It shows the WORST of what
+   is unread, not the newest — a red that a later "saved" downgraded to blue
+   is a failure you will never look at.
+
+   A request waiting on an answer outranks all three and does not merely
+   colour the dot: the bell itself goes amber and breathes, because "look when
+   you like" and "a session is blocked until you answer" are not the same
+   message and should not look alike. It stops when the request is answered or
+   times out, both of which empty the list on their own. */
 #bBell{background:none;border:0;padding:0 2px;position:relative;color:var(--dim);
   min-width:auto;min-height:var(--tap)}
 #bBell.has{color:var(--ink)}
@@ -251,8 +260,32 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 #bBell svg{width:17px;height:17px;display:block;margin:auto;fill:none;
   stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 #bBell .dot{position:absolute;top:7px;right:0;width:7px;height:7px;border-radius:50%;
-  background:var(--bad);border:2px solid var(--panel)}
+  background:var(--note);border:2px solid var(--panel)}
+#bBell .dot.warn{background:var(--warn)}
+#bBell .dot.bad{background:var(--bad)}
 #bBell .dot.ask{background:var(--warn)}
+/* Someone is blocked on an answer. Colour alone is not enough for a state
+   that wants acting on rather than reading, so the bell moves — and stops
+   moving for anyone who asked the platform for less of that.
+
+   Inverted on purpose: the BUTTON fills amber and the bell goes dark on top
+   of it, rather than the bell itself brightening. A stroked icon breathing in
+   a header of other stroked icons is easy to miss; a filled block appearing
+   where there was none is not. */
+#bBell.waiting{color:#1a1f26;border-radius:6px;padding:0 7px;
+  animation:bellwait 1.5s ease-in-out infinite}
+#bBell.waiting svg{stroke-width:1.8}
+/* The fill IS the badge — a dot on top of it is amber on amber. */
+#bBell.waiting .dot{display:none}
+@keyframes bellwait{
+  0%,100%{background:var(--warn)}
+  50%{background:color-mix(in srgb, var(--warn) 22%, var(--panel))}
+}
+/* Still unmistakable without the animation: it is filled either way, and the
+   fill is the part doing the work. */
+@media(prefers-reduced-motion:reduce){
+  #bBell.waiting{animation:none;background:var(--warn)}
+}
 .bellpanel{position:absolute;right:8px;top:100%;z-index:40;
   width:min(400px,calc(100vw - 16px));max-height:min(60vh,440px);overflow:auto;
   background:var(--panel);border:1px solid var(--line);border-top:0;
@@ -327,10 +360,24 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 .bnote:last-of-type{border-bottom:0}
 .bnote .bwhy{overflow-wrap:anywhere}
 .bnote.bad .bwhy{color:var(--bad)}
+.bnote.warn .bwhy{color:var(--warn)}
 /* Amber, and a left edge, because this one is not a record of something that
    happened — it is a question with a deadline on it. */
-.bnote.ask{border-left:3px solid var(--warn);background:#20222060}
+/* Not a notification with a different border — a different thing. It is the
+   only row here that is a question, it is pinned above every answer, and it
+   is the one the Clear button cannot touch. */
+.bnote.ask{border-left:3px solid var(--warn);background:#2a2617;
+  background:color-mix(in srgb, var(--warn) 13%, var(--panel));
+  border-bottom:1px solid var(--warn)}
 .bnote.ask .bwhy{color:var(--warn)}
+.bnote.ask .btag{display:inline-block;margin-bottom:5px;padding:1px 6px;
+  border-radius:4px;font:var(--f-tag);letter-spacing:.6px;text-transform:uppercase;
+  background:var(--warn);color:#1a1f26;font-weight:700}
+/* The two answers read as controls, not as links in a sentence. */
+.bnote.ask .acts a{padding:3px 10px;border-radius:6px;border:1px solid var(--line);
+  text-decoration:none}
+.bnote.ask .acts a[data-ballow]{background:var(--warn);color:#1a1f26;
+  border-color:var(--warn);font-weight:600}
 .bnote .bcmd{font:11px/1.5 var(--mono);color:var(--dim);overflow-wrap:anywhere;
   margin-top:3px}
 .bnote .bfoot{display:flex;gap:10px;align-items:center;margin-top:5px;
@@ -1509,6 +1556,7 @@ pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   transition:transform .18s ease,opacity .18s ease;opacity:0;pointer-events:none}
 #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
 #toast.bad{border-color:#94423d;color:var(--bad)}
+#toast.warn{border-color:var(--warn);color:var(--warn)}
 @media(prefers-reduced-motion:reduce){ #toast{transition:none} }
 
 .tabbar .newtab{border:1px solid var(--line);border-radius:6px;font-size:15px;
@@ -3144,7 +3192,18 @@ function paint(el, html){
   const arriving = was === undefined || WAITING.test(was);
   painted.set(el, html);
   el.innerHTML = html;
-  if (arriving && !WAITING.test(html) && !noMotion()){
+  // ...but never while the card around it is folding. contentIn starts at
+  // opacity 0 and takes 180ms, which is exactly the fold's duration — so a
+  // repaint landing on a collapsing card blanks its body at full height and
+  // fades it back in as the card shuts. That is the flicker on Runner and
+  // Projects and not the other cards: those two are the ones whose bodies
+  // redraw from the poll, so they are the ones a fold can collide with.
+  //
+  // Suppressed rather than delayed. The animation exists to make arriving
+  // content feel like it arrived; content arriving into something on its way
+  // shut has nowhere to arrive, and the fold is the motion that matters.
+  const folding = el.closest(".card")?.getAnimations().length > 0;
+  if (arriving && !folding && !WAITING.test(html) && !noMotion()){
     // Restarted rather than added-once: an element can arrive more than once
     // in a session, and a class already on it would not replay.
     el.classList.remove("justpainted");
@@ -4069,6 +4128,14 @@ function toggleCard(key){
 // the cards below ride along frame by frame instead of jumping.
 function slideCard(el, closing){
   if (noMotion()){ el.classList.toggle("closed", closing); return; }
+  // Any entrance animation inside this card ends here. contentIn starts at
+  // opacity 0 and runs 180ms — the same as the fold — so a body repainted in
+  // the moment before a click spent the whole collapse invisible, and the card
+  // looked like it blanked before it shut. Runner and Projects are the two
+  // whose bodies redraw from the poll, which is why they were the two that
+  // flickered. Removing the class ends the animation outright; the content is
+  // already there and the fold is the motion that matters now.
+  el.querySelectorAll(".justpainted").forEach(n => n.classList.remove("justpainted"));
   const from = el.offsetHeight;         // current frame, if one is mid-tween
   // A second click mid-tween reverses from wherever the card is now; the old
   // animation is canceled un-finished so its class write never lands.
@@ -5432,7 +5499,7 @@ function renderProjectsInto(i){
 // the way to READ a diagnosis is how you get a dashboard that has gone quiet
 // for no visible cause.
 const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],[data-dm="remove"],'
-                  + '[data-dm="rebuild"],[data-dm="mkdirs"],[data-dm="migrate-name"],'
+                  + '[data-dm="rebuild"],[data-dm="migrate-name"],'
                   + '#devSend,#bDockerNew';
 
 // The one answer, from the poll. `on` absent (an older server, a payload that
@@ -5656,25 +5723,6 @@ async function dmAction(project, instance, act, btn){
         : j.moved.length ? `moved ${j.moved.join(" and ")} to ${j.now}`
         : "nothing was left under the old name", !!j.failed?.length);
     }catch(e){ notify("migrate: " + e, true); }
-    dockerList = null; dockerRev++; loadDocker();
-    return;
-  }
-  if (act === "mkdirs"){
-    if (btn) btn.disabled = true;
-    try{
-      const r = await fetch("/api/devapp", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, instance, action: "mkdirs"})});
-      const j = await r.json();
-      if (j.failed?.length) notify(j.failed[0], true);
-      else notify(j.made.length ? `made ${j.made.length} director${
-        j.made.length === 1 ? "y" : "ies"}` : "nothing was missing");
-      // Not silent about the ones it could not: those are the mapping's
-      // problem, and the row already says so under "will not work as written".
-      if (j.unreachable?.length)
-        notify(`${j.unreachable.length} are on the daemon's disk only — `
-               + `make those over there`, true);
-    }catch(e){ notify("mkdirs: " + e, true); }
     dockerList = null; dockerRev++; loadDocker();
     return;
   }
@@ -5902,12 +5950,6 @@ function renderDockerInto(i){
           : "never built"}</div>
         ${d.ports.length ? `<div class="sub">${d.ports.map(esc).join(" · ")}</div>` : ""}
         ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
-        ${(d.mkdirs_cannot || []).length
-          // Rare: a bind at a share root itself, or a path that is not plain
-          // names. Make dirs handles everything else, on either side.
-          ? `<div class="sub warn">Make dirs cannot create:</div>`
-            + d.mkdirs_cannot.map(x =>
-                `<div class="sub warn li">${esc(x)}</div>`).join("") : ""}
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
           // phase — building, starting — and this says what the phase is
@@ -5955,10 +5997,6 @@ for the rest of the work"
               ? "take it down first — a rename with containers up leaves them writing to a path nothing will look at again"
               : "move its env and data from " + esc(d.stale_name) + " to " + esc(d.name)}"
             >Migrate</button>` : ""}
-        ${(d.mkdirs || []).length ? `<button type="button" data-dm="mkdirs" ${
-            busy ? "disabled" : ""}
-            title="create the bind directories this compose names — docker would try itself and fail on a share that squashes root"
-            >Make dirs</button>` : ""}
         <button type="button" data-dm="rebuild" ${
           // Live when the code has moved — and also when the last attempt on
           // this instance failed, which is the case that stranded the row: a
@@ -8018,10 +8056,6 @@ $("todoRevert").onclick = revertNotebook;
           ${da.stale_name ? `<div class="sub warn">its containers, env and data
               are still under <code>${esc(da.stale_name)}</code> — the name
               changed when the prefix did</div>` : ""}
-          ${(da.mkdirs || []).length ? `<div class="dim warn">${
-              da.mkdirs.length} bind director${da.mkdirs.length === 1 ? "y" : "ies"
-              } do not exist yet</div>` + da.mkdirs.map(d =>
-              `<div class="dim warn li">${esc(d)}</div>`).join("") : ""}
           ${devLines("asks for more than its own directory", da.risks, "risk")}
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
             esc((daJob.log || "").slice(-600))}</div>` : ""}
@@ -9686,13 +9720,24 @@ async function endSession(name){
 }
 
 let toastTimer = null;
+// How bad is it: "info", "warn" or "bad". The second argument was a boolean
+// and sixty-odd callers pass `true` for a failure, so `true` still means what
+// it always did and "warn" is the new middle — a caller that never learns
+// about it keeps working and keeps meaning the same thing.
+function level(v){
+  return v === true || v === "bad" ? "bad" : v === "warn" ? "warn" : "info";
+}
+
 function notify(msg, bad){
+  const lv = level(bad);
   const el = $("toast");
   el.textContent = msg;
-  el.classList.toggle("bad", !!bad);
+  el.classList.toggle("bad", lv === "bad");
+  el.classList.toggle("warn", lv === "warn");
   el.classList.add("show");
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove("show"), bad ? 7000 : 4000);
+  toastTimer = setTimeout(() => el.classList.remove("show"),
+                          lv === "info" ? 4000 : 7000);
   logNote(msg, bad);
 }
 
@@ -9712,7 +9757,10 @@ const NOTE_CAP = 50;
 let notes = [], notesSeen = 0, bellOpen = false;
 
 function logNote(msg, bad){
-  notes.unshift({msg: String(msg), bad: !!bad, at: Date.now()});
+  // `bad` is kept beside `lv` because the row's own styling and every test
+  // that reads it predate the third level; lv is what the dot is chosen from.
+  notes.unshift({msg: String(msg), bad: level(bad) === "bad",
+                 lv: level(bad), at: Date.now()});
   if (notes.length > NOTE_CAP) notes.length = NOTE_CAP;
   drawBell();
 }
@@ -9722,18 +9770,32 @@ function drawBell(){
   if (!bell) return;
   const asks = ph?.asks || [];
   const unread = Math.max(0, notes.length - notesSeen);
+  // The WORST of what is unread, not the newest. notes are unshifted, so the
+  // first `unread` of them are the new ones. A failure followed by three
+  // "saved"s is still a failure nobody has looked at.
+  const fresh = notes.slice(0, unread);
+  const worst = fresh.some(n => n.lv === "bad") ? "bad"
+              : fresh.some(n => n.lv === "warn") ? "warn"
+              : fresh.length ? "info" : "";
   const dot = bell.querySelector(".dot");
   dot.hidden = !(asks.length || unread);
-  dot.classList.toggle("ask", asks.length > 0);   // amber outranks red: one is
-  bell.classList.toggle("has", !!(asks.length || unread));   // a record, the
-  bell.title = asks.length                                   // other a wait
+  // An ask outranks every level of record: one is a thing that happened, the
+  // other is a thing that has not happened yet because it is waiting on you.
+  dot.className = "dot" + (asks.length ? " ask" : worst ? " " + worst : "");
+  bell.classList.toggle("has", !!(asks.length || unread));
+  bell.classList.toggle("waiting", asks.length > 0);
+  bell.title = asks.length
     ? `${asks.length} waiting on an answer`
     : unread ? `${unread} new` : "notifications";
-  if (!bellOpen) return;
+  // Drawn whenever it is ON SCREEN, which is the question that matters, and
+  // not when a flag says it is open — those two disagreed and the panel a
+  // reader was looking at stopped updating.
+  if (panel.hidden) return;
   const when = t => new Date(t).toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"});
   const rows = [
     // Above everything the page merely said: somebody is blocked on these.
     ...asks.map(a => `<div class="bnote ask">
+        <div class="btag">needs your answer</div>
         <div class="bwhy">${esc(a.why)}</div>
         <div class="bcmd">adb ${esc(a.cmd.join(" "))}</div>
         <div class="bfoot"><span>${a.left > 60
@@ -9741,7 +9803,7 @@ function drawBell(){
           : `${a.left}s left to answer`}</span>
           <span class="acts"><a href="#" data-bdeny="${a.id}">Deny</a>
             <a href="#" data-ballow="${a.id}">Approve</a></span></div></div>`),
-    ...notes.map(n => `<div class="bnote${n.bad ? " bad" : ""}">
+    ...notes.map(n => `<div class="bnote${n.lv === "info" ? "" : " " + n.lv}">
         <div class="bwhy">${esc(n.msg)}</div>
         <div class="bfoot"><span>${when(n.at)}</span></div></div>`),
   ];
@@ -9777,9 +9839,19 @@ function toggleBell(open){
   } else if (!panel.hidden){
     const hide = () => { panel.hidden = true; };
     if (noMotion()) hide();
-    else panel.animate([{opacity: 1, transform: "none"},
-                        {opacity: 0, transform: "translateY(-10px)"}],
-                       {duration: 120, easing: "ease"}).onfinish = hide;
+    else {
+      // oncancel as well as onfinish. Whether the panel is actually gone was
+      // decided by an animation finishing, so an animation interrupted — by a
+      // second toggle, by anything that animates this element — left bellOpen
+      // false with the panel still on screen. drawBell then returned early on
+      // the flag while the thing was in front of somebody, and it sat there
+      // showing whatever it last drew.
+      const out = panel.animate([{opacity: 1, transform: "none"},
+                                 {opacity: 0, transform: "translateY(-10px)"}],
+                                {duration: 120, easing: "ease"});
+      out.onfinish = hide;
+      out.oncancel = hide;
+    }
   }
   drawBell();
 }
@@ -9787,8 +9859,17 @@ function toggleBell(open){
 $("bBell").onclick = e => { e.stopPropagation(); toggleBell(); };
 // Anywhere else closes it, including the header around it — a panel you have
 // to aim at the bell again to shut is a panel in the way.
+//
+// Except a target that is no longer in the document. Every control in this
+// panel redraws the panel, which detaches the very button that was clicked
+// before the event finishes bubbling to here — so `panel.contains(target)`
+// answered false about a button that had been inside it a moment ago, and
+// Clear shut the whole panel as a side effect of clearing. Approve and Deny
+// did the same. isConnected is the honest question: a node that left the
+// document during its own handler was not a click somewhere else.
 document.addEventListener("click", e => {
-  if (bellOpen && !$("bellPanel").contains(e.target) && !$("bBell").contains(e.target))
+  if (bellOpen && e.target.isConnected
+      && !$("bellPanel").contains(e.target) && !$("bBell").contains(e.target))
     toggleBell(false);
 });
 document.addEventListener("keydown", e => {

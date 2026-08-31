@@ -446,10 +446,9 @@ const probs = await devLines("bad");
 ok(probs.length === 1 && /this container's path/.test(probs[0]),
    'a bind the host cannot resolve is named on its own line, before anything starts');
 
-// Migrate and Make dirs render at all. Both are drawn on THIS page from
-// fields overview() did not set, so neither had ever appeared on it: the row
-// asked for d.stale_name and d.mkdirs, got undefined, and drew nothing. Two
-// buttons that existed only in the source.
+// Migrate renders at all. It is drawn on THIS page from a field overview()
+// did not set, so it had never appeared: the row asked for d.stale_name, got
+// undefined, and drew nothing. A button that existed only in the source.
 // Its own env moved aside first: an instance that has one is set up under
 // its current name, and offering it a "migration" from a leftover — which
 // Remove deliberately leaves behind — was how a freshly created container got
@@ -466,8 +465,6 @@ await page.waitForFunction((sel) => document.querySelector(
   sel + ' [data-dm="migrate-name"]'), DM, { timeout: 20000 }).catch(() => {});
 ok(await page.$(`${DM} [data-dm="migrate-name"]`) !== null,
    'an instance with things under an old name gets the Migrate button, on the page that has the buttons');
-ok(await page.$(`${DM} [data-dm="mkdirs"]`) !== null,
-   '...and a bind under a share only the daemon has gets Make dirs, with nothing declared anywhere');
 writeFileSync(ownEnv, keptEnv);
 rmSync(`${DIR}/state/devenv/bbdev-ep-silon.env`);
 await nudge();
@@ -1096,6 +1093,61 @@ ok(MG.moved.moved.length === 2 && !MG.moved.failed.length
    '...then moves the env file and the data directory, contents and all');
 ok(/nothing to migrate/.test(MG.again.error || ''),
    '...and has nothing left to say the second time');
+
+// ...and it happens as part of starting, not as a button somebody remembers.
+// A control you must press before another control is not a step, it is a
+// trap: Up failed, and the reason was a second button sitting unpressed.
+const pre = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+here = tempfile.mkdtemp()
+os.environ['BB_MOUNTINFO'] = d + '/mi'
+open(d + '/mi', 'w').write('1 0 0:1 / ' + here + ' rw - x x rw' + chr(10))
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+os.environ['DOCKER_HOST_PATHS'] = ''
+cfg = {'services': {'a': {'image': 'x', 'volumes': [
+    here + '/wanted/config:/config', '/vm-share/media:/media']}}}
+m._config = lambda *a, **k: cfg
+m._load = lambda: {'p': {'main': {}}}
+m.compose_file = lambda *a, **k: 'docker-compose.yml'
+m.missing_env = lambda *a, **k: []
+m.name_clash = lambda *a, **k: ''
+m._risk_gate = lambda *a, **k: ''
+seen = []
+def fake(argv, timeout=60, **kw):
+    bad = m._guard(argv)
+    seen.append({'argv': argv, 'refused': bad})
+    return {'code': 126 if bad else 0, 'out': bad}
+m._run = fake
+m.up('p')
+out = {
+  # Ordered: every mkdir has to be finished before the compose that needs it.
+  'order': [('up' if 'up' in c['argv'] else 'mkdir') for c in seen
+            if 'up' in c['argv'] or 'mkdir' in c['argv']],
+  'localmade': os.path.isdir(here + '/wanted/config'),
+  'remote': [[a for a in c['argv'] if a.endswith(':/d') or a.startswith('/d/')]
+             for c in seen if 'mkdir' in c['argv']],
+  'refused': [c['refused'] for c in seen if c['refused']],
+}
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const PRE = JSON.parse(pre.trim().split('\n').pop());
+// Two mkdirs: the compose's own bind, and the per-instance dev-data
+// directory that BB_DEV_DATA points at. Asserted as "every mkdir before the
+// up" rather than as a fixed list, so adding another cannot quietly reorder
+// into starting first.
+ok(PRE.order[PRE.order.length - 1] === 'up'
+   && PRE.order.slice(0, -1).every(x => x === 'mkdir') && PRE.order.length > 1,
+   'Up makes the bind directories first and starts second, with nothing to press in between');
+ok(PRE.localmade && PRE.remote.some(r =>
+     JSON.stringify(r) === JSON.stringify(['/vm-share:/d', '/d/media'])),
+   '...on whichever side each one lives, in the same step');
+ok(!PRE.refused.length, '...and every call it makes passes the guard');
+
 
 
 // An instance is (project, name) now, and the old layout is one record per
