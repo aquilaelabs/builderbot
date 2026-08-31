@@ -801,6 +801,10 @@ out['default'] = [m.dev_prefix(), m._pname('alpha'), m._pname('alpha', 'dev')]
 m._PREFIX_WANT = ''
 out['none_on_vm'] = [m.dev_prefix(), m._pname('alpha'), m._pname('alpha', 'dev'),
                      m._guard(['docker', 'compose', '--project-name', 'plex', 'down'])]
+# The word, because a blanked Unraid template field can come back holding its
+# Default again — which round-tripped "no prefix" into bbdev on a real box.
+m._PREFIX_WANT = 'none'
+out['word'] = [m.dev_prefix(), m._pname('alpha', 'dev')]
 os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
 out['none_on_proxy'] = [m.dev_prefix(),
                         m._guard(['docker', 'compose', '--project-name', 'plex', 'down'])]
@@ -816,6 +820,8 @@ ok(PF.default[0] === 'bbdev-' && PF.default[1] === 'bbdev-alpha'
 ok(PF.none_on_vm[0] === '' && PF.none_on_vm[1] === 'alpha'
    && PF.none_on_vm[2] === 'dev' && PF.none_on_vm[3] === '',
    '...and an empty prefix against a sandbox VM gives exactly the name you typed');
+ok(PF.word[0] === '' && PF.word[1] === 'dev',
+   '...as does the word none, which survives the template round-trip a blank may not');
 ok(PF.none_on_proxy[0] === 'bbdev-' && /outside the bbdev- namespace/.test(PF.none_on_proxy[1]),
    '...but not against a socket proxy, where the namespace is the only protection');
 ok(PF.renamed[0] === 'sandbox-' && PF.renamed[1] === 'sandbox-dev'
