@@ -5432,7 +5432,7 @@ function renderProjectsInto(i){
 // the way to READ a diagnosis is how you get a dashboard that has gone quiet
 // for no visible cause.
 const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],[data-dm="remove"],'
-                  + '[data-dm="rebuild"],[data-dm="mkdirs"],[data-dm="migrate-name"],'
+                  + '[data-dm="rebuild"],[data-dm="migrate-name"],'
                   + '#devSend,#bDockerNew';
 
 // The one answer, from the poll. `on` absent (an older server, a payload that
@@ -5656,25 +5656,6 @@ async function dmAction(project, instance, act, btn){
         : j.moved.length ? `moved ${j.moved.join(" and ")} to ${j.now}`
         : "nothing was left under the old name", !!j.failed?.length);
     }catch(e){ notify("migrate: " + e, true); }
-    dockerList = null; dockerRev++; loadDocker();
-    return;
-  }
-  if (act === "mkdirs"){
-    if (btn) btn.disabled = true;
-    try{
-      const r = await fetch("/api/devapp", {method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({project, instance, action: "mkdirs"})});
-      const j = await r.json();
-      if (j.failed?.length) notify(j.failed[0], true);
-      else notify(j.made.length ? `made ${j.made.length} director${
-        j.made.length === 1 ? "y" : "ies"}` : "nothing was missing");
-      // Not silent about the ones it could not: those are the mapping's
-      // problem, and the row already says so under "will not work as written".
-      if (j.unreachable?.length)
-        notify(`${j.unreachable.length} are on the daemon's disk only — `
-               + `make those over there`, true);
-    }catch(e){ notify("mkdirs: " + e, true); }
     dockerList = null; dockerRev++; loadDocker();
     return;
   }
@@ -5902,12 +5883,6 @@ function renderDockerInto(i){
           : "never built"}</div>
         ${d.ports.length ? `<div class="sub">${d.ports.map(esc).join(" · ")}</div>` : ""}
         ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
-        ${(d.mkdirs_cannot || []).length
-          // Rare: a bind at a share root itself, or a path that is not plain
-          // names. Make dirs handles everything else, on either side.
-          ? `<div class="sub warn">Make dirs cannot create:</div>`
-            + d.mkdirs_cannot.map(x =>
-                `<div class="sub warn li">${esc(x)}</div>`).join("") : ""}
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
           // phase — building, starting — and this says what the phase is
@@ -5955,10 +5930,6 @@ for the rest of the work"
               ? "take it down first — a rename with containers up leaves them writing to a path nothing will look at again"
               : "move its env and data from " + esc(d.stale_name) + " to " + esc(d.name)}"
             >Migrate</button>` : ""}
-        ${(d.mkdirs || []).length ? `<button type="button" data-dm="mkdirs" ${
-            busy ? "disabled" : ""}
-            title="create the bind directories this compose names — docker would try itself and fail on a share that squashes root"
-            >Make dirs</button>` : ""}
         <button type="button" data-dm="rebuild" ${
           // Live when the code has moved — and also when the last attempt on
           // this instance failed, which is the case that stranded the row: a
@@ -8018,10 +7989,6 @@ $("todoRevert").onclick = revertNotebook;
           ${da.stale_name ? `<div class="sub warn">its containers, env and data
               are still under <code>${esc(da.stale_name)}</code> — the name
               changed when the prefix did</div>` : ""}
-          ${(da.mkdirs || []).length ? `<div class="dim warn">${
-              da.mkdirs.length} bind director${da.mkdirs.length === 1 ? "y" : "ies"
-              } do not exist yet</div>` + da.mkdirs.map(d =>
-              `<div class="dim warn li">${esc(d)}</div>`).join("") : ""}
           ${devLines("asks for more than its own directory", da.risks, "risk")}
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
             esc((daJob.log || "").slice(-600))}</div>` : ""}

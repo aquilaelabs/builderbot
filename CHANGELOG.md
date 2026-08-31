@@ -130,3 +130,4 @@
 - bb-sandbox stops rewriting fstab entries that have not changed, and says whether a source or just the mount options moved (f4abd25)
 - bb-sandbox list shows where a share is really mounted from, and flags it when fstab says something else (f4abd25)
 - One unreachable share no longer prints its error over every other mount's check (f4abd25)
+- Bind directories are created as part of Up and Rebuild — the Make dirs button is gone, along with having to know to press it first (3bfd4f5)

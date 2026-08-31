@@ -1783,13 +1783,18 @@ old names are what to rename back to if it goes wrong. The old name is found by
 its tail rather than by remembering, so nothing has to have been recorded for
 an old instance to be found.
 
-**Make dirs** appears on a row whose compose names bind directories that do
-not exist yet, and lists them above the buttons. Docker creates a missing bind
-source itself — as root, then chowning it — which on a share that squashes root
-fails and takes the whole run down with *operation not permitted*, leaving the
+**Bind directories are made before anything starts**, as a step of Up and
+Rebuild rather than a button somebody has to remember. A compose file names
+directories that have to exist, and docker creates a missing bind source
+itself — as root, then chowning it — which on a share that squashes root fails
+and takes the whole run down with *operation not permitted*, leaving the
 directory behind so the second press works: an intermittent-looking failure
 with a fixed cause. So they are made first, owned by whoever BuilderBot runs
 as, which is the ownership Unraid expects.
+
+It was a button for one release, and that was a mistake worth naming: a
+control you have to press before another control is not a step, it is a trap.
+Nothing about it was ever a decision.
 
 Made on whichever side can reach them, which is not something to think about:
 a share this container mounts is a local `mkdir`, and anything else is a
@@ -1806,10 +1811,12 @@ compared whole, the mount must be a single plain-named share root, and every
 path in it is plain names only, so the reach stays a `mkdir -p` as an ordinary
 user on a machine built to be wrecked.
 
-`mkdir -p` throughout, so pressing it twice is the same as pressing it once.
-A directory made over there cannot be seen from here afterwards, so what was
-made is recorded against the instance — otherwise the row would go on naming
-three missing directories after the button that made them.
+`mkdir -p` throughout, so one that already exists is left alone and starting
+twice does the same thing once. A directory made over there cannot be seen
+from here afterwards, so what was made is recorded against the instance. What
+could not be made is written into the job log and the compose runs anyway —
+letting compose say what actually went wrong beats refusing on this side's
+reading of a file compose is about to read for itself.
 
 **A path this container also mounts needs a pair, even on a sandbox VM.**
 `/workspace:/workspace` covers the projects share and nothing else. If you also

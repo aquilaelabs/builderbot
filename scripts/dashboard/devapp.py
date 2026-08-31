@@ -1253,7 +1253,6 @@ def overview():
             mine = by_proj.get(pn, [])
             rec = _read_rec(project, inst)
             same_daemon = rec.get("daemon") == daemon_id()
-            _mk = missing_dirs(project, _config(project, inst), inst)
             out.append({
                 "project": project, "instance": inst, "name": pn,
                 "running": any(c["state"] == "running" for c in mine),
@@ -1277,17 +1276,13 @@ def overview():
                 "changed": True if filed else (
                     not (rec.get("rev") if same_daemon else "")
                     or (same_daemon and rec.get("rev") != head) or dirty),
-                # The two buttons that only ever rendered on this page and
-                # were fed by fields this function did not set, so neither has
-                # ever appeared on it: Migrate, which is the whole answer to a
-                # renamed instance, and Make dirs, which is what stops docker
-                # creating a bind source as root and failing on a share that
-                # squashes it. stale_name is a directory listing; mkdirs is
-                # one `compose config` per instance, which this page can afford
-                # because it is drawn when something moved rather than on a
-                # heartbeat — see job_rev, which the log does not bump.
+                # Migrate is drawn from this, and only ever rendered on this
+                # page — it was fed by a field this function did not set, so it
+                # had never appeared at all. A directory listing, which this
+                # can afford. The bind directories are NOT here: they are made
+                # as part of starting now, so nothing on this page asks about
+                # them and no row costs a `compose config` to draw.
                 "stale_name": stale_name(project, inst),
-                "mkdirs": _mk[0], "mkdirs_cannot": _mk[1],
                 "changed_why": ("moved" if same_daemon and rec.get("rev")
                                 and rec.get("rev") != head
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
@@ -1818,6 +1813,33 @@ def missing_dirs(project, cfg, instance=MAIN):
     return sorted(make), sorted(cannot)
 
 
+def ensure_dirs(project, instance=MAIN):
+    """Make the bind directories, as the step before starting rather than a
+    button somebody has to remember.
+
+    It was a button, and a button you must press before another button is not
+    a step — it is a trap: Up failed, and the reason it failed was a control
+    sitting unpressed two inches away. Nothing about the decision was ever the
+    operator's. Docker will create a missing bind source itself if this does
+    not, as root, which is the failure the whole mechanism exists to avoid.
+
+    Never fatal. What it could not make is reported into the job log and the
+    compose runs anyway: the honest order is to try, then let compose say what
+    actually went wrong, rather than refusing on this module's own reading of
+    a file compose is about to read for itself.
+    """
+    r = make_dirs(project, instance)
+    if r.get("made"):
+        _log_line(f"made {len(r['made'])} bind director"
+                  f"{'y' if len(r['made']) == 1 else 'ies'}\n")
+    for line in r.get("failed") or []:
+        _log_line(f"could not make {line}\n")
+    for d in r.get("unreachable") or []:
+        _log_line(f"{d} is not BuilderBot's to make — docker will try it "
+                  f"as root\n")
+    return r
+
+
 def make_dirs(project, instance=MAIN):
     """Create the bind directories this container can reach. (made, failed).
 
@@ -2231,6 +2253,7 @@ def up(project, instance=MAIN, ack=""):
     if not _claim(project, instance, "starting"):
         return dict(BUSY)
     try:
+        ensure_dirs(project, instance)
         # `compose up -d`, and nothing more clever: compose builds an image
         # that is missing, so Up on a never-built project does what the CLI
         # does rather than refusing on a rule of this dashboard's invention.
@@ -2379,6 +2402,7 @@ def _worker(project, instance=MAIN):
             return
         _job["step"] = "starting"
         _bump()
+        ensure_dirs(project, instance)
         # Streamed too: `up` pulls anything the build did not, which is the
         # long wait on a compose file made of published images rather than a
         # Dockerfile — exactly the case that looked like a hang.
