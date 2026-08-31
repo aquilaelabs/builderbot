@@ -158,15 +158,45 @@ def _hold_child(proc):
         _child[0] = proc
 
 
+def _progress_key(line):
+    """What a compose progress line is ABOUT, or "" if it is not one.
+
+    Compose writes progress as `<thing> <name> <state>`: an id and a verb and
+    a number that moves. On a terminal it rewrites the line in place; with no
+    terminal it writes a new one per tick, which is how a single layer becomes
+    thirty lines of `5a96bc599c67 Extracting 2B` in the tail.
+
+    The first two words are the thing being talked about, so two lines sharing
+    them are two frames of one animation and only the last is worth keeping.
+    Three words minimum, so a sentence is never treated as a progress frame.
+    """
+    parts = line.split()
+    return " ".join(parts[:2]) if len(parts) >= 3 else ""
+
+
 def _log_line(line):
     """One line from a running command, appended and trimmed.
+
+    A line that supersedes the one before it REPLACES it, which is what makes
+    this readable: without it a pull of one image is hundreds of near-identical
+    lines, the tail holds nothing but the last layer, and whatever went wrong
+    scrolled past long before anybody looked.
 
     Written without the lock: this runs per line of a docker pull, the readers
     are a poll loop copying a string, and python's own assignment is atomic
     enough for a display. Correctness here is "the tail is recent", not "the
     tail is a consistent snapshot".
     """
-    _job["log"] = (_job["log"] + line)[-LOG_TAIL:]
+    text = _job["log"]
+    # The last line, with its newline if it had one. Taken from the text rather
+    # than kept alongside it, so a trim to LOG_TAIL cannot leave the two
+    # disagreeing about what the last line was.
+    body = text[:-1] if text.endswith("\n") else text
+    last = text[body.rfind("\n") + 1:]
+    key = _progress_key(line)
+    if last and (last == line or (key and key == _progress_key(last))):
+        text = text[:len(text) - len(last)]
+    _job["log"] = (text + line)[-LOG_TAIL:]
 
 
 def _claim(project, instance, step):
@@ -1184,6 +1214,7 @@ def overview():
             mine = by_proj.get(pn, [])
             rec = _read_rec(project, inst)
             same_daemon = rec.get("daemon") == daemon_id()
+            _mk = missing_dirs(project, _config(project, inst))
             out.append({
                 "project": project, "instance": inst, "name": pn,
                 "running": any(c["state"] == "running" for c in mine),
@@ -1200,13 +1231,24 @@ def overview():
                 "await_env": bool(rec.get("await_env")) if same_daemon else False,
                 "compose": compose_file(project, inst) is not None,
                 "source": "file" if filed else "project",
-                # Both are file reads and one git call, which is why they are
-                # here and risks/problems are not: those parse the compose
-                # file, and the manager lists every instance at once.
+                # A file read and one git call. risks/problems stay out —
+                # those are judgements to put in front of somebody about to
+                # press a button, and belong on the row that asked.
                 "missing_env": missing_env(project, inst),
                 "changed": True if filed else (
                     not (rec.get("rev") if same_daemon else "")
                     or (same_daemon and rec.get("rev") != head) or dirty),
+                # The two buttons that only ever rendered on this page and
+                # were fed by fields this function did not set, so neither has
+                # ever appeared on it: Migrate, which is the whole answer to a
+                # renamed instance, and Make dirs, which is what stops docker
+                # creating a bind source as root and failing on a share that
+                # squashes it. stale_name is a directory listing; mkdirs is
+                # one `compose config` per instance, which this page can afford
+                # because it is drawn when something moved rather than on a
+                # heartbeat — see job_rev, which the log does not bump.
+                "stale_name": stale_name(project, inst),
+                "mkdirs": _mk[0], "mkdirs_cannot": _mk[1],
                 "changed_why": ("moved" if same_daemon and rec.get("rev")
                                 and rec.get("rev") != head
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
@@ -1494,8 +1536,15 @@ def _config(project, instance=MAIN):
     relative paths made absolute against the project directory.
 
     None when it cannot be read, which every caller has to treat as the
-    cautious answer rather than as "nothing here". Fetched once per poll
-    because state() asks it two separate questions.
+    cautious answer rather than as "nothing here".
+
+    Deliberately not memoised. A cache on the compose file's mtime is wrong:
+    what compose resolves also depends on an `include:`, an `extends:`, a
+    `.env` beside the file — none of which that key can see, and a stale
+    resolved compose means the row judges a file nobody has any more. The call
+    is a subprocess, so the discipline is asking it once per answer rather
+    than making it cheap to ask carelessly: state() does that for one row, and
+    overview() for the listing it draws.
     """
     r = _run(_compose(project, instance, "config", "--format", "json"), timeout=30)
     if r["code"] != 0:
@@ -2095,8 +2144,15 @@ def up(project, instance=MAIN, ack=""):
                  env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,
                  sink=_log_line, hold=_hold_child)
         if _job["aborting"]:
+            _job.update(error="stopped", step="")
             return {"error": "stopped"}
         if r["code"] != 0:
+            # On the JOB as well as in the reply. The reply reaches the one
+            # browser that pressed the button; the job is what the row reads,
+            # and without this a failed Up cleared itself on release — the
+            # tail and the reason vanished on the next poll, leaving a row
+            # that said "stopped" with no account of why it had not started.
+            _job.update(error=("up failed:\n" + r["out"])[-500:], step="")
             return {"error": ("compose up failed:\n" + r["out"])[-500:]}
     finally:
         _release()
@@ -2130,8 +2186,12 @@ def down(project, instance=MAIN):
     finally:
         _release()
     if stopped:
+        _job.update(error="stopped", step="")
+        _bump()
         return {"error": "stopped"}
     if r["code"] != 0:
+        _job.update(error=("down failed:\n" + r["out"])[-500:], step="")
+        _bump()
         return {"error": ("compose down failed:\n" + r["out"])[-500:]}
     _bump()
     return {"ok": True}

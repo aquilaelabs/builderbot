@@ -5913,6 +5913,20 @@ function renderDockerInto(i){
           : "never built"}</div>
         ${d.ports.length ? `<div class="sub">${d.ports.map(esc).join(" · ")}</div>` : ""}
         ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
+        ${(d.mkdirs_cannot || []).length
+          // The half Make dirs cannot reach, said before the press rather than
+          // discovered after it. Docker creates a missing bind source itself,
+          // as root — which on a share that squashes root fails with `chown:
+          // operation not permitted`, takes the whole run down, and leaves the
+          // directory behind so the second press works. Silence here is what
+          // made that read as an intermittent bug in the compose file.
+          ? `<div class="sub warn">${d.mkdirs_cannot.length} bind director${
+              d.mkdirs_cannot.length === 1 ? "y is" : "ies are"} missing and not
+              BuilderBot's to make — the daemon will create ${
+              d.mkdirs_cannot.length === 1 ? "it" : "them"} as root, which fails
+              on a share that squashes root</div>`
+            + d.mkdirs_cannot.map(x =>
+                `<div class="sub warn li">${esc(x)}</div>`).join("") : ""}
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
           // phase — building, starting — and this says what the phase is
@@ -5920,7 +5934,13 @@ function renderDockerInto(i){
           // slow download from a hang. Raw, and deliberately not parsed into a
           // bar: docker rewrites a line per layer per tick, and turning that
           // into a percentage is the thing the packages tab gave up on.
-          ? `<pre class="dmlog"${busy ? ' data-tail="1"' : ""}>${
+          // Tailed whether or not it is still running. The row only
+          // repaints when something moved, so this is not a fight with the
+          // reader's scrolling — and the end is where the reason is: a failed
+          // job rendered its last 1200 characters scrolled to the TOP, which
+          // on anything that pulled an image is the middle of the download
+          // and never the error that ended it.
+          ? `<pre class="dmlog" data-tail="1">${
               esc((job.log || "").slice(-1200))}</pre>` : ""}
         <details class="dmwire"><summary>ports and mounts</summary>
           <div class="wire">reading…</div></details>
@@ -5958,12 +5978,21 @@ for the rest of the work"
             busy ? "disabled" : ""}
             title="create the bind directories this compose names — docker would try itself and fail on a share that squashes root"
             >Make dirs</button>` : ""}
-        <button type="button" data-dm="rebuild" ${!d.changed || busy ? "disabled" : ""}
+        <button type="button" data-dm="rebuild" ${
+          // Live when the code has moved — and also when the last attempt on
+          // this instance failed, which is the case that stranded the row: a
+          // build records itself before the `up` that follows it, so an up
+          // that failed left Rebuild asleep on the grounds that the build was
+          // current. It was; the run was not, and retrying it is the obvious
+          // thing to want from a row that just went red.
+          (!d.changed && !(mine && job.error)) || busy ? "disabled" : ""}
           title="${!d.built_rev
             ? "build the first image, then bring it up"
             : d.changed
               ? "build from " + esc(d.project) + "'s codebase, then down and up"
-              : "the last build is current — this wakes when the code moves"}">${
+              : (mine && job.error)
+                ? "run it again — the last attempt did not finish"
+                : "the last build is current — this wakes when the code moves"}">${
           d.built_rev ? "Rebuild" : "Build"}</button>
       </span>
     </div>`;
@@ -6005,9 +6034,10 @@ for the rest of the work"
     <div class="macros"><button id="bDockerNew">New container…</button
       ><button id="bDockerRe">Refresh</button></div></div>`;
   gateDocker(el);
-  // A tail follows its own bottom while the job is running, and stops as soon
-  // as it is not: a finished log should stay where you scrolled it, and one
-  // that yanked itself down on every poll would be unreadable while it worked.
+  // Every tail sits at its own bottom after a draw. The list repaints only
+  // when the job moved, so between draws the reader keeps whatever scroll
+  // they chose; what this stops is a redraw putting them back at the top of
+  // output whose point is at the end.
   el.querySelectorAll('.dmlog[data-tail="1"]').forEach(t => {
     t.scrollTop = t.scrollHeight;
   });
