@@ -142,3 +142,4 @@
 - A container written in the manager says Rebuild once it is built, and knows when its compose or env has moved since (3cf7e67)
 - Saving a container's compose or env offers to rebuild it, rather than leaving the change on disk unmentioned (3cf7e67)
 - A session's line in the Sessions list says what it is working on only while it is working, instead of keeping the last thing it did (2d6f5ec)
+- A compose install no longer ships a Docker setting the code refuses — DOCKER_HOST defaults to empty, not to a mode that no longer exists (9f0b661)

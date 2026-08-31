@@ -25,7 +25,6 @@ import io
 import json
 import os
 import re
-import shutil
 import tarfile
 import threading
 import time
@@ -294,11 +293,3 @@ def _ci_entries():
             out.append({"path": f, "arc": f"ci/{repo.name}/{f.name}",
                         "bytes": st.st_size, "mtime": int(st.st_mtime)})
     return out
-
-
-def disk_free():
-    """Bytes free where the logs are, for the panel to say so."""
-    try:
-        return shutil.disk_usage(log_dir()).free
-    except OSError:
-        return 0

@@ -27,12 +27,8 @@ PGID="${PGID:-100}"
 # the environment every builder process inherits.
 # Values stashed for the root helper and registered for log redaction.
 #
-# There is no container-wide git token in here any more. GIT_PAT was one
-# credential for every repository and readable by every session — its own
-# comment had to explain why that was acceptable — and a per-project token
-# replaced it: typed into the clone dialog, stored at /config/gitcreds/<project>
-# and named by that repo's own .git/config. What is left is the runner's, which
-# is shielded rather than explained.
+# No git token here: a project carries its own, in the clone dialog. What is
+# left is the runner's, which is shielded rather than explained.
 SECRET_VARS=(GITHUB_PAT RUNNER_TOKEN ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN)
 
 # DOCKER_HOST is the operator's to write as the sandbox VM's address — just the

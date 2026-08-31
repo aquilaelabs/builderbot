@@ -30,14 +30,12 @@ services:
       PUID: ${PUID:-99}
       PGID: ${PGID:-100}
       TZ: ${TZ:-America/New_York}
-      # Which Docker daemon the dashboard's dev-instance controls drive.
-      # `auto` finds a socket proxy on this container's network and re-finds
-      # it when its address moves; an explicit address is used verbatim;
-      # empty turns the feature off. ssh://user@vm points it at a sandbox
-      # VM's own daemon instead, which is the arrangement where this
-      # container cannot reach the server's real containers at all —
-      # docs/sandbox-vm.md. See also docs/unraid.md.
-      DOCKER_HOST: ${DOCKER_HOST:-auto}
+      # The sandbox VM the dashboard's Docker manager and dev instances
+      # build and run on — just the address, with ssh:// and the bb account
+      # filled in at startup. Empty turns the feature off, and nothing else
+      # is accepted: that machine holds nothing and has no route to this
+      # server's containers. See docs/sandbox-vm.md.
+      DOCKER_HOST: ${DOCKER_HOST:-}
 
       # What this container's paths are called on the host, as /here:/there
       # pairs — the daemon above resolves bind-mount sources on its own
