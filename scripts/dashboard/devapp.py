@@ -842,8 +842,12 @@ def dev_prefix():
     every name and `ssh://` is the only address that means another machine
     (`auto` never resolves to one).
     """
+    # `none` is empty spelled reliably. An Unraid template field cleared to
+    # blank can come back holding its Default again on the next edit, which on
+    # this box round-tripped "no prefix" back into `bbdev` — a word survives
+    # the trip where an absence does not.
     want = _slug(_PREFIX_WANT)
-    if want:
+    if want and want != "none":
         return want + "-"
     if (os.environ.get("DOCKER_HOST") or "").strip().lower().startswith("ssh://"):
         return ""
