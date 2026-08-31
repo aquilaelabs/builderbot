@@ -1218,9 +1218,13 @@ await openManager();
 ok(await page.$eval(`${DM} .dmwire .wire`, e => /reading/.test(e.textContent)),
    'the wiring fold says nothing until it is opened');
 await page.click(`${DM} .dmwire summary`);
+// 20s like its neighbours, not 15. The fold fetches, and this is the one
+// assertion in this file that has timed out in a full run while passing 3/3
+// alone — three times now, always with a CI job or another suite sharing the
+// box. See bug #13: the code is not what is slow.
 await page.waitForFunction((sel) => /7475/.test(
   document.querySelector(sel + ' .dmwire .wire')?.textContent || ''), DM,
-  { timeout: 15000 });
+  { timeout: 20000 });
 const wire = await page.$eval(`${DM} .dmwire .wire`, e => e.textContent.replace(/\s+/g, ' '));
 ok(/7474.*7475/.test(wire), '...then the port, the container\'s side first');
 ok(/\/library/.test(wire) && /←/.test(wire),

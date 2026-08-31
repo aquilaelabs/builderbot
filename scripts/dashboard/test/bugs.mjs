@@ -138,6 +138,42 @@ ok((await ids()).slice(0, 2).join() === '3,2',
    'title A–Z orders by the words, open ones still first');
 await page.selectOption('#bugSort', 'severity');
 
+// Severity is the one sort that means nothing once a bug is closed: "how bad
+// is it" is a question about work outstanding, and a critical fixed months ago
+// above a medium fixed yesterday answers nothing anybody asked. So the closed
+// half falls back to most recently closed — the only thing that half is read
+// for — while the open half is still worst-first.
+bbBug('add', 'an old low one, closed first', '--sev', 'low');
+bbBug('add', 'a newer critical, closed after it', '--sev', 'critical');
+bbBug('fix', '4', 'closed this one first');
+// updated has one-second resolution, and the point of the assertion below is
+// that the LATER close leads — so the two have to land in different seconds.
+await new Promise(r => setTimeout(r, 1100));
+bbBug('fix', '5', 'and this one second');
+await page.evaluate(() => notebooks.get('alpha').reloadBugs());
+await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 5,
+                           { timeout: 10000 });
+const order = await ids();
+const shut = order.slice(order.indexOf('5'));
+ok(shut[0] === '5' && shut.includes('4'),
+   'sorted by severity, the closed ones run most-recently-closed first — a low '
+   + 'closed after a critical is above it');
+ok(order.indexOf('5') > order.indexOf('2'),
+   '...and every closed one is still below every open one, whatever its severity');
+// The pills carry the same three colours the bell uses for the same three
+// meanings, so a severity and a notification are not two things to learn.
+const pill = sev => page.$eval(`#bugList .bug .sev.${sev}`,
+                               e => getComputedStyle(e).color);
+ok(await pill('low') !== await pill('medium')
+   && await pill('medium') !== await pill('high'),
+   'low, medium and high are three different colours rather than three words');
+// Put the fixture back to three: the tests below count rows.
+bbBug('rm', '4', 'a fixture for the sort above');
+bbBug('rm', '5', 'a fixture for the sort above');
+await page.evaluate(() => notebooks.get('alpha').reloadBugs());
+await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 3,
+                           { timeout: 10000 });
+
 // ---- deleting a report that should not exist -------------------------------
 // Not the same act as closing one: fixed and wontfix keep the bug, because a
 // closed bug stops the same report being chased twice. This is for the report
@@ -262,7 +298,14 @@ await page.waitForFunction(() => document.querySelectorAll('#bugHist .hist').len
                            { timeout: 10000 });
 ok(await page.$eval('#bugHist .hist .note', n => /resize listener/.test(n.textContent)),
    '...and the search reads the notes, so a fix is findable by what fixed it');
-await page.click('#bugLog');
+// Escape, not the History button again: the sheet covers the whole page now,
+// so the button that opened it is behind the overlay — which is the point of
+// an overlay, and was the bug. It used to stop at the notebook's text column
+// and leave the header reachable through the gap.
+await page.evaluate(() => document.querySelector('.nbsheet:not([hidden]) .foot button')
+                            ?.click());
+await page.waitForFunction(() => !document.querySelector('.nbsheet:not([hidden])'),
+                           { timeout: 8000 });
 await page.waitForFunction(() => !document.getElementById('bugList').hidden);
 
 // One search across the whole notebook, for a session: roadmap, bugs and the
@@ -391,6 +434,40 @@ for (const [what, body] of [
   ok(r.status === 400 && r.body.error, `refused: ${what}`);
 }
 page.errors = [];
+
+
+// The history sheet covers the PAGE, not the notebook's text column. It is a
+// direct child of .nb, and `.nb > *{max-width:var(--doc-w)}` was capping the
+// fixed backdrop at 1080px of a 1280px viewport: the dim stopped short of the
+// right edge, and everything outside that strip — the header, About, the other
+// pane — stayed clickable through the gap, so two dialogs could be open at
+// once. One rule reaching one child too far.
+const sheetBox = await page.evaluate(async () => {
+  document.getElementById('bugLog').click();
+  await new Promise(r => setTimeout(r, 400));
+  const sh = document.querySelector('.nbsheet:not([hidden])');
+  const r = sh.getBoundingClientRect();
+  return {w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.x),
+          view: [window.innerWidth, window.innerHeight],
+          // Anything the operator could reach past it is a second dialog
+          // waiting to happen, so the test is "what is on top at the corners".
+          topRight: document.elementFromPoint(window.innerWidth - 4, 4) === sh,
+          bottomRight: document.elementFromPoint(window.innerWidth - 4,
+                                                 window.innerHeight - 4) === sh};
+});
+ok(sheetBox.w === sheetBox.view[0] && sheetBox.h === sheetBox.view[1] && sheetBox.x === 0,
+   'the history sheet dims the whole page, not the notebook\'s text column');
+ok(sheetBox.topRight && sheetBox.bottomRight,
+   '...so nothing outside it can be clicked while it is open, and a second dialog '
+   + 'cannot be opened over the top of it');
+// Its own Close, not getElementById: there is one sheet per notebook, so in a
+// split there are two of every id inside them.
+await page.evaluate(() => {
+  const sh = document.querySelector('.nbsheet:not([hidden])');
+  sh?.querySelector('.foot button')?.click();
+});
+await page.waitForFunction(() => !document.querySelector('.nbsheet:not([hidden])'),
+                           { timeout: 8000 });
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);

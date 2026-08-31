@@ -177,7 +177,14 @@ ok(macts.includes('forgot') && macts.includes('edited') && macts.includes('wrote
    'the memory log carries its verbs: wrote, edited, forgot');
 ok(await page.$$eval('#memHist .hist .what', ws => ws.some(w => /tabs\.md/.test(w.textContent))),
    '...naming the file each event touched');
-await page.click('#memLog');
+// Closed by the sheet's own Close, not by the button that opened it: the
+// sheet covers the whole page now, so that button is behind the overlay —
+// which is the point of an overlay, and was the bug. It used to stop at the
+// notebook's text column and leave the header reachable through the gap.
+await page.evaluate(() => document.querySelector('.nbsheet:not([hidden]) .foot button')
+                            ?.click());
+await page.waitForFunction(() => !document.querySelector('.nbsheet:not([hidden])'),
+                           { timeout: 8000 });
 await page.waitForFunction(() => !document.getElementById('memListField').hidden);
 
 // ---- what the server refuses -------------------------------------------

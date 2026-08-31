@@ -27,6 +27,10 @@ import subprocess
 import tempfile
 import threading
 import time
+
+# Beside this file. Imported up here rather than with the modules below,
+# because write_json is defined from it before any of those load.
+import statefile
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -362,31 +366,11 @@ CARDS_FILE = STATE / "cards.json"
 CARD_KEYS = ["doctor", "runner", "projects", "tools", "phone", "findings"]
 
 
-# Every state file is written the same way: to a temp file in the same
-# directory, then renamed over the real one, so a reader — including bb-tty,
-# which parses the lock list on every session launch — never sees half
-# a file. The temp name is unique per call. It used to be a fixed
-# "<name>.json.tmp", and this is a threading server: two saves landing
-# together (a slow poll and the page's debounced follow-up save were enough)
-# each opened the SAME temp file, the second truncating what the first was
-# writing, and whichever renamed first published a torn file. A reader in
-# that window got a parse error, which load_layout() reports as "no layout
-# yet" — and a page that hears that saves its default strip over the real
-# one and then, holding the revision it just wrote, ignores the server
-# until the next change. Mode 644 because mkstemp gives 600 and the files
-# were world-readable before.
-def write_json(path, obj):
-    STATE.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".", suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w") as f:
-            f.write(json.dumps(obj, indent=2) + "\n")
-        os.chmod(tmp, 0o644)
-        os.replace(tmp, path)
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.unlink(tmp)
-        raise
+# The one implementation, in statefile.py, along with the file lock that makes
+# a read-modify-write safe against the OTHER writer — a `bb` invocation, which
+# is a different process. Kept as a name here because thirty-odd call sites and
+# every configure() injection already say write_json.
+write_json = statefile.write_json
 
 
 # One lock for every read-modify-write of a state file. The revision the

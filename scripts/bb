@@ -1148,15 +1148,20 @@ spec = importlib.util.spec_from_file_location("todo", sys.argv[1])
 todo = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(todo)
 
+# The atomic write, from the module beside it rather than a copy per heredoc.
+# There were five, all still using a fixed <name>.tmp — the exact collision the
+# server's copy was changed away from — and statefile.py carries the file lock
+# that stops this process and the dashboard losing each other's writes.
+_sfs = importlib.util.spec_from_file_location(
+    "statefile", __import__("os").path.join(
+        __import__("os").path.dirname(__import__("os").path.abspath(sys.argv[1])),
+        "statefile.py"))
+statefile = importlib.util.module_from_spec(_sfs)
+_sfs.loader.exec_module(statefile)
+sys.modules["statefile"] = statefile
+write_json = statefile.write_json
 
-def write_json(path, obj):
-    """Atomic, like the server's: a half-written list is read at every session
-    start after it, which is a worse outcome than a failed write."""
-    import os
-    tmp = str(path) + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(obj, f, indent=1)
-    os.replace(tmp, path)
+
 
 
 import os
@@ -1477,15 +1482,14 @@ def load_mod(dirname, name):
     return mod
 
 
-def write_json(path, obj):
-    tmp = str(path) + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(obj, f, indent=1)
-    os.replace(tmp, str(path))
 
 
 dirname, proj, argv = sys.argv[1], sys.argv[2], sys.argv[3:]
 state = os.environ.get("DASHBOARD_STATE", "/config")
+# One implementation of the atomic write, from beside the modules it serves.
+statefile = load_mod(dirname, "statefile")
+sys.modules["statefile"] = statefile
+write_json = statefile.write_json
 todo = load_mod(dirname, "todo")
 todo.configure(write_json=write_json, state=state)
 bugs = load_mod(dirname, "bugs")
@@ -1568,15 +1572,20 @@ spec = importlib.util.spec_from_file_location("bugs", sys.argv[1])
 bugs = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bugs)
 
+# The atomic write, from the module beside it rather than a copy per heredoc.
+# There were five, all still using a fixed <name>.tmp — the exact collision the
+# server's copy was changed away from — and statefile.py carries the file lock
+# that stops this process and the dashboard losing each other's writes.
+_sfs = importlib.util.spec_from_file_location(
+    "statefile", __import__("os").path.join(
+        __import__("os").path.dirname(__import__("os").path.abspath(sys.argv[1])),
+        "statefile.py"))
+statefile = importlib.util.module_from_spec(_sfs)
+_sfs.loader.exec_module(statefile)
+sys.modules["statefile"] = statefile
+write_json = statefile.write_json
 
-def write_json(path, obj):
-    """Atomic, like the server's: a half-written tracker is worse than a
-    failed write."""
-    import os
-    tmp = str(path) + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(obj, f, indent=1)
-    os.replace(tmp, str(path))
+
 
 
 import os
@@ -1933,12 +1942,20 @@ spec = importlib.util.spec_from_file_location("findings", sys.argv[1])
 fx = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(fx)
 
+# The atomic write, from the module beside it rather than a copy per heredoc.
+# There were five, all still using a fixed <name>.tmp — the exact collision the
+# server's copy was changed away from — and statefile.py carries the file lock
+# that stops this process and the dashboard losing each other's writes.
+_sfs = importlib.util.spec_from_file_location(
+    "statefile", __import__("os").path.join(
+        __import__("os").path.dirname(__import__("os").path.abspath(sys.argv[1])),
+        "statefile.py"))
+statefile = importlib.util.module_from_spec(_sfs)
+_sfs.loader.exec_module(statefile)
+sys.modules["statefile"] = statefile
+write_json = statefile.write_json
 
-def write_json(path, obj):
-    tmp = str(path) + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(obj, f, indent=1)
-    os.replace(tmp, str(path))
+
 
 
 fx.configure(write_json=write_json,
@@ -2800,6 +2817,19 @@ spec = importlib.util.spec_from_file_location("version", sys.argv[1])
 version = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(version)
 
+# The atomic write, from the module beside it rather than a copy per heredoc.
+# There were five, all still using a fixed <name>.tmp — the exact collision the
+# server's copy was changed away from — and statefile.py carries the file lock
+# that stops this process and the dashboard losing each other's writes.
+_sfs = importlib.util.spec_from_file_location(
+    "statefile", __import__("os").path.join(
+        __import__("os").path.dirname(__import__("os").path.abspath(sys.argv[1])),
+        "statefile.py"))
+statefile = importlib.util.module_from_spec(_sfs)
+_sfs.loader.exec_module(statefile)
+sys.modules["statefile"] = statefile
+write_json = statefile.write_json
+
 # The changelog rides with the version: a bump dates its Unreleased section
 # in the same commit, so the module that bumps needs the module that rolls.
 _clpath = os.path.join(os.path.dirname(sys.argv[1]), "changelog.py")
@@ -2808,13 +2838,6 @@ changelog = importlib.util.module_from_spec(_clspec)
 _clspec.loader.exec_module(changelog)
 
 
-def write_json(path, obj):
-    """Atomic, like the server's — a half-written policy file is read at every
-    bump after it."""
-    tmp = str(path) + ".tmp"
-    with open(tmp, "w") as f:
-        json.dump(obj, f, indent=1)
-    os.replace(tmp, path)
 
 
 version.configure(workspace=os.environ.get("BB_WORKSPACE", "/workspace"),
@@ -3010,6 +3033,19 @@ import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("version", sys.argv[1])
 version = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(version)
+
+# The atomic write, from the module beside it rather than a copy per heredoc.
+# There were five, all still using a fixed <name>.tmp — the exact collision the
+# server's copy was changed away from — and statefile.py carries the file lock
+# that stops this process and the dashboard losing each other's writes.
+_sfs = importlib.util.spec_from_file_location(
+    "statefile", __import__("os").path.join(
+        __import__("os").path.dirname(__import__("os").path.abspath(sys.argv[1])),
+        "statefile.py"))
+statefile = importlib.util.module_from_spec(_sfs)
+_sfs.loader.exec_module(statefile)
+sys.modules["statefile"] = statefile
+write_json = statefile.write_json
 _clspec = importlib.util.spec_from_file_location(
     "changelog", os.path.join(os.path.dirname(sys.argv[1]), "changelog.py"))
 changelog = importlib.util.module_from_spec(_clspec)

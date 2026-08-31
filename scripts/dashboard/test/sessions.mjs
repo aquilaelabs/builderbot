@@ -159,7 +159,14 @@ await page.selectOption('.pane .nb #anaHistBar .hwhen', '0');
 await page.waitForFunction(() => /first scan/.test(
   document.getElementById('anaHist').textContent), null, { timeout: 15000 });
 ok(true, '...and says why it is empty rather than looking broken');
-await page.click('.pane .nb #anaLog');
+// Closed by the sheet's own Close, not by the button that opened it: the
+// sheet covers the whole page now, so that button is behind the overlay —
+// which is the point of an overlay, and was the bug. It used to stop at the
+// notebook's text column and leave the header reachable through the gap.
+await page.evaluate(() => document.querySelector('.nbsheet:not([hidden]) .foot button')
+                            ?.click());
+await page.waitForFunction(() => !document.querySelector('.nbsheet:not([hidden])'),
+                           { timeout: 8000 });
 await page.waitForFunction(() => document.getElementById('anaHist').hidden,
                            null, { timeout: 15000 });
 // A notebook tab survives the reload and loads itself — the restore story
