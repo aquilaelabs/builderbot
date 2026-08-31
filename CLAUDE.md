@@ -365,23 +365,16 @@ are the operator's.** If a build or the instance's env needs changing, say so
 and let them press the buttons; the env file lives outside the repo on
 purpose.
 
-Which *daemon* those buttons drive is a separate question, and what you may
-do with it depends on the answer. `DOCKER_HOST` names it:
+The daemon those buttons drive is a **sandbox VM** — `DOCKER_HOST` names a
+machine whose only job is running Docker, with no real containers on it and no
+route to the server's. That daemon **is yours**: build, run and destroy
+containers there as freely as you like. Being wrecked and reset is what it is
+for. The one courtesy is to leave alone the compose projects the dashboard has
+up, which are somebody else's instance while they are running.
 
-- **A sandbox VM** — an `ssh://user@host` address pointing at a machine whose
-  only job is running Docker, with no real containers on it and no route to
-  the server's. That daemon **is yours**: build, run and destroy containers
-  there as freely as you like. Being wrecked and reset is what it is for.
-  The one courtesy is to stay out of the `bbdev-` project names, which are
-  the dashboard's and are somebody else's instance while they are up.
-- **A socket proxy on this box** — `auto`, or a `tcp://` address, which is
-  the shipped default. Filtered, but still the *server's* daemon with every
-  real container behind it. **Not yours**: do not drive `docker` at it from a
-  session, the same rule and the same reason as the phone.
-
-If you cannot tell which of the two you have, treat it as the second and ask.
-Being wrong that way costs a question; being wrong the other way touches
-containers somebody is relying on.
+It is a sandbox VM or it is nothing: `DOCKER_HOST` unset, or naming any other
+kind of daemon, turns every dev-instance control off. Say so rather than
+driving `docker` at whatever answers.
 
 What is yours either way: keeping `docker-compose.yml` and `.env.example`
 true. The rebuild flow reads `.env.example` to know when new settings need
@@ -706,8 +699,10 @@ only when the finding is genuinely a false positive, and say why.
   work but the key files are unreadable to you. `ssh-add -l` listing a key with
   no readable file in `~/.ssh` is the expected, healthy state — not a problem
   to fix. Do not try to read, copy, or regenerate keys.
-- `gh` may be authenticated via `GIT_PAT` for API calls. If it is not, say so
-  rather than inventing another auth path.
+- `gh` is authenticated only if a session-visible `GITHUB_PAT` is set. If it is
+  not, say so rather than inventing another auth path. There is no
+  container-wide git token: a project that needs one carries its own, set in
+  the dashboard's clone dialog.
 - Never write credentials into this repository, including into test fixtures,
   `.env` files that are not gitignored, or CI config.
 
@@ -905,9 +900,9 @@ by hand cost four commands and still could not see the failed builds.
   bb-sandbox is covered. A finding names the extracted copy
   (`provision.sh-BBSANDBOX`), not the line in the outer file.
 - **Credentials here are what they are.** The operator uses SSH deploy keys
-  and opens PRs from their own desktop; `GIT_PAT` is unset on purpose, not by
-  oversight, so `gh` API calls will not work and a session should not keep
-  suggesting a token to fix that. Push the branch, print the PR link, move on.
+  and opens PRs from their own desktop; there is no container-wide git token at
+  all any more, so `gh` API calls will not work and a session should not keep
+  suggesting one to fix that. Push the branch, print the PR link, move on.
   If reading a CI run's log would help, say what you would look for and let
   the operator fetch it.
 - **Conventions:**

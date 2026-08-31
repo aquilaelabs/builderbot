@@ -25,15 +25,13 @@ before creating anything.
 Find the rows that describe what you want; you need every credential marked in
 those rows. Nothing else.
 
-| I want to… | Host GHCR token | Shielded `GITHUB_PAT` | SSH key | `GIT_PAT` |
+| I want to… | Host GHCR token | Shielded `GITHUB_PAT` | SSH key | Per-project token |
 |---|:--:|:--:|:--:|:--:|
 | Pull the image at all — *everyone needs this* | ● | | | |
 | Run Claude against the mounted projects, no remote git | ● | | | |
 | `git clone` / `pull` / `push` private repos from inside | ● | | ● | *or* ● |
-| `gh pr create`, `gh release create` from inside | ● | | ● | ● |
 | Run a self-hosted runner for **one repo** | ● | ● | | |
 | Run a self-hosted runner for the **whole org** | ● | ● | | |
-| `docker build` / push images from inside | ● | | | see note |
 
 ### What each one is, exactly
 
@@ -42,7 +40,7 @@ those rows. Nothing else.
 | **Host GHCR token** | PAT **(classic)** | `read:packages` — nothing else | Unraid host, via `docker login` (step 2). Fine-grained tokens cannot pull from GHCR |
 | **`GITHUB_PAT`** (shielded) | PAT (fine-grained), resource owner = **the org** | *One* permission — see the runner-scope table below | `/secrets/builderbot.env`, root-only. Never visible to sessions |
 | **SSH key** | ed25519, **no passphrase** | n/a — access is whatever GitHub grants the key | `/secrets/ssh/`. Loaded into a root-owned agent: usable by git, unreadable by sessions |
-| **`GIT_PAT`** | PAT (fine-grained) | *Contents*: R/W, plus *Pull requests*: R/W for PRs | `GIT_PAT` variable. Readable by sessions **by design** — see below |
+| **Per-project token** | PAT (fine-grained) | *Contents*: R/W on the one repository | Typed into the dashboard's clone dialog, stored at `/config/gitcreds/<project>` and named by that repo's `.git/config`. There is no container-wide git token |
 
 **Runner scope decides the `GITHUB_PAT` permission**, and it is the only one
 that token needs:
@@ -60,17 +58,16 @@ injects, never with this PAT.
 ### Three things that trip people up
 
 **SSH authenticates git, not the API.** A key covers `clone`/`pull`/`push`.
-It does nothing for `gh pr create`, `gh release create`, or `gh issue` — those
-are REST calls and need `GIT_PAT`. If you'd rather open PRs from your desktop,
-skip `GIT_PAT` entirely and the ssh key is your only in-container credential,
-which is the tightest arrangement available.
+It does nothing for `gh pr create` or `gh release create` — those are REST
+calls, and there is no container-wide token for them. Opening PRs from your
+desktop is the intended arrangement and the tightest one available.
 
-**`GIT_PAT` is readable by Claude, and that's unavoidable.** Over HTTPS, "git
-can authenticate with it" and "sessions can't read it" are contradictory —
-same user, same environment. Only the ssh-agent breaks that tie. Scope
-`GIT_PAT` to Contents (+ Pull requests) and it grants no reach Claude lacks
-anyway, since it already has read/write on the mounted working trees. Keep
-Administration out of it.
+**A token is readable by Claude, and that's unavoidable.** Over HTTPS, "git can
+authenticate with it" and "sessions can't read it" are contradictory — same
+user, same file. Only the ssh-agent breaks that tie. What a per-project token
+changes is the blast radius rather than the exposure: it is scoped to one
+repository and named by that repository's `.git/config`, so a token that opens
+one repo opens one repo.
 
 **Pushing images from inside** needs the (off-by-default) Docker socket *and*
 a classic token with `write:packages`; fine-grained tokens don't cover GitHub
@@ -506,8 +503,8 @@ Pick per your taste:
 | Approach | Result |
 |---|---|
 | SSH key in `secrets/ssh/` | Usable *and* unreadable — the only option that gives both |
-| `GIT_PAT` variable | Simple; session-readable by design. Scope it to **Contents** only. Claude already has read/write on the mounted trees, so this adds no reach — keep Administration in the shielded `GITHUB_PAT` |
-| `gh auth login` in a session | Same exposure as GIT_PAT, but a separate token you can revoke independently |
+| Per-project token, in the clone dialog | Session-readable by design, but scoped to the one repository that names it — a token that opens one repo opens one repo |
+| `gh auth login` in a session | Same exposure, and a separate token you can revoke independently |
 
 **How the SSH shielding works:** at startup a *root-owned* `ssh-agent` loads
 every key from `secrets/ssh/`; sessions get only the agent's socket. When
@@ -572,88 +569,31 @@ itself must send it; and `NPM_TOKEN` lands in `~/.npmrc` if you use it.
 Shielding covers the credentials with real blast radius: the PAT and the
 SSH private keys.
 
-## Dev instances: building a project's app on this box
+## Dev instances: building a project's app
 
-The dashboard's Artifacts tab can build a project's compose app locally and
-bring it up and down — no GitHub minutes, no registry round trip. It reaches
-the host's Docker daemon through a **socket proxy**, not the raw socket:
-`build`, `images`, `containers`, `networks` and `volumes` pass, `exec` and
-the swarm surface do not.
+The dashboard's Artifacts tab can build a project's compose app and bring it up
+and down — no GitHub minutes, no registry round trip. It builds on a **sandbox
+VM**: a small machine whose only job is running Docker, reached over ssh, with
+no real containers on it and no route to this server's daemon. Setting it up is
+[sandbox-vm.md](sandbox-vm.md), and it is the only arrangement.
 
-There is a way to avoid this trade rather than accept it: give the dev
-instances a Docker daemon of their own, in a VM, and BuilderBot never touches
-the server's at all — see [sandbox-vm.md](sandbox-vm.md). What follows is the
-arrangement for pointing it at *this* box's daemon.
+It used to also accept the host's own daemon through a socket proxy, and a
+mounted socket before that. Both are gone. The reason is the one that made the
+proxy uncomfortable to document: its flags are per **endpoint**, so
+`CONTAINERS=1` is the whole `/containers` API for *every* container on the box
+and no arrangement of them means "only BuilderBot's". What kept it to the
+dashboard's own containers was BuilderBot refusing anything else — a guard in
+front of a daemon that would have obeyed. A separate machine needs no guard,
+because there is nothing there to protect.
 
-Say the honest part before the steps: build + run + bind mounts is
-root-shaped power over the host however it is filtered. The proxy narrows
-the surface; it does not make the daemon safe to hand to something you do
-not trust. On a sole-operator box, with the dashboard's controls being fixed
-compose commands, that trade is reasonable — and it is yours to make, which
-is why the feature is off until you wire it.
-
-Two limits worth knowing exactly, because one of them is not the proxy's.
-The proxy's flags are per **endpoint**: `CONTAINERS=1` is the whole
-`/containers` API for *every* container on the host, and no arrangement of
-these flags means "only BuilderBot's". What keeps it to `bbdev-` containers
-is BuilderBot itself, which refuses any docker call that is not a `compose`
-call under that namespace. And a compose file can ask for the host directly
-— `privileged: true`, `network_mode: host`, a bind mount of `/` — in which
-case the container it makes is namespaced like any other and no name-based
-check catches it. So the file is read before anything starts and what it
-reaches for is named on the row and in a confirmation you have to accept
-once per set. That is a warning, not a refusal: a compose may want a host
-path for good reasons, and nothing here can tell which.
-
-1. Install **docker-socket-proxy** from Community Applications (the
-   `tecnativa` image is the usual one). Set its environment:
-   `CONTAINERS=1`, `IMAGES=1`, `BUILD=1`, `NETWORKS=1`, `VOLUMES=1`,
-   `INFO=1`, `POST=1` — and leave `EXEC` and the swarm flags at their
-   default `0`. **`POST=1` is the one people miss**: without it every call
-   is read-only and nothing can be built or started. A fresh proxy denies
-   all of these — that is it working, not it broken.
-
-   You do **not** need to allow container attach, and should not: builds go
-   through the classic builder, which runs entirely daemon-side on the
-   `POST /build` endpoint `BUILD=1` governs. Compose's default BuildKit path
-   boots a helper container and attaches to it — a hijacked connection near
-   enough to `exec` that a proxy worth having refuses it (`unable to upgrade
-   to tcp, received 403`). BuilderBot asks for the classic builder on
-   purpose, so the permission set above is the whole of what it needs.
-2. In BuilderBot's template, leave **Docker proxy address** at `auto` — it
-   finds the proxy on its own network by asking each address for `/version`,
-   which is what a proxy answers even at its most locked-down defaults, and
-   re-finds it when the address moves. Bridge-assigned IPs *do* move, when
-   containers restart in a different order, which is why `auto` beats
-   pasting one in. Publish the proxy's port to the host and
-   `tcp://172.17.0.1:2375` becomes a stable explicit answer if you prefer
-   one. Optionally set the **Dev instance data** path — where dev volumes
-   land when a project's compose opts in with `${BB_DEV_DATA}/...`. Give it a
-   share of its own rather than a folder inside `appdata`: Unraid exports and
-   backs up *shares*, so anything under appdata cannot be handed to a sandbox
-   VM or backed up without every other container's configuration coming with
-   it. **Host path mapping** in the same section has to be
-   changed for this arrangement, and the template's value is the reason: it
-   ships as `/workspace:/workspace`, which is the [sandbox VM](sandbox-vm.md)
-   — the daemon on another machine, mounting the shares at the paths this
-   container uses. A daemon on *this* box resolves a compose file's bind-mount
-   *sources* on the host's own filesystem, so it has to be told what
-   `/workspace` and `/devdata` are called over there:
-   `/workspace:/mnt/user/development/projects`, plus a pair for the dev-data
-   path if you set one. Docker does not fail on a source that is missing — it
-   creates an empty directory and mounts that, and on Unraid the root
-   filesystem is RAM, so the app starts with no data and loses it again at
-   reboot. Get this wrong and BuilderBot says so on the project's row rather
-   than letting it happen quietly — including the shipped value left in
-   place, which is the one shape it cannot check by measurement.
-3. Restart BuilderBot. A project with a `docker-compose.yml` now shows the
-   dev-instance row at the top of its Artifacts tab; one without shows
-   nothing new.
-
-The instance's env file lives in `/config/devenv/<project>.env` — edit it
-from the row's **Env** button. Rebuild stops for you when the repo's
-`.env.example` gains keys your env does not set, with your old values
-preserved in comments.
+One limit survives the move, because it is not the daemon's. A compose file can
+ask for the machine directly — `privileged: true`, `network_mode: host`, a bind
+mount of `/` — and the container it makes is a container like any other. So the
+file is read before anything starts, what it reaches for is named on the row,
+and a confirmation is asked once per set. That is a warning rather than a
+refusal: a compose may want a host path for good reasons, and nothing here can
+tell which. On a machine that exists to be wrecked it is information rather
+than a gate.
 
 ## First-run checks
 
@@ -735,15 +675,11 @@ dashboard's Tools tab.
 
 ## Notes and gotchas
 
-**The Docker socket is OFF by default.** Mapping `/var/run/docker.sock` gives
-the container control of the host Docker daemon — anything inside could start
-a privileged container and execute code on the host as root. It ships
-disabled (empty template field / commented compose line). Without it, the
-container cannot touch the host: repo mounts only expose those directories,
-`/dev/kvm` only accelerates the emulator, and container-root is not host-root.
-Enable the socket only if you want `docker build`/`docker compose`/GHCR
-pushes available inside, and accept the trade. The startup scripts detect its
-absence and skip Docker-related setup cleanly.
+**The container cannot touch the host's Docker.** There is no socket to mount
+and no proxy to point at: docker work happens on the sandbox VM, over ssh, on a
+machine that holds nothing. The repo mounts expose those directories and
+nothing else, `/dev/kvm` only accelerates the emulator, and container-root is
+not host-root.
 
 **Where the logs are.** Four places, by purpose:
 

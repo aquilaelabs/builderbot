@@ -85,7 +85,6 @@ decisions you need to make.
 | **GHCR pull token** — classic PAT, `read:packages` scope only | On the Unraid **host** (`docker login`) | Lets the server pull the private image. Fine-grained PATs don't work for GHCR pulls |
 | **Runner PAT** — fine-grained, owned by the org. Repo runner: *Administration R/W*. Org runner: *Self-hosted runners R/W*. Nothing else | In the **secrets folder** (recommended) or the `GITHUB_PAT` variable | Mints runner registration tokens — that is its only job. Skip if `ENABLE_RUNNER=false` |
 | **Git SSH key(s)** | `secrets/ssh/` (shielded) or `home/.ssh/` (simple) | `git clone/pull/push` in your projects. Shielded keys are usable but unreadable |
-| **`GIT_PAT`** — fine-grained, *Contents R/W* (+ *Pull requests R/W*) | `GIT_PAT` variable — session-readable by design | Only for **GitHub API** calls from inside (`gh pr create`, `gh release create`). Not needed if ssh covers your git usage |
 
 ### 1. Authorize the server to pull the image (one-time)
 
@@ -288,7 +287,6 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `SHUTDOWN_GRACE` | `90` | Seconds a stop may spend deregistering the runner, powering down the emulator and ending Claude sessions. Unraid caps this with its own Docker Stop Timeout (default **10**) — raise that if you want the full drain |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
-| `GIT_PAT` | *(empty)* | GitHub **API** auth for `gh` from inside (`gh pr create`). Session-readable by design; not needed if ssh covers your git usage |
 | `SDK_ROOT` | `/sdk` | Where the SDKs *you* install are kept — see [SDKs live outside the image](#sdks-live-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: the runner keeps its own toolchains under `RUNNER_WORKDIR` |
 | `RUNNER_WORKDIR` | `/workspace/_work` | Everything the runner owns: job checkouts, the `_tool` cache `actions/setup-*` fills, cached actions, and `_diag` logs. Mapped to `appdata/BuilderBot/work` by the template |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create system images and AVDs at startup |
@@ -311,16 +309,14 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
-| `GIT_PAT` | *(empty)* | A GitHub token for the whole container — every repo, every session. Still read, but a per-project token typed into the clone dialog is the better answer: it is scoped to the one repository that names it, so a token that opens twelve does not open twelve here. See below |
-| `DOCKER_HOST` | `auto` | Which Docker daemon the Artifacts tab's dev-instance controls drive. `auto` finds a running docker-socket-proxy on this container's network and re-finds it when its address moves; an explicit `tcp://host:2375` or `ssh://user@vm` is used verbatim; empty turns the feature off. An `ssh://` address pointing at a [sandbox VM](docs/sandbox-vm.md) is the arrangement where BuilderBot cannot reach the server's real containers at all. See `docs/unraid.md` |
-| `BB_DEV_PREFIX` | `bbdev` | The namespace dev-instance compose projects are named in — `bbdev-myapp` rather than `myapp`. Load-bearing where the daemon is this box's: the dashboard refuses any compose call outside it, which is what stops it reaching your real containers. `none` or empty drops the prefix (the word is the spelling that survives Unraid's template round-trip), honoured only when `DOCKER_HOST` is a sandbox VM, where there is nothing on the daemon to protect |
+| `DOCKER_HOST` | *(empty)* | The [sandbox VM](docs/sandbox-vm.md) the Docker manager and the dev-instance controls build and run on. Just the address — `10.0.0.9` — with `ssh://` and the `bb` account that `vm/provision.sh` makes filled in; write `ssh://someone@host` out in full if the account differs. Empty turns the feature off, and so does anything that is not a sandbox VM: every control greys out wearing the reason |
 | `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation — which is what the Unraid template ships, and is flagged on the row if the daemon turns out to be this box's own. With the dev-data share mounted here, empty leaves `BB_DEV_DATA` unset so a compose that wants it fails loudly; with a sandbox daemon that share is the sandbox's alone and needs no pair |
 | `BB_LOG_KEEP` | `60` | A ceiling on kept generations, not the retention policy — how long logs are kept is a number of days, set in the dashboard's settings menu. This exists so a crash loop cannot fill the directory |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
 Mounts: the projects folder, three state dirs (`home`, `config`, `work`), and
 three optional ones — `/secrets` (ro, shielded credentials), `/logs`
-(relocate logs), `/var/run/docker.sock` (host Docker, off by default).
+(relocate logs).
 
 ## Security model, in short
 
@@ -1059,7 +1055,7 @@ lives in its body. The cards:
   touched) and clones through the alias — which the remote then keeps, so
   later pushes offer the right key too. Only the matched agent key's own
   public line is ever written; nothing from the request is. With a PAT
-  configured (`GIT_PAT`, or `gh auth login`) the key is optional even for
+  configured (a per-project token, or `gh auth login`) the key is optional even for
   private repos — gh answers for plain https remotes.
   A local repo with **no remote at all** wears a chain icon beside its eye:
   **link to GitHub**. It asks the same two questions as a clone — URL and
@@ -1176,7 +1172,7 @@ function, so the two cannot disagree about which daemon is live.
 each carrying the reason as its tooltip, and the manager tab says the same
 thing in words at the top — a tooltip is not reachable on a phone, and *"why is
 everything greyed out"* should be answered by looking. That is `DOCKER_HOST`
-unset, a socket proxy that does not answer, or a sandbox VM this container
+unset, or a sandbox VM this container
 cannot reach; `available()` in `devapp.py` already distinguishes them, and the
 answer rides the status poll memoised, because asking it properly is a
 subprocess and the poll is the page's heartbeat.
@@ -1711,13 +1707,12 @@ warnings keep is the set that is invisible otherwise: `privileged`, added
 capabilities, host devices, and the host's process or network namespace —
 the flags that make a container more than a container. It appears when the project
 carries a compose file
-and `DOCKER_HOST` points at a Docker daemon (see the configuration reference
-and `docs/unraid.md` — or [docs/sandbox-vm.md](docs/sandbox-vm.md), which
-moves that daemon into a VM of its own so none of this reaches the server's
-real containers): the project's compose app, built on the host daemon
-and controlled in the file rows' own language. **Up** and **Down** are
-compose against the project's own file, namespaced `bbdev-<name>` so a dev
-instance can never collide with a container run for real. **Env** edits the
+and `DOCKER_HOST` points at the [sandbox VM](docs/sandbox-vm.md) — a machine
+whose only job is running Docker, which is what keeps all of this away from
+the server's real containers: the project's compose app, built over there and
+controlled in the file rows' own language. **Up** and **Down** are compose
+against the project's own file, under a compose project named for the
+instance. **Env** edits the
 instance's env file — kept in `/config/devenv/`, never in the repo, handed to
 compose as `--env-file`; Up stays dead while the repo's `.env.example`
 declares keys the env does not answer, because starting a service against an
@@ -1729,17 +1724,17 @@ example with the old values preserved in comments, and leaves Up for the
 operator. Before the first build the button reads
 **Build**, and nothing is built until it is pressed. A compose that
 references `${BB_DEV_DATA}/...` gets its volumes on the cache drive by
-convention — in a per-instance directory made by whichever side can see it,
-which where the daemon is a sandbox VM is the sandbox, so that share is
-mounted there and not here. BuilderBot itself gets the row too — the dev instance is
-`bbdev-builderbot`, a second container, never the one you are using; expect
+convention — in a per-instance directory the VM makes itself, so that share is
+mounted over there and needs no mount here at all. BuilderBot itself gets the
+row too, as a second container on another machine, never the one you are
+using; expect
 `up` to refuse while the real one holds the same host ports, which is the env
 file's job to change.
 
 **The daemon's filesystem is not this container's**, and that is the one thing
 about a remote daemon easy to forget and impossible to see: a bind mount's
 *source* is resolved by whoever runs the container, which is the host.
-`/workspace/alpha` and `/devdata/bbdev-alpha` mean something here and nothing
+`/workspace/alpha` and `/devdata/alpha` mean something here and nothing
 over there — and docker answers a missing bind source by creating an empty
 directory and mounting that, so on Unraid, whose root filesystem is RAM, the
 result is an app that starts with no data and loses it again at reboot. It
@@ -1751,19 +1746,15 @@ press Up. Absolute host paths, which is what a working compose here already
 writes, are unaffected. Build contexts are unaffected too: the classic builder
 streams those from this side.
 
-Two things bound what that row can reach, and they answer different halves of
-the question. The **namespace** is enforced rather than conventional: every
-docker call goes through one function, which refuses any argv that is not a
-`compose` call carrying a `--project-name` beginning with the configured
-prefix, `bbdev-` by default (plus one
-`docker version`, and — only where the daemon is a sandbox VM — the three
-one-shot commands that tend the dev-data directory, recognised by rebuilding
-the exact argv rather than by allowing the verb). The socket proxy cannot do this itself — its flags are per
-*endpoint*, so `CONTAINERS=1` is the whole `/containers` API for every
-container on the host — so the invariant is asserted at the one place every
-call passes through. The **compose file** is the other half, and the one no
-namespace can bound: a file that says `privileged: true` and mounts `/`
-produces a `bbdev-` container like any other. So it is read before anything
+The boundary is the machine: a VM holding nothing anybody minds losing. What
+the code adds bounds the **shape** of what gets sent rather than what it may
+reach — every docker call goes through one function, which refuses any argv
+that is not a `compose` call carrying a `--project-name`, two reads (`version`
+and `ps`), or one of the three one-shot commands that tend the dev-data
+directory, recognised by rebuilding the exact argv rather than by allowing the
+verb. So a bug in a caller cannot become a freeform docker call. The **compose file** is the other half, and the one no
+check on a NAME can bound: a file that says `privileged: true` and mounts `/`
+produces a container named as innocently as any other. So it is read before anything
 starts, and `privileged`, host `pid`/`network_mode`, and bind mounts landing
 outside the project and `${BB_DEV_DATA}` are named on the row and put in a
 confirmation. Confirmed once per set rather than per press — an
@@ -1772,10 +1763,25 @@ moment the file reaches for something new. It warns rather than refuses: a
 legitimate compose may genuinely want a host path, and nothing here can tell
 which.
 
-**What a container is called** is the prefix and its own name — `bbdev-radarr`,
-not `bbdev-myproject-radarr`. The project used to be in there too, which for a
-project called MediaReducer-Dev with an instance named after it produced
-`bbdev-mediareducer-dev-mediareducer-dev`.
+**What a container is called** is what you called it — `radarr`, not
+`bbdev-myproject-radarr`. The daemon is a machine with nothing else on it, so
+there is nothing to keep a container out of the way of, and a name that is
+three words of ceremony in front of the one you typed is only harder to find in
+`docker ps`.
+
+**Migrate** appears on a row whose things are still under a name it used to
+have — an instance made when names carried a `bbdev-` prefix, which they no
+longer do. The containers, the env file and the data directory are all keyed by
+that name, so the row says which old name is still holding everything and
+offers to move it.
+
+Never automatically, and never while anything is up: renaming a directory out
+from under a running container leaves it writing to a path nothing will look at
+again, so the button is dead until you take it down. Nothing is copied and
+nothing is deleted — the env file and the data directory are renamed, and the
+old names are what to rename back to if it goes wrong. The old name is found by
+its tail rather than by remembering, so nothing has to have been recorded for
+an old instance to be found.
 
 **Make dirs** appears on a row whose compose names bind directories that do
 not exist yet, and lists them above the buttons. Docker creates a missing bind
@@ -1814,13 +1820,10 @@ read out of its name — it is the key it is stored under. That is what decides
 whose Claude session may touch it, so a project can stand up several
 containers, name them anything, and still own all of them.
 
-`BB_DEV_PREFIX` sets the prefix, and `none` (or empty — but the word survives
-Unraid's template round-trip where a blank may not) removes it — containers are then
-called exactly what you typed. That is honoured **only against a sandbox VM**:
-there, the daemon holds nothing worth protecting. Against a socket proxy the
-prefix is the protection — a proxy passes whatever it is asked, so `compose
---project-name plex down` would work and the namespace check is the only thing
-refusing it — and an empty value falls back to `bbdev`.
+Which compose projects on the daemon are **this dashboard's** is answered the
+same way — from what it has stored, not from what things are called. So the
+manager can list every container on the VM, including ones you started by
+hand, and still be right about which of them it is driving.
 
 An `.apk` can be **installed** on the paired phone. `adb install -r` replaces
 an existing copy in place and keeps its data, so install and update are one
@@ -2174,7 +2177,8 @@ the active shell is *in*, not just whether it is a shell: outside a git
 repository the whole list grays out, and in a repository whose remotes do not
 include GitHub, just the `gh` half does — the hover text says which it is.
 The verdict follows a `cd` on the next status poll, and the ghosting only
-reflects the repo; `gh` itself still needs its own auth (`GIT_PAT` or
+reflects the repo; `gh` itself still needs its own auth (a session-visible
+`GITHUB_PAT` or
 `gh auth login`) to answer.
 
 ### Your own commands
@@ -2290,7 +2294,7 @@ idle either way and only one of the two ends in an answer.
 The self-hosted runner streams a job's console output to GitHub and keeps none
 of it. `/workspace/_work/_diag` holds the runner's own diagnostics — which step
 failed and its exit code — and not one line of what that step printed. With
-`GIT_PAT` unset there is no API to ask either, so *"CI is red, why?"* had no
+no git token here there is no API to ask either, so *"CI is red, why?"* had no
 answer in here for a job that ran in this very container.
 
 So the lint workflow archives its own output — and so does the `dashboard
@@ -2389,7 +2393,7 @@ Projects that already existed when this arrived are granted retroactively if
 their GitHub remote is an ssh one, recorded as `key`. Those are the repos that
 were already being pushed to with deploy keys, and a new rule is not a reason
 to take away something that worked. https remotes are not seeded: those
-authenticated with the container-wide `GIT_PAT`, and a token of their own is
+authenticated with a container-wide token, and one of their own is
 the way back.
 
 ### An access token for one project
@@ -2398,7 +2402,7 @@ Cloning a private repository asks for an optional **access token**. It is
 written in git's own credential-store format to `/config/gitcreds/<project>`,
 mode `0600`, and named from that repository's `.git/config` and nowhere else —
 with git's empty-value reset ahead of it, so the globally configured helper is
-never asked and the container's `GIT_PAT` is not what authenticates the fetch.
+never asked and no container-wide token authenticates the fetch.
 
 That last part is the point. A token minted to reach one private repo usually
 reaches every repo it was scoped to; in the environment it also reaches them

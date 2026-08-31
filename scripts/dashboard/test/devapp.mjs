@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 
 // ep.silon gets the compose file — delta is the harness's EXCLUDED fixture
 // and never shows a notebook button. The dot in the name is a bonus: it
-// proves the compose project-name sanitizer (bbdev-ep-silon) with the same
+// proves the compose project-name sanitizer (ep-silon) with the same
 // fixture that proves tmux's.
 const D = `${DIR}/ws/ep.silon`;
 writeFileSync(`${D}/docker-compose.yml`,
@@ -99,7 +99,7 @@ const pillIs = async (want) => { await openManager(); return page.waitForFunctio
 
 let r = await row();
 ok(await page.$eval('#devRow .top .pill', e => e.textContent.trim()) === 'docker'
-   && /^bbdev-/.test(await page.$eval('#devRow .top b', e => e.textContent.trim())),
+   && await page.$eval('#devRow .top b', e => e.textContent.trim()) === 'ep-silon',
    'a project with a compose file gets the row: kind on the pill, its own name in bold');
 // What the row does NOT say any more. The build state and the wiring were here
 // while this screen ran the container; building, Up and Down all live in the
@@ -177,9 +177,9 @@ await page.waitForFunction(() => {
   return e && /built from [0-9a-f]{7}/.test(e.textContent);
 }, { timeout: 30000 });
 const log = dockerLog();
-ok(/compose --project-name bbdev-ep-silon .*build/.test(log)
-   && /compose --project-name bbdev-ep-silon .*up -d/.test(log),
-   'rebuild runs table-lookup compose commands under the bbdev- namespace');
+ok(/compose --project-name ep-silon .*build/.test(log)
+   && /compose --project-name ep-silon .*up -d/.test(log),
+   'rebuild runs table-lookup compose commands, named for the instance');
 ok(await page.$eval(`${DM} [data-dm="rebuild"]`,
      e => e.textContent.trim()) === 'Rebuild',
    '...and the button says Rebuild once an image exists');
@@ -196,15 +196,15 @@ ok(!r.down && r.up, 'running: Down is live, Up is dead');
 ok(r.rebuild && /the code has moved since/.test(r.text) === false,
    'Rebuild goes back to sleep once the build matches the code');
 
-// A build belongs to the daemon it ran on. Retiring a socket proxy for a
-// sandbox VM leaves the image and the containers behind on a machine the
-// dashboard can no longer reach, and the row went on saying "built from
+// A build belongs to the daemon it ran on. Repointing DOCKER_HOST at another
+// VM leaves the image and the containers behind on a machine the dashboard can
+// no longer reach, and the row went on saying "built from
 // <rev>" and offering Rebuild for something never built here. Driven through
 // the state file rather than by restarting the server on a second DOCKER_HOST:
 // what is being asserted is that the RECORD is read against today's daemon.
 const devapps = `${DIR}/state/devapps.json`;
 const wasBuilt = JSON.parse(readFileSync(devapps, 'utf8'));
-ok(wasBuilt['ep.silon'].main.daemon === 'tcp://stub:2375',
+ok(wasBuilt['ep.silon'].main.daemon === 'ssh://bb@stub',
    'a build records which daemon it landed on');
 writeFileSync(devapps, JSON.stringify({ ...wasBuilt, 'ep.silon': {
   ...wasBuilt['ep.silon'],
@@ -301,7 +301,7 @@ ok(true, '...and Up is manual after the gate, exactly as asked');
 // Down, from the row.
 await dmClick('down');
 await pillIs('down');
-ok(/compose --project-name bbdev-ep-silon .*down/.test(dockerLog()),
+ok(/compose --project-name ep-silon .*down/.test(dockerLog()),
    'Down runs compose down, nothing else');
 ok((await row()).down, '...and goes dead after it: there is nothing left to remove');
 
@@ -309,7 +309,7 @@ ok((await row()).down, '...and goes dead after it: there is nothing left to remo
 // network, and `down` is the only thing that clears it. Asking compose only
 // about RUNNING containers left a crashed instance with a greyed-out Down and
 // no way out except a shell, which is the one thing these buttons are for.
-writeFileSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`, '1');
+writeFileSync(`${DIR}/dockerstate/ep-silon.exited`, '1');
 await page.evaluate(() => refresh());
 await pillIs('stopped');
 r = await row();
@@ -317,7 +317,7 @@ ok(!r.down, 'a crashed instance offers Down — its containers are still there')
 ok(!r.up, '...and Up, which recreates them rather than colliding with them');
 await dmClick('down');
 await pillIs('down');
-ok(!existsSync(`${DIR}/dockerstate/bbdev-ep-silon.exited`),
+ok(!existsSync(`${DIR}/dockerstate/ep-silon.exited`),
    '...and Down is what clears them');
 
 // A build in flight when BuilderBot restarts is lost — compose build is a
@@ -383,12 +383,11 @@ ok(/stub build exploded/.test(await page.$eval('#devRow', e => e.textContent)),
    'a failed build shows its own last words, and nothing was started');
 rmSync(`${DIR}/dockerstate/build.fail`, { force: true });
 
-// What the compose FILE asks for, which is the half no namespace can bound:
-// a container started from a file that mounts / and asks for privileged is
-// labelled bbdev- like every other one and passes every check that can be
-// made on a name. So the file is read, and what it reaches for is put in
+// What the compose FILE asks for, which is the half no check on a NAME can
+// bound: a container started from a file that mounts / and asks for privileged
+// is named as innocently as any other. So the file is read, and what it reaches for is put in
 // front of the operator once, before anything starts.
-const stubCfg = `${DIR}/dockerstate/bbdev-ep-silon.config`;
+const stubCfg = `${DIR}/dockerstate/ep-silon.config`;
 // The dev row reloads on job_rev — the in-memory counter plus devapps.json's
 // mtime — and a stub config file moves neither, so a plain refresh() would
 // leave the row showing the answer to the previous question. Touch the file
@@ -503,17 +502,18 @@ m.DOCKER = 'docker'
 print(json.dumps({
   'git': m._guard(['git', '-C', '/x', 'status']),
   'version': m._guard(['docker', 'version']),
-  'ours': m._guard(['docker', 'compose', '--project-name', 'bbdev-a', 'down']),
-  'theirs': m._guard(['docker', 'compose', '--project-name', 'plex', 'down']),
+  'ours': m._guard(['docker', 'compose', '--project-name', 'a', 'down']),
   'unnamed': m._guard(['docker', 'compose', '-f', 'x', 'down']),
+  'trailing': m._guard(['docker', 'compose', 'down', '--project-name']),
   'bare': m._guard(['docker', 'rm', '-f', 'someone-elses-container']),
 }))
 `], { encoding: 'utf8' });
 const g = JSON.parse(guard.trim().split('\n').pop());
 ok(!g.git && !g.version && !g.ours,
-   'git, docker version and a bbdev- compose call are what may run');
-ok(g.theirs && g.unnamed && g.bare,
-   '...and another project name, a missing one, and any other docker verb are not');
+   'git, docker version and a named compose call are what may run');
+ok(g.unnamed && g.trailing && g.bare,
+   '...and a compose call naming no project, or naming it nowhere, or any other '
+   + 'docker verb, are not');
 await dmClick('down');
 await pillIs('down');
 rmSync(stubCfg, { force: true });
@@ -561,13 +561,21 @@ out['parity'] = [mp2, bad2, m.problems('alpha', {'services': {'a': {'volumes': [
 os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
 out['falseparity'] = m.host_map()
 os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
-# A bind under a path this container has that the mapping is silent about.
-# The complaint used to say "the daemon does not have it", which is a claim
-# this side cannot make — nothing here can see the other machine's filesystem,
-# which is the whole reason the mapping is a setting at all. Against a sandbox
-# VM it was usually false as well.
-os.environ['DOCKER_HOST_PATHS'] = '/workspace:/workspace'
+# A bind under a path this container has that the mapping is silent about —
+# here the projects share itself, with nothing declared at all. The complaint
+# used to say "the daemon does not have it", which is a claim this side cannot
+# make: nothing here can see the other machine's filesystem, which is the whole
+# reason the mapping is a setting.
+os.environ['DOCKER_HOST_PATHS'] = ''
 out['unmapped'] = m.problems('alpha', {'services': {'a': {'volumes':
+    ['/workspace/alpha/data:/data']}}})
+
+# ...and the dev-data share is never judged that way, whether or not this
+# container happens to mount it: the VM owns those directories and makes them
+# itself, so calling one of them ours reported every correct compose file as
+# broken, on the one path the daemon certainly does have.
+os.environ['DOCKER_HOST_PATHS'] = '/workspace:/workspace'
+out['devdata'] = m.problems('alpha', {'services': {'a': {'volumes':
     ['/devdata/thing/data:/data']}}})
 os.environ['DOCKER_HOST_PATHS'] = '/nope:/mnt/x,garbage'
 out['junk'] = m.host_map()
@@ -593,8 +601,10 @@ ok(hp.parity[0]['/workspace'] === '/workspace' && !hp.parity[1].length,
    'an identity mapping is accepted without being checked against our mounts');
 ok(!hp.parity[2].length,
    '...and a bind under it is no longer a problem, because it is not one');
+ok(hp.devdata.length === 0,
+   'a bind under the dev-data share is the VM\'s business, and is not judged here');
 ok(hp.unmapped.length === 1 && !/does not have it/.test(hp.unmapped[0])
-   && /\/devdata:\/devdata/.test(hp.unmapped[0]),
+   && /\/workspace:\/workspace/.test(hp.unmapped[0]),
    'an unmapped path says the mapping is silent, not that the daemon lacks it — '
    + 'and names the pair to add');
 ok(hp.falseparity[0]['/workspace'] === '/workspace'
@@ -625,16 +635,9 @@ def fake(argv, timeout=60, **kw):
 m._run = fake
 
 out = {}
-# Mounted here: made here, translated through the mapping, no run at all.
-m.DEVDATA = os.path.join(d, 'devdata'); os.makedirs(m.DEVDATA)
 os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
-os.environ['DOCKER_HOST_PATHS'] = m.DEVDATA + ':' + m.DEVDATA
-out['local'] = [m.dev_data_dir('alpha'),
-                os.path.isdir(os.path.join(m.DEVDATA, 'bbdev-alpha')), calls[:]]
-
-# Not mounted here, daemon is a sandbox: it makes it, and BB_DEV_DATA is the
-# path on THAT machine — nothing has to be mounted on this side.
-calls.clear()
+# The VM makes it, and BB_DEV_DATA is the path on THAT machine — the share is
+# not mounted on this side at all, which is the point of doing it over there.
 m.DEVDATA = '/devdata-not-here'
 out['remote'] = [m._dev_data_env('alpha'), calls[:]]
 out['ours'] = m.our_paths({})
@@ -644,9 +647,8 @@ out['ours'] = m.our_paths({})
 calls.clear()
 out['named'] = [m.dev_data_dir('alpha', make=False), calls[:]]
 
-# Not mounted here, daemon is the server's own: nothing is run at all, and a
-# compose that wanted BB_DEV_DATA fails loudly instead of writing to a
-# directory docker invented.
+# Not a sandbox VM: nothing is run at all, and a compose that wanted
+# BB_DEV_DATA fails loudly instead of writing to a directory docker invented.
 calls.clear()
 os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
 out['proxy'] = [m._dev_data_env('alpha'), calls[:]]
@@ -676,18 +678,17 @@ out['guard']['ours, on the proxy'] = m._guard(mk)
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const DDD = JSON.parse(dd.trim().split('\n').pop());
-ok(DDD.local[0].endsWith('/devdata/bbdev-alpha') && DDD.local[1] && !DDD.local[2].length,
-   'with the dev-data share mounted here the directory is made here, as before');
-ok(DDD.remote[0].BB_DEV_DATA === '/devdata-not-here/bbdev-alpha'
+ok(DDD.remote[0].BB_DEV_DATA === '/devdata-not-here/alpha'
    && DDD.remote[1].length === 1 && !DDD.remote[1][0].refused
-   && DDD.remote[1][0].argv.slice(-3).join(' ') === 'mkdir -p /d/bbdev-alpha',
-   'without it a sandbox daemon makes the directory itself, on its own disk');
-ok(DDD.named[0] === '/devdata-not-here/bbdev-alpha' && !DDD.named[1].length,
+   && DDD.remote[1][0].argv.slice(-3).join(' ') === 'mkdir -p /d/alpha',
+   'the VM makes the data directory itself, on its own disk, mounted nowhere here');
+ok(DDD.named[0] === '/devdata-not-here/alpha' && !DDD.named[1].length,
    '...asked for by name it runs nothing, which is what keeps the poll off it');
 ok(!DDD.ours.includes('/devdata-not-here'),
    '...and that path is then the daemon\'s, so a bind under it is not judged here');
 ok(!Object.keys(DDD.proxy[0]).length && !DDD.proxy[1].length,
-   'a socket proxy is never asked to run one: no path, and the compose says so');
+   'a daemon that is not the sandbox VM is never asked to run one, and the compose '
+   + 'says so rather than mounting a directory docker invented');
 ok(DDD.renamed[0][0] === true && !DDD.renamed[0][1]
    && JSON.stringify(DDD.renamed[1]) ===
       JSON.stringify([['/d/bbdev-alpha'], ['/d/bbdev-alpha', '/d/bbdev-beta']]),
@@ -696,7 +697,7 @@ ok(!DDD.guard.ours && Object.entries(DDD.guard).filter(([k]) => k !== 'ours')
      .every(([, v]) => !!v),
    'the guard allows those exact commands and nothing else wearing the same verb');
 ok(/sandbox VM/.test(DDD.guard['ours, on the proxy']),
-   '...and not even those when the daemon is the server\'s own');
+   '...and not even those unless the daemon is the sandbox VM');
 
 // One thing at a time on the daemon, and it now covers every verb that runs a
 // compose call. `up`, `down` and `remove` read the flag and never set it, so a
@@ -782,12 +783,11 @@ ok(!AB.phases.includes('up'),
 ok(/stopped/.test(AB.error) && !AB.running,
    '...and the row says so, which it was already saying with the thing running');
 
-// The namespace, and the one arrangement allowed to go without it. The prefix
-// is what _guard reads, and against a socket proxy it is the only thing
-// standing between this module and the operator's real containers — a proxy
-// passes whatever it is asked. Against a sandbox VM there is nothing on the
-// daemon to protect, which is the whole reason it became a setting.
-const pref = execFileSync('python3', ['-c', `
+// The address. One arrangement — a sandbox VM over ssh — so the operator
+// writes the machine and the rest is filled in; and anything that is NOT that
+// arrangement is refused by name here rather than half-working further down,
+// where a `docker run` as root would land on somebody's real daemon.
+const addr = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
@@ -795,38 +795,25 @@ m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
 out = {}
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
-m._PREFIX_WANT = 'bbdev'
-out['default'] = [m.dev_prefix(), m._pname('alpha'), m._pname('alpha', 'dev')]
-m._PREFIX_WANT = ''
-out['none_on_vm'] = [m.dev_prefix(), m._pname('alpha'), m._pname('alpha', 'dev'),
-                     m._guard(['docker', 'compose', '--project-name', 'plex', 'down'])]
-# The word, because a blanked Unraid template field can come back holding its
-# Default again — which round-tripped "no prefix" into bbdev on a real box.
-m._PREFIX_WANT = 'none'
-out['word'] = [m.dev_prefix(), m._pname('alpha', 'dev')]
-os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
-out['none_on_proxy'] = [m.dev_prefix(),
-                        m._guard(['docker', 'compose', '--project-name', 'plex', 'down'])]
-m._PREFIX_WANT = 'sandbox'
-out['renamed'] = [m.dev_prefix(), m._pname('alpha', 'dev'),
-                  m._guard(['docker', 'compose', '--project-name', 'bbdev-a', 'down'])]
+for k, v in [('bare', '10.0.0.9'), ('scheme', 'ssh://10.0.0.9'),
+             ('user', 'ssh://someone@10.0.0.9'), ('proxy', 'tcp://p:2375'),
+             ('unset', '')]:
+    os.environ['DOCKER_HOST'] = v
+    out[k] = [m.docker_host(), m.sandbox_daemon(), m.available()['why'],
+              m._pname('alpha'), m._pname('alpha', 'dev')]
 print(json.dumps(out))
 `], { encoding: 'utf8' });
-const PF = JSON.parse(pref.trim().split('\n').pop());
-ok(PF.default[0] === 'bbdev-' && PF.default[1] === 'bbdev-alpha'
-   && PF.default[2] === 'bbdev-dev',
-   'by default a container is the prefix and its own name, with no project in it');
-ok(PF.none_on_vm[0] === '' && PF.none_on_vm[1] === 'alpha'
-   && PF.none_on_vm[2] === 'dev' && PF.none_on_vm[3] === '',
-   '...and an empty prefix against a sandbox VM gives exactly the name you typed');
-ok(PF.word[0] === '' && PF.word[1] === 'dev',
-   '...as does the word none, which survives the template round-trip a blank may not');
-ok(PF.none_on_proxy[0] === 'bbdev-' && /outside the bbdev- namespace/.test(PF.none_on_proxy[1]),
-   '...but not against a socket proxy, where the namespace is the only protection');
-ok(PF.renamed[0] === 'sandbox-' && PF.renamed[1] === 'sandbox-dev'
-   && /outside the sandbox- namespace/.test(PF.renamed[2]),
-   'a renamed prefix moves the guard with it, so it cannot check for the old one');
+const AD = JSON.parse(addr.trim().split('\n').pop());
+ok(AD.bare[0] === 'ssh://bb@10.0.0.9' && AD.scheme[0] === 'ssh://bb@10.0.0.9',
+   'the machine is all the operator writes: the scheme and the bb account fill in');
+ok(AD.user[0] === 'ssh://someone@10.0.0.9' && AD.user[1] === true,
+   '...and writing the account out still means what it says');
+ok(AD.proxy[1] === false && /sandbox/.test(AD.proxy[2]) && /tcp:/.test(AD.proxy[2]),
+   'anything that is not a sandbox VM is off, and the reason names what was set');
+ok(AD.unset[1] === false && /not set/.test(AD.unset[2]),
+   '...as is nothing at all, which is the shipped state and not a fault');
+ok(AD.bare[3] === 'alpha' && AD.bare[4] === 'dev',
+   'a container is called exactly what it was named — no prefix in front of it');
 
 // Container names and project names are separate groups. A project existing
 // reserves nothing — an earlier version checked that it did, and refused a
@@ -855,7 +842,7 @@ out['project_told'] = m.name_clash('ep.silon', 'main')
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const NM = JSON.parse(nm.trim().split('\n').pop());
-ok(NM.after_a_project.name === 'bbdev-ep-silon',
+ok(NM.after_a_project.name === 'ep-silon',
    'a container may be named after a project — they are separate name groups');
 ok(/already alpha/.test(NM.twice.error || ''),
    '...but not twice, because that is one compose project with two rows on it');
@@ -901,6 +888,47 @@ ok(MK.exists && MK.made.made.length === 1 && !MK.made.failed.length,
    'making them creates the reachable ones and leaves the rest alone');
 
 
+// Changing the prefix renames what every dev container is CALLED — the name is
+// the prefix plus what the thing is called and nothing else, and the
+// containers, env file and data directory are all keyed by it. So the row says
+// the old name is still holding everything, and offers to move it. Never
+// automatically, and never while anything is up: renaming a directory out from
+// under a running container leaves it writing somewhere nothing will look
+// again.
+const mig = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+m.DEVDATA = d + '/devdata'; os.makedirs(m.DEVDATA)
+open(d + '/devenv/bbdev-sonarr.env', 'w').write('PORT=1')
+os.makedirs(m.DEVDATA + '/bbdev-sonarr/config')
+out = {'now': m._pname('sonarr'), 'stale': m.stale_name('sonarr')}
+m.containers = lambda: {'error': '', 'containers': [{'project': 'bbdev-sonarr'}]}
+out['while_up'] = m.migrate_name('sonarr')
+m.containers = lambda: {'error': '', 'containers': []}
+out['moved'] = m.migrate_name('sonarr')
+out['after'] = [sorted(os.listdir(d + '/devenv')), sorted(os.listdir(m.DEVDATA)),
+                sorted(os.listdir(m.DEVDATA + '/sonarr'))]
+out['again'] = m.migrate_name('sonarr')
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const MG = JSON.parse(mig.trim().split('\n').pop());
+ok(MG.now === 'sonarr' && MG.stale === 'bbdev-sonarr',
+   'a prefix change is noticed: the old name is found by its tail, not by memory');
+ok(/take it down first/.test(MG.while_up.error || ''),
+   '...and refused while a container still exists under either name');
+ok(MG.moved.moved.length === 2 && !MG.moved.failed.length
+   && JSON.stringify(MG.after) === JSON.stringify(
+        [['sonarr.env'], ['sonarr'], ['config']]),
+   '...then moves the env file and the data directory, contents and all');
+ok(/nothing to migrate/.test(MG.again.error || ''),
+   '...and has nothing left to say the second time');
+
+
 // An instance is (project, name) now, and the old layout is one record per
 // project. Driven at the module: the migration happens on read, so it is the
 // read that has to be asserted, and a stub docker cannot show a rename.
@@ -931,46 +959,20 @@ ok(JSON.stringify(ij.loaded) === JSON.stringify(
    'a store written before instances reads back as the project\'s main instance');
 ok(JSON.stringify(ij.instances) === JSON.stringify(['main']),
    '...and that is the instance the project has');
-ok(ij.envmoved.length === 1 && ij.envmoved[0] === 'bbdev-alpha.env',
+ok(ij.envmoved.length === 1 && ij.envmoved[0] === 'alpha.env',
    '...with its env file moved to the name the instance is read by');
 // The project is no longer spelled into the name. A default instance is
 // named for its project because nobody typed a name for it; a named one is
 // called what it was called, which is the whole of the change — the old
 // scheme rendered MediaReducer-Dev's instance of the same name as
-// bbdev-mediareducer-dev-mediareducer-dev.
-ok(ij.pnames[0] === 'bbdev-alpha' && ij.pnames[1] === 'bbdev-staging',
+// mediareducer-dev-mediareducer-dev.
+ok(ij.pnames[0] === 'alpha' && ij.pnames[1] === 'staging',
    'a default instance is named for its project, a named one for itself');
-ok(ij.pnames[2] === 'bbdev-two-words',
+ok(ij.pnames[2] === 'two-words',
    '...slugged, so a name with spaces cannot reach a compose call');
 ok(ij.envpaths[0] !== ij.envpaths[1],
    'and they do not share an env file — two instances exist to differ');
 
-// DOCKER_HOST=auto resolves by asking candidates for /version, caches what
-// it found, and re-scans when that stops answering — a bridge-assigned IP
-// moves when containers restart in a different order, so an address read
-// once at boot goes stale. Driven at the module directly: the scan is
-// network behaviour, not something a stub docker binary can show.
-const dh = execFileSync('python3', ['-c', `
-import importlib.util, os, sys, json
-os.environ['DOCKER_HOST'] = 'auto'
-spec = importlib.util.spec_from_file_location('d', ${
-  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
-m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-m.configure(workspace='/tmp', state='/tmp', write_json=lambda *a: None)
-# Nothing answers on a made-up bridge, so this must come back empty rather
-# than inventing an address.
-m._found.update(addr='', at=0)
-found = m.docker_host()
-# An explicit address is passed through untouched — an operator who typed
-# one means it.
-os.environ['DOCKER_HOST'] = 'tcp://example.invalid:2375'
-print(json.dumps({'auto': found, 'explicit': m.docker_host()}))
-`], { encoding: 'utf8' });
-const dhj = JSON.parse(dh.trim().split('\n').pop());
-ok(dhj.explicit === 'tcp://example.invalid:2375',
-   'an explicit DOCKER_HOST is used verbatim, never second-guessed by a scan');
-ok(typeof dhj.auto === 'string',
-   'auto resolves to an address or to nothing, never to an error');
 
 
 // A row knows its own build is running. The manager used to look for the job
@@ -978,6 +980,13 @@ ok(typeof dhj.auto === 'string',
 // permanently false: a row said "never built" through its own build, and its
 // buttons stayed live for a second click the server then refused.
 await openManager();
+// Waited for rather than sampled. A revision bump nulls dockerList and
+// refetches, and the rows stay on screen through it — so openManager can
+// return, on a selector that is still the last paint, while the answer this
+// asks about is briefly gone. Sampling it there fails on the harness's timing
+// rather than on the code: the same shape as bug #13.
+await page.waitForFunction(() => dockerList !== null, null, { timeout: 15000 })
+  .catch(() => {});
 ok(await page.evaluate(() => typeof dockerList?.job !== "undefined"),
    'the manager is told about the running job with the rest of its page');
 
@@ -1019,9 +1028,9 @@ await page.waitForSelector('#dnEnvField:not([hidden])', { timeout: 10000 });
 ok(/PORT=8080/.test(await page.$eval('#dnEnv', e => e.value)),
    '...carrying the env seeded from .env.example');
 await page.fill('#dnName', 'Staging Two');
-ok(/Will be created as bbdev-staging-two\b/.test(
+ok(/Will be created as staging-two\b/.test(
      await page.$eval('#dnPreview', e => e.textContent)),
-   'the naming modal previews the container it will make: the prefix and the name');
+   'the naming modal previews the container it will make, when the slug differs');
 await page.click('#dnGo');
 await page.waitForSelector('.dmtab .row[data-inst="ep.silon|staging-two"]',
                            { timeout: 20000 });
@@ -1064,48 +1073,29 @@ await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled
                            null, { timeout: 8000 });
 ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean');
 
-// ---- which daemon, when two are configured ------------------------------
-// Nothing stops both being filled in: the socket mount and DOCKER_HOST are two
-// settings on two screens and neither can grey the other out. So the rule is
-// precedence, and the rule has to be stated the same way by everything that
-// reads it — bb doctor and this dashboard each had their own copy, and one of
-// them printed "a socket proxy at /var/run/docker.sock".
-const srcOut = execFileSync('python3', ['-c', `
+// ---- which daemon ------------------------------------------------------
+// One arrangement now. The mounted socket and the proxy scan are gone, along
+// with the precedence rule that existed to say which of three won.
+{
+  const one = execFileSync('python3', ['-c', `
 import importlib.util, json, os
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
-def fake_path(exists):
-    # is_dir as well as exists: source() now names mapped paths this container
-    # does not have, and it asks about directories.
-    return lambda *a: type('P', (), {'exists': lambda s: exists,
-                                     'is_dir': lambda s: exists})()
-out = []
-for want, sock, found in [('', True, ''), ('', False, ''),
-                          ('auto', True, ''), ('auto', True, 'tcp://10.0.0.2:2375'),
-                          ('auto', False, ''),
-                          ('tcp://1.2.3.4:2375', True, 'tcp://1.2.3.4:2375'),
-                          ('ssh://bb@vm', True, 'ssh://bb@vm')]:
-    os.environ['DOCKER_HOST'] = want
-    m.docker_host = (lambda v: (lambda: v))(found)
-    m.Path = fake_path(sock)
-    out.append(m.source())
+m.configure(workspace='/tmp', state='/tmp', write_json=lambda *a: None)
+out = {}
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+out['vm'] = m.source()
+os.environ['DOCKER_HOST'] = ''
+out['off'] = [m.source(), m.available()['why']]
 print(json.dumps(out))
 `], { encoding: 'utf8' });
-const sj = JSON.parse(srcOut.trim().split('\n').pop());
-ok(sj[0].kind === 'the mounted socket' && sj[0].where === '/var/run/docker.sock',
-   'an empty DOCKER_HOST with a socket mounted uses the socket');
-ok(!sj[1].kind && !sj[1].where,
-   '...and with neither, there is no daemon to name');
-ok(sj[2].kind === 'the mounted socket',
-   'auto that finds no proxy falls back to the socket, and SAYS socket');
-ok(sj[3].kind === 'a socket proxy' && sj[3].where === 'tcp://10.0.0.2:2375' && sj[3].shadowed,
-   '...while a proxy it does find wins, and the mount is called out as unused');
-ok(!sj[4].kind, 'auto with nothing to find and no socket is simply off');
-ok(sj[5].kind === 'a socket proxy' && sj[5].shadowed,
-   'an address always wins over a mounted socket');
-ok(sj[6].kind === 'a sandbox VM' && sj[6].shadowed,
-   '...including an ssh one, which is the arrangement you switch TO with the mount left behind');
+  const ONE = JSON.parse(one.trim().split('\n').pop());
+  ok(ONE.vm.kind === 'the sandbox VM' && ONE.vm.where === 'ssh://bb@vm',
+     'the daemon is the sandbox VM DOCKER_HOST names, and nothing else is looked for');
+  ok(!ONE.off[0].kind && /DOCKER_HOST is not set/.test(ONE.off[1]),
+     '...and with it unset the feature is off, with the reason said');
+}
 
 // Which paths a compose file is judged against. It was a hardcoded pair —
 // /workspace and /devdata — which is what the mapping held on the day it was
@@ -1276,7 +1266,7 @@ await page.waitForFunction(() =>
   !document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"]'),
   { timeout: 20000 });
 ok(true, 'Remove takes a container out of the manager');
-ok(/compose --project-name bbdev-staging-two .*down/.test(dockerLog()),
+ok(/compose --project-name staging-two .*down/.test(dockerLog()),
    '...taking it down first, rather than orphaning its containers');
 await showRow();
 ok(await page.$('#devSend'),

@@ -15,7 +15,9 @@ if [ -n "${NPM_TOKEN:-}" ]; then
     log "npm publish auth configured for registry.npmjs.org"
 fi
 
-if [ -n "${GITHUB_PAT:-}" ] && [ -S /var/run/docker.sock ] && command -v docker >/dev/null; then
+# A registry login needs a daemon to log in TO, which is the sandbox VM now
+# rather than a socket mounted here.
+if [ -n "${GITHUB_PAT:-}" ] && [ -n "${DOCKER_HOST:-}" ] && command -v docker >/dev/null; then
     # ghcr wants a username with the token; ask gh (already authenticated by
     # the 30- hook) who the PAT belongs to.
     gh_user="$(gh api user -q .login 2>/dev/null || echo "${GITHUB_USER:-}")"

@@ -4,11 +4,10 @@
 One line on stdout, as `ok|FAIL|skip <sentence>`, for whoever wants to render
 it: `bb doctor` as a check row, the startup hook as a boot line.
 
-Shared rather than written twice, for the reason source() itself exists — two
-readers each deriving this had already disagreed in public, one of them
-printing "a socket proxy at /var/run/docker.sock" with `auto` set, a socket
-mounted and no proxy answering. A sentence that contradicts itself is worse
-than no sentence, and the way to not have two is to not have two.
+Shared rather than written twice, for the reason source() itself exists: two
+readers each deriving it had already disagreed in public, and a sentence that
+contradicts itself is worse than no sentence. The way to not have two is to
+not have two.
 
 The probe is devapp.available(), the same call the Artifacts tab makes on its
 own poll, so nothing here can drift into disagreeing with the tab about
@@ -28,23 +27,15 @@ def load(path):
 
 def verdict(m):
     """(state, sentence). state is ok, FAIL or skip."""
-    want = (os.environ.get("DOCKER_HOST") or "").strip()
-    sock = os.path.exists("/var/run/docker.sock")
-    # Off is the shipped default and is not a fault to report. A red line on
-    # every run of a box that never wanted dev instances is noise, and noise is
-    # how a check stops being read.
-    if not want and not sock:
-        return "skip", ("no docker daemon configured: DOCKER_HOST is unset and "
-                        "no socket is mounted — dev instances are off")
-    if want.lower() == "auto" and not sock and not m.docker_host():
-        # `auto` is discovery, not a promise.
-        return "skip", ("no docker daemon found: DOCKER_HOST is auto and "
-                        "nothing answered — dev instances are off")
+    # Off is not a fault to report. A red line on every run of a box that never
+    # wanted dev instances is noise, and noise is how a check stops being read.
+    if not (os.environ.get("DOCKER_HOST") or "").strip():
+        return "skip", ("no docker daemon configured: DOCKER_HOST is unset — "
+                        "dev instances are off")
     a = m.available()
     why = " ".join((a["why"] or "").split())      # one line, whatever it said
     return ("ok" if a["on"] else "FAIL"), (
         f"docker daemon: {a['kind']} at {a['where']}"
-        + (" (the mounted socket is unused)" if a.get("shadowed") else "")
         + ("" if a["on"] else f" — {why}"))
 
 

@@ -5430,7 +5430,8 @@ function renderProjectsInto(i){
 // the way to READ a diagnosis is how you get a dashboard that has gone quiet
 // for no visible cause.
 const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],[data-dm="remove"],'
-                  + '[data-dm="rebuild"],[data-dm="mkdirs"],#devSend,#bDockerNew';
+                  + '[data-dm="rebuild"],[data-dm="mkdirs"],[data-dm="migrate-name"],'
+                  + '#devSend,#bDockerNew';
 
 // The one answer, from the poll. `on` absent (an older server, a payload that
 // has not landed yet) is not "off": a control the page has no opinion about
@@ -5526,13 +5527,12 @@ const dockerSlug = (s) => (s || "").toLowerCase()
 
 function dnShow(){
   const raw = $("dnName").value, clean = dockerSlug(raw);
-  const pref = state?.dev_prefix ?? "bbdev-";
-  // Shown whenever the name it makes differs from what was typed, which with a
-  // prefix set is always: the prefix is the surprising half, and hiding the
-  // line because the slug happened to match the typing hid it too.
-  $("dnPreview").hidden = !raw.trim() || (!pref && clean === raw.trim());
+  // Only when the name it makes differs from what was typed. A container is
+  // called exactly what you called it, so most of the time there is nothing
+  // to warn about and the line stays out of the way.
+  $("dnPreview").hidden = !raw.trim() || clean === raw.trim();
   $("dnPreview").textContent = clean
-    ? `Will be created as ${pref}${clean}`
+    ? `Will be created as ${clean}`
     : "That leaves nothing to name a container after";
 }
 
@@ -5634,6 +5634,27 @@ async function dmAction(project, instance, act, btn){
     }
     catch(e){ notify("could not stop it: " + e, true); }
     dockerRev++; drawPanes(); loadDocker();
+    return;
+  }
+  if (act === "migrate-name"){
+    const st = (dockerList?.instances || []).find(x =>
+      x.project === project && x.instance === instance) || {};
+    if (!confirm(`Move ${st.stale_name} to ${st.name}?\n\n`
+        + `Its env file and data directory are renamed. Nothing is copied and `
+        + `nothing is deleted — if it goes wrong the old names are what to `
+        + `rename back to.`)) return;
+    if (btn) btn.disabled = true;
+    try{
+      const r = await fetch("/api/devapp", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, instance, action: "migrate-name"})});
+      const j = await r.json();
+      if (j.error) notify(j.error, true);
+      else notify(j.failed?.length ? j.failed[0]
+        : j.moved.length ? `moved ${j.moved.join(" and ")} to ${j.now}`
+        : "nothing was left under the old name", !!j.failed?.length);
+    }catch(e){ notify("migrate: " + e, true); }
+    dockerList = null; dockerRev++; loadDocker();
     return;
   }
   if (act === "mkdirs"){
@@ -5788,8 +5809,8 @@ function openNewContainer(){
   $("cGo").disabled = false; $("cGo").textContent = "Create";
   cSeg("yml");
   $("cNameHint").textContent =
-    "Its own name, not a project's. The compose project becomes bbdev-<name>, "
-    + "which is what the manager and the guard both go by.";
+    "Its own name, not a project's. It becomes the compose project on the "
+    + "sandbox VM, which is what the manager lists it by.";
   $("cmodal").hidden = false;
 }
 
@@ -5927,6 +5948,12 @@ directory stay, so remaking it under the same name finds them">Remove</button>
             title="stop this build. What is already built is kept — an abort is
 for the rest of the work"
             >${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+        ${d.stale_name ? `<button type="button" data-dm="migrate-name" ${
+            d.exists || busy ? "disabled" : ""}
+            title="${d.exists
+              ? "take it down first — a rename with containers up leaves them writing to a path nothing will look at again"
+              : "move its env and data from " + esc(d.stale_name) + " to " + esc(d.name)}"
+            >Migrate</button>` : ""}
         ${(d.mkdirs || []).length ? `<button type="button" data-dm="mkdirs" ${
             busy ? "disabled" : ""}
             title="create the bind directories this compose names — docker would try itself and fail on a share that squashes root"
@@ -5956,14 +5983,12 @@ for the rest of the work"
   // not reachable on a phone, and "why is everything greyed out" should be
   // answered by looking rather than by hovering.
   const off = dockerWhy();
-  // Which daemon this is, stated rather than inferred. Two settings can name
-  // two — the socket mount and DOCKER_HOST are on different screens and
-  // neither can grey the other out — so the precedence is shown here instead
-  // of being something you work out from what happens.
+  // Which daemon this is, stated rather than inferred. One setting names it
+  // now — DOCKER_HOST, pointing at the sandbox VM — and saying which machine
+  // the buttons below act on is worth a line whatever the arrangement.
   const src = state?.docker || {};
   const srcLine = !off && src.kind
     ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
-        src.shadowed ? " — the mounted socket is unused" : ""}${
         // A mapped path this container does not have. Not a fault: it can be a
         // share the daemon mounts and BuilderBot has no business reading. It is
         // said because nothing else here will ever act on it, and a line of
@@ -7979,6 +8004,9 @@ $("todoRevert").onclick = revertNotebook;
             // facts about THIS project's build, which is what this tab is for.
             : ""}</div>
           ${devLines("will not work as written", da.problems, "bad")}
+          ${da.stale_name ? `<div class="sub warn">its containers, env and data
+              are still under <code>${esc(da.stale_name)}</code> — the name
+              changed when the prefix did</div>` : ""}
           ${(da.mkdirs || []).length ? `<div class="dim warn">${
               da.mkdirs.length} bind director${da.mkdirs.length === 1 ? "y" : "ies"
               } do not exist yet</div>` + da.mkdirs.map(d =>

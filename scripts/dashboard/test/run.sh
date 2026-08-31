@@ -526,6 +526,11 @@ fresh
 # container's own /devdata, which is what the module-level host_map() and
 # problems() snippets in devapp.mjs are written against.
 #
+# DOCKER_HOST names an ssh:// address because that shape is now the feature's
+# switch: a sandbox VM is the only daemon the manager drives, so anything else
+# greys every control out and the suite would be testing a dead tab. The stub
+# docker on PATH answers whatever it is pointed at, so no VM is involved.
+#
 # DOCKER_HOST_PATHS is cleared for the same reason and was found the same way.
 # Unset here, it inherited the REAL container's mapping, so what the dev row
 # said about a fixture's compose file depended on how the operator had wired
@@ -546,7 +551,7 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     BB_LOGIN_DONE="$S/login-finished" \
     PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" BB_ADB_BIN="$S/bin/adb" \
     BB_DOCKER_BIN="$S/bin/docker" DOCKER_STUB_STATE="$S/dockerstate" \
-    DOCKER_HOST="tcp://stub:2375" \
+    DOCKER_HOST="ssh://bb@stub" \
     DOCKER_HOST_PATHS="" \
     BB_DEV_DATA_DIR="$S/devdata" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &

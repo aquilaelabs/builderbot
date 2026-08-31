@@ -1061,7 +1061,7 @@ def gh_authed():
 
     Asked of gh rather than the environment, because gh is what actually
     answers the credential prompt (`gh auth setup-git` at startup): this is
-    true exactly when an https remote will work, whichever of GIT_PAT,
+    true exactly when an https remote will work, whether a session-visible
     GITHUB_PAT or a manual `gh auth login` made it so. `gh auth token` is
     offline and instant; `gh auth status` phones home.
     """
@@ -2255,10 +2255,6 @@ def snapshot():
         # page's heartbeat. Every Docker button on the page reads this one
         # answer rather than each finding out by failing.
         "docker": devapp.available_cached(),
-        # The namespace compose project names start with, so the naming
-        # dialog can preview the name it is about to make rather than
-        # hardcoding a prefix the operator may have turned off.
-        "dev_prefix": devapp.dev_prefix(),
         "logs": logs.payload(),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
@@ -3044,6 +3040,8 @@ class Handler(BaseHTTPRequestHandler):
         if act == "remove":
             r = devapp.remove_instance(name, inst)
             return self._json(r, 400 if r.get("error") else 200)
+        if act == "migrate-name":
+            return self._json(devapp.migrate_name(name, inst))
         if act == "mkdirs":
             return self._json(devapp.make_dirs(name, inst))
         if act == "state":

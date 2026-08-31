@@ -18,14 +18,15 @@ set -euo pipefail
 
 USER_NAME="bb"
 SSH_KEY=""
-TCP_ON=""
 declare -a SHARES=() NFS=()
 
 usage() {
     cat <<'EOF'
 usage: provision.sh [options]
 
-  --user NAME          the account Docker runs under and ssh lands on (bb)
+  --user NAME          the account Docker runs under and ssh lands on. The
+                       default is bb, and BuilderBot assumes bb — so changing
+                       it means writing the account out in DOCKER_HOST.
   --key "ssh-ed25519 …"  a PUBLIC key, appended to this machine's
                        authorized_keys. It is the .pub half and nothing else:
                        the private key stays on BuilderBot, shielded in
@@ -41,8 +42,6 @@ usage: provision.sh [options]
                        a pool path like /mnt/cache/...: that spelling is for
                        bind mounts and is not what the server offers, so the
                        mount fails, quietly, because of nofail.
-  --tcp                also listen on 2375, unauthenticated, for hosts that
-                       cannot use ssh. Off by default and worth leaving off.
 
 Path parity is not a style preference. A compose file's bind mounts are
 resolved by whatever runs the container, so if this VM calls the projects
@@ -59,7 +58,6 @@ while [ $# -gt 0 ]; do
         --key)   SSH_KEY="$2"; shift 2 ;;
         --share) SHARES+=("$2"); shift 2 ;;
         --nfs)   NFS+=("$2"); shift 2 ;;
-        --tcp)   TCP_ON=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
@@ -423,8 +421,12 @@ cmd_appdata() {
 # rather than pretending. Derived from what is actually mounted here, which is
 # the half that is easy to get wrong by hand.
 cmd_settings() {
-    local ip pairs="" path
+    local ip pairs="" path setting
     ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+    # BuilderBot fills in ssh:// and the bb account, so the address alone is
+    # the setting unless this machine runs docker as somebody else.
+    if [ "$DOCKER_USER" = bb ]; then setting="${ip:-<this-vm>}"
+    else setting="ssh://${DOCKER_USER}@${ip:-<this-vm>}"; fi
     while read -r path; do
         [ -n "$path" ] || continue
         # Parity: BuilderBot mounts the same share at the same path, so the
@@ -436,7 +438,7 @@ cmd_settings() {
 
 Put these in BuilderBot's container template:
 
-  DOCKER_HOST=ssh://${DOCKER_USER}@${ip:-<this-vm>}
+  DOCKER_HOST=${setting}
   DOCKER_HOST_PATHS=${pairs:-<none yet>}
 
 Only for the paths BuilderBot ALSO mounts at the same place — a share that is
@@ -579,30 +581,30 @@ if [ "${#MOUNTED[@]}" -gt 0 ]; then
     /usr/local/sbin/bb-sandbox check || true
 fi
 
-if [ -n "$TCP_ON" ]; then
-    say "docker on tcp/2375 (unauthenticated)"
-    # Deliberately awkward to reach for. An open Docker port is root on this
-    # machine to anyone who can reach it — tolerable ONLY because this machine
-    # is the sandbox and holds nothing. Keep it off the LAN.
-    mkdir -p /etc/systemd/system/docker.service.d
-    cat > /etc/systemd/system/docker.service.d/tcp.conf <<'EOF'
-[Service]
-ExecStart=
-ExecStart=/usr/bin/dockerd -H fd:// -H tcp://0.0.0.0:2375 --containerd=/run/containerd/containerd.sock
-EOF
+# Docker listens on its socket and nothing else. An open 2375 is root on this
+# machine to anyone who can reach it, and BuilderBot will not talk to one
+# anyway — ssh is the only way in, which is why no port has to be opened here.
+if [ -f /etc/systemd/system/docker.service.d/tcp.conf ]; then
+    say "closing tcp/2375, which an earlier run opened"
+    rm -f /etc/systemd/system/docker.service.d/tcp.conf
     systemctl daemon-reload
     systemctl restart docker
 fi
 
 ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+# What to paste. BuilderBot fills in the scheme and the bb account, so on a
+# default install the address IS the whole setting; the account is spelled out
+# only when it is not the one BuilderBot would assume.
+if [ "$USER_NAME" = bb ]; then SETTING="${ip:-<this-vm>}"
+else SETTING="ssh://${USER_NAME}@${ip:-<this-vm>}"; fi
+
 cat <<EOF
 
 == done
 
-Point BuilderBot at it by setting, in the container's template:
+Point BuilderBot at it with one setting in the container's template:
 
-  DOCKER_HOST=ssh://${USER_NAME}@${ip:-<this-vm>}
-$([ -n "$TCP_ON" ] && echo "  ...or, if ssh is awkward:  DOCKER_HOST=tcp://${ip:-<this-vm>}:2375")
+  DOCKER_HOST=${SETTING}
 
 A web UI a container here publishes is reachable at http://${ip:-<this-vm>}:<port>
 directly, because this VM has its own address on your network.
