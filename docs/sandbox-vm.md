@@ -114,14 +114,21 @@ sudo bb-sandbox                      # a menu, whiptail where the distro has it
 sudo bb-sandbox add-nfs 192.168.1.15:/mnt/user/media:/auxiliary
 sudo bb-sandbox add-share workspace:/workspace:ro
 sudo bb-sandbox appdata /devdata     # which mount holds container appdata
+sudo bb-sandbox readonly /workspace  # ...and back with: readonly /workspace off
 sudo bb-sandbox check                # is every mount really there
 sudo bb-sandbox settings             # the lines to paste into BuilderBot
 ```
 
-`:ro` on a share mounts it read-only, and the projects share should have it:
-nothing on this machine needs to write source code, so a container that binds
-its project tree cannot scribble on it either. Leave it off the shares
-containers keep their data on — appdata, media — which exist to be written.
+**Mount the projects share read-only.** Nothing on this machine writes source
+code — the daemon only ever *resolves* bind sources there — so read-only costs
+nothing and means a container that binds its project tree cannot scribble on
+your source. `:ro` on `add-share`/`add-nfs` decides it when the mount is made;
+`bb-sandbox readonly /workspace` decides it afterwards, which is what you
+usually have, and `readonly /workspace off` puts it back. `list` shows which
+mounts are read-only.
+
+Leave the shares containers keep their data on — appdata, media — writable,
+being what they are for.
 
 It is the same code provisioning uses for its own `--share` and `--nfs` — one
 implementation of the fstab writing, not a copy per entry point, because the
@@ -399,8 +406,10 @@ ssh-keyscan -H <vm-ip> >> ~/.ssh/known_hosts
 `~` is the home volume, so this survives a container restart.
 
 **2. `DOCKER_HOST=<vm-ip>`.** The address is the whole setting: `ssh://` and
-the `bb` account `provision.sh` makes are filled in, and `ssh://someone@host`
-written out in full still means what it says. ssh rather than an open Docker
+the `bb` account `provision.sh` makes are filled in — by the entrypoint, before
+anything in the container inherits it, so a session's own `docker ps` reaches
+the VM too and not a tcp port nothing listens on. `ssh://someone@host` written
+out in full is left exactly as written. ssh rather than an open Docker
 port, so authentication is the key you installed and nothing has to listen —
 an open `2375` would be root on the sandbox to anyone who could reach it.
 
