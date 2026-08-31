@@ -138,6 +138,42 @@ ok((await ids()).slice(0, 2).join() === '3,2',
    'title A–Z orders by the words, open ones still first');
 await page.selectOption('#bugSort', 'severity');
 
+// Severity is the one sort that means nothing once a bug is closed: "how bad
+// is it" is a question about work outstanding, and a critical fixed months ago
+// above a medium fixed yesterday answers nothing anybody asked. So the closed
+// half falls back to most recently closed — the only thing that half is read
+// for — while the open half is still worst-first.
+bbBug('add', 'an old low one, closed first', '--sev', 'low');
+bbBug('add', 'a newer critical, closed after it', '--sev', 'critical');
+bbBug('fix', '4', 'closed this one first');
+// updated has one-second resolution, and the point of the assertion below is
+// that the LATER close leads — so the two have to land in different seconds.
+await new Promise(r => setTimeout(r, 1100));
+bbBug('fix', '5', 'and this one second');
+await page.evaluate(() => notebooks.get('alpha').reloadBugs());
+await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 5,
+                           { timeout: 10000 });
+const order = await ids();
+const shut = order.slice(order.indexOf('5'));
+ok(shut[0] === '5' && shut.includes('4'),
+   'sorted by severity, the closed ones run most-recently-closed first — a low '
+   + 'closed after a critical is above it');
+ok(order.indexOf('5') > order.indexOf('2'),
+   '...and every closed one is still below every open one, whatever its severity');
+// The pills carry the same three colours the bell uses for the same three
+// meanings, so a severity and a notification are not two things to learn.
+const pill = sev => page.$eval(`#bugList .bug .sev.${sev}`,
+                               e => getComputedStyle(e).color);
+ok(await pill('low') !== await pill('medium')
+   && await pill('medium') !== await pill('high'),
+   'low, medium and high are three different colours rather than three words');
+// Put the fixture back to three: the tests below count rows.
+bbBug('rm', '4', 'a fixture for the sort above');
+bbBug('rm', '5', 'a fixture for the sort above');
+await page.evaluate(() => notebooks.get('alpha').reloadBugs());
+await page.waitForFunction(() => document.querySelectorAll('#bugList .bug').length === 3,
+                           { timeout: 10000 });
+
 // ---- deleting a report that should not exist -------------------------------
 // Not the same act as closing one: fixed and wontfix keep the bug, because a
 // closed bug stops the same report being chased twice. This is for the report

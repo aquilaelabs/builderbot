@@ -1305,8 +1305,16 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .bug .btitle{flex:1;min-width:0;font:13px/1.4 system-ui,sans-serif;
   overflow-wrap:anywhere}
 .bug .btitle.done{color:var(--dim);text-decoration:line-through}
-.bug .sev.high{color:#e8a04c;border-color:#785331}
-.bug .sev.critical{color:var(--red2);border-color:var(--red2-edge)}
+/* The same three colours the bell's dot uses for the same three meanings —
+   red is a failure, amber is a warning, blue is worth knowing — so a severity
+   here and a notification there do not have to be learned separately.
+   `critical` is the only filled one: it has to outrank a red pill, and there
+   is nothing above red to escalate to. */
+.bug .sev.low{color:var(--blue2);border-color:var(--blue2-edge)}
+.bug .sev.medium{color:var(--gold);border-color:var(--gold-edge)}
+.bug .sev.high{color:var(--red2);border-color:var(--red2-edge)}
+.bug .sev.critical{background:var(--red2);border-color:var(--red2);
+  color:#1a1f26;font-weight:700}
 .bug .bstat.open{color:var(--blue2);border-color:var(--blue2-edge)}
 .bug .bstat.fixed{color:var(--green2);border-color:var(--green2-edge)}
 /* Neither green nor red: it was real and it stopped applying, which is not a
@@ -8593,9 +8601,22 @@ become that version's section when it is created">Changelog${
 
   // Open before closed, always — a tracker is read to find what is left, and
   // a fixed critical topping the list is not that. The choice orders within.
+  //
+  // ...and severity is the one choice that means nothing once a bug is closed.
+  // "How bad is it" is a question about work outstanding; a critical fixed in
+  // June above a medium fixed yesterday answers nothing anybody asked. So the
+  // closed half falls back to most recently closed, which is the only thing
+  // that half is read for. The other four sorts already mean the same in both
+  // halves — a date is a date and a title is a title — so they are left alone.
   const BUG_SORTS = {
-    severity: (a, b) => (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9)
-                        || (b.at || 0) - (a.at || 0),
+    // The tie-break matters here and nowhere else: `updated` has one-second
+    // resolution, and closing two bugs in the same second is ordinary. Falling
+    // back to the id keeps the rows from swapping places between draws.
+    severity: (a, b) => a.status !== "open"
+                        ? (b.updated || b.at || 0) - (a.updated || a.at || 0)
+                          || (b.id || 0) - (a.id || 0)
+                        : (SEV_RANK[a.severity] ?? 9) - (SEV_RANK[b.severity] ?? 9)
+                          || (b.at || 0) - (a.at || 0),
     newest:   (a, b) => (b.at || 0) - (a.at || 0),
     oldest:   (a, b) => (a.at || 0) - (b.at || 0),
     updated:  (a, b) => (b.updated || b.at || 0) - (a.updated || a.at || 0),
