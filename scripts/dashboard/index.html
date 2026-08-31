@@ -213,6 +213,15 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 @media(max-width:600px){ .meta.host{display:none} }
+/* The theme crossfade, in force only while one is happening — see applyTheme.
+   Colour properties only: opacity is left alone so a tooltip or a fold mid-
+   flight is not dragged into it, and `*` is affordable because it lasts 320ms
+   rather than being the page's standing behaviour. */
+html.theming,html.theming *,html.theming *::before,html.theming *::after{
+  transition:background-color .3s ease,color .3s ease,border-color .3s ease,
+    outline-color .3s ease,fill .3s ease,stroke .3s ease,
+    box-shadow .3s ease !important}
+
 /* The About control: version-as-label where there is room, an icon where there
    is not — a truncated version string answers nothing, so it stops pretending
    to. One of the two, never both: showing both stacked them and doubled the
@@ -4318,11 +4327,27 @@ const THEME_IDS = new Set(THEMES.map(t => t[0]));
 // and a phone in the dark and a desktop at noon are allowed to differ. It is
 // also the only way to have no flash: applied from the inline block in <head>,
 // before the first paint, where a value fetched from the server cannot be.
+let themingTimer = null;
 function applyTheme(id){
   const use = THEME_IDS.has(id) ? id : "default";
   // Default carries no attribute at all, so its palette is the :root one and
   // there is nothing to strip if every scheme is ever removed.
   const root = document.documentElement;
+  // Crossfade, by giving the page a colour transition for as long as the swap
+  // takes and no longer. A standing transition on every element would be the
+  // easy version and the wrong one: it would also slow every hover, every row
+  // turning green and every state light on the page, all to make one rare
+  // action look nicer. So it is switched on for the swap and off again.
+  //
+  // The custom properties themselves do not animate — a var flips at once —
+  // but the computed background, text and border colours that read them do,
+  // which is the whole picture except the terminal, whose iframe is another
+  // document with its own styling and cannot be reached from here.
+  if (!noMotion() && root.dataset.theme !== (use === "default" ? undefined : use)){
+    root.classList.add("theming");
+    clearTimeout(themingTimer);
+    themingTimer = setTimeout(() => root.classList.remove("theming"), 320);
+  }
   if (use === "default") delete root.dataset.theme;
   else root.dataset.theme = use;
   try{ localStorage.setItem("bb.theme", use); }catch(e){ /* private mode */ }

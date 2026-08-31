@@ -888,6 +888,36 @@ ok(again.status === 200 && again.body.to === '.trash/beta-2',
 execFileSync('mv', [`${DIR}/ws/.trash/beta-2`, `${DIR}/ws/beta`]);
 execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 
+// ---- the theme crossfades ----------------------------------------------
+// A colour transition that exists only while a swap is happening. A standing
+// one on every element would be the easy version and the wrong one: it would
+// slow every hover and every state light on the page to make one rare action
+// look nicer.
+{
+  const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const was = await bg();
+  await page.evaluate(() => applyTheme('nostromo'));
+  await page.waitForTimeout(90);
+  const mid = await bg();
+  const during = await page.evaluate(() =>
+    document.documentElement.classList.contains('theming'));
+  ok(during && mid !== was,
+     'changing the scheme crossfades rather than cutting to it');
+  await page.waitForTimeout(400);
+  const done = await bg();
+  ok(done !== mid && !(await page.evaluate(() =>
+       document.documentElement.classList.contains('theming'))),
+     '...and the transition is taken back off, so nothing else on the page drags');
+  // Reduced motion gets the swap and none of the fade.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => applyTheme('default'));
+  await page.waitForTimeout(60);
+  ok(await bg() === was && !(await page.evaluate(() =>
+       document.documentElement.classList.contains('theming'))),
+     '...and reduced motion lands on the new scheme at once');
+  await page.emulateMedia({ reducedMotion: null });
+}
+
 // ---- one field skin, everywhere ----------------------------------------
 // Every text control on the page shares its ground, edge and radius from one
 // rule, and a site declares only what is its own — font aside, that is the
