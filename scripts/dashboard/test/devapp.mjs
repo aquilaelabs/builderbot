@@ -561,6 +561,14 @@ out['parity'] = [mp2, bad2, m.problems('alpha', {'services': {'a': {'volumes': [
 os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
 out['falseparity'] = m.host_map()
 os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+# A bind under a path this container has that the mapping is silent about.
+# The complaint used to say "the daemon does not have it", which is a claim
+# this side cannot make — nothing here can see the other machine's filesystem,
+# which is the whole reason the mapping is a setting at all. Against a sandbox
+# VM it was usually false as well.
+os.environ['DOCKER_HOST_PATHS'] = '/workspace:/workspace'
+out['unmapped'] = m.problems('alpha', {'services': {'a': {'volumes':
+    ['/devdata/thing/data:/data']}}})
 os.environ['DOCKER_HOST_PATHS'] = '/nope:/mnt/x,garbage'
 out['junk'] = m.host_map()
 os.environ['DOCKER_HOST_PATHS'] = ''
@@ -585,6 +593,10 @@ ok(hp.parity[0]['/workspace'] === '/workspace' && !hp.parity[1].length,
    'an identity mapping is accepted without being checked against our mounts');
 ok(!hp.parity[2].length,
    '...and a bind under it is no longer a problem, because it is not one');
+ok(hp.unmapped.length === 1 && !/does not have it/.test(hp.unmapped[0])
+   && /\/devdata:\/devdata/.test(hp.unmapped[0]),
+   'an unmapped path says the mapping is silent, not that the daemon lacks it — '
+   + 'and names the pair to add');
 ok(hp.falseparity[0]['/workspace'] === '/workspace'
    && /sandbox-VM mapping/.test(hp.falseparity[1][0] || ''),
    '...but says so when that mapping is pointed at a daemon on this box');
@@ -846,6 +858,42 @@ ok(Object.keys(NM.owner)[0] === 'alpha'
    '...and the store keeps whose it is, which is what the name never decides');
 ok(/already alpha/.test(NM.project_told),
    'a project whose own name was taken is told by whom, not quietly merged into it');
+
+// Making a compose file's bind directories. Docker creates a missing bind
+// source itself — as root, then chowning it — which on a share that squashes
+// root fails and takes the run down, leaving the directory behind so the
+// SECOND press works. So they are made first, by whoever owns them.
+const mkd = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+here = tempfile.mkdtemp()
+os.makedirs(here + '/already')
+# The mount table this container has, which is what decides what it may make.
+os.environ['BB_MOUNTINFO'] = d + '/mi'
+open(d + '/mi', 'w').write('1 0 0:1 / ' + here + ' rw - x x rw\\n')
+cfg = {'services': {'a': {'volumes': [
+    here + '/new/data:/data', here + '/already:/x', '/nowhere-i-mount/z:/z']}}}
+out = {}
+out['split'] = m.missing_dirs('p', cfg)
+m._config = lambda *a, **k: cfg
+out['made'] = m.make_dirs('p')
+out['exists'] = os.path.isdir(here + '/new/data')
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const MK = JSON.parse(mkd.trim().split('\n').pop());
+ok(MK.split[0].length === 1 && /new\/data$/.test(MK.split[0][0]),
+   'a bind directory that is missing and reachable is offered');
+ok(MK.split[1].length === 1 && MK.split[1][0] === '/nowhere-i-mount/z',
+   '...one this container cannot see is named separately, not invented on the daemon');
+ok(!MK.split[0].concat(MK.split[1]).some(p => /already/.test(p)),
+   '...and one that exists is not offered at all');
+ok(MK.exists && MK.made.made.length === 1 && !MK.made.failed.length,
+   'making them creates the reachable ones and leaves the rest alone');
+
 
 // An instance is (project, name) now, and the old layout is one record per
 // project. Driven at the module: the migration happens on read, so it is the

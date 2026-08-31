@@ -5430,7 +5430,7 @@ function renderProjectsInto(i){
 // the way to READ a diagnosis is how you get a dashboard that has gone quiet
 // for no visible cause.
 const DOCKER_ACTS = '[data-dm="up"],[data-dm="down"],[data-dm="remove"],'
-                  + '[data-dm="rebuild"],#devSend,#bDockerNew';
+                  + '[data-dm="rebuild"],[data-dm="mkdirs"],#devSend,#bDockerNew';
 
 // The one answer, from the poll. `on` absent (an older server, a payload that
 // has not landed yet) is not "off": a control the page has no opinion about
@@ -5634,6 +5634,25 @@ async function dmAction(project, instance, act, btn){
     }
     catch(e){ notify("could not stop it: " + e, true); }
     dockerRev++; drawPanes(); loadDocker();
+    return;
+  }
+  if (act === "mkdirs"){
+    if (btn) btn.disabled = true;
+    try{
+      const r = await fetch("/api/devapp", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, instance, action: "mkdirs"})});
+      const j = await r.json();
+      if (j.failed?.length) notify(j.failed[0], true);
+      else notify(j.made.length ? `made ${j.made.length} director${
+        j.made.length === 1 ? "y" : "ies"}` : "nothing was missing");
+      // Not silent about the ones it could not: those are the mapping's
+      // problem, and the row already says so under "will not work as written".
+      if (j.unreachable?.length)
+        notify(`${j.unreachable.length} are on the daemon's disk only — `
+               + `make those over there`, true);
+    }catch(e){ notify("mkdirs: " + e, true); }
+    dockerList = null; dockerRev++; loadDocker();
     return;
   }
   if (act === "down" && !confirm(`Take ${project}/${instance} down?`)) return;
@@ -5908,6 +5927,10 @@ directory stay, so remaking it under the same name finds them">Remove</button>
             title="stop this build. What is already built is kept — an abort is
 for the rest of the work"
             >${job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
+        ${(d.mkdirs || []).length ? `<button type="button" data-dm="mkdirs" ${
+            busy ? "disabled" : ""}
+            title="create the bind directories this compose names — docker would try itself and fail on a share that squashes root"
+            >Make dirs</button>` : ""}
         <button type="button" data-dm="rebuild" ${!d.changed || busy ? "disabled" : ""}
           title="${!d.built_rev
             ? "build the first image, then bring it up"
@@ -7956,6 +7979,10 @@ $("todoRevert").onclick = revertNotebook;
             // facts about THIS project's build, which is what this tab is for.
             : ""}</div>
           ${devLines("will not work as written", da.problems, "bad")}
+          ${(da.mkdirs || []).length ? `<div class="dim warn">${
+              da.mkdirs.length} bind director${da.mkdirs.length === 1 ? "y" : "ies"
+              } do not exist yet</div>` + da.mkdirs.map(d =>
+              `<div class="dim warn li">${esc(d)}</div>`).join("") : ""}
           ${devLines("asks for more than its own directory", da.risks, "risk")}
           ${daJob?.error ? `<div class="dim" style="white-space:pre-wrap">${
             esc((daJob.log || "").slice(-600))}</div>` : ""}

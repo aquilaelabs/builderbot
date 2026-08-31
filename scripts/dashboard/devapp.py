@@ -1702,6 +1702,58 @@ def _binds(sv, project):
     return out
 
 
+def missing_dirs(project, cfg):
+    """Bind sources that do not exist yet, split by whether we can make them.
+
+    Docker creates a missing bind source itself — as root, then chowning it —
+    which on a share that squashes root fails and takes the whole run down
+    ("operation not permitted"), leaving the directory behind so the SECOND
+    press works. An intermittent-looking failure with a fixed cause, and the
+    reason this exists: the directories are made first, by whoever owns them.
+
+    Only what this container can actually reach through its own mounts. A path
+    it cannot see is not a path it should be inventing on the other machine's
+    disk — that one is already what problems() is complaining about, and the
+    answer there is the mapping rather than a mkdir.
+
+    Returns (makeable, unreachable), both sorted lists of paths.
+    """
+    if cfg is None:
+        return [], []
+    # The mounts this container has, longest first, so a path under /devdata
+    # matches /devdata rather than /.
+    mine = sorted((m for m in _mount_roots() if m != "/"), key=len, reverse=True)
+    make, cannot = set(), set()
+    for _, sv in sorted(_services(cfg).items()):
+        for src in _binds(sv, project):
+            if Path(src).exists():
+                continue
+            if any(src == m or src.startswith(m + "/") for m in mine):
+                make.add(src)
+            else:
+                cannot.add(src)
+    return sorted(make), sorted(cannot)
+
+
+def make_dirs(project, instance=MAIN):
+    """Create the bind directories this container can reach. (made, failed).
+
+    Owned by whoever BuilderBot runs as, which is the same ownership the
+    per-instance dev-data directory gets and what the Unraid convention
+    expects. Nothing is created outside a path this container mounts, and
+    nothing existing is touched.
+    """
+    make, cannot = missing_dirs(project, _config(project, instance))
+    made, failed = [], []
+    for d in make:
+        try:
+            Path(d).mkdir(parents=True, exist_ok=True)
+            made.append(d)
+        except OSError as e:
+            failed.append(f"{d}: {e}")
+    return {"ok": True, "made": made, "failed": failed, "unreachable": cannot}
+
+
 def risks(project, cfg):
     """What this compose asks for beyond its own directory.
 
@@ -1784,6 +1836,17 @@ def stray_map_entries(mapping):
     return sorted(p for p in mapping if not Path(p).is_dir())
 
 
+def _root_of(path):
+    """The first component of a path, which is the pair a mapping would name.
+
+    /devdata/binhex-sonarr/data is not what goes in DOCKER_HOST_PATHS —
+    /devdata is — and a message that suggests the bind's whole path teaches the
+    wrong shape.
+    """
+    parts = [p for p in str(path).split("/") if p]
+    return "/" + parts[0] if parts else str(path)
+
+
 def problems(project, cfg):
     """Paths this compose gives the daemon that the daemon will not find.
 
@@ -1815,11 +1878,18 @@ def problems(project, cfg):
             # as broken, and tells it to use the path it is already using.
             if there == src:
                 continue
+            # "the daemon does not have it" was the old wording, and it is a
+            # claim this side cannot make: nothing here can see the other
+            # machine's filesystem, which is the whole reason the mapping is a
+            # setting. Against a sandbox VM it was usually false as well — the
+            # share is mounted over there at the same path, and the honest
+            # answer is that BuilderBot has not been told so.
             out.append(
-                f"{name} mounts {src}, which is this container's path — the "
-                + (f"daemon calls that {there}" if there else
-                   "daemon does not have it; say where it is with "
-                   "DOCKER_HOST_PATHS"))
+                f"{name} mounts {src}, which is this container's path — "
+                + (f"the daemon calls that {there}" if there else
+                   f"and DOCKER_HOST_PATHS does not say what the daemon calls "
+                   f"it. Add a pair for it; {_root_of(src)}:{_root_of(src)} if "
+                   f"the daemon mounts the same share at the same path"))
     return out
 
 
@@ -1985,6 +2055,11 @@ def state(project, instance=MAIN):
         rs = risks(project, cfg)
         out["risks"] = rs
         out["problems"] = problems(project, cfg) + host_map()[1]
+        # What is not there yet, so the row can offer to make it rather than
+        # letting docker try and fail on a root-squashing share.
+        mk, cannot = missing_dirs(project, cfg)
+        out["mkdirs"] = mk
+        out["mkdirs_cannot"] = cannot
         out.update(wiring(cfg))
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way — either the file asks for
