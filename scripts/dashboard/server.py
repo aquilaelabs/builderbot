@@ -2633,6 +2633,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(devapp.containers())
         if self.path.startswith("/api/project-job"):
             return self._json(projects.job())
+        if self.path.startswith("/api/trash"):
+            return self._trash_list()
         if self.path.startswith("/api/todo"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
@@ -2695,6 +2697,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._container(req)
         if path.startswith("/api/rename"):
             return self._rename(req)
+        # These two before the bare prefix, or startswith swallows them.
+        if path.startswith("/api/trash-restore"):
+            return self._trash_restore(req)
+        if path.startswith("/api/trash-purge"):
+            return self._trash_purge(req)
         if path.startswith("/api/trash"):
             return self._trash(req)
         if path.startswith("/api/session"):
@@ -3558,6 +3565,20 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass
         body, code = projects.trash(req)
+        return self._json(body, code)
+
+    def _trash_list(self):
+        return self._json(projects.trash_list())
+
+    def _trash_restore(self, req):
+        body, code = projects.trash_restore(req)
+        return self._json(body, code)
+
+    def _trash_purge(self, req):
+        """Delete a trashed project for good. The guards are in projects.py —
+        the path is resolved against the bin and the name has to be typed back
+        — and this is only the route to them."""
+        body, code = projects.trash_purge(req)
         return self._json(body, code)
 
     def _rename(self, req):

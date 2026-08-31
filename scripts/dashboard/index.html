@@ -164,9 +164,17 @@ html[data-theme="nostromo"] header::after{
     rgba(255,176,0,.75) 0 6px, rgba(0,0,0,.55) 6px 12px)}
 
 /* A stencil tick on every card title, like a panel number. The card headers
-   are already uppercase and letter-spaced, which is most of the look. */
+   are already uppercase and letter-spaced, which is most of the look.
+   The radius is the card's own, less its 1px border: an inset shadow is drawn
+   to the element's OWN box, and a square one against an 8px corner leaves a
+   few pixels of amber sitting outside the card's rounded edge. It read as a
+   notch on a still card and as a glitch while one folded, the fold being when
+   the eye is on that corner. The bottom pair only when the header IS the card,
+   which is what closed means. */
 html[data-theme="nostromo"] .card h2{
-  box-shadow:inset 3px 0 0 0 rgba(255,176,0,.5)}
+  box-shadow:inset 3px 0 0 0 rgba(255,176,0,.5);
+  border-radius:7px 0 0 0}
+html[data-theme="nostromo"] .card.closed h2{border-radius:7px 0 0 7px}
 
 /* CRT scanlines, on the panels only — never over a terminal pane, where they
    would sit on top of somebody's actual output at the exact size of its text.
@@ -2254,6 +2262,21 @@ body.dragging .tab .lbl{cursor:grabbing}
   </div>
 </div>
 
+<!-- Deleting a project moves it to /workspace/.trash and says so; this is
+     where those go to be looked at, put back, or finally destroyed. The last
+     of those is the only irreversible thing on this page, so it asks for the
+     name to be typed rather than for a click. -->
+<div id="tmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="tTitle">
+  <div class="box">
+    <h3 id="tTitle">Deleted projects</h3>
+    <div class="hint">Deleting a project moves it to <code>.trash</code> under
+      the projects share. Its notebook — the roadmap, the bugs, the memories —
+      is left where it is, so putting one back brings all of it with it.</div>
+    <div id="tList" class="field"></div>
+    <div class="foot"><span class="sp"></span>
+      <button type="button" id="tClose">Close</button></div>
+  </div>
+</div>
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
   <div class="box">
     <h3 id="pTitle">New project</h3>
@@ -4855,7 +4878,9 @@ function drawProjects(all){
   // an empty workspace is exactly where it is needed most.
   const togHtml = `<div class="macros"><button id="bNewProj"
        title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach">New project…</button><button id="bAllProj"
-       title="every project under /workspace, pinned or not, with the same controls">All projects</button>${
+       title="every project under /workspace, pinned or not, with the same controls">All projects</button
+       ><button id="bTrash" class="ic"
+       title="projects you deleted — still on disk under .trash, and still recoverable">${BIN}</button>${
        flagged.length
        ? `<button id="bAll">${showAllProjects ? "Hide" : "Show"} ${hidden}</button>` : ""}</div>`;
 
@@ -4869,6 +4894,7 @@ function drawProjects(all){
     }</div>` + togHtml)){
       pJobWire();
       $("bNewProj").onclick = openNewProject;
+      const tb = $("bTrash"); if (tb) tb.onclick = openTrash;
       $("bAllProj").onclick = openProjectsTab;
       if (flagged.length)
         $("bAll").onclick = () => { showAllProjects = !showAllProjects;
@@ -4883,6 +4909,7 @@ function drawProjects(all){
   // elements, and their handlers, from last time.
   if (paint(el, jobHtml + shown.map(p => projectRow(p, live, cls)).join("") + togHtml)){
     $("bNewProj").onclick = openNewProject;
+    const tb = $("bTrash"); if (tb) tb.onclick = openTrash;
     $("bAllProj").onclick = openProjectsTab;
     if (flagged.length)
       $("bAll").onclick = () => { showAllProjects = !showAllProjects;
@@ -5330,6 +5357,89 @@ function pkgTickDots(){
 // A trash can, for the one control that is per-row: uninstalling is about
 // a particular package, never a selection, and a bulk Remove button beside a
 // bulk Install was one mis-click away from being expensive.
+// ---- the bin ------------------------------------------------------------
+// Deleting a project moves it to .trash and the wording everywhere says so.
+// This is where those live afterwards: put one back, or destroy it. Only the
+// second is irreversible, and it is the only control on this page that is —
+// so it asks for the name to be typed rather than for a second click.
+// Its own, rather than reaching for one of the tab-specific posters: those
+// carry a tab's error handling with them.
+async function postTrash(path, body){
+  try{
+    const r = await fetch(path, {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(body)});
+    return await r.json();
+  }catch(e){ return {error: String(e)}; }
+}
+
+async function openTrash(){
+  $("tmodal").hidden = false;
+  await drawTrash();
+}
+
+async function drawTrash(){
+  const el = $("tList");
+  el.innerHTML = `<div class="loading">loading…</div>`;
+  let j;
+  try{ j = await (await fetch("/api/trash")).json(); }
+  catch(e){ el.innerHTML = `<div class="hint bad">${esc(String(e))}</div>`; return; }
+  const items = j?.items || [];
+  if (!items.length){
+    el.innerHTML = `<div class="empty">nothing deleted</div>`;
+    return;
+  }
+  el.innerHTML = items.map(t => `<div class="row trow" data-t="${esc(t.name)}">
+      <div class="grow"><div class="name">${esc(t.name)}</div>
+        <div class="sub">deleted ${esc(ago(t.at))}${t.taken
+          ? ` · <span class="warn">${esc(t.was)} exists again</span>` : ""}</div></div>
+      <span class="acts">
+        <button type="button" data-trestore="${esc(t.name)}"${t.taken ? " disabled" : ""}
+          title="${t.taken
+            ? "a project called " + esc(t.was) + " is back under /workspace — rename it first"
+            : "move it back to /workspace/" + esc(t.was)}">Put back</button>
+        <button type="button" class="rm" data-tpurge="${esc(t.name)}"
+          title="delete it and every file in it, for good">${BIN}</button>
+      </span></div>`).join("");
+  el.querySelectorAll("[data-trestore]").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    const r = await postTrash("/api/trash-restore", {name: b.dataset.trestore});
+    if (r?.error) notify(r.error, true);
+    else notify(`${r.name} is back under /workspace`);
+    await drawTrash(); refresh();
+  });
+  el.querySelectorAll("[data-tpurge]").forEach(b => b.onclick = () => askPurge(b.dataset.tpurge));
+}
+
+// Typed, not clicked. There is nothing after this one — no .trash to fish it
+// out of a second time — and the ceremony is the difference between a control
+// somebody meant to press and one their thumb found.
+function askPurge(name){
+  const row = $("tList").querySelector(`.trow[data-t="${CSS.escape(name)}"]`);
+  if (!row || row.querySelector(".dropbox")) return;
+  const box = document.createElement("div");
+  box.className = "dropbox";
+  box.innerHTML = `<div class="hint bad">This deletes every file in
+      <b>${esc(name)}</b>. It is not moved anywhere and there is nothing to
+      undo it with. Type the name to confirm.</div>
+    <input autocomplete="off" placeholder="${esc(name)}">
+    <div class="foot"><span class="sp"></span>
+      <button type="button" class="stop">Keep it</button>
+      <button type="button" class="danger" disabled>Delete for good</button></div>`;
+  row.appendChild(box);
+  const input = box.querySelector("input"), go = box.querySelector(".danger");
+  input.oninput = () => { go.disabled = input.value.trim() !== name; };
+  input.focus();
+  box.querySelector(".stop").onclick = () => box.remove();
+  go.onclick = async () => {
+    go.disabled = true;
+    const r = await postTrash("/api/trash-purge", {name, confirm: input.value.trim()});
+    if (r?.error){ notify(r.error, true); go.disabled = false; return; }
+    notify(`${name} is gone`);
+    await drawTrash();
+  };
+}
+
 const BIN = `<svg viewBox="0 0 16 16" aria-hidden="true">
   <path d="M2.8 4.3h10.4"/><path d="M6.4 4.3V2.9h3.2v1.4"/>
   <path d="M4.2 4.3l.7 8.3a1 1 0 0 0 1 .9h4.2a1 1 0 0 0 1-.9l.7-8.3"/>
@@ -5914,9 +6024,28 @@ async function cSubmit(){
       return fail(j.error);
     }
     $("cmodal").hidden = true;
-    notify(editing ? `${editing} saved — ${j.note || "rebuild it to bring the change up"}`
-                   : `${j.name} is in the manager — press Build to bring it up`);
+    if (!editing){
+      notify(`${j.name} is in the manager — press Build to bring it up`);
+      dockerList = null; dockerRev++; loadDocker();
+      return;
+    }
+    // Saved. If it has been built, the change is on disk and not in the
+    // running container — a state worth resolving now rather than leaving for
+    // the row to hint at, because the gap between "I edited it" and "it is
+    // running what I edited" is where the confusion lives. Asked rather than
+    // done: a rebuild takes it down and brings it up, which is not something
+    // to start on somebody's behalf because they pressed Save.
+    const row = (dockerList?.instances || []).find(
+      d => d.project === editing && d.instance === "main");
     dockerList = null; dockerRev++; loadDocker();
+    if (row?.built_rev && confirm(
+          `${editing} is saved. Rebuild it now so the change takes effect?\n\n`
+          + `That takes it down and brings it back up. Cancel keeps the change `
+          + `on disk — the row will offer Rebuild whenever you want it.`)){
+      dmAction(editing, "main", "rebuild", null);
+      return;
+    }
+    notify(`${editing} saved — ${j.note || "rebuild it to bring the change up"}`);
   }catch(e){ $("cGo").disabled = false; $("cGo").textContent = verb;
              return fail("could not create it: " + e); }
 }
@@ -9886,6 +10015,8 @@ function toggleBell(open){
 }
 
 $("bBell").onclick = e => { e.stopPropagation(); toggleBell(); };
+$("tClose").onclick = () => { $("tmodal").hidden = true; };
+$("tmodal").onclick = e => { if (e.target === $("tmodal")) $("tmodal").hidden = true; };
 // Anywhere else closes it, including the header around it — a panel you have
 // to aim at the bell again to shut is a panel in the way.
 //
