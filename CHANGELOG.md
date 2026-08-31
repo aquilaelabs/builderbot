@@ -106,3 +106,4 @@
 - On a phone, About is a circled question mark rather than a word, and a locked project is marked by its padlock alone (c3cfec2)
 - Tabs cut off by the edge of the strip fade out instead of ending in a hard seam, and only on the side actually cutting one off (13364d0)
 - Changing the colour scheme crossfades instead of switching instantly (4c2157a)
+- The Docker manager lists a compose file's missing bind directories and offers to create them, instead of letting docker try and fail on a share that squashes root (3f72992)
