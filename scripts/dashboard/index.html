@@ -2143,7 +2143,8 @@ body.dragging .tab .lbl{cursor:grabbing}
     </div>
     <div class="field" id="cYmlField">
       <label for="cYml">docker-compose.yml</label>
-      <textarea id="cYml" spellcheck="false"></textarea>
+      <textarea id="cYml" spellcheck="false"
+                placeholder="services:&#10;  app:&#10;    image: lscr.io/linuxserver/radarr:latest&#10;    restart: unless-stopped&#10;    environment:&#10;      - PUID=${PUID}&#10;      - PGID=${PGID}&#10;      - TZ=${TZ}&#10;    ports:&#10;      - &quot;7878:7878&quot;&#10;    volumes:&#10;      - ./config:/config"></textarea>
       <div class="hint">Checked by compose itself before it is saved. Relative
         bind sources resolve against this container's own data directory, which
         both this container and the daemon can see.</div>
@@ -5756,22 +5757,6 @@ async function loadWire(d){
 }
 
 // A starting point rather than an empty box. Somebody opening this is about
-// to run a published image, and the three lines that always differ — image,
-// port, volume — are easier to edit than to remember the shape of.
-const COMPOSE_STARTER = `services:
-  app:
-    image: lscr.io/linuxserver/radarr:latest
-    restart: unless-stopped
-    environment:
-      - PUID=\${PUID}
-      - PGID=\${PGID}
-      - TZ=\${TZ}
-    ports:
-      - "7878:7878"
-    volumes:
-      - ./config:/config
-`;
-
 let cEditing = null;              // the container being edited, or null for new
 
 async function openEditContainer(name){
@@ -5803,8 +5788,11 @@ function openNewContainer(){
   cEditing = null;
   $("cName").disabled = false;
   $("cName").value = "";
-  $("cYml").value = COMPOSE_STARTER;
-  $("cEnv").value = "PUID=99\nPGID=100\nTZ=America/New_York\n";
+  // Left EMPTY, both of them. The shape each wants is on the field as a
+  // placeholder, which shows the same thing and cannot be submitted: seeded
+  // as values, an example compose for a radarr nobody asked for was one
+  // unread click from being created under whatever name was typed.
+  $("cYml").value = $("cEnv").value = "";
   $("cErrWrap").hidden = true;
   $("cGo").disabled = false; $("cGo").textContent = "Create";
   cSeg("yml");

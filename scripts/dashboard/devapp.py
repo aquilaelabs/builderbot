@@ -467,8 +467,17 @@ def _guard(argv):
             return ("`docker run` — only where the daemon is a sandbox VM, "
                     "and this one is not")
         names = [a[3:] for a in argv if a.startswith("/d/")]
+        # The mount source is read back out of the argv and required to be one
+        # of the declared roots, so the rebuild below cannot be satisfied by
+        # naming a root nobody declared. Both halves are needed: this says
+        # WHERE, the rebuild says WHAT.
+        mount = next((a for a in argv if a.endswith(":/d")), "")
+        root = mount[:-3]
+        if root not in mkdir_roots():
+            return f"a `docker run` mounting {root or '?'}, which is not a declared root"
         if names and all(_DEV_NAME.match(n) for n in names) and any(
-                argv == _devdata_argv(op, *names) for op in _DEVDATA_OPS):
+                argv == _devdata_argv(op, *names, root=root)
+                for op in _DEVDATA_OPS):
             return ""
         return "a `docker run` this module did not build"
     if verb != "compose":
@@ -975,9 +984,11 @@ DEVDATA_IMAGE = "alpine"
 # Every operation this module will ask the daemon to perform on that share.
 _DEVDATA_OPS = {"mkdir": ["mkdir", "-p"], "mv": ["mv"], "test": ["test", "-d"]}
 
-# What may follow /d/. No slash, so nothing can climb out of the mount; no
-# leading dot, so `..` is not a name.
-_DEV_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+# What may follow /d/. Components separated by single slashes — a compose
+# names /devdata/<instance>/config, which is two deep — with every component
+# starting on a letter or digit, so `..` is not a name and nothing can climb
+# out of the mount. No leading, trailing or doubled slash.
+_DEV_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*(?:/[A-Za-z0-9][A-Za-z0-9_.-]*)*$")
 
 
 def sandbox_daemon():
@@ -991,26 +1002,48 @@ def sandbox_daemon():
     return docker_host().startswith("ssh://")
 
 
-def _devdata_argv(op, *names):
+def mkdir_roots():
+    """Paths on the DAEMON that BuilderBot may make directories under.
+
+    The dev-data share, plus whatever DOCKER_HOST_PATHS says the daemon calls
+    the shares it has — the daemon's side of each pair, because that is the
+    machine the mkdir happens on.
+
+    Declared rather than inferred, and that is the whole of the check. A
+    `docker run` with a bind is root on whatever answers, so the set of places
+    this may reach has to be readable from configuration alone: no compose
+    parse, nothing derived at the moment of the call, nothing a caller can
+    widen. A mapping entry for a share only the VM has — the case that reads
+    as inert today, since nothing on this side ever acts on it — is exactly
+    the operator saying "the daemon has this, and it is shared with me".
+    """
+    roots = {DEVDATA.rstrip("/")} | {
+        v.rstrip("/") for v in host_map()[0].values()}
+    return {r for r in roots if r.startswith("/") and r != "/"}
+
+
+def _devdata_argv(op, *names, root=None):
     """One of the commands above, as the exact argv it will be run as.
 
     In one place because _guard rebuilds it from a candidate argv and compares
-    — so what is allowed is these commands, not the verb they begin with.
-    DEVDATA itself is the mount and the names are its children, which confines
-    every one of them to it by construction rather than by checking.
+    — so what is allowed is these commands, not the verb they begin with. The
+    root is the mount and the names are paths under it, which confines every
+    one of them to it by construction rather than by checking; which roots may
+    be named is mkdir_roots(), checked separately.
 
-    Owned by whoever BuilderBot runs as: the same ownership the local mkdir
-    this replaces produced, so an instance's data does not change hands when
-    the arrangement does.
+    Owned by whoever BuilderBot runs as. That is the point of doing it this
+    way rather than letting docker create a missing bind source itself: docker
+    makes it as root and then chowns it, which on a share that squashes root
+    fails and takes the run down.
     """
     return [DOCKER, "run", "--rm", "-u", f"{os.getuid()}:{os.getgid()}",
-            "-v", f"{DEVDATA.rstrip('/')}:/d", DEVDATA_IMAGE,
+            "-v", f"{(root or DEVDATA).rstrip('/')}:/d", DEVDATA_IMAGE,
             *_DEVDATA_OPS[op], *(f"/d/{n}" for n in names)]
 
 
-def _devdata_run(op, *names, quiet=False):
+def _devdata_run(op, *names, root=None, quiet=False):
     """Run one. True if it did what it was asked."""
-    r = _run(_devdata_argv(op, *names), timeout=300)
+    r = _run(_devdata_argv(op, *names, root=root), timeout=300)
     if r["code"] != 0:
         if not quiet:
             print(f"[devapp] {op} {' '.join(names)} failed on the daemon: "
@@ -1214,7 +1247,7 @@ def overview():
             mine = by_proj.get(pn, [])
             rec = _read_rec(project, inst)
             same_daemon = rec.get("daemon") == daemon_id()
-            _mk = missing_dirs(project, _config(project, inst))
+            _mk = missing_dirs(project, _config(project, inst), inst)
             out.append({
                 "project": project, "instance": inst, "name": pn,
                 "running": any(c["state"] == "running" for c in mine),
@@ -1710,7 +1743,7 @@ def migrate_name(project, instance=MAIN):
     return {"ok": True, "was": was, "now": now, "moved": moved, "failed": failed}
 
 
-def missing_dirs(project, cfg):
+def missing_dirs(project, cfg, instance=MAIN):
     """Bind sources that do not exist yet, split by whether we can make them.
 
     Docker creates a missing bind source itself — as root, then chowning it —
@@ -1724,23 +1757,64 @@ def missing_dirs(project, cfg):
     disk — that one is already what problems() is complaining about, and the
     answer there is the mapping rather than a mkdir.
 
+    Two ways to make one, and a third case that is neither:
+
+    - This container mounts it. mkdir here, and the daemon sees it because the
+      share is the same one.
+    - The daemon has it and the operator has said so, in DOCKER_HOST_PATHS.
+      A one-shot container over there makes it, as BuilderBot's uid — see
+      _devdata_argv. This is the case a sandbox VM makes ordinary: the dev-data
+      share and the media share are mounted on the VM and need not be here.
+    - Nobody has told BuilderBot where it is. Named on the row and left alone,
+      because inventing a directory on the other machine's disk on the strength
+      of a guess is how you end up with a stray empty tree in a share root.
+
     Returns (makeable, unreachable), both sorted lists of paths.
+
+    A path on the daemon's side cannot be looked at from here, so one this has
+    already made is remembered instead — otherwise the row goes on saying three
+    directories are missing after the button that made them, and the button
+    that worked looks like it did nothing. `mkdir -p` either way, so a record
+    that has gone stale costs a directory being made twice.
     """
     if cfg is None:
         return [], []
-    # The mounts this container has, longest first, so a path under /devdata
-    # matches /devdata rather than /.
+    # Read without _rec: that one creates the record it is asked for, which on
+    # a path that never writes would invent an instance for every project the
+    # manager draws.
+    done = set(((_load().get(project) or {}).get(instance) or {})
+               .get("made_dirs") or [])
+    # Longest first, so a path under /devdata matches /devdata rather than /.
     mine = sorted((m for m in _mount_roots() if m != "/"), key=len, reverse=True)
+    theirs = sorted(mkdir_roots(), key=len, reverse=True) if sandbox_daemon() else []
+    under = lambda p, roots: any(p == r or p.startswith(r + "/") for r in roots)
     make, cannot = set(), set()
     for _, sv in sorted(_services(cfg).items()):
         for src in _binds(sv, project):
             if Path(src).exists():
                 continue
-            if any(src == m or src.startswith(m + "/") for m in mine):
+            if src in done and not under(src, mine):
+                continue                    # made over there, and unlookable here
+            if under(src, mine) or (under(src, theirs) and _rel_ok(src, theirs)):
                 make.add(src)
             else:
                 cannot.add(src)
     return sorted(make), sorted(cannot)
+
+
+def _daemon_root(path, roots):
+    """The declared root this path sits under, longest first, or ""."""
+    for r in roots:
+        if path == r or path.startswith(r + "/"):
+            return r
+    return ""
+
+
+def _rel_ok(path, roots):
+    """Whether the part below the root is a name this may build an argv from."""
+    r = _daemon_root(path, roots)
+    rel = path[len(r):].strip("/")
+    return bool(rel) and bool(_DEV_NAME.match(rel))
 
 
 def make_dirs(project, instance=MAIN):
@@ -1748,17 +1822,45 @@ def make_dirs(project, instance=MAIN):
 
     Owned by whoever BuilderBot runs as, which is the same ownership the
     per-instance dev-data directory gets and what the Unraid convention
-    expects. Nothing is created outside a path this container mounts, and
-    nothing existing is touched.
+    expects. `mkdir -p` throughout, so one that already exists is left alone
+    and pressing this twice is the same as pressing it once.
+
+    Made HERE when this container mounts the share, and on the DAEMON when it
+    does not and the operator has declared the path — same result, different
+    side, and the row does not distinguish because the operator should not
+    have to care which.
     """
-    make, cannot = missing_dirs(project, _config(project, instance))
+    make, cannot = missing_dirs(project, _config(project, instance), instance)
+    theirs = sorted(mkdir_roots(), key=len, reverse=True) if sandbox_daemon() else []
+    mine = sorted((m for m in _mount_roots() if m != "/"), key=len, reverse=True)
     made, failed = [], []
+    # Grouped by the root they sit under: one container per share rather than
+    # one per directory, which for a compose naming three under /devdata is
+    # one launch instead of three.
+    remote = {}
     for d in make:
-        try:
-            Path(d).mkdir(parents=True, exist_ok=True)
-            made.append(d)
-        except OSError as e:
-            failed.append(f"{d}: {e}")
+        if any(d == m or d.startswith(m + "/") for m in mine):
+            try:
+                Path(d).mkdir(parents=True, exist_ok=True)
+                made.append(d)
+            except OSError as e:
+                failed.append(f"{d}: {e}")
+            continue
+        root = _daemon_root(d, theirs)
+        remote.setdefault(root, []).append(d)
+    for root, paths in sorted(remote.items()):
+        rels = [p[len(root):].strip("/") for p in paths]
+        if _devdata_run("mkdir", *rels, root=root):
+            made.extend(paths)
+        else:
+            failed.extend(f"{p}: the daemon could not make it" for p in paths)
+    if remote and made:
+        with _lock:
+            d = _load()
+            rec = _rec(d, project, instance)
+            rec["made_dirs"] = sorted(set(rec.get("made_dirs") or []) | set(made))
+            write_json(FILE, d)
+    _bump()
     return {"ok": True, "made": made, "failed": failed, "unreachable": cannot}
 
 
@@ -2069,7 +2171,7 @@ def state(project, instance=MAIN):
         out["problems"] = problems(project, cfg) + host_map()[1]
         # What is not there yet, so the row can offer to make it rather than
         # letting docker try and fail on a root-squashing share.
-        mk, cannot = missing_dirs(project, cfg)
+        mk, cannot = missing_dirs(project, cfg, instance)
         out["mkdirs"] = mk
         out["mkdirs_cannot"] = cannot
         # A name it used to have, whose things are still under it.

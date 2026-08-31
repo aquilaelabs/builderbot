@@ -717,6 +717,33 @@ calls.clear()
 out['renamed'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-beta'),
                   [[a for a in c['argv'] if a.startswith('/d/')] for c in calls]]
 
+# Bind directories on the DAEMON's side. The share is mounted over there and
+# not here, which is the shipped arrangement — so nothing on this side could
+# make them and docker created them itself, as root, which is the failure Make
+# dirs exists to prevent.
+# Neither share is in the fake mount table above, which is the arrangement:
+# they are mounted on the VM and BuilderBot never sees them.
+os.environ['DOCKER_HOST_PATHS'] = '/workspace:/workspace,/auxiliary:/auxiliary'
+m.DEVDATA = '/devdata-vm'
+cfg = {'services': {'s': {'volumes': [
+  {'type': 'bind', 'source': '/auxiliary/plex-library', 'target': '/m'},
+  {'type': 'bind', 'source': '/devdata-vm/sonarr/config', 'target': '/c'},
+  {'type': 'bind', 'source': '/devdata-vm/sonarr/data', 'target': '/d2'},
+  {'type': 'bind', 'source': '/undeclared/x', 'target': '/x'}]}}}
+out['roots'] = sorted(m.mkdir_roots())
+out['split'] = m.missing_dirs('sonarr', cfg, 'main')
+calls.clear()
+m._config = lambda *a, **k: cfg
+m._load = lambda: {'sonarr': {'main': {}}}
+made = m.make_dirs('sonarr')
+out['made'] = [sorted(made['made']), made['failed'], made['unreachable'],
+               [[a for a in c['argv'] if a.endswith(':/d') or a.startswith('/d/')]
+                for c in calls if not c['refused']]]
+# A root nobody declared is refused even in exactly the right shape.
+out['undeclared'] = m._guard(m._devdata_argv('mkdir', 'x', root='/undeclared'))
+out['climb'] = m._guard(m._devdata_argv('mkdir', '../etc', root='/devdata-vm'))
+out['deep'] = m._guard(m._devdata_argv('mkdir', 'a/b/c', root='/devdata-vm'))
+
 # What the guard lets through is these commands, rebuilt and compared — not
 # the verb. A run with a bind is root on whatever answers.
 os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
@@ -759,6 +786,22 @@ ok(!DDD.guard.ours && Object.entries(DDD.guard).filter(([k]) => k !== 'ours')
    'the guard allows those exact commands and nothing else wearing the same verb');
 ok(/sandbox VM/.test(DDD.guard['ours, on the proxy']),
    '...and not even those unless the daemon is the sandbox VM');
+ok(JSON.stringify(DDD.roots) === JSON.stringify(['/auxiliary', '/devdata-vm', '/workspace']),
+   'the roots this may make directories under are the declared ones: the dev-data '
+   + 'share, and whatever DOCKER_HOST_PATHS says the daemon has');
+ok(JSON.stringify(DDD.split[0]) === JSON.stringify(
+     ['/auxiliary/plex-library', '/devdata-vm/sonarr/config', '/devdata-vm/sonarr/data'])
+   && JSON.stringify(DDD.split[1]) === JSON.stringify(['/undeclared/x']),
+   '...so a bind under one is BuilderBot\'s to make even with the share mounted '
+   + 'only over there, and one under no declared root still is not');
+ok(DDD.made[0].length === 3 && !DDD.made[1].length
+   && JSON.stringify(DDD.made[3]) === JSON.stringify([
+        ['/auxiliary:/d', '/d/plex-library'],
+        ['/devdata-vm:/d', '/d/sonarr/config', '/d/sonarr/data']]),
+   '...made by one container per share rather than one per directory');
+ok(/not a declared root/.test(DDD.undeclared) && DDD.climb && !DDD.deep,
+   'the guard takes the mount out of the argv and checks it: an undeclared root '
+   + 'and a name that climbs are refused, a path two deep under a declared one is not');
 
 // One thing at a time on the daemon, and it now covers every verb that runs a
 // compose call. `up`, `down` and `remove` read the flag and never set it, so a
@@ -1256,8 +1299,15 @@ await page.click('#bDockerNew');
 await page.waitForSelector('#cmodal:not([hidden])');
 ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
    'the new-container dialog opens with the keyboard down');
-ok(/services:/.test(await page.$eval('#cYml', e => e.value)),
-   '...on a compose file worth editing rather than an empty box');
+// Empty, with the shape offered as a placeholder. Seeded as a VALUE it was
+// a working compose for a radarr nobody asked for, one unread click from
+// being created under whatever name was typed — a hint cannot be submitted.
+ok(await page.$eval('#cYml', e => e.value) === ''
+   && await page.$eval('#cEnv', e => e.value) === '',
+   '...with both definitions empty, so nothing can be saved by accident');
+ok(/services:/.test(await page.$eval('#cYml', e => e.placeholder))
+   && /PUID=/.test(await page.$eval('#cEnv', e => e.placeholder)),
+   '...and the shape each wants shown on the field, where it costs nothing to ignore');
 ok(await page.$eval('#cEnvField', e => e.hidden)
    && !await page.$eval('#cYmlField', e => e.hidden),
    '...showing one of the two definitions at a time');
@@ -1272,13 +1322,25 @@ await page.click('#cTabEnv');
 await slides;
 ok(!await page.$eval('#cEnvField', e => e.hidden),
    '...and the segment swaps them, on the same slide as the project dialog');
-writeFileSync(`${DIR}/dockerstate/config.fail`, '1');
+// An empty compose is refused rather than written — the placeholder is not
+// a value, and nothing here invents one.
 await page.click('#cTabYml');
 await page.fill('#cName', 'radarr');
 await page.click('#cGo');
 await page.waitForSelector('#cErrWrap:not([hidden])', { timeout: 15000 });
-ok(/will not read that/.test(await page.$eval('#cErr', e => e.textContent)),
-   'a compose file that does not parse is refused with what compose said');
+await page.waitForSelector('#cGo:not([disabled])', { timeout: 15000 });
+ok(/compose file is needed/.test(await page.$eval('#cErr', e => e.textContent)),
+   'Create with nothing typed is refused, rather than saving the hint');
+ok(!existsSync(`${DIR}/state/containers/radarr`),
+   '...and writes nothing for the name it refused');
+
+writeFileSync(`${DIR}/dockerstate/config.fail`, '1');
+await page.fill('#cYml', 'services:\n  app:\n    image: lscr.io/x:latest\n');
+await page.click('#cGo');
+await page.waitForFunction(() => /will not read that/.test(
+  document.getElementById('cErr')?.textContent || ''), { timeout: 15000 });
+await page.waitForSelector('#cGo:not([disabled])', { timeout: 15000 });
+ok(true, 'a compose file that does not parse is refused with what compose said');
 ok(!existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    '...and nothing is left behind for a name that was refused');
 rmSync(`${DIR}/dockerstate/config.fail`, { force: true });
