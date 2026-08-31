@@ -36,19 +36,16 @@ from pathlib import Path
 
 # A personal access token belonging to ONE project.
 #
-# The alternative this replaces is a single GIT_PAT in the container's
-# environment, which every repo and every session shares: a token minted to
-# reach one private repo then reaches every repo it was scoped to, from
-# anywhere, forever. Here it is written into git's own credential-store format
+# What this replaced is a single GIT_PAT in the container's environment, shared
+# by every repo and every session: a token minted to reach one private repo
+# then reached every repo it was scoped to, from anywhere. That variable is
+# gone — this is the only way in. Written in git's own credential-store format
 # under /config, named for the project, and referenced from that repository's
-# .git/config and nowhere else. A token that opens twelve repositories still
-# only opens the one this project points at.
+# .git/config and nowhere else.
 #
 # The honest limit, said here because it is said in the UI too: this is not
-# shielded the way the ssh keys are. Those are served by a root-owned agent
-# and cannot be read; this is a 0600 file owned by the same user a shell runs
-# as, so a session with Bash in this container can read it. It is better than
-# an environment variable every process inherits, and it is not a secret store.
+# shielded the way the ssh keys are. Those are served by a root-owned agent and
+# cannot be read; this is a 0600 file owned by the same user a shell runs as.
 TOKEN_RE = re.compile(r"[A-Za-z0-9_.-]{8,255}")
 
 

@@ -43,7 +43,6 @@ services:
       # pairs — the daemon above resolves bind-mount sources on its own
       # filesystem, not this one. See .env.example.
       DOCKER_HOST_PATHS: ${DOCKER_HOST_PATHS:-}
-      BB_DEV_PREFIX: ${BB_DEV_PREFIX-}
 
       # --- Claude Code ------------------------------------------------------
       # Leave ANTHROPIC_API_KEY empty to log in interactively with a Claude
@@ -58,7 +57,6 @@ services:
       GITHUB_PAT: ${GITHUB_PAT:-}
       # Token for git/gh *inside* the container. Session-readable by design —
       # scope it to Contents only, never Administration.
-      GIT_PAT: ${GIT_PAT:-}
       RUNNER_NAME: ${RUNNER_NAME:-builderbot}
       RUNNER_LABELS: ${RUNNER_LABELS:-builderbot,self-hosted,linux,x64,unraid}
       RUNNER_GROUP: ${RUNNER_GROUP:-}
@@ -198,12 +196,6 @@ services:
       # - /mnt/user/appdata/BuilderBot/secrets:/secrets:ro
 
       # --- host Docker access (OFF by default) ------------------------------
-      # SECURITY: mounting the host Docker socket is root-equivalent on the
-      # host — anything inside the container could start a privileged
-      # container and escape. Uncomment only if you accept that trade to let
-      # Claude/CI run `docker build` / `docker compose` against the Unraid
-      # daemon.
-      # - /var/run/docker.sock:/var/run/docker.sock
       # Dev-instance volumes; pairs with DOCKER_HOST below. Its own share
       # rather than a folder in appdata, because Unraid exports and backs up
       # shares and not folders — see the template's note on this setting.

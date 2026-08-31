@@ -5527,13 +5527,12 @@ const dockerSlug = (s) => (s || "").toLowerCase()
 
 function dnShow(){
   const raw = $("dnName").value, clean = dockerSlug(raw);
-  const pref = state?.dev_prefix ?? "bbdev-";
-  // Shown whenever the name it makes differs from what was typed, which with a
-  // prefix set is always: the prefix is the surprising half, and hiding the
-  // line because the slug happened to match the typing hid it too.
-  $("dnPreview").hidden = !raw.trim() || (!pref && clean === raw.trim());
+  // Only when the name it makes differs from what was typed. A container is
+  // called exactly what you called it, so most of the time there is nothing
+  // to warn about and the line stays out of the way.
+  $("dnPreview").hidden = !raw.trim() || clean === raw.trim();
   $("dnPreview").textContent = clean
-    ? `Will be created as ${pref}${clean}`
+    ? `Will be created as ${clean}`
     : "That leaves nothing to name a container after";
 }
 
@@ -5810,8 +5809,8 @@ function openNewContainer(){
   $("cGo").disabled = false; $("cGo").textContent = "Create";
   cSeg("yml");
   $("cNameHint").textContent =
-    "Its own name, not a project's. The compose project becomes bbdev-<name>, "
-    + "which is what the manager and the guard both go by.";
+    "Its own name, not a project's. It becomes the compose project on the "
+    + "sandbox VM, which is what the manager lists it by.";
   $("cmodal").hidden = false;
 }
 
@@ -5984,14 +5983,12 @@ for the rest of the work"
   // not reachable on a phone, and "why is everything greyed out" should be
   // answered by looking rather than by hovering.
   const off = dockerWhy();
-  // Which daemon this is, stated rather than inferred. Two settings can name
-  // two — the socket mount and DOCKER_HOST are on different screens and
-  // neither can grey the other out — so the precedence is shown here instead
-  // of being something you work out from what happens.
+  // Which daemon this is, stated rather than inferred. One setting names it
+  // now — DOCKER_HOST, pointing at the sandbox VM — and saying which machine
+  // the buttons below act on is worth a line whatever the arrangement.
   const src = state?.docker || {};
   const srcLine = !off && src.kind
     ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
-        src.shadowed ? " — the mounted socket is unused" : ""}${
         // A mapped path this container does not have. Not a fault: it can be a
         // share the daemon mounts and BuilderBot has no business reading. It is
         // said because nothing else here will ever act on it, and a line of

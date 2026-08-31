@@ -18,23 +18,26 @@ and a shared Docker network closes only the first:
 2. **Host-published ports, through the default gateway.** Measured: a `curl`
    to `172.17.0.1:<published>` answers. Network membership does not close
    this; only host firewall rules would.
-3. **The socket proxy.** `DOCKER_HOST` is in every session's environment and
-   resolving `auto` is a scan, so a session finds the proxy the same way the
-   dashboard does. A far bigger lever than any HTTP port.
+3. **The daemon itself.** `DOCKER_HOST` is in every session's environment, so
+   a session reaches whatever it names exactly as the dashboard does. A far
+   bigger lever than any HTTP port — and the reason it must not name this
+   box's own daemon.
 4. **The dashboard's own API**, which holds the same credential a session
    does.
 
 A VM answers all four at once — and the point worth holding on to is that it
-does not *add* a layer. It lets you take one away: once dev instances run in
-the VM, **BuilderBot has no reason to reach the host's daemon at all**, so the
-socket proxy comes off the board entirely.
+does not *add* a layer. It takes one away: dev instances run in the VM, so
+**BuilderBot has no reason to reach the host's daemon at all** — and it no
+longer can, because the socket mount and the proxy it used to accept are both
+gone from the code.
 
 Two things also get better on the way:
 
-- **The layer cache comes back.** BuilderBot forces the classic builder today
-  (`DOCKER_BUILDKIT=0`) because buildx boots a helper container and *attaches*
-  to it, which a socket proxy worth having refuses. Against the VM's own
-  daemon there is no proxy in the way, so buildx and its inline cache work.
+- **The layer cache comes back.** BuilderBot forces the classic builder
+  (`DOCKER_BUILDKIT=0`), because buildx boots a helper container and *attaches*
+  to it — which a filtered socket refuses. Nothing is in the way of the VM's
+  own daemon, so buildx and its inline cache work; see the roadmap item on
+  turning it back on.
 - **The host-path problem disappears** rather than being mapped around. See
   *path parity* below.
 
@@ -77,10 +80,8 @@ reaches the daemon, and `_guard()` still allows only compose, `version`, and
 the three fixed commands that tend this directory.
 
 That is a `docker run`, which is root on whichever daemon answers — allowed
-here because a sandbox VM's whole job is being wrecked, and refused outright
-when the daemon is the socket proxy onto the server's own. On that
-arrangement nothing changes: mount `/devdata` in BuilderBot as before, and it
-makes the directory itself.
+because a sandbox VM's whole job is being wrecked, and refused outright if
+`DOCKER_HOST` names anything that is not one.
 
 ## The disk
 
@@ -392,11 +393,17 @@ ssh-keyscan -H <vm-ip> >> ~/.ssh/known_hosts
 
 `~` is the home volume, so this survives a container restart.
 
-**2. `DOCKER_HOST=ssh://bb@<vm-ip>`.** ssh rather than an open Docker port:
-authentication is the key you installed, and nothing has to listen.
-`provision.sh --tcp` exposes `2375` unauthenticated if ssh proves awkward —
-that is root on the sandbox to anyone who can reach it, tolerable only because
-the sandbox holds nothing. Keep it off the LAN either way.
+**2. `DOCKER_HOST=<vm-ip>`.** The address is the whole setting: `ssh://` and
+the `bb` account `provision.sh` makes are filled in, and `ssh://someone@host`
+written out in full still means what it says. ssh rather than an open Docker
+port, so authentication is the key you installed and nothing has to listen —
+an open `2375` would be root on the sandbox to anyone who could reach it.
+
+Nothing but a sandbox VM is accepted. An address of any other kind greys every
+Docker control out with a sentence saying why, rather than half-working: the
+manager makes directories and moves them with one-shot containers running as
+root on the far side, which is only reasonable against a machine whose job is
+being wrecked.
 
 **3. `DOCKER_HOST_PATHS=/workspace:/workspace`** — and a pair for any other
 share you mounted on *both* sides. `/devdata` is not one of them: it belongs
@@ -409,17 +416,17 @@ nothing about the VM's, and it makes the path checks fall silent: a bind the
 daemon resolves to the same directory is not a problem, and is no longer
 reported as one.
 
-Then delete the socket proxy container. BuilderBot has no remaining reason to
-reach the host's daemon, which is the actual prize here — not another layer of
-filtering, but one fewer thing holding the keys to the real containers.
+Then delete the socket proxy container, if you had one. BuilderBot has no
+reason to reach the host's daemon and no way to — the actual prize, and not
+another layer of filtering but one fewer thing holding the keys to the real
+containers.
 
 **What this changes for a session.** The rule in every project's `CLAUDE.md`
-is written against the daemon, not against the buttons: a socket proxy is the
-server's daemon and is off limits, while a sandbox VM's is a session's to
-build on, run on and wreck. So this switch hands Claude a Docker host it can
-actually use, which is the half that is easy to miss while thinking about
-what it takes away. The dev-instance *controls* stay the operator's either
-way, and the `bbdev-` project names stay the dashboard's.
+says the daemon is a sandbox VM and is a session's to build on, run on and
+wreck. So this hands Claude a Docker host it can actually use, which is the
+half that is easy to miss while thinking about what it takes away. The
+dev-instance *controls* stay the operator's, and the dashboard's own compose
+project names stay the dashboard's.
 
 **What does not change:** the classic builder stays on. BuilderBot forces
 `DOCKER_BUILDKIT=0` because buildx attaches to a helper container and a socket

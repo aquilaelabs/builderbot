@@ -2726,8 +2726,6 @@ cmd_doctor() {
             cred_project="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || echo .)")"
             if [ -f "${DASHBOARD_STATE:-/config}/gitcreds/${cred_project}" ]; then
                 printf '  [ok]   this repo pushes over https with its own stored token\n'
-            elif [ -n "${GIT_PAT:-}" ]; then
-                printf '  [ok]   this repo pushes over https with GIT_PAT\n'
             else
                 printf '  [FAIL] this repo has an https remote and no credential for it\n'
                 printf '         — add one in the dashboard, or switch it to ssh\n'

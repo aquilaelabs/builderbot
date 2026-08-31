@@ -8,27 +8,20 @@ against the project's own compose file — and the Artifacts tab carries the
 controls, in the same row language as the APK it lists: Up, Down, Env,
 Rebuild.
 
-**Where docker actually is.** Not in this container. The daemon is the
-host's, reached through a socket PROXY (tecnativa/docker-socket-proxy) whose
-address arrives as DOCKER_HOST — the docker CLI honors that on its own. The
-proxy's allowlist is the boundary: build, images, containers, networks and
-volumes pass; exec and the swarm surface do not. Worth stating the honest
-half too, the way the sibling-project rule does: build+run+bind-mounts is
-root-shaped power over the host however it is filtered, and the reason this
-is acceptable is that this is a sole-operator box and the controls below are
-table-lookup compose commands, never freeform. Sessions are told the proxy
-is not theirs; that is a guardrail, not a sandbox.
+**Where docker actually is.** Not in this container, and not on this box: the
+daemon belongs to a sandbox VM, whose address arrives as DOCKER_HOST and which
+the docker CLI reaches over ssh on its own. That machine's only job is running
+Docker. It holds no container anybody minds losing and has no route to the
+server's, which is what makes build+run+bind-mounts — root-shaped power
+wherever it lands — an acceptable thing to put behind a dashboard button.
 
-**And the proxy cannot scope to our containers**, which is worth being exact
-about because it looks as if it should: its flags are per ENDPOINT, so
-CONTAINERS=1 is the whole /containers API for every container on the host.
-Two things here bound the reach instead, and they answer different halves.
-_guard() makes the bbdev- namespace an invariant rather than a habit — every
-docker call passes through _run(), and one that is not a namespaced compose
-call does not run. risks() answers the half no namespace can: a compose file
-saying `privileged: true` and mounting / produces a bbdev- container like
-any other, so the file is read and what it reaches for is named on the row
-and confirmed once per set before anything starts.
+That is the boundary. What is left in here bounds the SHAPE of what gets sent
+rather than what it may reach: _guard() lets through table-lookup compose
+commands, two reads, and three one-shot runs rebuilt argv-for-argv, so a bug
+in a caller cannot become a freeform docker call. risks() answers the half no
+check on a command can — a compose FILE saying `privileged: true` and mounting
+/ is an ordinary-looking file, so it is read and what it reaches for is named
+on the row and confirmed once per set before anything starts.
 
 **What "rebuild needs the env filled in" means.** The one detectable signal:
 the repo's .env.example gained keys the dev env file does not have. A rebuild
@@ -37,9 +30,9 @@ with the old values preserved in comments, and leaves Up for the operator —
 starting a service against an env it is known to be missing would just be a
 crash with extra steps.
 
-**BuilderBot itself is NOT excluded**, and the reason is worth a line: the
-dev instance is `bbdev-builderbot`, a second container from the same compose
-file — building or bouncing it never touches the container this dashboard is
+**BuilderBot itself is NOT excluded**, and the reason is worth a line: its
+dev instance is a second container from the same compose file, on another
+machine — building or bouncing it never touches the container this dashboard is
 running in, whose lifecycle belongs to Unraid. The first cut excluded it on a
 stale argument (replacing the running container kills the builder mid-flight
 — true, and not what this does). Expect `up` to refuse while the real
@@ -88,120 +81,50 @@ DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # available(), and a probe should not start writing files.
 log_dir = None
 
-# DOCKER_HOST=auto means "find the socket proxy yourself". The address is a
-# bridge-assigned container IP unless the operator published the port, and
-# bridge IPs move when containers restart in a different order — so this
-# resolves lazily and re-scans when the cached answer stops answering, rather
-# than being read once at boot and going quietly stale.
-_found = {"addr": "", "at": 0.0}
-FOUND_TTL = 300.0
-# The port a docker-socket-proxy listens on, and the raw daemon's two.
-SCAN_PORTS = (2375, 2376)
-SCAN_TIMEOUT = 0.4
+# The daemon is a sandbox VM, named by DOCKER_HOST as ssh://user@host, and that
+# is the only arrangement there is. It used to be three — a mounted socket, a
+# socket proxy found by scanning this container's network, or the VM — which
+# meant three answers to every question here, a discovery scan on a poll, and a
+# namespace guard whose whole job was making the first two survivable.
+#
+# The VM is required now, so the rest is gone. A machine whose only job is
+# running Docker, reached over ssh with a key BuilderBot cannot read, holding
+# nothing anybody minds losing: there is nothing left for a filter to protect.
 
 
-def _answers(addr):
-    """Whether a docker API is really there — the version endpoint is the one
-    a proxy leaves open at its most locked-down defaults."""
-    import urllib.error
-    import urllib.request
-    host = addr.split("://", 1)[-1]
-    try:
-        with urllib.request.urlopen(f"http://{host}/version",
-                                    timeout=SCAN_TIMEOUT) as r:
-            return b"ApiVersion" in r.read(4096)
-    except (OSError, urllib.error.URLError, ValueError):
-        # Every way a probe can miss: refused, timed out, not HTTP, or an
-        # address the operator typed that urllib will not parse.
-        return False
-
-
-def _scan():
-    """Look for the proxy: the gateway first (a published port), then the
-    bridge this container is on. Threaded, because thirty sequential timeouts
-    is half a minute of a dashboard poll."""
-    cands = []
-    # The default route is the host as this container sees it — where a
-    # published port lands, and the stable answer when one exists.
-    try:
-        import subprocess as sp
-        r = sp.run(["ip", "route"], capture_output=True, text=True,
-                   timeout=5, check=False)
-        gw = ""
-        mine = ""
-        for line in r.stdout.splitlines():
-            if line.startswith("default via "):
-                gw = line.split()[2]
-            if " src " in line:
-                mine = line.split(" src ")[1].split()[0]
-    except (OSError, sp.SubprocessError):
-        gw = mine = ""
-    for port in SCAN_PORTS:
-        if gw:
-            cands.append(f"{gw}:{port}")
-    # Then the bridge itself: a proxy with no published port is only
-    # reachable at its own container address.
-    if mine and mine.count(".") == 3:
-        base = mine.rsplit(".", 1)[0]
-        for i in range(2, 40):
-            ip = f"{base}.{i}"
-            if ip == mine:
-                continue
-            cands.append(f"{ip}:2375")
-    hits = []
-    lock = threading.Lock()
-
-    def check(addr):
-        if _answers(addr):
-            with lock:
-                hits.append(addr)
-
-    threads = [threading.Thread(target=check, args=(c,), daemon=True)
-               for c in cands]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join(timeout=SCAN_TIMEOUT + 0.6)
-    # Candidate order is the preference order: the gateway beats a bridge IP,
-    # because a published port survives a restart and a bridge address does
-    # not.
-    for c in cands:
-        if c in hits:
-            return "tcp://" + c
-    return ""
+# The account vm/provision.sh makes on the sandbox VM. Assumed rather than
+# asked for, because there is one provisioner and it makes one user: a setting
+# whose only correct value is known is a way to get it wrong.
+DEFAULT_USER = "bb"
 
 
 def docker_host():
-    """The address to talk to, resolving `auto` and caching what it found.
+    """The sandbox VM, as docker wants it addressed. Empty when unset.
 
-    Anything other than `auto` is passed through untouched — an operator who
-    typed an address means it, and a scan that second-guessed them would be
-    the kind of help nobody asked for.
+    The operator writes the machine — `10.0.0.9` — and the scheme and the
+    account are filled in. Writing either out is still allowed and passes
+    through untouched, so `ssh://someone@10.0.0.9` means what it says; what is
+    not allowed is a different KIND of address, which available() refuses by
+    name rather than by handing docker something it will fail on obscurely.
     """
-    want = (os.environ.get("DOCKER_HOST") or "").strip()
-    if want.lower() != "auto":
-        return want
-    now = time.time()
-    if _found["addr"] and now - _found["at"] < FOUND_TTL:
-        return _found["addr"]
-    # Re-verify the cached answer before spending a scan on it.
-    if _found["addr"] and _answers(_found["addr"]):
-        _found["at"] = now
-        return _found["addr"]
-    _found.update(addr=_scan(), at=now)
-    return _found["addr"]
+    addr = (os.environ.get("DOCKER_HOST") or "").strip()
+    if not addr:
+        return ""
+    scheme, sep, rest = addr.partition("://")
+    if sep and scheme.lower() != "ssh":
+        return addr                       # not ssh: available() says so
+    host = rest if sep else addr
+    return "ssh://" + (host if "@" in host else f"{DEFAULT_USER}@{host}")
 
 
 def daemon_id():
     """A stable name for the daemon a build landed on.
 
-    The CONFIGURED address, not the resolved one. Under `auto` the proxy's
-    bridge IP moves whenever containers restart in a different order — that
-    is the whole reason docker_host() re-scans — and a build is not
-    invalidated by its address changing underneath it. What does invalidate
-    one is the operator repointing the setting.
+    The resolved address, so that filling the account in does not read as a
+    different machine and invalidate every build that landed on it. What does
+    invalidate one is the operator pointing this at another VM.
     """
-    return (os.environ.get("DOCKER_HOST") or "").strip().lower() or "socket"
+    return docker_host().lower() or "none"
 
 
 COMPOSE_NAMES = ("docker-compose.yml", "docker-compose.yaml",
@@ -391,69 +314,42 @@ def _bump():
 
 
 def source():
-    """Which daemon is actually being talked to, and whether two were named.
+    """The daemon being talked to, for the manager to name on the page.
 
-    Nothing stops an operator filling in both the socket mount and DOCKER_HOST
-    — they are two settings on two screens, and a template cannot make one
-    grey out the other. So the rule is precedence rather than refusal, and the
-    point of this function is that the rule is stated in one place and shown
-    where somebody looks, instead of being inferred differently by each reader:
-
-      an address in DOCKER_HOST wins, always. `auto` prefers a proxy it can
-      find and falls back to the socket. With neither, the feature is off.
-
-    `shadowed` is the case worth naming: both are configured, the address won,
-    and the mount is doing nothing. That is not an error — a socket left
-    mounted while you try a sandbox VM is a reasonable thing to be in the
-    middle of — but being told beats wondering, and it is the difference
-    between "I have two settings" and "I know which one is live".
-
-    Derived here rather than in each caller because both readers had their own
-    copy and one of them was wrong: with `auto` set, a mounted socket and no
-    proxy answering, `bb doctor` reported "a socket proxy at
-    /var/run/docker.sock" — the kind from the setting, the address from the
-    fallback, and a sentence contradicting itself.
+    `strays` is the only judgement in here: a DOCKER_HOST_PATHS pair naming a
+    path this container does not have is a statement about the other machine
+    that nothing on this side will ever act on. Harmless, and worth saying
+    once rather than sitting in the setting looking like it does something.
     """
-    sock = Path("/var/run/docker.sock").exists()
     addr = docker_host()
-    # Mapped paths this container does not have. Said here because this is
-    # where the relationship with the daemon is described, and that is what a
-    # line of DOCKER_HOST_PATHS naming a path only the daemon has IS — a
-    # statement about the other machine that nothing on this one will ever act
-    # on. Harmless, and worth saying once rather than leaving in the variable
-    # looking like it does something.
-    strays = stray_map_entries(host_map()[0])
-    if addr:
-        return {"kind": "a sandbox VM" if addr.lower().startswith("ssh://")
-                        else "a socket proxy",
-                "where": addr, "shadowed": sock, "strays": strays}
-    if sock:
-        return {"kind": "the mounted socket", "where": "/var/run/docker.sock",
-                "shadowed": False, "strays": strays}
-    return {"kind": "", "where": "", "shadowed": False, "strays": strays}
+    return {"kind": "the sandbox VM" if addr else "",
+            "where": addr, "strays": stray_map_entries(host_map()[0])}
 
 
 def available():
-    """Whether the daemon answers, and if not, why — said rather than guessed.
+    """Whether the VM answers, and if not, why — said rather than guessed.
 
-    DOCKER_HOST unset means the operator has not wired the proxy; the feature
-    shows as absent-with-a-reason instead of a row of dead buttons.
+    A sandbox VM is the arrangement, not one of several. Everything the
+    manager does beyond `compose` — making a data directory, migrating one —
+    is a container run as root on the far side, which is only safe on a
+    machine whose job is being wrecked and reset. So an address of any other
+    kind is refused here, in one place, rather than half-working down the
+    line: the controls grey out wearing this sentence.
     """
-    want = (os.environ.get("DOCKER_HOST") or "").strip()
-    if not want and not Path("/var/run/docker.sock").exists():
-        return {"on": False, "why": "no DOCKER_HOST set — the socket proxy is "
-                                    "not wired up; see docs/unraid.md"}
-    if want.lower() == "auto" and not docker_host() \
-            and not Path("/var/run/docker.sock").exists():
+    addr = docker_host()
+    if not addr:
         return {"on": False,
-                "why": "DOCKER_HOST is auto and no socket proxy answered on "
-                       "this container's network — is it running, and does it "
-                       "allow /version? See docs/unraid.md"}
+                "why": "DOCKER_HOST is not set — point it at the sandbox VM's "
+                       "address; see docs/sandbox-vm.md"} | source()
+    if not addr.startswith("ssh://"):
+        return {"on": False,
+                "why": f"DOCKER_HOST is {addr} — dev instances need a sandbox "
+                       "VM, addressed over ssh; see docs/sandbox-vm.md"} | source()
     r = _run([DOCKER, "version", "--format", "{{.Server.Version}}"], timeout=10)
     if r["code"] != 0:
         return {"on": False,
-                "why": "docker does not answer: " + (r["out"] or "no daemon").strip()[:120]} \
-            | source()
+                "why": "docker does not answer: "
+                       + (r["out"] or "no daemon").strip()[:120]} | source()
     return {"on": True, "why": ""} | source()
 
 
@@ -501,17 +397,13 @@ def forget_available():
 _CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
 
 
-# Every docker call that CHANGES anything is a compose call inside the
-# project's own bbdev- namespace. That is what keeps the blast radius to
-# containers this dashboard created — and until this guard it was true only
-# because every call site happened to go through _compose(). A socket proxy
-# cannot help with it: its flags are per ENDPOINT, so CONTAINERS=1 is the
-# entire /containers API for every container on the host, and no arrangement
-# of them means "only ours".
-#
-# So the invariant is asserted at the one place every call passes through,
-# which turns "the code always passes --project-name" into "the code cannot
-# not". It says nothing about what a compose FILE asks for — see risks().
+# Every docker call that CHANGES anything is a compose call naming its own
+# project. That keeps a bug in a caller to the containers that call is about —
+# and until this guard it was true only because every call site happened to go
+# through _compose(). The invariant is asserted at the one place they all pass
+# through, which turns "the code always passes --project-name" into "the code
+# cannot not". It says nothing about what a compose FILE asks for — see
+# risks().
 #
 # `ps` is allowed alongside `version`, and the reason it was not is worth
 # keeping rather than deleting: this list used to be one verb long because
@@ -556,13 +448,10 @@ def _guard(argv):
     if verb != "compose":
         return (f"`docker {verb}` — only compose, and the reads in "
                 f"{'/'.join(sorted(_BARE_OK))}, are reachable here")
-    try:
-        name = argv[argv.index("--project-name") + 1]
-    except (ValueError, IndexError):
+    # Every compose call names its project explicitly, so none of them can
+    # fall back to composes default — the directory it happens to be run from.
+    if "--project-name" not in argv[:-1]:
         return "a compose call carrying no --project-name"
-    pref = dev_prefix()
-    if pref and not name.startswith(pref):
-        return f"a compose call outside the {pref} namespace ({name})"
     return ""
 
 
@@ -708,7 +597,7 @@ def _kill_group(p):
 
 # The compose label every container started by compose carries. Read rather
 # than parsed out of the name: a compose file may set container_name to
-# anything, and the name is then not the namespace at all.
+# anything, so a container's name need not resemble its project's.
 COMPOSE_LABEL = "com.docker.compose.project"
 SERVICE_LABEL = "com.docker.compose.service"
 
@@ -722,15 +611,20 @@ def containers():
     exactly the thing you open a list to find out about.
 
     `ours` is the honest part: a container is this dashboard's when its compose
-    project sits in the bbdev- namespace, which is the same rule _guard()
-    enforces on every call that changes anything. Everything else is shown and
-    marked as not ours, and nothing here offers to act on it.
+    project is one this dashboard has a record of. Asked of the store rather
+    than read off the name, so a container you started by hand over there is
+    listed and marked as not ours, and nothing here offers to act on it.
     """
     r = _run([DOCKER, "ps", "--all", "--no-trunc", "--format", "{{json .}}"],
              timeout=25)
     if r["code"] != 0:
         return {"error": " ".join((r["out"] or "docker did not answer").split())[:200],
                 "containers": []}
+    # Which compose projects are this dashboard's, asked of the store rather
+    # than read off the name. A name used to answer it by carrying a prefix,
+    # which meant every container had a longer name so that this one function
+    # could do a string comparison.
+    mine = {_pname(p, i) for p, insts in _load().items() for i in insts}
     out = []
     for line in r["out"].splitlines():
         line = line.strip()
@@ -754,9 +648,7 @@ def containers():
             "ports": _ports(c.get("Ports", "")),
             "project": proj,
             "service": labels.get(SERVICE_LABEL, ""),
-            # With no prefix — a sandbox VM, where nothing else is worth
-            # protecting — every compose project on it is this manager's.
-            "ours": proj.startswith(dev_prefix()),
+            "ours": proj in mine,
         })
     out.sort(key=lambda c: (not c["ours"], c["project"], c["name"]))
     return {"error": "", "containers": out}
@@ -820,54 +712,21 @@ def compose_file(project, instance=MAIN):
     return None
 
 
-# What every compose project name starts with, from BB_DEV_PREFIX. Empty by
-# default: nothing here needs a prefix to be safe, because what makes an empty
-# one safe is the DAEMON being a sandbox, which dev_prefix() checks directly.
-# Against a socket proxy an empty value still falls back to bbdev.
-_PREFIX_WANT = os.environ.get("BB_DEV_PREFIX", "")
-
-
-def dev_prefix():
-    """The namespace, and whether this arrangement is allowed to go without one.
-
-    The prefix exists because the daemon was the SERVER's: a socket proxy
-    passes whatever it is asked, its flags being per-endpoint rather than per
-    container, so `compose --project-name plex down` would work and the only
-    thing refusing it is _guard reading this. There, the prefix is the
-    protection and an empty one hands over every container on the box.
-
-    A sandbox VM is the other case and the reason this is a setting at all.
-    That machine's whole job is being wrecked; there is nothing on it to
-    protect, so a namespace buys nothing and only makes every name longer.
-
-    So empty is honoured against `ssh://` and refused anywhere else — read from
-    the raw setting rather than through source(), because this is called for
-    every name and `ssh://` is the only address that means another machine
-    (`auto` never resolves to one).
-    """
-    want = _slug(_PREFIX_WANT)
-    if want:
-        return want + "-"
-    if (os.environ.get("DOCKER_HOST") or "").strip().lower().startswith("ssh://"):
-        return ""
-    return "bbdev-"
-
-
 def _pname(project, instance=MAIN):
     """The compose project name: the prefix, then what the thing is called.
 
-    The PROJECT used to be in here as well — bbdev-<project>-<instance> —
+    The PROJECT used to be in here as well — <project>-<instance> —
     which for a project called MediaReducer-Dev with an instance named after
-    it read `bbdev-mediareducer-dev-mediareducer-dev`. The project half only
+    it read `mediareducer-dev-mediareducer-dev`. The project half only
     ever bought uniqueness, and uniqueness is checked directly now
     (taken_pnames) rather than spelled out in every name forever.
 
     A project's default instance is named for the PROJECT, because nobody
     typed a name for it: `main` is implied rather than chosen, and
-    `bbdev-alpha-main` was saying the same thing twice too.
+    `alpha-main` was saying the same thing twice too.
     """
     inst = _slug(instance) or MAIN
-    return dev_prefix() + (_slug(project) if inst == MAIN else inst)
+    return _slug(project) if inst == MAIN else inst
 
 
 def name_clash(project, instance=MAIN):
@@ -952,7 +811,7 @@ def _compose(project, instance, *args):
 #
 # The one thing about a remote daemon that is easy to forget and impossible to
 # see: a bind mount's SOURCE is resolved by whoever runs the container, and
-# that is the host. `/workspace/alpha` and `/devdata/bbdev-alpha` mean
+# that is the host. `/workspace/alpha` and `/devdata/alpha` mean
 # something here and nothing over there — docker does not error on a missing
 # bind source, it creates an empty directory and mounts that. On Unraid the
 # root filesystem is RAM, so the failure is an app that starts with no data
@@ -1088,10 +947,12 @@ _DEV_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 def sandbox_daemon():
     """Is the daemon a sandbox VM — a machine whose whole job is being wrecked?
 
-    The one question that decides whether this module may run anything other
-    than compose. source() already works the answer out from DOCKER_HOST.
+    Which is the only daemon this talks to, so this is available()'s first
+    check asked on its own — kept as the guard's own question rather than
+    inherited, because it is what decides whether a `docker run` is allowed
+    and a security check should not depend on a display function.
     """
-    return source()["kind"] == "a sandbox VM"
+    return docker_host().startswith("ssh://")
 
 
 def _devdata_argv(op, *names):
@@ -1123,37 +984,23 @@ def _devdata_run(op, *names, quiet=False):
 
 
 def dev_data_dir(project, instance=MAIN, make=True):
-    """The instance's data directory, named the way the DAEMON names it.
+    """The instance's data directory, made and named on the VM.
 
-    Two arrangements, and the only difference is who runs mkdir:
+    DEVDATA is a path on the VM and the VM makes the directory, through the
+    throwaway container above. So it does not have to be mounted on this side
+    at all — one path meaning one thing, instead of a path here, a path there
+    and a mapping between them that nothing could check.
 
-    - DEVDATA is mounted here. Make it here and translate through the mapping.
-      What a socket proxy onto the server's own daemon requires, there being
-      no safe way to ask that daemon to run a container.
-    - It is not, and the daemon is a sandbox. DEVDATA is then a path on that
-      machine and it makes the directory itself. Nothing has to be mounted
-      here at all, which is the point: one shared path instead of two.
-
-    None when neither applies — no mapping, or the mkdir failed. The caller
-    then leaves BB_DEV_DATA unset and the compose fails loudly, which beats
-    mounting an empty directory in the host's RAM and calling it the cache
-    drive.
+    None when the mkdir failed. The caller then leaves BB_DEV_DATA unset and
+    the compose fails loudly, which beats mounting an empty directory and
+    calling it the cache drive.
     """
     name = _pname(project, instance)
-    root = Path(DEVDATA)
-    if root.is_dir():
-        d = root / name
-        if make:
-            try:
-                d.mkdir(parents=True, exist_ok=True)
-            except OSError:
-                return None
-        return to_host(d)
-    if sandbox_daemon():
-        if make and not _devdata_run("mkdir", name):
-            return None
-        return posixpath.join(DEVDATA, name)
-    return None
+    if not sandbox_daemon():
+        return None
+    if make and not _devdata_run("mkdir", name):
+        return None
+    return posixpath.join(DEVDATA, name)
 
 
 def rename_dev_data(old, new):
@@ -1709,20 +1556,17 @@ def stale_name(project, instance=MAIN):
     """A compose project name this instance used to have, if its things are
     still under it. Empty when there is nothing to migrate.
 
-    Changing BB_DEV_PREFIX renames what every dev container is CALLED, because
-    the name is the prefix plus what the thing is called and nothing else. The
-    containers, the env file and the data directory are all keyed by that name,
-    so the rename silently points a row at a compose project that does not
-    exist and a data directory that is empty — the old one is still there,
-    under the old name, holding everything.
+    An instance is its name: the containers, the env file and the data
+    directory are all keyed by it. So an instance made under a different name —
+    by a version of this that put a prefix in front of everything — is invisible
+    to a row that looks under the current one, while the old files sit there
+    holding everything.
 
-    Found by the tail rather than by remembering: everything after the prefix
-    is what the instance is called, so `<anything>-binhex-sonarr` and
-    `binhex-sonarr` are the same instance wearing different prefixes. Which
-    also finds instances made before this was recorded anywhere.
+    Found by the tail rather than by remembering, which needs nothing to have
+    been recorded: `<anything>-binhex-sonarr` and `binhex-sonarr` are the same
+    instance under two names.
     """
-    now = _pname(project, instance)
-    tail = now[len(dev_prefix()):] if dev_prefix() else now
+    tail = now = _pname(project, instance)
     if not tail:
         return ""
     seen = []
@@ -1834,9 +1678,9 @@ def make_dirs(project, instance=MAIN):
 def risks(project, cfg):
     """What this compose asks for beyond its own directory.
 
-    The half of the blast radius that no namespace can bound. A container
-    started from a file saying `privileged: true` and mounting `/` is labelled
-    bbdev- like every other one and passes every check that can be made on a
+    The half of the blast radius no check on a COMMAND can bound. A container
+    started from a file saying `privileged: true` and mounting `/` is named as
+    innocently as any other and passes every check that can be made on a
     name — so the file itself is read, and what it asks for is put in front of
     the operator before anything starts.
 
@@ -1891,14 +1735,18 @@ def our_paths(mapping):
     not something this side can check anything about.
     """
     ours = [p for p in mapping if Path(p).is_dir()]
-    # The two the mapping is usually silent about. With DOCKER_HOST_PATHS unset
-    # there is no mapping at all, and these checks are exactly what says so.
-    # DEVDATA only when this container actually has it: where the daemon makes
-    # the dev-data directory itself that path is the DAEMON's, and judging it
-    # as one of ours reports every correct compose file as broken.
-    for p in (str(WORKSPACE), str(Path(DEVDATA))):
-        if p not in ours and Path(p).is_dir():
-            ours.append(p)
+    # WORKSPACE whether or not it is mapped, because with DOCKER_HOST_PATHS
+    # unset there is no mapping at all and a project's own binds are exactly
+    # what wants checking.
+    #
+    # DEVDATA deliberately NOT: it is a path on the VM, which makes those
+    # directories itself. Adding it here judged binds under it against THIS
+    # container's mount table and called every correct compose file broken —
+    # "/devdata/x is this container's path, the daemon does not have it" — on
+    # the one path the daemon certainly does have. If it is mounted on both
+    # sides and named in the mapping, the line above covers it like any other.
+    if str(WORKSPACE) not in ours and WORKSPACE.is_dir():
+        ours.append(str(WORKSPACE))
     return ours
 
 
@@ -2105,7 +1953,7 @@ def state(project, instance=MAIN):
         built = {k: v for k, v in built.items()
                  if k not in ("rev", "at", "await_env", "building_since")}
     out = {"compose": True, "available": a["on"], "why": a["why"],
-           # The compose project name, which is what actually namespaces the
+           # The compose project name, which is what actually groups the
            # containers, the network and the volumes. Not the container name:
            # a compose file may set container_name to anything it likes, and
            # there may be several. This is the one name that is always true.

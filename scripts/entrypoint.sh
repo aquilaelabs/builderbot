@@ -26,13 +26,14 @@ PGID="${PGID:-100}"
 # into log-redaction rules, and — when SHIELD_SECRETS is on — scrubbed from
 # the environment every builder process inherits.
 # Values stashed for the root helper and registered for log redaction.
-# GIT_PAT is deliberately NOT in the scrub list below: git and gh must be able
-# to use it from inside a session, and any credential a session's git can
-# authenticate with is a credential that session can read. Scope GIT_PAT to
-# repository Contents only — Claude already has read/write on the mounted
-# working trees, so a contents-scoped token grants it nothing new, while the
-# Administration scope that manages runners stays shielded in GITHUB_PAT.
-SECRET_VARS=(GITHUB_PAT GIT_PAT RUNNER_TOKEN ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN)
+#
+# There is no container-wide git token in here any more. GIT_PAT was one
+# credential for every repository and readable by every session — its own
+# comment had to explain why that was acceptable — and a per-project token
+# replaced it: typed into the clone dialog, stored at /config/gitcreds/<project>
+# and named by that repo's own .git/config. What is left is the runner's, which
+# is shielded rather than explained.
+SECRET_VARS=(GITHUB_PAT RUNNER_TOKEN ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN)
 
 stash_secrets() {
     mkdir -p /run/builderbot
@@ -149,7 +150,8 @@ setup_ssh_agent() {
     # key material out of memory either.
     if ! command -v socat >/dev/null 2>&1; then
         warn "socat is missing — sessions cannot reach the root-owned agent, so"
-        warn "the shielded keys will be unusable. Set GIT_PAT or use ~/.ssh instead."
+        warn "the shielded keys will be unusable — use ~/.ssh, or give the"
+        warn "project a token in the dashboard's clone dialog instead."
         return 0
     fi
 
@@ -291,18 +293,6 @@ remap_user() {
     if [ "$cur_uid" != "$PUID" ]; then
         log "remapping user builder: ${cur_uid} -> ${PUID}"
         usermod -o -u "$PUID" -g "$PGID" builder
-    fi
-
-    # Give the builder access to the host Docker socket when one is mounted.
-    if [ -S /var/run/docker.sock ]; then
-        local sock_gid sock_group
-        sock_gid="$(stat -c '%g' /var/run/docker.sock)"
-        if ! getent group "$sock_gid" >/dev/null; then
-            groupadd -g "$sock_gid" hostdocker
-        fi
-        sock_group="$(getent group "$sock_gid" | cut -d: -f1)"
-        usermod -aG "$sock_group" builder
-        log "builder added to '${sock_group}' for the host Docker socket (gid ${sock_gid})"
     fi
 
     # Same dance for /dev/kvm, which the Android emulator needs for hardware

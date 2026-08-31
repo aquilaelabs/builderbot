@@ -73,7 +73,26 @@ jobs:
         # An isolated instance on a spare port with a private tmux server and a
         # scratch state dir — nothing it does can reach the live dashboard this
         # runner's container is also serving.
-        run: bash scripts/dashboard/test/run.sh 2>&1 | tee -a "$CI_LOG"
+        #
+        # Retried once, and only once, because of what this suite's failures
+        # actually are. It drives a real browser against a page that repaints on
+        # a poll, on a runner sharing its box with the live dashboard, any
+        # session and any image build — so a file times out under load and
+        # passes alone, every time, which is bug #13. A run that fails twice in
+        # a row is worth reading; a run that fails once is worth running again,
+        # and mailing somebody about the first one teaches them to ignore the
+        # mail. The second attempt is logged separately, so a genuine
+        # regression still shows both.
+        run: |
+          set -o pipefail
+          if bash scripts/dashboard/test/run.sh 2>&1 | tee -a "$CI_LOG"; then
+            exit 0
+          fi
+          echo | tee -a "$CI_LOG"
+          echo "== first attempt failed — running once more ==" | tee -a "$CI_LOG"
+          echo "   (this suite is timing-sensitive on a shared box; see bug #13)" \
+            | tee -a "$CI_LOG"
+          bash scripts/dashboard/test/run.sh 2>&1 | tee -a "$CI_LOG"
 
       - name: Close the log
         if: always()
