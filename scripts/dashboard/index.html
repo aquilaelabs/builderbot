@@ -1435,7 +1435,43 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   .projtab .row.stack2{flex-direction:row;align-items:center}
   .projtab .row.stack2 .grow{min-width:0}
   .projtab .row.stack2 .acts{margin-left:auto;flex-wrap:nowrap}
+
+  /* A manager row is four facts and a set of buttons: what it is, how it is,
+     what it publishes, and what you can do to it. Stacked they are four lines
+     that have to be read in order; side by side they can be scanned down a
+     column, which is how you compare containers rather than inspect one.
+     Named parts rather than :nth-child — the row grows a warning line and a
+     log tail on some states, and a positional rule would put those in a
+     column the day one appears. Everything unnamed spans, which is what those
+     are: full-width things that happen to live in the same box. */
+  .dmtab .row.stack2 .grow{
+    display:grid;
+    grid-template-columns:minmax(0,1.6fr) minmax(0,1.3fr) minmax(0,1.1fr);
+    align-items:start;column-gap:14px;row-gap:2px}
+  .dmtab .row.stack2 .grow > *{grid-column:1 / -1}
+  .dmtab .row.stack2 .dmid   {grid-column:1;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .dmstate{grid-column:2;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .dmports{grid-column:3;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .dmid .sub{margin:0}
+
+  /* The fold's two halves, likewise: ports on the left, mounts on the right.
+     They are different questions — where it answers, and what it can see —
+     and a single column made the reader count lines to tell them apart. */
+  .dmtab .dmwire .wire{display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
+    column-gap:18px;align-items:start}
+  .dmtab .dmwire .wire > .wport {grid-column:1}
+  .dmtab .dmwire .wire > .wmount{grid-column:2}
+  /* Anything that is neither — "it publishes nothing", a read failure —
+     is a sentence and spans. */
+  .dmtab .dmwire .wire > .li:not(.wport):not(.wmount){grid-column:1 / -1}
 }
+/* The wiring's own alignment, at every width: the container's side of the
+   arrow is the part being looked up, so it gets the fixed column. */
+.wport .wt,.wmount .wt{display:inline-block;min-width:11ch}
+.wport .wa,.wmount .wa{opacity:.6}
+.wport a{color:var(--note)}
+@media(hover:hover){ .wport a:hover{text-decoration:underline} }
 /* Remove, on a manager row: a text button among text buttons, red only under
    the pointer. It is the one control there that takes something away. */
 @media(hover:hover){ .dmtab .acts button.rm:hover{color:var(--bad);border-color:#94423d} }
@@ -5903,6 +5939,26 @@ async function dmAction(project, instance, act, btn){
   dockerList = null; dockerRev++; loadDocker();
 }
 
+// Where a container's published port actually answers.
+//
+// NOT location.hostname, which is the machine serving this page. The daemon
+// runs on the sandbox VM — a different machine, which is the entire point of
+// the arrangement — and a container publishing 8989 publishes it there. Using
+// the page's own host pointed every port label and every Open link at the
+// Unraid box, where either nothing answers or, worse, something else does.
+//
+// Taken from the address the manager is already told about, with the scheme,
+// the account and any port stripped: ssh://bb@10.0.0.9 is the machine 10.0.0.9.
+// Falls back to this page's host, which is right for the case where there is
+// no daemon and therefore no container to open.
+function daemonHost(){
+  const w = (state?.docker?.where || "").trim();
+  const h = w.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+             .replace(/^[^@/]*@/, "")
+             .replace(/[:/].*$/, "");
+  return h || location.hostname;
+}
+
 // The wiring itself, fetched on the first open. It arrives after the fold has
 // already animated to the height of "reading…", so the panel is grown a second
 // time when the real lines land — measured either side of the swap, which is
@@ -5918,10 +5974,20 @@ async function loadWire(d){
       body: JSON.stringify({project, instance, action:"state"})});
     const st = (await r.json()).state || {};
     const lines =
-      (st.ports || []).map(p => `<div class="dim li">${esc(p.target)}:${esc(p.proto)} ← ${
-        esc(location.hostname)}:${esc(p.published || "picked at start")}</div>`).join("")
-      + (st.mounts || []).map(m => `<div class="dim li">${esc(m.target)} ${
-        m.ro ? "←" : "↔"} ${esc(m.source)}</div>`).join("");
+      (st.ports || []).map(p => {
+        const at = `${daemonHost()}:${p.published || ""}`;
+        // A link only where there is something to open: a port with no
+        // published side is picked at start and has no address yet, and a
+        // link to a udp port is a link to nothing.
+        const body = p.published && /tcp/i.test(p.proto || "tcp")
+          ? `<a href="http://${esc(at)}/" target="_blank" rel="noreferrer">${esc(at)}</a>`
+          : esc(p.published ? at : "picked at start");
+        return `<div class="dim li wport"><span class="wt">${esc(p.target)}:${
+          esc(p.proto)}</span> <span class="wa">←</span> ${body}</div>`;
+      }).join("")
+      + (st.mounts || []).map(m => `<div class="dim li wmount"><span class="wt">${
+        esc(m.target)}</span> <span class="wa">${m.ro ? "←" : "↔"}</span> ${
+        esc(m.source)}</div>`).join("");
     html = lines || `<div class="dim li">it publishes nothing and mounts nothing</div>`;
   }catch(e){ html = `<div class="dim li bad">could not read it: ${esc(String(e))}</div>`; }
   if (!d.isConnected) return;                 // the manager repainted under it
@@ -6076,13 +6142,15 @@ function renderDockerInto(i){
     return `
     <div class="row stack2" data-inst="${esc(d.project)}|${esc(d.instance)}">
       <div class="grow">
+        <div class="dmid">
         <div class="name">${esc(d.name)}
           <span class="dim state ${d.running ? "ok" : ""}">(${
             d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
         <div class="sub">${d.source === "file"
           ? `compose written here`
           : `${esc(d.project)} · ${esc(d.instance)}`}</div>
-        <div class="sub ${d.running ? "ok" : ""}">${
+        </div>
+        <div class="sub dmstate ${d.running ? "ok" : ""}">${
           busy ? esc(job.step || "working") + '<span class="dots"></span>'
           // How a job ENDED, which this row never said. A build that failed or
           // was stopped left the row showing the state it happened to be in,
@@ -6093,7 +6161,8 @@ function renderDockerInto(i){
           : d.exists ? "stopped — its containers are still there"
           : d.built_rev ? `built from ${esc(d.built_rev)}, not running`
           : "never built"}</div>
-        ${d.ports.length ? `<div class="sub">${d.ports.map(esc).join(" · ")}</div>` : ""}
+        ${d.ports.length ? `<div class="sub dmports">${
+          d.ports.map(esc).join(" · ")}</div>` : ""}
         ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
@@ -8156,7 +8225,7 @@ $("todoRevert").onclick = revertNotebook;
     // guessed. Only while it is up: a link to a port with nothing behind it
     // is a broken link.
     const devTcp = devPorts.filter(p => p.proto === "TCP" && p.published);
-    const devUrl = p => `http://${location.hostname}:${p.published}/`;
+    const devUrl = p => `http://${daemonHost()}:${p.published}/`;
     const devWeb = da.running && devTcp.length === 1 ? devUrl(devTcp[0]) : "";
     const devAsk = da.running && devTcp.length > 1;
     // The ports and mounts used to be listed here, unfolded, on the reasoning
@@ -8275,7 +8344,7 @@ project can have several"
       box.innerHTML = `<div class="hint">It publishes ${devTcp.length} ports and
         nothing here knows which one is the web UI. Pick the one you meant.</div>`
         + devTcp.map(p => `<a class="btn" href="${esc(devUrl(p))}" target="_blank"
-            rel="noreferrer">${esc(location.hostname)}:${esc(p.published)}
+            rel="noreferrer">${esc(daemonHost())}:${esc(p.published)}
             <span class="dim">→ ${esc(p.target)}:${esc(p.proto)}</span></a>`).join("");
       box.querySelectorAll("a").forEach(a => a.addEventListener("click", closeSheet));
       openSheet("Open which port?", [box]);

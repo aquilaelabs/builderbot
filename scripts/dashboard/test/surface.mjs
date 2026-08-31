@@ -37,7 +37,7 @@ import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
 const SURFACE = [
   'adoptCards', 'adoptLayout', 'applyCards', 'applyNow', 'applyTheme',
   'argForSession', 'arriveBox', 'arriveRow', 'askPurge', 'cSeg', 'cSlide',
-  'cSubmit', 'cardDropIndex', 'claudeMd', 'closeEditor', 'closeNewProject',
+  'cSubmit', 'cardDropIndex', 'claudeMd', 'daemonHost', 'closeEditor', 'closeNewProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
   'crossedTo', 'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
   'dnSubmit', 'dockerJob', 'drawAuth', 'drawBell', 'drawBuild',
