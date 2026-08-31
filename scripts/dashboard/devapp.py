@@ -820,8 +820,11 @@ def compose_file(project, instance=MAIN):
     return None
 
 
-# What every compose project name starts with, from BB_DEV_PREFIX.
-_PREFIX_WANT = os.environ.get("BB_DEV_PREFIX", "bbdev")
+# What every compose project name starts with, from BB_DEV_PREFIX. Empty by
+# default: nothing here needs a prefix to be safe, because what makes an empty
+# one safe is the DAEMON being a sandbox, which dev_prefix() checks directly.
+# Against a socket proxy an empty value still falls back to bbdev.
+_PREFIX_WANT = os.environ.get("BB_DEV_PREFIX", "")
 
 
 def dev_prefix():
@@ -842,12 +845,8 @@ def dev_prefix():
     every name and `ssh://` is the only address that means another machine
     (`auto` never resolves to one).
     """
-    # `none` is empty spelled reliably. An Unraid template field cleared to
-    # blank can come back holding its Default again on the next edit, which on
-    # this box round-tripped "no prefix" back into `bbdev` — a word survives
-    # the trip where an absence does not.
     want = _slug(_PREFIX_WANT)
-    if want and want != "none":
+    if want:
         return want + "-"
     if (os.environ.get("DOCKER_HOST") or "").strip().lower().startswith("ssh://"):
         return ""
@@ -1706,6 +1705,80 @@ def _binds(sv, project):
     return out
 
 
+def stale_name(project, instance=MAIN):
+    """A compose project name this instance used to have, if its things are
+    still under it. Empty when there is nothing to migrate.
+
+    Changing BB_DEV_PREFIX renames what every dev container is CALLED, because
+    the name is the prefix plus what the thing is called and nothing else. The
+    containers, the env file and the data directory are all keyed by that name,
+    so the rename silently points a row at a compose project that does not
+    exist and a data directory that is empty — the old one is still there,
+    under the old name, holding everything.
+
+    Found by the tail rather than by remembering: everything after the prefix
+    is what the instance is called, so `<anything>-binhex-sonarr` and
+    `binhex-sonarr` are the same instance wearing different prefixes. Which
+    also finds instances made before this was recorded anywhere.
+    """
+    now = _pname(project, instance)
+    tail = now[len(dev_prefix()):] if dev_prefix() else now
+    if not tail:
+        return ""
+    seen = []
+    try:
+        seen += [f.stem for f in ENVDIR.glob(f"*{tail}.env")]
+    except OSError:
+        pass
+    root = Path(DEVDATA)
+    if root.is_dir():
+        try:
+            seen += [d.name for d in root.iterdir() if d.is_dir()]
+        except OSError:
+            pass
+    for name in seen:
+        if name != now and (name == tail or name.endswith("-" + tail)):
+            return name
+    return ""
+
+
+def migrate_name(project, instance=MAIN):
+    """Move an instance's things from the name it had to the one it has now.
+
+    Refused while anything is up under either name. A compose project is its
+    containers as much as its files, and renaming the directory out from under
+    a running one leaves it writing to a path nobody will look at again — so
+    this is a decision the operator makes with the thing stopped, not something
+    that happens to them on the next poll.
+    """
+    was = stale_name(project, instance)
+    now = _pname(project, instance)
+    if not was:
+        return {"error": "nothing to migrate — it is already under its current name"}
+    live = containers()
+    if live.get("error"):
+        return {"error": "cannot tell what is running: " + live["error"]}
+    busy = [c for c in live["containers"] if c["project"] in (was, now)]
+    if busy:
+        return {"error": f"{len(busy)} container(s) still exist under "
+                         f"{busy[0]['project']} — take it down first"}
+    moved, failed = [], []
+    for a, b, what in ((ENVDIR / f"{was}.env", ENVDIR / f"{now}.env", "the env file"),
+                       (Path(DEVDATA) / was, Path(DEVDATA) / now, "the data directory")):
+        if not a.exists():
+            continue
+        if b.exists():
+            failed.append(f"{what}: {b.name} is already there")
+            continue
+        try:
+            a.rename(b)
+            moved.append(what)
+        except OSError as e:
+            failed.append(f"{what}: {e}")
+    _bump()
+    return {"ok": True, "was": was, "now": now, "moved": moved, "failed": failed}
+
+
 def missing_dirs(project, cfg):
     """Bind sources that do not exist yet, split by whether we can make them.
 
@@ -2064,6 +2137,8 @@ def state(project, instance=MAIN):
         mk, cannot = missing_dirs(project, cfg)
         out["mkdirs"] = mk
         out["mkdirs_cannot"] = cannot
+        # A name it used to have, whose things are still under it.
+        out["stale_name"] = stale_name(project, instance)
         out.update(wiring(cfg))
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way — either the file asks for

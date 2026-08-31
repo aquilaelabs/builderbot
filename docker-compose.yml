@@ -43,7 +43,7 @@ services:
       # pairs — the daemon above resolves bind-mount sources on its own
       # filesystem, not this one. See .env.example.
       DOCKER_HOST_PATHS: ${DOCKER_HOST_PATHS:-}
-      BB_DEV_PREFIX: ${BB_DEV_PREFIX-bbdev}
+      BB_DEV_PREFIX: ${BB_DEV_PREFIX-}
 
       # --- Claude Code ------------------------------------------------------
       # Leave ANTHROPIC_API_KEY empty to log in interactively with a Claude

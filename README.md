@@ -313,7 +313,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
 | `GIT_PAT` | *(empty)* | A GitHub token for the whole container — every repo, every session. Still read, but a per-project token typed into the clone dialog is the better answer: it is scoped to the one repository that names it, so a token that opens twelve does not open twelve here. See below |
 | `DOCKER_HOST` | `auto` | Which Docker daemon the Artifacts tab's dev-instance controls drive. `auto` finds a running docker-socket-proxy on this container's network and re-finds it when its address moves; an explicit `tcp://host:2375` or `ssh://user@vm` is used verbatim; empty turns the feature off. An `ssh://` address pointing at a [sandbox VM](docs/sandbox-vm.md) is the arrangement where BuilderBot cannot reach the server's real containers at all. See `docs/unraid.md` |
-| `BB_DEV_PREFIX` | `bbdev` | The namespace dev-instance compose projects are named in — `bbdev-myapp` rather than `myapp`. Load-bearing where the daemon is this box's: the dashboard refuses any compose call outside it, which is what stops it reaching your real containers. `none` or empty drops the prefix (the word is the spelling that survives Unraid's template round-trip), honoured only when `DOCKER_HOST` is a sandbox VM, where there is nothing on the daemon to protect |
+| `BB_DEV_PREFIX` | *(empty)* | A namespace for dev-instance compose projects — empty means a container is called what you named it, `bbdev` makes it `bbdev-myapp`. Load-bearing where the daemon is this box's: the dashboard refuses any compose call outside the prefix, which is what stops it reaching your real containers, so an empty value is **ignored** there and `bbdev` used regardless. Changing it renames every existing dev container; the manager offers to migrate each one |
 | `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation — which is what the Unraid template ships, and is flagged on the row if the daemon turns out to be this box's own. With the dev-data share mounted here, empty leaves `BB_DEV_DATA` unset so a compose that wants it fails loudly; with a sandbox daemon that share is the sandbox's alone and needs no pair |
 | `BB_LOG_KEEP` | `60` | A ceiling on kept generations, not the retention policy — how long logs are kept is a number of days, set in the dashboard's settings menu. This exists so a crash loop cannot fill the directory |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
@@ -1777,6 +1777,20 @@ not `bbdev-myproject-radarr`. The project used to be in there too, which for a
 project called MediaReducer-Dev with an instance named after it produced
 `bbdev-mediareducer-dev-mediareducer-dev`.
 
+**Migrate** appears on a row whose things are still under a name it used to
+have. The compose project name is the prefix plus what the thing is called and
+nothing else, so changing `BB_DEV_PREFIX` renames every dev container — and the
+containers, the env file and the data directory are all keyed by that name. The
+row says which old name is still holding everything and offers to move it.
+
+Never automatically, and never while anything is up: renaming a directory out
+from under a running container leaves it writing to a path nothing will look at
+again, so the button is dead until you take it down. Nothing is copied and
+nothing is deleted — the env file and the data directory are renamed, and the
+old names are what to rename back to if it goes wrong. The old name is found by
+its tail rather than by remembering, so an instance made before any of this
+existed is found too.
+
 **Make dirs** appears on a row whose compose names bind directories that do
 not exist yet, and lists them above the buttons. Docker creates a missing bind
 source itself — as root, then chowning it — which on a share that squashes root
@@ -1814,9 +1828,9 @@ read out of its name — it is the key it is stored under. That is what decides
 whose Claude session may touch it, so a project can stand up several
 containers, name them anything, and still own all of them.
 
-`BB_DEV_PREFIX` sets the prefix, and `none` (or empty — but the word survives
-Unraid's template round-trip where a blank may not) removes it — containers are then
-called exactly what you typed. That is honoured **only against a sandbox VM**:
+`BB_DEV_PREFIX` sets the prefix and is **empty by default**, so a container is
+called exactly what you named it. That is honoured **only against a sandbox
+VM**:
 there, the daemon holds nothing worth protecting. Against a socket proxy the
 prefix is the protection — a proxy passes whatever it is asked, so `compose
 --project-name plex down` would work and the namespace check is the only thing

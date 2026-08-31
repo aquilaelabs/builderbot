@@ -801,10 +801,6 @@ out['default'] = [m.dev_prefix(), m._pname('alpha'), m._pname('alpha', 'dev')]
 m._PREFIX_WANT = ''
 out['none_on_vm'] = [m.dev_prefix(), m._pname('alpha'), m._pname('alpha', 'dev'),
                      m._guard(['docker', 'compose', '--project-name', 'plex', 'down'])]
-# The word, because a blanked Unraid template field can come back holding its
-# Default again — which round-tripped "no prefix" into bbdev on a real box.
-m._PREFIX_WANT = 'none'
-out['word'] = [m.dev_prefix(), m._pname('alpha', 'dev')]
 os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
 out['none_on_proxy'] = [m.dev_prefix(),
                         m._guard(['docker', 'compose', '--project-name', 'plex', 'down'])]
@@ -820,8 +816,6 @@ ok(PF.default[0] === 'bbdev-' && PF.default[1] === 'bbdev-alpha'
 ok(PF.none_on_vm[0] === '' && PF.none_on_vm[1] === 'alpha'
    && PF.none_on_vm[2] === 'dev' && PF.none_on_vm[3] === '',
    '...and an empty prefix against a sandbox VM gives exactly the name you typed');
-ok(PF.word[0] === '' && PF.word[1] === 'dev',
-   '...as does the word none, which survives the template round-trip a blank may not');
 ok(PF.none_on_proxy[0] === 'bbdev-' && /outside the bbdev- namespace/.test(PF.none_on_proxy[1]),
    '...but not against a socket proxy, where the namespace is the only protection');
 ok(PF.renamed[0] === 'sandbox-' && PF.renamed[1] === 'sandbox-dev'
@@ -899,6 +893,48 @@ ok(!MK.split[0].concat(MK.split[1]).some(p => /already/.test(p)),
    '...and one that exists is not offered at all');
 ok(MK.exists && MK.made.made.length === 1 && !MK.made.failed.length,
    'making them creates the reachable ones and leaves the rest alone');
+
+
+// Changing the prefix renames what every dev container is CALLED — the name is
+// the prefix plus what the thing is called and nothing else, and the
+// containers, env file and data directory are all keyed by it. So the row says
+// the old name is still holding everything, and offers to move it. Never
+// automatically, and never while anything is up: renaming a directory out from
+// under a running container leaves it writing somewhere nothing will look
+// again.
+const mig = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+m.DEVDATA = d + '/devdata'; os.makedirs(m.DEVDATA)
+open(d + '/devenv/bbdev-sonarr.env', 'w').write('PORT=1')
+os.makedirs(m.DEVDATA + '/bbdev-sonarr/config')
+m._PREFIX_WANT = ''
+out = {'now': m._pname('sonarr'), 'stale': m.stale_name('sonarr')}
+m.containers = lambda: {'error': '', 'containers': [{'project': 'bbdev-sonarr'}]}
+out['while_up'] = m.migrate_name('sonarr')
+m.containers = lambda: {'error': '', 'containers': []}
+out['moved'] = m.migrate_name('sonarr')
+out['after'] = [sorted(os.listdir(d + '/devenv')), sorted(os.listdir(m.DEVDATA)),
+                sorted(os.listdir(m.DEVDATA + '/sonarr'))]
+out['again'] = m.migrate_name('sonarr')
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const MG = JSON.parse(mig.trim().split('\n').pop());
+ok(MG.now === 'sonarr' && MG.stale === 'bbdev-sonarr',
+   'a prefix change is noticed: the old name is found by its tail, not by memory');
+ok(/take it down first/.test(MG.while_up.error || ''),
+   '...and refused while a container still exists under either name');
+ok(MG.moved.moved.length === 2 && !MG.moved.failed.length
+   && JSON.stringify(MG.after) === JSON.stringify(
+        [['sonarr.env'], ['sonarr'], ['config']]),
+   '...then moves the env file and the data directory, contents and all');
+ok(/nothing to migrate/.test(MG.again.error || ''),
+   '...and has nothing left to say the second time');
 
 
 // An instance is (project, name) now, and the old layout is one record per

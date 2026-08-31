@@ -3044,6 +3044,8 @@ class Handler(BaseHTTPRequestHandler):
         if act == "remove":
             r = devapp.remove_instance(name, inst)
             return self._json(r, 400 if r.get("error") else 200)
+        if act == "migrate-name":
+            return self._json(devapp.migrate_name(name, inst))
         if act == "mkdirs":
             return self._json(devapp.make_dirs(name, inst))
         if act == "state":
