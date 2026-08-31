@@ -107,3 +107,4 @@
 - Tabs cut off by the edge of the strip fade out instead of ending in a hard seam, and only on the side actually cutting one off (13364d0)
 - Changing the colour scheme crossfades instead of switching instantly (4c2157a)
 - The Docker manager lists a compose file's missing bind directories and offers to create them, instead of letting docker try and fail on a share that squashes root (3f72992)
+- Dev containers have no name prefix by default, and the manager offers to migrate one whose name changed instead of leaving its data behind under the old name (f309b60)
