@@ -115,3 +115,8 @@
 - A git token is asked for per project, in the clone dialog, and nowhere else (ef31fd6)
 - Migrate no longer offers a different instance's name as an old one, and moves the data on the VM instead of leaving it behind under the old name (f80aac9)
 - Dev-data directories are not renamed for you at startup — Migrate is the one place that moves them, with the container stopped (f80aac9)
+- The Docker manager shows Migrate and Make dirs — both were drawn from data the page never received, so neither had ever appeared (e42f7b8)
+- A row warns which bind directories only the daemon can create, before you press Up rather than after it fails (e42f7b8)
+- A pull no longer fills the log with a line per progress tick — a frame replaces the one before it, so the error that ended a job is the last thing in the tail (e42f7b8)
+- The job log stays pinned to its end, so a failure shows its reason instead of the middle of a download (e42f7b8)
+- An Up or Down that fails says so on the row and keeps its output, and Rebuild wakes up so the run can be retried (e42f7b8)

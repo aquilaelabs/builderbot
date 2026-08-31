@@ -439,7 +439,18 @@ case "$1" in
           done
         fi
         echo "stub built ok"; exit 0 ;;
-      up)   touch "$ST/$proj.up"; exit 0 ;;
+      up)
+        # A failing up, for the row that has to survive one: compose creates
+        # the container and then cannot start it — the shape of a bind mount
+        # landing on a share that squashes root.
+        if [ -f "$ST/up.fail" ]; then
+          touch "$ST/$proj.exited"
+          printf ' Container %s-x-1 Creating \n Container %s-x-1 Created \n' "$proj" "$proj"
+          printf ' Container %s-x-1 Starting \n' "$proj"
+          echo "Error response from daemon: error while creating mount source path"
+          exit 1
+        fi
+        touch "$ST/$proj.up"; exit 0 ;;
       down) rm -f "$ST/$proj.up" "$ST/$proj.exited"; exit 0 ;;
     esac
     exit 0 ;;

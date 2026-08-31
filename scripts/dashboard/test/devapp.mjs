@@ -320,6 +320,31 @@ await pillIs('down');
 ok(!existsSync(`${DIR}/dockerstate/ep-silon.exited`),
    '...and Down is what clears them');
 
+// An Up that FAILS. The row used to lose everything about it the moment the
+// job released: the reply carried the reason to the one browser that pressed
+// the button, and the row — which reads the job — was left saying "stopped"
+// with no account of why it had not started, and its tail gone.
+writeFileSync(`${DIR}/dockerstate/up.fail`, '1');
+await dmClick('up');
+await page.waitForFunction(() => dockerList?.job?.error, null, { timeout: 20000 })
+  .catch(() => {});
+const failed = await page.evaluate(() => dockerList?.job || {});
+ok(/up failed/.test(failed.error || ''),
+   'an Up that fails leaves the reason on the row, not only in the reply');
+ok(!failed.running && /mount source path/.test(failed.log || ''),
+   '...with the output that ended it still in the tail');
+await openManager();
+ok(await page.$eval(`${DM} .dmlog`, e => e.dataset.tail === '1'),
+   '...and that tail is pinned to its end, which is where the error is');
+// Rebuild has to wake for the retry. A build records itself before the up
+// that follows it, so a failed up left the row insisting the build was
+// current — true, and not what somebody looking at a red row wants offered.
+ok(!(await row()).rebuild,
+   '...and Rebuild is live again, because the run failed even though the build did not');
+rmSync(`${DIR}/dockerstate/up.fail`);
+await dmClick('down');
+await pillIs('down');
+
 // A build in flight when BuilderBot restarts is lost — compose build is a
 // subprocess of the dashboard and dies with it. Everything already recovered
 // correctly (the last SUCCESSFUL build is still what built_rev says, and
@@ -420,6 +445,25 @@ await page.waitForFunction(() => /will not work as written/.test(
 const probs = await devLines("bad");
 ok(probs.length === 1 && /this container's path/.test(probs[0]),
    'a bind the host cannot resolve is named on its own line, before anything starts');
+
+// Migrate and Make dirs render at all. Both are drawn on THIS page from
+// fields overview() did not set, so neither had ever appeared on it: the row
+// asked for d.stale_name and d.mkdirs, got undefined, and drew nothing. Two
+// buttons that existed only in the source.
+writeFileSync(`${DIR}/state/devenv/bbdev-ep-silon.env`, 'PORT=7475\n');
+writeFileSync(stubCfg, JSON.stringify({ services: { app: {
+  image: 'x', volumes: ['/nowhere-builderbot-has/data:/data'] } } }));
+await nudge();
+await openManager();
+await page.waitForFunction((sel) => document.querySelector(
+  sel + ' [data-dm="migrate-name"]'), DM, { timeout: 20000 }).catch(() => {});
+ok(await page.$(`${DM} [data-dm="migrate-name"]`) !== null,
+   'an instance with things under an old name gets the Migrate button, on the page that has the buttons');
+ok(/not BuilderBot's to make/.test(
+     await page.$eval(DM, e => e.textContent.replace(/\s+/g, ' '))),
+   '...and a bind directory only the daemon can make is named before the press, not after the failure');
+rmSync(`${DIR}/state/devenv/bbdev-ep-silon.env`);
+
 
 risky(['/:/host']);
 await nudge();
@@ -800,6 +844,42 @@ ok(!AB.phases.includes('up'),
 ok(/stopped/.test(AB.error) && !AB.running,
    '...and the row says so, which it was already saying with the thing running');
 
+// The tail is a display, not a transcript. Compose with no terminal writes a
+// new line per progress tick instead of rewriting one, so a single layer of a
+// single image arrives as dozens of near-identical lines — enough to push
+// whatever went wrong out of a 4000-character tail entirely.
+const tail = execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+out = {}
+m._job['log'] = ''
+feed = ([' 5a96bc599c67 Extracting 2B'] * 11 + [' 5a96bc599c67 Extracting 3B'] * 10
+        + [' 5a96bc599c67 Pull complete 0B', ' Network dev_default Creating ',
+           ' Network dev_default Creating ', ' Network dev_default Created ',
+           ' Container dev-x-1 Starting ',
+           "Error response from daemon: chown /x: operation not permitted"])
+for line in feed:
+    m._log_line(line + chr(10))
+out['pull'] = [len(feed), m._job['log'].strip().split(chr(10))]
+# A build transcript is prose, not frames, and must survive intact.
+m._job['log'] = ''
+for line in ['Step 1/4 : FROM node:22', 'Step 2/4 : RUN npm ci', 'Successfully built abc']:
+    m._log_line(line + chr(10))
+out['build'] = m._job['log'].strip().split(chr(10))
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const TL = JSON.parse(tail.trim().split('\n').pop());
+ok(TL.pull[0] === 27 && TL.pull[1].length === 5,
+   'a line that supersedes the one before it replaces it, so a pull is frames and not a transcript');
+ok(/operation not permitted/.test(TL.pull[1][TL.pull[1].length - 1]),
+   '...leaving the thing that ended it as the last line, which is the point');
+ok(TL.pull[1].some(l => /Extracting 3B/.test(l)) && !TL.pull[1].some(l => /Extracting 2B/.test(l)),
+   '...and the frame kept is the latest one, not the first');
+ok(TL.build.length === 3,
+   'a build transcript is not collapsed — three words in common is a frame, prose is not');
+
 // The address. One arrangement — a sandbox VM over ssh — so the operator
 // writes the machine and the rest is filled in; and anything that is NOT that
 // arrangement is refused by name here rather than half-working further down,
@@ -1159,7 +1239,13 @@ const both = await page.$$eval('.dmtab .row[data-inst^="ep.silon|"]',
   rs => rs.map(r => r.dataset.inst));
 ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
    '...beside the one the project already had');
-ok((await page.errors).length === 0, 'no console errors from the dev row');
+// The failed Up earlier answers 400, which the browser records as a failed
+// resource load. Counted rather than filtered out: "no console errors except
+// the ones I expected" is only worth asserting if the number is pinned too.
+const errs = await page.errors;
+const asked = errs.filter(e => /400 \(Bad Request\)/.test(e));
+ok(errs.length === asked.length && asked.length === 1,
+   'no console errors from the dev row, beyond the one refusal the failed Up asked for');
 
 // ---- a container with no project behind it ------------------------------
 // The shape every other Docker front end uses: a name, a compose file and an
