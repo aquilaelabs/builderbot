@@ -1329,6 +1329,55 @@ ok(await phone.evaluate(() =>
    '...and neither does the page behind it');
 await phone.close();
 
+// ---- two writers, which is what the notebook actually has ----------------
+// The dashboard is one process and `bb roadmap` is another, and both do
+// load-mutate-save. The lock around that was a threading.Lock, which guards
+// the threads of ONE process — so the second write landed on top of the first
+// and the item added from a terminal was simply not there afterwards.
+const race = execFileSync('python3', ['-c', `
+import json, os, subprocess, sys, tempfile
+sf = ${JSON.stringify(new globalThis.URL('../statefile.py', import.meta.url).pathname)}
+d = tempfile.mkdtemp(); f = os.path.join(d, 'x.json')
+json.dump({'n': 0}, open(f, 'w'))
+prog = """
+import importlib.util, json, os, sys, time
+spec = importlib.util.spec_from_file_location('sf', sys.argv[1])
+sf = importlib.util.module_from_spec(spec); spec.loader.exec_module(sf)
+for _ in range(25):
+    with sf.locked(sys.argv[2]):
+        n = json.load(open(sys.argv[2]))['n']
+        time.sleep(0.001)                 # the window a lost update lives in
+        sf.write_json(sys.argv[2], {'n': n + 1})
+"""
+ps = [subprocess.Popen([sys.executable, '-c', prog, sf, f]) for _ in range(4)]
+[p.wait() for p in ps]
+print(json.dumps({'got': json.load(open(f))['n'], 'want': 100}))
+`], { encoding: 'utf8' });
+const RACE = JSON.parse(race.trim().split('\n').pop());
+ok(RACE.got === RACE.want,
+   'four processes making the same change keep every one of them — the lock is on '
+   + 'the file, so the other writer waits rather than overwriting');
+
+// Re-entrant, because flock is per open file description: a second acquire in
+// the same process blocks against the first, and a mutator reaching another
+// through the front door would deadlock on itself.
+const reent = execFileSync('python3', ['-c', `
+import importlib.util, json, os, sys, tempfile
+spec = importlib.util.spec_from_file_location('sf', ${
+  JSON.stringify(new globalThis.URL('../statefile.py', import.meta.url).pathname)})
+sf = importlib.util.module_from_spec(spec); spec.loader.exec_module(sf)
+f = os.path.join(tempfile.mkdtemp(), 'x.json')
+with sf.locked(f):
+    with sf.locked(f):
+        pass
+h = sf.on(lambda: f)
+with h: pass
+with h: pass                              # a handle is reusable, unlike a cm
+print(json.dumps({'ok': True}))
+`], { encoding: 'utf8' });
+ok(JSON.parse(reent.trim().split('\n').pop()).ok,
+   '...and re-entrant, so a mutator that reaches another does not deadlock on itself');
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);

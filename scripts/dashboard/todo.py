@@ -28,7 +28,19 @@ back into the server. bb reads and writes the same file through `bb roadmap`, so
 session can add an item without a browser.
 """
 import json
-import threading
+import os
+import sys
+
+# `bb` execs this module by path — spec_from_file_location — so its directory
+# is not on sys.path the way it is when the dashboard imports it normally, and
+# a plain `import statefile` would work in one caller and not the other. Doing
+# it through sys.path rather than a second by-path load keeps it ONE module
+# object per process, which matters: the in-process half of the lock is a
+# dict in there, and two copies of it would not see each other's.
+_here = os.path.dirname(os.path.abspath(__file__))
+if _here not in sys.path:
+    sys.path.insert(0, _here)
+import statefile  # noqa: E402
 import time
 from pathlib import Path
 
@@ -50,7 +62,16 @@ def configure(*, write_json, state, tell=None, tmux_name=None, settle=None):
     globals()["FILE"] = Path(state) / "todos.json"
 
 
-_lock = threading.Lock()
+# Every read-modify-write below is already wrapped in `with _lock:`. What it
+# was NOT is a lock: a threading.Lock guards the threads of one process, and
+# the roadmap has two writers — the dashboard, and a `bb` invocation, which is a
+# separate process. Both loaded, both mutated their own copy, both wrote, and
+# the second landed on top of the first. Measured, four processes making forty
+# changes each: 40 of 160 survived.
+#
+# statefile.locked takes flock on the file itself, so the other process waits
+# instead of overwriting. Same sites, same shape — see statefile.py.
+_lock = statefile.on(lambda: FILE)
 
 # Room for a working list, not an issue tracker. A list nobody can read at a
 # glance is one nobody reads at all, and this one is put in front of every

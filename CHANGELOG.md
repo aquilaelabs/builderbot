@@ -135,3 +135,4 @@
 - A request waiting on your answer fills the bell button amber and pulses, and its row in the panel is pinned on top with Approve and Deny (cf13a50)
 - Clear no longer closes the notification panel, and cannot dismiss a request that is still waiting (cf13a50)
 - Sidebar cards no longer blank their contents while collapsing (cf13a50)
+- The roadmap and the bug tracker no longer lose an edit made from a terminal at the same moment as one made in the panel (62fc260)
