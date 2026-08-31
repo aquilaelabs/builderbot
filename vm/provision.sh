@@ -10,13 +10,20 @@
 # Run it inside the VM, once:
 #
 #   curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/vm/provision.sh
-#   sudo bash provision.sh --user bb --key "ssh-ed25519 AAAA..."
+#   sudo bash provision.sh --key "ssh-ed25519 AAAA..."
+#
+# It makes two accounts. `bb` runs Docker and answers ssh — the one BuilderBot
+# uses, and the one a Claude session reaches — with no sudo and no bb-sandbox.
+# `admin` has sudo and is the only account bb-sandbox runs for, so the mounts
+# this machine has are a decision made by a person at a console.
 #
 # It is safe to run again: every step checks before it acts, and a mount whose
 # source has CHANGED since last time is rewritten rather than left alone.
 set -euo pipefail
 
 USER_NAME="bb"
+ADMIN_NAME="admin"
+ADMIN_KEY=""
 SSH_KEY=""
 declare -a SHARES=() NFS=()
 
@@ -26,7 +33,16 @@ usage: provision.sh [options]
 
   --user NAME          the account Docker runs under and ssh lands on. The
                        default is bb, and BuilderBot assumes bb — so changing
-                       it means writing the account out in DOCKER_HOST.
+                       it means writing the account out in DOCKER_HOST. It gets
+                       NO sudo and cannot run bb-sandbox: this is the account a
+                       Claude session reaches, and reconfiguring the machine's
+                       mounts is not what it is for.
+  --admin NAME         the account that administers this machine (admin). It
+                       gets sudo and bb-sandbox. Left without a password and
+                       without a key unless you give it one — set a password
+                       from the console, or pass --admin-key.
+  --admin-key "ssh-…"  a PUBLIC key for the admin account, so it can be reached
+                       over ssh the way the docker account is.
   --key "ssh-ed25519 …"  a PUBLIC key, appended to this machine's
                        authorized_keys. It is the .pub half and nothing else:
                        the private key stays on BuilderBot, shielded in
@@ -59,6 +75,8 @@ EOF
 while [ $# -gt 0 ]; do
     case "$1" in
         --user)  USER_NAME="$2"; shift 2 ;;
+        --admin) ADMIN_NAME="$2"; shift 2 ;;
+        --admin-key) ADMIN_KEY="$2"; shift 2 ;;
         --key)   SSH_KEY="$2"; shift 2 ;;
         --share) SHARES+=("$2"); shift 2 ;;
         --nfs)   NFS+=("$2"); shift 2 ;;
@@ -161,6 +179,31 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 systemctl enable --now docker
 
+# One implementation of "let this account in", used for both. The validation
+# is the point: a key that does not parse leaves a VM nothing can ssh into,
+# found from the console after the fact.
+authorize() {
+    local who="$1" key="$2" home
+    case "$key" in
+        *"-----BEGIN"*)
+            echo "that is a PRIVATE key. It wants the .pub half — the private" >&2
+            echo "one stays where it was made and this machine never holds it." >&2
+            exit 1 ;;
+    esac
+    printf '%s\n' "$key" | ssh-keygen -l -f - >/dev/null 2>&1 || {
+        echo "a key for ${who} does not parse as a public key. It is one line," >&2
+        echo "starting ssh-ed25519 or ssh-rsa, from the .pub file." >&2
+        exit 1
+    }
+    home="$(getent passwd "$who" | cut -d: -f6)"
+    install -d -m 0700 -o "$who" -g "$who" "$home/.ssh"
+    touch "$home/.ssh/authorized_keys"
+    grep -qxF "$key" "$home/.ssh/authorized_keys" \
+        || echo "$key" >> "$home/.ssh/authorized_keys"
+    chown "$who:$who" "$home/.ssh/authorized_keys"
+    chmod 0600 "$home/.ssh/authorized_keys"
+}
+
 say "user ${USER_NAME}"
 id -u "$USER_NAME" >/dev/null 2>&1 || useradd -m -s /bin/bash "$USER_NAME"
 usermod -aG docker "$USER_NAME"
@@ -172,24 +215,41 @@ if [ -n "$SSH_KEY" ]; then
     # pasted here is a secret written onto the machine whose whole premise is
     # that it holds nothing — authorized_keys wants the .pub half, and the
     # private one never leaves BuilderBot's shielded agent.
-    case "$SSH_KEY" in
-        *"-----BEGIN"*)
-            echo "--key is a PRIVATE key. It wants the .pub half — the private" >&2
-            echo "one stays on BuilderBot and this machine never holds it." >&2
-            exit 1 ;;
-    esac
-    printf '%s\n' "$SSH_KEY" | ssh-keygen -l -f - >/dev/null 2>&1 || {
-        echo "--key does not parse as a public key. It is one line, starting" >&2
-        echo "ssh-ed25519 or ssh-rsa, from BuilderBot's own .pub file." >&2
-        exit 1
+    authorize "$USER_NAME" "$SSH_KEY"
+fi
+
+# The account that administers this machine, which is NOT the one a session
+# reaches. bb runs Docker and answers ssh; admin has sudo and is the only
+# account bb-sandbox will run for. Mounts, which share holds appdata, and what
+# this VM is called on the network are decisions made by a person at a console,
+# not side effects available to whatever is building a container this afternoon.
+#
+# BE CLEAR ABOUT WHAT THIS DOES NOT DO. bb is in the docker group, and the
+# docker group is root on this machine to anyone who wants it — one
+# `docker run -v /:/host --privileged` and the separation is over. That is not
+# a hole to plug, it is the whole point of the VM: it exists to be wrecked, and
+# BuilderBot needs the daemon to do its job. What the split buys is that the
+# machine's OWN configuration is not one command away from a session that
+# wandered — the fstab that decides whether /workspace is the projects share,
+# and read-only, is behind an account nothing here logs into.
+say "admin ${ADMIN_NAME}"
+if [ "$ADMIN_NAME" = "$USER_NAME" ]; then
+    warn "--admin and --user are both ${ADMIN_NAME}: one account cannot be both"
+    printf '   the split is the point — pick a different --admin\n'
+else
+    id -u "$ADMIN_NAME" >/dev/null 2>&1 || useradd -m -s /bin/bash "$ADMIN_NAME"
+    # sudo where the distro keeps it. Debian says sudo, others say wheel, and
+    # adding to a group that does not exist is an error rather than a no-op.
+    for g in sudo wheel; do
+        getent group "$g" >/dev/null 2>&1 && usermod -aG "$g" "$ADMIN_NAME"
+    done
+    [ -n "$ADMIN_KEY" ] && authorize "$ADMIN_NAME" "$ADMIN_KEY"
+    # No password is set here. A provisioner that invents one has to print it,
+    # and a password printed into a terminal scrollback is not a secret. Set
+    # one from the console, or reach it with --admin-key.
+    passwd -S "$ADMIN_NAME" 2>/dev/null | grep -q " P " || {
+        [ -n "$ADMIN_KEY" ] || printf '   %s has no password and no key yet — set one from the console:\n     sudo passwd %s\n' "$ADMIN_NAME" "$ADMIN_NAME"
     }
-    home="$(getent passwd "$USER_NAME" | cut -d: -f6)"
-    install -d -m 0700 -o "$USER_NAME" -g "$USER_NAME" "$home/.ssh"
-    touch "$home/.ssh/authorized_keys"
-    grep -qxF "$SSH_KEY" "$home/.ssh/authorized_keys" \
-        || echo "$SSH_KEY" >> "$home/.ssh/authorized_keys"
-    chown "$USER_NAME:$USER_NAME" "$home/.ssh/authorized_keys"
-    chmod 0600 "$home/.ssh/authorized_keys"
 fi
 
 say "bb-sandbox"
@@ -624,8 +684,15 @@ case "${1-}" in
     *) die "unknown command: $1 — try: bb-sandbox --help" ;;
 esac
 BBSANDBOX
-install -m 0755 "$BBSANDBOX_TMP" /usr/local/sbin/bb-sandbox
+install -m 0750 "$BBSANDBOX_TMP" /usr/local/sbin/bb-sandbox
 rm -f "$BBSANDBOX_TMP"
+# Readable and runnable by root and by the admin account's group, and by
+# nothing else. The docker account cannot read it, let alone run it — which is
+# most of what "bb cannot reconfigure this machine" means in practice, since
+# the script refuses to run as anyone but root anyway.
+if id -u "$ADMIN_NAME" >/dev/null 2>&1 && [ "$ADMIN_NAME" != "$USER_NAME" ]; then
+    chgrp "$(id -gn "$ADMIN_NAME")" /usr/local/sbin/bb-sandbox 2>/dev/null || true
+fi
 # Checked rather than assumed: this is the step that failed silently enough to
 # leave an old copy in place and a new one nowhere.
 [ -s /usr/local/sbin/bb-sandbox ] \
@@ -715,6 +782,21 @@ cat <<'EOF'
 Those paths have to be the ones BuilderBot uses. A compose file resolves a
 relative bind against whoever runs the container, so a path that means
 something different on each side is an app that comes up with no data.
+
+Two accounts, and the split is deliberate:
+
+  ${USER_NAME}   runs Docker and answers ssh. This is the one BuilderBot uses
+        and the one a Claude session reaches. No sudo, and it cannot run
+        bb-sandbox — reconfiguring this machine is not what it is for.
+  ${ADMIN_NAME}  administers the machine. sudo, and the only account
+        bb-sandbox runs for. Log in here to change mounts.
+
+Worth knowing rather than discovering: ${USER_NAME} is in the docker group, and
+that group is root on this machine to anyone who wants it. This VM exists to be
+wrecked, so that is the arrangement and not a hole in it. What the split buys
+is that the machine's own configuration — the fstab deciding whether /workspace
+is the projects share, and read-only — is not one command away from a session
+that wandered.
 
   sudo bb-sandbox settings     the lines to paste into BuilderBot
   sudo bb-sandbox check        is every mount really there
