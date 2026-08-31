@@ -294,7 +294,12 @@ add_fstab() {
         echo "$line" >> /etc/fstab
         return 0
     fi
-    lineno="${hit%%:*}"; old="${hit#*:}"
+    lineno="${hit%%:*}"
+    # `#*: ` with the space, because fstab_line emits "N: LINE". Stripping only
+    # "*:" left a leading space on every comparison — so an unchanged entry
+    # never matched and was rewritten on every run, and "it was" printed
+    # nothing, the first word of " x y" being empty.
+    old="${hit#*: }"
     [ "$old" = "$line" ] && return 0
     tmp="$(mktemp)"
     awk -v n="$lineno" -v repl="$line" 'NR==n {print repl; next} {print}' \
@@ -302,8 +307,20 @@ add_fstab() {
     # cat rather than mv, so /etc/fstab keeps its own inode and permissions.
     cat "$tmp" > /etc/fstab
     rm -f "$tmp"
-    say "fstab: $path now comes from ${line%% *}"
-    printf '   it was %s\n' "${old%% *}"
+    # Say which half moved. A changed SOURCE is the one worth staring at — it
+    # means this mountpoint now points somewhere else — and reporting an
+    # options-only edit in the same words made `readonly` read as if it had
+    # repointed the share.
+    if [ "${old%% *}" != "${line%% *}" ]; then
+        say "fstab: $path now comes from ${line%% *}"
+        printf '   it was %s\n' "${old%% *}"
+    else
+        say "fstab: $path options are now $(awk '{print $4}' <<<"$line")"
+        printf '   they were %s\n' "$(awk '{print $4}' <<<"$old")"
+    fi
+    # fstab changed under systemd, which caches it. Without this every later
+    # mount prints "your fstab has been modified... use systemctl daemon-reload".
+    have systemctl && systemctl daemon-reload 2>/dev/null || true
 }
 
 # mount_one PATH — mount it and say plainly whether it worked.
@@ -314,7 +331,10 @@ add_fstab() {
 # path whose entry was just rewritten stays on the old share and looks fine.
 mount_one() {
     local path="$1" want got
-    mount -a || true
+    # This path only. `mount -a` mounted every entry in fstab, so one export
+    # the server refuses printed its refusal on every check of every OTHER
+    # mount — three copies of one unrelated failure, above the answers.
+    mount "$path" 2>/dev/null || true
     want="$(fstab_line "$path")"; want="${want#*: }"; want="${want%% *}"
     got="$(findmnt -rno SOURCE -- "$path" 2>/dev/null || true)"
     if [ -n "$got" ] && [ "$got" = "$want" ]; then
@@ -428,15 +448,24 @@ cmd_remove() {
 }
 
 cmd_list() {
-    local path src state
+    local path src state real
     printf '\n%-24s %-34s %s\n' MOUNTPOINT SOURCE STATE
     while read -r path; do
         [ -n "$path" ] || continue
         src="$(fstab_line "$path")"; src="${src#*: }"; src="${src%% *}"
-        if ! findmnt -rno TARGET -- "$path" >/dev/null 2>&1; then state="NOT MOUNTED"
+        real="$(findmnt -rno SOURCE -- "$path" 2>/dev/null || true)"
+        if [ -z "$real" ]; then state="NOT MOUNTED"
         elif [ ! -w "$path" ]; then state="mounted, read-only"
         else state="mounted"; fi
         [ "$APPDATA" = "$path" ] && state="$state · container appdata"
+        # Where it is REALLY mounted from, not what fstab claims. Those two
+        # disagree exactly when something needs attention — an entry rewritten
+        # under a mount that was busy at the time — and printing fstab's
+        # version called that healthy.
+        if [ -n "$real" ] && [ "$real" != "$src" ]; then
+            state="$state — fstab says $src"
+            src="$real"
+        fi
         printf '%-24s %-34s %s\n' "$path" "$src" "$state"
     done < <(ours)
     [ -n "$(ours)" ] || printf '(none yet)\n'
