@@ -127,3 +127,6 @@
 - A VM share can be mounted read-only with :ro — recommended for the projects share (31454c6)
 - A bare sandbox-VM address now works for docker everywhere in the container, not just the dashboard (7f0caa7)
 - bb-sandbox can make a mount read-only after the fact — 'bb-sandbox readonly /workspace', and off to undo (7f0caa7)
+- bb-sandbox stops rewriting fstab entries that have not changed, and says whether a source or just the mount options moved (f4abd25)
+- bb-sandbox list shows where a share is really mounted from, and flags it when fstab says something else (f4abd25)
+- One unreachable share no longer prints its error over every other mount's check (f4abd25)
