@@ -1777,6 +1777,19 @@ not `bbdev-myproject-radarr`. The project used to be in there too, which for a
 project called MediaReducer-Dev with an instance named after it produced
 `bbdev-mediareducer-dev-mediareducer-dev`.
 
+**Make dirs** appears on a row whose compose names bind directories that do
+not exist yet, and lists them above the buttons. Docker creates a missing bind
+source itself — as root, then chowning it — which on a share that squashes root
+fails and takes the whole run down with *operation not permitted*, leaving the
+directory behind so the second press works: an intermittent-looking failure
+with a fixed cause. So they are made first, owned by whoever BuilderBot runs
+as, which is the ownership Unraid expects.
+
+Only the ones this container can reach through its own mounts. A path it cannot
+see is not one it should be inventing on the other machine's disk — that is
+what the mapping is for, and such a path is named separately rather than
+silently skipped.
+
 **A path this container also mounts needs a pair, even on a sandbox VM.**
 `/workspace:/workspace` covers the projects share and nothing else. If you also
 map the dev-data share here — so you can create a compose file's bind

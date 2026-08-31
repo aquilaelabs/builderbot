@@ -859,6 +859,42 @@ ok(Object.keys(NM.owner)[0] === 'alpha'
 ok(/already alpha/.test(NM.project_told),
    'a project whose own name was taken is told by whom, not quietly merged into it');
 
+// Making a compose file's bind directories. Docker creates a missing bind
+// source itself — as root, then chowning it — which on a share that squashes
+// root fails and takes the run down, leaving the directory behind so the
+// SECOND press works. So they are made first, by whoever owns them.
+const mkd = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+here = tempfile.mkdtemp()
+os.makedirs(here + '/already')
+# The mount table this container has, which is what decides what it may make.
+os.environ['BB_MOUNTINFO'] = d + '/mi'
+open(d + '/mi', 'w').write('1 0 0:1 / ' + here + ' rw - x x rw\\n')
+cfg = {'services': {'a': {'volumes': [
+    here + '/new/data:/data', here + '/already:/x', '/nowhere-i-mount/z:/z']}}}
+out = {}
+out['split'] = m.missing_dirs('p', cfg)
+m._config = lambda *a, **k: cfg
+out['made'] = m.make_dirs('p')
+out['exists'] = os.path.isdir(here + '/new/data')
+print(json.dumps(out))
+`], { encoding: 'utf8' });
+const MK = JSON.parse(mkd.trim().split('\n').pop());
+ok(MK.split[0].length === 1 && /new\/data$/.test(MK.split[0][0]),
+   'a bind directory that is missing and reachable is offered');
+ok(MK.split[1].length === 1 && MK.split[1][0] === '/nowhere-i-mount/z',
+   '...one this container cannot see is named separately, not invented on the daemon');
+ok(!MK.split[0].concat(MK.split[1]).some(p => /already/.test(p)),
+   '...and one that exists is not offered at all');
+ok(MK.exists && MK.made.made.length === 1 && !MK.made.failed.length,
+   'making them creates the reachable ones and leaves the rest alone');
+
+
 // An instance is (project, name) now, and the old layout is one record per
 // project. Driven at the module: the migration happens on read, so it is the
 // read that has to be asserted, and a stub docker cannot show a rename.

@@ -3044,6 +3044,8 @@ class Handler(BaseHTTPRequestHandler):
         if act == "remove":
             r = devapp.remove_instance(name, inst)
             return self._json(r, 400 if r.get("error") else 200)
+        if act == "mkdirs":
+            return self._json(devapp.make_dirs(name, inst))
         if act == "state":
             # The full picture for one instance — risks, problems, the parsed
             # compose — which overview() deliberately does not compute for

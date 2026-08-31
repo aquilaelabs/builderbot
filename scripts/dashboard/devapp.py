@@ -1702,6 +1702,58 @@ def _binds(sv, project):
     return out
 
 
+def missing_dirs(project, cfg):
+    """Bind sources that do not exist yet, split by whether we can make them.
+
+    Docker creates a missing bind source itself — as root, then chowning it —
+    which on a share that squashes root fails and takes the whole run down
+    ("operation not permitted"), leaving the directory behind so the SECOND
+    press works. An intermittent-looking failure with a fixed cause, and the
+    reason this exists: the directories are made first, by whoever owns them.
+
+    Only what this container can actually reach through its own mounts. A path
+    it cannot see is not a path it should be inventing on the other machine's
+    disk — that one is already what problems() is complaining about, and the
+    answer there is the mapping rather than a mkdir.
+
+    Returns (makeable, unreachable), both sorted lists of paths.
+    """
+    if cfg is None:
+        return [], []
+    # The mounts this container has, longest first, so a path under /devdata
+    # matches /devdata rather than /.
+    mine = sorted((m for m in _mount_roots() if m != "/"), key=len, reverse=True)
+    make, cannot = set(), set()
+    for _, sv in sorted(_services(cfg).items()):
+        for src in _binds(sv, project):
+            if Path(src).exists():
+                continue
+            if any(src == m or src.startswith(m + "/") for m in mine):
+                make.add(src)
+            else:
+                cannot.add(src)
+    return sorted(make), sorted(cannot)
+
+
+def make_dirs(project, instance=MAIN):
+    """Create the bind directories this container can reach. (made, failed).
+
+    Owned by whoever BuilderBot runs as, which is the same ownership the
+    per-instance dev-data directory gets and what the Unraid convention
+    expects. Nothing is created outside a path this container mounts, and
+    nothing existing is touched.
+    """
+    make, cannot = missing_dirs(project, _config(project, instance))
+    made, failed = [], []
+    for d in make:
+        try:
+            Path(d).mkdir(parents=True, exist_ok=True)
+            made.append(d)
+        except OSError as e:
+            failed.append(f"{d}: {e}")
+    return {"ok": True, "made": made, "failed": failed, "unreachable": cannot}
+
+
 def risks(project, cfg):
     """What this compose asks for beyond its own directory.
 
@@ -2003,6 +2055,11 @@ def state(project, instance=MAIN):
         rs = risks(project, cfg)
         out["risks"] = rs
         out["problems"] = problems(project, cfg) + host_map()[1]
+        # What is not there yet, so the row can offer to make it rather than
+        # letting docker try and fail on a root-squashing share.
+        mk, cannot = missing_dirs(project, cfg)
+        out["mkdirs"] = mk
+        out["mkdirs_cannot"] = cannot
         out.update(wiring(cfg))
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way — either the file asks for
