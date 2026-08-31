@@ -1791,19 +1791,20 @@ directory behind so the second press works: an intermittent-looking failure
 with a fixed cause. So they are made first, owned by whoever BuilderBot runs
 as, which is the ownership Unraid expects.
 
-Made on whichever side can reach them, which the operator should not have to
-think about. A share this container mounts is a local `mkdir`; one that only
-the VM has is a one-shot container over there, running as BuilderBot's uid —
-the same mechanism the per-instance dev-data directory already uses, and the
-reason it works is that ownership, since docker's own attempt is as root.
+Made on whichever side can reach them, which is not something to think about:
+a share this container mounts is a local `mkdir`, and anything else is a
+one-shot container on the VM — the same mechanism that makes the per-instance
+dev-data directory, running as BuilderBot's uid, which is the whole point
+since docker's own attempt is as root. Which shares the VM has is the VM's
+business: nothing is declared on this side, so a share added over there next
+month needs no BuilderBot setting touched.
 
-Which paths that reaches is **declared, not inferred**: the dev-data share,
-plus the daemon's side of every `DOCKER_HOST_PATHS` pair. A `docker run` with
-a bind is root on whatever answers it, so the set of places this can touch has
-to be readable from configuration alone — no compose parse, nothing a caller
-can widen. A pair for a share only the VM has is exactly how you say "the
-daemon has this, and it is shared with me". A bind under no declared root is
-still named on the row and left alone.
+The one thing it will not create is a bind at a share root itself — there is
+nothing below it to make, and docker creating the root is the as-root failure
+this exists to avoid. The guard still holds the shape: the argv is rebuilt and
+compared whole, the mount must be a single plain-named share root, and every
+path in it is plain names only, so the reach stays a `mkdir -p` as an ordinary
+user on a machine built to be wrecked.
 
 `mkdir -p` throughout, so pressing it twice is the same as pressing it once.
 A directory made over there cannot be seen from here afterwards, so what was

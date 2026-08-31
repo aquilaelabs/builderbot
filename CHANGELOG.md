@@ -122,3 +122,6 @@
 - An Up or Down that fails says so on the row and keeps its output, and Rebuild wakes up so the run can be retried (e42f7b8)
 - The New container dialog opens with empty compose and env boxes — the shape each wants is shown as a hint, so an example cannot be saved by accident (7cad157)
 - Make dirs creates bind directories on the sandbox VM too, so a share mounted only over there no longer leaves docker to make them as root and fail (af81738)
+- Make dirs creates a compose file's bind directories on the VM as well as here, with nothing to declare — pressing it twice is the same as once (31454c6)
+- A brand-new container no longer offers to migrate from a leftover under an old name (31454c6)
+- A VM share can be mounted read-only with :ro — recommended for the projects share (31454c6)

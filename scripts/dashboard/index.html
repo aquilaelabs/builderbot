@@ -5902,17 +5902,9 @@ function renderDockerInto(i){
         ${d.ports.length ? `<div class="sub">${d.ports.map(esc).join(" · ")}</div>` : ""}
         ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
         ${(d.mkdirs_cannot || []).length
-          // The half Make dirs cannot reach, said before the press rather than
-          // discovered after it. Docker creates a missing bind source itself,
-          // as root — which on a share that squashes root fails with `chown:
-          // operation not permitted`, takes the whole run down, and leaves the
-          // directory behind so the second press works. Silence here is what
-          // made that read as an intermittent bug in the compose file.
-          ? `<div class="sub warn">${d.mkdirs_cannot.length} bind director${
-              d.mkdirs_cannot.length === 1 ? "y is" : "ies are"} missing and not
-              BuilderBot's to make — the daemon will create ${
-              d.mkdirs_cannot.length === 1 ? "it" : "them"} as root, which fails
-              on a share that squashes root</div>`
+          // Rare: a bind at a share root itself, or a path that is not plain
+          // names. Make dirs handles everything else, on either side.
+          ? `<div class="sub warn">Make dirs cannot create:</div>`
             + d.mkdirs_cannot.map(x =>
                 `<div class="sub warn li">${esc(x)}</div>`).join("") : ""}
         ${busy || (mine && job.error)
