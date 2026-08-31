@@ -131,3 +131,7 @@
 - bb-sandbox list shows where a share is really mounted from, and flags it when fstab says something else (f4abd25)
 - One unreachable share no longer prints its error over every other mount's check (f4abd25)
 - Bind directories are created as part of Up and Rebuild — the Make dirs button is gone, along with having to know to press it first (3bfd4f5)
+- The bell's dot is blue for information, amber for a warning and red for a failure — the worst of what you have not read (cf13a50)
+- A request waiting on your answer fills the bell button amber and pulses, and its row in the panel is pinned on top with Approve and Deny (cf13a50)
+- Clear no longer closes the notification panel, and cannot dismiss a request that is still waiting (cf13a50)
+- Sidebar cards no longer blank their contents while collapsing (cf13a50)

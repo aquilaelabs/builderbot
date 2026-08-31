@@ -143,6 +143,48 @@ ok((await post({ action: 'allow', id: denied.body.id })).body.error,
    '...and an answered request cannot be answered again');
 page.errors = [];   // the refusals above are 400s on purpose
 
+// ---- what the bell says, and how loudly -----------------------------------
+// Appended rather than woven in above: the tests before this one read rows
+// out of the panel and answer the ask, and a block in the middle that opens,
+// clears and reopens it changes what they are looking at.
+//
+// Three levels in the three colours the rest of the page uses for the same
+// three meanings, and above all of them a request that is not a record of
+// something but a question nobody has answered yet.
+const dots = await page.evaluate(() => {
+  const seen = {};
+  const dot = () => document.querySelector('#bBell .dot').className;
+  const bell = document.getElementById('bBell');
+  const saved = ph.asks;
+  ph.asks = [];                       // an ask outranks every level by design
+  const reset = () => { notes = []; notesSeen = 0; };
+  reset(); notify('a build finished');                    seen.info = dot();
+  reset(); notify('the emulator is low on disk', 'warn'); seen.warn = dot();
+  reset(); notify('compose up failed', true);             seen.bad = dot();
+  // The WORST of what is unread, not the newest: a failure followed by three
+  // "saved"s is still a failure nobody has looked at.
+  reset(); notify('compose up failed', true); notify('saved');
+  seen.worst = dot();
+  reset(); notesSeen = notes.length; drawBell();
+  seen.none = document.querySelector('#bBell .dot').hidden;
+  seen.quiet = bell.classList.contains('waiting');
+  // ...and a question outranks all of it, on the button rather than the dot.
+  ph.asks = [{id: 1, why: 'read a property', cmd: ['shell', 'getprop'], left: 300}];
+  drawBell();
+  seen.asking = dot();
+  seen.loud = bell.classList.contains('waiting');
+  ph.asks = saved; reset(); drawBell();
+  return seen;
+});
+ok(dots.info === 'dot info' && dots.warn === 'dot warn' && dots.bad === 'dot bad',
+   'the dot is blue for something worth knowing, amber for a warning, red for a failure');
+ok(dots.worst === 'dot bad',
+   '...the worst of what is unread, so a later "saved" cannot bury a failure');
+ok(dots.none === true && dots.quiet === false,
+   '...and nothing at all when there is nothing unread');
+ok(dots.asking === 'dot ask' && dots.loud === true,
+   'a question waiting on an answer lights the whole button, not just the dot');
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);
