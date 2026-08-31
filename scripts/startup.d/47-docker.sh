@@ -10,9 +10,6 @@
 # running `bb doctor`. The boot log is where you look when something is wrong,
 # and a capability that is silent there looks like one that is absent.
 #
-# Both arrangements answer here, which is the point: a socket proxy on this box
-# and a sandbox VM over ssh are the same question with different addresses, and
-# the probe names which one it found rather than assuming.
 #
 # Never fatal. A daemon that is down is a feature that is off, not a container
 # that should refuse to start — the dev-instance controls grey out and say why,
@@ -25,8 +22,8 @@ PROBE=/opt/builderbot/scripts/lib/docker-probe.py
 DEVAPP=/opt/builderbot/scripts/dashboard/devapp.py
 [ -f "$PROBE" ] && [ -f "$DEVAPP" ] || exit 0
 
-# Bounded: available() gives its `docker version` ten seconds, and an ssh
-# address spends some of that on the connection. Worth it once at boot, and
+# Bounded: available() gives its `docker version` ten seconds, and reaching the
+# VM spends some of that on the ssh connection. Worth it once at boot, and
 # capped so a VM that is switched off costs a moment rather than the start.
 while read -r state rest; do
     [ -n "$state" ] || continue
@@ -34,8 +31,8 @@ while read -r state rest; do
         ok)   log "docker: ${rest#docker daemon: } — ready" ;;
         FAIL) warn "docker: ${rest#docker daemon: }" ;;
         warn) warn "docker: $rest" ;;
-        # Configured off, or `auto` with nothing answering. Said plainly rather
-        # than warned about: it is the shipped default.
+        # Configured off. Said plainly rather than warned about: it is the
+        # shipped default.
         skip) log "docker: ${rest#docker daemon: }" ;;
     esac
 done < <(timeout 30 python3 "$PROBE" "$DEVAPP" 2>/dev/null || true)

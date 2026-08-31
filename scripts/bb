@@ -2628,12 +2628,10 @@ cmd_doctor() {
     # These endpoints answer a bare GET with 4xx, which -f would treat as an error.
     check "anthropic api reachable"   curl -sS -m 10 -o /dev/null https://api.anthropic.com/
     check "github api reachable"      curl -sS -m 10 -o /dev/null https://api.github.com/
-    # The daemon the dashboard's dev instances are built and run on. Three
-    # arrangements answer to DOCKER_HOST — a mounted socket, a socket proxy on
-    # this box, or a sandbox VM's own daemon over ssh — and this reported only
-    # the first, as "docker socket not mounted". True, and misleading: it reads
-    # as "no docker here" on a box with a working daemon one variable away,
-    # which is exactly the question somebody asks after repointing it.
+    # The daemon the dashboard's dev instances are built and run on: the
+    # sandbox VM DOCKER_HOST names. This used to report only a mounted socket,
+    # as "docker socket not mounted" — true, and misleading, because it reads
+    # as "no docker here" on a box with a working daemon one variable away.
     #
     # The probe is devapp.available(), the same call the Artifacts tab makes on
     # its own poll, so doctor cannot drift into disagreeing with the tab about

@@ -113,3 +113,5 @@
 - Docker controls say plainly when there is no sandbox VM to run on, instead of failing once you press one (ef31fd6)
 - A compose file that mounts the dev-data share no longer reports a path error the daemon does not actually have (ef31fd6)
 - A git token is asked for per project, in the clone dialog, and nowhere else (ef31fd6)
+- Migrate no longer offers a different instance's name as an old one, and moves the data on the VM instead of leaving it behind under the old name (f80aac9)
+- Dev-data directories are not renamed for you at startup — Migrate is the one place that moves them, with the container stopped (f80aac9)
