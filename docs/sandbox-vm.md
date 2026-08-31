@@ -112,11 +112,16 @@ changed after the day it was built:
 ```bash
 sudo bb-sandbox                      # a menu, whiptail where the distro has it
 sudo bb-sandbox add-nfs 192.168.1.15:/mnt/user/media:/auxiliary
-sudo bb-sandbox add-share workspace:/workspace
+sudo bb-sandbox add-share workspace:/workspace:ro
 sudo bb-sandbox appdata /devdata     # which mount holds container appdata
 sudo bb-sandbox check                # is every mount really there
 sudo bb-sandbox settings             # the lines to paste into BuilderBot
 ```
+
+`:ro` on a share mounts it read-only, and the projects share should have it:
+nothing on this machine needs to write source code, so a container that binds
+its project tree cannot scribble on it either. Leave it off the shares
+containers keep their data on — appdata, media — which exist to be written.
 
 It is the same code provisioning uses for its own `--share` and `--nfs` — one
 implementation of the fstab writing, not a copy per entry point, because the

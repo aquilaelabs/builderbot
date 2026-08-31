@@ -107,7 +107,7 @@ ok(await page.$eval('#devRow .top .pill', e => e.textContent.trim()) === 'docker
 // the tab you send it FROM is a thing to keep in step for no reader.
 ok(!/never built/.test(r.text),
    '...and says nothing where it used to name a Build button this screen no longer has');
-ok(await page.$$eval('#devRow .grow > .dim.li', els => els.length) === 0,
+ok(await page.$$eval('#devRow .grow > .dim.li:not(.warn)', els => els.length) === 0,
    '...nor its ports and mounts, which the manager folds open per container');
 // The single published port earns a link. Not before it is up: a link to a
 // port with nothing behind it is a broken link.
@@ -450,6 +450,13 @@ ok(probs.length === 1 && /this container's path/.test(probs[0]),
 // fields overview() did not set, so neither had ever appeared on it: the row
 // asked for d.stale_name and d.mkdirs, got undefined, and drew nothing. Two
 // buttons that existed only in the source.
+// Its own env moved aside first: an instance that has one is set up under
+// its current name, and offering it a "migration" from a leftover — which
+// Remove deliberately leaves behind — was how a freshly created container got
+// a Migrate button pointing at a dead file.
+const ownEnv = `${DIR}/state/devenv/ep-silon.env`;
+const keptEnv = readFileSync(ownEnv, 'utf8');
+rmSync(ownEnv);
 writeFileSync(`${DIR}/state/devenv/bbdev-ep-silon.env`, 'PORT=7475\n');
 writeFileSync(stubCfg, JSON.stringify({ services: { app: {
   image: 'x', volumes: ['/nowhere-builderbot-has/data:/data'] } } }));
@@ -459,10 +466,17 @@ await page.waitForFunction((sel) => document.querySelector(
   sel + ' [data-dm="migrate-name"]'), DM, { timeout: 20000 }).catch(() => {});
 ok(await page.$(`${DM} [data-dm="migrate-name"]`) !== null,
    'an instance with things under an old name gets the Migrate button, on the page that has the buttons');
-ok(/not BuilderBot's to make/.test(
-     await page.$eval(DM, e => e.textContent.replace(/\s+/g, ' '))),
-   '...and a bind directory only the daemon can make is named before the press, not after the failure');
+ok(await page.$(`${DM} [data-dm="mkdirs"]`) !== null,
+   '...and a bind under a share only the daemon has gets Make dirs, with nothing declared anywhere');
+writeFileSync(ownEnv, keptEnv);
 rmSync(`${DIR}/state/devenv/bbdev-ep-silon.env`);
+await nudge();
+await openManager();
+await page.waitForFunction((sel) => !document.querySelector(
+  sel + ' [data-dm="migrate-name"]'), DM, { timeout: 20000 }).catch(() => {});
+ok(await page.$(`${DM} [data-dm="migrate-name"]`) === null,
+   '...and Migrate is gone once the instance has an env of its own — a leftover '
+   + "is not this instance's past");
 
 
 risky(['/:/host']);
@@ -717,20 +731,17 @@ calls.clear()
 out['renamed'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-beta'),
                   [[a for a in c['argv'] if a.startswith('/d/')] for c in calls]]
 
-# Bind directories on the DAEMON's side. The share is mounted over there and
-# not here, which is the shipped arrangement — so nothing on this side could
-# make them and docker created them itself, as root, which is the failure Make
-# dirs exists to prevent.
-# Neither share is in the fake mount table above, which is the arrangement:
-# they are mounted on the VM and BuilderBot never sees them.
-os.environ['DOCKER_HOST_PATHS'] = '/workspace:/workspace,/auxiliary:/auxiliary'
+# Bind directories on the DAEMON's side. The shares are mounted over there
+# and not here, which is the shipped arrangement — and which shares the VM has
+# is the VM's business: nothing is declared on this side, so a share added
+# over there next month needs no BuilderBot setting touched. Neither share is
+# in the fake mount table above, so nothing goes down the local branch.
 m.DEVDATA = '/devdata-vm'
 cfg = {'services': {'s': {'volumes': [
   {'type': 'bind', 'source': '/auxiliary/plex-library', 'target': '/m'},
   {'type': 'bind', 'source': '/devdata-vm/sonarr/config', 'target': '/c'},
   {'type': 'bind', 'source': '/devdata-vm/sonarr/data', 'target': '/d2'},
-  {'type': 'bind', 'source': '/undeclared/x', 'target': '/x'}]}}}
-out['roots'] = sorted(m.mkdir_roots())
+  {'type': 'bind', 'source': '/loneroot', 'target': '/x'}]}}}
 out['split'] = m.missing_dirs('sonarr', cfg, 'main')
 calls.clear()
 m._config = lambda *a, **k: cfg
@@ -740,7 +751,9 @@ out['made'] = [sorted(made['made']), made['failed'], made['unreachable'],
                [[a for a in c['argv'] if a.endswith(':/d') or a.startswith('/d/')]
                 for c in calls if not c['refused']]]
 # A root nobody declared is refused even in exactly the right shape.
-out['undeclared'] = m._guard(m._devdata_argv('mkdir', 'x', root='/undeclared'))
+out['slash'] = m._guard(m._devdata_argv('mkdir', 'x', root='/'))
+out['nested'] = m._guard(m._devdata_argv('mkdir', 'x', root='/a/b'))
+out['anyshare'] = m._guard(m._devdata_argv('mkdir', 'x', root='/undeclared'))
 out['climb'] = m._guard(m._devdata_argv('mkdir', '../etc', root='/devdata-vm'))
 out['deep'] = m._guard(m._devdata_argv('mkdir', 'a/b/c', root='/devdata-vm'))
 
@@ -786,22 +799,21 @@ ok(!DDD.guard.ours && Object.entries(DDD.guard).filter(([k]) => k !== 'ours')
    'the guard allows those exact commands and nothing else wearing the same verb');
 ok(/sandbox VM/.test(DDD.guard['ours, on the proxy']),
    '...and not even those unless the daemon is the sandbox VM');
-ok(JSON.stringify(DDD.roots) === JSON.stringify(['/auxiliary', '/devdata-vm', '/workspace']),
-   'the roots this may make directories under are the declared ones: the dev-data '
-   + 'share, and whatever DOCKER_HOST_PATHS says the daemon has');
 ok(JSON.stringify(DDD.split[0]) === JSON.stringify(
      ['/auxiliary/plex-library', '/devdata-vm/sonarr/config', '/devdata-vm/sonarr/data'])
-   && JSON.stringify(DDD.split[1]) === JSON.stringify(['/undeclared/x']),
-   '...so a bind under one is BuilderBot\'s to make even with the share mounted '
-   + 'only over there, and one under no declared root still is not');
+   && JSON.stringify(DDD.split[1]) === JSON.stringify(['/loneroot']),
+   "every bind under a share of the daemon's is BuilderBot's to make, with "
+   + 'nothing declared anywhere — only a bind AT a share root is not, since '
+   + 'docker itself creates that one as root');
 ok(DDD.made[0].length === 3 && !DDD.made[1].length
    && JSON.stringify(DDD.made[3]) === JSON.stringify([
         ['/auxiliary:/d', '/d/plex-library'],
         ['/devdata-vm:/d', '/d/sonarr/config', '/d/sonarr/data']]),
    '...made by one container per share rather than one per directory');
-ok(/not a declared root/.test(DDD.undeclared) && DDD.climb && !DDD.deep,
-   'the guard takes the mount out of the argv and checks it: an undeclared root '
-   + 'and a name that climbs are refused, a path two deep under a declared one is not');
+ok(/not a share root/.test(DDD.slash) && /not a share root/.test(DDD.nested)
+   && !DDD.anyshare && DDD.climb && !DDD.deep,
+   'the guard takes the mount out of the argv and checks its shape: / and a '
+   + 'nested path are refused, any single share is not, a climbing name still is');
 
 // One thing at a time on the daemon, and it now covers every verb that runs a
 // compose call. `up`, `down` and `remove` read the flag and never set it, so a
@@ -1005,27 +1017,44 @@ d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
 here = tempfile.mkdtemp()
 os.makedirs(here + '/already')
-# The mount table this container has, which is what decides what it may make.
+# The mount table this container has, which decides which side makes what.
 os.environ['BB_MOUNTINFO'] = d + '/mi'
 open(d + '/mi', 'w').write('1 0 0:1 / ' + here + ' rw - x x rw\\n')
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+# Faked, like every sibling block: without this the daemon-side half ran the
+# REAL docker CLI against whatever DOCKER_HOST the box has — a test that
+# reached out and made a directory on the operator's live VM.
+calls = []
+def fake(argv, timeout=60, **kw):
+    bad = m._guard(argv)
+    calls.append({'argv': argv, 'refused': bad})
+    return {'code': 126 if bad else 0, 'out': bad}
+m._run = fake
+m._load = lambda: {'p': {'main': {}}}
 cfg = {'services': {'a': {'volumes': [
-    here + '/new/data:/data', here + '/already:/x', '/nowhere-i-mount/z:/z']}}}
+    here + '/new/data:/data', here + '/already:/x',
+    '/vm-share/z:/z', '/lone:/x2']}}}
 out = {}
 out['split'] = m.missing_dirs('p', cfg)
 m._config = lambda *a, **k: cfg
 out['made'] = m.make_dirs('p')
 out['exists'] = os.path.isdir(here + '/new/data')
+out['ran'] = [[a for a in c['argv'] if a.endswith(':/d') or a.startswith('/d/')]
+              for c in calls if 'mkdir' in c['argv']]
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const MK = JSON.parse(mkd.trim().split('\n').pop());
-ok(MK.split[0].length === 1 && /new\/data$/.test(MK.split[0][0]),
-   'a bind directory that is missing and reachable is offered');
-ok(MK.split[1].length === 1 && MK.split[1][0] === '/nowhere-i-mount/z',
-   '...one this container cannot see is named separately, not invented on the daemon');
+ok(MK.split[0].length === 2 && /new\/data$/.test(MK.split[0][0])
+   && MK.split[0][1] === '/vm-share/z',
+   'a missing bind directory is offered whichever side can see it');
+ok(MK.split[1].length === 1 && MK.split[1][0] === '/lone',
+   '...except a bind at a share root itself, which docker creates as root');
 ok(!MK.split[0].concat(MK.split[1]).some(p => /already/.test(p)),
    '...and one that exists is not offered at all');
-ok(MK.exists && MK.made.made.length === 1 && !MK.made.failed.length,
-   'making them creates the reachable ones and leaves the rest alone');
+ok(MK.exists && MK.made.made.length === 2 && !MK.made.failed.length
+   && JSON.stringify(MK.ran) === JSON.stringify([['/vm-share:/d', '/d/z']]),
+   'making them is a local mkdir on this side and one container per share on '
+   + 'the VM\'s — with nothing declared to make that allowed');
 
 
 // Changing the prefix renames what every dev container is CALLED — the name is

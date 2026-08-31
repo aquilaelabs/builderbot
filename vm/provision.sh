@@ -34,10 +34,14 @@ usage: provision.sh [options]
                        machine never holds it and never connects out. This is
                        how BuilderBot reaches the daemon, and the reason no
                        Docker port has to be opened at all.
-  --share TAG:PATH     a virtiofs/9p share Unraid passes in, mounted at PATH.
-                       Repeatable. PATH MUST match the path BuilderBot uses.
-  --nfs HOST:EXPORT:PATH   the same thing over NFS, when a share cannot be
-                       passed directly. Repeatable. EXPORT is the exported
+  --share TAG:PATH[:ro]  a virtiofs/9p share Unraid passes in, mounted at
+                       PATH. Repeatable. PATH MUST match the path BuilderBot
+                       uses. `:ro` mounts it read-only — right for the projects
+                       share: nothing on this machine needs to WRITE source
+                       code, so a wild container cannot either. Leave it off a
+                       share containers keep their data on.
+  --nfs HOST:EXPORT:PATH[:ro]   the same thing over NFS, when a share
+                       cannot be passed directly. Repeatable, same `:ro`. EXPORT is the exported
                        share path — on Unraid /mnt/user/<share>/... — and not
                        a pool path like /mnt/cache/...: that spelling is for
                        bind mounts and is not what the server offers, so the
@@ -333,21 +337,26 @@ mount_one() {
 
 # --- commands -----------------------------------------------------------
 cmd_add_share() {
-    local spec="${1:?usage: bb-sandbox add-share TAG:PATH}" tag path
+    local spec="${1:?usage: bb-sandbox add-share TAG:PATH[:ro]}" tag path opts=defaults
+    # `:ro` mounts it read-only. The projects share wants this: the daemon
+    # only ever RESOLVES bind sources there, so read-only costs nothing and a
+    # container that mounts its project tree cannot scribble on the source.
+    case "$spec" in *:ro) opts=defaults,ro; spec="${spec%:ro}" ;; esac
     tag="${spec%%:*}"; path="${spec#*:}"
     [ "$tag" != "$spec" ] || die "add-share wants TAG:PATH — got '$spec'"
     case "$path" in /*) ;; *) die "the mountpoint must be absolute — got '$path'" ;; esac
-    add_fstab "$tag $path virtiofs defaults,nofail 0 0" "$path" && mount_one "$path"
+    add_fstab "$tag $path virtiofs $opts,nofail 0 0" "$path" && mount_one "$path"
 }
 
 cmd_add_nfs() {
-    local spec="${1:?usage: bb-sandbox add-nfs HOST:EXPORT:PATH}" host rest exp path
+    local spec="${1:?usage: bb-sandbox add-nfs HOST:EXPORT:PATH[:ro]}" host rest exp path opts=defaults
+    case "$spec" in *:ro) opts=defaults,ro; spec="${spec%:ro}" ;; esac
     host="${spec%%:*}"; rest="${spec#*:}"; exp="${rest%%:*}"; path="${rest#*:}"
     # Three fields, and getting two produces nonsense rather than an error:
     # the export and the mountpoint both come out as the export.
     case "$rest" in *:*) ;; *) die "add-nfs wants HOST:EXPORT:PATH — '$spec' has no mountpoint" ;; esac
     case "$path" in /*) ;; *) die "the mountpoint must be absolute — got '$path'" ;; esac
-    add_fstab "$host:$exp $path nfs defaults,nofail,_netdev 0 0" "$path" && mount_one "$path"
+    add_fstab "$host:$exp $path nfs $opts,nofail,_netdev 0 0" "$path" && mount_one "$path"
 }
 
 cmd_remove() {
@@ -566,12 +575,12 @@ declare -a MOUNTED=()
 for spec in "${SHARES[@]:-}"; do
     [ -n "$spec" ] || continue
     /usr/local/sbin/bb-sandbox add-share "$spec" || warn "$spec did not mount — see the check below"
-    MOUNTED+=("${spec#*:}")
+    p="${spec%:ro}"; MOUNTED+=("${p#*:}")
 done
 for spec in "${NFS[@]:-}"; do
     [ -n "$spec" ] || continue
     /usr/local/sbin/bb-sandbox add-nfs "$spec" || warn "$spec did not mount — see the check below"
-    MOUNTED+=("${spec##*:}")
+    p="${spec%:ro}"; MOUNTED+=("${p##*:}")
 done
 # Checked rather than assumed, which is the difference between finding out now
 # and finding out from an app that came up with no data. bb-sandbox owns the
