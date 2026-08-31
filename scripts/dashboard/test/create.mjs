@@ -4,7 +4,7 @@
 // clone path is tested up to its URL allow-list: the list is the thing under
 // test, and a real clone would need GitHub on the other end.
 import { launch, newPage, ok, done, ready, URL, DIR, animatedDuring } from './lib.mjs';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
@@ -577,7 +577,7 @@ await page.click('#bJobOk');
 ok(await post({ name: 'alpha', url: 'https://github.com/owner/alpha',
                 key: 'github_testkey' }, '/api/link') === 400,
    'a repo that already has a remote is refused');
-ok(await post({ name: 'gamma', url: 'https://github.com/owner/gamma',
+ok(await post({ name: 'oldproj', url: 'https://github.com/owner/oldproj',
                 key: 'github_testkey' }, '/api/link') === 400,
    'a directory that is not a git repository is refused');
 ok(await post({ name: 'nosuch', url: 'https://github.com/owner/x',
@@ -591,6 +591,53 @@ ok(await post({ name: 'beta', url: 'https://github.com/owner/beta' },
 // clone is made to fail with a 500 — and the browser logs each as a failed
 // resource. Those lines are the tests passing, not a fault. Anything else is
 // still a failure.
+// ---- the bin -------------------------------------------------------------
+// Deleting a project moves it to /workspace/.trash and every word on the page
+// says so. This is the other half of that promise: seeing what is in there,
+// putting one back, and — the only irreversible control on the page —
+// destroying one.
+mkdirSync(`${DIR}/ws/.trash/oldproj`, { recursive: true });
+writeFileSync(`${DIR}/ws/.trash/oldproj/keep.txt`, 'still here\n');
+await page.click('#bTrash');
+await page.waitForSelector('#tmodal:not([hidden])', { timeout: 10000 });
+await page.waitForFunction(() => document.querySelector('#tList .trow'),
+                           { timeout: 10000 });
+ok(await page.$eval('#tList .trow', r => r.dataset.t) === 'oldproj',
+   'the bin lists what was deleted, which nothing else on the page could show');
+
+// Put back: a move, and the files come with it.
+await page.click('#tList .trow[data-t="oldproj"] [data-trestore]');
+await page.waitForFunction(() => !document.querySelector('#tList .trow[data-t="oldproj"]'),
+                           { timeout: 10000 });
+ok(existsSync(`${DIR}/ws/oldproj/keep.txt`) && !existsSync(`${DIR}/ws/.trash/oldproj`),
+   '...and Put back is a move, so the files arrive with the name');
+
+// Destroying one asks for the name to be typed. A click is not enough for the
+// one control here with nothing behind it.
+rmSync(`${DIR}/ws/oldproj`, { recursive: true, force: true });
+mkdirSync(`${DIR}/ws/.trash/oldproj`, { recursive: true });
+writeFileSync(`${DIR}/ws/.trash/oldproj/keep.txt`, 'still here\n');
+await page.evaluate(() => drawTrash());
+await page.waitForFunction(() => document.querySelector('#tList .trow[data-t="oldproj"]'),
+                           { timeout: 10000 });
+await page.click('#tList .trow[data-t="oldproj"] [data-tpurge]');
+await page.waitForSelector('#tList .dropbox input', { timeout: 10000 });
+ok(await page.$eval('#tList .dropbox .danger', b => b.disabled),
+   'Delete for good is dead until the name is typed back');
+await page.fill('#tList .dropbox input', 'gamm');
+ok(await page.$eval('#tList .dropbox .danger', b => b.disabled),
+   '...and stays dead for a near miss');
+await page.fill('#tList .dropbox input', 'oldproj');
+ok(!await page.$eval('#tList .dropbox .danger', b => b.disabled),
+   '...and wakes on the name itself');
+await page.click('#tList .dropbox .danger');
+await page.waitForFunction(() => !document.querySelector('#tList .trow[data-t="oldproj"]'),
+                           { timeout: 10000 });
+ok(!existsSync(`${DIR}/ws/.trash/oldproj`),
+   'and then it is gone, files and all — the one thing here with nothing after it');
+await page.click('#tClose');
+await page.waitForFunction(() => document.getElementById('tmodal').hidden);
+
 const errs = page.errors.filter(e => !/status of (400|500)/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ' — ' + errs.join(' | ') : ''}`);
 await done(browser);

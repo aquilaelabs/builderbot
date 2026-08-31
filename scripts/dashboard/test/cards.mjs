@@ -56,6 +56,46 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
   }, null, { timeout: 8000 });
 }
 
+// The nostromo theme's stencil tick is an inset shadow on the card header, and
+// an inset shadow is drawn to its own box: square against the card's 8px
+// corner, it left a few pixels of amber outside the rounded edge. A notch on a
+// still card, and a glitch while one folded — which is when the eye is there.
+{
+  await page.evaluate(() => document.documentElement.dataset.theme = 'nostromo');
+  await page.waitForFunction(() => getComputedStyle(
+    document.querySelector('.card[data-card="doctor"] h2')).boxShadow !== 'none',
+    null, { timeout: 8000 });
+  const radii = await page.evaluate(() => {
+    const card = document.querySelector('.card[data-card="doctor"]');
+    const h2 = card.querySelector('h2');
+    return {open: getComputedStyle(h2).borderTopLeftRadius,
+            card: getComputedStyle(card).borderTopLeftRadius};
+  });
+  // Closed is read after the fold, not after the click: slideCard takes .closed
+  // OFF for the tween and puts it back at the end, which is what keeps the body
+  // visible on the way down.
+  await page.click('.card[data-card="doctor"] h2');
+  await page.waitForFunction(() => {
+    const c = document.querySelector('.card[data-card="doctor"]');
+    return c.classList.contains('closed') && !c.getAnimations().length;
+  }, null, { timeout: 8000 });
+  radii.shut = await page.$eval('.card[data-card="doctor"] h2',
+                                h => getComputedStyle(h).borderBottomLeftRadius);
+  ok(parseFloat(radii.open) > 0 && parseFloat(radii.open) < parseFloat(radii.card),
+     'the card header rounds its own corner to sit inside the card\'s, so the '
+     + 'stencil tick cannot poke out past it');
+  ok(parseFloat(radii.shut) > 0,
+     '...and rounds the bottom too once the header IS the card, which is what closed means');
+  await page.evaluate(() => {
+    document.querySelector('.card[data-card="doctor"] h2').click();
+    delete document.documentElement.dataset.theme;
+  });
+  await page.waitForFunction(() => {
+    const c = document.querySelector('.card[data-card="doctor"]');
+    return !c.classList.contains('closed') && !c.getAnimations().length;
+  }, null, { timeout: 8000 });
+}
+
 const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
 ok(hs.length === 6 && hs.every(h => h.buttons === 0 && h.chev),

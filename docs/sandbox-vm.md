@@ -119,6 +119,26 @@ sudo bb-sandbox check                # is every mount really there
 sudo bb-sandbox settings             # the lines to paste into BuilderBot
 ```
 
+**Two accounts, and the split is the point.** `bb` runs Docker and answers
+ssh — the one BuilderBot uses, and so the one a Claude session reaches. It has
+no sudo and cannot run `bb-sandbox`. `admin` has sudo and is the only account
+`bb-sandbox` runs for, so what this machine mounts is a decision made by a
+person at a console rather than something available to whatever is building a
+container this afternoon.
+
+`provision.sh` makes both. `--admin NAME` renames the second; `--admin-key`
+gives it a key so it can be reached over ssh. No password is set for it — a
+provisioner that invents one has to print it, and a password in a terminal
+scrollback is not a secret — so set one from the console or pass a key.
+
+Be clear about what this does *not* do: `bb` is in the `docker` group, and that
+group is root on this machine to anyone who wants it. One
+`docker run -v /:/host --privileged` and the separation is over. That is not a
+hole to plug — the VM exists to be wrecked, and BuilderBot needs the daemon to
+do its job. What the split buys is that the machine's own configuration, the
+fstab deciding whether `/workspace` is the projects share and read-only, is not
+one command away from a session that wandered.
+
 **Mount the projects share read-only.** Nothing on this machine writes source
 code — the daemon only ever *resolves* bind sources there — so read-only costs
 nothing and means a container that binds its project tree cannot scribble on

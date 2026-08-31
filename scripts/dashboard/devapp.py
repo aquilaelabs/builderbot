@@ -43,8 +43,8 @@ shows `unstamped` for its version, which is honest: it is one.
 State: /config/devapps.json ({project: built_rev/built_at}), the env files in
 /config/devenv/, one build job at a time in memory.
 """
-import hashlib
 import contextlib
+import hashlib
 import json
 import os
 import posixpath
@@ -1273,9 +1273,15 @@ def overview():
                 # those are judgements to put in front of somebody about to
                 # press a button, and belong on the row that asked.
                 "missing_env": missing_env(project, inst),
-                "changed": True if filed else (
-                    not (rec.get("rev") if same_daemon else "")
-                    or (same_daemon and rec.get("rev") != head) or dirty),
+                # A written container's revision is its definition, so
+                # "changed" can mean what it means everywhere else — the source
+                # has moved since the build — instead of being permanently true
+                # because there was no revision to compare.
+                "changed": (not (rec.get("rev") if same_daemon else "")
+                            or (same_daemon
+                                and rec.get("rev") != (built_rev(project, inst)
+                                                       if filed else head))
+                            or (dirty and not filed)),
                 # Migrate is drawn from this, and only ever rendered on this
                 # page — it was fed by a field this function did not set, so it
                 # had never appeared at all. A directory listing, which this
@@ -2129,6 +2135,37 @@ def is_file_source(project, instance=MAIN):
     return _read_rec(project, instance).get("source") == "file"
 
 
+def built_rev(project, instance=MAIN):
+    """What "this build was made from", for whichever kind of source it is.
+
+    A project's is its git commit. A container WRITTEN here has no repository
+    behind it, so _head asked git about a directory that is not one, got ""
+    back — and warned about it on every poll — and the record's rev stayed
+    empty. built_rev being empty is what the row reads as never-built, so the
+    button said Build forever on a container that had been built a dozen
+    times, and Rebuild could never appear.
+
+    Its revision is its definition: the compose file and the env, hashed. That
+    is the thing a rebuild would pick up, so it is the honest answer to both
+    questions the row asks — what was this built from, and has it moved since.
+    """
+    if not is_file_source(project):
+        return _head(project)
+    h = hashlib.sha256()
+    for part in (_container_text(project), read_env(project, instance) or ""):
+        h.update(part.encode("utf-8", "replace"))
+        h.update(b"\0")
+    return h.hexdigest()[:7]
+
+
+def _container_text(name):
+    try:
+        return (containers_dir(name) / "docker-compose.yml").read_text(
+            encoding="utf-8")
+    except OSError:
+        return ""
+
+
 def _head(project):
     r = _run(["git", "-C", str(WORKSPACE / project), "rev-parse", "--short=7",
               "HEAD"], timeout=10)
@@ -2290,7 +2327,7 @@ def up(project, instance=MAIN, ack=""):
         # reads that as never-built-here, and without the second test the row
         # would go on saying so with the instance up in front of it.
         if not row.get("rev") or row.get("daemon") != daemon_id():
-            row.update(rev=_head(project), at=int(time.time()),
+            row.update(rev=built_rev(project, instance), at=int(time.time()),
                        daemon=daemon_id())
         write_json(FILE, d)
     _bump()
@@ -2372,7 +2409,7 @@ def _worker(project, instance=MAIN):
             return
         with _lock:
             d = _load()
-            _rec(d, project, instance).update(rev=_head(project),
+            _rec(d, project, instance).update(rev=built_rev(project, instance),
                                               at=int(time.time()),
                                               daemon=daemon_id())
             write_json(FILE, d)

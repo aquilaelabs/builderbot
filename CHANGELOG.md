@@ -138,3 +138,7 @@
 - The roadmap and the bug tracker no longer lose an edit made from a terminal at the same moment as one made in the panel (62fc260)
 - Bug severities read as colours — blue, amber, red, and a filled pill for critical — and closed reports sort by when they were closed (80c18ca)
 - The notebook's History window dims the whole page, so nothing behind it can be clicked and a second dialog cannot open over it (fd4819b)
+- The Projects card has a bin: what you deleted, put one back, or destroy it for good after typing its name (3cf7e67)
+- A container written in the manager says Rebuild once it is built, and knows when its compose or env has moved since (3cf7e67)
+- Saving a container's compose or env offers to rebuild it, rather than leaving the change on disk unmentioned (3cf7e67)
+- A session's line in the Sessions list says what it is working on only while it is working, instead of keeping the last thing it did (2d6f5ec)

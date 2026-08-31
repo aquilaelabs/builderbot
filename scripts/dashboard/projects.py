@@ -882,6 +882,100 @@ def trash(req):
             "to": f"{TRASH}/{dest.name}"}, 200
 
 
+def _bin_path(name):
+    """The one directory a purge or a restore is allowed to touch, or None.
+
+    Everything about this function is the guard. The name comes off a request,
+    so it is matched against the same pattern a project name is, then joined
+    and RESOLVED and required to still be a direct child of the bin — which is
+    what a `..` or a symlink cannot survive. A permanent delete is the one act
+    here with nothing behind it, so it gets the one path check that assumes
+    the caller is wrong.
+    """
+    if not name or not PROJECT_NAME.fullmatch(name):
+        return None
+    bin_ = (WORKSPACE / TRASH)
+    try:
+        p = (bin_ / name).resolve()
+        if p.parent != bin_.resolve() or not p.is_dir():
+            return None
+    except OSError:
+        return None
+    return p
+
+
+def trash_list():
+    """What is in the bin, newest first.
+
+    No size: a project tree is thousands of files on a network share, and
+    walking every one of them to put a number beside a name nobody is choosing
+    between would make opening the bin slower than deleting from it.
+    """
+    bin_ = WORKSPACE / TRASH
+    out = []
+    try:
+        entries = sorted(bin_.iterdir())
+    except OSError:
+        return {"items": []}
+    for d in entries:
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        try:
+            at = int(d.stat().st_mtime)
+        except OSError:
+            at = 0
+        # `name-2` is the second delete of `name`; the original name is what
+        # somebody is looking for, and what a restore would put back.
+        base = re.sub(r"-\d+$", "", d.name)
+        out.append({"name": d.name, "was": base, "at": at,
+                    "taken": (WORKSPACE / base).exists()})
+    out.sort(key=lambda e: -e["at"])
+    return {"items": out}
+
+
+def trash_restore(req):
+    """Move one back out of the bin, under the name it had."""
+    name = _field(req, "name").strip()
+    src = _bin_path(name)
+    if src is None:
+        return {"error": "not something in the bin"}, 400
+    base = re.sub(r"-\d+$", "", name)
+    dest = WORKSPACE / base
+    if dest.exists():
+        return {"error": f"{base} exists again — rename or move it first"}, 409
+    try:
+        src.rename(dest)
+    except OSError as e:
+        return {"error": f"could not move it back: {e}"}, 500
+    return {"ok": True, "name": base}, 200
+
+
+def trash_purge(req):
+    """Delete one for good, files and all. There is nothing after this.
+
+    Guarded three ways and none of them are decoration: the path is resolved
+    and required to be a direct child of the bin, the caller has to send the
+    directory's exact name back as confirmation, and the whole thing refuses
+    while a clone or a link is running — a job holding a working copy is not a
+    tree to pull out from under it.
+    """
+    name = _field(req, "name").strip()
+    if _field(req, "confirm").strip() != name:
+        return {"error": "type the name to confirm"}, 400
+    src = _bin_path(name)
+    if src is None:
+        return {"error": "not something in the bin"}, 400
+    with _lock:
+        if _job["running"]:
+            return {"error": f"already {DOING.get(_job['kind'], 'working on')} "
+                             f"{_job['name']}"}, 409
+    try:
+        shutil.rmtree(src)
+    except OSError as e:
+        return {"error": f"could not delete it: {e}"}, 500
+    return {"ok": True, "name": name}, 200
+
+
 def _git_env():
     return dict(os.environ, GIT_TERMINAL_PROMPT="0",
                 GIT_SSH_COMMAND="ssh -o BatchMode=yes "
