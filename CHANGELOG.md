@@ -125,3 +125,5 @@
 - Make dirs creates a compose file's bind directories on the VM as well as here, with nothing to declare — pressing it twice is the same as once (31454c6)
 - A brand-new container no longer offers to migrate from a leftover under an old name (31454c6)
 - A VM share can be mounted read-only with :ro — recommended for the projects share (31454c6)
+- A bare sandbox-VM address now works for docker everywhere in the container, not just the dashboard (7f0caa7)
+- bb-sandbox can make a mount read-only after the fact — 'bb-sandbox readonly /workspace', and off to undo (7f0caa7)

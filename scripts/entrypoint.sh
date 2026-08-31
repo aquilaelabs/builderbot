@@ -35,6 +35,32 @@ PGID="${PGID:-100}"
 # is shielded rather than explained.
 SECRET_VARS=(GITHUB_PAT RUNNER_TOKEN ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN)
 
+# DOCKER_HOST is the operator's to write as the sandbox VM's address — just the
+# machine, `10.0.0.9` — and it is also a variable the docker CLI reads for
+# itself, where a bare address means tcp://<addr>:2375 and nothing answers.
+#
+# So it is normalized once, here, before anything inherits it: the dashboard,
+# every terminal, every script, and a session that simply runs `docker ps`. The
+# dashboard normalizes again on its own subprocesses, which after this is a
+# no-op and stays because that module is loaded by `bb doctor` too.
+#
+# ssh:// with an account already in it is left exactly as written.
+if [ -n "${DOCKER_HOST:-}" ]; then
+    case "$DOCKER_HOST" in
+        *://*)
+            case "$DOCKER_HOST" in
+                ssh://*@*) ;;                       # spelled out in full
+                ssh://*)   DOCKER_HOST="ssh://bb@${DOCKER_HOST#ssh://}" ;;
+                *) ;;                               # tcp://, unix:// — the
+                                                    # feature refuses these and
+                                                    # says so; not ours to edit
+            esac ;;
+        *@*) DOCKER_HOST="ssh://$DOCKER_HOST" ;;
+        *)   DOCKER_HOST="ssh://bb@$DOCKER_HOST" ;;
+    esac
+    export DOCKER_HOST
+fi
+
 stash_secrets() {
     mkdir -p /run/builderbot
     chmod 700 /run/builderbot

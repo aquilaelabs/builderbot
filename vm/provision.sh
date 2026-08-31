@@ -359,6 +359,53 @@ cmd_add_nfs() {
     add_fstab "$host:$exp $path nfs $opts,nofail,_netdev 0 0" "$path" && mount_one "$path"
 }
 
+# readonly PATH [on|off] — flip an existing mount between ro and rw.
+#
+# The :ro suffix on add-share/add-nfs decides it when a mount is made; this
+# decides it afterwards, which is what somebody actually has, and without it
+# the only way to make /workspace read-only was to retype its whole spec.
+#
+# /workspace is the one that wants it: the daemon over here only ever RESOLVES
+# bind sources in the projects share — nothing on this machine compiles or
+# edits anything — so read-only costs nothing and means a container that mounts
+# its project tree cannot write to your source. The data shares stay writable,
+# being what they are for.
+cmd_readonly() {
+    local path="${1:?usage: bb-sandbox readonly PATH [on|off]}" want="${2:-on}"
+    local hit line src mp fstype opts dump pass o new_opts=""
+    hit="$(fstab_line "$path")"
+    [ -n "$hit" ] || die "$path is not one of this machine's mounts"
+    line="${hit#*:}"
+    # shellcheck disable=SC2034  # mp is the field being skipped over
+    read -r src mp fstype opts dump pass <<<"$line"
+    # Drop whichever of ro/rw is in there and put back the one asked for, so
+    # this is idempotent and cannot end up with both.
+    while IFS= read -r o; do
+        [ -n "$o" ] || continue
+        case "$o" in ro|rw) continue ;; esac
+        new_opts="${new_opts:+$new_opts,}$o"
+    done < <(printf '%s\n' "${opts//,/$'\n'}")
+    case "$want" in
+        on)  new_opts="${new_opts:+$new_opts,}ro" ;;
+        off) new_opts="${new_opts:+$new_opts,}rw" ;;
+        *)   die "readonly wants on or off — got '$want'" ;;
+    esac
+    add_fstab "$src $path $fstype $new_opts ${dump:-0} ${pass:-0}" "$path"
+    # remount first, and a full cycle only if the kernel will not take it: a
+    # busy mountpoint refuses umount, and refusing to change is better than
+    # leaving the share unmounted because something had a file open.
+    mount -o "remount,$want" "$path" 2>/dev/null \
+        || mount -o remount "$path" 2>/dev/null \
+        || { umount "$path" 2>/dev/null && mount "$path" 2>/dev/null; } \
+        || warn "fstab says $want, but $path could not be remounted now — it will be at the next boot"
+    if [ "$want" = on ] && [ -w "$path" ]; then
+        warn "$path is still writable — the export itself may be rw-only"
+    else
+        say "$path is now mounted ${want/on/read-only}"
+        [ "$want" = off ] && say "$path is writable again"
+    fi
+}
+
 cmd_remove() {
     local path="${1:?usage: bb-sandbox remove PATH}" tmp
     [ -n "$(fstab_line "$path")" ] || die "$path is not one of this machine's mounts"
@@ -472,6 +519,7 @@ menu_whiptail() {
             share    "add a virtiofs share" \
             remove   "take a mount out of fstab" \
             appdata  "choose which mount holds container appdata" \
+            readonly "make a mount read-only (right for /workspace)" \
             check    "verify every mount is really there" \
             settings "the lines to paste into BuilderBot" \
             quit     "" 3>&1 1>&2 2>&3)" || return 0
@@ -484,6 +532,8 @@ menu_whiptail() {
             remove) ask "which mountpoint" "" && cmd_remove "$REPLY"; pause ;;
             appdata) ask "which mountpoint holds container appdata" "${APPDATA:-/devdata}" \
                        && cmd_appdata "$REPLY"; pause ;;
+            readonly) ask "which mountpoint to make read-only" "/workspace" \
+                       && cmd_readonly "$REPLY" on; pause ;;
             check) cmd_check || true; pause ;;
             settings) cmd_settings; pause ;;
             quit|"") return 0 ;;
@@ -510,9 +560,10 @@ menu_plain() {
         cat <<'EOF'
 
   1) list what is mounted        5) choose the container appdata mount
-  2) add an NFS mount            6) check every mount
-  3) add a virtiofs share        7) the lines to paste into BuilderBot
-  4) remove a mount              q) quit
+  2) add an NFS mount            6) make a mount read-only
+  3) add a virtiofs share        7) check every mount
+  4) remove a mount              8) the lines to paste into BuilderBot
+                                 q) quit
 EOF
         read -r -p "> " n || return 0
         case "$n" in
@@ -521,8 +572,9 @@ EOF
             3) ask "TAG:PATH" "" && cmd_add_share "$REPLY" ;;
             4) ask "which mountpoint" "" && cmd_remove "$REPLY" ;;
             5) ask "which mountpoint holds container appdata" "${APPDATA:-}" && cmd_appdata "$REPLY" ;;
-            6) cmd_check || true ;;
-            7) cmd_settings ;;
+            6) ask "which mountpoint to make read-only" "/workspace" && cmd_readonly "$REPLY" on ;;
+            7) cmd_check || true ;;
+            8) cmd_settings ;;
             q|Q) return 0 ;;
         esac
     done
@@ -536,6 +588,7 @@ case "${1-}" in
     remove)      shift; cmd_remove "${1-}" ;;
     check)       cmd_check ;;
     appdata)     shift; cmd_appdata "${1-}" ;;
+    readonly)    shift; cmd_readonly "${1-}" "${2-on}" ;;
     settings)    cmd_settings ;;
     -h|--help|help)
         sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;

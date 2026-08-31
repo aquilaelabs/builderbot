@@ -2223,9 +2223,10 @@ body.dragging .tab .lbl{cursor:grabbing}
          the per-repo ssh alias itself — the by-hand step this replaces — and
          shows the public key so it can be added on GitHub's deploy-key page.
          The private halves stay where they are: unreadable. -->
-    <!-- A token for THIS project. Not the container's: one GIT_PAT in the
-         environment is shared by every repo and every session, so a token
-         minted to reach one private repo reaches all of them from anywhere.
+    <!-- A token for THIS project, which is the only kind there is. The
+         container-wide one this replaced was shared by every repo and every
+         session, so a token minted to reach one private repo reached all of
+         them from anywhere.
          This is written into git's credential-store format under /config,
          named for the project, and referenced from that repository's
          .git/config and nowhere else. -->
@@ -8970,8 +8971,8 @@ $("pCreate").onclick = async () => {
       const auth = await pFetch;
       if (!(auth && auth.pat))
         return fail((auth && auth.keys || []).length
-          ? "no PAT is configured — pick a deploy key"
-          : "no PAT is configured and the agent holds no deploy keys — set GIT_PAT, or add a key to /secrets/ssh and restart the container");
+          ? "GitHub is not authenticated — pick a deploy key"
+          : "GitHub is not authenticated and the agent holds no deploy keys — set GITHUB_PAT, or add a key to /secrets/ssh and restart the container");
     }
     const r = mode === "link"
       ? await fetch("/api/link", {method:"POST",
