@@ -1871,8 +1871,8 @@ except OSError:
     pass                    # no workspace to read: nothing to migrate onto
 
 # ---- the dev instance ------------------------------------------------------
-# A project's compose app, built and run on the host's daemon through the
-# socket proxy. The module's docstring carries the security reasoning.
+# A project's compose app, built and run on the sandbox VM's daemon. The
+# module's docstring carries the security reasoning.
 import devapp                                                    # noqa: E402
 
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,

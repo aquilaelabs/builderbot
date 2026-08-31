@@ -81,15 +81,15 @@ DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # available(), and a probe should not start writing files.
 log_dir = None
 
-# The daemon is a sandbox VM, named by DOCKER_HOST as ssh://user@host, and that
-# is the only arrangement there is. It used to be three — a mounted socket, a
-# socket proxy found by scanning this container's network, or the VM — which
-# meant three answers to every question here, a discovery scan on a poll, and a
-# namespace guard whose whole job was making the first two survivable.
+# The daemon is a sandbox VM and nothing else. DOCKER_HOST names the machine;
+# ssh:// and the bb account provision.sh makes are filled in, so the address is
+# the whole setting, and an address of any other kind turns the feature off
+# with the reason on it rather than half-working.
 #
-# The VM is required now, so the rest is gone. A machine whose only job is
-# running Docker, reached over ssh with a key BuilderBot cannot read, holding
-# nothing anybody minds losing: there is nothing left for a filter to protect.
+# One arrangement because the boundary is the machine — reached over ssh with a
+# key BuilderBot cannot read, holding nothing anybody minds losing. Aim the
+# same feature at a daemon worth protecting and it needs a filter in front of
+# it, and a filter that can be got wrong is not a boundary.
 
 
 # The account vm/provision.sh makes on the sandbox VM. Assumed rather than
@@ -275,25 +275,20 @@ def _migrate_paths():
                     print(f"[devapp] data {was} -> {now}", flush=True)
     except OSError:
         pass
-    try:
-        root = Path(DEVDATA)
-        for d in sorted(root.iterdir()) if root.is_dir() else []:
-            # bbdev-<project> with no instance suffix cannot be told from
-            # bbdev-<project>-<instance> by shape, so this asks the store:
-            # a directory whose name is exactly a known project's old pname
-            # is the one to move.
-            if not d.is_dir():
-                continue
-            for proj in _load():
-                if d.name == f"bbdev-{_slug(proj)}":
-                    dst = root / _pname(proj, MAIN)
-                    if not dst.exists():
-                        d.rename(dst)
-                        print(f"[devapp] moved {d.name} to {dst.name}",
-                              flush=True)
-                    break
-    except OSError:
-        pass
+    # A third block used to sit here, renaming /devdata/bbdev-<project> to
+    # whatever main's name is now. It was a no-op for as long as that WAS
+    # main's name, and dropping the prefix woke it up as a silent rename of
+    # every dev-data directory, at boot, on whichever side of the mapping this
+    # container can see.
+    #
+    # Which is the one thing this must not do. A data directory is the half
+    # with a running container attached — and dev instances live on the VM, so
+    # they outlive a dashboard restart and are quite likely up while this runs.
+    # Renaming a bind source under one leaves it writing to the old inode and
+    # says nothing. That is why Migrate exists: it names the old directory on
+    # the row, refuses while anything is up under either name, and moves both
+    # halves when the operator says so. stale_name() finds exactly what this
+    # was catching, by tail, so nothing is lost by leaving it to the button.
 
 
 def job_rev():
@@ -322,8 +317,13 @@ def source():
     once rather than sitting in the setting looking like it does something.
     """
     addr = docker_host()
-    return {"kind": "the sandbox VM" if addr else "",
-            "where": addr, "strays": stray_map_entries(host_map()[0])}
+    # Named for what it IS, not for what it was meant to be: calling a tcp://
+    # address "the sandbox VM" and then refusing it as not one, in the same
+    # sentence, is how a status line stops being read.
+    kind = ("the sandbox VM" if addr.startswith("ssh://")
+            else "an unsupported daemon" if addr else "")
+    return {"kind": kind, "where": addr,
+            "strays": stray_map_entries(host_map()[0])}
 
 
 def available():
@@ -386,14 +386,14 @@ def forget_available():
         _avail["val"] = None
 
 
-# The classic builder, not BuildKit. `compose build` defaults to buildx,
-# which boots a helper container and then ATTACHES to it — and attach is a
-# hijacked connection, near enough to exec that a socket proxy worth having
-# refuses it. Measured against the operator's own proxy: buildx dies with
-# "unable to upgrade to tcp, received 403", the classic builder succeeds.
-# It runs entirely daemon-side through POST /build, which is the endpoint
-# the proxy's own BUILD flag governs — so this asks for exactly the
-# permission the setup documentation tells people to grant, and no more.
+# The classic builder, not BuildKit. `compose build` defaults to buildx, which
+# boots a helper container and then ATTACHES to it; the classic builder runs
+# entirely daemon-side through POST /build and needs no attach at all.
+#
+# Against the VM nothing is refusing that attach, so this is now costing the
+# inline layer cache for no reason — every rebuild repeats every layer. Turning
+# it back on is roadmap #12, which wants measuring rather than assuming: keep
+# the flags until buildx is verified against the sandbox.
 _CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
 
 
@@ -405,14 +405,10 @@ _CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
 # cannot not". It says nothing about what a compose FILE asks for — see
 # risks().
 #
-# `ps` is allowed alongside `version`, and the reason it was not is worth
-# keeping rather than deleting: this list used to be one verb long because
-# DOCKER_HOST was a socket proxy onto the SERVER's daemon, where listing
-# containers meant listing the operator's real ones. That is no longer where
-# it points. Against a sandbox VM the containers are this dashboard's and
-# whatever else was put there deliberately, and being unable to see them is
-# not safety, it is a blind spot — the Docker Manager exists to show what is
-# actually running.
+# `ps` is allowed alongside `version`. On the sandbox the containers are this
+# dashboard's and whatever else was put there deliberately, so being unable to
+# see them is not safety, it is a blind spot — the Docker Manager exists to
+# show what is actually running.
 #
 # Both are READS. Nothing here lets a verb that changes something in, and the
 # namespace rule below is untouched: seeing a container is not touching it.
@@ -449,9 +445,18 @@ def _guard(argv):
         return (f"`docker {verb}` — only compose, and the reads in "
                 f"{'/'.join(sorted(_BARE_OK))}, are reachable here")
     # Every compose call names its project explicitly, so none of them can
-    # fall back to composes default — the directory it happens to be run from.
-    if "--project-name" not in argv[:-1]:
+    # fall back to compose's default — the directory it happens to be run
+    # from. The VALUE is checked, not just the flag: _slug() returns "" for a
+    # name with no letter or digit in it (a project directory called `---`),
+    # and an empty --project-name is exactly the fallback this is here to
+    # prevent. A prefix used to make that unreachable by always prepending
+    # something, which is not the same as checking.
+    try:
+        name = argv[argv.index("--project-name") + 1]
+    except (ValueError, IndexError):
         return "a compose call carrying no --project-name"
+    if not name.strip():
+        return "a compose call whose --project-name is empty"
     return ""
 
 
@@ -874,21 +879,21 @@ def host_map():
         # below on one would reject a mapping that is correct by construction.
         if here == there:
             out[here] = there
-            # ...which makes it the one shape nothing above can catch, and the
-            # shipped default is now one of them. So the daemon is asked
-            # instead: an identity is only TRUE of a daemon on another machine,
-            # and `ssh://` is the only address that means that — `auto` never
-            # resolves to one, so the raw setting answers it without a probe.
-            # Left in place while the daemon is this box's, the pair claims the
-            # host calls this path what we call it, which on Unraid it does
-            # not, and the compose comes up on an empty directory in RAM.
-            # Said rather than dropped: a host that really does mount the share
-            # at this path is unusual, not impossible.
-            if not (os.environ.get("DOCKER_HOST") or "").strip() \
-                    .lower().startswith("ssh://"):
-                bad.append(f"{here}:{there} is the sandbox-VM mapping, and "
-                           f"DOCKER_HOST names this box's own daemon — unless "
-                           f"the host really has {here}, name the host's path "
+            # ...which makes it the one shape nothing above can catch, and it
+            # is the shipped default. So the daemon is asked: an identity is
+            # only TRUE of a daemon on another machine, which is what
+            # sandbox_daemon() answers. Asked THROUGH that rather than by
+            # reading DOCKER_HOST here, because the raw setting is now an
+            # address with the scheme left off as often as not — reading it
+            # directly reported the shipped default as misconfigured.
+            #
+            # Left in place while the daemon is not the sandbox, the pair
+            # claims that machine calls this path what we call it, and a
+            # compose that believes it comes up on an empty directory.
+            if not sandbox_daemon():
+                bad.append(f"{here}:{there} is the sandbox-VM mapping, but "
+                           f"DOCKER_HOST does not name a sandbox VM — unless "
+                           f"that daemon really has {here}, name its path "
                            f"instead")
         elif (root := roots.get(here)) is None:
             bad.append(f"{here} is not mounted in this container")
@@ -927,10 +932,11 @@ def to_host(path, mapping=None):
 # intermittent-looking failure with a fixed cause.
 #
 # So the daemon makes it, in a container of its own. That is a `docker run`,
-# which is root-equivalent on whichever machine answers — fine on a sandbox VM
-# whose job is being wrecked, not fine on a socket proxy onto the server's own
-# daemon. Hence the gate below, and hence _guard recognising these commands by
-# rebuilding them rather than by allowing the verb.
+# which is root-equivalent on whichever machine answers — acceptable only
+# because that machine is the sandbox. Hence the gate below, and hence _guard
+# recognising these commands by rebuilding them rather than by allowing the
+# verb: neither is load-bearing today, and both are what keeps this from
+# becoming load-bearing by accident.
 
 # Tiny, and on every registry. One pull per sandbox, the first time an instance
 # is created rather than on a poll.
@@ -1018,6 +1024,14 @@ def rename_dev_data(old, new):
         return False, ""
     if not _devdata_run("test", old, quiet=True):
         return False, ""
+    # `mv a b` with b an existing DIRECTORY does not fail — it puts a inside
+    # it, as /d/<new>/<old>. The local move checks the target first and this
+    # did not, so the one arrangement that cannot be checked by looking was
+    # also the one that silently nested somebody's data one level deeper.
+    if _devdata_run("test", new, quiet=True):
+        return False, (f"the sandbox already has a data directory called "
+                       f"{new} — moving onto it would bury one inside the "
+                       f"other, so nothing was moved")
     if not _devdata_run("mv", old, new):
         return False, ("the dev instance's data is on the sandbox and could "
                        "not be moved — it is still under the old name")
@@ -1565,10 +1579,17 @@ def stale_name(project, instance=MAIN):
     Found by the tail rather than by remembering, which needs nothing to have
     been recorded: `<anything>-binhex-sonarr` and `binhex-sonarr` are the same
     instance under two names.
+
+    That match is loose, and on its own it is dangerous: `my-sonarr` also ends
+    in `-sonarr` while being a live instance of its own, and offering to
+    migrate it renames somebody's env file and data directory onto this row.
+    So an old name is required to be a name nothing currently uses — which it
+    is, by definition — and the store is what says which those are.
     """
     tail = now = _pname(project, instance)
     if not tail:
         return ""
+    live = {_pname(p, i) for p, insts in _load().items() for i in insts}
     seen = []
     try:
         seen += [f.stem for f in ENVDIR.glob(f"*{tail}.env")]
@@ -1581,6 +1602,8 @@ def stale_name(project, instance=MAIN):
         except OSError:
             pass
     for name in seen:
+        if name in live:
+            continue
         if name != now and (name == tail or name.endswith("-" + tail)):
             return name
     return ""
@@ -1607,8 +1630,23 @@ def migrate_name(project, instance=MAIN):
         return {"error": f"{len(busy)} container(s) still exist under "
                          f"{busy[0]['project']} — take it down first"}
     moved, failed = [], []
+    # The data directory first, and through rename_dev_data, because it is
+    # normally on the VM and not on this side at all: a plain rename() here
+    # found nothing, skipped it, and reported ok — so the env file moved to
+    # the new name while the data stayed under the old one, and the instance
+    # came back up on an empty directory. rename_dev_data owns the split
+    # (mounted here: not mine, say so and let the loop below do it; on the
+    # sandbox: move it there), so there is one implementation of it rather
+    # than a second copy that can drift.
+    did, err = rename_dev_data(was, now)
+    if err:
+        failed.append(f"the data directory: {err}")
+    elif did:
+        moved.append("the data directory")
     for a, b, what in ((ENVDIR / f"{was}.env", ENVDIR / f"{now}.env", "the env file"),
                        (Path(DEVDATA) / was, Path(DEVDATA) / now, "the data directory")):
+        if what in moved or any(w.startswith(what) for w in failed):
+            continue                     # the sandbox already answered for it
         if not a.exists():
             continue
         if b.exists():
@@ -1937,12 +1975,12 @@ def state(project, instance=MAIN):
         return {"compose": False}
     a = available()
     built = _read_rec(project, instance)
-    # A build only counts on the daemon it happened on. Swinging DOCKER_HOST
-    # from a socket proxy to a sandbox VM leaves the image and the containers
-    # behind on a machine this container can no longer see, and the row went
-    # on saying "built from <rev>" and offering Rebuild for something that had
-    # never been built here. A record written before this field says nothing
-    # about which daemon it was, and not knowing is not yes.
+    # A build only counts on the daemon it happened on. Repointing DOCKER_HOST
+    # at another VM leaves the image and the containers behind on a machine
+    # this container can no longer see, and the row went on saying "built from
+    # <rev>" and offering Rebuild for something that had never been built here.
+    # A record written before this field says nothing about which daemon it
+    # was, and not knowing is not yes.
     #
     # Everything claiming a build goes: the rev and its date, the env gate a
     # build tripped, the marker saying one is in flight. What stays is the
@@ -2046,8 +2084,8 @@ def up(project, instance=MAIN, ack=""):
         # `compose up -d`, and nothing more clever: compose builds an image
         # that is missing, so Up on a never-built project does what the CLI
         # does rather than refusing on a rule of this dashboard's invention.
-        # The classic builder rides along for exactly that case — an implicit
-        # build through buildx would 403 against a socket proxy.
+        # The classic builder rides along for exactly that case, for the same
+        # reason the explicit build uses it — see _CLASSIC_BUILD.
         #
         # Streamed, for the same reason the build is: that implicit build can
         # pull for half an hour, and unstreamed it was half an hour of nothing

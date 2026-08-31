@@ -631,7 +631,14 @@ calls = []
 def fake(argv, timeout=60, **kw):
     bad = m._guard(argv)
     calls.append({'argv': argv, 'refused': bad})
-    return {'code': 126 if bad else 0, 'out': bad}
+    if bad:
+        return {'code': 126, 'out': bad}
+    # A 'test -d' has to be able to say NO, or every check that asks whether
+    # something is already there gets yes and the move it guards never runs.
+    # The sandbox holds bbdev-alpha and nothing else.
+    if 'test' in argv:
+        return {'code': 0 if argv[-1] == '/d/bbdev-alpha' else 1, 'out': ''}
+    return {'code': 0, 'out': ''}
 m._run = fake
 
 out = {}
@@ -657,6 +664,12 @@ out['proxy'] = [m._dev_data_env('alpha'), calls[:]]
 # the old name with nothing said about it.
 calls.clear()
 os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+# ...and refused outright when the target is already a directory over there:
+# 'mv a b' with b existing does not fail, it buries a inside b.
+calls.clear()
+out['onto'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-alpha'),
+               [[a for a in c['argv'] if a.startswith('/d/')] for c in calls]]
+calls.clear()
 out['renamed'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-beta'),
                   [[a for a in c['argv'] if a.startswith('/d/')] for c in calls]]
 
@@ -690,9 +703,13 @@ ok(!Object.keys(DDD.proxy[0]).length && !DDD.proxy[1].length,
    'a daemon that is not the sandbox VM is never asked to run one, and the compose '
    + 'says so rather than mounting a directory docker invented');
 ok(DDD.renamed[0][0] === true && !DDD.renamed[0][1]
-   && JSON.stringify(DDD.renamed[1]) ===
-      JSON.stringify([['/d/bbdev-alpha'], ['/d/bbdev-alpha', '/d/bbdev-beta']]),
+   && JSON.stringify(DDD.renamed[1]) === JSON.stringify(
+      [['/d/bbdev-alpha'], ['/d/bbdev-beta'], ['/d/bbdev-alpha', '/d/bbdev-beta']]),
    'a rename moves the data over there too, rather than orphaning it');
+ok(DDD.onto[0][0] === false && /already has a data directory/.test(DDD.onto[0][1])
+   && DDD.onto[1].every(paths => paths.length === 1),
+   '...and refuses onto a name the sandbox already has: every call it made names '
+   + 'one directory, so the two-path mv that would bury one never ran');
 ok(!DDD.guard.ours && Object.entries(DDD.guard).filter(([k]) => k !== 'ours')
      .every(([, v]) => !!v),
    'the guard allows those exact commands and nothing else wearing the same verb');
