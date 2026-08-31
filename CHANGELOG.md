@@ -120,3 +120,4 @@
 - A pull no longer fills the log with a line per progress tick — a frame replaces the one before it, so the error that ended a job is the last thing in the tail (e42f7b8)
 - The job log stays pinned to its end, so a failure shows its reason instead of the middle of a download (e42f7b8)
 - An Up or Down that fails says so on the row and keeps its output, and Rebuild wakes up so the run can be retried (e42f7b8)
+- The New container dialog opens with empty compose and env boxes — the shape each wants is shown as a hint, so an example cannot be saved by accident (7cad157)

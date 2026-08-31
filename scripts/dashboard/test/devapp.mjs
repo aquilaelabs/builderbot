@@ -1256,8 +1256,15 @@ await page.click('#bDockerNew');
 await page.waitForSelector('#cmodal:not([hidden])');
 ok(await page.evaluate(() => document.activeElement?.tagName) !== 'INPUT',
    'the new-container dialog opens with the keyboard down');
-ok(/services:/.test(await page.$eval('#cYml', e => e.value)),
-   '...on a compose file worth editing rather than an empty box');
+// Empty, with the shape offered as a placeholder. Seeded as a VALUE it was
+// a working compose for a radarr nobody asked for, one unread click from
+// being created under whatever name was typed — a hint cannot be submitted.
+ok(await page.$eval('#cYml', e => e.value) === ''
+   && await page.$eval('#cEnv', e => e.value) === '',
+   '...with both definitions empty, so nothing can be saved by accident');
+ok(/services:/.test(await page.$eval('#cYml', e => e.placeholder))
+   && /PUID=/.test(await page.$eval('#cEnv', e => e.placeholder)),
+   '...and the shape each wants shown on the field, where it costs nothing to ignore');
 ok(await page.$eval('#cEnvField', e => e.hidden)
    && !await page.$eval('#cYmlField', e => e.hidden),
    '...showing one of the two definitions at a time');
@@ -1272,13 +1279,25 @@ await page.click('#cTabEnv');
 await slides;
 ok(!await page.$eval('#cEnvField', e => e.hidden),
    '...and the segment swaps them, on the same slide as the project dialog');
-writeFileSync(`${DIR}/dockerstate/config.fail`, '1');
+// An empty compose is refused rather than written — the placeholder is not
+// a value, and nothing here invents one.
 await page.click('#cTabYml');
 await page.fill('#cName', 'radarr');
 await page.click('#cGo');
 await page.waitForSelector('#cErrWrap:not([hidden])', { timeout: 15000 });
-ok(/will not read that/.test(await page.$eval('#cErr', e => e.textContent)),
-   'a compose file that does not parse is refused with what compose said');
+await page.waitForSelector('#cGo:not([disabled])', { timeout: 15000 });
+ok(/compose file is needed/.test(await page.$eval('#cErr', e => e.textContent)),
+   'Create with nothing typed is refused, rather than saving the hint');
+ok(!existsSync(`${DIR}/state/containers/radarr`),
+   '...and writes nothing for the name it refused');
+
+writeFileSync(`${DIR}/dockerstate/config.fail`, '1');
+await page.fill('#cYml', 'services:\n  app:\n    image: lscr.io/x:latest\n');
+await page.click('#cGo');
+await page.waitForFunction(() => /will not read that/.test(
+  document.getElementById('cErr')?.textContent || ''), { timeout: 15000 });
+await page.waitForSelector('#cGo:not([disabled])', { timeout: 15000 });
+ok(true, 'a compose file that does not parse is refused with what compose said');
 ok(!existsSync(`${DIR}/state/containers/radarr/docker-compose.yml`),
    '...and nothing is left behind for a name that was refused');
 rmSync(`${DIR}/dockerstate/config.fail`, { force: true });
