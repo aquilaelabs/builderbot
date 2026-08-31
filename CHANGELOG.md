@@ -141,3 +141,4 @@
 - The Projects card has a bin: what you deleted, put one back, or destroy it for good after typing its name (3cf7e67)
 - A container written in the manager says Rebuild once it is built, and knows when its compose or env has moved since (3cf7e67)
 - Saving a container's compose or env offers to rebuild it, rather than leaving the change on disk unmentioned (3cf7e67)
+- A session's line in the Sessions list says what it is working on only while it is working, instead of keeping the last thing it did (2d6f5ec)

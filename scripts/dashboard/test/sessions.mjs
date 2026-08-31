@@ -456,6 +456,28 @@ ok(/before the container restarted/.test(tty('claude:alpha')),
 ok(!/before the container restarted/.test(tty('shell:nosuchproject:1')),
    'a shell carries no stamp and never did — it is safe to recreate in place');
 
+// The task line is what a session is doing, and only while it is doing it.
+// It comes off the tmux pane title, which Claude sets as it goes and never
+// clears — so an idle session kept showing the last thing it had been doing,
+// with no age on it and nothing to expire it. "done: <whatever>" reads as a
+// status and is a fossil.
+const taskLines = await page.evaluate(() => {
+  const seen = {};
+  const rows = () => Array.from(document.querySelectorAll('#sessions .row .sub'))
+                          .map(d => d.textContent.trim());
+  const s = (state, task) => ({name: 'claude-alpha', attached: false, cwd: '',
+                               claude: {state, task}});
+  drawSessions([s('working', 'reading the emulator log')]);
+  seen.working = rows();
+  drawSessions([s('waiting', 'reading the emulator log')]);
+  seen.idle = rows();
+  return seen;
+});
+ok(taskLines.working.some(t => /working on: reading the emulator log/.test(t)),
+   'a working session says what it is working on');
+ok(!taskLines.idle.some(t => /emulator log/.test(t)),
+   '...and an idle one says nothing, rather than the last thing it happened to do');
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 // ---- a terminal tab closes when its session ends ------------------------
 // bb-tty execs claude, so the pane's process IS the conversation: exiting it —

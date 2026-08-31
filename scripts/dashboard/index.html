@@ -2662,7 +2662,7 @@ function tabTitle(t){
   if (t.kind !== "term") return t.label;
   const base = cwdOf(sessionOf(t.arg)) || t.label;
   const c = isClaude(t) ? claudeOf(sessionOf(t.arg)) : null;
-  return c?.task ? `${base}\n${c.state === "working" ? "working on" : "done"}: ${c.task}` : base;
+  return c?.task && c.state === "working" ? `${base}\nworking on: ${c.task}` : base;
 }
 
 function tabLabels(){
@@ -9829,8 +9829,16 @@ function drawSessions(ss){
     <div class="row">
       <div class="grow"><span class="name go" data-go="${esc(s.name)}" title="${esc(tip)}"
         >${stateDot(s.claude)}${esc(names.get(s.name) || s.name)}</span> ${pill}
-        ${s.claude?.task ? `<div class="sub" title="${esc(s.claude.task)}">${
-          s.claude.state === "working" ? "working on" : "done"}: ${esc(s.claude.task)}</div>` : ""}</div>
+        ${s.claude?.task && s.claude.state === "working"
+          // Only while it IS working. The task comes off the pane title, which
+          // Claude sets as it goes and never clears — so an idle session kept
+          // showing the last thing it happened to be doing, with no age on it
+          // and nothing to make it expire. "done: Nvidia EGL display error"
+          // reads as a status and is a fossil. A session that is not doing
+          // anything has no answer to "what is it doing", and the honest
+          // version of that is a blank line rather than an old one.
+          ? `<div class="sub" title="${esc(s.claude.task)}">working on: ${
+              esc(s.claude.task)}</div>` : ""}</div>
       ${t ? (claude
           ? `<button class="primary" data-k="${esc(s.name)}" title="end this Claude session — asks first">Close</button>`
           : `<button class="primary" data-min="${esc(t.id)}" title="take its tab off the strip — it keeps running">Minimize</button>`)
