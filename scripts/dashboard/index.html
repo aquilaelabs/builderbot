@@ -1341,6 +1341,14 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 /* Every band of the notebook shares it, so the tab strip, the rows, the
    banner and the footer all end at the same edge. */
 .nb > *{max-width:var(--doc-w)}
+/* ...except the sheet, which is not a band of the document but a fixed
+   overlay that happens to live here — one per notebook, so a split holds two
+   and each stays findable by the code that owns it. Capped at --doc-w it was
+   1080px of a 1280px viewport: the dim stopped short of the right-hand edge,
+   and everything outside that strip — the header, the About button, the other
+   pane — was still clickable through the gap, so two dialogs could be open at
+   once. Both of those are the same rule reaching one child too far. */
+.nb > .nbsheet{max-width:none}
 .nb h3{display:none}
 .nb #todoList,.nb #memList{max-height:none;overflow:visible;
   overscroll-behavior:auto}

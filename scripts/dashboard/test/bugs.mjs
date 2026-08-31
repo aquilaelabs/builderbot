@@ -298,7 +298,14 @@ await page.waitForFunction(() => document.querySelectorAll('#bugHist .hist').len
                            { timeout: 10000 });
 ok(await page.$eval('#bugHist .hist .note', n => /resize listener/.test(n.textContent)),
    '...and the search reads the notes, so a fix is findable by what fixed it');
-await page.click('#bugLog');
+// Escape, not the History button again: the sheet covers the whole page now,
+// so the button that opened it is behind the overlay — which is the point of
+// an overlay, and was the bug. It used to stop at the notebook's text column
+// and leave the header reachable through the gap.
+await page.evaluate(() => document.querySelector('.nbsheet:not([hidden]) .foot button')
+                            ?.click());
+await page.waitForFunction(() => !document.querySelector('.nbsheet:not([hidden])'),
+                           { timeout: 8000 });
 await page.waitForFunction(() => !document.getElementById('bugList').hidden);
 
 // One search across the whole notebook, for a session: roadmap, bugs and the
@@ -427,6 +434,40 @@ for (const [what, body] of [
   ok(r.status === 400 && r.body.error, `refused: ${what}`);
 }
 page.errors = [];
+
+
+// The history sheet covers the PAGE, not the notebook's text column. It is a
+// direct child of .nb, and `.nb > *{max-width:var(--doc-w)}` was capping the
+// fixed backdrop at 1080px of a 1280px viewport: the dim stopped short of the
+// right edge, and everything outside that strip — the header, About, the other
+// pane — stayed clickable through the gap, so two dialogs could be open at
+// once. One rule reaching one child too far.
+const sheetBox = await page.evaluate(async () => {
+  document.getElementById('bugLog').click();
+  await new Promise(r => setTimeout(r, 400));
+  const sh = document.querySelector('.nbsheet:not([hidden])');
+  const r = sh.getBoundingClientRect();
+  return {w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.x),
+          view: [window.innerWidth, window.innerHeight],
+          // Anything the operator could reach past it is a second dialog
+          // waiting to happen, so the test is "what is on top at the corners".
+          topRight: document.elementFromPoint(window.innerWidth - 4, 4) === sh,
+          bottomRight: document.elementFromPoint(window.innerWidth - 4,
+                                                 window.innerHeight - 4) === sh};
+});
+ok(sheetBox.w === sheetBox.view[0] && sheetBox.h === sheetBox.view[1] && sheetBox.x === 0,
+   'the history sheet dims the whole page, not the notebook\'s text column');
+ok(sheetBox.topRight && sheetBox.bottomRight,
+   '...so nothing outside it can be clicked while it is open, and a second dialog '
+   + 'cannot be opened over the top of it');
+// Its own Close, not getElementById: there is one sheet per notebook, so in a
+// split there are two of every id inside them.
+await page.evaluate(() => {
+  const sh = document.querySelector('.nbsheet:not([hidden])');
+  sh?.querySelector('.foot button')?.click();
+});
+await page.waitForFunction(() => !document.querySelector('.nbsheet:not([hidden])'),
+                           { timeout: 8000 });
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);

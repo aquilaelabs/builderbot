@@ -137,3 +137,4 @@
 - Sidebar cards no longer blank their contents while collapsing (cf13a50)
 - The roadmap and the bug tracker no longer lose an edit made from a terminal at the same moment as one made in the panel (62fc260)
 - Bug severities read as colours — blue, amber, red, and a filled pill for critical — and closed reports sort by when they were closed (80c18ca)
+- The notebook's History window dims the whole page, so nothing behind it can be clicked and a second dialog cannot open over it (fd4819b)
