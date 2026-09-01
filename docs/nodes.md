@@ -1075,6 +1075,26 @@ what it costs.
 8. **No "one operator" baked into data shapes** (phase 1). The `pool` column,
    token records carrying a `kind`, principals as strings rather than a
    boolean. Columns are cheap; schema surgery under live data is not.
+9. **OS and architecture are placement dimensions, and the wire carries
+   nothing POSIX** (phase 4). The operator's stated direction, 1 Sep: macOS
+   and Windows nodes for building and testing Apple and Windows apps, set up
+   and linked the way the Linux VM is. Not on this roadmap, and the protocol
+   already allows it — HTTP, JSON, argv as a list, an integer exit code, a
+   `cancel` verb rather than a signal name. What would close it is phase 4
+   assigning jobs by capability alone: a `package-build` job landing on the
+   wrong OS. So the node record carries `os` and `arch` as first-class
+   fields (today a census string and a label), a job's placement selects on
+   them and freezes them at assignment, and no job spec, log or result ever
+   names a signal, a shell, a path separator or a uid. Everything else is a
+   two-way door: a per-OS provisioner (zsh, PowerShell) speaking the same
+   `enroll`; the agent's census, sampler, privilege drop and process kill
+   behind one platform seam so a darwin or windows agent is another
+   implementation of that seam, not a fork; "jobs never run as root"
+   becoming "the service runs as the enrolled account, never an
+   administrator" where there is no setuid; a per-OS key in the package
+   catalog; simulators and Windows apps as device-host capabilities of their
+   own OS. Enrollment being the sandbox recognition already means a Mac
+   needs no daemon stamp.
 
 That is the whole list. It is deliberately short, because over-insuring is
 its own wall: every speculative abstraction is complexity the homelab pays
