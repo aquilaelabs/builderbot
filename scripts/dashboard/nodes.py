@@ -201,10 +201,13 @@ def _inflate(row):
     return row
 
 
-def node_list():
-    """Every node, JSON columns inflated — the read-only list phase 1 ships."""
-    return [_inflate(r) for r in _rows(
+def node_list(all=False):
+    """The nodes, JSON columns inflated. Retired rows are history — kept in
+    the table (door 1: ids are never reused, and an old record must stay
+    explicable) and left out of every list unless asked for."""
+    rows = [_inflate(r) for r in _rows(
         "SELECT * FROM nodes ORDER BY kind = 'local' DESC, created")]
+    return rows if all else [r for r in rows if r["state"] != "retired"]
 
 
 def node(node_id):
@@ -279,8 +282,12 @@ def _adopt_docker_host():
                  "AND state != 'retired'", (addr,))
     if have:
         return
+    # Only the row THIS migration made goes when the env var moves — marked
+    # so, because with the tab able to add nodes, "retire every other ssh
+    # node" would eat the operator's own rows on the next boot.
     _exec("UPDATE nodes SET state = 'retired' WHERE kind = 'ssh' "
-          "AND state != 'retired'")
+          "AND state != 'retired' AND config LIKE ?",
+          ('%"from_env": true%',))
     nid = mint("n")
     _insert_node({
         "id": nid, "name": "sandbox", "kind": "ssh",
@@ -288,7 +295,8 @@ def _adopt_docker_host():
         "concurrency": 1, "ssh_addr": addr,
         "capabilities": ["docker-host"],
         "services": {}, "labels": {"disposable": "true"},
-        "agent": {}, "reported": {}, "routing": {}, "config": {},
+        "agent": {}, "reported": {}, "routing": {},
+        "config": {"from_env": True},
     })
     audit("system", "node-adopt", nid, {"from": "DOCKER_HOST"})
 
@@ -307,6 +315,131 @@ def node_for(capability=None):
     except sqlite3.Error:
         pass                     # a broken store falls back to the answer
     return LOCAL                 # that was always true before it existed
+
+
+# ---------------------------------------------------------------------------
+# mutations — phase 2: the Nodes tab's verbs. Every one writes an audit row
+# with the principal the server hands it, because these ARE the mutations the
+# audit table was built ahead of.
+
+# What the tab may toggle. An unknown capability is refused rather than
+# stored: the scheduler will one day place work on these strings, and a typo
+# that sits in the table until then is a job that never places.
+CAPABILITIES = ("docker-host", "package-build", "deploy-target")
+_rev = [0]
+
+
+def rev():
+    """Bumped on every node mutation; /api/revs carries it so open views
+    refetch instead of the list riding the status poll (docs/nodes.md §13)."""
+    return _rev[0]
+
+
+def _bump():
+    _rev[0] += 1
+
+
+def _touch(node_id, principal, action, fields):
+    audit(principal, action, node_id, fields)
+    _bump()
+
+
+def node_add(principal, name, ssh_addr, capabilities=None, pool="default"):
+    """Register an ssh-kind docker host. Phase 2's only enrollment: the
+    agent kind arrives with phase 3 and mints its ids the same way."""
+    name = (name or "").strip() or "node"
+    addr = (ssh_addr or "").strip()
+    if addr and "://" not in addr:
+        addr = "ssh://" + addr
+    if not addr.startswith("ssh://"):
+        return {"error": "an ssh node needs an ssh:// address (or a bare "
+                         "host, which gets ssh:// and the bb account)"}
+    if "@" not in addr[len("ssh://"):]:
+        addr = "ssh://bb@" + addr[len("ssh://"):]
+    caps = [c for c in (capabilities or ["docker-host"]) if c in CAPABILITIES]
+    if _rows("SELECT id FROM nodes WHERE ssh_addr = ? AND state != 'retired'",
+             (addr,)):
+        return {"error": f"a node already answers at {addr}"}
+    nid = mint("n")
+    _insert_node({
+        "id": nid, "name": name[:60], "kind": "ssh",
+        "pool": str(pool or "default")[:60], "created": int(time.time()),
+        "state": "online", "concurrency": 1, "ssh_addr": addr,
+        "capabilities": caps, "services": {},
+        "labels": {"disposable": "true"},
+        "agent": {}, "reported": {}, "routing": {}, "config": {},
+    })
+    _touch(nid, principal, "node-add", {"addr": addr})
+    return {"ok": True, "id": nid}
+
+
+def node_update(principal, node_id, fields):
+    """Rename, re-pool, relabel, set concurrency, toggle capabilities —
+    the editable half of a row. Never the id, the kind or the address: an
+    address is an identity question, and the answer to "this node moved"
+    is a new node (door 1), not an edit that makes old records lie."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    sets, args = [], []
+    if "name" in fields:
+        sets.append("name = ?"); args.append(str(fields["name"]).strip()[:60])
+    if "pool" in fields:
+        sets.append("pool = ?")
+        args.append(str(fields["pool"]).strip()[:60] or "default")
+    if "concurrency" in fields:
+        try:
+            c = max(1, min(64, int(fields["concurrency"])))
+        except (TypeError, ValueError):
+            return {"error": "concurrency is a small whole number"}
+        sets.append("concurrency = ?"); args.append(c)
+    if "capabilities" in fields:
+        caps = [c for c in fields["capabilities"] if c in CAPABILITIES]
+        if n["kind"] == "local" and "docker-host" in caps:
+            # The local node is not a sandbox (docs/nodes.md §12): jobs here
+            # run beside /config and the dashboard credential, and a docker
+            # socket is not something this container mounts by default.
+            return {"error": "the local node cannot be a docker host"}
+        sets.append("capabilities = ?"); args.append(json.dumps(caps))
+    if "labels" in fields and isinstance(fields["labels"], dict):
+        clean = {str(k)[:40]: str(v)[:120]
+                 for k, v in list(fields["labels"].items())[:24]}
+        sets.append("labels = ?"); args.append(json.dumps(clean))
+    if not sets:
+        return {"error": "nothing to change"}
+    args.append(node_id)
+    _exec(f"UPDATE nodes SET {', '.join(sets)} WHERE id = ?", args)
+    _touch(node_id, principal, "node-update", fields)
+    return {"ok": True}
+
+
+def node_state(principal, node_id, state):
+    """Drain and undrain — and retire, which is what Remove means: rows
+    are history and an id is never reused, so a removed node keeps its row
+    and leaves every list (door 1)."""
+    if state not in ("online", "draining", "retired"):
+        return {"error": "state is online, draining or retired"}
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] == "local" and state == "retired":
+        return {"error": "the local node is this container — it cannot be "
+                         "removed, only left with nothing to do"}
+    _exec("UPDATE nodes SET state = ? WHERE id = ?", (state, node_id))
+    _touch(node_id, principal, "node-" + state, {})
+    return {"ok": True}
+
+
+def docker_nodes():
+    """The docker-host nodes, for every picker — active ones only."""
+    return [n for n in node_list()
+            if n["state"] != "retired" and "docker-host" in n["capabilities"]]
+
+
+def ssh_addr_of(node_id):
+    """The address a node's daemon answers on; '' for local/unknown."""
+    n = node(node_id)
+    return (n or {}).get("ssh_addr") or ""
 
 
 # ---------------------------------------------------------------------------

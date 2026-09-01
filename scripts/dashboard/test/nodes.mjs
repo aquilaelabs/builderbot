@@ -12,6 +12,10 @@ import { writeFileSync } from 'node:fs';
 // devapp.mjs ran first in this invocation.
 writeFileSync(`${DIR}/ws/ep.silon/docker-compose.yml`,
   'services:\n  app:\n    image: delta-dev\n    build: .\n');
+// ...and no required env: devapp.mjs runs before this file in a full pass and
+// leaves an .env.example wanting PORT, which would turn this file's `up` into
+// a refusal about somebody else's fixture.
+writeFileSync(`${DIR}/ws/ep.silon/.env.example`, '');
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 
@@ -118,12 +122,113 @@ ok(list[0].id === 'local',
      'bb nodes prints the same registry, read-only');
 }
 
-// ---- nothing visibly changed ----------------------------------------------
-// The operator's page: same cards, same tabs on offer, no new chrome. The
-// phase's definition of done is that this assertion is boring.
-ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')
-     && !Object.keys(TABKINDS).includes('nodes')),
-   'no nodes card, no nodes tab — the seam is invisible from the page');
+// ---- phase 2: the Nodes tab ------------------------------------------------
+{
+  await page.evaluate(() => { const c = document.getElementById('cardTools');
+    if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
+  await page.click('#bNodes');
+  await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
+  ok(await page.$$eval('.nodestab .ndrow', rs => rs.length) === 2,
+     'the Nodes tab lists the registry: local and the sandbox');
+  // add an ssh node through the form
+  await page.click('#ndAdd');
+  await page.fill('#ndName', 'buildbox');
+  await page.fill('#ndAddr', '10.9.9.9');
+  await page.click('#ndGo');
+  await page.waitForFunction(() =>
+    document.querySelectorAll('.nodestab .ndrow').length === 3, null,
+    { timeout: 15000 });
+  ok(true, 'Add node registers one from a bare address');
+  const added = await page.evaluate(() =>
+    nodesList.find(n => n.name === 'buildbox'));
+  ok(added.ssh_addr === 'ssh://bb@10.9.9.9',
+     '...with ssh:// and the bb account filled in, the way DOCKER_HOST is');
+  // capability toggle writes through and comes back
+  await page.evaluate(id => nodeAct({ action: 'update', id,
+    fields: { capabilities: ['docker-host', 'package-build'] } }), added.id);
+  await page.waitForFunction(id => nodesList.find(n => n.id === id)
+    ?.capabilities.includes('package-build'), added.id, { timeout: 10000 });
+  ok(true, 'a capability toggle is stored and re-read');
+  {
+    // A deliberate refusal: the server answers 400, and the browser logs
+    // every non-2xx as a console error. Asserted, then absolved — the final
+    // zero-errors check is for failures this file did not order.
+    const before = page.errors.length;
+    const r = await page.evaluate(() => nodeAct({ action: 'update',
+      id: 'local', fields: { capabilities: ['docker-host'] } }));
+    ok(/cannot be a docker host/.test(r.error || '')
+       && await page.evaluate(() => nodesList.find(n => n.id === 'local')
+            .capabilities.includes('docker-host')) === false,
+       'the local node refuses docker-host: it is not a sandbox');
+    page.errors.length = before;
+  }
+  // drain / undrain
+  await page.evaluate(id => nodeAct({ action: 'drain', id }), added.id);
+  await page.waitForFunction(id =>
+    nodesList.find(n => n.id === id)?.state === 'draining', added.id,
+    { timeout: 10000 });
+  ok(true, 'Drain marks it draining');
+  // the audit trail followed
+  const acts = readStore(
+    `m._rows("SELECT action, principal FROM audit WHERE target = ?", ("${added.id}",))`);
+  ok(acts.some(r => r.action === 'node-add')
+     && acts.some(r => r.action === 'node-update')
+     && acts.every(r => r.principal === 'operator'),
+     'every node mutation wrote an audit row as the operator');
+}
+
+// ---- phase 2: the docker manager's picker ----------------------------------
+{
+  await page.evaluate(() => openDocker());
+  await page.waitForSelector('.dmtab .macros', { timeout: 15000 });
+  await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
+  const opts = await page.$$eval('.dmtab .dmpick option',
+    os => os.map(o => o.textContent.trim()));
+  ok(opts.length === 2 && opts.some(o => /sandbox/.test(o))
+     && opts.some(o => /buildbox/.test(o)),
+     `the manager offers every docker-host node (${opts.join(' | ')})`);
+  // switch to the unreachable node: rows blind, reason worn, picker alive.
+  // The stub daemon fails any call whose DOCKER_HOST is listed as dead, which
+  // is what a powered-off VM looks like from here.
+  writeFileSync(`${DIR}/dockerstate/deadhosts`, 'ssh://bb@10.9.9.9\n');
+  await page.evaluate(() => { const s = document.querySelector('#dmNode');
+    s.value = nodesList.find(n => n.name === 'buildbox').id;
+    s.dispatchEvent(new Event('change')); });
+  await page.waitForFunction(() => dockerList && dockerList.blind === true,
+                             null, { timeout: 30000 });
+  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  ok(/not a BuilderBot sandbox|does not answer|docker does not answer/.test(
+       await page.$eval('.dmtab .empty', e => e.textContent).catch(() => '')),
+     'an unreachable node shows its reason, not a spinner');
+  ok(await page.$eval('.dmtab .dmpick select', s => !s.disabled),
+     '...with the picker still live — the way back is the way in');
+  // and back: the sandbox's last-known answer paints instantly from cache
+  await page.evaluate(() => { const s = document.querySelector('#dmNode');
+    s.value = nodesList.find(n => n.name === 'sandbox').id;
+    s.dispatchEvent(new Event('change')); });
+  await page.waitForFunction(() => dockerList && !dockerList.blind,
+                             null, { timeout: 30000 });
+  ok(true, 'switching back to the live node recovers without a reload');
+  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'docker');
+                              if (t) hideTab(t.id); });
+}
+
+// ---- phase 2: the settings graduation ---------------------------------------
+{
+  await page.evaluate(() => toggleUiMenu(true));
+  await page.waitForSelector('#uiSettings', { timeout: 10000 });
+  ok(await page.evaluate(() => !document.querySelector('#uiMenu #logDays')),
+     'the gear keeps appearance only — the log setting moved out');
+  await page.click('#uiSettings');
+  await page.waitForSelector('.settingstab .logdays #logDays', { timeout: 15000 });
+  ok(true, 'All settings… opens the Settings tab, with the log policy on it');
+  ok(await page.$eval('.settingstab', e => /unhardwiring|DOCKER_HOST/.test(e.textContent)),
+     '...which says what still lives in the environment, and why');
+}
+
+// ---- the seam stays invisible on the sidebar --------------------------------
+ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
+   'still no nodes card — nodes are a tab, not sidebar chrome');
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
 await done(browser);

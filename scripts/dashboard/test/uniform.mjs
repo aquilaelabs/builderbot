@@ -51,6 +51,14 @@ const DRIVERS = {
     open: () => page.evaluate(() => openNotebook('alpha', 'roadmap')),
     readyWhen: '.nb .nbview:not([hidden]) .field',
   },
+  nodes: {
+    open: () => page.evaluate(() => openNodesTab()),
+    readyWhen: '.nodestab .ndrow',
+  },
+  settings: {
+    open: () => page.evaluate(() => openSettingsTab()),
+    readyWhen: '.settingstab .logdays',
+  },
 };
 
 // Every kind that renders a document, from the page's own registry — never a

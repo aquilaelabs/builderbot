@@ -416,7 +416,8 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
-TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings"}
+TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings",
+             "nodes", "settings"}
 
 
 def load_layout():
@@ -1907,7 +1908,8 @@ except Exception as e:                                    # noqa: BLE001
 
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir,
-                 node_for=nodes.node_for if not NODES_OK else None)
+                 node_for=nodes.node_for if not NODES_OK else None,
+                 node_addr=nodes.ssh_addr_of if not NODES_OK else None)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
@@ -2250,6 +2252,9 @@ def revisions():
         "phone.asks": len(phone.requests_open()),
         "phone.dev": phone.device_rev(),
         "packages": packages.job_rev(),
+        # Node and job data never joins the status payload (docs/nodes.md
+        # §13): the views that show it watch this and fetch their own.
+        "nodes": 0 if NODES_OK else nodes.rev(),
     }
     # Per project, for the views that are per project.
     for n in names:
@@ -2576,6 +2581,23 @@ class Handler(BaseHTTPRequestHandler):
             return self._deny()
         if path == "/term" or path.startswith("/term/"):
             return self._term_proxy()
+        # The page's companion scripts: a new surface is a new classic-script
+        # file beside index.html (docs/nodes.md §13), and this allowlist is
+        # how they are served — full paths, same shape as the favicons, so it
+        # never grows into a general file server by accident.
+        if path in ("/tab-nodes.js", "/tab-settings.js"):
+            try:
+                body, zipped = self._gzip((HERE / path[1:]).read_bytes())
+            except OSError:
+                return self._json({"error": "not found"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type",
+                             "text/javascript; charset=utf-8")
+            if zipped:
+                self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            return self.wfile.write(body)
         if self.path.split("?")[0] in ("/", "/index.html"):
             body, zipped = self._gzip((HERE / "index.html").read_bytes())
             self.send_response(200)
@@ -2698,9 +2720,12 @@ class Handler(BaseHTTPRequestHandler):
             # daemon wired up thirty seconds ago is noticed by pressing the
             # button rather than by waiting for the memo to lapse.
             devapp.forget_available()
-            # The manager's whole page in one answer: every instance, and
-            # every container that is not one of them.
-            return self._json(devapp.overview())
+            # The manager's whole page in one answer: every instance bound to
+            # the picked node, and every container on that node's daemon that
+            # is not one of them. No node named means the default, which is
+            # the arrangement that predates the picker.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            return self._json(devapp.overview(q.get("node", [""])[0] or None))
         if self.path.startswith("/api/containers"):
             # A read, and the only one this dashboard makes of the daemon
             # beyond `docker version` — see the guard in devapp.py, which
@@ -2771,6 +2796,8 @@ class Handler(BaseHTTPRequestHandler):
             nodes.audit("operator", act,
                         str(req.get("project") or req.get("name")
                             or req.get("id") or "")[:120], req)
+        if path.startswith("/api/v1/nodes"):
+            return self._nodes(req)
         if path.startswith("/api/lock"):
             return self._lock(req)
         # NOT /api/pin, which is the command pin and has been since long before
@@ -2823,7 +2850,8 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/prefs"):
             name = req.get("project", "")
             r = prefs.set_prefs(name, model=req.get("model"),
-                                effort=req.get("effort"))
+                                effort=req.get("effort"),
+                                dockernode=req.get("dockernode"))
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
             # change alone, because the same write happens when nothing is
@@ -2854,6 +2882,48 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/signin"):
             return self._signin(req)
         self._json({"error": "not found"}, 404)
+
+    def _nodes(self, req):
+        """The Nodes tab's verbs. Thin on purpose: nodes.py owns the rules
+        and writes the audit rows; what belongs here is only the principal
+        and the one probe that composes two modules (test)."""
+        if NODES_OK:
+            return self._json({"error": "the node store did not open: "
+                                        + NODES_OK}, 500)
+        act = field(req, "action")
+        nid = field(req, "id")
+        if act == "add":
+            r = nodes.node_add("operator", field(req, "name"),
+                               field(req, "addr"),
+                               req.get("capabilities"),
+                               field(req, "pool") or "default")
+        elif act == "update":
+            r = nodes.node_update("operator", nid, req.get("fields") or {})
+        elif act in ("drain", "online", "retire"):
+            r = nodes.node_state("operator", nid,
+                                 {"drain": "draining", "online": "online",
+                                  "retire": "retired"}[act])
+        elif act == "test":
+            # The same verdict the Docker manager gates on, asked of THIS
+            # node's daemon right now: drop the memo, probe, answer. The
+            # sandbox-stamp check rides along, because a node that answers
+            # docker but is not a sandbox is the case worth a button.
+            n = nodes.node(nid)
+            if not n:
+                return self._json({"error": "no such node"}, 400)
+            if n["kind"] == "local":
+                return self._json({"on": False,
+                                   "why": "the local node runs no daemon"})
+            devapp.forget_available()
+            with devapp.on_node(nid):
+                got = devapp.available_cached()
+            nodes.audit("operator", "node-test", nid,
+                        {"on": got.get("on")})
+            return self._json({"on": bool(got.get("on")),
+                               "why": got.get("why") or ""})
+        else:
+            return self._json({"error": "unknown action"}, 400)
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _signin(self, req):
         """Start a sign-in, or stop the one that is running."""
@@ -3053,7 +3123,7 @@ class Handler(BaseHTTPRequestHandler):
                                         f"container written here needs a name "
                                         f"of its own"}, 400)
         r = devapp.create_container(name, req.get("compose") or "",
-                                    req.get("env") or "")
+                                    req.get("env") or "", field(req, "node"))
         return self._json(r, 400 if r.get("error") else 200)
 
     def _logs(self, req):
@@ -3106,7 +3176,7 @@ class Handler(BaseHTTPRequestHandler):
             # nothing of the instance, which is the point: there is none.
             return self._json({"text": devapp.starter(name)})
         if act == "new":
-            r = devapp.create_instance(name, inst)
+            r = devapp.create_instance(name, inst, field(req, "node"))
             if not r.get("error") and isinstance(req.get("text"), str) \
                     and req["text"].strip():
                 # Written before the build that follows, so the first one has

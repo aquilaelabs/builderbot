@@ -388,6 +388,13 @@ cat > "$S/bin/docker" <<'DOCKEREOF'
 #!/usr/bin/env bash
 ST="${DOCKER_STUB_STATE:?}"
 echo "$*" >> "$ST/docker.log"
+# A host that is not there. The real CLI carries the address in DOCKER_HOST;
+# listing one in deadhosts makes every call against it fail the way a powered
+# off VM does, so the suite can have one node answering and another not.
+if [ -n "${DOCKER_HOST:-}" ] && [ -f "$ST/deadhosts" ] \
+   && grep -qF "$DOCKER_HOST" "$ST/deadhosts"; then
+  echo "cannot connect to the daemon at $DOCKER_HOST"; exit 1
+fi
 case "$1" in
   # A daemon that is not there at all — the VM powered off, or an address that
   # is not a sandbox VM. availability is what the page gates every Docker

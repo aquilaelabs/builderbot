@@ -384,8 +384,8 @@ bb claude-md --update   refresh that block only
 bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
-bb nodes           the node registry, read-only — the controller design's
-                   phase 1 seam (docs/nodes.md); `local` is this container
+bb nodes           the node registry, read-only in a terminal — the Nodes
+                   tab is where it is edited; `local` is this container
 bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
@@ -1105,8 +1105,8 @@ lives in its body. The cards:
   every toolchain on the [SDK share](#sdks-live-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
-  is a bin on the row. Beside it, **Docker manager…** and **Static
-  analysis**, each a tab of its own
+  is a bin on the row. Beside it, **Docker manager…**, **Static analysis**
+  and **Nodes**, each a tab of its own
 - a **checklist** per project, carrying how much is still to hand over here —
   the same number the panel shows, refreshed with every poll and again the
   moment you open it. It opens
@@ -1229,6 +1229,41 @@ unknown** rather than reporting one nobody asked for: an unreachable daemon is
 not evidence that anything stopped. It is also fast, because a daemon known to
 be off is asked nothing — `docker ps` over ssh to a machine that is not there
 sits until its timeout, and that used to be the whole cost of finding out.
+
+**With more than one docker host, the manager grows a node picker.** Nodes
+with the `docker-host` capability are listed online or not; picking one
+switches the whole view to that node's daemon — one tab, re-rendered, never a
+tab per node. Each node's last-known container list is kept, so switching to
+an offline node paints instantly in the greyed state above rather than
+spinning at a machine that will not answer, and the reason is that node's
+own. **New container…** and **Send to Docker manager…** gain the same select,
+defaulting to the project's own node from its settings dialog (a per-project
+binding, `auto` unless chosen); an instance stays bound to the node it was
+created on, and everything that acts on it — Up, Down, Rebuild, the data
+directory's one-shot containers — addresses that node's daemon.
+
+### The Nodes tab
+
+**Tools → Nodes** is the registry (docs/nodes.md): every machine work can run
+on, `local` — this container — first. A row carries the node's state,
+capability toggles (`docker-host`, `package-build`, `deploy-target`), labels
+and census, with **Test** (probe its daemon now, sandbox stamp included),
+**Drain** (finish what is running, accept nothing new — what makes a node
+safe to reboot) and **Remove** (retire: off every list, row kept as history —
+an id is never reused). **Add node** takes a bare address and fills in
+`ssh://` and the `bb` account, exactly as `DOCKER_HOST` did; the machine
+should be one `vm/provision.sh` set up, and Test says so if it is not. The
+local node refuses `docker-host` on purpose — it is not a sandbox. Every
+change writes an audit row.
+
+### The Settings tab
+
+The gear in the header keeps what belongs to this **browser** — theme and
+layout — and one entry, **All settings…**, opening the Settings tab: what the
+**controller** owns and can apply live. The session-log policy lives there
+now, the node-flavored settings land as their phases do, and the tab says
+plainly what still comes from the environment and why (the placement rule and
+the unhardwiring are docs/nodes.md §13 and §11).
 
 Each row folds open to show what that container publishes and what it mounts,
 read only when you open it — parsing a compose file is the one thing the page

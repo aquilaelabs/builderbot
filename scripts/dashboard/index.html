@@ -1474,7 +1474,7 @@ textarea,select{
    tabs visibly narrower than the notebook next to them, which is the sort of
    difference you only see once and then cannot stop seeing. The notebook's
    bands are 11px/14px; so are these. */
-.projtab .row,.dmtab .row,
+.projtab .row,.dmtab .row,.doctab .row,
 .projtab .macros,.dmtab .macros,
 .dmtab .dmsrc{padding:var(--row-y) var(--row-x)}
 /* Every document pane, rather than a list of tab classes: .empty and .loading
@@ -1593,6 +1593,20 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .fxtab .fxproj:first-of-type{border-top:0}
 .fxtab .fnote,.doctab .fnote{padding:4px var(--row-x) 10px;color:var(--dim);
   font:var(--f-note)}
+/* The Nodes tab's rows: capability toggles inline, the add form stacked. */
+.ndcaps{display:flex;gap:14px;flex-wrap:wrap}
+.ndcap{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
+  color:var(--ink)}
+.ndcap input{width:15px;height:15px;flex:0 0 auto}
+.ndform label{display:block;font:12px/1.5 system-ui,sans-serif;
+  color:var(--dim);margin:8px 0 5px}
+.ndform .acts{display:flex;gap:8px;margin-top:10px}
+.ndform .acts .sp,.docbarrow .sp{flex:1}
+.ndtest.warn,#logDaysSaid.warn{color:var(--warn)}
+/* The manager's node picker select keeps the house control font wherever it
+   renders — .dmtab predates the scaffold's groups. */
+.dmpick select{font:13px/1.5 var(--mono);padding:8px 9px}
+@media(max-width:900px){ .dmpick select{font-size:16px} }
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
    starts at the same x as a roadmap item one view over. */
@@ -2341,6 +2355,15 @@ body.dragging .tab .lbl{cursor:grabbing}
       </div>
       <div class="hint" id="rnPrefHint"></div>
     </div>
+    <!-- Which docker host this project's containers default to. A binding to
+         a node id, resolved by the pickers: Send-to-Docker preselects it, and
+         an instance still remembers the node it was actually created on. -->
+    <div class="field" id="rnNodeField" hidden>
+      <label for="rnDockerNode">Containers run on</label>
+      <select id="rnDockerNode"></select>
+      <div class="hint">The docker host Send to Docker manager offers first
+        for this project. Existing containers stay where they were made.</div>
+    </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
       <button id="rnGo" class="primary">Rename</button>
@@ -2365,6 +2388,10 @@ body.dragging .tab .lbl{cursor:grabbing}
       <input id="cName" maxlength="60" autocomplete="off" spellcheck="false"
              placeholder="e.g. radarr">
       <div class="hint" id="cNameHint"></div>
+    </div>
+    <div class="field" id="cNodeField" hidden>
+      <label for="cNode">Node — which docker host it runs on</label>
+      <select id="cNode"></select>
     </div>
     <div class="field">
       <label id="cSegLabel">Definition</label>
@@ -2405,6 +2432,12 @@ body.dragging .tab .lbl{cursor:grabbing}
              placeholder="e.g. staging">
       <div class="hint" id="dnHint"></div>
       <div class="hint" id="dnPreview" hidden></div>
+    </div>
+    <div class="field" id="dnNodeField" hidden>
+      <label for="dnNode">Node — which docker host it runs on</label>
+      <select id="dnNode"></select>
+      <div class="hint">Defaults to this project's node from its settings
+        dialog; an instance stays bound to the node it was created on.</div>
     </div>
     <!-- The env, seeded from the project's .env.example. Here rather than
          after the first build: without it the build runs, stops at the gate
@@ -2639,6 +2672,7 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button id="bPkgs" onclick="openPackages()">Additional packages</button>
         <button id="bDocker" onclick="openDocker()">Docker manager</button>
         <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
+        <button id="bNodes" onclick="openNodesTab()">Nodes</button>
       </div>
     </div>
     <!-- A phone on the end of wireless adb. USB is not an option here: there
@@ -2965,6 +2999,11 @@ const TABKINDS = {
   docker:   { multi: false, label: () => "Docker",
               render: (i) => renderDockerInto(i), live: () => dockerRev,
               open: () => { if (!dockerList) loadDocker(); } },
+  nodes:    { multi: false, label: () => "Nodes",
+              render: (i) => renderNodesInto(i), live: () => nodesRev,
+              open: () => loadNodes() },
+  settings: { multi: false, label: () => "Settings",
+              render: (i) => renderSettingsInto(i), live: () => settingsRev },
   findings: { multi: false, label: () => "Analysis",
               render: (i) => renderFindingsInto(i),
               // The ages list as well as the mtime: the mtime is a MAX, so a
@@ -3963,10 +4002,26 @@ const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
 // dialog that was merely looked at — the difference decides whether a running
 // session is restarted, which is not something to do because somebody opened
 // a menu.
-let rnPrefWas = {model: "", effort: ""};
+let rnPrefWas = {model: "", effort: "", dockernode: ""};
 
 function rnFillPrefs(p){
-  rnPrefWas = {model: p?.prefs?.model || "", effort: p?.prefs?.effort || ""};
+  rnPrefWas = {model: p?.prefs?.model || "", effort: p?.prefs?.effort || "",
+               dockernode: p?.prefs?.dockernode || ""};
+  // The node binding: shown only when there is a choice to make, like every
+  // node select. "auto" is the default docker node, spelled as an option so
+  // clearing a binding is a pick rather than a mystery.
+  {
+    const sel = $("rnDockerNode"), wrap = $("rnNodeField");
+    const dnodes = (nodesList || []).filter(n =>
+      n.capabilities?.includes("docker-host"));
+    if (nodesList === null) loadNodes();
+    wrap.hidden = dnodes.length < 2;
+    sel.innerHTML = `<option value="">auto — the default node</option>`
+      + dnodes.map(n => `<option value="${esc(n.id)}"${
+          n.id === rnPrefWas.dockernode ? " selected" : ""}>${
+          esc(n.name)} — ${esc(n.state)}</option>`).join("");
+    if (!rnPrefWas.dockernode) sel.value = "";
+  }
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
                                   ["rnEffort", EFFORTS, rnPrefWas.effort]]){
     const el = $(id);
@@ -4708,11 +4763,17 @@ function drawUiMenu(){
         <span class="swa"></span><span class="swi"></span>
         <span class="swp"></span><span class="swn">${esc(label)}</span>
       </button>`).join("")}</div>
-    ${logSection()}`;
+    <h4>Controller</h4>
+    <button type="button" id="uiSettings">All settings…</button>`;
   el.querySelector("#uiReset").onclick = resetCards;
   el.querySelectorAll(".sw").forEach(b =>
     b.onclick = () => applyTheme(b.dataset.theme));
-  wireLogSection(el);
+  // The graduation (docs/nodes.md §13): the gear keeps what is this
+  // BROWSER's — theme, layout — and everything the controller owns lives on
+  // the Settings tab, where it has room to say what it costs. The log
+  // section that used to render here moved with that rule.
+  el.querySelector("#uiSettings").onclick = () => { toggleUiMenu(false);
+                                                    openSettingsTab(); };
 }
 
 // ---- logs --------------------------------------------------------------
@@ -5876,9 +5937,15 @@ function gateDocker(root, reason){
 // not only what this dashboard started: a port taken by something else is
 // exactly what you open a list like this to find out about, and a listing
 // that showed half would be lying by omission.
-let dockerList = null;                   // last answer, or null before the first
+let dockerList = null;                   // the picked node's last answer
 let dockerRev = 0;                       // bumped when it changes, so a pane
                                          // showing the same tab still repaints
+// Which docker-host node the manager is looking at ("" = the default), and
+// the last-known answer per node id — switching back to an offline node shows
+// what was seen there instantly, in the ghosted state the blind path already
+// renders, instead of a spinner for a machine that will not answer.
+let dockerNode = "";
+const dockerSeen = {};
 
 function openDocker(){
   openTab({kind: "docker", arg: "__docker", label: "Docker"});
@@ -5886,9 +5953,21 @@ function openDocker(){
 }
 
 async function loadDocker(){
+  const asked = dockerNode;
+  let got;
   try{
-    dockerList = await (await fetch("/api/docker")).json();
-  }catch(e){ dockerList = {error: String(e), containers: []}; }
+    got = await (await fetch("/api/docker"
+      + (asked ? "?node=" + encodeURIComponent(asked) : ""))).json();
+  }catch(e){ got = {error: String(e), containers: []}; }
+  // An answer for a node the operator has already picked away from must not
+  // repaint the view it no longer belongs to — it lands in that node's cache
+  // and nothing else.
+  dockerSeen[got.node || asked || ""] = got;
+  if (asked !== dockerNode) return;
+  // First answer resolves "" to the default node's real id, so the picker
+  // and the cache speak one language.
+  if (!dockerNode && got.node) dockerNode = got.node;
+  dockerList = got;
   dockerRev++;
   // drawPanes rather than reaching into a pane by index: which pane holds this
   // tab is the layout's business, and packages already refreshes this way.
@@ -5914,6 +5993,9 @@ function openSendToDocker(project){
     + "a project's name, as long as no other container has it.";
   $("dnEnvField").hidden = true;
   $("dnEnv").value = "";
+  fillNodeSelect($("dnNode"), $("dnNodeField"),
+                 state?.projects?.find(p => p.name === project)
+                   ?.prefs?.dockernode || dockerNode);
   $("dnmodal").hidden = false;
   // Fetched per open, and only shown when the project actually declares an
   // example: a blank Environment box on a project with nothing to fill in is
@@ -5937,6 +6019,20 @@ function openSendToDocker(project){
 const dockerSlug = (s) => (s || "").toLowerCase()
   .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
+// Fill a dialog's node select from the registry — shown only when there is
+// an actual choice, because a select with one option is furniture. `prefer`
+// is the project's own binding (its settings dialog), else the manager's
+// current pick, else the default node.
+function fillNodeSelect(sel, wrap, prefer){
+  const dnodes = (nodesList || []).filter(n =>
+    n.capabilities?.includes("docker-host") && n.state !== "retired");
+  if (nodesList === null) loadNodes();
+  wrap.hidden = dnodes.length < 2;
+  sel.innerHTML = dnodes.map(n =>
+    `<option value="${esc(n.id)}"${n.id === prefer ? " selected" : ""}>${
+      esc(n.name)} — ${esc(n.state)}</option>`).join("");
+}
+
 function dnShow(){
   const raw = $("dnName").value, clean = dockerSlug(raw);
   // Only when the name it makes differs from what was typed. A container is
@@ -5959,6 +6055,7 @@ async function dnSubmit(){
     const r = await fetch("/api/devapp", {method:"POST",
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({project, action:"new", instance:name,
+                            node: $("dnNodeField").hidden ? "" : $("dnNode").value,
                             text: $("dnEnvField").hidden ? "" : $("dnEnv").value})});
     const j = await r.json();
     if (j.error){ $("dnGo").disabled = false; $("dnGo").textContent = "Create";
@@ -6189,6 +6286,7 @@ async function openEditContainer(name){
   $("cNameHint").textContent =
     "Its name is what the compose project is called, so it does not change "
     + "here — remove it and write it again under another one.";
+  $("cNodeField").hidden = true;   // where it runs is not an edit either
   $("cYml").value = $("cEnv").value = "";
   $("cErrWrap").hidden = true;
   $("cGo").disabled = false; $("cGo").textContent = "Save";
@@ -6215,6 +6313,8 @@ function openNewContainer(){
   // as values, an example compose for a radarr nobody asked for was one
   // unread click from being created under whatever name was typed.
   $("cYml").value = $("cEnv").value = "";
+  // Created on the node the manager is looking at, unless picked otherwise.
+  fillNodeSelect($("cNode"), $("cNodeField"), dockerNode);
   $("cErrWrap").hidden = true;
   $("cGo").disabled = false; $("cGo").textContent = "Create";
   cSeg("yml");
@@ -6261,6 +6361,8 @@ async function cSubmit(){
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({action: editing ? "save" : "create",
                             name: editing || $("cName").value,
+                            node: editing ? "" : ($("cNodeField").hidden
+                              ? "" : $("cNode").value),
                             compose: $("cYml").value, env: $("cEnv").value})});
     const j = await r.json();
     if (j.error){
@@ -6446,7 +6548,11 @@ for the rest of the work"
   // has one; otherwise the daemon's own words from the call this page just
   // made, which is the case the poll cannot see — a VM that went away inside
   // the availability memo.
-  const off = dockerWhy()
+  // The poll's verdict is about the DEFAULT node; a picked node answers for
+  // itself through its own overview. Mixing them gated node B behind node
+  // A's absence, which is the one wrong answer a picker can give.
+  const off = (!dockerNode || dockerNode === (state?.docker?.node || dockerNode)
+                 ? dockerWhy() : "")
     || (blind ? "the daemon did not answer"
                 + (dockerList.error ? ": " + dockerList.error : "") : "");
   // Which daemon this is, stated rather than inferred. One setting names it
@@ -6465,7 +6571,20 @@ for the rest of the work"
               the daemon's own, and nothing on this side checks ${
               src.strays.length > 1 ? "them" : "it"}</span>` : ""}</div>`
     : "";
-  el.innerHTML = `<div class="dmtab">${off
+  // The picker: every docker-host node, online or not — an offline node's
+  // view is its last-known list in the ghosted state the blind path draws.
+  // One tab, re-rendered per pick (docs/nodes.md §13), never a tab per node.
+  const dnodes = (nodesList || []).filter(n =>
+    n.capabilities?.includes("docker-host"));
+  if (nodesList === null) loadNodes();
+  const picker = dnodes.length > 1 || (dnodes.length === 1 && dockerNode
+                                       && dnodes[0].id !== dockerNode)
+    ? `<div class="field histbar dmpick"><label for="dmNode">Node</label>
+        <select id="dmNode" aria-label="node">${dnodes.map(n =>
+          `<option value="${esc(n.id)}"${n.id === dockerNode ? " selected" : ""}>${
+            esc(n.name)} — ${esc(n.state)}</option>`).join("")}</select></div>`
+    : "";
+  el.innerHTML = `<div class="dmtab">${picker}${off
       ? `<div class="empty">${esc(off)}</div>` : srcLine}${
     // Blind, the list is what is on record here rather than what is on the
     // daemon, and "nothing on this daemon yet" would be a claim about a
@@ -6485,6 +6604,14 @@ for the rest of the work"
   });
   const b = el.querySelector("#bDockerRe");
   if (b) b.onclick = () => { dockerList = null; dockerRev++; drawPanes(); loadDocker(); };
+  const pk = el.querySelector("#dmNode");
+  if (pk) pk.onchange = () => {
+    dockerNode = pk.value;
+    // The last-known answer first — instant, honestly stale (the blind path
+    // says so) — and a fresh ask behind it.
+    dockerList = dockerSeen[dockerNode] || null;
+    dockerRev++; drawPanes(); loadDocker();
+  };
   const nb = el.querySelector("#bDockerNew");
   if (nb) nb.onclick = openNewContainer;
   // The wiring, fetched when the fold is opened and not before. It needs the
@@ -9888,6 +10015,8 @@ async function rnSubmit(){
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
   const model = $("rnModel").value, effort = $("rnEffort").value;
+  const dockernode = $("rnDockerNode").value;
+  const nodeChanged = dockernode !== rnPrefWas.dockernode;
   const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
   const running = liveSessions().has(tmuxName("claude-" + name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
@@ -9915,23 +10044,26 @@ async function rnSubmit(){
   const stop = m => { $("rnGo").disabled = false; $("rnGo").textContent = "Save";
                       return fail(m); };
   try{
-    if (prefChanged){
+    if (prefChanged || nodeChanged){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort,
-                              restart: running})});
+                              dockernode,
+                              // The node binding never restarts a session —
+                              // it is about containers, not the conversation.
+                              restart: running && prefChanged})});
       const j = await r.json();
       if (j.error) return stop(j.error);
       // Said out loud when it did not happen: the setting is saved either way,
       // and a session quietly left on the old model is exactly the confusion
       // this whole change exists to remove.
-      if (running && !j.restarted)
+      if (running && prefChanged && !j.restarted)
         notify(`${name}: saved, but the session was not restarted — `
                + (j.why || "it is still on what it started with"), true);
     }
     if (!needRename){
       closeRename();
-      if (!prefChanged) return;              // nothing changed; nothing to say
+      if (!prefChanged && !nodeChanged) return;   // nothing changed
       refresh();
       return;
     }
@@ -10939,6 +11071,12 @@ function drawPhone(){
 // Both are facts this card displays and neither is a fact it owns — which is
 // exactly the shape that used to go stale.
 onRev("prefs", () => refresh());
+// The node registry moved — a mutation here, or another browser's. Open
+// views refetch; node data deliberately never rides the status poll
+// (docs/nodes.md §13).
+onRev("nodes", () => {
+  if (tabs.some(t => t.kind === "nodes")) loadNodes();
+});
 onRev("phone.asks", () => phFetch());
 // The badge follows the count directly rather than waiting for the fetch, so
 // the tab strip is right even if the page is throttled too hard to redraw.
@@ -11237,5 +11375,7 @@ document.addEventListener("keydown", e => {
 refresh();
 setInterval(refresh, 15000);
 </script>
+<script src="tab-nodes.js"></script>
+<script src="tab-settings.js"></script>
 </body>
 </html>
