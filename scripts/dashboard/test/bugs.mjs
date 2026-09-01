@@ -184,8 +184,14 @@ await page.waitForSelector('.bug .dropbox input', { timeout: 10000 });
 ok(read().some(b => b.id === 3),
    'the bin asks in place, and nothing has gone while it is asking');
 await page.click('.bug .dropbox .stop');
-ok(read().some(b => b.id === 3) && await page.$('.bug .dropbox') === null,
-   'Cancel closes it and deletes nothing');
+// Waited for, not asserted on the next line: the row repaints whenever the
+// tracker's revision moves, and a click that lands as the row is replaced
+// leaves the box on screen for another frame. Nothing is wrong with the page
+// when that happens — what must be true is that it closes and that nothing
+// was deleted, and both survive a repaint (bug #13).
+await page.waitForFunction(() => !document.querySelector('.bug .dropbox'),
+                           null, { timeout: 10000 });
+ok(read().some(b => b.id === 3), 'Cancel closes it and deletes nothing');
 await page.click('#bugList .bug[data-id="3"] .bRm');
 await page.waitForSelector('.bug .dropbox input', { timeout: 10000 });
 await page.fill('.bug .dropbox input', 'filed against the wrong project');

@@ -115,14 +115,23 @@ ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Claude'), 'Close
 
 // The session is gone; a tab still pointing at it takes a Resume's argument
 // so the transcript id reaches the terminal, and the frame is rebuilt for it.
-await page.evaluate(() => openTab({kind:'term', arg:'claude:alpha', label:'Claude: alpha'}));
-await page.evaluate(() => openTab({kind:'term', arg:'claude:alpha:r:abc123', label:'Claude: alpha'}));
-const resumed = await page.evaluate(() => ({
-  tabs: tabs.filter(t => sessionOf(t.arg) === 'claude-alpha').length,
-  arg: tabs.find(t => sessionOf(t.arg) === 'claude-alpha')?.arg,
-  src: document.querySelector('#pane0 .slot.on iframe')?.src,
-  slots: [...document.querySelectorAll('#pane0 .slot')].map(c => c.dataset.key),
-}));
+// Opened and read in ONE task, which is the whole trick here. This tab points
+// at a session that was just ended, and a tab whose session was seen alive and
+// is now gone is REAPED by the next poll — correctly, and by design. On a quiet
+// box the read won that race; under load the poll won it, and the failure read
+// as "the page lost the tab" rather than "the page did exactly what it says it
+// does". Nothing between the two openTab calls and the measurement means
+// nothing can run between them.
+const resumed = await page.evaluate(() => {
+  openTab({kind: 'term', arg: 'claude:alpha', label: 'Claude: alpha'});
+  openTab({kind: 'term', arg: 'claude:alpha:r:abc123', label: 'Claude: alpha'});
+  return {
+    tabs: tabs.filter(t => sessionOf(t.arg) === 'claude-alpha').length,
+    arg: tabs.find(t => sessionOf(t.arg) === 'claude-alpha')?.arg,
+    src: document.querySelector('#pane0 .slot.on iframe')?.src,
+    slots: [...document.querySelectorAll('#pane0 .slot')].map(c => c.dataset.key),
+  };
+});
 ok(resumed.tabs === 1 && resumed.arg === 'claude:alpha:r:abc123'
      && (resumed.src || "").includes(encodeURIComponent('claude:alpha:r:abc123'))
      // ...and the frame the old tab had is gone with it. A pane keeps
@@ -130,7 +139,8 @@ ok(resumed.tabs === 1 && resumed.arg === 'claude:alpha:r:abc123'
      // still an attached client, on a session nothing is showing.
      && !resumed.slots.some(k => k.includes('|claude:alpha') && !k.includes(':r:')),
    `Resume on a dead session's tab carries the transcript id into the frame (${JSON.stringify(resumed)})`);
-await page.evaluate(() => hideTab(tabs.find(t => sessionOf(t.arg) === 'claude-alpha').id));
+await page.evaluate(() => { const t = tabs.find(x => sessionOf(x.arg) === 'claude-alpha');
+                            if (t) hideTab(t.id); });
 
 // The findings card is gone — the Analysis tab in Tools is the cross-project
 // browser now — so the notebook's view opens by name, which is what the tab's

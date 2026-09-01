@@ -259,6 +259,21 @@ github_api() {
 # Here rather than in `bb` because the GPU startup hook asks the same question
 # before deciding whether to start a server, and two spellings of "is X up"
 # that can disagree is exactly how a dead display kept looking like a live one.
+# Where the GPU display hook records what happened to its server: `up`,
+# `restarted N times`, or `down: <why>`. In /run, so it describes THIS boot and
+# nothing else — a state file that outlived its server would be the same kind
+# of lie as the stale socket that made this bug expensive.
+#
+# Read by `bb emu gpu` and `bb doctor`. Named here because the hook writes it
+# and both of those read it, which is three files that must agree on one path.
+GPU_DISPLAY_STATE="${GPU_DISPLAY_STATE:-/run/builderbot/gpu-display}"
+
+# What the hook last said about the display, or "" when it has said nothing.
+gpu_display_note() {
+    [ -r "$GPU_DISPLAY_STATE" ] || return 0
+    head -1 "$GPU_DISPLAY_STATE" 2>/dev/null
+}
+
 x_display_up() {
     [ -S /tmp/.X11-unix/X0 ] || return 1
     python3 - <<'XPY' 2>/dev/null

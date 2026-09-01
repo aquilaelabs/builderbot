@@ -83,6 +83,13 @@ jobs:
         # and mailing somebody about the first one teaches them to ignore the
         # mail. The second attempt is logged separately, so a genuine
         # regression still shows both.
+        env:
+          # This runner shares its box with the live dashboard, any session and
+          # any image build, so every wait in the suite is competing for CPU
+          # that a quiet run has to itself. Doubling them costs seconds on a
+          # green run and removes the commonest way this goes red for reasons
+          # that are not the code — bug #13.
+          BB_TEST_SLOW: "2"
         run: |
           set -o pipefail
           if bash scripts/dashboard/test/run.sh 2>&1 | tee -a "$CI_LOG"; then
