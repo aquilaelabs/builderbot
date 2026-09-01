@@ -152,3 +152,8 @@
 - bb findings can narrow the digest with --level, --rule and --find, matching the tab's filters (bd44048)
 - The Analysis tab's filter controls now match the rest of the page — the field styling covers every control automatically instead of a per-surface list (d0fee38)
 - The Analysis tab and the notebook's Analysis view line up with everything around them — one inset for every row, filter bar and footer (148e82d)
+- Writing a memory unrolls open instead of jumping the list, and folds back the same way (dada243)
+- Static analysis is greyed out when there is no readable scanner report, and says which of the three reasons it is (dada243)
+- The Docker manager keeps showing what is on record when the daemon is unreachable — greyed, and saying the state is unknown rather than reporting one (dada243)
+- BuilderBot only talks to a Docker daemon that says it is a BuilderBot sandbox; re-run vm/provision.sh on an older VM to stamp it (dada243)
+- Pointing at a different sandbox VM clears the build records from the old one, so rows describe the daemon that is actually plugged in (dada243)
