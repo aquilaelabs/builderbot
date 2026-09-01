@@ -416,7 +416,8 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
-TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings"}
+TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings",
+             "nodes", "settings"}
 
 
 def load_layout():
@@ -1891,9 +1892,24 @@ except OSError:
 # A project's compose app, built and run on the sandbox VM's daemon. The
 # module's docstring carries the security reasoning.
 import devapp                                                    # noqa: E402
+import nodes                                                     # noqa: E402
+
+# The node data plane first, because devapp's job claim asks it which node
+# work belongs to. Guarded: a database that will not open (a corrupt file, a
+# full disk) must degrade to the dashboard this always was, not take down the
+# page that is the operator's way to see what is wrong — nodes.py's readers
+# and audit already no-op when it never came up.
+try:
+    nodes.configure(state=STATE)
+    NODES_OK = ""
+except Exception as e:                                    # noqa: BLE001
+    NODES_OK = str(e)
+    print(f"[dashboard] node store unavailable: {e}", flush=True)
 
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
-                 log_dir=logs.log_dir)
+                 log_dir=logs.log_dir,
+                 node_for=nodes.node_for if not NODES_OK else None,
+                 node_addr=nodes.ssh_addr_of if not NODES_OK else None)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
@@ -2236,6 +2252,9 @@ def revisions():
         "phone.asks": len(phone.requests_open()),
         "phone.dev": phone.device_rev(),
         "packages": packages.job_rev(),
+        # Node and job data never joins the status payload (docs/nodes.md
+        # §13): the views that show it watch this and fetch their own.
+        "nodes": 0 if NODES_OK else nodes.rev(),
     }
     # Per project, for the views that are per project.
     for n in names:
@@ -2558,10 +2577,29 @@ class Handler(BaseHTTPRequestHandler):
             return self._login_page()
         if path == "/logout":
             return self._logout()
+        if path.startswith("/api/v1/agent/"):
+            return self._agent()
         if not self._authed():
             return self._deny()
         if path == "/term" or path.startswith("/term/"):
             return self._term_proxy()
+        # The page's companion scripts: a new surface is a new classic-script
+        # file beside index.html (docs/nodes.md §13), and this allowlist is
+        # how they are served — full paths, same shape as the favicons, so it
+        # never grows into a general file server by accident.
+        if path in ("/tab-nodes.js", "/tab-settings.js"):
+            try:
+                body, zipped = self._gzip((HERE / path[1:]).read_bytes())
+            except OSError:
+                return self._json({"error": "not found"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type",
+                             "text/javascript; charset=utf-8")
+            if zipped:
+                self.send_header("Content-Encoding", "gzip")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            return self.wfile.write(body)
         if self.path.split("?")[0] in ("/", "/index.html"):
             body, zipped = self._gzip((HERE / "index.html").read_bytes())
             self.send_response(200)
@@ -2671,14 +2709,41 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._phone_payload())
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
+        if self.path.startswith("/api/v1/nodes"):
+            # The versioned surface starts here (docs/nodes.md §3): new
+            # endpoints land under /api/v1 with their shapes written down;
+            # the legacy paths above migrate later, never both at once.
+            if NODES_OK:
+                return self._json({"error": "the node store did not open: "
+                                            + NODES_OK}, 500)
+            return self._json({"nodes": nodes.node_list()})
+        if self.path.startswith("/api/v1/jobs"):
+            # One job with its log so far (?id=), or the recent ones for a
+            # node (?node=). Phase 3's whole read surface for jobs: enough
+            # for the Test button and a test to watch an exec land; the
+            # Jobs tab is phase 4 and reads the same rows.
+            if NODES_OK:
+                return self._json({"error": "the node store did not open: "
+                                            + NODES_OK}, 500)
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            jid = q.get("id", [""])[0]
+            if jid:
+                j = nodes.job(jid)
+                return self._json(j if j else {"error": "no such job"},
+                                  200 if j else 404)
+            return self._json({"jobs": nodes.jobs_for(q.get("node", [""])[0]
+                                                      or None)})
         if self.path.startswith("/api/docker"):
             # Refresh is the retry: drop the memoised availability first, so a
             # daemon wired up thirty seconds ago is noticed by pressing the
             # button rather than by waiting for the memo to lapse.
             devapp.forget_available()
-            # The manager's whole page in one answer: every instance, and
-            # every container that is not one of them.
-            return self._json(devapp.overview())
+            # The manager's whole page in one answer: every instance bound to
+            # the picked node, and every container on that node's daemon that
+            # is not one of them. No node named means the default, which is
+            # the arrangement that predates the picker.
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            return self._json(devapp.overview(q.get("node", [""])[0] or None))
         if self.path.startswith("/api/containers"):
             # A read, and the only one this dashboard makes of the daemon
             # beyond `docker version` — see the guard in devapp.py, which
@@ -2718,24 +2783,55 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"keys": agent_keys(), "pat": gh_authed()})
         self._json({"error": "not found"}, 404)
 
-    def _post(self):
-        if self.path.split("?")[0] == "/login":
-            return self._login_post()
-        if not self._authed():
-            return self._deny()
-        # Read the body once, here, rather than in each handler: doing it after
-        # dispatch is how the request stream ends up consumed twice or not at all.
+    def _read_json(self):
+        """The body, once. Read here rather than in each handler: doing it
+        after dispatch is how the request stream ends up consumed twice or
+        not at all. None means an answer was already sent."""
         try:
             n = int(self.headers.get("Content-Length", "0"))
             if not 0 <= n <= MAX_BODY:
-                return self._json({"error": "body too large"}, 413)
+                self._json({"error": "body too large"}, 413)
+                return None
             req = json.loads(self.rfile.read(n) or b"{}")
         except (ValueError, TypeError):
-            return self._json({"error": "bad request"}, 400)
+            self._json({"error": "bad request"}, 400)
+            return None
         if not isinstance(req, dict):
-            return self._json({"error": "bad request"}, 400)
+            self._json({"error": "bad request"}, 400)
+            return None
+        return req
+
+    def _post(self):
+        if self.path.split("?")[0] == "/login":
+            return self._login_post()
+        if self.path.split("?")[0].startswith("/api/v1/agent/"):
+            # Its own door, before the operator's: an agent carries a node
+            # token, never the dashboard credential (docs/nodes.md §8 — the
+            # controller holds nothing that logs in anywhere, and a node
+            # holds nothing that opens this page).
+            return self._agent()
+        if not self._authed():
+            return self._deny()
+        req = self._read_json()
+        if req is None:
+            return None
 
         path = self.path.split("?")[0]
+        # Door 2, at the one funnel every mutation passes: when, who, what,
+        # on what, with a parameter digest — never the parameters, which
+        # carry tokens and env text. There is exactly one human credential
+        # today, so the principal is "operator"; that string is data, not a
+        # boolean, and OIDC later is a new way to fill it in, not a new row
+        # shape. (Bug #16's honest caveat applies: anything holding the
+        # credential writes as the operator, because the server cannot tell.)
+        if not NODES_OK:
+            act = path + (":" + str(req["action"])[:40]
+                          if isinstance(req.get("action"), str) else "")
+            nodes.audit("operator", act,
+                        str(req.get("project") or req.get("name")
+                            or req.get("id") or "")[:120], req)
+        if path.startswith("/api/v1/nodes"):
+            return self._nodes(req)
         if path.startswith("/api/lock"):
             return self._lock(req)
         # NOT /api/pin, which is the command pin and has been since long before
@@ -2788,7 +2884,8 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/prefs"):
             name = req.get("project", "")
             r = prefs.set_prefs(name, model=req.get("model"),
-                                effort=req.get("effort"))
+                                effort=req.get("effort"),
+                                dockernode=req.get("dockernode"))
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
             # change alone, because the same write happens when nothing is
@@ -2819,6 +2916,181 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/signin"):
             return self._signin(req)
         self._json({"error": "not found"}, 404)
+
+    def _nodes(self, req):
+        """The Nodes tab's verbs. Thin on purpose: nodes.py owns the rules
+        and writes the audit rows; what belongs here is only the principal
+        and the one probe that composes two modules (test)."""
+        if NODES_OK:
+            return self._json({"error": "the node store did not open: "
+                                        + NODES_OK}, 500)
+        act = field(req, "action")
+        nid = field(req, "id")
+        if act == "add":
+            r = nodes.node_add("operator", field(req, "name"),
+                               field(req, "addr"),
+                               req.get("capabilities"),
+                               field(req, "pool") or "default")
+        elif act == "update":
+            r = nodes.node_update("operator", nid, req.get("fields") or {})
+        elif act in ("drain", "online", "retire"):
+            r = nodes.node_state("operator", nid,
+                                 {"drain": "draining", "online": "online",
+                                  "retire": "retired"}[act])
+        elif act == "enroll":
+            r = nodes.enroll_mint("operator", field(req, "name"),
+                                  req.get("capabilities"),
+                                  field(req, "user") or "bb")
+        elif act == "revoke":
+            r = nodes.node_revoke("operator", nid)
+        elif act == "exec":
+            # The channel's one job type, from the tab or from curl: run
+            # this argv on that node, as the enrolled account, and read the
+            # log back from /api/v1/jobs. What the Test button sends, and
+            # what a session holding the credential could — the same reach
+            # a session already has over ssh to the sandbox, audited now.
+            argv = [str(a) for a in (req.get("argv") or []) if str(a)][:64]
+            if not argv:
+                return self._json({"error": "argv is empty"}, 400)
+            spec = {"argv": argv, "timeout": 600}
+            # What the job needs the node to be enrolled for. The node
+            # checks it, not the row (door 7) — this is how that is exercised.
+            need = [str(c) for c in (req.get("requires") or []) if str(c)][:8]
+            if need:
+                spec["requires"] = need
+            r = nodes.job_add("operator", nid, "exec", spec, field(req, "project"))
+        elif act == "test":
+            n = nodes.node(nid)
+            if not n:
+                return self._json({"error": "no such node"}, 400)
+            if n["kind"] == "local":
+                return self._json({"on": False,
+                                   "why": "the local node runs no daemon"})
+            if n["kind"] == "agent":
+                return self._json(self._agent_test(n))
+            # The same verdict the Docker manager gates on, asked of THIS
+            # node's daemon right now: drop the memo, probe, answer. The
+            # sandbox-stamp check rides along, because a node that answers
+            # docker but is not a sandbox is the case worth a button.
+            devapp.forget_available()
+            with devapp.on_node(nid):
+                got = devapp.available_cached()
+            nodes.audit("operator", "node-test", nid,
+                        {"on": got.get("on")})
+            return self._json({"on": bool(got.get("on")),
+                               "why": got.get("why") or ""})
+        else:
+            return self._json({"error": "unknown action"}, 400)
+        return self._json(r, 400 if r.get("error") else 200)
+
+    def _agent_test(self, n):
+        """Test on an agent node: an exec job, waited for. The channel is
+        the thing being tested, so the proof is a round trip through it —
+        queued here, picked up by the next poll, run there, logged back —
+        and a node that is not dialing in says so rather than timing out."""
+        if not n.get("live"):
+            return {"on": False, "why": ("waiting for enrollment"
+                                         if n["state"] == "pending"
+                                         else "not connected — the agent has "
+                                         "not dialed in lately")}
+        r = nodes.job_add("operator", n["id"], "exec",
+                          {"argv": ["uname", "-srm"], "timeout": 20})
+        if r.get("error"):
+            return {"on": False, "why": r["error"]}
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            j = nodes.job(r["job"])
+            if j and j["state"] in nodes.JOB_END:
+                out = (j.get("log") or "").strip()
+                nodes.audit("operator", "node-test", n["id"],
+                            {"on": j["state"] == "succeeded"})
+                return {"on": j["state"] == "succeeded",
+                        "why": out or f"{j['state']} (exit {j['exit_code']})"}
+            time.sleep(0.3)
+        return {"on": False, "why": "the agent took the job but did not "
+                                    "report back within 15s"}
+
+    # The agent's verbs (docs/nodes.md §4). Four of the six land in phase 3
+    # — enroll, hello, work, log, result — plus download, which is how a node
+    # gets the agent in the first place and how self-update fetches the next
+    # one. artifact and source are phase 6, when there is a workspace to ship
+    # and an artifact store to land in.
+    def _agent(self):
+        if NODES_OK:
+            return self._json({"error": "the node store did not open: "
+                                        + NODES_OK}, 500)
+        verb = self.path.split("?")[0][len("/api/v1/agent/"):]
+        hdr = self.headers.get("Authorization", "")
+        bearer = hdr[7:] if hdr.startswith("Bearer ") else ""
+        auth = nodes.authenticate(bearer) if bearer else {"error": "no token"}
+        if verb == "download":
+            # The file itself. Any token gets it — the provisioner fetches
+            # it with the enroll token before there is a node — and so does
+            # the operator's own login, for reading it in a browser.
+            if auth.get("error") and not self._authed():
+                return self._json({"error": auth["error"]}, 401)
+            f = nodes.agent_file()
+            if not f["body"]:
+                return self._json({"error": "this controller ships no agent"}, 404)
+            self.send_response(200)
+            self.send_header("Content-Type", "text/x-python; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Agent-Digest", f["digest"])
+            self.send_header("Content-Length", str(len(f["body"])))
+            self.end_headers()
+            self.wfile.write(f["body"])
+            return None
+        if self.command != "POST":
+            return self._json({"error": "POST"}, 405)
+        req = self._read_json()
+        if req is None:
+            return None
+        if auth.get("error"):
+            return self._json({"error": auth["error"]}, 401)
+        # Where the node is, as seen from here — informational on the row,
+        # and the address docker-over-ssh goes to for an agent node (see
+        # nodes._addr). A proxy in front says so in the usual header.
+        addr = (self.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+                or self.client_address[0])
+        if verb == "enroll":
+            if auth["kind"] != "enroll":
+                return self._json({"error": "an enrollment token is needed "
+                                            "here, not a node's"}, 403)
+            r = nodes.enroll(auth, req.get("census"), addr,
+                             field(req, "version"), field(req, "digest"),
+                             field(req, "user"))
+            return self._json(r, 400 if r.get("error") else 200)
+        if auth["kind"] != "node":
+            return self._json({"error": "an enrollment token enrolls, and "
+                                        "nothing else"}, 403)
+        nid = auth["node"]
+        if verb == "hello":
+            r = nodes.hello(nid, req.get("census"), addr,
+                            field(req, "version"), field(req, "digest"))
+        elif verb == "work":
+            # The heartbeat and the long-poll in one: the sample is recorded
+            # first, so a node that is only ever waiting still reads as
+            # alive and its numbers still move; then the request is held.
+            nodes.heartbeat(nid, req.get("sample"), addr, req.get("running"))
+            try:
+                wait = min(nodes.POLL_S, max(0.0, float(req.get("wait", nodes.POLL_S))))
+            except (TypeError, ValueError):
+                wait = nodes.POLL_S
+            j = nodes.job_next(nid, req.get("running"), wait)
+            if j is None:
+                self.send_response(204)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return None
+            return self._json(j)
+        elif verb == "log":
+            r = nodes.job_log(nid, field(req, "job"), req.get("chunks"))
+        elif verb == "result":
+            r = nodes.job_result(nid, field(req, "job"), field(req, "state"),
+                                 req.get("exit"))
+        else:
+            return self._json({"error": "not found"}, 404)
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _signin(self, req):
         """Start a sign-in, or stop the one that is running."""
@@ -3018,7 +3290,7 @@ class Handler(BaseHTTPRequestHandler):
                                         f"container written here needs a name "
                                         f"of its own"}, 400)
         r = devapp.create_container(name, req.get("compose") or "",
-                                    req.get("env") or "")
+                                    req.get("env") or "", field(req, "node"))
         return self._json(r, 400 if r.get("error") else 200)
 
     def _logs(self, req):
@@ -3071,7 +3343,7 @@ class Handler(BaseHTTPRequestHandler):
             # nothing of the instance, which is the point: there is none.
             return self._json({"text": devapp.starter(name)})
         if act == "new":
-            r = devapp.create_instance(name, inst)
+            r = devapp.create_instance(name, inst, field(req, "node"))
             if not r.get("error") and isinstance(req.get("text"), str) \
                     and req["text"].strip():
                 # Written before the build that follows, so the first one has

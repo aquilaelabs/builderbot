@@ -282,12 +282,28 @@ implementation detail that *will* change with scale, so it is designed to:
 
 ```
 POST /api/v1/agent/hello               census + capabilities, on connect
-GET  /api/v1/agent/work?node=n_…       long-poll, 30s, returns a job or 204
-POST /api/v1/agent/log?job=j_…         chunked appends while it runs
-POST /api/v1/agent/result?job=j_…      terminal state + exit code
-POST /api/v1/agent/artifact?job=j_…    the file, content-addressed
-GET  /api/v1/agent/source?digest=…     the workspace snapshot
+POST /api/v1/agent/work                long-poll, 25s, returns a job or 204
+POST /api/v1/agent/log                 chunked appends while it runs, by sequence
+POST /api/v1/agent/result              terminal state + exit code
+POST /api/v1/agent/artifact            the file, content-addressed        (phase 6)
+GET  /api/v1/agent/source?digest=…     the workspace snapshot              (phase 6)
 ```
+
+Plus two the list above does not count: `POST /api/v1/agent/enroll`, spoken
+once, and `GET /api/v1/agent/download`, which serves the agent file itself.
+The node is named by its bearer token, never by a query parameter, so `work`
+takes no `?node=`. It is a POST because the heartbeat rides it: every poll
+carries a sample (CPU, memory, load, per-store free space, jobs running), so
+liveness and the numbers cost no verb of their own and a node is "live" when
+a poll has arrived within three poll lengths. The four the agent speaks
+today, and the two it does not yet, are marked; the agent takes `exec` jobs
+and `self-update`, nothing else, until phase 4 gives the queue its shape.
+
+**What a job runs as.** The unit runs the agent as root — that is what lets
+phase 5's system jobs (mounts, network) exist — but an `exec` job drops to
+the account the provisioner enrolled, the same `bb` that docker runs as,
+before it runs anything. A session reaching a node through a job has the
+reach it already had over ssh, and no more.
 
 **Ship long-poll first.** It gives sub-second job pickup, crosses every proxy
 and NAT, and needs no new protocol machinery in a stdlib-only server. Each
@@ -682,6 +698,13 @@ each taking either an internal path or a mount the script sets up:
 mounts; a role flag pointing at a mount implies it. Roles land in
 `/etc/builderbot/node.json`, the agent reports them (with headroom) in its
 census, and nothing on the controller ever hard-codes a path on a node again.
+*Where phase 3 landed it:* the three role flags take a path (the `nfs:` form
+waits for phase 5, where mounts become jobs), default under
+`/var/lib/builderbot/`, and `--controller URL --token bbe_…` is what turns a
+provisioning run into an enrollment — the script fetches the agent from the
+controller, checks it against the digest header, enrolls as the docker
+account and enables the unit. Package-manager abstraction and
+docker-on-request are still the shape written above, not the shape shipped.
 Notably absent: a `--workspace` role for agent nodes — job-scoped snapshots
 replaced it (§6), and only legacy `ssh` nodes still mount source.
 

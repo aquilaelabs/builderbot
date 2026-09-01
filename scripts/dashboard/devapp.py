@@ -44,6 +44,7 @@ State: /config/devapps.json ({project: built_rev/built_at}), the env files in
 /config/devenv/, one build job at a time in memory.
 """
 import contextlib
+import functools
 import hashlib
 import json
 import os
@@ -60,6 +61,8 @@ from pathlib import Path
 WORKSPACE = None
 STATE = None
 FILE = None
+node_for = None
+node_addr = None
 ENVDIR = None
 write_json = None
 
@@ -98,16 +101,67 @@ log_dir = None
 DEFAULT_USER = "bb"
 
 
-def docker_host():
-    """The sandbox VM, as docker wants it addressed. Empty when unset.
+# Which node's daemon the current thread is talking to. A thread-local rather
+# than a parameter, because the address is read at the BOTTOM (_run, _guard,
+# daemon_id, source()) and threading it down through every call site would put
+# a `node=` on forty functions to serve the three entry points that actually
+# choose one. Entry points wrap themselves in on_node(); everything below asks
+# docker_host() exactly as it always has and gets the right answer.
+_node_ctx = threading.local()
 
-    The operator writes the machine — `10.0.0.9` — and the scheme and the
-    account are filled in. Writing either out is still allowed and passes
-    through untouched, so `ssh://someone@10.0.0.9` means what it says; what is
-    not allowed is a different KIND of address, which available() refuses by
-    name rather than by handing docker something it will fail on obscurely.
+
+@contextlib.contextmanager
+def on_node(node_id):
+    """Address every docker call in this block at `node_id`'s daemon."""
+    prev = getattr(_node_ctx, "addr", None)
+    _node_ctx.addr = node_addr(node_id) if node_addr and node_id else None
+    try:
+        yield
+    finally:
+        _node_ctx.addr = prev
+
+
+def _default_node():
+    return node_for("docker-host") if node_for else ""
+
+
+def _instance_node(project, instance):
+    """The node an instance is bound to — its record's, else the default.
+
+    Records from before nodes existed have no binding; they belong to the
+    daemon DOCKER_HOST named, which is exactly what the default node mirrors,
+    so the fallback is not a guess.
     """
-    addr = (os.environ.get("DOCKER_HOST") or "").strip()
+    nid = _read_rec(project, instance).get("node") or ""
+    return nid or (node_for("docker-host") if node_for else "")
+
+
+def _on_instance(fn):
+    """Route a per-instance entry point at the daemon its instance is bound
+    to. The decorator is the whole multi-host story for actions: the body
+    stays exactly the single-daemon code it always was, and docker_host()
+    answers with the right address underneath it."""
+    @functools.wraps(fn)
+    def wrapped(project, instance=MAIN, *a, **kw):
+        with on_node(_instance_node(project, instance)):
+            return fn(project, instance, *a, **kw)
+    return wrapped
+
+
+def docker_host():
+    """The daemon the current call should talk to, as docker wants it
+    addressed. Empty when there is none.
+
+    Three sources, in order: the node context an entry point opened (the
+    multi-host path), the environment (the arrangement that predates nodes,
+    kept working untouched), nothing. The operator writes the machine —
+    `10.0.0.9` — and the scheme and the account are filled in; what is not
+    allowed is a different KIND of address, which available() refuses by name
+    rather than by handing docker something it will fail on obscurely.
+    """
+    ctx = getattr(_node_ctx, "addr", None)
+    addr = (ctx if ctx is not None
+            else (os.environ.get("DOCKER_HOST") or "")).strip()
     if not addr:
         return ""
     scheme, sep, rest = addr.partition("://")
@@ -184,18 +238,24 @@ def adopt(uid):
             for inst, rec in insts.items():
                 if not isinstance(rec, dict) or not rec.get("rev"):
                     continue
+                # Only records about THIS address are this verification's
+                # business. With one daemon that distinction did not exist;
+                # with several, clearing another node's records because this
+                # one answered would be the bug this function exists to stop,
+                # pointed the other way.
+                if rec.get("daemon") != here:
+                    continue
                 was = rec.get("daemon_uid")
                 # An old record predating the uid is judged on its address, as
                 # it always was: not knowing is not evidence of a move.
-                if rec.get("daemon") == here and (not was or was == uid):
-                    if not was:
-                        rec["daemon_uid"] = uid
-                        moved = True
-                    continue
-                for k in ("rev", "at", "await_env", "building_since",
-                          "daemon", "daemon_uid"):
-                    rec.pop(k, None)
-                moved = True
+                if not was:
+                    rec["daemon_uid"] = uid
+                    moved = True
+                elif was != uid:
+                    for k in ("rev", "at", "await_env", "building_since",
+                              "daemon", "daemon_uid"):
+                        rec.pop(k, None)
+                    moved = True
         if moved:
             write_json(FILE, d)
     if moved:
@@ -223,7 +283,7 @@ _lock = threading.Lock()
 # as well as the project: two instances of one project are two builds, and a
 # row watching "is my build running" must not light up for its neighbour's.
 _job = {"running": False, "project": "", "instance": "", "step": "", "log": "",
-        "error": "", "await_env": False, "aborting": False}
+        "error": "", "await_env": False, "aborting": False, "node": ""}
 _rev = 0
 
 # The process the job is inside right now, so Abort has something to interrupt.
@@ -303,7 +363,13 @@ def _claim(project, instance, step):
             return False
         _job.update(running=True, project=project, instance=instance,
                     step=step, log="", error="", await_env=False,
-                    aborting=False)
+                    aborting=False,
+                    # Which node this work belongs to. Fixed in phase 1 —
+                    # docker work is the sandbox record — and the point is
+                    # that the claim ASKS: this call site is the seam the
+                    # placement function slides into (docs/nodes.md phase 4)
+                    # without the claim changing shape again.
+                    node=_instance_node(project, instance))
     _bump()
     return True
 
@@ -335,9 +401,11 @@ def abort_job():
     return True
 
 
-def configure(*, workspace, state, write_json, log_dir=None):
+def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
+              node_addr=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
-                     write_json=write_json, log_dir=log_dir)
+                     write_json=write_json, log_dir=log_dir,
+                     node_for=node_for, node_addr=node_addr)
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
     _migrate_paths()
@@ -490,6 +558,10 @@ def available():
 
 
 _avail = {"when": 0.0, "val": None}
+# The same memo per node address, for calls made inside on_node(). The default
+# arrangement keeps its own entry above — it predates nodes, and the tests
+# prime it directly.
+_avail_hosts = {}
 
 
 def _uid():
@@ -515,19 +587,32 @@ def available_cached():
     enough that it is not on the critical path of anything.
     """
     now = time.time()
+    ctx = getattr(_node_ctx, "addr", None)
+    if ctx is None:
+        with _avail_lock:
+            if _avail["val"] is not None and now - _avail["when"] < AVAIL_TTL:
+                return _avail["val"]
+        val = available()
+        with _avail_lock:
+            _avail.update(when=now, val=val)
+        return val
     with _avail_lock:
-        if _avail["val"] is not None and now - _avail["when"] < AVAIL_TTL:
-            return _avail["val"]
+        ent = _avail_hosts.get(ctx)
+        if ent and now - ent["when"] < AVAIL_TTL:
+            return ent["val"]
     val = available()
     with _avail_lock:
-        _avail.update(when=now, val=val)
+        _avail_hosts[ctx] = {"when": now, "val": val}
     return val
 
 
 def forget_available():
-    """Drop the memo — for a control that has just been told to try again."""
+    """Drop the memo — for a control that has just been told to try again.
+    All of them: Refresh means "look again", and a stale verdict on the node
+    beside the one that was refreshed is the same staleness."""
     with _avail_lock:
         _avail["val"] = None
+        _avail_hosts.clear()
 
 
 # The classic builder, not BuildKit. `compose build` defaults to buildx, which
@@ -1291,7 +1376,10 @@ def rename_project_data(old, new):
             except OSError as e:
                 failed.append(f"{what} could not be moved: {e}")
             continue
-        did, err = rename_dev_data(was, now)
+        # The daemon-side move runs against the daemon this instance is
+        # bound to — with several nodes, "the sandbox" is a per-record fact.
+        with on_node(_instance_node(new, inst)):
+            did, err = rename_dev_data(was, now)
         if did:
             moved.append(f"{what}, on the sandbox")
         elif err:
@@ -1410,8 +1498,15 @@ def _with_compose():
     return out
 
 
-def overview():
+def overview(node_id=None):
     """Every instance, and everything else on the daemon, from ONE ps.
+
+    `node_id` is the manager's picker: the containers come from that node's
+    daemon, and the instance rows are the ones BOUND there — an instance
+    belongs to the node it was created against, and showing it under every
+    daemon would offer buttons that act somewhere other than where the row
+    says. Unset means the default docker node, which is the arrangement that
+    predates the picker.
 
     state() asks the daemon twice per instance — is it running, does anything
     exist — which is fine for one row and absurd for a manager listing all of
@@ -1430,6 +1525,14 @@ def overview():
     # from, what its env still wants) is on this side of the wire and needs no
     # daemon at all. The rows come back either way; what the daemon owns is
     # whether they are running, and that stays unknown rather than guessed.
+    picked = node_id or (node_for("docker-host") if node_for else "")
+    with contextlib.ExitStack() as ctx:
+        if picked:
+            ctx.enter_context(on_node(picked))
+        return _overview_here(picked)
+
+
+def _overview_here(picked):
     got = available_cached()
     cs = containers() if got.get("on") else {
         "error": got.get("why") or "no docker daemon is reachable from here",
@@ -1457,6 +1560,12 @@ def overview():
         filed = is_file_source(project)
         head, dirty = ("", False) if filed else (_head(project), _dirty(project))
         for inst in sorted(store[project]):
+            # The picker's node only. A record with no binding predates nodes
+            # and belongs to the default, which is what its daemon address
+            # has always meant.
+            bound = _read_rec(project, inst).get("node") or ""
+            if picked and (bound or _default_node()) != picked:
+                continue
             pn = _pname(project, inst)
             mine = by_proj.get(pn, [])
             rec = _read_rec(project, inst)
@@ -1502,7 +1611,8 @@ def overview():
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
                                 else ""),
             })
-    return {"error": cs["error"], "blind": blind, "instances": out,
+    return {"error": cs["error"], "blind": blind, "node": picked,
+            "instances": out,
             # The running job, if there is one. The manager used to look for
             # it on the status snapshot under a key nothing has ever set, so
             # `busy` was permanently false: a row kept saying "never built"
@@ -1525,7 +1635,7 @@ def overview():
 COMPOSE_MAX = 200_000            # a compose file is a page, not a payload
 
 
-def create_container(name, compose_text, env_text=""):
+def create_container(name, compose_text, env_text="", node=""):
     """A container from a compose file written here, with no project behind it.
 
     The shape every other Docker front end uses: a stack is a name, a compose
@@ -1562,11 +1672,15 @@ def create_container(name, compose_text, env_text=""):
     # the file turns out not to parse, so a refusal leaves nothing behind.
     with _lock:
         d2 = _load()
-        _rec(d2, slug, MAIN)["source"] = "file"
+        rec = _rec(d2, slug, MAIN)
+        rec["source"] = "file"
+        if node:
+            rec["node"] = str(node)
         write_json(FILE, d2)
     if (env_text or "").strip():
         write_env(slug, env_text, MAIN)
-    r = _run(_compose(slug, MAIN, "config", "-q"), timeout=30)
+    with on_node(_instance_node(slug, MAIN)):
+        r = _run(_compose(slug, MAIN, "config", "-q"), timeout=30)
     if r["code"] != 0:
         forget_container(slug)
         return {"error": ("compose will not read that:\n" + r["out"]).strip()[-600:]}
@@ -1582,6 +1696,8 @@ def overview_names():
 
 def update_container(name, compose_text, env_text):
     """Change what a container is, after it exists.
+    (Validation runs against the container's own node — see the on_node in
+    the body.)
 
     Ports move, a volume is added, an image is pinned — a compose file written
     here is edited far more often than it is created, and without this the only
@@ -1606,7 +1722,8 @@ def update_container(name, compose_text, env_text):
         f.write_text(compose_text, encoding="utf-8")
     except OSError as e:
         return {"error": f"could not write it: {e}"}
-    r = _run(_compose(name, MAIN, "config", "-q"), timeout=30)
+    with on_node(_instance_node(name, MAIN)):
+        r = _run(_compose(name, MAIN, "config", "-q"), timeout=30)
     if r["code"] != 0:
         with contextlib.suppress(OSError):
             f.write_text(was, encoding="utf-8")
@@ -1640,8 +1757,13 @@ def forget_container(name):
         pass
 
 
-def create_instance(project, name):
+def create_instance(project, name, node=""):
     """Register a new instance of a project. Nothing is built or started.
+
+    `node` is which docker-host the instance is bound to — the daemon every
+    action on it will address. Empty means the default node, resolved at USE
+    rather than stored, so an instance made before a second node existed
+    follows the default when it moves.
 
     The name is slugged the same way it will be when it reaches a compose
     call, and checked against the slug rather than the typing — `My App` and
@@ -1665,13 +1787,16 @@ def create_instance(project, name):
         clash = name_clash(project, slug)
         if clash:
             return {"error": clash}
-        _rec(d, project, slug)
+        rec = _rec(d, project, slug)
+        if node:
+            rec["node"] = str(node)
         write_json(FILE, d)
     _bump()
     return {"ok": True, "project": project, "instance": slug,
             "name": _pname(project, slug)}
 
 
+@_on_instance
 def remove_instance(project, instance):
     """Take a container out of the manager: down it, then forget the record.
 
@@ -1914,6 +2039,7 @@ def stale_name(project, instance=MAIN):
     return ""
 
 
+@_on_instance
 def migrate_name(project, instance=MAIN):
     """Move an instance's things from the name it had to the one it has now.
 
@@ -2054,6 +2180,7 @@ def ensure_dirs(project, instance=MAIN):
     return r
 
 
+@_on_instance
 def make_dirs(project, instance=MAIN):
     """Create the bind directories this container can reach. (made, failed).
 
@@ -2386,6 +2513,7 @@ def _dirty(project):
     return r["code"] == 0 and bool(r["out"].strip())
 
 
+@_on_instance
 def state(project, instance=MAIN):
     """Everything the Artifacts row needs, or the reason there is no row."""
     if compose_file(project) is None:
@@ -2476,6 +2604,7 @@ def state(project, instance=MAIN):
 # ---------------------------------------------------------------------------
 # actions
 
+@_on_instance
 def up(project, instance=MAIN, ack=""):
     # Refusals first, so a request that is going to be turned down does not
     # flash a job at every other browser on its way to saying no.
@@ -2537,6 +2666,7 @@ def up(project, instance=MAIN, ack=""):
     return {"ok": True}
 
 
+@_on_instance
 def down(project, instance=MAIN):
     if not _claim(project, instance, "stopping"):
         return dict(BUSY)
@@ -2561,6 +2691,7 @@ def down(project, instance=MAIN):
     return {"ok": True}
 
 
+@_on_instance
 def rebuild(project, instance=MAIN, ack=""):
     """Build, then bounce — or stop at the env gate. In a thread: a build is
     minutes, and the poll watches it through job_rev."""
@@ -2598,6 +2729,12 @@ def _clear_marker(project, instance=MAIN):
 
 
 def _worker(project, instance=MAIN):
+    # Its own thread, so the caller's node context did not come with it.
+    with on_node(_instance_node(project, instance)):
+        _worker_body(project, instance)
+
+
+def _worker_body(project, instance):
     try:
         r = _run(_compose(project, instance, "build"), timeout=3600,
                  env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,

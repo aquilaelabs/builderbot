@@ -1257,22 +1257,30 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
   writeFileSync(`${LD}/docker.log.2`, 'x'.repeat(64));
   const week = Date.now() / 1000 - 7 * 86400;
   utimesSync(`${LD}/docker.log.2`, week, week);
+  // The control graduated from the gear to the Settings tab with everything
+  // controller-scoped (docs/nodes.md §13); the gear keeps this browser's
+  // items and the door.
   await page.click('#bCards');
-  await page.waitForSelector('#logApply');
-  await page.fill('#logDays', '3');
-  await page.click('#logApply');
+  await page.waitForSelector('#uiSettings');
+  ok(await page.evaluate(() => !document.querySelector('#uiMenu #logApply')),
+     'the gear holds appearance and a door, not the log policy');
+  await page.click('#uiSettings');
+  await page.waitForSelector('.settingstab #logApply');
+  await page.fill('.settingstab #logDays', '3');
+  await page.click('.settingstab #logApply');
   await page.waitForFunction(() => !document.querySelector('#logApply')?.disabled,
                              { timeout: 10000 });
   ok(!existsSync(`${LD}/docker.log.2`),
      'Apply crops what the new number already excludes, then and there');
-  await page.fill('#logDays', '30');
-  await page.click('#logApply');
+  await page.fill('.settingstab #logDays', '30');
+  await page.click('.settingstab #logApply');
   await page.waitForFunction(() => !document.querySelector('#logApply')?.disabled,
                              { timeout: 10000 });
   const back = await page.evaluate(() =>
     fetch('/api/status').then(r => r.json()).then(j => j.logs.days));
   ok(back === 30, '...and raising it again is just a setting, with nothing to crop');
-  await page.keyboard.press('Escape');
+  await page.evaluate(() => { const t = tabs.find(x => x.kind === 'settings');
+                              if (t) hideTab(t.id); });
 
   const bad = await api('/api/logs', { action: 'days', days: 'soon' });
   ok(bad.status === 400 && /number/.test(bad.body.error || ''),

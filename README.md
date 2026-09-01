@@ -384,6 +384,8 @@ bb claude-md --update   refresh that block only
 bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
+bb nodes           the node registry, read-only in a terminal — the Nodes
+                   tab is where it is edited; `local` is this container
 bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
@@ -1103,8 +1105,8 @@ lives in its body. The cards:
   every toolchain on the [SDK share](#sdks-live-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
-  is a bin on the row. Beside it, **Docker manager…** and **Static
-  analysis**, each a tab of its own
+  is a bin on the row. Beside it, **Docker manager…**, **Static analysis**
+  and **Nodes**, each a tab of its own
 - a **checklist** per project, carrying how much is still to hand over here —
   the same number the panel shows, refreshed with every poll and again the
   moment you open it. It opens
@@ -1227,6 +1229,66 @@ unknown** rather than reporting one nobody asked for: an unreachable daemon is
 not evidence that anything stopped. It is also fast, because a daemon known to
 be off is asked nothing — `docker ps` over ssh to a machine that is not there
 sits until its timeout, and that used to be the whole cost of finding out.
+
+**With more than one docker host, the manager grows a node picker.** Nodes
+with the `docker-host` capability are listed online or not; picking one
+switches the whole view to that node's daemon — one tab, re-rendered, never a
+tab per node. Each node's last-known container list is kept, so switching to
+an offline node paints instantly in the greyed state above rather than
+spinning at a machine that will not answer, and the reason is that node's
+own. **New container…** and **Send to Docker manager…** gain the same select,
+defaulting to the project's own node from its settings dialog (a per-project
+binding, `auto` unless chosen); an instance stays bound to the node it was
+created on, and everything that acts on it — Up, Down, Rebuild, the data
+directory's one-shot containers — addresses that node's daemon.
+
+### The Nodes tab
+
+**Tools → Nodes** is the registry (docs/nodes.md): every machine work can run
+on, `local` — this container — first. A row carries the node's state,
+capability toggles (`docker-host`, `package-build`, `deploy-target`), labels
+and census, with **Test** (probe its daemon now, sandbox stamp included),
+**Drain** (finish what is running, accept nothing new — what makes a node
+safe to reboot) and **Remove** (retire: off every list, row kept as history —
+an id is never reused). **Add node** takes a bare address and fills in
+`ssh://` and the `bb` account, exactly as `DOCKER_HOST` did; the machine
+should be one `vm/provision.sh` set up, and Test says so if it is not. The
+local node refuses `docker-host` on purpose — it is not a sandbox. Every
+change writes an audit row.
+
+**Enroll node** is the other way in, and the one the design is built around:
+it makes a pending row and mints a one-time token (`bbe_…`, good for a day),
+shown once inside the command to run on the machine —
+`sudo bash provision.sh --controller URL --token bbe_…`, or the two-line
+version that fetches `builderbot-agent` by hand. The provisioner downloads
+the agent from the controller itself (checking it against the digest the
+controller sends), enrolls, and leaves it running under systemd. From then
+on the node **dials out**: no port is opened on it, the controller holds no
+key that logs in anywhere, and the credential the node keeps
+(`/etc/builderbot/node.json`, 0600) opens its own row and nothing else.
+Revoke on the row ends it; the agent says so in its journal and the row goes
+quiet, keeping its history.
+
+An agent node's row is *live* when a poll has arrived within the last 75
+seconds, and the poll carries the numbers — CPU, memory, jobs running and
+free space per store (`data`, `packages`, `cache`) — so the row shows them
+and `bb nodes` marks liveness (`●` live, `○` quiet, `✗` revoked). Test runs
+`uname` there through the channel and shows the answer. Jobs run as the
+account the node enrolled (`bb`, the docker account), never as root, and a
+job needing a capability the node was not enrolled with is refused **on the
+node** (exit 77), whatever the row says. Over plain http the node token
+travels in the clear, as the dashboard's own credential does; enrollment says
+so, and with TLS in front of the dashboard the agent pins the certificate on
+first use and refuses a different one after.
+
+### The Settings tab
+
+The gear in the header keeps what belongs to this **browser** — theme and
+layout — and one entry, **All settings…**, opening the Settings tab: what the
+**controller** owns and can apply live. The session-log policy lives there
+now, the node-flavored settings land as their phases do, and the tab says
+plainly what still comes from the environment and why (the placement rule and
+the unhardwiring are docs/nodes.md §13 and §11).
 
 Each row folds open to show what that container publishes and what it mounts,
 read only when you open it — parsing a compose file is the one thing the page
@@ -2742,11 +2804,15 @@ scripts/
     projects.py                  new project / link to GitHub, and the worker that clones and pushes
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
     todo.py                      the roadmap; `bb roadmap` drives the same file
+    nodes.py                     the node registry, audit trail, SQLite store and the agent's channel (docs/nodes.md)
+    migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
+  agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
+vm/provision.sh                  turns a Debian/Ubuntu VM into the Docker sandbox, and enrolls it as a node
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)

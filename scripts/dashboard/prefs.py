@@ -73,7 +73,11 @@ def _clean(rec):
     """
     rec = rec if isinstance(rec, dict) else {}
     return {"model": rec.get("model") if rec.get("model") in MODELS else "",
-            "effort": rec.get("effort") if rec.get("effort") in EFFORTS else ""}
+            "effort": rec.get("effort") if rec.get("effort") in EFFORTS else "",
+            # Which docker-host node this project's containers default to.
+            # A node id, opaque here: prefs stores the choice, the pickers
+            # resolve it, and "" means auto — the default docker node.
+            "dockernode": str(rec.get("dockernode") or "")}
 
 
 def get(project):
@@ -87,8 +91,8 @@ def all_projects():
     return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
 
 
-def set_prefs(project, model=None, effort=None):
-    """Change either half of one project's pair; None leaves it, "" clears it."""
+def set_prefs(project, model=None, effort=None, dockernode=None):
+    """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
     with _lock:
@@ -102,10 +106,12 @@ def set_prefs(project, model=None, effort=None):
             if effort not in EFFORTS and effort != "":
                 return {"error": f"not an effort this can set: {effort}"}
             cur["effort"] = effort
+        if dockernode is not None:
+            cur["dockernode"] = str(dockernode)[:40]
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if cur["model"] or cur["effort"]:
+        if cur["model"] or cur["effort"] or cur.get("dockernode"):
             d["projects"][project] = cur
         else:
             d["projects"].pop(project, None)
