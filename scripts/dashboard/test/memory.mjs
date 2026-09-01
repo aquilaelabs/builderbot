@@ -5,7 +5,8 @@
 //
 // The writes run for real against the scratch home, so this also checks the
 // part that matters most: a delete takes the index line out with the file.
-import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR, openFold } from './lib.mjs';
+import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR,
+         openFold, animatedDuring } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const MEM = `${DIR}/home/.claude/projects/${(DIR + '/ws/alpha').replaceAll('/', '-')}/memory`;
@@ -136,8 +137,18 @@ await page.waitForFunction(() => document.querySelectorAll('#memDrift div').leng
 ok(true, 'which leaves the panel with nothing to warn about');
 
 // ---- writing one by hand -------------------------------------------------
-await page.click('#memAdd .link');
-await page.waitForSelector('#naTitle');
+// It unrolls. The form replaces a one-line link with eight fields, and doing
+// that in one frame threw the list under it down the page — the same jump the
+// folds, the drop boxes and the card headers all exist not to make. Height,
+// like all of them, so the lines below ride down instead of being teleported.
+{
+  const seen = await animatedDuring(page, async () => {
+    await page.click('#memAdd .link');
+    await page.waitForSelector('#naTitle');
+  });
+  ok(seen.some(n => /\bmemAdd\b/.test(n)),
+     'the memory writer unrolls rather than appearing whole');
+}
 ok(await page.evaluate(() => document.activeElement?.id !== 'naTitle'),
    'the form opens without a cursor in it, like the rest of this window');
 await page.type('#naTitle', 'No parsed progress');
@@ -164,6 +175,18 @@ ok(read('MEMORY.md').includes('- [No parsed progress here](no-parsed-progress.md
    '...and gets its line in the index in the same act, never one without the other');
 ok(await page.$('#naTitle') === null && await page.$('#memAdd .link') !== null,
    'the form folds back to the button afterwards');
+{
+  // ...and folding back is the same motion, in reverse: Cancel and a written
+  // memory both roll it up rather than snapping the list upward.
+  await page.click('#memAdd .link');
+  await page.waitForSelector('#naTitle');
+  const seen = await animatedDuring(page, async () => {
+    await page.click('#naCancel');
+    await page.waitForFunction(() => !document.getElementById('naTitle'));
+  });
+  ok(seen.some(n => /\bmemAdd\b/.test(n)),
+     '...and Cancel rolls it back up, rather than the list jumping to meet it');
+}
 
 // ---- the memory log --------------------------------------------------------
 // What the notebook changed here, with when. Claude's own memory writes are

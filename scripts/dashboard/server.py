@@ -2056,7 +2056,7 @@ def reports_mtime():
 # fetching and parsing the full reports, so the totals ride the status poll —
 # cached on report mtime, because the SARIF can run to megabytes and the poll
 # arrives every 15 seconds.
-_findings_counts = {"mtime": -1, "projects": {}, "heads": []}
+_findings_counts = {"mtime": -1, "projects": {}, "heads": [], "ok": False}
 
 
 def findings_counts(ps):
@@ -2095,7 +2095,7 @@ def findings_counts(ps):
     key = (stamp, tuple(sorted(valid)), tuple(sorted(nonproject)),
            tuple(sorted(dropped)))
     if _findings_counts["mtime"] != key:
-        per, rows_by, broken = {}, {}, False
+        per, rows_by, broken, good = {}, {}, False, 0
         # Where the unplaceable ones came from, counted by the head of their
         # path. A bare number on that row says something is wrong and nothing
         # about what: the honest answer for the nine left here is "mobsfscan
@@ -2106,6 +2106,7 @@ def findings_counts(ps):
         for f in files:
             rep = parse_sarif(f, valid, nonproject)
             broken = broken or bool(rep.get("error"))
+            good += 0 if rep.get("error") else 1
             for row in rep["findings"]:
                 if row["project"] == IGNORED:
                     continue        # the SDK share et al: see _project_of
@@ -2119,6 +2120,13 @@ def findings_counts(ps):
         _findings_counts["heads"] = sorted(
             ({"head": k, "n": v} for k, v in heads.items()),
             key=lambda h: -h["n"])[:4]
+        # Whether anything here is readable at all, counted while the parse is
+        # in hand rather than paid for again: the Analysis surfaces ghost on
+        # this, and re-reading every report to answer "is there a report" would
+        # be the expensive half of the poll run for a disabled button. A report
+        # that parses and holds no findings is readable — a clean scan is a
+        # result, not an absence.
+        _findings_counts["ok"] = good > 0
         # A report that failed to parse is not cached: half-written is the
         # usual reason, and the next poll should read it whole.
         _findings_counts.update(mtime=None if broken else key, projects=per)
@@ -2144,6 +2152,16 @@ def findings_counts(ps):
     # empty key, which is an unattributed path) can be in there at all, and
     # the cache is keyed on the valid set so a change to it re-parses.
     return dict(_findings_counts["projects"])
+
+
+def reports_ok():
+    """Whether the Analysis surfaces have anything they can actually read.
+
+    Three ways to have nothing: no /reports mount, nothing in it, or nothing in
+    it that parses — and a control that is off wants one answer, not three. Read
+    after findings_counts, which is what fills it.
+    """
+    return bool(REPORTS.is_dir() and _findings_counts["ok"])
 
 
 def findings_heads():
@@ -2262,6 +2280,9 @@ def snapshot():
         # ...and, for the row they land on, what those paths actually look
         # like. Order matters: this reads what the call above computed.
         "findings_heads": findings_heads(),
+        # ...and whether there is a readable report at all, which is what the
+        # Static analysis button and the Analysis tab ghost on.
+        "reports_ok": reports_ok(),
         # ...and when each report was written, so one left behind by a failed
         # scanner is visible rather than silently counted as current.
         "reports_ages": reports_ages(),

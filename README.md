@@ -1174,6 +1174,24 @@ mounted while you try a VM is a reasonable thing to be in the middle of and
 being told beats wondering. `bb doctor` prints the same line from the same
 function, so the two cannot disagree about which daemon is live.
 
+**A daemon has to say it is the sandbox before anything is driven on it.**
+`vm/provision.sh` writes a `builderbot.sandbox` label into the VM's
+`/etc/docker/daemon.json`; the dashboard reads it back with `docker info` over
+the ssh connection it already has, and a daemon without it is refused exactly
+like an unreachable one — named as the reason, with the command to fix it. An
+ssh address only proves somebody typed one, and every one-shot container the
+manager runs is root on the far side: what makes that reasonable is the far
+side being a box built to be wrecked, which is a thing only the provisioner
+can vouch for. A VM set up before this shipped has no stamp; re-running
+`provision.sh` adds it and changes nothing else.
+
+**Point it at a different sandbox and that one becomes the source of truth.**
+A build records the daemon's own id as well as its address, because two VMs can
+wear one address — a rebuilt sandbox, a second machine given the old one's IP.
+When the id changes, records claiming a build on the machine no longer in play
+are cleared rather than left quoting a version this daemon has never seen; the
+instances stay, since their compose file and env are this side's.
+
 **With no daemon reachable, the controls that would drive one are disabled**,
 each carrying the reason as its tooltip, and the manager tab says the same
 thing in words at the top — a tooltip is not reachable on a phone, and *"why is
@@ -1188,6 +1206,16 @@ memo, so a daemon wired up a moment ago is noticed by pressing it rather than
 by waiting. **Edit** and **Env** open a compose file, which is a file whatever
 can run it. And the manager tab still opens, because disabling the way to
 *read* a diagnosis is how a dashboard goes quiet for no visible cause.
+
+**The rows are still there, and they stop claiming anything.** What an
+instance *is* — its name, its project, what it was last built from, what its
+env still wants — lives on this side of the wire and needs no daemon; only
+whether it is *running* is the daemon's to know. So a manager opened against a
+VM that is off lists everything on record, greyed, each row saying **state
+unknown** rather than reporting one nobody asked for: an unreachable daemon is
+not evidence that anything stopped. It is also fast, because a daemon known to
+be off is asked nothing — `docker ps` over ssh to a machine that is not there
+sits until its timeout, and that used to be the whole cost of finding out.
 
 Each row folds open to show what that container publishes and what it mounts,
 read only when you open it — parsing a compose file is the one thing the page
@@ -1313,7 +1341,11 @@ a placeholder, and **+** starts over.
   whole report, a project selector, and a filter bar (level, free text) — a
   *document* tab, not a terminal. It is a report to read; putting it through a
   PTY would only make it harder to. The notebook's own Analysis view is the
-  same report already narrowed to that project.
+  same report already narrowed to that project. With nothing readable in
+  `/reports` the button is **ghosted** and says which of the three reasons it
+  is — no mount, nothing in it, or nothing in it that parses — and a tab
+  restored from a saved layout is closed once, on the load that finds out,
+  rather than left open to say "nothing here"
 - **— on a tab minimizes it**, and asks nothing. The terminal keeps running
   and is listed under Sessions, where **Open** brings it back; a **Claude** tab
   is the same, the conversation carries on without a tab. Nothing is lost, so

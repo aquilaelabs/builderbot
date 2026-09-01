@@ -676,7 +676,7 @@ ok(hp.falseparity[0]['/workspace'] === '/workspace'
 // for a long time the only candidate was this container. That is the entire
 // reason /devdata had to be mounted here as well as over there.
 const dd = execFileSync('python3', ['-c', `
-import importlib.util, json, os, tempfile
+import importlib.util, json, os, tempfile, time
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -700,6 +700,16 @@ def fake(argv, timeout=60, **kw):
     return {'code': 0, 'out': ''}
 m._run = fake
 
+# The guard asks whether the daemon is a VERIFIED sandbox — an ssh address and
+# a daemon carrying the provisioner's label — and asking costs a docker info,
+# which the fake above cannot answer. Primed rather than stubbed out: the memo
+# is the real path, so what is tested below is the real check reading a real
+# answer, and blanking it is how the proxy case says no.
+def verified(on, uid='STUBDAEMON1'):
+    m._avail.update(when=time.time(), val=({'on': True, 'why': '', 'id': uid}
+                                           if on else {'on': False, 'why': 'no'}))
+verified(True)
+
 out = {}
 os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
 # The VM makes it, and BB_DEV_DATA is the path on THAT machine — the share is
@@ -717,7 +727,9 @@ out['named'] = [m.dev_data_dir('alpha', make=False), calls[:]]
 # BB_DEV_DATA fails loudly instead of writing to a directory docker invented.
 calls.clear()
 os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
+verified(False)
 out['proxy'] = [m._dev_data_env('alpha'), calls[:]]
+verified(True)
 
 # A rename reaches over there too, or the instance's data is orphaned under
 # the old name with nothing said about it.
@@ -772,7 +784,15 @@ out['guard'] = {
   'free run': m._guard([m.DOCKER, 'run', '--rm', '-v', '/:/host', 'alpine', 'sh']),
 }
 os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
+verified(False)
 out['guard']['ours, on the proxy'] = m._guard(mk)
+# ...and an ssh address whose daemon does not carry the provisioner's label is
+# refused the same way. The address was the whole check once; a machine that
+# merely answers Docker on ssh is not the box built to be wrecked.
+os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+verified(False)
+out['guard']['unstamped sandbox'] = m._guard(mk)
+verified(True)
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const DDD = JSON.parse(dd.trim().split('\n').pop());
@@ -1010,7 +1030,7 @@ ok(/already alpha/.test(NM.project_told),
 // root fails and takes the run down, leaving the directory behind so the
 // SECOND press works. So they are made first, by whoever owns them.
 const mkd = execFileSync('python3', ['-c', `
-import importlib.util, json, os, tempfile
+import importlib.util, json, os, tempfile, time
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -1031,6 +1051,10 @@ def fake(argv, timeout=60, **kw):
     calls.append({'argv': argv, 'refused': bad})
     return {'code': 126 if bad else 0, 'out': bad}
 m._run = fake
+# The guard wants a VERIFIED sandbox, and verifying costs a docker info the
+# fake above cannot answer. Primed, like the sibling block: the memo is the
+# real path this check reads.
+m._avail.update(when=time.time(), val={'on': True, 'why': '', 'id': 'STUBDAEMON1'})
 m._load = lambda: {'p': {'main': {}}}
 cfg = {'services': {'a': {'volumes': [
     here + '/new/data:/data', here + '/already:/x',
@@ -1102,7 +1126,7 @@ ok(/nothing to migrate/.test(MG.again.error || ''),
 // A control you must press before another control is not a step, it is a
 // trap: Up failed, and the reason was a second button sitting unpressed.
 const pre = execFileSync('python3', ['-c', `
-import importlib.util, json, os, tempfile
+import importlib.util, json, os, tempfile, time
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
@@ -1127,6 +1151,9 @@ def fake(argv, timeout=60, **kw):
     seen.append({'argv': argv, 'refused': bad})
     return {'code': 126 if bad else 0, 'out': bad}
 m._run = fake
+# Primed like the sibling blocks: the guard asks whether the daemon is a
+# verified sandbox, and the fake cannot answer a docker info.
+m._avail.update(when=time.time(), val={'on': True, 'why': '', 'id': 'STUBDAEMON1'})
 m.up('p')
 out = {
   # Ordered: every mkdir has to be finished before the compose that needs it.
@@ -1323,11 +1350,107 @@ ok(await page.$eval('#bDockerRe', b => !b.disabled),
 ok(await page.$$eval('.dmtab [data-dm="edit"],.dmtab [data-dm="env"]',
                      bs => bs.every(b => !b.disabled)),
    '...as do Edit and Env: a compose file is a file whatever can run it');
+// The rows stay, and stop claiming anything. The tab used to render one error
+// line and no rows at all, throwing away everything it could still honestly
+// say — which is most of it: what an instance is, and what it was built from,
+// live on this side. Only "running" is the daemon's to know, and an
+// unreachable daemon is not evidence that anything stopped.
+ok(await page.$$eval('.dmtab .row[data-inst]', rs => rs.length > 0),
+   'the rows are still listed with no daemon — the tab shows what is on record');
+ok(await page.$$eval('.dmtab .row[data-inst]',
+                     rs => rs.every(r => r.classList.contains('off'))),
+   '...greyed, every one of them, so an inert row looks inert before you press');
+ok(await page.$$eval('.dmtab .row[data-inst] .state',
+                     ss => ss.length > 0 && ss.every(e => /state unknown/.test(e.textContent))),
+   '...saying the state is unknown rather than reporting one nobody asked for');
+ok(await page.$$eval('.dmtab .row[data-inst] .state,.dmtab .row[data-inst] .dmstate',
+                     es => es.every(e => !e.classList.contains('ok'))),
+   '...and nothing shows as running: green is a claim about a daemon that is not answering');
 await page.evaluate(() => { state.docker = { on: true, why: '' };
                             dockerRev++; drawPanes(); });
 await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled === false,
                            null, { timeout: 8000 });
 ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean');
+
+// The same again, but for real: the stub daemon stops answering `docker
+// version` at all, which is a VM that is powered off or an address that is not
+// one. The server must not spend its `ps` timeout finding that out — every row
+// it can draw comes from the store on this side — and the tab must come back
+// with them rather than with one error line.
+{
+  writeFileSync(`${DIR}/dockerstate/version.fail`, '');
+  const t0 = Date.now();
+  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
+  await page.waitForFunction(() => dockerList && dockerList.blind === true,
+                             null, { timeout: 20000 });
+  ok(Date.now() - t0 < 15000,
+     'a daemon that is not there is asked nothing — no ps timeout to sit through');
+  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  ok(await page.$$eval('.dmtab .row[data-inst]', rs => rs.length > 0),
+     '...and the manager still lists what is on record');
+  ok(/does not answer|not answering/.test(
+       await page.$eval('.dmtab .empty', e => e.textContent)),
+     '...with the daemon\'s own words for why it is all greyed');
+  rmSync(`${DIR}/dockerstate/version.fail`, { force: true });
+  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
+  await page.waitForFunction(() => dockerList && !dockerList.blind,
+                             null, { timeout: 20000 });
+  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  ok(await page.$$eval('.dmtab .row[data-inst]',
+                       rs => rs.some(r => !r.classList.contains('off'))),
+     '...and it comes back live when the daemon does, with no un-gating to do');
+}
+
+// A daemon that answers is not the same thing as the sandbox. Everything the
+// manager does beyond compose runs a container as root over there, and the
+// whole reason that is acceptable is that the far side is a box built to be
+// wrecked — so the daemon has to carry the label vm/provision.sh puts on the
+// one it made, and an unlabelled machine is refused rather than driven.
+{
+  writeFileSync(`${DIR}/dockerstate/unlabelled`, '');
+  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
+  await page.waitForFunction(() => dockerList && dockerList.blind === true,
+                             null, { timeout: 20000 });
+  await page.evaluate(() => { dockerRev++; drawPanes(); });
+  ok(/not a BuilderBot sandbox/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
+     'a daemon with no provisioner stamp is refused, and named as the reason');
+  ok(/provision\.sh/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
+     '...saying what to run on the VM, since re-running it is the whole fix');
+  rmSync(`${DIR}/dockerstate/unlabelled`, { force: true });
+  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
+  await page.waitForFunction(() => dockerList && !dockerList.blind,
+                             null, { timeout: 20000 });
+  ok(true, '...and a stamped one is talked to again');
+}
+
+// Plug in a DIFFERENT sandbox and that one becomes the source of truth. Two
+// VMs can wear one address — a rebuilt sandbox, a second machine given the old
+// one's IP — so what a build was recorded against is checked by the daemon's
+// own id as well, and a record from the machine no longer in play is cleared
+// rather than left quoting a build that this daemon has never heard of.
+{
+  const store = () => JSON.parse(readFileSync(`${DIR}/state/devapps.json`, 'utf8'));
+  // Build something, so there is a record to be about a daemon at all.
+  await page.evaluate(() => dmAction('ep.silon', 'main', 'rebuild'));
+  await page.waitForFunction(() => {
+    const d = (dockerList?.instances || []).find(x => x.instance === 'main');
+    return d && d.built_rev;
+  }, null, { timeout: 60000 }).catch(() => {});
+  const rec = () => (store()['ep.silon'] || {}).main || {};
+  ok(!!rec().rev && !!rec().daemon_uid,
+     'a build records which daemon it landed on, by that daemon\'s own id');
+  writeFileSync(`${DIR}/dockerstate/uid`, 'A-DIFFERENT-VM');
+  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
+  await page.waitForFunction(() => dockerList && !dockerList.blind, null, { timeout: 20000 });
+  ok(!rec().rev && !rec().daemon_uid,
+     '...and pointing this at another sandbox clears it: the new daemon is the '
+     + 'source of truth, not the last one\'s answers');
+  ok(!!(store()['ep.silon'] || {}).main,
+     '...while the instance itself stays — its compose and its env are this side\'s');
+  rmSync(`${DIR}/dockerstate/uid`, { force: true });
+  await page.evaluate(() => { dockerList = null; dockerRev++; return loadDocker(); });
+  await page.waitForFunction(() => dockerList && !dockerList.blind, null, { timeout: 20000 });
+}
 
 // ---- which daemon ------------------------------------------------------
 // One arrangement now. The mounted socket and the proxy scan are gone, along

@@ -360,7 +360,24 @@ cat > "$S/bin/docker" <<'DOCKEREOF'
 ST="${DOCKER_STUB_STATE:?}"
 echo "$*" >> "$ST/docker.log"
 case "$1" in
-  version) echo "99.stub"; exit 0 ;;
+  # A daemon that is not there at all — the VM powered off, or an address that
+  # is not a sandbox VM. availability is what the page gates every Docker
+  # control on, so the suite has to be able to take it away.
+  version) [ -f "$ST/version.fail" ] && { echo "cannot connect to the daemon"; exit 1; }
+    echo "99.stub"; exit 0 ;;
+  # What the daemon says it is. The provisioner's label lives here, and this is
+  # how BuilderBot tells the sandbox from any other machine that answers
+  # Docker — so the suite can take the stamp away (unlabelled.fail) and can
+  # make it a DIFFERENT sandbox (uid file), which is the other question:
+  # whether records from the last one are cleared when a new one is plugged in.
+  info)
+    [ -f "$ST/info.fail" ] && { echo "cannot connect to the daemon"; exit 1; }
+    lbl='["builderbot.sandbox=1"]'
+    [ -f "$ST/unlabelled" ] && lbl='["com.example.other=1"]'
+    uid="STUBDAEMON1"
+    [ -f "$ST/uid" ] && uid="$(cat "$ST/uid")"
+    printf '{"ID":"%s","Labels":%s,"ServerVersion":"99.stub"}\n' "$uid" "$lbl"
+    exit 0 ;;
   ps)
     # The bare `docker ps` the Docker manager reads. Stateful, because the
     # manager derives running/stopped from it: a compose `up` leaves a marker
