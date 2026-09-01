@@ -577,23 +577,84 @@ deliberately mounted, the Nodes screen says what `local` means, and an
 enterprise deployment should be able to disable the local node entirely
 (one setting; the controller then schedules nothing onto itself).
 
-## 13. UI changes
+## 13. Settings and surfaces
 
-- **Docker manager**: a node selector listing every `docker-host` node, online
-  or not; per-node last-known container lists (already built, keyed by node id
-  now); the greyed "state unknown" language is exactly what an offline node's
-  cached view should say.
-- **Project settings**: which node (or selector — capability/labels/pool) runs
-  Actions; which compiles packages.
-- **Send artifact to Docker**: node picker, defaulting to the project's
-  configured node.
-- **Jobs**: a new tab — queue, running, recent; per-job log tail (the
-  dev-instance row's rendering, generalized). There is no "what is running"
-  view today because only one thing ever was.
-- **Nodes**: the screen in §11, plus the pending-approval strip when it has
-  members.
-- Later, enterprise-flavored and additive: an audit view, pool filters
-  everywhere a node list appears.
+The node work multiplies settings, and settings sprawl is how a dashboard
+stops being one. So before the screens: **every setting has exactly one scope,
+and the scope decides its surface and its storage.** Five scopes cover
+everything this design adds, and the rule for placing a future setting is at
+the end.
+
+**Browser-scoped** — theme, sidebar layout. Per viewer, cosmetic, instant.
+Stays where it is: the gear's popup. Nothing here changes.
+
+**Container-scoped** — what the process needs before it can think: ports,
+mounts, credentials, PUID/PGID, `DATABASE_URL` itself. Stays in the
+environment and the five documented places. The test for this scope: *if
+changing it means recreating the container, it is env.* This list should only
+ever shrink — `DOCKER_HOST` leaving it (§11) is the pattern.
+
+**Controller-scoped** — what the controller owns and can apply live:
+enrollment defaults (auto-approve, token TTL), retention (job logs, artifacts,
+failed workspaces), the local node's enablement, later the OIDC block. Stored
+in the database, audited like any mutation. Today this scope holds one
+setting (session-log retention, living in the gear popup); the node work
+gives it a dozen, and **a dozen settings do not fit in a flyout — the gear
+graduates.** The popup keeps the per-browser items plus one entry,
+**"All settings…"**, opening a **Settings document tab**: a `TABKINDS` entry
+rendering banded groups in the house pattern, same as every other document
+surface. The graduation lands with the first batch of controller settings
+(phase 2), not before — converting the popup while it holds one setting would
+be ceremony.
+
+**Project-scoped** — which node (or selector: capability/labels/pool) runs
+this project's Actions, compiles its packages, hosts its dev instance. These
+join the project row's existing settings dialog as a "Nodes" group beside
+model and effort — the dialog and its poll plumbing already exist
+(`claude-prefs.json`), and a second surface for per-project settings would be
+a second place to look. Each binding defaults to **auto by capability**, so a
+project that never opens the dialog behaves exactly as before. Storage:
+node *bindings* go in the database (they reference node ids, must survive a
+node's rename, and want auditing); the existing model/effort prefs stay where
+they are — no churn for its own sake.
+
+**Node-scoped** — capabilities, services, labels, pool, concurrency: the
+**Nodes tab**, a document tab opened from the Tools card beside Docker manager
+and Static analysis. Row anatomy in the house language: name, state as a pill
+(online / offline / draining / pending — the severity-pill palette already
+says how), capability toggles, labels, last-seen, and per-row Test / Drain /
+Remove; Enroll at the top; the pending-approval strip above the list when a
+bulk token is in play, in the same held-above-the-fold shape the phone card's
+asks use.
+
+**The rule for anything new:** *who has to be able to change it, and what has
+to restart for it to take?* Answer those two and the scope — and therefore
+the storage and the screen — is decided. A setting that shows up in two
+scopes is two settings wearing one name, and should be split before it ships.
+
+### The Docker manager, concretely
+
+- The "on ssh at …" source line becomes the **node picker**: a select over
+  every `docker-host` node, online or not, in the standard field skin. One
+  Docker tab, re-rendered per selection — not a tab per node.
+- The container cache (`dockerList`) becomes per-node, keyed by node id, so
+  switching nodes shows each one's last-known list instantly. An offline
+  node's view is the ghosted rows and "state unknown" language already built —
+  that work was this design's down payment.
+- Gating goes per-node: controls grey with *this node's* reason, not a global
+  one. Refresh retries the selected node only.
+- **New container…** and **Send to Docker manager…** gain a node select,
+  defaulting to the project's configured node, else the only node, else ask.
+- Once jobs land (phase 4), the row's build/log tail is the job view scoped to
+  that instance, and each row names the node it ran on.
+
+### The rest
+
+- **Jobs**: a new document tab — queue, running, recent; per-job log tail
+  (the dev-instance row's rendering, generalized). There is no "what is
+  running" view today because only one thing ever was.
+- Later, enterprise-flavored and additive: the audit view (a read of the
+  table phase 1 starts writing), pool filters wherever a node list appears.
 
 ## 14. Phased roadmap
 
@@ -610,9 +671,11 @@ notices nothing.
 
 **Phase 2 — Tools → Nodes, and multiple Docker hosts over ssh.**
 CRUD, capability toggles, labels, test, drain, remove. The sandbox VM becomes
-an ordinary node. The Docker manager gains its node selector and per-node
-caches. Delivers "more than one Docker host" with no agent written — worth
-doing even if nothing later happens.
+an ordinary node. The Docker manager gains its node picker and per-node
+caches; the project dialog gains its Nodes group; the gear graduates to the
+Settings tab as the first controller-scoped settings arrive (§13). Delivers
+"more than one Docker host" with no agent written — worth doing even if
+nothing later happens.
 
 **Phase 3 — the agent and enrollment.**
 Single-file Python agent, systemd unit, one-time tokens, `hello`/long-poll,
