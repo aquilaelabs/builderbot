@@ -562,6 +562,15 @@ Minimal and in the core, because both tiers debug the same way:
   and retrofitting it later means re-instrumenting every path.
 - **Structured job logs** are already in the model (chunks, per job, retained
   by policy); controller logs stay logs.
+- **Per-node performance metrics, from the agent.** CPU, memory, load and
+  per-store disk headroom, sampled every ~30s and shipped with the heartbeat —
+  the channel is already there, so this is a payload, not a feature. The
+  controller keeps the current sample per node (in the DB, so the row can
+  show it) and a short in-memory ring for a sparkline; long history is what
+  `/metrics` plus the operator's own stack is for, and the controller does
+  not become a time-series database. The Nodes row shows the numbers; the
+  Docker manager shows them beside the node picker, because "is this box
+  struggling" is a question you ask while staring at a build.
 
 ## 10. Scale and availability, honestly
 
@@ -610,6 +619,37 @@ Profiles rather than knobs: the config surface stays one file/env-set, and the
 **defaults are the homelab** (SQLite, single-use tokens auto-approved, local
 node enabled, no OIDC). An enterprise install sets `DATABASE_URL`, an OIDC
 block, and approval mode — and nothing else changes meaning.
+
+### The unhardwiring
+
+`DOCKER_HOST` is the first of a class, and the class should be named: this
+project has grown up hard-wiring runtime behavior into the container's
+environment, where changing anything means editing a template and recreating
+the container. That was fine while everything was one box; it is the wrong
+home for anything the node work touches, and the operator has asked for the
+shift to be explicit. So it is a standing rule with a precedence contract,
+not a one-off migration:
+
+- **Every env var gets a scope from §13.** Container-scoped ones (ports,
+  mounts, credentials, `DATABASE_URL`) stay env forever — that is what env is
+  for. Everything controller-scoped moves to the DB-backed settings the
+  Settings tab edits.
+- **Precedence: env seeds, the database owns.** On first boot a set env var
+  seeds the setting; from then on the DB value is the truth and the env var
+  is ignored — never a silent override, because two live sources for one
+  value is how a box disagrees with its own screen. The Settings tab marks
+  any setting that came from a seed, so where a value originated is never a
+  mystery.
+- **Each phase unhardwires the vars it touches**, and the five-places list
+  shrinks in the same commit — a moved setting leaves `.env.example`, the
+  compose file, the Unraid template and both docs together, with one
+  deprecation release where the seed still works and says so.
+
+The end state: `.env` is bootstrap — where the container runs and how it
+authenticates — and everything about *what the system does* lives in config
+the GUI can change and the audit log can attribute. That is most of what
+"easier to deploy" turns out to mean: a new install answers three questions
+in a template and does the rest from the dashboard.
 
 ## 12. Provisioning and the agent
 
@@ -666,6 +706,53 @@ house, and one file is reviewable); commit to the Go build the moment nodes
 are machines nobody set up by hand (bulk enrollment appearing is the trigger).
 The self-update mechanism (§4) is what makes swapping agents in place a
 non-event.
+
+### After provisioning: reconfiguring a node from the GUI
+
+Provisioning is once; a node's storage and network change over its life, and
+the operator has named the goal plainly: **never having to ssh in for it.**
+So the provisioner's decisions become a *configuration plane* the Nodes tab
+edits — declarative, applied by the agent, with the same desired-vs-reported
+split capabilities use:
+
+- The controller stores a node's **desired config**: mount entries (NFS or
+  virtiofs, with options and read-only flags), the role assignments from §6
+  (which path is `data`, `packages`, `cache`), and network settings (static
+  address, gateway, DNS, static routes).
+- A change is a **`system` job** — audited like any mutation, run by the
+  agent as the one root-privileged thing it does, applied idempotently
+  through the same logic `bb-sandbox` uses today. `bb-sandbox` itself
+  survives as the console fallback, reading and writing the same on-node
+  state, so the GUI and a rescue shell can never disagree about what the
+  node is configured to be.
+- The agent then **reports applied config** in its census, and the row shows
+  desired vs. actual — a mount that failed shows the mount error verbatim on
+  the row, not a greyed nothing.
+
+**Network changes get commit/confirm safety, because they are the one change
+that can cut the cord it arrives on.** The agent applies the new network
+config, cycles the stack, and must re-establish its connection to the
+controller within a window (default three minutes); if it cannot, it rolls
+back to the previous config automatically and reports the failure on
+reconnect. This is the dial-out architecture paying rent: the node finds the
+controller from *whatever* address it lands on, so the row simply says
+"applying network change — waiting for it to dial back in", and a bad
+gateway is a three-minute delay instead of a bricked VM and a console
+session. (The same pattern RouterOS and Proxmox users know as safe mode —
+familiar for a reason.)
+
+**Validity holds through all of it, because enrollment is the recognition.**
+For an agent node, "this is a real BuilderBot sandbox" is no longer inferred
+per-connection from a daemon label — it is the enrollment itself: the node
+token, the stamp written at provision time, and the `disposable` marking.
+Reconfiguring storage or network changes none of those, so nothing the GUI
+does here can un-recognize the node it is doing it to. Root-level system
+jobs are *offered only* to nodes that carry the stamp — a machine enrolled
+as a plain builder never shows the mounts-and-network panel at all, which is
+the capability rule (§2) applied to the most privileged thing the agent
+does. Legacy `ssh` nodes keep the daemon-label check they have today and do
+not get the configuration plane; absorbing bb-sandbox's menu is the agent's
+job, not ssh's.
 
 And the caution that survives from the first pass, now with a sharper edge:
 **the `local` node is not a sandbox.** Jobs placed on it run inside the
@@ -840,11 +927,13 @@ Settings tab as the first controller-scoped settings arrive (§13). Delivers
 "more than one Docker host" with no agent written — worth doing even if
 nothing later happens.
 
-**Phase 3 — the agent and enrollment.**
+**Phase 3 — the agent, enrollment, and the numbers.**
 Single-file Python agent, systemd unit, one-time tokens, `hello`/long-poll,
-heartbeat, census; job type `exec` only — the channel proved end to end.
-Nodes may be `agent` or `ssh`; both work. **Stop and reassess here**: this is
-the phase that changes the project's shape.
+heartbeat and census — **metrics included** (§9): CPU, memory and per-store
+headroom ride the heartbeat from day one, because they prove the channel with
+something the operator actually wants to see. Job type `exec` only. Nodes may
+be `agent` or `ssh`; both work. **Stop and reassess here**: this is the phase
+that changes the project's shape.
 
 **Phase 4 — jobs and the queue.**
 The job model, placement function, streaming logs, concurrency, cancel,
@@ -852,27 +941,41 @@ drain-aware assignment. Move the Docker manager's compose actions onto it, so
 "rebuild" is a job with a log rather than a module global. The Jobs tab.
 `/healthz` and `/metrics` land here, with something to measure.
 
-**Phase 5 — workspace, caches, artifacts, and the package store.**
+**Phase 5 — the node configuration plane.**
+Storage roles, mounts and network editable from the Nodes tab (§12), applied
+by the agent as `system` jobs — which is why this sits after phase 4 — with
+the commit/confirm rollback for network changes. Deliberately **before** the
+package store and caches: they consume the roles this phase makes editable,
+and building them against provision-time-only roles would bake the ssh-to-fix
+workflow in for another year.
+
+**Phase 6 — workspace, caches, artifacts, and the package store.**
 Dirty-tree snapshots, per-node caches with size/clear, artifact upload +
 provenance chain, the read-only workspace browser. The Tools installer gains
 its node picker; toolchain installs become jobs against each node's packages
 store, gated on reported headroom. `package-build` becomes real: an APK
 compiles elsewhere and lands in the Artifacts tab.
 
-**Phase 6 — services.**
+**Phase 7 — services.**
 The Actions runner as a per-node managed service with per-node labels,
 installed/removed from the Nodes screen.
 
-**Phase 7 — deploy targets.**
+**Phase 8 — deploy targets.**
 Modes `lan` and `funnel`; the `route` record shaped for `public`.
 
-**Phase 8 — device hosts (optional).**
+**Phase 9 — device hosts (optional).**
 Job-scoped emulation first: instrumented-test jobs that boot an emulator on a
 GPU node for the life of the job and return results as artifacts — no network
 adb involved. The provisioner learns to install the GPU display arrangement
 on a node that has the card. The interactive `device-host` service (a
 long-lived emulator a session reaches over network adb) is designed in §2 and
 built only if the job-scoped path proves insufficient.
+
+**Running through every phase: the unhardwiring (§11).** Each phase moves the
+env vars it touches into the DB-backed settings, seeds-then-owns, and shrinks
+the five-places list in the same commit. Phase 2 starts it with the settings
+the new tab exists to hold; nothing waits for a dedicated migration phase,
+because there is not one.
 
 **Enterprise track** — not planned. There is no enterprise deployment today
 and pretending otherwise would put speculative code in the core; this list
