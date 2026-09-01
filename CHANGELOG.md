@@ -161,3 +161,7 @@
 - The GPU's X server is restarted up to three times if it dies, and bb emu gpu says so when it gives up, instead of the emulator quietly dropping to software (e8a3153)
 - Every document tab now shares one enforced template — bands, controls and phone rules are checked by a conformance suite, and a broken tab shows its error instead of taking the dashboard down (6cdaca4)
 - BuilderBot now keeps a node registry — this container is the 'local' node and the sandbox VM has its own record — and an audit trail of every change made through the dashboard, in /config/builderbot.db. 'bb nodes' lists it; nothing else changes yet (58bbd97)
+- Tools has a Nodes tab: register more docker hosts by address, toggle what each can do, drain one before rebooting it, test its daemon, retire it — every change audited (4ef08ea)
+- The Docker manager can look at any registered docker host — a node picker switches the view, offline nodes show their last-known containers greyed, and new containers pick the node they run on (4ef08ea)
+- Projects can choose which docker host their containers default to, in the project settings dialog (4ef08ea)
+- The gear menu keeps appearance; everything the container itself owns moved to a Settings tab behind 'All settings…', starting with the session-log policy (4ef08ea)
