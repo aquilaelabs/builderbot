@@ -107,8 +107,14 @@ somewhere-elses.
   "concurrency": 1,
   "state": "pending | online | offline | draining | retired",
   "reported": {                // the agent's own census, refreshed on connect
-    "cpu": 8, "mem_mb": 16000, "disk_free_mb": 240000,
-    "docker": "27.3.1", "java": "21", "android_sdk": true
+    "cpu": 8, "mem_mb": 16000,
+    "docker": "27.3.1", "gpu": "nvidia GeForce RTX 3070 Ti",
+    "toolchains": { "java": "21", "android-sdk": "35.0.2", "flutter": null },
+    "stores": {                // each ROLE's location and headroom, see §6
+      "packages": { "path": "/var/lib/builderbot/toolchains", "free_mb": 118000 },
+      "data":     { "path": "/appdata",                       "free_mb": 800000 },
+      "cache":    { "path": "/var/lib/builderbot/cache",      "free_mb": 118000 }
+    }
   },
   "routing": { "public_ip": false, "tailscale": "", "wildcard": "" }
 }
@@ -152,6 +158,23 @@ GitHub, not work the controller places. So the model splits in two:
 Same screen, same enrollment, different lifecycle. Runner labels become a
 per-node field — which an org wants anyway, because "the arm64 runners" is a
 sentence they will say.
+
+**A GPU node hosting Android emulation lands on this split too, and mostly on
+the job side.** The controller runs an emulator today because a session drives
+it interactively; a *node* with a GPU is more useful the other way around: an
+instrumented-test job ships to the node, the agent boots the emulator
+job-scoped (the same lifecycle as a workspace — up for the job, down after),
+runs the tests against it locally, and the results come back as artifacts.
+That path needs no network adb, no port forwarding and no new transport — it
+is an ordinary `package-build`-shaped job on a node whose census reports a
+GPU and an android-sdk. The interactive case — a session on the controller
+holding `adb` open to an emulator elsewhere — is a `device-host` **service**
+(long-lived, like the runner), reached over network adb, and it is the fragile
+half: worth designing the record for, not worth building first. The GPU
+display arrangement the controller already carries (a headless Xorg so EGL
+answers, with the bounded restart watch) becomes something the provisioner
+can install on a GPU node, which is all "GPU acceleration on a node" turns
+out to mean.
 
 **`pool` exists from day one and the homelab never sees it.** A pool is a
 named group of nodes ("default" unless set). It costs one column now. It is
@@ -407,6 +430,50 @@ cache size per node with a button to drop it — because the first thing that
 goes wrong with caches is a full disk, and at fleet scale the second thing is
 "which of forty nodes has the poisoned one".
 
+### Toolchains and the package store
+
+Caches answered "how does a node avoid re-downloading what a build pulls";
+this answers the question above it, which the plan had not: **how do the
+toolchains themselves — a JDK, the Android SDK, Flutter — get onto a node at
+all, and where do they live?** Today the answer is the controller's SDK share
+and `bb sdk`, operator-gated; that has to generalize without forking.
+
+- **One catalog, per-node state.** `config/packages.json` stays the single
+  description of what is installable and how. What becomes per-node is the
+  *state*: the census reports which toolchains a node has and at what version
+  (`reported.toolchains`), probed by the agent the same way `bb sdk` probes
+  locally. The controller never guesses from what it asked for; it reads what
+  the node says it has.
+- **Installing is a job.** A package install on a node is an ordinary job
+  (`type: exec`, spec from the catalog) placed on that node, with the same
+  logs, audit and one-at-a-time-per-node rule as everything else — which also
+  keeps the existing gate: sessions cannot trigger it, operators can, and now
+  the audit row says who did. The Tools tab's installer gains the same node
+  picker the Docker manager gets: pick a node, see what is installed *there*,
+  install or remove there. The controller is just the `local` row.
+- **The store is a role with a location, not a mount.** Each node has a
+  `packages` store — default an internal path
+  (`/var/lib/builderbot/toolchains`), because a node with its own disk should
+  not need NFS to hold a JDK. A share is allowed as the location where that
+  is what the operator wants (the controller's own SDK share is exactly this
+  case, so the local node needs nothing migrated). **Sharing one store
+  between several nodes is the trap to name**: two agents installing into one
+  NFS directory at once, or one upgrading under another mid-build, is version
+  skew nobody can debug — the default is one store per node, and a shared
+  store is a deliberate arrangement for co-located nodes with the
+  one-install-at-a-time rule enforced across them or not at all.
+- **Disk is checked before, not discovered after.** The catalog already knows
+  each package's size; the census reports each store's headroom. A
+  package-install job is refused at placement when the store cannot hold it —
+  named, with numbers — rather than failing at 91% of a 12GB download. The
+  same check gates a job's workspace materialization against the node's cache
+  store. This is most of what "any size of VM" means in practice: nothing in
+  the system assumes a size, everything that consumes disk asks first.
+
+`package-build` placement then follows from the census: a job that needs
+android tooling selects on `toolchains["android-sdk"]`, not on a label
+somebody remembered to set.
+
 ### Artifacts
 
 The job declares outputs as globs; the agent uploads on success,
@@ -556,6 +623,38 @@ autoscaler that talks to EC2/Azure/GCP is an external program using the same
 enrollment API; building three cloud SDKs into the controller is how the core
 stops being maintainable. The API is the extension point (§3).
 
+**Storage as roles, with transport separated out.** The current script
+conflates two questions the node model needs kept apart: *how a location is
+provided* (a virtiofs share, an NFS mount, a plain directory on the node's own
+disk) and *what it is for*. `bb-sandbox` already has the seed of the second —
+its `appdata` flag marks one mount as where containers keep data — but it
+requires the answer to be a mount, so a node with a big internal disk cannot
+say "just use /var/lib". The provisioner grows the roles as first-class flags,
+each taking either an internal path or a mount the script sets up:
+
+```
+--data      PATH | nfs:HOST:EXPORT[:opts]     where containers keep state
+--packages  PATH | nfs:HOST:EXPORT[:opts]     the toolchain store (§6)
+--cache     PATH                              build caches; internal by default
+```
+
+`--share`/`--nfs` remain the *transport* half for anything else the operator
+mounts; a role flag pointing at a mount implies it. Roles land in
+`/etc/builderbot/node.json`, the agent reports them (with headroom) in its
+census, and nothing on the controller ever hard-codes a path on a node again.
+Notably absent: a `--workspace` role for agent nodes — job-scoped snapshots
+replaced it (§6), and only legacy `ssh` nodes still mount source.
+
+**Any size of VM, by construction.** The script assumes no disk layout and no
+sizes: every role defaults to the node's own filesystem, a role can be pointed
+anywhere, and the script's only size opinion is a *warning* when a requested
+role's filesystem is visibly too small for what was asked (a `package-build`
+node whose packages store has 8GB free will not fit an Android SDK, and
+hearing that at provision time beats hearing it from a dying download). The
+running system's size decisions all live controller-side against the census
+(§6) — so a small VM is a valid node that simply qualifies for less, not a
+special case.
+
 **The agent: Python file first, static binary when nodes stop being pets.**
 The first pass recommended a single-file stdlib Python agent and deferred Go.
 With enterprise in scope the endgame is clearly a **static binary** —
@@ -689,10 +788,12 @@ drain-aware assignment. Move the Docker manager's compose actions onto it, so
 "rebuild" is a job with a log rather than a module global. The Jobs tab.
 `/healthz` and `/metrics` land here, with something to measure.
 
-**Phase 5 — workspace, caches, artifacts.**
+**Phase 5 — workspace, caches, artifacts, and the package store.**
 Dirty-tree snapshots, per-node caches with size/clear, artifact upload +
-provenance chain, the read-only workspace browser. `package-build` becomes
-real: an APK compiles elsewhere and lands in the Artifacts tab.
+provenance chain, the read-only workspace browser. The Tools installer gains
+its node picker; toolchain installs become jobs against each node's packages
+store, gated on reported headroom. `package-build` becomes real: an APK
+compiles elsewhere and lands in the Artifacts tab.
 
 **Phase 6 — services.**
 The Actions runner as a per-node managed service with per-node labels,
@@ -700,6 +801,14 @@ installed/removed from the Nodes screen.
 
 **Phase 7 — deploy targets.**
 Modes `lan` and `funnel`; the `route` record shaped for `public`.
+
+**Phase 8 — device hosts (optional).**
+Job-scoped emulation first: instrumented-test jobs that boot an emulator on a
+GPU node for the life of the job and return results as artifacts — no network
+adb involved. The provisioner learns to install the GPU display arrangement
+on a node that has the card. The interactive `device-host` service (a
+long-lived emulator a session reaches over network adb) is designed in §2 and
+built only if the job-scoped path proves insufficient.
 
 **Enterprise track** — not planned. There is no enterprise deployment today
 and pretending otherwise would put speculative code in the core; this list
