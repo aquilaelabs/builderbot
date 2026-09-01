@@ -2751,6 +2751,8 @@ config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)
 docs/unraid.md                   step-by-step Unraid walkthrough
+docs/sandbox-vm.md               the Docker sandbox VM: why, how, and pointing this at it
+docs/nodes.md                    design: controller + nodes, if this grows past one machine
 .hadolint.yaml                   Dockerfile lint config, shared by CI and bb lint
 .github/actionlint.yaml          this runner's labels, for workflow linting
 .github/workflows/               GHCR publish (hosted, cached from :latest); lint + dashboard
