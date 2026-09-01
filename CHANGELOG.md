@@ -142,3 +142,7 @@
 - A container written in the manager says Rebuild once it is built, and knows when its compose or env has moved since (3cf7e67)
 - Saving a container's compose or env offers to rebuild it, rather than leaving the change on disk unmentioned (3cf7e67)
 - A session's line in the Sessions list says what it is working on only while it is working, instead of keeping the last thing it did (2d6f5ec)
+- A compose install no longer ships a Docker setting the code refuses — DOCKER_HOST defaults to empty, not to a mode that no longer exists (9f0b661)
+- The dashboard's top-level names are written down and checked, so code that lands in the wrong scope is named immediately instead of failing somewhere else (21c3c62)
+- A container's ports are links, and they open the machine the container is actually on rather than the one serving the dashboard (f596076)
+- On a desktop the Docker manager lays a container out in columns — what it is, how it is, what it publishes — instead of four stacked lines (f596076)

@@ -844,6 +844,16 @@ by hand cost four commands and still could not see the failed builds.
   are not the code's — and while it was a step in the lint job it took the
   linters' verdict with it. Do not read a red `dashboard tests` as a
   regression without checking `bb ci-log`; see bug #19.
+  **A new top-level name is one line in `surface.mjs`.** index.html has no
+  module boundary — that is the design, and it is why the suite can drive its
+  internals — so nothing otherwise notices code landing in the WRONG scope. A
+  feature declared inside `makeNotebook` is invisible to the projects card and
+  fails at runtime, which is how it was found the first time. `surface.mjs`
+  holds the page's top-level names and compares both ways: MISSING means one
+  fell into a nested scope, NEW means a global appeared. The second is not an
+  error, it is a decision — this file already carries 84 mutable top-level
+  bindings, and adding a line there is the cost of adding another.
+
   **Add to it when you change the dashboard**;
   the pattern in `lib.mjs` (real touch via CDP, dialogs recorded, console
   errors collected) is the one to follow. Never write ad-hoc harnesses that

@@ -2227,11 +2227,6 @@ def state(project, instance=MAIN):
         rs = risks(project, cfg)
         out["risks"] = rs
         out["problems"] = problems(project, cfg) + host_map()[1]
-        # What is not there yet, so the row can offer to make it rather than
-        # letting docker try and fail on a root-squashing share.
-        mk, cannot = missing_dirs(project, cfg, instance)
-        out["mkdirs"] = mk
-        out["mkdirs_cannot"] = cannot
         # A name it used to have, whose things are still under it.
         out["stale_name"] = stale_name(project, instance)
         out.update(wiring(cfg))

@@ -32,7 +32,16 @@ this project is careful about, so `seen()` is told whether the project was
 actually covered, and a project that was not covered is left alone.
 """
 import json
-import threading
+import os
+import sys
+
+# `bb` execs this module by path, so its directory is not on sys.path the way
+# it is when the dashboard imports it. One module object per process either
+# way: the in-process half of the lock is a dict in there.
+_here = os.path.dirname(os.path.abspath(__file__))
+if _here not in sys.path:
+    sys.path.insert(0, _here)
+import statefile  # noqa: E402
 import time
 from pathlib import Path
 
@@ -45,7 +54,12 @@ def configure(*, write_json, state):
     globals()["FILE"] = Path(state) / "findings-log.json"
 
 
-_lock = threading.Lock()
+# The same lock the roadmap and the tracker take, and for the same reason: the
+# dashboard is one process and a `bb` invocation is another, and a threading
+# lock guards the threads of one. Both would load, both mutate their own copy,
+# both write — and os.replace makes each write atomic while doing nothing about
+# the second landing on top of the first. See statefile.py.
+_lock = statefile.on(lambda: FILE)
 
 # Room for a working record, the same as the roadmap's and the tracker's. A
 # weekly scan over a handful of projects will not reach this; a rule that

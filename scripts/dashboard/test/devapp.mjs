@@ -498,9 +498,14 @@ await nudge();
 // attached, not visible: the manager tab is in front now, and what is being
 // asserted is what the row RENDERS, not which pane is on top.
 await page.waitForSelector('#devRow a.btn', { state: 'attached', timeout: 20000 });
+// The DAEMON's host, not this page's. They are different machines — the whole
+// point of the sandbox VM — and a container publishing 7475 publishes it over
+// there. This used to be location.hostname, which on a real box is the Unraid
+// server: a link to a port where either nothing answers or something else does.
+// DOCKER_HOST is ssh://bb@stub here, so the answer is `stub`.
 ok(await page.$eval('#devRow a.btn', a => a.getAttribute('href'))
-     === `http://${new globalThis.URL(URL).hostname}:7475/`,
-   'a running instance with one published port gets an Open link to it');
+     === 'http://stub:7475/',
+   'a running instance opens on the machine its daemon runs, not on the one serving this page');
 writeFileSync(stubCfg, JSON.stringify({ services: { app: { build: { context: '.' },
   ports: [{ target: 80, published: '8080', protocol: 'tcp' },
           { target: 81, published: '8081', protocol: 'tcp' }] } } }));
@@ -512,10 +517,9 @@ ok(!await page.$('#devRow a.btn'),
 await page.click('#devOpen');
 await page.waitForSelector('.nbsheet .portpick a', { timeout: 10000 });
 const picks = await page.$$eval('.nbsheet .portpick a', as => as.map(a => a.getAttribute('href')));
-const host = new globalThis.URL(URL).hostname;
-ok(picks.length === 2 && picks[0] === `http://${host}:8080/`
-   && picks[1] === `http://${host}:8081/`,
-   '...listing every published port, for the operator to answer');
+ok(picks.length === 2 && picks[0] === 'http://stub:8080/'
+   && picks[1] === 'http://stub:8081/',
+   '...listing every published port, on that same machine, for the operator to answer');
 await page.click('#sheetClose');
 await page.waitForFunction(() => document.querySelector('.nbsheet').hidden);
 ok(await page.$('.nbsheet .portpick') === null,
@@ -1231,6 +1235,33 @@ ok(/\/library/.test(wire) && /←/.test(wire),
    '...and a read-only mount with the arrow that says so');
 ok(/\/config/.test(wire) && /↔/.test(wire),
    '...beside a writable one, which gets the other arrow');
+
+// A published port is a link, and it points at the machine the DAEMON runs on.
+// It used to be built from location.hostname — the machine serving this page,
+// which is the Unraid box and not the sandbox VM — so every port label and
+// every Open link named a host where either nothing answers or something else
+// does. DOCKER_HOST is ssh://bb@stub here, so the answer is `stub`.
+ok(await page.$eval(`${DM} .dmwire .wport a`, a => a.getAttribute('href'))
+     === 'http://stub:7475/',
+   'a published port is a link, to the machine its daemon runs on');
+
+// Columns on a desktop, stacked on a phone. Asserted by where the grid puts
+// them rather than by a screenshot: the question is whether the state sits
+// BESIDE the name or under it, and a computed column answers it exactly.
+const laid = await page.evaluate(async () => {
+  const at = async w => {
+    const row = document.querySelector('.dmtab .row.stack2');
+    const grow = row.querySelector('.grow');
+    const box = e => { const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y)]; };
+    return {display: getComputedStyle(grow).display,
+            id: box(grow.querySelector('.dmid')),
+            state: box(grow.querySelector('.dmstate'))};
+  };
+  return {wide: await at()};
+});
+ok(laid.wide.display === 'grid' && laid.wide.state[0] > laid.wide.id[0]
+   && laid.wide.state[1] === laid.wide.id[1],
+   '...and on a desktop the state sits beside the name rather than under it');
 
 // ---- one button, and a second container from one project ---------------
 // The artifact row's controls moved to the manager; what is left is a button

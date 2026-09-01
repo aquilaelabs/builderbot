@@ -26,11 +26,9 @@ git config --global advice.detachedHead false
 git config --global advice.statusHints false
 git config --global advice.waitingForEditor false
 
-# There is no container-wide git token any more. GIT_PAT was one credential for
-# every repository, readable by every session, and a per-project token replaced
-# it: typed into the clone dialog, stored at /config/gitcreds/<project> and
-# named by that repo's own .git/config, so a token that opens one repository
-# opens one repository. One way to do this rather than three.
+# A git token belongs to one project: typed into the clone dialog, stored at
+# /config/gitcreds/<project> and named by that repo's own .git/config, so a
+# token that opens one repository opens one repository.
 #
 # A session-visible GITHUB_PAT is still honoured, because that variable exists
 # for the runner and shielding it is the operator's choice — when it is not

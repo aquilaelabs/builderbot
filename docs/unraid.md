@@ -577,14 +577,9 @@ VM**: a small machine whose only job is running Docker, reached over ssh, with
 no real containers on it and no route to this server's daemon. Setting it up is
 [sandbox-vm.md](sandbox-vm.md), and it is the only arrangement.
 
-It used to also accept the host's own daemon through a socket proxy, and a
-mounted socket before that. Both are gone. The reason is the one that made the
-proxy uncomfortable to document: its flags are per **endpoint**, so
-`CONTAINERS=1` is the whole `/containers` API for *every* container on the box
-and no arrangement of them means "only BuilderBot's". What kept it to the
-dashboard's own containers was BuilderBot refusing anything else — a guard in
-front of a daemon that would have obeyed. A separate machine needs no guard,
-because there is nothing there to protect.
+A separate machine needs no filtering, which is the point: there is nothing
+over there to protect. Anything else — an address of another kind, or none —
+turns every Docker control off with the reason on it.
 
 One limit survives the move, because it is not the daemon's. A compose file can
 ask for the machine directly — `privileged: true`, `network_mode: host`, a bind
