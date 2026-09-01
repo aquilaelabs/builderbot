@@ -160,3 +160,4 @@
 - Two projects whose names shorten to the same thing are now warned about on both rows — they would otherwise share one dev instance silently (e8a3153)
 - The GPU's X server is restarted up to three times if it dies, and bb emu gpu says so when it gives up, instead of the emulator quietly dropping to software (e8a3153)
 - Every document tab now shares one enforced template — bands, controls and phone rules are checked by a conformance suite, and a broken tab shows its error instead of taking the dashboard down (6cdaca4)
+- BuilderBot now keeps a node registry — this container is the 'local' node and the sandbox VM has its own record — and an audit trail of every change made through the dashboard, in /config/builderbot.db. 'bb nodes' lists it; nothing else changes yet (58bbd97)
