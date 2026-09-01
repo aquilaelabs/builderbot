@@ -3,7 +3,8 @@
 // per-project findings, valid-projects filter, and server-side persistence.
 import { launch, newPage, ok, done, ready, doctorFixture, animatedDuring, refreshUntil,
          tmuxNew, tmuxKill, tmuxFmt, URL, DIR } from './lib.mjs';
-import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, rmSync, utimesSync,
+         mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 
 const browser = await launch();
@@ -279,6 +280,45 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(new Set(Object.values(xs)).size === 1 && !Object.values(xs).includes(null),
      'the tab\'s filter bar, headings, rules and footer all start at one x: '
      + JSON.stringify(xs));
+}
+// Nothing readable in /reports and the way in goes quiet — three ways to have
+// nothing (no mount, nothing in it, nothing that parses) and one greyed button
+// carrying the reason. A tab already open on it is closed once, when the page
+// first learns: a layout restored from last session can carry an Analysis tab
+// for a scanner that has since been unmounted, and one that stays only to say
+// "nothing here" is a tab somebody has to close by hand.
+{
+  const keep = readFileSync(`${DIR}/reports/test.sarif`);
+  rmSync(`${DIR}/reports`, { recursive: true, force: true });
+  await refreshUntil(page, () => state?.reports_ok === false, { timeout: 20000 });
+  ok(await page.$eval('#bFindings', b => b.disabled),
+     'with no readable report the Static analysis button is ghosted');
+  ok(/no \/reports mount/.test(await page.$eval('#bFindings', b => b.title)),
+     '...carrying which of the three reasons it is');
+  // The tab is open from the tests above; the gate closes it on the next load.
+  await page.reload();
+  await ready(page);
+  await page.waitForFunction(() => state?.reports_ok === false, null, { timeout: 20000 });
+  await page.waitForFunction(() => !tabs.some(t => t.kind === 'findings'),
+                             null, { timeout: 10000 });
+  ok(true, '...and an Analysis tab restored with the layout is closed, once');
+  // A directory with nothing readable in it is the second reason, and reads
+  // differently from an absent mount.
+  mkdirSync(`${DIR}/reports`, { recursive: true });
+  writeFileSync(`${DIR}/reports/broken.sarif`, 'not json at all');
+  // The mount is back, so waiting on reports_ok alone would pass on the answer
+  // from before the directory existed.
+  await refreshUntil(page, () => state?.reports === true && state?.reports_ok === false,
+                     { timeout: 20000 });
+  ok(/nothing readable/.test(await page.$eval('#bFindings', b => b.title)),
+     'a report that does not parse is not a report — the button says so');
+  rmSync(`${DIR}/reports/broken.sarif`, { force: true });
+  writeFileSync(`${DIR}/reports/test.sarif`, keep);
+  await refreshUntil(page, () => state?.reports_ok === true, { timeout: 20000 });
+  ok(await page.$eval('#bFindings', b => !b.disabled),
+     '...and a readable one lights it again');
+  await page.click('#bFindings');
+  await page.waitForSelector('.fxtab #fxProject', { timeout: 15000 });
 }
 await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
                             if (t) hideTab(t.id); });

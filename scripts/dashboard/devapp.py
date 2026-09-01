@@ -117,6 +117,91 @@ def docker_host():
     return "ssh://" + (host if "@" in host else f"{DEFAULT_USER}@{host}")
 
 
+# What vm/provision.sh stamps on the daemon it set up: a label in
+# /etc/docker/daemon.json. Docker reports its own labels on `docker info`, so
+# the check costs one read over the connection already being used — no second
+# channel, no file to fetch, nothing on the VM to keep in step but the
+# provisioner.
+#
+# It exists because "a machine that answers Docker on ssh" is not the same
+# thing as "the sandbox". Everything the manager does beyond compose runs as
+# root on the far side, and the whole reason that is safe is that the far side
+# is a box whose job is being wrecked and reset. Pointed at a NAS, a
+# workstation or the server itself, the same buttons are a different act.
+SANDBOX_LABEL = "builderbot.sandbox"
+
+
+def daemon_info():
+    """The daemon's labels and its own id, or an error.
+
+    One `docker info`, formatted to a single line: its Labels (where the
+    provisioner's stamp is) and ID (which distinguishes two VMs that have worn
+    the same address).
+    """
+    r = _run([DOCKER, "info", "--format",
+              "{{json .}}"], timeout=15)
+    if r["code"] != 0:
+        return {"error": (r["out"] or "no daemon").strip()[:160]}
+    try:
+        d = json.loads(r["out"])
+    except ValueError:
+        return {"error": "docker info did not answer with JSON"}
+    labels = d.get("Labels") or []
+    if not isinstance(labels, list):
+        labels = []
+    return {"labels": [str(x) for x in labels], "id": str(d.get("ID") or "")}
+
+
+def is_sandbox(labels):
+    """Whether these daemon labels carry the provisioner's stamp."""
+    return any(str(x).split("=")[0].strip() == SANDBOX_LABEL for x in labels)
+
+
+def adopt(uid):
+    """Make the daemon now answering the one the records are about.
+
+    Two VMs can wear one address — a rebuilt sandbox, a second machine given
+    the old one's IP — and the address alone cannot tell them apart, so what a
+    build was recorded against is checked by the daemon's OWN id as well. When
+    it turns out to be a different machine, everything claiming a build on the
+    old one is cleared: the rev, its date, the env gate a build tripped. The
+    instance itself stays, because its compose file and its env are this side's
+    and have nothing to do with which daemon is plugged in.
+
+    The point is that "unknown" is a state to leave, not to live in. A manager
+    pointed at a new VM should say what THIS daemon has, and rows quoting a
+    build from a machine no longer in play are neither true nor unknown — they
+    are the last one's answers, and clearing them is what makes the new one the
+    source of truth.
+    """
+    if not uid:
+        return
+    here = daemon_id()
+    with _lock:
+        d = _load()
+        moved = False
+        for project, insts in d.items():
+            for inst, rec in insts.items():
+                if not isinstance(rec, dict) or not rec.get("rev"):
+                    continue
+                was = rec.get("daemon_uid")
+                # An old record predating the uid is judged on its address, as
+                # it always was: not knowing is not evidence of a move.
+                if rec.get("daemon") == here and (not was or was == uid):
+                    if not was:
+                        rec["daemon_uid"] = uid
+                        moved = True
+                    continue
+                for k in ("rev", "at", "await_env", "building_since",
+                          "daemon", "daemon_uid"):
+                    rec.pop(k, None)
+                moved = True
+        if moved:
+            write_json(FILE, d)
+    if moved:
+        _bump()
+
+
 def daemon_id():
     """A stable name for the daemon a build landed on.
 
@@ -380,10 +465,39 @@ def available():
         return {"on": False,
                 "why": "docker does not answer: "
                        + (r["out"] or "no daemon").strip()[:120]} | source()
-    return {"on": True, "why": ""} | source()
+    # It answers Docker. That is not the same as being the sandbox, and the
+    # difference is the whole safety argument: a container run here is root on
+    # the far side, which is fine on a box whose job is being wrecked and
+    # nothing like fine on the server. So the daemon has to carry the stamp
+    # vm/provision.sh puts on the one it made.
+    info = daemon_info()
+    if info.get("error"):
+        return {"on": False,
+                "why": "docker answers but will not say what it is: "
+                       + info["error"]} | source()
+    if not is_sandbox(info["labels"]):
+        return {"on": False,
+                "why": "this daemon is not a BuilderBot sandbox — it carries no "
+                       f"{SANDBOX_LABEL} label. Run vm/provision.sh on the VM "
+                       "(again is fine, it only adds what is missing); see "
+                       "docs/sandbox-vm.md"} | source()
+    # A verified daemon is the source of truth from here on. Adopting it clears
+    # what was recorded against a DIFFERENT one, so pointing this at a new VM
+    # does not leave rows quoting a build that happened on a machine no longer
+    # in play.
+    adopt(info["id"])
+    return {"on": True, "why": "", "id": info["id"]} | source()
 
 
 _avail = {"when": 0.0, "val": None}
+
+
+def _uid():
+    """The verified daemon's own id, as last seen. Empty until one answers —
+    a stamp with no id is judged on its address, which is how every record
+    written before this field is judged."""
+    with _avail_lock:
+        return ((_avail["val"] or {}).get("id") or "")
 _avail_lock = threading.Lock()
 AVAIL_TTL = 30
 
@@ -442,7 +556,10 @@ _CLASSIC_BUILD = {"DOCKER_BUILDKIT": "0", "COMPOSE_DOCKER_CLI_BUILD": "1"}
 #
 # Both are READS. Nothing here lets a verb that changes something in, and the
 # namespace rule below is untouched: seeing a container is not touching it.
-_BARE_OK = {"version", "ps"}
+# `info` joins them for one reason: it is where the daemon's own labels are,
+# and a label is how this container tells a VM the provisioner made from any
+# other machine that happens to answer Docker. Also a read.
+_BARE_OK = {"version", "ps", "info"}
 
 
 def _guard(argv):
@@ -463,9 +580,9 @@ def _guard(argv):
     # have produced — and only where the daemon is a machine whose job is
     # being wrecked.
     if verb == "run":
-        if not sandbox_daemon():
-            return ("`docker run` — only where the daemon is a sandbox VM, "
-                    "and this one is not")
+        if not verified_sandbox():
+            return ("`docker run` — only where the daemon is a sandbox VM the "
+                    "provisioner made, and this one does not say it is")
         names = [a[3:] for a in argv if a.startswith("/d/")]
         # The mount source is read back out of the argv and required to be a
         # share root — one absolute component, a plain name — so the rebuild
@@ -1000,8 +1117,27 @@ def sandbox_daemon():
     check asked on its own — kept as the guard's own question rather than
     inherited, because it is what decides whether a `docker run` is allowed
     and a security check should not depend on a display function.
+
+    The ADDRESS only, deliberately: this is asked while available() is still
+    computing — source() reads host_map(), which reads this — so a version of
+    it that consulted availability would call itself round in a circle. The
+    stronger question, which is the one the guard asks, is verified_sandbox()
+    below.
     """
     return docker_host().startswith("ssh://")
+
+
+def verified_sandbox():
+    """The guard's question: an ssh address AND a daemon carrying the stamp
+    vm/provision.sh puts on the VM it made.
+
+    An ssh address only proves somebody typed one. The label is the only thing
+    that says the machine on the end is the box built to be wrecked — which is
+    the entire reason running a container as root over there is acceptable.
+    Read through the memo, so a run does not pay for a round trip the poll made
+    thirty seconds ago, and never from the cache alone: an empty memo asks.
+    """
+    return bool(sandbox_daemon() and available_cached().get("on"))
 
 
 def mkdir_root(path):
@@ -1231,7 +1367,17 @@ def overview():
     problems, the parsed compose config. Those are per-instance questions
     asked when somebody acts on one, and state() still answers them.
     """
-    cs = containers()
+    # A daemon that is not there is asked nothing. `docker ps` over ssh to a
+    # VM that is off sits until its 25-second timeout, so the manager spent
+    # that long on a spinner and then showed one error line — when everything
+    # the page can honestly say (which instances exist, what each was built
+    # from, what its env still wants) is on this side of the wire and needs no
+    # daemon at all. The rows come back either way; what the daemon owns is
+    # whether they are running, and that stays unknown rather than guessed.
+    got = available_cached()
+    cs = containers() if got.get("on") else {
+        "error": got.get("why") or "no docker daemon is reachable from here",
+        "containers": []}
     by_proj = {}
     for c in cs["containers"]:
         by_proj.setdefault(c["project"], []).append(c)
@@ -1242,6 +1388,12 @@ def overview():
     # and wrong here: it filled the manager with a row per project that had
     # never been sent anywhere, indistinguishable from ones that had. A record
     # exists because somebody pressed Send.
+    # Nothing was asked, or asking failed — either way nothing is known: the
+    # client draws the row from the store and refuses to say running or
+    # stopped. False on those fields would be a claim, and a daemon that died
+    # inside the availability memo answers the same as one that was never
+    # there.
+    blind = not got.get("on") or bool(cs["error"])
     for project in sorted(store):
         # Once per PROJECT, not per instance: every instance of a project is
         # built from the same working copy, so the answer cannot differ
@@ -1294,7 +1446,7 @@ def overview():
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
                                 else ""),
             })
-    return {"error": cs["error"], "instances": out,
+    return {"error": cs["error"], "blind": blind, "instances": out,
             # The running job, if there is one. The manager used to look for
             # it on the status snapshot under a key nothing has ever set, so
             # `busy` was permanently false: a row kept saying "never built"
@@ -2323,7 +2475,7 @@ def up(project, instance=MAIN, ack=""):
         # would go on saying so with the instance up in front of it.
         if not row.get("rev") or row.get("daemon") != daemon_id():
             row.update(rev=built_rev(project, instance), at=int(time.time()),
-                       daemon=daemon_id())
+                       daemon=daemon_id(), daemon_uid=_uid())
         write_json(FILE, d)
     _bump()
     return {"ok": True}
@@ -2406,7 +2558,8 @@ def _worker(project, instance=MAIN):
             d = _load()
             _rec(d, project, instance).update(rev=built_rev(project, instance),
                                               at=int(time.time()),
-                                              daemon=daemon_id())
+                                              daemon=daemon_id(),
+                                              daemon_uid=_uid())
             write_json(FILE, d)
         _job["step"] = "stopping"
         _bump()

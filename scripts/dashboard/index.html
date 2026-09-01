@@ -515,6 +515,13 @@ body.dragging .side .card h2{cursor:grabbing}
 .row{display:flex;align-items:center;gap:8px;padding:7px 10px;
   border-bottom:1px solid var(--line);flex-wrap:wrap}
 .row:last-child{border-bottom:0}
+/* A row nothing here can act on: a container this dashboard did not start, or
+   any instance while the daemon is not answering. Dimmed rather than dropped —
+   it is still the answer to "what is on record", and a row you cannot act on
+   should look like one before you press anything. The buttons inside carry
+   :disabled's own fade on top of this, which is the intended reading: the row
+   is inert and its controls doubly so. */
+.row.off{opacity:.62}
 /* A directory name can be one long unbroken token; it wraps rather than
    handing the whole sidebar a sideways scroll. */
 .row .name{font-weight:600;overflow-wrap:anywhere}
@@ -4442,6 +4449,28 @@ function arriveBox(el){
   foldHeight(el, 0, el.offsetHeight, () => {});
 }
 
+// A box whose CONTENTS are replaced — the memory writer and the bug reporter,
+// each a one-line link that becomes a form and goes back to a link. Not
+// arriveBox: that unrolls from nothing, and these start at the height of the
+// link they are replacing, so the tween runs between the two real sizes the
+// same way every other fold here does. Paint first, measure after: the form
+// has no height until it is in the document.
+function swapBox(el, paint){
+  if (!el){ paint(); return; }
+  if (noMotion()){ paint(); return; }
+  // Where it is NOW, which mid-tween is a pinned px height rather than the
+  // natural one — measured before the cancel below, exactly as the card fold
+  // does it. Reopening a box while it was still rolling up otherwise measured
+  // that pinned height twice, read from === to, and swapped with no motion at
+  // all: the second click in a row was the one that looked broken.
+  const from = el.offsetHeight;
+  el.getAnimations().forEach(a => { if (a.id === "fold") a.cancel(); });
+  paint();
+  const to = el.offsetHeight;
+  if (from === to) return;
+  foldHeight(el, from, to, () => {});
+}
+
 function slideHidden(el, willShow, after){
   const done = () => { el.hidden = !willShow; after?.(); };
   if (noMotion()){ done(); return; }
@@ -5792,8 +5821,11 @@ const dockerWhy = () =>
 // them off is the only shape that cannot drift between them. Disable only:
 // every renderer here redraws from state, so a daemon coming back is picked up
 // by the next ordinary draw and nothing has to remember what it switched off.
-function gateDocker(root){
-  const why = dockerWhy();
+function gateDocker(root, reason){
+  // The poll's answer by default, and the caller's when it knows better: the
+  // manager has just tried the daemon for real, so it can gate on a `ps` that
+  // failed thirty seconds inside an availability memo still saying "on".
+  const why = reason || dockerWhy();
   if (!why) return;
   (root || document).querySelectorAll(DOCKER_ACTS).forEach(b => {
     b.disabled = true;
@@ -6237,10 +6269,19 @@ function renderDockerInto(i){
   if (!el) return;
   el.classList.add("flush");
   if (!dockerList){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
-  if (dockerList.error){
-    el.innerHTML = `<div class="empty">could not reach the daemon: ${esc(dockerList.error)}</div>`;
-    return;
-  }
+  // The daemon did not answer — it is off, it is not a sandbox VM, or the VM
+  // is not running. This used to end here, in one error line with no rows: the
+  // page threw away everything it could still honestly say, which is most of
+  // it. What an instance IS lives on this side (its name, its project, what it
+  // was built from, what its env still wants); only whether it is RUNNING is
+  // the daemon's to know. So the rows are drawn from the store, greyed, and
+  // say nothing about their state — an unreachable daemon is not evidence that
+  // anything stopped.
+  // Three ways to be blind, and the poll's is the one that outlives a fetch:
+  // a list read while the daemon was up is stale the moment the poll says it
+  // is down, and going on showing "running" from it would be the page's own
+  // memory presented as the daemon's answer.
+  const blind = !!dockerList.blind || !!dockerList.error || !!dockerWhy();
   const ins = dockerList.instances || [];
   const cs = dockerList.containers || [];
   const job = dockerJob();
@@ -6256,18 +6297,26 @@ function renderDockerInto(i){
     const mine = job && job.project === d.project && job.instance === d.instance;
     const busy = !!(mine && job.running);
     return `
-    <div class="row stack2" data-inst="${esc(d.project)}|${esc(d.instance)}">
+    <div class="row stack2${blind ? " off" : ""}" data-inst="${
+      esc(d.project)}|${esc(d.instance)}">
       <div class="grow">
         <div class="dmid">
         <div class="name">${esc(d.name)}
-          <span class="dim state ${d.running ? "ok" : ""}">(${
-            d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
+          <span class="dim state ${!blind && d.running ? "ok" : ""}">(${
+            blind ? "state unknown"
+            : d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
         <div class="sub">${d.source === "file"
           ? `compose written here`
           : `${esc(d.project)} · ${esc(d.instance)}`}</div>
         </div>
-        <div class="sub dmstate ${d.running ? "ok" : ""}">${
-          busy ? esc(job.step || "working") + '<span class="dots"></span>'
+        <div class="sub dmstate ${!blind && d.running ? "ok" : ""}">${
+          // Nothing was asked, so nothing is claimed. What it was built from
+          // is still true — that is a record on this side — and it is the one
+          // fact worth carrying into a listing nobody can act on.
+          blind ? (d.built_rev ? `built from ${esc(d.built_rev)} — the daemon is
+                                  not answering, so whether it is up is unknown`
+                              : "never built — the daemon is not answering")
+          : busy ? esc(job.step || "working") + '<span class="dots"></span>'
           // How a job ENDED, which this row never said. A build that failed or
           // was stopped left the row showing the state it happened to be in,
           // so the only account of what went wrong was in the tail below it —
@@ -6360,7 +6409,13 @@ for the rest of the work"
   // Said in words at the top, not only in the tooltips below: a tooltip is
   // not reachable on a phone, and "why is everything greyed out" should be
   // answered by looking rather than by hovering.
-  const off = dockerWhy();
+  // Why everything is greyed, in words at the top. The poll's sentence when it
+  // has one; otherwise the daemon's own words from the call this page just
+  // made, which is the case the poll cannot see — a VM that went away inside
+  // the availability memo.
+  const off = dockerWhy()
+    || (blind ? "the daemon did not answer"
+                + (dockerList.error ? ": " + dockerList.error : "") : "");
   // Which daemon this is, stated rather than inferred. One setting names it
   // now — DOCKER_HOST, pointing at the sandbox VM — and saying which machine
   // the buttons below act on is worth a line whatever the arrangement.
@@ -6379,10 +6434,15 @@ for the rest of the work"
     : "";
   el.innerHTML = `<div class="dmtab">${off
       ? `<div class="empty">${esc(off)}</div>` : srcLine}${
-    rows || `<div class="empty">nothing on this daemon yet</div>`}
+    // Blind, the list is what is on record here rather than what is on the
+    // daemon, and "nothing on this daemon yet" would be a claim about a
+    // machine nobody just asked.
+    rows || `<div class="empty">${blind
+      ? "nothing on record here — an instance appears once it has been sent"
+      : "nothing on this daemon yet"}</div>`}
     <div class="macros"><button id="bDockerNew">New container…</button
       ><button id="bDockerRe">Refresh</button></div></div>`;
-  gateDocker(el);
+  gateDocker(el, off);
   // Every tail sits at its own bottom after a draw. The list repaints only
   // when the job moved, so between draws the reader keeps whatever scroll
   // they chose; what this stops is a redraw putting them back at the top of
@@ -7748,8 +7808,16 @@ function drawMemAdd(){
 const memSlug = t => String(t).toLowerCase().replace(/[^a-z0-9]+/g, "-")
   .slice(0, 60).replace(/^-+|-+$/g, "");
 
+// Closing it is a fold too, so Cancel and a written memory both roll the form
+// back up to its link instead of the list under it jumping.
+function shutMemAdd(){ swapBox($("memAdd"), drawMemAdd); }
+
 function openMemAdd(){
   const box = $("memAdd");
+  swapBox(box, () => paintMemAdd(box));
+}
+
+function paintMemAdd(box){
   box.innerHTML = `<div class="memadd">
     <label for="naTitle">Title — how it reads in the index</label>
     <input id="naTitle" maxlength="80" autocomplete="off" placeholder="No parsed progress">
@@ -7779,7 +7847,7 @@ function openMemAdd(){
   n.oninput = () => { n.dataset.mine = "1"; };
   const what = () => $("naWhat").textContent = TYPE_WHAT[$("naType").value] || "";
   $("naType").onchange = what; what();
-  $("naCancel").onclick = drawMemAdd;
+  $("naCancel").onclick = shutMemAdd;
   $("naGo").onclick = createMemory;
   // Deliberately unfocused, like every other field in this window: five of
   // them appearing under a keyboard is the thing being avoided.
@@ -7797,7 +7865,7 @@ async function createMemory(){
   // the fix is a word in one of these fields, not typing all five again.
   if (!j) return;
   notify(j.file + " written — a session started here reads it from now on");
-  drawMemAdd();
+  shutMemAdd();
   await loadMemory(memGen);
   refresh();
 }
@@ -9011,14 +9079,18 @@ become that version's section when it is created">Changelog${
   function drawBugAdd(){
     const box = $("bugAdd");
     box.innerHTML = `<button type="button" class="link">+ report a bug</button>`;
-    box.querySelector("button").onclick = () => {
+    // The same fold the memory writer opens with: the two are the same control
+    // on two views of one notebook, and one of them appearing whole while the
+    // other unrolled was the kind of difference you cannot unsee.
+    const shut = () => swapBox(box, drawBugAdd);
+    box.querySelector("button").onclick = () => swapBox(box, () => {
       box.innerHTML = bugForm(null);
-      box.querySelector(".bfCancel").onclick = drawBugAdd;
+      box.querySelector(".bfCancel").onclick = shut;
       box.querySelector(".bfGo").onclick = async () => {
         const j = await postBug({action: "add", ...readBugForm(box)});
-        if (j) drawBugAdd();
+        if (j) shut();
       };
-    };
+    });
   }
 
   function drawBugs(){
@@ -10549,6 +10621,7 @@ async function refresh(){
       if (p) nb.poll(p);
     });
     drawSessions(state.sessions);
+    gateFindings();
     drawLinux();
     drawCommands();
     drawGit();
@@ -10573,6 +10646,28 @@ async function refresh(){
     console.error("refresh:", e);
     $("dot").classList.add("off");
   }
+}
+
+// The Static analysis button, and any tab already open on it. Ghosting the
+// button is the ordinary half; closing an open tab is only done ONCE, when the
+// page first learns there is nothing to read — a layout restored from the last
+// session can carry an Analysis tab for a scanner that has since been
+// unmounted, and leaving it open to say "nothing here" is a tab the operator
+// has to close by hand. After that first answer a tab stays put: taking one
+// out from under somebody mid-read, because a report went stale while they
+// were looking at it, would be worse than the empty state it would leave.
+let findingsGated = false;
+function gateFindings(){
+  const off = findingsOff();
+  const b = $("bFindings");
+  if (b){
+    b.disabled = !!off;
+    b.title = off || "the scanner's findings, with a project picker and filters";
+  }
+  if (findingsGated) return;
+  findingsGated = true;
+  if (!off) return;
+  tabs.filter(t => t.kind === "findings").forEach(t => hideTab(t.id));
 }
 
 // ---- what changed, and who cares ------------------------------------------
@@ -10909,7 +11004,26 @@ function fxWireBar(root, st, redraw){
   }, 250); };
 }
 
+// The one answer, from the poll: no /reports mount, nothing in it, or nothing
+// in it that parses — three ways to have nothing, and a control that is off
+// wants one of them, not three. Absent (an older server) is not "off", the
+// same rule dockerWhy is written to: a page with no opinion leaves the control
+// as it was rather than switching it off on a hunch.
+const findingsOff = () =>
+  state && state.reports_ok === false
+    ? (state.reports === false
+        ? "no /reports mount — the scanner runs on the host, and its output "
+          + "directory is not mapped in"
+        : "nothing readable in /reports — no SARIF report there parses, or "
+          + "every one of them is a whole cycle behind")
+    : "";
+
 function openFindingsTab(){
+  // Ghosted, not silent: the button says why on hover and this is the same
+  // sentence, for the paths a disabled button does not cover — a saved layout,
+  // a keyboard, a restored tab.
+  const off = findingsOff();
+  if (off){ notify(off, true); return; }
   openTab({kind: "findings", arg: "__findings", label: "Analysis"});
   loadFindings();
 }

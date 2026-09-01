@@ -179,6 +179,54 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 systemctl enable --now docker
 
+# --- the stamp ----------------------------------------------------------
+# A label on the daemon saying this machine is BuilderBot's sandbox.
+#
+# It is what BuilderBot checks before it will talk to a daemon at all, and the
+# reason it checks: everything the manager does beyond compose runs a container
+# as root on the far side, which is fine on a box whose whole job is being
+# wrecked and reset, and is a different act entirely against a NAS, a
+# workstation or the server itself. An ssh address only proves somebody typed
+# one — a machine can answer Docker without being this one. So the provisioner
+# says so, on the machine, and nothing else can.
+#
+# Written into daemon.json rather than kept beside it, because `docker info`
+# reports it: BuilderBot reads the stamp over the connection it already has,
+# with no second channel and nothing else on this box to keep in step.
+stamp_daemon() {
+    local f=/etc/docker/daemon.json label="builderbot.sandbox=1" tmp
+    install -d -m 0755 /etc/docker
+    if [ -s "$f" ] && grep -q "$label" "$f"; then
+        return 1                      # already stamped: nothing to restart for
+    fi
+    if [ ! -s "$f" ]; then
+        printf '{\n  "labels": ["%s"]\n}\n' "$label" > "$f"
+        return 0
+    fi
+    # An existing file is merged rather than replaced — it may carry storage
+    # or logging settings this script knows nothing about, and a sandbox that
+    # came up with different storage would be a surprising way to find out.
+    have_jq || apt-get install -y -qq jq >/dev/null 2>&1 || true
+    if ! have_jq; then
+        warn "/etc/docker/daemon.json exists and jq is not available to merge"
+        warn "add \"labels\": [\"${label}\"] to it by hand, then: systemctl restart docker"
+        return 1
+    fi
+    tmp="$(mktemp)"
+    jq --arg l "$label" '.labels = ((.labels // []) - [$l] + [$l])' "$f" > "$tmp" \
+        && install -m 0644 "$tmp" "$f"
+    rm -f "$tmp"
+    return 0
+}
+have_jq() { command -v jq >/dev/null 2>&1; }
+
+if stamp_daemon; then
+    # Only when it moved: a restart bounces every container on this machine,
+    # and doing that on a re-run that changed nothing would be rude.
+    systemctl restart docker
+    say "stamped this daemon as BuilderBot's sandbox"
+fi
+
 # One implementation of "let this account in", used for both. The validation
 # is the point: a key that does not parse leaves a VM nothing can ssh into,
 # found from the console after the fact.

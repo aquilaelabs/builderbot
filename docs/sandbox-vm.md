@@ -433,11 +433,29 @@ out in full is left exactly as written. ssh rather than an open Docker
 port, so authentication is the key you installed and nothing has to listen —
 an open `2375` would be root on the sandbox to anyone who could reach it.
 
-Nothing but a sandbox VM is accepted. An address of any other kind greys every
-Docker control out with a sentence saying why, rather than half-working: the
-manager makes directories and moves them with one-shot containers running as
-root on the far side, which is only reasonable against a machine whose job is
-being wrecked.
+Nothing but a sandbox VM is accepted, and the address is only half of what
+decides that. An address of any other kind greys every Docker control out with
+a sentence saying why, rather than half-working — and so does an ssh address
+whose daemon does not **say it is the sandbox**. `provision.sh` writes a
+`builderbot.sandbox` label into `/etc/docker/daemon.json` and restarts the
+daemon; BuilderBot reads it back with `docker info` over the connection it
+already has and refuses to drive anything without it.
+
+The reason is the reason for the VM itself: the manager makes directories and
+moves them with one-shot containers running as **root on the far side**, which
+is only reasonable against a machine whose job is being wrecked. An ssh address
+proves somebody typed one; the label is the only thing that says what is on the
+end of it. A VM provisioned before this existed has no stamp — re-run
+`provision.sh` on it, which adds what is missing and changes nothing else.
+
+**Point it at a different sandbox and that one becomes the source of truth.**
+Two VMs can wear one address — a rebuilt sandbox, a second machine given the
+old one's IP — so a build records the daemon's own id as well as its address.
+When the id changes, every record claiming a build on the machine no longer in
+play is cleared, and the rows read as never built here rather than quoting a
+version of something this daemon has never seen. The instances themselves stay:
+their compose files and env are this side's and have nothing to do with which
+daemon is plugged in.
 
 **3. `DOCKER_HOST_PATHS=/workspace:/workspace`** — and a pair for any other
 share you mounted on *both* sides. `/devdata` is not one of them: it belongs
