@@ -60,6 +60,7 @@ from pathlib import Path
 WORKSPACE = None
 STATE = None
 FILE = None
+node_for = None
 ENVDIR = None
 write_json = None
 
@@ -223,7 +224,7 @@ _lock = threading.Lock()
 # as well as the project: two instances of one project are two builds, and a
 # row watching "is my build running" must not light up for its neighbour's.
 _job = {"running": False, "project": "", "instance": "", "step": "", "log": "",
-        "error": "", "await_env": False, "aborting": False}
+        "error": "", "await_env": False, "aborting": False, "node": ""}
 _rev = 0
 
 # The process the job is inside right now, so Abort has something to interrupt.
@@ -303,7 +304,13 @@ def _claim(project, instance, step):
             return False
         _job.update(running=True, project=project, instance=instance,
                     step=step, log="", error="", await_env=False,
-                    aborting=False)
+                    aborting=False,
+                    # Which node this work belongs to. Fixed in phase 1 —
+                    # docker work is the sandbox record — and the point is
+                    # that the claim ASKS: this call site is the seam the
+                    # placement function slides into (docs/nodes.md phase 4)
+                    # without the claim changing shape again.
+                    node=node_for("docker-host") if node_for else "")
     _bump()
     return True
 
@@ -335,9 +342,10 @@ def abort_job():
     return True
 
 
-def configure(*, workspace, state, write_json, log_dir=None):
+def configure(*, workspace, state, write_json, log_dir=None, node_for=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
-                     write_json=write_json, log_dir=log_dir)
+                     write_json=write_json, log_dir=log_dir,
+                     node_for=node_for)
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
     _migrate_paths()

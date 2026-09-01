@@ -64,6 +64,7 @@ bb — BuilderBot helper
   bb bug rm N ["why"]    delete a report that should not have been filed
   bb history [--find X]  one search over the notebook: roadmap, bugs, memory
                          and the scanner's logs
+  bb nodes               the node registry, read-only (docs/nodes.md phase 1)
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
@@ -2040,6 +2041,37 @@ ago() {
     fi
 }
 
+# The node registry, read-only. Phase 1 of the controller design
+# (docs/nodes.md): the list exists and nothing else does yet, so this prints
+# what the dashboard's store knows and never writes it — the dashboard's boot
+# owns seeding and migration, and a look at the list must not race it.
+cmd_nodes() {
+    local py
+    py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
+    [ -f "$py" ] || die "nodes.py is missing from this image"
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" <<'PY'
+import importlib.util, os, sys, time
+spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
+nodes = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nodes)
+try:
+    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    rows = nodes.node_list()
+except Exception as e:
+    print(f"no node store yet — the dashboard creates it on boot ({e})")
+    raise SystemExit(0)
+if not rows:
+    print("no nodes on record — the dashboard seeds `local` on boot")
+    raise SystemExit(0)
+now = time.time()
+for n in rows:
+    caps = ",".join(n["capabilities"]) or "-"
+    where = n["ssh_addr"] or ("this container" if n["kind"] == "local" else "-")
+    print(f'{n["id"]:>12}  {n["state"]:<8} {n["kind"]:<6} {caps:<24} '
+          f'{n["name"]} · {where}')
+PY
+}
+
 cmd_findings() {
     local target="" scope=mine proj lvl="" rule="" fnd=""
     # `bb findings history` reads the notebook's fourth log — what the scanner
@@ -3152,6 +3184,7 @@ case "${1:-help}" in
     claude-md|claudemd) shift; cmd_claude_md "$@" ;;
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
+    nodes) shift; cmd_nodes "$@" ;;
     # `todo` still works: sessions started before the rename carry it in their
     # prompt, and a live conversation should not break on a word change.
     roadmap|todo) shift; cmd_roadmap "$@" ;;

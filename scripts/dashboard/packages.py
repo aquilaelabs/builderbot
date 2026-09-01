@@ -647,7 +647,12 @@ def start_job(action, names, auto=False):
             return False
         _pkg_job.update(running=True, queue=list(names), action=action,
                         current="", log=[], done=[], failed=[], auto=auto,
-                        aborting=False)
+                        aborting=False,
+                        # Fixed in phase 1 — toolchains install here — and a
+                        # seam on purpose: phase 6 makes this a job placed on
+                        # any node's packages store, and this call site is
+                        # where the node picker's answer lands.
+                        node="local")
     threading.Thread(target=_pkg_worker, daemon=True).start()
     return True
 

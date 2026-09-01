@@ -1891,9 +1891,23 @@ except OSError:
 # A project's compose app, built and run on the sandbox VM's daemon. The
 # module's docstring carries the security reasoning.
 import devapp                                                    # noqa: E402
+import nodes                                                     # noqa: E402
+
+# The node data plane first, because devapp's job claim asks it which node
+# work belongs to. Guarded: a database that will not open (a corrupt file, a
+# full disk) must degrade to the dashboard this always was, not take down the
+# page that is the operator's way to see what is wrong — nodes.py's readers
+# and audit already no-op when it never came up.
+try:
+    nodes.configure(state=STATE)
+    NODES_OK = ""
+except Exception as e:                                    # noqa: BLE001
+    NODES_OK = str(e)
+    print(f"[dashboard] node store unavailable: {e}", flush=True)
 
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
-                 log_dir=logs.log_dir)
+                 log_dir=logs.log_dir,
+                 node_for=nodes.node_for if not NODES_OK else None)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
@@ -2671,6 +2685,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(self._phone_payload())
         if self.path.startswith("/api/packages"):
             return self._json(packages.payload())
+        if self.path.startswith("/api/v1/nodes"):
+            # The versioned surface starts here (docs/nodes.md §3): new
+            # endpoints land under /api/v1 with their shapes written down;
+            # the legacy paths above migrate later, never both at once.
+            if NODES_OK:
+                return self._json({"error": "the node store did not open: "
+                                            + NODES_OK}, 500)
+            return self._json({"nodes": nodes.node_list()})
         if self.path.startswith("/api/docker"):
             # Refresh is the retry: drop the memoised availability first, so a
             # daemon wired up thirty seconds ago is noticed by pressing the
@@ -2736,6 +2758,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "bad request"}, 400)
 
         path = self.path.split("?")[0]
+        # Door 2, at the one funnel every mutation passes: when, who, what,
+        # on what, with a parameter digest — never the parameters, which
+        # carry tokens and env text. There is exactly one human credential
+        # today, so the principal is "operator"; that string is data, not a
+        # boolean, and OIDC later is a new way to fill it in, not a new row
+        # shape. (Bug #16's honest caveat applies: anything holding the
+        # credential writes as the operator, because the server cannot tell.)
+        if not NODES_OK:
+            act = path + (":" + str(req["action"])[:40]
+                          if isinstance(req.get("action"), str) else "")
+            nodes.audit("operator", act,
+                        str(req.get("project") or req.get("name")
+                            or req.get("id") or "")[:120], req)
         if path.startswith("/api/lock"):
             return self._lock(req)
         # NOT /api/pin, which is the command pin and has been since long before

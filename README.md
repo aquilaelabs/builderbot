@@ -384,6 +384,8 @@ bb claude-md --update   refresh that block only
 bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
+bb nodes           the node registry, read-only — the controller design's
+                   phase 1 seam (docs/nodes.md); `local` is this container
 bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
@@ -2742,6 +2744,8 @@ scripts/
     projects.py                  new project / link to GitHub, and the worker that clones and pushes
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
     todo.py                      the roadmap; `bb roadmap` drives the same file
+    nodes.py                     the node registry, audit trail and SQLite store (docs/nodes.md phase 1)
+    migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist
     notify.py                    getting a line into a running Claude session, and knowing it landed
