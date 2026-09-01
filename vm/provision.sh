@@ -12,6 +12,10 @@
 #   curl -fsSLO https://raw.githubusercontent.com/<org>/BuilderBot/main/vm/provision.sh
 #   sudo bash provision.sh --key "ssh-ed25519 AAAA..."
 #
+# With --controller URL --token bbe_… (the Nodes tab mints the token) it also
+# enrolls the machine as a node: the agent is fetched from the controller and
+# left running under systemd, dialing out.
+#
 # It makes two accounts. `bb` runs Docker and answers ssh — the one BuilderBot
 # uses, and the one a Claude session reaches — with no sudo and no bb-sandbox.
 # `admin` has sudo and is the only account bb-sandbox runs for, so the mounts
@@ -25,6 +29,11 @@ USER_NAME="bb"
 ADMIN_NAME="admin"
 ADMIN_KEY=""
 SSH_KEY=""
+CONTROLLER=""
+TOKEN=""
+STORE_DATA=/var/lib/builderbot/data
+STORE_PACKAGES=/var/lib/builderbot/packages
+STORE_CACHE=/var/lib/builderbot/cache
 declare -a SHARES=() NFS=()
 
 usage() {
@@ -62,6 +71,19 @@ usage: provision.sh [options]
                        a pool path like /mnt/cache/...: that spelling is for
                        bind mounts and is not what the server offers, so the
                        mount fails, quietly, because of nofail.
+  --controller URL     BuilderBot's dashboard, and --token the one-time
+  --token bbe_…        enrollment token its Nodes tab minted. Given together,
+                       this machine also becomes a NODE: the agent is
+                       downloaded from the controller, enrolled, and left
+                       running under systemd, dialing out — nothing here is
+                       opened for it. It runs jobs as the docker account
+                       (--user, bb), never as root. Re-run with a fresh token to enroll again; a
+                       re-run without either leaves the enrollment alone.
+  --data PATH          where the agent keeps a job's working tree (default
+  --packages PATH      /var/lib/builderbot/data), the toolchains installed on
+  --cache PATH         this node, and the build caches. A store may be a
+                       mount — point it at one of the --share paths — and its
+                       free space is what the Nodes tab reports for it.
 
 Path parity is not a style preference. A compose file's bind mounts are
 resolved by whatever runs the container, so if this VM calls the projects
@@ -80,10 +102,24 @@ while [ $# -gt 0 ]; do
         --key)   SSH_KEY="$2"; shift 2 ;;
         --share) SHARES+=("$2"); shift 2 ;;
         --nfs)   NFS+=("$2"); shift 2 ;;
+        --controller) CONTROLLER="$2"; shift 2 ;;
+        --token) TOKEN="$2"; shift 2 ;;
+        --data)  STORE_DATA="$2"; shift 2 ;;
+        --packages) STORE_PACKAGES="$2"; shift 2 ;;
+        --cache) STORE_CACHE="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
 done
+# One without the other is a typo, and the enrollment would fail an hour of
+# apt later. Said now.
+if { [ -n "$CONTROLLER" ] && [ -z "$TOKEN" ]; } || { [ -z "$CONTROLLER" ] && [ -n "$TOKEN" ]; }; then
+    echo "--controller and --token go together" >&2; exit 1
+fi
+case "$TOKEN" in
+    ""|bbe_*) ;;
+    *) echo "that is not an enrollment token (they start bbe_); mint one on the Nodes tab" >&2; exit 1 ;;
+esac
 
 say() { printf '\n== %s\n' "$*"; }
 warn() { printf '\n!! %s\n' "$*" >&2; }
@@ -797,6 +833,61 @@ if [ -f /etc/systemd/system/docker.service.d/tcp.conf ]; then
     systemctl restart docker
 fi
 
+# --- the agent ------------------------------------------------------------
+# With --controller and --token this machine also becomes a node: it dials
+# the controller, takes jobs, and reports what it has. The agent is one
+# Python file the controller itself serves — fetched with the enroll token,
+# so nothing else has to be published or kept in step — and it runs under
+# systemd as root ONLY so that it can drop to ${USER_NAME} for every job it
+# runs, and so that phase 5's system jobs (mounts, network) have somewhere to
+# run. The credential it ends up holding (/etc/builderbot/node.json, 0600)
+# opens that node's own row and nothing else.
+AGENT=/usr/local/sbin/builderbot-agent
+UNIT=/etc/systemd/system/builderbot-agent.service
+if [ -n "$CONTROLLER" ]; then
+    say "agent: enrolling with ${CONTROLLER}"
+    apt-get install -y -qq python3
+    hdr="$(mktemp)"
+    curl -fsSL -D "$hdr" -H "Authorization: Bearer ${TOKEN}" \
+         "${CONTROLLER%/}/api/v1/agent/download" -o "${AGENT}.new" \
+        || { warn "could not download the agent from ${CONTROLLER} — is that the dashboard's address, and is the token unused?"; rm -f "$hdr" "${AGENT}.new"; exit 1; }
+    # The digest the controller says it served, against what arrived. The
+    # same check the agent makes of its own updates, made once by hand here.
+    want="$(tr -d '\r' < "$hdr" | awk 'tolower($1)=="x-agent-digest:"{print $2}')"
+    got="sha256:$(sha256sum "${AGENT}.new" | cut -d' ' -f1)"
+    rm -f "$hdr"
+    if [ -n "$want" ] && [ "$want" != "$got" ]; then
+        warn "the agent that arrived does not match the digest the controller sent (${got} vs ${want})"
+        rm -f "${AGENT}.new"; exit 1
+    fi
+    chmod 755 "${AGENT}.new"; mv -f "${AGENT}.new" "$AGENT"
+    systemctl stop builderbot-agent 2>/dev/null || true
+    "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" --user "$USER_NAME" \
+        --store "data=${STORE_DATA}" --store "packages=${STORE_PACKAGES}" \
+        --store "cache=${STORE_CACHE}"
+    cat > "$UNIT" <<EOF
+[Unit]
+Description=BuilderBot node agent — dials in to the controller and runs its jobs
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+ExecStart=${AGENT} run
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    systemctl daemon-reload
+    systemctl enable --now builderbot-agent
+elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
+    # Enrolled on an earlier run: left as it is. The agent keeps itself
+    # current from the controller, so there is nothing to refresh here.
+    say "agent: already enrolled; leaving it"
+    systemctl start builderbot-agent 2>/dev/null || true
+fi
+
 ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
 # What to paste. BuilderBot fills in the scheme and the bb account, so on a
 # default install the address IS the whole setting; the account is spelled out
@@ -825,7 +916,18 @@ EOF
 # this whole design turns on.
 /usr/local/sbin/bb-sandbox list || true
 
-cat <<'EOF'
+if [ -f /etc/builderbot/node.json ]; then
+    cat <<EOF
+
+As a node: the agent is running (systemctl status builderbot-agent) and the
+Nodes tab should show this machine live within a minute. It dials out, so
+nothing was opened here for it. Jobs run as ${USER_NAME}.
+
+  sudo builderbot-agent status    what this node is, and does the controller answer
+EOF
+fi
+
+cat <<EOF
 
 Those paths have to be the ones BuilderBot uses. A compose file resolves a
 relative bind against whoever runs the container, so a path that means

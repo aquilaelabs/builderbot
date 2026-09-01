@@ -1256,6 +1256,31 @@ should be one `vm/provision.sh` set up, and Test says so if it is not. The
 local node refuses `docker-host` on purpose — it is not a sandbox. Every
 change writes an audit row.
 
+**Enroll node** is the other way in, and the one the design is built around:
+it makes a pending row and mints a one-time token (`bbe_…`, good for a day),
+shown once inside the command to run on the machine —
+`sudo bash provision.sh --controller URL --token bbe_…`, or the two-line
+version that fetches `builderbot-agent` by hand. The provisioner downloads
+the agent from the controller itself (checking it against the digest the
+controller sends), enrolls, and leaves it running under systemd. From then
+on the node **dials out**: no port is opened on it, the controller holds no
+key that logs in anywhere, and the credential the node keeps
+(`/etc/builderbot/node.json`, 0600) opens its own row and nothing else.
+Revoke on the row ends it; the agent says so in its journal and the row goes
+quiet, keeping its history.
+
+An agent node's row is *live* when a poll has arrived within the last 75
+seconds, and the poll carries the numbers — CPU, memory, jobs running and
+free space per store (`data`, `packages`, `cache`) — so the row shows them
+and `bb nodes` marks liveness (`●` live, `○` quiet, `✗` revoked). Test runs
+`uname` there through the channel and shows the answer. Jobs run as the
+account the node enrolled (`bb`, the docker account), never as root, and a
+job needing a capability the node was not enrolled with is refused **on the
+node** (exit 77), whatever the row says. Over plain http the node token
+travels in the clear, as the dashboard's own credential does; enrollment says
+so, and with TLS in front of the dashboard the agent pins the certificate on
+first use and refuses a different one after.
+
 ### The Settings tab
 
 The gear in the header keeps what belongs to this **browser** — theme and
@@ -2779,13 +2804,15 @@ scripts/
     projects.py                  new project / link to GitHub, and the worker that clones and pushes
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
     todo.py                      the roadmap; `bb roadmap` drives the same file
-    nodes.py                     the node registry, audit trail and SQLite store (docs/nodes.md phase 1)
+    nodes.py                     the node registry, audit trail, SQLite store and the agent's channel (docs/nodes.md)
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
+  agent/builderbot-agent.py      the node agent: one stdlib file, served to nodes by the dashboard
+vm/provision.sh                  turns a Debian/Ubuntu VM into the Docker sandbox, and enrolls it as a node
 config/skel/                     home directory skeleton
 config/packages.json             the packages the Tools tab offers, and how to install each
 config/templates/                project CLAUDE.md template (shipped in the image)

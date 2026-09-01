@@ -49,7 +49,7 @@ const SURFACE = [
   'findingsRulesHtml', 'finishTabs', 'flip', 'focusTab', 'foldHeight',
   'fillNodeSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab', 'imgAdder',
   'imgRow', 'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
-  'loadFindings', 'loadNodes', 'nodeAct', 'nodeStatePill', 'loadPackages', 'loadWire', 'logNote', 'logSection',
+  'loadFindings', 'loadNodes', 'nodeAct', 'nodeStatePill', 'nodeNumbers', 'loadPackages', 'loadWire', 'logNote', 'logSection',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onCardDrag', 'onDrag', 'onRev', 'openClaude',

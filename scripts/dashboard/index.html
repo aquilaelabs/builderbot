@@ -1603,6 +1603,11 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndform .acts{display:flex;gap:8px;margin-top:10px}
 .ndform .acts .sp,.docbarrow .sp{flex:1}
 .ndtest.warn,#logDaysSaid.warn{color:var(--warn)}
+/* The one-time enrollment command: a pre, because a wrapped shell line lies
+   about what runs — with the page's pre skin, inset like a field. */
+.ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:6px;
+  background:var(--sunk);user-select:all}
+.ndnums{font:var(--f-note);color:var(--dim)}
 /* The manager's node picker select keeps the house control font wherever it
    renders — .dmtab predates the scaffold's groups. */
 .dmpick select{font:13px/1.5 var(--mono);padding:8px 9px}
@@ -6028,9 +6033,16 @@ function fillNodeSelect(sel, wrap, prefer){
     n.capabilities?.includes("docker-host") && n.state !== "retired");
   if (nodesList === null) loadNodes();
   wrap.hidden = dnodes.length < 2;
-  sel.innerHTML = dnodes.map(n =>
-    `<option value="${esc(n.id)}"${n.id === prefer ? " selected" : ""}>${
-      esc(n.name)} — ${esc(n.state)}</option>`).join("");
+  // An agent node carries its heartbeat's numbers, and this is the picker
+  // the design says they belong beside (docs/nodes.md §9): the choice of
+  // where to run a container is made on how busy the machine is.
+  sel.innerHTML = dnodes.map(n => {
+    const s = n.kind === "agent" && n.live && n.reported?.sample;
+    const nums = s ? ` · cpu ${s.cpu_pct}% · ${Math.round(s.mem_used_mb / 1024 * 10) / 10}/${
+        Math.round(s.mem_mb / 1024)}GB` : n.kind === "agent" ? " · quiet" : "";
+    return `<option value="${esc(n.id)}"${n.id === prefer ? " selected" : ""}>${
+      esc(n.name)} — ${esc(n.state)}${nums}</option>`;
+  }).join("");
 }
 
 function dnShow(){
