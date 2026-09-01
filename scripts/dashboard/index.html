@@ -221,6 +221,23 @@ header h1{font-size:15px;margin:0;font-weight:600}
 .meta{color:var(--dim);font:12px/1.4 var(--mono);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
 @media(max-width:600px){ .meta.host{display:none} }
+/* Making the header fit, which it did not: measured at 320px it wanted 369px
+   of a 320px viewport and overflowed by 57, and the uptime — the only item
+   here that shrinks, because .meta clips — was squeezed to nothing on the way.
+   It read as "up 09:52:…", which is not a truncated number, it is a different
+   one.
+
+   Three things, cheapest first. The gap closes up, because 10px seven times is
+   70px of a phone. The wordmark goes below 480, where it cannot fit beside the
+   uptime and five tap targets — the mark stays, and it is the connection light
+   as well as the logo, so identity is not what is lost. And the uptime stops
+   being the flexible one: it is shown whole or not at all, and below 360 not
+   at all, because a machine that narrow has no room for it and the About
+   popup has carried it all along. */
+@media(max-width:600px){ header{gap:6px} }
+@media(max-width:480px){ header h1{display:none} }
+#uptime{flex:0 0 auto}
+@media(max-width:360px){ #uptime{display:none} }
 /* The theme crossfade, in force only while one is happening — see applyTheme.
    Colour properties only: opacity is left alone so a tooltip or a fold mid-
    flight is not dragged into it, and `*` is affordable because it lasts 320ms
@@ -9369,6 +9386,27 @@ async function pJobAct(action){
 // Which project's resume chooser is open, if any.
 let resumeFor = null;
 
+// `ps -o etime=` gives MM:SS under an hour, HH:MM:SS under a day, and
+// D-HH:MM:SS beyond one. Rendered raw in a header with four buttons beside it
+// that is exactly what ran out of room on a phone — and it did not wrap or
+// shrink, it ELLIPSISED, so "09:52:31" became "09:52:…", which reads as a
+// perfectly good and completely different number. Two units is all anybody
+// reads off a header anyway; the About popup keeps the precise one.
+function shortUptime(raw){
+  const t = String(raw || "").trim();
+  const m = t.match(/^(?:(\d+)-)?(?:(\d+):)?(\d+):(\d+)$/);
+  if (!m) return t;                       // "?" from a ps that would not answer
+  const [d, h, mi, sec] = [+(m[1] || 0), +(m[2] || 0), +m[3], +m[4]];
+  // Only where the third field exists is the first hours; without it ps is
+  // counting minutes and seconds, and calling those hours would be a lie in
+  // the direction nobody checks.
+  const parts = m[2] === undefined
+    ? [[mi, "m"], [sec, "s"]]
+    : [[d, "d"], [h, "h"], [mi, "m"], [sec, "s"]];
+  const shown = parts.filter(([n]) => n > 0).slice(0, 2);
+  return shown.length ? shown.map(([n, u]) => n + u).join(" ") : "0s";
+}
+
 const ago = s => {
   const d = Math.max(0, Math.floor(Date.now()/1000) - s);
   return d < 90 ? "just now"
@@ -10364,8 +10402,15 @@ async function refresh(){
     // a plain reload still lands where it left off.
     viewAfterRestart();
     $("dot").classList.remove("off");
-    $("host").textContent = state.host;
-    $("uptime").textContent = "up " + state.uptime;
+    // The container's hostname, which answers "which BuilderBot am I looking
+    // at" — and on the ordinary box, where the container is called builderbot,
+    // answers it with the word already three inches to its left. Two of the
+    // same word reads as a rendering fault rather than as information, so it
+    // is shown only when it says something the title does not.
+    const host = state.host || "";
+    $("host").textContent =
+      host.toLowerCase() === "builderbot" ? "" : host;
+    $("uptime").textContent = "up " + shortUptime(state.uptime);
     drawBuild(state.image);
     adoptLayout(state.layout);
     // Not mid-drag: adopting the server's order under a moving pointer would
