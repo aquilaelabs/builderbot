@@ -163,6 +163,24 @@ await page.fill('.pane .nb #anaList .fxFind', '');
 await page.waitForFunction(n =>
   document.querySelectorAll('.pane .nb #anaList .rule').length === n,
   anaRules, { timeout: 10000 });
+// The view's bands line up with every other view's. The filter bar was a
+// .field inside a .field and inset twice; the rules carried the sidebar's
+// tighter 11px — so this one view had three left edges where the roadmap
+// beside it had one.
+{
+  const xs = await page.evaluate(() => {
+    const x = sel => { const e = document.querySelector(sel);
+      return e ? Math.round(e.getBoundingClientRect().x
+                            + parseFloat(getComputedStyle(e).paddingLeft)) : null; };
+    return { head: x('.pane .nb .nbview:not([hidden]) .nbhead'),
+             bar: x('.pane .nb #anaList .fxbar'),
+             rule: x('.pane .nb #anaList .rule') };
+  });
+  ok(new Set(Object.values(xs)).size === 1 && !Object.values(xs).includes(null),
+     'the notebook\'s Analysis bands share one left edge: ' + JSON.stringify(xs));
+}
+ok(await page.$$eval('.pane .nb .field .field', es => es.length === 0),
+   '...and nothing in the notebook is inset twice by a field inside a field');
 // The fourth log. Nothing writes it — it is the difference between one scan
 // and the last — but it opens and filters like the other three, which is the
 // point of it being here at all.

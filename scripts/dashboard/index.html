@@ -58,6 +58,12 @@
    and level colours agree everywhere: error/high red, warning/medium yellow,
    note/low blue.
 
+   SPACE: a band of a document surface is inset var(--row-y) var(--row-x) —
+   11px 14px — and `.field` applies it, so a band is a `.field` rather than a
+   local padding. A field inside a field does NOT inset again. The sidebar is
+   denser on purpose (rows 7px 10px, quiet states 9px 11px); nothing else is.
+   Four different left edges in one tab is what retyped padding produces.
+
    CONTROLS: the field skin (ground, edge, radius) is applied to the elements
    globally — see "the field skin" rule — so a new surface's controls match by
    existing. What a surface adds is sizing: full-width 13px mono controls mean
@@ -104,6 +110,13 @@
   color-scheme:dark;
   --tap:38px;
   --doc-w:1080px;
+  /* The inset of a band on a document surface — a notebook row, a modal's
+     field, a document tab's row, a findings rule. It was retyped as 11px 14px
+     at every band and as 9px 11px at a few that were written against the
+     sidebar's tighter density by mistake, which is how one tab ends up with
+     four different left edges. The sidebar keeps its own, tighter, values;
+     this is the roomy one every document surface uses. */
+  --row-y:11px; --row-x:14px;
   /* The page's three secondary voices, named once. Before this they were
      retyped at every use — 11px/1.4, /1.45, /1.5 and /1.6 all coexisted for
      the same "quiet explainer under a control", which is the kind of drift
@@ -759,7 +772,14 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 }
 .modal h3{margin:0;padding:12px 14px;border-bottom:1px solid var(--line);
   font:600 13px/1.2 system-ui,sans-serif;letter-spacing:.3px;text-transform:uppercase}
-.modal .field,.nb .field{padding:11px 14px}
+/* The band inset, once, for every .field. It was scoped to .modal and .nb, so
+   the Analysis tab's filter bar carried the class, matched nothing and sat
+   flush against the tab's edge — the same allowlist failure as the field skin
+   below. The guard is the other half: a field inside a field is a row of the
+   outer one, and insetting twice is what put that same bar 28px in when the
+   rows beside it were at 14. */
+.field{padding:var(--row-y) var(--row-x)}
+.field .field{padding:0}
 .modal label,.nb label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
   margin-bottom:5px}
 /* The field skin, once, for EVERY control. This was an allowlist of container
@@ -1435,9 +1455,13 @@ textarea,select{
    difference you only see once and then cannot stop seeing. The notebook's
    bands are 11px/14px; so are these. */
 .projtab .row,.dmtab .row,
-.projtab .empty,.dmtab .empty,
 .projtab .macros,.dmtab .macros,
-.projtab .loading,.dmtab .loading,.dmtab .dmsrc,.fxtab .loading{padding:11px 14px}
+.dmtab .dmsrc{padding:var(--row-y) var(--row-x)}
+/* Every document pane, rather than a list of tab classes: .empty and .loading
+   default to the sidebar's tighter inset, and a tab added to the page after
+   this rule was written would otherwise draw them 3px in from everything
+   around them until somebody noticed. */
+.doc .empty,.doc .loading{padding:var(--row-y) var(--row-x)}
 /* The findings card's footer: when the reports were written, and which were
    left out of the counts. */
 .fnote{padding:7px 10px;color:var(--dim);font:var(--f-note);
@@ -1536,13 +1560,23 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 /* The Analysis tab: the filter bar, and a project heading when reading
    across all of them. The rules themselves reuse .rule from the notebook's
    Analysis view — same data, same rendering, one implementation. */
-.fxtab #fxBar{padding:11px 14px;border-bottom:1px solid var(--line)}
-.fxtab #fxBar select{flex:0 1 auto;min-width:0}
-.fxtab .fxproj{display:flex;gap:8px;align-items:baseline;padding:10px 14px 2px;
+/* The bar is a .field and takes its inset from that; what is its own is the
+   line under it, because the first project heading below deliberately has no
+   top border. (This was written as #fxBar, an id the markup never carried, so
+   the bar had no padding at all and its controls sat against the edge.) */
+.fxtab .fxbar{border-bottom:1px solid var(--line)}
+.fxtab .fxbar select{flex:0 1 auto;min-width:0}
+.fxtab .hint{padding:var(--row-y) var(--row-x)}
+.fxtab .fxproj{display:flex;gap:8px;align-items:baseline;
+  padding:var(--row-y) var(--row-x) 3px;
   border-top:1px solid var(--line);font-weight:600}
 .fxtab .fxproj:first-of-type{border-top:0}
-.fxtab .empty{padding:11px 14px}
-.fxtab .fnote{padding:4px 14px 10px;color:var(--dim);font:var(--f-note)}
+.fxtab .fnote{padding:4px var(--row-x) 10px;color:var(--dim);font:var(--f-note)}
+/* The notebook's Analysis list is a full-bleed band: its rows and its filter
+   bar carry the inset themselves, exactly as they do in the tab, so a finding
+   starts at the same x as a roadmap item one view over. */
+#anaList{padding:0}
+#anaList .pagemore{padding:10px var(--row-x) 2px}
 
 /* The wiring fold. Its lines wrap rather than scroll: a host path is long, and
    a row that scrolls sideways on a phone hides the half you were reading. */
@@ -1923,10 +1957,10 @@ body.dragging .tab .lbl{cursor:grabbing}
    whose groups really are separate documents. */
 .fx:not(.nbhost) .grp{border:1px solid var(--line);border-radius:8px;
   margin-bottom:10px;background:var(--panel);overflow:hidden}
-.fx .grp>summary{padding:9px 11px;font-weight:600;flex-wrap:wrap;
+.fx .grp>summary{padding:var(--row-y) var(--row-x);font-weight:600;flex-wrap:wrap;
   transition:background-color .15s ease}
-.fx .bust{padding:9px 11px;color:var(--bad);font-weight:600}
-.fx .rule{border-top:1px solid var(--line);padding:9px 11px}
+.fx .bust{padding:var(--row-y) var(--row-x);color:var(--bad);font-weight:600}
+.fx .rule{border-top:1px solid var(--line);padding:var(--row-y) var(--row-x)}
 .fx .rule .rid{font:12px/1.5 var(--mono);color:var(--dim);word-break:break-all}
 .fx .rule .desc{margin:3px 0 6px;overflow-wrap:anywhere}
 .fx .loc{font:12px/1.7 var(--mono);color:#cbd5e1;overflow-wrap:anywhere}
@@ -2142,7 +2176,7 @@ body.dragging .tab .lbl{cursor:grabbing}
         </select>
       </div>
       <div class="field" id="anaHist" hidden></div>
-      <div class="field" id="anaList"></div>
+      <div id="anaList"></div>
     </div>
     <div class="foot">
       <!-- Two, and the difference is whether a line of the conversation is
