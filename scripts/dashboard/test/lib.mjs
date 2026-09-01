@@ -10,7 +10,12 @@ import { execFileSync } from 'child_process';
 // of this directory. CJS resolution honors NODE_PATH, which run.sh sets.
 const { chromium } = createRequire(import.meta.url)('playwright');
 
-export const URL = process.env.DASHBOARD_TEST_URL || 'http://127.0.0.1:8093/';
+// run.sh hands the URL over; the port in it is picked per run, so there is no
+// default worth having — a hardcoded one would run the suite against whatever
+// happens to answer there, which is the failure the runner refuses to allow.
+export const URL = process.env.DASHBOARD_TEST_URL
+  || (() => { throw new Error('DASHBOARD_TEST_URL is not set — run this through '
+                              + '`bb dashboard test`, which starts the server'); })();
 export const DIR = process.env.DASHBOARD_TEST_DIR;
 const CHROME = process.env.DASHBOARD_TEST_CHROME;
 const CREDS = { username: 'test', password: 'test' };
@@ -45,6 +50,23 @@ export async function newPage(browser, opts = {}){
       + Buffer.from(`${CREDS.username}:${CREDS.password}`).toString('base64') },
     ...opts });
   const page = await ctx.newPage();
+  // Every wait in this suite is a guess about how long a poll, a subprocess and
+  // a repaint take on THIS box — and this box also runs CI, the live dashboard
+  // and whatever the operator is doing. Rather than re-guess at two hundred
+  // call sites, the default is set here and the explicit ones are stretched by
+  // the same multiple below: BB_TEST_SLOW=2 doubles them, which is what the CI
+  // job sets. A wait that is too long costs seconds on a failure; one that is
+  // too short costs a red run that was never about the code (bug #13).
+  page.setDefaultTimeout(patience(30000));
+  for (const m of ["waitForFunction", "waitForSelector"]){
+    const real = page[m].bind(page);
+    page[m] = (...args) => {
+      const last = args[args.length - 1];
+      if (last && typeof last === "object" && typeof last.timeout === "number")
+        args[args.length - 1] = { ...last, timeout: patience(last.timeout) };
+      return real(...args);
+    };
+  }
   page.errors = []; page.dialogs = [];
   // The harness runs no ttyd, so every terminal iframe's /term request 502s
   // by design — same-origin now, which puts it in the page console where the
@@ -175,7 +197,22 @@ export async function animatedDuring(page, act){
 //
 // Nothing here holds a handle across a repaint either: the condition is
 // evaluated in the page on every pass.
-export async function refreshUntil(page, fn, { timeout = 45000, every = 1000 } = {}){
+// How long a wait gets, stretched when the box is busy. Every timeout in the
+// suite is really a guess about how long a poll, a subprocess and a repaint
+// take on THIS machine, and this machine also runs CI, an emulator and the
+// operator's sessions. A full suite has gone red three times in a day on three
+// different waits, each of which passed alone seconds later — bug #13 — so the
+// honest fix is not another guess but a multiplier: BB_TEST_SLOW=2 doubles
+// every wait that goes through here, and a run under load can afford it.
+//
+// Slow by default is deliberate. A wait that is too long only costs seconds
+// on the rare failure; one that is too short costs a red run that is not
+// about the code, and then an hour proving that.
+export const SLOW = Number(process.env.BB_TEST_SLOW || 1) || 1;
+export const patience = ms => Math.round(ms * SLOW);
+
+export async function refreshUntil(page, fn, { timeout = 60000, every = 1000 } = {}){
+  timeout = patience(timeout);
   const until = Date.now() + timeout;
   for (;;){
     if (await page.evaluate(fn)) return;

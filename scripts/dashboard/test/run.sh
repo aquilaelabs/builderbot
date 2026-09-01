@@ -39,7 +39,28 @@ CHROME="$(bash "$DASH/../bb" shot --print-chromium 2>/dev/null || true)"
 [ -x "${CHROME:-}" ] || { log "[skip] no Playwright chromium — install it with: bb sdk install playwright"; exit 0; }
 command -v tmux >/dev/null || { log "[skip] tmux is not installed"; exit 0; }
 
-PORT="${DASHBOARD_TEST_PORT:-8093}"
+# The port is picked, not fixed. It was 8093 for everybody, which meant a run
+# on this box and the CI job for the push that started it fought over one
+# number: the second refused to start, and the message's first suggestion —
+# kill the pid holding it — would have killed a live CI job. Worse than the
+# collision was what it did to the run that DID start, since the two suites
+# then shared the box's CPU and the loser went red on timing (bug #13).
+#
+# So: ask the kernel for a free one. Bound and released, then handed to the
+# server — a race in principle, and not one in practice on a box running two
+# of these at most, where the alternative is a constant that collides every
+# time. DASHBOARD_TEST_PORT still pins it for anyone who needs a known port.
+free_port() {
+    python3 - <<'PY'
+import socket
+s = socket.socket()
+s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])
+s.close()
+PY
+}
+PORT="${DASHBOARD_TEST_PORT:-$(free_port)}"
+[ -n "$PORT" ] || die "could not find a free port for the test server"
 # Refuse a port we do not own, before doing anything else. An interrupted run
 # (SIGKILL, or the session that launched it dying) leaves a server holding this
 # one with a scratch dir that no longer exists. Ours then exits on EADDRINUSE
@@ -47,8 +68,16 @@ PORT="${DASHBOARD_TEST_PORT:-8093}"
 # the readiness curl below succeeds and the whole suite runs against the wrong
 # fixtures. The failures that produces read as real regressions and are not;
 # that cost an hour once, and the tell was obscure enough to be worth this check.
+#
+# Only reachable now when the port was pinned by hand, which is exactly when
+# the holder is worth identifying: a copy running out of /workspace/_work is
+# the CI runner's, mid-job, and killing it ends a build.
 if holder="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)" && [ -n "$holder" ]; then
-    die "port $PORT is already in use by pid $holder ($(ps -o comm= -p "$holder" 2>/dev/null || echo unknown)) — if that is a test server left behind by an interrupted run, 'kill $holder' and re-run; otherwise set DASHBOARD_TEST_PORT to something free."
+    where="$(tr '\0' ' ' < "/proc/$holder/cmdline" 2>/dev/null || true)"
+    case "$where" in
+        */_work/*) die "port $PORT is held by pid $holder, which is a CI run on this box (${where# }) — do NOT kill it; leave DASHBOARD_TEST_PORT unset to get a free port." ;;
+    esac
+    die "port $PORT is already in use by pid $holder ($(ps -o comm= -p "$holder" 2>/dev/null || echo unknown)${where:+ — $where}) — if that is a test server left behind by an interrupted run, 'kill $holder' and re-run; otherwise leave DASHBOARD_TEST_PORT unset and one will be picked."
 fi
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
 # Every tmux call from here on — ours and the server's — talks to a private

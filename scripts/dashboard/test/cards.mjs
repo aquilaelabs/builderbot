@@ -320,6 +320,34 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   await page.click('#bFindings');
   await page.waitForSelector('.fxtab #fxProject', { timeout: 15000 });
 }
+// Two projects whose names shorten to one slug are one dev instance — the same
+// compose project, env file and data directory, driven by two rows that know
+// nothing about each other. Nothing owns the moment a directory appears under
+// /workspace, so it cannot be refused; this list is the only place that sees
+// every name at once, which makes it the only place that can say so.
+{
+  // Not empty: an empty directory is a mount point waiting for content and is
+  // never listed at all.
+  mkdirSync(`${DIR}/ws/My.App`, { recursive: true });
+  mkdirSync(`${DIR}/ws/my-app`, { recursive: true });
+  writeFileSync(`${DIR}/ws/My.App/README.md`, '#\n');
+  writeFileSync(`${DIR}/ws/my-app/README.md`, '#\n');
+  await refreshUntil(page, () => (state?.projects || []).some(p => p.name === 'my-app'),
+                     { timeout: 20000 });
+  const said = await page.evaluate(() => (state.projects || [])
+    .filter(p => (p.issues || []).some(i => /shorten to/.test(i.text)))
+    .map(p => p.name).sort());
+  ok(JSON.stringify(said) === JSON.stringify(['My.App', 'my-app']),
+     'two projects that shorten to one name are both told so');
+  ok(await page.evaluate(() => (state.projects || []).find(p => p.name === 'My.App')
+       .issues.find(i => /shorten to/.test(i.text)).level === 'warning'),
+     '...as a warning: an error would take them out of findings attribution and '
+     + 'off the Claude button, which is a bigger fault than the one being reported');
+  rmSync(`${DIR}/ws/My.App`, { recursive: true, force: true });
+  rmSync(`${DIR}/ws/my-app`, { recursive: true, force: true });
+  await refreshUntil(page, () => !(state?.projects || []).some(p => p.name === 'my-app'),
+                     { timeout: 20000 });
+}
 await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
                             if (t) hideTab(t.id); });
 

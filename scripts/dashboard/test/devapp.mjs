@@ -696,7 +696,14 @@ def fake(argv, timeout=60, **kw):
     # something is already there gets yes and the move it guards never runs.
     # The sandbox holds bbdev-alpha and nothing else.
     if 'test' in argv:
-        return {'code': 0 if argv[-1] == '/d/bbdev-alpha' else 1, 'out': ''}
+        # What the sandbox holds: the old project's directories and nothing
+        # else, so a move onto an existing name can still be refused and a
+        # move of a per-instance directory has a source to find.
+        # The literal names the calls above move, plus what a project called
+        # alpha actually resolves to (_pname gives the project's slug for the
+        # default instance, and the instance's own name for any other).
+        there = {'/d/bbdev-alpha', '/d/alpha', '/d/staging'}
+        return {'code': 0 if argv[-1] in there else 1, 'out': ''}
     return {'code': 0, 'out': ''}
 m._run = fake
 
@@ -743,6 +750,17 @@ out['onto'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-alpha'),
 calls.clear()
 out['renamed'] = [m.rename_dev_data('bbdev-alpha', 'bbdev-beta'),
                   [[a for a in c['argv'] if a.startswith('/d/')] for c in calls]]
+
+# Renaming a PROJECT, which is asked per project rather than per directory:
+# only the default instance's directory is named for the project, so that one
+# moves and a named instance's does not — its name never carried the project.
+# Asked as was == now rather than known, so a change to _pname is picked up
+# here rather than orphaning what it renames.
+calls.clear()
+m._load = lambda: {'beta': {'main': {}, 'staging': {}}}
+out['project'] = [m.rename_project_data('alpha', 'beta'),
+                  [[a for a in c['argv'] if a.startswith('/d/')]
+                   for c in calls if 'mv' in c['argv']]]
 
 # Bind directories on the DAEMON's side. The shares are mounted over there
 # and not here, which is the shipped arrangement — and which shares the VM has
@@ -815,6 +833,12 @@ ok(DDD.onto[0][0] === false && /already has a data directory/.test(DDD.onto[0][1
    && DDD.onto[1].every(paths => paths.length === 1),
    '...and refuses onto a name the sandbox already has: every call it made names '
    + 'one directory, so the two-path mv that would bury one never ran');
+ok(JSON.stringify(DDD.project[1]) === JSON.stringify([['/d/alpha', '/d/beta']]),
+   'renaming a project moves the data of every instance named after it — which '
+   + 'is the default one, and only it');
+ok(DDD.project[0][0].length === 1 && !DDD.project[0][1].length,
+   '...and a named instance is left alone rather than reported as a failure: '
+   + 'its directory never carried the project\'s name');
 ok(!DDD.guard.ours && Object.entries(DDD.guard).filter(([k]) => k !== 'ours')
      .every(([, v]) => !!v),
    'the guard allows those exact commands and nothing else wearing the same verb');

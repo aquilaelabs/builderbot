@@ -270,9 +270,8 @@ m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
             agent_keys=lambda: [], gh_authed=lambda: False,
             ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
             build_claude_md=lambda *a, **k: '', project_name=None,
-            github_url=None, state=d, home=d, devdata=d,
-            write_json=lambda p, o: open(p, 'w').write(json.dumps(o)),
-            pname=lambda n: 'bbdev-' + n)
+            github_url=None, state=d, home=d,
+            write_json=lambda p, o: open(p, 'w').write(json.dumps(o)))
 out = {}
 # The remote's identity, however it is spelled — a deploy-key alias hides the
 # host but the path is still owner/repo, and case does not distinguish repos.
@@ -330,8 +329,7 @@ m.configure(run=lambda *a, **k: {'code': 0, 'out': ''}, workspace='/tmp',
             agent_keys=lambda: [], gh_authed=lambda: False,
             ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
             build_claude_md=lambda *a, **k: '', project_name=None,
-            github_url=None, state=d, home=d, devdata=d,
-            write_json=lambda *a: None, pname=lambda n: 'bbdev-' + n)
+            github_url=None, state=d, home=d, write_json=lambda *a: None)
 helper = m.write_token('alpha', 'ghp_ExampleTokenValue123')
 f = os.path.join(d, 'gitcreds', 'alpha')
 out = {'helper': helper,
@@ -391,9 +389,8 @@ m.configure(run=fake_run, workspace='/tmp',
             agent_keys=lambda: [], gh_authed=lambda: False,
             ensure_deploy_alias=lambda *a: '', repo_path=lambda u: u,
             build_claude_md=lambda *a, **k: '', project_name=None,
-            github_url=None, state=d, home=d, devdata=d,
-            write_json=lambda p, v: open(p, 'w').write(json.dumps(v)),
-            pname=lambda n: 'bbdev-' + n)
+            github_url=None, state=d, home=d,
+            write_json=lambda p, v: open(p, 'w').write(json.dumps(v)))
 out = {}
 m.grant_push('alpha', 'owner/repo', 'key')
 out['ssh_seen'] = m.remote_auth('/tmp/alpha')

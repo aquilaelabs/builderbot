@@ -157,3 +157,5 @@
 - The Docker manager keeps showing what is on record when the daemon is unreachable — greyed, and saying the state is unknown rather than reporting one (dada243)
 - BuilderBot only talks to a Docker daemon that says it is a BuilderBot sandbox; re-run vm/provision.sh on an older VM to stamp it (dada243)
 - Pointing at a different sandbox VM clears the build records from the old one, so rows describe the daemon that is actually plugged in (dada243)
+- Two projects whose names shorten to the same thing are now warned about on both rows — they would otherwise share one dev instance silently (e8a3153)
+- The GPU's X server is restarted up to three times if it dies, and bb emu gpu says so when it gives up, instead of the emulator quietly dropping to software (e8a3153)

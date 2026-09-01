@@ -546,11 +546,18 @@ cmd_emu() {
         gpu)
             # "Which renderer would a start use, and why" — one command,
             # because the answer used to take an afternoon of reading logs.
-            local v
+            local v note
             if [ -n "${ANDROID_EMULATOR_GPU:-}" ]; then
                 printf 'ANDROID_EMULATOR_GPU is set: %s (used as given)\n' "$ANDROID_EMULATOR_GPU"
             elif ! x_display_up; then
                 printf 'software (swiftshader_indirect): no X display for the GPU\n'
+                # What the startup hook last said about it. The display dying
+                # hours into a boot used to be silent — the emulator went on
+                # working, slower, and every timing conclusion after it was
+                # wrong. The hook restarts it three times and then stops; this
+                # is where it says which of those happened.
+                note="$(gpu_display_note)"
+                [ -n "${note:-}" ] && printf '  the startup hook says: %s\n' "$note"
                 command -v Xorg >/dev/null 2>&1 \
                     || printf '  this image has no X server — the GPU path needs one (see 48-gpu-display)\n'
                 command -v nvidia-smi >/dev/null 2>&1 \
@@ -2682,7 +2689,7 @@ cmd_doctor() {
     # The probe is devapp.available(), the same call the Artifacts tab makes on
     # its own poll, so doctor cannot drift into disagreeing with the tab about
     # whether the thing is up.
-    local docker_line dst dmsg lib
+    local docker_line dst dmsg lib note
     lib="$(dirname "$(readlink -f "$0")")/lib/docker-probe.py"
     docker_line="$(python3 "$lib" \
         "$(dirname "$(readlink -f "$0")")/dashboard/devapp.py" 2>/dev/null \
@@ -2718,6 +2725,8 @@ cmd_doctor() {
             printf '         — Mesa answering means llvmpipe; the emulator will use software\n'
         else
             printf '  [warn] nvidia EGL is installed but has no display to render on\n'
+            note="$(gpu_display_note)"
+            [ -n "${note:-}" ] && printf '         the startup hook says: %s\n' "$note"
             printf '         — %s; the emulator will use software (bb emu gpu)\n' \
                 "$(command -v Xorg >/dev/null 2>&1 \
                    && { [ -S /tmp/.X11-unix/X0 ] \

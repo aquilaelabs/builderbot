@@ -116,6 +116,57 @@ Section "Screen"
 EndSection
 EOF
 
+# --- keeping it alive, within reason -------------------------------------
+# Xorg here has died hours into a boot with no last words in its log: no error,
+# no signal, a clean startup and then nothing (bug #17). What made that
+# expensive was not the death, it was the silence — the emulator went on
+# working, on software, and every timing conclusion drawn afterwards was wrong.
+#
+# So it is watched, and the watching is bounded. An unbounded respawn against a
+# card the host has taken back would be worse than the silence it replaces:
+# a loop launching a server that cannot start, forever, with nothing saying so.
+# Three restarts, then it stops and SAYS it stopped — `bb emu gpu` and
+# `bb doctor` read the state file and report it, which turns a silent drop to
+# software into a stated one.
+#
+# The card is checked before every restart. If nvidia-smi no longer answers,
+# the card is gone and there is nothing to restart onto: that is recorded and
+# the watch ends immediately rather than spending its three tries proving it.
+GPU_DISPLAY_MAX=3
+
+supervise() {
+    local tries=0 gone=""
+    while sleep 30; do
+        x_display_up && continue
+        # It is down. A corpse's socket and lock survive here (neither /tmp nor
+        # /run is a mount of its own), and Xorg refuses a display whose lock is
+        # present, so they go before anything is started.
+        if ! nvidia-smi -L >/dev/null 2>&1; then
+            gone="the card no longer answers nvidia-smi — the host has taken it back"
+            break
+        fi
+        if [ "$tries" -ge "$GPU_DISPLAY_MAX" ]; then
+            gone="Xorg died ${tries} times and was left down; see /var/log/xorg-builderbot.log"
+            break
+        fi
+        tries=$((tries + 1))
+        log "gpu display: X on :0 has died — restart ${tries}/${GPU_DISPLAY_MAX}"
+        rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
+        nohup Xorg :0 -noreset -nolisten tcp >> /var/log/xorg-builderbot.log 2>&1 &
+        # Longer each time: a server dying immediately is a different fault
+        # from one dying after hours, and backing off keeps the first from
+        # writing a log nobody can read.
+        sleep $((tries * 20))
+        if x_display_up; then
+            chmod 1777 /tmp/.X11-unix 2>/dev/null || true
+            printf 'restarted %s times\n' "$tries" > "$GPU_DISPLAY_STATE" 2>/dev/null || true
+            log "gpu display: X is back on :0"
+        fi
+    done
+    printf 'down: %s\n' "$gone" > "$GPU_DISPLAY_STATE" 2>/dev/null || true
+    warn "gpu display: ${gone} — the emulator is on software from here (bb emu gpu)"
+}
+
 log "gpu display: starting Xorg on :0 for ${busid} (headless, for -gpu host)"
 # -noreset so a client disconnecting does not tear the server down; no TCP,
 # because the only clients are in this container.
@@ -132,6 +183,8 @@ if [ -S /tmp/.X11-unix/X0 ]; then
     # user in this container and the socket is not reachable from outside it.
     chmod 1777 /tmp/.X11-unix 2>/dev/null || true
     log "gpu display: X is up on :0 — bb emu start will use -gpu host if EGL agrees"
+    printf 'up\n' > "$GPU_DISPLAY_STATE" 2>/dev/null || true
+    supervise &
 else
     # Name the reason rather than pointing at a log. These three cover what
     # actually goes wrong here, and the first is the one to expect after a
@@ -147,4 +200,6 @@ else
     fi
     warn "gpu display: Xorg did not come up${reason:+ — $reason}"
     warn "gpu display: the emulator falls back to software rendering; full log in /var/log/xorg-builderbot.log"
+    printf 'down: %s\n' "${reason:-Xorg did not start; see /var/log/xorg-builderbot.log}" \
+        > "$GPU_DISPLAY_STATE" 2>/dev/null || true
 fi

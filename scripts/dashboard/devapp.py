@@ -1243,6 +1243,62 @@ def rename_dev_data(old, new):
     return True, ""
 
 
+def rename_project_data(old, new):
+    """Move EVERY instance's data directory when a project is renamed.
+
+    Returns (moved, failed) as two lists of sentences, for the rename to
+    report beside the rest of what it moved.
+
+    This is devapp's job rather than the renamer's because the layout is
+    devapp's, and asking it per PROJECT is what keeps _pname out of a module
+    that has no business spelling one. projects.py called _pname(old) and
+    _pname(new) with the instance left to default, which was right by accident:
+    it is right because of a rule that lives here and could change here.
+
+    The rule: only the default instance's directory is named for the project
+    (_pname gives the project's slug for `main` and the instance's own name for
+    anything else, because nobody typed a name for the default one). So a
+    rename moves exactly that one, and a named instance keeps its directory
+    because its name never contained the project. Skipped explicitly rather
+    than by knowing — was == now is asked, so a change to _pname is picked up
+    here instead of quietly orphaning what it renames.
+
+    Both arrangements, because which one is live is this module's business
+    too: a mounted /devdata is renamed here, and a sandbox's is moved over
+    there by rename_dev_data.
+
+    Order matters at the call site: the store's record has already moved to
+    the new name by the time this runs, so the instance list is asked of the
+    NEW key.
+    """
+    moved, failed = [], []
+    for inst in instances(new):
+        was, now = _pname(old, inst), _pname(new, inst)
+        if was == now:
+            continue           # not named for the project: nothing to move
+        what = ("the dev instance's data" if inst == MAIN
+                else f"the {inst} instance's data")
+        if Path(DEVDATA).is_dir():
+            src, dst = Path(DEVDATA) / was, Path(DEVDATA) / now
+            if not src.is_dir():
+                continue
+            if dst.exists():
+                failed.append(f"{what} could not move: {now} already exists")
+                continue
+            try:
+                src.rename(dst)
+                moved.append(what)
+            except OSError as e:
+                failed.append(f"{what} could not be moved: {e}")
+            continue
+        did, err = rename_dev_data(was, now)
+        if did:
+            moved.append(f"{what}, on the sandbox")
+        elif err:
+            failed.append(err)
+    return moved, failed
+
+
 def _dev_data_env(project, instance=MAIN):
     """BB_DEV_DATA for a compose that opts in with ${BB_DEV_DATA}/... —
     cache-backed volumes by convention, nothing forced on a compose that never

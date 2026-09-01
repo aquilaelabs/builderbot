@@ -5,7 +5,7 @@
 // allowed, and a bump must not sweep unrelated work into its commit. Both are
 // reachable through `bb version`, which is the same module the notebook will
 // call, so testing the CLI tests the thing.
-import { launch, newPage, ready, ok, done, sleep, tmuxCapture, DIR, URL as DURL } from './lib.mjs';
+import { launch, newPage, ready, ok, done, sleep, SLOW, tmuxCapture, DIR, URL as DURL } from './lib.mjs';
 import { mkdirSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -664,7 +664,10 @@ ok(!dirs.includes('.git'), '...and not the ones that are nobody\'s product');
 // querySelector cannot parse — so the polling stays on this side.
 await page.click(`${NB} #verBox [data-verlog]`);
 let paneText = "";
-for (let t = 0; t < 50; t++){
+// Ten seconds of 200ms polls on a quiet box, and BB_TEST_SLOW's multiple of
+// that on a busy one: this waits on a fetch the pane makes when it opens, and
+// CI runs it beside everything else this machine does (bug #13).
+for (let t = 0; t < 50 * SLOW; t++){
   paneText = await page.$eval(`${NB} .verlogpane`, e => e.textContent).catch(() => "");
   if (/no CHANGELOG\.md here yet/.test(paneText)) break;
   await sleep(200);

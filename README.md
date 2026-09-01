@@ -854,6 +854,17 @@ trusting it — EGL has to answer with a vendor driver, and Mesa answering count
 as failure for exactly the reason above — and falls back to software if it does
 not. `bb emu gpu` says which you have and why, in one line.
 
+**That server is watched, three times over.** It has died hours into a boot
+with nothing in its log — no error, no signal, a clean startup and then
+silence — and what made that expensive was the silence rather than the death:
+the emulator went on working, on software, and every timing conclusion drawn
+afterwards was wrong. So the hook restarts it up to three times with a backoff
+and then **stops and says so**. An unbounded respawn against a card the host
+has taken back would be worse than the silence it replaces, so the card is
+checked before each attempt: if `nvidia-smi` stops answering, the watch ends
+there and records that instead. Either way `bb emu gpu` and `bb doctor` print
+what happened, which is what turns a silent drop to software into a stated one.
+
 ## Static analysis reports
 
 If you run a scanner on the host, mount only its **output** — read-only:

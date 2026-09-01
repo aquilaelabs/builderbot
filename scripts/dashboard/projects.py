@@ -161,31 +161,31 @@ repo_path = None
 build_claude_md = None
 PROJECT_NAME = None
 GITHUB_URL = None
-# Renaming's own share of the injection: where the state, the home volume and
-# the dev-instance data live, and how a compose project name is spelled.
+# Renaming's own share of the injection: where the state and the home volume
+# live.
 STATE = None
 HOME = None
-DEVDATA = None
 write_json = None
-pname = None
-# The dev-data directory is not always ours to move: where the daemon is a
-# sandbox VM it lives on that machine's disk and this container never mounts
-# it. devapp knows how to reach it; injected rather than imported, so this
-# module keeps to the one thing it is about.
-rename_devdata = None
+# Moving the dev-instance data is devapp's, whole: the layout is a directory
+# per instance under a derived name, and where it lives depends on the daemon —
+# a mounted /devdata is this box's, a sandbox's is on that machine's disk.
+# Injected rather than imported, so this module keeps to the one thing it is
+# about, and asked once for the project rather than once for a name this module
+# would have to spell.
+rename_project_data = None
 
 
 def configure(*, run, workspace, agent_keys, gh_authed, ensure_deploy_alias,
               repo_path, build_claude_md, project_name, github_url,
-              state, home, devdata, write_json, pname, rename_devdata=None):
+              state, home, write_json, rename_project_data=None):
     """Hand over the server's helpers."""
     globals().update(
         run=run, WORKSPACE=Path(workspace), agent_keys=agent_keys,
         gh_authed=gh_authed, ensure_deploy_alias=ensure_deploy_alias,
         repo_path=repo_path, build_claude_md=build_claude_md,
         PROJECT_NAME=project_name, GITHUB_URL=github_url,
-        STATE=Path(state), HOME=Path(home), DEVDATA=Path(devdata),
-        write_json=write_json, pname=pname, rename_devdata=rename_devdata)
+        STATE=Path(state), HOME=Path(home), write_json=write_json,
+        rename_project_data=rename_project_data)
 
 
 # ---------------------------------------------------------------------------
@@ -466,19 +466,19 @@ def rename(req):
             failed.append(err)
         elif msg:
             moved.append(msg)
-    # The compose project name is derived and sanitized, so these two are not
-    # simply the project's name with a prefix on it. And the directory is only
-    # ours to rename when it is mounted here — under a sandbox daemon it is on
-    # that machine, and devapp does the move over there.
-    if DEVDATA.is_dir():
-        _mv(DEVDATA / pname(old), DEVDATA / pname(new),
-            "the dev instance's data", moved, failed)
-    elif rename_devdata:
-        did, err = rename_devdata(pname(old), pname(new))
-        if did:
-            moved.append("the dev instance's data, on the sandbox")
-        elif err:
-            failed.append(err)
+    # Every instance's data directory, and devapp does all of it: the layout is
+    # a directory per INSTANCE with a derived, sanitized name, which is not
+    # this module's to know. It used to be one call with the instance left to
+    # default, so a project with a second instance kept exactly one directory
+    # and lost the rest — the store's record moves whole, so the two halves
+    # then disagreed and that instance came up empty with nothing said.
+    #
+    # After _rename_in_json above, deliberately: the instance list is read from
+    # the store under the NEW name.
+    if rename_project_data:
+        did, bad = rename_project_data(old, new)
+        moved.extend(did)
+        failed.extend(bad)
     # Claude Code's own directory: the transcripts AND the memories, which live
     # inside it. Its slug is the working directory's path with the slashes
     # turned into dashes — the same rule memory.py reads it by.

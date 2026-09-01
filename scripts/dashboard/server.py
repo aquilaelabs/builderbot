@@ -1336,6 +1336,31 @@ def project_list():
                     # one without polling the tracker itself.
                     "bug_rev": bug_revs.get(d.name, 0),
                     "issues": issues})
+    # Two projects whose names slug alike are one dev instance: `My.App` and
+    # `my-app` both slug to my-app, which is one compose project name, one env
+    # file and one data directory driven by two rows that know nothing about
+    # each other. Nothing owns the moment a directory appears under /workspace,
+    # so it cannot be refused the way a container's name is — but this is the
+    # only place that sees every name at once, which makes it the only place
+    # that can say so at all.
+    #
+    # A warning, not an error: both projects are real and everything except the
+    # dev instance works. An error would take them out of findings attribution
+    # and off the Claude button, which would be a bigger fault than the one
+    # being reported.
+    by_slug = {}
+    for row in out:
+        by_slug.setdefault(devapp._slug(row["name"]), []).append(row)
+    for slug, rows in by_slug.items():
+        if len(rows) < 2:
+            continue
+        for row in rows:
+            others = ", ".join(r["name"] for r in rows if r is not row)
+            row["issues"].append({
+                "level": "warning",
+                "text": f"this name and {others} both shorten to “{slug}” — a "
+                        f"dev instance of either is the same containers, env "
+                        f"file and data directory. Rename one before using it"})
     return out
 
 
@@ -1935,9 +1960,8 @@ projects.configure(run=run, workspace=WORKSPACE, agent_keys=agent_keys,
                    repo_path=repo_path, build_claude_md=build_claude_md,
                    project_name=PROJECT_NAME, github_url=GITHUB_URL,
                    state=STATE, home=os.environ.get("BUILDER_HOME", str(Path.home())),
-                   devdata=devapp.DEVDATA, write_json=write_json,
-                   rename_devdata=devapp.rename_dev_data,
-                   pname=devapp._pname)
+                   write_json=write_json,
+                   rename_project_data=devapp.rename_project_data)
 
 _seed_push_rights()
 

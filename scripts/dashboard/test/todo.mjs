@@ -4,7 +4,7 @@
 // `bb roadmap`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point — something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -82,7 +82,7 @@ ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
 // died here with "Failed to find element matching selector" while the same run
 // alone passed. A locator re-resolves until it is there or the timeout is.
 ok((await page.locator('#todoList .todo[data-step="-1"] .n').first()
-      .textContent({ timeout: 10000 })).trim() === 'new',
+      .textContent({ timeout: patience(30000) })).trim() === 'new',
    '...and it wears "new" rather than a number, because it has not got one yet');
 await saveList();
 ok(read().projects.alpha.length === 1,
