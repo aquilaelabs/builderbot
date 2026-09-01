@@ -755,6 +755,54 @@ scopes is two settings wearing one name, and should be split before it ships.
 - Later, enterprise-flavored and additive: the audit view (a read of the
   table phase 1 starts writing), pool filters wherever a node list appears.
 
+### The page itself — one page, still
+
+The dashboard is one page: a tab strip over panes, every view a document tab
+or a terminal, no router, no framework, ~11k lines of classic-script JS in
+one file. The node work is the right moment to ask whether that survives, so
+here is the answer argued rather than assumed: **it survives, because the
+constraint that shaped it has not moved.** The page's first job is holding
+live terminals — tmux-backed iframes that must not be torn down by
+navigation. Any many-pages design either kills terminals on every click or
+duplicates the terminal host per page; the tab model exists because of that,
+not out of habit. Everything multi-node adds (Nodes, Jobs, Settings) is
+document-shaped, and document tabs are the cheap case now: a `TABKINDS`
+entry, a renderer, and the shared machinery — the field skin, the band
+tokens, the doc-tab pattern, the surface inventory, the TABKINDS/TAB_KINDS
+pairing test — carries the rest. The week the Analysis tab shipped proved the
+marginal cost, and the guardrails that made it cheap were the point of
+building them.
+
+Three things do change inside the one page, and one is the actual scaling
+risk:
+
+- **The status poll must not grow; new data rides the revisions registry.**
+  The real thing that breaks with many nodes is not the tab model, it is
+  "one `/api/status` ships everything to everyone every fifteen seconds".
+  Node lists, job queues and logs get their own endpoints and revision
+  tokens, fetched by the views that show them when their token moves — the
+  pattern findings and the docker tab already use. Rule, stated once: **node
+  and job data never joins the status payload.**
+- **A new surface is a new file, same page.** One page has never had to mean
+  one file. Nodes, Jobs and Settings each land as their own classic script
+  (`nodes.js`, `jobs.js`, …) served beside `index.html` — classic scripts,
+  deliberately not ES modules, because the shared global scope is what lets
+  the suite drive internals and the surface inventory audit the namespace,
+  and modules would end both. No big-bang split of the existing file; the
+  rule applies to new surfaces, the way the server side already keeps a
+  feature's code in one module.
+- **A tab renderer gets an error boundary.** One page is one failure domain:
+  today a throwing renderer can take the whole dashboard down, terminals
+  included. The pane loop catches per-tab render errors and draws them as
+  that tab's error band instead — cheap, and it turns "the new Jobs tab has a
+  bug" back into a bug rather than an outage.
+
+And the one honest limit, filed on the enterprise track where it belongs:
+the tab layout is server-side state for **one operator** — several humans
+sharing a controller would fight over one strip. Per-principal layouts are an
+E3-shaped change (they hang off the principal seam) and nothing before that
+needs them.
+
 ## 14. Phased roadmap
 
 Each phase leaves a working system, and each is independently useful. The
