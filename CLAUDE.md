@@ -930,7 +930,12 @@ by hand cost four commands and still could not see the failed builds.
     it names rather than restyling locally. A new tab shipping with
     browser-default controls is the failure it exists to prevent.
   - **A new tab kind is one entry in `TABKINDS`** (scripts/dashboard/index.html)
-    plus its name in `TAB_KINDS` (server.py), and a test compares the two. It
+    plus its name in `TAB_KINDS` (server.py), and a test compares the two. Its
+    chrome comes from `docSurface()` — never hand-written — and
+    `test/uniform.mjs` holds every kind to the shared hard rules (one band
+    inset, the field skin, phone rules) and fails by name on a kind with no
+    conformance driver. New kinds render inside `renderGuarded`, so a throwing
+    renderer is an error band in its tab, not a dead dashboard. It
     used to be seven places, three of which failed silently — a kind missing
     from the server's list vanished on the next reload, one missing from the
     repaint hatch drew once and then held that drawing forever. Both shipped.

@@ -792,10 +792,26 @@ risk:
   rule applies to new surfaces, the way the server side already keeps a
   feature's code in one module.
 - **A tab renderer gets an error boundary.** One page is one failure domain:
-  today a throwing renderer can take the whole dashboard down, terminals
-  included. The pane loop catches per-tab render errors and draws them as
-  that tab's error band instead — cheap, and it turns "the new Jobs tab has a
-  bug" back into a bug rather than an outage.
+  a throwing renderer used to take the whole dashboard down, terminals
+  included. Renderers run inside a guard that draws the failure as that tab's
+  error band and rethrows to the console — "the new Jobs tab has a bug" is a
+  bug again, not an outage. *(Built, with the scaffold below, ahead of phase
+  2 — the foundation was worth having before anything lands on it.)*
+
+- **The chrome is built once, and conformance is enforced, not requested.**
+  Every new tab used to hand-write its own skeleton, and every one drifted —
+  browser-default controls, a bar with no inset, rows on the sidebar's
+  tighter padding — each caught by a person noticing, three tabs in a row.
+  Two mechanisms end that. `docSurface(i, kind)` builds the standard skeleton
+  (doc-width box, filter-bar slot, band list, quiet footer) and a renderer
+  fills slots instead of writing chrome. And `test/uniform.mjs` holds **every
+  kind TABKINDS registers** to the hard rules by computed style and geometry
+  — one content-x for every band, the field skin on every control, the
+  document width cap, no sideways scroll and 16px controls at phone width —
+  with the enforcement hook that makes it stick: a new kind with no
+  conformance driver fails the suite by name. The price of a new tab includes
+  conforming, not just existing; Nodes, Jobs and Settings inherit the rules
+  on the day they are written, not after their third redesign.
 
 And the one honest limit, filed on the enterprise track where it belongs:
 the tab layout is server-side state for **one operator** — several humans

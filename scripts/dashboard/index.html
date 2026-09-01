@@ -71,13 +71,22 @@
    into anything smaller) and its :focus group. Tap targets are min-height
    var(--tap). A row of filters is `<div class="field histbar">`.
 
-   DOCUMENT TABS (.projtab/.dmtab/.fxtab): reading surfaces, not terminals —
-   max-width var(--doc-w), content rows padded 11px 14px, states as .loading
-   and .empty, quiet footers as .fnote. A new document kind joins those
-   shared selector lists first and adds its own rules second.
+   DOCUMENT TABS: reading surfaces, not terminals. A new kind does NOT write
+   its own chrome — it calls docSurface(i, kind), which builds the standard
+   skeleton (a .doctab.<kind>tab box capped at var(--doc-w): a filter/actions
+   bar slot, the band list, a quiet .fnote footer) and returns the slots to
+   fill. States are .loading / .empty / .hint bad inside the list. The hard
+   rules — one content-x for every band, the field skin on every control, no
+   sideways scroll and 16px controls on a phone — are ENFORCED by
+   test/uniform.mjs against every kind TABKINDS registers: a new kind without
+   a conformance driver there fails the suite by name. That is deliberate;
+   the price of a new tab includes conforming, not just existing.
 
-   A new tab also lands in TABKINDS here + TAB_KINDS in server.py, its
-   top-level names in test/surface.mjs, and a test beside its siblings.
+   A new tab lands as: its own classic script file beside this one, an entry
+   in TABKINDS here + TAB_KINDS in server.py, its top-level names in
+   test/surface.mjs, a driver in test/uniform.mjs, and a content test beside
+   its siblings. Renderers run inside renderGuarded, so a throwing renderer
+   is an error band in its own tab, never a dead dashboard.
    ------------------------------------------------------------------------ */
 :root,.sw[data-theme="default"]{
   --bg:#1a1f26; --panel:#212730; --line:#4d5c6f; --ink:#e6edf3;
@@ -628,6 +637,7 @@ input[type="checkbox"],input[type="radio"]{accent-color:var(--accent-mid)}
 button.primary{background:var(--accent-deep);border-color:var(--accent-mid)}
 button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .macros{display:flex;flex-wrap:wrap;gap:6px;padding:9px 10px}
+.doctab .macros{padding:var(--row-y) var(--row-x)}
 /* The Linux and git cards show commands verbatim; mono keeps them readable
    as commands, and slightly smaller keeps the pipelines on one line. */
 #linux button,#git button{font-family:var(--mono);font-size:12px}
@@ -694,8 +704,11 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    "API 36-ext19 · 1.8 GB" was pushing the whole tab wider than the screen,
    which clipped every paragraph on it. */
 .imgadd{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:11px 14px}
-.imgadd select{flex:1 1 190px;min-width:0;padding:6px 8px;
-  font:12px/1.3 inherit;min-height:var(--tap)}
+/* Sizing only — the font is the house control font from the .doctab group.
+   It carried its own 12px sans here, which the conformance suite flagged the
+   first week it ran: two selects on one page in a different voice than every
+   other control, for no reason anybody could name. */
+.imgadd select{flex:1 1 190px;min-width:0;padding:6px 8px;min-height:var(--tap)}
 #imgFlavor{flex-basis:210px}
 .imgadd button{flex:0 0 auto;min-height:var(--tap)}
 .imgadd .imgabout{flex:0 0 100%;color:var(--dim);margin:0;
@@ -706,7 +719,6 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .pkgworking{flex:0 0 100%;color:var(--accent);font:var(--f-ui);
   overflow-wrap:anywhere}
 .macros .pkgworking{flex:1 1 100%}
-@media(max-width:900px){ .imgadd select{font-size:16px} }
 /* Bigger tap targets where a finger is doing the ticking. */
 @media(max-width:900px){ .pkg input{width:20px;height:20px} }
 /* A project row's controls move as one block: four buttons that wrapped one
@@ -804,7 +816,8 @@ textarea,select{
 .modal input,.modal textarea,.modal select,
 .row input,.row select,
 .uimenu input,.uimenu textarea,.uimenu select,
-.fxtab input,.fxtab select,
+.doctab input:where(:not([type="checkbox"],[type="radio"])),
+.doctab select,.doctab textarea,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
   padding:8px 9px;font:13px/1.5 var(--mono)}
 /* The sidebar's own selects — the Claude card's pickers. Same phone rules as
@@ -840,11 +853,11 @@ textarea,select{
 @media(max-width:900px){ .modal input,.modal textarea,.modal select,
   .row input,.row select,
   .uimenu input,.uimenu textarea,.uimenu select,
-  .fxtab input,.fxtab select,
+  .doctab input,.doctab select,.doctab textarea,
   .nb input,.nb textarea,.nb select{font-size:16px} }
 .modal input:focus,.modal textarea:focus,.modal select:focus,
 .uimenu input:focus,.uimenu textarea:focus,.uimenu select:focus,
-.fxtab input:focus,.fxtab select:focus,
+.doctab input:focus,.doctab select:focus,.doctab textarea:focus,
 .nb input:focus,.nb textarea:focus,.nb select:focus{
   outline:2px solid #2f4d6d;outline-offset:-1px}
 .modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:6px}
@@ -1455,7 +1468,7 @@ textarea,select{
 .pane .doc.nbhost,.pane .doc.flush{padding:0;background:var(--panel)}
 /* The same reading width the notebook's bands take, so a row's controls do
    not end up an ultrawide pane away from the name they act on. */
-.projtab,.dmtab,.fxtab{display:block;max-width:var(--doc-w)}
+.projtab,.dmtab,.fxtab,.doctab{display:block;max-width:var(--doc-w)}
 /* ...and the same gutter. .row is shared with the sidebar card, where 7px/10px
    is right — 340px of column wants tight rows — but in a pane it left these
    tabs visibly narrower than the notebook next to them, which is the sort of
@@ -1578,7 +1591,8 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
   padding:var(--row-y) var(--row-x) 3px;
   border-top:1px solid var(--line);font-weight:600}
 .fxtab .fxproj:first-of-type{border-top:0}
-.fxtab .fnote{padding:4px var(--row-x) 10px;color:var(--dim);font:var(--f-note)}
+.fxtab .fnote,.doctab .fnote{padding:4px var(--row-x) 10px;color:var(--dim);
+  font:var(--f-note)}
 /* The notebook's Analysis list is a full-bleed band: its rows and its filter
    bar carry the inset themselves, exactly as they do in the tab, so a finding
    starts at the same x as a roadmap item one view over. */
@@ -3023,12 +3037,31 @@ tipOff();
 function renderDoc(i, t, pane){
   const spec = TABKINDS[t.kind];
   if (!spec || !spec.render) return;
-  if (spec.live === "always"){ spec.render(i, t); return; }
+  if (spec.live === "always"){ renderGuarded(spec, i, t); return; }
   // Stamped with the kind as well as the number: one pane holds one tab, but
   // it can be handed a different KIND of tab, and two counters that happened
   // to agree would then read as "already drawn".
   const rev = t.kind + ":" + (typeof spec.live === "function" ? spec.live() : "");
-  if (pane.dataset.rev !== rev){ pane.dataset.rev = rev; spec.render(i, t); }
+  if (pane.dataset.rev !== rev){ pane.dataset.rev = rev; renderGuarded(spec, i, t); }
+}
+
+// One page is one failure domain, and this is the fence inside it: a renderer
+// that throws breaks its own tab, not the dashboard. Without it, one bug in
+// one kind's render took down drawPanes — and with it the poll loop, the tab
+// strip and every terminal on screen, which is an outage wearing a typo.
+// The error is still thrown at the console (rethrown async, so nothing that
+// reads console errors — the suite included — mistakes a caught bug for
+// none), and the tab itself says what happened instead of holding whatever
+// half-drawn state the throw left.
+function renderGuarded(spec, i, t){
+  try{ spec.render(i, t); }
+  catch(e){
+    const el = $("doc" + i);
+    if (el) el.innerHTML = `<div class="hint bad" style="padding:var(--row-y) var(--row-x)">
+      this tab's renderer failed — the rest of the page is fine.
+      ${esc(String(e && e.message || e))}</div>`;
+    setTimeout(() => { throw e; });
+  }
 }
 
 // One tab per thing. A second click on Claude or Findings for something already
@@ -6488,8 +6521,10 @@ function renderPackagesInto(i){
   // look like a different kind of screen.
   el.classList.add("flush");
   const d = packages;
-  if (!d){ el.innerHTML = `<div class="loading">loading…</div>`; return; }
-  if (d.error){ el.innerHTML = `<div class="empty">could not read the package list: ${esc(d.error)}</div>`; return; }
+  if (!d){ el.innerHTML =
+    `<div class="doctab pkgtab"><div class="loading">loading…</div></div>`; return; }
+  if (d.error){ el.innerHTML = `<div class="doctab pkgtab"><div class="empty">${
+    esc("could not read the package list: " + d.error)}</div></div>`; return; }
 
   const job = d.job || {}, busy = !!job.running;
   // A finished package loses its tick — whether it worked or not. One that
@@ -6504,7 +6539,7 @@ function renderPackagesInto(i){
   // you were about to install quietly unticked itself.
   if (!busy && job.action !== "check")
     for (const n of [...(job.done || []), ...(job.failed || [])]) pkgTicked.delete(n);
-  el.innerHTML = `
+  el.innerHTML = `<div class="doctab pkgtab">
     <div class="pkghead">${d.root
       ? (d.shared
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
@@ -6532,7 +6567,7 @@ function renderPackagesInto(i){
         : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>${
       d.checked ? `<span class="sub pkgwhen">versions checked ${ago(d.checked)}</span>` : ""}
     </div>
-`;
+  </div>`;
 
   el.querySelectorAll(".pkg input").forEach(b => b.onchange = () => {
     b.checked ? pkgTicked.add(b.value) : pkgTicked.delete(b.value);
@@ -8936,7 +8971,7 @@ become that version's section when it is created">Changelog${
     // narrowing shared by both surfaces, so learning one is learning the
     // other. The bar only appears when there is something to narrow.
     const shown = fxFilter(rows, anaFx);
-    list.innerHTML = (rows.length ? fxBarHtml(rows, anaFx) : "")
+    list.innerHTML = (rows.length ? fxBarBand(rows, anaFx) : "")
       + (rows.length && !shown.length
           ? `<div class="empty">nothing matches the filters</div>` : "")
       + findingsRulesHtml(shown);
@@ -10941,10 +10976,13 @@ function reportAges(){
   if (!rs.length) return "";
   const newest = rs[0].when, now = Date.now() / 1000;
   const out = rs.filter(r => r.stale);
-  return `<div class="fnote">scanned ${
+  // Content only — the caller's footer slot owns the .fnote band, and a band
+  // inside a band would inset twice, which is the exact drift §the scaffold
+  // exists to end.
+  return `scanned ${
     esc(coarse(Math.max(0, now - newest)))} ago${
     out.map(r => `<br><span class="warn">${esc(r.name)} left out — ${
-      esc(coarse(r.behind))} behind, its scanner may have failed</span>`).join("")}</div>`;
+      esc(coarse(r.behind))} behind, its scanner may have failed</span>`).join("")}`;
 }
 
 // ---- the Analysis tab ----------------------------------------------------
@@ -10981,15 +11019,22 @@ function fxBarHtml(rows, st, extra){
   const lvls = ["error", "warning", "note"].filter(l => per[l]);
   // Classes, not ids: a notebook per project means this bar can exist several
   // times on one page, and duplicate ids are how the wrong one gets wired.
-  return `<div class="field histbar fxbar">${extra || ""}
+  return `${extra || ""}
     <select class="fxLevel" aria-label="level">
       <option value="">every level</option>
       ${lvls.map(l => `<option value="${esc(l)}"${l === st.level ? " selected" : ""}>${
         esc(l)} · ${per[l]}</option>`).join("")}
     </select>
     <input class="fxFind" maxlength="80" autocomplete="off"
-      placeholder="search rules, paths, messages" value="${esc(st.find || "")}">
-  </div>`;
+      placeholder="search rules, paths, messages" value="${esc(st.find || "")}">`;
+}
+
+// The same bar wearing its own band — for the notebook's Analysis view, which
+// renders into a plain list and needs the wrapper the tab's scaffold already
+// provides as a slot.
+function fxBarBand(rows, st, extra){
+  const inner = fxBarHtml(rows, st, extra);
+  return inner ? `<div class="field histbar fxbar">${inner}</div>` : "";
 }
 
 function fxWireBar(root, st, redraw){
@@ -11028,6 +11073,44 @@ function openFindingsTab(){
   loadFindings();
 }
 
+// ---- the document-tab scaffold ------------------------------------------
+// Every document tab is the same five slots in the same order, and every tab
+// that wrote its own copy of them drifted — a bar with no inset, rows on the
+// sidebar's tighter padding, an error state flush against the edge. Three of
+// those shipped and were fixed by inverting a mechanism each time; this is
+// the last inversion: the chrome is built HERE, once, and a renderer fills
+// slots instead of writing chrome. The conformance suite (test/uniform.mjs)
+// holds every kind to the result, so a new tab that skips this reads as a
+// failure, not as a style.
+//
+//   const d = docSurface(i, "nodes");
+//   d.bar.innerHTML  = ...   // filters/actions — a .field histbar, pre-made
+//   d.list.innerHTML = ...   // the bands: .row / .rule / .empty / .loading
+//   d.foot.innerHTML = ...   // the quiet footer line (.fnote), or leave empty
+//
+// Returns null when the pane is gone (a tab closed under a slow fetch), so
+// callers bail with `if (!d) return;` instead of drawing into nothing.
+function docSurface(i, kind){
+  const el = $("doc" + i);
+  if (!el) return null;
+  el.classList.add("flush");
+  el.innerHTML = `<div class="doctab ${esc(kind)}tab">
+    <div class="field histbar docbarrow" hidden></div>
+    <div class="doclist"></div>
+    <div class="fnote" hidden></div>
+  </div>`;
+  const box = el.firstElementChild;
+  const bar = box.querySelector(".docbarrow");
+  const foot = box.querySelector(".fnote");
+  // Plain nodes and two explicit setters — a slot written to becomes visible,
+  // one left alone costs no empty band. (A Proxy did this implicitly at first
+  // and threw Illegal invocation the moment a DOM accessor ran through it;
+  // the error boundary caught it, which is the one nice thing it did.)
+  return { root: box, el, bar, foot, list: box.querySelector(".doclist"),
+           setBar(html){ bar.innerHTML = html; bar.hidden = !String(html).trim(); },
+           setFoot(html){ foot.innerHTML = html; foot.hidden = !String(html).trim(); } };
+}
+
 // A finding that places in no project still places somewhere on the page.
 // The name cannot collide: a real project cannot contain a space.
 const fxProj = f => f.project || "unattributed paths";
@@ -11038,11 +11121,11 @@ function fxRows(){
 }
 
 function renderFindingsInto(i){
-  // A pane index, not an element — the pane machinery owns #doc0/#doc1 and
-  // every doc-tab renderer resolves its own, the way renderDockerInto does.
-  const el = $("doc" + i);
-  if (!el) return;
-  el.classList.add("flush");
+  // Chrome from the scaffold, content from here — the shape every document
+  // tab renders in now, so the bands cannot drift per tab (see docSurface).
+  const d = docSurface(i, "fx");
+  if (!d) return;
+  d.bar.classList.add("fxbar");
   if (!findings){
     // The status poll drops the cache when a scan re-runs on the host, and a
     // repaint is not a fetch — so an open tab has to start one itself.
@@ -11050,17 +11133,17 @@ function renderFindingsInto(i){
     loadFindings();
   }
   if (!findings || findings.loading){
-    el.innerHTML = `<div class="fxtab"><div class="loading">loading…</div></div>`;
+    d.list.innerHTML = `<div class="loading">loading…</div>`;
     return;
   }
   if (findings.error){
-    el.innerHTML = `<div class="fxtab"><div class="hint bad">${esc(findings.error)}</div></div>`;
+    d.list.innerHTML = `<div class="hint bad">${esc(findings.error)}</div>`;
     return;
   }
   if (findings.available === false){
-    el.innerHTML = `<div class="fxtab"><div class="empty">no scanner reports —
+    d.list.innerHTML = `<div class="empty">no scanner reports —
       /reports is not mounted. The scan runs on the host; see the README's
-      static-analysis section.</div></div>`;
+      static-analysis section.</div>`;
     return;
   }
   const rows = fxRows();
@@ -11095,21 +11178,20 @@ function renderFindingsInto(i){
         ? "nothing matches the filters"
         : "no findings in the current reports — which is not the same as every "
           + "project passing; SARIF records findings, not coverage"}</div>`;
-  el.innerHTML = `<div class="fxtab">
-    ${fxBarHtml(all.filter(f => !fxProject || fxProj(f) === fxProject),
-                fxState, projSelect)}
-    ${body}
-    ${findings.aside ? `<div class="fnote">${findings.aside} finding(s) are
+  d.setBar(fxBarHtml(all.filter(f => !fxProject || fxProj(f) === fxProject),
+                     fxState, projSelect));
+  d.list.innerHTML = body;
+  const aside = findings.aside ? `${findings.aside} finding(s) are
       against paths that are no project's and are counted aside rather than
       listed${(state?.findings_heads || []).length
         ? " — " + (state.findings_heads || []).map(h =>
             `${esc(h.head)} <span class="dim">× ${h.n}</span>`).join(" · ")
-        : ""}</div>` : ""}
-    ${reportAges()}
-  </div>`;
+        : ""}` : "";
+  const ages = reportAges();
+  d.setFoot([aside, ages].filter(Boolean).join("<br>"));
   const redraw = () => { fxRev++; drawPanes(); };
   $("fxProject").onchange = e => { fxProject = e.target.value; redraw(); };
-  fxWireBar(el, fxState, redraw);
+  fxWireBar(d.el, fxState, redraw);
 }
 
 // Both popup menus dismiss on a click that is neither in them nor on the
