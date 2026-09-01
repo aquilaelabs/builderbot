@@ -262,6 +262,24 @@ await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
   ok(pair[0] === pair[1],
      'the Analysis tab\'s filter field wears the same skin as every other field');
 }
+// Every band of the tab starts at the same x. It shipped with four different
+// left edges — the filter bar flush against the edge (its padding rule named
+// an id the markup never had), the rules at 11px, the headings and the footer
+// at 14 — which is what a retyped inset looks like from a phone.
+{
+  const xs = await page.evaluate(() => {
+    // The content edge, not the box: every band is full width and it is the
+    // inset that has to agree.
+    const x = sel => { const e = document.querySelector(sel);
+      return e ? Math.round(e.getBoundingClientRect().x
+                            + parseFloat(getComputedStyle(e).paddingLeft)) : null; };
+    return { bar: x('.fxtab .fxbar'), heading: x('.fxtab .fxproj'),
+             rule: x('.fxtab .rule'), foot: x('.fxtab .fnote') };
+  });
+  ok(new Set(Object.values(xs)).size === 1 && !Object.values(xs).includes(null),
+     'the tab\'s filter bar, headings, rules and footer all start at one x: '
+     + JSON.stringify(xs));
+}
 await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
                             if (t) hideTab(t.id); });
 

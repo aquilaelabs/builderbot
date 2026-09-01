@@ -1,10 +1,8 @@
-// The Tools card and its package manager. Its own card, above the findings
-// one: a package manager and a scanner report answer different questions,
-// and only the report depends on /reports existing. Additional packages
-// opens as a document TAB — installing an SDK runs for minutes, so it
-// belongs on the strip rather than in a dialog to dismiss. The harness's bb
-// stub makes and removes directories rather than downloading gigabytes, so
-// the whole round trip runs in a second.
+// The Tools card and its package manager. Additional packages opens as a
+// document TAB — installing an SDK runs for minutes, so it belongs on the
+// strip rather than in a dialog to dismiss. The harness's bb stub makes and
+// removes directories rather than downloading gigabytes, so the whole round
+// trip runs in a second.
 import { launch, newPage, ok, done, ready, URL, DIR } from './lib.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 
@@ -17,14 +15,16 @@ await ready(page);
 // The heading carries a chevron alongside its text, so match the text only.
 ok((await page.$eval('.card[data-card="tools"] h2', h => h.textContent.trim())).startsWith('Tools'),
    'Tools is a card of its own');
-ok((await page.$eval('.card[data-card="findings"] h2', h => h.textContent.trim())).startsWith('Static analysis'),
-   '...and the findings card is still the findings card');
-ok(await page.$$eval('.side .card[data-card]', cs => {
-     const k = cs.map(c => c.dataset.card);
-     return k.indexOf('tools') >= 0 && k.indexOf('tools') < k.indexOf('findings');
-   }), 'Tools sits above it');
+// The scanner's report is a tab off this card now, not a card of its own —
+// a report is read, and a sidebar card is a control surface.
+ok(await page.$$eval('.side .card[data-card]', cs =>
+     !cs.some(c => c.dataset.card === 'findings')),
+   '...and there is no findings card beside it any more');
 ok(await page.$eval('.card[data-card="tools"] #bPkgs', b => !b.hidden),
    'the Tools card carries its button');
+ok(await page.$eval('.card[data-card="tools"] #bFindings',
+                    b => b.textContent.trim() === 'Static analysis'),
+   '...and the scanner report is a button on it');
 
 // ---- the tab -----------------------------------------------------------
 // Through the notebook first: a document that parks in the pane's stack used
