@@ -139,7 +139,7 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
 
 const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
-ok(hs.length === 6 && hs.every(h => h.buttons === 0 && h.chev),
+ok(hs.length === 5 && hs.every(h => h.buttons === 0 && h.chev),
    `headers are title + chevron only (${hs.length} cards)`);
 ok((await order())[0] === 'doctor', 'doctor is first by default');
 ok(await page.$eval('#bDocTog', el => el.textContent.trim() === 'all 3 ok'), 'doctor status row folded green');
@@ -177,52 +177,79 @@ ok((await animatedDuring(page, () => page.click('#projects #bAll')))
    'in-card toggle slides the card');
 await page.click('#projects #bAll');
 
-// findings card: per-project counts, valid projects only, plain button
-const rows = await page.$$eval('#findingsSum .row', rs => rs.map(r => r.querySelector('.name').textContent.trim()));
-// alpha and beta are the valid projects; the last row is the one path that
-// genuinely places nowhere. gamma (error), toolstore and
-// vendored-junk all had findings in the fixture and none of them are here:
-// attribution only knows valid projects now, so everything else is set aside
-// rather than swelling the unattributed row it used to swamp.
-// delta is here now and that is the change: it is locked, not excluded, and a
-// locked project's findings are still worth reading — locking says who runs
-// it, not whether its code is worth knowing about. gamma stays out, as the
-// broken one.
-ok(rows.join(',') === 'alpha,beta,delta,unattributed paths',
-   `findings card lists valid projects, locked ones included (${rows.join(',')})`);
-ok(await page.$('#cardFindings .macros button') === null,
-   'the card carries no report button — its rows open a notebook\'s Analysis view');
-ok(await page.$eval('#findingsSum .row[data-ana="alpha"]', r => r.classList.contains('go')),
-   '...and a project\'s row says it is clickable');
+// The Analysis tab: the findings, browsable. The sidebar card is gone — its
+// rows were only doors into each notebook, a summary nothing could be read
+// through — and the server logic it exercised (valid-project attribution,
+// stale-report exclusion, the named aside) is asserted here against the tab
+// that replaced it.
+ok(await page.$('#cardFindings') === null,
+   'the findings card is gone from the sidebar');
+// The Tools card may be folded by the collapse tests above; the button is
+// in its body, and a click cannot land on display:none.
+await page.evaluate(() => {
+  const c = document.querySelector('.card[data-card="tools"]');
+  if (c.classList.contains('closed')) c.querySelector('h2').click();
+});
+await page.waitForFunction(() => {
+  const b = document.getElementById('bFindings');
+  return b && b.offsetParent !== null;
+}, { timeout: 10000 });
+await page.click('#bFindings');
+await page.waitForSelector('.fxtab #fxProject', { timeout: 15000 });
+await page.waitForFunction(() => document.querySelectorAll('.fxtab .rule').length > 0,
+                           { timeout: 15000 });
+const opts = await page.$$eval('.fxtab #fxProject option',
+                               os => os.map(o => o.value).filter(Boolean));
+// alpha and beta are the valid projects; delta is locked, not excluded, and a
+// locked project's findings are still worth reading. gamma (broken), the
+// toolstore and vendored-junk are nobody's: attribution only knows valid
+// projects, so everything else is set aside rather than swelling a junk row.
+ok(opts.join(',') === 'alpha,beta,delta,unattributed paths',
+   `the project picker lists valid projects, locked ones included (${opts.join(',')})`);
+ok(/somewhere\/else/.test(await page.$eval('.fxtab', e => e.textContent)),
+   'the aside names the paths it could not place, rather than only counting them');
 
-// The unplaceable row says where, not only how many. A bare count sat at 276
-// through several passes without ever saying that 267 of them were one share.
-ok(/somewhere\/else/.test(await page.$eval(
-       '#findingsSum .row:not([data-ana]) .sub', e => e.textContent)),
-   'the unattributed row names the paths it could not place');
+// Narrowing. One project, one level, a search — each redraws the list, and
+// the counts on the options are the whole report's, so choosing is informed.
+await page.selectOption('.fxtab #fxProject', 'alpha');
+await page.waitForFunction(() => !document.querySelector('.fxtab .fxproj'),
+                           { timeout: 10000 });
+ok(true, 'picking a project drops the per-project headings — the picker already says it');
+const allRules = await page.$$eval('.fxtab .rule', rs => rs.length);
+await page.selectOption('.fxtab .fxLevel', 'error');
+await page.waitForFunction(n => document.querySelectorAll('.fxtab .rule').length !== n,
+                           allRules, { timeout: 10000 }).catch(() => {});
+ok(await page.$$eval('.fxtab .rule .pill', ps =>
+     ps.every(p => p.textContent.trim().startsWith('error'))),
+   'the level filter leaves only that level on the page');
+await page.selectOption('.fxtab .fxLevel', '');
+await page.selectOption('.fxtab #fxProject', '');
+await page.waitForFunction(() => document.querySelector('.fxtab .fxproj'),
+                           { timeout: 10000 });
 
-// A report a whole cycle behind its siblings is not counted, and the card says
+// A report a whole cycle behind its siblings is not counted, and the tab says
 // so. A scanner that dies leaves its previous report in place — the host
 // script does not overwrite a good report with nothing — so without this a
-// dead scanner goes on supplying findings about a tree that has since moved,
-// which is how one sat four days stale while its numbers looked current.
-const before = await page.$$eval('#findingsSum .row .name', ns => ns.length);
+// dead scanner goes on supplying findings about a tree that has since moved.
+const before = await page.$$eval('.fxtab .rule', rs => rs.length);
 writeFileSync(`${DIR}/reports/old.sarif`, readFileSync(`${DIR}/reports/test.sarif`));
-// Three days behind: well past the day the rule allows, which is deliberately
-// wide enough that re-running one scanner by hand does not blank its siblings.
 const longAgo = Date.now() / 1000 - 3 * 86400;
 execFileSync('touch', ['-d', `@${Math.round(longAgo)}`, `${DIR}/reports/old.sarif`]);
 await refreshUntil(page, () => (state?.reports_ages || []).some(r => r.stale),
                    { timeout: 20000 });
-ok(await page.$$eval('#findingsSum .row .name', ns => ns.length) === before,
+await page.waitForFunction(() => /left out/.test(
+  document.querySelector('.fxtab')?.textContent || ''), { timeout: 20000 });
+ok(await page.$$eval('.fxtab .rule', rs => rs.length) === before,
    'a stale copy of the same report adds nothing — it is not read at all');
-const foot = await page.$eval('#findingsSum .fnote', e => e.textContent);
+const foot = await page.$eval('.fxtab', e => e.textContent);
 ok(/old\.sarif left out/.test(foot) && /3d behind/.test(foot),
-   '...and the card names it, so a number that did not move is not a mystery');
+   '...and the tab names it, so a number that did not move is not a mystery');
 ok(/scanned/.test(foot), '...beside when the reports that ARE counted were written');
 rmSync(`${DIR}/reports/old.sarif`, { force: true });
 await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
                    { timeout: 20000 });
+await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
+                            if (t) hideTab(t.id); });
 
 // Which shares count as "not a project" no longer comes only from what sits
 // inside /workspace. That worked while /workspace was the whole development
@@ -271,6 +298,11 @@ ok(all.includes('vendored-junk'),
    '...while one with no marker is listed, as the error it is');
 
 // drag: reorder + slide + persistence; the click ending a drag is not a toggle
+// Into view first: bounding boxes are viewport coordinates, and a section
+// above this one may leave the sidebar scrolled — a drag aimed at y=-282
+// grabs nothing and the test reads as the FEATURE failing.
+await page.$eval('.side', e => e.scrollTo(0, 0));
+await new Promise(r => setTimeout(r, 150));
 const hb = await (await page.$('.card[data-card="runner"] h2')).boundingBox();
 const top = await (await page.$('.side .card[data-card]')).boundingBox();
 // Recorded, not sampled. The FLIP tween is 140ms, and asking for it in a
@@ -356,11 +388,12 @@ await page.waitForFunction(() => document.querySelector('.side .card[data-card]'
   && !document.querySelector('.side .card.closed'));
 ok(true, 'reset restores default order and expands everything');
 
-// The whole-report tab is retired: findings are read per project, in the
-// notebook's Analysis view, and the digest is fetched when one is opened.
-ok(await page.evaluate(() => !tabs.some(t => t.kind === 'findings')
-     && typeof openFindings === 'undefined'),
-   'no whole-report findings tab exists to open any more');
+// The whole-report tab came back, on purpose and different: the retired one
+// was an unfiltered dump, and the Analysis tab is the findings browsable —
+// a project picker, a level filter, a search. What this asserts now is that
+// reset did not conjure one open: it is opened from Tools, not by default.
+ok(await page.evaluate(() => !tabs.some(t => t.kind === 'findings')),
+   'the Analysis tab is opened from Tools, not open by default');
 
 // The favicon set: served by the allow-list, linked from the head. Sizes and
 // content types matter — a wrong type is a globe in the tab, silently.

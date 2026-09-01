@@ -385,6 +385,7 @@ bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb findings        this project's scanner findings (--all for every project)
+                   narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
                       (-n N, --since 7d, --find TEXT, as the other logs)
 bb roadmap            this project's roadmap
@@ -870,6 +871,7 @@ scanner on the host — there is deliberately no way to do it from in here.
 bb findings              # this project's findings
 bb findings --all        # every project the report covers
 bb findings x.sarif      # one file rather than all of /reports
+bb findings --level error --rule DL3008 --find "quote"   # narrow it
 ```
 
 A scanner pointed at a directory of repos writes one report covering all of
@@ -890,6 +892,10 @@ severity and rule, prints each message once with the locations under it, and
 rewrites the scanner's paths to be repo-relative so they can be opened
 directly. Run it from the project directory; the current directory name is what
 gets stripped from the recorded paths (override with `FINDINGS_PROJECT`).
+The three filters are the Analysis tab's bar in flag form — `--level` takes
+error, warning or note (note and info are one level everywhere here), `--rule`
+matches a rule id exactly, `--find` searches rules, paths and messages — so a
+question answered in the browser is askable from a session in one line.
 
 **Review the diffs.** Findings need judgment about intent — whether a `|safe`
 is deliberate, whether a SHA1 is for dedup rather than security. Asking Claude
@@ -1086,7 +1092,8 @@ lives in its body. The cards:
   every toolchain on the [SDK share](#sdks-live-outside-the-image) with its
   size, its installed version, its path, and an amber line when a check finds
   a newer one. Ticks are for things there is something to do to; uninstalling
-  is a bin on the row
+  is a bin on the row. Beside it, **Docker manager…** and **Static
+  analysis**, each a tab of its own
 - a **checklist** per project, carrying how much is still to hand over here —
   the same number the panel shows, refreshed with every poll and again the
   moment you open it. It opens
@@ -1302,10 +1309,11 @@ a placeholder, and **+** starts over.
 - **Shell** opens *another* terminal at the project path every time you click
   it, so you can have several side by side. **+**, at the left of the tab
   strip, does the same for `/workspace`.
-- **A Static analysis row** opens that project's notebook on its **Analysis**
-  view — a *document* tab, not a terminal. It is a report to read; putting it
-  through a PTY would only make it harder to. The whole-report findings tab it
-  replaced is gone.
+- **Static analysis** on the Tools card opens the **Analysis** tab — the
+  whole report, a project selector, and a filter bar (level, free text) — a
+  *document* tab, not a terminal. It is a report to read; putting it through a
+  PTY would only make it harder to. The notebook's own Analysis view is the
+  same report already narrowed to that project.
 - **— on a tab minimizes it**, and asks nothing. The terminal keeps running
   and is listed under Sessions, where **Open** brings it back; a **Claude** tab
   is the same, the conversation carries on without a tab. Nothing is lost, so
@@ -1875,9 +1883,9 @@ file changed" would restate the mtime column.
 
 **Analysis** is the notebook's fourth view: the scanner's findings for that
 project alone, worst level first, read-only — the scan runs on the host, and
-`bb findings` reads the same digest in a terminal. The whole-report findings
-tab is gone; the Static analysis card's per-project rows are the way in now,
-each opening its project's notebook on this view. Findings whose paths
+`bb findings` reads the same digest in a terminal, and the Tools card's
+**Static analysis** button opens the whole report as the Analysis tab, with a
+project selector and the same filter bar. Findings whose paths
 resolve into anything other than a **valid** project — one that is listed and
 free of error-level issues; a locked one still counts — are set aside rather
 than shown as "unattributed". The label is reserved for paths that genuinely
@@ -1912,8 +1920,8 @@ appdata directory called `BuilderBot` would otherwise teach it to ignore the
 BuilderBot project's own findings, which is the one mistake here that hides
 real work instead of noise.
 
-**A report a whole cycle behind its siblings is not counted**, and the card
-says which and by how much. A scanner that dies leaves its *previous* report in
+**A report a whole cycle behind its siblings is not counted**, and the
+Analysis tab's footer says which and by how much. A scanner that dies leaves its *previous* report in
 place — a host script worth having does not overwrite a good report with
 nothing — so a dead scanner and a live one are the same file to everything
 downstream. On 28 Aug a trivy that had been crashing for four days was still
