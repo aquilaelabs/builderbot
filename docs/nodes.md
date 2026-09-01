@@ -638,8 +638,12 @@ installed/removed from the Nodes screen.
 **Phase 7 — deploy targets.**
 Modes `lan` and `funnel`; the `route` record shaped for `public`.
 
-**Enterprise track** — built when a deployment with a name needs it, in
-whatever order it asks; each lands on seams above without touching the core:
+**Enterprise track** — not planned. There is no enterprise deployment today
+and pretending otherwise would put speculative code in the core; this list
+exists only to show that each item lands on a seam above without touching
+anything, and the order is a sketch of how it would go if the fantasy ever
+grew a name. The binding part of this document for enterprise purposes is not
+this list — it is §15, the doors.
 
 - **E1 — Postgres** via `DATABASE_URL` (the storage rule from phase 1 is what
   makes this a config change).
@@ -653,7 +657,60 @@ whatever order it asks; each lands on seams above without touching the core:
 - **E5 — `public` preview routing** (Caddy + wildcard DNS) where an org wants
   review environments.
 
-## 15. Still not worth building — for either tier
+## 15. The one-way doors
+
+The stated constraint is not "build for enterprise" — it is **"do not get
+backed into a wall that cannot be resolved later."** Those are different
+requirements, and the second is much cheaper. Almost everything on the
+enterprise track is a two-way door: OIDC, RBAC, Postgres, mTLS, a websocket
+listener, S3 artifacts, the Go agent — each can be added years later at the
+cost of building it then, and *nothing* built now makes any of them harder.
+They need no insurance and get none.
+
+What follows is the complete list of one-way doors — the places where the
+cheap version becomes load-bearing and the expensive version cannot be
+retrofitted honestly. Each is already in a core phase; this section exists so
+that if any of them gets cut in the name of shipping, the cut is made knowing
+what it costs.
+
+1. **Identity that is not an address** (phase 1). Node ids minted at
+   enrollment; `requested_by` on every job; ids never reused. Retrofitting
+   identity means guessing what old records meant, which is not retrofitting,
+   it is fiction.
+2. **Attribution and audit at the mutation sites** (phase 1). One middleware,
+   one table. History that was never written cannot be backfilled — this is
+   the single enterprise-flavored feature built early *because* it is a
+   one-way door, and it pays homelab rent ("what did the session change while
+   I slept").
+3. **A versioned API before any client exists** (phases 1–2). `/api/v1` is
+   nearly free on day one; imposing versioning on clients already in the
+   field is the wall.
+4. **Protocol semantics split from transport, with the agent's version in
+   `hello` and self-update in the verb set** (phase 3). The wall is a fleet
+   of agents in the field speaking a protocol that cannot evolve; version
+   negotiation plus self-update is the escape hatch, and it must exist before
+   the second agent is installed, not after.
+5. **Agents as the durable side of a job** (phases 3–4). A controller restart
+   must never kill running work: the agent owns the process, buffers what it
+   could not report, reconnects, reports late. Bolting this on later rewrites
+   the agent's state machine — it is the difference between HA being a
+   runbook and HA being a rewrite.
+6. **SQL that runs on two engines, behind numbered migrations, from migration
+   0001** (phase 1). A year of accreted SQLite-isms is a port; the discipline
+   from day one is a config change.
+7. **Node-side capability enforcement** (phase 3). Agents refuse jobs outside
+   their enrollment. As a later patch it means re-enrolling a deployed fleet
+   to establish what each node should have been refusing all along.
+8. **No "one operator" baked into data shapes** (phase 1). The `pool` column,
+   token records carrying a `kind`, principals as strings rather than a
+   boolean. Columns are cheap; schema surgery under live data is not.
+
+That is the whole list. It is deliberately short, because over-insuring is
+its own wall: every speculative abstraction is complexity the homelab pays
+for daily against a customer who may never exist. If a ninth door turns up,
+it gets argued into this section first and built second.
+
+## 16. Still not worth building — for either tier
 
 - **A workflow engine.** Pipelines belong to the Actions integration; this
   schedules jobs people ask for. (`needs:` is the tripwire.)
@@ -667,13 +724,14 @@ whatever order it asks; each lands on seams above without touching the core:
 - **Per-job micro-VMs / Firecracker.** The isolation story is disposable
   nodes; when someone needs more, that is a different product tier.
 
-## 16. Open questions
+## 17. Open questions
 
 1. **Controller reachability** for off-LAN nodes: public endpoint or
    Tailscale? (Homelab decision; enterprises have load balancers.)
-2. **Who is the enterprise user?** "Scale it for enterprise" needs one named
-   deployment to keep the track honest — otherwise E1–E5 are speculation and
-   should stay unbuilt. Which E-item would they actually hit first?
+2. ~~Who is the enterprise user?~~ **Answered: nobody yet, and that is fine.**
+   The operator's constraint is "do not get backed into a wall", which §15
+   satisfies without building the track. E1–E5 stay unbuilt until a
+   deployment with a name exists; nothing in the core phases waits on one.
 3. **Windows/macOS nodes?** The agent model extends (a service instead of
    systemd), the provisioner does not. Decide before the Go agent, not after.
 4. **Session `docker`:** with several nodes, does a session's environment get
