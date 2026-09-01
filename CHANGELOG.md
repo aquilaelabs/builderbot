@@ -165,3 +165,4 @@
 - The Docker manager can look at any registered docker host — a node picker switches the view, offline nodes show their last-known containers greyed, and new containers pick the node they run on (4ef08ea)
 - Projects can choose which docker host their containers default to, in the project settings dialog (4ef08ea)
 - The gear menu keeps appearance; everything the container itself owns moved to a Settings tab behind 'All settings…', starting with the session-log policy (4ef08ea)
+- A machine can be enrolled as a node from the Nodes tab: it dials in, shows its CPU, memory and free space live, and runs jobs as its own account — never root (fed6d98)
