@@ -1387,7 +1387,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .pane .doc.nbhost,.pane .doc.flush{padding:0;background:var(--panel)}
 /* The same reading width the notebook's bands take, so a row's controls do
    not end up an ultrawide pane away from the name they act on. */
-.projtab,.dmtab{display:block;max-width:var(--doc-w)}
+.projtab,.dmtab,.fxtab{display:block;max-width:var(--doc-w)}
 /* ...and the same gutter. .row is shared with the sidebar card, where 7px/10px
    is right — 340px of column wants tight rows — but in a pane it left these
    tabs visibly narrower than the notebook next to them, which is the sort of
@@ -1396,7 +1396,7 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .projtab .row,.dmtab .row,
 .projtab .empty,.dmtab .empty,
 .projtab .macros,.dmtab .macros,
-.projtab .loading,.dmtab .loading,.dmtab .dmsrc{padding:11px 14px}
+.projtab .loading,.dmtab .loading,.dmtab .dmsrc,.fxtab .loading{padding:11px 14px}
 /* The findings card's footer: when the reports were written, and which were
    left out of the counts. */
 .fnote{padding:7px 10px;color:var(--dim);font:var(--f-note);
@@ -1492,6 +1492,17 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 /* Remove, on a manager row: a text button among text buttons, red only under
    the pointer. It is the one control there that takes something away. */
 @media(hover:hover){ .dmtab .acts button.rm:hover{color:var(--bad);border-color:#94423d} }
+/* The Analysis tab: the filter bar, and a project heading when reading
+   across all of them. The rules themselves reuse .rule from the notebook's
+   Analysis view — same data, same rendering, one implementation. */
+.fxtab #fxBar{padding:11px 14px;border-bottom:1px solid var(--line)}
+.fxtab #fxBar select{flex:0 1 auto;min-width:0}
+.fxtab .fxproj{display:flex;gap:8px;align-items:baseline;padding:10px 14px 2px;
+  border-top:1px solid var(--line);font-weight:600}
+.fxtab .fxproj:first-of-type{border-top:0}
+.fxtab .empty{padding:11px 14px}
+.fxtab .fnote{padding:4px 14px 10px;color:var(--dim);font:var(--f-note)}
+
 /* The wiring fold. Its lines wrap rather than scroll: a host path is long, and
    a row that scrolls sideways on a phone hides the half you were reading. */
 /* The running command's own output. Monospace and scrollable, capped so a
@@ -2531,6 +2542,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div class="macros">
         <button id="bPkgs" onclick="openPackages()">Additional packages</button>
         <button id="bDocker" onclick="openDocker()">Docker manager</button>
+        <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
       </div>
     </div>
     <!-- A phone on the end of wireless adb. USB is not an option here: there
@@ -2544,14 +2556,6 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="card" data-card="phone">
       <h2>Phone</h2>
       <div id="phBody"><div class="loading">loading…</div></div>
-    </div>
-    <div class="card" id="cardFindings" data-card="findings" hidden>
-      <h2>Static analysis</h2>
-      <!-- The rows are the way in: each opens that project's notebook on its
-           Analysis view. The whole-report tab this card used to open is gone —
-           findings are read per project now, next to the roadmap and the bugs
-           they turn into. -->
-      <div id="findingsSum"></div>
     </div>
   </div>
 
@@ -2865,6 +2869,15 @@ const TABKINDS = {
   docker:   { multi: false, label: () => "Docker",
               render: (i) => renderDockerInto(i), live: () => dockerRev,
               open: () => { if (!dockerList) loadDocker(); } },
+  findings: { multi: false, label: () => "Analysis",
+              render: (i) => renderFindingsInto(i),
+              // The ages list as well as the mtime: the mtime is a MAX, so a
+              // report appearing with an OLD stamp — the exact shape of a
+              // stale copy — moves it nowhere, and the tab never heard.
+              live: () => `${state?.reports_mtime ?? ""}:${
+                (state?.reports_ages || []).map(r => r.name + (r.stale ? "!" : ""))
+                  .join(",")}:${fxRev}`,
+              open: () => loadFindings() },
 };
 
 // A terminal is identified by the tmux session behind it, not by the argument
@@ -4093,6 +4106,17 @@ async function loadFindings(force){
     const r = await fetch("/api/findings");
     findings = await r.json();
   }catch(e){ findings = {error: String(e)}; }
+  // The Analysis tab repaints if one is open: it draws "loading…" while the
+  // fetch is in flight, and a fetch that completes without saying so leaves
+  // that word on the pane until some unrelated revision moves. Only then —
+  // notebooks call this too, and an unconditional drawPanes() from THEIR
+  // fetches landed mid pane-swap in flows that had nothing to do with
+  // findings, which is how the Resume test started failing on a tab this
+  // never touches.
+  if (tabs.some(t => t.kind === "findings")){
+    fxRev++;
+    drawPanes();
+  }
 }
 
 // Every project section starts collapsed — the summary line of pills is the
@@ -4143,7 +4167,7 @@ function findingsRulesHtml(rows){
 // re-inserting anything missing at its own position, so a disagreement here
 // self-corrects on the next save and is invisible until a drag lands on the
 // card it forgot. This list was missing `claude` for exactly that reason.
-const CARD_ORDER = ["doctor","runner","projects","tools","phone","findings"];
+const CARD_ORDER = ["doctor","runner","projects","tools","phone"];
 let cards = {order: CARD_ORDER.slice(), closed: []};
 let cardDrag = null, cardsChangedAt = 0;   // when the operator last touched
                                            // the arrangement here: a poll
@@ -8737,6 +8761,10 @@ become that version's section when it is created">Changelog${
     await loadArtifacts();
   }
 
+  // This notebook's own filter state, so two notebooks in a split do not
+  // share a search box's contents.
+  const anaFx = {level: "", find: ""};
+
   async function loadAnalysis(){
     const hint = $("anaHint"), list = $("anaList");
     if (!findings || findings.error) await loadFindings(!!findings?.error);
@@ -8761,7 +8789,15 @@ become that version's section when it is created">Changelog${
       ? `${stat} — the scan runs on the host; bb findings reads the same digest`
       : "nothing attributed to this project in the current reports — which is "
         + "not the same as passing; SARIF records findings, not coverage";
-    list.innerHTML = findingsRulesHtml(rows);
+    // The same two filters the Analysis tab has, project-fixed: one slice of
+    // narrowing shared by both surfaces, so learning one is learning the
+    // other. The bar only appears when there is something to narrow.
+    const shown = fxFilter(rows, anaFx);
+    list.innerHTML = (rows.length ? fxBarHtml(rows, anaFx) : "")
+      + (rows.length && !shown.length
+          ? `<div class="empty">nothing matches the filters</div>` : "")
+      + findingsRulesHtml(shown);
+    fxWireBar(list, anaFx, loadAnalysis);
     // By rule group, which is how the report is read — a rule split across a
     // page boundary would separate its own occurrences.
     // .rule, which is what findingsRulesHtml emits — .grp belongs to the other,
@@ -10445,13 +10481,16 @@ async function refresh(){
     drawDoctor();
     drawAuth();
     watchSignin();
-    $("cardFindings").hidden = !state.reports;
-    drawFindingsSum(state.findings_counts || {});
     // A scan re-ran on the host: drop the cache, and any notebook showing
     // its Analysis view re-reads on its poll below.
-    if (findings && !findings.loading && findingsMtime !== null
-        && state.reports_mtime !== findingsMtime)
+    const agesKey = (state.reports_ages || [])
+      .map(r => r.name + (r.stale ? "!" : "")).join(",");
+    if (findings && !findings.loading
+        && ((findingsMtime !== null && state.reports_mtime !== findingsMtime)
+            || (findings.agesKey !== undefined && findings.agesKey !== agesKey)))
       findings = null;
+    if (findings && !findings.loading && findings.agesKey === undefined)
+      findings.agesKey = agesKey;
     render();
   }catch(e){
     // The light goes red either way; the console says whether the box was
@@ -10709,20 +10748,6 @@ phFetch();
 // Same level pills the report itself leads with; "" is the scanner seeing a
 // directory this workspace does not mount, shown rather than hidden because
 // a finding with a bad path is still a finding.
-function drawFindingsSum(per){
-// When the reports were written, and which of them are not being counted.
-//
-// The card summed reports of different ages into one current-looking picture,
-// which is how a trivy that had been crashing for four days went on supplying
-// most of this box's findings — against a directory layout that had been
-// changed in between, so the operator's fix looked like it had not worked. A
-// scanner that dies leaves its PREVIOUS report in place, because a host script
-// worth having does not overwrite a good report with nothing; that is right,
-// and it makes a dead scanner indistinguishable from a live one here.
-//
-// So one a whole cycle behind is left out of the counts entirely, and this
-// line is what stops that being another silent thing: a number that dropped
-// with nothing to explain it is the same problem wearing the other face.
 // Coarser than dur(), which is the uptime clock: a report's age wants one
 // unit. "17m 25s ago" reads as a stopwatch and "94h 54m behind" reads as
 // arithmetic homework, where what is being said is "this morning" and "four
@@ -10735,48 +10760,167 @@ const coarse = s =>
   s < 172800 ? `${Math.round(s / 3600)}h`
              : `${Math.round(s / 86400)}d`;
 
+// When the reports were written, and which of them are not being counted.
+// A scanner that dies leaves its PREVIOUS report in place — a host script
+// worth having does not overwrite a good report with nothing — so one a whole
+// cycle behind is left out of the counts and this line says so: a number that
+// dropped with nothing to explain it is the same problem wearing the other
+// face.
 function reportAges(){
   const rs = state?.reports_ages || [];
   if (!rs.length) return "";
   const newest = rs[0].when, now = Date.now() / 1000;
   const out = rs.filter(r => r.stale);
-  // Not a .row: it is a note about the rows, and every selector that walks
-  // this card — its own tests included — reads a .row as "a project and its
-  // counts". A footer wearing that class is a row with no name in it.
   return `<div class="fnote">scanned ${
     esc(coarse(Math.max(0, now - newest)))} ago${
     out.map(r => `<br><span class="warn">${esc(r.name)} left out — ${
       esc(coarse(r.behind))} behind, its scanner may have failed</span>`).join("")}</div>`;
 }
 
-  const el = $("findingsSum");
-  const names = Object.keys(per).sort((a,b) => (a==="")-(b==="") || a.localeCompare(b));
-  paint(el, names.length ? names.map(p => {
-    const lv = per[p];
-    const pills = Object.keys(lv).sort((a,b)=>(LEVEL_ORDER[a]??9)-(LEVEL_ORDER[b]??9))
-      .map(l => `<span class="pill ${levelClass(l)}">${esc(l)} ${lv[l]}</span>`).join("");
-    // Stacked, like the project rows above: the pills are about the name, and
-    // beside it in a sidebar they crowded a long project name off its own row.
-    // The unplaceable row says WHERE, not just how many. A bare count told you
-    // something was wrong and nothing about what, which is how it sat at 276
-    // through several passes: 267 of those were the SDK share and 9 were a
-    // scanner reporting its own container path, and the row read the same
-    // either way. Named, the difference is obvious at a glance.
-    const heads = !p ? (state?.findings_heads || []) : [];
-    const where = heads.length
-      ? `<div class="sub">${heads.map(h =>
-          `${esc(h.head)} <span class="dim">× ${h.n}</span>`).join(" · ")}</div>`
-      : "";
-    return `<div class="row stack2${p ? " go" : ""}"${p ? ` data-ana="${esc(p)}"` : ""}
-      ${p ? `title="open ${esc(p)}'s notebook on its Analysis view"` : ""}>
-      <div class="grow"><div class="name">${esc(p || "unattributed paths")}</div>${where}</div>
-      <div class="acts">${pills}</div></div>`;
-  }).join("") + reportAges()
-  : `<div class="empty">no findings in the current reports — which is not the
-     same as every project passing; SARIF records findings, not coverage</div>`
-    + reportAges())
-  && el.querySelectorAll("[data-ana]").forEach(r =>
-       r.onclick = () => openNotebook(r.dataset.ana, "analysis"));
+// ---- the Analysis tab ----------------------------------------------------
+// The findings, browsable: one project or all of them, narrowed by level and
+// by text. This replaces the sidebar card, whose rows were only doors into
+// each notebook — a summary you could not read anything through. The per-
+// project Analysis view in the notebook stays: that one sits beside the
+// roadmap and the bugs a finding turns into, and this one is for looking
+// ACROSS projects, which no notebook can do.
+let fxRev = 0;                  // bumped when the filters change, so the pane
+let fxProject = "";             // repaints without waiting for a poll
+const fxState = {level: "", find: ""};
+
+// The narrowing itself, shared with every notebook's Analysis view: the same
+// two filters mean the same thing on both surfaces, and a person who learned
+// one has learned the other. `st` is the caller's own {level, find} — the tab
+// has one, each notebook has its own — and `redraw` is whatever repaints that
+// surface.
+function fxFilter(rows, st){
+  const q = (st.find || "").trim().toLowerCase();
+  return rows.filter(f =>
+    (!st.level || f.level === st.level
+      || (st.level === "note" && f.level === "info"))
+    && (!q || `${f.rule} ${f.path} ${f.message || ""} ${f.desc || ""}`
+              .toLowerCase().includes(q)));
+}
+
+function fxBarHtml(rows, st, extra){
+  const per = {};
+  for (const f of rows){
+    const l = f.level === "info" ? "note" : f.level;
+    per[l] = (per[l] || 0) + 1;
+  }
+  const lvls = ["error", "warning", "note"].filter(l => per[l]);
+  // Classes, not ids: a notebook per project means this bar can exist several
+  // times on one page, and duplicate ids are how the wrong one gets wired.
+  return `<div class="field histbar fxbar">${extra || ""}
+    <select class="fxLevel" aria-label="level">
+      <option value="">every level</option>
+      ${lvls.map(l => `<option value="${esc(l)}"${l === st.level ? " selected" : ""}>${
+        esc(l)} · ${per[l]}</option>`).join("")}
+    </select>
+    <input class="fxFind" maxlength="80" autocomplete="off"
+      placeholder="search rules, paths, messages" value="${esc(st.find || "")}">
+  </div>`;
+}
+
+function fxWireBar(root, st, redraw){
+  const sel = root.querySelector(".fxLevel"), inp = root.querySelector(".fxFind");
+  if (sel) sel.onchange = () => { st.level = sel.value; redraw(); };
+  // Debounced like the history search: a repaint per keystroke redraws the
+  // list under the reader's cursor for nothing the last keystroke does not
+  // already deliver.
+  let t = null;
+  if (inp) inp.oninput = () => { clearTimeout(t); t = setTimeout(() => {
+    st.find = inp.value; redraw();
+  }, 250); };
+}
+
+function openFindingsTab(){
+  openTab({kind: "findings", arg: "__findings", label: "Analysis"});
+  loadFindings();
+}
+
+// A finding that places in no project still places somewhere on the page.
+// The name cannot collide: a real project cannot contain a space.
+const fxProj = f => f.project || "unattributed paths";
+
+function fxRows(){
+  const all = (findings?.reports || []).flatMap(r => r.findings || []);
+  return fxFilter(all.filter(f => !fxProject || fxProj(f) === fxProject), fxState);
+}
+
+function renderFindingsInto(i){
+  // A pane index, not an element — the pane machinery owns #doc0/#doc1 and
+  // every doc-tab renderer resolves its own, the way renderDockerInto does.
+  const el = $("doc" + i);
+  if (!el) return;
+  el.classList.add("flush");
+  if (!findings){
+    // The status poll drops the cache when a scan re-runs on the host, and a
+    // repaint is not a fetch — so an open tab has to start one itself.
+    // loadFindings repaints on completion for every caller.
+    loadFindings();
+  }
+  if (!findings || findings.loading){
+    el.innerHTML = `<div class="fxtab"><div class="loading">loading…</div></div>`;
+    return;
+  }
+  if (findings.error){
+    el.innerHTML = `<div class="fxtab"><div class="hint bad">${esc(findings.error)}</div></div>`;
+    return;
+  }
+  if (findings.available === false){
+    el.innerHTML = `<div class="fxtab"><div class="empty">no scanner reports —
+      /reports is not mounted. The scan runs on the host; see the README's
+      static-analysis section.</div></div>`;
+    return;
+  }
+  const rows = fxRows();
+  const all = (findings.reports || []).flatMap(r => r.findings || []);
+  const perProject = {};
+  for (const f of all) perProject[fxProj(f)] = (perProject[fxProj(f)] || 0) + 1;
+  // Real projects alphabetical, the unplaceable bucket last — it is a note
+  // about the report, not a project to pick among them.
+  const projects = Object.keys(perProject).sort((a, b) =>
+    (a === "unattributed paths") - (b === "unattributed paths") || a.localeCompare(b));
+  const projSelect = `<select id="fxProject" aria-label="project">
+      <option value="">all projects · ${all.length}</option>
+      ${projects.map(pn => `<option value="${esc(pn)}"${pn === fxProject ? " selected" : ""}>${
+        esc(pn)} · ${perProject[pn]}</option>`).join("")}
+    </select>`;
+  // Grouped by project when looking across them, flat when one is chosen —
+  // a heading repeating the selector's own value is noise.
+  const by = {};
+  for (const f of rows) (by[fxProj(f)] ??= []).push(f);
+  const groups = fxProject ? [["", rows]] : Object.entries(by).sort((a, b) =>
+    (a[0] === "unattributed paths") - (b[0] === "unattributed paths")
+    || a[0].localeCompare(b[0]));
+  // Inside .fx, because that is the container the notebook's Analysis view
+  // renders rules into and every .rule style is scoped to it — same data,
+  // same rendering, one implementation and one stylesheet for both.
+  const body = rows.length
+    ? groups.map(([name, fs]) => (name
+        ? `<div class="fxproj"><span class="name">${esc(name)}</span>
+             <span class="dim">${fs.length}</span></div>` : "")
+        + `<div class="fx">${findingsRulesHtml(fs)}</div>`).join("")
+    : `<div class="empty">${all.length
+        ? "nothing matches the filters"
+        : "no findings in the current reports — which is not the same as every "
+          + "project passing; SARIF records findings, not coverage"}</div>`;
+  el.innerHTML = `<div class="fxtab">
+    ${fxBarHtml(all.filter(f => !fxProject || fxProj(f) === fxProject),
+                fxState, projSelect)}
+    ${body}
+    ${findings.aside ? `<div class="fnote">${findings.aside} finding(s) are
+      against paths that are no project's and are counted aside rather than
+      listed${(state?.findings_heads || []).length
+        ? " — " + (state.findings_heads || []).map(h =>
+            `${esc(h.head)} <span class="dim">× ${h.n}</span>`).join(" · ")
+        : ""}</div>` : ""}
+    ${reportAges()}
+  </div>`;
+  const redraw = () => { fxRev++; drawPanes(); };
+  $("fxProject").onchange = e => { fxProject = e.target.value; redraw(); };
+  fxWireBar(el, fxState, redraw);
 }
 
 // Both popup menus dismiss on a click that is neither in them nor on the

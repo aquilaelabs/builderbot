@@ -132,13 +132,37 @@ ok(resumed.tabs === 1 && resumed.arg === 'claude:alpha:r:abc123'
    `Resume on a dead session's tab carries the transcript id into the frame (${JSON.stringify(resumed)})`);
 await page.evaluate(() => hideTab(tabs.find(t => sessionOf(t.arg) === 'claude-alpha').id));
 
-await page.click('#findingsSum .row[data-ana="alpha"]');
+// The findings card is gone — the Analysis tab in Tools is the cross-project
+// browser now — so the notebook's view opens by name, which is what the tab's
+// rows and bb's messages point at.
+await page.evaluate(() => openNotebook('alpha', 'analysis'));
 await page.waitForSelector('.pane .nb [data-view="analysis"]:not([hidden]) .rule',
                            { timeout: 20000 });
-ok(true, 'a project\'s row on the card opens its notebook, on the Analysis view');
+ok(true, 'a notebook opens on its Analysis view when asked by name');
 ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros grayed on a notebook tab');
 ok(await page.$$eval('.pane .nb .rule .rid .pill', ps => ps.length > 0),
    '...with the findings for that project alone, worst level first');
+
+// The same filters the Analysis tab carries, project-fixed: one slice of
+// narrowing shared by both surfaces, so learning one is learning the other.
+const anaRules = await page.$$eval('.pane .nb #anaList .rule', rs => rs.length);
+await page.selectOption('.pane .nb #anaList .fxLevel', 'error');
+await page.waitForFunction(n =>
+  document.querySelectorAll('.pane .nb #anaList .rule').length <= n,
+  anaRules, { timeout: 10000 });
+ok(await page.$$eval('.pane .nb #anaList .rule .pill',
+     ps => ps.length && ps.every(p => p.textContent.trim().startsWith('error'))),
+   'the notebook view narrows by level with the same control the tab has');
+await page.fill('.pane .nb #anaList .fxFind', 'no-such-rule-anywhere');
+await page.waitForFunction(() => /nothing matches the filters/.test(
+  document.querySelector('.pane .nb #anaList')?.textContent || ''),
+  null, { timeout: 10000 });
+ok(true, '...and by search, saying plainly when the filters leave nothing');
+await page.selectOption('.pane .nb #anaList .fxLevel', '');
+await page.fill('.pane .nb #anaList .fxFind', '');
+await page.waitForFunction(n =>
+  document.querySelectorAll('.pane .nb #anaList .rule').length === n,
+  anaRules, { timeout: 10000 });
 // The fourth log. Nothing writes it — it is the difference between one scan
 // and the last — but it opens and filters like the other three, which is the
 // point of it being here at all.

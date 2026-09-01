@@ -66,6 +66,7 @@ bb — BuilderBot helper
                          and the scanner's logs
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
+  bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
   bb findings history    what the scanner stopped and started saying here
                          (-n N, --since 7d, --find TEXT, as the other logs)
   bb phone               what phone is connected, and what is waiting on you
@@ -1102,15 +1103,32 @@ def rank: {"error":0, "warning":1, "note":2, "info":2, "none":3}[.] // 4;
       loc:   ( strip_path($uri)
                + ":" + ((.locations[0].physicalLocation.region.startLine // 0) | tostring) ) } ]
 | . as $all
-| (if $scope == "all" then $all else map(select(.mine)) end) as $rows
+| (if $scope == "all" then $all else map(select(.mine)) end) as $scoped
+# The same three narrowings the dashboard bar offers. note and info are one
+# level everywhere here (rank already merges them), so --level note takes both.
+| ($scoped
+   | (if $level == "" then . else
+        map(select(if $level == "note" or $level == "info"
+                   then (.level == "note" or .level == "info")
+                   else .level == $level end)) end)
+   | (if $rule == "" then . else
+        ($rule | ascii_downcase) as $r
+        | map(select((.rule | ascii_downcase) == $r)) end)
+   | (if $find == "" then . else
+        ($find | ascii_downcase) as $q
+        | map(select((.rule + " " + .loc + " " + .msg)
+                     | ascii_downcase | contains($q))) end)) as $rows
 | ($rows | length) as $n
+| ($level != "" or $rule != "" or $find != "") as $filtered
 | if ($all | length) == 0 then "No findings.\n"
+  elif $n == 0 and $filtered and ($scoped | length) > 0 then
+    "No findings match the filters — \($scoped | length) before filtering.\n"
   elif $n == 0 then
     "No findings for \($proj). This report covers: "
     + (($all | map(.tree) | unique | join(", ")))
     + "\nRun with --all to see them anyway.\n"
   else
-  ( "# Findings (\($n))"
+  ( "# Findings (\($n)\(if $filtered then " matching, of \($scoped | length)" else "" end))"
   + (if $scope == "all" then " — all projects in this report\n"
      else " in \($proj), of \($all | length) in the report — --all for the rest\n" end)
   + ( $rows | group_by(.level) | sort_by(.[0].level | rank)
@@ -2016,7 +2034,7 @@ ago() {
 }
 
 cmd_findings() {
-    local target="" scope=mine proj
+    local target="" scope=mine proj lvl="" rule="" fnd=""
     # `bb findings history` reads the notebook's fourth log — what the scanner
     # has stopped and started saying here. Handed straight to the same helper
     # the other three use, so the filters are the ones already learned.
@@ -2026,6 +2044,16 @@ cmd_findings() {
     while [ $# -gt 0 ]; do
         case "$1" in
             -a|--all) scope=all ;;
+            # The three narrowing filters, matching the Analysis tab's bar so a
+            # question answered in the browser is askable here in one line.
+            -l|--level) [ $# -ge 2 ] || die "--level needs a value: error, warning or note"
+                        lvl="$2"; shift
+                        case "$lvl" in error|warning|note|info) ;; \
+                            *) die "--level takes error, warning or note (got: ${lvl})" ;; esac ;;
+            -r|--rule)  [ $# -ge 2 ] || die "--rule needs a rule id (e.g. DL3008)"
+                        rule="$2"; shift ;;
+            -f|--find)  [ $# -ge 2 ] || die "--find needs text to search for"
+                        fnd="$2"; shift ;;
             -*) die "unknown option: $1" ;;
             *)  target="$1" ;;
         esac
@@ -2092,7 +2120,8 @@ cmd_findings() {
             continue
         fi
         printf '<!-- %s — written %s ago -->\n' "$f" "$(ago $(( now - m )))"
-        jq -r --arg proj "$proj" --arg scope "$scope" "$FINDINGS_JQ" "$f" \
+        jq -r --arg proj "$proj" --arg scope "$scope" --arg level "$lvl" \
+            --arg rule "$rule" --arg find "$fnd" "$FINDINGS_JQ" "$f" \
             || warn "could not parse ${f} as SARIF"
     done
 }

@@ -363,7 +363,7 @@ CARDS_FILE = STATE / "cards.json"
 # keys dropping out of this list is also the migration: load_layout filters an
 # existing cards.json against it, so a file still naming them is cleaned on
 # the next read rather than needing anything done to it.
-CARD_KEYS = ["doctor", "runner", "projects", "tools", "phone", "findings"]
+CARD_KEYS = ["doctor", "runner", "projects", "tools", "phone"]
 
 
 # The one implementation, in statefile.py, along with the file lock that makes
@@ -416,7 +416,7 @@ def save_cards(v):
 # refresh as no tab at all: it was written to the file and filtered out of it.
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
-TAB_KINDS = {"term", "packages", "todo", "projects", "docker"}
+TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings"}
 
 
 def load_layout():
@@ -860,6 +860,14 @@ def findings_payload():
         return {"available": False, "reports": [], "projects": sorted(known)}
     files = sorted(f for f in REPORTS.glob("*.sarif")) + \
             sorted(f for f in REPORTS.glob("*.sarif.json"))
+    # The same rule the counts apply: a report a whole cycle behind its
+    # siblings is not read. Its scanner has probably died and left its last
+    # good output in place, and this payload feeding the Analysis tab while
+    # the counts refused the same file meant the tab could show findings the
+    # rest of the page said did not exist — a stale COPY of a live report
+    # doubled every rule it contained.
+    dropped = stale_reports()
+    files = [f for f in files if f.name not in dropped]
     # Only the projects worth reading findings for get attributed to: listed,
     # no error-level issue. Everything else under the share —
     # a project shut out, one that is broken, the SDK share, a directory
