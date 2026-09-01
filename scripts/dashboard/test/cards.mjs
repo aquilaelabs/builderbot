@@ -96,6 +96,47 @@ const order = () => page.$$eval('.side .card[data-card]', els => els.map(e => e.
   }, null, { timeout: 8000 });
 }
 
+// The header fits, at every width a phone comes in. It did not: measured at
+// 320px it wanted 369px and overflowed by 57, and the uptime — the only item
+// there that shrinks, because .meta clips — was squeezed away on the way,
+// rendering "up 09:52:…", which is not a truncated number but a different one.
+//
+// Both halves are asserted, because they fail separately: a header that does
+// not overflow can still contain something ellipsised, and that is what the
+// operator saw.
+{
+  const sizes = [320, 360, 390, 412, 430, 768];
+  const measured = [];
+  for (const w of sizes){
+    await page.setViewportSize({ width: w, height: 800 });
+    await new Promise(r => setTimeout(r, 200));
+    measured.push(await page.evaluate(async () => {
+      const h = document.querySelector('header');
+      // A realistic value rather than whatever the fixture is up: the point is
+      // the width the longest ordinary uptime needs.
+      document.getElementById('uptime').textContent = 'up 9h 52m';
+      await new Promise(r => requestAnimationFrame(r));
+      return {
+        w: window.innerWidth,
+        over: h.scrollWidth - h.clientWidth,
+        clipped: [...h.querySelectorAll('*')]
+          .filter(e => e.offsetWidth && e.scrollWidth > e.offsetWidth + 1)
+          .map(e => e.id || e.className || e.tagName),
+      };
+    }));
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await new Promise(r => setTimeout(r, 250));
+  const over = measured.filter(m => m.over > 0);
+  const cut = measured.filter(m => m.clipped.length);
+  ok(over.length === 0,
+     `the header fits at every phone width${
+       over.length ? ` — over by ${over.map(m => `${m.over}px at ${m.w}`).join(', ')}` : ''}`);
+  ok(cut.length === 0,
+     `...with nothing inside it ellipsised${
+       cut.length ? ` — ${cut.map(m => `${m.clipped.join('/')} at ${m.w}`).join(', ')}` : ''}`);
+}
+
 const hs = await page.$$eval('.side .card[data-card] h2', hs => hs.map(h => ({
   buttons: h.querySelectorAll('button').length, chev: !!h.querySelector('.chev') })));
 ok(hs.length === 6 && hs.every(h => h.buttons === 0 && h.chev),

@@ -68,7 +68,7 @@ const SURFACE = [
   'rnDrawPrefs', 'rnFillPrefs', 'rnLoadAuth', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveCards', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',
-  'setProjectPinned', 'setView', 'shellCtx', 'show', 'showInStack',
+  'setProjectPinned', 'setView', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',
   'signIn', 'signOut', 'slideBody', 'slideCard', 'slideDetails',
   'slideHidden', 'slidePanel', 'startCardDrag', 'startClaude', 'startDrag',
   'tabLabel', 'tabLabels', 'tabTitle', 'tipOff', 'tipify', 'toggleBell',

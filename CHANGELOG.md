@@ -146,3 +146,5 @@
 - The dashboard's top-level names are written down and checked, so code that lands in the wrong scope is named immediately instead of failing somewhere else (21c3c62)
 - A container's ports are links, and they open the machine the container is actually on rather than the one serving the dashboard (f596076)
 - On a desktop the Docker manager lays a container out in columns — what it is, how it is, what it publishes — instead of four stacked lines (f596076)
+- The header fits on every phone size — the uptime reads as 9h 52m instead of being cut to a different number (5016e1e)
+- The container's hostname is not shown beside the title when it is the same word (5016e1e)
