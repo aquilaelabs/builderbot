@@ -32,10 +32,13 @@ Four rules prevent both, and every section below is written against them:
    wire format. Enterprise never gets a different *kind* of node; it gets more
    of them. (This is the brief's own rule for cloud vs. private nodes, applied
    to everything.)
-2. **The homelab is the default, and the default is zero configuration.** One
-   container, SQLite, one operator, the local node — nothing to set. Enterprise
-   is *configuration*: Postgres instead of SQLite, OIDC instead of one
-   password, approval instead of auto-approval. Config, never a fork.
+2. **The homelab is the default, and the default is one decision.** One
+   container, SQLite, one operator, and one node enrolled with one command —
+   the sandbox VM the Docker manager already needs. Everything else is
+   defaulted. Enterprise is *configuration*: Postgres instead of SQLite, OIDC
+   instead of one password, approval instead of auto-approval. Config, never
+   a fork. (This rule used to say "the local node — nothing to set"; §18 says
+   why the local node stopped being a place work runs.)
 3. **Enterprise features are additive planes, not modifications.** Audit is a
    table every mutation writes; RBAC is a check in front of the same handlers;
    metrics are a read-only endpoint. If a feature needs the core to behave
@@ -986,13 +989,19 @@ installed/removed from the Nodes screen.
 **Phase 8 — deploy targets.**
 Modes `lan` and `funnel`; the `route` record shaped for `public`.
 
-**Phase 9 — device hosts (optional).**
+**Phase 9 — device hosts.** Required, not optional, since §18.
 Job-scoped emulation first: instrumented-test jobs that boot an emulator on a
 GPU node for the life of the job and return results as artifacts — no network
 adb involved. The provisioner learns to install the GPU display arrangement
 on a node that has the card. The interactive `device-host` service (a
 long-lived emulator a session reaches over network adb) is designed in §2 and
 built only if the job-scoped path proves insufficient.
+
+**Phase 10 — the lockdown.** After phases 6, 7 and 9 and never before them:
+the image drops the compile and emulation toolchains, the local node loses
+`package-build`, the session's settings file closes Bash to an allow-list,
+and every `bb` verb that ran something here submits a job or refuses with
+the reason. §18 has the argument and the honest limit.
 
 **Running through every phase: the unhardwiring (§11).** Each phase moves the
 env vars it touches into the DB-backed settings, seeds-then-owns, and shrinks
@@ -1066,6 +1075,26 @@ what it costs.
 8. **No "one operator" baked into data shapes** (phase 1). The `pool` column,
    token records carrying a `kind`, principals as strings rather than a
    boolean. Columns are cheap; schema surgery under live data is not.
+9. **OS and architecture are placement dimensions, and the wire carries
+   nothing POSIX** (phase 4). The operator's stated direction, 1 Sep: macOS
+   and Windows nodes for building and testing Apple and Windows apps, set up
+   and linked the way the Linux VM is. Not on this roadmap, and the protocol
+   already allows it — HTTP, JSON, argv as a list, an integer exit code, a
+   `cancel` verb rather than a signal name. What would close it is phase 4
+   assigning jobs by capability alone: a `package-build` job landing on the
+   wrong OS. So the node record carries `os` and `arch` as first-class
+   fields (today a census string and a label), a job's placement selects on
+   them and freezes them at assignment, and no job spec, log or result ever
+   names a signal, a shell, a path separator or a uid. Everything else is a
+   two-way door: a per-OS provisioner (zsh, PowerShell) speaking the same
+   `enroll`; the agent's census, sampler, privilege drop and process kill
+   behind one platform seam so a darwin or windows agent is another
+   implementation of that seam, not a fork; "jobs never run as root"
+   becoming "the service runs as the enrolled account, never an
+   administrator" where there is no setuid; a per-OS key in the package
+   catalog; simulators and Windows apps as device-host capabilities of their
+   own OS. Enrollment being the sandbox recognition already means a Mac
+   needs no daemon stamp.
 
 That is the whole list. It is deliberately short, because over-insuring is
 its own wall: every speculative abstraction is complexity the homelab pays
@@ -1098,5 +1127,55 @@ it gets argued into this section first and built second.
    systemd), the provisioner does not. Decide before the Go agent, not after.
 4. **Session `docker`:** with several nodes, does a session's environment get
    the project's default node, or nothing, with everything through `bb`?
+   *Answered by §18: nothing, with everything through `bb`.*
 5. **Retention defaults** for logs, artifacts and failed workspaces — the one
    part of the design that grows without bound, at both tiers.
+
+## 18. The controller runs nothing
+
+Decided 1 September, after phase 3, and it changes the destination rather
+than the route: **the container is the controller and nothing else.** No
+build runs here, no test, no CI job, no emulator. A project names the nodes
+its builds, tests, CI and emulation run on; a session on this container
+reaches them only through `bb` verbs that submit jobs; the artifacts come
+back into `dist/`. A VM is therefore required for full function, and the
+sandbox VM the Docker manager already needs is the first node — `provision.sh
+--controller URL --token bbe_…` enrolls it in the same run.
+
+Three things follow, in the order they have to happen.
+
+**Every toolchain leaves first.** Phases 6, 7 and 9 put compilation, the
+Actions runner and emulation on nodes. Only then does the image drop the
+JDK, the Android SDK and emulator, .NET, Flutter and Swift, and only then
+does the local node lose `package-build`. The other order strands every
+project between a container that cannot build and a node that cannot yet.
+`bb sdk` shrinks to what a session and the dashboard actually use here —
+node, Python, and the Playwright browsers for `bb shot` against a URL.
+
+**Then the session's tools close.** The settings file `claude_scope()`
+already passes (`scripts/dashboard/bb-tty`) denies the file tools every
+sibling project and `VERSION`. It grows a Bash rule: denied except an
+allow-list — `bb`, `git`, and read-only inspection. Every `bb` verb that used
+to run something locally (`bb emu`, a build, a test) submits a job to the
+project's node for that role, streams the log back, and refuses with the
+reason when the project has no node for it. So the job channel — audited,
+node-scoped, capability-checked on the node itself — is the one execution
+path a session has.
+
+**The honest limit, written into the UI and into CLAUDE.md.** Claude Code's
+permission rules are prefix matches enforced by the client; the sibling-path
+deny list already carries the caveat that it is a guardrail and not a
+sandbox, and the Bash rule is the same kind of thing. What actually holds is
+that there is *nothing here to run against*: no toolchain, no daemon a
+session can reach, no runner, no emulator. The rule makes the boundary
+visible and the missing toolchains make it real, and neither should be
+described as the other.
+
+What this does to the rest of the document: rule 2 no longer promises a
+working system with zero configuration — it promises one with one decision;
+phase 9 is required; a phase 10 exists; and open question 4 ("does a
+session's environment get the project's default node?") is answered —
+nothing, with everything through `bb`. The self-hosted runner on this
+container, and everything CLAUDE.md says about CI sharing the box, goes with
+phase 7.
+
