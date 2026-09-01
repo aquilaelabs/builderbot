@@ -248,6 +248,20 @@ ok(/scanned/.test(foot), '...beside when the reports that ARE counted were writt
 rmSync(`${DIR}/reports/old.sarif`, { force: true });
 await refreshUntil(page, () => !(state?.reports_ages || []).some(r => r.stale),
                    { timeout: 20000 });
+// The tab's controls carry the house field skin. They did not at first: the
+// skin was an allowlist of container classes the Analysis tab was not on, so
+// the same filter bar was styled in a notebook and browser-default here. The
+// skin is element-global now; this pins the agreement to a known-styled modal
+// field so the next new tab cannot ship native controls unnoticed.
+{
+  const skin = el => { const c = getComputedStyle(el);
+    return [c.backgroundColor, c.borderTopLeftRadius, c.borderTopColor, c.fontFamily].join('|'); };
+  const pair = await page.evaluate(`(() => { const skin = ${skin};
+    return [skin(document.querySelector('.fxtab .fxFind')),
+            skin(document.getElementById('mName'))]; })()`);
+  ok(pair[0] === pair[1],
+     'the Analysis tab\'s filter field wears the same skin as every other field');
+}
 await page.evaluate(() => { const t = tabs.find(x => x.kind === 'findings');
                             if (t) hideTab(t.id); });
 

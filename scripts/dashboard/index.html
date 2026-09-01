@@ -36,6 +36,43 @@
      404 this page would otherwise produce. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b2027'/%3E%3Cg fill='%233fb950'%3E%3Crect x='4' y='8.5' width='24' height='17' rx='5.5'/%3E%3Crect x='15' y='3.5' width='2' height='6' rx='1'/%3E%3Ccircle cx='16' cy='3' r='2.3'/%3E%3C/g%3E%3Cg fill='%231b2027'%3E%3Ccircle cx='11.4' cy='15.4' r='2.1'/%3E%3Ccircle cx='20.6' cy='15.4' r='2.1'/%3E%3Crect x='10.6' y='19.6' width='10.8' height='2.6' rx='1.3'/%3E%3C/g%3E%3C/svg%3E">
 <style>
+/* ---- the design language ------------------------------------------------
+   The page's visual rules, in one place, because they were only ever implied
+   by the sheet below and every new tab re-derived them wrong once. Read this
+   before adding or restyling ANY surface; extend the group selectors named
+   here rather than restyling locally.
+
+   COLOUR comes only from the tokens in :root below — surfaces --bg/--panel/
+   --sunk (page, raised box, set-into-the-panel), edge --line, text --ink and
+   --dim, status --accent/--warn/--bad/--note, buttons --btn/--btn-hi. Twelve
+   schemes repaint the page by swapping nine of them, so a hardcoded hex is a
+   spot the schemes cannot reach.
+
+   SHAPE: 8px radius for boxes (cards, panes, modals), 6px for controls
+   (buttons, fields), 4px for tags, 99px for pills, 50% for dots. Hairlines
+   are 1px solid var(--line).
+
+   TYPE: --mono for data — names, paths, versions, anything a terminal could
+   print; the three secondary voices are --f-note (quiet explainer, in
+   var(--dim)), --f-ui (secondary UI), --f-tag (pills and badges). Severity
+   and level colours agree everywhere: error/high red, warning/medium yellow,
+   note/low blue.
+
+   CONTROLS: the field skin (ground, edge, radius) is applied to the elements
+   globally — see "the field skin" rule — so a new surface's controls match by
+   existing. What a surface adds is sizing: full-width 13px mono controls mean
+   joining the `.modal input,...` sizing group, its 16px phone rule (iOS zooms
+   into anything smaller) and its :focus group. Tap targets are min-height
+   var(--tap). A row of filters is `<div class="field histbar">`.
+
+   DOCUMENT TABS (.projtab/.dmtab/.fxtab): reading surfaces, not terminals —
+   max-width var(--doc-w), content rows padded 11px 14px, states as .loading
+   and .empty, quiet footers as .fnote. A new document kind joins those
+   shared selector lists first and adds its own rules second.
+
+   A new tab also lands in TABKINDS here + TAB_KINDS in server.py, its
+   top-level names in test/surface.mjs, and a test beside its siblings.
+   ------------------------------------------------------------------------ */
 :root,.sw[data-theme="default"]{
   --bg:#1a1f26; --panel:#212730; --line:#4d5c6f; --ink:#e6edf3;
   --dim:#9fa9b4; --accent:#3fb950; --warn:#d29922; --bad:#f8524a;
@@ -725,20 +762,22 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 .modal .field,.nb .field{padding:11px 14px}
 .modal label,.nb label{display:block;font:12px/1.5 system-ui,sans-serif;color:var(--dim);
   margin-bottom:5px}
-/* The field skin, once: every text control on the page — modal, notebook,
-   sidebar rows and cards, the inline boxes — shares its ground, edge and
-   radius here. A site declares only what is its own: font, padding, size. */
-.modal input,.modal textarea,.modal select,
-.row input,.row select,
-.nb input,.nb textarea,.nb select,
-.uimenu input,.uimenu textarea,.uimenu select,
-.dropbox input,.dropbox textarea,.addstep input,.codebox input,
-.imgadd select,.side .card select{
+/* The field skin, once, for EVERY control. This was an allowlist of container
+   classes, which meant each new surface had to remember to join it — and the
+   Analysis tab did not, so the same filter bar rendered house-styled inside a
+   notebook and browser-default in the tab. Styling the elements themselves
+   inverts the failure: a new tab is covered by existing, and only a control
+   that WANTS to look native has to say so. :where() keeps the specificity at
+   zero, so any single-class rule still overrides this. A site declares only
+   what is its own: font, padding, size. */
+input:where(:not([type="checkbox"],[type="radio"],[type="range"],[type="file"])),
+textarea,select{
   background:var(--sunk);color:var(--ink);border:1px solid var(--line);
   border-radius:6px}
 .modal input,.modal textarea,.modal select,
 .row input,.row select,
 .uimenu input,.uimenu textarea,.uimenu select,
+.fxtab input,.fxtab select,
 .nb input,.nb textarea,.nb select{width:100%;box-sizing:border-box;
   padding:8px 9px;font:13px/1.5 var(--mono)}
 /* The sidebar's own selects — the Claude card's pickers. Same phone rules as
@@ -774,9 +813,11 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 @media(max-width:900px){ .modal input,.modal textarea,.modal select,
   .row input,.row select,
   .uimenu input,.uimenu textarea,.uimenu select,
+  .fxtab input,.fxtab select,
   .nb input,.nb textarea,.nb select{font-size:16px} }
 .modal input:focus,.modal textarea:focus,.modal select:focus,
 .uimenu input:focus,.uimenu textarea:focus,.uimenu select:focus,
+.fxtab input:focus,.fxtab select:focus,
 .nb input:focus,.nb textarea:focus,.nb select:focus{
   outline:2px solid #2f4d6d;outline-offset:-1px}
 .modal .hint,.nb .hint{color:var(--dim);font:var(--f-note);margin-top:6px}

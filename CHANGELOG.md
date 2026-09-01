@@ -150,3 +150,4 @@
 - The container's hostname is not shown beside the title when it is the same word (5016e1e)
 - Static analysis has its own tab — open it from the Tools card, pick a project, and filter by level or text; the notebook's Analysis view has the same filter bar (bd44048)
 - bb findings can narrow the digest with --level, --rule and --find, matching the tab's filters (bd44048)
+- The Analysis tab's filter controls now match the rest of the page — the field styling covers every control automatically instead of a per-surface list (d0fee38)
