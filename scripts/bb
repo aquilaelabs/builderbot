@@ -65,6 +65,7 @@ bb — BuilderBot helper
   bb history [--find X]  one search over the notebook: roadmap, bugs, memory
                          and the scanner's logs
   bb nodes               the node registry, read-only (docs/nodes.md phase 1)
+  bb jobs [-n N]         the recent jobs: state, node, what ran, how it ended
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
@@ -2081,6 +2082,51 @@ for n in rows:
 PY
 }
 
+# The queue, read-only: the recent jobs and what became of them. Same
+# read-only opening of the store as `bb nodes`; a session sees what ran and
+# where, and stops nothing from here — Cancel is the tab's.
+cmd_jobs() {
+    local py n=30
+    case "${1:-}" in
+        -n) n="${2:-30}" ;;
+        -h|--help) echo "bb jobs [-n N]   the recent jobs: state, node, what, how it ended"; return 0 ;;
+    esac
+    py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
+    [ -f "$py" ] || die "nodes.py is missing from this image"
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$n" <<'PY'
+import importlib.util, os, sys, time
+spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
+nodes = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nodes)
+try:
+    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    rows = nodes.jobs_for(n=int(sys.argv[2]))
+    names = {x["id"]: x["name"] for x in nodes.node_list(all=True)}
+except Exception as e:
+    print(f"no node store yet — the dashboard creates it on boot ({e})")
+    raise SystemExit(0)
+if not rows:
+    print("no jobs yet — a compose action, an exec on a node or an agent update makes one")
+    raise SystemExit(0)
+for j in rows:
+    s = j.get("spec") or {}
+    what = (f'{s.get("action", "compose")} {j["project"]}'
+            + (f'/{s["instance"]}' if s.get("instance") not in (None, "", "main") else "")
+            if j["type"] == "compose" else
+            "agent self-update" if j["type"] == "self-update" else
+            "exec " + " ".join(s.get("argv") or [])[:60])
+    state = j["state"] + (" (stopping)" if j["cancel"] and j["state"] == "running" else "")
+    if j["state"] == "running" and j.get("step"):
+        state += f' · {j["step"]}'
+    when = time.strftime("%d %b %H:%M", time.localtime(j["queued"]))
+    took = (f' · {max(1, j["ended"] - j["started"])}s'
+            if j.get("started") and j.get("ended") else "")
+    err = f' — {j["error"]}' if j.get("error") else ""
+    print(f'{j["id"]:>12}  {when}  {state:<22} {names.get(j["node"], j["node"] or "any"):<12} '
+          f'{what}{took}{err}')
+PY
+}
+
 cmd_findings() {
     local target="" scope=mine proj lvl="" rule="" fnd=""
     # `bb findings history` reads the notebook's fourth log — what the scanner
@@ -3194,6 +3240,7 @@ case "${1:-help}" in
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
     nodes) shift; cmd_nodes "$@" ;;
+    jobs)  shift; cmd_jobs "$@" ;;
     # `todo` still works: sessions started before the rename carry it in their
     # prompt, and a live conversation should not break on a word change.
     roadmap|todo) shift; cmd_roadmap "$@" ;;

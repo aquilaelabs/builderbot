@@ -59,6 +59,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => openSettingsTab()),
     readyWhen: '.settingstab .logdays',
   },
+  jobs: {
+    // Whether the queue has anything in it depends on which suites ran
+    // before this one; either drawing carries the bar and the foot band.
+    open: () => page.evaluate(() => openJobsTab()),
+    readyWhen: '.jobstab .jbrow, .jobstab .empty',
+  },
 };
 
 // Every kind that renders a document, from the page's own registry — never a

@@ -417,7 +417,7 @@ def save_cards(v):
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
 TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings",
-             "nodes", "settings"}
+             "nodes", "settings", "jobs"}
 
 
 def load_layout():
@@ -1906,10 +1906,20 @@ except Exception as e:                                    # noqa: BLE001
     NODES_OK = str(e)
     print(f"[dashboard] node store unavailable: {e}", flush=True)
 
+# The controller's own runner (docs/nodes.md §2, phase 4): the thread that
+# takes compose and local exec jobs off the queue and runs them here. devapp
+# registers its compose runner through configure(), so the queue is the seam
+# between the two and neither imports the other.
+import jobs                                                      # noqa: E402
+
+if not NODES_OK:
+    jobs.configure(nodes_module=nodes)
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir,
                  node_for=nodes.node_for if not NODES_OK else None,
-                 node_addr=nodes.ssh_addr_of if not NODES_OK else None)
+                 node_addr=nodes.ssh_addr_of if not NODES_OK else None,
+                 queue=nodes if not NODES_OK else None,
+                 runner=jobs if not NODES_OK else None)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
@@ -2255,6 +2265,7 @@ def revisions():
         # Node and job data never joins the status payload (docs/nodes.md
         # §13): the views that show it watch this and fetch their own.
         "nodes": 0 if NODES_OK else nodes.rev(),
+        "jobs": 0 if NODES_OK else nodes.jobs_rev(),
     }
     # Per project, for the views that are per project.
     for n in names:
@@ -2391,7 +2402,9 @@ class Handler(BaseHTTPRequestHandler):
         401 — never a WWW-Authenticate challenge, which is what summons the
         browser's own dialog. Anything fetching /api/ is the page's JS (or
         curl), and both handle a 401 better than a redirect-to-HTML."""
-        if self.path.split("?")[0].startswith("/api/"):
+        # /metrics too: a scraper following a redirect to the login page
+        # would parse HTML as an exposition and report the target down.
+        if self.path.split("?")[0].startswith("/api/") or self.path == "/metrics":
             return self._json({"error": "not signed in"}, 401)
         nxt = urllib.parse.quote(self.path, safe="/?=&")
         self.send_response(302)
@@ -2579,15 +2592,32 @@ class Handler(BaseHTTPRequestHandler):
             return self._logout()
         if path.startswith("/api/v1/agent/"):
             return self._agent()
+        if path == "/api/v1/healthz":
+            # Open, like the agent door: a monitor asks this without the
+            # operator's credential, and it says alive-and-the-store-answers
+            # with two counts, nothing that names a machine (docs/nodes.md §9).
+            body, code = ((jobs.healthz() if not NODES_OK
+                           else ({"ok": False, "error": NODES_OK}, 503)))
+            return self._json(body, code)
         if not self._authed():
             return self._deny()
+        if path == "/metrics":
+            if NODES_OK:
+                return self._json({"error": NODES_OK}, 503)
+            body = jobs.metrics_text().encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return None
         if path == "/term" or path.startswith("/term/"):
             return self._term_proxy()
         # The page's companion scripts: a new surface is a new classic-script
         # file beside index.html (docs/nodes.md §13), and this allowlist is
         # how they are served — full paths, same shape as the favicons, so it
         # never grows into a general file server by accident.
-        if path in ("/tab-nodes.js", "/tab-settings.js"):
+        if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js"):
             try:
                 body, zipped = self._gzip((HERE / path[1:]).read_bytes())
             except OSError:
@@ -2718,10 +2748,9 @@ class Handler(BaseHTTPRequestHandler):
                                             + NODES_OK}, 500)
             return self._json({"nodes": nodes.node_list()})
         if self.path.startswith("/api/v1/jobs"):
-            # One job with its log so far (?id=), or the recent ones for a
-            # node (?node=). Phase 3's whole read surface for jobs: enough
-            # for the Test button and a test to watch an exec land; the
-            # Jobs tab is phase 4 and reads the same rows.
+            # One job with its log so far (?id=), or the recent ones —
+            # narrowed by ?node=, ?project=, ?type=, ?active=1, at most ?n=.
+            # The Jobs tab's whole read surface, and a test's.
             if NODES_OK:
                 return self._json({"error": "the node store did not open: "
                                             + NODES_OK}, 500)
@@ -2731,8 +2760,16 @@ class Handler(BaseHTTPRequestHandler):
                 j = nodes.job(jid)
                 return self._json(j if j else {"error": "no such job"},
                                   200 if j else 404)
-            return self._json({"jobs": nodes.jobs_for(q.get("node", [""])[0]
-                                                      or None)})
+            try:
+                n = min(500, max(1, int(q.get("n", ["100"])[0])))
+            except ValueError:
+                n = 100
+            return self._json({"jobs": nodes.jobs_for(
+                q.get("node", [""])[0] or None, n=n,
+                project=q.get("project", [""])[0] or None,
+                type=q.get("type", [""])[0] or None,
+                active=q.get("active", [""])[0] == "1"),
+                "nodes": {x["id"]: x["name"] for x in nodes.node_list(all=True)}})
         if self.path.startswith("/api/docker"):
             # Refresh is the retry: drop the memoised availability first, so a
             # daemon wired up thirty seconds ago is noticed by pressing the
@@ -2832,6 +2869,8 @@ class Handler(BaseHTTPRequestHandler):
                             or req.get("id") or "")[:120], req)
         if path.startswith("/api/v1/nodes"):
             return self._nodes(req)
+        if path.startswith("/api/v1/jobs"):
+            return self._jobs(req)
         if path.startswith("/api/lock"):
             return self._lock(req)
         # NOT /api/pin, which is the command pin and has been since long before
@@ -2958,7 +2997,11 @@ class Handler(BaseHTTPRequestHandler):
             need = [str(c) for c in (req.get("requires") or []) if str(c)][:8]
             if need:
                 spec["requires"] = need
-            r = nodes.job_add("operator", nid, "exec", spec, field(req, "project"))
+            # Placed on the node named, or — with `select` and no id — on
+            # whichever node fits the selector when one asks (phase 4).
+            place = ({"select": req["select"]} if not nid
+                     and isinstance(req.get("select"), dict) else {"node": nid})
+            r = nodes.job_add("operator", place, "exec", spec, field(req, "project"))
         elif act == "test":
             n = nodes.node(nid)
             if not n:
@@ -2983,6 +3026,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown action"}, 400)
         return self._json(r, 400 if r.get("error") else 200)
 
+    def _jobs(self, req):
+        """The Jobs tab's one verb. A queued job is ended; a running one is
+        flagged and its runner told, and the row moves when the runner
+        reports that it stopped — which is when it did."""
+        if NODES_OK:
+            return self._json({"error": "the node store did not open: "
+                                        + NODES_OK}, 500)
+        act = field(req, "action")
+        if act != "cancel":
+            return self._json({"error": "unknown action"}, 400)
+        r = jobs.cancel("operator", field(req, "id"))
+        return self._json(r, 400 if r.get("error") else 200)
+
     def _agent_test(self, n):
         """Test on an agent node: an exec job, waited for. The channel is
         the thing being tested, so the proof is a round trip through it —
@@ -2993,7 +3049,7 @@ class Handler(BaseHTTPRequestHandler):
                                          if n["state"] == "pending"
                                          else "not connected — the agent has "
                                          "not dialed in lately")}
-        r = nodes.job_add("operator", n["id"], "exec",
+        r = nodes.job_add("operator", {"node": n["id"]}, "exec",
                           {"argv": ["uname", "-srm"], "timeout": 20})
         if r.get("error"):
             return {"on": False, "why": r["error"]}
@@ -3066,7 +3122,8 @@ class Handler(BaseHTTPRequestHandler):
         nid = auth["node"]
         if verb == "hello":
             r = nodes.hello(nid, req.get("census"), addr,
-                            field(req, "version"), field(req, "digest"))
+                            field(req, "version"), field(req, "digest"),
+                            req.get("running"))
         elif verb == "work":
             # The heartbeat and the long-poll in one: the sample is recorded
             # first, so a node that is only ever waiting still reads as
@@ -3076,7 +3133,7 @@ class Handler(BaseHTTPRequestHandler):
                 wait = min(nodes.POLL_S, max(0.0, float(req.get("wait", nodes.POLL_S))))
             except (TypeError, ValueError):
                 wait = nodes.POLL_S
-            j = nodes.job_next(nid, req.get("running"), wait)
+            j = nodes.job_next(nid, wait, runner="node")
             if j is None:
                 self.send_response(204)
                 self.send_header("Content-Length", "0")
@@ -3087,7 +3144,7 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.job_log(nid, field(req, "job"), req.get("chunks"))
         elif verb == "result":
             r = nodes.job_result(nid, field(req, "job"), field(req, "state"),
-                                 req.get("exit"))
+                                 req.get("exit"), field(req, "error"))
         else:
             return self._json({"error": "not found"}, 404)
         return self._json(r, 400 if r.get("error") else 200)
@@ -3335,7 +3392,7 @@ class Handler(BaseHTTPRequestHandler):
             # Before the instance check below: a job can be running against an
             # instance that has since been removed, and stopping it must not
             # depend on the thing it is building still existing.
-            return self._json({"ok": True, "stopped": devapp.abort_job()})
+            return self._json({"ok": True, "stopped": devapp.abort_job(name, inst)})
         if act == "starter":
             # The project's .env.example, for a container that does not exist
             # yet — the send dialog opens on it so the env is filled in before

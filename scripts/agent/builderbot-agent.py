@@ -12,11 +12,16 @@ The protocol is six verbs over plain HTTP, and this file speaks four of them
 plus the download that fetches itself:
 
     POST /api/v1/agent/enroll     once: the enroll token in, the node token out
-    POST /api/v1/agent/hello      on connect and every ten minutes: the census
+    POST /api/v1/agent/hello      on connect and every ten minutes: the census,
+                                  and the ids of the jobs still running here
     POST /api/v1/agent/work       the long-poll: a heartbeat sample in, a job
-                                  (or 204) out, held up to `poll` seconds
-    POST /api/v1/agent/log        chunks of a running job's output, by sequence
-    POST /api/v1/agent/result     the terminal state and exit code
+                                  (or 204, or {"cancel": [ids]}) out, held up
+                                  to `poll` seconds
+    POST /api/v1/agent/log        chunks of a running job's output, by sequence;
+                                  the reply carries `cancel: true` once the
+                                  operator has stopped that job
+    POST /api/v1/agent/result     the terminal state (succeeded, failed,
+                                  canceled), exit code and a one-line error
     GET  /api/v1/agent/download   the agent the controller ships — self-update
 
 Three rules this file keeps that are worth knowing before changing it:
@@ -57,7 +62,7 @@ import threading
 import time
 import urllib.parse
 
-AGENT_VERSION = "1"
+AGENT_VERSION = "2"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -224,6 +229,9 @@ def census(state):
         "cpu": os.cpu_count() or 0, "mem_mb": tot,
         "os": f"{platform.system().lower()} {platform.machine()} "
               f"{_os_release()}".strip(),
+        # The two the placement selector matches on, as fields of their own:
+        # a selector should not have to parse the display string above.
+        "system": platform.system().lower(), "arch": platform.machine(),
         "hostname": socket.gethostname(),
         "docker": _run(["docker", "version", "--format", "{{.Server.Version}}"])
         if shutil.which("docker") else "",
@@ -319,6 +327,19 @@ class Job(threading.Thread):
         self.agent, self.job = agent, job
         self.pending, self.seq = [], 0
         self.lock = threading.Lock()
+        # A cancel is a fact about the job on the controller's row, and it
+        # reaches here two ways: named in a work reply, or as `cancel: true`
+        # on the reply to a log post. Either sets this; the child is killed
+        # from the exec loop, and the result says "canceled" rather than
+        # "failed" so the row does not read as the command's own fault.
+        self.canceled = False
+        self.proc = None
+
+    def cancel(self):
+        self.canceled = True
+        p = self.proc
+        if p is not None and p.poll() is None:
+            self._kill(p)
 
     def say(self, text):
         # One line that alone exceeds a body would be refused forever, and
@@ -342,15 +363,18 @@ class Job(threading.Thread):
                     size += len(batch[-1]["chunk"])
             if not batch:
                 return True
-            st, _ = self.agent.ctl.call("log", {"job": self.job["id"], "chunks": batch},
+            st, r = self.agent.ctl.call("log", {"job": self.job["id"], "chunks": batch},
                                         timeout=20)
             if st != 200:
                 with self.lock:
                     self.pending = batch + self.pending
                 return False
+            if r.get("cancel") and not self.canceled:
+                self.cancel()
 
     def run(self):
         spec = self.job.get("spec") or {}
+        error = ""
         try:
             if self.job.get("type") == "self-update":
                 state, code = self.agent.self_update(self, spec)
@@ -358,14 +382,19 @@ class Job(threading.Thread):
                 state, code = self.exec(spec)
         except Exception as e:                       # noqa: BLE001 — reported, not raised
             self.say(f"agent error: {type(e).__name__}: {e}\n")
-            state, code = "failed", 70
+            state, code, error = "failed", 70, f"agent error: {type(e).__name__}"
+        if self.canceled:
+            state, error = "canceled", "stopped by the operator"
+        elif state == "failed" and not error:
+            error = f"exit {code}"
         # Door 5: keep trying. The controller may be gone for a while; the
         # answer waits here, with backoff, until it is taken.
         delay = 1
         while True:
             if self.flush():
                 st, _ = self.agent.ctl.call(
-                    "result", {"job": self.job["id"], "state": state, "exit": code},
+                    "result", {"job": self.job["id"], "state": state, "exit": code,
+                               "error": error},
                     timeout=20)
                 if st == 200:
                     break
@@ -414,22 +443,37 @@ class Job(threading.Thread):
         except OSError as e:
             self.say(f"could not start {argv[0]}: {e}\n")
             return "failed", 126
+        self.proc = p
+        if self.canceled:                 # asked to stop while it was starting
+            self._kill(p)
+        # The pipe is read on its own thread, and this one posts on a clock.
+        # Reading and posting on one thread meant a job that printed a line
+        # and then worked in silence never posted the line — readline blocked
+        # until the next one — so the row sat at "assigned" with nothing in
+        # its log, and a cancel sent on the log reply could not arrive.
+        def pump():
+            try:
+                for line in p.stdout:
+                    self.say(line.decode("utf-8", "replace"))
+            except (OSError, ValueError):
+                pass                      # the pipe went with the process
+        reader = threading.Thread(target=pump, daemon=True)
+        reader.start()
         deadline = time.time() + timeout
-        last_flush = time.time()
         killed = False
-        while True:
-            line = p.stdout.readline()
-            if not line:
-                break
-            self.say(line.decode("utf-8", "replace"))
-            if time.time() - last_flush > 0.5 or len(self.pending) > 2000:
+        while reader.is_alive():
+            reader.join(0.5)
+            if self.pending:
                 self.flush()
-                last_flush = time.time()
             if time.time() > deadline and not killed:
                 self.say(f"timed out after {int(timeout)}s — killing it\n")
                 self._kill(p)
                 killed = True
         p.wait()
+        self.proc = None
+        if self.canceled:
+            self.say("stopped\n")
+            return "canceled", 130
         if killed:
             return "failed", 124
         return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
@@ -479,9 +523,14 @@ class Agent:
 
     # -- the channel -------------------------------------------------------
     def hello(self):
+        # `running` is the list of job ids this process still holds. The
+        # controller reconciles against it: a job its row says is running
+        # here that this agent does not know was lost with a restart, and is
+        # failed there rather than left running forever (docs/nodes.md §9).
         st, r = self.ctl.call("hello", {"census": census(self.state),
                                         "version": AGENT_VERSION,
-                                        "digest": own_digest()}, timeout=30)
+                                        "digest": own_digest(),
+                                        "running": self.running_ids()}, timeout=30)
         if st == 200:
             self.hello_at = time.time()
             self.poll = int(r.get("poll") or 25)
@@ -505,9 +554,20 @@ class Agent:
         with self.lock:
             return len(self.jobs)
 
+    def running_ids(self):
+        with self.lock:
+            return sorted(self.jobs)
+
     def finished(self, job):
         with self.lock:
             self.jobs.pop(job.job["id"], None)
+
+    def cancel(self, ids):
+        with self.lock:
+            hit = [self.jobs[i] for i in ids if i in self.jobs]
+        for j in hit:
+            log(f"job {j.job['id']}: canceled by the controller")
+            j.cancel()
 
     def loop(self):
         delay = 1
@@ -527,15 +587,19 @@ class Agent:
                     continue
                 delay = 1
             n = self.running()
-            # The count rides the request and is a snapshot: a poll sent
-            # with running=1 is held at its full length even after the job
-            # ends, and the next job waits out that stale poll. So the poll
-            # is short while anything is running and long only when idle.
-            wait = self.poll if n == 0 else min(self.poll, 3)
+            # The controller counts what is running here from its own rows
+            # and wakes a held poll when a job ends, so the poll is held at
+            # full length whether or not anything is running. The count in
+            # the sample is for the row's numbers, not for placement.
+            wait = self.poll
             st, r = self.ctl.call("work", {"sample": self.sampler.sample(self.state, n),
                                            "running": n, "wait": wait},
                                   timeout=wait + 15)
             if st == 204:
+                continue
+            if st == 200 and r.get("cancel"):
+                # Not a job: the ids of jobs here the operator has stopped.
+                self.cancel([str(i) for i in r["cancel"]])
                 continue
             if st == 200 and r.get("id"):
                 self.take(r)

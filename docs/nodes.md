@@ -300,7 +300,18 @@ carries a sample (CPU, memory, load, per-store free space, jobs running), so
 liveness and the numbers cost no verb of their own and a node is "live" when
 a poll has arrived within three poll lengths. The four the agent speaks
 today, and the two it does not yet, are marked; the agent takes `exec` jobs
-and `self-update`, nothing else, until phase 4 gives the queue its shape.
+and `self-update`, nothing else, until phase 6 gives it a workspace to build
+in.
+
+*What phase 4 added to the wire (protocol 2):* `hello` carries `running`,
+the job ids the agent still has in flight, so the controller can reconcile
+its rows against the node's truth after either side restarts. `work` may
+answer `{"cancel": [ids]}` instead of a job, and the reply to a `log` post
+carries `cancel: true` — the two ways a cancel reaches a busy agent, neither
+of which names a signal (door 9). `result` carries `error`, one line on how
+it ended, and the state may be `canceled`. The 3-second busy poll the phase 3
+agent used as a stopgap is gone: a poll is held for its full length, and the
+queue wakes it when a job ends on the node, so the next one starts at once.
 
 **What a job runs as.** The unit runs the agent as root — that is what lets
 phase 5's system jobs (mounts, network) exist — but an `exec` job drops to
@@ -857,14 +868,14 @@ scopes is two settings wearing one name, and should be split before it ships.
   one. Refresh retries the selected node only.
 - **New container…** and **Send to Docker manager…** gain a node select,
   defaulting to the project's configured node, else the only node, else ask.
-- Once jobs land (phase 4), the row's build/log tail is the job view scoped to
-  that instance, and each row names the node it ran on.
+- The row's build/log tail is the job view scoped to that instance, and each
+  row names the node it ran on (phase 4).
 
 ### The rest
 
-- **Jobs**: a new document tab — queue, running, recent; per-job log tail
-  (the dev-instance row's rendering, generalized). There is no "what is
-  running" view today because only one thing ever was.
+- **Jobs** (phase 4): a document tab — queue, running, recent; per-job log
+  tail (the dev-instance row's rendering, generalized), Cancel on a row, and
+  a filter for what is not over. `bb jobs` is the read-only form.
 - Later, enterprise-flavored and additive: the audit view (a read of the
   table phase 1 starts writing), pool filters wherever a node list appears.
 
@@ -966,6 +977,27 @@ The job model, placement function, streaming logs, concurrency, cancel,
 drain-aware assignment. Move the Docker manager's compose actions onto it, so
 "rebuild" is a job with a log rather than a module global. The Jobs tab.
 `/healthz` and `/metrics` land here, with something to measure.
+
+*Where phase 4 landed it:* the rows are the queue — there is no in-memory
+list to lose. A job is placed by an explicit node or by a selector over
+capability, labels, pool, `os` and `arch` (the node record carries the last
+two as columns now, from the census), checked against the live registry when
+it is queued so an impossible selector is refused with the selector in the
+message, and frozen onto the row when it is taken. Two runners serve one
+table: the agent takes `exec` and `self-update` on its own node; the
+controller's runner (`jobs.py`) takes everything else — every `compose`
+action, and `exec` on a node with no agent, run over ssh from here — through
+the same `job_next`/`job_log`/`job_result` the agent uses, so the rows cannot
+tell which served them. Concurrency is counted from the rows per node.
+Cancel is a flag on the row: the agent hears it on the wire, the controller's
+watcher turns it into a kill of the held process group, and the row moves
+when the runner reports it stopped, not when the button was pressed. Logs
+fold (a progress frame supersedes the last of its kind) and are held back at
+most two seconds, so a pull is a log that moves rather than a transcript. A
+job this process was running when it died is failed as lost at the next
+start. The Docker manager's Up, Down, Rebuild and Remove are compose jobs,
+busy per instance rather than per dashboard. The Jobs tab and `bb jobs` read
+it; `/api/v1/healthz` answers without a credential, `/metrics` with one.
 
 **Phase 5 — the node configuration plane.**
 Storage roles, mounts and network editable from the Nodes tab (§12), applied
