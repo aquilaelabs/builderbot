@@ -923,6 +923,12 @@ by hand cost four commands and still could not see the failed builds.
     That density is the house style, not decoration; match it.
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
     `index.html` is one file of vanilla JS and CSS. No framework, no build step.
+  - **The dashboard's design language is written down once** — the
+    "design language" comment at the top of `index.html`'s stylesheet: tokens,
+    radii, type voices, the global field skin, the document-tab pattern. Read
+    it before adding or restyling any surface, and extend the group selectors
+    it names rather than restyling locally. A new tab shipping with
+    browser-default controls is the failure it exists to prevent.
   - **A new tab kind is one entry in `TABKINDS`** (scripts/dashboard/index.html)
     plus its name in `TAB_KINDS` (server.py), and a test compares the two. It
     used to be seven places, three of which failed silently — a kind missing
