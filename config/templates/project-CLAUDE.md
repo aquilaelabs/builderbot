@@ -172,6 +172,14 @@ bb emu gpu        # hardware or software rendering, and why
 The emulator is **not** started automatically, holds a few GB of RAM, and runs
 one at a time — so start it when you need it and stop it when you are done.
 
+**When the project has a node, every `bb emu` verb runs there.** The node's
+own emulator, images and GPU are used, the output streams back, and what a
+verb writes — `bb emu shot` for a screenshot, `bb emu gfx PKG` for real
+per-frame timings — comes back into `dist/`. `bb emu install FILE` sends an
+APK from `dist/` along. You cannot reach that emulator with `adb` from here;
+the verbs are the way in, and `bb emu create API` builds its AVD when the
+node's store has none yet.
+
 Which API levels exist is set by `ANDROID_SYSTEM_IMAGES` on the container. Run
 `bb emu list` before assuming a version is available; if the one you need is
 missing, say so rather than trying to install it — a runtime `sdkmanager`

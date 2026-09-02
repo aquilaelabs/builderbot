@@ -394,6 +394,12 @@ bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
 bb build           the project's build command on its node, with the outputs
                    it lists — all set in the project's settings dialog
 bb test            the same for its test command
+bb emu create API  build the AVD for an API level, installing its image if missing
+bb emu install APK install an APK on the running emulator
+bb emu shot [FILE] screenshot the emulator into dist/emu/
+bb emu gfx PKG     a package's per-frame timings (gfxinfo framestats) into
+                   dist/emu/ — and every emu verb runs on the project's node
+                   when it has one, its output coming back into dist/
 bb ci-labels       the runner labels the registry knows — this box's and every
                    node runner's; `--write` regenerates .github/actionlint.yaml
 bb findings        this project's scanner findings (--all for every project)

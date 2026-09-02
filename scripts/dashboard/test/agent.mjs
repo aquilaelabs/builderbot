@@ -153,7 +153,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
-     && n.agent.version === '6' && /^sha256:/.test(n.agent.digest),
+     && n.agent.version === '7' && /^sha256:/.test(n.agent.digest),
      'the row is online with the census, agent version and digest');
   // single use
   let again = '';
@@ -459,6 +459,43 @@ try {
     const rn2 = await until(async () => { const n = await nodeById(minted.id);
       return n.reported.services?.['actions-runner']?.installed === false ? n : null; });
     ok(rn2 !== null, '...and the census says so');
+  }
+
+  // ---- emulation as a job (phase 9) --------------------------------------------
+  // `bb emu` on the project's node is bb from the bundle with the node's
+  // store as its SDK; inputs come from dist/ and what it writes comes back.
+  // The store here holds no emulator, so `list` is the verb that proves the
+  // plumbing without booting anything.
+  {
+    const nofile = await api('/api/v1/jobs', { action: 'emu', project: 'alpha', argv: ['emu', 'install', 'x.apk'],
+      files: ['dist/missing.apk'] });
+    ok(/not a file in alpha's dist/.test(nofile.error || ''), 'an input that is not in dist/ is refused up front');
+    const ej = await api('/api/v1/jobs', { action: 'emu', project: 'alpha', argv: ['emu', 'list'] });
+    ok(ej.ok && ej.node === minted.id, `bb emu list is queued on the project's node (${ej.job || ej.error})`);
+    const efin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${ej.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    // Only the plumbing is asserted: this box has the image's avdmanager on
+    // PATH, which a node would not, so what `list` finds here is the box's.
+    ok(efin && efin.state === 'succeeded' && /configured API levels/.test(efin.log),
+       `the node runs it from the bundle with the store as its SDK (${efin?.state}: ${(efin?.log || '').slice(0, 80).replace(/\n/g, ' / ')})`);
+    // inputs and outputs without a snapshot: a file from dist/ arrives by
+    // name in the job's directory, and what is written there comes back
+    const io = await api('/api/v1/jobs', { action: 'emu', project: 'alpha',
+      argv: ['version', '--help'], files: ['dist/app-1.0.apk'], outputs: ['*.txt'] });
+    const ifin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${io.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(ifin && /fetched dist\/app-1.0.apk \(6 bytes\)/.test(ifin.log)
+       && existsSync(`${DIR}/agentdata/emu/alpha/app-1.0.apk`),
+       'an input from dist/ is fetched into the project\'s emu directory on the node');
+    const cli = execFileSync('bash', [`${REPO}/scripts/bb`, 'emu', 'list'],
+      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...process.env, DASHBOARD_AUTH: 'test:test',
+        DASHBOARD_PORT: new globalThis.URL(URL).port, DASHBOARD_STATE: `${DIR}/state`, BB_PROJECT: 'alpha' } });
+    ok(/bb emu list on agentbox/.test(cli) && /configured API levels/.test(cli) && /succeeded/.test(cli),
+       'bb emu from a shell goes to the project\'s node and streams the answer back');
   }
 
   // ---- Tailscale Funnel, the route's second mode (phase 8) ---------------------

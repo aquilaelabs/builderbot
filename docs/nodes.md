@@ -1123,6 +1123,28 @@ Modes `lan` and `funnel`; the `route` record shaped for `public`.
 `apply: funnel` and tailscale to the census.
 
 **Phase 9 — device hosts.** Required, not optional, since §18.
+
+*Where phase 9 landed it:* `bb emu` goes to the project's node when it has
+one (`BB_EMU_LOCAL=1` keeps a verb on a box that still carries its own
+emulator): the verb is an exec job whose spec carries `bb` argv instead of
+a command, and the agent runs this very `bb` from the bundle in
+`<data>/emu/<project>` with the node's store as its SDK — `sdk_env()`:
+`SDK_ROOT`, `ANDROID_HOME` at the store's `android/`, `JAVA_HOME` at its
+`jdk/`, the tools on `PATH`, AVDs under the data store. Inputs come from the
+project's `dist/` by name through the new `file` agent verb (an APK for
+`bb emu install`); what the verb writes comes back through the outputs
+globs like a build's. Two catalog rows bootstrap a node for Android —
+`jdk` (Temurin 21) and `android-tools` (sdkmanager, linked in as
+`android/cmdline-tools/latest`) — after which `android:emulator` and the
+system images install through them; `bb emu create <api>` makes the AVD.
+New verbs on both sides: `create`, `install`, `shot` (a screenshot into
+`dist/emu/`), `gfx` (gfxinfo framestats into `dist/emu/`). The census
+reports `emulator` among the toolchains. Not proven: an emulator booting on
+a real node — the tests run `bb emu list` from the bundle against an empty
+store; the first `bb emu create` on the VM downloads a system image and is
+worth watching. Interactive network adb was not needed for the verbs that
+exist, and is left unbuilt. Bug #17 (the headless Xorg dying) stays this
+container's until the local emulator goes with phase 10.
 Job-scoped emulation first: instrumented-test jobs that boot an emulator on a
 GPU node for the life of the job and return results as artifacts — no network
 adb involved. The provisioner learns to install the GPU display arrangement

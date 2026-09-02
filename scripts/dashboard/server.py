@@ -3121,7 +3121,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
         act = field(req, "action")
-        if act == "run":
+        if act in ("run", "emu"):
             return self._json(*self._run_job(req))
         if act != "cancel":
             return self._json({"error": "unknown action"}, 400)
@@ -3143,6 +3143,11 @@ class Handler(BaseHTTPRequestHandler):
         argv = [str(a) for a in (req.get("argv") or []) if str(a)][:64]
         if not argv:
             return {"error": "argv is empty"}, 400
+        # `emu` (docs/nodes.md phase 9): a bb verb the node runs from the
+        # bundle with its own packages store as the SDK — no snapshot, since
+        # the emulator is not the tree's; inputs come from dist/ by name and
+        # what it writes comes back the same way.
+        emu = field(req, "action") == "emu"
         pf = prefs.get(name)
         nid = field(req, "node") or pf["node"]
         if not nid:
@@ -3154,16 +3159,28 @@ class Handler(BaseHTTPRequestHandler):
         if n["kind"] != "agent":
             return {"error": f"{n['name']} runs no agent — a build node is an agent "
                              "node with a workspace of its own (docs/nodes.md §6)"}, 400
-        snap = workspace.snapshot(name)
-        if snap.get("error"):
-            return snap, 400
         outputs = [str(g)[:200] for g in (req.get("outputs") or []) if str(g)][:16]
         try:
             timeout = min(4 * 3600, max(30, int(req.get("timeout") or 3600)))
         except (TypeError, ValueError):
             timeout = 3600
-        spec = {"argv": argv, "timeout": timeout, "outputs": outputs, "project": name}
         who = f"session:{name}" if field(req, "from") == "session" else "operator"
+        if emu:
+            files = []
+            for f in (req.get("files") or [])[:8]:
+                if workspace.file_path(name, str(f)) is None:
+                    return {"error": f"{f} is not a file in {name}'s dist/"}, 400
+                files.append(str(f))
+            spec = {"bb": argv, "files": files, "timeout": timeout, "outputs": outputs,
+                    "project": name}
+            r = nodes.job_add(who, {"node": nid}, "exec", spec, name)
+            if r.get("error"):
+                return r, 400
+            return r | {"node": nid}, 200
+        snap = workspace.snapshot(name)
+        if snap.get("error"):
+            return snap, 400
+        spec = {"argv": argv, "timeout": timeout, "outputs": outputs, "project": name}
         r = nodes.job_add(who, {"node": nid}, "exec", spec, name,
                           source={"digest": snap["digest"], "project": name,
                                   "files": snap["files"], "bytes": snap["bytes"]})
@@ -3238,6 +3255,27 @@ class Handler(BaseHTTPRequestHandler):
             size = path.stat().st_size
             self.send_response(200)
             self.send_header("Content-Type", "application/x-tar")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(size))
+            self.end_headers()
+            with open(path, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+            return None
+        if verb == "file":
+            # A job input from the project's dist/ — the APK an emulator
+            # job installs (docs/nodes.md phase 9). Only the job's own node,
+            # only while it runs, only dist/.
+            if auth.get("error") or auth.get("kind") != "node":
+                return self._json({"error": auth.get("error") or "a node's token"}, 401)
+            j = nodes.job(q.get("job", [""])[0], with_log=False)
+            if not j or j["node"] != auth["node"] or j["state"] not in nodes.JOB_ACTIVE:
+                return self._json({"error": "not this node's running job"}, 403)
+            path = workspace.file_path(j.get("project") or "", q.get("path", [""])[0])
+            if path is None:
+                return self._json({"error": "no such file in the project's dist/"}, 404)
+            size = path.stat().st_size
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
             self.send_header("Cache-Control", "no-store")
             self.send_header("Content-Length", str(size))
             self.end_headers()

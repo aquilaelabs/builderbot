@@ -501,6 +501,11 @@ sdk_android_clear_stale_installer() {
 sdk_relink_android() {
     local store sub src
     store="$(sdk_dir android)"
+    # On a node the store IS the SDK home — ANDROID_HOME points at the store's
+    # android/ directory and sdkmanager writes there directly — so there is no
+    # image-side directory to point back at the share, and the moves below
+    # would be a directory onto itself.
+    [ "$(readlink -f "$store")" != "$(readlink -f "${ANDROID_HOME:-/opt/android-sdk}")" ] || return 0
     for sub in system-images platforms build-tools emulator ndk cmake \
                extras add-ons sources skins; do
         src="${ANDROID_HOME:-/opt/android-sdk}/$sub"

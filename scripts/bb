@@ -49,6 +49,11 @@ bb — BuilderBot helper
   bb emu list            configured API levels and the AVDs that exist
   bb emu log [-p] [N]    this boot's emulator log, or -p for the one before it
   bb emu gpu             which renderer a start would use, and why
+  bb emu create API      build the AVD for an API level (images installed if missing)
+  bb emu install APK     install an APK on the running emulator
+  bb emu shot [FILE]     screenshot the emulator into dist/emu/
+  bb emu gfx PKG [FILE]  a package's per-frame timings (gfxinfo framestats) into dist/emu/
+                         — every emu verb runs on the project's node when it has one
   bb claude-md           is this project's CLAUDE.md environment block current?
   bb claude-md --update  refresh that block, leaving the project section alone
   bb claude-md --init    create a CLAUDE.md here from the shipped template
@@ -448,9 +453,140 @@ emu_serial() {
         | awk '$1 ~ /^emulator-[0-9]+$/ && $2 == "device" { print $1; exit }'
 }
 
+# The project's node, from the same file the settings dialog writes; "" when
+# none is set. Read here rather than asked of the dashboard, so `bb emu` can
+# decide where it is going before it says anything.
+project_node() {
+    local proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$proj" <<'PY' 2>/dev/null
+import json, os, sys
+try:
+    d = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "claude-prefs.json")))
+    print((d.get("projects") or {}).get(sys.argv[1], {}).get("node") or "")
+except (OSError, ValueError):
+    print("")
+PY
+}
+
+# bb emu on the project's node (docs/nodes.md phase 9): the same verb becomes
+# a job there — the node runs this very bb from the bundle, with its own
+# packages store as the SDK — and what it writes (a screenshot, a gfxinfo)
+# comes back into dist/. `install FILE` sends the APK along from dist/.
+emu_via_node() {
+    local -a argv=("emu") files=()
+    local a
+    for a in "$@"; do argv+=("$a"); done
+    if [ "${1:-}" = install ]; then
+        local f="${2:-}"
+        [ -n "$f" ] || die "bb emu install needs an APK in dist/"
+        case "$f" in dist/*) ;; *) f="dist/${f#./}" ;; esac
+        [ -f "$f" ] || die "${f} is not in this project's dist/ — the node fetches the APK from there"
+        files=("$f"); argv=("emu" "install" "$(basename "$f")")
+    fi
+    local auth="${DASHBOARD_AUTH:-}" url="http://127.0.0.1:${DASHBOARD_PORT:-7680}"
+    [ -n "$auth" ] || die "DASHBOARD_AUTH is not set — this talks to the dashboard"
+    local proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
+    BB_EMU_FILES="$(printf '%s\n' "${files[@]}")" \
+    python3 - "$url" "$auth" "$proj" "${argv[@]}" <<'PY'
+import base64, json, os, sys, time, urllib.request, urllib.error
+url, auth, proj, *argv = sys.argv[1:]
+files = [f for f in os.environ.get("BB_EMU_FILES", "").split("\n") if f]
+hdr = {"Authorization": "Basic " + base64.b64encode(auth.encode()).decode(), "Content-Type": "application/json"}
+def call(path, body=None):
+    req = urllib.request.Request(url + path, data=json.dumps(body).encode() if body is not None else None,
+                                 headers=hdr, method="POST" if body is not None else "GET")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            return json.load(e)
+        except ValueError:
+            return {"error": f"HTTP {e.code}"}
+    except (OSError, ValueError) as e:
+        return {"error": str(e)}
+r = call("/api/v1/jobs", {"action": "emu", "project": proj, "argv": argv, "files": files,
+                          "outputs": ["*.png", "*.txt"],
+                          "from": "session" if os.environ.get("CLAUDECODE") else "operator"})
+if r.get("error"):
+    sys.exit(f"[builderbot] ERROR: {r['error']}")
+names = {n["id"]: n["name"] for n in (call("/api/v1/nodes").get("nodes") or [])}
+print(f"[builderbot] {r['job']} — bb {' '.join(argv)} on {names.get(r['node'], r['node'])}", flush=True)
+shown, state = 0, ""
+while True:
+    j = call(f"/api/v1/jobs?id={r['job']}")
+    if j.get("error"):
+        sys.exit(f"[builderbot] ERROR: {j['error']}")
+    log = j.get("log") or ""
+    if len(log) > shown:
+        sys.stdout.write(log[shown:]); sys.stdout.flush(); shown = len(log)
+    if j["state"] in ("succeeded", "failed", "canceled"):
+        state = j["state"]; break
+    time.sleep(1)
+arts = [o["path"] for o in (j.get("outputs") or []) if o.get("kind") == "artifact"]
+print(f"[builderbot] {r['job']} {state}" + (f" — {j['error']}" if j.get("error") else "")
+      + (" — into dist/: " + ", ".join(a[5:] for a in arts) if arts else ""), flush=True)
+sys.exit(0 if state == "succeeded" else (j.get("exit_code") or 1))
+PY
+}
+
 cmd_emu() {
     local avd
+    # On the project's node when it has one (docs/nodes.md phase 9) — the
+    # emulator, the images and the GPU are that machine's. BB_EMU_LOCAL=1
+    # keeps a verb here, for the box that still carries an emulator itself.
+    if [ -z "${BB_EMU_LOCAL:-}" ] && [ -z "${BB_NODE_PACKAGES:-}" ] && [ -n "$(project_node)" ]; then
+        emu_via_node "$@"
+        return
+    fi
     case "${1:-status}" in
+        create)
+            # An AVD for an API level: the system image and platform through
+            # sdkmanager if they are not here, then avdmanager — what the
+            # startup hook does for ANDROID_SYSTEM_IMAGES, on demand, for a
+            # node whose store starts empty.
+            local api="${2:-}" pkg name
+            [ -n "$api" ] || die "bb emu create <api> — the API level to build the AVD for"
+            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here — install android-tools first"
+            pkg="system-images;android-${api};google_apis;x86_64"
+            name="$(emu_avd "$api")"
+            if [ ! -d "${ANDROID_HOME:-/opt/android-sdk}/system-images/android-${api}/google_apis/x86_64" ]; then
+                log "installing ${pkg} — a couple of GB, kept on the store"
+                sdkmanager --install "$pkg" || die "could not install ${pkg}"
+            fi
+            [ -d "${ANDROID_HOME:-/opt/android-sdk}/platforms/android-${api}" ] \
+                || sdkmanager --install "platforms;android-${api}" || warn "could not install platforms;android-${api}"
+            if avd_exists "$name"; then log "AVD '${name}' already exists"; return 0; fi
+            echo no | avdmanager create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
+                || die "AVD creation failed for ${name}"
+            log "AVD '${name}' ready — bb emu start ${api}"
+            ;;
+        install)
+            local apk="${2:-}" serial
+            [ -f "$apk" ] || die "bb emu install <apk> — not a file: ${apk:-?}"
+            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running — bb emu start first"
+            adb -s "$serial" install -r "$apk"
+            ;;
+        shot)
+            # A screenshot of the emulator's screen, into dist/ so the
+            # Artifacts tab lists it and a node's copy returns the same way.
+            local serial out="${2:-}"
+            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running — bb emu start first"
+            [ -n "$out" ] || { mkdir -p dist/emu; out="dist/emu/shot-$(date +%Y%m%d-%H%M%S).png"; }
+            adb -s "$serial" exec-out screencap -p > "$out" || die "screencap failed"
+            log "screenshot: ${out}"
+            ;;
+        gfx)
+            # Real per-frame timings for a package — dumpsys gfxinfo
+            # framestats, which works under any renderer, where screenrecord
+            # does not (CLAUDE.md's Android section says why).
+            local pkg="${2:-}" serial out="${3:-}"
+            [ -n "$pkg" ] || die "bb emu gfx <package> [FILE]"
+            serial="$(emu_serial)"; [ -n "$serial" ] || die "no emulator is running — bb emu start first"
+            [ -n "$out" ] || { mkdir -p dist/emu; out="dist/emu/gfx-${pkg}-$(date +%Y%m%d-%H%M%S).txt"; }
+            adb -s "$serial" shell dumpsys gfxinfo "$pkg" framestats > "$out" || die "dumpsys gfxinfo failed"
+            log "gfxinfo: ${out} ($(grep -c '^[0-9]' "$out" 2>/dev/null || echo 0) frames)"
+            ;;
         start)
             command -v emulator >/dev/null 2>&1 \
                 || die "emulator is not installed in this image"

@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "6"
+AGENT_VERSION = "7"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -295,7 +295,8 @@ def _stores(stores, used=False):
 STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
                "dotnet": ("dotnet/dotnet",), "go": ("go/bin/go",),
                "node": ("node/bin/node",), "swift": ("swift/usr/bin/swift",),
-               "android-sdk": ("android/cmdline-tools", "android/platform-tools")}
+               "android-sdk": ("android/cmdline-tools", "android/platform-tools"),
+               "emulator": ("android/emulator/emulator",)}
 
 
 def _toolchains(state):
@@ -320,7 +321,32 @@ def _toolchains(state):
             tc[name] = (_run([p, arg], timeout=20).splitlines() or ["present"])[0][:40]
     if find("android-sdk"):
         tc["android-sdk"] = "present"
+    if find("emulator"):
+        tc["emulator"] = "present"
     return tc
+
+
+def sdk_env(state, who=None):
+    """The environment a bb verb runs with on this node: the packages store
+    as the SDK root, its android/ directory as ANDROID_HOME, its jdk as
+    JAVA_HOME, the tools on PATH, and AVDs under the data store. What the
+    image gets from its Dockerfile, a node gets from here."""
+    stores = state.get("stores") or {}
+    store = stores.get("packages") or ""
+    env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C.UTF-8"}
+    if store:
+        android = os.path.join(store, "android")
+        jdk = os.path.join(store, "jdk")
+        env.update({"SDK_ROOT": store, "BUILDER_HOME": store, "BB_NODE_PACKAGES": "1",
+                    "ANDROID_HOME": android, "ANDROID_SDK_ROOT": android})
+        if os.path.isdir(jdk):
+            env["JAVA_HOME"] = jdk
+        env["PATH"] = ":".join([os.path.join(jdk, "bin"),
+                                os.path.join(android, "cmdline-tools", "latest", "bin"),
+                                os.path.join(android, "platform-tools"),
+                                os.path.join(android, "emulator"), env["PATH"]])
+    env["ANDROID_AVD_HOME"] = os.path.join(stores.get("data") or "/tmp", "avd")
+    return env
 
 
 def census(state):
@@ -633,19 +659,48 @@ class Job(threading.Thread):
             self.say(f"refused: this node is not enrolled for {', '.join(missing or need)}\n")
             return "failed", 77
         argv = [str(a) for a in (spec.get("argv") or [])]
-        if not argv:
-            self.say("refused: empty argv\n")
-            return "failed", 64
         stores = self.agent.state.get("stores") or {}
         cwd = spec.get("cwd") or stores.get("data") or "/tmp"
-        if not os.path.isdir(cwd):
-            cwd = "/tmp"
         env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
                "LANG": "C.UTF-8", "BUILDERBOT_NODE": self.agent.state.get("node_id", ""),
                "BUILDERBOT_JOB": self.job["id"]}
+        who = self.agent.drop_privileges(env)
+        bbv = [str(a) for a in (spec.get("bb") or [])]
+        if bbv:
+            # A bb verb, run from the bundle this controller ships with the
+            # store as its SDK (docs/nodes.md phase 9): `bb emu start` on a
+            # node is this. In a directory of the project's under the data
+            # store, so what the verb writes has somewhere to be collected from.
+            into = self.agent.bundle(self, who)
+            if not into:
+                return "failed", 69
+            argv = ["bash", os.path.join(into, "scripts", "bb")] + bbv
+            project = re.sub(r"[^A-Za-z0-9._-]", "_", str(spec.get("project") or "project"))
+            cwd = os.path.join(stores.get("data") or "/tmp", "emu", project)
+            self.agent.own_dir(cwd, who)
+            env.update(sdk_env(self.agent.state))
+            env["BB_PROJECT"] = str(spec.get("project") or "")
+        if not argv:
+            self.say("refused: empty argv\n")
+            return "failed", 64
+        if not os.path.isdir(cwd):
+            cwd = "/tmp"
         for k, v in (spec.get("env") or {}).items():
             env[str(k)] = str(v)
-        who = self.agent.drop_privileges(env)
+        # Inputs: files from the project's dist/, fetched into the working
+        # directory by name — an APK for the emulator to install.
+        for f in (spec.get("files") or [])[:8]:
+            name = os.path.basename(str(f))
+            dest = os.path.join(cwd, name)
+            st, _ = self.agent.ctl.fetch(
+                f"file?job={self.job['id']}&path={urllib.parse.quote(str(f))}", dest)
+            if st != 200:
+                self.say(f"could not fetch {f} from the controller ({st})\n")
+                return "failed", 69
+            if who:
+                with contextlib.suppress(OSError):
+                    os.chown(dest, who["user"], who["group"])
+            self.say(f"fetched {f} ({os.path.getsize(dest)} bytes)\n")
         # A job with a source runs in a workspace of its own (docs/nodes.md
         # §6): the snapshot, materialized under the data store, with the
         # project's persistent cache beside it in the environment.
@@ -711,6 +766,10 @@ class Job(threading.Thread):
             state, code = ("succeeded" if p.returncode == 0 else "failed"), p.returncode
         if ws is not None:
             self.agent.finish_workspace(self, ws, spec, state)
+        elif state == "succeeded" and spec.get("outputs"):
+            # No snapshot, but outputs asked for: what a bb verb wrote in
+            # its directory comes back the same way a build's do.
+            self.agent.deliver(self, cwd, spec.get("outputs") or [])
         return state, code
 
     @staticmethod
@@ -951,28 +1010,7 @@ class Agent:
         jobdir = os.path.dirname(ws)
         project = str((job.job.get("source") or {}).get("project") or "")
         if state == "succeeded":
-            seen = set()
-            for pat in (spec.get("outputs") or [])[:16]:
-                for hit in sorted(glob.glob(os.path.join(ws, str(pat)), recursive=True)):
-                    if not os.path.isfile(hit):
-                        continue
-                    rel = os.path.relpath(hit, ws)
-                    # dist/<basename>, which is what a person looks for; two
-                    # matches sharing a name are told apart by the directory
-                    # the second came from, so a debug and a release APK of
-                    # the same name both arrive.
-                    name = os.path.basename(rel)
-                    if name in seen:
-                        parent = os.path.basename(os.path.dirname(rel)) or "2"
-                        name = f"{parent}-{name}"
-                    seen.add(name)
-                    st, r = self.ctl.upload(f"artifact?job={job.job['id']}&name={name}", hit)
-                    if st == 200 and not r.get("error"):
-                        job.say(f"artifact {r['path']} ({os.path.getsize(hit)} bytes)\n")
-                        job.outputs.append({"kind": "artifact", "path": r["path"],
-                                            "size": r.get("size"), "sha256": r.get("sha256")})
-                    else:
-                        job.say(f"could not deliver {rel}: {r.get('error') or st}\n")
+            self.deliver(job, ws, spec.get("outputs") or [])
             shutil.rmtree(jobdir, ignore_errors=True)
             return
         # Kept: this one. Dropped: any earlier kept failure of the same project.
@@ -994,6 +1032,63 @@ class Agent:
         job.say(f"the workspace is kept at {ws} for a look; the next failure of "
                 f"{project or 'this project'} replaces it\n")
         job.outputs.append({"kind": "workspace", "path": ws})
+
+    def deliver(self, job, base, outputs):
+        """Upload what the outputs globs match under `base` as artifacts.
+        dist/<basename>, which is what a person looks for; two matches
+        sharing a name are told apart by the directory the second came
+        from, so a debug and a release APK of the same name both arrive."""
+        seen = set()
+        for pat in list(outputs)[:16]:
+            for hit in sorted(glob.glob(os.path.join(base, str(pat)), recursive=True)):
+                if not os.path.isfile(hit):
+                    continue
+                rel = os.path.relpath(hit, base)
+                name = os.path.basename(rel)
+                if name in seen:
+                    parent = os.path.basename(os.path.dirname(rel)) or "2"
+                    name = f"{parent}-{name}"
+                seen.add(name)
+                st, r = self.ctl.upload(f"artifact?job={job.job['id']}&name={name}", hit)
+                if st == 200 and not r.get("error"):
+                    job.say(f"artifact {r['path']} ({os.path.getsize(hit)} bytes)\n")
+                    job.outputs.append({"kind": "artifact", "path": r["path"],
+                                        "size": r.get("size"), "sha256": r.get("sha256")})
+                else:
+                    job.say(f"could not deliver {rel}: {r.get('error') or st}\n")
+
+    def bundle(self, job, who):
+        """bb, its library and the catalog, from the controller by digest
+        into the packages store; the directory it runs from, or '' when it
+        could not be fetched. Shared by package jobs and bb verbs."""
+        store = (self.state.get("stores") or {}).get("packages") or ""
+        if not store:
+            job.say("refused: this node has no packages store\n")
+            return ""
+        self.own_dir(store, who)
+        bbdir = os.path.join(store, ".bb")
+        os.makedirs(bbdir, exist_ok=True)
+        tar_path = os.path.join(bbdir, "bundle.tar")
+        st, digest = self.ctl.fetch("download?what=bundle", tar_path)
+        if st != 200:
+            job.say(f"could not fetch bb from the controller ({st})\n")
+            return ""
+        hexd = digest.split(":", 1)[-1]
+        into = os.path.join(bbdir, hexd[:16] or "bundle")
+        if not os.path.isdir(into):
+            with tarfile.open(tar_path) as tar:
+                if hasattr(tarfile, "data_filter"):
+                    tar.extractall(into, filter="data")
+                else:
+                    tar.extractall(into)
+            os.chmod(os.path.join(into, "scripts", "bb"), 0o755)
+            job.say(f"bb {hexd[:12]} unpacked into {into}\n")
+        if who:
+            for d, dirs, files in os.walk(into):
+                for x in [d] + [os.path.join(d, f) for f in files]:
+                    with contextlib.suppress(OSError):
+                        os.lchown(x, who["user"], who["group"])
+        return into
 
     def cache_clear(self, job, spec):
         """Drop this node's build caches — one project's, or all of them.
@@ -1034,37 +1129,16 @@ class Agent:
             job.say("refused: a package job installs or removes named packages\n")
             return "failed", 64
         who = self.drop_privileges({})
-        self.own_dir(store, who)
-        bbdir = os.path.join(store, ".bb")
-        os.makedirs(bbdir, exist_ok=True)
-        tar_path = os.path.join(bbdir, "bundle.tar")
-        st, digest = self.ctl.fetch("download?what=bundle", tar_path)
-        if st != 200:
-            job.say(f"could not fetch bb from the controller ({st})\n")
+        into = self.bundle(job, who)
+        if not into:
             return "failed", 69
-        hexd = digest.split(":", 1)[-1]
-        into = os.path.join(bbdir, hexd[:16] or "bundle")
-        if not os.path.isdir(into):
-            with tarfile.open(tar_path) as tar:
-                if hasattr(tarfile, "data_filter"):
-                    tar.extractall(into, filter="data")
-                else:
-                    tar.extractall(into)
-            os.chmod(os.path.join(into, "scripts", "bb"), 0o755)
-            job.say(f"bb {hexd[:12]} unpacked into {into}\n")
-        if who:
-            for d, dirs, files in os.walk(into):
-                for x in [d] + [os.path.join(d, f) for f in files]:
-                    with contextlib.suppress(OSError):
-                        os.lchown(x, who["user"], who["group"])
         bad = 0
         for name in names:
             job.say(f"== bb sdk {action} {name}\n")
             st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
                                             "sdk", action, name],
                                    "cwd": store, "timeout": spec.get("timeout") or 3600,
-                                   "env": {"SDK_ROOT": store, "BUILDER_HOME": store,
-                                           "BB_NODE_PACKAGES": "1"}})
+                                   "env": sdk_env(self.state)})
             if st_ != "succeeded":
                 bad += 1
                 if st_ == "canceled":

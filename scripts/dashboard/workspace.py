@@ -218,6 +218,25 @@ def artifact_put(job, name, stream, length):
     return {"path": "dist/" + rel, "size": got, "sha256": h.hexdigest()}
 
 
+def file_path(project, rel):
+    """A file under the project's dist/ a node may fetch as a job input —
+    an APK to install on its emulator, say. dist/ only: the tree travels as
+    a snapshot, and nothing else of a project is a node's to read."""
+    rel = str(rel or "").replace("\\", "/")
+    if rel.startswith("dist/"):
+        rel = rel[5:]
+    safe = _safe_name(rel)
+    if safe is None or WORKSPACE is None:
+        return None
+    root = (WORKSPACE / project / "dist").resolve()
+    p = (root / safe).resolve()
+    try:
+        p.relative_to(root)
+    except ValueError:
+        return None
+    return p if p.is_file() else None
+
+
 def provenance(project, rel):
     """What built dist/<rel>, if a job did. None for a file somebody copied."""
     rel = str(rel or "")
