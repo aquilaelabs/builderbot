@@ -180,3 +180,5 @@
 - The sandbox VM's address and path mapping are set on the Nodes tab now, not in the container's template — the old variables still seed the record once (f786ba6)
 - A node's row now says when its agent is behind, and one press updates it; re-running the provisioner on an enrolled node updates the agent too (e9f0bdd)
 - Nodes no longer have roles to pick: a node does everything for the projects assigned to it, and its row shows which toolchains are installed — which is what decides what you can build there (73572c1)
+- A node now keeps its own copy of what each project built, so an emulator or container on a remote node starts from a local file instead of pulling one over the link every time (7362faf)
+- A node's storage paths can no longer be pointed at a system directory like /etc, which Clear cache would have emptied (7362faf)
