@@ -762,8 +762,11 @@ def move(project, item_id, step=None, dir=0, by="you"):
             return {"error": "not a step"}
         if not 0 <= i < len(steps):
             return {"error": "no such step"}
-        first = sum(1 for st in steps if st.get("sent"))
-        if i < first or i + dir < first:
+        # By mark, not by prefix: sent steps are a prefix by construction,
+        # but a session may finish step three with one and two still to
+        # send, and that one is just as fixed.
+        j = i + dir
+        if gone(steps[i]) or (0 <= j < len(steps) and gone(steps[j])):
             return {"error": "a step that has gone stays where it is"}
         return swap(steps, i)
     return _edit(project, item_id, change, by)
@@ -835,20 +838,59 @@ def _flat(text):
     return " — ".join(" ".join(p.split()) for p in parts if p.strip())
 
 
+def gone(st):
+    """A step that needs no sending: handed over, or finished by a session."""
+    return bool(st.get("sent") or st.get("done"))
+
+
 def next_step(row):
-    """Index of the next step that has not been sent, or None.
+    """Index of the next step that has not been sent or finished, or None.
 
     -1 means the item itself, for one with no steps. This is the whole order
     guarantee: a group hands out its steps one at a time, in the order they
-    were written, and never the third before the second.
+    were written, and never the third before the second. A step a session
+    finished without being sent it — told in chat, or carried along with
+    the one before — is passed over the same way, so the operator is never
+    offered a finished step as the next thing to send.
     """
     steps = row.get("steps") or []
     if not steps:
-        return None if row.get("sent") else -1
+        return None if gone(row) else -1
     for i, st in enumerate(steps):
-        if not st.get("sent"):
+        if not gone(st):
             return i
     return None
+
+
+def step_done(project, item_id, step, by="claude", note=""):
+    """A session finished one step of a plan, and says so.
+
+    The step used to have one mark, sent, and sent is the dashboard's: it
+    says a line was handed over, not that anything came of it. A session
+    told in chat to go ahead with a phase had no way to mark the phase
+    finished, so it reworded the step to say LANDED and the panel went on
+    offering it to send. This is the second mark. Only a session sets it,
+    the same rule as ticking off an item, and there is no undo for the
+    same reason: if it turns out not to be finished, send it again — that
+    clears the mark and says so in the log.
+    """
+    if _int(step) is None:
+        return {"error": "not a step"}
+
+    def change(row, rows):
+        steps = row.get("steps") or []
+        i = _int(step)
+        if not 0 <= i < len(steps):
+            return {"error": "no such step"}
+        if steps[i].get("done"):
+            return {"error": "that step is already done"}
+        steps[i]["done"] = int(time.time())
+        ev = {"act": "done-step", "id": row["id"], "step": i,
+              "text": steps[i].get("text", ""), "of": row["text"]}
+        if note:
+            ev["why"] = _clean(note, multiline=False)
+        return {"ok": True, "log": ev}
+    return _edit(project, item_id, change, by)
 
 
 def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
@@ -889,7 +931,7 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
         nxt = next_step(row)
         # Out of order forwards is refused; back over one already sent is not,
         # because that is the operator saying "it did not take, do it again".
-        if not steps[step].get("sent") and nxt is not None and step != nxt:
+        if not gone(steps[step]) and nxt is not None and step != nxt:
             return {"error": f"step {nxt + 1} has not been sent yet — "
                              "this one is in a group, and the order is the point"}
         # A step arrives on its own otherwise, and "then re-measure it" means
@@ -933,6 +975,10 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
             target = row["steps"][step] if row.get("steps") else row
             target["sent"] = int(time.time())
             target.pop("by_hand", None)
+            # Sending a step a session called done is the operator saying it
+            # was not: the mark comes off, and the log shows the send after
+            # the finish, which is the whole story.
+            target.pop("done", None)
             ev = {"act": "sent", "id": row["id"], "text": target.get("text", "")}
             if row.get("steps"):
                 ev.update(step=step, of=row["text"])
@@ -1036,7 +1082,8 @@ def prompt(project):
         # sent is one that has been asked for.
         for i, st in enumerate(r.get("steps") or []):
             lines.append(f"    {i + 1}. {st['text']}"
-                         + ("  (already sent to a session)" if st.get("sent")
+                         + ("  (done)" if st.get("done")
+                            else "  (already sent to a session)" if st.get("sent")
                             else ""))
             if st.get("info"):
                 lines.append(f"       details: {_flat(st['info'])}")
@@ -1053,7 +1100,10 @@ def prompt(project):
             "as well as written: `bb roadmap edit <n> \"...\"`, and "
             "`bb roadmap step add|edit|rm <n> [<step>] [\"...\"]` for one step "
             "of one — do that when the design moves under a plan rather than "
-            "leaving steps that describe the old one. `bb roadmap info <n> "
+            "leaving steps that describe the old one. When you finish one "
+            "step of a plan and the plan is not finished, "
+            "`bb roadmap step done <n> <step>` marks that step; the panel "
+            "then offers the operator the next one instead of it. `bb roadmap info <n> "
             "[<step>] \"...\"` attaches the technical details — which files, "
             "which functions, the approach — so the session that works it "
             "does not start from a cold grep; write them when you write the "

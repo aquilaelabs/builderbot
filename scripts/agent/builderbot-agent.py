@@ -47,6 +47,8 @@ Runs anywhere Python 3.8+ is, with nothing installed:
     builderbot-agent run            # the loop; what the unit runs
     builderbot-agent status         # what this node is, and does it answer
 """
+import contextlib
+import glob
 import hashlib
 import http.client
 import json
@@ -58,11 +60,13 @@ import socket
 import ssl
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 import urllib.parse
+import urllib.request
 
-AGENT_VERSION = "2"
+AGENT_VERSION = "7"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -70,7 +74,26 @@ NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
 DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
                   "packages": "/var/lib/builderbot/packages",
                   "cache": "/var/lib/builderbot/cache"}
-CAPS_ROOT_ONLY = ("system",)            # phase 5's job type; refused until then
+# Where the configuration plane's tools are (docs/nodes.md §12, phase 5).
+# bb-sandbox is the one copy of the mount logic, installed by the provisioner
+# — its presence is what says this node was set up as a sandbox, and a
+# `system` job is refused without it. The netplan seams exist so the tests
+# can stand in for both without a root shell.
+SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandbox")
+NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
+NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
+NETPLAN_FILE = "90-builderbot.yaml"
+# How long a network change has to dial back in before it is reverted.
+DIAL_BACK_S = 180
+# The Actions runner as a per-node service (docs/nodes.md §14, phase 7):
+# where it lives, and — for the tests — a tarball to unpack instead of the
+# GitHub release download.
+RUNNER_DIR = os.environ.get("BUILDERBOT_RUNNER_DIR", "/var/lib/builderbot/runner")
+RUNNER_TARBALL = os.environ.get("BUILDERBOT_RUNNER_TARBALL", "")
+RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
+# Tailscale, for Funnel (docs/nodes.md §7, phase 8): a seam so the tests can
+# stand in for it, like the rest of the tools the agent drives.
+TAILSCALE_BIN = os.environ.get("BUILDERBOT_TAILSCALE_BIN", "tailscale")
 
 
 def log(msg):
@@ -155,6 +178,53 @@ class Controller:
         except ValueError:
             return r.status, {"error": payload[:200].decode("utf-8", "replace")}
 
+    def fetch(self, path, dest, timeout=600):
+        """GET a large body straight to a file. (status, digest-header)
+        — the snapshot and the bundle both arrive this way, and neither
+        belongs in memory twice."""
+        try:
+            c = self._conn(timeout)
+            c.request("GET", f"{self.base}/api/v1/agent/{path}", None,
+                      {"Authorization": "Bearer " + self.token,
+                       "User-Agent": f"builderbot-agent/{AGENT_VERSION}"})
+            r = c.getresponse()
+            if r.status != 200:
+                r.read()
+                c.close()
+                return r.status, ""
+            tmp = dest + ".part"
+            with open(tmp, "wb") as f:
+                shutil.copyfileobj(r, f)
+            c.close()
+            os.replace(tmp, dest)
+            return 200, (r.getheader("X-Snapshot-Digest") or r.getheader("X-Bundle-Digest") or "")
+        except (OSError, http.client.HTTPException) as e:
+            return 0, str(e)
+
+    def upload(self, path, src, timeout=600):
+        """POST a file as the raw body. (status, decoded answer)."""
+        try:
+            size = os.path.getsize(src)
+            c = self._conn(timeout)
+            c.putrequest("POST", f"{self.base}/api/v1/agent/{path}")
+            c.putheader("Authorization", "Bearer " + self.token)
+            c.putheader("User-Agent", f"builderbot-agent/{AGENT_VERSION}")
+            c.putheader("Content-Type", "application/octet-stream")
+            c.putheader("Content-Length", str(size))
+            c.endheaders()
+            with open(src, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    c.send(chunk)
+            r = c.getresponse()
+            payload = r.read()
+            c.close()
+        except (OSError, http.client.HTTPException) as e:
+            return 0, {"error": f"{type(e).__name__}: {e}"}
+        try:
+            return r.status, json.loads(payload) if payload else {}
+        except ValueError:
+            return r.status, {"error": payload[:200].decode("utf-8", "replace")}
+
 
 # ---------------------------------------------------------------------------
 # the census and the sample
@@ -197,7 +267,7 @@ def _sshd_listening():
     return False
 
 
-def _stores(stores):
+def _stores(stores, used=False):
     out = {}
     for role, path in (stores or {}).items():
         try:
@@ -209,20 +279,81 @@ def _stores(stores):
             # Not there is a different fact from full: reported as null so
             # the row says "missing" rather than "0MB free".
             out[role] = {"path": path, "free_mb": None, "total_mb": None}
+            continue
+        if used:
+            # What the store itself holds — the cache's size is the number
+            # the row shows beside its Clear (docs/nodes.md §6). du, at the
+            # census only: a walk of a big cache is not a per-poll cost.
+            n = _run(["du", "-sm", path], timeout=60).split()
+            out[role]["used_mb"] = int(n[0]) if n and n[0].isdigit() else None
     return out
+
+
+# Where a toolchain installed into the packages store keeps its command,
+# relative to the store (bb sdk's layout), for the census to find without
+# PATH knowing about it. `android` is a directory, not a command.
+STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
+               "dotnet": ("dotnet/dotnet",), "go": ("go/bin/go",),
+               "node": ("node/bin/node",), "swift": ("swift/usr/bin/swift",),
+               "android-sdk": ("android/cmdline-tools", "android/platform-tools"),
+               "emulator": ("android/emulator/emulator",)}
+
+
+def _toolchains(state):
+    """What this node can build with: on PATH, or in its packages store.
+    The census's `toolchains` is what package-build placement selects on."""
+    tc = {}
+    store = (state.get("stores") or {}).get("packages") or ""
+    def find(name):
+        for rel in STORE_TOOLS.get(name, ()):
+            p = os.path.join(store, rel)
+            if store and os.path.exists(p):
+                return p
+        return shutil.which(name)
+    j = find("java")
+    if j:
+        m = re.search(r'version "([^"]+)"', _run([j, "-version"]))
+        tc["java"] = m.group(1) if m else "present"
+    for name in ("flutter", "dotnet", "node", "go"):
+        p = find(name)
+        if p and os.path.isfile(p):
+            arg = "version" if name == "go" else "--version"
+            tc[name] = (_run([p, arg], timeout=20).splitlines() or ["present"])[0][:40]
+    if find("android-sdk"):
+        tc["android-sdk"] = "present"
+    if find("emulator"):
+        tc["emulator"] = "present"
+    return tc
+
+
+def sdk_env(state, who=None):
+    """The environment a bb verb runs with on this node: the packages store
+    as the SDK root, its android/ directory as ANDROID_HOME, its jdk as
+    JAVA_HOME, the tools on PATH, and AVDs under the data store. What the
+    image gets from its Dockerfile, a node gets from here."""
+    stores = state.get("stores") or {}
+    store = stores.get("packages") or ""
+    env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C.UTF-8"}
+    if store:
+        android = os.path.join(store, "android")
+        jdk = os.path.join(store, "jdk")
+        env.update({"SDK_ROOT": store, "BUILDER_HOME": store, "BB_NODE_PACKAGES": "1",
+                    "ANDROID_HOME": android, "ANDROID_SDK_ROOT": android})
+        if os.path.isdir(jdk):
+            env["JAVA_HOME"] = jdk
+        env["PATH"] = ":".join([os.path.join(jdk, "bin"),
+                                os.path.join(android, "cmdline-tools", "latest", "bin"),
+                                os.path.join(android, "platform-tools"),
+                                os.path.join(android, "emulator"), env["PATH"]])
+    env["ANDROID_AVD_HOME"] = os.path.join(stores.get("data") or "/tmp", "avd")
+    return env
 
 
 def census(state):
     """What this machine is. Asked at hello — every ten minutes — so the
     slow questions (docker, java) are allowed here and not in the sample."""
     tot, _ = _mem()
-    tc = {}
-    if shutil.which("java"):
-        m = re.search(r'version "([^"]+)"', _run(["java", "-version"]))
-        tc["java"] = m.group(1) if m else "present"
-    for name in ("flutter", "dotnet", "node"):
-        if shutil.which(name):
-            tc[name] = (_run([name, "--version"]).splitlines() or ["present"])[0][:40]
+    tc = _toolchains(state)
     gpu = _run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"]) \
         if shutil.which("nvidia-smi") else ""
     return {
@@ -237,9 +368,109 @@ def census(state):
         if shutil.which("docker") else "",
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "sshd": _sshd_listening(),
-        "stores": _stores(state.get("stores")),
+        "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
+        # The configuration plane's reported half (docs/nodes.md §12): what
+        # is mounted and from where, and the address this machine is on.
+        # The row draws the operator's desired config against these.
+        "sandbox": os.access(SANDBOX_BIN, os.X_OK),
+        "mounts": mounts_now(),
+        "network": network_now(),
+        "services": services_now(),
     }
+
+
+def services_now():
+    """The managed services on this node and their state — today the
+    Actions runner: registered as what, with which labels, and whether its
+    listener is up. Read from the runner's own files, so a runner installed
+    by hand reports the same way one installed from the tab does."""
+    out = {}
+    cfg = os.path.join(RUNNER_DIR, ".runner")
+    if os.path.isfile(cfg):
+        try:
+            with open(cfg) as f:
+                j = json.load(f)
+        except (OSError, ValueError):
+            j = {}
+        labels = []
+        with contextlib.suppress(OSError):
+            with open(os.path.join(RUNNER_DIR, ".builderbot-labels")) as f:
+                labels = [x for x in f.read().split(",") if x]
+        pg = _run(["pgrep", "-f", os.path.join(RUNNER_DIR, "bin/Runner.Listener")])
+        out["actions-runner"] = {"installed": True, "name": str(j.get("agentName") or "")[:80],
+                                 "url": str(j.get("gitHubUrl") or "")[:200],
+                                 "labels": labels[:16], "active": bool(pg),
+                                 "busy": bool(_run(["pgrep", "-f", os.path.join(RUNNER_DIR, "bin/Runner.Worker")]))}
+    else:
+        out["actions-runner"] = {"installed": False}
+    # Tailscale: whether it is here, this node's MagicDNS name (the funnel
+    # URL is https://<that>), and which https ports are funnelled to which
+    # local ports — read from tailscale's own status, so a funnel set by
+    # hand reports the same as one set from the tab.
+    ts = {"installed": bool(shutil.which(TAILSCALE_BIN) or os.access(TAILSCALE_BIN, os.X_OK)),
+          "dns": "", "funnel": {}}
+    if ts["installed"]:
+        try:
+            st = json.loads(_run([TAILSCALE_BIN, "status", "--json"], timeout=15) or "{}")
+            ts["dns"] = str((st.get("Self") or {}).get("DNSName") or "").rstrip(".")
+            sv = json.loads(_run([TAILSCALE_BIN, "serve", "status", "--json"], timeout=15) or "{}")
+            allow = sv.get("AllowFunnel") or {}
+            for hostport, web in (sv.get("Web") or {}).items():
+                if not allow.get(hostport):
+                    continue
+                https = hostport.rsplit(":", 1)[-1]
+                for h in (web.get("Handlers") or {}).values():
+                    m = re.search(r":(\d+)/?$", str(h.get("Proxy") or ""))
+                    if m:
+                        ts["funnel"][https] = int(m.group(1))
+        except (ValueError, AttributeError):
+            pass
+    out["tailscale"] = ts
+    return out
+
+
+def mounts_now():
+    """Every mount bb-sandbox manages, as it reads them: fstab's line and
+    whether it is really mounted. Empty on a node with no bb-sandbox."""
+    if not os.access(SANDBOX_BIN, os.X_OK):
+        return []
+    out = _run([SANDBOX_BIN, "list", "--json"])
+    try:
+        got = json.loads(out)
+    except ValueError:
+        return []
+    return [m for m in got if isinstance(m, dict)] if isinstance(got, list) else []
+
+
+def network_now():
+    """The address the machine is on, as facts rather than as intent: the
+    interface the default route leaves by, its addresses, the gateway, and
+    the resolvers. From `ip -j`, which every distro this can run on has."""
+    net = {"interface": "", "addresses": [], "gateway": "", "dns": []}
+    try:
+        routes = json.loads(_run(["ip", "-j", "route", "show", "default"]) or "[]")
+        for r in routes:
+            if isinstance(r, dict) and r.get("dev"):
+                net["interface"] = str(r["dev"])[:32]
+                net["gateway"] = str(r.get("gateway") or "")[:64]
+                break
+        if net["interface"]:
+            addrs = json.loads(_run(["ip", "-j", "addr", "show", "dev", net["interface"]]) or "[]")
+            for a in addrs:
+                for i in (a.get("addr_info") or []) if isinstance(a, dict) else []:
+                    if i.get("family") == "inet" and i.get("local"):
+                        net["addresses"].append(f"{i['local']}/{i.get('prefixlen', 32)}")
+    except (ValueError, OSError):
+        pass
+    try:
+        with open("/etc/resolv.conf") as f:
+            for line in f:
+                if line.startswith("nameserver"):
+                    net["dns"].append(line.split()[1][:64])
+    except (OSError, IndexError):
+        pass
+    return net
 
 
 def _os_release():
@@ -334,6 +565,7 @@ class Job(threading.Thread):
         # "failed" so the row does not read as the command's own fault.
         self.canceled = False
         self.proc = None
+        self.outputs = []        # what the job left behind, for the result
 
     def cancel(self):
         self.canceled = True
@@ -378,6 +610,12 @@ class Job(threading.Thread):
         try:
             if self.job.get("type") == "self-update":
                 state, code = self.agent.self_update(self, spec)
+            elif self.job.get("type") == "system":
+                state, code = self.agent.system(self, spec)
+            elif self.job.get("type") == "package":
+                state, code = self.agent.package(self, spec)
+            elif self.job.get("type") == "cache-clear":
+                state, code = self.agent.cache_clear(self, spec)
             else:
                 state, code = self.exec(spec)
         except Exception as e:                       # noqa: BLE001 — reported, not raised
@@ -394,7 +632,7 @@ class Job(threading.Thread):
             if self.flush():
                 st, _ = self.agent.ctl.call(
                     "result", {"job": self.job["id"], "state": state, "exit": code,
-                               "error": error},
+                               "error": error, "outputs": self.outputs},
                     timeout=20)
                 if st == 200:
                     break
@@ -413,25 +651,73 @@ class Job(threading.Thread):
             need = [need]
         held = set(self.agent.state.get("capabilities") or [])
         missing = [c for c in need if c not in held]
-        if missing or any(c in CAPS_ROOT_ONLY for c in need):
+        if missing or "system" in need:
             # Door 7, in one line: the node refuses what it was not enrolled
-            # to do, and says which capability was asked for.
+            # to do, and says which capability was asked for. "system" is not
+            # a capability an exec can ask for at all — root work is its own
+            # job type, and only the configuration plane queues it.
             self.say(f"refused: this node is not enrolled for {', '.join(missing or need)}\n")
             return "failed", 77
         argv = [str(a) for a in (spec.get("argv") or [])]
-        if not argv:
-            self.say("refused: empty argv\n")
-            return "failed", 64
         stores = self.agent.state.get("stores") or {}
         cwd = spec.get("cwd") or stores.get("data") or "/tmp"
-        if not os.path.isdir(cwd):
-            cwd = "/tmp"
         env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
                "LANG": "C.UTF-8", "BUILDERBOT_NODE": self.agent.state.get("node_id", ""),
                "BUILDERBOT_JOB": self.job["id"]}
+        who = self.agent.drop_privileges(env)
+        bbv = [str(a) for a in (spec.get("bb") or [])]
+        if bbv:
+            # A bb verb, run from the bundle this controller ships with the
+            # store as its SDK (docs/nodes.md phase 9): `bb emu start` on a
+            # node is this. In a directory of the project's under the data
+            # store, so what the verb writes has somewhere to be collected from.
+            into = self.agent.bundle(self, who)
+            if not into:
+                return "failed", 69
+            argv = ["bash", os.path.join(into, "scripts", "bb")] + bbv
+            project = re.sub(r"[^A-Za-z0-9._-]", "_", str(spec.get("project") or "project"))
+            cwd = os.path.join(stores.get("data") or "/tmp", "emu", project)
+            self.agent.own_dir(cwd, who)
+            env.update(sdk_env(self.agent.state))
+            env["BB_PROJECT"] = str(spec.get("project") or "")
+        if not argv:
+            self.say("refused: empty argv\n")
+            return "failed", 64
+        if not os.path.isdir(cwd):
+            cwd = "/tmp"
         for k, v in (spec.get("env") or {}).items():
             env[str(k)] = str(v)
-        who = self.agent.drop_privileges(env)
+        # Inputs: files from the project's dist/, fetched into the working
+        # directory by name — an APK for the emulator to install.
+        for f in (spec.get("files") or [])[:8]:
+            name = os.path.basename(str(f))
+            dest = os.path.join(cwd, name)
+            st, _ = self.agent.ctl.fetch(
+                f"file?job={self.job['id']}&path={urllib.parse.quote(str(f))}", dest)
+            if st != 200:
+                self.say(f"could not fetch {f} from the controller ({st})\n")
+                return "failed", 69
+            if who:
+                with contextlib.suppress(OSError):
+                    os.chown(dest, who["user"], who["group"])
+            self.say(f"fetched {f} ({os.path.getsize(dest)} bytes)\n")
+        # A job with a source runs in a workspace of its own (docs/nodes.md
+        # §6): the snapshot, materialized under the data store, with the
+        # project's persistent cache beside it in the environment.
+        src = self.job.get("source") or {}
+        ws = None
+        if src.get("digest"):
+            ws = self.agent.materialize(self, src, who)
+            if ws is None:
+                return "failed", 66
+            cwd = ws
+            env["BUILDERBOT_WORKSPACE"] = ws
+            project = re.sub(r"[^A-Za-z0-9._-]", "_", str(src.get("project") or spec.get("project") or "project"))
+            cache = os.path.join(stores.get("cache") or "/tmp", project)
+            self.agent.own_dir(cache, who)
+            env["BUILDERBOT_CACHE"] = cache
+            env["BUILDERBOT_PROJECT"] = project
+            self.say(f"workspace {ws} ({src.get('files', '?')} files); cache {cache}\n")
         try:
             timeout = float(spec.get("timeout") or 3600)
         except (TypeError, ValueError):
@@ -473,10 +759,18 @@ class Job(threading.Thread):
         self.proc = None
         if self.canceled:
             self.say("stopped\n")
-            return "canceled", 130
-        if killed:
-            return "failed", 124
-        return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
+            state, code = "canceled", 130
+        elif killed:
+            state, code = "failed", 124
+        else:
+            state, code = ("succeeded" if p.returncode == 0 else "failed"), p.returncode
+        if ws is not None:
+            self.agent.finish_workspace(self, ws, spec, state)
+        elif state == "succeeded" and spec.get("outputs"):
+            # No snapshot, but outputs asked for: what a bb verb wrote in
+            # its directory comes back the same way a build's do.
+            self.agent.deliver(self, cwd, spec.get("outputs") or [])
+        return state, code
 
     @staticmethod
     def _kill(p):
@@ -649,6 +943,517 @@ class Agent:
         os.replace(tmp, me)
         job.say(f"installed {got[:19]}…; restarting\n")
         return "succeeded", 0
+
+    # -- the workspace (docs/nodes.md §6, phase 6) ------------------------------
+    def own_dir(self, path, who):
+        """Make a directory the enrolled account can use — a job runs as it,
+        and this process is root."""
+        os.makedirs(path, exist_ok=True)
+        if who:
+            with contextlib.suppress(OSError):
+                os.chown(path, who["user"], who["group"])
+
+    def materialize(self, job, src, who):
+        """The job's source, on disk: the snapshot by digest — from the
+        cache store when this node has fetched it before, from the
+        controller otherwise, checked against its digest either way — and
+        unpacked into a directory of the job's own under the data store."""
+        stores = self.state.get("stores") or {}
+        digest = str(src.get("digest") or "")
+        hexd = digest.split(":", 1)[-1]
+        if not re.fullmatch(r"[0-9a-f]{64}", hexd):
+            job.say(f"refused: not a snapshot digest: {digest!r}\n")
+            return None
+        snaps = os.path.join(stores.get("cache") or "/tmp", "snapshots")
+        os.makedirs(snaps, exist_ok=True)
+        tar_path = os.path.join(snaps, hexd + ".tar")
+        if not os.path.isfile(tar_path):
+            job.say(f"fetching snapshot {hexd[:12]}…\n")
+            st, _ = self.ctl.fetch(f"source?digest={hexd}", tar_path)
+            if st != 200:
+                job.say(f"the controller has no snapshot {hexd[:12]} ({st}) — the tree "
+                        "has moved on; queue the job again\n")
+                return None
+        h = hashlib.sha256()
+        with open(tar_path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        if h.hexdigest() != hexd:
+            os.remove(tar_path)
+            job.say("the cached snapshot did not match its digest; dropped it — queue the job again\n")
+            return None
+        ws = os.path.join(stores.get("data") or "/tmp", "jobs", job.job["id"], "workspace")
+        shutil.rmtree(os.path.dirname(ws), ignore_errors=True)
+        os.makedirs(ws)
+        with tarfile.open(tar_path) as tar:
+            # Python 3.12's filter refuses paths that escape the target;
+            # older interpreters get the members checked by hand.
+            if hasattr(tarfile, "data_filter"):
+                tar.extractall(ws, filter="data")
+            else:
+                for m in tar.getmembers():
+                    if m.name.startswith("/") or ".." in m.name.split("/"):
+                        raise RuntimeError(f"snapshot member escapes the workspace: {m.name}")
+                tar.extractall(ws)
+        if who:
+            for d, dirs, files in os.walk(os.path.dirname(ws)):
+                for x in [d] + [os.path.join(d, f) for f in files]:
+                    with contextlib.suppress(OSError):
+                        os.lchown(x, who["user"], who["group"])
+        return ws
+
+    def finish_workspace(self, job, ws, spec, state):
+        """After the command: on success upload what the outputs globs
+        match and delete the job's directory; on failure keep it for
+        inspection and drop the older kept one for the same project, so
+        a run of failures does not fill the store."""
+        jobdir = os.path.dirname(ws)
+        project = str((job.job.get("source") or {}).get("project") or "")
+        if state == "succeeded":
+            self.deliver(job, ws, spec.get("outputs") or [])
+            shutil.rmtree(jobdir, ignore_errors=True)
+            return
+        # Kept: this one. Dropped: any earlier kept failure of the same project.
+        marker = os.path.join(jobdir, "project")
+        with contextlib.suppress(OSError):
+            with open(marker, "w") as f:
+                f.write(project)
+        jobs_root = os.path.dirname(jobdir)
+        for other in os.listdir(jobs_root) if os.path.isdir(jobs_root) else []:
+            od = os.path.join(jobs_root, other)
+            if od == jobdir or other in self.jobs:
+                continue
+            try:
+                with open(os.path.join(od, "project")) as f:
+                    if f.read() == project:
+                        shutil.rmtree(od, ignore_errors=True)
+            except OSError:
+                continue
+        job.say(f"the workspace is kept at {ws} for a look; the next failure of "
+                f"{project or 'this project'} replaces it\n")
+        job.outputs.append({"kind": "workspace", "path": ws})
+
+    def deliver(self, job, base, outputs):
+        """Upload what the outputs globs match under `base` as artifacts.
+        dist/<basename>, which is what a person looks for; two matches
+        sharing a name are told apart by the directory the second came
+        from, so a debug and a release APK of the same name both arrive."""
+        seen = set()
+        for pat in list(outputs)[:16]:
+            for hit in sorted(glob.glob(os.path.join(base, str(pat)), recursive=True)):
+                if not os.path.isfile(hit):
+                    continue
+                rel = os.path.relpath(hit, base)
+                name = os.path.basename(rel)
+                if name in seen:
+                    parent = os.path.basename(os.path.dirname(rel)) or "2"
+                    name = f"{parent}-{name}"
+                seen.add(name)
+                st, r = self.ctl.upload(f"artifact?job={job.job['id']}&name={name}", hit)
+                if st == 200 and not r.get("error"):
+                    job.say(f"artifact {r['path']} ({os.path.getsize(hit)} bytes)\n")
+                    job.outputs.append({"kind": "artifact", "path": r["path"],
+                                        "size": r.get("size"), "sha256": r.get("sha256")})
+                else:
+                    job.say(f"could not deliver {rel}: {r.get('error') or st}\n")
+
+    def bundle(self, job, who):
+        """bb, its library and the catalog, from the controller by digest
+        into the packages store; the directory it runs from, or '' when it
+        could not be fetched. Shared by package jobs and bb verbs."""
+        store = (self.state.get("stores") or {}).get("packages") or ""
+        if not store:
+            job.say("refused: this node has no packages store\n")
+            return ""
+        self.own_dir(store, who)
+        bbdir = os.path.join(store, ".bb")
+        os.makedirs(bbdir, exist_ok=True)
+        tar_path = os.path.join(bbdir, "bundle.tar")
+        st, digest = self.ctl.fetch("download?what=bundle", tar_path)
+        if st != 200:
+            job.say(f"could not fetch bb from the controller ({st})\n")
+            return ""
+        hexd = digest.split(":", 1)[-1]
+        into = os.path.join(bbdir, hexd[:16] or "bundle")
+        if not os.path.isdir(into):
+            with tarfile.open(tar_path) as tar:
+                if hasattr(tarfile, "data_filter"):
+                    tar.extractall(into, filter="data")
+                else:
+                    tar.extractall(into)
+            os.chmod(os.path.join(into, "scripts", "bb"), 0o755)
+            job.say(f"bb {hexd[:12]} unpacked into {into}\n")
+        if who:
+            for d, dirs, files in os.walk(into):
+                for x in [d] + [os.path.join(d, f) for f in files]:
+                    with contextlib.suppress(OSError):
+                        os.lchown(x, who["user"], who["group"])
+        return into
+
+    def cache_clear(self, job, spec):
+        """Drop this node's build caches — one project's, or all of them.
+        The one thing that goes wrong with caches is a full disk, and this
+        is the button for it (docs/nodes.md §6)."""
+        root = (self.state.get("stores") or {}).get("cache") or ""
+        if not root or not os.path.isdir(root):
+            job.say("no cache store here\n")
+            return "succeeded", 0
+        project = re.sub(r"[^A-Za-z0-9._-]", "_", str(spec.get("project") or ""))
+        targets = [os.path.join(root, project)] if project else \
+                  [os.path.join(root, d) for d in os.listdir(root)]
+        n = 0
+        for t in targets:
+            if os.path.isdir(t):
+                shutil.rmtree(t, ignore_errors=True)
+                job.say(f"removed {t}\n")
+                n += 1
+        job.say(f"cleared {n} director{'y' if n == 1 else 'ies'}\n")
+        self.hello()
+        return "succeeded", 0
+
+    # -- toolchains (docs/nodes.md §6) --------------------------------------------
+    def package(self, job, spec):
+        """`bb sdk install|remove NAME` against this node's packages store,
+        with the bb the controller ships: the bundle (bb, its library, the
+        catalog) is fetched by digest into the store and run from there as
+        the enrolled account, SDK_ROOT pointing at the store. One catalog,
+        per-node state — the census reports what landed."""
+        stores = self.state.get("stores") or {}
+        store = stores.get("packages") or ""
+        if not store:
+            job.say("refused: this node has no packages store\n")
+            return "failed", 78
+        action = spec.get("action")
+        names = [re.sub(r"[^A-Za-z0-9:;._-]", "", str(n)) for n in (spec.get("names") or [])][:8]
+        if action not in ("install", "remove") or not names:
+            job.say("refused: a package job installs or removes named packages\n")
+            return "failed", 64
+        who = self.drop_privileges({})
+        into = self.bundle(job, who)
+        if not into:
+            return "failed", 69
+        bad = 0
+        for name in names:
+            job.say(f"== bb sdk {action} {name}\n")
+            st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
+                                            "sdk", action, name],
+                                   "cwd": store, "timeout": spec.get("timeout") or 3600,
+                                   "env": sdk_env(self.state)})
+            if st_ != "succeeded":
+                bad += 1
+                if st_ == "canceled":
+                    return st_, code
+        self.hello()
+        if bad:
+            job.say(f"{bad} of {len(names)} did not {action}\n")
+            return "failed", 1
+        return "succeeded", 0
+
+    # -- the configuration plane (docs/nodes.md §12, phase 5) -----------------
+    def system(self, job, spec):
+        """Apply the desired storage or network config the controller holds
+        for this node — the one root-privileged thing the agent does. Not
+        dropped to the enrolled account, because mounts and addresses are
+        root's; offered by the controller only to nodes that enrolled as a
+        sandbox, and refused here without bb-sandbox, which is the stamp."""
+        if not os.access(SANDBOX_BIN, os.X_OK):
+            job.say("refused: this node was not provisioned as a BuilderBot sandbox "
+                    f"({SANDBOX_BIN} is not here), so it takes no system jobs\n")
+            return "failed", 77
+        what = spec.get("apply")
+        cfg = spec.get("config") if isinstance(spec.get("config"), dict) else {}
+        if what == "storage":
+            return self._apply_storage(job, cfg)
+        if what == "network":
+            return self._apply_network(job, cfg)
+        if what == "runner":
+            return self._apply_runner(job, cfg)
+        if what == "funnel":
+            return self._apply_funnel(job, cfg)
+        job.say(f"refused: unknown system job {what!r}\n")
+        return "failed", 64
+
+    def _sh(self, job, argv):
+        """One command, its output into the job's log, its exit code back."""
+        job.say("$ " + " ".join(argv) + "\n")
+        try:
+            p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               timeout=300, check=False)
+        except (OSError, subprocess.SubprocessError) as e:
+            job.say(f"{argv[0]}: {e}\n")
+            return 1
+        for line in p.stdout.decode("utf-8", "replace").splitlines():
+            if line.strip():
+                job.say(line + "\n")
+        return p.returncode
+
+    def _apply_storage(self, job, cfg):
+        """Mounts as a diff against what bb-sandbox has — remove what is no
+        longer wanted, add or rewrite what is (add-nfs/add-share rewrite an
+        existing fstab line, so this is idempotent) — then the stores, which
+        are this agent's own file. Ends with a hello, so the row shows the
+        applied state now rather than at the next census."""
+        want = [m for m in (cfg.get("mounts") or []) if isinstance(m, dict)]
+        have = {m.get("path"): m for m in mounts_now()}
+        bad = 0
+        for path, m in have.items():
+            if not any(w.get("path") == path for w in want):
+                if self._sh(job, [SANDBOX_BIN, "remove", path]) != 0:
+                    bad += 1
+        for w in want:
+            path, src = str(w.get("path") or ""), str(w.get("source") or "")
+            kind, ro = str(w.get("type") or "nfs"), bool(w.get("ro"))
+            if not path.startswith("/") or not src:
+                job.say(f"skipping a mount with no path or source: {w!r}\n")
+                bad += 1
+                continue
+            verb = "add-share" if kind == "virtiofs" else "add-nfs"
+            if self._sh(job, [SANDBOX_BIN, verb, f"{src}:{path}" + (":ro" if ro else "")]) != 0:
+                bad += 1
+        stores = cfg.get("stores") if isinstance(cfg.get("stores"), dict) else {}
+        if stores:
+            mine = dict(self.state.get("stores") or {})
+            for role, path in stores.items():
+                if role not in DEFAULT_STORES or not str(path).startswith("/"):
+                    continue
+                try:
+                    os.makedirs(path, exist_ok=True)
+                    mine[role] = str(path)
+                    job.say(f"{role} store: {path}\n")
+                except OSError as e:
+                    job.say(f"{role} store {path} could not be made: {e.strerror}\n")
+                    bad += 1
+            self.state["stores"] = mine
+            save_state(self.state)
+        self.hello()
+        if bad:
+            job.say(f"{bad} of the changes did not apply — the rest did\n")
+            return "failed", 1
+        job.say("storage applied\n")
+        return "succeeded", 0
+
+    def _apply_network(self, job, cfg):
+        """Commit/confirm, because this is the one change that can cut the
+        cord it arrives on (docs/nodes.md §12): write the netplan file,
+        apply it, then dial the controller from wherever the machine landed.
+        No answer within DIAL_BACK_S and the previous file is put back and
+        applied again, and the failure is reported on reconnect."""
+        if not shutil.which(NETPLAN_BIN) and not os.access(NETPLAN_BIN, os.X_OK):
+            job.say("refused: network changes need netplan on this node, and it "
+                    "has none — set the address by hand, or on a node that has it\n")
+            return "failed", 77
+        net = cfg.get("network") if isinstance(cfg.get("network"), dict) else cfg
+        iface = str(net.get("interface") or network_now().get("interface") or "")
+        if not iface:
+            job.say("refused: no interface named and no default route to read one from\n")
+            return "failed", 65
+        mode = "static" if net.get("mode") == "static" else "dhcp"
+        lines = ["network:", "  version: 2", "  ethernets:", f"    {iface}:"]
+        if mode == "dhcp":
+            lines.append("      dhcp4: true")
+        else:
+            addr, gw = str(net.get("address") or ""), str(net.get("gateway") or "")
+            if not addr:
+                job.say("refused: a static address needs an address\n")
+                return "failed", 65
+            lines += ["      dhcp4: false", f"      addresses: [{addr}]"]
+            if gw:
+                lines += ["      routes:", f"        - to: default", f"          via: {gw}"]
+            dns = [str(d) for d in (net.get("dns") or []) if str(d)]
+            if dns:
+                lines += ["      nameservers:", f"        addresses: [{', '.join(dns)}]"]
+        text = "\n".join(lines) + "\n"
+        path = os.path.join(NETPLAN_DIR, NETPLAN_FILE)
+        before = None
+        try:
+            with open(path) as f:
+                before = f.read()
+        except OSError:
+            pass
+        if before == text:
+            job.say("already applied — the netplan file has not changed\n")
+            return "succeeded", 0
+        os.makedirs(NETPLAN_DIR, exist_ok=True)
+        with open(path, "w") as f:
+            os.fchmod(f.fileno(), 0o600)
+            f.write(text)
+        job.say(f"wrote {path}:\n{text}")
+        job.flush()                      # the last words before the cord is cut
+        if self._sh(job, [NETPLAN_BIN, "apply"]) != 0:
+            self._restore_netplan(job, path, before)
+            return "failed", 1
+        job.say(f"applied; dialing the controller back from the new address "
+                f"(up to {DIAL_BACK_S}s)\n")
+        deadline = time.time() + DIAL_BACK_S
+        while time.time() < deadline:
+            st, _ = self.hello()
+            if st == 200:
+                job.say(f"dialed back in from {network_now().get('addresses') or ['?']}\n")
+                return "succeeded", 0
+            time.sleep(5)
+        job.say(f"could not reach the controller within {DIAL_BACK_S}s — reverting\n")
+        self._restore_netplan(job, path, before)
+        deadline = time.time() + DIAL_BACK_S
+        while time.time() < deadline:
+            if self.hello()[0] == 200:
+                break
+            time.sleep(5)
+        job.say("reverted to the previous network config\n")
+        return "failed", 68
+
+    def _apply_runner(self, job, cfg):
+        """The Actions runner as a service on this node (phase 7): fetched
+        from GitHub's releases, registered with a token the controller mints
+        on request — the PAT stays in the controller's root-only stash and
+        the token lives for an hour — and run under systemd as the enrolled
+        account by the runner's own svc.sh. Removal deregisters first, so
+        GitHub does not keep a ghost. Labels are the tab's, the node's name
+        among them, and are written beside the runner for the census."""
+        want = bool(cfg.get("want", True))
+        who = self.drop_privileges({})
+        user = self.state.get("user") or "root"
+        d = RUNNER_DIR
+        if not want:
+            if not os.path.isfile(os.path.join(d, ".runner")):
+                job.say("no runner is installed here\n")
+                return "succeeded", 0
+            st, r = self.ctl.call("runner-token", {"kind": "remove"}, timeout=60)
+            if st != 200 or not r.get("token"):
+                job.say(f"could not get a removal token from the controller: {r.get('error', st)}\n")
+                return "failed", 69
+            if os.path.isfile(os.path.join(d, "svc.sh")):
+                self._sh(job, ["bash", os.path.join(d, "svc.sh"), "stop"])
+                self._sh(job, ["bash", os.path.join(d, "svc.sh"), "uninstall"])
+            code = self._run_as(job, who, d, [os.path.join(d, "config.sh"), "remove", "--token", r["token"]])
+            if code != 0:
+                job.say("deregistration did not complete; remove the runner in GitHub's settings if it lingers\n")
+            shutil.rmtree(d, ignore_errors=True)
+            self.hello()
+            job.say("runner removed\n")
+            return "succeeded", 0
+        url = str(cfg.get("url") or "")
+        if not url.startswith("https://github.com/"):
+            job.say(f"refused: the runner registers with a GitHub org or repo URL, not {url!r}\n")
+            return "failed", 65
+        labels = [re.sub(r"[^A-Za-z0-9._-]", "", str(x)) for x in (cfg.get("labels") or [])]
+        labels = [x for x in labels if x][:16] or ["builderbot", "self-hosted"]
+        name = re.sub(r"[^A-Za-z0-9._-]", "-", str(cfg.get("name") or socket.gethostname()))[:64]
+        os.makedirs(d, exist_ok=True)
+        if not os.path.isfile(os.path.join(d, "config.sh")):
+            tar_path = os.path.join(d, "runner.tar.gz")
+            if RUNNER_TARBALL:
+                shutil.copyfile(RUNNER_TARBALL, tar_path)
+                job.say(f"using the runner tarball at {RUNNER_TARBALL}\n")
+            else:
+                arch = {"x86_64": "x64", "aarch64": "arm64", "armv7l": "arm"}.get(platform.machine(), "x64")
+                job.say("asking GitHub for the latest runner release…\n")
+                try:
+                    with urllib.request.urlopen(RUNNER_RELEASES, timeout=30) as r:
+                        rel = json.load(r)
+                    asset = next(a["browser_download_url"] for a in rel.get("assets", [])
+                                 if a.get("name", "").startswith(f"actions-runner-linux-{arch}-")
+                                 and a["name"].endswith(".tar.gz"))
+                except (OSError, ValueError, StopIteration, KeyError) as e:
+                    job.say(f"could not find the runner release: {e}\n")
+                    return "failed", 69
+                job.say(f"downloading {asset}\n")
+                job.flush()
+                try:
+                    with urllib.request.urlopen(asset, timeout=600) as r, open(tar_path, "wb") as f:
+                        shutil.copyfileobj(r, f)
+                except OSError as e:
+                    job.say(f"download failed: {e}\n")
+                    return "failed", 69
+            with tarfile.open(tar_path) as tar:
+                if hasattr(tarfile, "data_filter"):
+                    tar.extractall(d, filter="data")
+                else:
+                    tar.extractall(d)
+            os.remove(tar_path)
+        self.own_dir(d, who)
+        if who:
+            for dd, dirs, files in os.walk(d):
+                for x in [dd] + [os.path.join(dd, f) for f in files]:
+                    with contextlib.suppress(OSError):
+                        os.lchown(x, who["user"], who["group"])
+        st, r = self.ctl.call("runner-token", {"kind": "registration"}, timeout=60)
+        if st != 200 or not r.get("token"):
+            job.say(f"could not get a registration token from the controller: {r.get('error', st)}\n")
+            return "failed", 69
+        job.say(f"registering {name} with {url} [{','.join(labels)}]\n")
+        code = self._run_as(job, who, d, [os.path.join(d, "config.sh"), "--unattended", "--replace",
+                                          "--url", url, "--token", r["token"], "--name", name,
+                                          "--labels", ",".join(labels), "--work", "_work"])
+        if code != 0:
+            return "failed", code
+        with open(os.path.join(d, ".builderbot-labels"), "w") as f:
+            f.write(",".join(labels))
+        if os.path.isfile(os.path.join(d, "svc.sh")):
+            if self._sh(job, ["bash", os.path.join(d, "svc.sh"), "install", user]) != 0:
+                return "failed", 1
+            if self._sh(job, ["bash", os.path.join(d, "svc.sh"), "start"]) != 0:
+                return "failed", 1
+        self.hello()
+        job.say("runner installed and started\n")
+        return "succeeded", 0
+
+    def _apply_funnel(self, job, cfg):
+        """Tailscale Funnel for one local port on https 443 (docs/nodes.md
+        §7): tailscale's own CLI does the certificate, the DNS and the
+        firewall, and its status is what the census reports afterwards."""
+        if not (shutil.which(TAILSCALE_BIN) or os.access(TAILSCALE_BIN, os.X_OK)):
+            job.say("refused: tailscale is not installed on this node\n")
+            return "failed", 77
+        try:
+            port = int(cfg.get("port") or 0)
+        except (TypeError, ValueError):
+            port = 0
+        if not 1 <= port <= 65535:
+            job.say("refused: a funnel forwards to a port number\n")
+            return "failed", 65
+        if cfg.get("on", True):
+            code = self._sh(job, [TAILSCALE_BIN, "funnel", "--bg", "--https=443",
+                                  f"http://127.0.0.1:{port}"])
+        else:
+            code = self._sh(job, [TAILSCALE_BIN, "funnel", "--https=443", "off"])
+        self.hello()
+        if code != 0:
+            return "failed", code
+        job.say(("funnel on: https://" + (services_now().get("tailscale") or {}).get("dns", "?")
+                 + f" -> 127.0.0.1:{port}\n") if cfg.get("on", True) else "funnel off\n")
+        return "succeeded", 0
+
+    def _run_as(self, job, who, cwd, argv):
+        """One command as the enrolled account, in the runner's directory,
+        its output into the log. config.sh refuses to run as root."""
+        job.say("$ " + " ".join(a if "--token" not in argv[max(0, i - 1)] else "…" for i, a in enumerate(argv)) + "\n")
+        env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C.UTF-8",
+               "HOME": cwd}
+        who2 = dict(who)
+        if who:
+            import pwd
+            with contextlib.suppress(KeyError):
+                env["HOME"] = pwd.getpwuid(who["user"]).pw_dir
+        try:
+            p = subprocess.run(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=600, check=False, **who2)
+        except (OSError, subprocess.SubprocessError) as e:
+            job.say(f"{argv[0]}: {e}\n")
+            return 1
+        for line in p.stdout.decode("utf-8", "replace").splitlines():
+            if line.strip():
+                job.say(line + "\n")
+        return p.returncode
+
+    def _restore_netplan(self, job, path, before):
+        if before is None:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+        else:
+            with open(path, "w") as f:
+                os.fchmod(f.fileno(), 0o600)
+                f.write(before)
+        self._sh(job, [NETPLAN_BIN, "apply"])
 
     def reexec(self):
         log("re-executing the new agent")

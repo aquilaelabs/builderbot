@@ -27,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 run = None
 write_json = None
 STATE = None
+nodes = None          # the node store, once the server has opened it (phase 6)
 
 
 def configure(*, run, write_json, state):
@@ -638,6 +639,76 @@ def abort_job():
         except (OSError, ProcessLookupError):
             pass                       # it finished between the check and here
     return True
+
+
+# ---------------------------------------------------------------------------
+# packages on another node (docs/nodes.md §6)
+#
+# The catalog is this one; the state is the node's. Its census reports the
+# toolchains it has (`reported.toolchains`, probed by the agent the way `bb
+# sdk` probes here) and its packages store's headroom, and an install there
+# is a `package` job the agent runs with the bundle this controller ships —
+# bb and its library — against that store. Nothing here guesses what a node
+# has from what it was asked to install.
+
+def payload_for_node(nid):
+    n = nodes.node(nid) if nodes else None
+    if not n:
+        return {"error": "no such node"}
+    rep = n.get("reported") or {}
+    tc = rep.get("toolchains") or {}
+    store = (rep.get("stores") or {}).get("packages") or {}
+    items = []
+    for p in PACKAGES:
+        # A catalog row is known on a node by the toolchain it provides; the
+        # probe names match the census keys (java, flutter, dotnet, node…)
+        # by their first word, which is what the agent reports.
+        key = p["probe"].split(":")[0]
+        have = tc.get(key)
+        kb = _pkg_remembered.get(p["name"])
+        items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      "installed": bool(have), "path": "", "version": have or "",
+                      "size": human_kb(kb) if kb else "",
+                      "size_from": "measured the last time it was installed here" if kb else "",
+                      "latest": "", "state": ""})
+    job = None
+    if nodes:
+        for j in nodes.jobs_for(node_id=nid, type="package", active=True, n=1):
+            job = {"running": True, "action": (j.get("spec") or {}).get("action", ""),
+                   "queue": (j.get("spec") or {}).get("names", []), "current": j.get("step", ""),
+                   "log": nodes.job_tail(j["id"], 1200).splitlines()[-16:], "done": [],
+                   "failed": [], "aborting": bool(j.get("cancel")), "node": nid, "id": j["id"]}
+            break
+    return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
+            "root": store.get("path") or "", "free_mb": store.get("free_mb"),
+            "shared": False, "checked": 0, "sizing": False,
+            "images": [], "addable": [], "flavors": [], "images_loading": False,
+            "items": items, "job": job or {"running": False}}
+
+
+def node_job(principal, nid, action, names):
+    """Queue the package job. Refused, with numbers, when the store cannot
+    hold what is asked — measured here the last time it was installed, so a
+    package this controller never had is not gated, and the log says so."""
+    if not nodes:
+        return {"error": "no node store"}
+    n = nodes.node(nid)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": f"{n['name']} runs no agent — toolchains are installed there by hand"}
+    store = ((n.get("reported") or {}).get("stores") or {}).get("packages") or {}
+    if action == "install":
+        need_kb = sum(_pkg_remembered.get(x, 0) for x in names)
+        free = store.get("free_mb")
+        if need_kb and free is not None and free * 1024 < need_kb * 1.2:
+            return {"error": f"{n['name']}'s packages store has {human_kb(free * 1024)} free "
+                             f"and this needs about {human_kb(int(need_kb * 1.2))} — "
+                             "point the store somewhere bigger first"}
+    for j in nodes.jobs_for(node_id=nid, type="package", active=True, n=1):
+        return {"error": f"a package job is already running on {n['name']} — one at a time"}
+    return nodes.job_add(principal, {"node": nid}, "package",
+                         {"action": action, "names": names, "timeout": 3600})
 
 
 def start_job(action, names, auto=False):

@@ -40,8 +40,10 @@ function renderSettingsInto(i){
           mounts, credentials are what env is for. Controller-scoped ones move
           here as the phases that own them land, each seeded from its env var
           once and owned by this page after (docs/nodes.md §11, the
-          unhardwiring). <code>DOCKER_HOST</code> was the first: it is a node
-          record now, and the variable is only read to seed one.</div>
+          unhardwiring). <code>DOCKER_HOST</code> and
+          <code>DOCKER_HOST_PATHS</code> were the first: the sandbox is a node
+          record with its path mapping on its row, and the two variables are
+          read once, to seed it, for one more release.</div>
       </div>
     </div>`;
   d.setFoot(`one scope per setting: who has to change it, and what restarts

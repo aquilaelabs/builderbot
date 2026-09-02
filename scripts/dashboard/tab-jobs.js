@@ -60,8 +60,14 @@ function jobTitle(j){
     return `${esc(s.action || "compose")} ${esc(j.project || "")}${
       s.instance && s.instance !== "main" ? "/" + esc(s.instance) : ""}`;
   if (j.type === "self-update") return "agent self-update";
+  if (j.type === "system") return `apply ${esc(s.apply || "config")} on the node`;
+  if (j.type === "package") return `${esc(s.action || "install")} ${esc((s.names || []).join(", "))}`;
+  if (j.type === "cache-clear") return `clear ${s.project ? esc(s.project) + "'s caches" : "every cache"}`;
   const argv = Array.isArray(s.argv) ? s.argv.join(" ") : "";
-  return `exec ${esc(argv.slice(0, 80))}${argv.length > 80 ? "…" : ""}`;
+  // A job with a source is a build of that project's tree, and says so
+  // before the command (docs/nodes.md §6).
+  const src = j.source?.digest ? `${esc(j.project || s.project || "")} · ` : "";
+  return `${src}exec ${esc(argv.slice(0, 80))}${argv.length > 80 ? "…" : ""}`;
 }
 
 function jobStatePill(j){
@@ -85,6 +91,19 @@ function jobWhen(j){
   if (j.exit_code !== null && j.exit_code !== undefined && j.exit_code !== 0)
     bits.push(`exit ${j.exit_code}`);
   return bits.join(" · ");
+}
+
+// What a job left behind: the artifacts it delivered into dist/, as the
+// download links the Artifacts tab would offer, and the workspace a failed
+// build kept on its node for a look (docs/nodes.md §6).
+function jobOutputs(j){
+  const outs = Array.isArray(j.outputs) ? j.outputs : [];
+  if (!outs.length) return "";
+  return `<div class="sub jbouts">${outs.map(o => o.kind === "artifact"
+    ? `<a href="/api/artifact?project=${encodeURIComponent(j.project)}&path=${
+        encodeURIComponent(o.path)}" download>${esc(o.path)}</a>`
+    : o.kind === "workspace" ? `workspace kept at <code>${esc(o.path)}</code>` : "")
+    .filter(Boolean).join(" · ")}</div>`;
 }
 
 function renderJobsInto(i){
@@ -116,6 +135,7 @@ function renderJobsInto(i){
         <div class="sub">${jobWhen(j)}${j.requested_by && j.requested_by !== "operator"
           ? ` · asked by ${esc(j.requested_by)}` : ""}</div>
         ${j.error ? `<div class="sub jberr warn">${esc(j.error)}</div>` : ""}
+        ${jobOutputs(j)}
         ${open ? `<pre class="dmlog jblog" data-tail="1">${
             esc((jobsLogs[j.id] || "").slice(-4000) || "(no output yet)")}</pre>` : ""}
       </div>

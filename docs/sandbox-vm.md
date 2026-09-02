@@ -18,7 +18,7 @@ and a shared Docker network closes only the first:
 2. **Host-published ports, through the default gateway.** Measured: a `curl`
    to `172.17.0.1:<published>` answers. Network membership does not close
    this; only host firewall rules would.
-3. **The daemon itself.** `DOCKER_HOST` is in every session's environment, so
+3. **The daemon itself.** The sandbox node's address is in every session's environment as `DOCKER_HOST`, so
    a session reaches whatever it names exactly as the dashboard does. A far
    bigger lever than any HTTP port — and the reason it must not name this
    box's own daemon.
@@ -53,7 +53,7 @@ asks. Mount it anywhere else and every project's compose file is wrong in the
 worst way available: Docker does not fail on a missing bind source, it creates
 an empty directory and mounts that, and the app comes up with no data.
 
-`DOCKER_HOST_PATHS` exists precisely because today's daemon is the host's and
+the path mapping exists precisely because today's daemon is the host's and
 its paths are not BuilderBot's. Give the sandbox parity and that setting
 becomes an identity mapping you can leave empty.
 
@@ -81,7 +81,7 @@ the three fixed commands that tend this directory.
 
 That is a `docker run`, which is root on whichever daemon answers — allowed
 because a sandbox VM's whole job is being wrecked, and refused outright if
-`DOCKER_HOST` names anything that is not one.
+the node's address names anything that is not one.
 
 ## The disk
 
@@ -118,6 +118,12 @@ sudo bb-sandbox readonly /workspace  # ...and back with: readonly /workspace off
 sudo bb-sandbox check                # is every mount really there
 sudo bb-sandbox settings             # the lines to paste into BuilderBot
 ```
+
+Once the machine is enrolled as a node, the same mounts (and the agent's
+stores, and the address) are editable from the Nodes tab too: the agent
+applies them through these very verbs as audited `system` jobs, and
+`bb-sandbox list --json` is what its census reports. The menu stays as the
+console fallback, reading and writing the same fstab — see docs/nodes.md §12.
 
 **Two accounts, and the split is the point.** `bb` runs Docker and answers
 ssh — the one BuilderBot uses, and so the one a Claude session reaches. It has
@@ -164,10 +170,11 @@ from the container into the VM's own configuration would hand back exactly what
 the arrangement buys. The dashboard can *see* what is mounted — it asks the
 daemon — and changing it is a decision made here.
 
-`settings` is the seam between the two machines. This VM cannot set BuilderBot's
-environment, so it prints what to paste: `DOCKER_HOST`, and a
-`DOCKER_HOST_PATHS` built from the mounts that actually exist here. Only the
-paths BuilderBot *also* mounts at the same place belong in it — a share this
+`settings` is the seam between the two machines. This VM cannot reach into
+BuilderBot, so it prints what to enter on the dashboard's Nodes tab: the
+address to add this machine as a node, and the path mapping to set on its
+row, built from the mounts that actually exist here. Only the paths
+BuilderBot *also* mounts at the same place belong in it — a share this
 machine alone has belongs in neither list, and BuilderBot will say so on the
 Docker manager tab rather than leaving the line looking like it does something.
 
@@ -209,7 +216,7 @@ wrong for this particular machine:
   VNC console. Import or paste the key here.
 - **Featured snaps — do not tick Docker.** The snap is not what
   `provision.sh` installs, and two Dockers will argue.
-- **Network — DHCP is fine, but pin the address.** `DOCKER_HOST` and every
+- **Network — DHCP is fine, but pin the address.** The node record and every
   web UI you open point at it, so a lease that moves breaks both. Set it
   static, or reserve it on the router against the MAC in the domain XML.
 
@@ -432,13 +439,13 @@ ssh-keyscan -H <vm-ip> >> ~/.ssh/known_hosts
 
 `~` is the home volume, so this survives a container restart.
 
-**2. `DOCKER_HOST=<vm-ip>`.** The address is the whole setting: `ssh://` and
-the `bb` account `provision.sh` makes are filled in — by the entrypoint, before
-anything in the container inherits it, so a session's own `docker ps` reaches
-the VM too and not a tcp port nothing listens on. `ssh://someone@host` written
-out in full is left exactly as written. ssh rather than an open Docker
-port, so authentication is the key you installed and nothing has to listen —
-an open `2375` would be root on the sandbox to anyone who could reach it.
+**2. Add it as a node.** On the dashboard's Nodes tab, **Add ssh node** takes
+the address — `ssh://` and the `bb` account `provision.sh` makes are filled
+in; `ssh://someone@host` written out in full is left exactly as written. ssh
+rather than an open Docker port, so authentication is the key you installed
+and nothing has to listen — an open `2375` would be root on the sandbox to
+anyone who could reach it. (The `DOCKER_HOST` variable of earlier releases
+seeds this record once at boot and is otherwise ignored.)
 
 Nothing but a sandbox VM is accepted, and the address is only half of what
 decides that. An address of any other kind greys every Docker control out with
@@ -464,8 +471,8 @@ version of something this daemon has never seen. The instances themselves stay:
 their compose files and env are this side's and have nothing to do with which
 daemon is plugged in.
 
-**3. `DOCKER_HOST_PATHS=/workspace:/workspace`** — and a pair for any other
-share you mounted on *both* sides. `/devdata` is not one of them: it belongs
+**3. The path mapping, on the node's row: `/workspace:/workspace`** — and a
+pair for any other share you mounted on *both* sides. `/devdata` is not one of them: it belongs
 to the VM alone, BuilderBot never touches it, and naming it here would be a
 line of configuration nothing acts on (the manager says so on the row when
 you leave one in). An identity mapping, because the VM has the shares at

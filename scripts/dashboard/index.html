@@ -1199,6 +1199,12 @@ textarea,select{
    the record — so that a step that was handed over and quietly not carried out
    is still there to send again. */
 .todo.sent .txt{color:var(--dim);text-decoration:line-through}
+/* Done is a session's mark, not the dashboard's: struck the same way, because
+   it needs no sending either, but the number becomes a tick so the two are
+   not confused — a line that went and a line that is finished are different
+   claims, and only the second one comes from whoever did the work. */
+.todo.done .txt{color:var(--dim);text-decoration:line-through}
+.todo .n.tick{color:var(--accent)}
 /* Shelved: parked, at the bottom, and visibly not asking for anything. Dark
    rather than struck — struck already means "this went", and a shelf is the
    opposite claim. The whole row dims, steps included, because a shelved plan
@@ -1608,6 +1614,40 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:6px;
   background:var(--sunk);user-select:all}
 .ndnums{font:var(--f-note);color:var(--dim)}
+/* The configuration plane's fold on an agent row (docs/nodes.md §12). A
+   details fold like the manager's wiring, and the same field skin as every
+   other form here — nothing browser-default. */
+.ndconf{margin-top:6px}
+.ndconf summary{color:var(--dim);font:var(--f-note);cursor:pointer;list-style:none}
+.ndconf summary::-webkit-details-marker{display:none}
+.ndconf summary::before{content:"▸";display:inline-block;width:1.1em;transition:transform .15s}
+.ndconf[open] summary::before{transform:rotate(90deg)}
+.ndconfbody{margin-top:6px;display:flex;flex-direction:column;gap:8px}
+.ndsec{font:var(--f-note);color:var(--dim);margin-top:4px}
+.ndmount,.ndnet{display:grid;grid-template-columns:minmax(0,7em) minmax(0,2fr) minmax(0,1.6fr) auto auto;
+  gap:6px;align-items:center}
+.ndnet{grid-template-columns:minmax(0,7em) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
+.ndmount .ndmstate{grid-column:1 / -1}
+.ndmstate.warn{color:var(--warn)} .ndmstate.bad{color:var(--bad)}
+.ndstore{display:grid;grid-template-columns:minmax(0,7em) minmax(0,1fr);gap:6px;align-items:center}
+.ndstore label{font:var(--f-ui);color:var(--ink)}
+.ndstore .sub{grid-column:2}
+.ndconfacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ndconfstate.note{color:var(--note)}
+.ndpaths{display:flex;gap:6px;align-items:center}
+.ndpaths input{flex:1 1 auto;min-width:0}
+.dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.dmroute select{width:auto;max-width:100%}
+.ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+.ndrunstate.warn{color:var(--warn)}
+@media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
+#rnBuildCmd,#rnTestCmd{margin-bottom:6px}
+.pkgnode .pick{display:inline-flex;gap:8px;align-items:center}
+.jbouts a{color:var(--accent)} .jbouts code{font:var(--f-note)}
+@media (max-width:600px){
+  .ndmount,.ndnet,.ndstore{grid-template-columns:minmax(0,1fr)}
+  .ndmount .ndmstate,.ndstore .sub{grid-column:1}
+}
 /* The Jobs tab: the filter is one checkbox in the bar, skinned like a
    capability toggle; the reason a job ended badly is a warn line; the log
    is the manager's compose log, same box. */
@@ -2367,14 +2407,28 @@ body.dragging .tab .lbl{cursor:grabbing}
       </div>
       <div class="hint" id="rnPrefHint"></div>
     </div>
-    <!-- Which docker host this project's containers default to. A binding to
-         a node id, resolved by the pickers: Send-to-Docker preselects it, and
-         an instance still remembers the node it was actually created on. -->
+    <!-- The project's node: where everything it does on a node goes —
+         containers, builds, tests, CI, emulation. One setting, by decision
+         (docs/nodes.md §13): per-role pickers were more control than anybody
+         wanted. Send-to-Docker preselects it, and an instance still remembers
+         the node it was actually created on. -->
     <div class="field" id="rnNodeField" hidden>
-      <label for="rnDockerNode">Containers run on</label>
-      <select id="rnDockerNode"></select>
-      <div class="hint">The docker host Send to Docker manager offers first
-        for this project. Existing containers stay where they were made.</div>
+      <label for="rnNode">Node — where this project's work runs</label>
+      <select id="rnNode"></select>
+      <div class="hint" id="rnNodeHint">Its containers, builds, tests and CI go
+        here. An ssh node hosts containers only; an agent node does all of it.
+        Existing containers stay where they were made.</div>
+    </div>
+    <div class="field">
+      <label for="rnBuildCmd">Build and test — what bb build and bb test run on that node</label>
+      <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
+             placeholder="build, e.g. ./gradlew assembleDebug">
+      <input id="rnTestCmd" autocomplete="off" spellcheck="false"
+             placeholder="test, e.g. ./gradlew test">
+      <input id="rnOutputs" autocomplete="off" spellcheck="false"
+             placeholder="outputs, globs from the tree root: app/build/outputs/apk/**/*.apk">
+      <div class="hint">Run with sh -c in the snapshot's root on the node. Files
+        matching the outputs come back into dist/ with a note of what built them.</div>
     </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
@@ -4018,26 +4072,30 @@ const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
 // dialog that was merely looked at — the difference decides whether a running
 // session is restarted, which is not something to do because somebody opened
 // a menu.
-let rnPrefWas = {model: "", effort: "", dockernode: ""};
+let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: ""};
 
 function rnFillPrefs(p){
   rnPrefWas = {model: p?.prefs?.model || "", effort: p?.prefs?.effort || "",
-               dockernode: p?.prefs?.dockernode || ""};
-  // The node binding: shown only when there is a choice to make, like every
-  // node select. "auto" is the default docker node, spelled as an option so
-  // clearing a binding is a pick rather than a mystery.
+               node: p?.prefs?.node || "",
+               build: p?.prefs?.build || "", test: p?.prefs?.test || "",
+               outputs: (p?.prefs?.outputs || []).join(", ")};
+  // The project's node: every node but this container, because local can
+  // host neither a build (no workspace of its own) nor, on purpose, a
+  // docker daemon. Shown when there is one to pick; "none" is spelled as an
+  // option so clearing the binding is a pick rather than a mystery.
   {
-    const sel = $("rnDockerNode"), wrap = $("rnNodeField");
-    const dnodes = (nodesList || []).filter(n =>
-      n.capabilities?.includes("docker-host"));
+    const sel = $("rnNode"), wrap = $("rnNodeField");
+    const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired");
     if (nodesList === null) loadNodes();
-    wrap.hidden = dnodes.length < 2;
-    sel.innerHTML = `<option value="">auto — the default node</option>`
-      + dnodes.map(n => `<option value="${esc(n.id)}"${
-          n.id === rnPrefWas.dockernode ? " selected" : ""}>${
-          esc(n.name)} — ${esc(n.state)}</option>`).join("");
-    if (!rnPrefWas.dockernode) sel.value = "";
+    wrap.hidden = !pick.length;
+    sel.innerHTML = `<option value="">none — containers go to the default docker host; builds wait</option>`
+      + pick.map(n => `<option value="${esc(n.id)}"${n.id === rnPrefWas.node ? " selected" : ""}>${
+          esc(n.name)} — ${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}</option>`).join("");
+    sel.value = pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
   }
+  $("rnBuildCmd").value = p?.prefs?.build || "";
+  $("rnTestCmd").value = p?.prefs?.test || "";
+  $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
                                   ["rnEffort", EFFORTS, rnPrefWas.effort]]){
     const el = $(id);
@@ -5606,7 +5664,7 @@ function openPackages(){
 let pkgSizeTimer = null;
 async function loadPackages(){
   try{
-    const r = await fetch("/api/packages");
+    const r = await fetch("/api/packages" + (pkgNode !== "local" ? `?node=${encodeURIComponent(pkgNode)}` : ""));
     if (!r.ok) throw new Error("HTTP " + r.status);
     packages = await r.json();
   }catch(e){ packages = {error: String(e)}; }
@@ -5626,6 +5684,10 @@ let pkgDots = 0, pkgDotsTimer = null;
 // Which flavor the picker is showing. Page state, not the server's: it is a
 // question being asked, not a fact about the box.
 let pkgFlavor = "";
+// Which node the Tools tab is showing (docs/nodes.md §6): "local" is this
+// container's SDK share and the installer that was always here; any other
+// is an agent node's packages store, where an install is a job.
+let pkgNode = "local";
 
 // What the one job is doing, said next to the control that started it — Add
 // for a system image, Install selected for anything else — rather than
@@ -6011,7 +6073,7 @@ function openSendToDocker(project){
   $("dnEnv").value = "";
   fillNodeSelect($("dnNode"), $("dnNodeField"),
                  state?.projects?.find(p => p.name === project)
-                   ?.prefs?.dockernode || dockerNode);
+                   ?.prefs?.node || dockerNode);
   $("dnmodal").hidden = false;
   // Fetched per open, and only shown when the project actually declares an
   // example: a blank Environment box on a project with nothing to fill in is
@@ -6133,6 +6195,28 @@ async function openDevEnv(project, instance){
       dockerList = null; dockerRev++; loadDocker();
     }catch(e){ notify("env: " + e, true); }
   };
+}
+
+// The instance's route (docs/nodes.md §7): the URL it is reached at, and
+// the picker for how — lan on a published port, or Tailscale Funnel when
+// the node has tailscale. public is named as unbuilt rather than hidden, so
+// the record's third mode is visible for what it is. Drawn only for an
+// instance that publishes something or already has a route set.
+function dmRouteLine(d){
+  const r = d.route;
+  if (!r || (!r.ports?.length && r.mode === "lan" && !r.url)) return "";
+  const link = r.url
+    ? `<a href="${esc(r.url)}" target="_blank" rel="noreferrer"${r.ready ? "" : ' class="dim"'}>${esc(r.url)}</a>`
+    : `<span class="dim">no address</span>`;
+  const modes = [["lan", "lan — the node's address"],
+                 ["funnel", r.funnel_ok ? "funnel — a public https URL via Tailscale" : "funnel — needs tailscale on the node"],
+                 ["public", "public — not built"]];
+  return `<div class="sub dmroute">${link}${r.why ? ` <span class="dim">— ${esc(r.why)}</span>` : ""}
+    <select data-route="mode" aria-label="route" title="how this instance is reached">${
+      modes.map(([v, l]) => `<option value="${v}"${v === r.mode ? " selected" : ""}${
+        v === "public" || (v === "funnel" && !r.funnel_ok) ? " disabled" : ""}>${esc(l)}</option>`).join("")}</select>${
+    r.ports?.length > 1 ? `<select data-route="port" aria-label="port" title="which published port">${
+      r.ports.map(p => `<option value="${p}"${p === r.port ? " selected" : ""}>:${p}</option>`).join("")}</select>` : ""}</div>`;
 }
 
 function dockerJob(){
@@ -6500,6 +6584,7 @@ function renderDockerInto(i){
           : "never built"}</div>
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
+        ${dmRouteLine(d)}
         ${d.await_env ? `<div class="sub warn">built — fill in the env, then Up</div>` : ""}
         ${busy || (mine && job.error)
           // What it is actually doing, live. The step word above says the
@@ -6592,9 +6677,9 @@ for the rest of the work"
                  ? dockerWhy() : "")
     || (blind ? "the daemon did not answer"
                 + (dockerList.error ? ": " + dockerList.error : "") : "");
-  // Which daemon this is, stated rather than inferred. One setting names it
-  // now — DOCKER_HOST, pointing at the sandbox VM — and saying which machine
-  // the buttons below act on is worth a line whatever the arrangement.
+  // Which daemon this is, stated rather than inferred: the node picked
+  // above names it, and saying which machine the buttons below act on is
+  // worth a line whatever the arrangement.
   const src = state?.docker || {};
   const srcLine = !off && src.kind
     ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${
@@ -6675,6 +6760,24 @@ for the rest of the work"
     const [project, instance] = btn.closest("[data-inst]").dataset.inst.split("|");
     dmAction(project, instance, btn.dataset.dm, btn);
   });
+  el.querySelectorAll("[data-route]").forEach(sel => sel.onchange = async () => {
+    const row = sel.closest("[data-inst]");
+    const [project, instance] = row.dataset.inst.split("|");
+    const mode = row.querySelector('[data-route="mode"]')?.value || "lan";
+    const port = row.querySelector('[data-route="port"]')?.value || "";
+    if (mode === "funnel" && sel.dataset.route === "mode" && !confirm(
+        `Open ${project}/${instance} to the internet?\n\nTailscale Funnel gives it a public `
+        + `https URL on the node — anyone with the link can reach the port. Turning the `
+        + `route back to lan closes it.`)){ sel.value = "lan"; return; }
+    try{
+      const r = await fetch("/api/devapp", {method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({project, instance, action:"route", mode, port})});
+      const j = await r.json();
+      if (j.error) notify(j.error, true);
+    }catch(e){ notify("route: " + e, true); }
+    dockerList = null; dockerRev++; loadDocker();
+  });
 }
 
 function renderPackagesInto(i){
@@ -6703,8 +6806,27 @@ function renderPackagesInto(i){
   // you were about to install quietly unticked itself.
   if (!busy && job.action !== "check")
     for (const n of [...(job.done || []), ...(job.failed || [])]) pkgTicked.delete(n);
+  // The picker: this container, or an agent node. Only drawn when there is
+  // an agent node to pick, like every node select here.
+  const pnodes = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
+  if (nodesList === null) loadNodes();
+  const onNode = pkgNode !== "local";
+  const picker = pnodes.length ? `<div class="pkghead pkgnode">
+      <label class="pick">Packages on <select id="pkgNodeSel" aria-label="node">
+        <option value="local"${onNode ? "" : " selected"}>this container</option>
+        ${pnodes.map(n => `<option value="${esc(n.id)}"${n.id === pkgNode ? " selected" : ""}>${
+          esc(n.name)}${n.live === false ? " (quiet)" : ""}</option>`).join("")}
+      </select></label></div>` : "";
   el.innerHTML = `<div class="doctab pkgtab">
-    <div class="pkghead">${d.root
+    ${picker}
+    <div class="pkghead">${onNode
+      ? (d.root
+          ? `Installed into <code>${esc(d.root)}</code> on ${esc(d.name)} — its packages store${
+              typeof d.free_mb === "number" ? `, ${d.free_mb >= 10240
+                ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB"} free` : ""}. An install
+            is a job there: bb and the catalog travel to the node, and its census reports what landed.`
+          : `${esc(d.name || "the node")} reports no packages store yet.`)
+      : d.root
       ? (d.shared
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
@@ -6737,6 +6859,9 @@ function renderPackagesInto(i){
     b.checked ? pkgTicked.add(b.value) : pkgTicked.delete(b.value);
   });
   el.querySelectorAll("[data-pkg]").forEach(b => b.onclick = () => pkgAct(b.dataset.pkg));
+  const psel = el.querySelector("#pkgNodeSel");
+  if (psel) psel.onchange = () => { pkgNode = psel.value; packages = null; pkgTicked.clear();
+                                    pkgRev++; drawPanes(); loadPackages(); };
   const fl = el.querySelector("#imgFlavor"), api = el.querySelector("#imgApi");
   if (fl) fl.onchange = () => { pkgFlavor = fl.value; pkgRev++; drawPanes(); };
   if (el.querySelector("#imgAdd")) el.querySelector("#imgAdd").onclick = () => {
@@ -6796,10 +6921,17 @@ async function pkgAct(action, only){
   if (action === "abort"){
     if (!confirm("Stop after the package it is on? What has already installed stays."))
       return;
-    await fetch("/api/packages", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body: JSON.stringify({action})});
+    // On a node the install is a job, and stopping it is the queue's Cancel.
+    if (pkgNode !== "local" && packages?.job?.id)
+      await fetch("/api/v1/jobs", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({action: "cancel", id: packages.job.id})});
+    else
+      await fetch("/api/packages", {method:"POST",
+        headers:{"Content-Type":"application/json"}, body: JSON.stringify({action})});
     return loadPackages();
   }
+  if (pkgNode !== "local" && !["install", "remove"].includes(action))
+    return notify("a node takes install and remove — versions are what its census reports", true);
   // "Check for updates" asks about every row, ticked or not: the question is
   // whether anything is out of date and what the rest would install, not
   // whether one ticked thing is. Sending the selection made it answer for
@@ -6812,7 +6944,7 @@ async function pkgAct(action, only){
   try{
     const r = await fetch("/api/packages", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({action, names})});
+      body: JSON.stringify({action, names, node: pkgNode})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
     notify(action === "check"
@@ -6973,21 +7105,16 @@ function openLinkProject(name){ pLink = name; pOpen("link"); }
 // dashboard from being a way to write anywhere.
 
 
+// A step that needs no sending: handed over, or finished by a session.
+// Two marks, one question — sent is the dashboard's and says a line went;
+// done is a session's and says the work is finished, sent or not.
+const stepGone = s => !!(s.sent || s.done);
+
 function nextStep(r){
   const steps = r.steps || [];
-  if (!steps.length) return r.sent ? null : -1;
-  const i = steps.findIndex(s => !s.sent);
+  if (!steps.length) return stepGone(r) ? null : -1;
+  const i = steps.findIndex(s => !stepGone(s));
   return i < 0 ? null : i;
-}
-
-// Where the list has got to: how many steps at the front have been crossed.
-// Crossed steps are always a prefix — they are handed out in order and put
-// back from the end — so one number describes the whole state.
-function crossedTo(r){
-  const steps = r.steps || [];
-  let k = 0;
-  while (k < steps.length && steps[k].sent) k++;
-  return k;
 }
 
 
@@ -7163,7 +7290,7 @@ function canSend(r, idx, live){
   const st = steps[idx];
   // The frontier, or one that has already gone. Never a later one: send the
   // third before the second and it lands on a tree the second was to make.
-  return !!st && (idx === nextStep(r) || !!st.sent);
+  return !!st && (idx === nextStep(r) || stepGone(st));
 }
 
 function stepRow(r, idx, live){
@@ -7183,7 +7310,6 @@ function stepRow(r, idx, live){
   // rule below is what protects it. A deletion cannot send anything out of
   // order; it can only make a plan shorter, and it now says why it did and
   // keeps the words in the log.
-  const k = crossedTo(r);
   const shelf = idx < 0;
   // Sent ones stay live so they can go again — "it did not take, do it again"
   // is the reason they are still on screen at all.
@@ -7197,9 +7323,12 @@ function stepRow(r, idx, live){
   const why = nbUnsaved() ? `save or revert first — ${nbUnsaved()} not on disk yet`
             : r.shelved ? "shelved — take it off the shelf to send it"
             : !live ? "no Claude session is running here"
+            : st.done ? "a session finished this — sending it again says it did not"
             : st.sent ? "this one has gone already — pick it to send it again"
             : idx < 0 && steps.length
-              ? (nxt === null ? "every step of this has gone"
+              ? (nxt === null ? (steps.every(x => x.done)
+                                 ? `every step of this is done — bb roadmap done ${r.id} takes it off`
+                                 : "every step of this has gone")
                               : `pick step ${nxt + 1}, the next one in line`)
             : idx < 0 ? "pick this to send"
             : idx === nxt ? "pick this to send"
@@ -7216,7 +7345,11 @@ function stepRow(r, idx, live){
   // In reorder mode the row's three controls are replaced rather than joined:
   // five buttons and a number do not fit a phone, and moving things about is
   // not something anybody does at the same time as sending them.
-  const fixed = idx >= 0 && idx < k;         // a step that has gone does not move
+  // A step that has gone does not move, and by mark rather than by prefix:
+  // a session can finish step three with one and two still to send.
+  const fixed = idx >= 0 && (stepGone(st)
+    || (steps[idx - 1] && stepGone(steps[idx - 1]))
+    || (steps[idx + 1] && stepGone(steps[idx + 1])));
   const moves = `<button class="eye mv" type="button" data-dir="-1"${
       fixed ? " disabled" : ""} aria-label="up"
       title="${fixed ? "a step that has gone stays where it is" : "move it up"}"
@@ -7225,13 +7358,15 @@ function stepRow(r, idx, live){
       aria-label="down"
       title="${fixed ? "a step that has gone stays where it is" : "move it down"}"
       >${DOWN}</button>`;
-  return `<div class="todo${st.sent ? " sent" : ""}${
+  return `<div class="todo${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
        idx >= 0 ? " step" : ""}${r.shelved ? " shelved" : ""}"
        data-id="${r.id}" data-step="${idx}">
     ${todoOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
       title="${esc(why)}" aria-label="send"
       aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}
-    ${idx >= 0 ? `<span class="n">${idx + 1}</span>`
+    ${idx >= 0 ? (st.done
+        ? `<span class="n tick" title="step ${idx + 1} — a session finished this ${stamp(st.done)}">✓</span>`
+        : `<span class="n">${idx + 1}</span>`)
                : r.id < 0
                  ? `<span class="n id new" title="not saved yet — it gets its number when you press Save">new</span>`
                  : `<span class="n id" title="this item is #${r.id} wherever it sits — and what bb roadmap done ${r.id} takes">#${r.id}</span>`}
@@ -8124,6 +8259,7 @@ const ACT = {
   "info-step":   ["detailed", ""],
   sent:          ["sent", ""],
   unsent:        ["put back", ""],
+  "done-step":   ["finished a step", ""],
   shelved:       ["shelved", ""],
   unshelved:     ["off the shelf", ""],
 };
@@ -8609,7 +8745,12 @@ $("todoRevert").onclick = revertNotebook;
     // is a broken link.
     const devTcp = devPorts.filter(p => p.proto === "TCP" && p.published);
     const devUrl = p => `http://${daemonHost()}:${p.published}/`;
-    const devWeb = da.running && devTcp.length === 1 ? devUrl(devTcp[0]) : "";
+    // The route's URL when the instance has one (docs/nodes.md §7) — a
+    // funnel's public address, or lan on the node the instance is on — else
+    // the old guess from the daemon's host.
+    const devWeb = !da.running ? ""
+      : da.route?.url && da.route.ready ? da.route.url
+      : devTcp.length === 1 ? devUrl(devTcp[0]) : "";
     const devAsk = da.running && devTcp.length > 1;
     // The ports and mounts used to be listed here, unfolded, on the reasoning
     // that they are what the instance IS. They are — and this is no longer the
@@ -8699,7 +8840,13 @@ project can have several"
             <span class="top"><span class="pill">${esc(a.kind)}</span>
               <b>${esc(a.name)}</b></span>
             <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}${
-              a.path !== a.name ? ` · ${esc(a.path)}` : ""}</span></span>
+              a.path !== a.name ? ` · ${esc(a.path)}` : ""}</span>${
+            // What built it, when a job did (docs/nodes.md §6): the job,
+            // the node, the snapshot. A file somebody copied in says nothing.
+            a.prov ? `<span class="dim">built by ${esc(a.prov.job)} on ${
+              esc((nodesList || []).find(n => n.id === a.prov.node)?.name || a.prov.node || "?")}${
+              a.prov.source?.digest ? ` from snapshot ${esc(a.prov.source.digest.slice(7, 19))}` : ""}${
+              a.prov.sha256 ? ` · sha256 ${esc(a.prov.sha256.slice(0, 12))}` : ""}</span>` : ""}</span>
           <span class="acts">
             ${a.kind === "apk" ? `<button type="button" data-artinstall="${i}"${
                 inst.running || !dev ? " disabled" : ""} title="${
@@ -10052,8 +10199,11 @@ async function rnSubmit(){
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
   const model = $("rnModel").value, effort = $("rnEffort").value;
-  const dockernode = $("rnDockerNode").value;
-  const nodeChanged = dockernode !== rnPrefWas.dockernode;
+  const node = $("rnNode").value;
+  const build = $("rnBuildCmd").value.trim(),
+        test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
+  const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
+    || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs;
   const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
   const running = liveSessions().has(tmuxName("claude-" + name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
@@ -10085,7 +10235,8 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort,
-                              dockernode,
+                              node, build, test,
+                              outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session —
                               // it is about containers, not the conversation.
                               restart: running && prefChanged})});

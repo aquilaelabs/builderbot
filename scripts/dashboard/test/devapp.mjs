@@ -210,6 +210,30 @@ ok(!r.down && r.up, 'running: Down is live, Up is dead');
 ok(r.rebuild && /the code has moved since/.test(r.text) === false,
    'Rebuild goes back to sleep once the build matches the code');
 
+// ---- the route (phase 8) --------------------------------------------------
+// The instance is up on the sandbox and publishes 7475: its route is lan on
+// that port at the node's address, drawn on the row with the picker beside
+// it. funnel is offered only when the node has tailscale — the sandbox is an
+// ssh node and has none — and public is named as unbuilt.
+{
+  await openManager();
+  await page.waitForFunction(sel => /http:\/\/stub:7475\//.test(
+    document.querySelector(sel + ' .dmroute')?.textContent || ''), DM, { timeout: 20000 });
+  const opts = await page.$$eval(`${DM} [data-route="mode"] option`, os => os.map(o => [o.value, o.disabled]));
+  ok(opts.some(([v, d]) => v === 'lan' && !d) && opts.some(([v, d]) => v === 'funnel' && d)
+     && opts.some(([v, d]) => v === 'public' && d),
+     'the route picker offers lan, greys funnel without tailscale, and names public as unbuilt');
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const rapi = async body => (await fetch(URL.replace(/\/$/, '') + '/api/devapp', { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
+  const pub = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'public' });
+  ok(/not built/.test(pub.error || ''), 'public is refused by name');
+  const fun = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'funnel', port: 7475 });
+  ok(/needs the agent/.test(fun.error || ''), 'funnel on an ssh node says why it cannot');
+  const lan = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'lan', port: 7475 });
+  ok(lan.ok && lan.state.route.mode === 'lan' && lan.state.route.url === 'http://stub:7475/' && lan.state.route.ready,
+     'lan on a published port is a record with the URL that follows from the node');
+}
+
 // A build belongs to the daemon it ran on. Repointing DOCKER_HOST at another
 // VM leaves the image and the containers behind on a machine the dashboard can
 // no longer reach, and the row went on saying "built from

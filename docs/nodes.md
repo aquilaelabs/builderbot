@@ -504,6 +504,32 @@ and `bb sdk`, operator-gated; that has to generalize without forking.
 android tooling selects on `toolchains["android-sdk"]`, not on a label
 somebody remembered to set.
 
+*Where phase 6 landed it:* `workspace.py` on the controller makes the
+dirty-tree snapshot — git's view of the tree (tracked plus untracked, minus
+ignored and minus `.git`), never `dist/`, as one uncompressed tar named by
+its sha256 under `/config/snapshots`, the last five per project kept — and
+serves it to the agent's `source?digest=` verb. A run (`bb run`, `bb build`,
+`bb test`, or the same `run` action on `/api/v1/jobs`) snapshots, then
+queues an exec carrying the digest on the node the project assigns to the
+role in its settings dialog (build, test, ci, emulator — the last two are
+settings for phases 7 and 9). The agent fetches by digest into its cache
+store once, checks it, unpacks it under `<data>/jobs/<id>/workspace`, runs
+there with `BUILDERBOT_WORKSPACE` and a per-project `BUILDERBOT_CACHE`
+under the cache store, uploads what the outputs globs match through the
+`artifact` verb — into the project's `dist/` by basename, with
+`dist/.provenance/<name>.json` beside it (job, node, snapshot digest,
+command, sha256) — and deletes the workspace; a failed job keeps it and
+replaces the previous kept failure of that project. The census reports the
+cache store's size and *Clear cache* on the row is a `cache-clear` job. A
+toolchain install on a node is a `package` job: the agent fetches the
+bundle (bb, its library, the catalog) by digest into the packages store
+and runs `bb sdk install` from it with `SDK_ROOT` at the store, gated on the
+store's headroom when this controller has measured the package before; the
+Tools tab's node picker shows what the node's census says it has. Not
+landed: the node browser is the kept-workspace path in the job's log and
+`bb run`'s last line, not a file view; and an APK has not yet compiled on a
+real node — the mechanism is complete, the proof needs a node with a JDK.
+
 ### Artifacts
 
 The job declares outputs as globs; the agent uploads on success,
@@ -540,6 +566,27 @@ The modes are tiers of the same thing, built in this order:
    **This is the enterprise mode, not an over-engineered homelab mode** — the
    first pass cut it; this pass sequences it last instead. The traffic never
    transits the controller, which is what keeps every mode cheap.
+
+*Where phase 8 landed it:* the route lives on the dev-instance record
+(`route: {mode, port}` in `/config/devapps.json`) and is drawn on the
+manager's row as the URL plus a picker. `lan` is the published port at the
+instance's node's address (`nodes.route_host`: an ssh node's address, an
+agent node's the one it last dialed in from) — what the manager always
+linked, now a record. `funnel` is a `system` job with `apply: funnel` on the
+instance's node: the agent runs `tailscale funnel --bg --https=443
+http://127.0.0.1:<port>`, and the census reports tailscale — installed, the
+MagicDNS name, and which https ports forward where, read from `tailscale
+serve status` so a funnel set by hand reports the same — which is what
+makes the row's `https://<name>/` say *ready* rather than *asked for*. One
+funnel per node on 443; switching the route back to lan turns it off. The
+picker greys funnel on a node without tailscale and names `public` as
+unbuilt rather than hiding it; the Artifacts row's Open uses the route's
+URL when it is ready. No deployment record of its own: an instance up on a
+node with a route IS the deployment, and the compose job is its long-lived
+job. The unhardwiring this phase owes: deploy targets touch no environment
+variable of their own — `DOCKER_HOST` became a node in phase 2 and its
+removal from the five places, with `DOCKER_HOST_PATHS` moving onto the
+node record, is its own roadmap step.
 
 ## 8. Security model
 
@@ -638,6 +685,14 @@ What gets each tier there:
    as "from DOCKER_HOST — this setting is going away" with an adopt button.
 3. Then it leaves the five places (`.env.example`, `docker-compose.yml`,
    `unraid/builderbot.xml`, README reference, `docs/unraid.md`) in one change.
+
+*Where it landed (after phase 9):* both variables are out of the five places
+and out of every doc that named them as settings; `DOCKER_HOST_PATHS` lives on
+the node record (`config.paths`, edited on an ssh node's row, read by
+`devapp.host_map` through the node being addressed); at boot each variable is
+read once more, to seed the record when it has nothing, and the boot log says
+so. `_pairs()` in devapp.py still reads the env when no record carries a
+mapping — the one-release deprecation path — and is the line to delete next.
 
 **Tools → Nodes** is the screen: a row per node with state, capability
 toggles, services, labels, pool, concurrency, last seen — and Enroll, Test,
@@ -790,6 +845,28 @@ the capability rule (§2) applied to the most privileged thing the agent
 does. Legacy `ssh` nodes keep the daemon-label check they have today and do
 not get the configuration plane; absorbing bb-sandbox's menu is the agent's
 job, not ssh's.
+
+*Where phase 5 landed it:* the desired config lives on the node record
+(`config.desired`: mounts, stores, network), validated to its shape when it
+is saved; the agent's census carries the reported half (`mounts` as
+`bb-sandbox list --json` reads them, `stores` with headroom, the address the
+default route leaves by, and `sandbox` — whether bb-sandbox is there, which
+is the stamp). A `system` job with `apply: storage` diffs desired mounts
+against reported and runs `bb-sandbox remove` / `add-nfs` / `add-share` for
+the difference, then moves the stores in node.json and makes them; it ends
+with a hello, so the row shows the applied state at once. `apply: network`
+writes `/etc/netplan/90-builderbot.yaml`, keeps the previous file, runs
+`netplan apply`, and dials the controller from wherever it landed for up to
+three minutes; no answer and the previous file goes back and is applied
+again, and the job reports the revert on reconnect — netplan only, and it
+says so on a node without it. The controller offers system jobs only to an
+online agent node whose census says sandbox, one at a time per node; the
+agent refuses them without bb-sandbox whatever the row says. On the Nodes
+tab the row grows a *storage & network* fold: the editor is a draft that
+survives the heartbeat repaint, Save keeps the record, Apply queues the job
+(asking first when it would unmount something, and always for network), and
+each desired mount says what the node reports for it. bb-sandbox at the
+console is unchanged and remains the fallback.
 
 And the caution that survives from the first pass, now with a sharper edge:
 **the `local` node is not a sandbox.** Jobs placed on it run inside the
@@ -1007,6 +1084,10 @@ package store and caches: they consume the roles this phase makes editable,
 and building them against provision-time-only roles would bake the ssh-to-fix
 workflow in for another year.
 
+*Where phase 5 landed it:* §12's closing paragraph. Agent 3 adds the
+`system` job type and three census fields (`sandbox`, `mounts`, `network`);
+the protocol's verbs are unchanged.
+
 **Phase 6 — workspace, caches, artifacts, and the package store.**
 Dirty-tree snapshots, per-node caches with size/clear, artifact upload +
 provenance chain, the read-only workspace browser. The Tools installer gains
@@ -1014,14 +1095,64 @@ its node picker; toolchain installs become jobs against each node's packages
 store, gated on reported headroom. `package-build` becomes real: an APK
 compiles elsewhere and lands in the Artifacts tab.
 
+*Where phase 6 landed it:* §6's closing paragraph. Agent 4 adds the
+`package` and `cache-clear` job types, workspaces for jobs with a source,
+`used_mb` on the stores and toolchains found in the packages store.
+
 **Phase 7 — services.**
 The Actions runner as a per-node managed service with per-node labels,
 installed/removed from the Nodes screen.
 
+*Where phase 7 landed it:* the fold on a sandbox node's row grows a *CI
+runner* section. Install is a `system` job with `apply: runner`: the agent
+fetches GitHub's latest runner release for the node's architecture into
+`/var/lib/builderbot/runner`, asks the controller for a registration token
+through the new `runner-token` agent verb — minted on request from the
+root-only stash by the same helper the container's runner uses, audited,
+never stored; the PAT stays here — registers as the enrolled account with
+labels `builderbot, self-hosted, linux, <arch>, <node name>` plus any typed,
+and installs and starts it with the runner's own `svc.sh`. Remove
+deregisters with a removal token first. The census reports the service
+(`services.actions-runner`: registered as what, with which labels,
+listening or busy), the node record keeps what was asked for, and `bb
+ci-labels` lists every label the registry knows — this box's and every
+node runner's — with `--write` regenerating `.github/actionlint.yaml` from
+it; `bb lint` notes a declared label no runner carries. **A project's CI
+node setting decides where its jobs land by label**: the workflow's
+`runs-on` names the node, and nothing else can, because GitHub places the
+job, not this controller. Not yet done, by the phase's own rule: the
+controller's runner is retired only after a node runner has taken a real
+job, which is the operator's to see.
+
 **Phase 8 — deploy targets.**
 Modes `lan` and `funnel`; the `route` record shaped for `public`.
 
+*Where phase 8 landed it:* §7's closing paragraph. Agent 6 adds
+`apply: funnel` and tailscale to the census.
+
 **Phase 9 — device hosts.** Required, not optional, since §18.
+
+*Where phase 9 landed it:* `bb emu` goes to the project's node when it has
+one (`BB_EMU_LOCAL=1` keeps a verb on a box that still carries its own
+emulator): the verb is an exec job whose spec carries `bb` argv instead of
+a command, and the agent runs this very `bb` from the bundle in
+`<data>/emu/<project>` with the node's store as its SDK — `sdk_env()`:
+`SDK_ROOT`, `ANDROID_HOME` at the store's `android/`, `JAVA_HOME` at its
+`jdk/`, the tools on `PATH`, AVDs under the data store. Inputs come from the
+project's `dist/` by name through the new `file` agent verb (an APK for
+`bb emu install`); what the verb writes comes back through the outputs
+globs like a build's. Two catalog rows bootstrap a node for Android —
+`jdk` (Temurin 21) and `android-tools` (sdkmanager, linked in as
+`android/cmdline-tools/latest`) — after which `android:emulator` and the
+system images install through them; `bb emu create <api>` makes the AVD.
+New verbs on both sides: `create`, `install`, `shot` (a screenshot into
+`dist/emu/`), `gfx` (gfxinfo framestats into `dist/emu/`). The census
+reports `emulator` among the toolchains. Not proven: an emulator booting on
+a real node — the tests run `bb emu list` from the bundle against an empty
+store; the first `bb emu create` on the VM downloads a system image and is
+worth watching. Interactive network adb was not needed for the verbs that
+exist, and is left unbuilt. Bug #17 (the headless Xorg dying) stays this
+container's until the local emulator goes with phase 10.
 Job-scoped emulation first: instrumented-test jobs that boot an emulator on a
 GPU node for the life of the job and return results as artifacts — no network
 adb involved. The provisioner learns to install the GPU display arrangement

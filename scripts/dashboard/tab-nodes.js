@@ -15,6 +15,12 @@ let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesOpenForm = "";          // "" | "ssh" | "agent": which add form is up
 let nodesMinted = null;          // the last enroll token, shown once, then gone
+// The configuration plane's editor state, per node (docs/nodes.md §12): the
+// fold's open flag and the DRAFT the operator is typing. Kept here and not in
+// the DOM because the tab repaints on every heartbeat — a field that lived
+// only in the row would lose its text every 25 seconds.
+const nodesConf = {};
+let nodesFocus = null;           // {id, key, i}: the field to refocus after a repaint
 
 function openNodesTab(){
   openTab({kind: "nodes", arg: "__nodes", label: "Nodes"});
@@ -72,11 +78,182 @@ function nodeNumbers(n){
   if (!s || !n.live) return "";
   const mem = s.mem_mb ? `${Math.round(s.mem_used_mb / 1024 * 10) / 10}/${
       Math.round(s.mem_mb / 1024)}GB` : "";
+  const gb = mb => mb >= 10240 ? Math.round(mb / 1024) + "GB" : mb + "MB";
   const stores = Object.entries(s.stores || {}).map(([r, free]) => free === null
     ? `${esc(r)} missing`
-    : `${esc(r)} ${free >= 10240 ? Math.round(free / 1024) + "GB" : free + "MB"} free`);
+    : `${esc(r)} ${gb(free)} free${
+        // What the cache store holds, from the census's du: the number the
+        // Clear button beside it is about (docs/nodes.md §6).
+        r === "cache" && typeof n.reported?.stores?.cache?.used_mb === "number"
+          ? `, ${gb(n.reported.stores.cache.used_mb)} used` : ""}`);
   return [`cpu ${s.cpu_pct}%`, mem, s.running ? `${s.running} running` : "",
           ...stores].filter(Boolean).join(" · ");
+}
+
+// The draft for a node: what is on the record, until the operator types.
+function nodeDraft(n){
+  const c = nodesConf[n.id] || (nodesConf[n.id] = {open: false, dirty: false, draft: null});
+  if (!c.draft){
+    const d = n.config?.desired || {};
+    c.draft = {
+      mounts: (d.mounts || []).map(m => ({...m})),
+      stores: {...(d.stores || {})},
+      network: {mode: "dhcp", address: "", gateway: "", dns: [], interface: "", ...(d.network || {})},
+    };
+  }
+  return c;
+}
+
+// What the row says beside a desired mount, from the agent's census: the
+// reported half of desired-vs-reported, in words rather than a grey nothing.
+function mountState(m, reported){
+  const r = (reported || []).find(x => x.path === m.path);
+  if (!r) return ["not applied yet", "warn"];
+  const diff = r.source !== m.source || !!r.ro !== !!m.ro;
+  if (!r.mounted) return [`not mounted${r.source ? ` — fstab has ${r.source}` : ""}`, "bad"];
+  const from = r.real && r.real !== r.source ? `mounted from ${r.real} (fstab says ${r.source})`
+                                             : `mounted${r.ro ? ", read-only" : ""}`;
+  return [diff ? `${from} — applying will change it` : from, diff ? "warn" : ""];
+}
+
+// The Actions runner on this node (phase 7): what the census says is
+// there, and the labels an install would register with — the node's own
+// name among them, which is the label a workflow's runs-on uses to land
+// here. Install and Remove are system jobs like the rest of the fold.
+function nodeRunnerSection(n, c){
+  const rep = n.reported?.services?.["actions-runner"] || {};
+  const want = n.services?.["actions-runner"] || {};
+  const d = c.draft;
+  if (d.runner === undefined) d.runner = {labels: (want.labels || []).filter(x =>
+      !["builderbot", "self-hosted", "linux", "x64", "arm64", n.name].includes(x)).join(", "),
+    url: want.url || ""};
+  const state = rep.installed
+    ? `registered as ${rep.name || "?"}${rep.url ? " with " + rep.url : ""} — ${
+        rep.busy ? "running a job" : rep.active ? "listening" : "installed, not listening"}${
+        rep.labels?.length ? " · labels " + rep.labels.join(", ") : ""}`
+    : want.want ? "install asked for; the node has not reported it yet" : "no runner on this node";
+  const busy = n.applying;
+  return `
+      <div class="ndsec">CI runner — GitHub's Actions runner as a service here; its labels decide which workflows land</div>
+      <div class="ndrunner">
+        <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
+          placeholder="${esc(want.url || "https://github.com/your-org — the org or repo it registers with")}" aria-label="GitHub URL">
+        <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
+          placeholder="extra labels, comma-separated — builderbot, self-hosted, linux, the arch and ${esc(n.name)} are always on" aria-label="labels">
+      </div>
+      <div class="sub ndrunstate${rep.installed && !rep.active ? " warn" : ""}">${esc(state)}</div>
+      <div class="acts">
+        <span class="sp"></span>
+        <button type="button" data-nrunner="install" ${busy ? "disabled" : ""}
+          title="download GitHub's runner onto the node, register it with a one-hour token the controller mints, and run it as a service">${
+          rep.installed ? "Reinstall runner" : "Install runner"}</button>
+        ${rep.installed || want.want ? `<button type="button" class="rm" data-nrunner="remove" ${busy ? "disabled" : ""}
+          title="deregister it from GitHub and take the service off the node">Remove runner</button>` : ""}
+      </div>`;
+}
+
+// An ssh node's path mapping (docs/nodes.md §11): what this container's
+// paths are called on that machine, because its daemon resolves a compose
+// file's bind sources over there. Was DOCKER_HOST_PATHS; the record owns it
+// now, and the env var only seeds it once.
+function nodePathsLine(n){
+  const paths = n.config?.paths || {};
+  const text = Object.entries(paths).map(([k, v]) => `${k}:${v}`).join(", ");
+  const c = nodeDraft(n);
+  // The draft follows the record when the record moves (a save, another
+  // browser); it keeps the operator's typing otherwise.
+  if (c.draft.pathsText === undefined || c.draft.pathsFrom !== text){
+    c.draft.pathsText = text; c.draft.pathsFrom = text;
+  }
+  return `
+    <div class="sub ndpaths">
+      <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
+        placeholder="path mapping: /workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
+        aria-label="path mapping" title="what this container's paths are called on the node — its daemon resolves bind mounts over there">
+      <button type="button" data-nd="paths" title="save the mapping onto the node's record">Save paths</button>
+    </div>`;
+}
+
+function nodeConfFold(n){
+  const c = nodeDraft(n);
+  const d = c.draft;
+  const rep = n.reported || {};
+  const busy = n.applying;
+  const mounts = d.mounts.map((m, i) => {
+    const [st, cls] = mountState(m, rep.mounts);
+    return `
+    <div class="ndmount" data-i="${i}">
+      <select data-k="type" aria-label="type">
+        <option value="nfs" ${m.type !== "virtiofs" ? "selected" : ""}>nfs</option>
+        <option value="virtiofs" ${m.type === "virtiofs" ? "selected" : ""}>virtiofs</option>
+      </select>
+      <input data-k="source" value="${esc(m.source || "")}" spellcheck="false" autocomplete="off"
+        placeholder="${m.type === "virtiofs" ? "share tag" : "nas:/mnt/user/appdata"}" aria-label="source">
+      <input data-k="path" value="${esc(m.path || "")}" spellcheck="false" autocomplete="off"
+        placeholder="/mnt/appdata" aria-label="mountpoint">
+      <label class="ndcap"><input type="checkbox" data-k="ro" ${m.ro ? "checked" : ""}> read-only</label>
+      <button type="button" class="eye" data-mrm title="take this mount out">×</button>
+      <div class="sub ndmstate ${cls}">${esc(st)}</div>
+    </div>`;
+  }).join("");
+  const stores = ["data", "packages", "cache"].map(role => {
+    const r = rep.stores?.[role];
+    const now = r ? (r.free_mb === null ? `${r.path} — missing` : `${r.path}, ${
+      r.free_mb >= 10240 ? Math.round(r.free_mb / 1024) + "GB" : r.free_mb + "MB"} free`) : "";
+    return `
+    <div class="ndstore">
+      <label>${esc(role)}</label>
+      <input data-k="store:${esc(role)}" value="${esc(d.stores[role] || "")}" spellcheck="false"
+        autocomplete="off" placeholder="${esc(r?.path || "/var/lib/builderbot/" + role)}">
+      <div class="sub">${now ? "now " + esc(now) : "not reported"}</div>
+    </div>`;
+  }).join("");
+  const net = rep.network || {};
+  const now = net.addresses?.length
+    ? `now ${net.addresses.join(", ")} on ${net.interface || "?"}${net.gateway ? " via " + net.gateway : ""}${
+        net.dns?.length ? " · dns " + net.dns.join(", ") : ""}` : "address not reported";
+  const isStatic = d.network.mode === "static";
+  const status = busy
+    ? `applying ${esc(busy.what)}${busy.what === "network" ? " — waiting for it to dial back in" : "…"}`
+    : c.dirty ? "unsaved — Save keeps it on the record; Apply makes the node match"
+    : n.config?.desired ? "saved; Apply makes the node match it" : "nothing configured yet";
+  return `
+  <details class="ndconf" ${c.open ? "open" : ""}>
+    <summary>storage &amp; network</summary>
+    <div class="ndconfbody">
+      <div class="ndsec">Mounts — what this node mounts at boot, applied through bb-sandbox on it</div>
+      ${mounts}
+      <button type="button" data-madd>+ mount</button>
+      <div class="ndsec">Stores — where the agent keeps job data, toolchains and build caches</div>
+      ${stores}
+      <div class="ndsec">Network — applied with a three-minute dial-back, or reverted</div>
+      <div class="ndnet">
+        <select data-k="net:mode" aria-label="mode">
+          <option value="dhcp" ${isStatic ? "" : "selected"}>dhcp</option>
+          <option value="static" ${isStatic ? "selected" : ""}>static</option>
+        </select>
+        <input data-k="net:address" value="${esc(d.network.address || "")}" ${isStatic ? "" : "disabled"}
+          spellcheck="false" autocomplete="off" placeholder="10.0.0.12/24" aria-label="address">
+        <input data-k="net:gateway" value="${esc(d.network.gateway || "")}" ${isStatic ? "" : "disabled"}
+          spellcheck="false" autocomplete="off" placeholder="gateway 10.0.0.1" aria-label="gateway">
+        <input data-k="net:dns" value="${esc((d.network.dns || []).join(", "))}" ${isStatic ? "" : "disabled"}
+          spellcheck="false" autocomplete="off" placeholder="dns 10.0.0.1, 1.1.1.1" aria-label="dns">
+        <input data-k="net:interface" value="${esc(d.network.interface || "")}" spellcheck="false"
+          autocomplete="off" placeholder="${esc(net.interface || "interface (default route's)")}" aria-label="interface">
+      </div>
+      <div class="sub">${esc(now)}</div>
+      ${nodeRunnerSection(n, c)}
+      <div class="acts ndconfacts">
+        <span class="sub ndconfstate${busy ? " note" : ""}">${status}</span>
+        <span class="sp"></span>
+        <button type="button" data-nsave ${c.dirty ? "" : "disabled"}>Save</button>
+        <button type="button" data-napply="storage" ${busy || c.dirty || !n.config?.desired ? "disabled" : ""}
+          title="mounts and stores: a system job on the node, through bb-sandbox">Apply storage</button>
+        <button type="button" data-napply="network" ${busy || c.dirty || !n.config?.desired ? "disabled" : ""}
+          title="re-address the node; it must dial back in within three minutes or it reverts">Apply network</button>
+      </div>
+    </div>
+  </details>`;
 }
 
 function renderNodesInto(i){
@@ -126,6 +303,8 @@ function renderNodesInto(i){
         <div class="sub ndcaps">${caps}</div>
         ${labels ? `<div class="sub">${labels}</div>` : ""}
         <div class="sub ndtest" hidden></div>
+        ${n.kind === "agent" && n.reported?.sandbox && n.state !== "pending" ? nodeConfFold(n) : ""}
+        ${n.kind === "ssh" && n.state !== "retired" ? nodePathsLine(n) : ""}
       </div>
       <span class="acts">
         ${n.kind === "local" || n.state === "pending" ? "" : `<button type="button" data-nd="test"
@@ -137,6 +316,9 @@ function renderNodesInto(i){
             ? "take new work again"
             : "finish what is running, accept nothing new — what makes a node safe to reboot"}">${
           n.state === "draining" ? "Undrain" : "Drain"}</button>`}
+        ${n.kind === "agent" && n.state !== "pending" && !n.agent?.revoked
+          ? `<button type="button" data-nd="cache-clear"
+          title="drop this node's build caches — every project's. A cold cache costs the next build time, never correctness">Clear cache</button>` : ""}
         ${n.kind === "agent" && n.state !== "pending" && !n.agent?.revoked
           ? `<button type="button" class="rm" data-nd="revoke"
           title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}
@@ -240,6 +422,16 @@ function wireNodesTab(root){
           && !confirm("Revoke this node's credential? It will stop being able "
                       + "to dial in, and the only way back is enrolling it "
                       + "again with a new token.")) return;
+      if (b.dataset.nd === "cache-clear"
+          && !confirm("Clear this node's build caches? Every project's Gradle, "
+                      + "npm and snapshot cache there goes; the next build of "
+                      + "each re-downloads what it needs.")) return;
+      if (b.dataset.nd === "paths"){
+        const inp = row.querySelector('[data-k="paths"]');
+        await nodeAct({action: "paths", id, paths: inp ? inp.value : ""});
+        const c = nodesConf[id]; if (c && c.draft) c.draft.pathsText = undefined;
+        return;
+      }
       if (b.dataset.nd === "test"){
         const out = row.querySelector(".ndtest");
         out.hidden = false;
@@ -262,5 +454,128 @@ function wireNodesTab(root){
         .filter(x => x.checked).map(x => x.dataset.cap);
       nodeAct({action: "update", id, fields: {capabilities: caps}});
     });
+    wireNodeConf(row, id);
+    const pi = row.querySelector('.ndpaths [data-k="paths"]');
+    if (pi){
+      pi.onfocus = () => { nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
+      pi.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.pathsText = pi.value;
+                           nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
+    }
+  });
+  // The field that had the caret before this repaint gets it back — the
+  // tab redraws on every heartbeat, and a form that drops the caret every
+  // 25 seconds is not a form anybody can type into.
+  if (nodesFocus && nodesFocus.id){
+    const f = nodesFocus;
+    const el = root.querySelector(`.ndrow[data-node="${CSS.escape(f.id)}"] ${
+      f.i === undefined ? "" : `.ndmount[data-i="${f.i}"] `}[data-k="${CSS.escape(f.key)}"]`);
+    if (el && document.activeElement !== el){
+      el.focus();
+      if (el.setSelectionRange && typeof f.pos === "number")
+        try{ el.setSelectionRange(f.pos, f.pos); }catch(e){ /* a select has no caret */ }
+    }
+  }
+}
+
+function wireNodeConf(row, id){
+  const fold = row.querySelector(".ndconf");
+  if (!fold) return;
+  const c = nodesConf[id];
+  fold.querySelector("summary").onclick = (e) => {
+    e.preventDefault();
+    c.open = !c.open;
+    fold.open = c.open;
+  };
+  const touch = () => { c.dirty = true; };
+  const remember = (el) => {
+    const m = el.closest(".ndmount");
+    nodesFocus = {id, key: el.dataset.k, i: m ? Number(m.dataset.i) : undefined,
+                  pos: el.selectionStart ?? undefined};
+  };
+  fold.querySelectorAll("[data-k]").forEach(el => {
+    el.onfocus = () => remember(el);
+    // Forgotten only when the operator left the field, not when a repaint
+    // took the field away from under the caret: the browser fires blur for
+    // both, and the second is the case this memory exists for.
+    el.onblur = () => setTimeout(() => {
+      if (el.isConnected && nodesFocus && nodesFocus.id === id && nodesFocus.key === el.dataset.k)
+        nodesFocus = null;
+    }, 0);
+    const on = () => {
+      remember(el);
+      const k = el.dataset.k;
+      const m = el.closest(".ndmount");
+      const d = c.draft;
+      if (m){
+        const mt = d.mounts[Number(m.dataset.i)];
+        if (!mt) return;
+        if (k === "ro") mt.ro = el.checked;
+        else mt[k] = el.value;
+      } else if (k.startsWith("store:")){
+        d.stores[k.slice(6)] = el.value;
+      } else if (k.startsWith("net:")){
+        const f = k.slice(4);
+        d.network[f] = f === "dns" ? el.value.split(",").map(x => x.trim()).filter(Boolean) : el.value;
+      } else if (k.startsWith("runner:")){
+        // The runner's fields are sent with Install, not with Save: they
+        // are not part of the storage-and-network record.
+        d.runner[k.slice(7)] = el.value;
+        return;
+      }
+      touch();
+      // Only the two that change what else is enabled repaint now; a
+      // keystroke in a path field does not need the whole tab redrawn.
+      if (k === "net:mode" || k === "type"){ nodesRev++; drawPanes(); }
+      else {
+        const b = fold.querySelector("[data-nsave]");
+        if (b) b.disabled = false;
+        fold.querySelectorAll("[data-napply]").forEach(x => { x.disabled = true; });
+        const st = fold.querySelector(".ndconfstate");
+        if (st) st.textContent = "unsaved — Save keeps it on the record; Apply makes the node match";
+      }
+    };
+    el.oninput = on;
+    el.onchange = on;
+  });
+  const add = fold.querySelector("[data-madd]");
+  if (add) add.onclick = () => {
+    c.draft.mounts.push({type: "nfs", source: "", path: "", ro: false});
+    touch(); nodesFocus = {id, key: "source", i: c.draft.mounts.length - 1};
+    nodesRev++; drawPanes();
+  };
+  fold.querySelectorAll("[data-mrm]").forEach(b => b.onclick = () => {
+    const i = Number(b.closest(".ndmount").dataset.i);
+    c.draft.mounts.splice(i, 1);
+    touch(); nodesFocus = null; nodesRev++; drawPanes();
+  });
+  fold.querySelectorAll("[data-nrunner]").forEach(b => b.onclick = async () => {
+    const n = nodesList.find(x => x.id === id);
+    const want = b.dataset.nrunner === "install";
+    if (!want && !confirm(`Remove the runner from ${n?.name || "this node"}?\n\nIt is deregistered `
+        + `from GitHub first; workflows that target its label will wait for a runner.`)) return;
+    const labels = (c.draft.runner?.labels || "").split(",").map(x => x.trim()).filter(Boolean);
+    await nodeAct({action: "runner", id, want, labels, url: c.draft.runner?.url || ""});
+  });
+  const save = fold.querySelector("[data-nsave]");
+  if (save) save.onclick = async () => {
+    const r = await nodeAct({action: "config", id, config: c.draft});
+    if (!r.error){ c.dirty = false; c.draft = null; nodesRev++; drawPanes(); }
+  };
+  fold.querySelectorAll("[data-napply]").forEach(b => b.onclick = async () => {
+    const what = b.dataset.napply;
+    const n = nodesList.find(x => x.id === id);
+    const desired = n?.config?.desired || {};
+    if (what === "network" && !confirm(
+        `Apply the network change to ${n?.name || "this node"}?\n\nThe node re-addresses `
+        + `itself and must dial back in within three minutes, or it puts the old `
+        + `config back on its own. ${desired.network?.mode === "static"
+            ? `Static ${desired.network.address}` : "DHCP"}.`)) return;
+    if (what === "storage"){
+      const gone = (n?.reported?.mounts || []).filter(m => !(desired.mounts || []).some(x => x.path === m.path));
+      if (gone.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis unmounts `
+          + `${gone.map(m => m.path).join(", ")} and takes ${gone.length === 1 ? "it" : "them"} `
+          + `out of fstab. Directories and data stay.`)) return;
+    }
+    await nodeAct({action: "apply", id, what});
   });
 }

@@ -212,8 +212,8 @@ docker exec -it BuilderBot bb doctor
 Every `bb doctor` line should be `[ok]` or an expected `[skip]`. It verifies:
 Claude on PATH, connectivity to Anthropic/GitHub, git identity, **runner
 credential mode** (shielded vs in-environment), **SSH auth against GitHub**
-(agent key vs file key), the **Docker daemon** behind `DOCKER_HOST` — which of
-the three arrangements is in effect and whether it actually answers — and —
+(agent key vs file key), the **Docker daemon** on the sandbox node — whether
+it actually answers, and says it is a sandbox — and —
 when a GPU is passed through — whether its **graphics stack** is usable or
 only CUDA is.
 
@@ -308,8 +308,6 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
-| `DOCKER_HOST` | *(empty)* | The [sandbox VM](docs/sandbox-vm.md) the Docker manager and the dev-instance controls build and run on. Just the address — `10.0.0.9` — with `ssh://` and the `bb` account that `vm/provision.sh` makes filled in at startup, so every process in the container sees a valid one; write `ssh://someone@host` out in full if the account differs. Empty turns the feature off, and so does anything that is not a sandbox VM: every control greys out wearing the reason |
-| `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation — which is what the Unraid template ships, and is flagged on the row if the daemon turns out to be this box's own. With the dev-data share mounted here, empty leaves `BB_DEV_DATA` unset so a compose that wants it fails loudly; with a sandbox daemon that share is the sandbox's alone and needs no pair |
 | `BB_LOG_KEEP` | `60` | A ceiling on kept generations, not the retention policy — how long logs are kept is a number of days, set in the dashboard's settings menu. This exists so a crash loop cannot fill the directory |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
@@ -388,6 +386,20 @@ bb nodes           the node registry, read-only in a terminal — the Nodes
                    tab is where it is edited; `local` is this container
 bb jobs [-n N]     the recent jobs: state, node, what ran, how it ended —
                    read-only; the Jobs tab is where one is stopped
+bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
+                   stream the log back; `--out GLOB` brings what matches into
+                   dist/ with its provenance; `--node` names another node
+bb build           the project's build command on its node, with the outputs
+                   it lists — all set in the project's settings dialog
+bb test            the same for its test command
+bb emu create API  build the AVD for an API level, installing its image if missing
+bb emu install APK install an APK on the running emulator
+bb emu shot [FILE] screenshot the emulator into dist/emu/
+bb emu gfx PKG     a package's per-frame timings (gfxinfo framestats) into
+                   dist/emu/ — and every emu verb runs on the project's node
+                   when it has one, its output coming back into dist/
+bb ci-labels       the runner labels the registry knows — this box's and every
+                   node runner's; `--write` regenerates .github/actionlint.yaml
 bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
@@ -397,7 +409,7 @@ bb roadmap show N     one item in full: its details, its steps and theirs
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` not
 bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
 bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
-bb roadmap edit N "..."               reword one; `step add|edit|rm` for one step
+bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for one step
 bb roadmap info N [M] "..."           attach the technical details to one, or step M
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
@@ -1178,16 +1190,14 @@ manager…**, which names a container and takes you there; every container of a
 project is built from that project's codebase, and rebuilding takes whatever
 that codebase says at the time.
 
-**Both settings can be filled in, and precedence decides which is live.** The
-socket mount and `DOCKER_HOST` are two settings on two screens and neither can
-grey the other out, so the rule is stated rather than enforced: an address in
-`DOCKER_HOST` always wins, `auto` prefers a proxy it can find and falls back to
-a mounted socket, and with neither the feature is off. The manager tab says
-which one it is — *"on a sandbox VM at ssh://…"* — and adds *"the mounted
-socket is unused"* when an address has shadowed one, because a socket left
-mounted while you try a VM is a reasonable thing to be in the middle of and
-being told beats wondering. `bb doctor` prints the same line from the same
-function, so the two cannot disagree about which daemon is live.
+**The daemon is a node.** The sandbox VM is added on the Nodes tab — its
+address, with `ssh://` and the `bb` account filled in — and what this
+container's paths are called over there is set on the node's row, because
+the daemon resolves a compose file's bind sources on its own filesystem. The
+manager tab says which node it is on — *"on a sandbox VM at ssh://…"* — and
+`bb doctor` prints the same line from the same function, so the two cannot
+disagree about which daemon is live. (`DOCKER_HOST` and `DOCKER_HOST_PATHS`
+from earlier releases seed that record once and are otherwise ignored.)
 
 **A daemon has to say it is the sandbox before anything is driven on it.**
 `vm/provision.sh` writes a `builderbot.sandbox` label into the VM's
@@ -1210,7 +1220,7 @@ instances stay, since their compose file and env are this side's.
 **With no daemon reachable, the controls that would drive one are disabled**,
 each carrying the reason as its tooltip, and the manager tab says the same
 thing in words at the top — a tooltip is not reachable on a phone, and *"why is
-everything greyed out"* should be answered by looking. That is `DOCKER_HOST`
+everything greyed out"* should be answered by looking. That is the node
 unset, or a sandbox VM this container
 cannot reach; `available()` in `devapp.py` already distinguishes them, and the
 answer rides the status poll memoised, because asking it properly is a
@@ -1253,8 +1263,11 @@ and census, with **Test** (probe its daemon now, sandbox stamp included),
 **Drain** (finish what is running, accept nothing new — what makes a node
 safe to reboot) and **Remove** (retire: off every list, row kept as history —
 an id is never reused). **Add node** takes a bare address and fills in
-`ssh://` and the `bb` account, exactly as `DOCKER_HOST` did; the machine
-should be one `vm/provision.sh` set up, and Test says so if it is not. The
+`ssh://` and the `bb` account; the machine should be one `vm/provision.sh`
+set up, and Test says so if it is not. An ssh node's row carries its **path
+mapping** — what this container's paths are called on that machine, since
+its daemon resolves bind mounts over there — which is where the old
+`DOCKER_HOST_PATHS` setting lives now. The
 local node refuses `docker-host` on purpose — it is not a sandbox. Every
 change writes an audit row.
 
@@ -1282,6 +1295,56 @@ node** (exit 77), whatever the row says. Over plain http the node token
 travels in the clear, as the dashboard's own credential does; enrollment says
 so, and with TLS in front of the dashboard the agent pins the certificate on
 first use and refuses a different one after.
+
+**Storage & network, from the row.** A node that enrolled as a sandbox (it
+carries `bb-sandbox`) folds open an editor for what it should mount (NFS or
+virtiofs, read-only or not), where the agent keeps its data, packages and
+cache stores, and how it is addressed (DHCP, or a static address with gateway
+and resolvers). **Save** keeps that on the node's record; **Apply storage**
+and **Apply network** each queue a `system` job the agent runs as root
+through the same `bb-sandbox` verbs the console uses, so the two can never
+disagree about what the machine is configured to be. Every desired mount says
+what the node reports for it — mounted, not mounted, not applied yet, or
+mounted from somewhere else. A network change is the one that can cut the
+cord it arrives on, so it is applied with a three-minute dial-back: the node
+re-addresses itself and must reach the controller from the new address, or it
+puts the previous config back on its own and says so when it reconnects.
+Network changes need netplan on the node, and the job says so where there is
+none. Nothing here is offered to an ssh node or to local.
+
+**Building there.** A project names its node in its settings dialog — one
+node for everything it does off this box: containers, builds, tests, CI and
+emulation — and gives its build and test commands and the output globs. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
+tree here, dirty edits included, run on that node in a workspace of the job's
+own, and stream the log back; what the outputs match comes back into `dist/`
+by name with a provenance record beside it, which the Artifacts tab shows on
+the row (which job, which node, which snapshot). A failed build keeps its
+workspace on the node for a look, and says where. The census reports each
+node's cache size beside **Clear cache**, and the Tools tab gains a node
+picker: installing a toolchain there is a job that carries `bb` and the
+catalog to the node's own packages store.
+
+**A CI runner per node.** The same fold installs GitHub's Actions runner
+on the node as a service: it registers with the org or repo URL from the
+controller's environment (or one typed there), a token the controller mints
+for the hour, and labels `builderbot, self-hosted, linux, <arch>, <node
+name>` plus any extra — so a workflow's `runs-on` names the node it should
+land on. The row says whether the runner is listening or busy; Remove
+deregisters it first. `bb ci-labels` lists every label the registry knows
+and `--write` regenerates `.github/actionlint.yaml` from them, so the lint
+checks `runs-on` against runners that exist. The container's own runner
+stays until a node runner has taken a real job.
+
+**How an instance is reached.** Each running instance on the Docker manager
+carries its route: the URL, and a picker for the mode. **lan** is the
+published port at the node's own address, what the manager always linked.
+**funnel** is Tailscale Funnel on the node — a public https URL at the node's
+MagicDNS name with no DNS, certificate or firewall change — applied by the
+agent, so it is offered only on an agent node that has tailscale logged in;
+the row says *asked for* until the node reports the funnel is up, and
+switching back to lan closes it. **public**, a reverse proxy with a wildcard
+record, is named in the picker as not built so the third mode is visible for
+what it is (docs/nodes.md §7).
 
 ### The Jobs tab
 
@@ -1348,7 +1411,7 @@ keeps its env file and its data directory, so sending it again under the same
 name finds them — and the project's Artifacts tab is untouched either way,
 which is where it comes back from.
 
-The same tab lists every container on whichever daemon `DOCKER_HOST` names — not only the ones this
+The same tab lists every container on the picked node's daemon — not only the ones this
 dashboard started. A port taken by something else is exactly what you open a
 list like this to find out about, so the others are shown and marked *not ours*
 rather than hidden. It is a read: `docker ps` is one of two verbs the dev
@@ -1588,7 +1651,7 @@ marker and never needed one: a shell is safe to recreate in the same
 directory, which is why it survives a restart and a conversation does not.
 
 **A session can correct a plan, not just follow it** — `bb roadmap edit N`,
-`bb roadmap step add|edit|rm|mv`, `bb roadmap mv N up|down` — which matters when the design moves under a plan
+`bb roadmap step add|edit|rm|mv|done`, `bb roadmap mv N up|down` — which matters when the design moves under a plan
 written a week ago. Every one of those lands in the history under `claude`,
 so nothing gets quietly rewritten.
 
@@ -1635,6 +1698,15 @@ A sent step is **struck through in place** — not removed, not reordered. Sent
 is not done: a step can be handed over and quietly not carried out, and the
 struck line is how you notice. It stays sendable, so "that did not take, do it
 again" is one tap on the same arrow.
+
+**Done is the session's mark, and it is a different one.** A session that
+finishes a step says so with `bb roadmap step done N M` — the step it was
+sent, or one it was told to go ahead with in chat, which used to have no mark
+at all. The line is struck the same way but wears a tick instead of its
+number, the frontier moves past it, and the log says a session finished it
+and when. Only a session sets it, as with ticking off an item. Sending a done
+step again is the override: the mark comes off, and the log shows the send
+after the finish.
 
 **The order that is protected is the order things are sent in**, and nothing
 else. Only the frontier step of a group arms, and the group's own arrow stands
@@ -1838,7 +1910,7 @@ warnings keep is the set that is invisible otherwise: `privileged`, added
 capabilities, host devices, and the host's process or network namespace —
 the flags that make a container more than a container. It appears when the project
 carries a compose file
-and `DOCKER_HOST` points at the [sandbox VM](docs/sandbox-vm.md) — a machine
+and the project's node is the [sandbox VM](docs/sandbox-vm.md) — a machine
 whose only job is running Docker, which is what keeps all of this away from
 the server's real containers: the project's compose app, built over there and
 controlled in the file rows' own language. **Up** and **Down** are compose
@@ -1869,7 +1941,7 @@ about a remote daemon easy to forget and impossible to see: a bind mount's
 over there — and docker answers a missing bind source by creating an empty
 directory and mounting that, so on Unraid, whose root filesystem is RAM, the
 result is an app that starts with no data and loses it again at reboot. It
-reads as a bug in the app. `DOCKER_HOST_PATHS` states the mapping once — the
+reads as a bug in the app. The node's path mapping states it once — the
 same one you made when you mounted the volumes — and BuilderBot both hands
 over host paths (that is what `BB_DEV_DATA` now carries) and names any of a
 compose file's *own* paths the host will not find, on the row, before you

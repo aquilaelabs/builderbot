@@ -31,7 +31,9 @@ import time
 # Beside this file. Imported up here rather than with the modules below,
 # because write_json is defined from it before any of those load.
 import statefile
+import shutil
 import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -1617,6 +1619,43 @@ def _pidfile_alive(p):
     return True
 
 
+def github_url():
+    """The org or repo this box's runner registers with: the environment,
+    or the local runner's own registration when the URL lives only in the
+    root-only stash. Empty when neither knows."""
+    u = os.environ.get("GITHUB_URL", "")
+    if u:
+        return u
+    cfg = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner")) / ".runner"
+    try:
+        return str(json.loads(cfg.read_text()).get("gitHubUrl") or "")
+    except (OSError, ValueError):
+        return ""
+
+
+def mint_runner_token(kind):
+    """A runner token for a node, the way runner.sh gets its own: the
+    root-only helper via its one sudo rule, or a session-visible PAT."""
+    r = run(["sudo", "-n", "/opt/builderbot/scripts/mint-runner-token", kind], timeout=60)
+    if r["code"] == 0 and r["out"].strip():
+        return {"token": r["out"].strip().splitlines()[-1]}
+    pat, url = os.environ.get("GITHUB_PAT", ""), github_url()
+    if pat and url:
+        path = url.split("://", 1)[-1].split("/", 1)[-1].strip("/")
+        scope = f"/repos/{path}" if "/" in path else f"/orgs/{path}"
+        req = urllib.request.Request(
+            f"https://api.github.com{scope}/actions/runners/{kind}-token",
+            method="POST", headers={"Authorization": "Bearer " + pat,
+                                    "Accept": "application/vnd.github+json"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return {"token": json.load(resp).get("token", "")}
+        except (OSError, ValueError) as e:
+            return {"error": f"GitHub refused: {e}"}
+    return {"error": "no runner credential here — GITHUB_PAT is not stashed on the controller"
+                     + (f" ({r['out'].strip()[:120]})" if r["out"].strip() else "")}
+
+
 def runner():
     d = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner"))
     info = {"registered": False, "running": False, "listening": False,
@@ -1847,8 +1886,18 @@ phone.configure(write_json=write_json, state=STATE, workspace=WORKSPACE)
 # view. The convention is the module's docstring; the scratch dir is where an
 # .xpi is unpacked for web-ext, never dist/ itself.
 import artifacts                                                 # noqa: E402
+import workspace                                                 # noqa: E402
 
 artifacts.configure(workspace=WORKSPACE, scratch=STATE / "artifacts-tmp")
+workspace.configure(workspace=WORKSPACE, state=STATE)
+
+
+def artifacts_of(name):
+    """dist/ as the tab lists it, each file carrying what built it when a
+    job did (docs/nodes.md §6): the chain lives beside the file, and the
+    listing is where somebody asks."""
+    return [a | {"prov": workspace.provenance(name, a["path"])}
+            for a in artifacts.listing(name)]
 
 # ---- the memory book -------------------------------------------------------
 # What Claude remembers about each project, read and edited from the projects
@@ -1914,12 +1963,15 @@ import jobs                                                      # noqa: E402
 
 if not NODES_OK:
     jobs.configure(nodes_module=nodes)
+    packages.nodes = nodes
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir,
                  node_for=nodes.node_for if not NODES_OK else None,
                  node_addr=nodes.ssh_addr_of if not NODES_OK else None,
                  queue=nodes if not NODES_OK else None,
-                 runner=jobs if not NODES_OK else None)
+                 runner=jobs if not NODES_OK else None,
+                 project_node=lambda p: prefs.get(p)["node"],
+                 node_paths=nodes.node_paths if not NODES_OK else None)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
@@ -2685,7 +2737,7 @@ class Handler(BaseHTTPRequestHandler):
             # `devapp` is the main instance, which is what the row shows;
             # `devapps` is every instance, which the manager reads. Both, so
             # the row keeps working while the manager grows around it.
-            return self._json({"artifacts": artifacts.listing(name),
+            return self._json({"artifacts": artifacts_of(name),
                                "devapp": devapp.state(name),
                                "devapps": devapp.states(name)}
                               | phone.summary())
@@ -2738,6 +2790,13 @@ class Handler(BaseHTTPRequestHandler):
             # for a card nobody has open is a poor trade. The card asks.
             return self._json(self._phone_payload())
         if self.path.startswith("/api/packages"):
+            # ?node= asks about another node's packages store: what its
+            # census says it has, and the package job in flight there. The
+            # catalog is the same; the state is the node's (docs/nodes.md §6).
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            nid = q.get("node", [""])[0]
+            if nid and nid != "local" and not NODES_OK:
+                return self._json(packages.payload_for_node(nid))
             return self._json(packages.payload())
         if self.path.startswith("/api/v1/nodes"):
             # The versioned surface starts here (docs/nodes.md §3): new
@@ -2924,7 +2983,9 @@ class Handler(BaseHTTPRequestHandler):
             name = req.get("project", "")
             r = prefs.set_prefs(name, model=req.get("model"),
                                 effort=req.get("effort"),
-                                dockernode=req.get("dockernode"))
+                                node=req.get("node") if "node" in req else req.get("dockernode"),
+                                build=req.get("build"),
+                                test=req.get("test"), outputs=req.get("outputs"))
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
             # change alone, because the same write happens when nothing is
@@ -2982,6 +3043,37 @@ class Handler(BaseHTTPRequestHandler):
                                   field(req, "user") or "bb")
         elif act == "revoke":
             r = nodes.node_revoke("operator", nid)
+        elif act == "config":
+            # The configuration plane (docs/nodes.md §12): what the operator
+            # wants the node to mount and be addressed as. Stored here,
+            # applied by the next action as a system job the agent runs.
+            r = nodes.node_config_set("operator", nid, req.get("config"))
+        elif act == "apply":
+            r = nodes.node_apply("operator", nid, field(req, "what"))
+        elif act == "runner":
+            # The Actions runner on a node (phase 7): a system job, with
+            # the URL from the controller's environment unless one is typed.
+            r = nodes.node_runner("operator", nid, bool(req.get("want", True)),
+                                  req.get("labels"),
+                                  field(req, "url") or github_url())
+        elif act == "paths":
+            # What this container's paths are called on the node's machine
+            # (docs/nodes.md §11): the mapping that was DOCKER_HOST_PATHS.
+            r = nodes.node_paths_set("operator", nid, field(req, "paths"))
+        elif act == "funnel":
+            # Tailscale Funnel for a port on the node, raw: the manager's
+            # route picker goes through the instance's record; this is the
+            # same job by hand, for a port that is not an instance's.
+            r = nodes.node_funnel("operator", nid, req.get("port"), bool(req.get("on", True)))
+        elif act == "cache-clear":
+            # Drop a node's build caches — one project's, or all (docs/nodes.md
+            # §6): a job the agent runs, so it is logged and audited like
+            # everything else that touches a node's disk.
+            n = nodes.node(nid)
+            if not n or n["kind"] != "agent":
+                return self._json({"error": "only an agent node keeps caches to clear"}, 400)
+            r = nodes.job_add("operator", {"node": nid}, "cache-clear",
+                              {"project": field(req, "project")})
         elif act == "exec":
             # The channel's one job type, from the tab or from curl: run
             # this argv on that node, as the enrolled account, and read the
@@ -3034,10 +3126,72 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
         act = field(req, "action")
+        if act in ("run", "emu"):
+            return self._json(*self._run_job(req))
         if act != "cancel":
             return self._json({"error": "unknown action"}, 400)
         r = jobs.cancel("operator", field(req, "id"))
         return self._json(r, 400 if r.get("error") else 200)
+
+    def _run_job(self, req):
+        """`bb run`, `bb build` and `bb test` land here (docs/nodes.md §6):
+        snapshot the project's working tree, dirty edits included, and queue
+        an exec on the project's node — or on the node named. Outputs are
+        globs; what matches comes back into dist/. The
+        principal is the session when the request says so, which is a label
+        the credential cannot prove (bug #16) but is worth writing down."""
+        if NODES_OK:
+            return {"error": "the node store did not open: " + NODES_OK}, 500
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list()}:
+            return {"error": "not a project"}, 400
+        argv = [str(a) for a in (req.get("argv") or []) if str(a)][:64]
+        if not argv:
+            return {"error": "argv is empty"}, 400
+        # `emu` (docs/nodes.md phase 9): a bb verb the node runs from the
+        # bundle with its own packages store as the SDK — no snapshot, since
+        # the emulator is not the tree's; inputs come from dist/ by name and
+        # what it writes comes back the same way.
+        emu = field(req, "action") == "emu"
+        pf = prefs.get(name)
+        nid = field(req, "node") or pf["node"]
+        if not nid:
+            return {"error": f"{name} has no node — pick one in the project's settings "
+                             "dialog, or name one with --node"}, 400
+        n = nodes.node(nid)
+        if not n:
+            return {"error": f"no such node: {nid}"}, 400
+        if n["kind"] != "agent":
+            return {"error": f"{n['name']} runs no agent — a build node is an agent "
+                             "node with a workspace of its own (docs/nodes.md §6)"}, 400
+        outputs = [str(g)[:200] for g in (req.get("outputs") or []) if str(g)][:16]
+        try:
+            timeout = min(4 * 3600, max(30, int(req.get("timeout") or 3600)))
+        except (TypeError, ValueError):
+            timeout = 3600
+        who = f"session:{name}" if field(req, "from") == "session" else "operator"
+        if emu:
+            files = []
+            for f in (req.get("files") or [])[:8]:
+                if workspace.file_path(name, str(f)) is None:
+                    return {"error": f"{f} is not a file in {name}'s dist/"}, 400
+                files.append(str(f))
+            spec = {"bb": argv, "files": files, "timeout": timeout, "outputs": outputs,
+                    "project": name}
+            r = nodes.job_add(who, {"node": nid}, "exec", spec, name)
+            if r.get("error"):
+                return r, 400
+            return r | {"node": nid}, 200
+        snap = workspace.snapshot(name)
+        if snap.get("error"):
+            return snap, 400
+        spec = {"argv": argv, "timeout": timeout, "outputs": outputs, "project": name}
+        r = nodes.job_add(who, {"node": nid}, "exec", spec, name,
+                          source={"digest": snap["digest"], "project": name,
+                                  "files": snap["files"], "bytes": snap["bytes"]})
+        if r.get("error"):
+            return r, 400
+        return r | {"node": nid, "snapshot": snap["digest"], "files": snap["files"]}, 200
 
     def _agent_test(self, n):
         """Test on an agent node: an exec job, waited for. The channel is
@@ -3079,6 +3233,80 @@ class Handler(BaseHTTPRequestHandler):
         hdr = self.headers.get("Authorization", "")
         bearer = hdr[7:] if hdr.startswith("Bearer ") else ""
         auth = nodes.authenticate(bearer) if bearer else {"error": "no token"}
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        if verb == "download" and q.get("what", [""])[0] == "bundle":
+            # bb, its library and the catalog, for a node installing a
+            # toolchain into its own packages store (docs/nodes.md §6).
+            if auth.get("error") or auth.get("kind") != "node":
+                return self._json({"error": auth.get("error") or "a node's token"}, 401)
+            b = workspace.bundle()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-tar")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Bundle-Digest", b["digest"])
+            self.send_header("Content-Length", str(len(b["body"])))
+            self.end_headers()
+            self.wfile.write(b["body"])
+            return None
+        if verb == "source":
+            # A job's workspace snapshot, by digest (docs/nodes.md §6). The
+            # digest is the file name, so nothing else is reachable here.
+            if auth.get("error") or auth.get("kind") != "node":
+                return self._json({"error": auth.get("error") or "a node's token"}, 401)
+            path = workspace.path_for(q.get("digest", [""])[0])
+            if path is None:
+                return self._json({"error": "no such snapshot — the tree has "
+                                            "moved on; queue the job again"}, 404)
+            size = path.stat().st_size
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-tar")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(size))
+            self.end_headers()
+            with open(path, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+            return None
+        if verb == "file":
+            # A job input from the project's dist/ — the APK an emulator
+            # job installs (docs/nodes.md phase 9). Only the job's own node,
+            # only while it runs, only dist/.
+            if auth.get("error") or auth.get("kind") != "node":
+                return self._json({"error": auth.get("error") or "a node's token"}, 401)
+            j = nodes.job(q.get("job", [""])[0], with_log=False)
+            if not j or j["node"] != auth["node"] or j["state"] not in nodes.JOB_ACTIVE:
+                return self._json({"error": "not this node's running job"}, 403)
+            path = workspace.file_path(j.get("project") or "", q.get("path", [""])[0])
+            if path is None:
+                return self._json({"error": "no such file in the project's dist/"}, 404)
+            size = path.stat().st_size
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(size))
+            self.end_headers()
+            with open(path, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+            return None
+        if verb == "artifact":
+            # A file a job produced, raw in the body: into the project's
+            # dist/ with its provenance beside it. Only the job's own node,
+            # only while the job runs — a result already posted closes it.
+            if auth.get("error") or auth.get("kind") != "node":
+                return self._json({"error": auth.get("error") or "a node's token"}, 401)
+            j = nodes.job(q.get("job", [""])[0], with_log=False)
+            if not j or j["node"] != auth["node"]:
+                return self._json({"error": "not this node's job"}, 403)
+            if j["state"] not in nodes.JOB_ACTIVE:
+                return self._json({"error": "the job has ended"}, 409)
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = 0
+            r = workspace.artifact_put(j, q.get("name", [""])[0], self.rfile, length)
+            if not r.get("error"):
+                nodes.audit(auth["principal"], "artifact", j["id"],
+                            {"path": r["path"], "sha256": r["sha256"]})
+            return self._json(r, 400 if r.get("error") else 200)
         if verb == "download":
             # The file itself. Any token gets it — the provisioner fetches
             # it with the enroll token before there is a node — and so does
@@ -3120,6 +3348,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "an enrollment token enrolls, and "
                                         "nothing else"}, 403)
         nid = auth["node"]
+        if verb == "runner-token":
+            # A registration or removal token for the node's runner, minted
+            # now from the root-only stash and never stored: the PAT stays
+            # here, the hour-long token goes to the node that asked.
+            kind = "remove" if field(req, "kind") == "remove" else "registration"
+            r = mint_runner_token(kind)
+            nodes.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
+            return self._json(r, 400 if r.get("error") else 200)
         if verb == "hello":
             r = nodes.hello(nid, req.get("census"), addr,
                             field(req, "version"), field(req, "digest"),
@@ -3144,7 +3380,8 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.job_log(nid, field(req, "job"), req.get("chunks"))
         elif verb == "result":
             r = nodes.job_result(nid, field(req, "job"), field(req, "state"),
-                                 req.get("exit"), field(req, "error"))
+                                 req.get("exit"), field(req, "error"),
+                                 req.get("outputs"))
         else:
             return self._json({"error": "not found"}, 404)
         return self._json(r, 400 if r.get("error") else 200)
@@ -3440,6 +3677,10 @@ class Handler(BaseHTTPRequestHandler):
                                "missing": devapp.missing_env(name, inst)})
         elif act == "env-set":
             r = devapp.write_env(name, req.get("text") or "", inst)
+        elif act == "route":
+            # How the instance is reached (docs/nodes.md §7): lan or funnel,
+            # on which published port.
+            r = devapp.route_set(name, inst, field(req, "mode"), req.get("port"))
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
@@ -3545,7 +3786,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
             return self._json(r, 400)
-        return self._json(r | {"artifacts": artifacts.listing(name)}
+        return self._json(r | {"artifacts": artifacts_of(name)}
                           | phone.summary())
 
     def _phone(self, req):
@@ -3753,6 +3994,22 @@ class Handler(BaseHTTPRequestHandler):
         rule every other executing endpoint here follows.
         """
         action = req.get("action")
+        nid = field(req, "node")
+        if nid and nid != "local":
+            # On another node the install is a job against that node's
+            # packages store (docs/nodes.md §6): same catalog, same names,
+            # audited, one at a time there — and gated on the store's
+            # headroom before a byte is downloaded.
+            if NODES_OK:
+                return self._json({"error": "the node store did not open"}, 500)
+            if action not in ("install", "remove"):
+                return self._json({"error": "a node takes install or remove"}, 400)
+            known = {p["name"] for p in packages.PACKAGES}
+            names = [n for n in (req.get("names") or []) if n in known][:8]
+            if not names:
+                return self._json({"error": "nothing selected"}, 400)
+            r = packages.node_job("operator", nid, action, names)
+            return self._json(r, 400 if r.get("error") else 200)
         if action == "abort":
             return self._json({"ok": packages.abort_job()})
         if action not in ("install", "remove", "update", "check"):

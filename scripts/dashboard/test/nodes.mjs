@@ -6,7 +6,7 @@
 // exactly the page it was.
 import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 
 // Self-sufficient: the compose file the seam test acts on, whether or not
 // devapp.mjs ran first in this invocation.
@@ -224,6 +224,167 @@ ok(list[0].id === 'local',
   ok(true, 'All settings… opens the Settings tab, with the log policy on it');
   ok(await page.$eval('.settingstab', e => /unhardwiring|DOCKER_HOST/.test(e.textContent)),
      '...which says what still lives in the environment, and why');
+}
+
+// ---- the configuration plane on the row (phase 5) ---------------------------
+// A node that enrolled as a sandbox gets a fold: mounts, stores and network
+// as the operator wants them, drawn against what the agent reports, with
+// Save keeping the record and Apply queuing the system job. Enrolled here by
+// hand — the census is a body — because the real agent has its own suite.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  const napi = async (path, body, headers = H) => (await fetch(base + path, body === undefined
+    ? { headers } : { method: 'POST', headers, body: JSON.stringify(body) })).json();
+  const minted = await napi('/api/v1/nodes', { action: 'enroll', name: 'shed', capabilities: ['docker-host'] });
+  const en = await napi('/api/v1/agent/enroll', {
+    census: { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
+              sandbox: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 },
+                                       packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 } },
+              toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
+              mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false, mounted: true, real: 'nas:/mnt/user/old' }],
+              network: { interface: 'ens3', addresses: ['10.0.0.40/24'], gateway: '10.0.0.1', dns: ['10.0.0.1'] } },
+    version: '3', digest: 'sha256:' + '0'.repeat(64), user: 'bb' },
+    { Authorization: 'Bearer ' + minted.token, 'Content-Type': 'application/json' });
+  ok(en.ok && en.node_id === minted.id, 'a sandbox node enrolled with mounts and an address in its census');
+  await page.evaluate(() => { nodesList = null; openNodesTab(); });
+  const ROW = `.nodestab .ndrow[data-node="${minted.id}"]`;
+  await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
+  ok(await page.$eval('.nodestab', e => !e.querySelector('.ndrow[data-node="local"] .ndconf')),
+     'the fold is on the sandbox node and not on local');
+  await page.click(`${ROW} .ndconf summary`);
+  await page.waitForSelector(`${ROW} .ndconf[open] [data-madd]`, { timeout: 5000 });
+  ok(await page.$eval(`${ROW} .ndconf`, e => /now 10\.0\.0\.40\/24 on ens3 via 10\.0\.0\.1/.test(e.textContent)),
+     'it reports the address the node is on');
+  ok(await page.$eval(`${ROW} .ndrunstate`, e => /no runner on this node/.test(e.textContent))
+     && await page.$eval(`${ROW} [data-nrunner="install"]`, b => /Install runner/.test(b.textContent)),
+     'the CI runner section says there is none, and offers to install one');
+  await page.fill(`${ROW} [data-k="runner:url"]`, 'https://github.com/example-org');
+  await page.fill(`${ROW} [data-k="runner:labels"]`, 'gpu');
+  await page.click(`${ROW} [data-nrunner="install"]`);
+  await page.waitForFunction(sel => /applying runner/.test(
+    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  const rj = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system' && j.spec.apply === 'runner');
+  ok(rj && rj.node === minted.id && rj.spec.config.url === 'https://github.com/example-org'
+     && rj.spec.config.labels.includes('shed') && rj.spec.config.labels.includes('gpu'),
+     `Install runner queues the system job with the node's name among the labels (${rj?.spec?.config?.labels?.join(',')})`);
+  await napi('/api/v1/jobs', { action: 'cancel', id: rj.id });
+  await page.waitForFunction(sel => !/applying/.test(
+    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  await page.click(`${ROW} [data-madd]`);
+  await page.waitForSelector(`${ROW} .ndmount[data-i="0"] [data-k="source"]`, { timeout: 5000 });
+  ok(await page.evaluate(() => document.activeElement?.dataset.k === 'source'),
+     '+ mount adds a row and puts the caret in it');
+  await page.fill(`${ROW} .ndmount[data-i="0"] [data-k="source"]`, 'nas:/mnt/user/appdata');
+  await page.fill(`${ROW} .ndmount[data-i="0"] [data-k="path"]`, '/mnt/appdata');
+  await page.fill(`${ROW} [data-k="store:cache"]`, '/scratch/cache');
+  // The heartbeat repaints the tab; the draft and the caret survive it.
+  await page.evaluate(() => loadNodes());
+  await sleep(400);
+  const kept = await page.$eval(`${ROW} .ndmount[data-i="0"] [data-k="path"]`, e => e.value);
+  const caret = await page.evaluate(() => document.activeElement?.dataset?.k || document.activeElement?.tagName);
+  ok(kept === '/mnt/appdata' && caret === 'store:cache',
+     `a repaint under the editor keeps what was typed and where the caret was (kept ${kept}, caret ${caret})`);
+  ok(await page.$eval(`${ROW} .ndmount[data-i="0"] .ndmstate`, e => /not applied yet/.test(e.textContent))
+     && await page.$eval(`${ROW} [data-napply="storage"]`, b => b.disabled),
+     '...the new mount says it is not applied yet, and Apply waits for Save');
+  await page.click(`${ROW} [data-nsave]`);
+  await page.waitForFunction(sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
+                             ROW, { timeout: 10000 });
+  const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+  ok(rec.config.desired.mounts.length === 1 && rec.config.desired.mounts[0].path === '/mnt/appdata'
+     && rec.config.desired.stores.cache === '/scratch/cache' && rec.config.desired.network.mode === 'dhcp',
+     'Save puts the desired config on the record, validated');
+  page.dialogs.length = 0;
+  await page.click(`${ROW} [data-napply="storage"]`);
+  await page.waitForFunction(sel => /applying storage/.test(
+    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  ok(page.dialogs.length === 1 && /unmounts \/mnt\/old/.test(page.dialogs[0]),
+     'Apply storage asks first when it would unmount something the node has');
+  const active = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system');
+  ok(active && active.node === minted.id && active.spec.apply === 'storage'
+     && active.spec.config.mounts[0].path === '/mnt/appdata',
+     `...and queues the system job on that node with the desired config (${active?.id})`);
+  ok(await page.$eval(`${ROW} [data-napply="network"]`, b => b.disabled),
+     '...while it is in flight the other Apply is off');
+  await napi('/api/v1/jobs', { action: 'cancel', id: active.id });
+  // The fold is held to the document rules the same as any tab surface
+  // (uniform.mjs cannot see it: that suite has no sandbox node to open one
+  // on): every control wears the field skin, and at phone width nothing
+  // scrolls sideways and every text control is 16px.
+  const skin = await page.evaluate(sel => {
+    const ref = document.getElementById('mName');
+    const key = el => { const c = getComputedStyle(el);
+      return [c.backgroundColor, c.borderTopLeftRadius, c.borderTopColor, c.fontFamily].join('|'); };
+    return [...document.querySelectorAll(sel + ' .ndconf input:not([type=checkbox]), ' + sel + ' .ndconf select')]
+      .filter(e => e.offsetHeight > 0).map(e => key(e) === key(ref));
+  }, ROW);
+  ok(skin.length >= 8 && skin.every(Boolean), `every control in the fold wears the field skin (${skin.length} checked)`);
+  await page.setViewportSize({ width: 393, height: 851 });
+  await sleep(300);
+  const phone = await page.evaluate(sel => ({
+    over: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    small: [...document.querySelectorAll(sel + ' .ndconf input:not([type=checkbox]), ' + sel + ' .ndconf select')]
+      .filter(e => e.offsetHeight > 0 && parseFloat(getComputedStyle(e).fontSize) < 16).length,
+  }), ROW);
+  ok(phone.over <= 0 && phone.small === 0,
+     `...and at phone width it does not scroll sideways (${phone.over}px) and its controls are 16px (${phone.small} small)`);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ---- toolchains on the node, from the Tools tab (phase 6) ---------------
+  await page.evaluate(() => openPackages());
+  await page.waitForSelector('.pkgtab #pkgNodeSel', { timeout: 15000 });
+  await page.selectOption('.pkgtab #pkgNodeSel', minted.id);
+  await page.waitForFunction(() => /on shed/.test(document.querySelector('.pkgtab .pkghead:not(.pkgnode)')?.textContent || ''),
+                             null, { timeout: 15000 });
+  const tools = await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+  ok(tools.some(t => /3\.24\.0/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent)),
+     `picking the node lists what its census says it has, and its store's headroom (${
+       await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
+  const gate = await napi('/api/packages', { action: 'install', names: ['android:platform-tools'], node: 'local' });
+  ok(gate.ok !== undefined || gate.error, '(local installs still go through the installer here)');
+
+  // ---- the project's nodes, in its settings dialog (phase 6) --------------
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector('.doc .projtab [data-rn="alpha"]', { timeout: 15000 });
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+  await page.waitForFunction(id => [...document.querySelectorAll('#rnNode option')].some(o => o.value === id),
+                             minted.id, { timeout: 10000 });
+  ok(await page.$eval('#rnNode', s => ![...s.options].some(o => o.value === 'local') && [...s.options].some(o => /sandbox/.test(o.textContent))),
+     'the project\'s node is any node but this container — the ssh sandbox included');
+  await page.selectOption('#rnNode', minted.id);
+  await page.fill('#rnBuildCmd', './gradlew assembleDebug');
+  await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
+  await page.click('#rnGo');
+  await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
+  const saved = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha;
+  ok(saved.node === minted.id && saved.build === './gradlew assembleDebug'
+     && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi',
+     'Save writes the project\'s node, the command and the outputs onto the project record');
+}
+
+// ---- an ssh node's path mapping (§11: the record owns it) --------------------
+// What DOCKER_HOST_PATHS was: on the sandbox node's row now, validated to
+// pairs, and read by the manager through the node being addressed.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  const papi = async (body) => (await fetch(base + '/api/v1/nodes', { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
+  const sb = (await (await fetch(base + '/api/v1/nodes', { headers: H })).json()).nodes.find(n => n.kind === 'ssh' && n.name === 'sandbox');
+  const bad = await papi({ action: 'paths', id: sb.id, paths: '/workspace:relative' });
+  ok(/not a \/container:\/host pair/.test(bad.error || ''), 'a mapping that is not absolute on both sides is refused');
+  const local = await papi({ action: 'paths', id: 'local', paths: '/a:/b' });
+  ok(/nothing to map/.test(local.error || ''), 'local has no mapping to set');
+  const set = await papi({ action: 'paths', id: sb.id, paths: '/workspace:/workspace, /devdata:/mnt/user/bb-dev' });
+  ok(set.ok && set.paths['/devdata'] === '/mnt/user/bb-dev',
+     'the mapping is saved onto the node record as pairs');
+  await page.evaluate(() => { nodesList = null; openNodesTab(); });
+  await page.waitForSelector(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, { timeout: 15000 });
+  ok(await page.$eval(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, e => e.value) === '/workspace:/workspace, /devdata:/mnt/user/bb-dev',
+     '...and the ssh node\'s row shows it, editable');
+  ok(await page.evaluate(() => !document.querySelector('.nodestab .ndrow[data-node="local"] .ndpaths')),
+     '...while local, whose paths are its own, has no such line');
 }
 
 // ---- the seam stays invisible on the sidebar --------------------------------

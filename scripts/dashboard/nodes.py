@@ -40,6 +40,7 @@ import platform
 import re
 import secrets
 import sqlite3
+import sys
 import threading
 import time
 from pathlib import Path
@@ -211,9 +212,20 @@ def _inflate(row):
 def node_list(all=False):
     """The nodes, JSON columns inflated. Retired rows are history — kept in
     the table (door 1: ids are never reused, and an old record must stay
-    explicable) and left out of every list unless asked for."""
+    explicable) and left out of every list unless asked for. Each row also
+    names the system job in flight on it, so the tab can say "applying"
+    without a second fetch."""
     rows = [_live(_inflate(r)) for r in _rows(
         "SELECT * FROM nodes ORDER BY kind = 'local' DESC, created")]
+    busy = {}
+    for j in _rows("SELECT id, node, spec FROM jobs WHERE type = 'system' AND "
+                   "state IN ('queued', 'assigned', 'running')"):
+        try:
+            busy[j["node"]] = {"id": j["id"], "what": json.loads(j["spec"]).get("apply", "")}
+        except (ValueError, AttributeError):
+            busy[j["node"]] = {"id": j["id"], "what": ""}
+    for r in rows:
+        r["applying"] = busy.get(r["id"])
     return rows if all else [r for r in rows if r["state"] != "retired"]
 
 
@@ -307,9 +319,13 @@ def _adopt_docker_host():
     addr = (os.environ.get("DOCKER_HOST") or "").strip()
     if not addr.startswith("ssh://"):
         return
+    print("[nodes] DOCKER_HOST is read only to seed a node record now; the setting "
+          "lives on the Nodes tab and the variable is going away (docs/nodes.md §11)",
+          file=sys.stderr, flush=True)
     have = _rows("SELECT id FROM nodes WHERE kind = 'ssh' AND ssh_addr = ? "
                  "AND state != 'retired'", (addr,))
     if have:
+        _seed_paths(have[0]["id"])
         return
     # Only the row THIS migration made goes when the env var moves — marked
     # so, because with the tab able to add nodes, "retire every other ssh
@@ -328,6 +344,66 @@ def _adopt_docker_host():
         "config": {"from_env": True},
     })
     audit("system", "node-adopt", nid, {"from": "DOCKER_HOST"})
+    _seed_paths(nid)
+
+
+def _seed_paths(nid):
+    """DOCKER_HOST_PATHS onto the node record, once: env seeds, the record
+    owns (docs/nodes.md §11). A record that already has a mapping is never
+    overwritten by the variable — the row is where it is edited now."""
+    raw = (os.environ.get("DOCKER_HOST_PATHS") or "").strip()
+    n = node(nid)
+    if not raw or not n or (n.get("config") or {}).get("paths"):
+        return
+    paths, why = parse_paths(raw)
+    if why:
+        print(f"[nodes] DOCKER_HOST_PATHS not seeded: {why}", file=sys.stderr, flush=True)
+        return
+    cfg = dict(n.get("config") or {})
+    cfg["paths"] = paths
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(cfg), nid))
+    audit("system", "node-paths", nid, {"from": "DOCKER_HOST_PATHS", "n": len(paths)})
+    print(f"[nodes] DOCKER_HOST_PATHS seeded onto node {n['name']} ({len(paths)} pair(s)); "
+          "the variable is read for that alone now", file=sys.stderr, flush=True)
+
+
+def parse_paths(text):
+    """"/here:/there, /a:/b" -> ({here: there}, "") or ({}, why)."""
+    out = {}
+    for pair in str(text or "").replace("\n", ",").split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        here, _, there = pair.partition(":")
+        here, there = here.strip().rstrip("/"), there.strip().rstrip("/")
+        if not here.startswith("/") or not there.startswith("/") or " " in here + there:
+            return {}, f"{pair} is not a /container:/host pair"
+        out[here[:200]] = there[:200]
+    return out, ""
+
+
+def node_paths(node_id):
+    """What this container's paths are called on the node's machine — the
+    daemon resolves bind sources over there. {} when nothing is set."""
+    n = node(node_id) if node_id else None
+    p = (n.get("config") or {}).get("paths") if n else None
+    return dict(p) if isinstance(p, dict) else {}
+
+
+def node_paths_set(principal, node_id, text):
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] == "local":
+        return {"error": "local's paths are its own — there is nothing to map"}
+    paths, why = parse_paths(text)
+    if why:
+        return {"error": why}
+    cfg = dict(n.get("config") or {})
+    cfg["paths"] = paths
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(cfg), node_id))
+    _touch(node_id, principal, "node-paths", {"n": len(paths)})
+    return {"ok": True, "paths": paths}
 
 
 def node_for(capability=None):
@@ -719,11 +795,290 @@ def _census(c):
             out["stores"][str(role)[:20]] = {
                 "path": str(s.get("path") or "")[:200],
                 "free_mb": _mb(s.get("free_mb")),
-                "total_mb": _mb(s.get("total_mb"))}
+                "total_mb": _mb(s.get("total_mb")),
+                # What the store holds, from the census's du (phase 6): the
+                # cache's number beside Clear cache. None when not measured.
+                "used_mb": _mb(s.get("used_mb"))}
     tc = c.get("toolchains") if isinstance(c.get("toolchains"), dict) else {}
     out["toolchains"] = {str(k)[:30]: (str(v)[:40] if v else None)
                          for k, v in list(tc.items())[:16]}
+    # The configuration plane's reported half (docs/nodes.md §12): whether
+    # the node was provisioned as a sandbox (bb-sandbox is there — the stamp
+    # system jobs are gated on), what it mounts as bb-sandbox reads it, and
+    # the address it is on. Facts about the machine, drawn against the
+    # operator's desired config on the row; never treated as the config.
+    out["sandbox"] = bool(c.get("sandbox"))
+    out["mounts"] = []
+    for m in (c.get("mounts") if isinstance(c.get("mounts"), list) else [])[:32]:
+        if isinstance(m, dict) and str(m.get("path") or "").startswith("/"):
+            out["mounts"].append({
+                "path": str(m["path"])[:200], "source": str(m.get("source") or "")[:200],
+                "type": str(m.get("type") or "")[:16], "ro": bool(m.get("ro")),
+                "mounted": bool(m.get("mounted")), "real": str(m.get("real") or "")[:200]})
+    sv = c.get("services") if isinstance(c.get("services"), dict) else {}
+    ar = sv.get("actions-runner") if isinstance(sv.get("actions-runner"), dict) else {}
+    out["services"] = {"actions-runner": {
+        "installed": bool(ar.get("installed")), "active": bool(ar.get("active")),
+        "busy": bool(ar.get("busy")), "name": str(ar.get("name") or "")[:80],
+        "url": str(ar.get("url") or "")[:200],
+        "labels": [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40]
+                   for x in (ar.get("labels") or [])[:16] if str(x)]}}
+    ts = sv.get("tailscale") if isinstance(sv.get("tailscale"), dict) else {}
+    fun = ts.get("funnel") if isinstance(ts.get("funnel"), dict) else {}
+    out["services"]["tailscale"] = {
+        "installed": bool(ts.get("installed")),
+        "dns": re.sub(r"[^A-Za-z0-9.-]", "", str(ts.get("dns") or ""))[:200],
+        # https port -> the local port it forwards to, as the node reports it
+        "funnel": {str(k)[:6]: _mb(v) for k, v in list(fun.items())[:8]}}
+    net = c.get("network") if isinstance(c.get("network"), dict) else {}
+    out["network"] = {
+        "interface": str(net.get("interface") or "")[:32],
+        "addresses": [str(a)[:64] for a in (net.get("addresses") or [])[:8]],
+        "gateway": str(net.get("gateway") or "")[:64],
+        "dns": [str(a)[:64] for a in (net.get("dns") or [])[:8]]}
     return out
+
+
+# ---------------------------------------------------------------------------
+# the configuration plane (docs/nodes.md §12, phase 5)
+#
+# The operator's DESIRED storage and network for a node live on its record
+# (config.desired); the agent reports what is APPLIED in its census
+# (reported.mounts / .stores / .network); and a change is a `system` job the
+# agent runs as root — audited like any mutation, offered only to nodes that
+# enrolled as a sandbox, refused on the node without the stamp as well.
+# bb-sandbox at the console reads and writes the same on-node state, so the
+# GUI and a rescue shell cannot disagree about what the node is meant to be.
+
+MOUNT_TYPES = ("nfs", "virtiofs")
+_IP = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+_CIDR = re.compile(r"^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$")
+
+
+def _clean_config(cfg):
+    """The desired config, validated to its shape, or an error string. Every
+    field is bounded here so a system job's spec is never a blob from the
+    page — the agent writes what arrives into fstab and netplan."""
+    cfg = cfg if isinstance(cfg, dict) else {}
+    out = {}
+    mounts = []
+    for m in (cfg.get("mounts") if isinstance(cfg.get("mounts"), list) else [])[:32]:
+        if not isinstance(m, dict):
+            continue
+        path = str(m.get("path") or "").strip()
+        src = str(m.get("source") or "").strip()
+        kind = str(m.get("type") or "nfs").strip()
+        if not path and not src:
+            continue                              # an empty editor row
+        if not path.startswith("/") or " " in path or ":" in path:
+            return None, f"a mountpoint must be an absolute path without spaces: {path!r}"
+        if kind not in MOUNT_TYPES:
+            return None, f"a mount is nfs or virtiofs, not {kind!r}"
+        if kind == "nfs" and (":" not in src or src.startswith(":") or src.endswith(":")):
+            return None, f"an NFS source is HOST:/export, not {src!r}"
+        if kind == "virtiofs" and (not src or ":" in src or "/" in src):
+            return None, f"a virtiofs source is the share's tag, not {src!r}"
+        if any(x["path"] == path for x in mounts):
+            return None, f"{path} is listed twice"
+        mounts.append({"path": path[:200], "source": src[:200], "type": kind,
+                       "ro": bool(m.get("ro"))})
+    out["mounts"] = mounts
+    stores = {}
+    for role, path in (cfg.get("stores") if isinstance(cfg.get("stores"), dict) else {}).items():
+        path = str(path or "").strip()
+        if role not in ("data", "packages", "cache") or not path:
+            continue
+        if not path.startswith("/") or " " in path:
+            return None, f"the {role} store must be an absolute path: {path!r}"
+        stores[role] = path[:200]
+    out["stores"] = stores
+    net = cfg.get("network") if isinstance(cfg.get("network"), dict) else {}
+    mode = "static" if net.get("mode") == "static" else "dhcp"
+    n = {"mode": mode, "interface": re.sub(r"[^A-Za-z0-9_.-]", "", str(net.get("interface") or ""))[:32]}
+    if mode == "static":
+        addr, gw = str(net.get("address") or "").strip(), str(net.get("gateway") or "").strip()
+        if not _CIDR.match(addr):
+            return None, f"a static address is written with its prefix, like 10.0.0.12/24 — not {addr!r}"
+        if gw and not _IP.match(gw):
+            return None, f"the gateway is an address, not {gw!r}"
+        dns = [d.strip() for d in (net.get("dns") if isinstance(net.get("dns"), list)
+                                   else str(net.get("dns") or "").split(",")) if d.strip()]
+        for d in dns:
+            if not _IP.match(d):
+                return None, f"a resolver is an address, not {d!r}"
+        n.update(address=addr, gateway=gw, dns=dns[:4])
+    out["network"] = n
+    return out, ""
+
+
+def node_config_set(principal, node_id, cfg):
+    """Store what the operator wants this node to be. Nothing is applied
+    here: apply is a job, and the row shows desired beside reported until
+    one has run."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node has a configuration plane — "
+                         "an ssh node is configured at its own console"}
+    clean, why = _clean_config(cfg)
+    if why:
+        return {"error": why}
+    conf = dict(n.get("config") or {})
+    conf["desired"] = clean
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-config",
+           {"mounts": len(clean["mounts"]), "stores": sorted(clean["stores"]),
+            "network": clean["network"]["mode"]})
+    return {"ok": True, "desired": clean}
+
+
+DEFAULT_RUNNER_LABELS = ("builderbot", "self-hosted", "linux")
+
+
+def runner_labels_for(n, labels=None):
+    """The labels a node's runner carries: the defaults, its architecture,
+    and its own name — the per-node label that lets a workflow's runs-on
+    pick this machine. Extra ones from the tab are kept, cleaned."""
+    want = [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40] for x in (labels or [])]
+    out = list(DEFAULT_RUNNER_LABELS)
+    arch = (n.get("arch") or "").replace("x86_64", "x64").replace("aarch64", "arm64")
+    if arch:
+        out.append(arch)
+    out.append(re.sub(r"[^A-Za-z0-9._-]", "-", n["name"])[:40])
+    for x in want:
+        if x and x not in out:
+            out.append(x)
+    return out[:16]
+
+
+def node_runner(principal, node_id, want, labels=None, url=""):
+    """Install or remove the Actions runner on a node, as a system job
+    (phase 7). The desired state — wanted or not, with which labels — lives
+    in the node's services column; the census reports what is there."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "the runner is installed by the agent — an ssh node has none"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "this node was not provisioned as a BuilderBot sandbox, so it takes no system jobs"}
+    if n["state"] != "online":
+        return {"error": f"the node is {n['state']} — system jobs go to an online node"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node — one at a time"}
+    if want and not str(url or "").startswith("https://github.com/"):
+        return {"error": "the runner registers with a GitHub org or repo URL — set GITHUB_URL "
+                         "on the controller, or type one"}
+    labs = runner_labels_for(n, labels) if want else []
+    services = dict(n.get("services") or {})
+    services["actions-runner"] = {"want": bool(want), "labels": labs, "url": str(url or "")[:200]}
+    _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(services), node_id))
+    _touch(node_id, principal, "node-runner", {"want": bool(want), "labels": labs})
+    cfg = {"want": bool(want), "labels": labs, "url": str(url or ""), "name": n["name"]}
+    return job_add(principal, {"node": node_id}, "system",
+                   {"apply": "runner", "config": cfg, "timeout": 1800})
+
+
+def route_host(node_id):
+    """The host a published port on this node is reached at from the LAN:
+    an ssh node's address without scheme or account, an agent node's the
+    address it last dialed in from. '' for local and the unknown."""
+    n = node(node_id)
+    if not n or n["kind"] == "local":
+        return ""
+    a = _addr(n) if n["kind"] == "ssh" else ((n.get("agent") or {}).get("addr") or "")
+    a = re.sub(r"^[a-z][a-z0-9+.-]*://", "", a)
+    a = a.split("@")[-1].split("/")[0].split(":")[0]
+    return a
+
+
+def node_funnel(principal, node_id, port, on=True):
+    """Tailscale Funnel on a node (docs/nodes.md §7, mode `funnel`): a
+    public HTTPS URL for one published port, with no DNS, certificate or
+    firewall change — as a system job the agent applies with tailscale's
+    own CLI. One funnel per node, on 443: the node's MagicDNS name is the
+    URL, and a second instance asking replaces the first, said plainly."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "a funnel needs the agent — this node runs none"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "this node was not provisioned as a BuilderBot sandbox, so it takes no system jobs"}
+    ts = ((n.get("reported") or {}).get("services") or {}).get("tailscale") or {}
+    if not ts.get("installed"):
+        return {"error": f"{n['name']} has no tailscale — install and log it in on the node first"}
+    if n["state"] != "online":
+        return {"error": f"the node is {n['state']} — system jobs go to an online node"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node — one at a time"}
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        return {"error": "a funnel forwards to a port number"}
+    if not 1 <= port <= 65535:
+        return {"error": "a funnel forwards to a port number"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "funnel", "config": {"port": port, "on": bool(on)}, "timeout": 300})
+    if r.get("ok"):
+        audit(principal, "node-funnel", node_id, {"port": port, "on": bool(on)})
+    return r
+
+
+def runner_labels_known():
+    """Every label a runner in the registry carries, reported or wanted, for
+    the lint that checks a workflow's runs-on against what exists."""
+    out = set()
+    for n in node_list():
+        rep = ((n.get("reported") or {}).get("services") or {}).get("actions-runner") or {}
+        out.update(rep.get("labels") or [])
+        want = (n.get("services") or {}).get("actions-runner") or {}
+        if want.get("want"):
+            out.update(want.get("labels") or [])
+    return sorted(out)
+
+
+def system_job_for(node_id):
+    """The system job in flight for a node, if any: one at a time, because
+    two applies racing on one fstab is not a state anybody wants."""
+    for j in jobs_for(node_id=node_id, type="system", active=True, n=5):
+        return j
+    return None
+
+
+def node_apply(principal, node_id, what):
+    """Queue the system job that makes the node match its desired config —
+    storage (mounts and stores) or network, which is its own job because it
+    is the one that can cut the cord (the agent reverts it if it cannot dial
+    back in). Offered only to a live agent node that enrolled as a sandbox;
+    the agent refuses without the stamp as well, whatever this says."""
+    if what not in ("storage", "network"):
+        return {"error": "apply storage or network"}
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node takes system jobs"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "this node was not provisioned as a BuilderBot sandbox "
+                         "(no bb-sandbox on it), so system jobs are not offered to it"}
+    if n["state"] != "online":
+        return {"error": f"the node is {n['state']} — system jobs go to an online node"}
+    if (n.get("agent") or {}).get("revoked"):
+        return {"error": "this node's credential was revoked"}
+    desired = (n.get("config") or {}).get("desired") or {}
+    if not desired:
+        return {"error": "nothing to apply — save a configuration first"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node — one at a time"}
+    cfg = ({"mounts": desired.get("mounts") or [], "stores": desired.get("stores") or {}}
+           if what == "storage" else {"network": desired.get("network") or {}})
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": what, "config": cfg, "timeout": 900})
+    if r.get("ok"):
+        audit(principal, "node-apply", node_id, {"what": what, "job": r["job"]})
+    return r
 
 
 def hello(nid, census, addr, version="", digest="", running=None):
@@ -816,7 +1171,10 @@ def samples(nid):
 # ssh). Both ask the same question of the same table through job_next(), and
 # concurrency is counted here from the rows rather than trusted from either.
 
-JOB_TYPES = ("exec", "self-update", "compose")
+# exec runs argv; compose is the controller's docker; self-update, system
+# (phase 5), package (a toolchain install against the node's packages store)
+# and cache-clear (drop the node's build caches) are the agent's own.
+JOB_TYPES = ("exec", "self-update", "compose", "system", "package", "cache-clear")
 JOB_END = ("succeeded", "failed", "canceled")
 JOB_ACTIVE = ("queued", "assigned", "running")
 # What a selector may name (door 9: os and arch are placement dimensions).
@@ -900,7 +1258,7 @@ def _placement(placement):
     return {"select": clean}, ""
 
 
-def job_add(principal, placement, type, spec, project=""):
+def job_add(principal, placement, type, spec, project="", source=None):
     """Queue a job. With an explicit node the node is checked now — it must
     exist, be online, and hold a credential if it is an agent. With a
     selector, at least one node must fit right now: a job nothing could ever
@@ -934,7 +1292,7 @@ def job_add(principal, placement, type, spec, project=""):
           "ended, step, error, cancel) VALUES (?, ?, ?, ?, ?, ?, ?, ?, "
           "'queued', ?, NULL, ?, NULL, NULL, '', '', 0)",
           (jid, type, str(project or "")[:120], str(principal),
-           json.dumps(pl), json.dumps({}),
+           json.dumps(pl), json.dumps(source if isinstance(source, dict) else {}),
            json.dumps(spec if isinstance(spec, dict) else {}),
            json.dumps([]), pl.get("node") or "", int(time.time())))
     audit(principal, "job-add", jid, {"placement": pl, "type": type})
@@ -1067,7 +1425,7 @@ def job_log(node_id, job_id, chunks):
     return {"ok": True, "stored": n, "cancel": bool(got[0]["cancel"])}
 
 
-def job_result(node_id, job_id, state, exit_code=None, error=""):
+def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     """Terminal. Idempotent by design — the agent retries until it is
     acknowledged, so the second arrival of the same result is a no-op with
     the same answer, not a second audit row."""
@@ -1084,6 +1442,11 @@ def job_result(node_id, job_id, state, exit_code=None, error=""):
     _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
           "error = ? WHERE id = ?",
           (state, code, int(time.time()), str(error or "")[:500], job_id))
+    # What the job left behind: the artifacts it uploaded and, for a failed
+    # one, the workspace the node kept for inspection (docs/nodes.md §6).
+    if isinstance(outputs, list):
+        keep = [o for o in outputs[:64] if isinstance(o, dict)]
+        _exec("UPDATE jobs SET outputs = ? WHERE id = ?", (json.dumps(keep), job_id))
     audit(f"node:{node_id}", "job-result", job_id, {"state": state, "exit": code})
     _jbump()
     with _wake:

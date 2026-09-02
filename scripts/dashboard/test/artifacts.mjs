@@ -9,6 +9,12 @@ import { execFileSync } from 'node:child_process';
 // pushing one means unpacking it and handing the directory to web-ext.
 mkdirSync(`${DIR}/ws/alpha/dist/android`, { recursive: true });
 writeFileSync(`${DIR}/ws/alpha/dist/android/streamlift-1.2.apk`, 'not-really-an-apk');
+// What built it, as a job would leave it (docs/nodes.md §6): the tab says so
+// on the row, and the record itself is never listed as an artifact.
+mkdirSync(`${DIR}/ws/alpha/dist/.provenance/android`, { recursive: true });
+writeFileSync(`${DIR}/ws/alpha/dist/.provenance/android/streamlift-1.2.apk.json`, JSON.stringify({
+  job: 'j_fixture1', node: 'n_fixture', source: { digest: 'sha256:' + 'ab'.repeat(32) },
+  sha256: 'cd'.repeat(32), size: 17 }));
 const stage = `${DIR}/xpi-stage`;
 mkdirSync(stage, { recursive: true });
 writeFileSync(`${stage}/manifest.json`,
@@ -35,6 +41,10 @@ await page.waitForSelector('.artrow', { timeout: 15000 });
 const names = await page.$$eval('.artrow b', bs => bs.map(b => b.textContent));
 ok(names.includes('streamlift-1.2.apk') && names.includes('companion-0.2.0.xpi'),
    `dist/ is listed, subdirectories included (${names.join(', ')})`);
+ok(!names.some(n => /provenance/.test(n)),
+   '...and the provenance records beside them are not artifacts');
+ok(await page.$eval('#artList', e => /built by j_fixture1 on n_fixture from snapshot abababababab/.test(e.textContent)),
+   'a built artifact says which job made it, where, and from which snapshot');
 ok(await page.$$eval('.artrow .pill', ps =>
      ps.some(p => p.textContent === 'apk') && ps.some(p => p.textContent === 'xpi')),
    '...each labeled by what it is');

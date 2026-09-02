@@ -83,6 +83,8 @@ DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # nothing injected one — `bb doctor` loads this module on its own to ask
 # available(), and a probe should not start writing files.
 log_dir = None
+project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
+node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
 # The daemon is a sandbox VM and nothing else. DOCKER_HOST names the machine;
 # ssh:// and the bb account provision.sh makes are filled in, so the address is
@@ -114,11 +116,14 @@ _node_ctx = threading.local()
 def on_node(node_id):
     """Address every docker call in this block at `node_id`'s daemon."""
     prev = getattr(_node_ctx, "addr", None)
+    prev_id = getattr(_node_ctx, "node", None)
     _node_ctx.addr = node_addr(node_id) if node_addr and node_id else None
+    _node_ctx.node = node_id or None
     try:
         yield
     finally:
         _node_ctx.addr = prev
+        _node_ctx.node = prev_id
 
 
 def _default_node():
@@ -126,13 +131,17 @@ def _default_node():
 
 
 def _instance_node(project, instance):
-    """The node an instance is bound to — its record's, else the default.
+    """The node an instance is bound to — its record's, else the project's
+    own node (one setting for everything a project does on a node), else
+    the default docker host.
 
     Records from before nodes existed have no binding; they belong to the
     daemon DOCKER_HOST named, which is exactly what the default node mirrors,
-    so the fallback is not a guess.
+    so the last fallback is not a guess.
     """
     nid = _read_rec(project, instance).get("node") or ""
+    if not nid and project_node:
+        nid = project_node(project) or ""
     return nid or (node_for("docker-host") if node_for else "")
 
 
@@ -328,6 +337,119 @@ def _submit(project, instance, action):
     return {"ok": True, "started": True, "job": r["job"]}
 
 
+# ---------------------------------------------------------------------------
+# the route (docs/nodes.md §7, phase 8)
+#
+# A deployment is an instance up on a node plus a ROUTE: how somebody reaches
+# it. The record is uniform — {mode, port, url} — and the modes are tiers of
+# one thing: `lan` is a published port on the node's LAN address, which is
+# what the manager always offered; `funnel` is Tailscale Funnel on the node,
+# a public HTTPS URL with no DNS or certificate to arrange, applied by the
+# agent as a system job; `public` is the reverse-proxy mode the record is
+# shaped for and this does not build. The traffic never transits the
+# controller in any mode, which is what keeps every one of them cheap.
+
+ROUTE_MODES = ("lan", "funnel", "public")
+
+
+def _published(ports):
+    """The published TCP ports of an instance, from either shape the two
+    listings use: "7475->7474/tcp" strings, or {published, proto} dicts."""
+    out = []
+    for p in ports or []:
+        if isinstance(p, dict):
+            if str(p.get("proto", "tcp")).lower() == "tcp" and str(p.get("published") or "").isdigit():
+                out.append(int(p["published"]))
+        elif isinstance(p, str) and "->" in p and p.endswith("/tcp"):
+            head = p.split("->", 1)[0]
+            if head.isdigit():
+                out.append(int(head))
+    return sorted(set(out))
+
+
+def route_view(project, instance, ports):
+    """The instance's route as the row draws it: the mode and port on the
+    record (lan on the first published port when nothing was chosen), the
+    URL that follows from the node, and whether a funnel is actually up."""
+    rec = _read_rec(project, instance)
+    r = rec.get("route") if isinstance(rec.get("route"), dict) else {}
+    mode = r.get("mode") if r.get("mode") in ROUTE_MODES else "lan"
+    pub = _published(ports)
+    port = r.get("port") if isinstance(r.get("port"), int) and r.get("port") > 0 else (pub[0] if pub else None)
+    nid = _instance_node(project, instance)
+    n = queue.node(nid) if queue is not None and nid else None
+    out = {"mode": mode, "port": port, "ports": pub, "url": "", "ready": False, "why": "",
+           "funnel_ok": False}
+    if n:
+        ts = ((n.get("reported") or {}).get("services") or {}).get("tailscale") or {}
+        out["funnel_ok"] = bool(n["kind"] == "agent" and ts.get("installed")
+                                and (n.get("reported") or {}).get("sandbox"))
+    if mode == "lan":
+        host = queue.route_host(nid) if queue is not None and nid else ""
+        if host and port:
+            out["url"] = f"http://{host}:{port}/"
+            out["ready"] = port in pub
+        out["why"] = "" if out["url"] else ("no published port" if not port else "no node address")
+    elif mode == "funnel":
+        ts = (((n or {}).get("reported") or {}).get("services") or {}).get("tailscale") or {}
+        dns = ts.get("dns") or ""
+        fwd = (ts.get("funnel") or {}).get("443")
+        if dns:
+            out["url"] = f"https://{dns}/"
+        out["ready"] = bool(dns and port and fwd == port)
+        out["why"] = ("" if out["ready"] else
+                      "the node reports no tailscale" if not ts.get("installed") else
+                      f"the node's funnel forwards to {fwd}, not {port}" if fwd and fwd != port else
+                      "asked for — waiting for the node to report it")
+    else:
+        out["why"] = "public is not built — the record is shaped for it (docs/nodes.md §7)"
+    return out
+
+
+def route_set(project, instance, mode, port=None):
+    """Choose how an instance is reached. lan is a record; funnel is a
+    record and a system job on the node (and leaving funnel turns the
+    node's funnel off); public is refused, named as unbuilt."""
+    if mode not in ROUTE_MODES:
+        return {"error": f"a route is {', '.join(ROUTE_MODES)}"}
+    if mode == "public":
+        return {"error": "public routes are not built — lan and funnel are (docs/nodes.md §7)"}
+    try:
+        port = int(port) if port not in (None, "") else None
+    except (TypeError, ValueError):
+        return {"error": "a port is a number"}
+    if port is not None and not 1 <= port <= 65535:
+        return {"error": "a port is a number between 1 and 65535"}
+    nid = _instance_node(project, instance)
+    was = (_read_rec(project, instance).get("route") or {}).get("mode", "lan")
+    job = None
+    if mode == "funnel" or was == "funnel":
+        if queue is None or not nid:
+            return {"error": "no node to apply a funnel on"}
+        fport = port or (route_view(project, instance, state_ports(project, instance)).get("port"))
+        if not fport:
+            return {"error": "a funnel needs a port — the instance publishes none"}
+        r = queue.node_funnel("operator", nid, fport, on=(mode == "funnel"))
+        if r.get("error"):
+            return r
+        job = r.get("job")
+    with _lock:
+        d = _load()
+        _rec(d, project, instance)["route"] = {"mode": mode, "port": port}
+        write_json(FILE, d)
+    _bump()
+    return {"ok": True, "job": job}
+
+
+def state_ports(project, instance):
+    """The published ports of one instance, from the daemon, for a route
+    that has to pick one."""
+    try:
+        return next((x["ports"] for x in states(project) if x["instance"] == instance), [])
+    except Exception:            # noqa: BLE001 — a listing failure is 'none published'
+        return []
+
+
 def job_view(project, instance):
     """This instance's job as the row draws it: the one in flight, or the
     last one while it has something to say about how it ended. A job that
@@ -379,10 +501,12 @@ def abort_job(project, instance):
 
 
 def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
-              node_addr=None, queue=None, runner=None):
+              node_addr=None, queue=None, runner=None, project_node=None,
+              node_paths=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
                      write_json=write_json, log_dir=log_dir,
-                     node_for=node_for, node_addr=node_addr,
+                     node_for=node_for, node_addr=node_addr, project_node=project_node,
+                     node_paths=node_paths,
                      queue=queue, runner=runner)
     if runner is not None:
         runner.register("compose", run_compose_job)
@@ -1073,10 +1197,29 @@ def _mount_roots():
     return out
 
 
+def _pairs():
+    """The mapping's pairs, from the node being addressed: its record's
+    `config.paths` (docs/nodes.md §11 — the row is where it is edited), and,
+    for one release, DOCKER_HOST_PATHS when no record carries one. The env
+    seeds the record at boot; reading it here directly is the deprecation
+    path, so a box that has not rebooted since the upgrade still maps."""
+    nid = getattr(_node_ctx, "node", None) or _default_node()
+    got = node_paths(nid) if node_paths and nid else {}
+    if got:
+        return [(k, v) for k, v in got.items()]
+    out = []
+    for pair in (os.environ.get("DOCKER_HOST_PATHS") or "").split(","):
+        pair = pair.strip()
+        if pair:
+            here, _, there = pair.partition(":")
+            out.append((here, there))
+    return out
+
+
 def host_map():
     """(container path -> host path, complaints about the pairs given).
 
-    From DOCKER_HOST_PATHS, "/container:/host" pairs separated by commas. Each
+    The node's "/container:/host" pairs (see _pairs). Each
     is checked against the mount it claims to describe: a host path has to end
     with that mount's own root path, so /devdata (root /appdata/builderbot-dev)
     accepts /mnt/cache/appdata/builderbot-dev and rejects /mnt/user/something.
@@ -1087,12 +1230,9 @@ def host_map():
     """
     roots, out, bad = _mount_roots(), {}, []
     root = None
-    for pair in (os.environ.get("DOCKER_HOST_PATHS") or "").split(","):
-        pair = pair.strip()
-        if not pair:
-            continue
-        here, _, there = pair.partition(":")
-        here, there = here.rstrip("/"), there.strip().rstrip("/")
+    for here, there in _pairs():
+        pair = f"{here}:{there}"
+        here, there = here.strip().rstrip("/"), there.strip().rstrip("/")
         if not here.startswith("/") or not there.startswith("/"):
             bad.append(f"{pair} is not a /container:/host pair")
             continue
@@ -1117,7 +1257,7 @@ def host_map():
             # compose that believes it comes up on an empty directory.
             if not sandbox_daemon():
                 bad.append(f"{here}:{there} is the sandbox-VM mapping, but "
-                           f"DOCKER_HOST does not name a sandbox VM — unless "
+                           f"this node's daemon is not a sandbox VM — unless "
                            f"that daemon really has {here}, name its path "
                            f"instead")
         elif (root := roots.get(here)) is None:
@@ -1588,6 +1728,8 @@ def _overview_here(picked):
                 # as part of starting now, so nothing on this page asks about
                 # them and no row costs a `compose config` to draw.
                 "stale_name": stale_name(project, inst),
+                "route": route_view(project, inst,
+                                    sorted({p for c in mine for p in c["ports"]})),
                 "changed_why": ("moved" if same_daemon and rec.get("rev")
                                 and rec.get("rev") != head
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
@@ -2543,6 +2685,7 @@ def state(project, instance=MAIN):
         # A name it used to have, whose things are still under it.
         out["stale_name"] = stale_name(project, instance)
         out.update(wiring(cfg))
+        out["route"] = route_view(project, instance, out.get("ports"))
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way — either the file asks for
         # nothing beyond its own directory, or the operator has already said

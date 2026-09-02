@@ -77,7 +77,21 @@ def _clean(rec):
             # Which docker-host node this project's containers default to.
             # A node id, opaque here: prefs stores the choice, the pickers
             # resolve it, and "" means auto — the default docker node.
-            "dockernode": str(rec.get("dockernode") or "")}
+            # The project's node (docs/nodes.md §6, §13): where EVERYTHING
+            # this project does on a node goes — its containers, builds,
+            # tests, CI and emulation. One setting, by the operator's
+            # decision (1 Sep): per-role pickers were more control than
+            # anybody wanted. A node id, "" meaning none; older records
+            # spelled it dockernode or nodes.build, and both still read.
+            "node": str(rec.get("node") or rec.get("dockernode")
+                        or (rec.get("nodes") or {}).get("build") or "")[:40]
+                    if isinstance(rec.get("nodes", {}), dict) else str(rec.get("node") or "")[:40],
+            # What `bb build` / `bb test` run there, and the globs whose
+            # matches come back into dist/.
+            "build": str(rec.get("build") or "")[:500],
+            "test": str(rec.get("test") or "")[:500],
+            "outputs": [str(g)[:200] for g in (rec.get("outputs") or [])
+                        if str(g)][:16] if isinstance(rec.get("outputs"), list) else []}
 
 
 def get(project):
@@ -91,8 +105,11 @@ def all_projects():
     return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
 
 
-def set_prefs(project, model=None, effort=None, dockernode=None):
-    """Change any of one project's settings; None leaves it, "" clears it."""
+def set_prefs(project, model=None, effort=None, node=None, build=None, test=None,
+              outputs=None, dockernode=None):
+    """Change any of one project's settings; None leaves it, "" clears it.
+    `dockernode` is the old name for `node`, kept for a caller that still
+    says it."""
     if not project:
         return {"error": "no project"}
     with _lock:
@@ -106,12 +123,22 @@ def set_prefs(project, model=None, effort=None, dockernode=None):
             if effort not in EFFORTS and effort != "":
                 return {"error": f"not an effort this can set: {effort}"}
             cur["effort"] = effort
-        if dockernode is not None:
-            cur["dockernode"] = str(dockernode)[:40]
+        if node is None and dockernode is not None:
+            node = dockernode
+        if node is not None:
+            cur["node"] = str(node)[:40]
+        if build is not None:
+            cur["build"] = str(build)[:500].strip()
+        if test is not None:
+            cur["test"] = str(test)[:500].strip()
+        if outputs is not None:
+            got = outputs if isinstance(outputs, list) else str(outputs).split(",")
+            cur["outputs"] = [str(g).strip()[:200] for g in got if str(g).strip()][:16]
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if cur["model"] or cur["effort"] or cur.get("dockernode"):
+        if (cur["model"] or cur["effort"] or cur["node"]
+                or cur["build"] or cur["test"] or cur["outputs"]):
             d["projects"][project] = cur
         else:
             d["projects"].pop(project, None)
