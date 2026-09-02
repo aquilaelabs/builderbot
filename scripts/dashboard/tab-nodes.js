@@ -213,13 +213,17 @@ function nodeConfFold(n){
       <div class="sub ndmstate ${cls}">${esc(st)}</div>
     </div>`;
   }).join("");
-  const stores = ["data", "packages", "cache"].map(role => {
+  const STORE_ABOUT = {
+    data: "job workspaces and AVDs", packages: "toolchains installed here",
+    cache: "build caches, per project", artifacts: "what projects built, per project",
+  };
+  const stores = ["data", "packages", "cache", "artifacts"].map(role => {
     const r = rep.stores?.[role];
     const now = r ? (r.free_mb === null ? `${r.path} — missing` : `${r.path}, ${
       r.free_mb >= 10240 ? Math.round(r.free_mb / 1024) + "GB" : r.free_mb + "MB"} free`) : "";
     return `
     <div class="ndstore">
-      <label>${esc(role)}</label>
+      <label title="${esc(STORE_ABOUT[role] || "")}">${esc(role)}</label>
       <input data-k="store:${esc(role)}" value="${esc(d.stores[role] || "")}" spellcheck="false"
         autocomplete="off" placeholder="${esc(r?.path || "/var/lib/builderbot/" + role)}">
       <div class="sub">${now ? "now " + esc(now) : "not reported"}</div>
@@ -241,7 +245,9 @@ function nodeConfFold(n){
       <div class="ndsec">Mounts — what this node mounts at boot, applied through bb-sandbox on it</div>
       ${mounts}
       <button type="button" data-madd>+ mount</button>
-      <div class="ndsec">Stores — where the agent keeps job data, toolchains and build caches</div>
+      <div class="ndsec">Stores — where the agent keeps job data, toolchains, build caches and
+        this node's copy of what projects built. Each is a directory of its own: a system
+        path is refused, here and on the node.</div>
       ${stores}
       <div class="ndsec">Network — applied with a three-minute dial-back, or reverted</div>
       <div class="ndnet">

@@ -153,7 +153,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
-     && n.agent.version === '7' && /^sha256:/.test(n.agent.digest),
+     && n.agent.version === '8' && /^sha256:/.test(n.agent.digest),
      'the row is online with the census, agent version and digest');
   // single use
   let again = '';
@@ -164,6 +164,18 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   } catch (e) { again = String(e.stderr); }
   ok(/refused/.test(again) && !existsSync(NODE_JSON + '.2'),
      'the enroll token is single-use: a second enrollment is refused');
+}
+
+// The agent refuses a system path for a store whatever it is told — the
+// same rule the controller applies, made at the resource.
+{
+  let refused = '';
+  try {
+    execFileSync('python3', [AGENT, 'enroll', '--controller', URL, '--token', 'bbe_x',
+      '--store', 'cache=/etc'], { env: agentEnv, encoding: 'utf8', stdio: 'pipe' });
+  } catch (e) { refused = String(e.stderr || '') + String(e.stdout || ''); }
+  ok(/system directory/.test(refused),
+     `the agent refuses --store cache=/etc at enrollment (${refused.trim().slice(0, 70)})`);
 }
 
 // ---- the loop: hello, heartbeat, a job ---------------------------------------
@@ -254,10 +266,23 @@ try {
     const badcfg = await api('/api/v1/nodes', { action: 'config', id: minted.id,
       config: { mounts: [{ type: 'nfs', source: 'nas', path: '/mnt/x' }] } });
     ok(/HOST:\/export/.test(badcfg.error || ''), `a malformed mount is refused at the record (${badcfg.error})`);
+    // A store is a directory this system creates, fills and empties, so a
+    // system path is refused before anybody presses Apply — and again on the
+    // node whatever it is told.
+    const sys = await api('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { stores: { cache: '/etc' } } });
+    const bare = await api('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { stores: { artifacts: '/mnt' } } });
+    const inside = await api('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { stores: { data: '/usr/local/x' } } });
+    ok(/system directory/.test(sys.error || '') && /system directory/.test(bare.error || '')
+       && /inside \/usr/.test(inside.error || ''),
+       `a store at /etc, at a bare /mnt, or under /usr is refused (${sys.error})`);
     const cfg = await api('/api/v1/nodes', { action: 'config', id: minted.id,
       config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
                          { type: 'virtiofs', source: 'projects', path: '/workspace', ro: true }],
-                stores: { cache: `${DIR}/agentcache`, packages: `${DIR}/agentpackages` },
+                stores: { cache: `${DIR}/agentcache`, packages: `${DIR}/agentpackages`,
+                          artifacts: `${DIR}/agentartifacts` },
                 network: { mode: 'static', address: '10.9.9.9/24', gateway: '10.9.9.1', dns: ['10.9.9.1'] } } });
     ok(cfg.ok && cfg.desired.mounts.length === 2 && cfg.desired.network.mode === 'static',
        'a desired config is validated and kept on the record');
@@ -492,9 +517,18 @@ try {
       const r = await api(`/api/v1/jobs?id=${io.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
     }, 60000);
-    ok(ifin && /fetched dist\/app-1.0.apk \(6 bytes\)/.test(ifin.log)
-       && existsSync(`${DIR}/agentdata/emu/alpha/app-1.0.apk`),
-       'an input from dist/ is fetched into the project\'s emu directory on the node');
+    ok(ifin && /fetched dist\/app-1.0.apk \(6 bytes\) into/.test(ifin.log)
+       && existsSync(`${DIR}/agentartifacts/alpha/app-1.0.apk`),
+       'an input lands in the node\'s artifacts store, under the project it belongs to');
+    // ...and a second run of the same build copies nothing: the node has it.
+    const io2 = await api('/api/v1/jobs', { action: 'emu', project: 'alpha',
+      argv: ['version', '--help'], files: ['dist/app-1.0.apk'] });
+    const i2 = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${io2.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(i2 && /already on this node \(6 bytes\)/.test(i2.log),
+       '...and the next run of the same build fetches nothing — the node uses its copy');
     const cli = execFileSync('bash', [`${REPO}/scripts/bb`, 'emu', 'list'],
       { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...process.env, DASHBOARD_AUTH: 'test:test',
         DASHBOARD_PORT: new globalThis.URL(URL).port, DASHBOARD_STATE: `${DIR}/state`, BB_PROJECT: 'alpha' } });
@@ -532,12 +566,12 @@ try {
   // ---- the agent's own update, driven from the tab (roadmap #17) ---------------
   {
     const all = await api('/api/v1/nodes');
-    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '') && all.agent.version === '7',
+    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '') && all.agent.version === '8',
        'the node list carries the agent this controller ships, digest and version');
     const lc = await api('/api/v1/nodes', { action: 'update-agent', id: 'local' });
     ok(/only an agent node/.test(lc.error || ''), 'local has no agent to update');
     const cur = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
-    ok(cur.ok && cur.current === true && cur.version === '7',
+    ok(cur.ok && cur.current === true && cur.version === '8',
        'a node already on the shipped agent is told so, and no job is queued');
     const n = await nodeById(minted.id);
     ok(n.agent.digest === all.agent.digest, '...because the digests the row would compare are the same');

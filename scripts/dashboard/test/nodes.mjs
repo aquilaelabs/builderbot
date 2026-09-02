@@ -245,7 +245,8 @@ ok(list[0].id === 'local',
   const en = await napi('/api/v1/agent/enroll', {
     census: { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
               sandbox: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 },
-                                       packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 } },
+                                       packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 },
+                                       artifacts: { path: '/var/lib/builderbot/artifacts', free_mb: 30000, total_mb: 90000 } },
               toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
               mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false, mounted: true, real: 'nas:/mnt/user/old' }],
               network: { interface: 'ens3', addresses: ['10.0.0.40/24'], gateway: '10.0.0.1', dns: ['10.0.0.1'] } },
@@ -268,7 +269,7 @@ ok(list[0].id === 'local',
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
   const ROW = `.nodestab .ndrow[data-node="${minted.id}"]`;
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
-  ok(await page.$eval(`${ROW} .ndstale`, e => /update available → 7/.test(e.textContent))
+  ok(await page.$eval(`${ROW} .ndstale`, e => /update available → 8/.test(e.textContent))
      && await page.$(`${ROW} [data-nd="update-agent"]`) !== null
      && await page.evaluate(() => !document.querySelector('.nodestab .ndrow[data-node="local"] [data-nd="update-agent"]')),
      'the row wears "update available" with the shipped version and an Update agent button; local has neither');
@@ -302,6 +303,8 @@ ok(list[0].id === 'local',
   await page.fill(`${ROW} .ndmount[data-i="0"] [data-k="source"]`, 'nas:/mnt/user/appdata');
   await page.fill(`${ROW} .ndmount[data-i="0"] [data-k="path"]`, '/mnt/appdata');
   await page.fill(`${ROW} [data-k="store:cache"]`, '/scratch/cache');
+  ok(await page.$(`${ROW} [data-k="store:artifacts"]`) !== null,
+     'the fold carries the artifacts store — this node\'s copy of what projects built');
   // The heartbeat repaints the tab; the draft and the caret survive it.
   await page.evaluate(() => loadNodes());
   await sleep(400);

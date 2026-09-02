@@ -868,6 +868,36 @@ def _census(c):
 # GUI and a rescue shell cannot disagree about what the node is meant to be.
 
 MOUNT_TYPES = ("nfs", "virtiofs")
+STORE_ROLES = ("data", "packages", "cache", "artifacts")
+# The same refusal the agent makes of a store path, made here so the tab says
+# no before anybody presses. Deliberately in both places: a store is a
+# directory this system creates, fills and — for the cache — empties, so one
+# pointed at /etc is a delete waiting to happen, and the node refuses whatever
+# it is told regardless (docs/nodes.md §15 door 7, applied to disk).
+STORE_DENY_EXACT = {"/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib",
+                    "/lib32", "/lib64", "/libx32", "/media", "/mnt", "/opt",
+                    "/proc", "/root", "/run", "/sbin", "/srv", "/sys", "/tmp",
+                    "/usr", "/var"}
+STORE_DENY_UNDER = ("/bin/", "/boot/", "/dev/", "/etc/", "/lib/", "/lib32/",
+                    "/lib64/", "/libx32/", "/proc/", "/root/", "/run/",
+                    "/sbin/", "/sys/", "/usr/", "/var/log/", "/var/run/",
+                    "/var/lock/", "/var/spool/", "/var/cache/")
+
+
+def store_path_ok(path):
+    """"" if this is a safe place for a store, else why not."""
+    p = str(path or "").rstrip("/") or "/"
+    if not p.startswith("/"):
+        return f"{path!r} is not an absolute path"
+    if " " in p or ".." in p.split("/"):
+        return f"{path!r} must be a plain absolute path, with no spaces or .."
+    if p in STORE_DENY_EXACT:
+        return (f"{p} is a system directory (or the root of the mounts) — a store "
+                "is a directory of its own, like /var/lib/builderbot/x or /mnt/<share>/<dir>")
+    for bad in STORE_DENY_UNDER:
+        if (p + "/").startswith(bad):
+            return f"{p} is inside {bad.rstrip('/')}, which the agent will not write to"
+    return ""
 _IP = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 _CIDR = re.compile(r"^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$")
 
@@ -903,10 +933,11 @@ def _clean_config(cfg):
     stores = {}
     for role, path in (cfg.get("stores") if isinstance(cfg.get("stores"), dict) else {}).items():
         path = str(path or "").strip()
-        if role not in ("data", "packages", "cache") or not path:
+        if role not in STORE_ROLES or not path:
             continue
-        if not path.startswith("/") or " " in path:
-            return None, f"the {role} store must be an absolute path: {path!r}"
+        why = store_path_ok(path)
+        if why:
+            return None, f"the {role} store: {why}"
         stores[role] = path[:200]
     out["stores"] = stores
     net = cfg.get("network") if isinstance(cfg.get("network"), dict) else {}

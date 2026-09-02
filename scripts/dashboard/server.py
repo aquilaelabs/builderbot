@@ -3175,13 +3175,17 @@ class Handler(BaseHTTPRequestHandler):
             timeout = 3600
         who = f"session:{name}" if field(req, "from") == "session" else "operator"
         if emu:
-            files = []
+            files, sizes = [], {}
             for f in (req.get("files") or [])[:8]:
-                if workspace.file_path(name, str(f)) is None:
+                p = workspace.file_path(name, str(f))
+                if p is None:
                     return {"error": f"{f} is not a file in {name}'s dist/"}, 400
                 files.append(str(f))
-            spec = {"bb": argv, "files": files, "timeout": timeout, "outputs": outputs,
-                    "project": name}
+                # So the node can tell its own copy from a new build without
+                # fetching it again (docs/nodes.md §6, the artifacts store).
+                sizes[str(f)] = p.stat().st_size
+            spec = {"bb": argv, "files": files, "sizes": sizes, "timeout": timeout,
+                    "outputs": outputs, "project": name}
             r = nodes.job_add(who, {"node": nid}, "exec", spec, name)
             if r.get("error"):
                 return r, 400

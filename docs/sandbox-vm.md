@@ -125,6 +125,15 @@ applies them through these very verbs as audited `system` jobs, and
 `bb-sandbox list --json` is what its census reports. The menu stays as the
 console fallback, reading and writing the same fstab — see docs/nodes.md §12.
 
+**The admin account is optional.** Nothing in BuilderBot uses it: the agent
+runs as root under systemd and drops to the docker account for every job,
+`bb-sandbox` refuses to run as anyone but root whoever invokes it, and the
+controller never names it. It is a convenience — a sudo login that is not
+the account a session reaches — so a machine you already administer from
+your own account, a cloud image's `ubuntu`, or root, needs no second one:
+`--admin none` skips it. What the split actually protects is the other half,
+and that half is not optional: the DOCKER account has no sudo.
+
 **Two accounts, and the split is the point.** `bb` runs Docker and answers
 ssh — the one BuilderBot uses, and so the one a Claude session reaches. It has
 no sudo and cannot run `bb-sandbox`. `admin` has sudo and is the only account

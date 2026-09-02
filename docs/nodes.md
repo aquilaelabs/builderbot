@@ -510,6 +510,21 @@ and `bb sdk`, operator-gated; that has to generalize without forking.
   the audit row says who did. The Tools tab's installer gains the same node
   picker the Docker manager gets: pick a node, see what is installed *there*,
   install or remove there. The controller is just the `local` row.
+*Amended 2 September:* there are **four** stores, not three — `artifacts`
+joins data, packages and cache: this node's copy of what a project built,
+per project underneath, so a VM that is several projects' node keeps two
+`app-release.apk` apart. It exists for the node that is not on the LAN: an
+emulator or a container on a cloud node should start from a copy beside it
+rather than pulling one across the link on every run, and the second run of
+an unchanged build copies nothing. And **a store path is now refused if it
+is a system directory** — exactly or inside one, and a bare top-level
+directory like `/mnt` with it. A store is a directory this system creates,
+fills and (for the cache) empties on request, so `--cache /etc` would have
+made *Clear cache* delete every directory under `/etc`. Checked on the
+controller so the tab says no before anybody presses Apply, and again on the
+node whatever it is told — the same reasoning as the capability refusal,
+applied to disk.
+
 - **The store is a role with a location, not a mount.** Each node has a
   `packages` store — default an internal path
   (`/var/lib/builderbot/toolchains`), because a node with its own disk should

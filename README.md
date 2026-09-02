@@ -1316,6 +1316,17 @@ travels in the clear, as the dashboard's own credential does; enrollment says
 so, and with TLS in front of the dashboard the agent pins the certificate on
 first use and refuses a different one after.
 
+**Four stores per node**, each a directory of its own: `data` (job
+workspaces and AVDs), `packages` (the toolchains installed there — what a
+project bound to that node can build), `cache` (build caches, per project)
+and `artifacts` (that node's copy of what its projects built, per project).
+The artifacts store is what makes a node off the LAN reasonable: an emulator
+or a container there starts from a copy beside it, and a second run of an
+unchanged build copies nothing. A store path may not be a system directory —
+`/etc`, anything under `/usr`, or a bare `/mnt` — because the agent creates,
+fills and empties these; the refusal is made on the dashboard and again on
+the node.
+
 **Storage & network, from the row.** A node that enrolled as a sandbox (it
 carries `bb-sandbox`) folds open an editor for what it should mount (NFS or
 virtiofs, read-only or not), where the agent keeps its data, packages and
