@@ -187,3 +187,5 @@
 - A dev instance's containers are now built and started by the node itself, so a machine you enrol needs nothing but its token — no ssh key, no open port (c070ef2)
 - Adding an NFS mount to a node can leave the mountpoint blank: it lands at /mnt/ under the export's own name (c070ef2)
 - Installing a node's CI runner now completes: the service half was failing after the runner had already registered with GitHub (4d28e1f)
+- The Nodes tab shows one machine at a time, picked at the top, with everything about it open and its cpu, memory and storage as meters instead of a line of text (22e5fb1)
+- A node's mount list now opens on the shares it actually has, so mounts set up at the VM's console can be edited from the dashboard (22e5fb1)
