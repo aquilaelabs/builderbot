@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "11"
+AGENT_VERSION = "14"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -117,6 +117,84 @@ def store_path_ok(path):
         if (p + "/").startswith(bad):
             return f"{p} is inside {bad.rstrip('/')}, which this agent will not write to"
     return ""
+def make_store(path):
+    """Create a store directory, and say which directories that actually
+    brought into being.
+
+    The list is the whole point. A store at /mnt/tank/bb/packages may have
+    made two directories or none, and there is no way to tell afterwards —
+    an empty /mnt/tank/bb could be ours or could be the operator's. So it is
+    recorded at the moment of creation, and nothing outside that record is
+    ever removed.
+    """
+    p = os.path.abspath(str(path))
+    made, probe = [], p
+    while probe and probe != "/" and not os.path.exists(probe):
+        made.append(probe)
+        probe = os.path.dirname(probe)
+    os.makedirs(p, exist_ok=True)
+    made.reverse()                      # shallowest first: the order they appeared
+    return made
+
+
+def prune_made(made):
+    """Remove the directories in `made` that are now empty, deepest first.
+
+    rmdir rather than a check-then-delete: it fails with ENOTEMPTY by
+    itself, so there is no window between deciding a directory is empty and
+    removing it. The first one that will not go stops the walk — a parent of
+    something that is still there cannot be empty either — and a mountpoint
+    is never touched, because removing the directory a share is mounted on
+    is how you delete the thing you meant to detach.
+
+    Returns (removed, [(path, why)]).
+    """
+    removed, kept = [], []
+    for d in reversed(list(made or [])):
+        if os.path.ismount(d):
+            kept.append((d, "it is a mountpoint"))
+            break
+        try:
+            os.rmdir(d)
+            removed.append(d)
+        except OSError as e:
+            kept.append((d, e.strerror or "it would not go"))
+            break
+    return removed, kept
+
+
+def mount_covering(path, mounts):
+    """The bb-sandbox mount this path would live inside, or None.
+
+    The deepest match wins, so /mnt/tank/builderbot/packages is answered by
+    /mnt/tank rather than by /mnt if both are configured. This is what makes
+    an unmounted share detectable: the mount is in fstab, the directory
+    under it is not, and mkdir would quietly make a local one.
+    """
+    p = str(path or "").rstrip("/")
+    best = None
+    for m in mounts or []:
+        mp = str(m.get("path") or "").rstrip("/")
+        if not mp:
+            continue
+        if p == mp or p.startswith(mp + "/"):
+            if best is None or len(mp) > len(str(best.get("path") or "").rstrip("/")):
+                best = m
+    return best
+
+
+def dir_bytes(path):
+    """What is in there, in bytes, or None if it cannot be told quickly.
+    `du` rather than a walk: one C process instead of a stat per file, which
+    matters on the far end of an NFS link."""
+    try:
+        out = subprocess.run(["du", "-sb", path], stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, timeout=180, check=False)
+        return int(out.stdout.split()[0]) if out.returncode == 0 else None
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+
+
 # Where the configuration plane's tools are (docs/nodes.md §12, phase 5).
 # bb-sandbox is the one copy of the mount logic, installed by the provisioner
 # — its presence is what says this node was set up as a sandbox, and a
@@ -1392,7 +1470,7 @@ class Agent:
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
 
-    def _sh(self, job, argv, cwd=None):
+    def _sh(self, job, argv, cwd=None, timeout=300):
         """One command, its output into the job's log, its exit code back.
 
         `cwd` matters more than it looks: the runner's own svc.sh resolves
@@ -1404,7 +1482,7 @@ class Agent:
         try:
             p = subprocess.run(argv, cwd=cwd, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,
-                               timeout=300, check=False)
+                               timeout=timeout, check=False)
         except (OSError, subprocess.SubprocessError) as e:
             job.say(f"{argv[0]}: {e}\n")
             return 1
@@ -1438,7 +1516,13 @@ class Agent:
                 bad += 1
         stores = cfg.get("stores") if isinstance(cfg.get("stores"), dict) else {}
         if stores:
+            # Read the mounts back AFTER applying them: what a store may sit
+            # on is what is mounted now, not what was asked for.
+            live = mounts_now()
             mine = dict(self.state.get("stores") or {})
+            # What this agent created for each store, so a move can take
+            # back exactly that and nothing else.
+            marks = dict(self.state.get("store_made") or {})
             for role, path in stores.items():
                 if role not in DEFAULT_STORES:
                     continue
@@ -1447,14 +1531,54 @@ class Agent:
                     job.say(f"refused {role} store: {why}\n")
                     bad += 1
                     continue
+                # The silent failure this exists to stop: a share that is in
+                # fstab but not mounted leaves its mountpoint an ordinary
+                # empty directory, mkdir cheerfully makes the store inside
+                # it, and everything then lands on the node's own disk while
+                # the row reports a healthy store with plenty of room. So a
+                # store under a configured mount is refused unless that
+                # mount is really mounted — fix the share, or take the entry
+                # out and mean it locally.
+                cover = mount_covering(path, live)
+                if cover and not os.path.ismount(str(cover.get("path") or "")):
+                    job.say(f"refused {role} store {path}: it is inside {cover.get('path')}, "
+                            f"which is configured as a {cover.get('type') or 'nfs'} mount from "
+                            f"{cover.get('source') or '?'} and is NOT mounted. Writing there would "
+                            f"put {role} on this node's own disk and look like it worked. Fix the "
+                            f"mount, or remove it from this node's mounts if {path} is meant to be "
+                            f"local.\n")
+                    bad += 1
+                    continue
                 try:
-                    os.makedirs(path, exist_ok=True)
-                    mine[role] = str(path)
-                    job.say(f"{role} store: {path}\n")
+                    made = make_store(path)
                 except OSError as e:
                     job.say(f"{role} store {path} could not be made: {e.strerror}\n")
                     bad += 1
+                    continue
+                if made:
+                    job.say(f"{role}: made {', '.join(made)}\n")
+                was = str(mine.get(role) or "")
+                if was and was.rstrip("/") != str(path).rstrip("/"):
+                    if not self._move_store(job, role, was, str(path)):
+                        # The move did not happen, so nothing was written to
+                        # the new place: leave no litter behind either.
+                        for d in prune_made(made)[0]:
+                            job.say(f"{role}: removed {d} again — the move did not happen\n")
+                        bad += 1
+                        continue
+                    self._retire_store(job, role, was, marks.get(role) or [])
+                    marks[role] = made
+                else:
+                    # Same path. Keep the original record — it says what was
+                    # made for this store the FIRST time, which is what a
+                    # later move has to clean up — and add anything this run
+                    # had to put back.
+                    prev = list(marks.get(role) or [])
+                    marks[role] = prev + [d for d in made if d not in prev]
+                mine[role] = str(path)
+                job.say(f"{role} store: {path}\n")
             self.state["stores"] = mine
+            self.state["store_made"] = marks
             save_state(self.state)
         self.hello()
         if bad:
@@ -1462,6 +1586,84 @@ class Agent:
             return "failed", 1
         job.say("storage applied\n")
         return "succeeded", 0
+
+    def _move_store(self, job, role, old, new):
+        """Repointing a store used to leave its contents behind: the node
+        started using an empty directory and the toolchains, AVDs or built
+        artifacts stayed where they were, with nothing saying so. So the
+        contents come across first, and the job only repoints if they did.
+
+        The source is never deleted — the same rule the node-change
+        migration keeps (roadmap #17). A half-finished move must leave the
+        old store able to serve, and reclaiming the space is the operator's
+        to do once they can see both.
+
+        `cache` is the exception: it is rebuildable by definition, and a
+        cold cache costs the next build time and never correctness, so
+        copying tens of gigabytes of it across a link would be work for
+        nothing.
+        """
+        if not os.path.isdir(old):
+            job.say(f"{role}: nothing at {old} to bring across\n")
+            return True
+        if role == "cache":
+            job.say(f"{role}: leaving {old} where it is — a cache is rebuildable, "
+                    f"and the new one starts cold\n")
+            return True
+        try:
+            if not os.listdir(old):
+                job.say(f"{role}: {old} is empty, nothing to bring across\n")
+                return True
+        except OSError as e:
+            job.say(f"{role}: cannot read {old}: {e.strerror}\n")
+            return False
+        size = dir_bytes(old)
+        if size is not None:
+            free = shutil.disk_usage(new).free
+            job.say(f"{role}: bringing {size // 1048576}MB across from {old}; "
+                    f"{free // 1048576}MB free at {new}\n")
+            if size > free:
+                job.say(f"refused: {new} has not got room for it. Nothing was moved and "
+                        f"{role} still points at {old}.\n")
+                return False
+        else:
+            job.say(f"{role}: bringing {old} across (size unknown)\n")
+        # cp -a, not shutil: it keeps ownership, times and links, and one C
+        # process beats a per-file round trip over NFS. Six hours, because
+        # a packages store is tens of gigabytes and this is the one system
+        # job that can legitimately take that long.
+        if self._sh(job, ["cp", "-a", os.path.join(old, "."), new + "/"], timeout=21600) != 0:
+            job.say(f"refused: the copy failed. {role} still points at {old}, "
+                    f"which is untouched.\n")
+            return False
+        job.say(f"{role}: copied. The old copy at {old} is left in place — "
+                f"delete it yourself once you are satisfied.\n")
+        return True
+
+    def _retire_store(self, job, role, old, made):
+        """After a store has moved, take back the directories this agent
+        made for it — and only those, and only if they are empty.
+
+        Which is usually none of them, and saying so matters: the move keeps
+        the old copy on purpose, so the store directory is not empty and
+        rmdir refuses it. That is the correct outcome, not a failure, and
+        the log says which path is still holding data so it can be removed
+        deliberately. The empty case is real too — a store that was
+        configured and never written to leaves directories behind that
+        nobody wants.
+        """
+        if not made:
+            job.say(f"{role}: {old} was not made by this agent, so it is left alone\n")
+            return
+        removed, kept = prune_made(made)
+        if removed:
+            job.say(f"{role}: removed {', '.join(removed)} — made for this store "
+                    f"and empty now\n")
+        for path, why in kept:
+            job.say(f"{role}: {path} stays ({why})"
+                    + (f" — the old copy is in there; remove it yourself when you are "
+                       f"satisfied the move worked\n" if "empty" in (why or "").lower()
+                       else "\n"))
 
     def _apply_network(self, job, cfg):
         """Commit/confirm, because this is the one change that can cut the
@@ -1607,6 +1809,32 @@ class Agent:
                 for x in [dd] + [os.path.join(dd, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
+        # A runner that is already configured locally refuses to be
+        # configured again — `--replace` is about taking a NAME back on
+        # GitHub's side, not about overwriting .runner here. So a Reinstall
+        # after a half-finished install (registered, service not installed)
+        # failed with "Cannot configure the runner because it is already
+        # configured", and the retry was blocked by the state the first
+        # attempt left. Clear it first, and mean it: deregister properly if
+        # the controller will mint a removal token, and failing that take the
+        # local config out of the way so this can proceed — a runner left on
+        # GitHub's side is replaced by name a moment later.
+        if os.path.isfile(os.path.join(d, ".runner")):
+            job.say("a runner is already configured here; clearing it before reinstalling\n")
+            if os.path.isfile(os.path.join(d, "svc.sh")):
+                self._sh(job, ["bash", "./svc.sh", "stop"], cwd=d)
+                self._sh(job, ["bash", "./svc.sh", "uninstall"], cwd=d)
+            st, rr = self.ctl.call("runner-token", {"kind": "remove"}, timeout=60)
+            gone = False
+            if st == 200 and rr.get("token"):
+                gone = self._run_as(job, who, d, [os.path.join(d, "config.sh"), "remove",
+                                                  "--token", rr["token"]]) == 0
+            if not gone:
+                job.say("deregistration did not complete; taking the local config out of the "
+                        "way so the reinstall can proceed. The old runner is replaced by name.\n")
+                for junk in (".runner", ".credentials", ".credentials_rsaparams", ".service"):
+                    with contextlib.suppress(OSError):
+                        os.remove(os.path.join(d, junk))
         st, r = self.ctl.call("runner-token", {"kind": "registration"}, timeout=60)
         if st != 200 or not r.get("token"):
             job.say(f"could not get a registration token from the controller: {r.get('error', st)}\n")
@@ -1721,16 +1949,20 @@ def cmd_enroll(args):
     if not opts["--token"].startswith("bbe_"):
         raise SystemExit("that is not an enrollment token (they start bbe_); "
                          "mint one on the controller's Nodes tab")
+    marks = {}
     for role, path in stores.items():
         # A store that cannot be made is reported, not fatal: its free space
-        # reads as zero on the row, which is the true answer.
+        # reads as zero on the row, which is the true answer. What each one
+        # DID create is kept, so that if the store is moved later the
+        # directories this put there can be taken back and nothing else.
         try:
-            os.makedirs(path, exist_ok=True)
+            marks[role] = make_store(path)
         except OSError as e:
             print(f"note: {role} store {path} could not be created ({e.strerror}); "
                   "it will report no space until it exists")
     ctl = Controller(opts["--controller"], opts["--token"], opts["--pin"])
-    state = {"controller": ctl.url, "user": opts["--user"], "stores": stores}
+    state = {"controller": ctl.url, "user": opts["--user"], "stores": stores,
+             "store_made": marks}
     st, r = ctl.call("enroll", {"census": census(state), "version": AGENT_VERSION,
                                 "digest": own_digest(), "user": opts["--user"]},
                      timeout=30)

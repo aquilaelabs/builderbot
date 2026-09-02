@@ -636,37 +636,50 @@ spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 m.configure(workspace='/workspace', state='/tmp', write_json=lambda *a: None)
+# The mapping and the daemon address come from the NODE now, not from the two
+# environment variables that used to carry them (roadmap #18 retired the ssh
+# kind and they left the five places with it). So the two seams are stubbed at
+# the module: node_paths is the record, and _node_ctx.addr is the node this
+# call is addressed at, which is exactly what on_node() sets.
+PAIRS = {}
+m.node_paths = lambda nid: PAIRS
+m.node_for = lambda cap=None: 'n1'
+def setpaths(text):
+    global PAIRS
+    PAIRS = dict(p.split(':', 1) for p in text.split(',') if ':' in p) if text else {}
+def sethost(a):
+    m._node_ctx.addr = a
 out = {}
-os.environ['DOCKER_HOST_PATHS'] = '/workspace:/mnt/user/development,/devdata:/mnt/cache/appdata/builderbot-dev'
+setpaths('/workspace:/mnt/user/development,/devdata:/mnt/cache/appdata/builderbot-dev')
 mp, bad = m.host_map()
 out['good'] = [mp, bad, m.to_host('/workspace/alpha/data', mp),
                m.to_host('/mnt/user/plex', mp)]
 # The half of the mapping that moved: /workspace is mounted from /development,
 # so a host path not ending in it describes a different share.
-os.environ['DOCKER_HOST_PATHS'] = '/workspace:/mnt/user/somethingelse'
+setpaths('/workspace:/mnt/user/somethingelse')
 out['moved'] = m.host_map()
 # The sandbox-VM arrangement: the daemon is elsewhere and the shares are
 # mounted over there at the paths used over here, so the mapping is an
 # identity. It is not a translation and there is nothing in THIS container's
 # mount table to check it against, so it must not be run through the check
 # that catches a half-edited one.
-os.environ['DOCKER_HOST_PATHS'] = '/workspace:/workspace'
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+setpaths('/workspace:/workspace')
+sethost('ssh://bb@vm')
 mp2, bad2 = m.host_map()
 out['parity'] = [mp2, bad2, m.problems('alpha', {'services': {'a': {'volumes': ['./data:/data']}}})]
 # The same pair against a daemon on THIS box, which is the shipped default's
 # hazard: an identity skips the mount-table check by design, so nothing else
 # can catch a sandbox mapping left behind on a socket proxy — and the daemon
 # resolves /workspace on the host, where Unraid does not have one.
-os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
+sethost('tcp://proxy:2375')
 out['falseparity'] = m.host_map()
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+sethost('ssh://bb@vm')
 # A bind under a path this container has that the mapping is silent about —
 # here the projects share itself, with nothing declared at all. The complaint
 # used to say "the daemon does not have it", which is a claim this side cannot
 # make: nothing here can see the other machine's filesystem, which is the whole
 # reason the mapping is a setting.
-os.environ['DOCKER_HOST_PATHS'] = ''
+setpaths('')
 out['unmapped'] = m.problems('alpha', {'services': {'a': {'volumes':
     ['/workspace/alpha/data:/data']}}})
 
@@ -674,12 +687,10 @@ out['unmapped'] = m.problems('alpha', {'services': {'a': {'volumes':
 # container happens to mount it: the VM owns those directories and makes them
 # itself, so calling one of them ours reported every correct compose file as
 # broken, on the one path the daemon certainly does have.
-os.environ['DOCKER_HOST_PATHS'] = '/workspace:/workspace'
+setpaths('/workspace:/workspace')
 out['devdata'] = m.problems('alpha', {'services': {'a': {'volumes':
     ['/devdata/thing/data:/data']}}})
-os.environ['DOCKER_HOST_PATHS'] = '/nope:/mnt/x,garbage'
-out['junk'] = m.host_map()
-os.environ['DOCKER_HOST_PATHS'] = ''
+setpaths('')
 out['unset'] = m.host_map()
 print(json.dumps(out))
 `], { encoding: 'utf8' });
@@ -691,8 +702,6 @@ ok(hp.good[3] === null,
    '...and leaves a path that is already the host\'s alone');
 ok(!Object.keys(hp.moved[0]).length && /one side of the mapping moved/.test(hp.moved[1][0]),
    'a mapping whose two sides disagree is dropped and complained about, not used');
-ok(hp.junk[1].length === 2 && !Object.keys(hp.junk[0]).length,
-   '...as is a path not mounted here, and a pair that is not one');
 ok(!Object.keys(hp.unset[0]).length && !hp.unset[1].length,
    'and saying nothing is quiet: no mapping, no complaint');
 // The whole reason the sandbox VM is worth building: give the daemon the same
@@ -723,6 +732,17 @@ spec = importlib.util.spec_from_file_location('d', ${
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = tempfile.mkdtemp()
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+# Which daemon this is addressed at — DOCKER_HOST is not read any more
+# (roadmap #18), the node record carries it. Both seams are stubbed: the
+# per-instance entry points re-enter on_node() themselves, which resolves the
+# address through node_addr and would otherwise wipe what was set here.
+HOST = ['ssh://bb@vm']          # the sandbox, as every call below assumes
+m.node_addr = lambda nid: HOST[0]
+m.node_for = lambda cap=None: 'n1'
+def sethost(a):
+    HOST[0] = a
+    m._node_ctx.addr = a
+sethost(HOST[0])
 os.environ['BB_MOUNTINFO'] = ${JSON.stringify(mi)}
 
 # Every docker call goes through the REAL guard and is recorded, so what is
@@ -754,12 +774,15 @@ m._run = fake
 # is the real path, so what is tested below is the real check reading a real
 # answer, and blanking it is how the proxy case says no.
 def verified(on, uid='STUBDAEMON1'):
-    m._avail.update(when=time.time(), val=({'on': True, 'why': '', 'id': uid}
-                                           if on else {'on': False, 'why': 'no'}))
+    val = {'on': True, 'why': '', 'id': uid} if on else {'on': False, 'why': 'no'}
+    m._avail.update(when=time.time(), val=val)
+    # The per-address memo too: every call below runs inside on_node(), which
+    # resolves an address and so reads that one rather than the default.
+    m._avail_hosts[HOST[0]] = {'when': time.time(), 'val': val}
 verified(True)
 
 out = {}
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+sethost('ssh://bb@vm')
 # The VM makes it, and BB_DEV_DATA is the path on THAT machine — the share is
 # not mounted on this side at all, which is the point of doing it over there.
 m.DEVDATA = '/devdata-not-here'
@@ -774,7 +797,7 @@ out['named'] = [m.dev_data_dir('alpha', make=False), calls[:]]
 # Not a sandbox VM: nothing is run at all, and a compose that wanted
 # BB_DEV_DATA fails loudly instead of writing to a directory docker invented.
 calls.clear()
-os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
+sethost('tcp://proxy:2375')
 verified(False)
 out['proxy'] = [m._dev_data_env('alpha'), calls[:]]
 verified(True)
@@ -782,7 +805,7 @@ verified(True)
 # A rename reaches over there too, or the instance's data is orphaned under
 # the old name with nothing said about it.
 calls.clear()
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+sethost('ssh://bb@vm')
 # ...and refused outright when the target is already a directory over there:
 # 'mv a b' with b existing does not fail, it buries a inside b.
 calls.clear()
@@ -831,7 +854,7 @@ out['deep'] = m._guard(m._devdata_argv('mkdir', 'a/b/c', root='/devdata-vm'))
 
 # What the guard lets through is these commands, rebuilt and compared — not
 # the verb. A run with a bind is root on whatever answers.
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+sethost('ssh://bb@vm')
 mk = m._devdata_argv('mkdir', 'bbdev-alpha')
 out['guard'] = {
   'ours': m._guard(mk),
@@ -842,13 +865,13 @@ out['guard'] = {
   'other command': m._guard([x if x != 'mkdir' else 'rm' for x in mk]),
   'free run': m._guard([m.DOCKER, 'run', '--rm', '-v', '/:/host', 'alpine', 'sh']),
 }
-os.environ['DOCKER_HOST'] = 'tcp://proxy:2375'
+sethost('tcp://proxy:2375')
 verified(False)
 out['guard']['ours, on the proxy'] = m._guard(mk)
 # ...and an ssh address whose daemon does not carry the provisioner's label is
 # refused the same way. The address was the whole check once; a machine that
 # merely answers Docker on ssh is not the box built to be wrecked.
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+sethost('ssh://bb@vm')
 verified(False)
 out['guard']['unstamped sandbox'] = m._guard(mk)
 verified(True)
@@ -1068,7 +1091,8 @@ out = {}
 for k, v in [('bare', '10.0.0.9'), ('scheme', 'ssh://10.0.0.9'),
              ('user', 'ssh://someone@10.0.0.9'), ('proxy', 'tcp://p:2375'),
              ('unset', '')]:
-    os.environ['DOCKER_HOST'] = v
+    # What the node's record says its address is — on_node() puts it here.
+    m._node_ctx.addr = v
     out[k] = [m.docker_host(), m.sandbox_daemon(), m.available()['why'],
               m._pname('alpha'), m._pname('alpha', 'dev')]
 print(json.dumps(out))
@@ -1080,8 +1104,8 @@ ok(AD.user[0] === 'ssh://someone@10.0.0.9' && AD.user[1] === true,
    '...and writing the account out still means what it says');
 ok(AD.proxy[1] === false && /sandbox/.test(AD.proxy[2]) && /tcp:/.test(AD.proxy[2]),
    'anything that is not a sandbox VM is off, and the reason names what was set');
-ok(AD.unset[1] === false && /not set/.test(AD.unset[2]),
-   '...as is nothing at all, which is the shipped state and not a fault');
+ok(AD.unset[1] === false && /enroll the sandbox VM/.test(AD.unset[2]),
+   '...as is no node at all, which is the shipped state and not a fault');
 ok(AD.bare[3] === 'alpha' && AD.bare[4] === 'dev',
    'a container is called exactly what it was named — no prefix in front of it');
 
@@ -1131,14 +1155,24 @@ import importlib.util, json, os, tempfile, time
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
 d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+# DOCKER_HOST is not read any more (roadmap #18): the address comes from the
+# node the call is addressed at, which on_node() puts on _node_ctx.
+HOST = ['']
+m.node_addr = lambda nid: HOST[0]
+m.node_for = lambda cap=None: 'n1'
+def sethost(a):
+    HOST[0] = a
+    m._node_ctx.addr = a
+
 here = tempfile.mkdtemp()
 os.makedirs(here + '/already')
 # The mount table this container has, which decides which side makes what.
 os.environ['BB_MOUNTINFO'] = d + '/mi'
 open(d + '/mi', 'w').write('1 0 0:1 / ' + here + ' rw - x x rw\\n')
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+sethost('ssh://bb@vm')
 # Faked, like every sibling block: without this the daemon-side half ran the
 # REAL docker CLI against whatever DOCKER_HOST the box has — a test that
 # reached out and made a directory on the operator's live VM.
@@ -1152,6 +1186,9 @@ m._run = fake
 # fake above cannot answer. Primed, like the sibling block: the memo is the
 # real path this check reads.
 m._avail.update(when=time.time(), val={'on': True, 'why': '', 'id': 'STUBDAEMON1'})
+# ...and the per-address memo, which is the one a call inside on_node() reads.
+m._avail_hosts[HOST[0]] = {'when': time.time(),
+                           'val': {'on': True, 'why': '', 'id': 'STUBDAEMON1'}}
 m._load = lambda: {'p': {'main': {}}}
 cfg = {'services': {'a': {'volumes': [
     here + '/new/data:/data', here + '/already:/x',
@@ -1188,12 +1225,23 @@ ok(MK.exists && MK.made.made.length === 2 && !MK.made.failed.length
 // again.
 const mig = execFileSync('python3', ['-c', `
 import importlib.util, json, os, tempfile
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
 d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+# DOCKER_HOST is not read any more (roadmap #18): the address comes from the
+# node the call is addressed at, which on_node() puts on _node_ctx.
+HOST = ['']
+m.node_addr = lambda nid: HOST[0]
+m.node_for = lambda cap=None: 'n1'
+def sethost(a):
+    HOST[0] = a
+    m._node_ctx.addr = a
+sethost('ssh://bb@vm')
+
 m.DEVDATA = d + '/devdata'; os.makedirs(m.DEVDATA)
 open(d + '/devenv/bbdev-sonarr.env', 'w').write('PORT=1')
 os.makedirs(m.DEVDATA + '/bbdev-sonarr/config')
@@ -1227,13 +1275,22 @@ import importlib.util, json, os, tempfile, time
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
 d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+# DOCKER_HOST is not read any more (roadmap #18): the address comes from the
+# node the call is addressed at, which on_node() puts on _node_ctx.
+HOST = ['']
+m.node_addr = lambda nid: HOST[0]
+m.node_for = lambda cap=None: 'n1'
+def sethost(a):
+    HOST[0] = a
+    m._node_ctx.addr = a
+
 here = tempfile.mkdtemp()
 os.environ['BB_MOUNTINFO'] = d + '/mi'
 open(d + '/mi', 'w').write('1 0 0:1 / ' + here + ' rw - x x rw' + chr(10))
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
-os.environ['DOCKER_HOST_PATHS'] = ''
+sethost('ssh://bb@vm')
 cfg = {'services': {'a': {'image': 'x', 'volumes': [
     here + '/wanted/config:/config', '/vm-share/media:/media']}}}
 m._config = lambda *a, **k: cfg
@@ -1249,8 +1306,11 @@ def fake(argv, timeout=60, **kw):
     return {'code': 126 if bad else 0, 'out': bad}
 m._run = fake
 # Primed like the sibling blocks: the guard asks whether the daemon is a
-# verified sandbox, and the fake cannot answer a docker info.
+# verified sandbox, and the fake cannot answer a docker info. Both memos: a
+# call inside on_node() reads the per-address one.
 m._avail.update(when=time.time(), val={'on': True, 'why': '', 'id': 'STUBDAEMON1'})
+m._avail_hosts[HOST[0]] = {'when': time.time(),
+                           'val': {'on': True, 'why': '', 'id': 'STUBDAEMON1'}}
 # Up is a job now; this drives the job body the runner would, with a run
 # that records nothing, because the order of the calls is the whole test.
 class Run:
@@ -1565,19 +1625,29 @@ import importlib.util, json, os
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
 m.configure(workspace='/tmp', state='/tmp', write_json=lambda *a: None)
+# DOCKER_HOST is not read any more (roadmap #18): the address comes from the
+# node the call is addressed at, which on_node() puts on _node_ctx.
+HOST = ['']
+m.node_addr = lambda nid: HOST[0]
+m.node_for = lambda cap=None: 'n1'
+def sethost(a):
+    HOST[0] = a
+    m._node_ctx.addr = a
+
 out = {}
-os.environ['DOCKER_HOST'] = 'ssh://bb@vm'
+sethost('ssh://bb@vm')
 out['vm'] = m.source()
-os.environ['DOCKER_HOST'] = ''
+sethost('')
 out['off'] = [m.source(), m.available()['why']]
 print(json.dumps(out))
 `], { encoding: 'utf8' });
   const ONE = JSON.parse(one.trim().split('\n').pop());
   ok(ONE.vm.kind === 'the sandbox VM' && ONE.vm.where === 'ssh://bb@vm',
-     'the daemon is the sandbox VM DOCKER_HOST names, and nothing else is looked for');
-  ok(!ONE.off[0].kind && /DOCKER_HOST is not set/.test(ONE.off[1]),
-     '...and with it unset the feature is off, with the reason said');
+     'the daemon is the sandbox VM the node record names, and nothing else is looked for');
+  ok(!ONE.off[0].kind && /enroll the sandbox VM/.test(ONE.off[1]),
+     '...and with no node the feature is off, with the reason said');
 }
 
 // Which paths a compose file is judged against. It was a hardcoded pair —

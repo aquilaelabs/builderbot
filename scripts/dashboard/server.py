@@ -2400,7 +2400,7 @@ def snapshot():
         # it properly is a subprocess: this rides the poll, and the poll is the
         # page's heartbeat. Every Docker button on the page reads this one
         # answer rather than each finding out by failing.
-        "docker": devapp.available_cached(),
+        "docker": devapp.available_default(),
         "logs": logs.payload(),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made

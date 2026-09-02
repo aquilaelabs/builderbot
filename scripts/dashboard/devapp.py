@@ -9,9 +9,9 @@ controls, in the same row language as the APK it lists: Up, Down, Env,
 Rebuild.
 
 **Where docker actually is.** Not in this container, and not on this box: the
-daemon belongs to a sandbox VM, whose address arrives as DOCKER_HOST and which
-the docker CLI reaches over ssh on its own. That machine's only job is running
-Docker. It holds no container anybody minds losing and has no route to the
+daemon belongs to a sandbox VM — a node the operator enrolled with a token,
+whose address the node itself reports on every dial-in. That machine's only job
+is running Docker. It holds no container anybody minds losing and has no route to the
 server's, which is what makes build+run+bind-mounts — root-shaped power
 wherever it lands — an acceptable thing to put behind a dashboard button.
 
@@ -86,10 +86,10 @@ log_dir = None
 project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
 node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
-# The daemon is a sandbox VM and nothing else. DOCKER_HOST names the machine;
-# ssh:// and the bb account provision.sh makes are filled in, so the address is
-# the whole setting, and an address of any other kind turns the feature off
-# with the reason on it rather than half-working.
+# The daemon is a sandbox VM and nothing else. The node record names the
+# machine; ssh:// and the bb account provision.sh makes are filled in, so an
+# address of any other kind turns the feature off with the reason on it rather
+# than half-working.
 #
 # One arrangement because the boundary is the machine — reached over ssh with a
 # key BuilderBot cannot read, holding nothing anybody minds losing. Aim the
@@ -136,8 +136,8 @@ def _instance_node(project, instance):
     the default docker host.
 
     Records from before nodes existed have no binding; they belong to the
-    daemon DOCKER_HOST named, which is exactly what the default node mirrors,
-    so the last fallback is not a guess.
+    one daemon there was, which is what the default node is, so the last
+    fallback is not a guess.
     """
     nid = _read_rec(project, instance).get("node") or ""
     if not nid and project_node:
@@ -168,9 +168,11 @@ def docker_host():
     allowed is a different KIND of address, which available() refuses by name
     rather than by handing docker something it will fail on obscurely.
     """
-    ctx = getattr(_node_ctx, "addr", None)
-    addr = (ctx if ctx is not None
-            else (os.environ.get("DOCKER_HOST") or "")).strip()
+    # The node being addressed, and nothing else. DOCKER_HOST used to be the
+    # fallback; it went with the ssh kind (roadmap #18), so a daemon this
+    # container talks to is one somebody enrolled rather than one an
+    # environment variable named.
+    addr = (getattr(_node_ctx, "addr", None) or "").strip()
     if not addr:
         return ""
     scheme, sep, rest = addr.partition("://")
@@ -698,7 +700,7 @@ def _bump():
 def source():
     """The daemon being talked to, for the manager to name on the page.
 
-    `strays` is the only judgement in here: a DOCKER_HOST_PATHS pair naming a
+    `strays` is the only judgement in here: a path-mapping pair naming a
     path this container does not have is a statement about the other machine
     that nothing on this side will ever act on. Harmless, and worth saying
     once rather than sitting in the setting looking like it does something.
@@ -726,12 +728,13 @@ def available():
     addr = docker_host()
     if not addr:
         return {"on": False,
-                "why": "DOCKER_HOST is not set — point it at the sandbox VM's "
-                       "address; see docs/sandbox-vm.md"} | source()
+                "why": "no node with a daemon — enroll the sandbox VM on the "
+                       "Nodes tab (Enroll node mints a token, then provision.sh "
+                       "on the machine); see docs/sandbox-vm.md"} | source()
     if not addr.startswith("ssh://"):
         return {"on": False,
-                "why": f"DOCKER_HOST is {addr} — dev instances need a sandbox "
-                       "VM, addressed over ssh; see docs/sandbox-vm.md"} | source()
+                "why": f"the node answers at {addr} — dev instances need a "
+                       "sandbox VM; see docs/sandbox-vm.md"} | source()
     r = _run([DOCKER, "version", "--format", "{{.Server.Version}}"], timeout=10)
     if r["code"] != 0:
         return {"on": False,
@@ -776,6 +779,20 @@ def _uid():
         return ((_avail["val"] or {}).get("id") or "")
 _avail_lock = threading.Lock()
 AVAIL_TTL = 30
+
+
+def available_default():
+    """available_cached() for the node nothing named — what the status poll
+    asks, since the page's daemon gate is one answer for the whole box.
+
+    It used to need no context: docker_host() fell back to DOCKER_HOST, so a
+    call from anywhere found the one daemon there was. With the ssh kind
+    retired the address comes from the node record and nothing else, so this
+    has to say WHICH node it means — and the default node is the same one
+    the manager opens on.
+    """
+    with on_node(_default_node()):
+        return available_cached()
 
 
 def available_cached():
@@ -1297,21 +1314,15 @@ def _mount_roots():
 
 def _pairs():
     """The mapping's pairs, from the node being addressed: its record's
-    `config.paths` (docs/nodes.md §11 — the row is where it is edited), and,
-    for one release, DOCKER_HOST_PATHS when no record carries one. The env
-    seeds the record at boot; reading it here directly is the deprecation
-    path, so a box that has not rebooted since the upgrade still maps."""
+    `config.paths` (docs/nodes.md §11 — the row is where it is edited).
+
+    DOCKER_HOST_PATHS used to be read here as well, for one release, so a
+    box that had not rebooted since the upgrade still mapped. That release
+    has been and gone with the ssh kind (roadmap #18), and the variable is
+    out of the five places."""
     nid = getattr(_node_ctx, "node", None) or _default_node()
     got = node_paths(nid) if node_paths and nid else {}
-    if got:
-        return [(k, v) for k, v in got.items()]
-    out = []
-    for pair in (os.environ.get("DOCKER_HOST_PATHS") or "").split(","):
-        pair = pair.strip()
-        if pair:
-            here, _, there = pair.partition(":")
-            out.append((here, there))
-    return out
+    return [(k, v) for k, v in got.items()]
 
 
 def host_map():
@@ -1346,9 +1357,9 @@ def host_map():
             # is the shipped default. So the daemon is asked: an identity is
             # only TRUE of a daemon on another machine, which is what
             # sandbox_daemon() answers. Asked THROUGH that rather than by
-            # reading DOCKER_HOST here, because the raw setting is now an
-            # address with the scheme left off as often as not — reading it
-            # directly reported the shipped default as misconfigured.
+            # reading the address here, because it is as often written with
+            # the scheme left off as with it — reading it directly reported
+            # the shipped default as misconfigured.
             #
             # Left in place while the daemon is not the sandbox, the pair
             # claims that machine calls this path what we call it, and a
@@ -2511,9 +2522,9 @@ def our_paths(mapping):
     not something this side can check anything about.
     """
     ours = [p for p in mapping if Path(p).is_dir()]
-    # WORKSPACE whether or not it is mapped, because with DOCKER_HOST_PATHS
-    # unset there is no mapping at all and a project's own binds are exactly
-    # what wants checking.
+    # WORKSPACE whether or not it is mapped, because with no mapping on the
+    # node's record there is nothing at all and a project's own binds are
+    # exactly what wants checking.
     #
     # DEVDATA deliberately NOT: it is a path on the VM, which makes those
     # directories itself. Adding it here judged binds under it against THIS
@@ -2540,7 +2551,7 @@ def stray_map_entries(mapping):
 def _root_of(path):
     """The first component of a path, which is the pair a mapping would name.
 
-    /devdata/binhex-sonarr/data is not what goes in DOCKER_HOST_PATHS —
+    /devdata/binhex-sonarr/data is not what goes in the node's mapping —
     /devdata is — and a message that suggests the bind's whole path teaches the
     wrong shape.
     """
@@ -2588,7 +2599,7 @@ def problems(project, cfg):
             out.append(
                 f"{name} mounts {src}, which is this container's path — "
                 + (f"the daemon calls that {there}" if there else
-                   f"and DOCKER_HOST_PATHS does not say what the daemon calls "
+                   f"and the node's path mapping does not say what the daemon calls "
                    f"it. Add a pair for it; {_root_of(src)}:{_root_of(src)} if "
                    f"the daemon mounts the same share at the same path"))
     return out
@@ -2745,7 +2756,7 @@ def state(project, instance=MAIN):
         return {"compose": False}
     a = available()
     built = _read_rec(project, instance)
-    # A build only counts on the daemon it happened on. Repointing DOCKER_HOST
+    # A build only counts on the daemon it happened on. Repointing an instance
     # at another VM leaves the image and the containers behind on a machine
     # this container can no longer see, and the row went on saying "built from
     # <rev>" and offering Rebuild for something that had never been built here.

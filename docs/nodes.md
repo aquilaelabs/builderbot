@@ -921,6 +921,41 @@ split capabilities use:
   desired vs. actual — a mount that failed shows the mount error verbatim on
   the row, not a greyed nothing.
 
+**A store's path and the mount it sits on must agree, and both ends enforce
+it.** The failure it exists to stop is silent in the worst way: a share that
+is in fstab but not mounted leaves its mountpoint an ordinary empty
+directory, `mkdir` makes the store inside it, and everything then lands on
+the node's own disk while the census reports a healthy store with the root
+filesystem's free space. So the agent refuses to *point* a store at a
+configured mount that is not mounted, naming the share and saying what would
+otherwise have happened; and `bb-sandbox remove` refuses to *unmount* a
+share a store is inside, unless it is given `--force`. `bb-sandbox list`
+marks a mount that holds stores, and a share that fails to mount says which
+store is stranded in it.
+
+The two are kept in step structurally rather than by matching rules:
+**`bb-sandbox` reads the store paths out of the agent's own `node.json`**
+instead of keeping a list of its own, so a store repointed from the Nodes
+tab is visible at the console on the next command with nothing to
+synchronise. `test/agent.mjs` runs the real `bb-sandbox` — pulled out of the
+provisioner the way `bb lint` pulls it out for shellcheck — against the
+agent's `mount_covering` on the same cases, including the string-prefix
+traps (`/mnt/tan` is not a parent of `/mnt/tank/cache`), so drift between
+them fails a test rather than surfacing on someone's node.
+
+**Repointing a store brings its contents with it.** It used to just repoint,
+which meant the node started using an empty directory while the toolchains,
+AVDs or built artifacts stayed where they were and nothing said so. The
+agent now copies the old store into the new one before the switch, refuses
+the move if the destination has not got room, and **never deletes the
+source** — the same rule the node-change migration keeps: a half-finished
+move must leave the old store able to serve. `cache` is the exception and
+says so in the log; it is rebuildable by definition, and copying tens of
+gigabytes of it across a link would be work for nothing. Because that copy
+can legitimately run for hours, a storage apply that moves a store gets a
+six-hour clock instead of the usual fifteen minutes, and the Nodes tab asks
+before starting one.
+
 **Network changes get commit/confirm safety, because they are the one change
 that can cut the cord it arrives on.** The agent applies the new network
 config, cycles the stack, and must re-establish its connection to the

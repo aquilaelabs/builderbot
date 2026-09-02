@@ -13,7 +13,7 @@
 let nodesList = null;            // last answer, or null before the first
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
-let nodesOpenForm = "";          // "" | "ssh" | "agent": which add form is up
+let nodesOpenForm = "";          // "" | "agent": whether the enroll form is up
 let nodesMinted = null;          // the last enroll token, shown once, then gone
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
 let nodesPick = "";              // which node the tab is showing, "" until the first draw
@@ -132,11 +132,20 @@ function nodeRunnerSection(n, c){
   if (d.runner === undefined) d.runner = {labels: (want.labels || []).filter(x =>
       !["builderbot", "self-hosted", "linux", "x64", "arm64", n.name].includes(x)).join(", "),
     url: want.url || ""};
-  const state = rep.installed
-    ? `registered as ${rep.name || "?"}${rep.url ? " with " + rep.url : ""} — ${
-        rep.busy ? "running a job" : rep.active ? "listening" : "installed, not listening"}${
-        rep.labels?.length ? " · labels " + rep.labels.join(", ") : ""}`
-    : want.want ? "install asked for; the node has not reported it yet" : "no runner on this node";
+  // The verdict first, because "installed" and "will actually pick up a job"
+  // are different states and the old line buried the difference in the
+  // middle of a sentence — a runner registered with no listener reads as
+  // healthy right up until a workflow sits in "Waiting for a runner".
+  const [verdict, vcls] = !rep.installed
+    ? [want.want ? "install asked for; the node has not reported it yet" : "no runner on this node", ""]
+    : rep.busy ? ["running a job right now", "ok"]
+    : rep.active ? ["listening — idle, waiting for a job", "ok"]
+    : ["installed but NOT listening, so no workflow will reach it — Reinstall runner", "bad"];
+  const detail = rep.installed
+    ? [rep.name ? `registered as ${rep.name}` : "its registered name did not come back, so the registration may not have finished",
+       rep.url || "", rep.labels?.length ? "labels " + rep.labels.join(", ") : ""].filter(Boolean).join(" · ")
+    : "";
+  const state = verdict + (detail ? " · " + detail : "");
   const busy = n.applying || nodeStale(n);
   const why = nodeStale(n) ? esc(staleWhy(n)) : "";
   return `
@@ -147,7 +156,8 @@ function nodeRunnerSection(n, c){
         <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
           placeholder="extra labels, comma-separated — builderbot, self-hosted, linux, the arch and ${esc(n.name)} are always on" aria-label="labels">
       </div>
-      <div class="sub ndrunstate${rep.installed && !rep.active ? " warn" : ""}">${esc(state)}</div>
+      <div class="sub ndrunstate${vcls ? " " + vcls : ""}">${
+        rep.busy ? `<span class="pill note ndrunbusy">running a job</span> ` : ""}${esc(state)}</div>
       <div class="acts">
         <span class="sp"></span>
         <button type="button" data-nrunner="install" ${busy ? "disabled" : ""}
@@ -196,6 +206,17 @@ function staleWhy(n){
     nodesAgent?.version} — press Update agent first, so nothing is sent that the agent may not know`;
 }
 
+// Which stores a storage apply would move: saved somewhere other than where
+// the node reports them. `cache` is left out — the agent does not copy it
+// (rebuildable, and a cold cache costs time and never correctness), so
+// promising a move here would be a lie.
+function storeMoves(n){
+  const want = n?.config?.desired?.stores || {}, rep = n?.reported?.stores || {};
+  return Object.entries(want).filter(([role, p]) => role !== "cache" && p
+      && rep[role]?.path && rep[role].path.replace(/\/+$/, "") !== String(p).replace(/\/+$/, ""))
+    .map(([role, p]) => ({role, from: rep[role].path, to: p}));
+}
+
 // Saved is not applied: the record says what the node SHOULD be, the census
 // says what it is, and the gap between them is the only thing Apply is for.
 // Without this the buttons were live whenever anything had been saved, so
@@ -218,7 +239,8 @@ function nodeDrift(n){
     if (!path) continue;
     const r = rep.stores?.[role];
     if (!r) storage.push(`${role} store not reported yet`);
-    else if (r.path !== path) storage.push(`${role} store → ${path}`);
+    else if (r.path !== path)
+      storage.push(`${role} store ${role === "cache" ? "→" : "moves to"} ${path}`);
     else if (r.free_mb === null) storage.push(`${role} store is missing on the node`);
   }
   const net = d.network || {}, rn = rep.network || {};
@@ -299,6 +321,7 @@ function nodeConfFold(n){
   return `
   <div class="ndconf">
     <div class="ndconfbody">
+      ${nodeRunnerSection(n, c)}
       <div class="ndsec">Mounts — what this node mounts at boot, applied through bb-sandbox on it${
         d.fromNode ? `. <span class="dim">These are the ones the node reports; nothing has been
         saved here yet, so editing and saving is what puts this page in charge of them.</span>` : ""}</div>
@@ -324,7 +347,6 @@ function nodeConfFold(n){
           autocomplete="off" placeholder="${esc(net.interface || "interface (default route's)")}" aria-label="interface">
       </div>
       <div class="sub">${esc(now)}</div>
-      ${nodeRunnerSection(n, c)}
       <div class="acts ndconfacts">
         <span class="sub ndconfstate${statusCls ? " " + statusCls : ""}">${esc(status)}</span>
         <span class="sp"></span>
@@ -424,8 +446,7 @@ function renderNodesInto(i){
       live.map(x => `<option value="${esc(x.id)}"${x.id === nodesPick ? " selected" : ""}>${
         esc(x.name)} — ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>
     <span class="sp"></span>
-    <button type="button" id="ndEnroll">${nodesOpenForm === "agent" ? "Cancel" : "Enroll node…"}</button>
-    <button type="button" id="ndAdd">${nodesOpenForm === "ssh" ? "Cancel" : "Add ssh node…"}</button>`);
+    <button type="button" id="ndEnroll">${nodesOpenForm === "agent" ? "Cancel" : "Enroll node…"}</button>`);
   const rows = (n ? [n] : []).map(n => {
     const labels = Object.entries(n.labels || {})
       .map(([k, v]) => `<span class="pill">${esc(k)}=${esc(v)}</span>`).join(" ");
@@ -436,6 +457,7 @@ function renderNodesInto(i){
       : "";
     const where = n.kind === "local" ? "this container"
       : n.kind === "agent" ? (n.agent?.addr ? `dials in from ${n.agent.addr}` : "")
+      : n.kind === "ssh" ? `${n.ssh_addr || "ssh"} — the ssh kind is retired; enroll this machine with a token`
       : (n.ssh_addr || "");
     // Behind when the node's agent is not the file this controller ships.
     // Said on the row before anybody presses anything: a five-version-old
@@ -483,21 +505,7 @@ function renderNodesInto(i){
       </span>
     </div>`;
   }).join("");
-  const form = nodesOpenForm === "ssh" ? `
-    <div class="row ndform">
-      <div class="grow">
-        <label for="ndName">Name</label>
-        <input id="ndName" maxlength="60" autocomplete="off" placeholder="buildbox">
-        <label for="ndAddr">Address — a machine vm/provision.sh set up</label>
-        <input id="ndAddr" autocomplete="off" spellcheck="false"
-          placeholder="10.0.0.12 — ssh:// and the bb account are filled in">
-        <div class="hint">an ssh node is driven from here over ssh and runs no
-          agent: docker only, no jobs. Test it after adding — a daemon without
-          the provisioner's stamp is refused, on purpose.</div>
-        <div class="acts"><span class="sp"></span>
-          <button type="button" class="primary" id="ndGo">Add it</button></div>
-      </div>
-    </div>` : nodesOpenForm === "agent" ? `
+  const form = nodesOpenForm === "agent" ? `
     <div class="row ndform">
       <div class="grow">
         <label for="ndEnName">Name</label>
@@ -536,22 +544,12 @@ builderbot-agent enroll --controller ${esc(nodesMinted.url)} --token ${esc(nodes
 }
 
 function wireNodesTab(root){
-  const add = root.querySelector("#ndAdd");
-  if (add) add.onclick = () => { nodesOpenForm = nodesOpenForm === "ssh" ? "" : "ssh";
-                                 nodesRev++; drawPanes(); };
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };
   const en = root.querySelector("#ndEnroll");
   if (en) en.onclick = () => { nodesOpenForm = nodesOpenForm === "agent" ? "" : "agent";
                                nodesRev++; drawPanes(); };
-  const go = root.querySelector("#ndGo");
-  if (go) go.onclick = async () => {
-    const r = await nodeAct({action: "add",
-                             name: root.querySelector("#ndName").value,
-                             addr: root.querySelector("#ndAddr").value});
-    if (!r.error){ nodesOpenForm = ""; nodesRev++; drawPanes(); }
-  };
   const engo = root.querySelector("#ndEnGo");
   if (engo) engo.onclick = async () => {
     const name = root.querySelector("#ndEnName").value;
@@ -726,6 +724,15 @@ function wireNodeConf(row, id){
       if (gone.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis unmounts `
           + `${gone.map(m => m.path).join(", ")} and takes ${gone.length === 1 ? "it" : "them"} `
           + `out of fstab. Directories and data stay.`)) return;
+      // Moving a store copies what is in it, which can be tens of gigabytes
+      // and take a while — so it is asked about rather than started by a
+      // text field losing focus.
+      const moving = storeMoves(n);
+      if (moving.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis moves `
+          + `${moving.map(m => `${m.role} from ${m.from} to ${m.to}`).join(", and ")}. The `
+          + `contents are copied across first and the job waits for that; nothing is deleted, `
+          + `so the old cop${moving.length === 1 ? "y stays" : "ies stay"} where ${
+              moving.length === 1 ? "it is" : "they are"} for you to remove.`)) return;
     }
     await nodeAct({action: "apply", id, what});
   });

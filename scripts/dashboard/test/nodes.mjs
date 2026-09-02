@@ -141,19 +141,43 @@ ok(list[0].id === 'local',
   await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
   ok((await nodeOptions(page)).length === 2,
      'the Nodes tab lists the registry: local and the sandbox');
-  // add an ssh node through the form
-  await page.click('#ndAdd');
-  await page.fill('#ndName', 'buildbox');
-  await page.fill('#ndAddr', '10.9.9.9');
-  await page.click('#ndGo');
-  await page.waitForFunction(() =>
-    document.querySelectorAll('.nodestab #ndPick option').length === 3, null,
-    { timeout: 15000 });
-  ok(true, 'Add node registers one from a bare address');
-  const added = await page.evaluate(() =>
-    nodesList.find(n => n.name === 'buildbox'));
-  ok(added.ssh_addr === 'ssh://bb@10.9.9.9',
-     '...with ssh:// and the bb account filled in, the way DOCKER_HOST is');
+  // Adding a node by ssh address is retired (roadmap #18): it existed only
+  // because compose ran from this container over ssh, so a machine needed a
+  // key as well as a token and a token-only node could do everything except
+  // docker. Compose is an agent job now, so the tab offers one way in.
+  ok(await page.$('#ndAdd') === null && await page.$('#ndEnroll') !== null,
+     'the tab offers enrollment and nothing else — no Add ssh node');
+  {
+    const before = page.errors.length;
+    const r = await page.evaluate(() => nodeAct({ action: 'add', name: 'buildbox',
+                                                  addr: '10.9.9.9' }));
+    ok(/enroll the machine with a token/.test(r.error || ''),
+       '...and the endpoint refuses too, saying the way in rather than 404ing');
+    page.errors.length = before;
+  }
+  ok(await page.evaluate(() => nodesList.some(n => n.kind === 'ssh')),
+     'a row left over from the ssh kind is still listed rather than vanishing');
+  // A second docker node for the rest of this block, enrolled the one way
+  // there is. sshd and the account are what give it an address the manager
+  // can send docker to.
+  {
+    const base = URL.replace(/\/$/, '');
+    const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+                'Content-Type': 'application/json' };
+    const post = async (path, body, headers = H) => (await fetch(base + path,
+      { method: 'POST', headers, body: JSON.stringify(body) })).json();
+    const mint = await post('/api/v1/nodes', { action: 'enroll', name: 'buildbox' });
+    await post('/api/v1/agent/enroll', {
+      user: 'bb', version: '1', digest: 'sha256:' + '1'.repeat(64),
+      census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', sshd: true } },
+      { Authorization: 'Bearer ' + mint.token, 'Content-Type': 'application/json' });
+  }
+  const added = await page.evaluate(async () => {
+    await loadNodes();
+    return nodesList.find(n => n.name === 'buildbox');
+  });
+  ok(added && added.kind === 'agent',
+     'a machine is enrolled with a token, and arrives as an agent node');
   ok(['docker-host', 'package-build', 'deploy-target'].every(c => added.capabilities.includes(c)),
      '...and it does everything, without anybody being asked which');
   // The mechanism underneath is untouched (§15 door 7): a restricted node is
@@ -185,10 +209,10 @@ ok(list[0].id === 'local',
   // the audit trail followed
   const acts = readStore(
     `m._rows("SELECT action, principal FROM audit WHERE target = ?", ("${added.id}",))`);
-  ok(acts.some(r => r.action === 'node-add')
+  ok(acts.some(r => r.action === 'node-enroll-mint')
      && acts.some(r => r.action === 'node-update')
-     && acts.every(r => r.principal === 'operator'),
-     'every node mutation wrote an audit row as the operator');
+     && acts.some(r => r.principal === 'operator'),
+     'every node mutation wrote an audit row, the operator\'s named as theirs');
 }
 
 // ---- phase 2: the docker manager's picker ----------------------------------
@@ -204,7 +228,13 @@ ok(list[0].id === 'local',
   // switch to the unreachable node: rows blind, reason worn, picker alive.
   // The stub daemon fails any call whose DOCKER_HOST is listed as dead, which
   // is what a powered-off VM looks like from here.
-  writeFileSync(`${DIR}/dockerstate/deadhosts`, 'ssh://bb@10.9.9.9\n');
+  // The address the node dialed in from, not one written here: an agent node
+  // reports where it is on every hello, which is the whole point of it.
+  const bbAddr = await page.evaluate(() => {
+    const n = nodesList.find(x => x.name === 'buildbox');
+    return `ssh://bb@${n.agent.addr}`;
+  });
+  writeFileSync(`${DIR}/dockerstate/deadhosts`, bbAddr + '\n');
   await page.evaluate(() => { const s = document.querySelector('#dmNode');
     s.value = nodesList.find(n => n.name === 'buildbox').id;
     s.dispatchEvent(new Event('change')); });
@@ -256,14 +286,19 @@ ok(list[0].id === 'local',
   // held while an agent is behind — the stale half is its own block at the
   // end, where it can hold them without breaking the rest.
   const shipped = (await napi('/api/v1/nodes')).agent || {};
-  const en = await napi('/api/v1/agent/enroll', {
-    census: { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
+  // The census this node reports, kept as one object: a hello REPLACES it,
+  // so a later poke that sends a partial one silently takes the node's
+  // mounts and address away — which is a confusing way to fail four tests
+  // further down.
+  const CENSUS = { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
               sandbox: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 },
                                        packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 },
                                        artifacts: { path: '/var/lib/builderbot/artifacts', free_mb: 30000, total_mb: 90000 } },
               toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
               mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false, mounted: true, real: 'nas:/mnt/user/old' }],
-              network: { interface: 'ens3', addresses: ['10.0.0.40/24'], gateway: '10.0.0.1', dns: ['10.0.0.1'] } },
+              network: { interface: 'ens3', addresses: ['10.0.0.40/24'], gateway: '10.0.0.1', dns: ['10.0.0.1'] } };
+  const en = await napi('/api/v1/agent/enroll', {
+    census: CENSUS,
     version: shipped.version, digest: shipped.digest, user: 'bb' },
     { Authorization: 'Bearer ' + minted.token, 'Content-Type': 'application/json' });
   ok(en.ok && en.node_id === minted.id, 'a sandbox node enrolled with mounts and an address in its census');
@@ -329,6 +364,39 @@ ok(list[0].id === 'local',
   await napi('/api/v1/jobs', { action: 'cancel', id: rj.id });
   await page.waitForFunction(sel => !/applying/.test(
     document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  // Installed and listening are different states, and the difference is the
+  // one that matters: a registered runner with no listener looks healthy
+  // right up until a workflow sits in "Waiting for a runner". The operator's
+  // own node was in exactly this state.
+  const runnerCensus = svc => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: { ...CENSUS, services: svc },
+                           version: shipped.version, digest: shipped.digest }) });
+  await runnerCensus({ 'actions-runner': { installed: true, active: false, busy: false,
+                                           name: '', labels: ['builderbot', 'shed'] } });
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => /NOT listening/.test(
+    document.querySelector(sel + ' .ndrunstate')?.textContent || ''), ROW, { timeout: 10000 });
+  ok(await page.$eval(`${ROW} .ndrunstate`, e => /no workflow will reach it/.test(e.textContent)
+       && /registration may not have finished/.test(e.textContent) && e.classList.contains('bad')),
+     'a runner that is registered but not listening says so, rather than reading as installed');
+  await runnerCensus({ 'actions-runner': { installed: true, active: true, busy: true,
+                                           name: 'shed', url: 'https://github.com/example-org',
+                                           labels: ['builderbot', 'shed'] } });
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => document.querySelector(sel + ' .ndrunbusy'), ROW, { timeout: 10000 });
+  ok(await page.$eval(`${ROW} .ndrunstate`, e => /running a job/.test(e.textContent)
+       && /registered as shed/.test(e.textContent)),
+     '...and one that is working says which job-taking state it is in, by name');
+  // The runner belongs above the mounts: it is the thing the operator is
+  // most often here to check, and it was below three editors.
+  ok(await page.$eval(`${ROW} .ndconfbody`, e => {
+       const kids = [...e.children];
+       const runner = kids.findIndex(k => k.classList.contains('ndsec') && /CI runner/.test(k.textContent));
+       const mounts = kids.findIndex(k => k.classList.contains('ndsec') && /^Mounts/.test(k.textContent));
+       return runner >= 0 && mounts >= 0 && runner < mounts;
+     }), '...and the runner section comes before the mounts, not after the network');
+  await runnerCensus({});
   // A node with mounts and no saved config opens on the ones it reports —
   // an empty editor for a machine with three shares was the first thing the
   // operator hit.
@@ -485,8 +553,7 @@ ok(list[0].id === 'local',
   // means the node may not understand a job this version would send it.
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ census: { cpu: 4, mem_mb: 8192, sandbox: true },
-                           version: '3', digest: 'sha256:' + '0'.repeat(64) }) });
+    body: JSON.stringify({ census: CENSUS, version: '3', digest: 'sha256:' + '0'.repeat(64) }) });
   await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
   await page.waitForFunction(sel => document.querySelector(sel + ' .ndstale'), ROW, { timeout: 10000 });
   ok(await page.$eval(`${ROW} .ndstale`, (e, v) => e.textContent.includes(`update available → ${v}`), shipped.version)
@@ -523,8 +590,7 @@ ok(list[0].id === 'local',
   if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ census: { cpu: 4, mem_mb: 8192, sandbox: true },
-                           version: shipped.version, digest: shipped.digest }) });
+    body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: shipped.digest }) });
 }
 
 // ---- an ssh node's path mapping (§11: the record owns it) --------------------

@@ -674,6 +674,18 @@ for (let t = 0; t < 50 * SLOW; t++){
 }
 ok(/no CHANGELOG\.md here yet/.test(paneText),
    'the changelog pane says how to opt in when there is no file');
+// The flake this suite carried for weeks, as a rule instead. The pane used to
+// live in #verBox and be MOVED into the sheet, so a repaint of that box while
+// the sheet was open — a version poll, a commit, a dist change — put a second
+// empty one back in the box, and "the changelog pane" was then whichever came
+// first in the document. Repaint under it and count.
+await page.evaluate(() => drawPanes());
+await sleep(400);
+const panes = await page.$$eval('.verlogpane', es => es.map(e => ({
+  inSheet: !!e.closest('#sheetSlot'), text: e.textContent.slice(0, 40) })));
+ok(panes.length === 1 && panes[0].inSheet && /no CHANGELOG/.test(panes[0].text),
+   `...and a repaint under the open sheet leaves exactly one, in the sheet (${
+     JSON.stringify(panes)})`);
 // It reads in the same window a history does, and fills it: a document in a
 // strip at the top of an empty screen is the shape this move was undoing.
 // $eval, not evaluate: NB is a Playwright selector — :text-is() is theirs,

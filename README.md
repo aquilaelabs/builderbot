@@ -1262,11 +1262,16 @@ the toolchains its census found — what a project bound to it can build — lab
 and census, with **Test** (probe its daemon now, sandbox stamp included),
 **Drain** (finish what is running, accept nothing new — what makes a node
 safe to reboot) and **Remove** (retire: off every list, row kept as history —
-an id is never reused). **Add node** takes a bare address and fills in
-`ssh://` and the `bb` account; the machine should be one `vm/provision.sh`
-set up, and Test says so if it is not. An ssh node's row carries its **path
-mapping** — what this container's paths are called on that machine, since
-its daemon resolves bind mounts over there — which is where the old
+an id is never reused). **Enroll node** mints a one-time token; the machine
+runs `vm/provision.sh --controller URL --token bbe_…` and dials in. That is
+the only way in — there is no second enrollment, this container holds no key
+that logs in anywhere, and a node reached by token alone takes every kind of
+job, docker included. The **ssh node kind is retired** (roadmap #18): it
+existed because compose used to run from this container over ssh, which meant
+a node needed a key on top of its token and a token-only node — the cloud
+case — could do everything except docker. A row left over from before says so
+and asks to be enrolled again. Its **path mapping** — what this container's
+paths are called on that machine — is still on its row, which is where the old
 `DOCKER_HOST_PATHS` setting lives now. The
 local node refuses `docker-host` on purpose — it is not a sandbox. Every
 change writes an audit row.
@@ -1314,6 +1319,25 @@ error. So while *update available* is showing, Apply storage, Apply network,
 Install runner, Clear cache and installing a package onto that node are all
 refused, with the reason on the button; the self-update itself is the one
 thing that still goes through. Nodes running the shipped agent are unaffected.
+
+**A store cannot be pointed at a share that is not mounted.** This is the
+one storage mistake that looks like success: a share in fstab but not
+mounted leaves its mountpoint an ordinary empty directory, the store gets
+made inside it, and everything lands on the node's own disk while the row
+reports a healthy store with plenty of room. Apply refuses it instead,
+naming the share and what would have happened — fix the mount, or take it
+out of the node's mounts if that path is meant to be local. At the console
+`bb-sandbox` holds the same line from the other end: `remove` will not
+unmount a share a store is inside without `--force`, `list` marks a mount
+that holds stores, and a share that fails to mount says which store is
+stranded in it.
+
+**Repointing a store moves what is in it.** The contents are copied to the
+new path before the switch, and the tab asks first, because a packages store
+is tens of gigabytes and the job waits for the copy. Nothing is deleted: the
+old copy stays where it was for you to remove once you are satisfied, so a
+move that fails half way leaves the node still able to work. `cache` is the
+exception — it is rebuildable, so it is left behind and the log says so.
 
 **Saved is not applied.** The settings on a node's page are a record of what
 it *should* be; **Apply** is what makes the machine match. The state line

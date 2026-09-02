@@ -448,13 +448,15 @@ ssh-keyscan -H <vm-ip> >> ~/.ssh/known_hosts
 
 `~` is the home volume, so this survives a container restart.
 
-**2. Add it as a node.** On the dashboard's Nodes tab, **Add ssh node** takes
-the address — `ssh://` and the `bb` account `provision.sh` makes are filled
-in; `ssh://someone@host` written out in full is left exactly as written. ssh
-rather than an open Docker port, so authentication is the key you installed
-and nothing has to listen — an open `2375` would be root on the sandbox to
-anyone who could reach it. (The `DOCKER_HOST` variable of earlier releases
-seeds this record once at boot and is otherwise ignored.)
+**2. Enroll it as a node.** On the dashboard's Nodes tab, **Enroll node**
+mints a one-time token; run `provision.sh --controller URL --token bbe_…` on
+the VM and it dials in and stays. The node opens no port and this container
+holds no key that logs into it — the credential the node keeps opens its own
+row and nothing else. Adding a machine by ssh address is gone (roadmap #18):
+it existed only because compose used to run from this container over ssh, so
+a node needed a key as well as a token. It does not any more. (The
+`DOCKER_HOST` variable of earlier releases still seeds a record once at boot,
+for a box upgrading with it set, and is otherwise ignored.)
 
 Nothing but a sandbox VM is accepted, and the address is only half of what
 decides that. An address of any other kind greys every Docker control out with

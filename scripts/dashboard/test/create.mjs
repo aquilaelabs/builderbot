@@ -595,6 +595,16 @@ ok(await post({ name: 'beta', url: 'https://github.com/owner/beta' },
 // destroying one.
 mkdirSync(`${DIR}/ws/.trash/oldproj`, { recursive: true });
 writeFileSync(`${DIR}/ws/.trash/oldproj/keep.txt`, 'still here\n');
+// It has to be visible before it can be pressed. Keyed to `.eye` alone, the
+// icon rule missed this button (an `.ic`) and its SVG got the browser
+// default — fill:black, stroke:none — which draws nothing at all, because
+// every path in it is an open stroke.
+const binInk = await page.$eval('#bTrash svg', e => {
+  const c = getComputedStyle(e);
+  return { stroke: c.stroke, fill: c.fill, w: e.getBoundingClientRect().width };
+});
+ok(binInk.stroke !== 'none' && binInk.fill === 'none' && binInk.w >= 12,
+   `the bin button's icon is actually drawn (stroke ${binInk.stroke}, fill ${binInk.fill}, ${binInk.w}px)`);
 await page.click('#bTrash');
 await page.waitForSelector('#tmodal:not([hidden])', { timeout: 10000 });
 await page.waitForFunction(() => document.querySelector('#tList .trow'),
