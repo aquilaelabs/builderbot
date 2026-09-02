@@ -1199,6 +1199,12 @@ textarea,select{
    the record — so that a step that was handed over and quietly not carried out
    is still there to send again. */
 .todo.sent .txt{color:var(--dim);text-decoration:line-through}
+/* Done is a session's mark, not the dashboard's: struck the same way, because
+   it needs no sending either, but the number becomes a tick so the two are
+   not confused — a line that went and a line that is finished are different
+   claims, and only the second one comes from whoever did the work. */
+.todo.done .txt{color:var(--dim);text-decoration:line-through}
+.todo .n.tick{color:var(--accent)}
 /* Shelved: parked, at the bottom, and visibly not asking for anything. Dark
    rather than struck — struck already means "this went", and a shelf is the
    opposite claim. The whole row dims, steps included, because a shelved plan
@@ -6973,21 +6979,16 @@ function openLinkProject(name){ pLink = name; pOpen("link"); }
 // dashboard from being a way to write anywhere.
 
 
+// A step that needs no sending: handed over, or finished by a session.
+// Two marks, one question — sent is the dashboard's and says a line went;
+// done is a session's and says the work is finished, sent or not.
+const stepGone = s => !!(s.sent || s.done);
+
 function nextStep(r){
   const steps = r.steps || [];
-  if (!steps.length) return r.sent ? null : -1;
-  const i = steps.findIndex(s => !s.sent);
+  if (!steps.length) return stepGone(r) ? null : -1;
+  const i = steps.findIndex(s => !stepGone(s));
   return i < 0 ? null : i;
-}
-
-// Where the list has got to: how many steps at the front have been crossed.
-// Crossed steps are always a prefix — they are handed out in order and put
-// back from the end — so one number describes the whole state.
-function crossedTo(r){
-  const steps = r.steps || [];
-  let k = 0;
-  while (k < steps.length && steps[k].sent) k++;
-  return k;
 }
 
 
@@ -7163,7 +7164,7 @@ function canSend(r, idx, live){
   const st = steps[idx];
   // The frontier, or one that has already gone. Never a later one: send the
   // third before the second and it lands on a tree the second was to make.
-  return !!st && (idx === nextStep(r) || !!st.sent);
+  return !!st && (idx === nextStep(r) || stepGone(st));
 }
 
 function stepRow(r, idx, live){
@@ -7183,7 +7184,6 @@ function stepRow(r, idx, live){
   // rule below is what protects it. A deletion cannot send anything out of
   // order; it can only make a plan shorter, and it now says why it did and
   // keeps the words in the log.
-  const k = crossedTo(r);
   const shelf = idx < 0;
   // Sent ones stay live so they can go again — "it did not take, do it again"
   // is the reason they are still on screen at all.
@@ -7197,9 +7197,12 @@ function stepRow(r, idx, live){
   const why = nbUnsaved() ? `save or revert first — ${nbUnsaved()} not on disk yet`
             : r.shelved ? "shelved — take it off the shelf to send it"
             : !live ? "no Claude session is running here"
+            : st.done ? "a session finished this — sending it again says it did not"
             : st.sent ? "this one has gone already — pick it to send it again"
             : idx < 0 && steps.length
-              ? (nxt === null ? "every step of this has gone"
+              ? (nxt === null ? (steps.every(x => x.done)
+                                 ? `every step of this is done — bb roadmap done ${r.id} takes it off`
+                                 : "every step of this has gone")
                               : `pick step ${nxt + 1}, the next one in line`)
             : idx < 0 ? "pick this to send"
             : idx === nxt ? "pick this to send"
@@ -7216,7 +7219,11 @@ function stepRow(r, idx, live){
   // In reorder mode the row's three controls are replaced rather than joined:
   // five buttons and a number do not fit a phone, and moving things about is
   // not something anybody does at the same time as sending them.
-  const fixed = idx >= 0 && idx < k;         // a step that has gone does not move
+  // A step that has gone does not move, and by mark rather than by prefix:
+  // a session can finish step three with one and two still to send.
+  const fixed = idx >= 0 && (stepGone(st)
+    || (steps[idx - 1] && stepGone(steps[idx - 1]))
+    || (steps[idx + 1] && stepGone(steps[idx + 1])));
   const moves = `<button class="eye mv" type="button" data-dir="-1"${
       fixed ? " disabled" : ""} aria-label="up"
       title="${fixed ? "a step that has gone stays where it is" : "move it up"}"
@@ -7225,13 +7232,15 @@ function stepRow(r, idx, live){
       aria-label="down"
       title="${fixed ? "a step that has gone stays where it is" : "move it down"}"
       >${DOWN}</button>`;
-  return `<div class="todo${st.sent ? " sent" : ""}${
+  return `<div class="todo${st.sent ? " sent" : ""}${st.done ? " done" : ""}${
        idx >= 0 ? " step" : ""}${r.shelved ? " shelved" : ""}"
        data-id="${r.id}" data-step="${idx}">
     ${todoOrdering ? "" : `<button class="eye go${on ? " sel" : ""}" type="button"${can ? "" : " disabled"}
       title="${esc(why)}" aria-label="send"
       aria-pressed="${on ? "true" : "false"}">${SEND}</button>`}
-    ${idx >= 0 ? `<span class="n">${idx + 1}</span>`
+    ${idx >= 0 ? (st.done
+        ? `<span class="n tick" title="step ${idx + 1} — a session finished this ${stamp(st.done)}">✓</span>`
+        : `<span class="n">${idx + 1}</span>`)
                : r.id < 0
                  ? `<span class="n id new" title="not saved yet — it gets its number when you press Save">new</span>`
                  : `<span class="n id" title="this item is #${r.id} wherever it sits — and what bb roadmap done ${r.id} takes">#${r.id}</span>`}
@@ -8124,6 +8133,7 @@ const ACT = {
   "info-step":   ["detailed", ""],
   sent:          ["sent", ""],
   unsent:        ["put back", ""],
+  "done-step":   ["finished a step", ""],
   shelved:       ["shelved", ""],
   unshelved:     ["off the shelf", ""],
 };

@@ -397,7 +397,7 @@ bb roadmap show N     one item in full: its details, its steps and theirs
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` not
 bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
 bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
-bb roadmap edit N "..."               reword one; `step add|edit|rm` for one step
+bb roadmap edit N "..."               reword one; `step add|edit|rm|done` for one step
 bb roadmap info N [M] "..."           attach the technical details to one, or step M
 bb roadmap begin      work one out; `commit` records it as one change, `revert` undoes
 bb bug             the bug tracker: open bugs; `all`, `show N` for one in full
@@ -1588,7 +1588,7 @@ marker and never needed one: a shell is safe to recreate in the same
 directory, which is why it survives a restart and a conversation does not.
 
 **A session can correct a plan, not just follow it** — `bb roadmap edit N`,
-`bb roadmap step add|edit|rm|mv`, `bb roadmap mv N up|down` — which matters when the design moves under a plan
+`bb roadmap step add|edit|rm|mv|done`, `bb roadmap mv N up|down` — which matters when the design moves under a plan
 written a week ago. Every one of those lands in the history under `claude`,
 so nothing gets quietly rewritten.
 
@@ -1635,6 +1635,15 @@ A sent step is **struck through in place** — not removed, not reordered. Sent
 is not done: a step can be handed over and quietly not carried out, and the
 struck line is how you notice. It stays sendable, so "that did not take, do it
 again" is one tap on the same arrow.
+
+**Done is the session's mark, and it is a different one.** A session that
+finishes a step says so with `bb roadmap step done N M` — the step it was
+sent, or one it was told to go ahead with in chat, which used to have no mark
+at all. The line is struck the same way but wears a tick instead of its
+number, the frontier moves past it, and the log says a session finished it
+and when. Only a session sets it, as with ticking off an item. Sending a done
+step again is the override: the mark comes off, and the log shows the send
+after the finish.
 
 **The order that is protected is the order things are sent in**, and nothing
 else. Only the frontier step of a group arms, and the group's own arrow stands

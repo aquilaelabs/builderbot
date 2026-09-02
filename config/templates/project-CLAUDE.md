@@ -399,6 +399,7 @@ bb roadmap mv N up|down         # move one up or down the list
 bb roadmap edit N "..."         # reword one
 bb roadmap info N [M] "..."     # attach the technical details to one, or step M
 bb roadmap step add N "..."     # give one a step; step edit N M "...", step rm N M
+bb roadmap step done N M        # you finished step M of N — ticked, and no longer offered
 bb roadmap begin                # working one out: commit writes one record of it
 bb roadmap commit               # ...or revert, which puts the notebook back
 bb roadmap history [-n N] [--since 7d] [--find TEXT]   # what changed, narrowed
@@ -508,9 +509,19 @@ A step that has been sent is struck through rather than removed, and can be
 sent again — sent is not the same as done, and the difference is exactly the
 case worth being able to see. So do not treat "you sent me this" as proof it
 worked; if you cannot finish a step, say so plainly rather than quietly
-leaving it struck through. Struck means sent and nothing else: there is no
-way to cross a line off by hand, so a line the operator dealt with themselves
-is dropped rather than marked.
+leaving it struck through.
+
+**When you finish a step, mark it.** `bb roadmap step done 4 2` is your mark
+on step 2 of #4, distinct from sent: the panel draws it with a tick instead
+of a number and stops offering it as the next thing to send, and the log says
+a session finished it. Do this whether or not the step was sent to you — a
+phase you were told to start in chat is the case it exists for — and do it
+for the step you were sent as well, or the operator has only your reply to
+go on. There is no undo: if it turns out not to have been finished, the
+operator sends it again, which clears the mark and says so in the log. When
+the last step is done, the item is done: `bb roadmap done 4` takes it off.
+A line the operator dealt with themselves is dropped rather than marked,
+because there is still no way to cross one off by hand.
 
 **A plan can be corrected as well as followed.** If the design moves under
 one — a step describes a file that no longer exists, or an approach that was

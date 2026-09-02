@@ -39,7 +39,7 @@ const SURFACE = [
   'argForSession', 'arriveBox', 'arriveRow', 'askPurge', 'cSeg', 'cSlide',
   'cSubmit', 'cardDropIndex', 'claudeMd', 'daemonHost', 'closeEditor', 'closeNewProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
-  'crossedTo', 'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
+  'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
   'dnSubmit', 'docSurface', 'dockerJob', 'drawAuth', 'drawBell', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
   'drawPanes', 'drawPhone', 'drawProjects', 'drawRunner', 'drawSessions',

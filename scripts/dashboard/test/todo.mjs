@@ -1378,6 +1378,65 @@ print(json.dumps({'ok': True}))
 ok(JSON.parse(reent.trim().split('\n').pop()).ok,
    '...and re-entrant, so a mutator that reaches another does not deadlock on itself');
 
+// ---- a step a session finished ------------------------------------------
+// Sent is the dashboard's mark and says a line went. A session told in chat
+// to go ahead had no mark of its own, so it reworded the step to say LANDED
+// and the panel went on offering it. `bb roadmap step done` is that mark:
+// struck like sent, ticked rather than numbered, skipped by the frontier,
+// and cleared by a re-send — which is the operator saying it was not done.
+bbTodoEarly('add', 'ship the widget', '--step', 'cut the hole', '--step', 'fit the widget',
+            '--step', 'paint it');
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(() => [...document.querySelectorAll('#todoList .todo .txt')]
+  .some(t => t.textContent === 'fit the widget'));
+let widget = (await open()).find(i => i.text === 'ship the widget');
+ok(/step 2 of \d+ done/.test(bbTodoEarly('step', 'done', widget.id, '2', 'told in chat')),
+   'a session marks one step of a plan done, out of send order');
+ok(/already done/.test((() => { try { return bbTodoEarly('step', 'done', widget.id, '2'); }
+                               catch (e) { return String(e.stderr); } })()),
+   '...and cannot mark it twice');
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(id => document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="1"]`)?.classList.contains('done'), widget.id);
+const drawn = await page.$$eval(`#todoList .todo[data-id="${widget.id}"]`, ts => ts.map(t => ({
+  step: t.dataset.step, done: t.classList.contains('done'), sent: t.classList.contains('sent'),
+  n: t.querySelector('.n')?.textContent, can: !t.querySelector('.go').disabled,
+  why: t.querySelector('.go').title })));
+ok(drawn.find(d => d.step === '1').done && !drawn.find(d => d.step === '1').sent
+   && drawn.find(d => d.step === '1').n === '✓',
+   'the panel draws it struck with a tick where its number was, and not as sent');
+ok(drawn.find(d => d.step === '0').can && !drawn.find(d => d.step === '2').can
+   && /step 1 comes first/.test(drawn.find(d => d.step === '2').why),
+   '...the frontier is still step 1, and step 3 waits on it, not on the done one');
+ok(drawn.find(d => d.step === '1').can && /finished this/.test(drawn.find(d => d.step === '1').why),
+   '...and the done step stays sendable, worded as the override it would be');
+ok(/2\. fit the widget  \(done\)/.test(bbTodoEarly('--prompt')),
+   'the session prompt says (done) on it, not "already sent"');
+ok(/done-step.*step 2 of #\d+  fit the widget/.test(bbTodoEarly('history', '-n', '3'))
+   && /why: told in chat/.test(bbTodoEarly('history', '-n', '3')),
+   '...and the log records who finished what, with the note');
+// Send step 1, then mark it done — done wins over sent for the frontier.
+bbTodoEarly('step', 'done', widget.id, '1');
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(id => document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="0"]`)?.classList.contains('done'), widget.id);
+const widgetAfter = await open();
+ok(widgetAfter.find(i => i.text === 'paint it').can
+   && widgetAfter.find(i => i.step === '-1' && i.text === 'ship the widget').can,
+   'with steps 1 and 2 done, step 3 is the frontier and the group arrow stands for it');
+bbTodoEarly('step', 'done', widget.id, '3');
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(id => document.querySelector(
+  `#todoList .todo[data-id="${id}"][data-step="2"]`)?.classList.contains('done'), widget.id);
+ok(/every step of this is done/.test(await page.$eval(
+     `#todoList .todo[data-id="${widget.id}"][data-step="-1"] .go`, b => b.title)),
+   '...and with every step done the group arrow says so, and names the tick-off');
+const refusedBy = (...a) => { try { bbTodoEarly(...a); return ''; } catch (e) { return String(e.stderr); } };
+ok(/gone stays where it is/.test(refusedBy('step', 'mv', widget.id, '3', 'up')),
+   'a done step is pinned like a sent one');
+ok(/gone stays where it is/.test(refusedBy('step', 'mv', widget.id, '2', 'down')),
+   '...by mark, not by prefix');
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);

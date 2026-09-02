@@ -1240,7 +1240,7 @@ def show():
             print("       details: " + r["info"].replace("\n", "\n                "))
         for i, st in enumerate(r.get("steps") or []):
             print(f"          {i + 1}. {st['text']}"
-                  + ("  (sent)" if st.get("sent") else ""))
+                  + ("  (done)" if st.get("done") else "  (sent)" if st.get("sent") else ""))
             if st.get("info"):
                 print("             details: "
                       + st["info"].replace("\n", "\n                      "))
@@ -1270,7 +1270,8 @@ elif op == "show":
     if r.get("info"):
         print("  details: " + r["info"].replace("\n", "\n           "))
     for i, st in enumerate(r.get("steps") or []):
-        print(f"    {i + 1}. {st['text']}" + ("  (sent)" if st.get("sent") else ""))
+        print(f"    {i + 1}. {st['text']}"
+              + ("  (done)" if st.get("done") else "  (sent)" if st.get("sent") else ""))
         if st.get("info"):
             print("       details: " + st["info"].replace("\n", "\n                "))
 elif op == "--prompt":
@@ -1419,6 +1420,12 @@ elif op == "step":
                           step=step_index(srest[1]),
                           by="claude"); bail(r)
         print(f"details on step {srest[1]} of {srest[0]}")
+    elif sub == "done" and len(srest) >= 2:
+        # A session's own mark, distinct from the dashboard's "sent": this
+        # step is finished, whether or not anybody sent it. See todo.step_done.
+        r = todo.step_done(proj, srest[0], step_index(srest[1]),
+                           by="claude", note=" ".join(srest[2:])); bail(r)
+        print(f"step {srest[1]} of {srest[0]} done")
     elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] in ("up", "down"):
         # The other half of restructuring a plan. Without it a session that
         # finds two steps in the wrong order can only delete and retype them,
@@ -1429,7 +1436,8 @@ elif op == "step":
         print(f"moved step {srest[1]} of {srest[0]} {srest[2]}")
     else:
         print("usage: bb roadmap step add <n> \"...\" | step edit <n> <step> \"...\""
-              " | step rm <n> <step> [\"why\"] | step mv <n> <step> up|down",
+              " | step rm <n> <step> [\"why\"] | step mv <n> <step> up|down"
+              " | step done <n> <step> [\"note\"]",
               file=sys.stderr)
         sys.exit(1)
 elif op in ("history", "log"):
@@ -1477,7 +1485,7 @@ elif op in ("history", "log"):
             print(f"{'':>32}why: {e['why']}")
 else:
     print("usage: bb roadmap [list|show N|add TEXT [--step ...]|edit N TEXT|"
-          "info N [M] TEXT|step add|edit|rm|mv|info ...|mv N up|down|done N|"
+          "info N [M] TEXT|step add|edit|rm|mv|done|info ...|mv N up|down|done N|"
           "rm N [WHY]|shelve N|begin|commit|revert|"
           "history [-n N] [--since D] [--find TEXT]]",
           file=sys.stderr)
