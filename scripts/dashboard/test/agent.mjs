@@ -78,7 +78,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON };
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
-     && n.agent.version === '1' && /^sha256:/.test(n.agent.digest),
+     && n.agent.version === '2' && /^sha256:/.test(n.agent.digest),
      'the row is online with the census, agent version and digest');
   // single use
   let again = '';
@@ -136,6 +136,30 @@ try {
     });
     ok(ref && ref.state === 'failed' && ref.exit_code === 77 && /not enrolled for deploy-target/.test(ref.log),
        'the NODE refuses a job for a capability it did not enroll with (door 7)');
+  }
+
+  // cancel: the flag on the row reaches the agent, which kills the job and
+  // reports it canceled rather than failed (phase 4)
+  {
+    const q = await api('/api/v1/nodes', { action: 'exec', id: minted.id,
+      argv: ['sh', '-c', 'echo running; sleep 60'] });
+    const running = await until(async () => {
+      const x = await api(`/api/v1/jobs?id=${q.job}`);
+      return x.state === 'running' && /running/.test(x.log) ? x : null;
+    });
+    ok(running !== null, 'a long job on the agent reaches running with its first line logged');
+    const c = await api('/api/v1/jobs', { action: 'cancel', id: q.job });
+    ok(c.ok, 'Cancel is accepted while it runs');
+    const fin = await until(async () => {
+      const x = await api(`/api/v1/jobs?id=${q.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
+    }, 40000);
+    ok(fin && fin.state === 'canceled' && /stopped by the operator/.test(fin.error)
+       && fin.ended - fin.started < 40,
+       `the agent kills it and reports canceled (${fin?.state}: ${fin?.error})`);
+    const n = await nodeById(minted.id);
+    ok(n.os === 'linux' && n.arch === process.arch.replace('x64', 'x86_64').replace('arm64', 'aarch64'),
+       `the census reports os and arch as fields the selector can match (${n.os}/${n.arch})`);
   }
 
   // Test on an agent node is a round trip through the channel

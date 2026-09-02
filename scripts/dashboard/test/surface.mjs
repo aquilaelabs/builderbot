@@ -49,7 +49,7 @@ const SURFACE = [
   'findingsRulesHtml', 'finishTabs', 'flip', 'focusTab', 'foldHeight',
   'fillNodeSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab', 'imgAdder',
   'imgRow', 'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
-  'loadFindings', 'loadNodes', 'nodeAct', 'nodeStatePill', 'nodeNumbers', 'loadPackages', 'loadWire', 'logNote', 'logSection',
+  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'loadNodes', 'nodeAct', 'nodeStatePill', 'nodeNumbers', 'loadPackages', 'loadWire', 'logNote', 'logSection',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onCardDrag', 'onDrag', 'onRev', 'openClaude',
@@ -61,8 +61,8 @@ const SURFACE = [
   'phFetch', 'pinTo', 'pkgAct', 'pkgRow', 'pkgTickDots', 'placeCard',
   'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
-  'reattachTerminals', 'openFindingsTab', 'openNodesTab', 'openSettingsTab', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
-  'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
+  'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
+  'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderPackagesInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',
   'rnDrawPrefs', 'rnFillPrefs', 'rnLoadAuth', 'rnShow', 'rnSubmit',
@@ -73,7 +73,7 @@ const SURFACE = [
   'slideHidden', 'slidePanel', 'swapBox', 'startCardDrag', 'startClaude', 'startDrag',
   'tabLabel', 'tabLabels', 'tabTitle', 'tipOff', 'tipify', 'toggleBell',
   'toggleCard', 'togglePin', 'toggleUiMenu', 'unveil', 'updateArrows',
-  'viewAfterRestart', 'watchSignin', 'wireLogSection', 'wireNodesTab', 'wireMacros',
+  'viewAfterRestart', 'watchSignin', 'wireLogSection', 'wireJobsTab', 'wireNodesTab', 'wireMacros',
   'wireProjectRows'
 ];
 

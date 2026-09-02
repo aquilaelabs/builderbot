@@ -1608,6 +1608,13 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:6px;
   background:var(--sunk);user-select:all}
 .ndnums{font:var(--f-note);color:var(--dim)}
+/* The Jobs tab: the filter is one checkbox in the bar, skinned like a
+   capability toggle; the reason a job ended badly is a warn line; the log
+   is the manager's compose log, same box. */
+.jbfilter{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
+  color:var(--ink)}
+.jbfilter input{width:15px;height:15px;flex:0 0 auto}
+.jberr.warn{color:var(--warn)}
 /* The manager's node picker select keeps the house control font wherever it
    renders — .dmtab predates the scaffold's groups. */
 .dmpick select{font:13px/1.5 var(--mono);padding:8px 9px}
@@ -2678,6 +2685,7 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button id="bDocker" onclick="openDocker()">Docker manager</button>
         <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
+        <button id="bJobs" onclick="openJobsTab()">Jobs</button>
       </div>
     </div>
     <!-- A phone on the end of wireless adb. USB is not an option here: there
@@ -3007,6 +3015,9 @@ const TABKINDS = {
   nodes:    { multi: false, label: () => "Nodes",
               render: (i) => renderNodesInto(i), live: () => nodesRev,
               open: () => loadNodes() },
+  jobs:     { multi: false, label: () => "Jobs",
+              render: (i) => renderJobsInto(i), live: () => jobsRev,
+              open: () => loadJobs() },
   settings: { multi: false, label: () => "Settings",
               render: (i) => renderSettingsInto(i), live: () => settingsRev },
   findings: { multi: false, label: () => "Analysis",
@@ -6280,7 +6291,21 @@ async function loadWire(d){
         esc(m.source)}</div>`).join("");
     html = lines || `<div class="dim li">it publishes nothing and mounts nothing</div>`;
   }catch(e){ html = `<div class="dim li bad">could not read it: ${esc(String(e))}</div>`; }
-  if (!d.isConnected) return;                 // the manager repainted under it
+  if (!d.isConnected){
+    // The manager repainted under it — every step of a job does that now —
+    // and the fold the operator opened is a fresh, closed one with nothing in
+    // it. Carry the answer over rather than drop it: the same instance's new
+    // fold gets the lines and stays open, so a build in progress does not
+    // snap the wiring shut every half second.
+    const inst = d.closest("[data-inst]")?.dataset.inst || `${project}|${instance}`;
+    const nd = document.querySelector(
+      `.dmtab .row[data-inst="${CSS.escape(inst)}"] details.dmwire`);
+    if (!nd || nd.dataset.done) return;
+    nd.dataset.done = "1";
+    nd.querySelector(".wire").innerHTML = html;
+    if (d.open) nd.open = true;
+    return;
+  }
   const before = d.offsetHeight;
   box.innerHTML = html;
   const after = d.offsetHeight;
@@ -11089,6 +11114,11 @@ onRev("prefs", () => refresh());
 onRev("nodes", () => {
   if (tabs.some(t => t.kind === "nodes")) loadNodes();
 });
+// The queue moved — a job taken, a step, a result, a cancel. Same rule: an
+// open Jobs tab refetches, and nothing about jobs rides the status poll.
+onRev("jobs", () => {
+  if (tabs.some(t => t.kind === "jobs")) loadJobs();
+});
 onRev("phone.asks", () => phFetch());
 // The badge follows the count directly rather than waiting for the fetch, so
 // the tab strip is right even if the page is throttled too hard to redraw.
@@ -11389,5 +11419,6 @@ setInterval(refresh, 15000);
 </script>
 <script src="tab-nodes.js"></script>
 <script src="tab-settings.js"></script>
+<script src="tab-jobs.js"></script>
 </body>
 </html>

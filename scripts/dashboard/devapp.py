@@ -276,136 +276,116 @@ COMPOSE_NAMES = ("docker-compose.yml", "docker-compose.yaml",
                  "compose.yml", "compose.yaml")
 
 _lock = threading.Lock()
-
-# One job at a time, like the package installer: two parallel builds on one
-# daemon help nobody, and a queue would hide which click did what.
-# One job at a time across the whole dashboard, and it now names the instance
-# as well as the project: two instances of one project are two builds, and a
-# row watching "is my build running" must not light up for its neighbour's.
-_job = {"running": False, "project": "", "instance": "", "step": "", "log": "",
-        "error": "", "await_env": False, "aborting": False, "node": ""}
+# The store's own revision, folded into job_rev() beside the queue's: an
+# instance added or an env file written moves the poll's token without a
+# job. Bumped by _bump() on every mutation of /config/devapps.json.
 _rev = 0
 
-# The process the job is inside right now, so Abort has something to interrupt.
-# A list rather than a value because the worker thread writes it and a request
-# thread reads it — the same shape, and the same reason, as the installer's.
-_child = [None]
+# The compose actions are JOBS on the queue (docs/nodes.md §2, phase 4): up,
+# down, rebuild and remove each queue one "compose" job placed on the node the
+# instance is bound to, and the runner below executes it with the node's
+# daemon addressed. What that replaced was a module-global one-slot job dict
+# that held the whole dashboard to one build at a time and died with the
+# process; the row now reads its job from the store, a second instance's
+# build waits its turn instead of being refused, and a build BuilderBot
+# restarted under is failed as lost with that written on it. `queue` is
+# nodes.py, bound by configure(); without one (a module test) the actions
+# refuse rather than invent a job.
+queue = None
+runner = None                    # jobs.py, for Abort to reach the process
 
-# How much of a long command's output the job carries. A pull writes a line per
-# layer per progress tick, so this is a tail and not a transcript: enough to
-# see what it is doing and where it stopped, not a log file kept in memory and
-# posted to every poller.
+# How much of a long command's output the row carries. A pull writes a line
+# per layer per progress tick, so this is a tail and not a transcript.
 LOG_TAIL = 4000
 
-
-def _hold_child(proc):
-    with _lock:
-        _child[0] = proc
-
-
-def _progress_key(line):
-    """What a compose progress line is ABOUT, or "" if it is not one.
-
-    Compose writes progress as `<thing> <name> <state>`: an id and a verb and
-    a number that moves. On a terminal it rewrites the line in place; with no
-    terminal it writes a new one per tick, which is how a single layer becomes
-    thirty lines of `5a96bc599c67 Extracting 2B` in the tail.
-
-    The first two words are the thing being talked about, so two lines sharing
-    them are two frames of one animation and only the last is worth keeping.
-    Three words minimum, so a sentence is never treated as a progress frame.
-    """
-    parts = line.split()
-    return " ".join(parts[:2]) if len(parts) >= 3 else ""
+# One action per INSTANCE at a time. Two clicks on one row are two compose
+# calls on one project; two rows are two jobs, and the queue orders those.
+BUSY = {"error": "something is already running on this instance — one at a time"}
 
 
-def _log_line(line):
-    """One line from a running command, appended and trimmed.
-
-    A line that supersedes the one before it REPLACES it, which is what makes
-    this readable: without it a pull of one image is hundreds of near-identical
-    lines, the tail holds nothing but the last layer, and whatever went wrong
-    scrolled past long before anybody looked.
-
-    Written without the lock: this runs per line of a docker pull, the readers
-    are a poll loop copying a string, and python's own assignment is atomic
-    enough for a display. Correctness here is "the tail is recent", not "the
-    tail is a consistent snapshot".
-    """
-    text = _job["log"]
-    # The last line, with its newline if it had one. Taken from the text rather
-    # than kept alongside it, so a trim to LOG_TAIL cannot leave the two
-    # disagreeing about what the last line was.
-    body = text[:-1] if text.endswith("\n") else text
-    last = text[body.rfind("\n") + 1:]
-    key = _progress_key(line)
-    if last and (last == line or (key and key == _progress_key(last))):
-        text = text[:len(text) - len(last)]
-    _job["log"] = (text + line)[-LOG_TAIL:]
+def _active_job(project, instance):
+    """The compose job queued or running for this instance, if any."""
+    if queue is None:
+        return None
+    for j in queue.jobs_for(project=project, type="compose", active=True, n=50):
+        if (j.get("spec") or {}).get("instance", MAIN) == instance:
+            return j
+    return None
 
 
-def _claim(project, instance, step):
-    """Take the one job slot, or say it is taken. True if this call has it.
-
-    The check and the claim under one lock, because they were two statements
-    before and the gap between them is a real one: the manager is shared by
-    every browser that has it open, so `if not running` in one request and
-    `running = True` in the next can interleave and start two compose calls on
-    the same project.
-
-    And it covers `up`, `down` and `remove` as well as a build, which the flag
-    did not. Those three read the flag and never set it, so a thirty-minute
-    implicit build inside `up` was invisible to the guard and to the row —
-    every other button stayed live in front of it.
-    """
-    with _lock:
-        if _job["running"]:
-            return False
-        _job.update(running=True, project=project, instance=instance,
-                    step=step, log="", error="", await_env=False,
-                    aborting=False,
-                    # Which node this work belongs to. Fixed in phase 1 —
-                    # docker work is the sandbox record — and the point is
-                    # that the claim ASKS: this call site is the seam the
-                    # placement function slides into (docs/nodes.md phase 4)
-                    # without the claim changing shape again.
-                    node=_instance_node(project, instance))
+def _submit(project, instance, action):
+    """Queue a compose action for the node this instance is bound to."""
+    if queue is None:
+        return {"error": "no job queue is configured here"}
+    if _active_job(project, instance):
+        return dict(BUSY)
+    r = queue.job_add("operator", {"node": _instance_node(project, instance)},
+                      "compose", {"project": project, "instance": instance,
+                                  "action": action}, project)
+    if r.get("error"):
+        return r
     _bump()
-    return True
+    return {"ok": True, "started": True, "job": r["job"]}
 
 
-def _release():
-    _job["running"] = False
-    _bump()
+def job_view(project, instance):
+    """This instance's job as the row draws it: the one in flight, or the
+    last one while it has something to say about how it ended. A job that
+    succeeded is not news, so it is not shown; a failed or stopped one stays
+    on the row until the next job on the instance replaces it."""
+    if queue is None:
+        return None
+    for j in queue.jobs_for(project=project, type="compose", n=40):
+        if (j.get("spec") or {}).get("instance", MAIN) != instance:
+            continue
+        running = j["state"] in queue.JOB_ACTIVE
+        if not running and j["state"] == "succeeded":
+            return None
+        return {"id": j["id"], "running": running, "state": j["state"],
+                "project": project, "instance": instance,
+                "action": (j.get("spec") or {}).get("action", ""),
+                "step": ("queued" if j["state"] == "queued" else j["step"])
+                        if running else "",
+                "log": queue.job_tail(j["id"], LOG_TAIL),
+                "error": "" if running else j["error"],
+                "aborting": bool(running and j["cancel"]),
+                "node": j["node"]}
+    return None
 
 
-BUSY = {"error": "something is already running on this daemon — one at a time"}
+def latest_job():
+    """The manager's one job line: the newest compose job that is in flight
+    or ended badly, across every instance."""
+    if queue is None:
+        return None
+    for j in queue.jobs_for(type="compose", n=1):
+        sp = j.get("spec") or {}
+        if j["state"] != "succeeded":
+            return job_view(sp.get("project", ""), sp.get("instance", MAIN))
+    return None
 
 
-def abort_job():
-    """Stop the job that is running, if any.
-
-    Asks the process group rather than the process: a compose CLI waiting on a
-    pull leaves the download running if only the CLI is signalled. What is
-    already built stays — an abort is for the rest of the work, not for undoing
-    what finished, which is the same bargain the package installer's makes.
-    """
-    with _lock:
-        if not _job["running"]:
-            return False
-        _job["aborting"] = True
-        proc = _child[0]
-    if proc is not None:
-        _kill_group(proc)
+def abort_job(project, instance):
+    """Stop this instance's job, if it has one. True if there was one."""
+    j = _active_job(project, instance)
+    if j is None:
+        return False
+    if runner is not None:
+        runner.cancel("operator", j["id"])
+    else:
+        queue.job_cancel("operator", j["id"])
     _bump()
     return True
 
 
 def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
-              node_addr=None):
+              node_addr=None, queue=None, runner=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
                      write_json=write_json, log_dir=log_dir,
-                     node_for=node_for, node_addr=node_addr)
+                     node_for=node_for, node_addr=node_addr,
+                     queue=queue, runner=runner)
+    if runner is not None:
+        runner.register("compose", run_compose_job)
     globals()["FILE"] = Path(state) / "devapps.json"
     globals()["ENVDIR"] = Path(state) / "devenv"
     _migrate_paths()
@@ -475,8 +455,10 @@ def _migrate_paths():
 
 
 def job_rev():
-    """The poll's cheap tell that something here moved."""
-    return f"{_rev}:{_mtime(FILE)}"
+    """The poll's cheap tell that something here moved — the store, and the
+    queue's own rev, since a job's every log chunk is a repaint."""
+    q = queue.jobs_rev() if queue is not None else 0
+    return f"{_rev}:{q}:{_mtime(FILE)}"
 
 
 def _mtime(p):
@@ -737,7 +719,7 @@ def _run(argv, timeout=60, env_extra=None, sink=None, hold=None):
     """
     bad = _guard(argv)
     if bad:
-        # Refused rather than raised: _worker runs builds on a thread, where an
+        # Refused rather than raised: a build runs on a job thread, where an
         # exception would end the job with nothing to show for it. A code and a
         # message travel the path a real docker failure already travels — and
         # say plainly that this one is a bug here, not a daemon that said no.
@@ -1625,7 +1607,7 @@ def _overview_here(picked):
             # the row showing whatever state it happened to be in and no account
             # of why. It is replaced by the next job, which is when it stops
             # being the answer to "what just happened here".
-            "job": dict(_job) if (_job["running"] or _job["error"]) else None,
+            "job": latest_job(),
             # Only the ones that are not an instance of ours: the instances
             # above already account for those, and listing them twice would
             # make the page look like the daemon is running double.
@@ -1808,21 +1790,18 @@ def remove_instance(project, instance):
     """
     if instance not in (_load().get(project) or {}):
         return {"error": f"{project} has no instance called {instance}"}
-    if not _claim(project, instance, "stopping"):
-        return dict(BUSY)
-    # Bound before the try, so an exception on the way out reports itself
-    # rather than a NameError from the line that was about to describe it.
-    stopped = False
-    try:
-        r = _run(_compose(project, instance, "down"), timeout=180,
-                 sink=_log_line, hold=_hold_child)
-        stopped = _job["aborting"]
-    finally:
-        _release()
-    if stopped:
-        return {"error": "stopped — it is still in the manager"}
+    return _submit(project, instance, "remove")
+
+
+def _job_remove(project, instance, run):
+    run.step("stopping")
+    r = _run(_compose(project, instance, "down"), timeout=180,
+             sink=run.line, hold=run.hold)
+    if run.canceled:
+        return {"state": "canceled", "error": "stopped — it is still in the manager"}
     if r["code"] != 0:
-        return {"error": ("could not take it down, so it was left alone:\n"
+        return {"state": "failed",
+                "error": ("could not take it down, so it was left alone:\n"
                           + r["out"])[-500:]}
     # A container written here has nowhere else to come back from — its
     # compose file IS the thing, and leaving it behind would keep the name
@@ -1831,8 +1810,7 @@ def remove_instance(project, instance):
     if is_file_source(project, instance):
         forget_container(project)
         _bump()
-        return {"ok": True, "project": project, "instance": instance,
-                "removed_files": True}
+        return {"state": "succeeded"}
     with _lock:
         d = _load()
         if instance in (d.get(project) or {}):
@@ -1841,7 +1819,7 @@ def remove_instance(project, instance):
                 del d[project]
             write_json(FILE, d)
     _bump()
-    return {"ok": True, "project": project, "instance": instance}
+    return {"state": "succeeded"}
 
 
 def instances(project):
@@ -2153,7 +2131,7 @@ def missing_dirs(project, cfg, instance=MAIN):
     return sorted(make), sorted(cannot)
 
 
-def ensure_dirs(project, instance=MAIN):
+def ensure_dirs(project, instance=MAIN, sink=None):
     """Make the bind directories, as the step before starting rather than a
     button somebody has to remember.
 
@@ -2169,14 +2147,14 @@ def ensure_dirs(project, instance=MAIN):
     a file compose is about to read for itself.
     """
     r = make_dirs(project, instance)
+    say = sink or (lambda _line: None)
     if r.get("made"):
-        _log_line(f"made {len(r['made'])} bind director"
-                  f"{'y' if len(r['made']) == 1 else 'ies'}\n")
+        say(f"made {len(r['made'])} bind director"
+            f"{'y' if len(r['made']) == 1 else 'ies'}\n")
     for line in r.get("failed") or []:
-        _log_line(f"could not make {line}\n")
+        say(f"could not make {line}\n")
     for d in r.get("unreachable") or []:
-        _log_line(f"{d} is not BuilderBot's to make — docker will try it "
-                  f"as root\n")
+        say(f"{d} is not BuilderBot's to make — docker will try it as root\n")
     return r
 
 
@@ -2554,9 +2532,8 @@ def state(project, instance=MAIN):
            # without this the operator sees a button they thought they had
            # already pressed and is told nothing.
            "interrupted": bool(built.get("building_since")
-                               and not _job["running"]),
-           "job": (dict(_job) if _job["project"] == project
-                   and _job["instance"] == instance else None)}
+                               and not _active_job(project, instance)),
+           "job": job_view(project, instance)}
     if a["on"]:
         cfg = _config(project, instance)
         out["needs_build"] = needs_build(cfg)
@@ -2619,36 +2596,27 @@ def up(project, instance=MAIN, ack=""):
     clash = name_clash(project, instance)
     if clash:
         return {"error": clash}
-    if not _claim(project, instance, "starting"):
-        return dict(BUSY)
-    try:
-        ensure_dirs(project, instance)
-        # `compose up -d`, and nothing more clever: compose builds an image
-        # that is missing, so Up on a never-built project does what the CLI
-        # does rather than refusing on a rule of this dashboard's invention.
-        # The classic builder rides along for exactly that case, for the same
-        # reason the explicit build uses it — see _CLASSIC_BUILD.
-        #
-        # Streamed, for the same reason the build is: that implicit build can
-        # pull for half an hour, and unstreamed it was half an hour of nothing
-        # with no way to stop it — a download wearing a hang's clothes, on the
-        # one button most likely to meet it.
-        r = _run(_compose(project, instance, "up", "-d"), timeout=1800,
-                 env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,
-                 sink=_log_line, hold=_hold_child)
-        if _job["aborting"]:
-            _job.update(error="stopped", step="")
-            return {"error": "stopped"}
-        if r["code"] != 0:
-            # On the JOB as well as in the reply. The reply reaches the one
-            # browser that pressed the button; the job is what the row reads,
-            # and without this a failed Up cleared itself on release — the
-            # tail and the reason vanished on the next poll, leaving a row
-            # that said "stopped" with no account of why it had not started.
-            _job.update(error=("up failed:\n" + r["out"])[-500:], step="")
-            return {"error": ("compose up failed:\n" + r["out"])[-500:]}
-    finally:
-        _release()
+    return _submit(project, instance, "up")
+
+
+def _job_up(project, instance, run):
+    run.step("starting")
+    ensure_dirs(project, instance, sink=run.line)
+    # `compose up -d`, and nothing more clever: compose builds an image that
+    # is missing, so Up on a never-built project does what the CLI does
+    # rather than refusing on a rule of this dashboard's invention. The
+    # classic builder rides along for exactly that case, for the same reason
+    # the explicit build uses it — see _CLASSIC_BUILD. Streamed, because that
+    # implicit build can pull for half an hour.
+    r = _run(_compose(project, instance, "up", "-d"), timeout=1800,
+             env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,
+             sink=run.line, hold=run.hold)
+    if run.canceled:
+        return {"state": "canceled", "error": "stopped"}
+    if r["code"] != 0:
+        # On the JOB, which is what the row reads: without this a failed Up
+        # left a row that said "stopped" with no account of why.
+        return {"state": "failed", "error": ("up failed:\n" + r["out"])[-500:]}
     with _lock:
         d = _load()
         row = _rec(d, project, instance)
@@ -2663,37 +2631,29 @@ def up(project, instance=MAIN, ack=""):
                        daemon=daemon_id(), daemon_uid=_uid())
         write_json(FILE, d)
     _bump()
-    return {"ok": True}
+    return {"state": "succeeded"}
 
 
 @_on_instance
 def down(project, instance=MAIN):
-    if not _claim(project, instance, "stopping"):
-        return dict(BUSY)
-    # Bound before the try, so an exception on the way out reports itself
-    # rather than a NameError from the line that was about to describe it.
-    stopped = False
-    try:
-        r = _run(_compose(project, instance, "down"), timeout=180,
-                 sink=_log_line, hold=_hold_child)
-        stopped = _job["aborting"]
-    finally:
-        _release()
-    if stopped:
-        _job.update(error="stopped", step="")
-        _bump()
-        return {"error": "stopped"}
+    return _submit(project, instance, "down")
+
+
+def _job_down(project, instance, run):
+    run.step("stopping")
+    r = _run(_compose(project, instance, "down"), timeout=180,
+             sink=run.line, hold=run.hold)
+    if run.canceled:
+        return {"state": "canceled", "error": "stopped"}
     if r["code"] != 0:
-        _job.update(error=("down failed:\n" + r["out"])[-500:], step="")
-        _bump()
-        return {"error": ("compose down failed:\n" + r["out"])[-500:]}
+        return {"state": "failed", "error": ("down failed:\n" + r["out"])[-500:]}
     _bump()
-    return {"ok": True}
+    return {"state": "succeeded"}
 
 
 @_on_instance
 def rebuild(project, instance=MAIN, ack=""):
-    """Build, then bounce — or stop at the env gate. In a thread: a build is
+    """Build, then bounce — or stop at the env gate. A job: a build is
     minutes, and the poll watches it through job_rev."""
     if compose_file(project) is None:
         return {"error": "no compose file here"}
@@ -2705,17 +2665,30 @@ def rebuild(project, instance=MAIN, ack=""):
     clash = name_clash(project, instance)
     if clash:
         return {"error": clash}
-    if not _claim(project, instance, "building"):
-        return dict(BUSY)
+    r = _submit(project, instance, "rebuild")
+    if r.get("error"):
+        return r
     # On disk before the work starts, so a restart can tell "this build never
-    # finished" from "no build has been asked for". The job dict is memory and
-    # dies with the container; this outlives it.
+    # finished" from "no build has been asked for" without asking the queue.
     with _lock:
         d = _load()
         _rec(d, project, instance)["building_since"] = int(time.time())
         write_json(FILE, d)
-    threading.Thread(target=_worker, args=(project, instance), daemon=True).start()
-    return {"ok": True, "started": True}
+    return r
+
+
+def run_compose_job(job, run):
+    """The compose runner jobs.py calls for a "compose" job: one action on
+    one instance, with the daemon of the node the job was placed on
+    addressed for everything underneath."""
+    sp = job.get("spec") or {}
+    project, instance = sp.get("project", ""), sp.get("instance") or MAIN
+    fn = {"up": _job_up, "down": _job_down, "rebuild": _job_rebuild,
+          "remove": _job_remove}.get(sp.get("action"))
+    if fn is None:
+        return {"state": "failed", "error": f"unknown compose action {sp.get('action')!r}"}
+    with on_node(job.get("node") or _instance_node(project, instance)):
+        return fn(project, instance, run)
 
 
 def _clear_marker(project, instance=MAIN):
@@ -2728,25 +2701,18 @@ def _clear_marker(project, instance=MAIN):
             write_json(FILE, d)
 
 
-def _worker(project, instance=MAIN):
-    # Its own thread, so the caller's node context did not come with it.
-    with on_node(_instance_node(project, instance)):
-        _worker_body(project, instance)
-
-
-def _worker_body(project, instance):
+def _job_rebuild(project, instance, run):
     try:
+        run.step("building")
         r = _run(_compose(project, instance, "build"), timeout=3600,
                  env_extra=_dev_data_env(project, instance) | _CLASSIC_BUILD,
-                 sink=_log_line, hold=_hold_child)
-        if _job["aborting"]:
-            _job.update(error="stopped — what had already been built is kept",
-                        step="")
-            return
+                 sink=run.line, hold=run.hold)
+        if run.canceled:
+            return {"state": "canceled",
+                    "error": "stopped — what had already been built is kept"}
         if r["code"] != 0:
-            _job.update(error="build failed — the tail of its output is below",
-                        step="")
-            return
+            return {"state": "failed",
+                    "error": "build failed — the tail of its output is below"}
         with _lock:
             d = _load()
             _rec(d, project, instance).update(rev=built_rev(project, instance),
@@ -2754,19 +2720,17 @@ def _worker_body(project, instance):
                                               daemon=daemon_id(),
                                               daemon_uid=_uid())
             write_json(FILE, d)
-        _job["step"] = "stopping"
-        _bump()
+        run.step("stopping")
         _run(_compose(project, instance, "down"), timeout=180,
-             sink=_log_line, hold=_hold_child)
+             sink=run.line, hold=run.hold)
         # Checked here as well as after each of the other two. Abort during
-        # this step reached nothing — there was no held process to signal and
-        # nothing read the flag again until after `up` — so the container came
-        # up and the job then reported that it had been stopped. Every phase
-        # boundary asks now, and the phase itself is holdable.
-        if _job["aborting"]:
-            _job.update(error="stopped — the image is built; it was not started",
-                        step="")
-            return
+        # this step reached nothing once — there was no held process to
+        # signal and nothing read the flag again until after `up` — so the
+        # container came up and the job then reported that it had been
+        # stopped. Every phase boundary asks now.
+        if run.canceled:
+            return {"state": "canceled",
+                    "error": "stopped — the image is built; it was not started"}
         if missing_env(project, instance):
             # The gate: new settings exist that the env does not answer.
             # Rewrite the env with the old values in comments and leave Up
@@ -2776,29 +2740,24 @@ def _worker_body(project, instance):
                 d = _load()
                 _rec(d, project, instance)["await_env"] = True
                 write_json(FILE, d)
-            _job.update(await_env=True, step="")
-            return
-        _job["step"] = "starting"
-        _bump()
-        ensure_dirs(project, instance)
+            return {"state": "succeeded"}
+        run.step("starting")
+        ensure_dirs(project, instance, sink=run.line)
         # Streamed too: `up` pulls anything the build did not, which is the
         # long wait on a compose file made of published images rather than a
         # Dockerfile — exactly the case that looked like a hang.
         r = _run(_compose(project, instance, "up", "-d"), timeout=600,
                  env_extra=_dev_data_env(project, instance),
-                 sink=_log_line, hold=_hold_child)
-        if _job["aborting"]:
-            _job.update(error="stopped — the image is built; it was not started",
-                        step="")
-            return
+                 sink=run.line, hold=run.hold)
+        if run.canceled:
+            return {"state": "canceled",
+                    "error": "stopped — the image is built; it was not started"}
         if r["code"] != 0:
-            _job.update(error=("up failed:\n" + r["out"])[-500:], step="")
-            return
-        _job["step"] = ""
+            return {"state": "failed", "error": ("up failed:\n" + r["out"])[-500:]}
+        return {"state": "succeeded"}
     finally:
         # Whatever happened — built, failed, gated — the build is no longer in
         # flight, so the marker goes. Only a killed process leaves it behind,
         # which is exactly what it is for.
         _clear_marker(project, instance)
-        _job["running"] = False
         _bump()

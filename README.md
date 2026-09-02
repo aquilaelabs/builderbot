@@ -386,6 +386,8 @@ bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb nodes           the node registry, read-only in a terminal — the Nodes
                    tab is where it is edited; `local` is this container
+bb jobs [-n N]     the recent jobs: state, node, what ran, how it ended —
+                   read-only; the Jobs tab is where one is stopped
 bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
@@ -1280,6 +1282,23 @@ node** (exit 77), whatever the row says. Over plain http the node token
 travels in the clear, as the dashboard's own credential does; enrollment says
 so, and with TLS in front of the dashboard the agent pins the certificate on
 first use and refuses a different one after.
+
+### The Jobs tab
+
+**Tools → Jobs** is the queue (docs/nodes.md §2, phase 4): everything the
+controller has taken — a compose action on a dev instance, an exec on a node,
+an agent self-update — with where it was placed, what it is doing now, how it
+ended and its log. A job is placed on a node named outright or on whichever
+node fits a selector (capability, labels, pool, OS, architecture), and the
+choice is frozen on the row when the job is taken; a selector nothing fits is
+refused when it is queued, naming the selector. Each node runs as many jobs at
+once as its row allows; the rest wait in order. **Cancel** on a row stops one
+where it is — a queued job never starts, a running one is killed and the row
+moves when the runner reports that it did — and nothing edits a job after the
+fact. The checkbox in the bar narrows the list to what is running or waiting.
+`bb jobs` prints the same list read-only, so a session can see what became of
+the work it asked for. `/api/v1/healthz` answers without a credential with
+the queue's counts, and `/metrics` answers with one in Prometheus text.
 
 ### The Settings tab
 
@@ -2804,7 +2823,8 @@ scripts/
     projects.py                  new project / link to GitHub, and the worker that clones and pushes
     logs.py                      what is kept, for how long, and the downloads behind the gear menu
     todo.py                      the roadmap; `bb roadmap` drives the same file
-    nodes.py                     the node registry, audit trail, SQLite store and the agent's channel (docs/nodes.md)
+    nodes.py                     the node registry, audit trail, SQLite store, the job queue and the agent's channel (docs/nodes.md)
+    jobs.py                      the controller's own job runner — exec here or over ssh — plus /healthz and /metrics
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist

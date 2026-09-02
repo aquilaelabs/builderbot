@@ -24,6 +24,20 @@ const env = {
 execFileSync('git', ['-C', D, 'add', '-A'], { env });
 execFileSync('git', ['-C', D, 'commit', '-qm', 'compose'], { env });
 
+// Every compose action is a job now, and a job goes on writing — its final
+// log flush, its result row — for a moment after the row already shows the
+// outcome. An assertion about what a job LEFT BEHIND waits for the queue to
+// empty first, rather than sampling the row mid-settle (bug #13's shape).
+const idle = async (ms = 20000) => {
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+  const end = Date.now() + ms;
+  while (Date.now() < end){
+    const r = await (await fetch(URL.replace(/\/$/, '') + '/api/v1/jobs?active=1', { headers: H })).json();
+    if (!(r.jobs || []).length) return;
+    await sleep(200);
+  }
+};
+
 const dockerLog = () => {
   try { return readFileSync(`${DIR}/dockerstate/docker.log`, 'utf8'); }
   catch { return ''; }
@@ -333,7 +347,9 @@ ok(/up failed/.test(failed.error || ''),
    'an Up that fails leaves the reason on the row, not only in the reply');
 ok(!failed.running && /mount source path/.test(failed.log || ''),
    '...with the output that ended it still in the tail');
+await idle();
 await openManager();
+await page.waitForSelector(`${DM} .dmlog`, { timeout: 20000 });
 ok(await page.$eval(`${DM} .dmlog`, e => e.dataset.tail === '1'),
    '...and that tail is pinned to its end, which is where the error is');
 // Rebuild has to wake for the retry. A build records itself before the up
@@ -351,6 +367,7 @@ await pillIs('down');
 // Rebuild is live because the code moved), but the operator was told nothing
 // and saw a button they thought they had pressed. Simulated by leaving the
 // on-disk marker behind, which is exactly what a killed process leaves.
+await idle();
 const devFile = `${DIR}/state/devapps.json`;
 const before = JSON.parse(readFileSync(devFile, 'utf8'));
 // Two levels now: a project holds instances, and `main` is the one every
@@ -860,57 +877,80 @@ ok(/not a share root/.test(DDD.slash) && /not a share root/.test(DDD.nested)
    'the guard takes the mount out of the argv and checks its shape: / and a '
    + 'nested path are refused, any single share is not, a climbing name still is');
 
-// One thing at a time on the daemon, and it now covers every verb that runs a
-// compose call. `up`, `down` and `remove` read the flag and never set it, so a
-// thirty-minute implicit build inside `up` was invisible to the guard: a
-// rebuild started on top of it, two compose calls ran on one project, and the
-// row showed neither. Driven at the module, because the race is between two
-// requests and a browser cannot hold one open on purpose.
+// One thing at a time on an instance, and it covers every verb that runs a
+// compose call. A compose action is a job on the queue now (phase 4): `up`,
+// `down`, `rebuild` and `remove` all submit one, and a second on the same
+// instance is refused while the first is queued or running — where before
+// `up` never set the flag, so a thirty-minute implicit build inside it was
+// invisible to the guard. A different instance queues behind it rather than
+// being refused: the one-at-a-time is per instance, the queue serialises the
+// node. Driven at the module with a stub queue, because the race is between
+// two requests and a browser cannot hold one open on purpose.
 const slot = execFileSync('python3', ['-c', `
-import importlib.util, json, tempfile, threading, time
+import importlib.util, json, tempfile
 spec = importlib.util.spec_from_file_location('d', ${
   JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = tempfile.mkdtemp()
-m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
 
-# A compose call that takes its time, so a second request lands during it.
-started = threading.Event()
-def slow(argv, timeout=60, **kw):
-    started.set(); time.sleep(0.6); return {'code': 0, 'out': ''}
-m._run = slow
+class Queue:
+    """Rows are the queue: what job_add wrote is what jobs_for answers."""
+    rows = []
+    JOB_ACTIVE = ('queued', 'assigned', 'running')
+    def job_add(self, principal, placement, type, spec, project=''):
+        jid = f'j_{len(self.rows) + 1}'
+        self.rows.insert(0, {'id': jid, 'type': type, 'spec': spec, 'project': project,
+                             'state': 'queued', 'node': placement.get('node', ''),
+                             'placement': placement, 'principal': principal,
+                             'step': '', 'error': '', 'cancel': False})
+        return {'job': jid}
+    def jobs_for(self, project=None, type=None, active=False, n=50, **kw):
+        return [r for r in self.rows if (not project or r['project'] == project)
+                and (not type or r['type'] == type)
+                and (not active or r['state'] in ('queued', 'assigned', 'running'))][:n]
+    def jobs_rev(self): return len(self.rows)
+    def job_tail(self, jid, n=4000): return ''
+q = Queue()
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None, queue=q)
 m._risk_gate = lambda *a, **k: ''
 m.missing_env = lambda *a, **k: []
 m.compose_file = lambda *a, **k: '/tmp/x.yml'
-m._load = lambda: {'alpha': {'main': {}}}
+m._load = lambda: {'alpha': {'main': {}, 'staging': {}}}
+m._instance_node = lambda *a: 'n_sandbox'
 
 out = {}
-t = threading.Thread(target=lambda: m.up('alpha', 'main'), daemon=True)
-t.start(); started.wait(2)
-out['job_while_up'] = dict(m._job)
+out['first_up'] = m.up('alpha', 'main')
 out['second_up'] = m.up('alpha', 'main')
 out['rebuild_during_up'] = m.rebuild('alpha', 'main')
 out['down_during_up'] = m.down('alpha', 'main')
-t.join(5)
-out['after'] = m._job['running']
-out['free_now'] = m._claim('alpha', 'main', 'x'); m._release()
+out['other_instance'] = m.up('alpha', 'staging')
+out['queued'] = [(r['id'], r['spec']['action'], r['spec']['instance'], r['node'], r['principal']) for r in q.rows]
+out['view'] = m.job_view('alpha', 'main')
+q.rows[-1]['state'] = 'succeeded'
+out['free_now'] = m.up('alpha', 'main')
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const SL = JSON.parse(slot.trim().split('\n').pop());
-ok(SL.job_while_up.running && SL.job_while_up.step === 'starting'
-   && SL.job_while_up.project === 'alpha',
-   'an up takes the job slot, so the row can say what is happening in it');
+ok(SL.first_up.ok && SL.first_up.job === 'j_1' && SL.queued.length === 2
+   && SL.queued[1].join() === 'j_1,up,main,n_sandbox,operator',
+   'an up is a compose job on the queue, placed on the node the instance is bound to');
 ok([SL.second_up, SL.rebuild_during_up, SL.down_during_up]
      .every(r => /one at a time/.test(r.error || '')),
-   '...and every other verb is refused while it holds it, not only a build');
-ok(SL.after === false && SL.free_now === true,
-   '...and the slot is given back when it ends, however it ends');
+   '...and every other verb on that instance is refused while it is queued or running, not only a build');
+ok(SL.other_instance.ok && SL.queued[0].join() === 'j_2,up,staging,n_sandbox,operator',
+   '...while another instance of the same project queues behind it — one at a time is per instance');
+ok(SL.view && SL.view.running && SL.view.step === 'queued' && SL.view.action === 'up'
+   && SL.view.node === 'n_sandbox',
+   'the row reads its job from the queue: running, on the step "queued", with the node');
+ok(SL.free_now.ok && SL.free_now.job === 'j_3',
+   '...and the instance is free again when its job has ended, however it ended');
 
 // Abort during the stopping step. It reached nothing — the phase held no
 // process to signal, and nothing read the flag again until after `up` — so the
 // container came up and the job then reported that it had been stopped. Both
 // halves are asserted: that `up` never runs, and that what the row says
-// matches what happened.
+// matches what happened. Driven through _job_rebuild with a run whose cancel
+// flag flips mid-down, which is the shape the controller's runner hands it.
 const ab = execFileSync('python3', ['-c', `
 import importlib.util, json, tempfile
 spec = importlib.util.spec_from_file_location('d', ${
@@ -922,6 +962,13 @@ m.missing_env = lambda *a, **k: []
 m._head = lambda *a, **k: 'abc1234'
 m._load = lambda: {'alpha': {'main': {}}}
 
+class Run:
+    canceled = False
+    steps = []
+    def line(self, t): pass
+    def step(self, s): self.steps.append(s)
+    def hold(self, p): pass
+run = Run()
 phases = []
 def fake(argv, timeout=60, **kw):
     verb = argv[argv.index('-f') + 2] if '-f' in argv else argv[-1]
@@ -929,45 +976,44 @@ def fake(argv, timeout=60, **kw):
     # Abort lands while the down is in flight, which is the window that was
     # not covered: there is no held process for the signal to reach.
     if verb == 'down':
-        m.abort_job()
+        run.canceled = True
     return {'code': 0, 'out': ''}
 m._run = fake
 
-m._claim('alpha', 'main', 'building')
-m._worker('alpha', 'main')
-print(json.dumps({'phases': phases, 'error': m._job['error'],
-                  'running': m._job['running']}))
+r = m._job_rebuild('alpha', 'main', run)
+print(json.dumps({'phases': phases, 'steps': run.steps, 'result': r}))
 `], { encoding: 'utf8' });
 const AB = JSON.parse(ab.trim().split('\n').pop());
-ok(!AB.phases.includes('up'),
+ok(!AB.phases.includes('up') && AB.steps.join() === 'building,stopping',
    'an abort during the stopping step stops there, rather than starting it anyway');
-ok(/stopped/.test(AB.error) && !AB.running,
-   '...and the row says so, which it was already saying with the thing running');
+ok(AB.result.state === 'canceled' && /stopped/.test(AB.result.error),
+   '...and the result says so, which it was already saying with the thing running');
 
 // The tail is a display, not a transcript. Compose with no terminal writes a
 // new line per progress tick instead of rewriting one, so a single layer of a
 // single image arrives as dozens of near-identical lines — enough to push
-// whatever went wrong out of a 4000-character tail entirely.
+// whatever went wrong out of a 4000-character tail entirely. The fold lives
+// in the runner now (jobs.fold), where every job's log goes through it.
 const tail = execFileSync('python3', ['-c', `
 import importlib.util, json
-spec = importlib.util.spec_from_file_location('d', ${
-  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+spec = importlib.util.spec_from_file_location('j', ${
+  JSON.stringify(new globalThis.URL('../jobs.py', import.meta.url).pathname)})
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 out = {}
-m._job['log'] = ''
+buf = []
 feed = ([' 5a96bc599c67 Extracting 2B'] * 11 + [' 5a96bc599c67 Extracting 3B'] * 10
         + [' 5a96bc599c67 Pull complete 0B', ' Network dev_default Creating ',
            ' Network dev_default Creating ', ' Network dev_default Created ',
            ' Container dev-x-1 Starting ',
            "Error response from daemon: chown /x: operation not permitted"])
 for line in feed:
-    m._log_line(line + chr(10))
-out['pull'] = [len(feed), m._job['log'].strip().split(chr(10))]
+    m.fold(buf, line + chr(10))
+out['pull'] = [len(feed), [l.strip() for l in buf]]
 # A build transcript is prose, not frames, and must survive intact.
-m._job['log'] = ''
+buf = []
 for line in ['Step 1/4 : FROM node:22', 'Step 2/4 : RUN npm ci', 'Successfully built abc']:
-    m._log_line(line + chr(10))
-out['build'] = m._job['log'].strip().split(chr(10))
+    m.fold(buf, line + chr(10))
+out['build'] = [l.strip() for l in buf]
 print(json.dumps(out))
 `], { encoding: 'utf8' });
 const TL = JSON.parse(tail.trim().split('\n').pop());
@@ -1178,7 +1224,14 @@ m._run = fake
 # Primed like the sibling blocks: the guard asks whether the daemon is a
 # verified sandbox, and the fake cannot answer a docker info.
 m._avail.update(when=time.time(), val={'on': True, 'why': '', 'id': 'STUBDAEMON1'})
-m.up('p')
+# Up is a job now; this drives the job body the runner would, with a run
+# that records nothing, because the order of the calls is the whole test.
+class Run:
+    canceled = False
+    def line(self, t): pass
+    def step(self, s): pass
+    def hold(self, p): pass
+m._job_up('p', 'main', Run())
 out = {
   # Ordered: every mkdir has to be finished before the compose that needs it.
   'order': [('up' if 'up' in c['argv'] else 'mkdir') for c in seen
@@ -1545,13 +1598,13 @@ const both = await page.$$eval('.dmtab .row[data-inst^="ep.silon|"]',
   rs => rs.map(r => r.dataset.inst));
 ok(both.includes('ep.silon|main') && both.includes('ep.silon|staging-two'),
    '...beside the one the project already had');
-// The failed Up earlier answers 400, which the browser records as a failed
-// resource load. Counted rather than filtered out: "no console errors except
-// the ones I expected" is only worth asserting if the number is pinned too.
+// The failed Up earlier is a JOB that failed: the request that queued it was
+// accepted, and the failure landed on the row. Before the queue it answered
+// 400, which the browser logged as a failed resource load, and this counted
+// that one. Nothing is refused now, so nothing may be logged.
 const errs = await page.errors;
-const asked = errs.filter(e => /400 \(Bad Request\)/.test(e));
-ok(errs.length === asked.length && asked.length === 1,
-   'no console errors from the dev row, beyond the one refusal the failed Up asked for');
+ok(errs.length === 0,
+   `no console errors from the dev row${errs.length ? ' — got: ' + JSON.stringify(errs) : ''}`);
 
 // ---- a container with no project behind it ------------------------------
 // The shape every other Docker front end uses: a name, a compose file and an

@@ -166,3 +166,6 @@
 - Projects can choose which docker host their containers default to, in the project settings dialog (4ef08ea)
 - The gear menu keeps appearance; everything the container itself owns moved to a Settings tab behind 'All settings…', starting with the session-log policy (4ef08ea)
 - A machine can be enrolled as a node from the Nodes tab: it dials in, shows its CPU, memory and free space live, and runs jobs as its own account — never root (fed6d98)
+- Every build, start and stop of a dev instance is now a job with its own log — the Jobs tab lists them, and Cancel stops one where it is (80b3dca)
+- Work can be sent to whichever node fits — by capability, label, pool, OS or architecture — and the job says which node took it (80b3dca)
+- A failed Up leaves its reason and output on the instance's row instead of a one-line refusal (80b3dca)

@@ -10,8 +10,12 @@ stamped which node a piece of work ran on, and wrote an audit row for every
 mutation the server takes. Phase 2 made the registry editable. Phase 3 is the
 first time something OTHER than this container writes here: an agent on a
 node dials in with a bearer token, says what it is, asks for work, and
-reports what happened. The four one-way doors this module owns were paid
-in phase 1 so that could land without reshaping anything (docs/nodes.md §15):
+reports what happened. Phase 4 made the job rows the queue: placement is a
+function (pick), a job may name a selector instead of a node and is frozen to
+the node that takes it, cancel is a flag the runner reads, and a node that
+stops answering loses its jobs rather than holding them forever. The one-way
+doors this module owns were paid in phase 1 so that could land without
+reshaping anything (docs/nodes.md §15):
 
   * ids are minted, never addresses, never reused (door 1);
   * every mutation is attributed and audited from the first day there is a
@@ -240,8 +244,9 @@ def _live(rec):
 
 def _insert_node(rec):
     cols = ("id", "name", "kind", "pool", "created", "state", "concurrency",
-            "ssh_addr", *_JSON_COLS)
-    vals = [json.dumps(rec.get(c, {})) if c in _JSON_COLS else rec.get(c)
+            "ssh_addr", "os", "arch", *_JSON_COLS)
+    vals = [json.dumps(rec.get(c, {})) if c in _JSON_COLS
+            else rec.get(c, "") if c in ("os", "arch") else rec.get(c)
             for c in cols]
     _exec(f"INSERT INTO nodes ({', '.join(cols)}) VALUES "
           f"({', '.join('?' * len(cols))})", vals)
@@ -262,14 +267,15 @@ def _seed_local():
         "mem_mb": _mem_mb(),
         "os": f"{platform.system().lower()} {platform.machine()}",
     }
+    system, arch = platform.system().lower(), platform.machine()
     if node(LOCAL):
-        _exec("UPDATE nodes SET reported = ? WHERE id = ?",
-              (json.dumps(reported), LOCAL))
+        _exec("UPDATE nodes SET reported = ?, os = ?, arch = ? WHERE id = ?",
+              (json.dumps(reported), system, arch, LOCAL))
         return
     _insert_node({
         "id": LOCAL, "name": "controller", "kind": "local",
         "pool": "default", "created": int(time.time()), "state": "online",
-        "concurrency": 1, "ssh_addr": "",
+        "concurrency": 1, "ssh_addr": "", "os": system, "arch": arch,
         "capabilities": ["package-build"],
         "services": {"actions-runner": {}},
         "labels": {"arch": platform.machine()},
@@ -641,12 +647,13 @@ def enroll(auth, census, addr, version="", digest="", user=""):
     cfg = n.get("config") or {}
     if user:
         cfg["user"] = re.sub(r"[^a-z0-9_-]", "", user.lower())[:32] or "bb"
+    rep = _census(census)
     _exec("UPDATE nodes SET state = 'online', agent = ?, reported = ?, "
-          "config = ? WHERE id = ?",
+          "config = ?, os = ?, arch = ? WHERE id = ?",
           (json.dumps({"token_id": tid, "version": str(version)[:40],
                        "digest": str(digest)[:80], "addr": addr,
                        "last_seen": int(time.time()), "protocol": PROTOCOL}),
-           json.dumps(_census(census)), json.dumps(cfg), nid))
+           json.dumps(rep), json.dumps(cfg), rep["system"], rep["arch"], nid))
     _touch(nid, auth["principal"], "node-enroll", {"addr": addr})
     return {"ok": True, "node_id": nid, "token": secret,
             "name": n["name"], "capabilities": n["capabilities"],
@@ -697,6 +704,13 @@ def _census(c):
     for k in ("os", "docker", "gpu", "hostname"):
         if c.get(k):
             out[k] = str(c[k])[:120]
+    # The two placement dimensions (door 9), as fields. An older agent sends
+    # only the `os` string, whose first two words are the same two facts.
+    words = (out.get("os") or "").split()
+    out["system"] = re.sub(r"[^a-z0-9]", "", str(c.get("system") or
+                           (words[0] if words else "")).lower())[:20]
+    out["arch"] = re.sub(r"[^a-zA-Z0-9_]", "", str(c.get("arch") or
+                         (words[1] if len(words) > 1 else "")))[:20]
     out["sshd"] = bool(c.get("sshd"))
     stores = c.get("stores") if isinstance(c.get("stores"), dict) else {}
     out["stores"] = {}
@@ -712,15 +726,22 @@ def _census(c):
     return out
 
 
-def hello(nid, census, addr, version="", digest=""):
+def hello(nid, census, addr, version="", digest="", running=None):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it — protocol,
     transports, the poll window, the node's own capabilities (so it can
     refuse outside them, door 7) and the controller's agent file digest
-    (so self-update is a comparison, door 4)."""
+    (so self-update is a comparison, door 4).
+
+    `running` is the jobs the agent has going right now. An agent that
+    restarted has none, and the rows this side still had as running there
+    are then failed as lost — a subprocess does not survive its parent, so
+    a row saying otherwise would say it forever."""
     n = node(nid)
     if not n:
         return {"error": "no such node"}
+    if isinstance(running, list):
+        jobs_reconcile(nid, [str(j) for j in running])
     ag = n.get("agent") or {}
     ag.update({"version": str(version)[:40], "digest": str(digest)[:80],
                "addr": addr, "last_seen": int(time.time()),
@@ -730,8 +751,9 @@ def hello(nid, census, addr, version="", digest=""):
     rep = _census(census)
     if sample:
         rep["sample"] = sample
-    _exec("UPDATE nodes SET agent = ?, reported = ? WHERE id = ?",
-          (json.dumps(ag), json.dumps(rep), nid))
+    _exec("UPDATE nodes SET agent = ?, reported = ?, os = ?, arch = ? "
+          "WHERE id = ?", (json.dumps(ag), json.dumps(rep), rep["system"],
+                           rep["arch"], nid))
     _bump()
     ours = agent_file()
     return {"ok": True, "protocol": PROTOCOL, "transports": ["longpoll"],
@@ -783,65 +805,190 @@ def samples(nid):
 
 
 # ---------------------------------------------------------------------------
-# jobs — phase 3 carries exactly one type, exec, over the channel it is
-# proving. The rows are the phase-4 model (placement, logs, cancel, node
-# lost) written as far as one node and one queue need: a job names its node
-# at creation, the node's agent takes the oldest queued one when it has a
-# free slot, log chunks accumulate by sequence number, and the result is
-# terminal. Nothing here decides WHICH node — that is placement, phase 4.
+# jobs — the queue (docs/nodes.md §2, phase 4)
+#
+# The queue is a list and placement is a function. A job names a node or a
+# selector; a node with a free slot takes the oldest queued job it fits, and
+# from then on the row says where it ran, not where it might have. There are
+# two kinds of runner: an AGENT takes its jobs over the channel (exec and
+# self-update), and the CONTROLLER runs the rest itself — compose actions
+# against a node's daemon, and exec on the nodes that have no agent (local,
+# ssh). Both ask the same question of the same table through job_next(), and
+# concurrency is counted here from the rows rather than trusted from either.
 
-JOB_TYPES = ("exec", "self-update")
+JOB_TYPES = ("exec", "self-update", "compose")
 JOB_END = ("succeeded", "failed", "canceled")
+JOB_ACTIVE = ("queued", "assigned", "running")
+# What a selector may name (door 9: os and arch are placement dimensions).
+SELECT_KEYS = ("capability", "labels", "pool", "os", "arch")
+_jrev = [0]
 
 
-def job_add(principal, node_id, type, spec, project=""):
-    n = node(node_id)
-    if not n:
-        return {"error": "no such node"}
-    if n["kind"] != "agent":
-        return {"error": "no agent on this node — jobs run where an agent "
-                         "dials in, and an ssh node is driven over ssh"}
+def jobs_rev():
+    """Bumped on every job mutation and every log chunk; /api/revs carries
+    it so the Jobs tab and the rows that watch a job refetch on change."""
+    return _jrev[0]
+
+
+def _jbump():
+    _jrev[0] += 1
+
+
+def runner_of(job_type, kind):
+    """Who executes a job of this type on a node of this kind. A compose
+    action is always the controller's — it is docker over the node's
+    daemon, from here — and an agent runs everything else for itself."""
+    if job_type == "compose" or kind != "agent":
+        return "controller"
+    return "node"
+
+
+def fits(job, n):
+    """Placement, in one place: may this node take this job. An explicit
+    node is exact; a selector is every key it names, all of which must hold.
+    Nothing here about load — first free slot wins, which is the whole
+    scheduling policy a single operator needs (docs/nodes.md §2)."""
+    if n["state"] != "online" or (n.get("agent") or {}).get("revoked"):
+        return False
+    pl = job.get("placement") or {}
+    if pl.get("node"):
+        return pl["node"] == n["id"]
+    sel = pl.get("select") or {}
+    if sel.get("capability") and sel["capability"] not in n["capabilities"]:
+        return False
+    if sel.get("pool") and sel["pool"] != n["pool"]:
+        return False
+    if sel.get("os") and sel["os"] != n.get("os"):
+        return False
+    if sel.get("arch") and sel["arch"] != n.get("arch"):
+        return False
+    for k, v in (sel.get("labels") or {}).items():
+        if (n.get("labels") or {}).get(k) != v:
+            return False
+    return True
+
+
+def pick(job, candidates):
+    """The first node in `candidates` the job fits, or None. The one call
+    site that decides where work goes; fair-share or quotas would be this
+    function swapped, not four places edited."""
+    for n in candidates:
+        if fits(job, n):
+            return n
+    return None
+
+
+def _placement(placement):
+    """A placement as the caller wrote it, cleaned, or the reason it is
+    not one. {"node": id} or {"select": {...SELECT_KEYS}}."""
+    pl = placement if isinstance(placement, dict) else {}
+    if pl.get("node"):
+        return {"node": str(pl["node"])[:40]}, ""
+    sel = pl.get("select") if isinstance(pl.get("select"), dict) else {}
+    clean = {}
+    for k in SELECT_KEYS:
+        v = sel.get(k)
+        if not v:
+            continue
+        if k == "labels":
+            if isinstance(v, dict):
+                clean[k] = {str(a)[:40]: str(b)[:80] for a, b in list(v.items())[:8]}
+        else:
+            clean[k] = str(v)[:40]
+    if not clean:
+        return None, "a job names a node or a selector (capability, labels, pool, os, arch)"
+    return {"select": clean}, ""
+
+
+def job_add(principal, placement, type, spec, project=""):
+    """Queue a job. With an explicit node the node is checked now — it must
+    exist, be online, and hold a credential if it is an agent. With a
+    selector, at least one node must fit right now: a job nothing could ever
+    take would sit queued forever, and "no node has X" at the button is the
+    honest answer (docs/nodes.md §18 — the dashboard says which project has
+    no node). Assignment itself happens when a node asks, in job_next."""
     if type not in JOB_TYPES:
         return {"error": f"job type is one of {', '.join(JOB_TYPES)}"}
-    if n["state"] != "online":
-        return {"error": f"node is {n['state']} — it takes no new work"}
-    if (n.get("agent") or {}).get("revoked"):
-        return {"error": "this node's credential was revoked — enroll it "
-                         "again to give it work"}
+    pl, why = _placement(placement)
+    if why:
+        return {"error": why}
+    probe = {"placement": pl}
+    if pl.get("node"):
+        n = node(pl["node"])
+        if not n:
+            return {"error": "no such node"}
+        if n["state"] != "online":
+            return {"error": f"node is {n['state']} — it takes no new work"}
+        if (n.get("agent") or {}).get("revoked"):
+            return {"error": "this node's credential was revoked — enroll it "
+                             "again to give it work"}
+        if n["kind"] == "agent" and type != "compose" and not n.get("live"):
+            return {"error": "the agent on this node is not dialing in — the "
+                             "job would wait until it does"}
+    elif pick(probe, node_list()) is None:
+        want = ", ".join(f"{k}={v}" for k, v in pl["select"].items())
+        return {"error": f"no node fits {want}"}
     jid = mint("j")
     _exec("INSERT INTO jobs (id, type, project, requested_by, placement, "
           "source, spec, outputs, state, node, exit_code, queued, started, "
-          "ended) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, NULL, ?, "
-          "NULL, NULL)",
+          "ended, step, error, cancel) VALUES (?, ?, ?, ?, ?, ?, ?, ?, "
+          "'queued', ?, NULL, ?, NULL, NULL, '', '', 0)",
           (jid, type, str(project or "")[:120], str(principal),
-           json.dumps({"node": node_id}), json.dumps({}),
+           json.dumps(pl), json.dumps({}),
            json.dumps(spec if isinstance(spec, dict) else {}),
-           json.dumps([]), node_id, int(time.time())))
-    audit(principal, "job-add", jid, {"node": node_id, "type": type})
+           json.dumps([]), pl.get("node") or "", int(time.time())))
+    audit(principal, "job-add", jid, {"placement": pl, "type": type})
+    _jbump()
     with _wake:
         _wake.notify_all()
     return {"ok": True, "job": jid}
 
 
-def job_next(node_id, running, wait):
-    """The long-poll's other half: the oldest queued job for this node if
-    it may take one, else wait up to `wait` seconds for one to be added.
-    Drain is honored here — a draining node's agent keeps polling (that is
-    how the operator sees it is alive) and is simply never handed work.
-    So is concurrency: the agent says how many jobs it has going, and the
-    row says how many it may."""
+def job_running(node_id):
+    """How many jobs this node has going, from the rows — the count the
+    slot check uses. Not the agent's own number: that rides a request as a
+    snapshot, and a poll held with a stale one made the next job wait out
+    the whole window after the last one ended."""
+    return _rows("SELECT COUNT(*) AS n FROM jobs WHERE node = ? AND state IN "
+                 "('assigned', 'running')", (node_id,))[0]["n"]
+
+
+def job_next(node_id, wait, runner="node"):
+    """The oldest queued job this node may take, for this runner, else wait
+    up to `wait` seconds for one — or for a cancel request, which comes back
+    as {"cancel": [ids]} so the agent's held poll hears it at once.
+
+    Drain is honored here: a draining node's agent keeps polling (that is
+    how the operator sees it is alive) and is simply never handed work. So
+    is concurrency, counted from the rows. The job's node is written at this
+    moment and never again — placement frozen at assignment."""
     deadline = time.time() + max(0, float(wait))
     with _wake:
         while True:
             n = node(node_id)
-            if n and n["state"] == "online" and int(running or 0) < n["concurrency"]:
-                got = _rows("SELECT * FROM jobs WHERE node = ? AND state = "
-                            "'queued' ORDER BY queued, id LIMIT 1", (node_id,))
-                if got:
-                    j = got[0]
-                    _exec("UPDATE jobs SET state = 'assigned', started = ? "
-                          "WHERE id = ?", (int(time.time()), j["id"]))
-                    return _job_out(j) | {"state": "assigned"}
+            if n and n["state"] == "online" and job_running(node_id) < n["concurrency"]:
+                for j in _rows("SELECT * FROM jobs WHERE state = 'queued' AND "
+                               "(node = ? OR node = '') ORDER BY queued, id",
+                               (node_id,)):
+                    j = _job_out(j)
+                    if runner_of(j["type"], n["kind"]) != runner or not fits(j, n):
+                        continue
+                    # An agent's job is `assigned` until its first log post
+                    # says it started — the poll reply can be lost on the
+                    # wire. The controller's own runner starts it on the
+                    # thread that asked, so it is running from here.
+                    st = "running" if runner == "controller" else "assigned"
+                    _exec("UPDATE jobs SET state = ?, node = ?, "
+                          "started = ? WHERE id = ?",
+                          (st, node_id, int(time.time()), j["id"]))
+                    _jbump()
+                    return j | {"state": st, "node": node_id}
+            if runner == "node":
+                asked = [r["id"] for r in _rows(
+                    "SELECT id FROM jobs WHERE node = ? AND cancel = 1 AND "
+                    "state IN ('assigned', 'running')", (node_id,))]
+                if asked:
+                    return {"cancel": asked}
             left = deadline - time.time()
             if left <= 0:
                 return None
@@ -853,6 +1000,7 @@ def _job_out(j):
     for k in ("placement", "source", "spec", "outputs"):
         with contextlib.suppress(ValueError, TypeError):
             j[k] = json.loads(j[k])
+    j["cancel"] = bool(j.get("cancel"))
     return j
 
 
@@ -868,12 +1016,32 @@ def job(job_id, with_log=True):
     return j
 
 
+def job_tail(job_id, n=4000):
+    """The end of a job's log, for a row that shows where it got to."""
+    text = "".join(r["chunk"] for r in _rows(
+        "SELECT chunk FROM job_logs WHERE job_id = ? ORDER BY seq DESC "
+        "LIMIT 40", (job_id,))[::-1])
+    return text[-n:]
+
+
+def job_set(job_id, **fields):
+    """The runner's progress: step, error. Nothing else is settable this
+    way — state moves through job_next / job_result / job_cancel only."""
+    sets = {k: str(v)[:500] for k, v in fields.items() if k in ("step", "error")}
+    if sets:
+        _exec("UPDATE jobs SET " + ", ".join(f"{k} = ?" for k in sets)
+              + " WHERE id = ?", (*sets.values(), job_id))
+        _jbump()
+
+
 def job_log(node_id, job_id, chunks):
     """Append log chunks. Each carries the agent's sequence number, and a
     chunk already stored is dropped, so an agent that lost the answer to a
     post and sends the batch again (door 5: it buffers what it could not
-    report) never doubles a line."""
-    got = _rows("SELECT node, state FROM jobs WHERE id = ?", (job_id,))
+    report) never doubles a line. The answer carries the cancel flag: a
+    runner posts output every half second, so this is how one that is busy
+    hears it should stop."""
+    got = _rows("SELECT node, state, cancel FROM jobs WHERE id = ?", (job_id,))
     if not got or got[0]["node"] != node_id:
         return {"error": "not this node's job"}
     now = int(time.time())
@@ -894,10 +1062,12 @@ def job_log(node_id, job_id, chunks):
             n += 1
         if got[0]["state"] == "assigned":
             _exec("UPDATE jobs SET state = 'running' WHERE id = ?", (job_id,))
-    return {"ok": True, "stored": n}
+    if n:
+        _jbump()
+    return {"ok": True, "stored": n, "cancel": bool(got[0]["cancel"])}
 
 
-def job_result(node_id, job_id, state, exit_code=None):
+def job_result(node_id, job_id, state, exit_code=None, error=""):
     """Terminal. Idempotent by design — the agent retries until it is
     acknowledged, so the second arrival of the same result is a no-op with
     the same answer, not a second audit row."""
@@ -906,22 +1076,147 @@ def job_result(node_id, job_id, state, exit_code=None):
         return {"error": "not this node's job"}
     if got[0]["state"] in JOB_END:
         return {"ok": True, "already": True}
-    if state not in ("succeeded", "failed"):
-        return {"error": "a result is succeeded or failed"}
+    if state not in JOB_END:
+        return {"error": "a result is succeeded, failed or canceled"}
     code = None
     with contextlib.suppress(TypeError, ValueError):
         code = int(exit_code) if exit_code is not None else None
-    _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ? WHERE id = ?",
-          (state, code, int(time.time()), job_id))
+    _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
+          "error = ? WHERE id = ?",
+          (state, code, int(time.time()), str(error or "")[:500], job_id))
     audit(f"node:{node_id}", "job-result", job_id, {"state": state, "exit": code})
+    _jbump()
+    with _wake:
+        _wake.notify_all()      # the slot is free: a held poll may take the next
     return {"ok": True}
 
 
-def jobs_for(node_id=None, n=20):
-    q = "SELECT * FROM jobs" + (" WHERE node = ?" if node_id else "")
-    q += " ORDER BY queued DESC, id DESC LIMIT ?"
-    return [_job_out(r) for r in _rows(q, ((node_id,) if node_id else ())
-                                       + (int(n),))]
+def job_cancel(principal, job_id):
+    """Stop a job. Queued: it simply ends, canceled. Assigned or running:
+    the flag is set and the runner is woken — the agent hears it on its
+    next log post or held poll, the controller's own runner reads it and
+    kills the process group — and the row stays running until the runner
+    reports the end, because that is when it actually ended."""
+    got = _rows("SELECT state, cancel FROM jobs WHERE id = ?", (job_id,))
+    if not got:
+        return {"error": "no such job"}
+    if got[0]["state"] in JOB_END:
+        return {"ok": True, "already": True}
+    if got[0]["state"] == "queued":
+        _exec("UPDATE jobs SET state = 'canceled', ended = ?, error = 'canceled "
+              "before it started' WHERE id = ?", (int(time.time()), job_id))
+    elif not got[0]["cancel"]:
+        _exec("UPDATE jobs SET cancel = 1 WHERE id = ?", (job_id,))
+    audit(principal, "job-cancel", job_id, {})
+    _jbump()
+    with _wake:
+        _wake.notify_all()
+    return {"ok": True}
+
+
+def jobs_for(node_id=None, n=50, project=None, type=None, active=False):
+    q, args = "SELECT * FROM jobs", []
+    where = []
+    if node_id:
+        where.append("node = ?"), args.append(node_id)
+    if project:
+        where.append("project = ?"), args.append(project)
+    if type:
+        where.append("type = ?"), args.append(type)
+    if active:
+        where.append("state IN ('queued', 'assigned', 'running')")
+    if where:
+        q += " WHERE " + " AND ".join(where)
+    # rowid breaks the tie: ids are random, and two jobs queued in the same
+    # second used to come back in either order — the row then showed an
+    # older job as the latest, or none at all.
+    q += " ORDER BY queued DESC, rowid DESC LIMIT ?"
+    return [_job_out(r) for r in _rows(q, (*args, int(n)))]
+
+
+# How long past liveness a job's node may be silent before the job is lost:
+# LIVE_S already allows three missed polls, and a job mid-build does not
+# need the row hedging for another few minutes on top.
+LOST_S = LIVE_S + 30
+
+
+def jobs_lost():
+    """Fail every job assigned to an agent that has gone quiet — "node lost"
+    after a grace window (docs/nodes.md §10). The agent is the durable side:
+    if it comes back with the job still running it reports late, and the
+    row is already terminal, so the late result is dropped as `already`.
+    That loses a result in the rarest case and never a row in the common
+    one, which is the right way round."""
+    now = int(time.time())
+    n = 0
+    for j in _rows("SELECT j.id, j.node FROM jobs j JOIN nodes k ON k.id = "
+                   "j.node WHERE j.state IN ('assigned', 'running') AND "
+                   "k.kind = 'agent'"):
+        nd = node(j["node"])
+        seen = (nd.get("agent") or {}).get("last_seen") or 0
+        if now - seen > LOST_S:
+            _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', "
+                  "error = 'node lost — the agent stopped answering' WHERE "
+                  "id = ?", (now, j["id"]))
+            audit("system", "job-lost", j["id"], {"node": j["node"]})
+            n += 1
+    if n:
+        _jbump()
+    return n
+
+
+def jobs_reconcile(node_id, running):
+    """At hello: the jobs this side has as running on the node that the
+    node does not — an agent that restarted, whose children died with it."""
+    have = {r["id"] for r in _rows(
+        "SELECT id FROM jobs WHERE node = ? AND state IN ('assigned', "
+        "'running')", (node_id,))}
+    gone = have - set(running)
+    for jid in gone:
+        # A compose job on an agent node is the controller's, and the agent
+        # never had it — only what the agent RUNS is reconciled against it.
+        j = job(jid, with_log=False)
+        if runner_of(j["type"], "agent") != "node":
+            continue
+        _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', error "
+              "= 'lost — the agent restarted without it' WHERE id = ?",
+              (int(time.time()), jid))
+        audit("system", "job-lost", jid, {"node": node_id, "why": "restart"})
+    if gone:
+        _jbump()
+
+
+def jobs_restart_sweep():
+    """At start: a job the controller itself was running when the process
+    died is failed as lost — the subprocess died with it, and a row still
+    saying running would say it forever. An agent's own jobs are left to
+    the agent's hello, which reconciles against what it actually has."""
+    now = int(time.time())
+    n = 0
+    for j in _rows("SELECT j.id, j.type, k.kind FROM jobs j LEFT JOIN nodes "
+                   "k ON k.id = j.node WHERE j.state IN ('assigned', 'running')"):
+        if runner_of(j["type"], j["kind"] or "local") != "controller":
+            continue
+        _exec("UPDATE jobs SET state = 'failed', ended = ?, step = '', error "
+              "= 'lost — BuilderBot restarted while it was running' WHERE "
+              "id = ?", (now, j["id"]))
+        audit("system", "job-lost", j["id"], {"why": "controller restart"})
+        n += 1
+    if n:
+        _jbump()
+    return n
+
+
+def job_counts():
+    """Jobs by state, nodes by state and liveness — the numbers /healthz
+    and /metrics are made of."""
+    out = {"jobs": {s: 0 for s in JOB_ACTIVE + JOB_END}, "nodes": {}}
+    for r in _rows("SELECT state, COUNT(*) AS n FROM jobs GROUP BY state"):
+        out["jobs"][r["state"]] = r["n"]
+    for n in node_list():
+        k = n["state"] + ("/live" if n.get("live") else "")
+        out["nodes"][k] = out["nodes"].get(k, 0) + 1
+    return out
 
 
 # ---------------------------------------------------------------------------
