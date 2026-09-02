@@ -364,6 +364,29 @@ ok(list[0].id === 'local',
      'Save writes the project\'s node, the command and the outputs onto the project record');
 }
 
+// ---- an ssh node's path mapping (§11: the record owns it) --------------------
+// What DOCKER_HOST_PATHS was: on the sandbox node's row now, validated to
+// pairs, and read by the manager through the node being addressed.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  const papi = async (body) => (await fetch(base + '/api/v1/nodes', { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
+  const sb = (await (await fetch(base + '/api/v1/nodes', { headers: H })).json()).nodes.find(n => n.kind === 'ssh' && n.name === 'sandbox');
+  const bad = await papi({ action: 'paths', id: sb.id, paths: '/workspace:relative' });
+  ok(/not a \/container:\/host pair/.test(bad.error || ''), 'a mapping that is not absolute on both sides is refused');
+  const local = await papi({ action: 'paths', id: 'local', paths: '/a:/b' });
+  ok(/nothing to map/.test(local.error || ''), 'local has no mapping to set');
+  const set = await papi({ action: 'paths', id: sb.id, paths: '/workspace:/workspace, /devdata:/mnt/user/bb-dev' });
+  ok(set.ok && set.paths['/devdata'] === '/mnt/user/bb-dev',
+     'the mapping is saved onto the node record as pairs');
+  await page.evaluate(() => { nodesList = null; openNodesTab(); });
+  await page.waitForSelector(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, { timeout: 15000 });
+  ok(await page.$eval(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, e => e.value) === '/workspace:/workspace, /devdata:/mnt/user/bb-dev',
+     '...and the ssh node\'s row shows it, editable');
+  ok(await page.evaluate(() => !document.querySelector('.nodestab .ndrow[data-node="local"] .ndpaths')),
+     '...while local, whose paths are its own, has no such line');
+}
+
 // ---- the seam stays invisible on the sidebar --------------------------------
 ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
    'still no nodes card — nodes are a tab, not sidebar chrome');

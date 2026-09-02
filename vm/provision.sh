@@ -42,7 +42,7 @@ usage: provision.sh [options]
 
   --user NAME          the account Docker runs under and ssh lands on. The
                        default is bb, and BuilderBot assumes bb — so changing
-                       it means writing the account out in DOCKER_HOST. It gets
+                       it means writing the account out in the node's address. It gets
                        NO sudo and cannot run bb-sandbox: this is the account a
                        Claude session reaches, and reconfiguring the machine's
                        mounts is not what it is for.
@@ -140,7 +140,7 @@ if [ -f /.dockerenv ] || [ -f /run/.containerenv ] \
     warn "this is a container, and this script provisions a VM."
     if [ -d /opt/builderbot ]; then
         printf '   You are inside BuilderBot. It is the thing that TALKS to the\n'
-        printf '   sandbox; the sandbox is the separate machine at DOCKER_HOST.\n'
+        printf '   sandbox; the sandbox is the separate machine BuilderBot lists as a node.\n'
         printf '   Run this in a console on that VM, not in here.\n\n'
         printf '   Nothing outside the volumes survives a restart here, so if a\n'
         printf '   run got further than this: restart the container and it is\n'
@@ -400,7 +400,7 @@ die()  { warn "$*"; exit 1; }
 # means the type list has to hold every type a share is really mounted with,
 # not only the two this tool writes — a /workspace mounted by hand with nfs4 is
 # invisible to a filter that knows only nfs, and `settings` then prints a
-# DOCKER_HOST_PATHS with the projects share missing from it.
+# a path mapping with the projects share missing from it.
 ours() {
     awk '$1 !~ /^#/ && $3 ~ /^(virtiofs|9p|nfs|nfs4|cifs)$/ {print $2}' \
         /etc/fstab 2>/dev/null | sort -u
@@ -691,10 +691,10 @@ cmd_settings() {
     done < <(ours)
     cat <<EOF
 
-Put these in BuilderBot's container template:
+On BuilderBot's dashboard, Nodes tab:
 
-  DOCKER_HOST=${setting}
-  DOCKER_HOST_PATHS=${pairs:-<none yet>}
+  Add ssh node, address:      ${setting}
+  Path mapping on its row:    ${pairs:-<none yet>}
 
 Only for the paths BuilderBot ALSO mounts at the same place — a share that is
 this machine's alone belongs in neither list, and BuilderBot will say so.
@@ -925,9 +925,9 @@ cat <<EOF
 
 == done
 
-Point BuilderBot at it with one setting in the container's template:
+Add it on BuilderBot's dashboard — Nodes tab, Add ssh node — with the address:
 
-  DOCKER_HOST=${SETTING}
+  ${SETTING}
 
 A web UI a container here publishes is reachable at http://${ip:-<this-vm>}:<port>
 directly, because this VM has its own address on your network.

@@ -1634,6 +1634,8 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndstore .sub{grid-column:2}
 .ndconfacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ndconfstate.note{color:var(--note)}
+.ndpaths{display:flex;gap:6px;align-items:center}
+.ndpaths input{flex:1 1 auto;min-width:0}
 .dmroute{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .dmroute select{width:auto;max-width:100%}
 .ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
@@ -6675,9 +6677,9 @@ for the rest of the work"
                  ? dockerWhy() : "")
     || (blind ? "the daemon did not answer"
                 + (dockerList.error ? ": " + dockerList.error : "") : "");
-  // Which daemon this is, stated rather than inferred. One setting names it
-  // now — DOCKER_HOST, pointing at the sandbox VM — and saying which machine
-  // the buttons below act on is worth a line whatever the arrangement.
+  // Which daemon this is, stated rather than inferred: the node picked
+  // above names it, and saying which machine the buttons below act on is
+  // worth a line whatever the arrangement.
   const src = state?.docker || {};
   const srcLine = !off && src.kind
     ? `<div class="dmsrc">on ${esc(src.kind)} at <code>${esc(src.where)}</code>${

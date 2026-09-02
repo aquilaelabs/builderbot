@@ -686,6 +686,14 @@ What gets each tier there:
 3. Then it leaves the five places (`.env.example`, `docker-compose.yml`,
    `unraid/builderbot.xml`, README reference, `docs/unraid.md`) in one change.
 
+*Where it landed (after phase 9):* both variables are out of the five places
+and out of every doc that named them as settings; `DOCKER_HOST_PATHS` lives on
+the node record (`config.paths`, edited on an ssh node's row, read by
+`devapp.host_map` through the node being addressed); at boot each variable is
+read once more, to seed the record when it has nothing, and the boot log says
+so. `_pairs()` in devapp.py still reads the env when no record carries a
+mapping — the one-release deprecation path — and is the line to delete next.
+
 **Tools → Nodes** is the screen: a row per node with state, capability
 toggles, services, labels, pool, concurrency, last seen — and Enroll, Test,
 Drain, Remove, plus the approval queue when a bulk token is in play. Drain

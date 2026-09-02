@@ -84,6 +84,7 @@ DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # available(), and a probe should not start writing files.
 log_dir = None
 project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
+node_paths = None     # a node's path mapping, from its record (docs/nodes.md §11)
 
 # The daemon is a sandbox VM and nothing else. DOCKER_HOST names the machine;
 # ssh:// and the bb account provision.sh makes are filled in, so the address is
@@ -115,11 +116,14 @@ _node_ctx = threading.local()
 def on_node(node_id):
     """Address every docker call in this block at `node_id`'s daemon."""
     prev = getattr(_node_ctx, "addr", None)
+    prev_id = getattr(_node_ctx, "node", None)
     _node_ctx.addr = node_addr(node_id) if node_addr and node_id else None
+    _node_ctx.node = node_id or None
     try:
         yield
     finally:
         _node_ctx.addr = prev
+        _node_ctx.node = prev_id
 
 
 def _default_node():
@@ -497,10 +501,12 @@ def abort_job(project, instance):
 
 
 def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
-              node_addr=None, queue=None, runner=None, project_node=None):
+              node_addr=None, queue=None, runner=None, project_node=None,
+              node_paths=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
                      write_json=write_json, log_dir=log_dir,
                      node_for=node_for, node_addr=node_addr, project_node=project_node,
+                     node_paths=node_paths,
                      queue=queue, runner=runner)
     if runner is not None:
         runner.register("compose", run_compose_job)
@@ -1191,10 +1197,29 @@ def _mount_roots():
     return out
 
 
+def _pairs():
+    """The mapping's pairs, from the node being addressed: its record's
+    `config.paths` (docs/nodes.md §11 — the row is where it is edited), and,
+    for one release, DOCKER_HOST_PATHS when no record carries one. The env
+    seeds the record at boot; reading it here directly is the deprecation
+    path, so a box that has not rebooted since the upgrade still maps."""
+    nid = getattr(_node_ctx, "node", None) or _default_node()
+    got = node_paths(nid) if node_paths and nid else {}
+    if got:
+        return [(k, v) for k, v in got.items()]
+    out = []
+    for pair in (os.environ.get("DOCKER_HOST_PATHS") or "").split(","):
+        pair = pair.strip()
+        if pair:
+            here, _, there = pair.partition(":")
+            out.append((here, there))
+    return out
+
+
 def host_map():
     """(container path -> host path, complaints about the pairs given).
 
-    From DOCKER_HOST_PATHS, "/container:/host" pairs separated by commas. Each
+    The node's "/container:/host" pairs (see _pairs). Each
     is checked against the mount it claims to describe: a host path has to end
     with that mount's own root path, so /devdata (root /appdata/builderbot-dev)
     accepts /mnt/cache/appdata/builderbot-dev and rejects /mnt/user/something.
@@ -1205,12 +1230,9 @@ def host_map():
     """
     roots, out, bad = _mount_roots(), {}, []
     root = None
-    for pair in (os.environ.get("DOCKER_HOST_PATHS") or "").split(","):
-        pair = pair.strip()
-        if not pair:
-            continue
-        here, _, there = pair.partition(":")
-        here, there = here.rstrip("/"), there.strip().rstrip("/")
+    for here, there in _pairs():
+        pair = f"{here}:{there}"
+        here, there = here.strip().rstrip("/"), there.strip().rstrip("/")
         if not here.startswith("/") or not there.startswith("/"):
             bad.append(f"{pair} is not a /container:/host pair")
             continue
@@ -1235,7 +1257,7 @@ def host_map():
             # compose that believes it comes up on an empty directory.
             if not sandbox_daemon():
                 bad.append(f"{here}:{there} is the sandbox-VM mapping, but "
-                           f"DOCKER_HOST does not name a sandbox VM — unless "
+                           f"this node's daemon is not a sandbox VM — unless "
                            f"that daemon really has {here}, name its path "
                            f"instead")
         elif (root := roots.get(here)) is None:

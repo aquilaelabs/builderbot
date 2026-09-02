@@ -212,8 +212,8 @@ docker exec -it BuilderBot bb doctor
 Every `bb doctor` line should be `[ok]` or an expected `[skip]`. It verifies:
 Claude on PATH, connectivity to Anthropic/GitHub, git identity, **runner
 credential mode** (shielded vs in-environment), **SSH auth against GitHub**
-(agent key vs file key), the **Docker daemon** behind `DOCKER_HOST` — which of
-the three arrangements is in effect and whether it actually answers — and —
+(agent key vs file key), the **Docker daemon** on the sandbox node — whether
+it actually answers, and says it is a sandbox — and —
 when a GPU is passed through — whether its **graphics stack** is usable or
 only CUDA is.
 
@@ -308,8 +308,6 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
-| `DOCKER_HOST` | *(empty)* | The [sandbox VM](docs/sandbox-vm.md) the Docker manager and the dev-instance controls build and run on. Just the address — `10.0.0.9` — with `ssh://` and the `bb` account that `vm/provision.sh` makes filled in at startup, so every process in the container sees a valid one; write `ssh://someone@host` out in full if the account differs. Empty turns the feature off, and so does anything that is not a sandbox VM: every control greys out wearing the reason |
-| `DOCKER_HOST_PATHS` | *(empty)* | What this container's paths are called on whichever machine runs the daemon, as `/here:/there` pairs — bind-mount sources are resolved over there, not here. Each pair is checked against `/proc/self/mountinfo` and dropped, with a complaint on the row, when the two sides disagree; an identity pair like `/workspace:/workspace` skips that check, being the sandbox-VM arrangement rather than a translation — which is what the Unraid template ships, and is flagged on the row if the daemon turns out to be this box's own. With the dev-data share mounted here, empty leaves `BB_DEV_DATA` unset so a compose that wants it fails loudly; with a sandbox daemon that share is the sandbox's alone and needs no pair |
 | `BB_LOG_KEEP` | `60` | A ceiling on kept generations, not the retention policy — how long logs are kept is a number of days, set in the dashboard's settings menu. This exists so a crash loop cannot fill the directory |
 | `BB_SESSION_HISTORY` | `2000` | Lines of each terminal's screen saved at shutdown and printed back when it is restored |
 
@@ -1192,16 +1190,14 @@ manager…**, which names a container and takes you there; every container of a
 project is built from that project's codebase, and rebuilding takes whatever
 that codebase says at the time.
 
-**Both settings can be filled in, and precedence decides which is live.** The
-socket mount and `DOCKER_HOST` are two settings on two screens and neither can
-grey the other out, so the rule is stated rather than enforced: an address in
-`DOCKER_HOST` always wins, `auto` prefers a proxy it can find and falls back to
-a mounted socket, and with neither the feature is off. The manager tab says
-which one it is — *"on a sandbox VM at ssh://…"* — and adds *"the mounted
-socket is unused"* when an address has shadowed one, because a socket left
-mounted while you try a VM is a reasonable thing to be in the middle of and
-being told beats wondering. `bb doctor` prints the same line from the same
-function, so the two cannot disagree about which daemon is live.
+**The daemon is a node.** The sandbox VM is added on the Nodes tab — its
+address, with `ssh://` and the `bb` account filled in — and what this
+container's paths are called over there is set on the node's row, because
+the daemon resolves a compose file's bind sources on its own filesystem. The
+manager tab says which node it is on — *"on a sandbox VM at ssh://…"* — and
+`bb doctor` prints the same line from the same function, so the two cannot
+disagree about which daemon is live. (`DOCKER_HOST` and `DOCKER_HOST_PATHS`
+from earlier releases seed that record once and are otherwise ignored.)
 
 **A daemon has to say it is the sandbox before anything is driven on it.**
 `vm/provision.sh` writes a `builderbot.sandbox` label into the VM's
@@ -1224,7 +1220,7 @@ instances stay, since their compose file and env are this side's.
 **With no daemon reachable, the controls that would drive one are disabled**,
 each carrying the reason as its tooltip, and the manager tab says the same
 thing in words at the top — a tooltip is not reachable on a phone, and *"why is
-everything greyed out"* should be answered by looking. That is `DOCKER_HOST`
+everything greyed out"* should be answered by looking. That is the node
 unset, or a sandbox VM this container
 cannot reach; `available()` in `devapp.py` already distinguishes them, and the
 answer rides the status poll memoised, because asking it properly is a
@@ -1267,8 +1263,11 @@ and census, with **Test** (probe its daemon now, sandbox stamp included),
 **Drain** (finish what is running, accept nothing new — what makes a node
 safe to reboot) and **Remove** (retire: off every list, row kept as history —
 an id is never reused). **Add node** takes a bare address and fills in
-`ssh://` and the `bb` account, exactly as `DOCKER_HOST` did; the machine
-should be one `vm/provision.sh` set up, and Test says so if it is not. The
+`ssh://` and the `bb` account; the machine should be one `vm/provision.sh`
+set up, and Test says so if it is not. An ssh node's row carries its **path
+mapping** — what this container's paths are called on that machine, since
+its daemon resolves bind mounts over there — which is where the old
+`DOCKER_HOST_PATHS` setting lives now. The
 local node refuses `docker-host` on purpose — it is not a sandbox. Every
 change writes an audit row.
 
@@ -1412,7 +1411,7 @@ keeps its env file and its data directory, so sending it again under the same
 name finds them — and the project's Artifacts tab is untouched either way,
 which is where it comes back from.
 
-The same tab lists every container on whichever daemon `DOCKER_HOST` names — not only the ones this
+The same tab lists every container on the picked node's daemon — not only the ones this
 dashboard started. A port taken by something else is exactly what you open a
 list like this to find out about, so the others are shown and marked *not ours*
 rather than hidden. It is a read: `docker ps` is one of two verbs the dev
@@ -1911,7 +1910,7 @@ warnings keep is the set that is invisible otherwise: `privileged`, added
 capabilities, host devices, and the host's process or network namespace —
 the flags that make a container more than a container. It appears when the project
 carries a compose file
-and `DOCKER_HOST` points at the [sandbox VM](docs/sandbox-vm.md) — a machine
+and the project's node is the [sandbox VM](docs/sandbox-vm.md) — a machine
 whose only job is running Docker, which is what keeps all of this away from
 the server's real containers: the project's compose app, built over there and
 controlled in the file rows' own language. **Up** and **Down** are compose
@@ -1942,7 +1941,7 @@ about a remote daemon easy to forget and impossible to see: a bind mount's
 over there — and docker answers a missing bind source by creating an empty
 directory and mounting that, so on Unraid, whose root filesystem is RAM, the
 result is an app that starts with no data and loses it again at reboot. It
-reads as a bug in the app. `DOCKER_HOST_PATHS` states the mapping once — the
+reads as a bug in the app. The node's path mapping states it once — the
 same one you made when you mounted the volumes — and BuilderBot both hands
 over host paths (that is what `BB_DEV_DATA` now carries) and names any of a
 compose file's *own* paths the host will not find, on the row, before you

@@ -1970,7 +1970,8 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  node_addr=nodes.ssh_addr_of if not NODES_OK else None,
                  queue=nodes if not NODES_OK else None,
                  runner=jobs if not NODES_OK else None,
-                 project_node=lambda p: prefs.get(p)["node"])
+                 project_node=lambda p: prefs.get(p)["node"],
+                 node_paths=nodes.node_paths if not NODES_OK else None)
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
@@ -3055,6 +3056,10 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.node_runner("operator", nid, bool(req.get("want", True)),
                                   req.get("labels"),
                                   field(req, "url") or github_url())
+        elif act == "paths":
+            # What this container's paths are called on the node's machine
+            # (docs/nodes.md §11): the mapping that was DOCKER_HOST_PATHS.
+            r = nodes.node_paths_set("operator", nid, field(req, "paths"))
         elif act == "funnel":
             # Tailscale Funnel for a port on the node, raw: the manager's
             # route picker goes through the instance's record; this is the

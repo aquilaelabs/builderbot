@@ -152,6 +152,28 @@ function nodeRunnerSection(n, c){
       </div>`;
 }
 
+// An ssh node's path mapping (docs/nodes.md §11): what this container's
+// paths are called on that machine, because its daemon resolves a compose
+// file's bind sources over there. Was DOCKER_HOST_PATHS; the record owns it
+// now, and the env var only seeds it once.
+function nodePathsLine(n){
+  const paths = n.config?.paths || {};
+  const text = Object.entries(paths).map(([k, v]) => `${k}:${v}`).join(", ");
+  const c = nodeDraft(n);
+  // The draft follows the record when the record moves (a save, another
+  // browser); it keeps the operator's typing otherwise.
+  if (c.draft.pathsText === undefined || c.draft.pathsFrom !== text){
+    c.draft.pathsText = text; c.draft.pathsFrom = text;
+  }
+  return `
+    <div class="sub ndpaths">
+      <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
+        placeholder="path mapping: /workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
+        aria-label="path mapping" title="what this container's paths are called on the node — its daemon resolves bind mounts over there">
+      <button type="button" data-nd="paths" title="save the mapping onto the node's record">Save paths</button>
+    </div>`;
+}
+
 function nodeConfFold(n){
   const c = nodeDraft(n);
   const d = c.draft;
@@ -282,6 +304,7 @@ function renderNodesInto(i){
         ${labels ? `<div class="sub">${labels}</div>` : ""}
         <div class="sub ndtest" hidden></div>
         ${n.kind === "agent" && n.reported?.sandbox && n.state !== "pending" ? nodeConfFold(n) : ""}
+        ${n.kind === "ssh" && n.state !== "retired" ? nodePathsLine(n) : ""}
       </div>
       <span class="acts">
         ${n.kind === "local" || n.state === "pending" ? "" : `<button type="button" data-nd="test"
@@ -403,6 +426,12 @@ function wireNodesTab(root){
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
                       + "each re-downloads what it needs.")) return;
+      if (b.dataset.nd === "paths"){
+        const inp = row.querySelector('[data-k="paths"]');
+        await nodeAct({action: "paths", id, paths: inp ? inp.value : ""});
+        const c = nodesConf[id]; if (c && c.draft) c.draft.pathsText = undefined;
+        return;
+      }
       if (b.dataset.nd === "test"){
         const out = row.querySelector(".ndtest");
         out.hidden = false;
@@ -426,6 +455,12 @@ function wireNodesTab(root){
       nodeAct({action: "update", id, fields: {capabilities: caps}});
     });
     wireNodeConf(row, id);
+    const pi = row.querySelector('.ndpaths [data-k="paths"]');
+    if (pi){
+      pi.onfocus = () => { nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
+      pi.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.pathsText = pi.value;
+                           nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
+    }
   });
   // The field that had the caret before this repaint gets it back — the
   // tab redraws on every heartbeat, and a form that drops the caret every

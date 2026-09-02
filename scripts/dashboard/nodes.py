@@ -40,6 +40,7 @@ import platform
 import re
 import secrets
 import sqlite3
+import sys
 import threading
 import time
 from pathlib import Path
@@ -318,9 +319,13 @@ def _adopt_docker_host():
     addr = (os.environ.get("DOCKER_HOST") or "").strip()
     if not addr.startswith("ssh://"):
         return
+    print("[nodes] DOCKER_HOST is read only to seed a node record now; the setting "
+          "lives on the Nodes tab and the variable is going away (docs/nodes.md §11)",
+          file=sys.stderr, flush=True)
     have = _rows("SELECT id FROM nodes WHERE kind = 'ssh' AND ssh_addr = ? "
                  "AND state != 'retired'", (addr,))
     if have:
+        _seed_paths(have[0]["id"])
         return
     # Only the row THIS migration made goes when the env var moves — marked
     # so, because with the tab able to add nodes, "retire every other ssh
@@ -339,6 +344,66 @@ def _adopt_docker_host():
         "config": {"from_env": True},
     })
     audit("system", "node-adopt", nid, {"from": "DOCKER_HOST"})
+    _seed_paths(nid)
+
+
+def _seed_paths(nid):
+    """DOCKER_HOST_PATHS onto the node record, once: env seeds, the record
+    owns (docs/nodes.md §11). A record that already has a mapping is never
+    overwritten by the variable — the row is where it is edited now."""
+    raw = (os.environ.get("DOCKER_HOST_PATHS") or "").strip()
+    n = node(nid)
+    if not raw or not n or (n.get("config") or {}).get("paths"):
+        return
+    paths, why = parse_paths(raw)
+    if why:
+        print(f"[nodes] DOCKER_HOST_PATHS not seeded: {why}", file=sys.stderr, flush=True)
+        return
+    cfg = dict(n.get("config") or {})
+    cfg["paths"] = paths
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(cfg), nid))
+    audit("system", "node-paths", nid, {"from": "DOCKER_HOST_PATHS", "n": len(paths)})
+    print(f"[nodes] DOCKER_HOST_PATHS seeded onto node {n['name']} ({len(paths)} pair(s)); "
+          "the variable is read for that alone now", file=sys.stderr, flush=True)
+
+
+def parse_paths(text):
+    """"/here:/there, /a:/b" -> ({here: there}, "") or ({}, why)."""
+    out = {}
+    for pair in str(text or "").replace("\n", ",").split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        here, _, there = pair.partition(":")
+        here, there = here.strip().rstrip("/"), there.strip().rstrip("/")
+        if not here.startswith("/") or not there.startswith("/") or " " in here + there:
+            return {}, f"{pair} is not a /container:/host pair"
+        out[here[:200]] = there[:200]
+    return out, ""
+
+
+def node_paths(node_id):
+    """What this container's paths are called on the node's machine — the
+    daemon resolves bind sources over there. {} when nothing is set."""
+    n = node(node_id) if node_id else None
+    p = (n.get("config") or {}).get("paths") if n else None
+    return dict(p) if isinstance(p, dict) else {}
+
+
+def node_paths_set(principal, node_id, text):
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] == "local":
+        return {"error": "local's paths are its own — there is nothing to map"}
+    paths, why = parse_paths(text)
+    if why:
+        return {"error": why}
+    cfg = dict(n.get("config") or {})
+    cfg["paths"] = paths
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(cfg), node_id))
+    _touch(node_id, principal, "node-paths", {"n": len(paths)})
+    return {"ok": True, "paths": paths}
 
 
 def node_for(capability=None):

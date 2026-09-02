@@ -30,17 +30,10 @@ services:
       PUID: ${PUID:-99}
       PGID: ${PGID:-100}
       TZ: ${TZ:-America/New_York}
-      # The sandbox VM the dashboard's Docker manager and dev instances
-      # build and run on — just the address, with ssh:// and the bb account
-      # filled in at startup. Empty turns the feature off, and nothing else
-      # is accepted: that machine holds nothing and has no route to this
-      # server's containers. See docs/sandbox-vm.md.
-      DOCKER_HOST: ${DOCKER_HOST:-}
-
-      # What this container's paths are called on the host, as /here:/there
-      # pairs — the daemon above resolves bind-mount sources on its own
-      # filesystem, not this one. See .env.example.
-      DOCKER_HOST_PATHS: ${DOCKER_HOST_PATHS:-}
+      # The sandbox VM the Docker manager builds on is a node now: added on
+      # the dashboard's Nodes tab, with its path mapping on its row. The
+      # DOCKER_HOST / DOCKER_HOST_PATHS of earlier releases seed that record
+      # once and are otherwise ignored. See docs/sandbox-vm.md.
 
       # --- Claude Code ------------------------------------------------------
       # Leave ANTHROPIC_API_KEY empty to log in interactively with a Claude
@@ -194,7 +187,7 @@ services:
       # - /mnt/user/appdata/BuilderBot/secrets:/secrets:ro
 
       # --- host Docker access (OFF by default) ------------------------------
-      # Dev-instance volumes; pairs with DOCKER_HOST below. Its own share
+      # Dev-instance volumes. Its own share
       # rather than a folder in appdata, because Unraid exports and backs up
       # shares and not folders — see the template's note on this setting.
       # Only needed where the daemon is this box's: a sandbox VM mounts the
