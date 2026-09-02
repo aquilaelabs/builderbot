@@ -9043,8 +9043,17 @@ project can have several"
     };
     box.querySelectorAll("[data-verlog]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verlog || "";
-      const pane = box.querySelector(`[data-verlogpane="${CSS.escape(comp)}"]`);
       if (b.classList.contains("on")){ closeSheet(); return; }
+      // Built for the sheet rather than rendered into the box and moved there.
+      // It used to live in #verBox, hidden, and openSheet() moved it — so a
+      // repaint of the box while the sheet was open (a version poll, a dist
+      // change) put a second, empty .verlogpane back in the box, and anything
+      // looking for "the changelog pane" found whichever came first in the
+      // document. openSheet takes a parentless element and drops it on close,
+      // so there is now exactly one at a time, or none.
+      const pane = document.createElement("div");
+      pane.className = "verlogpane";
+      pane.dataset.verlogpane = comp;
       // A changelog is prose someone wrote to be read, and it was opening as a
       // block wedged between the version's own controls. Over the panel, like
       // the four histories, with room for the lines it is made of.
@@ -9254,7 +9263,6 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
             ).join("")}
           </select>
         </label>`}
-        <div class="verlogpane" data-verlogpane="${esc(v.component || "")}" hidden></div>
         ${v.component ? "" : `<p class="verwhy">A bump is staged until Save,
           which writes VERSION and commits that one path — it is never pushed. The policy stops
           <code>bb version bump</code> and a session's file tools; it does not
@@ -9278,7 +9286,6 @@ It proposes and asks before doing anything.">Ask Claude</button>
 become that version's section when it is created">Changelog${
             v.unreleased ? ` (${v.unreleased} new)` : ""}</button>
         </div>
-        <div class="verlogpane" data-verlogpane="${esc(v.component || "")}" hidden></div>
         <p class="verwhy">No version yet. Setting one writes a
           <code>VERSION</code> file and commits it${v.unreleased
             ? `, dating the ${v.unreleased} logged change${

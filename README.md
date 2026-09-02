@@ -1262,11 +1262,16 @@ the toolchains its census found — what a project bound to it can build — lab
 and census, with **Test** (probe its daemon now, sandbox stamp included),
 **Drain** (finish what is running, accept nothing new — what makes a node
 safe to reboot) and **Remove** (retire: off every list, row kept as history —
-an id is never reused). **Add node** takes a bare address and fills in
-`ssh://` and the `bb` account; the machine should be one `vm/provision.sh`
-set up, and Test says so if it is not. An ssh node's row carries its **path
-mapping** — what this container's paths are called on that machine, since
-its daemon resolves bind mounts over there — which is where the old
+an id is never reused). **Enroll node** mints a one-time token; the machine
+runs `vm/provision.sh --controller URL --token bbe_…` and dials in. That is
+the only way in — there is no second enrollment, this container holds no key
+that logs in anywhere, and a node reached by token alone takes every kind of
+job, docker included. The **ssh node kind is retired** (roadmap #18): it
+existed because compose used to run from this container over ssh, which meant
+a node needed a key on top of its token and a token-only node — the cloud
+case — could do everything except docker. A row left over from before says so
+and asks to be enrolled again. Its **path mapping** — what this container's
+paths are called on that machine — is still on its row, which is where the old
 `DOCKER_HOST_PATHS` setting lives now. The
 local node refuses `docker-host` on purpose — it is not a sandbox. Every
 change writes an audit row.

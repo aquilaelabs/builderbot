@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "13"
+AGENT_VERSION = "14"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -1809,6 +1809,32 @@ class Agent:
                 for x in [dd] + [os.path.join(dd, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
+        # A runner that is already configured locally refuses to be
+        # configured again — `--replace` is about taking a NAME back on
+        # GitHub's side, not about overwriting .runner here. So a Reinstall
+        # after a half-finished install (registered, service not installed)
+        # failed with "Cannot configure the runner because it is already
+        # configured", and the retry was blocked by the state the first
+        # attempt left. Clear it first, and mean it: deregister properly if
+        # the controller will mint a removal token, and failing that take the
+        # local config out of the way so this can proceed — a runner left on
+        # GitHub's side is replaced by name a moment later.
+        if os.path.isfile(os.path.join(d, ".runner")):
+            job.say("a runner is already configured here; clearing it before reinstalling\n")
+            if os.path.isfile(os.path.join(d, "svc.sh")):
+                self._sh(job, ["bash", "./svc.sh", "stop"], cwd=d)
+                self._sh(job, ["bash", "./svc.sh", "uninstall"], cwd=d)
+            st, rr = self.ctl.call("runner-token", {"kind": "remove"}, timeout=60)
+            gone = False
+            if st == 200 and rr.get("token"):
+                gone = self._run_as(job, who, d, [os.path.join(d, "config.sh"), "remove",
+                                                  "--token", rr["token"]]) == 0
+            if not gone:
+                job.say("deregistration did not complete; taking the local config out of the "
+                        "way so the reinstall can proceed. The old runner is replaced by name.\n")
+                for junk in (".runner", ".credentials", ".credentials_rsaparams", ".service"):
+                    with contextlib.suppress(OSError):
+                        os.remove(os.path.join(d, junk))
         st, r = self.ctl.call("runner-token", {"kind": "registration"}, timeout=60)
         if st != 200 or not r.get("token"):
             job.say(f"could not get a registration token from the controller: {r.get('error', st)}\n")

@@ -308,10 +308,15 @@ def _mem_mb():
 def _adopt_docker_host():
     """Mirror DOCKER_HOST into an ssh-kind node record, once.
 
-    The env var keeps working exactly as it does — devapp still reads it, and
-    nothing routes through this row yet — but the sandbox VM now has an
-    identity that is not its address, which is the migration path §11
-    describes: the record exists first, the env var stops being read later.
+    THE LAST THING THAT READS DOCKER_HOST, and the last release that does.
+    The ssh kind is retired (roadmap #18): nothing adds one any more, the
+    tab has no button for it, and a row of that kind says so. This stays one
+    release so a box that upgrades with the variable still set keeps the
+    daemon it had, and so an install that has never had a node row gets one
+    rather than finding every dev-instance control greyed out.
+
+    When it goes, so does _seed_paths, the ssh branch of _addr, and the
+    ssh_addr column stops meaning anything.
     Keyed on the address so a changed DOCKER_HOST makes a NEW node rather
     than quietly rewriting what the old record meant; the old one is marked
     retired, not deleted, because rows are history (door 1).
@@ -464,34 +469,22 @@ def _touch(node_id, principal, action, fields):
 
 
 def node_add(principal, name, ssh_addr, capabilities=None, pool="default"):
-    """Register an ssh-kind docker host. Phase 2's only enrollment: the
-    agent kind arrives with phase 3 and mints its ids the same way."""
-    name = (name or "").strip() or "node"
-    addr = (ssh_addr or "").strip()
-    if addr and "://" not in addr:
-        addr = "ssh://" + addr
-    if not addr.startswith("ssh://"):
-        return {"error": "an ssh node needs an ssh:// address (or a bare "
-                         "host, which gets ssh:// and the bb account)"}
-    if "@" not in addr[len("ssh://"):]:
-        addr = "ssh://bb@" + addr[len("ssh://"):]
-    # Every node does everything; the argument is kept for a caller that
-    # still passes one, and for a deliberately restricted node later.
-    caps = [c for c in (capabilities or CAPABILITIES) if c in CAPABILITIES]
-    if _rows("SELECT id FROM nodes WHERE ssh_addr = ? AND state != 'retired'",
-             (addr,)):
-        return {"error": f"a node already answers at {addr}"}
-    nid = mint("n")
-    _insert_node({
-        "id": nid, "name": name[:60], "kind": "ssh",
-        "pool": str(pool or "default")[:60], "created": int(time.time()),
-        "state": "online", "concurrency": 1, "ssh_addr": addr,
-        "capabilities": caps, "services": {},
-        "labels": {"disposable": "true"},
-        "agent": {}, "reported": {}, "routing": {}, "config": {},
-    })
-    _touch(nid, principal, "node-add", {"addr": addr})
-    return {"ok": True, "id": nid}
+    """Gone (roadmap #18): a node is enrolled with a token, and only with a
+    token. It stayed until compose could run on the agent, because until
+    then a node still needed an ssh key on top of its token for docker —
+    which meant two enrollments for one machine, and a token-only node (the
+    cloud case) could take every job EXCEPT docker. Compose is an agent job
+    now and proved on a real VM, so the key buys nothing and the second
+    enrollment can go.
+
+    Kept as a refusal rather than deleted so the endpoint answers with the
+    way in rather than a 404.
+    """
+    return {"error": "ssh nodes are gone — enroll the machine with a token "
+                     "instead: Enroll node mints one, and provision.sh "
+                     "--controller URL --token bbe_… on the machine does the "
+                     "rest. It needs no key from this container, and it then "
+                     "takes every kind of job, docker included."}
 
 
 def node_update(principal, node_id, fields):
@@ -601,15 +594,16 @@ def docker_nodes():
 def _addr(n):
     """Where docker on this node answers, for whichever kind it is.
 
-    An ssh node stores its address — that IS the record. An agent node's
-    address is informational and refreshed by the node itself on every
-    dial-in (docs/nodes.md §2: the id is the identity, the address is data),
-    so docker over ssh to an agent node goes to wherever it said it was
-    last, with the account the provisioner enrolled. That is what lets a
-    VM change address without anything on this side being edited, and it
-    is the whole of how 'agent or ssh, and both work' is true in phase 3 —
-    docker itself still travels over ssh until compose actions become
-    jobs (phase 4).
+    An agent node's address is informational and refreshed by the node
+    itself on every dial-in (docs/nodes.md §2: the id is the identity, the
+    address is data), so it changes without anything on this side being
+    edited.
+
+    It is no longer how a compose action reaches the node — that is a job
+    on the agent now (roadmap #18) — but a row still shows where the node
+    answered from, and an `ssh` row left over from before the retirement
+    still reports the address it was added with, so it can be recognized
+    rather than silently doing nothing.
     """
     if n["kind"] == "ssh":
         return n.get("ssh_addr") or ""

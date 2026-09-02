@@ -13,7 +13,7 @@
 let nodesList = null;            // last answer, or null before the first
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
-let nodesOpenForm = "";          // "" | "ssh" | "agent": which add form is up
+let nodesOpenForm = "";          // "" | "agent": whether the enroll form is up
 let nodesMinted = null;          // the last enroll token, shown once, then gone
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
 let nodesPick = "";              // which node the tab is showing, "" until the first draw
@@ -446,8 +446,7 @@ function renderNodesInto(i){
       live.map(x => `<option value="${esc(x.id)}"${x.id === nodesPick ? " selected" : ""}>${
         esc(x.name)} — ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>
     <span class="sp"></span>
-    <button type="button" id="ndEnroll">${nodesOpenForm === "agent" ? "Cancel" : "Enroll node…"}</button>
-    <button type="button" id="ndAdd">${nodesOpenForm === "ssh" ? "Cancel" : "Add ssh node…"}</button>`);
+    <button type="button" id="ndEnroll">${nodesOpenForm === "agent" ? "Cancel" : "Enroll node…"}</button>`);
   const rows = (n ? [n] : []).map(n => {
     const labels = Object.entries(n.labels || {})
       .map(([k, v]) => `<span class="pill">${esc(k)}=${esc(v)}</span>`).join(" ");
@@ -458,6 +457,7 @@ function renderNodesInto(i){
       : "";
     const where = n.kind === "local" ? "this container"
       : n.kind === "agent" ? (n.agent?.addr ? `dials in from ${n.agent.addr}` : "")
+      : n.kind === "ssh" ? `${n.ssh_addr || "ssh"} — the ssh kind is retired; enroll this machine with a token`
       : (n.ssh_addr || "");
     // Behind when the node's agent is not the file this controller ships.
     // Said on the row before anybody presses anything: a five-version-old
@@ -505,21 +505,7 @@ function renderNodesInto(i){
       </span>
     </div>`;
   }).join("");
-  const form = nodesOpenForm === "ssh" ? `
-    <div class="row ndform">
-      <div class="grow">
-        <label for="ndName">Name</label>
-        <input id="ndName" maxlength="60" autocomplete="off" placeholder="buildbox">
-        <label for="ndAddr">Address — a machine vm/provision.sh set up</label>
-        <input id="ndAddr" autocomplete="off" spellcheck="false"
-          placeholder="10.0.0.12 — ssh:// and the bb account are filled in">
-        <div class="hint">an ssh node is driven from here over ssh and runs no
-          agent: docker only, no jobs. Test it after adding — a daemon without
-          the provisioner's stamp is refused, on purpose.</div>
-        <div class="acts"><span class="sp"></span>
-          <button type="button" class="primary" id="ndGo">Add it</button></div>
-      </div>
-    </div>` : nodesOpenForm === "agent" ? `
+  const form = nodesOpenForm === "agent" ? `
     <div class="row ndform">
       <div class="grow">
         <label for="ndEnName">Name</label>
@@ -558,22 +544,12 @@ builderbot-agent enroll --controller ${esc(nodesMinted.url)} --token ${esc(nodes
 }
 
 function wireNodesTab(root){
-  const add = root.querySelector("#ndAdd");
-  if (add) add.onclick = () => { nodesOpenForm = nodesOpenForm === "ssh" ? "" : "ssh";
-                                 nodesRev++; drawPanes(); };
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };
   const en = root.querySelector("#ndEnroll");
   if (en) en.onclick = () => { nodesOpenForm = nodesOpenForm === "agent" ? "" : "agent";
                                nodesRev++; drawPanes(); };
-  const go = root.querySelector("#ndGo");
-  if (go) go.onclick = async () => {
-    const r = await nodeAct({action: "add",
-                             name: root.querySelector("#ndName").value,
-                             addr: root.querySelector("#ndAddr").value});
-    if (!r.error){ nodesOpenForm = ""; nodesRev++; drawPanes(); }
-  };
   const engo = root.querySelector("#ndEnGo");
   if (engo) engo.onclick = async () => {
     const name = root.querySelector("#ndEnName").value;

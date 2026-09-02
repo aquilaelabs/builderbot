@@ -141,19 +141,43 @@ ok(list[0].id === 'local',
   await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
   ok((await nodeOptions(page)).length === 2,
      'the Nodes tab lists the registry: local and the sandbox');
-  // add an ssh node through the form
-  await page.click('#ndAdd');
-  await page.fill('#ndName', 'buildbox');
-  await page.fill('#ndAddr', '10.9.9.9');
-  await page.click('#ndGo');
-  await page.waitForFunction(() =>
-    document.querySelectorAll('.nodestab #ndPick option').length === 3, null,
-    { timeout: 15000 });
-  ok(true, 'Add node registers one from a bare address');
-  const added = await page.evaluate(() =>
-    nodesList.find(n => n.name === 'buildbox'));
-  ok(added.ssh_addr === 'ssh://bb@10.9.9.9',
-     '...with ssh:// and the bb account filled in, the way DOCKER_HOST is');
+  // Adding a node by ssh address is retired (roadmap #18): it existed only
+  // because compose ran from this container over ssh, so a machine needed a
+  // key as well as a token and a token-only node could do everything except
+  // docker. Compose is an agent job now, so the tab offers one way in.
+  ok(await page.$('#ndAdd') === null && await page.$('#ndEnroll') !== null,
+     'the tab offers enrollment and nothing else — no Add ssh node');
+  {
+    const before = page.errors.length;
+    const r = await page.evaluate(() => nodeAct({ action: 'add', name: 'buildbox',
+                                                  addr: '10.9.9.9' }));
+    ok(/enroll the machine with a token/.test(r.error || ''),
+       '...and the endpoint refuses too, saying the way in rather than 404ing');
+    page.errors.length = before;
+  }
+  ok(await page.evaluate(() => nodesList.some(n => n.kind === 'ssh')),
+     'a row left over from the ssh kind is still listed rather than vanishing');
+  // A second docker node for the rest of this block, enrolled the one way
+  // there is. sshd and the account are what give it an address the manager
+  // can send docker to.
+  {
+    const base = URL.replace(/\/$/, '');
+    const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'),
+                'Content-Type': 'application/json' };
+    const post = async (path, body, headers = H) => (await fetch(base + path,
+      { method: 'POST', headers, body: JSON.stringify(body) })).json();
+    const mint = await post('/api/v1/nodes', { action: 'enroll', name: 'buildbox' });
+    await post('/api/v1/agent/enroll', {
+      user: 'bb', version: '1', digest: 'sha256:' + '1'.repeat(64),
+      census: { cpu: 2, mem_mb: 4096, arch: 'x86_64', system: 'linux', sshd: true } },
+      { Authorization: 'Bearer ' + mint.token, 'Content-Type': 'application/json' });
+  }
+  const added = await page.evaluate(async () => {
+    await loadNodes();
+    return nodesList.find(n => n.name === 'buildbox');
+  });
+  ok(added && added.kind === 'agent',
+     'a machine is enrolled with a token, and arrives as an agent node');
   ok(['docker-host', 'package-build', 'deploy-target'].every(c => added.capabilities.includes(c)),
      '...and it does everything, without anybody being asked which');
   // The mechanism underneath is untouched (§15 door 7): a restricted node is
@@ -185,10 +209,10 @@ ok(list[0].id === 'local',
   // the audit trail followed
   const acts = readStore(
     `m._rows("SELECT action, principal FROM audit WHERE target = ?", ("${added.id}",))`);
-  ok(acts.some(r => r.action === 'node-add')
+  ok(acts.some(r => r.action === 'node-enroll-mint')
      && acts.some(r => r.action === 'node-update')
-     && acts.every(r => r.principal === 'operator'),
-     'every node mutation wrote an audit row as the operator');
+     && acts.some(r => r.principal === 'operator'),
+     'every node mutation wrote an audit row, the operator\'s named as theirs');
 }
 
 // ---- phase 2: the docker manager's picker ----------------------------------
@@ -204,7 +228,13 @@ ok(list[0].id === 'local',
   // switch to the unreachable node: rows blind, reason worn, picker alive.
   // The stub daemon fails any call whose DOCKER_HOST is listed as dead, which
   // is what a powered-off VM looks like from here.
-  writeFileSync(`${DIR}/dockerstate/deadhosts`, 'ssh://bb@10.9.9.9\n');
+  // The address the node dialed in from, not one written here: an agent node
+  // reports where it is on every hello, which is the whole point of it.
+  const bbAddr = await page.evaluate(() => {
+    const n = nodesList.find(x => x.name === 'buildbox');
+    return `ssh://bb@${n.agent.addr}`;
+  });
+  writeFileSync(`${DIR}/dockerstate/deadhosts`, bbAddr + '\n');
   await page.evaluate(() => { const s = document.querySelector('#dmNode');
     s.value = nodesList.find(n => n.name === 'buildbox').id;
     s.dispatchEvent(new Event('change')); });
