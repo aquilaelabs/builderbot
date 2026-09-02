@@ -791,6 +791,28 @@ does. Legacy `ssh` nodes keep the daemon-label check they have today and do
 not get the configuration plane; absorbing bb-sandbox's menu is the agent's
 job, not ssh's.
 
+*Where phase 5 landed it:* the desired config lives on the node record
+(`config.desired`: mounts, stores, network), validated to its shape when it
+is saved; the agent's census carries the reported half (`mounts` as
+`bb-sandbox list --json` reads them, `stores` with headroom, the address the
+default route leaves by, and `sandbox` — whether bb-sandbox is there, which
+is the stamp). A `system` job with `apply: storage` diffs desired mounts
+against reported and runs `bb-sandbox remove` / `add-nfs` / `add-share` for
+the difference, then moves the stores in node.json and makes them; it ends
+with a hello, so the row shows the applied state at once. `apply: network`
+writes `/etc/netplan/90-builderbot.yaml`, keeps the previous file, runs
+`netplan apply`, and dials the controller from wherever it landed for up to
+three minutes; no answer and the previous file goes back and is applied
+again, and the job reports the revert on reconnect — netplan only, and it
+says so on a node without it. The controller offers system jobs only to an
+online agent node whose census says sandbox, one at a time per node; the
+agent refuses them without bb-sandbox whatever the row says. On the Nodes
+tab the row grows a *storage & network* fold: the editor is a draft that
+survives the heartbeat repaint, Save keeps the record, Apply queues the job
+(asking first when it would unmount something, and always for network), and
+each desired mount says what the node reports for it. bb-sandbox at the
+console is unchanged and remains the fallback.
+
 And the caution that survives from the first pass, now with a sharper edge:
 **the `local` node is not a sandbox.** Jobs placed on it run inside the
 controller container, beside `/config`, the dashboard credential and every
@@ -1006,6 +1028,10 @@ the commit/confirm rollback for network changes. Deliberately **before** the
 package store and caches: they consume the roles this phase makes editable,
 and building them against provision-time-only roles would bake the ssh-to-fix
 workflow in for another year.
+
+*Where phase 5 landed it:* §12's closing paragraph. Agent 3 adds the
+`system` job type and three census fields (`sandbox`, `mounts`, `network`);
+the protocol's verbs are unchanged.
 
 **Phase 6 — workspace, caches, artifacts, and the package store.**
 Dirty-tree snapshots, per-node caches with size/clear, artifact upload +

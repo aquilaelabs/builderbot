@@ -2982,6 +2982,13 @@ class Handler(BaseHTTPRequestHandler):
                                   field(req, "user") or "bb")
         elif act == "revoke":
             r = nodes.node_revoke("operator", nid)
+        elif act == "config":
+            # The configuration plane (docs/nodes.md §12): what the operator
+            # wants the node to mount and be addressed as. Stored here,
+            # applied by the next action as a system job the agent runs.
+            r = nodes.node_config_set("operator", nid, req.get("config"))
+        elif act == "apply":
+            r = nodes.node_apply("operator", nid, field(req, "what"))
         elif act == "exec":
             # The channel's one job type, from the tab or from curl: run
             # this argv on that node, as the enrolled account, and read the

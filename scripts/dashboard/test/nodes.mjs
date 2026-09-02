@@ -226,6 +226,95 @@ ok(list[0].id === 'local',
      '...which says what still lives in the environment, and why');
 }
 
+// ---- the configuration plane on the row (phase 5) ---------------------------
+// A node that enrolled as a sandbox gets a fold: mounts, stores and network
+// as the operator wants them, drawn against what the agent reports, with
+// Save keeping the record and Apply queuing the system job. Enrolled here by
+// hand — the census is a body — because the real agent has its own suite.
+{
+  const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
+  const base = URL.replace(/\/$/, '');
+  const napi = async (path, body, headers = H) => (await fetch(base + path, body === undefined
+    ? { headers } : { method: 'POST', headers, body: JSON.stringify(body) })).json();
+  const minted = await napi('/api/v1/nodes', { action: 'enroll', name: 'shed', capabilities: ['docker-host'] });
+  const en = await napi('/api/v1/agent/enroll', {
+    census: { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
+              sandbox: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 } },
+              mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false, mounted: true, real: 'nas:/mnt/user/old' }],
+              network: { interface: 'ens3', addresses: ['10.0.0.40/24'], gateway: '10.0.0.1', dns: ['10.0.0.1'] } },
+    version: '3', digest: 'sha256:' + '0'.repeat(64), user: 'bb' },
+    { Authorization: 'Bearer ' + minted.token, 'Content-Type': 'application/json' });
+  ok(en.ok && en.node_id === minted.id, 'a sandbox node enrolled with mounts and an address in its census');
+  await page.evaluate(() => { nodesList = null; openNodesTab(); });
+  const ROW = `.nodestab .ndrow[data-node="${minted.id}"]`;
+  await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
+  ok(await page.$eval('.nodestab', e => !e.querySelector('.ndrow[data-node="local"] .ndconf')),
+     'the fold is on the sandbox node and not on local');
+  await page.click(`${ROW} .ndconf summary`);
+  await page.waitForSelector(`${ROW} .ndconf[open] [data-madd]`, { timeout: 5000 });
+  ok(await page.$eval(`${ROW} .ndconf`, e => /now 10\.0\.0\.40\/24 on ens3 via 10\.0\.0\.1/.test(e.textContent)),
+     'it reports the address the node is on');
+  await page.click(`${ROW} [data-madd]`);
+  await page.waitForSelector(`${ROW} .ndmount[data-i="0"] [data-k="source"]`, { timeout: 5000 });
+  ok(await page.evaluate(() => document.activeElement?.dataset.k === 'source'),
+     '+ mount adds a row and puts the caret in it');
+  await page.fill(`${ROW} .ndmount[data-i="0"] [data-k="source"]`, 'nas:/mnt/user/appdata');
+  await page.fill(`${ROW} .ndmount[data-i="0"] [data-k="path"]`, '/mnt/appdata');
+  await page.fill(`${ROW} [data-k="store:cache"]`, '/scratch/cache');
+  // The heartbeat repaints the tab; the draft and the caret survive it.
+  await page.evaluate(() => loadNodes());
+  await sleep(400);
+  const kept = await page.$eval(`${ROW} .ndmount[data-i="0"] [data-k="path"]`, e => e.value);
+  const caret = await page.evaluate(() => document.activeElement?.dataset?.k || document.activeElement?.tagName);
+  ok(kept === '/mnt/appdata' && caret === 'store:cache',
+     `a repaint under the editor keeps what was typed and where the caret was (kept ${kept}, caret ${caret})`);
+  ok(await page.$eval(`${ROW} .ndmount[data-i="0"] .ndmstate`, e => /not applied yet/.test(e.textContent))
+     && await page.$eval(`${ROW} [data-napply="storage"]`, b => b.disabled),
+     '...the new mount says it is not applied yet, and Apply waits for Save');
+  await page.click(`${ROW} [data-nsave]`);
+  await page.waitForFunction(sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
+                             ROW, { timeout: 10000 });
+  const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
+  ok(rec.config.desired.mounts.length === 1 && rec.config.desired.mounts[0].path === '/mnt/appdata'
+     && rec.config.desired.stores.cache === '/scratch/cache' && rec.config.desired.network.mode === 'dhcp',
+     'Save puts the desired config on the record, validated');
+  page.dialogs.length = 0;
+  await page.click(`${ROW} [data-napply="storage"]`);
+  await page.waitForFunction(sel => /applying storage/.test(
+    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  ok(page.dialogs.length === 1 && /unmounts \/mnt\/old/.test(page.dialogs[0]),
+     'Apply storage asks first when it would unmount something the node has');
+  const active = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system');
+  ok(active && active.node === minted.id && active.spec.apply === 'storage'
+     && active.spec.config.mounts[0].path === '/mnt/appdata',
+     `...and queues the system job on that node with the desired config (${active?.id})`);
+  ok(await page.$eval(`${ROW} [data-napply="network"]`, b => b.disabled),
+     '...while it is in flight the other Apply is off');
+  await napi('/api/v1/jobs', { action: 'cancel', id: active.id });
+  // The fold is held to the document rules the same as any tab surface
+  // (uniform.mjs cannot see it: that suite has no sandbox node to open one
+  // on): every control wears the field skin, and at phone width nothing
+  // scrolls sideways and every text control is 16px.
+  const skin = await page.evaluate(sel => {
+    const ref = document.getElementById('mName');
+    const key = el => { const c = getComputedStyle(el);
+      return [c.backgroundColor, c.borderTopLeftRadius, c.borderTopColor, c.fontFamily].join('|'); };
+    return [...document.querySelectorAll(sel + ' .ndconf input:not([type=checkbox]), ' + sel + ' .ndconf select')]
+      .filter(e => e.offsetHeight > 0).map(e => key(e) === key(ref));
+  }, ROW);
+  ok(skin.length >= 8 && skin.every(Boolean), `every control in the fold wears the field skin (${skin.length} checked)`);
+  await page.setViewportSize({ width: 393, height: 851 });
+  await sleep(300);
+  const phone = await page.evaluate(sel => ({
+    over: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    small: [...document.querySelectorAll(sel + ' .ndconf input:not([type=checkbox]), ' + sel + ' .ndconf select')]
+      .filter(e => e.offsetHeight > 0 && parseFloat(getComputedStyle(e).fontSize) < 16).length,
+  }), ROW);
+  ok(phone.over <= 0 && phone.small === 0,
+     `...and at phone width it does not scroll sideways (${phone.over}px) and its controls are 16px (${phone.small} small)`);
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
 // ---- the seam stays invisible on the sidebar --------------------------------
 ok(await page.evaluate(() => !document.querySelector('[data-card="nodes"]')),
    'still no nodes card — nodes are a tab, not sidebar chrome');

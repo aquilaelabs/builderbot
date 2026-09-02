@@ -211,9 +211,20 @@ def _inflate(row):
 def node_list(all=False):
     """The nodes, JSON columns inflated. Retired rows are history — kept in
     the table (door 1: ids are never reused, and an old record must stay
-    explicable) and left out of every list unless asked for."""
+    explicable) and left out of every list unless asked for. Each row also
+    names the system job in flight on it, so the tab can say "applying"
+    without a second fetch."""
     rows = [_live(_inflate(r)) for r in _rows(
         "SELECT * FROM nodes ORDER BY kind = 'local' DESC, created")]
+    busy = {}
+    for j in _rows("SELECT id, node, spec FROM jobs WHERE type = 'system' AND "
+                   "state IN ('queued', 'assigned', 'running')"):
+        try:
+            busy[j["node"]] = {"id": j["id"], "what": json.loads(j["spec"]).get("apply", "")}
+        except (ValueError, AttributeError):
+            busy[j["node"]] = {"id": j["id"], "what": ""}
+    for r in rows:
+        r["applying"] = busy.get(r["id"])
     return rows if all else [r for r in rows if r["state"] != "retired"]
 
 
@@ -723,7 +734,162 @@ def _census(c):
     tc = c.get("toolchains") if isinstance(c.get("toolchains"), dict) else {}
     out["toolchains"] = {str(k)[:30]: (str(v)[:40] if v else None)
                          for k, v in list(tc.items())[:16]}
+    # The configuration plane's reported half (docs/nodes.md §12): whether
+    # the node was provisioned as a sandbox (bb-sandbox is there — the stamp
+    # system jobs are gated on), what it mounts as bb-sandbox reads it, and
+    # the address it is on. Facts about the machine, drawn against the
+    # operator's desired config on the row; never treated as the config.
+    out["sandbox"] = bool(c.get("sandbox"))
+    out["mounts"] = []
+    for m in (c.get("mounts") if isinstance(c.get("mounts"), list) else [])[:32]:
+        if isinstance(m, dict) and str(m.get("path") or "").startswith("/"):
+            out["mounts"].append({
+                "path": str(m["path"])[:200], "source": str(m.get("source") or "")[:200],
+                "type": str(m.get("type") or "")[:16], "ro": bool(m.get("ro")),
+                "mounted": bool(m.get("mounted")), "real": str(m.get("real") or "")[:200]})
+    net = c.get("network") if isinstance(c.get("network"), dict) else {}
+    out["network"] = {
+        "interface": str(net.get("interface") or "")[:32],
+        "addresses": [str(a)[:64] for a in (net.get("addresses") or [])[:8]],
+        "gateway": str(net.get("gateway") or "")[:64],
+        "dns": [str(a)[:64] for a in (net.get("dns") or [])[:8]]}
     return out
+
+
+# ---------------------------------------------------------------------------
+# the configuration plane (docs/nodes.md §12, phase 5)
+#
+# The operator's DESIRED storage and network for a node live on its record
+# (config.desired); the agent reports what is APPLIED in its census
+# (reported.mounts / .stores / .network); and a change is a `system` job the
+# agent runs as root — audited like any mutation, offered only to nodes that
+# enrolled as a sandbox, refused on the node without the stamp as well.
+# bb-sandbox at the console reads and writes the same on-node state, so the
+# GUI and a rescue shell cannot disagree about what the node is meant to be.
+
+MOUNT_TYPES = ("nfs", "virtiofs")
+_IP = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+_CIDR = re.compile(r"^\d{1,3}(\.\d{1,3}){3}/\d{1,2}$")
+
+
+def _clean_config(cfg):
+    """The desired config, validated to its shape, or an error string. Every
+    field is bounded here so a system job's spec is never a blob from the
+    page — the agent writes what arrives into fstab and netplan."""
+    cfg = cfg if isinstance(cfg, dict) else {}
+    out = {}
+    mounts = []
+    for m in (cfg.get("mounts") if isinstance(cfg.get("mounts"), list) else [])[:32]:
+        if not isinstance(m, dict):
+            continue
+        path = str(m.get("path") or "").strip()
+        src = str(m.get("source") or "").strip()
+        kind = str(m.get("type") or "nfs").strip()
+        if not path and not src:
+            continue                              # an empty editor row
+        if not path.startswith("/") or " " in path or ":" in path:
+            return None, f"a mountpoint must be an absolute path without spaces: {path!r}"
+        if kind not in MOUNT_TYPES:
+            return None, f"a mount is nfs or virtiofs, not {kind!r}"
+        if kind == "nfs" and (":" not in src or src.startswith(":") or src.endswith(":")):
+            return None, f"an NFS source is HOST:/export, not {src!r}"
+        if kind == "virtiofs" and (not src or ":" in src or "/" in src):
+            return None, f"a virtiofs source is the share's tag, not {src!r}"
+        if any(x["path"] == path for x in mounts):
+            return None, f"{path} is listed twice"
+        mounts.append({"path": path[:200], "source": src[:200], "type": kind,
+                       "ro": bool(m.get("ro"))})
+    out["mounts"] = mounts
+    stores = {}
+    for role, path in (cfg.get("stores") if isinstance(cfg.get("stores"), dict) else {}).items():
+        path = str(path or "").strip()
+        if role not in ("data", "packages", "cache") or not path:
+            continue
+        if not path.startswith("/") or " " in path:
+            return None, f"the {role} store must be an absolute path: {path!r}"
+        stores[role] = path[:200]
+    out["stores"] = stores
+    net = cfg.get("network") if isinstance(cfg.get("network"), dict) else {}
+    mode = "static" if net.get("mode") == "static" else "dhcp"
+    n = {"mode": mode, "interface": re.sub(r"[^A-Za-z0-9_.-]", "", str(net.get("interface") or ""))[:32]}
+    if mode == "static":
+        addr, gw = str(net.get("address") or "").strip(), str(net.get("gateway") or "").strip()
+        if not _CIDR.match(addr):
+            return None, f"a static address is written with its prefix, like 10.0.0.12/24 — not {addr!r}"
+        if gw and not _IP.match(gw):
+            return None, f"the gateway is an address, not {gw!r}"
+        dns = [d.strip() for d in (net.get("dns") if isinstance(net.get("dns"), list)
+                                   else str(net.get("dns") or "").split(",")) if d.strip()]
+        for d in dns:
+            if not _IP.match(d):
+                return None, f"a resolver is an address, not {d!r}"
+        n.update(address=addr, gateway=gw, dns=dns[:4])
+    out["network"] = n
+    return out, ""
+
+
+def node_config_set(principal, node_id, cfg):
+    """Store what the operator wants this node to be. Nothing is applied
+    here: apply is a job, and the row shows desired beside reported until
+    one has run."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node has a configuration plane — "
+                         "an ssh node is configured at its own console"}
+    clean, why = _clean_config(cfg)
+    if why:
+        return {"error": why}
+    conf = dict(n.get("config") or {})
+    conf["desired"] = clean
+    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(conf), node_id))
+    _touch(node_id, principal, "node-config",
+           {"mounts": len(clean["mounts"]), "stores": sorted(clean["stores"]),
+            "network": clean["network"]["mode"]})
+    return {"ok": True, "desired": clean}
+
+
+def system_job_for(node_id):
+    """The system job in flight for a node, if any: one at a time, because
+    two applies racing on one fstab is not a state anybody wants."""
+    for j in jobs_for(node_id=node_id, type="system", active=True, n=5):
+        return j
+    return None
+
+
+def node_apply(principal, node_id, what):
+    """Queue the system job that makes the node match its desired config —
+    storage (mounts and stores) or network, which is its own job because it
+    is the one that can cut the cord (the agent reverts it if it cannot dial
+    back in). Offered only to a live agent node that enrolled as a sandbox;
+    the agent refuses without the stamp as well, whatever this says."""
+    if what not in ("storage", "network"):
+        return {"error": "apply storage or network"}
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node takes system jobs"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "this node was not provisioned as a BuilderBot sandbox "
+                         "(no bb-sandbox on it), so system jobs are not offered to it"}
+    if n["state"] != "online":
+        return {"error": f"the node is {n['state']} — system jobs go to an online node"}
+    if (n.get("agent") or {}).get("revoked"):
+        return {"error": "this node's credential was revoked"}
+    desired = (n.get("config") or {}).get("desired") or {}
+    if not desired:
+        return {"error": "nothing to apply — save a configuration first"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node — one at a time"}
+    cfg = ({"mounts": desired.get("mounts") or [], "stores": desired.get("stores") or {}}
+           if what == "storage" else {"network": desired.get("network") or {}})
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": what, "config": cfg, "timeout": 900})
+    if r.get("ok"):
+        audit(principal, "node-apply", node_id, {"what": what, "job": r["job"]})
+    return r
 
 
 def hello(nid, census, addr, version="", digest="", running=None):
@@ -816,7 +982,7 @@ def samples(nid):
 # ssh). Both ask the same question of the same table through job_next(), and
 # concurrency is counted here from the rows rather than trusted from either.
 
-JOB_TYPES = ("exec", "self-update", "compose")
+JOB_TYPES = ("exec", "self-update", "compose", "system")
 JOB_END = ("succeeded", "failed", "canceled")
 JOB_ACTIVE = ("queued", "assigned", "running")
 # What a selector may name (door 9: os and arch are placement dimensions).

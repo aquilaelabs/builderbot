@@ -7,7 +7,7 @@
 // exists to prove.
 import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, writeFileSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -59,7 +59,38 @@ ok(minted.ok && /^bbe_[A-Za-z0-9_-]{20,}$/.test(minted.token) && /^n_/.test(mint
 }
 
 // ---- enrolling: the real agent, once ---------------------------------------
-const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON };
+// The configuration plane's two tools, stood in for (phase 5): bb-sandbox as
+// a JSON list the same verbs edit, and netplan as a log of what was applied.
+// Neither needs root; what the agent does with them is what is under test.
+const SANDBOX_STATE = `${DIR}/sandbox-mounts.json`;
+writeFileSync(`${DIR}/bin/bb-sandbox`, `#!/usr/bin/env python3
+import json, os, sys
+f = os.environ["BB_SANDBOX_STATE"]
+try: ms = json.load(open(f))
+except Exception: ms = []
+a = sys.argv[1:]
+def save(): json.dump(ms, open(f, "w"))
+if a[:2] == ["list", "--json"]: print(json.dumps(ms)); sys.exit(0)
+if a[0] in ("add-nfs", "add-share"):
+    spec = a[1]; ro = spec.endswith(":ro"); spec = spec[:-3] if ro else spec
+    if a[0] == "add-nfs":
+        host, rest = spec.split(":", 1); exp, path = rest.split(":", 1); src = host + ":" + exp; t = "nfs"
+    else:
+        src, path = spec.split(":", 1); t = "virtiofs"
+    ms = [m for m in ms if m["path"] != path]
+    ms.append({"path": path, "source": src, "type": t, "opts": "defaults" + (",ro" if ro else ""),
+               "ro": ro, "mounted": True, "real": src, "appdata": False})
+    save(); print(f"fstab: {path} now comes from {src}"); sys.exit(0)
+if a[0] == "remove":
+    ms = [m for m in ms if m["path"] != a[1]]; save(); print(f"{a[1]} is no longer mounted at boot"); sys.exit(0)
+print("unknown", a, file=sys.stderr); sys.exit(2)
+`, { mode: 0o755 });
+writeFileSync(`${DIR}/bin/netplan`, `#!/bin/sh
+echo "$*" >> "${DIR}/netplan.log"
+`, { mode: 0o755 });
+const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
+  BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
+  BUILDERBOT_NETPLAN_BIN: `${DIR}/bin/netplan`, BUILDERBOT_NETPLAN_DIR: `${DIR}/netplan` };
 {
   let out = '';
   try {
@@ -78,7 +109,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON };
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
-     && n.agent.version === '2' && /^sha256:/.test(n.agent.digest),
+     && n.agent.version === '3' && /^sha256:/.test(n.agent.digest),
      'the row is online with the census, agent version and digest');
   // single use
   let again = '';
@@ -162,6 +193,73 @@ try {
        `the census reports os and arch as fields the selector can match (${n.os}/${n.arch})`);
   }
 
+  // ---- the configuration plane (phase 5) -----------------------------------
+  // Desired config on the record, a system job the agent applies through
+  // bb-sandbox, and the census reporting what was applied.
+  {
+    const before = await nodeById(minted.id);
+    ok(before.reported.sandbox === true && Array.isArray(before.reported.mounts)
+       && before.reported.network && Array.isArray(before.reported.network.dns),
+       'the census says the node is a sandbox and reports its mounts and address');
+    const refused = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+    ok(/save a configuration first/.test(refused.error || ''),
+       'apply with nothing saved is refused, saying so');
+    const badcfg = await api('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { mounts: [{ type: 'nfs', source: 'nas', path: '/mnt/x' }] } });
+    ok(/HOST:\/export/.test(badcfg.error || ''), `a malformed mount is refused at the record (${badcfg.error})`);
+    const cfg = await api('/api/v1/nodes', { action: 'config', id: minted.id,
+      config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
+                         { type: 'virtiofs', source: 'projects', path: '/workspace', ro: true }],
+                stores: { cache: `${DIR}/agentcache` },
+                network: { mode: 'static', address: '10.9.9.9/24', gateway: '10.9.9.1', dns: ['10.9.9.1'] } } });
+    ok(cfg.ok && cfg.desired.mounts.length === 2 && cfg.desired.network.mode === 'static',
+       'a desired config is validated and kept on the record');
+    const local = await api('/api/v1/nodes', { action: 'apply', id: 'local', what: 'storage' });
+    ok(/only an agent node/.test(local.error || ''), 'the local node has no configuration plane');
+
+    const ap = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+    ok(ap.ok && /^j_/.test(ap.job), `apply storage queues a system job (${ap.job || ap.error})`);
+    const twice = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'network' });
+    ok(/one at a time/.test(twice.error || ''), '...and a second apply waits for it');
+    const fin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${ap.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(fin && fin.state === 'succeeded' && /add-nfs nas:\/mnt\/user\/appdata:\/mnt\/appdata/.test(fin.log)
+       && /add-share projects:\/workspace:ro/.test(fin.log) && /cache store/.test(fin.log),
+       `the agent applies it through bb-sandbox and the stores, logging each step (${fin?.state})`);
+    const stubState = JSON.parse(readFileSync(SANDBOX_STATE, 'utf8'));
+    ok(stubState.length === 2 && stubState.some(m => m.path === '/workspace' && m.ro),
+       '...and the node now has both mounts, the read-only one read-only');
+    const after = await until(async () => {
+      const n = await nodeById(minted.id);
+      return n.reported.mounts.length === 2 ? n : null;
+    });
+    ok(after !== null && after.reported.mounts.every(m => m.mounted)
+       && after.reported.stores.cache.path === `${DIR}/agentcache`,
+       'the census reports the applied mounts and the moved store right away, not at the next hello');
+    ok(after && after.applying === null, '...and the row is no longer applying');
+
+    // network: written, applied, dialed back — the stub controller is still here
+    const np = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'network' });
+    const nfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${np.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    const yaml = readFileSync(`${DIR}/netplan/90-builderbot.yaml`, 'utf8');
+    ok(nfin && nfin.state === 'succeeded' && /dialed back in/.test(nfin.log)
+       && /addresses: \[10\.9\.9\.9\/24\]/.test(yaml) && /via: 10\.9\.9\.1/.test(yaml)
+       && /^apply$/m.test(readFileSync(`${DIR}/netplan.log`, 'utf8')),
+       `a network change is written to netplan, applied, and confirmed by dialing back (${nfin?.state})`);
+    const again = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'network' });
+    const afin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${again.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(afin && afin.state === 'succeeded' && /already applied/.test(afin.log),
+       '...and applying the same config again changes nothing');
+  }
+
   // Test on an agent node is a round trip through the channel
   {
     const t = await api('/api/v1/nodes', { action: 'test', id: minted.id });
@@ -240,4 +338,41 @@ ok((await api('/api/v1/nodes')).nodes.length === 2,
 
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);
+// ---- the network revert, without a network to cut ---------------------------
+// The confirm half of commit/confirm: a controller that does not answer from
+// the new address puts the old file back and applies it again. Driven on the
+// module directly, with hello stubbed to fail, because the real path needs
+// an address that goes nowhere.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, sys, tempfile, time
+os.environ['BUILDERBOT_NETPLAN_DIR'] = d = tempfile.mkdtemp()
+os.environ['BUILDERBOT_NETPLAN_BIN'] = ${JSON.stringify(`${DIR}/bin/netplan`)}
+os.environ['BUILDERBOT_SANDBOX_BIN'] = ${JSON.stringify(`${DIR}/bin/bb-sandbox`)}
+log = ${JSON.stringify(`${DIR}/netplan.log`)}
+applied_before = open(log).read().count('apply')
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.DIAL_BACK_S = 1
+open(d + '/90-builderbot.yaml', 'w').write('network:\\n  version: 2\\n  ethernets:\\n    eth0:\\n      dhcp4: true\\n')
+a = m.Agent.__new__(m.Agent)
+a.state = {'stores': {}}
+a.hello = lambda: (503, {'error': 'unreachable'})
+class J:
+    lines = []
+    def say(self, t): self.lines.append(t)
+    def flush(self): pass
+j = J()
+st, code = a._apply_network(j, {'network': {'mode': 'static', 'address': '10.1.1.5/24', 'gateway': '10.1.1.1', 'interface': 'eth0'}})
+print(json.dumps({'state': st, 'code': code, 'log': ''.join(j.lines),
+                  'file': open(d + '/90-builderbot.yaml').read(),
+                  'applies': open(log).read().count('apply') - applied_before}))
+`], { encoding: 'utf8' });
+  const R = JSON.parse(out.trim().split('\n').pop());
+  ok(R.state === 'failed' && /reverting/.test(R.log) && /reverted/.test(R.log),
+     `a network change the controller cannot confirm is reverted (${R.state})`);
+  ok(/dhcp4: true/.test(R.file) && !/10\.1\.1\.5/.test(R.file) && R.applies === 2,
+     '...the previous file is back and applied a second time');
+}
+
 await done(browser);

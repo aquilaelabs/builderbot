@@ -49,7 +49,7 @@ const SURFACE = [
   'findingsRulesHtml', 'finishTabs', 'flip', 'focusTab', 'foldHeight',
   'fillNodeSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab', 'imgAdder',
   'imgRow', 'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
-  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'loadNodes', 'nodeAct', 'nodeStatePill', 'nodeNumbers', 'loadPackages', 'loadWire', 'logNote', 'logSection',
+  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'loadNodes', 'nodeAct', 'nodeStatePill', 'nodeNumbers', 'nodeDraft', 'mountState', 'nodeConfFold', 'loadPackages', 'loadWire', 'logNote', 'logSection',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onCardDrag', 'onDrag', 'onRev', 'openClaude',
@@ -73,7 +73,7 @@ const SURFACE = [
   'slideHidden', 'slidePanel', 'swapBox', 'startCardDrag', 'startClaude', 'startDrag',
   'tabLabel', 'tabLabels', 'tabTitle', 'tipOff', 'tipify', 'toggleBell',
   'toggleCard', 'togglePin', 'toggleUiMenu', 'unveil', 'updateArrows',
-  'viewAfterRestart', 'watchSignin', 'wireLogSection', 'wireJobsTab', 'wireNodesTab', 'wireMacros',
+  'viewAfterRestart', 'watchSignin', 'wireLogSection', 'wireJobsTab', 'wireNodeConf', 'wireNodesTab', 'wireMacros',
   'wireProjectRows'
 ];
 

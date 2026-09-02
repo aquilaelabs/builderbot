@@ -60,6 +60,7 @@ function jobTitle(j){
     return `${esc(s.action || "compose")} ${esc(j.project || "")}${
       s.instance && s.instance !== "main" ? "/" + esc(s.instance) : ""}`;
   if (j.type === "self-update") return "agent self-update";
+  if (j.type === "system") return `apply ${esc(s.apply || "config")} on the node`;
   const argv = Array.isArray(s.argv) ? s.argv.join(" ") : "";
   return `exec ${esc(argv.slice(0, 80))}${argv.length > 80 ? "…" : ""}`;
 }

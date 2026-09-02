@@ -119,6 +119,12 @@ sudo bb-sandbox check                # is every mount really there
 sudo bb-sandbox settings             # the lines to paste into BuilderBot
 ```
 
+Once the machine is enrolled as a node, the same mounts (and the agent's
+stores, and the address) are editable from the Nodes tab too: the agent
+applies them through these very verbs as audited `system` jobs, and
+`bb-sandbox list --json` is what its census reports. The menu stays as the
+console fallback, reading and writing the same fstab — see docs/nodes.md §12.
+
 **Two accounts, and the split is the point.** `bb` runs Docker and answers
 ssh — the one BuilderBot uses, and so the one a Claude session reaches. It has
 no sudo and cannot run `bb-sandbox`. `admin` has sudo and is the only account

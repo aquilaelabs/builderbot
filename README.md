@@ -1283,6 +1283,22 @@ travels in the clear, as the dashboard's own credential does; enrollment says
 so, and with TLS in front of the dashboard the agent pins the certificate on
 first use and refuses a different one after.
 
+**Storage & network, from the row.** A node that enrolled as a sandbox (it
+carries `bb-sandbox`) folds open an editor for what it should mount (NFS or
+virtiofs, read-only or not), where the agent keeps its data, packages and
+cache stores, and how it is addressed (DHCP, or a static address with gateway
+and resolvers). **Save** keeps that on the node's record; **Apply storage**
+and **Apply network** each queue a `system` job the agent runs as root
+through the same `bb-sandbox` verbs the console uses, so the two can never
+disagree about what the machine is configured to be. Every desired mount says
+what the node reports for it — mounted, not mounted, not applied yet, or
+mounted from somewhere else. A network change is the one that can cut the
+cord it arrives on, so it is applied with a three-minute dial-back: the node
+re-addresses itself and must reach the controller from the new address, or it
+puts the previous config back on its own and says so when it reconnects.
+Network changes need netplan on the node, and the job says so where there is
+none. Nothing here is offered to an ssh node or to local.
+
 ### The Jobs tab
 
 **Tools → Jobs** is the queue (docs/nodes.md §2, phase 4): everything the

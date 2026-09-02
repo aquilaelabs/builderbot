@@ -47,6 +47,7 @@ Runs anywhere Python 3.8+ is, with nothing installed:
     builderbot-agent run            # the loop; what the unit runs
     builderbot-agent status         # what this node is, and does it answer
 """
+import contextlib
 import hashlib
 import http.client
 import json
@@ -62,7 +63,7 @@ import threading
 import time
 import urllib.parse
 
-AGENT_VERSION = "2"
+AGENT_VERSION = "3"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -70,7 +71,17 @@ NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
 DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
                   "packages": "/var/lib/builderbot/packages",
                   "cache": "/var/lib/builderbot/cache"}
-CAPS_ROOT_ONLY = ("system",)            # phase 5's job type; refused until then
+# Where the configuration plane's tools are (docs/nodes.md §12, phase 5).
+# bb-sandbox is the one copy of the mount logic, installed by the provisioner
+# — its presence is what says this node was set up as a sandbox, and a
+# `system` job is refused without it. The netplan seams exist so the tests
+# can stand in for both without a root shell.
+SANDBOX_BIN = os.environ.get("BUILDERBOT_SANDBOX_BIN", "/usr/local/sbin/bb-sandbox")
+NETPLAN_DIR = os.environ.get("BUILDERBOT_NETPLAN_DIR", "/etc/netplan")
+NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
+NETPLAN_FILE = "90-builderbot.yaml"
+# How long a network change has to dial back in before it is reverted.
+DIAL_BACK_S = 180
 
 
 def log(msg):
@@ -239,7 +250,56 @@ def census(state):
         "sshd": _sshd_listening(),
         "stores": _stores(state.get("stores")),
         "toolchains": tc,
+        # The configuration plane's reported half (docs/nodes.md §12): what
+        # is mounted and from where, and the address this machine is on.
+        # The row draws the operator's desired config against these.
+        "sandbox": os.access(SANDBOX_BIN, os.X_OK),
+        "mounts": mounts_now(),
+        "network": network_now(),
     }
+
+
+def mounts_now():
+    """Every mount bb-sandbox manages, as it reads them: fstab's line and
+    whether it is really mounted. Empty on a node with no bb-sandbox."""
+    if not os.access(SANDBOX_BIN, os.X_OK):
+        return []
+    out = _run([SANDBOX_BIN, "list", "--json"])
+    try:
+        got = json.loads(out)
+    except ValueError:
+        return []
+    return [m for m in got if isinstance(m, dict)] if isinstance(got, list) else []
+
+
+def network_now():
+    """The address the machine is on, as facts rather than as intent: the
+    interface the default route leaves by, its addresses, the gateway, and
+    the resolvers. From `ip -j`, which every distro this can run on has."""
+    net = {"interface": "", "addresses": [], "gateway": "", "dns": []}
+    try:
+        routes = json.loads(_run(["ip", "-j", "route", "show", "default"]) or "[]")
+        for r in routes:
+            if isinstance(r, dict) and r.get("dev"):
+                net["interface"] = str(r["dev"])[:32]
+                net["gateway"] = str(r.get("gateway") or "")[:64]
+                break
+        if net["interface"]:
+            addrs = json.loads(_run(["ip", "-j", "addr", "show", "dev", net["interface"]]) or "[]")
+            for a in addrs:
+                for i in (a.get("addr_info") or []) if isinstance(a, dict) else []:
+                    if i.get("family") == "inet" and i.get("local"):
+                        net["addresses"].append(f"{i['local']}/{i.get('prefixlen', 32)}")
+    except (ValueError, OSError):
+        pass
+    try:
+        with open("/etc/resolv.conf") as f:
+            for line in f:
+                if line.startswith("nameserver"):
+                    net["dns"].append(line.split()[1][:64])
+    except (OSError, IndexError):
+        pass
+    return net
 
 
 def _os_release():
@@ -378,6 +438,8 @@ class Job(threading.Thread):
         try:
             if self.job.get("type") == "self-update":
                 state, code = self.agent.self_update(self, spec)
+            elif self.job.get("type") == "system":
+                state, code = self.agent.system(self, spec)
             else:
                 state, code = self.exec(spec)
         except Exception as e:                       # noqa: BLE001 — reported, not raised
@@ -413,9 +475,11 @@ class Job(threading.Thread):
             need = [need]
         held = set(self.agent.state.get("capabilities") or [])
         missing = [c for c in need if c not in held]
-        if missing or any(c in CAPS_ROOT_ONLY for c in need):
+        if missing or "system" in need:
             # Door 7, in one line: the node refuses what it was not enrolled
-            # to do, and says which capability was asked for.
+            # to do, and says which capability was asked for. "system" is not
+            # a capability an exec can ask for at all — root work is its own
+            # job type, and only the configuration plane queues it.
             self.say(f"refused: this node is not enrolled for {', '.join(missing or need)}\n")
             return "failed", 77
         argv = [str(a) for a in (spec.get("argv") or [])]
@@ -649,6 +713,164 @@ class Agent:
         os.replace(tmp, me)
         job.say(f"installed {got[:19]}…; restarting\n")
         return "succeeded", 0
+
+    # -- the configuration plane (docs/nodes.md §12, phase 5) -----------------
+    def system(self, job, spec):
+        """Apply the desired storage or network config the controller holds
+        for this node — the one root-privileged thing the agent does. Not
+        dropped to the enrolled account, because mounts and addresses are
+        root's; offered by the controller only to nodes that enrolled as a
+        sandbox, and refused here without bb-sandbox, which is the stamp."""
+        if not os.access(SANDBOX_BIN, os.X_OK):
+            job.say("refused: this node was not provisioned as a BuilderBot sandbox "
+                    f"({SANDBOX_BIN} is not here), so it takes no system jobs\n")
+            return "failed", 77
+        what = spec.get("apply")
+        cfg = spec.get("config") if isinstance(spec.get("config"), dict) else {}
+        if what == "storage":
+            return self._apply_storage(job, cfg)
+        if what == "network":
+            return self._apply_network(job, cfg)
+        job.say(f"refused: unknown system job {what!r}\n")
+        return "failed", 64
+
+    def _sh(self, job, argv):
+        """One command, its output into the job's log, its exit code back."""
+        job.say("$ " + " ".join(argv) + "\n")
+        try:
+            p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                               timeout=300, check=False)
+        except (OSError, subprocess.SubprocessError) as e:
+            job.say(f"{argv[0]}: {e}\n")
+            return 1
+        for line in p.stdout.decode("utf-8", "replace").splitlines():
+            if line.strip():
+                job.say(line + "\n")
+        return p.returncode
+
+    def _apply_storage(self, job, cfg):
+        """Mounts as a diff against what bb-sandbox has — remove what is no
+        longer wanted, add or rewrite what is (add-nfs/add-share rewrite an
+        existing fstab line, so this is idempotent) — then the stores, which
+        are this agent's own file. Ends with a hello, so the row shows the
+        applied state now rather than at the next census."""
+        want = [m for m in (cfg.get("mounts") or []) if isinstance(m, dict)]
+        have = {m.get("path"): m for m in mounts_now()}
+        bad = 0
+        for path, m in have.items():
+            if not any(w.get("path") == path for w in want):
+                if self._sh(job, [SANDBOX_BIN, "remove", path]) != 0:
+                    bad += 1
+        for w in want:
+            path, src = str(w.get("path") or ""), str(w.get("source") or "")
+            kind, ro = str(w.get("type") or "nfs"), bool(w.get("ro"))
+            if not path.startswith("/") or not src:
+                job.say(f"skipping a mount with no path or source: {w!r}\n")
+                bad += 1
+                continue
+            verb = "add-share" if kind == "virtiofs" else "add-nfs"
+            if self._sh(job, [SANDBOX_BIN, verb, f"{src}:{path}" + (":ro" if ro else "")]) != 0:
+                bad += 1
+        stores = cfg.get("stores") if isinstance(cfg.get("stores"), dict) else {}
+        if stores:
+            mine = dict(self.state.get("stores") or {})
+            for role, path in stores.items():
+                if role not in DEFAULT_STORES or not str(path).startswith("/"):
+                    continue
+                try:
+                    os.makedirs(path, exist_ok=True)
+                    mine[role] = str(path)
+                    job.say(f"{role} store: {path}\n")
+                except OSError as e:
+                    job.say(f"{role} store {path} could not be made: {e.strerror}\n")
+                    bad += 1
+            self.state["stores"] = mine
+            save_state(self.state)
+        self.hello()
+        if bad:
+            job.say(f"{bad} of the changes did not apply — the rest did\n")
+            return "failed", 1
+        job.say("storage applied\n")
+        return "succeeded", 0
+
+    def _apply_network(self, job, cfg):
+        """Commit/confirm, because this is the one change that can cut the
+        cord it arrives on (docs/nodes.md §12): write the netplan file,
+        apply it, then dial the controller from wherever the machine landed.
+        No answer within DIAL_BACK_S and the previous file is put back and
+        applied again, and the failure is reported on reconnect."""
+        if not shutil.which(NETPLAN_BIN) and not os.access(NETPLAN_BIN, os.X_OK):
+            job.say("refused: network changes need netplan on this node, and it "
+                    "has none — set the address by hand, or on a node that has it\n")
+            return "failed", 77
+        net = cfg.get("network") if isinstance(cfg.get("network"), dict) else cfg
+        iface = str(net.get("interface") or network_now().get("interface") or "")
+        if not iface:
+            job.say("refused: no interface named and no default route to read one from\n")
+            return "failed", 65
+        mode = "static" if net.get("mode") == "static" else "dhcp"
+        lines = ["network:", "  version: 2", "  ethernets:", f"    {iface}:"]
+        if mode == "dhcp":
+            lines.append("      dhcp4: true")
+        else:
+            addr, gw = str(net.get("address") or ""), str(net.get("gateway") or "")
+            if not addr:
+                job.say("refused: a static address needs an address\n")
+                return "failed", 65
+            lines += ["      dhcp4: false", f"      addresses: [{addr}]"]
+            if gw:
+                lines += ["      routes:", f"        - to: default", f"          via: {gw}"]
+            dns = [str(d) for d in (net.get("dns") or []) if str(d)]
+            if dns:
+                lines += ["      nameservers:", f"        addresses: [{', '.join(dns)}]"]
+        text = "\n".join(lines) + "\n"
+        path = os.path.join(NETPLAN_DIR, NETPLAN_FILE)
+        before = None
+        try:
+            with open(path) as f:
+                before = f.read()
+        except OSError:
+            pass
+        if before == text:
+            job.say("already applied — the netplan file has not changed\n")
+            return "succeeded", 0
+        os.makedirs(NETPLAN_DIR, exist_ok=True)
+        with open(path, "w") as f:
+            os.fchmod(f.fileno(), 0o600)
+            f.write(text)
+        job.say(f"wrote {path}:\n{text}")
+        job.flush()                      # the last words before the cord is cut
+        if self._sh(job, [NETPLAN_BIN, "apply"]) != 0:
+            self._restore_netplan(job, path, before)
+            return "failed", 1
+        job.say(f"applied; dialing the controller back from the new address "
+                f"(up to {DIAL_BACK_S}s)\n")
+        deadline = time.time() + DIAL_BACK_S
+        while time.time() < deadline:
+            st, _ = self.hello()
+            if st == 200:
+                job.say(f"dialed back in from {network_now().get('addresses') or ['?']}\n")
+                return "succeeded", 0
+            time.sleep(5)
+        job.say(f"could not reach the controller within {DIAL_BACK_S}s — reverting\n")
+        self._restore_netplan(job, path, before)
+        deadline = time.time() + DIAL_BACK_S
+        while time.time() < deadline:
+            if self.hello()[0] == 200:
+                break
+            time.sleep(5)
+        job.say("reverted to the previous network config\n")
+        return "failed", 68
+
+    def _restore_netplan(self, job, path, before):
+        if before is None:
+            with contextlib.suppress(OSError):
+                os.remove(path)
+        else:
+            with open(path, "w") as f:
+                os.fchmod(f.fileno(), 0o600)
+                f.write(before)
+        self._sh(job, [NETPLAN_BIN, "apply"])
 
     def reexec(self):
         log("re-executing the new agent")

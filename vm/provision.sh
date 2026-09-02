@@ -369,12 +369,13 @@ cat > "$BBSANDBOX_TMP" <<'BBSANDBOX'
 # Installed by provision.sh, which also uses it for its own mounts: this is the
 # only copy of the fstab logic, so the wizard and the first run cannot drift.
 #
-# Root, on this machine, by a person. Deliberately NOT reachable from
-# BuilderBot: the whole reason this VM exists is that a session can build and
-# destroy containers without touching anything that matters, and a path from
-# the container into the VM's own configuration would hand back what the
-# arrangement was buying. The dashboard can see what is mounted; changing it
-# is a decision made here.
+# Root, on this machine. Run by a person at the console, and — since phase 5
+# of docs/nodes.md — by the node agent, which applies the Nodes tab's desired
+# mounts and stores through these same verbs as audited `system` jobs, so the
+# GUI and this menu can never disagree about what the machine is configured
+# to be. Still deliberately NOT reachable by a session: the agent is offered
+# system jobs only because it enrolled as a sandbox, and `list --json` is the
+# whole of what it reads back. The docker account cannot run this at all.
 set -euo pipefail
 
 CONF=/etc/bb-sandbox.conf
@@ -615,6 +616,31 @@ cmd_list() {
     [ -n "$(ours)" ] || printf '(none yet)\n'
 }
 
+# list --json — the same facts as a machine reads them: the agent's census
+# carries this, and the Nodes tab draws the operator's desired mounts against
+# it. Escaped by hand, since jq may not be here.
+json_str() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+cmd_list_json() {
+    local path line src type opts real ro mounted first=1
+    printf '['
+    while read -r path; do
+        [ -n "$path" ] || continue
+        line="$(fstab_line "$path")"; line="${line#*: }"
+        src="$(awk '{print $1}' <<<"$line")"; type="$(awk '{print $3}' <<<"$line")"
+        opts="$(awk '{print $4}' <<<"$line")"
+        real="$(findmnt -rno SOURCE -- "$path" 2>/dev/null || true)"
+        case ",$opts," in *,ro,*) ro=true ;; *) ro=false ;; esac
+        if [ -n "$real" ]; then mounted=true; else mounted=false; fi
+        [ "$first" = 1 ] || printf ','
+        first=0
+        printf '{"path":"%s","source":"%s","type":"%s","opts":"%s","ro":%s,"mounted":%s,"real":"%s","appdata":%s}' \
+            "$(json_str "$path")" "$(json_str "$src")" "$(json_str "$type")" \
+            "$(json_str "$opts")" "$ro" "$mounted" "$(json_str "$real")" \
+            "$([ "$APPDATA" = "$path" ] && echo true || echo false)"
+    done < <(ours)
+    printf ']\n'
+}
+
 cmd_check() {
     local bad=0 path
     while read -r path; do
@@ -755,7 +781,7 @@ EOF
 
 case "${1-}" in
     "")          if have whiptail; then menu_whiptail; else menu_plain; fi ;;
-    list)        cmd_list ;;
+    list)        shift; if [ "${1-}" = "--json" ]; then cmd_list_json; else cmd_list; fi ;;
     add-nfs)     shift; cmd_add_nfs "${1-}" ;;
     add-share)   shift; cmd_add_share "${1-}" ;;
     remove)      shift; cmd_remove "${1-}" ;;

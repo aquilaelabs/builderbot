@@ -1614,6 +1614,30 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:6px;
   background:var(--sunk);user-select:all}
 .ndnums{font:var(--f-note);color:var(--dim)}
+/* The configuration plane's fold on an agent row (docs/nodes.md §12). A
+   details fold like the manager's wiring, and the same field skin as every
+   other form here — nothing browser-default. */
+.ndconf{margin-top:6px}
+.ndconf summary{color:var(--dim);font:var(--f-note);cursor:pointer;list-style:none}
+.ndconf summary::-webkit-details-marker{display:none}
+.ndconf summary::before{content:"▸";display:inline-block;width:1.1em;transition:transform .15s}
+.ndconf[open] summary::before{transform:rotate(90deg)}
+.ndconfbody{margin-top:6px;display:flex;flex-direction:column;gap:8px}
+.ndsec{font:var(--f-note);color:var(--dim);margin-top:4px}
+.ndmount,.ndnet{display:grid;grid-template-columns:minmax(0,7em) minmax(0,2fr) minmax(0,1.6fr) auto auto;
+  gap:6px;align-items:center}
+.ndnet{grid-template-columns:minmax(0,7em) minmax(0,1.2fr) minmax(0,1fr) minmax(0,1.4fr) minmax(0,1fr)}
+.ndmount .ndmstate{grid-column:1 / -1}
+.ndmstate.warn{color:var(--warn)} .ndmstate.bad{color:var(--bad)}
+.ndstore{display:grid;grid-template-columns:minmax(0,7em) minmax(0,1fr);gap:6px;align-items:center}
+.ndstore label{font:var(--f-ui);color:var(--ink)}
+.ndstore .sub{grid-column:2}
+.ndconfacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ndconfstate.note{color:var(--note)}
+@media (max-width:600px){
+  .ndmount,.ndnet,.ndstore{grid-template-columns:minmax(0,1fr)}
+  .ndmount .ndmstate,.ndstore .sub{grid-column:1}
+}
 /* The Jobs tab: the filter is one checkbox in the bar, skinned like a
    capability toggle; the reason a job ended badly is a warn line; the log
    is the manager's compose log, same box. */
