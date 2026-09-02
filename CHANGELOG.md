@@ -192,3 +192,7 @@
 - A node's settings now say whether anything is waiting to be applied, and Apply is greyed out when the machine already matches (e35918a)
 - A node whose agent is out of date no longer accepts work — applying settings, installing the runner or a package, and clearing its cache all wait until Update agent has run (e35918a)
 - Node store meters no longer read healthy stores as missing, and the Tools tab lists what a node actually has installed rather than a summary of it (e35918a)
+- The Nodes tab has one way to add a machine: enroll it with a token. Adding one by ssh address is gone, and a leftover row says to enroll it again (8df58a6)
+- A node's CI runner section moved above the mounts and says what the runner will actually do — listening, running a job, or registered but not picking anything up (8df58a6)
+- Reinstall runner now clears a half-finished install instead of failing with 'already configured' (8df58a6)
+- The changelog panel no longer goes blank when the page refreshes underneath it (8df58a6)
