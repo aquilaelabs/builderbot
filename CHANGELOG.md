@@ -182,3 +182,5 @@
 - Nodes no longer have roles to pick: a node does everything for the projects assigned to it, and its row shows which toolchains are installed — which is what decides what you can build there (73572c1)
 - A node now keeps its own copy of what each project built, so an emulator or container on a remote node starts from a local file instead of pulling one over the link every time (7362faf)
 - A node's storage paths can no longer be pointed at a system directory like /etc, which Clear cache would have emptied (7362faf)
+- A project with no node can still be read, edited and pushed; building refuses and says to pick a node or let CI do it — and the same when the node lacks the toolchain (046eb11)
+- The Artifacts tab's Push button comes back when a phone that briefly dropped off returns (046eb11)
