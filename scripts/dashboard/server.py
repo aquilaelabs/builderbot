@@ -1892,6 +1892,33 @@ artifacts.configure(workspace=WORKSPACE, scratch=STATE / "artifacts-tmp")
 workspace.configure(workspace=WORKSPACE, state=STATE)
 
 
+def no_node_advice(name):
+    """What a project with no node can still do, said the same way
+    everywhere: a session reads and edits regardless — that is what this
+    box is for — and building happens on a node or on GitHub."""
+    return ("Pick one in the project's settings dialog"
+            + (", or commit and let CI build it — this project can push."
+               if projects.may_push(name)
+               else ". This project has no push rights either, so CI is not a "
+                    "fallback until it does.")
+            + " Reading and editing the code needs no node.")
+
+
+def build_state(name):
+    """Where this project's compiling happens, for the Artifacts tab: its
+    node and what that node carries, or the plain fact that it has none and
+    what is left when it does not."""
+    if NODES_OK:
+        return {"node": "", "name": "", "why": "", "push": projects.may_push(name)}
+    nid = prefs.get(name)["node"]
+    n = nodes.node(nid) if nid else None
+    tc = sorted((n.get("reported") or {}).get("toolchains") or {}) if n else []
+    return {"node": nid if n else "", "name": n["name"] if n else "",
+            "kind": n["kind"] if n else "", "tools": tc,
+            "push": projects.may_push(name),
+            "why": "" if n else no_node_advice(name)}
+
+
 def artifacts_of(name):
     """dist/ as the tab lists it, each file carrying what built it when a
     job did (docs/nodes.md §6): the chain lives beside the file, and the
@@ -2738,6 +2765,9 @@ class Handler(BaseHTTPRequestHandler):
             # `devapps` is every instance, which the manager reads. Both, so
             # the row keeps working while the manager grows around it.
             return self._json({"artifacts": artifacts_of(name),
+                               # What this project can and cannot do off this
+                               # box, said on the tab that lists what it built.
+                               "build": build_state(name),
                                "devapp": devapp.state(name),
                                "devapps": devapp.states(name)}
                               | phone.summary())
@@ -3160,14 +3190,27 @@ class Handler(BaseHTTPRequestHandler):
         pf = prefs.get(name)
         nid = field(req, "node") or pf["node"]
         if not nid:
-            return {"error": f"{name} has no node — pick one in the project's settings "
-                             "dialog, or name one with --node"}, 400
+            return {"error": f"{name} has no node, so nothing can be compiled for it. "
+                             + no_node_advice(name)}, 400
         n = nodes.node(nid)
         if not n:
             return {"error": f"no such node: {nid}"}, 400
         if n["kind"] != "agent":
             return {"error": f"{n['name']} runs no agent — a build node is an agent "
                              "node with a workspace of its own (docs/nodes.md §6)"}, 400
+        # A node that visibly cannot run this is refused before the job is
+        # queued rather than after it fails on "gradlew: not found", and the
+        # two ways out are named. Only fires when the command NAMES a
+        # toolchain the node's census does not report; an unknown build
+        # script is left alone.
+        gap = nodes.toolchain_gap(nid, argv)
+        if gap:
+            return {"error": f"{n['name']} has no {gap}. Install it from the Tools tab "
+                             f"with {n['name']} picked, "
+                             + ("or push and let CI build it."
+                                if projects.may_push(name)
+                                else f"or give {name} push rights and let CI build it — "
+                                     "it has none, so there is no fallback here.")}, 400
         outputs = [str(g)[:200] for g in (req.get("outputs") or []) if str(g)][:16]
         try:
             timeout = min(4 * 3600, max(30, int(req.get("timeout") or 3600)))

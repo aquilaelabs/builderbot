@@ -2240,6 +2240,11 @@ body.dragging .tab .lbl{cursor:grabbing}
          would restate the mtime column. -->
     <div class="nbview" data-view="artifacts" hidden>
       <div class="field nbhead vbar"><span id="artHint">loading…</span></div>
+      <!-- Where this project's compiling happens, or that it has nowhere.
+           On this tab because it is the one somebody opens when a build did
+           not appear; a project with no node is a legitimate state, so the
+           line says what is missing and how to get it. -->
+      <div class="field" id="artBuild" hidden></div>
       <!-- The version, above the things it names. Not a sixth tab: the strip
            already runs past a phone at five labels, and a version and the
            artifacts it stamps are one subject — those filenames carry it. -->
@@ -6829,7 +6834,10 @@ function renderPackagesInto(i){
     ${picker}
     <div class="pkghead">${onNode
       ? (d.root
-          ? `Installed into <code>${esc(d.root)}</code> on ${esc(d.name)} — its packages store${
+          ? `${d.shared_with?.length ? `<b>Shared store:</b> ${esc(d.name)} keeps its
+              toolchains on the same share as ${esc(d.shared_with.join(", "))}, so what is
+              installed here is installed there. One install at a time across all of them.<br>` : ""
+            }Installed into <code>${esc(d.root)}</code> on ${esc(d.name)} — its packages store${
               typeof d.free_mb === "number" ? `, ${d.free_mb >= 10240
                 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB"} free` : ""}. An install
             is a job there: bb and the catalog travel to the node, and its census reports what landed.`
@@ -8715,6 +8723,21 @@ $("todoRevert").onclick = revertNotebook;
     hint.textContent = rows.length
       ? `${rows.length} in dist/ — what this project ships, newest first`
       : "nothing here yet";
+    {
+      const b = art.build || {};
+      const el = $("artBuild");
+      if (el){
+        el.hidden = false;
+        el.className = "field" + (b.node ? "" : " warn");
+        el.innerHTML = b.node
+          ? `<div class="hint">Builds run on <b>${esc(b.name)}</b>${b.tools?.length
+              ? ` — it carries ${b.tools.map(esc).join(", ")}`
+              : " — it reports no toolchains yet, so a compile will not find one"}.
+             Add to it from the Tools tab.</div>`
+          : `<div class="hint">No node: nothing can be compiled for this project here.
+             ${esc(b.why || "")}</div>`;
+      }
+    }
     // Sizes as a person reads them; the bytes are nobody's unit.
     const human = n => n >= 1 << 30 ? (n / (1 << 30)).toFixed(1) + " GB"
                      : n >= 1 << 20 ? (n / (1 << 20)).toFixed(1) + " MB"

@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "8"
+AGENT_VERSION = "9"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -338,6 +338,7 @@ def _stores(stores, used=False):
 STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
                "dotnet": ("dotnet/dotnet",), "go": ("go/bin/go",),
                "node": ("node/bin/node",), "swift": ("swift/usr/bin/swift",),
+               "cargo": ("rust/cargo/bin/cargo",),
                "android-sdk": ("android/cmdline-tools", "android/platform-tools"),
                "emulator": ("android/emulator/emulator",)}
 
@@ -357,11 +358,12 @@ def _toolchains(state):
     if j:
         m = re.search(r'version "([^"]+)"', _run([j, "-version"]))
         tc["java"] = m.group(1) if m else "present"
-    for name in ("flutter", "dotnet", "node", "go"):
+    for name in ("flutter", "dotnet", "node", "go", "swift", "cargo"):
         p = find(name)
         if p and os.path.isfile(p):
             arg = "version" if name == "go" else "--version"
-            tc[name] = (_run([p, arg], timeout=20).splitlines() or ["present"])[0][:40]
+            key = "rust" if name == "cargo" else name
+            tc[key] = (_run([p, arg], timeout=20).splitlines() or ["present"])[0][:40]
     if find("android-sdk"):
         tc["android-sdk"] = "present"
     if find("emulator"):

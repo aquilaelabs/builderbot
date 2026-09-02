@@ -7,7 +7,7 @@
 // exists to prove.
 import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync, readdirSync, openSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -153,7 +153,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
-     && n.agent.version === '8' && /^sha256:/.test(n.agent.digest),
+     && n.agent.version === '9' && /^sha256:/.test(n.agent.digest),
      'the row is online with the census, agent version and digest');
   // single use
   let again = '';
@@ -179,10 +179,16 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
 }
 
 // ---- the loop: hello, heartbeat, a job ---------------------------------------
-const agent = spawn('python3', [AGENT, 'run'], { env: agentEnv, stdio: ['ignore', 'pipe', 'pipe'] });
-let agentLog = '';
-agent.stderr.on('data', d => { agentLog += d; });
-agent.stdout.on('data', d => { agentLog += d; });
+// The agent's output goes to a FILE, never a pipe. A pipe has to be drained
+// by this process's event loop, and this file also runs `bb run` and friends
+// with execFileSync — which blocks that loop while it waits for a job that
+// needs the agent to keep polling. Once the agent had logged 64KB it blocked
+// on a write nobody would ever read, the job never started, and the suite
+// sat for an hour at the same assertion. A file needs no reader.
+const AGENT_LOG_FILE = `${DIR}/agent.log`;
+const agentOut = openSync(AGENT_LOG_FILE, 'a');
+const agent = spawn('python3', [AGENT, 'run'], { env: agentEnv, stdio: ['ignore', agentOut, agentOut] });
+const agentLog = () => { try { return readFileSync(AGENT_LOG_FILE, 'utf8'); } catch { return ''; } };
 try {
   const live = await until(async () => {
     const n = await nodeById(minted.id);
@@ -342,7 +348,10 @@ try {
     mkdirSync(`${DIR}/ws/alpha/dist`, { recursive: true });
     writeFileSync(`${DIR}/ws/alpha/dist/stale.apk`, 'should not travel');
     const nonode = await api('/api/v1/jobs', { action: 'run', project: 'alpha', argv: ['true'] });
-    ok(/has no node/.test(nonode.error || ''),
+    // A project with no node is a normal state: the refusal says what is
+    // missing and names the fallback, and never suggests building here.
+    ok(/has no node/.test(nonode.error || '') && /settings dialog/.test(nonode.error || '')
+       && /Reading and editing the code needs no node/.test(nonode.error || ''),
        `a project with no node set is refused, and told where to set one (${JSON.stringify(nonode).slice(0, 160)})`);
     const onlocal = await api('/api/v1/jobs', { action: 'run', project: 'alpha', node: 'local', argv: ['true'] });
     ok(/runs no agent/.test(onlocal.error || ''), 'local is not a build node — it has no workspace of its own');
@@ -408,6 +417,28 @@ try {
     const n2 = await nodeById(minted.id);
     ok(typeof n2.reported.stores.cache.used_mb === 'number' && typeof n2.reported.toolchains === 'object',
        'the census reports the cache store\'s size and the toolchains it finds');
+    // A command that names a toolchain the node does not report is refused
+    // before it is queued, and the two ways out are named.
+    {
+      // A tool this container genuinely lacks, since the test node's census
+      // is this container's — java and node are here, flutter is not.
+      const gap = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
+        argv: ['sh', '-c', 'flutter build apk'] });
+      // alpha can push in the fixtures, so the refusal names CI as the way
+      // out; the no-push-rights branch says so instead.
+      ok(/has no flutter/.test(gap.error || '') && /Tools tab/.test(gap.error || '')
+         && /let CI build it/.test(gap.error || ''),
+         `a build needing a toolchain the node lacks is refused up front (${gap.error})`);
+      const have = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
+        argv: ['sh', '-c', 'java -version'] });
+      ok(have.ok, '...and one the node does report is queued as before');
+      if (have.job) await api('/api/v1/jobs', { action: 'cancel', id: have.job });
+      const unknown = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
+        argv: ['sh', '-c', './build.sh'] });
+      ok(unknown.ok, '...while a build script that names no toolchain is left alone');
+      if (unknown.job) await api('/api/v1/jobs', { action: 'cancel', id: unknown.job });
+    }
+
     // bb run and bb build, from a session's shell
     const port = new globalThis.URL(URL).port;
     const env = { ...process.env, DASHBOARD_AUTH: 'test:test', DASHBOARD_PORT: port,
@@ -566,12 +597,12 @@ try {
   // ---- the agent's own update, driven from the tab (roadmap #17) ---------------
   {
     const all = await api('/api/v1/nodes');
-    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '') && all.agent.version === '8',
+    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '') && all.agent.version === '9',
        'the node list carries the agent this controller ships, digest and version');
     const lc = await api('/api/v1/nodes', { action: 'update-agent', id: 'local' });
     ok(/only an agent node/.test(lc.error || ''), 'local has no agent to update');
     const cur = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
-    ok(cur.ok && cur.current === true && cur.version === '8',
+    ok(cur.ok && cur.current === true && cur.version === '9',
        'a node already on the shipped agent is told so, and no job is queued');
     const n = await nodeById(minted.id);
     ok(n.agent.digest === all.agent.digest, '...because the digests the row would compare are the same');
@@ -624,7 +655,7 @@ try {
   {
     const r = await api('/api/v1/nodes', { action: 'revoke', id: minted.id });
     ok(r.ok, 'Revoke cuts the credential');
-    const said = await until(() => /credential|re-enroll/i.test(agentLog) ? true : null, 40000);
+    const said = await until(() => /credential|re-enroll/i.test(agentLog()) ? true : null, 40000);
     ok(said, 'the agent is told its credential is gone and says so in its log');
     const n = await nodeById(minted.id);
     ok(n.agent.revoked && n.state === 'online',
@@ -634,7 +665,7 @@ try {
   }
 } finally {
   agent.kill('SIGTERM');
-  if (process.env.AGENT_DEBUG) console.log('AGENT LOG:\n' + agentLog);
+  if (process.env.AGENT_DEBUG) console.log('AGENT LOG:\n' + agentLog());
 }
 
 // bb nodes shows liveness

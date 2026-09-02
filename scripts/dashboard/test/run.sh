@@ -13,6 +13,9 @@
 #
 #   bb dashboard test            # every *.mjs in this directory
 #   bb dashboard test cards      # just cards.mjs
+#   BB_TEST_TIMING=1 ...         # seconds between results, to find the slow part
+#
+# One run at a time: a second one is refused while the first is alive.
 #
 # Playwright comes from the image (/usr/lib/node_modules); the browsers live
 # on the SDK share and are found the way bb finds them. Missing either, the
@@ -79,6 +82,20 @@ if holder="$(lsof -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -1)" && [ -n "$
     esac
     die "port $PORT is already in use by pid $holder ($(ps -o comm= -p "$holder" 2>/dev/null || echo unknown)${where:+ — $where}) — if that is a test server left behind by an interrupted run, 'kill $holder' and re-run; otherwise leave DASHBOARD_TEST_PORT unset and one will be picked."
 fi
+# One run at a time on this box. The port used to be fixed, which stopped a
+# second run by accident; picking a free one removed that stop, and three
+# suites then ran side by side on a box that also serves the live dashboard
+# — the contention bug #13 describes, made to order. A pid lock says so
+# instead, with how long the other has been going. BB_TEST_CONCURRENT=1
+# overrides it for whoever knows what they are doing.
+LOCK="${TMPDIR:-/tmp}/dashboard-test.lock"
+if [ -z "${BB_TEST_CONCURRENT:-}" ] && [ -f "$LOCK" ]; then
+    other="$(cat "$LOCK" 2>/dev/null || true)"
+    if [ -n "$other" ] && kill -0 "$other" 2>/dev/null; then
+        die "another dashboard test run is going (pid $other, started $(ps -o etime= -p "$other" 2>/dev/null | tr -d ' ') ago) — one at a time; wait for it, kill it, or set BB_TEST_CONCURRENT=1"
+    fi
+fi
+printf '%s' "$$" > "$LOCK"
 S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
 # Every tmux call from here on — ours and the server's — talks to a private
 # server whose socket lives in the scratch dir. Nothing reaches the real one.
@@ -111,6 +128,7 @@ cleanup() {
         "$S"/*) tmux kill-server 2>/dev/null || true ;;
     esac
     rm -rf "$S"
+    [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
 }
 
 # ---- fixtures --------------------------------------------------------------
@@ -572,6 +590,12 @@ fresh() {
     rm -rf "$S/home/.ssh"           # deploy-key selectors a test wrote
     rm -rf "$S/dockerstate"; mkdir -p "$S/dockerstate"
     rm -rf "$S/sdk" "$S/androidsdk"; mkdir -p "$S/sdk" "$S/androidsdk"
+    # The phone stub, put back if a test that hid it died before restoring
+    # it. artifacts.mjs renames bin/adb aside to prove Push goes dead; when
+    # its next wait timed out the rename never reversed, and every suite
+    # after it ran with no phone and failed on things that had nothing to do
+    # with phones — a cascade that read as five bugs and was one.
+    [ -e "$S/bin/adb.hidden" ] && mv -f "$S/bin/adb.hidden" "$S/bin/adb"
     cp "$S/doctor-ok.txt" "$S/doctor.txt"
     cp "$S/auth-in.json" "$S/auth.json"   # a test that signs out must not hand that on
     rm -f "$S/login-finished"

@@ -239,6 +239,41 @@ Under software rendering there is one more consequence worth internalizing:
 Judging whether a duration *feels* right is a question for real hardware, and
 you should say so rather than guessing from a headless emulator.
 
+## What you can build, and where
+
+Compiling happens on the project's **node** — a machine the operator
+enrolled, with its own toolchains — and never in this container. Which node
+is a per-project setting, and a project may have none.
+
+```bash
+bb build            # the project's build command, on its node
+bb test             # its test command, on its node
+bb run -- CMD       # anything else there, from a snapshot of this tree
+```
+
+**A project with no node is a normal state, not a broken one.** You can read
+every file, change any of them, run the linters and the project's own
+non-compiling checks, commit and push. What you cannot do is produce a
+binary: `bb build` refuses and says so rather than half-working.
+
+When that happens there are exactly two honest answers, and the refusal
+names whichever applies:
+
+- **The project can push** — commit, push, and let CI build it. That is the
+  fallback, and it is a real one: the workflow runs on a runner with the
+  toolchain.
+- **It cannot push** — then say plainly that the project cannot be built
+  from here until the operator picks a node or grants push rights. Do not
+  invent a local build, do not `apt-get` a compiler, and do not report
+  success you did not observe.
+
+**The same rule applies when the node is missing a toolchain.** A node that
+carries no JDK cannot build an Android app, and `bb build` refuses before
+queueing anything, naming the tool and the Tools tab. Again: CI if the
+project can push, otherwise say so.
+
+`bb nodes` names the project's node and what its census reports it carries.
+
 ## A phone, if one is connected
 
 Only relevant when the operator has one paired to the dashboard's Phone card.
@@ -884,6 +919,14 @@ by hand cost four commands and still could not see the failed builds.
   `TMUX_TMPDIR`, and a throwaway session lands on — or a cleanup kills — the
   real server. The harness unsets `TMUX` and verifies its socket first.
 
+  **One run at a time, and time it before calling it slow.** `run.sh` refuses
+  to start while another run is alive (`BB_TEST_CONCURRENT=1` overrides);
+  three suites side by side on this box is bug #13's reproducer. And
+  `BB_TEST_TIMING=1` prefixes every result with the seconds since the last
+  one — the whole agent suite is about two minutes of real work, and a run
+  that takes longer is *stuck*, not slow: look at the process, not the clock.
+  The one that cost an hour was a test calling `execFileSync` while the
+  agent it depended on was blocked writing to a pipe nobody was draining.
   If the *installed* `bb` predates a subcommand, `bash scripts/bb <cmd>` runs
   the repo copy — and `bb lint` prints `[skip]` for any tool the running image
   does not carry yet, rather than passing by omission. The dashboard's server
