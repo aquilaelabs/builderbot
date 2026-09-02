@@ -1026,6 +1026,37 @@ def node_funnel(principal, node_id, port, on=True):
     return r
 
 
+def node_update_agent(principal, node_id):
+    """Queue the self-update for a node's agent — the file this controller
+    serves, named by digest so the node can never be handed anything else
+    (door 4). The agent replaces itself in place and re-execs, so nothing on
+    the node restarts and no running job is interrupted; it refuses while
+    other jobs run. Nothing drives this on its own: the row says when an
+    update is due, and the operator presses."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "only an agent node has an agent to update"}
+    ours = agent_file()
+    if not ours["digest"]:
+        return {"error": "this controller ships no agent"}
+    if (n.get("agent") or {}).get("digest") == ours["digest"]:
+        return {"ok": True, "current": True, "version": ours["version"]}
+    r = job_add(principal, {"node": node_id}, "self-update",
+                {"digest": ours["digest"], "version": ours["version"], "timeout": 300})
+    if r.get("ok"):
+        audit(principal, "node-update-agent", node_id, {"to": ours["digest"]})
+    return r
+
+
+def agent_shipped():
+    """What this controller ships, for the row's comparison: digest and
+    version only — the body is the download verb's."""
+    f = agent_file()
+    return {"digest": f["digest"], "version": f["version"]}
+
+
 def runner_labels_known():
     """Every label a runner in the registry carries, reported or wanted, for
     the lint that checks a workflow's runs-on against what exists."""

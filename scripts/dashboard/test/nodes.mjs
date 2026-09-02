@@ -247,9 +247,26 @@ ok(list[0].id === 'local',
     version: '3', digest: 'sha256:' + '0'.repeat(64), user: 'bb' },
     { Authorization: 'Bearer ' + minted.token, 'Content-Type': 'application/json' });
   ok(en.ok && en.node_id === minted.id, 'a sandbox node enrolled with mounts and an address in its census');
+  // Its agent's digest is a made-up one, so it is behind the controller's:
+  // the row must say so before anybody presses anything (roadmap #17).
+  const lst = await napi('/api/v1/nodes');
+  ok(lst.agent?.digest && lst.agent.digest !== 'sha256:' + '0'.repeat(64),
+     'the node list names the agent the controller ships');
+  // Enrolling counts as being heard from, so the node is live for a moment
+  // and the update is queued — with the shipped digest in its spec, so the
+  // node can never be handed another file. Canceled here: nothing polls.
+  const upd = await napi('/api/v1/nodes', { action: 'update-agent', id: minted.id });
+  const uj = upd.job ? await napi(`/api/v1/jobs?id=${upd.job}`) : null;
+  ok(upd.ok && uj && uj.type === 'self-update' && uj.spec.digest === lst.agent.digest && uj.node === minted.id,
+     `Update agent queues a self-update naming the shipped digest (${upd.job || upd.error})`);
+  if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
   const ROW = `.nodestab .ndrow[data-node="${minted.id}"]`;
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
+  ok(await page.$eval(`${ROW} .ndstale`, e => /update available → 7/.test(e.textContent))
+     && await page.$(`${ROW} [data-nd="update-agent"]`) !== null
+     && await page.evaluate(() => !document.querySelector('.nodestab .ndrow[data-node="local"] [data-nd="update-agent"]')),
+     'the row wears "update available" with the shipped version and an Update agent button; local has neither');
   ok(await page.$eval('.nodestab', e => !e.querySelector('.ndrow[data-node="local"] .ndconf')),
      'the fold is on the sandbox node and not on local');
   await page.click(`${ROW} .ndconf summary`);

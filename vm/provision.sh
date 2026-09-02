@@ -908,9 +908,42 @@ EOF
     systemctl daemon-reload
     systemctl enable --now builderbot-agent
 elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
-    # Enrolled on an earlier run: left as it is. The agent keeps itself
-    # current from the controller, so there is nothing to refresh here.
-    say "agent: already enrolled; leaving it"
+    # Enrolled on an earlier run. The agent does NOT keep itself current —
+    # the dashboard's Update button queues that as a job, and nothing runs
+    # it unasked — so a re-run here is the console path to the same thing:
+    # fetch what the controller ships with this node's own token, check it
+    # against the digest the controller sends, and swap it in only when it
+    # differs. The token never leaves this shell; the same check the agent
+    # makes of its own updates, made here by hand.
+    say "agent: already enrolled; checking the controller for a newer agent"
+    ctl=""; tok=""
+    read -r ctl tok < <(python3 -c 'import json; d = json.load(open("/etc/builderbot/node.json")); print(d.get("controller", ""), d.get("token", ""))' 2>/dev/null || true)
+    if [ -n "$ctl" ] && [ -n "$tok" ]; then
+        hdr="$(mktemp)"
+        if curl -fsSL -D "$hdr" -H "Authorization: Bearer ${tok}" \
+                "${ctl%/}/api/v1/agent/download" -o "${AGENT}.new" 2>/dev/null; then
+            want="$(tr -d '\r' < "$hdr" | awk 'tolower($1)=="x-agent-digest:"{print $2}')"
+            got="sha256:$(sha256sum "${AGENT}.new" | cut -d' ' -f1)"
+            have="sha256:$(sha256sum "$AGENT" | cut -d' ' -f1)"
+            if [ -n "$want" ] && [ "$want" != "$got" ]; then
+                warn "the agent that arrived does not match the digest the controller sent (${got} vs ${want}); leaving the installed one"
+                rm -f "${AGENT}.new"
+            elif [ "$got" = "$have" ]; then
+                say "agent: already current (${got:7:12})"
+                rm -f "${AGENT}.new"
+            else
+                chmod 755 "${AGENT}.new"; mv -f "${AGENT}.new" "$AGENT"
+                systemctl restart builderbot-agent 2>/dev/null || true
+                say "agent: updated ${have:7:12} -> ${got:7:12} and restarted"
+            fi
+        else
+            warn "could not fetch the agent from ${ctl} — is the controller up? The installed agent is left as it is"
+            rm -f "${AGENT}.new"
+        fi
+        rm -f "$hdr"
+    else
+        warn "/etc/builderbot/node.json carries no controller or token — re-enroll with a fresh token to update"
+    fi
     systemctl start builderbot-agent 2>/dev/null || true
 fi
 

@@ -15,6 +15,7 @@ let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
 let nodesOpenForm = "";          // "" | "ssh" | "agent": which add form is up
 let nodesMinted = null;          // the last enroll token, shown once, then gone
+let nodesAgent = null;           // the agent this controller ships: {digest, version}
 // The configuration plane's editor state, per node (docs/nodes.md §12): the
 // fold's open flag and the DRAFT the operator is typing. Kept here and not in
 // the DOM because the tab repaints on every heartbeat — a field that lived
@@ -32,6 +33,7 @@ async function loadNodes(){
     const j = await (await fetch("/api/v1/nodes")).json();
     nodesErr = j.error || "";
     nodesList = j.nodes || [];
+    nodesAgent = j.agent || null;
   }catch(e){
     nodesErr = String(e);
     nodesList = nodesList || [];
@@ -290,8 +292,16 @@ function renderNodesInto(i){
       : n.kind === "agent" ? (n.agent?.addr ? `dials in from ${n.agent.addr}` : "")
       : (n.ssh_addr || "");
     const numbers = nodeNumbers(n);
+    // Behind when the node's agent is not the file this controller ships.
+    // Said on the row before anybody presses anything: a five-version-old
+    // agent otherwise looks exactly like a current one.
+    const stale = n.kind === "agent" && n.agent?.digest && nodesAgent?.digest
+      && n.agent.digest !== nodesAgent.digest && !n.agent?.revoked;
     const agentVer = n.kind === "agent" && n.agent?.version
       ? `agent ${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}${
+          stale ? ` <span class="pill warn ndstale" title="this controller ships agent ${
+            esc(nodesAgent.version)} ${esc(nodesAgent.digest.slice(7, 15))}">update available → ${
+            esc(nodesAgent.version)}</span>` : ""}${
           n.config?.user ? ` · jobs run as ${esc(n.config.user)}` : ""}` : "";
     return `
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
@@ -311,6 +321,8 @@ function renderNodesInto(i){
           title="${n.kind === "agent"
             ? "run uname on it through the agent — the channel, end to end"
             : "probe this node's daemon now — docker answering, and the provisioner's sandbox stamp"}">Test</button>`}
+        ${stale && n.state !== "pending" ? `<button type="button" data-nd="update-agent"
+          title="hand the node the agent this controller ships (${esc(nodesAgent.version)}) — it swaps itself in place and re-execs; nothing else restarts, and it waits for its own jobs to finish first">Update agent</button>` : ""}
         ${n.state === "pending" ? "" : `<button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}"
           title="${n.state === "draining"
             ? "take new work again"
@@ -426,6 +438,12 @@ function wireNodesTab(root){
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
                       + "each re-downloads what it needs.")) return;
+      if (b.dataset.nd === "update-agent"){
+        const j = await nodeAct({action: "update-agent", id});
+        if (j.current) notify(`already on ${j.version}`);
+        else if (j.ok) notify("update queued — the row follows the agent's next hello");
+        return;
+      }
       if (b.dataset.nd === "paths"){
         const inp = row.querySelector('[data-k="paths"]');
         await nodeAct({action: "paths", id, paths: inp ? inp.value : ""});
