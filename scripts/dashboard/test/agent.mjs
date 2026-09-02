@@ -96,7 +96,9 @@ echo "config $*" >> "$(dirname "$0")/calls.log"
 if [ "$1" = remove ]; then rm -f "$(dirname "$0")/.runner"; exit 0; fi
 name=; url=
 while [ $# -gt 0 ]; do case "$1" in --name) name="$2"; shift;; --url) url="$2"; shift;; esac; shift; done
-printf '{"agentName":"%s","gitHubUrl":"%s"}' "$name" "$url" > "$(dirname "$0")/.runner"
+# With the BOM the real config.sh writes. Without it here, the census read
+# .runner fine in the suite and returned an empty name on a real node.
+printf '\\357\\273\\277{"agentName":"%s","gitHubUrl":"%s"}' "$name" "$url" > "$(dirname "$0")/.runner"
 `, { mode: 0o755 });
 writeFileSync(`${DIR}/runner-src/svc.sh`, `#!/bin/sh
 # The real svc.sh resolves everything relative to the working directory and

@@ -1628,7 +1628,10 @@ def github_url():
         return u
     cfg = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner")) / ".runner"
     try:
-        return str(json.loads(cfg.read_text()).get("gitHubUrl") or "")
+        # utf-8-sig: config.sh writes .runner with a BOM (see the agent's
+        # services_now), so a plain read_text() throws and this answered
+        # "no URL" on a box whose runner was registered fine.
+        return str(json.loads(cfg.read_text(encoding="utf-8-sig")).get("gitHubUrl") or "")
     except (OSError, ValueError):
         return ""
 

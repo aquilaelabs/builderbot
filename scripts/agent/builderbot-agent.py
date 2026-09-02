@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "14"
+AGENT_VERSION = "15"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -547,7 +547,13 @@ def services_now():
     cfg = os.path.join(RUNNER_DIR, ".runner")
     if os.path.isfile(cfg):
         try:
-            with open(cfg) as f:
+            # utf-8-sig, not utf-8: GitHub's config.sh writes .runner with a
+            # BOM, and json.load on a plain utf-8 handle raises on it. That
+            # fell into the except below and reported a correctly registered
+            # runner as one whose name "did not come back" — indistinguishable
+            # from the genuinely half-installed state this census exists to
+            # tell apart.
+            with open(cfg, encoding="utf-8-sig") as f:
                 j = json.load(f)
         except (OSError, ValueError):
             j = {}
