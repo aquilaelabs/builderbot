@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "12"
+AGENT_VERSION = "13"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -117,6 +117,52 @@ def store_path_ok(path):
         if (p + "/").startswith(bad):
             return f"{p} is inside {bad.rstrip('/')}, which this agent will not write to"
     return ""
+def make_store(path):
+    """Create a store directory, and say which directories that actually
+    brought into being.
+
+    The list is the whole point. A store at /mnt/tank/bb/packages may have
+    made two directories or none, and there is no way to tell afterwards —
+    an empty /mnt/tank/bb could be ours or could be the operator's. So it is
+    recorded at the moment of creation, and nothing outside that record is
+    ever removed.
+    """
+    p = os.path.abspath(str(path))
+    made, probe = [], p
+    while probe and probe != "/" and not os.path.exists(probe):
+        made.append(probe)
+        probe = os.path.dirname(probe)
+    os.makedirs(p, exist_ok=True)
+    made.reverse()                      # shallowest first: the order they appeared
+    return made
+
+
+def prune_made(made):
+    """Remove the directories in `made` that are now empty, deepest first.
+
+    rmdir rather than a check-then-delete: it fails with ENOTEMPTY by
+    itself, so there is no window between deciding a directory is empty and
+    removing it. The first one that will not go stops the walk — a parent of
+    something that is still there cannot be empty either — and a mountpoint
+    is never touched, because removing the directory a share is mounted on
+    is how you delete the thing you meant to detach.
+
+    Returns (removed, [(path, why)]).
+    """
+    removed, kept = [], []
+    for d in reversed(list(made or [])):
+        if os.path.ismount(d):
+            kept.append((d, "it is a mountpoint"))
+            break
+        try:
+            os.rmdir(d)
+            removed.append(d)
+        except OSError as e:
+            kept.append((d, e.strerror or "it would not go"))
+            break
+    return removed, kept
+
+
 def mount_covering(path, mounts):
     """The bb-sandbox mount this path would live inside, or None.
 
@@ -1474,6 +1520,9 @@ class Agent:
             # on is what is mounted now, not what was asked for.
             live = mounts_now()
             mine = dict(self.state.get("stores") or {})
+            # What this agent created for each store, so a move can take
+            # back exactly that and nothing else.
+            marks = dict(self.state.get("store_made") or {})
             for role, path in stores.items():
                 if role not in DEFAULT_STORES:
                     continue
@@ -1501,19 +1550,35 @@ class Agent:
                     bad += 1
                     continue
                 try:
-                    os.makedirs(path, exist_ok=True)
+                    made = make_store(path)
                 except OSError as e:
                     job.say(f"{role} store {path} could not be made: {e.strerror}\n")
                     bad += 1
                     continue
+                if made:
+                    job.say(f"{role}: made {', '.join(made)}\n")
                 was = str(mine.get(role) or "")
                 if was and was.rstrip("/") != str(path).rstrip("/"):
                     if not self._move_store(job, role, was, str(path)):
+                        # The move did not happen, so nothing was written to
+                        # the new place: leave no litter behind either.
+                        for d in prune_made(made)[0]:
+                            job.say(f"{role}: removed {d} again — the move did not happen\n")
                         bad += 1
                         continue
+                    self._retire_store(job, role, was, marks.get(role) or [])
+                    marks[role] = made
+                else:
+                    # Same path. Keep the original record — it says what was
+                    # made for this store the FIRST time, which is what a
+                    # later move has to clean up — and add anything this run
+                    # had to put back.
+                    prev = list(marks.get(role) or [])
+                    marks[role] = prev + [d for d in made if d not in prev]
                 mine[role] = str(path)
                 job.say(f"{role} store: {path}\n")
             self.state["stores"] = mine
+            self.state["store_made"] = marks
             save_state(self.state)
         self.hello()
         if bad:
@@ -1574,6 +1639,31 @@ class Agent:
         job.say(f"{role}: copied. The old copy at {old} is left in place — "
                 f"delete it yourself once you are satisfied.\n")
         return True
+
+    def _retire_store(self, job, role, old, made):
+        """After a store has moved, take back the directories this agent
+        made for it — and only those, and only if they are empty.
+
+        Which is usually none of them, and saying so matters: the move keeps
+        the old copy on purpose, so the store directory is not empty and
+        rmdir refuses it. That is the correct outcome, not a failure, and
+        the log says which path is still holding data so it can be removed
+        deliberately. The empty case is real too — a store that was
+        configured and never written to leaves directories behind that
+        nobody wants.
+        """
+        if not made:
+            job.say(f"{role}: {old} was not made by this agent, so it is left alone\n")
+            return
+        removed, kept = prune_made(made)
+        if removed:
+            job.say(f"{role}: removed {', '.join(removed)} — made for this store "
+                    f"and empty now\n")
+        for path, why in kept:
+            job.say(f"{role}: {path} stays ({why})"
+                    + (f" — the old copy is in there; remove it yourself when you are "
+                       f"satisfied the move worked\n" if "empty" in (why or "").lower()
+                       else "\n"))
 
     def _apply_network(self, job, cfg):
         """Commit/confirm, because this is the one change that can cut the
@@ -1833,16 +1923,20 @@ def cmd_enroll(args):
     if not opts["--token"].startswith("bbe_"):
         raise SystemExit("that is not an enrollment token (they start bbe_); "
                          "mint one on the controller's Nodes tab")
+    marks = {}
     for role, path in stores.items():
         # A store that cannot be made is reported, not fatal: its free space
-        # reads as zero on the row, which is the true answer.
+        # reads as zero on the row, which is the true answer. What each one
+        # DID create is kept, so that if the store is moved later the
+        # directories this put there can be taken back and nothing else.
         try:
-            os.makedirs(path, exist_ok=True)
+            marks[role] = make_store(path)
         except OSError as e:
             print(f"note: {role} store {path} could not be created ({e.strerror}); "
                   "it will report no space until it exists")
     ctl = Controller(opts["--controller"], opts["--token"], opts["--pin"])
-    state = {"controller": ctl.url, "user": opts["--user"], "stores": stores}
+    state = {"controller": ctl.url, "user": opts["--user"], "stores": stores,
+             "store_made": marks}
     st, r = ctl.call("enroll", {"census": census(state), "version": AGENT_VERSION,
                                 "digest": own_digest(), "user": opts["--user"]},
                      timeout=30)

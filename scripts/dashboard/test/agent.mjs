@@ -378,6 +378,8 @@ try {
          `moving a store copies what was in it to the new place (${r?.state})`);
       ok(existsSync(`${DIR}/agentpackages/android/marker`) && /left in place/.test(r.log),
          '...and never deletes the source, so a half-finished move still serves');
+      ok(/agentpackages stays \(Directory not empty\)/.test(r.log) && /remove it yourself/.test(r.log),
+         '...so the old directory is not tidied away either, and the log says which one holds it');
       ok(!existsSync(`${DIR}/agentcache2/gradle-blob`) && /a cache is rebuildable/.test(r.log),
          '...while the cache is left behind rather than copied, and the log says why');
       const n2 = await until(async () => {
@@ -385,6 +387,35 @@ try {
         return n.reported.stores.packages.path === `${DIR}/agentpackages2` ? n : null;
       });
       ok(n2 !== null, '...and the census reports the store where it now is');
+      // ---- and the empty directories it made ARE taken back ---------------
+      // Only the ones it created, only when they are empty. A store
+      // configured and never written to otherwise leaves a tree nobody
+      // wants, and there is no telling ours from the operator's afterwards
+      // — so it is recorded at the moment of creation.
+      mkdirSync(`${DIR}/pre`, { recursive: true });
+      writeFileSync(`${DIR}/pre/operators-file`, 'not ours');
+      await api('/api/v1/nodes', { action: 'config', id: minted.id,
+        config: { mounts: [], stores: { artifacts: `${DIR}/pre/a1/a2/art` }, network: { mode: 'dhcp' } } });
+      const mk = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+      const mkr = await until(async () => {
+        const x = await api(`/api/v1/jobs?id=${mk.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
+      }, 60000);
+      ok(mkr && mkr.state === 'succeeded' && existsSync(`${DIR}/pre/a1/a2/art`)
+         && /made .*\/pre\/a1/.test(mkr.log),
+         `a store path is created, parents and all, and the log says what it made (${mkr?.state})`);
+      await api('/api/v1/nodes', { action: 'config', id: minted.id,
+        config: { mounts: [], stores: { artifacts: `${DIR}/agentartifacts` }, network: { mode: 'dhcp' } } });
+      const un = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+      const unr = await until(async () => {
+        const x = await api(`/api/v1/jobs?id=${un.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
+      }, 60000);
+      ok(unr && unr.state === 'succeeded' && !existsSync(`${DIR}/pre/a1`) && /removed .*\/pre\/a1\/a2\/art/.test(unr.log),
+         `moving off an empty store takes back the directories it made for it (${unr?.state})`);
+      ok(existsSync(`${DIR}/pre/operators-file`) && existsSync(`${DIR}/pre`),
+         '...and stops at the one it did not make, whatever is in it');
+
       // Put it back, so what follows runs against the stores it expects.
       await api('/api/v1/nodes', { action: 'config', id: minted.id,
         config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },

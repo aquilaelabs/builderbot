@@ -1715,8 +1715,12 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 @media(prefers-reduced-motion:reduce){
   .dmtab .dmwire summary::before{transition:none}
 }
-button.eye svg{width:16px;height:16px;display:block;fill:none;stroke:currentColor;
-  stroke-width:1.4;stroke-linecap:round}
+/* Every icon button draws the same way, whichever class it wears. Keyed to
+   .eye alone, the Projects card's trash button (an .ic) got the browser's
+   default fill:black/stroke:none — and these paths are open strokes, so it
+   drew nothing at all. */
+button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
+  stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
 /* The header's icon buttons — the gear (settings) and the sign-out door —
    drawn to the same box as the ↻ glyph, same stroke voice as the eye and
    chain icons. */
@@ -5263,7 +5267,7 @@ function drawProjects(all){
   // New project lives here too — present even when the list is empty, since
   // an empty workspace is exactly where it is needed most.
   const togHtml = `<div class="macros"><button id="bNewProj"
-       title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach">New project…</button><button id="bAllProj"
+       title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach">New project</button><button id="bAllProj"
        title="every project under /workspace, pinned or not, with the same controls">All projects</button
        ><button id="bTrash" class="ic"
        title="projects you deleted — still on disk under .trash, and still recoverable">${BIN}</button>${
@@ -5977,7 +5981,7 @@ function renderProjectsInto(i){
   // that only says what is missing offers no way to fix it.
   if (!ps.length){
     el.innerHTML = `<div class="projtab"><div class="macros"><button
-        id="bNewProjTab">New project…</button></div>
+        id="bNewProjTab">New project</button></div>
       <div class="empty">nothing mounted under /workspace</div></div>`;
     el.querySelector("#bNewProjTab").onclick = openNewProject;
     return;
@@ -6000,7 +6004,7 @@ function renderProjectsInto(i){
   if (paint(el, `<div class="projtab"><div class="macros"><button
       id="bNewProjTab"
       title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach"
-      >New project…</button></div>${
+      >New project</button></div>${
     ordered.map(p => projectRow(p, live, cls, true)).join("")}</div>`)){
     wireProjectRows(el);
     el.querySelector("#bNewProjTab").onclick = openNewProject;

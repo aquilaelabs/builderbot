@@ -132,11 +132,20 @@ function nodeRunnerSection(n, c){
   if (d.runner === undefined) d.runner = {labels: (want.labels || []).filter(x =>
       !["builderbot", "self-hosted", "linux", "x64", "arm64", n.name].includes(x)).join(", "),
     url: want.url || ""};
-  const state = rep.installed
-    ? `registered as ${rep.name || "?"}${rep.url ? " with " + rep.url : ""} — ${
-        rep.busy ? "running a job" : rep.active ? "listening" : "installed, not listening"}${
-        rep.labels?.length ? " · labels " + rep.labels.join(", ") : ""}`
-    : want.want ? "install asked for; the node has not reported it yet" : "no runner on this node";
+  // The verdict first, because "installed" and "will actually pick up a job"
+  // are different states and the old line buried the difference in the
+  // middle of a sentence — a runner registered with no listener reads as
+  // healthy right up until a workflow sits in "Waiting for a runner".
+  const [verdict, vcls] = !rep.installed
+    ? [want.want ? "install asked for; the node has not reported it yet" : "no runner on this node", ""]
+    : rep.busy ? ["running a job right now", "ok"]
+    : rep.active ? ["listening — idle, waiting for a job", "ok"]
+    : ["installed but NOT listening, so no workflow will reach it — Reinstall runner", "bad"];
+  const detail = rep.installed
+    ? [rep.name ? `registered as ${rep.name}` : "its registered name did not come back, so the registration may not have finished",
+       rep.url || "", rep.labels?.length ? "labels " + rep.labels.join(", ") : ""].filter(Boolean).join(" · ")
+    : "";
+  const state = verdict + (detail ? " · " + detail : "");
   const busy = n.applying || nodeStale(n);
   const why = nodeStale(n) ? esc(staleWhy(n)) : "";
   return `
@@ -147,7 +156,8 @@ function nodeRunnerSection(n, c){
         <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
           placeholder="extra labels, comma-separated — builderbot, self-hosted, linux, the arch and ${esc(n.name)} are always on" aria-label="labels">
       </div>
-      <div class="sub ndrunstate${rep.installed && !rep.active ? " warn" : ""}">${esc(state)}</div>
+      <div class="sub ndrunstate${vcls ? " " + vcls : ""}">${
+        rep.busy ? `<span class="pill note ndrunbusy">running a job</span> ` : ""}${esc(state)}</div>
       <div class="acts">
         <span class="sp"></span>
         <button type="button" data-nrunner="install" ${busy ? "disabled" : ""}
@@ -311,6 +321,7 @@ function nodeConfFold(n){
   return `
   <div class="ndconf">
     <div class="ndconfbody">
+      ${nodeRunnerSection(n, c)}
       <div class="ndsec">Mounts — what this node mounts at boot, applied through bb-sandbox on it${
         d.fromNode ? `. <span class="dim">These are the ones the node reports; nothing has been
         saved here yet, so editing and saving is what puts this page in charge of them.</span>` : ""}</div>
@@ -336,7 +347,6 @@ function nodeConfFold(n){
           autocomplete="off" placeholder="${esc(net.interface || "interface (default route's)")}" aria-label="interface">
       </div>
       <div class="sub">${esc(now)}</div>
-      ${nodeRunnerSection(n, c)}
       <div class="acts ndconfacts">
         <span class="sub ndconfstate${statusCls ? " " + statusCls : ""}">${esc(status)}</span>
         <span class="sp"></span>
