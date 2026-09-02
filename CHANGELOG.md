@@ -189,3 +189,6 @@
 - Installing a node's CI runner now completes: the service half was failing after the runner had already registered with GitHub (4d28e1f)
 - The Nodes tab shows one machine at a time, picked at the top, with everything about it open and its cpu, memory and storage as meters instead of a line of text (22e5fb1)
 - A node's mount list now opens on the shares it actually has, so mounts set up at the VM's console can be edited from the dashboard (22e5fb1)
+- A node's settings now say whether anything is waiting to be applied, and Apply is greyed out when the machine already matches (e35918a)
+- A node whose agent is out of date no longer accepts work — applying settings, installing the runner or a package, and clearing its cache all wait until Update agent has run (e35918a)
+- Node store meters no longer read healthy stores as missing, and the Tools tab lists what a node actually has installed rather than a summary of it (e35918a)
