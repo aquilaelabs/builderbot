@@ -388,6 +388,12 @@ bb nodes           the node registry, read-only in a terminal — the Nodes
                    tab is where it is edited; `local` is this container
 bb jobs [-n N]     the recent jobs: state, node, what ran, how it ended —
                    read-only; the Jobs tab is where one is stopped
+bb run [opts] -- CMD   snapshot this tree, run CMD on the project's build
+                   node and stream the log back; `--out GLOB` brings what
+                   matches into dist/ with its provenance; `--role`, `--node`
+bb build           the project's build command on its build node, with the
+                   outputs it lists — both set in the project's settings dialog
+bb test            the same for its test command, on its test node
 bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
@@ -1298,6 +1304,18 @@ re-addresses itself and must reach the controller from the new address, or it
 puts the previous config back on its own and says so when it reconnects.
 Network changes need netplan on the node, and the job says so where there is
 none. Nothing here is offered to an ssh node or to local.
+
+**Building there.** A project assigns nodes to roles in its settings dialog
+— build, test, CI, emulator — and gives its build and test commands and the
+output globs. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
+tree here, dirty edits included, run on that node in a workspace of the job's
+own, and stream the log back; what the outputs match comes back into `dist/`
+by name with a provenance record beside it, which the Artifacts tab shows on
+the row (which job, which node, which snapshot). A failed build keeps its
+workspace on the node for a look, and says where. The census reports each
+node's cache size beside **Clear cache**, and the Tools tab gains a node
+picker: installing a toolchain there is a job that carries `bb` and the
+catalog to the node's own packages store.
 
 ### The Jobs tab
 

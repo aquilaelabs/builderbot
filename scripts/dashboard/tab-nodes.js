@@ -78,9 +78,14 @@ function nodeNumbers(n){
   if (!s || !n.live) return "";
   const mem = s.mem_mb ? `${Math.round(s.mem_used_mb / 1024 * 10) / 10}/${
       Math.round(s.mem_mb / 1024)}GB` : "";
+  const gb = mb => mb >= 10240 ? Math.round(mb / 1024) + "GB" : mb + "MB";
   const stores = Object.entries(s.stores || {}).map(([r, free]) => free === null
     ? `${esc(r)} missing`
-    : `${esc(r)} ${free >= 10240 ? Math.round(free / 1024) + "GB" : free + "MB"} free`);
+    : `${esc(r)} ${gb(free)} free${
+        // What the cache store holds, from the census's du: the number the
+        // Clear button beside it is about (docs/nodes.md §6).
+        r === "cache" && typeof n.reported?.stores?.cache?.used_mb === "number"
+          ? `, ${gb(n.reported.stores.cache.used_mb)} used` : ""}`);
   return [`cpu ${s.cpu_pct}%`, mem, s.running ? `${s.running} running` : "",
           ...stores].filter(Boolean).join(" · ");
 }
@@ -252,6 +257,9 @@ function renderNodesInto(i){
             : "finish what is running, accept nothing new — what makes a node safe to reboot"}">${
           n.state === "draining" ? "Undrain" : "Drain"}</button>`}
         ${n.kind === "agent" && n.state !== "pending" && !n.agent?.revoked
+          ? `<button type="button" data-nd="cache-clear"
+          title="drop this node's build caches — every project's. A cold cache costs the next build time, never correctness">Clear cache</button>` : ""}
+        ${n.kind === "agent" && n.state !== "pending" && !n.agent?.revoked
           ? `<button type="button" class="rm" data-nd="revoke"
           title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}
         ${n.kind === "local" ? "" : `<button type="button" class="rm" data-nd="retire"
@@ -354,6 +362,10 @@ function wireNodesTab(root){
           && !confirm("Revoke this node's credential? It will stop being able "
                       + "to dial in, and the only way back is enrolling it "
                       + "again with a new token.")) return;
+      if (b.dataset.nd === "cache-clear"
+          && !confirm("Clear this node's build caches? Every project's Gradle, "
+                      + "npm and snapshot cache there goes; the next build of "
+                      + "each re-downloads what it needs.")) return;
       if (b.dataset.nd === "test"){
         const out = row.querySelector(".ndtest");
         out.hidden = false;

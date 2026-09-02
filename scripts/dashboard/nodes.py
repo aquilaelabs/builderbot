@@ -730,7 +730,10 @@ def _census(c):
             out["stores"][str(role)[:20]] = {
                 "path": str(s.get("path") or "")[:200],
                 "free_mb": _mb(s.get("free_mb")),
-                "total_mb": _mb(s.get("total_mb"))}
+                "total_mb": _mb(s.get("total_mb")),
+                # What the store holds, from the census's du (phase 6): the
+                # cache's number beside Clear cache. None when not measured.
+                "used_mb": _mb(s.get("used_mb"))}
     tc = c.get("toolchains") if isinstance(c.get("toolchains"), dict) else {}
     out["toolchains"] = {str(k)[:30]: (str(v)[:40] if v else None)
                          for k, v in list(tc.items())[:16]}
@@ -982,7 +985,10 @@ def samples(nid):
 # ssh). Both ask the same question of the same table through job_next(), and
 # concurrency is counted here from the rows rather than trusted from either.
 
-JOB_TYPES = ("exec", "self-update", "compose", "system")
+# exec runs argv; compose is the controller's docker; self-update, system
+# (phase 5), package (a toolchain install against the node's packages store)
+# and cache-clear (drop the node's build caches) are the agent's own.
+JOB_TYPES = ("exec", "self-update", "compose", "system", "package", "cache-clear")
 JOB_END = ("succeeded", "failed", "canceled")
 JOB_ACTIVE = ("queued", "assigned", "running")
 # What a selector may name (door 9: os and arch are placement dimensions).
@@ -1066,7 +1072,7 @@ def _placement(placement):
     return {"select": clean}, ""
 
 
-def job_add(principal, placement, type, spec, project=""):
+def job_add(principal, placement, type, spec, project="", source=None):
     """Queue a job. With an explicit node the node is checked now — it must
     exist, be online, and hold a credential if it is an agent. With a
     selector, at least one node must fit right now: a job nothing could ever
@@ -1100,7 +1106,7 @@ def job_add(principal, placement, type, spec, project=""):
           "ended, step, error, cancel) VALUES (?, ?, ?, ?, ?, ?, ?, ?, "
           "'queued', ?, NULL, ?, NULL, NULL, '', '', 0)",
           (jid, type, str(project or "")[:120], str(principal),
-           json.dumps(pl), json.dumps({}),
+           json.dumps(pl), json.dumps(source if isinstance(source, dict) else {}),
            json.dumps(spec if isinstance(spec, dict) else {}),
            json.dumps([]), pl.get("node") or "", int(time.time())))
     audit(principal, "job-add", jid, {"placement": pl, "type": type})
@@ -1233,7 +1239,7 @@ def job_log(node_id, job_id, chunks):
     return {"ok": True, "stored": n, "cancel": bool(got[0]["cancel"])}
 
 
-def job_result(node_id, job_id, state, exit_code=None, error=""):
+def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     """Terminal. Idempotent by design — the agent retries until it is
     acknowledged, so the second arrival of the same result is a no-op with
     the same answer, not a second audit row."""
@@ -1250,6 +1256,11 @@ def job_result(node_id, job_id, state, exit_code=None, error=""):
     _exec("UPDATE jobs SET state = ?, exit_code = ?, ended = ?, step = '', "
           "error = ? WHERE id = ?",
           (state, code, int(time.time()), str(error or "")[:500], job_id))
+    # What the job left behind: the artifacts it uploaded and, for a failed
+    # one, the workspace the node kept for inspection (docs/nodes.md §6).
+    if isinstance(outputs, list):
+        keep = [o for o in outputs[:64] if isinstance(o, dict)]
+        _exec("UPDATE jobs SET outputs = ? WHERE id = ?", (json.dumps(keep), job_id))
     audit(f"node:{node_id}", "job-result", job_id, {"state": state, "exit": code})
     _jbump()
     with _wake:

@@ -6,7 +6,7 @@
 // exactly the page it was.
 import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { writeFileSync, readFileSync } from 'node:fs';
 
 // Self-sufficient: the compose file the seam test acts on, whether or not
 // devapp.mjs ran first in this invocation.
@@ -239,7 +239,9 @@ ok(list[0].id === 'local',
   const minted = await napi('/api/v1/nodes', { action: 'enroll', name: 'shed', capabilities: ['docker-host'] });
   const en = await napi('/api/v1/agent/enroll', {
     census: { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
-              sandbox: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 } },
+              sandbox: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 },
+                                       packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 } },
+              toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
               mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false, mounted: true, real: 'nas:/mnt/user/old' }],
               network: { interface: 'ens3', addresses: ['10.0.0.40/24'], gateway: '10.0.0.1', dns: ['10.0.0.1'] } },
     version: '3', digest: 'sha256:' + '0'.repeat(64), user: 'bb' },
@@ -313,6 +315,38 @@ ok(list[0].id === 'local',
   ok(phone.over <= 0 && phone.small === 0,
      `...and at phone width it does not scroll sideways (${phone.over}px) and its controls are 16px (${phone.small} small)`);
   await page.setViewportSize({ width: 1280, height: 900 });
+
+  // ---- toolchains on the node, from the Tools tab (phase 6) ---------------
+  await page.evaluate(() => openPackages());
+  await page.waitForSelector('.pkgtab #pkgNodeSel', { timeout: 15000 });
+  await page.selectOption('.pkgtab #pkgNodeSel', minted.id);
+  await page.waitForFunction(() => /on shed/.test(document.querySelector('.pkgtab .pkghead:not(.pkgnode)')?.textContent || ''),
+                             null, { timeout: 15000 });
+  const tools = await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+  ok(tools.some(t => /3\.24\.0/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent)),
+     `picking the node lists what its census says it has, and its store's headroom (${
+       await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
+  const gate = await napi('/api/packages', { action: 'install', names: ['android:platform-tools'], node: 'local' });
+  ok(gate.ok !== undefined || gate.error, '(local installs still go through the installer here)');
+
+  // ---- the project's nodes, in its settings dialog (phase 6) --------------
+  await page.evaluate(() => openProjectsTab());
+  await page.waitForSelector('.doc .projtab [data-rn="alpha"]', { timeout: 15000 });
+  await page.click('.doc .projtab [data-rn="alpha"]');
+  await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+  await page.waitForFunction(id => [...document.querySelectorAll('#rnRoleBuild option')].some(o => o.value === id),
+                             minted.id, { timeout: 10000 });
+  ok(await page.$eval('#rnRoleBuild', s => ![...s.options].some(o => o.value === 'local')),
+     'the roles offer agent nodes and not this container');
+  await page.selectOption('#rnRoleBuild', minted.id);
+  await page.fill('#rnBuildCmd', './gradlew assembleDebug');
+  await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
+  await page.click('#rnGo');
+  await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
+  const saved = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha;
+  ok(saved.nodes.build === minted.id && saved.build === './gradlew assembleDebug'
+     && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi',
+     'Save writes the build node, the command and the outputs onto the project record');
 }
 
 // ---- the seam stays invisible on the sidebar --------------------------------

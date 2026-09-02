@@ -504,6 +504,32 @@ and `bb sdk`, operator-gated; that has to generalize without forking.
 android tooling selects on `toolchains["android-sdk"]`, not on a label
 somebody remembered to set.
 
+*Where phase 6 landed it:* `workspace.py` on the controller makes the
+dirty-tree snapshot — git's view of the tree (tracked plus untracked, minus
+ignored and minus `.git`), never `dist/`, as one uncompressed tar named by
+its sha256 under `/config/snapshots`, the last five per project kept — and
+serves it to the agent's `source?digest=` verb. A run (`bb run`, `bb build`,
+`bb test`, or the same `run` action on `/api/v1/jobs`) snapshots, then
+queues an exec carrying the digest on the node the project assigns to the
+role in its settings dialog (build, test, ci, emulator — the last two are
+settings for phases 7 and 9). The agent fetches by digest into its cache
+store once, checks it, unpacks it under `<data>/jobs/<id>/workspace`, runs
+there with `BUILDERBOT_WORKSPACE` and a per-project `BUILDERBOT_CACHE`
+under the cache store, uploads what the outputs globs match through the
+`artifact` verb — into the project's `dist/` by basename, with
+`dist/.provenance/<name>.json` beside it (job, node, snapshot digest,
+command, sha256) — and deletes the workspace; a failed job keeps it and
+replaces the previous kept failure of that project. The census reports the
+cache store's size and *Clear cache* on the row is a `cache-clear` job. A
+toolchain install on a node is a `package` job: the agent fetches the
+bundle (bb, its library, the catalog) by digest into the packages store
+and runs `bb sdk install` from it with `SDK_ROOT` at the store, gated on the
+store's headroom when this controller has measured the package before; the
+Tools tab's node picker shows what the node's census says it has. Not
+landed: the node browser is the kept-workspace path in the job's log and
+`bb run`'s last line, not a file view; and an APK has not yet compiled on a
+real node — the mechanism is complete, the proof needs a node with a JDK.
+
 ### Artifacts
 
 The job declares outputs as globs; the agent uploads on success,
@@ -1039,6 +1065,10 @@ provenance chain, the read-only workspace browser. The Tools installer gains
 its node picker; toolchain installs become jobs against each node's packages
 store, gated on reported headroom. `package-build` becomes real: an APK
 compiles elsewhere and lands in the Artifacts tab.
+
+*Where phase 6 landed it:* §6's closing paragraph. Agent 4 adds the
+`package` and `cache-clear` job types, workspaces for jobs with a source,
+`used_mb` on the stores and toolchains found in the packages store.
 
 **Phase 7 — services.**
 The Actions runner as a per-node managed service with per-node labels,

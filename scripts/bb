@@ -66,6 +66,10 @@ bb — BuilderBot helper
                          and the scanner's logs
   bb nodes               the node registry, read-only (docs/nodes.md phase 1)
   bb jobs [-n N]         the recent jobs: state, node, what ran, how it ended
+  bb run [opts] -- CMD   snapshot this tree, run CMD on the project's build node,
+                         stream the log back; --out GLOB brings files into dist/
+  bb build               the project's build command, on its build node (settings)
+  bb test                the project's test command, on its test node (settings)
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
@@ -2135,6 +2139,133 @@ for j in rows:
 PY
 }
 
+# bb run / build / test — a job on the project's node, watched from here.
+#
+# The tree is edited here and built there (docs/nodes.md §6): the dashboard
+# snapshots this project's working tree, dirty edits included, queues an exec
+# on the node the project assigns to the role, and this streams the log back
+# and exits with the job's exit code. Outputs are globs relative to the
+# workspace on the node; what matches comes back into dist/ with its
+# provenance beside it. Through the dashboard's API rather than the store
+# directly, because the snapshot is the dashboard's to make.
+cmd_run() {
+    local role=build node="" timeout=3600 outs=() proj auth url
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --role) role="${2:-}"; shift 2 ;;
+            --node) node="${2:-}"; shift 2 ;;
+            --out) outs+=("${2:-}"); shift 2 ;;
+            --timeout) timeout="${2:-3600}"; shift 2 ;;
+            --) shift; break ;;
+            -h|--help)
+                echo "bb run [--role build|test|ci] [--node NAME] [--out GLOB]... [--timeout S] -- CMD..."
+                echo "  snapshot this tree, run CMD on the project's node for the role, stream the log;"
+                echo "  files matching --out come back into dist/. bb build / bb test use the"
+                echo "  commands and outputs in the project's settings dialog."
+                return 0 ;;
+            *) break ;;
+        esac
+    done
+    [ $# -gt 0 ] || die "bb run needs a command after -- (bb run -h)"
+    proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
+    auth="${DASHBOARD_AUTH:-}"
+    [ -n "$auth" ] || die "DASHBOARD_AUTH is not set — this talks to the dashboard"
+    url="http://127.0.0.1:${DASHBOARD_PORT:-7680}"
+    BB_RUN_OUTS="$(printf '%s\n' "${outs[@]}")" \
+    python3 - "$url" "$auth" "$proj" "$role" "$node" "$timeout" "$@" <<'PY'
+import base64, json, os, sys, time, urllib.request, urllib.error
+url, auth, proj, role, node, timeout, *argv = sys.argv[1:]
+outs = [o for o in os.environ.get("BB_RUN_OUTS", "").split("\n") if o]
+hdr = {"Authorization": "Basic " + base64.b64encode(auth.encode()).decode(),
+       "Content-Type": "application/json"}
+def call(path, body=None):
+    req = urllib.request.Request(url + path, data=json.dumps(body).encode() if body is not None else None,
+                                 headers=hdr, method="POST" if body is not None else "GET")
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        try:
+            return json.load(e)
+        except ValueError:
+            return {"error": f"HTTP {e.code}"}
+    except (OSError, ValueError) as e:
+        return {"error": str(e)}
+nid = node
+if node:
+    # A node by name is what a person types; the API takes the id.
+    got = call("/api/v1/nodes").get("nodes") or []
+    hit = [n for n in got if n["id"] == node or n["name"] == node]
+    if not hit:
+        sys.exit(f"[builderbot] ERROR: no node called {node} (bb nodes lists them)")
+    nid = hit[0]["id"]
+r = call("/api/v1/jobs", {"action": "run", "project": proj, "role": role, "node": nid,
+                          "argv": argv, "outputs": outs, "timeout": int(timeout),
+                          "from": "session" if os.environ.get("CLAUDECODE") else "operator"})
+if r.get("error"):
+    sys.exit(f"[builderbot] ERROR: {r['error']}")
+names = {n["id"]: n["name"] for n in (call("/api/v1/nodes").get("nodes") or [])}
+print(f"[builderbot] {r['job']} queued on {names.get(r['node'], r['node'])} — "
+      f"snapshot {r['snapshot'][7:19]}, {r['files']} files", flush=True)
+shown = 0
+state = ""
+while True:
+    j = call(f"/api/v1/jobs?id={r['job']}")
+    if j.get("error"):
+        sys.exit(f"[builderbot] ERROR: {j['error']}")
+    log = j.get("log") or ""
+    if len(log) > shown:
+        sys.stdout.write(log[shown:])
+        sys.stdout.flush()
+        shown = len(log)
+    if j["state"] in ("succeeded", "failed", "canceled"):
+        state = j["state"]
+        break
+    time.sleep(1)
+arts = [o for o in (j.get("outputs") or []) if o.get("kind") == "artifact"]
+kept = [o for o in (j.get("outputs") or []) if o.get("kind") == "workspace"]
+line = f"[builderbot] {r['job']} {state}"
+if j.get("error"):
+    line += f" — {j['error']}"
+if arts:
+    line += " — into dist/: " + ", ".join(a["path"][5:] for a in arts)
+if kept:
+    line += f" — workspace kept on the node at {kept[0]['path']}"
+print(line, flush=True)
+sys.exit(0 if state == "succeeded" else (j.get("exit_code") or 1))
+PY
+}
+
+# The two named shapes: what the project's settings dialog says a build and
+# a test are, with the outputs it lists. Read from the same file the
+# dashboard writes, so there is nothing to agree about.
+cmd_build_or_test() {
+    local role="$1" proj
+    shift
+    proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
+    # One value per line: the command first, then each output glob. Read as
+    # lines rather than words, because a build command has spaces in it.
+    local -a rec
+    mapfile -t rec < <(DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$proj" "$role" <<'PY'
+import json, os, sys
+proj, role = sys.argv[1:3]
+try:
+    d = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "claude-prefs.json")))
+    rec = (d.get("projects") or {}).get(proj) or {}
+except (OSError, ValueError):
+    rec = {}
+print(rec.get(role) or "")
+for g in rec.get("outputs") or []:
+    print(g)
+PY
+)
+    local cmd="${rec[0]:-}"
+    [ -n "$cmd" ] || die "no $role command is set for $proj — the operator sets it in the project's settings dialog (Build and test)"
+    local -a args=(--role "$role") g
+    for g in "${rec[@]:1}"; do [ -n "$g" ] && args+=(--out "$g"); done
+    cmd_run "${args[@]}" "$@" -- sh -c "$cmd"
+}
+
 cmd_findings() {
     local target="" scope=mine proj lvl="" rule="" fnd=""
     # `bb findings history` reads the notebook's fourth log — what the scanner
@@ -3249,6 +3380,9 @@ case "${1:-help}" in
     findings) shift; cmd_findings "$@" ;;
     nodes) shift; cmd_nodes "$@" ;;
     jobs)  shift; cmd_jobs "$@" ;;
+    run)   shift; cmd_run "$@" ;;
+    build) shift; cmd_build_or_test build "$@" ;;
+    test)  shift; cmd_build_or_test test "$@" ;;
     # `todo` still works: sessions started before the rename carry it in their
     # prompt, and a live conversation should not break on a word change.
     roadmap|todo) shift; cmd_roadmap "$@" ;;

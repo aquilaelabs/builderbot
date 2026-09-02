@@ -48,6 +48,7 @@ Runs anywhere Python 3.8+ is, with nothing installed:
     builderbot-agent status         # what this node is, and does it answer
 """
 import contextlib
+import glob
 import hashlib
 import http.client
 import json
@@ -59,11 +60,12 @@ import socket
 import ssl
 import subprocess
 import sys
+import tarfile
 import threading
 import time
 import urllib.parse
 
-AGENT_VERSION = "3"
+AGENT_VERSION = "4"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -166,6 +168,53 @@ class Controller:
         except ValueError:
             return r.status, {"error": payload[:200].decode("utf-8", "replace")}
 
+    def fetch(self, path, dest, timeout=600):
+        """GET a large body straight to a file. (status, digest-header)
+        — the snapshot and the bundle both arrive this way, and neither
+        belongs in memory twice."""
+        try:
+            c = self._conn(timeout)
+            c.request("GET", f"{self.base}/api/v1/agent/{path}", None,
+                      {"Authorization": "Bearer " + self.token,
+                       "User-Agent": f"builderbot-agent/{AGENT_VERSION}"})
+            r = c.getresponse()
+            if r.status != 200:
+                r.read()
+                c.close()
+                return r.status, ""
+            tmp = dest + ".part"
+            with open(tmp, "wb") as f:
+                shutil.copyfileobj(r, f)
+            c.close()
+            os.replace(tmp, dest)
+            return 200, (r.getheader("X-Snapshot-Digest") or r.getheader("X-Bundle-Digest") or "")
+        except (OSError, http.client.HTTPException) as e:
+            return 0, str(e)
+
+    def upload(self, path, src, timeout=600):
+        """POST a file as the raw body. (status, decoded answer)."""
+        try:
+            size = os.path.getsize(src)
+            c = self._conn(timeout)
+            c.putrequest("POST", f"{self.base}/api/v1/agent/{path}")
+            c.putheader("Authorization", "Bearer " + self.token)
+            c.putheader("User-Agent", f"builderbot-agent/{AGENT_VERSION}")
+            c.putheader("Content-Type", "application/octet-stream")
+            c.putheader("Content-Length", str(size))
+            c.endheaders()
+            with open(src, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    c.send(chunk)
+            r = c.getresponse()
+            payload = r.read()
+            c.close()
+        except (OSError, http.client.HTTPException) as e:
+            return 0, {"error": f"{type(e).__name__}: {e}"}
+        try:
+            return r.status, json.loads(payload) if payload else {}
+        except ValueError:
+            return r.status, {"error": payload[:200].decode("utf-8", "replace")}
+
 
 # ---------------------------------------------------------------------------
 # the census and the sample
@@ -208,7 +257,7 @@ def _sshd_listening():
     return False
 
 
-def _stores(stores):
+def _stores(stores, used=False):
     out = {}
     for role, path in (stores or {}).items():
         try:
@@ -220,20 +269,55 @@ def _stores(stores):
             # Not there is a different fact from full: reported as null so
             # the row says "missing" rather than "0MB free".
             out[role] = {"path": path, "free_mb": None, "total_mb": None}
+            continue
+        if used:
+            # What the store itself holds — the cache's size is the number
+            # the row shows beside its Clear (docs/nodes.md §6). du, at the
+            # census only: a walk of a big cache is not a per-poll cost.
+            n = _run(["du", "-sm", path], timeout=60).split()
+            out[role]["used_mb"] = int(n[0]) if n and n[0].isdigit() else None
     return out
+
+
+# Where a toolchain installed into the packages store keeps its command,
+# relative to the store (bb sdk's layout), for the census to find without
+# PATH knowing about it. `android` is a directory, not a command.
+STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
+               "dotnet": ("dotnet/dotnet",), "go": ("go/bin/go",),
+               "node": ("node/bin/node",), "swift": ("swift/usr/bin/swift",),
+               "android-sdk": ("android/cmdline-tools", "android/platform-tools")}
+
+
+def _toolchains(state):
+    """What this node can build with: on PATH, or in its packages store.
+    The census's `toolchains` is what package-build placement selects on."""
+    tc = {}
+    store = (state.get("stores") or {}).get("packages") or ""
+    def find(name):
+        for rel in STORE_TOOLS.get(name, ()):
+            p = os.path.join(store, rel)
+            if store and os.path.exists(p):
+                return p
+        return shutil.which(name)
+    j = find("java")
+    if j:
+        m = re.search(r'version "([^"]+)"', _run([j, "-version"]))
+        tc["java"] = m.group(1) if m else "present"
+    for name in ("flutter", "dotnet", "node", "go"):
+        p = find(name)
+        if p and os.path.isfile(p):
+            arg = "version" if name == "go" else "--version"
+            tc[name] = (_run([p, arg], timeout=20).splitlines() or ["present"])[0][:40]
+    if find("android-sdk"):
+        tc["android-sdk"] = "present"
+    return tc
 
 
 def census(state):
     """What this machine is. Asked at hello — every ten minutes — so the
     slow questions (docker, java) are allowed here and not in the sample."""
     tot, _ = _mem()
-    tc = {}
-    if shutil.which("java"):
-        m = re.search(r'version "([^"]+)"', _run(["java", "-version"]))
-        tc["java"] = m.group(1) if m else "present"
-    for name in ("flutter", "dotnet", "node"):
-        if shutil.which(name):
-            tc[name] = (_run([name, "--version"]).splitlines() or ["present"])[0][:40]
+    tc = _toolchains(state)
     gpu = _run(["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"]) \
         if shutil.which("nvidia-smi") else ""
     return {
@@ -248,7 +332,7 @@ def census(state):
         if shutil.which("docker") else "",
         "gpu": gpu.splitlines()[0][:80] if gpu else "",
         "sshd": _sshd_listening(),
-        "stores": _stores(state.get("stores")),
+        "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
         # The configuration plane's reported half (docs/nodes.md §12): what
         # is mounted and from where, and the address this machine is on.
@@ -394,6 +478,7 @@ class Job(threading.Thread):
         # "failed" so the row does not read as the command's own fault.
         self.canceled = False
         self.proc = None
+        self.outputs = []        # what the job left behind, for the result
 
     def cancel(self):
         self.canceled = True
@@ -440,6 +525,10 @@ class Job(threading.Thread):
                 state, code = self.agent.self_update(self, spec)
             elif self.job.get("type") == "system":
                 state, code = self.agent.system(self, spec)
+            elif self.job.get("type") == "package":
+                state, code = self.agent.package(self, spec)
+            elif self.job.get("type") == "cache-clear":
+                state, code = self.agent.cache_clear(self, spec)
             else:
                 state, code = self.exec(spec)
         except Exception as e:                       # noqa: BLE001 — reported, not raised
@@ -456,7 +545,7 @@ class Job(threading.Thread):
             if self.flush():
                 st, _ = self.agent.ctl.call(
                     "result", {"job": self.job["id"], "state": state, "exit": code,
-                               "error": error},
+                               "error": error, "outputs": self.outputs},
                     timeout=20)
                 if st == 200:
                     break
@@ -496,6 +585,23 @@ class Job(threading.Thread):
         for k, v in (spec.get("env") or {}).items():
             env[str(k)] = str(v)
         who = self.agent.drop_privileges(env)
+        # A job with a source runs in a workspace of its own (docs/nodes.md
+        # §6): the snapshot, materialized under the data store, with the
+        # project's persistent cache beside it in the environment.
+        src = self.job.get("source") or {}
+        ws = None
+        if src.get("digest"):
+            ws = self.agent.materialize(self, src, who)
+            if ws is None:
+                return "failed", 66
+            cwd = ws
+            env["BUILDERBOT_WORKSPACE"] = ws
+            project = re.sub(r"[^A-Za-z0-9._-]", "_", str(src.get("project") or spec.get("project") or "project"))
+            cache = os.path.join(stores.get("cache") or "/tmp", project)
+            self.agent.own_dir(cache, who)
+            env["BUILDERBOT_CACHE"] = cache
+            env["BUILDERBOT_PROJECT"] = project
+            self.say(f"workspace {ws} ({src.get('files', '?')} files); cache {cache}\n")
         try:
             timeout = float(spec.get("timeout") or 3600)
         except (TypeError, ValueError):
@@ -537,10 +643,14 @@ class Job(threading.Thread):
         self.proc = None
         if self.canceled:
             self.say("stopped\n")
-            return "canceled", 130
-        if killed:
-            return "failed", 124
-        return ("succeeded" if p.returncode == 0 else "failed"), p.returncode
+            state, code = "canceled", 130
+        elif killed:
+            state, code = "failed", 124
+        else:
+            state, code = ("succeeded" if p.returncode == 0 else "failed"), p.returncode
+        if ws is not None:
+            self.agent.finish_workspace(self, ws, spec, state)
+        return state, code
 
     @staticmethod
     def _kill(p):
@@ -712,6 +822,196 @@ class Agent:
         os.chmod(tmp, 0o755)
         os.replace(tmp, me)
         job.say(f"installed {got[:19]}…; restarting\n")
+        return "succeeded", 0
+
+    # -- the workspace (docs/nodes.md §6, phase 6) ------------------------------
+    def own_dir(self, path, who):
+        """Make a directory the enrolled account can use — a job runs as it,
+        and this process is root."""
+        os.makedirs(path, exist_ok=True)
+        if who:
+            with contextlib.suppress(OSError):
+                os.chown(path, who["user"], who["group"])
+
+    def materialize(self, job, src, who):
+        """The job's source, on disk: the snapshot by digest — from the
+        cache store when this node has fetched it before, from the
+        controller otherwise, checked against its digest either way — and
+        unpacked into a directory of the job's own under the data store."""
+        stores = self.state.get("stores") or {}
+        digest = str(src.get("digest") or "")
+        hexd = digest.split(":", 1)[-1]
+        if not re.fullmatch(r"[0-9a-f]{64}", hexd):
+            job.say(f"refused: not a snapshot digest: {digest!r}\n")
+            return None
+        snaps = os.path.join(stores.get("cache") or "/tmp", "snapshots")
+        os.makedirs(snaps, exist_ok=True)
+        tar_path = os.path.join(snaps, hexd + ".tar")
+        if not os.path.isfile(tar_path):
+            job.say(f"fetching snapshot {hexd[:12]}…\n")
+            st, _ = self.ctl.fetch(f"source?digest={hexd}", tar_path)
+            if st != 200:
+                job.say(f"the controller has no snapshot {hexd[:12]} ({st}) — the tree "
+                        "has moved on; queue the job again\n")
+                return None
+        h = hashlib.sha256()
+        with open(tar_path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        if h.hexdigest() != hexd:
+            os.remove(tar_path)
+            job.say("the cached snapshot did not match its digest; dropped it — queue the job again\n")
+            return None
+        ws = os.path.join(stores.get("data") or "/tmp", "jobs", job.job["id"], "workspace")
+        shutil.rmtree(os.path.dirname(ws), ignore_errors=True)
+        os.makedirs(ws)
+        with tarfile.open(tar_path) as tar:
+            # Python 3.12's filter refuses paths that escape the target;
+            # older interpreters get the members checked by hand.
+            if hasattr(tarfile, "data_filter"):
+                tar.extractall(ws, filter="data")
+            else:
+                for m in tar.getmembers():
+                    if m.name.startswith("/") or ".." in m.name.split("/"):
+                        raise RuntimeError(f"snapshot member escapes the workspace: {m.name}")
+                tar.extractall(ws)
+        if who:
+            for d, dirs, files in os.walk(os.path.dirname(ws)):
+                for x in [d] + [os.path.join(d, f) for f in files]:
+                    with contextlib.suppress(OSError):
+                        os.lchown(x, who["user"], who["group"])
+        return ws
+
+    def finish_workspace(self, job, ws, spec, state):
+        """After the command: on success upload what the outputs globs
+        match and delete the job's directory; on failure keep it for
+        inspection and drop the older kept one for the same project, so
+        a run of failures does not fill the store."""
+        jobdir = os.path.dirname(ws)
+        project = str((job.job.get("source") or {}).get("project") or "")
+        if state == "succeeded":
+            seen = set()
+            for pat in (spec.get("outputs") or [])[:16]:
+                for hit in sorted(glob.glob(os.path.join(ws, str(pat)), recursive=True)):
+                    if not os.path.isfile(hit):
+                        continue
+                    rel = os.path.relpath(hit, ws)
+                    # dist/<basename>, which is what a person looks for; two
+                    # matches sharing a name are told apart by the directory
+                    # the second came from, so a debug and a release APK of
+                    # the same name both arrive.
+                    name = os.path.basename(rel)
+                    if name in seen:
+                        parent = os.path.basename(os.path.dirname(rel)) or "2"
+                        name = f"{parent}-{name}"
+                    seen.add(name)
+                    st, r = self.ctl.upload(f"artifact?job={job.job['id']}&name={name}", hit)
+                    if st == 200 and not r.get("error"):
+                        job.say(f"artifact {r['path']} ({os.path.getsize(hit)} bytes)\n")
+                        job.outputs.append({"kind": "artifact", "path": r["path"],
+                                            "size": r.get("size"), "sha256": r.get("sha256")})
+                    else:
+                        job.say(f"could not deliver {rel}: {r.get('error') or st}\n")
+            shutil.rmtree(jobdir, ignore_errors=True)
+            return
+        # Kept: this one. Dropped: any earlier kept failure of the same project.
+        marker = os.path.join(jobdir, "project")
+        with contextlib.suppress(OSError):
+            with open(marker, "w") as f:
+                f.write(project)
+        jobs_root = os.path.dirname(jobdir)
+        for other in os.listdir(jobs_root) if os.path.isdir(jobs_root) else []:
+            od = os.path.join(jobs_root, other)
+            if od == jobdir or other in self.jobs:
+                continue
+            try:
+                with open(os.path.join(od, "project")) as f:
+                    if f.read() == project:
+                        shutil.rmtree(od, ignore_errors=True)
+            except OSError:
+                continue
+        job.say(f"the workspace is kept at {ws} for a look; the next failure of "
+                f"{project or 'this project'} replaces it\n")
+        job.outputs.append({"kind": "workspace", "path": ws})
+
+    def cache_clear(self, job, spec):
+        """Drop this node's build caches — one project's, or all of them.
+        The one thing that goes wrong with caches is a full disk, and this
+        is the button for it (docs/nodes.md §6)."""
+        root = (self.state.get("stores") or {}).get("cache") or ""
+        if not root or not os.path.isdir(root):
+            job.say("no cache store here\n")
+            return "succeeded", 0
+        project = re.sub(r"[^A-Za-z0-9._-]", "_", str(spec.get("project") or ""))
+        targets = [os.path.join(root, project)] if project else \
+                  [os.path.join(root, d) for d in os.listdir(root)]
+        n = 0
+        for t in targets:
+            if os.path.isdir(t):
+                shutil.rmtree(t, ignore_errors=True)
+                job.say(f"removed {t}\n")
+                n += 1
+        job.say(f"cleared {n} director{'y' if n == 1 else 'ies'}\n")
+        self.hello()
+        return "succeeded", 0
+
+    # -- toolchains (docs/nodes.md §6) --------------------------------------------
+    def package(self, job, spec):
+        """`bb sdk install|remove NAME` against this node's packages store,
+        with the bb the controller ships: the bundle (bb, its library, the
+        catalog) is fetched by digest into the store and run from there as
+        the enrolled account, SDK_ROOT pointing at the store. One catalog,
+        per-node state — the census reports what landed."""
+        stores = self.state.get("stores") or {}
+        store = stores.get("packages") or ""
+        if not store:
+            job.say("refused: this node has no packages store\n")
+            return "failed", 78
+        action = spec.get("action")
+        names = [re.sub(r"[^A-Za-z0-9:;._-]", "", str(n)) for n in (spec.get("names") or [])][:8]
+        if action not in ("install", "remove") or not names:
+            job.say("refused: a package job installs or removes named packages\n")
+            return "failed", 64
+        who = self.drop_privileges({})
+        self.own_dir(store, who)
+        bbdir = os.path.join(store, ".bb")
+        os.makedirs(bbdir, exist_ok=True)
+        tar_path = os.path.join(bbdir, "bundle.tar")
+        st, digest = self.ctl.fetch("download?what=bundle", tar_path)
+        if st != 200:
+            job.say(f"could not fetch bb from the controller ({st})\n")
+            return "failed", 69
+        hexd = digest.split(":", 1)[-1]
+        into = os.path.join(bbdir, hexd[:16] or "bundle")
+        if not os.path.isdir(into):
+            with tarfile.open(tar_path) as tar:
+                if hasattr(tarfile, "data_filter"):
+                    tar.extractall(into, filter="data")
+                else:
+                    tar.extractall(into)
+            os.chmod(os.path.join(into, "scripts", "bb"), 0o755)
+            job.say(f"bb {hexd[:12]} unpacked into {into}\n")
+        if who:
+            for d, dirs, files in os.walk(into):
+                for x in [d] + [os.path.join(d, f) for f in files]:
+                    with contextlib.suppress(OSError):
+                        os.lchown(x, who["user"], who["group"])
+        bad = 0
+        for name in names:
+            job.say(f"== bb sdk {action} {name}\n")
+            st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
+                                            "sdk", action, name],
+                                   "cwd": store, "timeout": spec.get("timeout") or 3600,
+                                   "env": {"SDK_ROOT": store, "BUILDER_HOME": store,
+                                           "BB_NODE_PACKAGES": "1"}})
+            if st_ != "succeeded":
+                bad += 1
+                if st_ == "canceled":
+                    return st_, code
+        self.hello()
+        if bad:
+            job.say(f"{bad} of {len(names)} did not {action}\n")
+            return "failed", 1
         return "succeeded", 0
 
     # -- the configuration plane (docs/nodes.md §12, phase 5) -----------------

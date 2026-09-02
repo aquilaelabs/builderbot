@@ -7,7 +7,7 @@
 // exists to prove.
 import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, writeFileSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync, readdirSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -109,7 +109,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
-     && n.agent.version === '3' && /^sha256:/.test(n.agent.digest),
+     && n.agent.version === '4' && /^sha256:/.test(n.agent.digest),
      'the row is online with the census, agent version and digest');
   // single use
   let again = '';
@@ -210,7 +210,7 @@ try {
     const cfg = await api('/api/v1/nodes', { action: 'config', id: minted.id,
       config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
                          { type: 'virtiofs', source: 'projects', path: '/workspace', ro: true }],
-                stores: { cache: `${DIR}/agentcache` },
+                stores: { cache: `${DIR}/agentcache`, packages: `${DIR}/agentpackages` },
                 network: { mode: 'static', address: '10.9.9.9/24', gateway: '10.9.9.1', dns: ['10.9.9.1'] } } });
     ok(cfg.ok && cfg.desired.mounts.length === 2 && cfg.desired.network.mode === 'static',
        'a desired config is validated and kept on the record');
@@ -258,6 +258,123 @@ try {
     }, 30000);
     ok(afin && afin.state === 'succeeded' && /already applied/.test(afin.log),
        '...and applying the same config again changes nothing');
+  }
+
+  // ---- the workspace (phase 6) ----------------------------------------------
+  // The tree is edited here and built there: a run snapshots alpha's working
+  // tree, dirty edits included, the agent materializes it, the command runs
+  // in it, and what the outputs globs match comes back into dist/ with its
+  // provenance. A failure keeps the workspace on the node for a look.
+  {
+    writeFileSync(`${DIR}/ws/alpha/hello.txt`, 'hi from the tree\n');
+    mkdirSync(`${DIR}/ws/alpha/dist`, { recursive: true });
+    writeFileSync(`${DIR}/ws/alpha/dist/stale.apk`, 'should not travel');
+    const norole = await api('/api/v1/jobs', { action: 'run', project: 'alpha', role: 'test', argv: ['true'] });
+    ok(/no test node/.test(norole.error || ''), `a role with no node set is refused, naming the role (${norole.error})`);
+    const onlocal = await api('/api/v1/jobs', { action: 'run', project: 'alpha', node: 'local', argv: ['true'] });
+    ok(/runs no agent/.test(onlocal.error || ''), 'local is not a build node — it has no workspace of its own');
+    const pr = await api('/api/prefs', { project: 'alpha', nodes: { build: minted.id },
+      build: 'cat hello.txt && mkdir -p out && echo built > out/app-1.0.apk', outputs: ['out/*.apk'] });
+    ok(pr.ok && pr.nodes.build === minted.id && /hello/.test(pr.build),
+       'the project record takes a build node, a build command and its outputs');
+    const run = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
+      argv: ['sh', '-c', 'cat hello.txt; ls dist 2>/dev/null | wc -l; mkdir -p out; echo built > out/app-1.0.apk; echo notes > out/notes.txt; echo cached > "$BUILDERBOT_CACHE/x"'],
+      outputs: ['out/*.apk'] });
+    ok(run.ok && /^sha256:[0-9a-f]{64}$/.test(run.snapshot) && run.files > 0 && run.node === minted.id,
+       `a run snapshots the tree and queues on the build node (${run.files} files, ${run.snapshot?.slice(0, 19)})`);
+    const fin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${run.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(fin && fin.state === 'succeeded' && /hi from the tree/.test(fin.log) && /workspace .*jobs\/j_/.test(fin.log),
+       `the agent materializes the snapshot and runs there (${fin?.state}${fin?.state === 'succeeded' ? '' : ': ' + (fin?.error || '') + ' | ' + (fin?.log || '').slice(-400).replace(/\n/g, ' / ')})`);
+    ok(fin && /\n0\n/.test(fin.log), '...dist/ stays behind: the snapshot carries the tree, not the shelf');
+    ok(fin && fin.source.digest === run.snapshot && fin.source.project === 'alpha',
+       '...and the row records the source it was built from');
+    ok(existsSync(`${DIR}/ws/alpha/dist/app-1.0.apk`) && !existsSync(`${DIR}/ws/alpha/dist/notes.txt`)
+       && readFileSync(`${DIR}/ws/alpha/dist/app-1.0.apk`, 'utf8') === 'built\n',
+       `what the outputs match lands in dist/, and nothing else does (${
+         (() => { try { return readdirSync(`${DIR}/ws/alpha/dist`).join(','); } catch { return 'no dist'; } })()
+       } | ${(fin?.log || '').split('\n').filter(l => /artifact|deliver/.test(l)).join(' / ')})`);
+    const prov = JSON.parse(readFileSync(`${DIR}/ws/alpha/dist/.provenance/app-1.0.apk.json`, 'utf8'));
+    ok(prov.job === run.job && prov.node === minted.id && prov.source.digest === run.snapshot
+       && /^[0-9a-f]{64}$/.test(prov.sha256),
+       '...with its provenance beside it: job, node, snapshot, sha256');
+    ok(fin && fin.outputs.some(o => o.kind === 'artifact' && o.path === 'dist/app-1.0.apk'),
+       '...and the job row lists the artifact it delivered');
+    const listed = (await api('/api/artifacts?project=alpha')).artifacts || [];
+    ok(listed.some(a => a.name === 'app-1.0.apk' && a.prov?.job === run.job) && !listed.some(a => /provenance/.test(a.path)),
+       'the Artifacts listing carries the provenance and hides the record itself');
+    ok(!existsSync(`${DIR}/agentdata/jobs/${run.job}`) && existsSync(`${DIR}/agentcache/alpha/x`),
+       'a finished workspace is gone; the project cache beside it persists');
+    // the same tree again transfers nothing
+    const again = await api('/api/v1/jobs', { action: 'run', project: 'alpha', argv: ['true'] });
+    const afin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${again.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(again.snapshot === run.snapshot && afin && !/fetching snapshot/.test(afin.log),
+       'an unchanged tree makes the same digest, and the node uses its cached copy');
+    // a failure keeps the workspace
+    const bad = await api('/api/v1/jobs', { action: 'run', project: 'alpha', argv: ['sh', '-c', 'echo boom; exit 3'] });
+    const bfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${bad.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    const kept = bfin?.outputs?.find(o => o.kind === 'workspace');
+    ok(bfin && bfin.state === 'failed' && kept && existsSync(kept.path) && /kept at/.test(bfin.log),
+       `a failed build keeps its workspace on the node and says where (${kept?.path})`);
+    // cache-clear is a job too
+    const cc = await api('/api/v1/nodes', { action: 'cache-clear', id: minted.id });
+    const cfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${cc.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(cfin && cfin.state === 'succeeded' && !existsSync(`${DIR}/agentcache/alpha`),
+       'Clear cache drops the project caches through a job');
+    const n2 = await nodeById(minted.id);
+    ok(typeof n2.reported.stores.cache.used_mb === 'number' && typeof n2.reported.toolchains === 'object',
+       'the census reports the cache store\'s size and the toolchains it finds');
+    // bb run and bb build, from a session's shell
+    const port = new globalThis.URL(URL).port;
+    const env = { ...process.env, DASHBOARD_AUTH: 'test:test', DASHBOARD_PORT: port,
+                  DASHBOARD_STATE: `${DIR}/state`, BB_PROJECT: 'alpha', CLAUDECODE: '1' };
+    const out = execFileSync('bash', [`${REPO}/scripts/bb`, 'run', '--node', 'agentbox', '--', 'sh', '-c', 'echo hi from bb run'],
+      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();
+    ok(/queued on agentbox/.test(out) && /hi from bb run/.test(out) && /succeeded/.test(out),
+       'bb run queues on the named node, streams the log and says how it ended');
+    const built = execFileSync('bash', [`${REPO}/scripts/bb`, 'build'],
+      { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env }).toString();
+    ok(/hi from the tree/.test(built) && /into dist\/: app-1.0.apk/.test(built),
+       'bb build runs the project\'s build command on its build node and names what came back');
+    let failed = '';
+    try { execFileSync('bash', [`${REPO}/scripts/bb`, 'test'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env, stdio: 'pipe' }); }
+    catch (e) { failed = String(e.stderr) + String(e.stdout); }
+    ok(/no test command is set/.test(failed), 'bb test with nothing set says what to set, and where');
+    const sess = (await api('/api/v1/jobs?project=alpha&n=3')).jobs;
+    ok(sess.some(j => j.requested_by === 'session:alpha'), 'a run from a session is attributed to the session');
+  }
+
+  // ---- toolchains on a node (phase 6) ----------------------------------------
+  // A package install is a job: the bundle (bb, its library, the catalog)
+  // travels by digest into the node's packages store and runs there. The
+  // package asked for is not installed, so this proves the channel and not
+  // a download.
+  {
+    const pj = await api('/api/packages', { action: 'remove', names: ['flutter'], node: minted.id });
+    ok(pj.ok && /^j_/.test(pj.job), `a package job is queued on the node (${pj.job || pj.error})`);
+    const pfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${pj.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(pfin && pfin.type === 'package' && /bb .* unpacked into .*agentpackages\/\.bb/.test(pfin.log)
+       && /== bb sdk remove flutter/.test(pfin.log) && /not installed|unknown package/.test(pfin.log),
+       `the bundle lands in the packages store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
+    ok(existsSync(`${DIR}/agentpackages/.bb/bundle.tar`), '...and stays for the next one');
+    const view = await api(`/api/packages?node=${minted.id}`);
+    ok(view.node === minted.id && view.root === `${DIR}/agentpackages` && Array.isArray(view.items)
+       && view.items.every(i => 'installed' in i),
+       'the Tools tab reads that node\'s state: its store, and what its census says it has');
   }
 
   // Test on an agent node is a round trip through the channel
@@ -333,8 +450,11 @@ try {
 // store holding local and the sandbox and nothing else.
 for (const n of (await api('/api/v1/nodes')).nodes)
   if (n.kind === 'agent') await api('/api/v1/nodes', { action: 'retire', id: n.id });
-ok((await api('/api/v1/nodes')).nodes.length === 2,
-   'retired agent nodes leave the list and the store is as it was');
+// Agent nodes only: another suite in the same run may have left an ssh
+// node of its own, and that is its business.
+const left = (await api('/api/v1/nodes')).nodes;
+ok(!left.some(n => n.kind === 'agent') && left.some(n => n.id === 'local'),
+   `retired agent nodes leave the list and the store is as it was (${left.map(n => n.name + ':' + n.kind + ':' + n.state).join(', ')})`);
 
 ok(page.errors.length === 0,
    `zero console errors${page.errors.length ? ': ' + page.errors[0] : ''}`);

@@ -644,9 +644,9 @@ await initWith('0.2.0');
 await waitTarget('0.2.0');
 ok(readFileSync(`${B}/VERSION`, 'utf8').trim() === '0.2.0',
    'the tab can give a project its first version');
-ok(execFileSync('git', ['-C', B, 'log', '-1', '--format=%s'], { env }).toString().trim()
-     === 'Add VERSION at 0.2.0',
-   '...committing it, with no "(session)" mark since the operator did it');
+const lastMsg = execFileSync('git', ['-C', B, 'log', '-1', '--format=%s'], { env }).toString().trim();
+ok(lastMsg === 'Add VERSION at 0.2.0',
+   `...committing it, with no "(session)" mark since the operator did it (got: ${lastMsg})`);
 ok((await page.$$(`${NB} #verBox [data-verbump]`)).length === 3,
    '...and the bump buttons appear once there is something to bump');
 ok((await page.$$(`${NB} #verBox [data-verask]:not([data-verask="@fold"])`)).length === 1,
@@ -719,7 +719,7 @@ await page.evaluate(async () => {
 // the browser logs as a failed resource. An expected refusal is not a defect,
 // and folding it into this assertion would blunt the thing it exists to catch.
 const cleanSoFar = [...(await page.errors)];
-ok(cleanSoFar.length === 0, 'no console errors from the version block');
+ok(cleanSoFar.length === 0, `no console errors from the version block${cleanSoFar.length ? ' — got: ' + JSON.stringify(cleanSoFar.slice(0, 3)) : ''}`);
 
 // A project with no session says so rather than silently doing nothing.
 const askDead = await page.evaluate(async () => {

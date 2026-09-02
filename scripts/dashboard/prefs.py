@@ -77,7 +77,25 @@ def _clean(rec):
             # Which docker-host node this project's containers default to.
             # A node id, opaque here: prefs stores the choice, the pickers
             # resolve it, and "" means auto — the default docker node.
-            "dockernode": str(rec.get("dockernode") or "")}
+            "dockernode": str(rec.get("dockernode") or ""),
+            # Phase 6 (docs/nodes.md §6): which node this project's builds,
+            # tests, CI and emulation run on — node ids, "" meaning none set
+            # — and what `bb build` / `bb test` run there, with the globs
+            # whose matches come back into dist/.
+            "nodes": {r: str((rec.get("nodes") or {}).get(r) or "")[:40]
+                      for r in ROLES} if isinstance(rec.get("nodes"), dict)
+                     else {r: "" for r in ROLES},
+            "build": str(rec.get("build") or "")[:500],
+            "test": str(rec.get("test") or "")[:500],
+            "outputs": [str(g)[:200] for g in (rec.get("outputs") or [])
+                        if str(g)][:16] if isinstance(rec.get("outputs"), list) else []}
+
+
+# The roles a project assigns nodes to. build and test are what `bb build`
+# and `bb test` submit to; ci is read by phase 7's runner placement and
+# emulator by phase 9's device host — settings first, so the dialog does not
+# grow a field per phase.
+ROLES = ("build", "test", "ci", "emulator")
 
 
 def get(project):
@@ -91,7 +109,8 @@ def all_projects():
     return {k: _clean(v) for k, v in d.items() if isinstance(k, str)}
 
 
-def set_prefs(project, model=None, effort=None, dockernode=None):
+def set_prefs(project, model=None, effort=None, dockernode=None, nodes=None,
+              build=None, test=None, outputs=None):
     """Change any of one project's settings; None leaves it, "" clears it."""
     if not project:
         return {"error": "no project"}
@@ -108,10 +127,22 @@ def set_prefs(project, model=None, effort=None, dockernode=None):
             cur["effort"] = effort
         if dockernode is not None:
             cur["dockernode"] = str(dockernode)[:40]
+        if isinstance(nodes, dict):
+            for r in ROLES:
+                if r in nodes:
+                    cur["nodes"][r] = str(nodes[r] or "")[:40]
+        if build is not None:
+            cur["build"] = str(build)[:500].strip()
+        if test is not None:
+            cur["test"] = str(test)[:500].strip()
+        if outputs is not None:
+            got = outputs if isinstance(outputs, list) else str(outputs).split(",")
+            cur["outputs"] = [str(g).strip()[:200] for g in got if str(g).strip()][:16]
         # An empty pair is removed rather than stored: the file then says only
         # what somebody chose, and a project left alone leaves no trace to read
         # past when its directory is renamed or deleted.
-        if cur["model"] or cur["effort"] or cur.get("dockernode"):
+        if (cur["model"] or cur["effort"] or cur.get("dockernode") or any(cur["nodes"].values())
+                or cur["build"] or cur["test"] or cur["outputs"]):
             d["projects"][project] = cur
         else:
             d["projects"].pop(project, None)

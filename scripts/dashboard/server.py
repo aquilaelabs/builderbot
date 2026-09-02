@@ -31,6 +31,7 @@ import time
 # Beside this file. Imported up here rather than with the modules below,
 # because write_json is defined from it before any of those load.
 import statefile
+import shutil
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1847,8 +1848,18 @@ phone.configure(write_json=write_json, state=STATE, workspace=WORKSPACE)
 # view. The convention is the module's docstring; the scratch dir is where an
 # .xpi is unpacked for web-ext, never dist/ itself.
 import artifacts                                                 # noqa: E402
+import workspace                                                 # noqa: E402
 
 artifacts.configure(workspace=WORKSPACE, scratch=STATE / "artifacts-tmp")
+workspace.configure(workspace=WORKSPACE, state=STATE)
+
+
+def artifacts_of(name):
+    """dist/ as the tab lists it, each file carrying what built it when a
+    job did (docs/nodes.md §6): the chain lives beside the file, and the
+    listing is where somebody asks."""
+    return [a | {"prov": workspace.provenance(name, a["path"])}
+            for a in artifacts.listing(name)]
 
 # ---- the memory book -------------------------------------------------------
 # What Claude remembers about each project, read and edited from the projects
@@ -1914,6 +1925,7 @@ import jobs                                                      # noqa: E402
 
 if not NODES_OK:
     jobs.configure(nodes_module=nodes)
+    packages.nodes = nodes
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -2685,7 +2697,7 @@ class Handler(BaseHTTPRequestHandler):
             # `devapp` is the main instance, which is what the row shows;
             # `devapps` is every instance, which the manager reads. Both, so
             # the row keeps working while the manager grows around it.
-            return self._json({"artifacts": artifacts.listing(name),
+            return self._json({"artifacts": artifacts_of(name),
                                "devapp": devapp.state(name),
                                "devapps": devapp.states(name)}
                               | phone.summary())
@@ -2738,6 +2750,13 @@ class Handler(BaseHTTPRequestHandler):
             # for a card nobody has open is a poor trade. The card asks.
             return self._json(self._phone_payload())
         if self.path.startswith("/api/packages"):
+            # ?node= asks about another node's packages store: what its
+            # census says it has, and the package job in flight there. The
+            # catalog is the same; the state is the node's (docs/nodes.md §6).
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            nid = q.get("node", [""])[0]
+            if nid and nid != "local" and not NODES_OK:
+                return self._json(packages.payload_for_node(nid))
             return self._json(packages.payload())
         if self.path.startswith("/api/v1/nodes"):
             # The versioned surface starts here (docs/nodes.md §3): new
@@ -2924,7 +2943,9 @@ class Handler(BaseHTTPRequestHandler):
             name = req.get("project", "")
             r = prefs.set_prefs(name, model=req.get("model"),
                                 effort=req.get("effort"),
-                                dockernode=req.get("dockernode"))
+                                dockernode=req.get("dockernode"),
+                                nodes=req.get("nodes"), build=req.get("build"),
+                                test=req.get("test"), outputs=req.get("outputs"))
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
             # change alone, because the same write happens when nothing is
@@ -2989,6 +3010,15 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.node_config_set("operator", nid, req.get("config"))
         elif act == "apply":
             r = nodes.node_apply("operator", nid, field(req, "what"))
+        elif act == "cache-clear":
+            # Drop a node's build caches — one project's, or all (docs/nodes.md
+            # §6): a job the agent runs, so it is logged and audited like
+            # everything else that touches a node's disk.
+            n = nodes.node(nid)
+            if not n or n["kind"] != "agent":
+                return self._json({"error": "only an agent node keeps caches to clear"}, 400)
+            r = nodes.job_add("operator", {"node": nid}, "cache-clear",
+                              {"project": field(req, "project")})
         elif act == "exec":
             # The channel's one job type, from the tab or from curl: run
             # this argv on that node, as the enrolled account, and read the
@@ -3041,10 +3071,56 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
         act = field(req, "action")
+        if act == "run":
+            return self._json(*self._run_job(req))
         if act != "cancel":
             return self._json({"error": "unknown action"}, 400)
         r = jobs.cancel("operator", field(req, "id"))
         return self._json(r, 400 if r.get("error") else 200)
+
+    def _run_job(self, req):
+        """`bb run`, `bb build` and `bb test` land here (docs/nodes.md §6):
+        snapshot the project's working tree, dirty edits included, and queue
+        an exec on the node the project assigns to the role — or on the node
+        named. Outputs are globs; what matches comes back into dist/. The
+        principal is the session when the request says so, which is a label
+        the credential cannot prove (bug #16) but is worth writing down."""
+        if NODES_OK:
+            return {"error": "the node store did not open: " + NODES_OK}, 500
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list()}:
+            return {"error": "not a project"}, 400
+        argv = [str(a) for a in (req.get("argv") or []) if str(a)][:64]
+        if not argv:
+            return {"error": "argv is empty"}, 400
+        pf = prefs.get(name)
+        role = field(req, "role") or "build"
+        nid = field(req, "node") or (pf["nodes"].get(role) if role in prefs.ROLES else "")
+        if not nid:
+            return {"error": f"{name} has no {role} node — pick one in the project's "
+                             "settings dialog (Nodes), or name one with --node"}, 400
+        n = nodes.node(nid)
+        if not n:
+            return {"error": f"no such node: {nid}"}, 400
+        if n["kind"] != "agent":
+            return {"error": f"{n['name']} runs no agent — a build node is an agent "
+                             "node with a workspace of its own (docs/nodes.md §6)"}, 400
+        snap = workspace.snapshot(name)
+        if snap.get("error"):
+            return snap, 400
+        outputs = [str(g)[:200] for g in (req.get("outputs") or []) if str(g)][:16]
+        try:
+            timeout = min(4 * 3600, max(30, int(req.get("timeout") or 3600)))
+        except (TypeError, ValueError):
+            timeout = 3600
+        spec = {"argv": argv, "timeout": timeout, "outputs": outputs, "project": name}
+        who = f"session:{name}" if field(req, "from") == "session" else "operator"
+        r = nodes.job_add(who, {"node": nid}, "exec", spec, name,
+                          source={"digest": snap["digest"], "project": name,
+                                  "files": snap["files"], "bytes": snap["bytes"]})
+        if r.get("error"):
+            return r, 400
+        return r | {"node": nid, "snapshot": snap["digest"], "files": snap["files"]}, 200
 
     def _agent_test(self, n):
         """Test on an agent node: an exec job, waited for. The channel is
@@ -3086,6 +3162,59 @@ class Handler(BaseHTTPRequestHandler):
         hdr = self.headers.get("Authorization", "")
         bearer = hdr[7:] if hdr.startswith("Bearer ") else ""
         auth = nodes.authenticate(bearer) if bearer else {"error": "no token"}
+        q = urllib.parse.parse_qs(self.path.partition("?")[2])
+        if verb == "download" and q.get("what", [""])[0] == "bundle":
+            # bb, its library and the catalog, for a node installing a
+            # toolchain into its own packages store (docs/nodes.md §6).
+            if auth.get("error") or auth.get("kind") != "node":
+                return self._json({"error": auth.get("error") or "a node's token"}, 401)
+            b = workspace.bundle()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-tar")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Bundle-Digest", b["digest"])
+            self.send_header("Content-Length", str(len(b["body"])))
+            self.end_headers()
+            self.wfile.write(b["body"])
+            return None
+        if verb == "source":
+            # A job's workspace snapshot, by digest (docs/nodes.md §6). The
+            # digest is the file name, so nothing else is reachable here.
+            if auth.get("error") or auth.get("kind") != "node":
+                return self._json({"error": auth.get("error") or "a node's token"}, 401)
+            path = workspace.path_for(q.get("digest", [""])[0])
+            if path is None:
+                return self._json({"error": "no such snapshot — the tree has "
+                                            "moved on; queue the job again"}, 404)
+            size = path.stat().st_size
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-tar")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Content-Length", str(size))
+            self.end_headers()
+            with open(path, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+            return None
+        if verb == "artifact":
+            # A file a job produced, raw in the body: into the project's
+            # dist/ with its provenance beside it. Only the job's own node,
+            # only while the job runs — a result already posted closes it.
+            if auth.get("error") or auth.get("kind") != "node":
+                return self._json({"error": auth.get("error") or "a node's token"}, 401)
+            j = nodes.job(q.get("job", [""])[0], with_log=False)
+            if not j or j["node"] != auth["node"]:
+                return self._json({"error": "not this node's job"}, 403)
+            if j["state"] not in nodes.JOB_ACTIVE:
+                return self._json({"error": "the job has ended"}, 409)
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+            except ValueError:
+                length = 0
+            r = workspace.artifact_put(j, q.get("name", [""])[0], self.rfile, length)
+            if not r.get("error"):
+                nodes.audit(auth["principal"], "artifact", j["id"],
+                            {"path": r["path"], "sha256": r["sha256"]})
+            return self._json(r, 400 if r.get("error") else 200)
         if verb == "download":
             # The file itself. Any token gets it — the provisioner fetches
             # it with the enroll token before there is a node — and so does
@@ -3151,7 +3280,8 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.job_log(nid, field(req, "job"), req.get("chunks"))
         elif verb == "result":
             r = nodes.job_result(nid, field(req, "job"), field(req, "state"),
-                                 req.get("exit"), field(req, "error"))
+                                 req.get("exit"), field(req, "error"),
+                                 req.get("outputs"))
         else:
             return self._json({"error": "not found"}, 404)
         return self._json(r, 400 if r.get("error") else 200)
@@ -3552,7 +3682,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
             return self._json(r, 400)
-        return self._json(r | {"artifacts": artifacts.listing(name)}
+        return self._json(r | {"artifacts": artifacts_of(name)}
                           | phone.summary())
 
     def _phone(self, req):
@@ -3760,6 +3890,22 @@ class Handler(BaseHTTPRequestHandler):
         rule every other executing endpoint here follows.
         """
         action = req.get("action")
+        nid = field(req, "node")
+        if nid and nid != "local":
+            # On another node the install is a job against that node's
+            # packages store (docs/nodes.md §6): same catalog, same names,
+            # audited, one at a time there — and gated on the store's
+            # headroom before a byte is downloaded.
+            if NODES_OK:
+                return self._json({"error": "the node store did not open"}, 500)
+            if action not in ("install", "remove"):
+                return self._json({"error": "a node takes install or remove"}, 400)
+            known = {p["name"] for p in packages.PACKAGES}
+            names = [n for n in (req.get("names") or []) if n in known][:8]
+            if not names:
+                return self._json({"error": "nothing selected"}, 400)
+            r = packages.node_job("operator", nid, action, names)
+            return self._json(r, 400 if r.get("error") else 200)
         if action == "abort":
             return self._json({"ok": packages.abort_job()})
         if action not in ("install", "remove", "update", "check"):

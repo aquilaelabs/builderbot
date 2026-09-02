@@ -1634,6 +1634,10 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndstore .sub{grid-column:2}
 .ndconfacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ndconfstate.note{color:var(--note)}
+.rnroles{flex-wrap:wrap}
+#rnBuildCmd,#rnTestCmd{margin-bottom:6px}
+.pkgnode .pick{display:inline-flex;gap:8px;align-items:center}
+.jbouts a{color:var(--accent)} .jbouts code{font:var(--f-note)}
 @media (max-width:600px){
   .ndmount,.ndnet,.ndstore{grid-template-columns:minmax(0,1fr)}
   .ndmount .ndmstate,.ndstore .sub{grid-column:1}
@@ -2405,6 +2409,31 @@ body.dragging .tab .lbl{cursor:grabbing}
       <select id="rnDockerNode"></select>
       <div class="hint">The docker host Send to Docker manager offers first
         for this project. Existing containers stay where they were made.</div>
+    </div>
+    <!-- Phase 6 (docs/nodes.md §6): which node builds, tests, runs CI and
+         hosts emulation for this project, and what bb build / bb test run
+         there. Agent nodes only — a build needs a workspace of its own. -->
+    <div class="field" id="rnRolesField">
+      <label id="rnRolesLabel">Nodes — where this project's work runs</label>
+      <div class="prefrow rnroles" role="group" aria-labelledby="rnRolesLabel">
+        <label class="pick">Build <select id="rnRoleBuild" aria-label="build node"></select></label>
+        <label class="pick">Test <select id="rnRoleTest" aria-label="test node"></select></label>
+        <label class="pick">CI <select id="rnRoleCi" aria-label="CI node"></select></label>
+        <label class="pick">Emulator <select id="rnRoleEmulator" aria-label="emulator node"></select></label>
+      </div>
+      <div class="hint" id="rnRolesHint">bb build and bb test snapshot this tree and
+        run on the build and test nodes; CI and emulator are read by later phases.</div>
+    </div>
+    <div class="field">
+      <label for="rnBuildCmd">Build and test — what bb build and bb test run there</label>
+      <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
+             placeholder="build, e.g. ./gradlew assembleDebug">
+      <input id="rnTestCmd" autocomplete="off" spellcheck="false"
+             placeholder="test, e.g. ./gradlew test">
+      <input id="rnOutputs" autocomplete="off" spellcheck="false"
+             placeholder="outputs, globs from the tree root: app/build/outputs/apk/**/*.apk">
+      <div class="hint">Run with sh -c in the snapshot's root on the node. Files
+        matching the outputs come back into dist/ with a note of what built them.</div>
     </div>
     <div class="field" id="rnErrWrap" hidden><div class="hint bad" id="rnErr"></div></div>
     <div class="foot">
@@ -4048,11 +4077,40 @@ const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
 // dialog that was merely looked at — the difference decides whether a running
 // session is restarted, which is not something to do because somebody opened
 // a menu.
-let rnPrefWas = {model: "", effort: "", dockernode: ""};
+let rnPrefWas = {model: "", effort: "", dockernode: "", roles: "", build: "", test: "", outputs: ""};
+const ROLE_IDS = {build: "rnRoleBuild", test: "rnRoleTest", ci: "rnRoleCi", emulator: "rnRoleEmulator"};
+
+// The roles' selects: agent nodes only, because a build needs a workspace
+// of the node's own (docs/nodes.md §6); local is not offered and says why.
+function rnFillRoles(p){
+  const roles = p?.prefs?.nodes || {};
+  const anodes = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
+  if (nodesList === null) loadNodes();
+  for (const [role, id] of Object.entries(ROLE_IDS)){
+    const sel = $(id);
+    sel.innerHTML = `<option value="">${anodes.length ? "none" : "no agent node enrolled yet"}</option>`
+      + anodes.map(n => `<option value="${esc(n.id)}"${roles[role] === n.id ? " selected" : ""}>${
+          esc(n.name)} — ${esc(n.state)}${n.live === false ? ", quiet" : ""}</option>`).join("");
+    sel.value = anodes.some(n => n.id === roles[role]) ? roles[role] : "";
+  }
+  $("rnRolesHint").textContent = anodes.length
+    ? "bb build and bb test snapshot this tree and run on the build and test nodes; CI and emulator are read by later phases."
+    : "Enroll a node on the Nodes tab first — this container cannot be a build node, it has no workspace of its own.";
+  $("rnBuildCmd").value = p?.prefs?.build || "";
+  $("rnTestCmd").value = p?.prefs?.test || "";
+  $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
+}
+const rnRolesNow = () => JSON.stringify(Object.fromEntries(
+  Object.entries(ROLE_IDS).map(([r, id]) => [r, $(id).value])));
 
 function rnFillPrefs(p){
   rnPrefWas = {model: p?.prefs?.model || "", effort: p?.prefs?.effort || "",
-               dockernode: p?.prefs?.dockernode || ""};
+               dockernode: p?.prefs?.dockernode || "",
+               roles: JSON.stringify(Object.fromEntries(Object.keys(ROLE_IDS).map(r =>
+                 [r, p?.prefs?.nodes?.[r] || ""]))),
+               build: p?.prefs?.build || "", test: p?.prefs?.test || "",
+               outputs: (p?.prefs?.outputs || []).join(", ")};
+  rnFillRoles(p);
   // The node binding: shown only when there is a choice to make, like every
   // node select. "auto" is the default docker node, spelled as an option so
   // clearing a binding is a pick rather than a mystery.
@@ -5636,7 +5694,7 @@ function openPackages(){
 let pkgSizeTimer = null;
 async function loadPackages(){
   try{
-    const r = await fetch("/api/packages");
+    const r = await fetch("/api/packages" + (pkgNode !== "local" ? `?node=${encodeURIComponent(pkgNode)}` : ""));
     if (!r.ok) throw new Error("HTTP " + r.status);
     packages = await r.json();
   }catch(e){ packages = {error: String(e)}; }
@@ -5656,6 +5714,10 @@ let pkgDots = 0, pkgDotsTimer = null;
 // Which flavor the picker is showing. Page state, not the server's: it is a
 // question being asked, not a fact about the box.
 let pkgFlavor = "";
+// Which node the Tools tab is showing (docs/nodes.md §6): "local" is this
+// container's SDK share and the installer that was always here; any other
+// is an agent node's packages store, where an install is a job.
+let pkgNode = "local";
 
 // What the one job is doing, said next to the control that started it — Add
 // for a system image, Install selected for anything else — rather than
@@ -6733,8 +6795,27 @@ function renderPackagesInto(i){
   // you were about to install quietly unticked itself.
   if (!busy && job.action !== "check")
     for (const n of [...(job.done || []), ...(job.failed || [])]) pkgTicked.delete(n);
+  // The picker: this container, or an agent node. Only drawn when there is
+  // an agent node to pick, like every node select here.
+  const pnodes = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
+  if (nodesList === null) loadNodes();
+  const onNode = pkgNode !== "local";
+  const picker = pnodes.length ? `<div class="pkghead pkgnode">
+      <label class="pick">Packages on <select id="pkgNodeSel" aria-label="node">
+        <option value="local"${onNode ? "" : " selected"}>this container</option>
+        ${pnodes.map(n => `<option value="${esc(n.id)}"${n.id === pkgNode ? " selected" : ""}>${
+          esc(n.name)}${n.live === false ? " (quiet)" : ""}</option>`).join("")}
+      </select></label></div>` : "";
   el.innerHTML = `<div class="doctab pkgtab">
-    <div class="pkghead">${d.root
+    ${picker}
+    <div class="pkghead">${onNode
+      ? (d.root
+          ? `Installed into <code>${esc(d.root)}</code> on ${esc(d.name)} — its packages store${
+              typeof d.free_mb === "number" ? `, ${d.free_mb >= 10240
+                ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB"} free` : ""}. An install
+            is a job there: bb and the catalog travel to the node, and its census reports what landed.`
+          : `${esc(d.name || "the node")} reports no packages store yet.`)
+      : d.root
       ? (d.shared
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
@@ -6767,6 +6848,9 @@ function renderPackagesInto(i){
     b.checked ? pkgTicked.add(b.value) : pkgTicked.delete(b.value);
   });
   el.querySelectorAll("[data-pkg]").forEach(b => b.onclick = () => pkgAct(b.dataset.pkg));
+  const psel = el.querySelector("#pkgNodeSel");
+  if (psel) psel.onchange = () => { pkgNode = psel.value; packages = null; pkgTicked.clear();
+                                    pkgRev++; drawPanes(); loadPackages(); };
   const fl = el.querySelector("#imgFlavor"), api = el.querySelector("#imgApi");
   if (fl) fl.onchange = () => { pkgFlavor = fl.value; pkgRev++; drawPanes(); };
   if (el.querySelector("#imgAdd")) el.querySelector("#imgAdd").onclick = () => {
@@ -6826,10 +6910,17 @@ async function pkgAct(action, only){
   if (action === "abort"){
     if (!confirm("Stop after the package it is on? What has already installed stays."))
       return;
-    await fetch("/api/packages", {method:"POST",
-      headers:{"Content-Type":"application/json"}, body: JSON.stringify({action})});
+    // On a node the install is a job, and stopping it is the queue's Cancel.
+    if (pkgNode !== "local" && packages?.job?.id)
+      await fetch("/api/v1/jobs", {method:"POST", headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({action: "cancel", id: packages.job.id})});
+    else
+      await fetch("/api/packages", {method:"POST",
+        headers:{"Content-Type":"application/json"}, body: JSON.stringify({action})});
     return loadPackages();
   }
+  if (pkgNode !== "local" && !["install", "remove"].includes(action))
+    return notify("a node takes install and remove — versions are what its census reports", true);
   // "Check for updates" asks about every row, ticked or not: the question is
   // whether anything is out of date and what the rest would install, not
   // whether one ticked thing is. Sending the selection made it answer for
@@ -6842,7 +6933,7 @@ async function pkgAct(action, only){
   try{
     const r = await fetch("/api/packages", {method:"POST",
       headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({action, names})});
+      body: JSON.stringify({action, names, node: pkgNode})});
     const j = await r.json().catch(() => ({}));
     if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
     notify(action === "check"
@@ -8733,7 +8824,13 @@ project can have several"
             <span class="top"><span class="pill">${esc(a.kind)}</span>
               <b>${esc(a.name)}</b></span>
             <span class="dim">${esc(human(a.size))} · ${esc(ago(a.at))}${
-              a.path !== a.name ? ` · ${esc(a.path)}` : ""}</span></span>
+              a.path !== a.name ? ` · ${esc(a.path)}` : ""}</span>${
+            // What built it, when a job did (docs/nodes.md §6): the job,
+            // the node, the snapshot. A file somebody copied in says nothing.
+            a.prov ? `<span class="dim">built by ${esc(a.prov.job)} on ${
+              esc((nodesList || []).find(n => n.id === a.prov.node)?.name || a.prov.node || "?")}${
+              a.prov.source?.digest ? ` from snapshot ${esc(a.prov.source.digest.slice(7, 19))}` : ""}${
+              a.prov.sha256 ? ` · sha256 ${esc(a.prov.sha256.slice(0, 12))}` : ""}</span>` : ""}</span>
           <span class="acts">
             ${a.kind === "apk" ? `<button type="button" data-artinstall="${i}"${
                 inst.running || !dev ? " disabled" : ""} title="${
@@ -10087,7 +10184,11 @@ async function rnSubmit(){
   const clear_token = rnClearToken && !token;
   const model = $("rnModel").value, effort = $("rnEffort").value;
   const dockernode = $("rnDockerNode").value;
-  const nodeChanged = dockernode !== rnPrefWas.dockernode;
+  const roles = rnRolesNow(), build = $("rnBuildCmd").value.trim(),
+        test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
+  const rolesChanged = roles !== rnPrefWas.roles || build !== rnPrefWas.build
+    || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs;
+  const nodeChanged = dockernode !== rnPrefWas.dockernode || rolesChanged;
   const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
   const running = liveSessions().has(tmuxName("claude-" + name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
@@ -10119,7 +10220,8 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort,
-                              dockernode,
+                              dockernode, nodes: JSON.parse(roles), build, test,
+                              outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session —
                               // it is about containers, not the conversation.
                               restart: running && prefChanged})});
