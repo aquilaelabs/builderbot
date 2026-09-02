@@ -171,3 +171,5 @@
 - A failed Up leaves its reason and output on the instance's row instead of a one-line refusal (80b3dca)
 - A session can now tick off one step of a roadmap plan — the panel shows a tick and offers you the next step instead of a finished one (2a5c032)
 - A node's mounts, stores and network address can be set from its row on the Nodes tab; the node applies them itself, and a network change that cannot dial back in reverts on its own (c76e6a6)
+- bb build and bb test now run on the node a project names in its settings, from a snapshot of the working tree, and what they produce lands in dist/ with a note of what built it (091336d)
+- The Tools tab can install toolchains onto a node's own packages store, and each node's row shows its cache size with a Clear cache button (091336d)
