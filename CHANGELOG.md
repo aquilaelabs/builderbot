@@ -170,3 +170,4 @@
 - Work can be sent to whichever node fits — by capability, label, pool, OS or architecture — and the job says which node took it (80b3dca)
 - A failed Up leaves its reason and output on the instance's row instead of a one-line refusal (80b3dca)
 - A session can now tick off one step of a roadmap plan — the panel shows a tick and offers you the next step instead of a finished one (2a5c032)
+- A node's mounts, stores and network address can be set from its row on the Nodes tab; the node applies them itself, and a network change that cannot dial back in reverts on its own (c76e6a6)
