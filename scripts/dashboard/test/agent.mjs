@@ -99,6 +99,10 @@ while [ $# -gt 0 ]; do case "$1" in --name) name="$2"; shift;; --url) url="$2"; 
 printf '{"agentName":"%s","gitHubUrl":"%s"}' "$name" "$url" > "$(dirname "$0")/.runner"
 `, { mode: 0o755 });
 writeFileSync(`${DIR}/runner-src/svc.sh`, `#!/bin/sh
+# The real svc.sh resolves everything relative to the working directory and
+# refuses anywhere but the runner root. Recorded, because running it from
+# elsewhere registered a runner that could never take a job.
+[ -f ./config.sh ] && echo "RUNNER_ROOT_OK" >> "$(dirname "$0")/calls.log"
 echo "svc $*" >> "$(dirname "$0")/calls.log"
 `, { mode: 0o755 });
 writeFileSync(`${DIR}/runner-src/run.sh`, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
@@ -499,7 +503,8 @@ try {
     ok(ifin && ifin.state === 'succeeded' && /registering agentbox with https:\/\/github.com\/example-org/.test(ifin.log),
        `the agent unpacks the runner and registers it (${ifin?.state}: ${(ifin?.log || '').slice(-200).replace(/\n/g, ' / ')})`);
     ok(/config --unattended --replace --url https:\/\/github.com\/example-org --token AAAREGTOKEN --name agentbox --labels builderbot,self-hosted,linux,x64,agentbox,gpu,badlabel --work _work/.test(calls)
-       && /svc install/.test(calls) && /svc start/.test(calls),
+       && /svc install/.test(calls) && /svc start/.test(calls)
+       && /RUNNER_ROOT_OK/.test(calls),
        'config.sh gets the minted token, the node\'s name, the default labels plus its own name, and svc.sh installs and starts it');
     ok(!/AAAREGTOKEN/.test(ifin?.log || ''), '...and the token never reaches the job log');
     const rn = await until(async () => { const n = await nodeById(minted.id);

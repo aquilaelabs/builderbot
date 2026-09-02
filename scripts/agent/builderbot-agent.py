@@ -1357,11 +1357,18 @@ class Agent:
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
 
-    def _sh(self, job, argv):
-        """One command, its output into the job's log, its exit code back."""
+    def _sh(self, job, argv, cwd=None):
+        """One command, its output into the job's log, its exit code back.
+
+        `cwd` matters more than it looks: the runner's own svc.sh resolves
+        everything relative to where it is invoked and refuses with "Must run
+        from runner root or install is corrupt" anywhere else — which is
+        exactly what a registered-but-serviceless runner came from.
+        """
         job.say("$ " + " ".join(argv) + "\n")
         try:
-            p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            p = subprocess.run(argv, cwd=cwd, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT,
                                timeout=300, check=False)
         except (OSError, subprocess.SubprocessError) as e:
             job.say(f"{argv[0]}: {e}\n")
@@ -1511,8 +1518,8 @@ class Agent:
                 job.say(f"could not get a removal token from the controller: {r.get('error', st)}\n")
                 return "failed", 69
             if os.path.isfile(os.path.join(d, "svc.sh")):
-                self._sh(job, ["bash", os.path.join(d, "svc.sh"), "stop"])
-                self._sh(job, ["bash", os.path.join(d, "svc.sh"), "uninstall"])
+                self._sh(job, ["bash", "./svc.sh", "stop"], cwd=d)
+                self._sh(job, ["bash", "./svc.sh", "uninstall"], cwd=d)
             code = self._run_as(job, who, d, [os.path.join(d, "config.sh"), "remove", "--token", r["token"]])
             if code != 0:
                 job.say("deregistration did not complete; remove the runner in GitHub's settings if it lingers\n")
@@ -1578,10 +1585,15 @@ class Agent:
         with open(os.path.join(d, ".builderbot-labels"), "w") as f:
             f.write(",".join(labels))
         if os.path.isfile(os.path.join(d, "svc.sh")):
-            if self._sh(job, ["bash", os.path.join(d, "svc.sh"), "install", user]) != 0:
-                return "failed", 1
-            if self._sh(job, ["bash", os.path.join(d, "svc.sh"), "start"]) != 0:
-                return "failed", 1
+            for verb in (["install", user], ["start"]):
+                if self._sh(job, ["bash", "./svc.sh", *verb], cwd=d) != 0:
+                    # Registered but not serviced is a real state, and the
+                    # row should say so rather than showing nothing: the
+                    # census reads .runner, which exists by now.
+                    self.hello()
+                    job.say("the runner is registered with GitHub but its service did "
+                            "not install — it will not pick up jobs until it does\n")
+                    return "failed", 1
         self.hello()
         job.say("runner installed and started\n")
         return "succeeded", 0
