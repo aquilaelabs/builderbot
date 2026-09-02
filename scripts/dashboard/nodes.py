@@ -758,6 +758,13 @@ def _census(c):
         "url": str(ar.get("url") or "")[:200],
         "labels": [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40]
                    for x in (ar.get("labels") or [])[:16] if str(x)]}}
+    ts = sv.get("tailscale") if isinstance(sv.get("tailscale"), dict) else {}
+    fun = ts.get("funnel") if isinstance(ts.get("funnel"), dict) else {}
+    out["services"]["tailscale"] = {
+        "installed": bool(ts.get("installed")),
+        "dns": re.sub(r"[^A-Za-z0-9.-]", "", str(ts.get("dns") or ""))[:200],
+        # https port -> the local port it forwards to, as the node reports it
+        "funnel": {str(k)[:6]: _mb(v) for k, v in list(fun.items())[:8]}}
     net = c.get("network") if isinstance(c.get("network"), dict) else {}
     out["network"] = {
         "interface": str(net.get("interface") or "")[:32],
@@ -906,6 +913,52 @@ def node_runner(principal, node_id, want, labels=None, url=""):
     cfg = {"want": bool(want), "labels": labs, "url": str(url or ""), "name": n["name"]}
     return job_add(principal, {"node": node_id}, "system",
                    {"apply": "runner", "config": cfg, "timeout": 1800})
+
+
+def route_host(node_id):
+    """The host a published port on this node is reached at from the LAN:
+    an ssh node's address without scheme or account, an agent node's the
+    address it last dialed in from. '' for local and the unknown."""
+    n = node(node_id)
+    if not n or n["kind"] == "local":
+        return ""
+    a = _addr(n) if n["kind"] == "ssh" else ((n.get("agent") or {}).get("addr") or "")
+    a = re.sub(r"^[a-z][a-z0-9+.-]*://", "", a)
+    a = a.split("@")[-1].split("/")[0].split(":")[0]
+    return a
+
+
+def node_funnel(principal, node_id, port, on=True):
+    """Tailscale Funnel on a node (docs/nodes.md §7, mode `funnel`): a
+    public HTTPS URL for one published port, with no DNS, certificate or
+    firewall change — as a system job the agent applies with tailscale's
+    own CLI. One funnel per node, on 443: the node's MagicDNS name is the
+    URL, and a second instance asking replaces the first, said plainly."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "a funnel needs the agent — this node runs none"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "this node was not provisioned as a BuilderBot sandbox, so it takes no system jobs"}
+    ts = ((n.get("reported") or {}).get("services") or {}).get("tailscale") or {}
+    if not ts.get("installed"):
+        return {"error": f"{n['name']} has no tailscale — install and log it in on the node first"}
+    if n["state"] != "online":
+        return {"error": f"the node is {n['state']} — system jobs go to an online node"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node — one at a time"}
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        return {"error": "a funnel forwards to a port number"}
+    if not 1 <= port <= 65535:
+        return {"error": "a funnel forwards to a port number"}
+    r = job_add(principal, {"node": node_id}, "system",
+                {"apply": "funnel", "config": {"port": port, "on": bool(on)}, "timeout": 300})
+    if r.get("ok"):
+        audit(principal, "node-funnel", node_id, {"port": port, "on": bool(on)})
+    return r
 
 
 def runner_labels_known():

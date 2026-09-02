@@ -3055,6 +3055,11 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.node_runner("operator", nid, bool(req.get("want", True)),
                                   req.get("labels"),
                                   field(req, "url") or github_url())
+        elif act == "funnel":
+            # Tailscale Funnel for a port on the node, raw: the manager's
+            # route picker goes through the instance's record; this is the
+            # same job by hand, for a port that is not an instance's.
+            r = nodes.node_funnel("operator", nid, req.get("port"), bool(req.get("on", True)))
         elif act == "cache-clear":
             # Drop a node's build caches — one project's, or all (docs/nodes.md
             # §6): a job the agent runs, so it is logged and audited like
@@ -3629,6 +3634,10 @@ class Handler(BaseHTTPRequestHandler):
                                "missing": devapp.missing_env(name, inst)})
         elif act == "env-set":
             r = devapp.write_env(name, req.get("text") or "", inst)
+        elif act == "route":
+            # How the instance is reached (docs/nodes.md §7): lan or funnel,
+            # on which published port.
+            r = devapp.route_set(name, inst, field(req, "mode"), req.get("port"))
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):

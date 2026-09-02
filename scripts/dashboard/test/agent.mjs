@@ -109,7 +109,29 @@ case "$*" in *mint-runner-token*registration*) echo AAAREGTOKEN; exit 0 ;;
              *mint-runner-token*remove*) echo AAAREMOVETOKEN; exit 0 ;; esac
 echo "sudo: refused" >&2; exit 1
 `, { mode: 0o755 });
+// Tailscale, stood in for: `funnel` calls are recorded and reflected in the
+// serve status the census reads, so the funnel that is reported is the one
+// that was asked for.
+writeFileSync(`${DIR}/bin/tailscale`, `#!/usr/bin/env python3
+import json, os, sys
+st = os.environ.get("BB_TS_STATE", "") or "${DIR}/ts.json"
+try: d = json.load(open(st))
+except Exception: d = {"funnel": {}}
+a = sys.argv[1:]
+if a[:2] == ["status", "--json"]:
+    print(json.dumps({"Self": {"DNSName": "agentbox.tail1234.ts.net."}})); sys.exit(0)
+if a[:3] == ["serve", "status", "--json"]:
+    web = {f"agentbox.tail1234.ts.net:{k}": {"Handlers": {"/": {"Proxy": v}}} for k, v in d["funnel"].items()}
+    print(json.dumps({"AllowFunnel": {k: True for k in web}, "Web": web})); sys.exit(0)
+if a[0] == "funnel":
+    open("${DIR}/ts-calls.log", "a").write(" ".join(a) + "\\n")
+    if a[-1] == "off": d["funnel"].pop("443", None)
+    else: d["funnel"]["443"] = a[-1]
+    json.dump(d, open(st, "w")); sys.exit(0)
+sys.exit(2)
+`, { mode: 0o755 });
 const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
+  BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
   BUILDERBOT_RUNNER_DIR: `${DIR}/runner`, BUILDERBOT_RUNNER_TARBALL: `${DIR}/runner.tar.gz`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
   BUILDERBOT_NETPLAN_BIN: `${DIR}/bin/netplan`, BUILDERBOT_NETPLAN_DIR: `${DIR}/netplan` };
@@ -131,7 +153,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
-     && n.agent.version === '5' && /^sha256:/.test(n.agent.digest),
+     && n.agent.version === '6' && /^sha256:/.test(n.agent.digest),
      'the row is online with the census, agent version and digest');
   // single use
   let again = '';
@@ -437,6 +459,33 @@ try {
     const rn2 = await until(async () => { const n = await nodeById(minted.id);
       return n.reported.services?.['actions-runner']?.installed === false ? n : null; });
     ok(rn2 !== null, '...and the census says so');
+  }
+
+  // ---- Tailscale Funnel, the route's second mode (phase 8) ---------------------
+  {
+    const n0 = await nodeById(minted.id);
+    ok(n0.reported.services.tailscale.installed && n0.reported.services.tailscale.dns === 'agentbox.tail1234.ts.net',
+       'the census reports tailscale and the node\'s MagicDNS name');
+    const bad = await api('/api/v1/nodes', { action: 'funnel', id: minted.id, port: 'x' });
+    ok(/port number/.test(bad.error || ''), 'a funnel wants a port');
+    const fj = await api('/api/v1/nodes', { action: 'funnel', id: minted.id, port: 8080 });
+    const ffin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${fj.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(ffin && ffin.state === 'succeeded' && /funnel on: https:\/\/agentbox\.tail1234\.ts\.net -> 127\.0\.0\.1:8080/.test(ffin.log)
+       && /funnel --bg --https=443 http:\/\/127\.0\.0\.1:8080/.test(readFileSync(`${DIR}/ts-calls.log`, 'utf8')),
+       `funnel on is tailscale's own CLI, and the job names the URL (${ffin?.state})`);
+    const n1 = await until(async () => { const n = await nodeById(minted.id);
+      return n.reported.services.tailscale.funnel?.['443'] === 8080 ? n : null; });
+    ok(n1 !== null, '...and the census reports 443 forwarding to it');
+    const off = await api('/api/v1/nodes', { action: 'funnel', id: minted.id, port: 8080, on: false });
+    const ofin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${off.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(ofin && ofin.state === 'succeeded' && /funnel --https=443 off/.test(readFileSync(`${DIR}/ts-calls.log`, 'utf8')),
+       'off is off, through the same CLI');
   }
 
   // Test on an agent node is a round trip through the channel

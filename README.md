@@ -1330,6 +1330,17 @@ and `--write` regenerates `.github/actionlint.yaml` from them, so the lint
 checks `runs-on` against runners that exist. The container's own runner
 stays until a node runner has taken a real job.
 
+**How an instance is reached.** Each running instance on the Docker manager
+carries its route: the URL, and a picker for the mode. **lan** is the
+published port at the node's own address, what the manager always linked.
+**funnel** is Tailscale Funnel on the node — a public https URL at the node's
+MagicDNS name with no DNS, certificate or firewall change — applied by the
+agent, so it is offered only on an agent node that has tailscale logged in;
+the row says *asked for* until the node reports the funnel is up, and
+switching back to lan closes it. **public**, a reverse proxy with a wildcard
+record, is named in the picker as not built so the third mode is visible for
+what it is (docs/nodes.md §7).
+
 ### The Jobs tab
 
 **Tools → Jobs** is the queue (docs/nodes.md §2, phase 4): everything the

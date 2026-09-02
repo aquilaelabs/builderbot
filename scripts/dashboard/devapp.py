@@ -333,6 +333,119 @@ def _submit(project, instance, action):
     return {"ok": True, "started": True, "job": r["job"]}
 
 
+# ---------------------------------------------------------------------------
+# the route (docs/nodes.md §7, phase 8)
+#
+# A deployment is an instance up on a node plus a ROUTE: how somebody reaches
+# it. The record is uniform — {mode, port, url} — and the modes are tiers of
+# one thing: `lan` is a published port on the node's LAN address, which is
+# what the manager always offered; `funnel` is Tailscale Funnel on the node,
+# a public HTTPS URL with no DNS or certificate to arrange, applied by the
+# agent as a system job; `public` is the reverse-proxy mode the record is
+# shaped for and this does not build. The traffic never transits the
+# controller in any mode, which is what keeps every one of them cheap.
+
+ROUTE_MODES = ("lan", "funnel", "public")
+
+
+def _published(ports):
+    """The published TCP ports of an instance, from either shape the two
+    listings use: "7475->7474/tcp" strings, or {published, proto} dicts."""
+    out = []
+    for p in ports or []:
+        if isinstance(p, dict):
+            if str(p.get("proto", "tcp")).lower() == "tcp" and str(p.get("published") or "").isdigit():
+                out.append(int(p["published"]))
+        elif isinstance(p, str) and "->" in p and p.endswith("/tcp"):
+            head = p.split("->", 1)[0]
+            if head.isdigit():
+                out.append(int(head))
+    return sorted(set(out))
+
+
+def route_view(project, instance, ports):
+    """The instance's route as the row draws it: the mode and port on the
+    record (lan on the first published port when nothing was chosen), the
+    URL that follows from the node, and whether a funnel is actually up."""
+    rec = _read_rec(project, instance)
+    r = rec.get("route") if isinstance(rec.get("route"), dict) else {}
+    mode = r.get("mode") if r.get("mode") in ROUTE_MODES else "lan"
+    pub = _published(ports)
+    port = r.get("port") if isinstance(r.get("port"), int) and r.get("port") > 0 else (pub[0] if pub else None)
+    nid = _instance_node(project, instance)
+    n = queue.node(nid) if queue is not None and nid else None
+    out = {"mode": mode, "port": port, "ports": pub, "url": "", "ready": False, "why": "",
+           "funnel_ok": False}
+    if n:
+        ts = ((n.get("reported") or {}).get("services") or {}).get("tailscale") or {}
+        out["funnel_ok"] = bool(n["kind"] == "agent" and ts.get("installed")
+                                and (n.get("reported") or {}).get("sandbox"))
+    if mode == "lan":
+        host = queue.route_host(nid) if queue is not None and nid else ""
+        if host and port:
+            out["url"] = f"http://{host}:{port}/"
+            out["ready"] = port in pub
+        out["why"] = "" if out["url"] else ("no published port" if not port else "no node address")
+    elif mode == "funnel":
+        ts = (((n or {}).get("reported") or {}).get("services") or {}).get("tailscale") or {}
+        dns = ts.get("dns") or ""
+        fwd = (ts.get("funnel") or {}).get("443")
+        if dns:
+            out["url"] = f"https://{dns}/"
+        out["ready"] = bool(dns and port and fwd == port)
+        out["why"] = ("" if out["ready"] else
+                      "the node reports no tailscale" if not ts.get("installed") else
+                      f"the node's funnel forwards to {fwd}, not {port}" if fwd and fwd != port else
+                      "asked for — waiting for the node to report it")
+    else:
+        out["why"] = "public is not built — the record is shaped for it (docs/nodes.md §7)"
+    return out
+
+
+def route_set(project, instance, mode, port=None):
+    """Choose how an instance is reached. lan is a record; funnel is a
+    record and a system job on the node (and leaving funnel turns the
+    node's funnel off); public is refused, named as unbuilt."""
+    if mode not in ROUTE_MODES:
+        return {"error": f"a route is {', '.join(ROUTE_MODES)}"}
+    if mode == "public":
+        return {"error": "public routes are not built — lan and funnel are (docs/nodes.md §7)"}
+    try:
+        port = int(port) if port not in (None, "") else None
+    except (TypeError, ValueError):
+        return {"error": "a port is a number"}
+    if port is not None and not 1 <= port <= 65535:
+        return {"error": "a port is a number between 1 and 65535"}
+    nid = _instance_node(project, instance)
+    was = (_read_rec(project, instance).get("route") or {}).get("mode", "lan")
+    job = None
+    if mode == "funnel" or was == "funnel":
+        if queue is None or not nid:
+            return {"error": "no node to apply a funnel on"}
+        fport = port or (route_view(project, instance, state_ports(project, instance)).get("port"))
+        if not fport:
+            return {"error": "a funnel needs a port — the instance publishes none"}
+        r = queue.node_funnel("operator", nid, fport, on=(mode == "funnel"))
+        if r.get("error"):
+            return r
+        job = r.get("job")
+    with _lock:
+        d = _load()
+        _rec(d, project, instance)["route"] = {"mode": mode, "port": port}
+        write_json(FILE, d)
+    _bump()
+    return {"ok": True, "job": job}
+
+
+def state_ports(project, instance):
+    """The published ports of one instance, from the daemon, for a route
+    that has to pick one."""
+    try:
+        return next((x["ports"] for x in states(project) if x["instance"] == instance), [])
+    except Exception:            # noqa: BLE001 — a listing failure is 'none published'
+        return []
+
+
 def job_view(project, instance):
     """This instance's job as the row draws it: the one in flight, or the
     last one while it has something to say about how it ended. A job that
@@ -1593,6 +1706,8 @@ def _overview_here(picked):
                 # as part of starting now, so nothing on this page asks about
                 # them and no row costs a `compose config` to draw.
                 "stale_name": stale_name(project, inst),
+                "route": route_view(project, inst,
+                                    sorted({p for c in mine for p in c["ports"]})),
                 "changed_why": ("moved" if same_daemon and rec.get("rev")
                                 and rec.get("rev") != head
                                 else "dirty" if dirty and same_daemon and rec.get("rev")
@@ -2548,6 +2663,7 @@ def state(project, instance=MAIN):
         # A name it used to have, whose things are still under it.
         out["stale_name"] = stale_name(project, instance)
         out.update(wiring(cfg))
+        out["route"] = route_view(project, instance, out.get("ports"))
         out["risks_digest"] = risk_digest(rs)
         # True when nothing stands in the way — either the file asks for
         # nothing beyond its own directory, or the operator has already said

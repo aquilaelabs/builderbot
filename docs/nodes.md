@@ -567,6 +567,27 @@ The modes are tiers of the same thing, built in this order:
    first pass cut it; this pass sequences it last instead. The traffic never
    transits the controller, which is what keeps every mode cheap.
 
+*Where phase 8 landed it:* the route lives on the dev-instance record
+(`route: {mode, port}` in `/config/devapps.json`) and is drawn on the
+manager's row as the URL plus a picker. `lan` is the published port at the
+instance's node's address (`nodes.route_host`: an ssh node's address, an
+agent node's the one it last dialed in from) — what the manager always
+linked, now a record. `funnel` is a `system` job with `apply: funnel` on the
+instance's node: the agent runs `tailscale funnel --bg --https=443
+http://127.0.0.1:<port>`, and the census reports tailscale — installed, the
+MagicDNS name, and which https ports forward where, read from `tailscale
+serve status` so a funnel set by hand reports the same — which is what
+makes the row's `https://<name>/` say *ready* rather than *asked for*. One
+funnel per node on 443; switching the route back to lan turns it off. The
+picker greys funnel on a node without tailscale and names `public` as
+unbuilt rather than hiding it; the Artifacts row's Open uses the route's
+URL when it is ready. No deployment record of its own: an instance up on a
+node with a route IS the deployment, and the compose job is its long-lived
+job. The unhardwiring this phase owes: deploy targets touch no environment
+variable of their own — `DOCKER_HOST` became a node in phase 2 and its
+removal from the five places, with `DOCKER_HOST_PATHS` moving onto the
+node record, is its own roadmap step.
+
 ## 8. Security model
 
 New as a section, because "usable in an enterprise" is mostly this.
@@ -1097,6 +1118,9 @@ job, which is the operator's to see.
 
 **Phase 8 — deploy targets.**
 Modes `lan` and `funnel`; the `route` record shaped for `public`.
+
+*Where phase 8 landed it:* §7's closing paragraph. Agent 6 adds
+`apply: funnel` and tailscale to the census.
 
 **Phase 9 — device hosts.** Required, not optional, since §18.
 Job-scoped emulation first: instrumented-test jobs that boot an emulator on a

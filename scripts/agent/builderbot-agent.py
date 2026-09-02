@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "5"
+AGENT_VERSION = "6"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -91,6 +91,9 @@ DIAL_BACK_S = 180
 RUNNER_DIR = os.environ.get("BUILDERBOT_RUNNER_DIR", "/var/lib/builderbot/runner")
 RUNNER_TARBALL = os.environ.get("BUILDERBOT_RUNNER_TARBALL", "")
 RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
+# Tailscale, for Funnel (docs/nodes.md §7, phase 8): a seam so the tests can
+# stand in for it, like the rest of the tools the agent drives.
+TAILSCALE_BIN = os.environ.get("BUILDERBOT_TAILSCALE_BIN", "tailscale")
 
 
 def log(msg):
@@ -375,6 +378,29 @@ def services_now():
                                  "busy": bool(_run(["pgrep", "-f", os.path.join(RUNNER_DIR, "bin/Runner.Worker")]))}
     else:
         out["actions-runner"] = {"installed": False}
+    # Tailscale: whether it is here, this node's MagicDNS name (the funnel
+    # URL is https://<that>), and which https ports are funnelled to which
+    # local ports — read from tailscale's own status, so a funnel set by
+    # hand reports the same as one set from the tab.
+    ts = {"installed": bool(shutil.which(TAILSCALE_BIN) or os.access(TAILSCALE_BIN, os.X_OK)),
+          "dns": "", "funnel": {}}
+    if ts["installed"]:
+        try:
+            st = json.loads(_run([TAILSCALE_BIN, "status", "--json"], timeout=15) or "{}")
+            ts["dns"] = str((st.get("Self") or {}).get("DNSName") or "").rstrip(".")
+            sv = json.loads(_run([TAILSCALE_BIN, "serve", "status", "--json"], timeout=15) or "{}")
+            allow = sv.get("AllowFunnel") or {}
+            for hostport, web in (sv.get("Web") or {}).items():
+                if not allow.get(hostport):
+                    continue
+                https = hostport.rsplit(":", 1)[-1]
+                for h in (web.get("Handlers") or {}).values():
+                    m = re.search(r":(\d+)/?$", str(h.get("Proxy") or ""))
+                    if m:
+                        ts["funnel"][https] = int(m.group(1))
+        except (ValueError, AttributeError):
+            pass
+    out["tailscale"] = ts
     return out
 
 
@@ -1068,6 +1094,8 @@ class Agent:
             return self._apply_network(job, cfg)
         if what == "runner":
             return self._apply_runner(job, cfg)
+        if what == "funnel":
+            return self._apply_funnel(job, cfg)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
 
@@ -1293,6 +1321,32 @@ class Agent:
                 return "failed", 1
         self.hello()
         job.say("runner installed and started\n")
+        return "succeeded", 0
+
+    def _apply_funnel(self, job, cfg):
+        """Tailscale Funnel for one local port on https 443 (docs/nodes.md
+        §7): tailscale's own CLI does the certificate, the DNS and the
+        firewall, and its status is what the census reports afterwards."""
+        if not (shutil.which(TAILSCALE_BIN) or os.access(TAILSCALE_BIN, os.X_OK)):
+            job.say("refused: tailscale is not installed on this node\n")
+            return "failed", 77
+        try:
+            port = int(cfg.get("port") or 0)
+        except (TypeError, ValueError):
+            port = 0
+        if not 1 <= port <= 65535:
+            job.say("refused: a funnel forwards to a port number\n")
+            return "failed", 65
+        if cfg.get("on", True):
+            code = self._sh(job, [TAILSCALE_BIN, "funnel", "--bg", "--https=443",
+                                  f"http://127.0.0.1:{port}"])
+        else:
+            code = self._sh(job, [TAILSCALE_BIN, "funnel", "--https=443", "off"])
+        self.hello()
+        if code != 0:
+            return "failed", code
+        job.say(("funnel on: https://" + (services_now().get("tailscale") or {}).get("dns", "?")
+                 + f" -> 127.0.0.1:{port}\n") if cfg.get("on", True) else "funnel off\n")
         return "succeeded", 0
 
     def _run_as(self, job, who, cwd, argv):
