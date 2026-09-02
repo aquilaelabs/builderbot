@@ -186,3 +186,4 @@
 - The Artifacts tab's Push button comes back when a phone that briefly dropped off returns (046eb11)
 - A dev instance's containers are now built and started by the node itself, so a machine you enrol needs nothing but its token — no ssh key, no open port (c070ef2)
 - Adding an NFS mount to a node can leave the mountpoint blank: it lands at /mnt/ under the export's own name (c070ef2)
+- Installing a node's CI runner now completes: the service half was failing after the runner had already registered with GitHub (4d28e1f)
