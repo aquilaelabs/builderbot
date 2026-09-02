@@ -41,6 +41,9 @@ await page.waitForSelector('.artrow', { timeout: 15000 });
 const names = await page.$$eval('.artrow b', bs => bs.map(b => b.textContent));
 ok(names.includes('streamlift-1.2.apk') && names.includes('companion-0.2.0.xpi'),
    `dist/ is listed, subdirectories included (${names.join(', ')})`);
+ok(await page.$eval('#artBuild', e => !e.hidden && /No node/.test(e.textContent)
+     && /Reading and editing the code needs no node/.test(e.textContent)),
+   'the tab says a project with no node cannot be compiled for, and what is left');
 ok(!names.some(n => /provenance/.test(n)),
    '...and the provenance records beside them are not artifacts');
 ok(await page.$eval('#artList', e => /built by j_fixture1 on n_fixture from snapshot abababababab/.test(e.textContent)),
@@ -198,7 +201,7 @@ await page.click('.nbtabs [data-v="artifacts"]:visible');
 // is still the active one inside that instance, so an unscoped selector finds
 // the wrong project's rows.
 await page.waitForFunction(() => /dist\//.test(
-  document.querySelector('.pane .nb [data-view="artifacts"] .hint')?.textContent || ''),
+  document.querySelector('.pane .nb [data-view="artifacts"] #artList .hint')?.textContent || ''),
   null, { timeout: 15000 });
 ok(true, 'a project with no dist/ is told the convention, not shown a blank');
 

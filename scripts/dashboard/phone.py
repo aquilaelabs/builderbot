@@ -142,6 +142,17 @@ def devices():
             model = m.group(1).replace("_", " ")
         out.append({"serial": serial, "state": state, "model": model,
                     "kind": "emulator" if serial.startswith("emulator-") else "phone"})
+    # Every probe is an observation. The revision the page watches for the
+    # phone (device_rev, below) is a 3s cache, and a phone gone and back
+    # inside that window was invisible to it: the going-away was noticed by
+    # a refetch that happened to call this and saw nothing, the return by
+    # nothing at all, and the Artifacts tab's Push stayed dead until some
+    # unrelated revision moved. Recording what THIS call saw means the next
+    # revision read is a change whenever anything looked — a phone that
+    # dropped off wifi for two seconds comes back on the page when it comes
+    # back on adb, at no extra adb calls.
+    _dev_cache["rev"] = ",".join(sorted(f"{d['serial']}:{d['state']}" for d in out))
+    _dev_cache["at"] = time.monotonic()
     return out
 
 

@@ -679,11 +679,53 @@ def payload_for_node(nid):
                    "log": nodes.job_tail(j["id"], 1200).splitlines()[-16:], "done": [],
                    "failed": [], "aborting": bool(j.get("cancel")), "node": nid, "id": j["id"]}
             break
+    shared = [x["name"] for x in store_sharers(nid)]
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
+            "shared_with": shared,
             "root": store.get("path") or "", "free_mb": store.get("free_mb"),
             "shared": False, "checked": 0, "sizing": False,
             "images": [], "addable": [], "flavors": [], "images_loading": False,
             "items": items, "job": job or {"running": False}}
+
+
+def _store_share(n):
+    """(share source, subpath) when this node's packages store sits on a
+    mount it manages, else None.
+
+    Two nodes pointing `packages` at one NFS export ARE one store, and the
+    controller has to know which pairs those are: the same path STRING says
+    nothing — /var/lib/builderbot/packages is every node's default and is a
+    different disk on each. What identifies a shared store is the mount's
+    source, which the census reports beside its path, so this finds the
+    deepest managed mount the store sits under and answers with its source.
+    """
+    rep = n.get("reported") or {}
+    path = ((rep.get("stores") or {}).get("packages") or {}).get("path") or ""
+    if not path:
+        return None
+    best = None
+    for m in rep.get("mounts") or []:
+        mp = str(m.get("path") or "").rstrip("/")
+        if mp and (path == mp or path.startswith(mp + "/")):
+            if best is None or len(mp) > len(best[0]):
+                best = (mp, str(m.get("source") or ""))
+    if not best or not best[1]:
+        return None                      # a path of the node's own
+    return (best[1], path[len(best[0]):])
+
+
+def store_sharers(node_id):
+    """Every other node whose packages store is the same share as this
+    one's. Empty for the ordinary arrangement, one store per node."""
+    if not nodes:
+        return []
+    me = nodes.node(node_id)
+    mine = _store_share(me) if me else None
+    if not mine:
+        return []
+    return [n for n in nodes.node_list()
+            if n["id"] != node_id and n["state"] != "retired"
+            and _store_share(n) == mine]
 
 
 def node_job(principal, nid, action, names):
@@ -705,8 +747,17 @@ def node_job(principal, nid, action, names):
             return {"error": f"{n['name']}'s packages store has {human_kb(free * 1024)} free "
                              f"and this needs about {human_kb(int(need_kb * 1.2))} — "
                              "point the store somewhere bigger first"}
-    for j in nodes.jobs_for(node_id=nid, type="package", active=True, n=1):
-        return {"error": f"a package job is already running on {n['name']} — one at a time"}
+    # One install at a time — across every node that shares this store, not
+    # just this one. docs/nodes.md §6 names the trap: two agents unpacking
+    # into one NFS directory, or one upgrading a toolchain under another
+    # mid-build, is version skew nobody can debug. The rule is enforced
+    # across a shared store or it is not enforced at all.
+    for other in [n] + store_sharers(nid):
+        for j in nodes.jobs_for(node_id=other["id"], type="package", active=True, n=1):
+            where = ("" if other["id"] == nid
+                     else f" — it shares this packages store with {n['name']}")
+            return {"error": f"a package job is already running on {other['name']}"
+                             f"{where}. One at a time."}
     return nodes.job_add(principal, {"node": nid}, "package",
                          {"action": action, "names": names, "timeout": 3600})
 

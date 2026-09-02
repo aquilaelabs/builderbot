@@ -21,8 +21,17 @@ const CHROME = process.env.DASHBOARD_TEST_CHROME;
 const CREDS = { username: 'test', password: 'test' };
 
 let pass = 0, fail = 0;
+// Where a suite spends its time, on request. A file that runs real jobs
+// against a real agent is minutes long, and until this existed the only way
+// to find the slow part was to guess: BB_TEST_TIMING=1 prefixes each result
+// with the seconds since the last one, so the gaps name themselves.
+const TIMING = process.env.BB_TEST_TIMING === '1';
+const startedAt = Date.now();
+let lastAt = startedAt;
 export const ok = (cond, name) => {
-  console.log((cond ? 'PASS' : 'FAIL') + '  ' + name);
+  const gap = TIMING ? `[+${((Date.now() - lastAt) / 1000).toFixed(1)}s] ` : '';
+  lastAt = Date.now();
+  console.log((cond ? 'PASS' : 'FAIL') + '  ' + gap + name);
   cond ? pass++ : fail++;
 };
 // The browser is optional: not every file here drives a page. version.mjs
@@ -30,7 +39,8 @@ export const ok = (cond, name) => {
 // same pass/fail tally and exit code as the browser files.
 export const done = async browser => {
   await browser?.close();
-  console.log(`\n${pass} passed, ${fail} failed`);
+  console.log(`\n${pass} passed, ${fail} failed`
+              + (TIMING ? ` in ${((Date.now() - startedAt) / 1000).toFixed(1)}s` : ''));
   process.exit(fail ? 1 : 0);
 };
 export const sleep = ms => new Promise(r => setTimeout(r, ms));

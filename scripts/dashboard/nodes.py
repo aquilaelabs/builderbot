@@ -1105,6 +1105,49 @@ def agent_shipped():
     return {"digest": f["digest"], "version": f["version"]}
 
 
+# What a build command obviously needs, by the tool it invokes. Only the
+# unambiguous ones: a `make` or a `./build.sh` says nothing about its
+# toolchain, and guessing at those would refuse builds that would have
+# worked. Keys are what the census reports (agent `_toolchains`).
+NEEDS = {
+    "gradlew": "java", "gradle": "java", "mvn": "java", "javac": "java",
+    "flutter": "flutter", "dotnet": "dotnet", "cargo": "rust", "rustc": "rust",
+    "go": "go", "swift": "swift", "swiftc": "swift",
+    "npm": "node", "npx": "node", "yarn": "node", "pnpm": "node", "node": "node",
+    "sdkmanager": "android-sdk", "adb": "android-sdk", "apksigner": "android-sdk",
+    "bundletool": "android-sdk", "emulator": "emulator",
+}
+
+
+def toolchain_for(argv):
+    """The toolchain a command visibly needs, or "". Reads every word, so
+    `sh -c './gradlew assembleDebug'` and a bare `gradle` both answer."""
+    for word in argv or []:
+        w = str(word).strip().strip("'\"")
+        for part in re.split(r"[\s;&|]+", w):
+            base = part.rsplit("/", 1)[-1]
+            if base in NEEDS:
+                return NEEDS[base]
+    return ""
+
+
+def toolchain_gap(node_id, argv):
+    """"" if this node can plausibly run this command, else the toolchain
+    it is missing. Only ever answers about a tool the command NAMES and the
+    node's census does not report — an unknown build script is not refused,
+    and a node that has never dialed in is not judged."""
+    want = toolchain_for(argv)
+    if not want:
+        return ""
+    n = node(node_id)
+    if not n or n["kind"] != "agent":
+        return ""
+    tc = (n.get("reported") or {}).get("toolchains")
+    if not isinstance(tc, dict) or not tc:
+        return ""                       # nothing reported yet: not a verdict
+    return "" if tc.get(want) else want
+
+
 def runner_labels_known():
     """Every label a runner in the registry carries, reported or wanted, for
     the lint that checks a workflow's runs-on against what exists."""

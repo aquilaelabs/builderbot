@@ -536,6 +536,18 @@ applied to disk.
   skew nobody can debug — the default is one store per node, and a shared
   store is a deliberate arrangement for co-located nodes with the
   one-install-at-a-time rule enforced across them or not at all.
+
+  *Where it landed (2 Sep):* enforced. Reading is automatic and always was —
+  a node's `toolchains` are a live probe of its packages store at every
+  census, so a node whose neighbour installed something on the shared export
+  reports it at its next `hello` (ten minutes, or at once after any job that
+  ends in one). Writing is what needed the rule: `packages.store_sharers`
+  identifies the nodes that share a store — by the census's mount SOURCE
+  under the store path, never by the path string, since
+  `/var/lib/builderbot/packages` is every node's default and a different disk
+  on each — and a package job is refused while one is running on any of them,
+  naming the node that holds it. The Tools tab says a store is shared, and
+  with whom, before anybody presses Install.
 - **Disk is checked before, not discovered after.** The catalog already knows
   each package's size; the census reports each store's headroom. A
   package-install job is refused at placement when the store cannot hold it —

@@ -1316,6 +1316,15 @@ travels in the clear, as the dashboard's own credential does; enrollment says
 so, and with TLS in front of the dashboard the agent pins the certificate on
 first use and refuses a different one after.
 
+Two nodes may point `packages` at the same NFS export deliberately, and then
+they are one store: what is installed on either is installed for both — a
+node's toolchains are read from the store at every census, so its neighbour's
+install shows up within the census interval. What that arrangement needs is a
+lock, and it has one: an install is refused while a package job is running on
+any node sharing that store, naming which, and the Tools tab says the store
+is shared before you press. Sharing is recognised by the mount's source, not
+by the path, since every node's default path is the same string.
+
 **Four stores per node**, each a directory of its own: `data` (job
 workspaces and AVDs), `packages` (the toolchains installed there — what a
 project bound to that node can build), `cache` (build caches, per project)

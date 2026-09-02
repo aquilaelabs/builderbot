@@ -269,7 +269,7 @@ ok(list[0].id === 'local',
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
   const ROW = `.nodestab .ndrow[data-node="${minted.id}"]`;
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
-  ok(await page.$eval(`${ROW} .ndstale`, e => /update available → 8/.test(e.textContent))
+  ok(await page.$eval(`${ROW} .ndstale`, e => /update available → 9/.test(e.textContent))
      && await page.$(`${ROW} [data-nd="update-agent"]`) !== null
      && await page.evaluate(() => !document.querySelector('.nodestab .ndrow[data-node="local"] [data-nd="update-agent"]')),
      'the row wears "update available" with the shipped version and an Update agent button; local has neither');
