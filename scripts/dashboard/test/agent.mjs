@@ -88,7 +88,29 @@ print("unknown", a, file=sys.stderr); sys.exit(2)
 writeFileSync(`${DIR}/bin/netplan`, `#!/bin/sh
 echo "$*" >> "${DIR}/netplan.log"
 `, { mode: 0o755 });
+// The runner, stood in for: a tarball whose config.sh and svc.sh record
+// what they were asked, and a `sudo` on the server's PATH that answers the
+// token minter with a fake token — the real one needs the root-only stash.
+mkdirSync(`${DIR}/runner-src/bin`, { recursive: true });
+writeFileSync(`${DIR}/runner-src/config.sh`, `#!/bin/sh
+echo "config $*" >> "$(dirname "$0")/calls.log"
+if [ "$1" = remove ]; then rm -f "$(dirname "$0")/.runner"; exit 0; fi
+name=; url=
+while [ $# -gt 0 ]; do case "$1" in --name) name="$2"; shift;; --url) url="$2"; shift;; esac; shift; done
+printf '{"agentName":"%s","gitHubUrl":"%s"}' "$name" "$url" > "$(dirname "$0")/.runner"
+`, { mode: 0o755 });
+writeFileSync(`${DIR}/runner-src/svc.sh`, `#!/bin/sh
+echo "svc $*" >> "$(dirname "$0")/calls.log"
+`, { mode: 0o755 });
+writeFileSync(`${DIR}/runner-src/run.sh`, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+execFileSync('tar', ['-czf', `${DIR}/runner.tar.gz`, '-C', `${DIR}/runner-src`, '.']);
+writeFileSync(`${DIR}/bin/sudo`, `#!/bin/sh
+case "$*" in *mint-runner-token*registration*) echo AAAREGTOKEN; exit 0 ;;
+             *mint-runner-token*remove*) echo AAAREMOVETOKEN; exit 0 ;; esac
+echo "sudo: refused" >&2; exit 1
+`, { mode: 0o755 });
 const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
+  BUILDERBOT_RUNNER_DIR: `${DIR}/runner`, BUILDERBOT_RUNNER_TARBALL: `${DIR}/runner.tar.gz`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
   BUILDERBOT_NETPLAN_BIN: `${DIR}/bin/netplan`, BUILDERBOT_NETPLAN_DIR: `${DIR}/netplan` };
 {
@@ -109,7 +131,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
-     && n.agent.version === '4' && /^sha256:/.test(n.agent.digest),
+     && n.agent.version === '5' && /^sha256:/.test(n.agent.digest),
      'the row is online with the census, agent version and digest');
   // single use
   let again = '';
@@ -375,6 +397,46 @@ try {
     ok(view.node === minted.id && view.root === `${DIR}/agentpackages` && Array.isArray(view.items)
        && view.items.every(i => 'installed' in i),
        'the Tools tab reads that node\'s state: its store, and what its census says it has');
+  }
+
+  // ---- the Actions runner as a service on the node (phase 7) ----------------
+  {
+    const nourl = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true, url: 'ftp://nope' });
+    ok(/GitHub org or repo URL/.test(nourl.error || ''), 'installing a runner needs the URL it registers with');
+    const inst = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: true,
+      labels: ['gpu', 'bad label!'], url: 'https://github.com/example-org' });
+    ok(inst.ok && /^j_/.test(inst.job), `Install runner queues a system job (${inst.job || inst.error})`);
+    const ifin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${inst.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    const calls = existsSync(`${DIR}/runner/calls.log`) ? readFileSync(`${DIR}/runner/calls.log`, 'utf8') : '';
+    ok(ifin && ifin.state === 'succeeded' && /registering agentbox with https:\/\/github.com\/example-org/.test(ifin.log),
+       `the agent unpacks the runner and registers it (${ifin?.state}: ${(ifin?.log || '').slice(-200).replace(/\n/g, ' / ')})`);
+    ok(/config --unattended --replace --url https:\/\/github.com\/example-org --token AAAREGTOKEN --name agentbox --labels builderbot,self-hosted,linux,x64,agentbox,gpu,badlabel --work _work/.test(calls)
+       && /svc install/.test(calls) && /svc start/.test(calls),
+       'config.sh gets the minted token, the node\'s name, the default labels plus its own name, and svc.sh installs and starts it');
+    ok(!/AAAREGTOKEN/.test(ifin?.log || ''), '...and the token never reaches the job log');
+    const rn = await until(async () => { const n = await nodeById(minted.id);
+      return n.reported.services?.['actions-runner']?.installed ? n : null; });
+    ok(rn && rn.reported.services['actions-runner'].name === 'agentbox'
+       && rn.reported.services['actions-runner'].labels.includes('agentbox')
+       && rn.services['actions-runner'].want === true,
+       'the census reports the runner, its name and labels; the record keeps the ask');
+    const labels = execFileSync('bash', [`${REPO}/scripts/bb`, 'ci-labels'],
+      { encoding: 'utf8', cwd: REPO, env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+    ok(/^agentbox$/m.test(labels) && /^gpu$/m.test(labels) && /^builderbot$/m.test(labels),
+       'bb ci-labels lists the node runner\'s labels beside this box\'s own');
+    const rm = await api('/api/v1/nodes', { action: 'runner', id: minted.id, want: false });
+    const rfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${rm.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    ok(rfin && rfin.state === 'succeeded' && !existsSync(`${DIR}/runner`) && /runner removed/.test(rfin.log),
+       'Remove runner deregisters with a removal token and takes the directory away');
+    const rn2 = await until(async () => { const n = await nodeById(minted.id);
+      return n.reported.services?.['actions-runner']?.installed === false ? n : null; });
+    ok(rn2 !== null, '...and the census says so');
   }
 
   // Test on an agent node is a round trip through the channel

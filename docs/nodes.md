@@ -1074,6 +1074,27 @@ compiles elsewhere and lands in the Artifacts tab.
 The Actions runner as a per-node managed service with per-node labels,
 installed/removed from the Nodes screen.
 
+*Where phase 7 landed it:* the fold on a sandbox node's row grows a *CI
+runner* section. Install is a `system` job with `apply: runner`: the agent
+fetches GitHub's latest runner release for the node's architecture into
+`/var/lib/builderbot/runner`, asks the controller for a registration token
+through the new `runner-token` agent verb — minted on request from the
+root-only stash by the same helper the container's runner uses, audited,
+never stored; the PAT stays here — registers as the enrolled account with
+labels `builderbot, self-hosted, linux, <arch>, <node name>` plus any typed,
+and installs and starts it with the runner's own `svc.sh`. Remove
+deregisters with a removal token first. The census reports the service
+(`services.actions-runner`: registered as what, with which labels,
+listening or busy), the node record keeps what was asked for, and `bb
+ci-labels` lists every label the registry knows — this box's and every
+node runner's — with `--write` regenerating `.github/actionlint.yaml` from
+it; `bb lint` notes a declared label no runner carries. **A project's CI
+node setting decides where its jobs land by label**: the workflow's
+`runs-on` names the node, and nothing else can, because GitHub places the
+job, not this controller. Not yet done, by the phase's own rule: the
+controller's runner is retired only after a node runner has taken a real
+job, which is the operator's to see.
+
 **Phase 8 — deploy targets.**
 Modes `lan` and `funnel`; the `route` record shaped for `public`.
 

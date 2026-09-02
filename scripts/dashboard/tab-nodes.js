@@ -116,6 +116,42 @@ function mountState(m, reported){
   return [diff ? `${from} — applying will change it` : from, diff ? "warn" : ""];
 }
 
+// The Actions runner on this node (phase 7): what the census says is
+// there, and the labels an install would register with — the node's own
+// name among them, which is the label a workflow's runs-on uses to land
+// here. Install and Remove are system jobs like the rest of the fold.
+function nodeRunnerSection(n, c){
+  const rep = n.reported?.services?.["actions-runner"] || {};
+  const want = n.services?.["actions-runner"] || {};
+  const d = c.draft;
+  if (d.runner === undefined) d.runner = {labels: (want.labels || []).filter(x =>
+      !["builderbot", "self-hosted", "linux", "x64", "arm64", n.name].includes(x)).join(", "),
+    url: want.url || ""};
+  const state = rep.installed
+    ? `registered as ${rep.name || "?"}${rep.url ? " with " + rep.url : ""} — ${
+        rep.busy ? "running a job" : rep.active ? "listening" : "installed, not listening"}${
+        rep.labels?.length ? " · labels " + rep.labels.join(", ") : ""}`
+    : want.want ? "install asked for; the node has not reported it yet" : "no runner on this node";
+  const busy = n.applying;
+  return `
+      <div class="ndsec">CI runner — GitHub's Actions runner as a service here; its labels decide which workflows land</div>
+      <div class="ndrunner">
+        <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
+          placeholder="${esc(want.url || "https://github.com/your-org — the org or repo it registers with")}" aria-label="GitHub URL">
+        <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
+          placeholder="extra labels, comma-separated — builderbot, self-hosted, linux, the arch and ${esc(n.name)} are always on" aria-label="labels">
+      </div>
+      <div class="sub ndrunstate${rep.installed && !rep.active ? " warn" : ""}">${esc(state)}</div>
+      <div class="acts">
+        <span class="sp"></span>
+        <button type="button" data-nrunner="install" ${busy ? "disabled" : ""}
+          title="download GitHub's runner onto the node, register it with a one-hour token the controller mints, and run it as a service">${
+          rep.installed ? "Reinstall runner" : "Install runner"}</button>
+        ${rep.installed || want.want ? `<button type="button" class="rm" data-nrunner="remove" ${busy ? "disabled" : ""}
+          title="deregister it from GitHub and take the service off the node">Remove runner</button>` : ""}
+      </div>`;
+}
+
 function nodeConfFold(n){
   const c = nodeDraft(n);
   const d = c.draft;
@@ -184,6 +220,7 @@ function nodeConfFold(n){
           autocomplete="off" placeholder="${esc(net.interface || "interface (default route's)")}" aria-label="interface">
       </div>
       <div class="sub">${esc(now)}</div>
+      ${nodeRunnerSection(n, c)}
       <div class="acts ndconfacts">
         <span class="sub ndconfstate${busy ? " note" : ""}">${status}</span>
         <span class="sp"></span>
@@ -444,6 +481,11 @@ function wireNodeConf(row, id){
       } else if (k.startsWith("net:")){
         const f = k.slice(4);
         d.network[f] = f === "dns" ? el.value.split(",").map(x => x.trim()).filter(Boolean) : el.value;
+      } else if (k.startsWith("runner:")){
+        // The runner's fields are sent with Install, not with Save: they
+        // are not part of the storage-and-network record.
+        d.runner[k.slice(7)] = el.value;
+        return;
       }
       touch();
       // Only the two that change what else is enabled repaint now; a
@@ -470,6 +512,14 @@ function wireNodeConf(row, id){
     const i = Number(b.closest(".ndmount").dataset.i);
     c.draft.mounts.splice(i, 1);
     touch(); nodesFocus = null; nodesRev++; drawPanes();
+  });
+  fold.querySelectorAll("[data-nrunner]").forEach(b => b.onclick = async () => {
+    const n = nodesList.find(x => x.id === id);
+    const want = b.dataset.nrunner === "install";
+    if (!want && !confirm(`Remove the runner from ${n?.name || "this node"}?\n\nIt is deregistered `
+        + `from GitHub first; workflows that target its label will wait for a runner.`)) return;
+    const labels = (c.draft.runner?.labels || "").split(",").map(x => x.trim()).filter(Boolean);
+    await nodeAct({action: "runner", id, want, labels, url: c.draft.runner?.url || ""});
   });
   const save = fold.querySelector("[data-nsave]");
   if (save) save.onclick = async () => {

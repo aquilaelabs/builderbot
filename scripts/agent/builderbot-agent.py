@@ -64,8 +64,9 @@ import tarfile
 import threading
 import time
 import urllib.parse
+import urllib.request
 
-AGENT_VERSION = "4"
+AGENT_VERSION = "5"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -84,6 +85,12 @@ NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
 # How long a network change has to dial back in before it is reverted.
 DIAL_BACK_S = 180
+# The Actions runner as a per-node service (docs/nodes.md §14, phase 7):
+# where it lives, and — for the tests — a tarball to unpack instead of the
+# GitHub release download.
+RUNNER_DIR = os.environ.get("BUILDERBOT_RUNNER_DIR", "/var/lib/builderbot/runner")
+RUNNER_TARBALL = os.environ.get("BUILDERBOT_RUNNER_TARBALL", "")
+RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
 
 
 def log(msg):
@@ -340,7 +347,35 @@ def census(state):
         "sandbox": os.access(SANDBOX_BIN, os.X_OK),
         "mounts": mounts_now(),
         "network": network_now(),
+        "services": services_now(),
     }
+
+
+def services_now():
+    """The managed services on this node and their state — today the
+    Actions runner: registered as what, with which labels, and whether its
+    listener is up. Read from the runner's own files, so a runner installed
+    by hand reports the same way one installed from the tab does."""
+    out = {}
+    cfg = os.path.join(RUNNER_DIR, ".runner")
+    if os.path.isfile(cfg):
+        try:
+            with open(cfg) as f:
+                j = json.load(f)
+        except (OSError, ValueError):
+            j = {}
+        labels = []
+        with contextlib.suppress(OSError):
+            with open(os.path.join(RUNNER_DIR, ".builderbot-labels")) as f:
+                labels = [x for x in f.read().split(",") if x]
+        pg = _run(["pgrep", "-f", os.path.join(RUNNER_DIR, "bin/Runner.Listener")])
+        out["actions-runner"] = {"installed": True, "name": str(j.get("agentName") or "")[:80],
+                                 "url": str(j.get("gitHubUrl") or "")[:200],
+                                 "labels": labels[:16], "active": bool(pg),
+                                 "busy": bool(_run(["pgrep", "-f", os.path.join(RUNNER_DIR, "bin/Runner.Worker")]))}
+    else:
+        out["actions-runner"] = {"installed": False}
+    return out
 
 
 def mounts_now():
@@ -1031,6 +1066,8 @@ class Agent:
             return self._apply_storage(job, cfg)
         if what == "network":
             return self._apply_network(job, cfg)
+        if what == "runner":
+            return self._apply_runner(job, cfg)
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
 
@@ -1161,6 +1198,124 @@ class Agent:
             time.sleep(5)
         job.say("reverted to the previous network config\n")
         return "failed", 68
+
+    def _apply_runner(self, job, cfg):
+        """The Actions runner as a service on this node (phase 7): fetched
+        from GitHub's releases, registered with a token the controller mints
+        on request — the PAT stays in the controller's root-only stash and
+        the token lives for an hour — and run under systemd as the enrolled
+        account by the runner's own svc.sh. Removal deregisters first, so
+        GitHub does not keep a ghost. Labels are the tab's, the node's name
+        among them, and are written beside the runner for the census."""
+        want = bool(cfg.get("want", True))
+        who = self.drop_privileges({})
+        user = self.state.get("user") or "root"
+        d = RUNNER_DIR
+        if not want:
+            if not os.path.isfile(os.path.join(d, ".runner")):
+                job.say("no runner is installed here\n")
+                return "succeeded", 0
+            st, r = self.ctl.call("runner-token", {"kind": "remove"}, timeout=60)
+            if st != 200 or not r.get("token"):
+                job.say(f"could not get a removal token from the controller: {r.get('error', st)}\n")
+                return "failed", 69
+            if os.path.isfile(os.path.join(d, "svc.sh")):
+                self._sh(job, ["bash", os.path.join(d, "svc.sh"), "stop"])
+                self._sh(job, ["bash", os.path.join(d, "svc.sh"), "uninstall"])
+            code = self._run_as(job, who, d, [os.path.join(d, "config.sh"), "remove", "--token", r["token"]])
+            if code != 0:
+                job.say("deregistration did not complete; remove the runner in GitHub's settings if it lingers\n")
+            shutil.rmtree(d, ignore_errors=True)
+            self.hello()
+            job.say("runner removed\n")
+            return "succeeded", 0
+        url = str(cfg.get("url") or "")
+        if not url.startswith("https://github.com/"):
+            job.say(f"refused: the runner registers with a GitHub org or repo URL, not {url!r}\n")
+            return "failed", 65
+        labels = [re.sub(r"[^A-Za-z0-9._-]", "", str(x)) for x in (cfg.get("labels") or [])]
+        labels = [x for x in labels if x][:16] or ["builderbot", "self-hosted"]
+        name = re.sub(r"[^A-Za-z0-9._-]", "-", str(cfg.get("name") or socket.gethostname()))[:64]
+        os.makedirs(d, exist_ok=True)
+        if not os.path.isfile(os.path.join(d, "config.sh")):
+            tar_path = os.path.join(d, "runner.tar.gz")
+            if RUNNER_TARBALL:
+                shutil.copyfile(RUNNER_TARBALL, tar_path)
+                job.say(f"using the runner tarball at {RUNNER_TARBALL}\n")
+            else:
+                arch = {"x86_64": "x64", "aarch64": "arm64", "armv7l": "arm"}.get(platform.machine(), "x64")
+                job.say("asking GitHub for the latest runner release…\n")
+                try:
+                    with urllib.request.urlopen(RUNNER_RELEASES, timeout=30) as r:
+                        rel = json.load(r)
+                    asset = next(a["browser_download_url"] for a in rel.get("assets", [])
+                                 if a.get("name", "").startswith(f"actions-runner-linux-{arch}-")
+                                 and a["name"].endswith(".tar.gz"))
+                except (OSError, ValueError, StopIteration, KeyError) as e:
+                    job.say(f"could not find the runner release: {e}\n")
+                    return "failed", 69
+                job.say(f"downloading {asset}\n")
+                job.flush()
+                try:
+                    with urllib.request.urlopen(asset, timeout=600) as r, open(tar_path, "wb") as f:
+                        shutil.copyfileobj(r, f)
+                except OSError as e:
+                    job.say(f"download failed: {e}\n")
+                    return "failed", 69
+            with tarfile.open(tar_path) as tar:
+                if hasattr(tarfile, "data_filter"):
+                    tar.extractall(d, filter="data")
+                else:
+                    tar.extractall(d)
+            os.remove(tar_path)
+        self.own_dir(d, who)
+        if who:
+            for dd, dirs, files in os.walk(d):
+                for x in [dd] + [os.path.join(dd, f) for f in files]:
+                    with contextlib.suppress(OSError):
+                        os.lchown(x, who["user"], who["group"])
+        st, r = self.ctl.call("runner-token", {"kind": "registration"}, timeout=60)
+        if st != 200 or not r.get("token"):
+            job.say(f"could not get a registration token from the controller: {r.get('error', st)}\n")
+            return "failed", 69
+        job.say(f"registering {name} with {url} [{','.join(labels)}]\n")
+        code = self._run_as(job, who, d, [os.path.join(d, "config.sh"), "--unattended", "--replace",
+                                          "--url", url, "--token", r["token"], "--name", name,
+                                          "--labels", ",".join(labels), "--work", "_work"])
+        if code != 0:
+            return "failed", code
+        with open(os.path.join(d, ".builderbot-labels"), "w") as f:
+            f.write(",".join(labels))
+        if os.path.isfile(os.path.join(d, "svc.sh")):
+            if self._sh(job, ["bash", os.path.join(d, "svc.sh"), "install", user]) != 0:
+                return "failed", 1
+            if self._sh(job, ["bash", os.path.join(d, "svc.sh"), "start"]) != 0:
+                return "failed", 1
+        self.hello()
+        job.say("runner installed and started\n")
+        return "succeeded", 0
+
+    def _run_as(self, job, who, cwd, argv):
+        """One command as the enrolled account, in the runner's directory,
+        its output into the log. config.sh refuses to run as root."""
+        job.say("$ " + " ".join(a if "--token" not in argv[max(0, i - 1)] else "…" for i, a in enumerate(argv)) + "\n")
+        env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C.UTF-8",
+               "HOME": cwd}
+        who2 = dict(who)
+        if who:
+            import pwd
+            with contextlib.suppress(KeyError):
+                env["HOME"] = pwd.getpwuid(who["user"]).pw_dir
+        try:
+            p = subprocess.run(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT, timeout=600, check=False, **who2)
+        except (OSError, subprocess.SubprocessError) as e:
+            job.say(f"{argv[0]}: {e}\n")
+            return 1
+        for line in p.stdout.decode("utf-8", "replace").splitlines():
+            if line.strip():
+                job.say(line + "\n")
+        return p.returncode
 
     def _restore_netplan(self, job, path, before):
         if before is None:

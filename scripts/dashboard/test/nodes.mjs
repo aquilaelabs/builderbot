@@ -256,6 +256,21 @@ ok(list[0].id === 'local',
   await page.waitForSelector(`${ROW} .ndconf[open] [data-madd]`, { timeout: 5000 });
   ok(await page.$eval(`${ROW} .ndconf`, e => /now 10\.0\.0\.40\/24 on ens3 via 10\.0\.0\.1/.test(e.textContent)),
      'it reports the address the node is on');
+  ok(await page.$eval(`${ROW} .ndrunstate`, e => /no runner on this node/.test(e.textContent))
+     && await page.$eval(`${ROW} [data-nrunner="install"]`, b => /Install runner/.test(b.textContent)),
+     'the CI runner section says there is none, and offers to install one');
+  await page.fill(`${ROW} [data-k="runner:url"]`, 'https://github.com/example-org');
+  await page.fill(`${ROW} [data-k="runner:labels"]`, 'gpu');
+  await page.click(`${ROW} [data-nrunner="install"]`);
+  await page.waitForFunction(sel => /applying runner/.test(
+    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  const rj = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system' && j.spec.apply === 'runner');
+  ok(rj && rj.node === minted.id && rj.spec.config.url === 'https://github.com/example-org'
+     && rj.spec.config.labels.includes('shed') && rj.spec.config.labels.includes('gpu'),
+     `Install runner queues the system job with the node's name among the labels (${rj?.spec?.config?.labels?.join(',')})`);
+  await napi('/api/v1/jobs', { action: 'cancel', id: rj.id });
+  await page.waitForFunction(sel => !/applying/.test(
+    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
   await page.click(`${ROW} [data-madd]`);
   await page.waitForSelector(`${ROW} .ndmount[data-i="0"] [data-k="source"]`, { timeout: 5000 });
   ok(await page.evaluate(() => document.activeElement?.dataset.k === 'source'),

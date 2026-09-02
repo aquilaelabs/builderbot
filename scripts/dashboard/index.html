@@ -1634,6 +1634,9 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndstore .sub{grid-column:2}
 .ndconfacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .ndconfstate.note{color:var(--note)}
+.ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
+.ndrunstate.warn{color:var(--warn)}
+@media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
 .rnroles{flex-wrap:wrap}
 #rnBuildCmd,#rnTestCmd{margin-bottom:6px}
 .pkgnode .pick{display:inline-flex;gap:8px;align-items:center}

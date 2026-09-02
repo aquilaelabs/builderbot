@@ -750,6 +750,14 @@ def _census(c):
                 "path": str(m["path"])[:200], "source": str(m.get("source") or "")[:200],
                 "type": str(m.get("type") or "")[:16], "ro": bool(m.get("ro")),
                 "mounted": bool(m.get("mounted")), "real": str(m.get("real") or "")[:200]})
+    sv = c.get("services") if isinstance(c.get("services"), dict) else {}
+    ar = sv.get("actions-runner") if isinstance(sv.get("actions-runner"), dict) else {}
+    out["services"] = {"actions-runner": {
+        "installed": bool(ar.get("installed")), "active": bool(ar.get("active")),
+        "busy": bool(ar.get("busy")), "name": str(ar.get("name") or "")[:80],
+        "url": str(ar.get("url") or "")[:200],
+        "labels": [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40]
+                   for x in (ar.get("labels") or [])[:16] if str(x)]}}
     net = c.get("network") if isinstance(c.get("network"), dict) else {}
     out["network"] = {
         "interface": str(net.get("interface") or "")[:32],
@@ -851,6 +859,66 @@ def node_config_set(principal, node_id, cfg):
            {"mounts": len(clean["mounts"]), "stores": sorted(clean["stores"]),
             "network": clean["network"]["mode"]})
     return {"ok": True, "desired": clean}
+
+
+DEFAULT_RUNNER_LABELS = ("builderbot", "self-hosted", "linux")
+
+
+def runner_labels_for(n, labels=None):
+    """The labels a node's runner carries: the defaults, its architecture,
+    and its own name — the per-node label that lets a workflow's runs-on
+    pick this machine. Extra ones from the tab are kept, cleaned."""
+    want = [re.sub(r"[^A-Za-z0-9._-]", "", str(x))[:40] for x in (labels or [])]
+    out = list(DEFAULT_RUNNER_LABELS)
+    arch = (n.get("arch") or "").replace("x86_64", "x64").replace("aarch64", "arm64")
+    if arch:
+        out.append(arch)
+    out.append(re.sub(r"[^A-Za-z0-9._-]", "-", n["name"])[:40])
+    for x in want:
+        if x and x not in out:
+            out.append(x)
+    return out[:16]
+
+
+def node_runner(principal, node_id, want, labels=None, url=""):
+    """Install or remove the Actions runner on a node, as a system job
+    (phase 7). The desired state — wanted or not, with which labels — lives
+    in the node's services column; the census reports what is there."""
+    n = node(node_id)
+    if not n:
+        return {"error": "no such node"}
+    if n["kind"] != "agent":
+        return {"error": "the runner is installed by the agent — an ssh node has none"}
+    if not (n.get("reported") or {}).get("sandbox"):
+        return {"error": "this node was not provisioned as a BuilderBot sandbox, so it takes no system jobs"}
+    if n["state"] != "online":
+        return {"error": f"the node is {n['state']} — system jobs go to an online node"}
+    if system_job_for(node_id):
+        return {"error": "a system job is already in flight on this node — one at a time"}
+    if want and not str(url or "").startswith("https://github.com/"):
+        return {"error": "the runner registers with a GitHub org or repo URL — set GITHUB_URL "
+                         "on the controller, or type one"}
+    labs = runner_labels_for(n, labels) if want else []
+    services = dict(n.get("services") or {})
+    services["actions-runner"] = {"want": bool(want), "labels": labs, "url": str(url or "")[:200]}
+    _exec("UPDATE nodes SET services = ? WHERE id = ?", (json.dumps(services), node_id))
+    _touch(node_id, principal, "node-runner", {"want": bool(want), "labels": labs})
+    cfg = {"want": bool(want), "labels": labs, "url": str(url or ""), "name": n["name"]}
+    return job_add(principal, {"node": node_id}, "system",
+                   {"apply": "runner", "config": cfg, "timeout": 1800})
+
+
+def runner_labels_known():
+    """Every label a runner in the registry carries, reported or wanted, for
+    the lint that checks a workflow's runs-on against what exists."""
+    out = set()
+    for n in node_list():
+        rep = ((n.get("reported") or {}).get("services") or {}).get("actions-runner") or {}
+        out.update(rep.get("labels") or [])
+        want = (n.get("services") or {}).get("actions-runner") or {}
+        if want.get("want"):
+            out.update(want.get("labels") or [])
+    return sorted(out)
 
 
 def system_job_for(node_id):

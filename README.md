@@ -394,6 +394,8 @@ bb run [opts] -- CMD   snapshot this tree, run CMD on the project's build
 bb build           the project's build command on its build node, with the
                    outputs it lists — both set in the project's settings dialog
 bb test            the same for its test command, on its test node
+bb ci-labels       the runner labels the registry knows — this box's and every
+                   node runner's; `--write` regenerates .github/actionlint.yaml
 bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
@@ -1316,6 +1318,17 @@ workspace on the node for a look, and says where. The census reports each
 node's cache size beside **Clear cache**, and the Tools tab gains a node
 picker: installing a toolchain there is a job that carries `bb` and the
 catalog to the node's own packages store.
+
+**A CI runner per node.** The same fold installs GitHub's Actions runner
+on the node as a service: it registers with the org or repo URL from the
+controller's environment (or one typed there), a token the controller mints
+for the hour, and labels `builderbot, self-hosted, linux, <arch>, <node
+name>` plus any extra — so a workflow's `runs-on` names the node it should
+land on. The row says whether the runner is listening or busy; Remove
+deregisters it first. `bb ci-labels` lists every label the registry knows
+and `--write` regenerates `.github/actionlint.yaml` from them, so the lint
+checks `runs-on` against runners that exist. The container's own runner
+stays until a node runner has taken a real job.
 
 ### The Jobs tab
 

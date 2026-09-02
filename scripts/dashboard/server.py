@@ -33,6 +33,7 @@ import time
 import statefile
 import shutil
 import urllib.parse
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -1618,6 +1619,43 @@ def _pidfile_alive(p):
     return True
 
 
+def github_url():
+    """The org or repo this box's runner registers with: the environment,
+    or the local runner's own registration when the URL lives only in the
+    root-only stash. Empty when neither knows."""
+    u = os.environ.get("GITHUB_URL", "")
+    if u:
+        return u
+    cfg = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner")) / ".runner"
+    try:
+        return str(json.loads(cfg.read_text()).get("gitHubUrl") or "")
+    except (OSError, ValueError):
+        return ""
+
+
+def mint_runner_token(kind):
+    """A runner token for a node, the way runner.sh gets its own: the
+    root-only helper via its one sudo rule, or a session-visible PAT."""
+    r = run(["sudo", "-n", "/opt/builderbot/scripts/mint-runner-token", kind], timeout=60)
+    if r["code"] == 0 and r["out"].strip():
+        return {"token": r["out"].strip().splitlines()[-1]}
+    pat, url = os.environ.get("GITHUB_PAT", ""), github_url()
+    if pat and url:
+        path = url.split("://", 1)[-1].split("/", 1)[-1].strip("/")
+        scope = f"/repos/{path}" if "/" in path else f"/orgs/{path}"
+        req = urllib.request.Request(
+            f"https://api.github.com{scope}/actions/runners/{kind}-token",
+            method="POST", headers={"Authorization": "Bearer " + pat,
+                                    "Accept": "application/vnd.github+json"})
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return {"token": json.load(resp).get("token", "")}
+        except (OSError, ValueError) as e:
+            return {"error": f"GitHub refused: {e}"}
+    return {"error": "no runner credential here — GITHUB_PAT is not stashed on the controller"
+                     + (f" ({r['out'].strip()[:120]})" if r["out"].strip() else "")}
+
+
 def runner():
     d = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner"))
     info = {"registered": False, "running": False, "listening": False,
@@ -3010,6 +3048,12 @@ class Handler(BaseHTTPRequestHandler):
             r = nodes.node_config_set("operator", nid, req.get("config"))
         elif act == "apply":
             r = nodes.node_apply("operator", nid, field(req, "what"))
+        elif act == "runner":
+            # The Actions runner on a node (phase 7): a system job, with
+            # the URL from the controller's environment unless one is typed.
+            r = nodes.node_runner("operator", nid, bool(req.get("want", True)),
+                                  req.get("labels"),
+                                  field(req, "url") or github_url())
         elif act == "cache-clear":
             # Drop a node's build caches — one project's, or all (docs/nodes.md
             # §6): a job the agent runs, so it is logged and audited like
@@ -3256,6 +3300,14 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "an enrollment token enrolls, and "
                                         "nothing else"}, 403)
         nid = auth["node"]
+        if verb == "runner-token":
+            # A registration or removal token for the node's runner, minted
+            # now from the root-only stash and never stored: the PAT stays
+            # here, the hour-long token goes to the node that asked.
+            kind = "remove" if field(req, "kind") == "remove" else "registration"
+            r = mint_runner_token(kind)
+            nodes.audit(auth["principal"], "runner-token", nid, {"kind": kind, "ok": not r.get("error")})
+            return self._json(r, 400 if r.get("error") else 200)
         if verb == "hello":
             r = nodes.hello(nid, req.get("census"), addr,
                             field(req, "version"), field(req, "digest"),

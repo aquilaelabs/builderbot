@@ -739,6 +739,10 @@ label in its `runs-on` is one the runner has. Four implications:
   re-register to "fix" it, that is what caused it.
 - A push to a *different* repo in the org can be building on this same box
   right now. If something is inexplicably slow, that is a candidate.
+- A runner can also live on a node (the dashboard's Nodes tab installs one),
+  carrying the node's name as a label. A workflow lands there by naming that
+  label in `runs-on`; `bb ci-labels` lists every label the registry knows,
+  and `bb lint` says when a declared one belongs to no runner.
 
 ## Toolchain already present
 
