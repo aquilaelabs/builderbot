@@ -388,12 +388,12 @@ bb nodes           the node registry, read-only in a terminal — the Nodes
                    tab is where it is edited; `local` is this container
 bb jobs [-n N]     the recent jobs: state, node, what ran, how it ended —
                    read-only; the Jobs tab is where one is stopped
-bb run [opts] -- CMD   snapshot this tree, run CMD on the project's build
-                   node and stream the log back; `--out GLOB` brings what
-                   matches into dist/ with its provenance; `--role`, `--node`
-bb build           the project's build command on its build node, with the
-                   outputs it lists — both set in the project's settings dialog
-bb test            the same for its test command, on its test node
+bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
+                   stream the log back; `--out GLOB` brings what matches into
+                   dist/ with its provenance; `--node` names another node
+bb build           the project's build command on its node, with the outputs
+                   it lists — all set in the project's settings dialog
+bb test            the same for its test command
 bb ci-labels       the runner labels the registry knows — this box's and every
                    node runner's; `--write` regenerates .github/actionlint.yaml
 bb findings        this project's scanner findings (--all for every project)
@@ -1307,9 +1307,9 @@ puts the previous config back on its own and says so when it reconnects.
 Network changes need netplan on the node, and the job says so where there is
 none. Nothing here is offered to an ssh node or to local.
 
-**Building there.** A project assigns nodes to roles in its settings dialog
-— build, test, CI, emulator — and gives its build and test commands and the
-output globs. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
+**Building there.** A project names its node in its settings dialog — one
+node for everything it does off this box: containers, builds, tests, CI and
+emulation — and gives its build and test commands and the output globs. `bb build`, `bb test` and `bb run -- CMD` snapshot the working
 tree here, dirty edits included, run on that node in a workspace of the job's
 own, and stream the log back; what the outputs match comes back into `dist/`
 by name with a provenance record beside it, which the Artifacts tab shows on

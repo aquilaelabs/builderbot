@@ -291,13 +291,13 @@ try {
     writeFileSync(`${DIR}/ws/alpha/hello.txt`, 'hi from the tree\n');
     mkdirSync(`${DIR}/ws/alpha/dist`, { recursive: true });
     writeFileSync(`${DIR}/ws/alpha/dist/stale.apk`, 'should not travel');
-    const norole = await api('/api/v1/jobs', { action: 'run', project: 'alpha', role: 'test', argv: ['true'] });
-    ok(/no test node/.test(norole.error || ''), `a role with no node set is refused, naming the role (${norole.error})`);
+    const nonode = await api('/api/v1/jobs', { action: 'run', project: 'alpha', argv: ['true'] });
+    ok(/has no node/.test(nonode.error || ''), `a project with no node set is refused, and told where to set one (${nonode.error})`);
     const onlocal = await api('/api/v1/jobs', { action: 'run', project: 'alpha', node: 'local', argv: ['true'] });
     ok(/runs no agent/.test(onlocal.error || ''), 'local is not a build node — it has no workspace of its own');
-    const pr = await api('/api/prefs', { project: 'alpha', nodes: { build: minted.id },
+    const pr = await api('/api/prefs', { project: 'alpha', node: minted.id,
       build: 'cat hello.txt && mkdir -p out && echo built > out/app-1.0.apk', outputs: ['out/*.apk'] });
-    ok(pr.ok && pr.nodes.build === minted.id && /hello/.test(pr.build),
+    ok(pr.ok && pr.node === minted.id && /hello/.test(pr.build),
        'the project record takes a build node, a build command and its outputs');
     const run = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
       argv: ['sh', '-c', 'cat hello.txt; ls dist 2>/dev/null | wc -l; mkdir -p out; echo built > out/app-1.0.apk; echo notes > out/notes.txt; echo cached > "$BUILDERBOT_CACHE/x"'],

@@ -349,19 +349,19 @@ ok(list[0].id === 'local',
   await page.waitForSelector('.doc .projtab [data-rn="alpha"]', { timeout: 15000 });
   await page.click('.doc .projtab [data-rn="alpha"]');
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
-  await page.waitForFunction(id => [...document.querySelectorAll('#rnRoleBuild option')].some(o => o.value === id),
+  await page.waitForFunction(id => [...document.querySelectorAll('#rnNode option')].some(o => o.value === id),
                              minted.id, { timeout: 10000 });
-  ok(await page.$eval('#rnRoleBuild', s => ![...s.options].some(o => o.value === 'local')),
-     'the roles offer agent nodes and not this container');
-  await page.selectOption('#rnRoleBuild', minted.id);
+  ok(await page.$eval('#rnNode', s => ![...s.options].some(o => o.value === 'local') && [...s.options].some(o => /sandbox/.test(o.textContent))),
+     'the project\'s node is any node but this container — the ssh sandbox included');
+  await page.selectOption('#rnNode', minted.id);
   await page.fill('#rnBuildCmd', './gradlew assembleDebug');
   await page.fill('#rnOutputs', 'app/build/outputs/apk/**/*.apk, extra/*.xpi');
   await page.click('#rnGo');
   await page.waitForSelector('#rnmodal', { state: 'hidden', timeout: 10000 });
   const saved = JSON.parse(readFileSync(`${DIR}/state/claude-prefs.json`, 'utf8')).projects.alpha;
-  ok(saved.nodes.build === minted.id && saved.build === './gradlew assembleDebug'
+  ok(saved.node === minted.id && saved.build === './gradlew assembleDebug'
      && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi',
-     'Save writes the build node, the command and the outputs onto the project record');
+     'Save writes the project\'s node, the command and the outputs onto the project record');
 }
 
 // ---- the seam stays invisible on the sidebar --------------------------------

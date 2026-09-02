@@ -83,6 +83,7 @@ DEVDATA = os.environ.get("BB_DEV_DATA_DIR", "/devdata")
 # nothing injected one — `bb doctor` loads this module on its own to ask
 # available(), and a probe should not start writing files.
 log_dir = None
+project_node = None   # the project's own node, from prefs (docs/nodes.md §13)
 
 # The daemon is a sandbox VM and nothing else. DOCKER_HOST names the machine;
 # ssh:// and the bb account provision.sh makes are filled in, so the address is
@@ -126,13 +127,17 @@ def _default_node():
 
 
 def _instance_node(project, instance):
-    """The node an instance is bound to — its record's, else the default.
+    """The node an instance is bound to — its record's, else the project's
+    own node (one setting for everything a project does on a node), else
+    the default docker host.
 
     Records from before nodes existed have no binding; they belong to the
     daemon DOCKER_HOST named, which is exactly what the default node mirrors,
-    so the fallback is not a guess.
+    so the last fallback is not a guess.
     """
     nid = _read_rec(project, instance).get("node") or ""
+    if not nid and project_node:
+        nid = project_node(project) or ""
     return nid or (node_for("docker-host") if node_for else "")
 
 
@@ -379,10 +384,10 @@ def abort_job(project, instance):
 
 
 def configure(*, workspace, state, write_json, log_dir=None, node_for=None,
-              node_addr=None, queue=None, runner=None):
+              node_addr=None, queue=None, runner=None, project_node=None):
     globals().update(WORKSPACE=Path(workspace), STATE=Path(state),
                      write_json=write_json, log_dir=log_dir,
-                     node_for=node_for, node_addr=node_addr,
+                     node_for=node_for, node_addr=node_addr, project_node=project_node,
                      queue=queue, runner=runner)
     if runner is not None:
         runner.register("compose", run_compose_job)

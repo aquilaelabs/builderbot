@@ -1637,7 +1637,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndrunner{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px}
 .ndrunstate.warn{color:var(--warn)}
 @media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
-.rnroles{flex-wrap:wrap}
 #rnBuildCmd,#rnTestCmd{margin-bottom:6px}
 .pkgnode .pick{display:inline-flex;gap:8px;align-items:center}
 .jbouts a{color:var(--accent)} .jbouts code{font:var(--f-note)}
@@ -2404,31 +2403,20 @@ body.dragging .tab .lbl{cursor:grabbing}
       </div>
       <div class="hint" id="rnPrefHint"></div>
     </div>
-    <!-- Which docker host this project's containers default to. A binding to
-         a node id, resolved by the pickers: Send-to-Docker preselects it, and
-         an instance still remembers the node it was actually created on. -->
+    <!-- The project's node: where everything it does on a node goes —
+         containers, builds, tests, CI, emulation. One setting, by decision
+         (docs/nodes.md §13): per-role pickers were more control than anybody
+         wanted. Send-to-Docker preselects it, and an instance still remembers
+         the node it was actually created on. -->
     <div class="field" id="rnNodeField" hidden>
-      <label for="rnDockerNode">Containers run on</label>
-      <select id="rnDockerNode"></select>
-      <div class="hint">The docker host Send to Docker manager offers first
-        for this project. Existing containers stay where they were made.</div>
-    </div>
-    <!-- Phase 6 (docs/nodes.md §6): which node builds, tests, runs CI and
-         hosts emulation for this project, and what bb build / bb test run
-         there. Agent nodes only — a build needs a workspace of its own. -->
-    <div class="field" id="rnRolesField">
-      <label id="rnRolesLabel">Nodes — where this project's work runs</label>
-      <div class="prefrow rnroles" role="group" aria-labelledby="rnRolesLabel">
-        <label class="pick">Build <select id="rnRoleBuild" aria-label="build node"></select></label>
-        <label class="pick">Test <select id="rnRoleTest" aria-label="test node"></select></label>
-        <label class="pick">CI <select id="rnRoleCi" aria-label="CI node"></select></label>
-        <label class="pick">Emulator <select id="rnRoleEmulator" aria-label="emulator node"></select></label>
-      </div>
-      <div class="hint" id="rnRolesHint">bb build and bb test snapshot this tree and
-        run on the build and test nodes; CI and emulator are read by later phases.</div>
+      <label for="rnNode">Node — where this project's work runs</label>
+      <select id="rnNode"></select>
+      <div class="hint" id="rnNodeHint">Its containers, builds, tests and CI go
+        here. An ssh node hosts containers only; an agent node does all of it.
+        Existing containers stay where they were made.</div>
     </div>
     <div class="field">
-      <label for="rnBuildCmd">Build and test — what bb build and bb test run there</label>
+      <label for="rnBuildCmd">Build and test — what bb build and bb test run on that node</label>
       <input id="rnBuildCmd" autocomplete="off" spellcheck="false"
              placeholder="build, e.g. ./gradlew assembleDebug">
       <input id="rnTestCmd" autocomplete="off" spellcheck="false"
@@ -4080,55 +4068,30 @@ const EFFORTS = [["", "leave as is"], ["low", "low"], ["medium", "medium"],
 // dialog that was merely looked at — the difference decides whether a running
 // session is restarted, which is not something to do because somebody opened
 // a menu.
-let rnPrefWas = {model: "", effort: "", dockernode: "", roles: "", build: "", test: "", outputs: ""};
-const ROLE_IDS = {build: "rnRoleBuild", test: "rnRoleTest", ci: "rnRoleCi", emulator: "rnRoleEmulator"};
-
-// The roles' selects: agent nodes only, because a build needs a workspace
-// of the node's own (docs/nodes.md §6); local is not offered and says why.
-function rnFillRoles(p){
-  const roles = p?.prefs?.nodes || {};
-  const anodes = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
-  if (nodesList === null) loadNodes();
-  for (const [role, id] of Object.entries(ROLE_IDS)){
-    const sel = $(id);
-    sel.innerHTML = `<option value="">${anodes.length ? "none" : "no agent node enrolled yet"}</option>`
-      + anodes.map(n => `<option value="${esc(n.id)}"${roles[role] === n.id ? " selected" : ""}>${
-          esc(n.name)} — ${esc(n.state)}${n.live === false ? ", quiet" : ""}</option>`).join("");
-    sel.value = anodes.some(n => n.id === roles[role]) ? roles[role] : "";
-  }
-  $("rnRolesHint").textContent = anodes.length
-    ? "bb build and bb test snapshot this tree and run on the build and test nodes; CI and emulator are read by later phases."
-    : "Enroll a node on the Nodes tab first — this container cannot be a build node, it has no workspace of its own.";
-  $("rnBuildCmd").value = p?.prefs?.build || "";
-  $("rnTestCmd").value = p?.prefs?.test || "";
-  $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
-}
-const rnRolesNow = () => JSON.stringify(Object.fromEntries(
-  Object.entries(ROLE_IDS).map(([r, id]) => [r, $(id).value])));
+let rnPrefWas = {model: "", effort: "", node: "", build: "", test: "", outputs: ""};
 
 function rnFillPrefs(p){
   rnPrefWas = {model: p?.prefs?.model || "", effort: p?.prefs?.effort || "",
-               dockernode: p?.prefs?.dockernode || "",
-               roles: JSON.stringify(Object.fromEntries(Object.keys(ROLE_IDS).map(r =>
-                 [r, p?.prefs?.nodes?.[r] || ""]))),
+               node: p?.prefs?.node || "",
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", ")};
-  rnFillRoles(p);
-  // The node binding: shown only when there is a choice to make, like every
-  // node select. "auto" is the default docker node, spelled as an option so
-  // clearing a binding is a pick rather than a mystery.
+  // The project's node: every node but this container, because local can
+  // host neither a build (no workspace of its own) nor, on purpose, a
+  // docker daemon. Shown when there is one to pick; "none" is spelled as an
+  // option so clearing the binding is a pick rather than a mystery.
   {
-    const sel = $("rnDockerNode"), wrap = $("rnNodeField");
-    const dnodes = (nodesList || []).filter(n =>
-      n.capabilities?.includes("docker-host"));
+    const sel = $("rnNode"), wrap = $("rnNodeField");
+    const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired");
     if (nodesList === null) loadNodes();
-    wrap.hidden = dnodes.length < 2;
-    sel.innerHTML = `<option value="">auto — the default node</option>`
-      + dnodes.map(n => `<option value="${esc(n.id)}"${
-          n.id === rnPrefWas.dockernode ? " selected" : ""}>${
-          esc(n.name)} — ${esc(n.state)}</option>`).join("");
-    if (!rnPrefWas.dockernode) sel.value = "";
+    wrap.hidden = !pick.length;
+    sel.innerHTML = `<option value="">none — containers go to the default docker host; builds wait</option>`
+      + pick.map(n => `<option value="${esc(n.id)}"${n.id === rnPrefWas.node ? " selected" : ""}>${
+          esc(n.name)} — ${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}</option>`).join("");
+    sel.value = pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
   }
+  $("rnBuildCmd").value = p?.prefs?.build || "";
+  $("rnTestCmd").value = p?.prefs?.test || "";
+  $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");
   for (const [id, table, cur] of [["rnModel", MODELS, rnPrefWas.model],
                                   ["rnEffort", EFFORTS, rnPrefWas.effort]]){
     const el = $(id);
@@ -6106,7 +6069,7 @@ function openSendToDocker(project){
   $("dnEnv").value = "";
   fillNodeSelect($("dnNode"), $("dnNodeField"),
                  state?.projects?.find(p => p.name === project)
-                   ?.prefs?.dockernode || dockerNode);
+                   ?.prefs?.node || dockerNode);
   $("dnmodal").hidden = false;
   // Fetched per open, and only shown when the project actually declares an
   // example: a blank Environment box on a project with nothing to fill in is
@@ -10186,12 +10149,11 @@ async function rnSubmit(){
   // server would otherwise write one and delete it in the same request.
   const clear_token = rnClearToken && !token;
   const model = $("rnModel").value, effort = $("rnEffort").value;
-  const dockernode = $("rnDockerNode").value;
-  const roles = rnRolesNow(), build = $("rnBuildCmd").value.trim(),
+  const node = $("rnNode").value;
+  const build = $("rnBuildCmd").value.trim(),
         test = $("rnTestCmd").value.trim(), outputs = $("rnOutputs").value.trim();
-  const rolesChanged = roles !== rnPrefWas.roles || build !== rnPrefWas.build
+  const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs;
-  const nodeChanged = dockernode !== rnPrefWas.dockernode || rolesChanged;
   const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
   const running = liveSessions().has(tmuxName("claude-" + name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
@@ -10223,7 +10185,7 @@ async function rnSubmit(){
       const r = await fetch("/api/prefs", {method:"POST",
         headers:{"Content-Type":"application/json"},
         body: JSON.stringify({project: name, model, effort,
-                              dockernode, nodes: JSON.parse(roles), build, test,
+                              node, build, test,
                               outputs: outputs.split(",").map(x => x.trim()).filter(Boolean),
                               // The node binding never restarts a session —
                               // it is about containers, not the conversation.

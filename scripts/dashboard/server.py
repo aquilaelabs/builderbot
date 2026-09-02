@@ -1969,7 +1969,8 @@ devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  node_for=nodes.node_for if not NODES_OK else None,
                  node_addr=nodes.ssh_addr_of if not NODES_OK else None,
                  queue=nodes if not NODES_OK else None,
-                 runner=jobs if not NODES_OK else None)
+                 runner=jobs if not NODES_OK else None,
+                 project_node=lambda p: prefs.get(p)["node"])
 
 # ---- the version ----------------------------------------------------------
 # One identity per project, rendered per target — the module's docstring says
@@ -2981,8 +2982,8 @@ class Handler(BaseHTTPRequestHandler):
             name = req.get("project", "")
             r = prefs.set_prefs(name, model=req.get("model"),
                                 effort=req.get("effort"),
-                                dockernode=req.get("dockernode"),
-                                nodes=req.get("nodes"), build=req.get("build"),
+                                node=req.get("node") if "node" in req else req.get("dockernode"),
+                                build=req.get("build"),
                                 test=req.get("test"), outputs=req.get("outputs"))
             # The restart is asked for by the dialog, which is where the
             # operator was told what it costs — never inferred here from the
@@ -3125,8 +3126,8 @@ class Handler(BaseHTTPRequestHandler):
     def _run_job(self, req):
         """`bb run`, `bb build` and `bb test` land here (docs/nodes.md §6):
         snapshot the project's working tree, dirty edits included, and queue
-        an exec on the node the project assigns to the role — or on the node
-        named. Outputs are globs; what matches comes back into dist/. The
+        an exec on the project's node — or on the node named. Outputs are
+        globs; what matches comes back into dist/. The
         principal is the session when the request says so, which is a label
         the credential cannot prove (bug #16) but is worth writing down."""
         if NODES_OK:
@@ -3138,11 +3139,10 @@ class Handler(BaseHTTPRequestHandler):
         if not argv:
             return {"error": "argv is empty"}, 400
         pf = prefs.get(name)
-        role = field(req, "role") or "build"
-        nid = field(req, "node") or (pf["nodes"].get(role) if role in prefs.ROLES else "")
+        nid = field(req, "node") or pf["node"]
         if not nid:
-            return {"error": f"{name} has no {role} node — pick one in the project's "
-                             "settings dialog (Nodes), or name one with --node"}, 400
+            return {"error": f"{name} has no node — pick one in the project's settings "
+                             "dialog, or name one with --node"}, 400
         n = nodes.node(nid)
         if not n:
             return {"error": f"no such node: {nid}"}, 400

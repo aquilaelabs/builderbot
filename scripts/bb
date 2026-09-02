@@ -68,10 +68,10 @@ bb — BuilderBot helper
                          and the scanner's logs
   bb nodes               the node registry, read-only (docs/nodes.md phase 1)
   bb jobs [-n N]         the recent jobs: state, node, what ran, how it ended
-  bb run [opts] -- CMD   snapshot this tree, run CMD on the project's build node,
+  bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node,
                          stream the log back; --out GLOB brings files into dist/
-  bb build               the project's build command, on its build node (settings)
-  bb test                the project's test command, on its test node (settings)
+  bb build               the project's build command, on its node (settings dialog)
+  bb test                the project's test command, on its node
   bb findings [PATH]     digest scanner SARIF findings for this project
   bb findings --all      ...including findings in other projects' trees
   bb findings --level L --rule ID --find TEXT   narrow it, same as the tab
@@ -2154,14 +2154,14 @@ cmd_run() {
     local role=build node="" timeout=3600 outs=() proj auth url
     while [ $# -gt 0 ]; do
         case "$1" in
-            --role) role="${2:-}"; shift 2 ;;
+            --role) role="${2:-}"; shift 2 ;;     # build|test: which command bb build/test are
             --node) node="${2:-}"; shift 2 ;;
             --out) outs+=("${2:-}"); shift 2 ;;
             --timeout) timeout="${2:-3600}"; shift 2 ;;
             --) shift; break ;;
             -h|--help)
-                echo "bb run [--role build|test|ci] [--node NAME] [--out GLOB]... [--timeout S] -- CMD..."
-                echo "  snapshot this tree, run CMD on the project's node for the role, stream the log;"
+                echo "bb run [--node NAME] [--out GLOB]... [--timeout S] -- CMD..."
+                echo "  snapshot this tree, run CMD on the project's node (its settings dialog), stream the log;"
                 echo "  files matching --out come back into dist/. bb build / bb test use the"
                 echo "  commands and outputs in the project's settings dialog."
                 return 0 ;;
