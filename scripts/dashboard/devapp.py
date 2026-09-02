@@ -322,15 +322,113 @@ def _active_job(project, instance):
     return None
 
 
+# The plan an agent node runs for one action (roadmap #18). The controller
+# still decides what: these are the same docker calls the controller used to
+# make over ssh, in the same order, with the compose file and env travelling
+# beside them — so a node needs nothing but the token it enrolled with.
+# `{cdir}` is the directory the agent writes those files into.
+def _plan(project, instance, action):
+    pname = _pname(project, instance)
+    pdir = (str(WORKSPACE / project) if _read_rec(project, instance).get("source") != "file"
+            else (dev_data_dir(project, instance, make=False)
+                  or str(Path(DEVDATA) / pname)))
+    base = [DOCKER, "compose", "--project-name", pname,
+            "--project-directory", pdir, "-f", "{cdir}/docker-compose.yml"]
+    if env_path(project, instance).is_file():
+        base += ["--env-file", "{cdir}/instance.env"]
+    env = _dev_data_env(project, instance)
+    up = {"name": "starting", "argv": base + ["up", "-d"], "timeout": 1800,
+          "env": env | _CLASSIC_BUILD}
+    down = {"name": "stopping", "argv": base + ["down"], "timeout": 180}
+    build = {"name": "building", "argv": base + ["build"], "timeout": 3600,
+             "env": env | _CLASSIC_BUILD}
+    return {"up": [up], "down": [down], "remove": [down],
+            "rebuild": [build, down, up]}.get(action) or []
+
+
+def _plan_spec(project, instance, action):
+    """The whole of what an agent node needs for one action."""
+    cf = compose_file(project, instance)
+    files = {"docker-compose.yml": cf.read_text() if cf and cf.is_file() else ""}
+    ep = env_path(project, instance)
+    if ep.is_file():
+        files["instance.env"] = ep.read_text()
+    make, _cannot = missing_dirs(project, _config(project, instance), instance)
+    d = dev_data_dir(project, instance, make=False)
+    return {"project": project, "instance": instance, "action": action,
+            "name": _pname(project, instance), "files": files,
+            "dirs": sorted(set(list(make) + ([d] if d else []))),
+            "plan": _plan(project, instance, action)}
+
+
+def compose_done(job, state):
+    """The records for an action the AGENT ran. Same bookkeeping the
+    controller's own runner does, applied from the result — the node
+    executes, this side remembers."""
+    sp = (job or {}).get("spec") or {}
+    project, instance = sp.get("project", ""), sp.get("instance") or MAIN
+    action = sp.get("action")
+    # Only for a plan the AGENT ran. The controller's own runner does this
+    # bookkeeping inline as it goes, and running it again from here undid
+    # what it had decided — the env gate sets await_env after stopping, and
+    # a second pass through the up branch cleared the flag the row is for.
+    if not project or not action or not sp.get("plan"):
+        return
+    steps = 0
+    for o in (job.get("outputs") or []):
+        if isinstance(o, dict) and o.get("kind") == "compose":
+            steps = int(o.get("steps_done") or 0)
+    # rebuild records the build as soon as the build step passed, even when
+    # the down or up after it did not: what was built IS built, and a row
+    # that forgets says the code never compiled.
+    if action == "rebuild" and steps >= 1:
+        _record_build(project, instance)
+    if state != "succeeded":
+        _clear_marker(project, instance)
+        _bump()
+        return
+    if action in ("up", "rebuild"):
+        with _lock:
+            d = _load()
+            row = _rec(d, project, instance)
+            row.pop("await_env", None)
+            if not row.get("rev") or row.get("daemon") != daemon_id():
+                row.update(rev=built_rev(project, instance), at=int(time.time()),
+                           daemon=daemon_id(), daemon_uid=_uid())
+            write_json(FILE, d)
+    if action == "remove":
+        _remove_records(project, instance)
+    _clear_marker(project, instance)
+    _bump()
+
+
+def _record_build(project, instance):
+    with _lock:
+        d = _load()
+        _rec(d, project, instance).update(rev=built_rev(project, instance),
+                                          at=int(time.time()), daemon=daemon_id(),
+                                          daemon_uid=_uid())
+        write_json(FILE, d)
+
+
 def _submit(project, instance, action):
-    """Queue a compose action for the node this instance is bound to."""
+    """Queue a compose action for the node this instance is bound to.
+
+    On an agent node the spec carries the whole plan and the agent runs it
+    with the node's own docker (roadmap #18); on a node with no agent the
+    spec names the action and the controller's runner does it over ssh, as
+    it always has. Both are one `compose` job on the same queue.
+    """
     if queue is None:
         return {"error": "no job queue is configured here"}
     if _active_job(project, instance):
         return dict(BUSY)
-    r = queue.job_add("operator", {"node": _instance_node(project, instance)},
-                      "compose", {"project": project, "instance": instance,
-                                  "action": action}, project)
+    nid = _instance_node(project, instance)
+    n = queue.node(nid) if nid else None
+    spec = (_plan_spec(project, instance, action)
+            if n and n["kind"] == "agent"
+            else {"project": project, "instance": instance, "action": action})
+    r = queue.job_add("operator", {"node": nid}, "compose", spec, project)
     if r.get("error"):
         return r
     _bump()
@@ -1949,10 +2047,18 @@ def _job_remove(project, instance, run):
     # compose file IS the thing, and leaving it behind would keep the name
     # taken by something with no row to remove it from. A project's instance
     # keeps its env and data, which is what that button already promises.
+    _remove_records(project, instance)
+    return {"state": "succeeded"}
+
+
+def _remove_records(project, instance):
+    """What a successful remove forgets. Shared by the controller's runner
+    and the agent's completion hook, so the two cannot drift on which of a
+    container's traces survive it."""
     if is_file_source(project, instance):
         forget_container(project)
         _bump()
-        return {"state": "succeeded"}
+        return
     with _lock:
         d = _load()
         if instance in (d.get(project) or {}):
@@ -1961,7 +2067,6 @@ def _job_remove(project, instance, run):
                 del d[project]
             write_json(FILE, d)
     _bump()
-    return {"state": "succeeded"}
 
 
 def instances(project):

@@ -129,7 +129,10 @@ if a[0] == "funnel":
     json.dump(d, open(st, "w")); sys.exit(0)
 sys.exit(2)
 `, { mode: 0o755 });
+// The stub docker's own state, so the agent's compose reaches the same fake
+// daemon the controller's runner does — a real node needs nothing here.
 const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
+  DOCKER_STUB_STATE: `${DIR}/dockerstate`, PATH: `${DIR}/bin:${process.env.PATH}`,
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
   BUILDERBOT_RUNNER_DIR: `${DIR}/runner`, BUILDERBOT_RUNNER_TARBALL: `${DIR}/runner.tar.gz`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
@@ -153,7 +156,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
-     && n.agent.version === '9' && /^sha256:/.test(n.agent.digest),
+     && n.agent.version === '10' && /^sha256:/.test(n.agent.digest),
      'the row is online with the census, agent version and digest');
   // single use
   let again = '';
@@ -597,15 +600,46 @@ try {
   // ---- the agent's own update, driven from the tab (roadmap #17) ---------------
   {
     const all = await api('/api/v1/nodes');
-    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '') && all.agent.version === '9',
+    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '') && all.agent.version === '10',
        'the node list carries the agent this controller ships, digest and version');
     const lc = await api('/api/v1/nodes', { action: 'update-agent', id: 'local' });
     ok(/only an agent node/.test(lc.error || ''), 'local has no agent to update');
     const cur = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
-    ok(cur.ok && cur.current === true && cur.version === '9',
+    ok(cur.ok && cur.current === true && cur.version === '10',
        'a node already on the shipped agent is told so, and no job is queued');
     const n = await nodeById(minted.id);
     ok(n.agent.digest === all.agent.digest, '...because the digests the row would compare are the same');
+  }
+
+  // ---- compose runs on the agent, not over ssh (roadmap #18) -----------------
+  // The controller sends the plan and the files; the node's own docker runs
+  // it. The stub docker records what it was asked, so this proves the argv
+  // and the working directory as well as the wiring.
+  {
+    // agent.mjs runs before devapp.mjs, which is what gives ep.silon its
+    // compose file — so this suite writes its own.
+    writeFileSync(`${DIR}/ws/ep.silon/docker-compose.yml`,
+                  'services:\n  app:\n    image: alpine\n');
+    await api('/api/prefs', { project: 'ep.silon', node: minted.id });
+    const up = await api('/api/devapp', { project: 'ep.silon', instance: 'main', action: 'up' });
+    ok(up.ok || up.started, `Up on an agent node is queued (${up.error || up.job || 'ok'})`);
+    // By id, not from the list: the list carries no log (jobs_for omits it).
+    const j = await until(async () => {
+      const r = await api('/api/v1/jobs?project=ep.silon&type=compose&n=1');
+      const one = (r.jobs || [])[0];
+      if (!one || !['succeeded', 'failed', 'canceled'].includes(one.state)) return null;
+      return api(`/api/v1/jobs?id=${one.id}`);
+    }, 60000);
+    ok(j && j.node === minted.id && j.spec.plan?.length === 1 && j.spec.plan[0].name === 'starting',
+       `the job carries the plan and is placed on the agent node (${j?.spec?.plan?.length} step)`);
+    ok(j && j.state === 'succeeded' && /wrote docker-compose.yml/.test(j.log)
+       && /\$ .*compose --project-name ep-silon/.test(j.log),
+       `the agent writes the compose file and runs docker there (${j?.state}: err=${j?.error} log=${JSON.stringify((j?.log || '(empty)').slice(-300))})`);
+    ok(j && /compose for ep-silon in .*\/agentdata\/compose\/ep-silon/.test(j.log),
+       '...in a directory of its own under the node\'s data store');
+    ok(j && (j.outputs || []).some(o => o.kind === 'compose' && o.steps_done === 1),
+       '...and reports how far the plan got, which is what the controller records from');
+    await api('/api/prefs', { project: 'ep.silon', node: '' });
   }
 
   // Test on an agent node is a round trip through the channel

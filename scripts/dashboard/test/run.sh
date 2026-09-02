@@ -582,6 +582,12 @@ fresh() {
     # node is refused, and inherited the binding — a deterministic failure of
     # the pair that neither file showed alone.
     rm -f "$S/state/claude-prefs.json"
+    # ...nor one that built a dev instance. agent.mjs runs a compose action
+    # on its node now, which records what was built and on which daemon;
+    # devapp.mjs then opened on a project that believed it had been built
+    # somewhere else. Per-run state, like the rest of this list.
+    rm -f "$S/state/devapps.json"
+    rm -rf "$S/state/devenv"
     # Projects a test created through /api/create go too — anything that is
     # not one of the five fixtures. Scoped to $S, like every rm in this file.
     find "$S/ws" -maxdepth 1 -mindepth 1 -type d \

@@ -184,3 +184,5 @@
 - A node's storage paths can no longer be pointed at a system directory like /etc, which Clear cache would have emptied (7362faf)
 - A project with no node can still be read, edited and pushed; building refuses and says to pick a node or let CI do it — and the same when the node lacks the toolchain (046eb11)
 - The Artifacts tab's Push button comes back when a phone that briefly dropped off returns (046eb11)
+- A dev instance's containers are now built and started by the node itself, so a machine you enrol needs nothing but its token — no ssh key, no open port (c070ef2)
+- Adding an NFS mount to a node can leave the mountpoint blank: it lands at /mnt/ under the export's own name (c070ef2)

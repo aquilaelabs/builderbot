@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "9"
+AGENT_VERSION = "10"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -611,12 +611,20 @@ class Job(threading.Thread):
         self.canceled = False
         self.proc = None
         self.outputs = []        # what the job left behind, for the result
+        self.pending_step = ""   # the word for the row, sent with the next log
 
     def cancel(self):
         self.canceled = True
         p = self.proc
         if p is not None and p.poll() is None:
             self._kill(p)
+
+    def step(self, name):
+        """What this job is doing now, for the row. Rides the next log post
+        rather than taking a verb of its own — the agent is already talking
+        to the controller every half second while a job runs."""
+        with self.lock:
+            self.pending_step = str(name)[:60]
 
     def say(self, text):
         # One line that alone exceeds a body would be refused forever, and
@@ -639,9 +647,18 @@ class Job(threading.Thread):
                     batch.append(self.pending.pop(0))
                     size += len(batch[-1]["chunk"])
             if not batch:
+                with self.lock:
+                    step, self.pending_step = self.pending_step, ""
+                if step:
+                    self.agent.ctl.call("log", {"job": self.job["id"], "chunks": [],
+                                                "step": step}, timeout=20)
                 return True
-            st, r = self.agent.ctl.call("log", {"job": self.job["id"], "chunks": batch},
-                                        timeout=20)
+            with self.lock:
+                step, self.pending_step = self.pending_step, ""
+            body = {"job": self.job["id"], "chunks": batch}
+            if step:
+                body["step"] = step
+            st, r = self.agent.ctl.call("log", body, timeout=20)
             if st != 200:
                 with self.lock:
                     self.pending = batch + self.pending
@@ -657,6 +674,8 @@ class Job(threading.Thread):
                 state, code = self.agent.self_update(self, spec)
             elif self.job.get("type") == "system":
                 state, code = self.agent.system(self, spec)
+            elif self.job.get("type") == "compose":
+                state, code = self.agent.compose(self, spec)
             elif self.job.get("type") == "package":
                 state, code = self.agent.package(self, spec)
             elif self.job.get("type") == "cache-clear":
@@ -1170,6 +1189,90 @@ class Agent:
         if make:
             self.own_dir(d, who)
         return d
+
+    # -- compose, locally (docs/nodes.md §7; roadmap #18) ----------------------
+    def compose(self, job, spec):
+        """One dev-instance action, run with the node's OWN docker.
+
+        The controller still decides WHAT: it sends an ordered plan of argvs
+        with the compose file and env beside them, and does the bookkeeping
+        when this ends. What moved here is the execution — which is the whole
+        point, because it is what let a node need an ssh key from the
+        controller on top of the token it enrolled with. Nothing dials in
+        now; docker is local.
+        """
+        if not shutil.which("docker"):
+            job.say("refused: this node has no docker\n")
+            return "failed", 78
+        name = re.sub(r"[^A-Za-z0-9._-]", "_", str(spec.get("name") or "compose"))
+        cdir = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp",
+                            "compose", name)
+        who = self.drop_privileges({})
+        self.own_dir(cdir, who)
+        job.say(f"compose for {name} in {cdir}\n")
+        # The compose file and the env, as the controller holds them: this
+        # node never reads the project's tree for them, so a file edited on
+        # the controller is the one that runs here.
+        for fname, body in (spec.get("files") or {}).items():
+            base = os.path.basename(str(fname))
+            if not base or base.startswith("."):
+                base = base or "file"
+            path = os.path.join(cdir, base)
+            with open(path, "w") as f:
+                f.write(str(body))
+            if who:
+                with contextlib.suppress(OSError):
+                    os.chown(path, who["user"], who["group"])
+            job.say(f"wrote {base} ({len(str(body))} bytes)\n")
+        # The bind directories, made here rather than by a throwaway
+        # container over ssh — this process is already on the machine that
+        # has them, and docker creating a missing bind source as root is the
+        # failure the whole mechanism exists to avoid.
+        for d in (spec.get("dirs") or [])[:32]:
+            d = str(d)
+            if not d.startswith("/") or ".." in d.split("/"):
+                job.say(f"skipping a bind directory that is not a plain path: {d}\n")
+                continue
+            try:
+                os.makedirs(d, exist_ok=True)
+                if who:
+                    with contextlib.suppress(OSError):
+                        os.chown(d, who["user"], who["group"])
+                job.say(f"bind directory {d}\n")
+            except OSError as e:
+                job.say(f"could not make {d}: {e.strerror}\n")
+        done = 0
+        for stp in (spec.get("plan") or [])[:8]:
+            if job.canceled:
+                job.say("stopped\n")
+                job.outputs.append({"kind": "compose", "steps_done": done})
+                return "canceled", 130
+            argv = [str(a).replace("{cdir}", cdir) for a in (stp.get("argv") or [])]
+            if not argv:
+                continue
+            job.step(str(stp.get("name") or "working"))
+            # The command, then its output — a log of output with no command
+            # is unreadable, and the controller's own runner has always
+            # written this line.
+            job.say("$ " + " ".join(argv) + "\n")
+            # The agent's OWN environment is the base here, unlike an exec
+            # job: docker on this node should behave as it does for the
+            # account that runs it — a proxy, a DOCKER_CONFIG, a rootless
+            # socket are all the node's own arrangement, and a compose that
+            # ignored them would work by luck.
+            env = dict(os.environ)
+            env.update(sdk_env(self.state))
+            env.update({k: str(v).replace("{cdir}", cdir)
+                        for k, v in (stp.get("env") or {}).items()})
+            st_, code = job.exec({"argv": argv, "cwd": cdir, "env": env,
+                                  "timeout": stp.get("timeout") or 1800})
+            if st_ != "succeeded":
+                job.outputs.append({"kind": "compose", "steps_done": done,
+                                    "failed_at": stp.get("name")})
+                return st_, code
+            done += 1
+        job.outputs.append({"kind": "compose", "steps_done": done})
+        return "succeeded", 0
 
     def cache_clear(self, job, spec):
         """Drop this node's build caches — one project's, or all of them.
