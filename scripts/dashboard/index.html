@@ -1600,6 +1600,31 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .fxtab .fnote,.doctab .fnote{padding:4px var(--row-x) 10px;color:var(--dim);
   font:var(--f-note)}
 /* The Nodes tab's rows: capability toggles inline, the add form stacked. */
+/* One node's page, not a list of rows: the picker in the bar chooses, and
+   everything about that machine is open below it. The sections get air —
+   the complaint that started this was that a dozen settings, four stores
+   and a runner in one folded row read as a wall. */
+/* Vertical only: the shorthand wiped the band's horizontal inset, which is
+   the one rule uniform.mjs measures across every tab. */
+.nodestab .ndrow{padding-top:10px;padding-bottom:10px}
+.nodestab .ndsec{margin-top:14px;padding-top:10px;border-top:1px solid var(--line)}
+.nodestab .ndsec:first-of-type{border-top:0}
+.nodestab .ndconfbody{gap:10px}
+/* Resource meters. A number in a sentence cannot be glanced at; a bar can,
+   and pressure picks the colour so a filling disk is what the eye finds. */
+.ndmeters{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+  gap:6px 18px;margin:8px 0}
+.ndmeter{display:grid;grid-template-columns:5.5em 1fr auto;gap:8px;align-items:center;
+  font:var(--f-note)}
+.ndmeter .lbl{color:var(--dim)}
+.ndmeter .track{height:6px;border-radius:99px;background:var(--sunk);
+  border:1px solid var(--line);overflow:hidden}
+.ndmeter .fill{display:block;height:100%;background:var(--accent);
+  transition:width .3s ease}
+.ndmeter.warn .fill{background:var(--warn)}
+.ndmeter.bad .fill{background:var(--bad)}
+.ndmeter .val{color:var(--ink);font:var(--f-note);white-space:nowrap}
+.ndlabels{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
 .ndtools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .ndcaps{display:flex;gap:14px;flex-wrap:wrap}
 .ndcap{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);

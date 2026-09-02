@@ -16,6 +16,7 @@ let nodesErr = "";
 let nodesOpenForm = "";          // "" | "ssh" | "agent": which add form is up
 let nodesMinted = null;          // the last enroll token, shown once, then gone
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
+let nodesPick = "";              // which node the tab is showing, "" until the first draw
 // The configuration plane's editor state, per node (docs/nodes.md §12): the
 // fold's open flag and the DRAFT the operator is typing. Kept here and not in
 // the DOM because the tab repaints on every heartbeat — a field that lived
@@ -86,34 +87,21 @@ function nodeStatePill(n){
   return `<span class="pill ${cls}">${esc(n.state)}</span>${live}`;
 }
 
-// The heartbeat's numbers, as the row shows them: what the machine is doing
-// now, and how much room each store has. Only an agent node has them — an
-// ssh node reports nothing between commands, and the local node's numbers
-// are the container's own, already on the header.
-function nodeNumbers(n){
-  const s = n.reported?.sample;
-  if (!s || !n.live) return "";
-  const mem = s.mem_mb ? `${Math.round(s.mem_used_mb / 1024 * 10) / 10}/${
-      Math.round(s.mem_mb / 1024)}GB` : "";
-  const gb = mb => mb >= 10240 ? Math.round(mb / 1024) + "GB" : mb + "MB";
-  const stores = Object.entries(s.stores || {}).map(([r, free]) => free === null
-    ? `${esc(r)} missing`
-    : `${esc(r)} ${gb(free)} free${
-        // What the cache store holds, from the census's du: the number the
-        // Clear button beside it is about (docs/nodes.md §6).
-        r === "cache" && typeof n.reported?.stores?.cache?.used_mb === "number"
-          ? `, ${gb(n.reported.stores.cache.used_mb)} used` : ""}`);
-  return [`cpu ${s.cpu_pct}%`, mem, s.running ? `${s.running} running` : "",
-          ...stores].filter(Boolean).join(" · ");
-}
-
 // The draft for a node: what is on the record, until the operator types.
 function nodeDraft(n){
   const c = nodesConf[n.id] || (nodesConf[n.id] = {open: false, dirty: false, draft: null});
   if (!c.draft){
     const d = n.config?.desired || {};
+    // A node set up at its own console has mounts and no desired config, and
+    // drawing only the desired one showed an empty list for a machine with
+    // three shares on it. So the editor opens on what the node REPORTS when
+    // nothing has been recorded: the rows are the real ones, editable, and
+    // Save is what puts this page in charge of them.
+    const seed = (n.reported?.mounts || []).map(m => ({
+      path: m.path, source: m.source, type: m.type || "nfs", ro: !!m.ro}));
     c.draft = {
-      mounts: (d.mounts || []).map(m => ({...m})),
+      mounts: (d.mounts?.length ? d.mounts : seed).map(m => ({...m})),
+      fromNode: !d.mounts?.length && seed.length > 0,
       stores: {...(d.stores || {})},
       network: {mode: "dhcp", address: "", gateway: "", dns: [], interface: "", ...(d.network || {})},
     };
@@ -239,10 +227,11 @@ function nodeConfFold(n){
     : c.dirty ? "unsaved — Save keeps it on the record; Apply makes the node match"
     : n.config?.desired ? "saved; Apply makes the node match it" : "nothing configured yet";
   return `
-  <details class="ndconf" ${c.open ? "open" : ""}>
-    <summary>storage &amp; network</summary>
+  <div class="ndconf">
     <div class="ndconfbody">
-      <div class="ndsec">Mounts — what this node mounts at boot, applied through bb-sandbox on it</div>
+      <div class="ndsec">Mounts — what this node mounts at boot, applied through bb-sandbox on it${
+        d.fromNode ? `. <span class="dim">These are the ones the node reports; nothing has been
+        saved here yet, so editing and saving is what puts this page in charge of them.</span>` : ""}</div>
       ${mounts}
       <button type="button" data-madd>+ mount</button>
       <div class="ndsec">Stores — where the agent keeps job data, toolchains, build caches and
@@ -276,7 +265,52 @@ function nodeConfFold(n){
           title="re-address the node; it must dial back in within three minutes or it reverts">Apply network</button>
       </div>
     </div>
-  </details>`;
+  </div>`;
+}
+
+// A resource as a bar rather than a sentence. The row said "cpu 0.5% ·
+// 0.7/7GB · data 48GB free · packages 48GB free · cache 48GB free, 1MB used
+// · artifacts 48GB free" in one grey line, which is a paragraph pretending
+// to be a readout — nothing in it can be taken in at a glance, and the one
+// number that matters (a store filling up) reads the same as the five that
+// do not. Pressure picks the colour, so a full disk is the thing your eye
+// lands on. Tokens only; the schemes repaint these with everything else.
+function meter(label, pct, right, title){
+  const p = Math.max(0, Math.min(100, Math.round(pct)));
+  const cls = p >= 92 ? "bad" : p >= 80 ? "warn" : "";
+  return `<div class="ndmeter${cls ? " " + cls : ""}"${title ? ` title="${esc(title)}"` : ""}>
+    <span class="lbl">${esc(label)}</span>
+    <span class="track"><span class="fill" style="width:${p}%"></span></span>
+    <span class="val">${esc(right)}</span></div>`;
+}
+
+const gb = mb => mb === null || mb === undefined ? "?"
+  : mb >= 10240 ? Math.round(mb / 1024) + "GB" : Math.round(mb) + "MB";
+
+// Everything the census measured, as meters: what the machine is doing now,
+// and how much room each store has left.
+function nodeMeters(n){
+  const rep = n.reported || {}, s = rep.sample || {};
+  const out = [];
+  if (n.live && typeof s.cpu_pct === "number")
+    out.push(meter("cpu", s.cpu_pct, s.cpu_pct + "%",
+                   `${rep.cpu || "?"} cores${s.load1 ? `, load ${s.load1}` : ""}`));
+  const mem = s.mem_mb || rep.mem_mb;
+  if (n.live && mem && s.mem_used_mb)
+    out.push(meter("memory", s.mem_used_mb / mem * 100,
+                   `${gb(s.mem_used_mb)} / ${gb(mem)}`));
+  for (const [role, st] of Object.entries((s.stores || rep.stores) || {})){
+    if (!st || st.free_mb === null || st.free_mb === undefined){
+      out.push(meter(role, 0, "missing", st?.path || ""));
+      continue;
+    }
+    const total = st.total_mb || 0;
+    const used = total ? total - st.free_mb : 0;
+    out.push(meter(role, total ? used / total * 100 : 0,
+                   `${gb(st.free_mb)} free`,
+                   `${st.path || ""}${total ? ` — ${gb(used)} of ${gb(total)} used` : ""}`));
+  }
+  return out.length ? `<div class="ndmeters">${out.join("")}</div>` : "";
 }
 
 function renderNodesInto(i){
@@ -291,12 +325,23 @@ function renderNodesInto(i){
     d.list.innerHTML = `<div class="hint bad">${esc(nodesErr)}</div>`;
     return;
   }
-  d.setBar(`<span class="dim">${nodesList.length} node${
-      nodesList.length === 1 ? "" : "s"} — the machines work can run on</span>
+  // One node at a time, picked at the top. Every node's whole configuration
+  // on one page was a wall — mounts, four stores, network, the runner, the
+  // actions, per row, for every machine — and the fold that hid it only
+  // moved the problem: the settings you came for were two taps down and the
+  // ones you did not care about were still in the way. So the tab is a
+  // picker and one machine, expanded, like the Docker manager and the Tools
+  // tab already are (docs/nodes.md §13: one tab, re-rendered per pick).
+  const live = nodesList.filter(n => n.state !== "retired");
+  if (!live.some(n => n.id === nodesPick)) nodesPick = live[0]?.id || "";
+  const n = live.find(x => x.id === nodesPick);
+  d.setBar(`<label class="pick">Node <select id="ndPick" aria-label="node">${
+      live.map(x => `<option value="${esc(x.id)}"${x.id === nodesPick ? " selected" : ""}>${
+        esc(x.name)} — ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>
     <span class="sp"></span>
     <button type="button" id="ndEnroll">${nodesOpenForm === "agent" ? "Cancel" : "Enroll node…"}</button>
     <button type="button" id="ndAdd">${nodesOpenForm === "ssh" ? "Cancel" : "Add ssh node…"}</button>`);
-  const rows = nodesList.map(n => {
+  const rows = (n ? [n] : []).map(n => {
     const labels = Object.entries(n.labels || {})
       .map(([k, v]) => `<span class="pill">${esc(k)}=${esc(v)}</span>`).join(" ");
     const seen = n.agent?.last_seen
@@ -307,7 +352,6 @@ function renderNodesInto(i){
     const where = n.kind === "local" ? "this container"
       : n.kind === "agent" ? (n.agent?.addr ? `dials in from ${n.agent.addr}` : "")
       : (n.ssh_addr || "");
-    const numbers = nodeNumbers(n);
     // Behind when the node's agent is not the file this controller ships.
     // Said on the row before anybody presses anything: a five-version-old
     // agent otherwise looks exactly like a current one.
@@ -325,9 +369,9 @@ function renderNodesInto(i){
         <div class="name">${esc(n.name)} ${nodeStatePill(n)}
           <span class="dim">· ${esc(n.kind)}</span></div>
         <div class="sub">${[esc(where), census, esc(seen), agentVer].filter(Boolean).join(" · ")}</div>
-        ${numbers ? `<div class="sub ndnums">${numbers}</div>` : ""}
+        ${nodeMeters(n)}
         ${nodeTools(n)}
-        ${labels ? `<div class="sub">${labels}</div>` : ""}
+        ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}
         <div class="sub ndtest" hidden></div>
         ${n.kind === "agent" && n.reported?.sandbox && n.state !== "pending" ? nodeConfFold(n) : ""}
         ${n.kind === "ssh" && n.state !== "retired" ? nodePathsLine(n) : ""}
@@ -411,6 +455,9 @@ function wireNodesTab(root){
   const add = root.querySelector("#ndAdd");
   if (add) add.onclick = () => { nodesOpenForm = nodesOpenForm === "ssh" ? "" : "ssh";
                                  nodesRev++; drawPanes(); };
+  const pick = root.querySelector("#ndPick");
+  if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
+                                    nodesRev++; drawPanes(); };
   const en = root.querySelector("#ndEnroll");
   if (en) en.onclick = () => { nodesOpenForm = nodesOpenForm === "agent" ? "" : "agent";
                                nodesRev++; drawPanes(); };
@@ -506,11 +553,6 @@ function wireNodeConf(row, id){
   const fold = row.querySelector(".ndconf");
   if (!fold) return;
   const c = nodesConf[id];
-  fold.querySelector("summary").onclick = (e) => {
-    e.preventDefault();
-    c.open = !c.open;
-    fold.open = c.open;
-  };
   const touch = () => { c.dirty = true; };
   const remember = (el) => {
     const m = el.closest(".ndmount");
