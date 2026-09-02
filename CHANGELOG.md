@@ -174,3 +174,4 @@
 - bb build and bb test now run on the node a project names in its settings, from a snapshot of the working tree, and what they produce lands in dist/ with a note of what built it (091336d)
 - The Tools tab can install toolchains onto a node's own packages store, and each node's row shows its cache size with a Clear cache button (091336d)
 - A node can run its own GitHub Actions runner, installed from its row on the Nodes tab, so CI jobs can land on a node by naming it in runs-on (0d911ad)
+- A project now names one node in its settings and everything it does off this box goes there — the separate pickers for containers, builds, tests and CI are gone (4655366)
