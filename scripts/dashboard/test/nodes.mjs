@@ -30,6 +30,15 @@ m.open_readonly(${JSON.stringify(DIR + '/state')})
 print(json.dumps(${py}))
 `], { encoding: 'utf8' }).trim());
 
+// The tab shows ONE node, chosen in the bar. Picking is how a test reaches
+// a row now, and the option list is how it asserts the registry.
+const pickNode = async (page, id) => {
+  await page.selectOption('.nodestab #ndPick', id);
+  await page.waitForFunction(x => document.querySelector(
+    `.nodestab .ndrow[data-node="${x}"]`) !== null, id, { timeout: 10000 });
+};
+const nodeOptions = page => page.$$eval('.nodestab #ndPick option', os => os.map(o => o.value));
+
 const browser = await launch();
 const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
 await page.goto(URL);
@@ -130,7 +139,7 @@ ok(list[0].id === 'local',
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
   await page.click('#bNodes');
   await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
-  ok(await page.$$eval('.nodestab .ndrow', rs => rs.length) === 2,
+  ok((await nodeOptions(page)).length === 2,
      'the Nodes tab lists the registry: local and the sandbox');
   // add an ssh node through the form
   await page.click('#ndAdd');
@@ -138,7 +147,7 @@ ok(list[0].id === 'local',
   await page.fill('#ndAddr', '10.9.9.9');
   await page.click('#ndGo');
   await page.waitForFunction(() =>
-    document.querySelectorAll('.nodestab .ndrow').length === 3, null,
+    document.querySelectorAll('.nodestab #ndPick option').length === 3, null,
     { timeout: 15000 });
   ok(true, 'Add node registers one from a bare address');
   const added = await page.evaluate(() =>
@@ -267,6 +276,8 @@ ok(list[0].id === 'local',
      `Update agent queues a self-update naming the shipped digest (${upd.job || upd.error})`);
   if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
+  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await pickNode(page, minted.id);
   const ROW = `.nodestab .ndrow[data-node="${minted.id}"]`;
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
   // The shipped version, read rather than hardcoded — this assertion has
@@ -274,14 +285,28 @@ ok(list[0].id === 'local',
   const shipped = (await napi('/api/v1/nodes')).agent?.version;
   ok(await page.$eval(`${ROW} .ndstale`, (e, v) => e.textContent.includes(`update available → ${v}`), shipped)
      && await page.$(`${ROW} [data-nd="update-agent"]`) !== null
-     && await page.evaluate(() => !document.querySelector('.nodestab .ndrow[data-node="local"] [data-nd="update-agent"]')),
-     'the row wears "update available" with the shipped version and an Update agent button; local has neither');
-  ok(await page.$eval('.nodestab', e => !e.querySelector('.ndrow[data-node="local"] .ndconf')),
-     'the fold is on the sandbox node and not on local');
-  await page.click(`${ROW} .ndconf summary`);
-  await page.waitForSelector(`${ROW} .ndconf[open] [data-madd]`, { timeout: 5000 });
+     && await page.$(`${ROW} [data-nd="update-agent"]`) !== null,
+     'the row wears "update available" with the shipped version and an Update agent button');
+  await pickNode(page, 'local');
+  ok(await page.$('.nodestab .ndrow[data-node="local"] .ndconf') === null
+     && await page.$('.nodestab .ndrow[data-node="local"] [data-nd="update-agent"]') === null,
+     'local has neither the storage section nor an agent to update');
+  await pickNode(page, minted.id);
+  // Nothing to open: the storage and network settings are always shown now,
+  // one node at a time, chosen in the bar.
+  await page.waitForSelector(`${ROW} .ndconf [data-madd]`, { timeout: 5000 });
   ok(await page.$eval(`${ROW} .ndconf`, e => /now 10\.0\.0\.40\/24 on ens3 via 10\.0\.0\.1/.test(e.textContent)),
      'it reports the address the node is on');
+  // The census's numbers as meters rather than as a sentence: one per store,
+  // labelled, with the free space on the right.
+  const meters = await page.$$eval(`${ROW} .ndmeter`, ms => ms.map(m => ({
+    label: m.querySelector('.lbl').textContent,
+    val: m.querySelector('.val').textContent,
+    width: m.querySelector('.fill').style.width })));
+  ok(meters.some(m => m.label === 'packages' && /GB free/.test(m.val))
+     && meters.some(m => m.label === 'data') && meters.some(m => m.label === 'artifacts')
+     && meters.every(m => /^\d+%$/.test(m.width)),
+     `each store is a meter with its headroom (${meters.map(m => m.label + ' ' + m.val).join(', ')})`);
   ok(await page.$eval(`${ROW} .ndtools`, e => /flutter/.test(e.textContent) && /node/.test(e.textContent)),
      'the row shows what is installed on the node, which is what a project bound to it can build');
   ok(await page.$eval(`${ROW} .ndrunstate`, e => /no runner on this node/.test(e.textContent))
@@ -299,45 +324,74 @@ ok(list[0].id === 'local',
   await napi('/api/v1/jobs', { action: 'cancel', id: rj.id });
   await page.waitForFunction(sel => !/applying/.test(
     document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  // A node with mounts and no saved config opens on the ones it reports —
+  // an empty editor for a machine with three shares was the first thing the
+  // operator hit.
+  const seeded = await page.$$eval(`${ROW} .ndmount [data-k="source"]`, es => es.map(e => e.value));
+  ok(seeded.includes('nas:/mnt/user/old'),
+     `the mount editor opens on what the node reports, not on an empty list (${seeded.join(', ')})`);
+  ok(await page.$eval(`${ROW} .ndconf`, e => /the ones the node reports/.test(e.textContent)),
+     '...and says they came from the node rather than from anything saved here');
+  // The new row lands after the seeded ones.
+  const last = seeded.length;
   await page.click(`${ROW} [data-madd]`);
-  await page.waitForSelector(`${ROW} .ndmount[data-i="0"] [data-k="source"]`, { timeout: 5000 });
+  await page.waitForSelector(`${ROW} .ndmount[data-i="${last}"] [data-k="source"]`, { timeout: 5000 });
   ok(await page.evaluate(() => document.activeElement?.dataset.k === 'source'),
      '+ mount adds a row and puts the caret in it');
-  await page.fill(`${ROW} .ndmount[data-i="0"] [data-k="source"]`, 'nas:/mnt/user/appdata');
-  await page.fill(`${ROW} .ndmount[data-i="0"] [data-k="path"]`, '/mnt/appdata');
+  await page.fill(`${ROW} .ndmount[data-i="${last}"] [data-k="source"]`, 'nas:/mnt/user/appdata');
+  await page.fill(`${ROW} .ndmount[data-i="${last}"] [data-k="path"]`, '/mnt/appdata');
   await page.fill(`${ROW} [data-k="store:cache"]`, '/scratch/cache');
   ok(await page.$(`${ROW} [data-k="store:artifacts"]`) !== null,
      'the fold carries the artifacts store — this node\'s copy of what projects built');
   // The heartbeat repaints the tab; the draft and the caret survive it.
   await page.evaluate(() => loadNodes());
   await sleep(400);
-  const kept = await page.$eval(`${ROW} .ndmount[data-i="0"] [data-k="path"]`, e => e.value);
+  const kept = await page.$eval(`${ROW} .ndmount[data-i="${last}"] [data-k="path"]`, e => e.value);
   const caret = await page.evaluate(() => document.activeElement?.dataset?.k || document.activeElement?.tagName);
   ok(kept === '/mnt/appdata' && caret === 'store:cache',
      `a repaint under the editor keeps what was typed and where the caret was (kept ${kept}, caret ${caret})`);
-  ok(await page.$eval(`${ROW} .ndmount[data-i="0"] .ndmstate`, e => /not applied yet/.test(e.textContent))
+  ok(await page.$eval(`${ROW} .ndmount[data-i="${last}"] .ndmstate`, e => /not applied yet/.test(e.textContent))
      && await page.$eval(`${ROW} [data-napply="storage"]`, b => b.disabled),
      '...the new mount says it is not applied yet, and Apply waits for Save');
   await page.click(`${ROW} [data-nsave]`);
   await page.waitForFunction(sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
                              ROW, { timeout: 10000 });
   const rec = (await napi('/api/v1/nodes')).nodes.find(n => n.id === minted.id);
-  ok(rec.config.desired.mounts.length === 1 && rec.config.desired.mounts[0].path === '/mnt/appdata'
+  ok(rec.config.desired.mounts.some(m => m.path === '/mnt/appdata')
+     && rec.config.desired.mounts.some(m => m.path === '/mnt/old')
      && rec.config.desired.stores.cache === '/scratch/cache' && rec.config.desired.network.mode === 'dhcp',
      'Save puts the desired config on the record, validated');
+  // Applying a config that keeps what the node already has asks nothing:
+  // the editor was seeded from the node, so this adds a mount rather than
+  // taking one away.
   page.dialogs.length = 0;
   await page.click(`${ROW} [data-napply="storage"]`);
   await page.waitForFunction(sel => /applying storage/.test(
     document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
-  ok(page.dialogs.length === 1 && /unmounts \/mnt\/old/.test(page.dialogs[0]),
-     'Apply storage asks first when it would unmount something the node has');
+  ok(page.dialogs.length === 0, 'applying a config that removes nothing asks nothing');
   const active = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system');
   ok(active && active.node === minted.id && active.spec.apply === 'storage'
-     && active.spec.config.mounts[0].path === '/mnt/appdata',
-     `...and queues the system job on that node with the desired config (${active?.id})`);
+     && active.spec.config.mounts.some(m => m.path === '/mnt/appdata')
+     && active.spec.config.mounts.some(m => m.path === '/mnt/old'),
+     `...and queues the system job on that node carrying both mounts (${active?.id})`);
   ok(await page.$eval(`${ROW} [data-napply="network"]`, b => b.disabled),
      '...while it is in flight the other Apply is off');
   await napi('/api/v1/jobs', { action: 'cancel', id: active.id });
+  await page.waitForFunction(sel => !/applying/.test(
+    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  // ...and taking one away does ask, naming what goes: unmounting a share
+  // out from under whatever is using it is not a thing to do on one click.
+  await page.click(`${ROW} .ndmount[data-i="0"] [data-mrm]`);
+  await page.click(`${ROW} [data-nsave]`);
+  await page.waitForFunction(sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
+                             ROW, { timeout: 10000 });
+  page.dialogs.length = 0;
+  await page.click(`${ROW} [data-napply="storage"]`);
+  await page.waitForFunction(() => true);
+  ok(page.dialogs.length === 1 && /unmounts \/mnt\/old/.test(page.dialogs[0]),
+     `Apply storage asks first when it would unmount something the node has (${page.dialogs[0]?.slice(0, 60)})`);
+  for (const j of (await napi('/api/v1/jobs?active=1')).jobs)
+    await napi('/api/v1/jobs', { action: 'cancel', id: j.id });
   // The fold is held to the document rules the same as any tab surface
   // (uniform.mjs cannot see it: that suite has no sandbox node to open one
   // on): every control wears the field skin, and at phone width nothing
@@ -410,10 +464,13 @@ ok(list[0].id === 'local',
   ok(set.ok && set.paths['/devdata'] === '/mnt/user/bb-dev',
      'the mapping is saved onto the node record as pairs');
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
+  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await pickNode(page, sb.id);
   await page.waitForSelector(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, { timeout: 15000 });
   ok(await page.$eval(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, e => e.value) === '/workspace:/workspace, /devdata:/mnt/user/bb-dev',
      '...and the ssh node\'s row shows it, editable');
-  ok(await page.evaluate(() => !document.querySelector('.nodestab .ndrow[data-node="local"] .ndpaths')),
+  await pickNode(page, 'local');
+  ok(await page.$('.nodestab .ndrow[data-node="local"] .ndpaths') === null,
      '...while local, whose paths are its own, has no such line');
 }
 

@@ -668,6 +668,10 @@ try {
     await page.evaluate(() => { const c = document.getElementById('cardTools');
       if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
     await page.click('#bNodes');
+    // The tab shows one node, chosen in the bar — pick this one before
+    // looking for its row.
+    await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+    await page.selectOption('.nodestab #ndPick', minted.id);
     await page.waitForSelector(`.nodestab .ndrow[data-node="${minted.id}"] .ndlive`,
                                { timeout: 15000 });
     const row = await page.$eval(`.nodestab .ndrow[data-node="${minted.id}"]`,
@@ -685,9 +689,16 @@ try {
     const shown = await page.$eval('.nodestab .ndtoken', e => e.textContent);
     ok(/bbe_/.test(shown) && /provision\.sh/.test(shown) && /--controller/.test(shown),
        'Enroll node shows the one-time token inside the provisioner command');
-    const pend = await page.$$eval('.nodestab .ndrow', rs =>
-      rs.filter(r => /second/.test(r.textContent) && /waiting for enrollment/.test(r.textContent)).length);
-    ok(pend === 1, 'the pending row says it is waiting for enrollment');
+    // One node at a time: the new pending one is in the picker, and its own
+    // page says what it is waiting for.
+    const opt = await page.$$eval('.nodestab #ndPick option',
+      os => os.filter(o => /second/.test(o.textContent)).map(o => o.value));
+    ok(opt.length === 1, 'the newly minted node joins the picker');
+    await page.selectOption('.nodestab #ndPick', opt[0]);
+    await page.waitForFunction(id => /waiting for enrollment/.test(
+      document.querySelector(`.nodestab .ndrow[data-node="${id}"]`)?.textContent || ''),
+      opt[0], { timeout: 10000 });
+    ok(true, 'the pending row says it is waiting for enrollment');
   }
 
   // revoke: the credential stops working, the agent says so, the row goes quiet
