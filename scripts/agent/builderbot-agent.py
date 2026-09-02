@@ -794,6 +794,7 @@ class Agent:
         self.poll = 25
         self.hello_at = 0
         self.controller_digest = ""
+        self.warned_caps = False
 
     # -- privilege ---------------------------------------------------------
     def drop_privileges(self, env):
@@ -836,10 +837,15 @@ class Agent:
             # visible on the box, and never silently adopted.
             claimed = set(n.get("capabilities") or [])
             held = set(self.state.get("capabilities") or [])
-            if claimed - held:
+            # Once per process, not per hello: a node enrolled before the
+            # controller stopped asking about capabilities has fewer than the
+            # row claims, and saying so every ten minutes forever is noise
+            # about a difference nothing acts on until a job requires one.
+            if claimed - held and not self.warned_caps:
+                self.warned_caps = True
                 log(f"controller lists {', '.join(sorted(claimed - held))} "
                     "for this node; not enrolled for it here, and jobs "
-                    "needing it will be refused")
+                    "needing it will be refused. Re-enroll to adopt them.")
             log(f"hello: node {n.get('id')} ({n.get('name')}), state "
                 f"{n.get('state')}, poll {self.poll}s")
         return st, r

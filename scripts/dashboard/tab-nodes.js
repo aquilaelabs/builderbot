@@ -54,11 +54,26 @@ async function nodeAct(body){
 // What a node can do, offered as toggles. The list is the server's
 // (nodes.CAPABILITIES); repeated here only as labels, and an unknown one
 // coming back in a record still renders — data wins over this table.
-const NODE_CAPS = [
-  ["docker-host", "docker host"],
-  ["package-build", "package build"],
-  ["deploy-target", "deploy target"],
-];
+// What a node can do for a project is what is INSTALLED on it, not a set of
+// toggles: a project names one node and that node does all of its work (the
+// operator's decision, 2 Sep). So the row shows the toolchains the census
+// found, and the Tools tab is where they are added. The capability field
+// still exists underneath — it is the vocabulary of the node-side refusal,
+// §15 door 7 — and every node now carries the full set.
+const TOOL_LABELS = {java: "java", "android-sdk": "android sdk", emulator: "emulator",
+                     flutter: "flutter", dotnet: ".NET", node: "node", go: "go"};
+
+function nodeTools(n){
+  const tc = n.reported?.toolchains || {};
+  const names = Object.keys(tc);
+  if (n.kind !== "agent") return "";
+  if (!names.length)
+    return `<div class="sub ndtools dim">no toolchains yet — the Tools tab installs them
+      onto this node, and what is here is what a project bound to it can build</div>`;
+  return `<div class="sub ndtools">${names.slice(0, 8).map(k =>
+    `<span class="pill" title="${esc(String(tc[k] || "present"))}">${
+      esc(TOOL_LABELS[k] || k)}</span>`).join(" ")}</div>`;
+}
 
 function nodeStatePill(n){
   if (n.state === "pending")
@@ -276,11 +291,6 @@ function renderNodesInto(i){
     <button type="button" id="ndEnroll">${nodesOpenForm === "agent" ? "Cancel" : "Enroll node…"}</button>
     <button type="button" id="ndAdd">${nodesOpenForm === "ssh" ? "Cancel" : "Add ssh node…"}</button>`);
   const rows = nodesList.map(n => {
-    const caps = NODE_CAPS.map(([c, label]) => `
-      <label class="ndcap"><input type="checkbox" data-cap="${esc(c)}"
-        ${n.capabilities.includes(c) ? "checked" : ""}
-        ${n.kind === "local" && c === "docker-host" ? "disabled" : ""}>
-        ${esc(label)}</label>`).join("");
     const labels = Object.entries(n.labels || {})
       .map(([k, v]) => `<span class="pill">${esc(k)}=${esc(v)}</span>`).join(" ");
     const seen = n.agent?.last_seen
@@ -310,7 +320,7 @@ function renderNodesInto(i){
           <span class="dim">· ${esc(n.kind)}</span></div>
         <div class="sub">${[esc(where), census, esc(seen), agentVer].filter(Boolean).join(" · ")}</div>
         ${numbers ? `<div class="sub ndnums">${numbers}</div>` : ""}
-        <div class="sub ndcaps">${caps}</div>
+        ${nodeTools(n)}
         ${labels ? `<div class="sub">${labels}</div>` : ""}
         <div class="sub ndtest" hidden></div>
         ${n.kind === "agent" && n.reported?.sandbox && n.state !== "pending" ? nodeConfFold(n) : ""}
@@ -358,13 +368,10 @@ function renderNodesInto(i){
       <div class="grow">
         <label for="ndEnName">Name</label>
         <input id="ndEnName" maxlength="60" autocomplete="off" placeholder="buildbox">
-        <div class="sub ndcaps">${NODE_CAPS.map(([c, label]) => `
-          <label class="ndcap"><input type="checkbox" data-encap="${esc(c)}"
-            ${c === "docker-host" ? "checked" : ""}> ${esc(label)}</label>`).join("")}</div>
         <div class="hint">the node dials in; nothing here connects to it. The
-          token below is good once and for a day, and the machine keeps the
-          capabilities it enrolled with — a job needing one it did not is
-          refused there, whatever this row says.</div>
+          token below is good once and for a day. A node does everything for
+          the projects bound to it — what it can actually build is what gets
+          installed on it afterwards, from the Tools tab.</div>
         <div class="acts"><span class="sp"></span>
           <button type="button" class="primary" id="ndEnGo">Mint a token</button></div>
       </div>
@@ -388,8 +395,9 @@ builderbot-agent enroll --controller ${esc(nodesMinted.url)} --token ${esc(nodes
   d.list.innerHTML = rows + form + minted
     + (!nodesList.length ? `<div class="empty">no nodes — which cannot happen:
         local is seeded at boot. If you can read this, the store broke.</div>` : "");
-  d.setFoot(`nodes run work; the controller schedules it. docs/nodes.md is the
-    design; an agent node runs jobs as the account it enrolled, never root.`);
+  d.setFoot(`a node does everything for the projects bound to it — pick one in a
+    project's settings dialog. What it can build is what is installed on it;
+    jobs run as the account it enrolled, never root.`);
   wireNodesTab(d.el);
 }
 
@@ -409,10 +417,8 @@ function wireNodesTab(root){
   };
   const engo = root.querySelector("#ndEnGo");
   if (engo) engo.onclick = async () => {
-    const caps = [...root.querySelectorAll("[data-encap]")]
-      .filter(x => x.checked).map(x => x.dataset.encap);
     const name = root.querySelector("#ndEnName").value;
-    const r = await nodeAct({action: "enroll", name, capabilities: caps});
+    const r = await nodeAct({action: "enroll", name});
     if (!r.error){
       // The URL the node should dial: this page's origin, which is the
       // only address the browser knows the controller by. A proxy in
@@ -466,11 +472,6 @@ function wireNodesTab(root){
         return;
       }
       await nodeAct({action: b.dataset.nd, id});
-    });
-    row.querySelectorAll("[data-cap]").forEach(c => c.onchange = () => {
-      const caps = [...row.querySelectorAll("[data-cap]")]
-        .filter(x => x.checked).map(x => x.dataset.cap);
-      nodeAct({action: "update", id, fields: {capabilities: caps}});
     });
     wireNodeConf(row, id);
     const pi = row.querySelector('.ndpaths [data-k="paths"]');

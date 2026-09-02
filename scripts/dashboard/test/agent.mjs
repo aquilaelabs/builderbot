@@ -33,8 +33,7 @@ await page.goto(URL);
 await ready(page);
 
 // ---- minting: a pending row, a one-time token -------------------------------
-const minted = await api('/api/v1/nodes', { action: 'enroll', name: 'agentbox',
-  capabilities: ['docker-host', 'package-build'], user: 'nobody' });
+const minted = await api('/api/v1/nodes', { action: 'enroll', name: 'agentbox', user: 'nobody' });
 ok(minted.ok && /^bbe_[A-Za-z0-9_-]{20,}$/.test(minted.token) && /^n_/.test(minted.id),
    `Enroll node mints a bbe_ token bound to a new node id (${minted.id})`);
 {
@@ -148,8 +147,9 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
      `builderbot-agent enroll writes node.json, mode 0600 (${out.split('\n')[0]})`);
   const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
   ok(st.node_id === minted.id && /^bbn_/.test(st.token)
-     && st.capabilities.includes('package-build') && st.stores.data === `${DIR}/agentdata`,
-     '...holding the node token, the id it was minted for, and the enrolled capabilities');
+     && st.capabilities.includes('package-build') && st.capabilities.includes('docker-host')
+     && st.stores.data === `${DIR}/agentdata`,
+     '...holding the node token, the id it was minted for, and the full capability set it enrolled with');
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
@@ -202,14 +202,17 @@ try {
 
   // a job needing a capability the node was not enrolled with is refused there
   {
+    // Every node enrolls with the whole vocabulary now, so the refusal is
+    // shown with a capability outside it: what the door protects is "not
+    // what this node enrolled with", not any particular name.
     const forced = await api('/api/v1/nodes', { action: 'exec', id: minted.id,
-      argv: ['true'], requires: ['deploy-target'] });
-    ok(forced.ok, 'a job requiring deploy-target is queued — the row does not check');
+      argv: ['true'], requires: ['gpu-render'] });
+    ok(forced.ok, 'a job requiring something the node lacks is queued — the row does not check');
     const ref = await until(async () => {
       const x = await api(`/api/v1/jobs?id=${forced.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
     });
-    ok(ref && ref.state === 'failed' && ref.exit_code === 77 && /not enrolled for deploy-target/.test(ref.log),
+    ok(ref && ref.state === 'failed' && ref.exit_code === 77 && /not enrolled for gpu-render/.test(ref.log),
        'the NODE refuses a job for a capability it did not enroll with (door 7)');
   }
 
@@ -314,7 +317,8 @@ try {
     mkdirSync(`${DIR}/ws/alpha/dist`, { recursive: true });
     writeFileSync(`${DIR}/ws/alpha/dist/stale.apk`, 'should not travel');
     const nonode = await api('/api/v1/jobs', { action: 'run', project: 'alpha', argv: ['true'] });
-    ok(/has no node/.test(nonode.error || ''), `a project with no node set is refused, and told where to set one (${nonode.error})`);
+    ok(/has no node/.test(nonode.error || ''),
+       `a project with no node set is refused, and told where to set one (${JSON.stringify(nonode).slice(0, 160)})`);
     const onlocal = await api('/api/v1/jobs', { action: 'run', project: 'alpha', node: 'local', argv: ['true'] });
     ok(/runs no agent/.test(onlocal.error || ''), 'local is not a build node — it has no workspace of its own');
     const pr = await api('/api/prefs', { project: 'alpha', node: minted.id,

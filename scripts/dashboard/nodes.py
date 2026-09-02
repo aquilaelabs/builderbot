@@ -338,7 +338,7 @@ def _adopt_docker_host():
         "id": nid, "name": "sandbox", "kind": "ssh",
         "pool": "default", "created": int(time.time()), "state": "online",
         "concurrency": 1, "ssh_addr": addr,
-        "capabilities": ["docker-host"],
+        "capabilities": list(CAPABILITIES),
         "services": {}, "labels": {"disposable": "true"},
         "agent": {}, "reported": {}, "routing": {},
         "config": {"from_env": True},
@@ -407,16 +407,16 @@ def node_paths_set(principal, node_id, text):
 
 
 def node_for(capability=None):
-    """Which node work runs on. Phase 1's answer is fixed — docker work is
-    the sandbox record, everything else is local — and the point is that
-    callers ask at all: the call sites this creates are the seam phase 4's
-    placement function slides into without touching them again."""
+    """The default node for work nobody bound to one — the newest enrolled,
+    else local. `capability` is ignored and kept for the call sites that
+    still name one: a node does everything now, so there is nothing to
+    narrow by (2 Sep). What a project can do on its node is what is
+    installed there, and the project names the node."""
     try:
-        if capability == "docker-host":
-            got = _rows("SELECT id FROM nodes WHERE kind = 'ssh' AND "
-                        "state != 'retired' ORDER BY created DESC")
-            if got:
-                return got[0]["id"]
+        got = _rows("SELECT id FROM nodes WHERE kind != 'local' AND "
+                    "state = 'online' ORDER BY created DESC")
+        if got:
+            return got[0]["id"]
     except sqlite3.Error:
         pass                     # a broken store falls back to the answer
     return LOCAL                 # that was always true before it existed
@@ -430,6 +430,13 @@ def node_for(capability=None):
 # What the tab may toggle. An unknown capability is refused rather than
 # stored: the scheduler will one day place work on these strings, and a typo
 # that sits in the table until then is a job that never places.
+# What a node may be asked to do. NOT a setting any more (2 Sep): every node
+# gets all of it at enrollment, because a project names one node and that node
+# does everything for it — what the project can actually do there is what is
+# INSTALLED on it, which the census reports as toolchains. This stays as the
+# vocabulary of the node-side refusal (§15 door 7: an agent refuses a job
+# outside what it enrolled with), so a restricted node remains expressible
+# without anybody having to configure one to get ordinary work done.
 CAPABILITIES = ("docker-host", "package-build", "deploy-target")
 _rev = [0]
 
@@ -464,7 +471,9 @@ def node_add(principal, name, ssh_addr, capabilities=None, pool="default"):
                          "host, which gets ssh:// and the bb account)"}
     if "@" not in addr[len("ssh://"):]:
         addr = "ssh://bb@" + addr[len("ssh://"):]
-    caps = [c for c in (capabilities or ["docker-host"]) if c in CAPABILITIES]
+    # Every node does everything; the argument is kept for a caller that
+    # still passes one, and for a deliberately restricted node later.
+    caps = [c for c in (capabilities or CAPABILITIES) if c in CAPABILITIES]
     if _rows("SELECT id FROM nodes WHERE ssh_addr = ? AND state != 'retired'",
              (addr,)):
         return {"error": f"a node already answers at {addr}"}
@@ -482,7 +491,8 @@ def node_add(principal, name, ssh_addr, capabilities=None, pool="default"):
 
 
 def node_update(principal, node_id, fields):
-    """Rename, re-pool, relabel, set concurrency, toggle capabilities —
+    """Rename, re-pool, relabel, set concurrency, and (for a deliberately
+    restricted node, which nothing in the UI makes) capabilities —
     the editable half of a row. Never the id, the kind or the address: an
     address is an identity question, and the answer to "this node moved"
     is a new node (door 1), not an edit that makes old records lie."""
@@ -571,10 +581,17 @@ def docker_nodes():
     address yet, so it is not offered: the picker's job is to name daemons
     the manager can reach, and a row with no way in would be a row that
     only ever says 'no answer'."""
+    # Every node with a way in. Not narrowed by capability any more — a node
+    # does everything — so the two exclusions left are the honest ones: a
+    # node the manager cannot reach would be a row that only ever says "no
+    # answer", and `local` is the controller, whose daemon is whatever socket
+    # somebody deliberately mounted (docs/nodes.md §12: containers there run
+    # beside /config and the dashboard credential), so it appears only when
+    # that was done, which is what docker-host on local means.
     return [n for n in node_list()
             if n["state"] not in ("retired", "pending")
-            and "docker-host" in n["capabilities"]
-            and (n["kind"] == "local" or _addr(n))]
+            and (_addr(n) if n["kind"] != "local"
+                 else "docker-host" in n["capabilities"])]
 
 
 def _addr(n):
@@ -686,13 +703,13 @@ def enroll_mint(principal, name, capabilities=None, user="bb"):
 
     The row exists BEFORE the machine does, which is the operator's view of
     "waiting for enrollment" — a line on the tab with the command to paste —
-    and it is where the token's scope lives: the capabilities the operator
+    and it is where the token's scope lives: the capabilities the controller
     intended are on the row, so enrollment adds nothing the operator did not
     ask for. The id is minted now and kept; a token that expires unused
     leaves a pending row the tab offers to remove, never a reused id.
     """
     name = (name or "").strip()[:60] or "node"
-    caps = [c for c in (capabilities or ["package-build"]) if c in CAPABILITIES]
+    caps = [c for c in (capabilities or CAPABILITIES) if c in CAPABILITIES]
     user = re.sub(r"[^a-z0-9_-]", "", (user or "bb").lower())[:32] or "bb"
     nid = mint("n")
     _insert_node({

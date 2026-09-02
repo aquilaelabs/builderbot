@@ -1258,7 +1258,7 @@ directory's one-shot containers — addresses that node's daemon.
 
 **Tools → Nodes** is the registry (docs/nodes.md): every machine work can run
 on, `local` — this container — first. A row carries the node's state,
-capability toggles (`docker-host`, `package-build`, `deploy-target`), labels
+the toolchains its census found — what a project bound to it can build — labels
 and census, with **Test** (probe its daemon now, sandbox stamp included),
 **Drain** (finish what is running, accept nothing new — what makes a node
 safe to reboot) and **Remove** (retire: off every list, row kept as history —
@@ -1270,6 +1270,17 @@ its daemon resolves bind mounts over there — which is where the old
 `DOCKER_HOST_PATHS` setting lives now. The
 local node refuses `docker-host` on purpose — it is not a sandbox. Every
 change writes an audit row.
+
+**A node does everything for the projects bound to it.** There is nothing to
+pick per node — no "this one builds, that one deploys". A project names one
+node in its settings dialog and its containers, builds, tests, CI and
+emulation all go there, so three projects on three VMs stay apart and three
+projects on one VM share it. What a project can actually do on its node is
+what is **installed** there: the row lists the toolchains its census found,
+and the Tools tab's node picker is where more are added. (Underneath, the
+node still refuses a job asking for something it did not enrol with — the
+enforcement of docs/nodes.md §15 door 7 — but every node now enrols with the
+full set, so it is a mechanism rather than a setting.)
 
 **Enroll node** is the other way in, and the one the design is built around:
 it makes a pending row and mints a one-time token (`bbe_…`, good for a day),
