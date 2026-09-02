@@ -141,8 +141,13 @@ function nodeRunnerSection(n, c){
     : rep.busy ? ["running a job right now", "ok"]
     : rep.active ? ["listening — idle, waiting for a job", "ok"]
     : ["installed but NOT listening, so no workflow will reach it — Reinstall runner", "bad"];
+  // A listening runner has demonstrably finished registering, whatever the
+  // census could read off .runner — so only a runner that is NOT listening
+  // gets the "may not have finished" reading. Saying it of a working one sent
+  // the operator to reinstall a runner that was fine.
   const detail = rep.installed
-    ? [rep.name ? `registered as ${rep.name}` : "its registered name did not come back, so the registration may not have finished",
+    ? [rep.name ? `registered as ${rep.name}`
+         : rep.active ? "" : "its registered name did not come back, so the registration may not have finished",
        rep.url || "", rep.labels?.length ? "labels " + rep.labels.join(", ") : ""].filter(Boolean).join(" · ")
     : "";
   const state = verdict + (detail ? " · " + detail : "");
