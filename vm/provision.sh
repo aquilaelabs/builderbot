@@ -442,6 +442,36 @@ fstab_line() {
         /etc/fstab 2>/dev/null || true
 }
 
+# --- the stores, read from the file the AGENT writes ---------------------
+#
+# One invariant, enforced from both ends: a store's path and the mount it
+# sits on must agree. The agent holds the other end — it refuses to POINT a
+# store at a share that is configured and not mounted, because mkdir would
+# make an ordinary directory there and everything would land on this
+# machine's own disk looking healthy. This end is the same failure reached
+# from the console: unmounting a share a store is inside.
+#
+# The anti-drift is structural rather than a matching rule: there is ONE
+# list of where the stores are — the agent's node.json — and this reads it
+# rather than keeping a copy. A store repointed from the dashboard is
+# visible here on the next command, with nothing to keep in step.
+NODE_JSON=/etc/builderbot/node.json
+stores_under() {
+    [ -r "$NODE_JSON" ] || return 0
+    python3 - "$NODE_JSON" "$1" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    stores = json.load(open(sys.argv[1])).get("stores") or {}
+except Exception:
+    raise SystemExit(0)
+under = sys.argv[2].rstrip("/")
+for role, where in sorted(stores.items()):
+    w = str(where or "").rstrip("/")
+    if under and (w == under or w.startswith(under + "/")):
+        print(f"{role} ({where})")
+PY
+}
+
 # --- the one copy of the fstab logic ------------------------------------
 add_fstab() {
     local line="$1" path="$2" hit lineno old tmp
@@ -499,7 +529,7 @@ add_fstab() {
 # merely that something is mounted — `mount -a` skips a busy mountpoint, so a
 # path whose entry was just rewritten stays on the old share and looks fine.
 mount_one() {
-    local path="$1" want got
+    local path="$1" want got held
     # This path only. `mount -a` mounted every entry in fstab, so one export
     # the server refuses printed its refusal on every check of every OTHER
     # mount — three copies of one unrelated failure, above the answers.
@@ -517,6 +547,9 @@ mount_one() {
         return 1
     fi
     warn "$path did NOT mount, and nofail means nothing said so."
+    held="$(stores_under "$path")"
+    [ -n "$held" ] && printf '   %s sits inside it, so that store is on the root disk until it mounts.\n' \
+        "$(printf '%s' "$held" | tr '\n' ' ')"
     printf '   On Unraid an export is a SHARE — /mnt/user/<share> — never a\n'
     printf '   pool path like /mnt/cache/<share>, which is right for a bind\n'
     printf '   mount and is not exported. Check it allows this host:\n'
@@ -596,8 +629,24 @@ cmd_readonly() {
 }
 
 cmd_remove() {
-    local path="${1:?usage: bb-sandbox remove PATH}" tmp
+    local path="${1:?usage: bb-sandbox remove PATH [--force]}" tmp held
     [ -n "$(fstab_line "$path")" ] || die "$path is not one of this machine's mounts"
+    # A store inside this share becomes a directory on the root disk the
+    # moment the share goes, and the agent would then report it with the
+    # root disk's free space and nothing would say the toolchains or the
+    # built artifacts had stopped being reachable. So this is refused,
+    # loudly, rather than warned about after the fact.
+    held="$(stores_under "$path")"
+    if [ -n "$held" ] && [ "${2:-}" != --force ]; then
+        warn "$path holds $(printf '%s' "$held" | tr '\n' ' ')"
+        printf "   Unmounting it would leave those on this machine's own disk,\n"
+        printf '   where the agent would report them as healthy stores with the\n'
+        printf '   root filesystem free space. Move them first — the Nodes tab\n'
+        printf '   copies a store when you repoint it — or, if you mean it:\n'
+        printf '     bb-sandbox remove %s --force\n' "$path"
+        return 1
+    fi
+    [ -n "$held" ] && warn "removing it anyway; $(printf '%s' "$held" | tr '\n' ' ') will be on the root disk"
     umount -l "$path" 2>/dev/null || true
     tmp="$(mktemp)"
     awk -v p="$path" '$1 ~ /^#/ || $2 != p' /etc/fstab > "$tmp" || true
@@ -617,7 +666,7 @@ cmd_remove() {
 }
 
 cmd_list() {
-    local path src state real
+    local path src state real held
     printf '\n%-24s %-34s %s\n' MOUNTPOINT SOURCE STATE
     while read -r path; do
         [ -n "$path" ] || continue
@@ -627,6 +676,8 @@ cmd_list() {
         elif [ ! -w "$path" ]; then state="mounted, read-only"
         else state="mounted"; fi
         [ "$APPDATA" = "$path" ] && state="$state · container appdata"
+        held="$(stores_under "$path")"
+        [ -n "$held" ] && state="$state · holds $(printf '%s' "$held" | tr '\n' ' ')"
         # Where it is REALLY mounted from, not what fstab claims. Those two
         # disagree exactly when something needs attention — an entry rewritten
         # under a mount that was busy at the time — and printing fstab's
@@ -740,7 +791,7 @@ menu_whiptail() {
             list     "what is mounted, and from where" \
             nfs      "add an NFS mount" \
             share    "add a virtiofs share" \
-            remove   "take a mount out of fstab" \
+            remove   "take a mount out of fstab (refused if a store is in it)" \
             appdata  "choose which mount holds container appdata" \
             readonly "make a mount read-only (right for /workspace)" \
             check    "verify every mount is really there" \

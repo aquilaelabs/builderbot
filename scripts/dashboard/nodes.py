@@ -1238,8 +1238,19 @@ def node_apply(principal, node_id, what):
         return {"error": "a system job is already in flight on this node — one at a time"}
     cfg = ({"mounts": desired.get("mounts") or [], "stores": desired.get("stores") or {}}
            if what == "storage" else {"network": desired.get("network") or {}})
+    # A storage apply that repoints a store copies what is in it first, and a
+    # packages store is tens of gigabytes: fifteen minutes is the right ceiling
+    # for mounting a share and the wrong one for moving one. `cache` is not
+    # copied (the agent says why), so it does not buy the longer clock.
+    timeout = 900
+    if what == "storage":
+        rep = (n.get("reported") or {}).get("stores") or {}
+        if any(p and role != "cache" and (rep.get(role) or {}).get("path")
+               and str((rep.get(role) or {}).get("path")).rstrip("/") != str(p).rstrip("/")
+               for role, p in (desired.get("stores") or {}).items()):
+            timeout = 6 * 3600 + 900
     r = job_add(principal, {"node": node_id}, "system",
-                {"apply": what, "config": cfg, "timeout": 900})
+                {"apply": what, "config": cfg, "timeout": timeout})
     if r.get("ok"):
         audit(principal, "node-apply", node_id, {"what": what, "job": r["job"]})
     return r

@@ -329,6 +329,76 @@ try {
        'the census reports the applied mounts and the moved store right away, not at the next hello');
     ok(after && after.applying === null, '...and the row is no longer applying');
 
+    // ---- a store under a share that is not mounted ------------------------
+    // The silent failure this refuses: a share in fstab but not mounted
+    // leaves its mountpoint an ordinary empty directory, mkdir makes the
+    // store inside it, and everything lands on the node's own disk while
+    // the row reports a healthy store with plenty of room.
+    {
+      const MOUNTS = [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
+                      { type: 'nfs', source: 'nas:/mnt/user/tank', path: `${DIR}/fakeshare` }];
+      await api('/api/v1/nodes', { action: 'config', id: minted.id,
+        config: { mounts: MOUNTS, stores: { cache: `${DIR}/agentcache`,
+                    packages: `${DIR}/fakeshare/packages`, artifacts: `${DIR}/agentartifacts` },
+                  network: { mode: 'dhcp' } } });
+      const j = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+      const r = await until(async () => {
+        const x = await api(`/api/v1/jobs?id=${j.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
+      }, 30000);
+      ok(r && r.state === 'failed' && /is NOT mounted/.test(r.log) && /own disk/.test(r.log),
+         `a store inside a configured share that is not mounted is refused, and says why (${r?.state})`);
+      ok(!existsSync(`${DIR}/fakeshare/packages`),
+         '...and nothing was created there, so no data can land on the local disk by mistake');
+      const n2 = await nodeById(minted.id);
+      ok(n2.reported.stores.packages.path === `${DIR}/agentpackages`,
+         '...and the packages store still points where it did');
+    }
+
+    // ---- moving a store brings its contents with it ------------------------
+    // It used to just repoint: the node started using an empty directory and
+    // the toolchains stayed behind, with nothing saying so.
+    {
+      mkdirSync(`${DIR}/agentpackages/android`, { recursive: true });
+      writeFileSync(`${DIR}/agentpackages/android/marker`, 'a toolchain lives here');
+      mkdirSync(`${DIR}/agentcache`, { recursive: true });
+      writeFileSync(`${DIR}/agentcache/gradle-blob`, 'rebuildable');
+      await api('/api/v1/nodes', { action: 'config', id: minted.id,
+        config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' }],
+                  stores: { cache: `${DIR}/agentcache2`, packages: `${DIR}/agentpackages2`,
+                            artifacts: `${DIR}/agentartifacts` },
+                  network: { mode: 'dhcp' } } });
+      const j = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+      const r = await until(async () => {
+        const x = await api(`/api/v1/jobs?id=${j.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
+      }, 60000);
+      ok(r && r.state === 'succeeded'
+         && readFileSync(`${DIR}/agentpackages2/android/marker`, 'utf8') === 'a toolchain lives here',
+         `moving a store copies what was in it to the new place (${r?.state})`);
+      ok(existsSync(`${DIR}/agentpackages/android/marker`) && /left in place/.test(r.log),
+         '...and never deletes the source, so a half-finished move still serves');
+      ok(!existsSync(`${DIR}/agentcache2/gradle-blob`) && /a cache is rebuildable/.test(r.log),
+         '...while the cache is left behind rather than copied, and the log says why');
+      const n2 = await until(async () => {
+        const n = await nodeById(minted.id);
+        return n.reported.stores.packages.path === `${DIR}/agentpackages2` ? n : null;
+      });
+      ok(n2 !== null, '...and the census reports the store where it now is');
+      // Put it back, so what follows runs against the stores it expects.
+      await api('/api/v1/nodes', { action: 'config', id: minted.id,
+        config: { mounts: [{ type: 'nfs', source: 'nas:/mnt/user/appdata', path: '/mnt/appdata' },
+                           { type: 'virtiofs', source: 'projects', path: '/workspace', ro: true }],
+                  stores: { cache: `${DIR}/agentcache`, packages: `${DIR}/agentpackages`,
+                            artifacts: `${DIR}/agentartifacts` },
+                  network: { mode: 'static', address: '10.9.9.9/24', gateway: '10.9.9.1', dns: ['10.9.9.1'] } } });
+      const back = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+      await until(async () => {
+        const x = await api(`/api/v1/jobs?id=${back.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(x.state) ? x : null;
+      }, 60000);
+    }
+
     // network: written, applied, dialed back — the stub controller is still here
     const np = await api('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'network' });
     const nfin = await until(async () => {
@@ -628,6 +698,67 @@ try {
        'off is off, through the same CLI');
   }
 
+  // ---- the console half does not drift from the agent's -------------------
+  // One invariant, two ends: the agent refuses to point a store at a share
+  // that is not mounted, and bb-sandbox refuses to unmount a share a store
+  // is inside. The way they are kept in step is structural — bb-sandbox
+  // reads the agent's own node.json instead of keeping a list of stores —
+  // and this proves they answer the one shared question the same way. It
+  // runs the REAL bb-sandbox, pulled out of the provisioner the same way
+  // bb lint pulls it out for shellcheck.
+  {
+    const SBDIR = `${DIR}/sandbox-src`;
+    mkdirSync(SBDIR, { recursive: true });
+    execFileSync('python3', [`${REPO}/scripts/lib/embedded-shell.py`, SBDIR,
+                             `${REPO}/vm/provision.sh`], { stdio: 'pipe' });
+    const SB = `${SBDIR}/provision.sh-BBSANDBOX`;
+    const NJ = `${DIR}/contract-node.json`;
+    writeFileSync(NJ, JSON.stringify({ stores: {
+      data: '/var/lib/builderbot/data', packages: '/mnt/tank/builderbot/packages',
+      cache: '/mnt/tank/cache', artifacts: '/mnt/other/art' } }));
+    // Both sides, on the same cases. A store is "in" a mount when the mount
+    // is its own path or a parent of it — and NOT when the mount's path is
+    // merely a string prefix (/mnt/tank2 is not inside /mnt/tank).
+    // '/mnt/tan' and '/var/lib/builderbot/dat' are the ones that matter: a
+    // naive startswith says they hold the stores under /mnt/tank and
+    // .../data, and a path parent is not a string prefix. Both sides have
+    // to get those wrong the same way to pass, which is the drift this is
+    // for. '/mnt/tank2' is the other direction.
+    const CASES = ['/mnt/tank', '/mnt/tank/builderbot', '/mnt/tan', '/mnt/tank2', '/mnt',
+                   '/mnt/other', '/var/lib/builderbot/data', '/var/lib/builderbot/dat',
+                   '/var/lib', '/nowhere'];
+    const stores = JSON.parse(readFileSync(NJ, 'utf8')).stores;
+    const sandbox = CASES.map(mp => {
+      const out = execFileSync('bash', ['-c',
+        `NODE_JSON=${JSON.stringify(NJ)}; ` +
+        `eval "$(sed -n '/^stores_under() {/,/^}/p' ${JSON.stringify(SB)})"; ` +
+        `stores_under ${JSON.stringify(mp)}`], { encoding: 'utf8' });
+      return out.split('\n').map(l => l.split(' ')[0]).filter(Boolean).sort().join(',');
+    });
+    const agent = CASES.map(mp => execFileSync('python3', ['-c',
+      `import importlib.util as u, json, sys\n` +
+      `s = u.spec_from_file_location('a', sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m)\n` +
+      `st = json.loads(sys.argv[3])\n` +
+      `print(','.join(sorted(r for r, p in st.items() if m.mount_covering(p, [{'path': sys.argv[2]}]))))`,
+      `${REPO}/scripts/agent/builderbot-agent.py`, mp, JSON.stringify(stores)],
+      { encoding: 'utf8' }).trim());
+    const disagree = CASES.filter((_, i) => sandbox[i] !== agent[i]);
+    ok(disagree.length === 0,
+       `bb-sandbox and the agent agree on which stores a mount holds, in all ${CASES.length} cases${
+         disagree.length ? ` — they differ on ${disagree.join(', ')}: ${
+           disagree.map(c => `${c} sandbox[${sandbox[CASES.indexOf(c)]}] agent[${agent[CASES.indexOf(c)]}]`).join('; ')}` : ''}`);
+    ok(sandbox[CASES.indexOf('/mnt/tank')] === 'cache,packages'
+       && sandbox[CASES.indexOf('/mnt/tan')] === '' && sandbox[CASES.indexOf('/mnt/tank2')] === ''
+       && sandbox[CASES.indexOf('/var/lib/builderbot/dat')] === ''
+       && sandbox[CASES.indexOf('/nowhere')] === '',
+       `...and the answers are the right ones, not merely the same (/mnt/tank holds ${
+         sandbox[CASES.indexOf('/mnt/tank')] || 'nothing'})`);
+    // And the refusal itself is in the console tool, not only in the agent.
+    ok(/bb-sandbox remove %s --force/.test(readFileSync(SB, 'utf8'))
+       && /holds \$\(printf/.test(readFileSync(SB, 'utf8')),
+       'bb-sandbox refuses to unmount a share a store is inside, and its list marks one that holds them');
+  }
+
   // ---- the agent's own update, driven from the tab (roadmap #17) ---------------
   {
     const all = await api('/api/v1/nodes');
@@ -636,7 +767,7 @@ try {
     const lc = await api('/api/v1/nodes', { action: 'update-agent', id: 'local' });
     ok(/only an agent node/.test(lc.error || ''), 'local has no agent to update');
     const cur = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
-    ok(cur.ok && cur.current === true && cur.version === '11',
+    ok(cur.ok && cur.current === true && cur.version === all.agent.version,
        'a node already on the shipped agent is told so, and no job is queued');
     const n = await nodeById(minted.id);
     ok(n.agent.digest === all.agent.digest, '...because the digests the row would compare are the same');

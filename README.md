@@ -1315,6 +1315,25 @@ Install runner, Clear cache and installing a package onto that node are all
 refused, with the reason on the button; the self-update itself is the one
 thing that still goes through. Nodes running the shipped agent are unaffected.
 
+**A store cannot be pointed at a share that is not mounted.** This is the
+one storage mistake that looks like success: a share in fstab but not
+mounted leaves its mountpoint an ordinary empty directory, the store gets
+made inside it, and everything lands on the node's own disk while the row
+reports a healthy store with plenty of room. Apply refuses it instead,
+naming the share and what would have happened — fix the mount, or take it
+out of the node's mounts if that path is meant to be local. At the console
+`bb-sandbox` holds the same line from the other end: `remove` will not
+unmount a share a store is inside without `--force`, `list` marks a mount
+that holds stores, and a share that fails to mount says which store is
+stranded in it.
+
+**Repointing a store moves what is in it.** The contents are copied to the
+new path before the switch, and the tab asks first, because a packages store
+is tens of gigabytes and the job waits for the copy. Nothing is deleted: the
+old copy stays where it was for you to remove once you are satisfied, so a
+move that fails half way leaves the node still able to work. `cache` is the
+exception — it is rebuildable, so it is left behind and the log says so.
+
 **Saved is not applied.** The settings on a node's page are a record of what
 it *should* be; **Apply** is what makes the machine match. The state line
 under them says which of the two you are looking at — how many changes are

@@ -196,6 +196,17 @@ function staleWhy(n){
     nodesAgent?.version} — press Update agent first, so nothing is sent that the agent may not know`;
 }
 
+// Which stores a storage apply would move: saved somewhere other than where
+// the node reports them. `cache` is left out — the agent does not copy it
+// (rebuildable, and a cold cache costs time and never correctness), so
+// promising a move here would be a lie.
+function storeMoves(n){
+  const want = n?.config?.desired?.stores || {}, rep = n?.reported?.stores || {};
+  return Object.entries(want).filter(([role, p]) => role !== "cache" && p
+      && rep[role]?.path && rep[role].path.replace(/\/+$/, "") !== String(p).replace(/\/+$/, ""))
+    .map(([role, p]) => ({role, from: rep[role].path, to: p}));
+}
+
 // Saved is not applied: the record says what the node SHOULD be, the census
 // says what it is, and the gap between them is the only thing Apply is for.
 // Without this the buttons were live whenever anything had been saved, so
@@ -218,7 +229,8 @@ function nodeDrift(n){
     if (!path) continue;
     const r = rep.stores?.[role];
     if (!r) storage.push(`${role} store not reported yet`);
-    else if (r.path !== path) storage.push(`${role} store → ${path}`);
+    else if (r.path !== path)
+      storage.push(`${role} store ${role === "cache" ? "→" : "moves to"} ${path}`);
     else if (r.free_mb === null) storage.push(`${role} store is missing on the node`);
   }
   const net = d.network || {}, rn = rep.network || {};
@@ -726,6 +738,15 @@ function wireNodeConf(row, id){
       if (gone.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis unmounts `
           + `${gone.map(m => m.path).join(", ")} and takes ${gone.length === 1 ? "it" : "them"} `
           + `out of fstab. Directories and data stay.`)) return;
+      // Moving a store copies what is in it, which can be tens of gigabytes
+      // and take a while — so it is asked about rather than started by a
+      // text field losing focus.
+      const moving = storeMoves(n);
+      if (moving.length && !confirm(`Apply storage to ${n?.name || "this node"}?\n\nThis moves `
+          + `${moving.map(m => `${m.role} from ${m.from} to ${m.to}`).join(", and ")}. The `
+          + `contents are copied across first and the job waits for that; nothing is deleted, `
+          + `so the old cop${moving.length === 1 ? "y stays" : "ies stay"} where ${
+              moving.length === 1 ? "it is" : "they are"} for you to remove.`)) return;
     }
     await nodeAct({action: "apply", id, what});
   });

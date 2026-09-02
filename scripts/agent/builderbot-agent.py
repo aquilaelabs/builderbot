@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "11"
+AGENT_VERSION = "12"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -117,6 +117,38 @@ def store_path_ok(path):
         if (p + "/").startswith(bad):
             return f"{p} is inside {bad.rstrip('/')}, which this agent will not write to"
     return ""
+def mount_covering(path, mounts):
+    """The bb-sandbox mount this path would live inside, or None.
+
+    The deepest match wins, so /mnt/tank/builderbot/packages is answered by
+    /mnt/tank rather than by /mnt if both are configured. This is what makes
+    an unmounted share detectable: the mount is in fstab, the directory
+    under it is not, and mkdir would quietly make a local one.
+    """
+    p = str(path or "").rstrip("/")
+    best = None
+    for m in mounts or []:
+        mp = str(m.get("path") or "").rstrip("/")
+        if not mp:
+            continue
+        if p == mp or p.startswith(mp + "/"):
+            if best is None or len(mp) > len(str(best.get("path") or "").rstrip("/")):
+                best = m
+    return best
+
+
+def dir_bytes(path):
+    """What is in there, in bytes, or None if it cannot be told quickly.
+    `du` rather than a walk: one C process instead of a stat per file, which
+    matters on the far end of an NFS link."""
+    try:
+        out = subprocess.run(["du", "-sb", path], stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, timeout=180, check=False)
+        return int(out.stdout.split()[0]) if out.returncode == 0 else None
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
+
+
 # Where the configuration plane's tools are (docs/nodes.md §12, phase 5).
 # bb-sandbox is the one copy of the mount logic, installed by the provisioner
 # — its presence is what says this node was set up as a sandbox, and a
@@ -1392,7 +1424,7 @@ class Agent:
         job.say(f"refused: unknown system job {what!r}\n")
         return "failed", 64
 
-    def _sh(self, job, argv, cwd=None):
+    def _sh(self, job, argv, cwd=None, timeout=300):
         """One command, its output into the job's log, its exit code back.
 
         `cwd` matters more than it looks: the runner's own svc.sh resolves
@@ -1404,7 +1436,7 @@ class Agent:
         try:
             p = subprocess.run(argv, cwd=cwd, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT,
-                               timeout=300, check=False)
+                               timeout=timeout, check=False)
         except (OSError, subprocess.SubprocessError) as e:
             job.say(f"{argv[0]}: {e}\n")
             return 1
@@ -1438,6 +1470,9 @@ class Agent:
                 bad += 1
         stores = cfg.get("stores") if isinstance(cfg.get("stores"), dict) else {}
         if stores:
+            # Read the mounts back AFTER applying them: what a store may sit
+            # on is what is mounted now, not what was asked for.
+            live = mounts_now()
             mine = dict(self.state.get("stores") or {})
             for role, path in stores.items():
                 if role not in DEFAULT_STORES:
@@ -1447,13 +1482,37 @@ class Agent:
                     job.say(f"refused {role} store: {why}\n")
                     bad += 1
                     continue
+                # The silent failure this exists to stop: a share that is in
+                # fstab but not mounted leaves its mountpoint an ordinary
+                # empty directory, mkdir cheerfully makes the store inside
+                # it, and everything then lands on the node's own disk while
+                # the row reports a healthy store with plenty of room. So a
+                # store under a configured mount is refused unless that
+                # mount is really mounted — fix the share, or take the entry
+                # out and mean it locally.
+                cover = mount_covering(path, live)
+                if cover and not os.path.ismount(str(cover.get("path") or "")):
+                    job.say(f"refused {role} store {path}: it is inside {cover.get('path')}, "
+                            f"which is configured as a {cover.get('type') or 'nfs'} mount from "
+                            f"{cover.get('source') or '?'} and is NOT mounted. Writing there would "
+                            f"put {role} on this node's own disk and look like it worked. Fix the "
+                            f"mount, or remove it from this node's mounts if {path} is meant to be "
+                            f"local.\n")
+                    bad += 1
+                    continue
                 try:
                     os.makedirs(path, exist_ok=True)
-                    mine[role] = str(path)
-                    job.say(f"{role} store: {path}\n")
                 except OSError as e:
                     job.say(f"{role} store {path} could not be made: {e.strerror}\n")
                     bad += 1
+                    continue
+                was = str(mine.get(role) or "")
+                if was and was.rstrip("/") != str(path).rstrip("/"):
+                    if not self._move_store(job, role, was, str(path)):
+                        bad += 1
+                        continue
+                mine[role] = str(path)
+                job.say(f"{role} store: {path}\n")
             self.state["stores"] = mine
             save_state(self.state)
         self.hello()
@@ -1462,6 +1521,59 @@ class Agent:
             return "failed", 1
         job.say("storage applied\n")
         return "succeeded", 0
+
+    def _move_store(self, job, role, old, new):
+        """Repointing a store used to leave its contents behind: the node
+        started using an empty directory and the toolchains, AVDs or built
+        artifacts stayed where they were, with nothing saying so. So the
+        contents come across first, and the job only repoints if they did.
+
+        The source is never deleted — the same rule the node-change
+        migration keeps (roadmap #17). A half-finished move must leave the
+        old store able to serve, and reclaiming the space is the operator's
+        to do once they can see both.
+
+        `cache` is the exception: it is rebuildable by definition, and a
+        cold cache costs the next build time and never correctness, so
+        copying tens of gigabytes of it across a link would be work for
+        nothing.
+        """
+        if not os.path.isdir(old):
+            job.say(f"{role}: nothing at {old} to bring across\n")
+            return True
+        if role == "cache":
+            job.say(f"{role}: leaving {old} where it is — a cache is rebuildable, "
+                    f"and the new one starts cold\n")
+            return True
+        try:
+            if not os.listdir(old):
+                job.say(f"{role}: {old} is empty, nothing to bring across\n")
+                return True
+        except OSError as e:
+            job.say(f"{role}: cannot read {old}: {e.strerror}\n")
+            return False
+        size = dir_bytes(old)
+        if size is not None:
+            free = shutil.disk_usage(new).free
+            job.say(f"{role}: bringing {size // 1048576}MB across from {old}; "
+                    f"{free // 1048576}MB free at {new}\n")
+            if size > free:
+                job.say(f"refused: {new} has not got room for it. Nothing was moved and "
+                        f"{role} still points at {old}.\n")
+                return False
+        else:
+            job.say(f"{role}: bringing {old} across (size unknown)\n")
+        # cp -a, not shutil: it keeps ownership, times and links, and one C
+        # process beats a per-file round trip over NFS. Six hours, because
+        # a packages store is tens of gigabytes and this is the one system
+        # job that can legitimately take that long.
+        if self._sh(job, ["cp", "-a", os.path.join(old, "."), new + "/"], timeout=21600) != 0:
+            job.say(f"refused: the copy failed. {role} still points at {old}, "
+                    f"which is untouched.\n")
+            return False
+        job.say(f"{role}: copied. The old copy at {old} is left in place — "
+                f"delete it yourself once you are satisfied.\n")
+        return True
 
     def _apply_network(self, job, cfg):
         """Commit/confirm, because this is the one change that can cut the
