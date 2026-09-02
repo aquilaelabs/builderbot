@@ -1293,7 +1293,9 @@ on the node **dials out**: no port is opened on it, the controller holds no
 key that logs in anywhere, and the credential the node keeps
 (`/etc/builderbot/node.json`, 0600) opens its own row and nothing else.
 Revoke on the row ends it; the agent says so in its journal and the row goes
-quiet, keeping its history.
+quiet, keeping its history. The one-day life belongs to the *enrollment*
+token only — the credential the node keeps afterwards does not expire, so an
+enrolled node needs nothing renewed.
 
 **Updating the agent is a button, never automatic.** The row says *update
 available* when the node's agent is not the file this controller ships, and
@@ -1363,6 +1365,14 @@ workspace on the node for a look, and says where. The census reports each
 node's cache size beside **Clear cache**, and the Tools tab gains a node
 picker: installing a toolchain there is a job that carries `bb` and the
 catalog to the node's own packages store.
+
+**Compose runs on the node, not from here.** A dev instance's Up, Down,
+Rebuild and Remove are executed by the agent with the node's own docker: the
+dashboard sends the plan and the compose file, the node runs it. So an
+enrolled node needs nothing but the token it enrolled with — no ssh key, no
+open daemon port, nothing dialling in. (A node added as a plain `ssh` docker
+host, the arrangement from before the agent, still runs compose from here
+over ssh.)
 
 **A CI runner per node.** The same fold installs GitHub's Actions runner
 on the node as a service: it registers with the org or repo URL from the

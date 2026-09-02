@@ -269,7 +269,10 @@ ok(list[0].id === 'local',
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
   const ROW = `.nodestab .ndrow[data-node="${minted.id}"]`;
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
-  ok(await page.$eval(`${ROW} .ndstale`, e => /update available → 9/.test(e.textContent))
+  // The shipped version, read rather than hardcoded — this assertion has
+  // been edited on every agent bump and adds nothing by naming one.
+  const shipped = (await napi('/api/v1/nodes')).agent?.version;
+  ok(await page.$eval(`${ROW} .ndstale`, (e, v) => e.textContent.includes(`update available → ${v}`), shipped)
      && await page.$(`${ROW} [data-nd="update-agent"]`) !== null
      && await page.evaluate(() => !document.querySelector('.nodestab .ndrow[data-node="local"] [data-nd="update-agent"]')),
      'the row wears "update available" with the shipped version and an Update agent button; local has neither');
@@ -412,6 +415,20 @@ ok(list[0].id === 'local',
      '...and the ssh node\'s row shows it, editable');
   ok(await page.evaluate(() => !document.querySelector('.nodestab .ndrow[data-node="local"] .ndpaths')),
      '...while local, whose paths are its own, has no such line');
+}
+
+// ...and put the sandbox's path mapping back: it lives on the node record
+// now, which fresh() does not touch, so the mapping this file sets was still
+// there for devapp.mjs and changed what its rows complained about.
+await page.evaluate(() => nodeAct({ action: 'paths', id: nodesList.find(n => n.name === 'sandbox')?.id, paths: '' }));
+
+// Retire what this file made, the way agent.mjs does: the store outlives a
+// suite, and a node left online here becomes the DEFAULT node for the files
+// after it — which sent devapp's compose at a machine that does not exist.
+for (const n of (await (await fetch(URL.replace(/\/$/, '') + '/api/v1/nodes',
+     { headers: { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json()).nodes){
+  if (n.kind !== 'local' && n.name !== 'sandbox')
+    await page.evaluate(id => nodeAct({ action: 'retire', id }), n.id);
 }
 
 // ---- the seam stays invisible on the sidebar --------------------------------

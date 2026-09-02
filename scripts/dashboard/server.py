@@ -1991,6 +1991,9 @@ import jobs                                                      # noqa: E402
 if not NODES_OK:
     jobs.configure(nodes_module=nodes)
     packages.nodes = nodes
+    # A compose action the AGENT ran still has records to write here; this is
+    # where the module that queued it finishes it (roadmap #18).
+    nodes.on_done("compose", devapp.compose_done)
 devapp.configure(workspace=WORKSPACE, state=STATE, write_json=write_json,
                  log_dir=logs.log_dir,
                  node_for=nodes.node_for if not NODES_OK else None,
@@ -3428,7 +3431,8 @@ class Handler(BaseHTTPRequestHandler):
                 return None
             return self._json(j)
         elif verb == "log":
-            r = nodes.job_log(nid, field(req, "job"), req.get("chunks"))
+            r = nodes.job_log(nid, field(req, "job"), req.get("chunks"),
+                              req.get("step"))
         elif verb == "result":
             r = nodes.job_result(nid, field(req, "job"), field(req, "state"),
                                  req.get("exit"), field(req, "error"),

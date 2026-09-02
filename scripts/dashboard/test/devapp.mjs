@@ -921,6 +921,9 @@ class Queue:
     """Rows are the queue: what job_add wrote is what jobs_for answers."""
     rows = []
     JOB_ACTIVE = ('queued', 'assigned', 'running')
+    kind = 'ssh'          # what _submit asks about, to decide whose plan it is
+    def node(self, nid):
+        return {'id': nid, 'name': nid, 'kind': self.kind} if nid else None
     def job_add(self, principal, placement, type, spec, project=''):
         jid = f'j_{len(self.rows) + 1}'
         self.rows.insert(0, {'id': jid, 'type': type, 'spec': spec, 'project': project,

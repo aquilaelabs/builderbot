@@ -413,10 +413,14 @@ def node_for(capability=None):
     narrow by (2 Sep). What a project can do on its node is what is
     installed there, and the project names the node."""
     try:
-        got = _rows("SELECT id FROM nodes WHERE kind != 'local' AND "
-                    "state = 'online' ORDER BY created DESC")
+        # The newest node with a REACHABLE daemon — docker_nodes() already
+        # drops the ones there is no way into. "Newest online" was not
+        # enough: an agent node that has never dialed in has no address, so
+        # it can hold a project's containers only in principle, and picking
+        # it left the manager talking to nothing.
+        got = [n for n in docker_nodes() if n["kind"] != "local"]
         if got:
-            return got[0]["id"]
+            return sorted(got, key=lambda n: n["created"])[-1]["id"]
     except sqlite3.Error:
         pass                     # a broken store falls back to the answer
     return LOCAL                 # that was always true before it existed
@@ -917,6 +921,18 @@ def _clean_config(cfg):
         kind = str(m.get("type") or "nfs").strip()
         if not path and not src:
             continue                              # an empty editor row
+        if not path and src:
+            # A mountpoint nobody typed: /mnt/<what the export is called>,
+            # which is where a Linux box puts a mount and is what the
+            # operator meant. The agent's bb-sandbox mkdir -p's it, so
+            # naming a directory that does not exist yet is not a problem.
+            # Only a default — /workspace has to stay /workspace for path
+            # parity with the controller, so anything that matters is typed.
+            tail = src.rsplit("/", 1)[-1] if kind == "nfs" else src
+            tail = re.sub(r"[^A-Za-z0-9._-]", "", tail).strip(".")
+            if not tail:
+                return None, f"nothing to name a mountpoint after in {src!r} — type one"
+            path = "/mnt/" + tail
         if not path.startswith("/") or " " in path or ":" in path:
             return None, f"a mountpoint must be an absolute path without spaces: {path!r}"
         if kind not in MOUNT_TYPES:
@@ -1302,6 +1318,13 @@ JOB_ACTIVE = ("queued", "assigned", "running")
 # What a selector may name (door 9: os and arch are placement dimensions).
 SELECT_KEYS = ("capability", "labels", "pool", "os", "arch")
 _jrev = [0]
+# type -> what to run on the controller when a job of that type ends,
+# registered by the module that queues them (devapp for compose).
+ON_DONE = {}
+
+
+def on_done(job_type, fn):
+    ON_DONE[job_type] = fn
 
 
 def jobs_rev():
@@ -1315,10 +1338,15 @@ def _jbump():
 
 
 def runner_of(job_type, kind):
-    """Who executes a job of this type on a node of this kind. A compose
-    action is always the controller's — it is docker over the node's
-    daemon, from here — and an agent runs everything else for itself."""
-    if job_type == "compose" or kind != "agent":
+    """Who executes a job of this type on a node of this kind.
+
+    An agent runs everything for itself, compose included (roadmap #18): the
+    node's own docker, on the node, so the token it enrolled with is the
+    only way in and the controller needs no ssh key. A node with no agent —
+    the legacy `ssh` kind — leaves compose here, over ssh, until that kind
+    goes.
+    """
+    if kind != "agent":
         return "controller"
     return "node"
 
@@ -1514,7 +1542,7 @@ def job_set(job_id, **fields):
         _jbump()
 
 
-def job_log(node_id, job_id, chunks):
+def job_log(node_id, job_id, chunks, step=None):
     """Append log chunks. Each carries the agent's sequence number, and a
     chunk already stored is dropped, so an agent that lost the answer to a
     post and sends the batch again (door 5: it buffers what it could not
@@ -1542,7 +1570,10 @@ def job_log(node_id, job_id, chunks):
             n += 1
         if got[0]["state"] == "assigned":
             _exec("UPDATE jobs SET state = 'running' WHERE id = ?", (job_id,))
-    if n:
+        # The word the row shows, when the agent sent one with this post.
+        if step is not None:
+            _exec("UPDATE jobs SET step = ? WHERE id = ?", (str(step)[:60], job_id))
+    if n or step is not None:
         _jbump()
     return {"ok": True, "stored": n, "cancel": bool(got[0]["cancel"])}
 
@@ -1551,7 +1582,7 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     """Terminal. Idempotent by design — the agent retries until it is
     acknowledged, so the second arrival of the same result is a no-op with
     the same answer, not a second audit row."""
-    got = _rows("SELECT node, state FROM jobs WHERE id = ?", (job_id,))
+    got = _rows("SELECT node, state, type FROM jobs WHERE id = ?", (job_id,))
     if not got or got[0]["node"] != node_id:
         return {"error": "not this node's job"}
     if got[0]["state"] in JOB_END:
@@ -1570,6 +1601,14 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
         keep = [o for o in outputs[:64] if isinstance(o, dict)]
         _exec("UPDATE jobs SET outputs = ? WHERE id = ?", (json.dumps(keep), job_id))
     audit(f"node:{node_id}", "job-result", job_id, {"state": state, "exit": code})
+    # The module that queued this kind of job gets to finish it. A compose
+    # action run by the agent still has records to write here — what was
+    # built, from which commit, on which daemon — and this is where they
+    # land, once, whichever runner served it.
+    fn = ON_DONE.get(got[0]["type"] if "type" in got[0].keys() else "")
+    if fn:
+        with contextlib.suppress(Exception):     # noqa: BLE001 — a hook must not lose a result
+            fn(job(job_id, with_log=False), state)
     _jbump()
     with _wake:
         _wake.notify_all()      # the slot is free: a held poll may take the next

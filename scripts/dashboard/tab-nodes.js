@@ -207,7 +207,7 @@ function nodeConfFold(n){
       <input data-k="source" value="${esc(m.source || "")}" spellcheck="false" autocomplete="off"
         placeholder="${m.type === "virtiofs" ? "share tag" : "nas:/mnt/user/appdata"}" aria-label="source">
       <input data-k="path" value="${esc(m.path || "")}" spellcheck="false" autocomplete="off"
-        placeholder="/mnt/appdata" aria-label="mountpoint">
+        placeholder="mountpoint — blank means /mnt/<the export's name>" aria-label="mountpoint">
       <label class="ndcap"><input type="checkbox" data-k="ro" ${m.ro ? "checked" : ""}> read-only</label>
       <button type="button" class="eye" data-mrm title="take this mount out">×</button>
       <div class="sub ndmstate ${cls}">${esc(st)}</div>

@@ -332,6 +332,21 @@ so a node is never handed a file other than the one this controller serves.
 swap, with the node's own token. The agent's `hello` after re-exec is what
 moves the row.
 
+*Compose moved to the agent (2 Sep, roadmap #18):* a node enrolled with a
+token needed an ssh key on top of it, because `runner_of` kept compose on the
+controller and it reached the node's daemon over ssh. It does not any more.
+The controller still decides WHAT — the env gate, the risk gate, the records,
+what `built_rev` becomes — and sends the agent an ordered PLAN for one action
+(`up`, `down`, `rebuild`, `remove`) with the compose file and the instance's
+env beside it; the agent writes those into a directory of its own under the
+data store, makes the bind directories itself rather than through a throwaway
+container, runs each step with the node's own docker, and reports how far it
+got. `devapp.compose_done` applies the records from that result, and only for
+a plan the agent ran — the controller's runner does its bookkeeping inline,
+and running both undid the env gate. A node with no agent (the legacy `ssh`
+kind) still takes the old path, until that kind goes. The wire gained one
+thing for it: a log post may carry `step`, so the row still shows the word.
+
 *What phase 4 added to the wire (protocol 2):* `hello` carries `running`,
 the job ids the agent still has in flight, so the controller can reconcile
 its rows against the node's truth after either side restarts. `work` may
@@ -371,6 +386,18 @@ piece at 100 nodes; the listener model is.
 ### Enrollment, at both scales
 
 1. **Add node** mints an enrollment token. Two kinds, one mechanism:
+*Token lifetimes, stated because the two get confused:* the **enrollment**
+token (`bbe_…`) is one use and one day — it exists to be pasted into a
+terminal, and one minted and forgotten is a standing way in, so it is
+revoked the moment enrollment succeeds. The **node** token (`bbn_…`) it
+trades for has no expiry at all: it is `0600` on the node and works until
+the operator revokes it or retires the node, so a node enrolled today is
+still working a year from now with nothing to renew. (The runner
+registration token is GitHub's and lives an hour; after registering, the
+runner holds credentials GitHub issued to it and refreshes them itself.)
+The row `expires` column and `revoke_tokens` are what a rotation policy
+would use if a deployment ever wants one — the shape is there, unbuilt.
+
    - **single-use** (homelab default): scoped to intended capabilities,
      short-lived; enrolling with it *is* the approval.
    - **bulk** (enterprise, cloud-init/ASG): multi-use, longer-lived; nodes
@@ -863,6 +890,11 @@ So the provisioner's decisions become a *configuration plane* the Nodes tab
 edits — declarative, applied by the agent, with the same desired-vs-reported
 split capabilities use:
 
+- A mount whose mountpoint is left blank lands at `/mnt/<the export's own
+  name>` — where a Linux box puts a mount, and the agent's `bb-sandbox`
+  creates the directory itself, so naming one that does not exist yet is
+  not a problem. Only a default: `/workspace` has to stay `/workspace` for
+  path parity with the controller, so anything that matters is typed.
 - The controller stores a node's **desired config**: mount entries (NFS or
   virtiofs, with options and read-only flags), the role assignments from §6
   (which path is `data`, `packages`, `cache`), and network settings (static
