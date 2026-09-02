@@ -525,6 +525,20 @@ try {
        'off is off, through the same CLI');
   }
 
+  // ---- the agent's own update, driven from the tab (roadmap #17) ---------------
+  {
+    const all = await api('/api/v1/nodes');
+    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '') && all.agent.version === '7',
+       'the node list carries the agent this controller ships, digest and version');
+    const lc = await api('/api/v1/nodes', { action: 'update-agent', id: 'local' });
+    ok(/only an agent node/.test(lc.error || ''), 'local has no agent to update');
+    const cur = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
+    ok(cur.ok && cur.current === true && cur.version === '7',
+       'a node already on the shipped agent is told so, and no job is queued');
+    const n = await nodeById(minted.id);
+    ok(n.agent.digest === all.agent.digest, '...because the digests the row would compare are the same');
+  }
+
   // Test on an agent node is a round trip through the channel
   {
     const t = await api('/api/v1/nodes', { action: 'test', id: minted.id });

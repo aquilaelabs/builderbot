@@ -303,6 +303,15 @@ today, and the two it does not yet, are marked; the agent takes `exec` jobs
 and `self-update`, nothing else, until phase 6 gives it a workspace to build
 in.
 
+*Driving the self-update (after phase 9):* nothing does it unasked. The node
+list carries the digest and version this controller ships, the row compares
+its node's against them and says *update available*, and the **Update
+agent** button queues the `self-update` job with that digest in its spec —
+so a node is never handed a file other than the one this controller serves.
+`provision.sh` re-run on an enrolled node is the console path to the same
+swap, with the node's own token. The agent's `hello` after re-exec is what
+moves the row.
+
 *What phase 4 added to the wire (protocol 2):* `hello` carries `running`,
 the job ids the agent still has in flight, so the controller can reconcile
 its rows against the node's truth after either side restarts. `work` may

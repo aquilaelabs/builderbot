@@ -1284,6 +1284,15 @@ key that logs in anywhere, and the credential the node keeps
 Revoke on the row ends it; the agent says so in its journal and the row goes
 quiet, keeping its history.
 
+**Updating the agent is a button, never automatic.** The row says *update
+available* when the node's agent is not the file this controller ships, and
+**Update agent** hands it over as a job: the agent checks the download
+against the digest, swaps itself in place and re-execs, so nothing on the
+node restarts and no running job is interrupted (it waits for its own to
+finish). Re-running `provision.sh` on an enrolled node does the same thing
+from the console, with the node's own token. Nothing updates an agent
+unasked.
+
 An agent node's row is *live* when a poll has arrived within the last 75
 seconds, and the poll carries the numbers — CPU, memory, jobs running and
 free space per store (`data`, `packages`, `cache`) — so the row shows them

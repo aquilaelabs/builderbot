@@ -178,3 +178,4 @@
 - A dev instance on the Docker manager now shows how it is reached, and can be opened to the internet through Tailscale Funnel on its node with one pick (6a3ff3b)
 - bb emu runs on the project's node when it has one, and can now build an AVD, install an APK, take a screenshot and capture frame timings — the last two landing in dist/ (0d2af46)
 - The sandbox VM's address and path mapping are set on the Nodes tab now, not in the container's template — the old variables still seed the record once (f786ba6)
+- A node's row now says when its agent is behind, and one press updates it; re-running the provisioner on an enrolled node updates the agent too (e9f0bdd)

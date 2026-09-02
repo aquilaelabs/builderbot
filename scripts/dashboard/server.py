@@ -2805,7 +2805,9 @@ class Handler(BaseHTTPRequestHandler):
             if NODES_OK:
                 return self._json({"error": "the node store did not open: "
                                             + NODES_OK}, 500)
-            return self._json({"nodes": nodes.node_list()})
+            # The agent this controller ships rides beside the rows, once,
+            # so a row can say when its node's agent is behind.
+            return self._json({"nodes": nodes.node_list(), "agent": nodes.agent_shipped()})
         if self.path.startswith("/api/v1/jobs"):
             # One job with its log so far (?id=), or the recent ones —
             # narrowed by ?node=, ?project=, ?type=, ?active=1, at most ?n=.
@@ -3065,6 +3067,8 @@ class Handler(BaseHTTPRequestHandler):
             # route picker goes through the instance's record; this is the
             # same job by hand, for a port that is not an instance's.
             r = nodes.node_funnel("operator", nid, req.get("port"), bool(req.get("on", True)))
+        elif act == "update-agent":
+            r = nodes.node_update_agent("operator", nid)
         elif act == "cache-clear":
             # Drop a node's build caches — one project's, or all (docs/nodes.md
             # §6): a job the agent runs, so it is logged and audited like
