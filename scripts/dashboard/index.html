@@ -1600,6 +1600,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .fxtab .fnote,.doctab .fnote{padding:4px var(--row-x) 10px;color:var(--dim);
   font:var(--f-note)}
 /* The Nodes tab's rows: capability toggles inline, the add form stacked. */
+.ndtools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .ndcaps{display:flex;gap:14px;flex-wrap:wrap}
 .ndcap{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
   color:var(--ink)}
@@ -2415,9 +2416,11 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="field" id="rnNodeField" hidden>
       <label for="rnNode">Node — where this project's work runs</label>
       <select id="rnNode"></select>
-      <div class="hint" id="rnNodeHint">Its containers, builds, tests and CI go
-        here. An ssh node hosts containers only; an agent node does all of it.
-        Existing containers stay where they were made.</div>
+      <div class="hint" id="rnNodeHint">Everything this project does off this
+        box goes here — its containers, builds, tests, CI and emulation. What it
+        can build is what is installed on that node (the Tools tab adds to it);
+        an ssh node without an agent hosts containers only. Existing containers
+        stay where they were made.</div>
     </div>
     <div class="field">
       <label for="rnBuildCmd">Build and test — what bb build and bb test run on that node</label>
@@ -4088,9 +4091,13 @@ function rnFillPrefs(p){
     const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired");
     if (nodesList === null) loadNodes();
     wrap.hidden = !pick.length;
-    sel.innerHTML = `<option value="">none — containers go to the default docker host; builds wait</option>`
+    // What each node carries, on its own option: the node does everything
+    // for this project, so the only question left is what is installed on it.
+    const tools = n => Object.keys(n.reported?.toolchains || {});
+    sel.innerHTML = `<option value="">none — this project does nothing off this box</option>`
       + pick.map(n => `<option value="${esc(n.id)}"${n.id === rnPrefWas.node ? " selected" : ""}>${
-          esc(n.name)} — ${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}</option>`).join("");
+          esc(n.name)} — ${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${
+          tools(n).length ? " · " + esc(tools(n).slice(0, 4).join(", ")) : ""}</option>`).join("");
     sel.value = pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
   }
   $("rnBuildCmd").value = p?.prefs?.build || "";
@@ -6018,7 +6025,7 @@ function gateDocker(root, reason){
 let dockerList = null;                   // the picked node's last answer
 let dockerRev = 0;                       // bumped when it changes, so a pane
                                          // showing the same tab still repaints
-// Which docker-host node the manager is looking at ("" = the default), and
+// Which node the manager is looking at ("" = the default), and
 // the last-known answer per node id — switching back to an offline node shows
 // what was seen there instantly, in the ghosted state the blind path already
 // renders, instead of a spinner for a machine that will not answer.
@@ -6102,8 +6109,10 @@ const dockerSlug = (s) => (s || "").toLowerCase()
 // is the project's own binding (its settings dialog), else the manager's
 // current pick, else the default node.
 function fillNodeSelect(sel, wrap, prefer){
+  // Every node, not a subset: a node does everything for the projects bound
+  // to it, so there is nothing to narrow by (docs/nodes.md §13).
   const dnodes = (nodesList || []).filter(n =>
-    n.capabilities?.includes("docker-host") && n.state !== "retired");
+    n.kind !== "local" && n.state !== "retired");
   if (nodesList === null) loadNodes();
   wrap.hidden = dnodes.length < 2;
   // An agent node carries its heartbeat's numbers, and this is the picker
@@ -6693,11 +6702,10 @@ for the rest of the work"
               the daemon's own, and nothing on this side checks ${
               src.strays.length > 1 ? "them" : "it"}</span>` : ""}</div>`
     : "";
-  // The picker: every docker-host node, online or not — an offline node's
-  // view is its last-known list in the ghosted state the blind path draws.
+  // The picker: every node, online or not — an offline node's view is its
+  // last-known list in the ghosted state the blind path draws.
   // One tab, re-rendered per pick (docs/nodes.md §13), never a tab per node.
-  const dnodes = (nodesList || []).filter(n =>
-    n.capabilities?.includes("docker-host"));
+  const dnodes = (nodesList || []).filter(n => n.kind !== "local");
   if (nodesList === null) loadNodes();
   const picker = dnodes.length > 1 || (dnodes.length === 1 && dockerNode
                                        && dnodes[0].id !== dockerNode)

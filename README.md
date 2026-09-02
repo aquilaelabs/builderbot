@@ -1258,7 +1258,7 @@ directory's one-shot containers — addresses that node's daemon.
 
 **Tools → Nodes** is the registry (docs/nodes.md): every machine work can run
 on, `local` — this container — first. A row carries the node's state,
-capability toggles (`docker-host`, `package-build`, `deploy-target`), labels
+the toolchains its census found — what a project bound to it can build — labels
 and census, with **Test** (probe its daemon now, sandbox stamp included),
 **Drain** (finish what is running, accept nothing new — what makes a node
 safe to reboot) and **Remove** (retire: off every list, row kept as history —
@@ -1270,6 +1270,17 @@ its daemon resolves bind mounts over there — which is where the old
 `DOCKER_HOST_PATHS` setting lives now. The
 local node refuses `docker-host` on purpose — it is not a sandbox. Every
 change writes an audit row.
+
+**A node does everything for the projects bound to it.** There is nothing to
+pick per node — no "this one builds, that one deploys". A project names one
+node in its settings dialog and its containers, builds, tests, CI and
+emulation all go there, so three projects on three VMs stay apart and three
+projects on one VM share it. What a project can actually do on its node is
+what is **installed** there: the row lists the toolchains its census found,
+and the Tools tab's node picker is where more are added. (Underneath, the
+node still refuses a job asking for something it did not enrol with — the
+enforcement of docs/nodes.md §15 door 7 — but every node now enrols with the
+full set, so it is a mechanism rather than a setting.)
 
 **Enroll node** is the other way in, and the one the design is built around:
 it makes a pending row and mints a one-time token (`bbe_…`, good for a day),
@@ -1304,6 +1315,17 @@ node** (exit 77), whatever the row says. Over plain http the node token
 travels in the clear, as the dashboard's own credential does; enrollment says
 so, and with TLS in front of the dashboard the agent pins the certificate on
 first use and refuses a different one after.
+
+**Four stores per node**, each a directory of its own: `data` (job
+workspaces and AVDs), `packages` (the toolchains installed there — what a
+project bound to that node can build), `cache` (build caches, per project)
+and `artifacts` (that node's copy of what its projects built, per project).
+The artifacts store is what makes a node off the LAN reasonable: an emulator
+or a container there starts from a copy beside it, and a second run of an
+unchanged build copies nothing. A store path may not be a system directory —
+`/etc`, anything under `/usr`, or a bare `/mnt` — because the agent creates,
+fills and empties these; the refusal is made on the dashboard and again on
+the node.
 
 **Storage & network, from the row.** A node that enrolled as a sandbox (it
 carries `bb-sandbox`) folds open an editor for what it should mount (NFS or

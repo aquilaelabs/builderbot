@@ -559,6 +559,11 @@ fresh() {
           "$S/state/bugs.json"
     echo '["delta"]' > "$S/state/locked-projects.json"     # a test that locks must not hand that on
     rm -f "$S/state/pinned-projects.json"                  # ...nor one that unpins
+    # ...nor one that binds a project to a node. nodes.mjs saves alpha's node
+    # from the settings dialog; agent.mjs then asserts that a project with no
+    # node is refused, and inherited the binding — a deterministic failure of
+    # the pair that neither file showed alone.
+    rm -f "$S/state/claude-prefs.json"
     # Projects a test created through /api/create go too — anything that is
     # not one of the five fixtures. Scoped to $S, like every rm in this file.
     find "$S/ws" -maxdepth 1 -mindepth 1 -type d \

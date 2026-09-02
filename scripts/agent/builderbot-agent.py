@@ -66,14 +66,57 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "7"
+AGENT_VERSION = "8"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
 NODE_JSON = os.environ.get("BUILDERBOT_NODE_JSON", "/etc/builderbot/node.json")
 DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
                   "packages": "/var/lib/builderbot/packages",
-                  "cache": "/var/lib/builderbot/cache"}
+                  "cache": "/var/lib/builderbot/cache",
+                  # What this node keeps of a project's built artifacts, so
+                  # an emulator or a container here starts from a local copy
+                  # rather than pulling one over the link every time — which
+                  # is free on a LAN and is not on a node in somebody's
+                  # cloud. Per project underneath (artifact_dir), because a
+                  # VM may be several projects' node.
+                  "artifacts": "/var/lib/builderbot/artifacts"}
+
+# Where a store may NOT be put. The stores are directories this agent
+# creates, fills, and — for the cache — empties on request, so a store
+# pointed at a system tree is a delete waiting to happen: `--cache /etc`
+# would make Clear cache remove every directory under /etc. Refused here and
+# again on the controller, deliberately twice: the tab should say no before
+# anybody presses, and the node should refuse whatever it is told, which is
+# the same reasoning as the capability check (docs/nodes.md §15 door 7).
+STORE_DENY_EXACT = {"/", "/bin", "/boot", "/dev", "/etc", "/home", "/lib",
+                    "/lib32", "/lib64", "/libx32", "/media", "/mnt", "/opt",
+                    "/proc", "/root", "/run", "/sbin", "/srv", "/sys", "/tmp",
+                    "/usr", "/var"}
+STORE_DENY_UNDER = ("/bin/", "/boot/", "/dev/", "/etc/", "/lib/", "/lib32/",
+                    "/lib64/", "/libx32/", "/proc/", "/root/", "/run/",
+                    "/sbin/", "/sys/", "/usr/", "/var/log/", "/var/run/",
+                    "/var/lock/", "/var/spool/", "/var/cache/")
+
+
+def store_path_ok(path):
+    """"" if this is a safe place for a store, else why not. A bare
+    top-level directory is refused as well as a system one: /mnt is where
+    mounts live, not a store, and putting one there scatters directories
+    across the mount root."""
+    p = str(path or "").rstrip("/") or "/"
+    if not p.startswith("/"):
+        return f"{path!r} is not an absolute path"
+    if " " in p or ".." in p.split("/"):
+        return f"{path!r} must be a plain absolute path, with no spaces or .."
+    if p in STORE_DENY_EXACT:
+        return (f"{p} is a system directory (or the root of the mounts) — "
+                "a store is a directory of its own, like /var/lib/builderbot/x "
+                "or /mnt/<share>/<dir>")
+    for bad in STORE_DENY_UNDER:
+        if (p + "/").startswith(bad):
+            return f"{p} is inside {bad.rstrip('/')}, which this agent will not write to"
+    return ""
 # Where the configuration plane's tools are (docs/nodes.md §12, phase 5).
 # bb-sandbox is the one copy of the mount logic, installed by the provisioner
 # — its presence is what says this node was set up as a sandbox, and a
@@ -691,16 +734,33 @@ class Job(threading.Thread):
         # directory by name — an APK for the emulator to install.
         for f in (spec.get("files") or [])[:8]:
             name = os.path.basename(str(f))
-            dest = os.path.join(cwd, name)
-            st, _ = self.agent.ctl.fetch(
-                f"file?job={self.job['id']}&path={urllib.parse.quote(str(f))}", dest)
-            if st != 200:
-                self.say(f"could not fetch {f} from the controller ({st})\n")
-                return "failed", 69
-            if who:
+            # Into this node's artifact store for the project, and used from
+            # there: a second emulator run on the same build copies nothing,
+            # and on a node across a slow link that is the difference the
+            # store exists for. The size decides whether it is the same file
+            # — the controller sends no digest for a dist/ path.
+            keep = self.agent.artifact_dir(spec.get("project"), who)
+            dest = os.path.join(keep or cwd, name)
+            want = spec.get("sizes", {}).get(str(f)) if isinstance(spec.get("sizes"), dict) else None
+            if keep and os.path.isfile(dest) and want and os.path.getsize(dest) == want:
+                self.say(f"{f} is already on this node ({want} bytes)\n")
+            else:
+                st, _ = self.agent.ctl.fetch(
+                    f"file?job={self.job['id']}&path={urllib.parse.quote(str(f))}", dest)
+                if st != 200:
+                    self.say(f"could not fetch {f} from the controller ({st})\n")
+                    return "failed", 69
+                if who:
+                    with contextlib.suppress(OSError):
+                        os.chown(dest, who["user"], who["group"])
+                self.say(f"fetched {f} ({os.path.getsize(dest)} bytes)"
+                         + (f" into {keep}" if keep else "") + "\n")
+            if keep and os.path.dirname(dest) != cwd:
+                link = os.path.join(cwd, name)
                 with contextlib.suppress(OSError):
-                    os.chown(dest, who["user"], who["group"])
-            self.say(f"fetched {f} ({os.path.getsize(dest)} bytes)\n")
+                    if os.path.lexists(link):
+                        os.remove(link)
+                    os.symlink(dest, link)
         # A job with a source runs in a workspace of its own (docs/nodes.md
         # §6): the snapshot, materialized under the data store, with the
         # project's persistent cache beside it in the environment.
@@ -794,6 +854,7 @@ class Agent:
         self.poll = 25
         self.hello_at = 0
         self.controller_digest = ""
+        self.warned_caps = False
 
     # -- privilege ---------------------------------------------------------
     def drop_privileges(self, env):
@@ -836,10 +897,15 @@ class Agent:
             # visible on the box, and never silently adopted.
             claimed = set(n.get("capabilities") or [])
             held = set(self.state.get("capabilities") or [])
-            if claimed - held:
+            # Once per process, not per hello: a node enrolled before the
+            # controller stopped asking about capabilities has fewer than the
+            # row claims, and saying so every ten minutes forever is noise
+            # about a difference nothing acts on until a job requires one.
+            if claimed - held and not self.warned_caps:
+                self.warned_caps = True
                 log(f"controller lists {', '.join(sorted(claimed - held))} "
                     "for this node; not enrolled for it here, and jobs "
-                    "needing it will be refused")
+                    "needing it will be refused. Re-enroll to adopt them.")
             log(f"hello: node {n.get('id')} ({n.get('name')}), state "
                 f"{n.get('state')}, poll {self.poll}s")
         return st, r
@@ -1090,6 +1156,19 @@ class Agent:
                         os.lchown(x, who["user"], who["group"])
         return into
 
+    def artifact_dir(self, project, who=None, make=True):
+        """This node's copy of one project's artifacts. Per project, because
+        a node may be several projects' node and two of them may both ship
+        an app-release.apk."""
+        root = (self.state.get("stores") or {}).get("artifacts") or ""
+        if not root:
+            return ""
+        name = re.sub(r"[^A-Za-z0-9._-]", "_", str(project or "")) or "_"
+        d = os.path.join(root, name)
+        if make:
+            self.own_dir(d, who)
+        return d
+
     def cache_clear(self, job, spec):
         """Drop this node's build caches — one project's, or all of them.
         The one thing that goes wrong with caches is a full disk, and this
@@ -1214,7 +1293,12 @@ class Agent:
         if stores:
             mine = dict(self.state.get("stores") or {})
             for role, path in stores.items():
-                if role not in DEFAULT_STORES or not str(path).startswith("/"):
+                if role not in DEFAULT_STORES:
+                    continue
+                why = store_path_ok(path)
+                if why:
+                    job.say(f"refused {role} store: {why}\n")
+                    bad += 1
                     continue
                 try:
                     os.makedirs(path, exist_ok=True)
@@ -1470,8 +1554,11 @@ def cmd_enroll(args):
     for a in it:
         if a == "--store":
             role, _, path = next(it, "").partition("=")
-            if role not in DEFAULT_STORES or not path.startswith("/"):
-                raise SystemExit("--store takes data=/path, packages=/path or cache=/path")
+            if role not in DEFAULT_STORES:
+                raise SystemExit("--store takes " + ", ".join(f"{r}=/path" for r in DEFAULT_STORES))
+            why = store_path_ok(path)
+            if why:
+                raise SystemExit(f"--store {role}: {why}")
             stores[role] = path
         elif a in opts:
             opts[a] = next(it, "")

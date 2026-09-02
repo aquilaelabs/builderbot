@@ -34,6 +34,7 @@ TOKEN=""
 STORE_DATA=/var/lib/builderbot/data
 STORE_PACKAGES=/var/lib/builderbot/packages
 STORE_CACHE=/var/lib/builderbot/cache
+STORE_ARTIFACTS=/var/lib/builderbot/artifacts
 declare -a SHARES=() NFS=()
 
 usage() {
@@ -46,7 +47,9 @@ usage: provision.sh [options]
                        NO sudo and cannot run bb-sandbox: this is the account a
                        Claude session reaches, and reconfiguring the machine's
                        mounts is not what it is for.
-  --admin NAME         the account that administers this machine (admin). It
+  --admin NAME|none    the account that administers this machine (admin), or
+                       `none` to make no such account — nothing here requires
+                       one. It
                        gets sudo and bb-sandbox. Left without a password and
                        without a key unless you give it one — set a password
                        from the console, or pass --admin-key.
@@ -79,11 +82,16 @@ usage: provision.sh [options]
                        opened for it. It runs jobs as the docker account
                        (--user, bb), never as root. Re-run with a fresh token to enroll again; a
                        re-run without either leaves the enrollment alone.
-  --data PATH          where the agent keeps a job's working tree (default
-  --packages PATH      /var/lib/builderbot/data), the toolchains installed on
-  --cache PATH         this node, and the build caches. A store may be a
-                       mount — point it at one of the --share paths — and its
-                       free space is what the Nodes tab reports for it.
+  --data PATH          the four stores, all defaulting under
+  --packages PATH      /var/lib/builderbot/: a job's working tree and AVDs,
+  --cache PATH         the toolchains installed on this node, the build
+  --artifacts PATH     caches, and this node's copy of what projects built
+                       (per project underneath, so one VM can be several
+                       projects' node). A store may be a mount — point it at
+                       one of the --share paths — and its free space is what
+                       the Nodes tab reports for it. A system path is refused:
+                       a store is a directory of its own, since the agent
+                       creates, fills and (for the cache) empties it.
 
 Path parity is not a style preference. A compose file's bind mounts are
 resolved by whatever runs the container, so if this VM calls the projects
@@ -107,6 +115,7 @@ while [ $# -gt 0 ]; do
         --data)  STORE_DATA="$2"; shift 2 ;;
         --packages) STORE_PACKAGES="$2"; shift 2 ;;
         --cache) STORE_CACHE="$2"; shift 2 ;;
+        --artifacts) STORE_ARTIFACTS="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown option: $1" >&2; usage >&2; exit 1 ;;
     esac
@@ -316,8 +325,23 @@ fi
 # machine's OWN configuration is not one command away from a session that
 # wandered — the fstab that decides whether /workspace is the projects share,
 # and read-only, is behind an account nothing here logs into.
+# ...and it is optional. Nothing in BuilderBot uses this account: the agent
+# runs as root under systemd and drops to --user for every job, bb-sandbox
+# refuses to run as anyone but root whoever invokes it, and the controller
+# never names it. It is a convenience — a sudo login that is not the docker
+# account — so a machine that already has one (the operator's own, a cloud
+# image's ubuntu/ec2-user, or just root) should not be given a second nobody
+# logs into. `--admin none` skips it, and the split it protects is unchanged:
+# what matters is that the DOCKER account has no sudo.
 say "admin ${ADMIN_NAME}"
-if [ "$ADMIN_NAME" = "$USER_NAME" ]; then
+if [ "$ADMIN_NAME" = none ] || [ -z "$ADMIN_NAME" ]; then
+    printf '   none asked for — this machine is administered by whatever account
+'
+    printf '   already has root here. Nothing in BuilderBot uses one: bb-sandbox
+'
+    printf '   runs as root whoever calls it, and jobs run as %s.
+' "$USER_NAME"
+elif [ "$ADMIN_NAME" = "$USER_NAME" ]; then
     warn "--admin and --user are both ${ADMIN_NAME}: one account cannot be both"
     printf '   the split is the point — pick a different --admin\n'
 else
@@ -890,7 +914,7 @@ if [ -n "$CONTROLLER" ]; then
     systemctl stop builderbot-agent 2>/dev/null || true
     "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" --user "$USER_NAME" \
         --store "data=${STORE_DATA}" --store "packages=${STORE_PACKAGES}" \
-        --store "cache=${STORE_CACHE}"
+        --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}"
     cat > "$UNIT" <<EOF
 [Unit]
 Description=BuilderBot node agent — dials in to the controller and runs its jobs
@@ -997,8 +1021,11 @@ Two accounts, and the split is deliberate:
   ${USER_NAME}   runs Docker and answers ssh. This is the one BuilderBot uses
         and the one a Claude session reaches. No sudo, and it cannot run
         bb-sandbox — reconfiguring this machine is not what it is for.
-  ${ADMIN_NAME}  administers the machine. sudo, and the only account
-        bb-sandbox runs for. Log in here to change mounts.
+  ${ADMIN_NAME}  administers the machine. sudo, and the account bb-sandbox
+        is readable by. Log in here to change mounts. (Optional — nothing
+        here requires it; --admin none makes no such account and root, or
+        whatever account you already administer this box from, does the same
+        job.)
 
 Worth knowing rather than discovering: ${USER_NAME} is in the docker group, and
 that group is root on this machine to anyone who wants it. This VM exists to be

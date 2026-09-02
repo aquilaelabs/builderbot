@@ -47,11 +47,13 @@ ok(local && local.kind === 'local' && local.state === 'online'
    'local is this container, with a real census');
 ok(!local.capabilities.includes('docker-host'),
    '...and no docker-host capability: the local node is not a sandbox');
+ok(await page.evaluate(() => !document.querySelector('.nodestab [data-cap], .nodestab [data-encap]')),
+   'no capability toggles anywhere: a node does everything for the projects bound to it');
 const sandbox = list.find(n => n.kind === 'ssh');
 ok(sandbox && /^n_[0-9a-f]{8}$/.test(sandbox.id)
    && sandbox.ssh_addr === 'ssh://bb@stub'
-   && sandbox.capabilities.includes('docker-host'),
-   'the sandbox VM has a minted identity that is not its address');
+   && ['docker-host', 'package-build', 'deploy-target'].every(c => sandbox.capabilities.includes(c)),
+   'the sandbox VM has a minted identity that is not its address, and does everything');
 ok(list[0].id === 'local',
    'local lists first — the one node every deployment has');
 
@@ -143,12 +145,15 @@ ok(list[0].id === 'local',
     nodesList.find(n => n.name === 'buildbox'));
   ok(added.ssh_addr === 'ssh://bb@10.9.9.9',
      '...with ssh:// and the bb account filled in, the way DOCKER_HOST is');
-  // capability toggle writes through and comes back
+  ok(['docker-host', 'package-build', 'deploy-target'].every(c => added.capabilities.includes(c)),
+     '...and it does everything, without anybody being asked which');
+  // The mechanism underneath is untouched (§15 door 7): a restricted node is
+  // still expressible, it is just not something the UI makes.
   await page.evaluate(id => nodeAct({ action: 'update', id,
-    fields: { capabilities: ['docker-host', 'package-build'] } }), added.id);
+    fields: { capabilities: ['package-build'] } }), added.id);
   await page.waitForFunction(id => nodesList.find(n => n.id === id)
-    ?.capabilities.includes('package-build'), added.id, { timeout: 10000 });
-  ok(true, 'a capability toggle is stored and re-read');
+    ?.capabilities.length === 1, added.id, { timeout: 10000 });
+  ok(true, 'a deliberately restricted node can still be written through the API');
   {
     // A deliberate refusal: the server answers 400, and the browser logs
     // every non-2xx as a console error. Asserted, then absolved — the final
@@ -236,11 +241,12 @@ ok(list[0].id === 'local',
   const base = URL.replace(/\/$/, '');
   const napi = async (path, body, headers = H) => (await fetch(base + path, body === undefined
     ? { headers } : { method: 'POST', headers, body: JSON.stringify(body) })).json();
-  const minted = await napi('/api/v1/nodes', { action: 'enroll', name: 'shed', capabilities: ['docker-host'] });
+  const minted = await napi('/api/v1/nodes', { action: 'enroll', name: 'shed' });
   const en = await napi('/api/v1/agent/enroll', {
     census: { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
               sandbox: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 },
-                                       packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 } },
+                                       packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 },
+                                       artifacts: { path: '/var/lib/builderbot/artifacts', free_mb: 30000, total_mb: 90000 } },
               toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
               mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false, mounted: true, real: 'nas:/mnt/user/old' }],
               network: { interface: 'ens3', addresses: ['10.0.0.40/24'], gateway: '10.0.0.1', dns: ['10.0.0.1'] } },
@@ -263,7 +269,7 @@ ok(list[0].id === 'local',
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
   const ROW = `.nodestab .ndrow[data-node="${minted.id}"]`;
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
-  ok(await page.$eval(`${ROW} .ndstale`, e => /update available → 7/.test(e.textContent))
+  ok(await page.$eval(`${ROW} .ndstale`, e => /update available → 8/.test(e.textContent))
      && await page.$(`${ROW} [data-nd="update-agent"]`) !== null
      && await page.evaluate(() => !document.querySelector('.nodestab .ndrow[data-node="local"] [data-nd="update-agent"]')),
      'the row wears "update available" with the shipped version and an Update agent button; local has neither');
@@ -273,6 +279,8 @@ ok(list[0].id === 'local',
   await page.waitForSelector(`${ROW} .ndconf[open] [data-madd]`, { timeout: 5000 });
   ok(await page.$eval(`${ROW} .ndconf`, e => /now 10\.0\.0\.40\/24 on ens3 via 10\.0\.0\.1/.test(e.textContent)),
      'it reports the address the node is on');
+  ok(await page.$eval(`${ROW} .ndtools`, e => /flutter/.test(e.textContent) && /node/.test(e.textContent)),
+     'the row shows what is installed on the node, which is what a project bound to it can build');
   ok(await page.$eval(`${ROW} .ndrunstate`, e => /no runner on this node/.test(e.textContent))
      && await page.$eval(`${ROW} [data-nrunner="install"]`, b => /Install runner/.test(b.textContent)),
      'the CI runner section says there is none, and offers to install one');
@@ -295,6 +303,8 @@ ok(list[0].id === 'local',
   await page.fill(`${ROW} .ndmount[data-i="0"] [data-k="source"]`, 'nas:/mnt/user/appdata');
   await page.fill(`${ROW} .ndmount[data-i="0"] [data-k="path"]`, '/mnt/appdata');
   await page.fill(`${ROW} [data-k="store:cache"]`, '/scratch/cache');
+  ok(await page.$(`${ROW} [data-k="store:artifacts"]`) !== null,
+     'the fold carries the artifacts store — this node\'s copy of what projects built');
   // The heartbeat repaints the tab; the draft and the caret survive it.
   await page.evaluate(() => loadNodes());
   await sleep(400);

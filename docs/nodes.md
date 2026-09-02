@@ -141,6 +141,26 @@ enterprise story in miniature: enforcement lives at the resource, so a
 compromised or misconfigured controller cannot make a node into something it
 was not enrolled to be.
 
+*Amended 2 September, by the operator:* **capabilities stopped being a
+setting.** A node is not "for" docker or for building; a project names ONE
+node and that node does everything the project needs, so nobody is asked
+which. Every node enrols with the full set, and what a project can actually
+DO on its node is what is INSTALLED there — the census's `toolchains`, which
+the node's row now shows in place of the toggles, and which the Tools tab
+adds to. Three projects on three VMs keeps them apart; three projects on one
+VM shares it; the choice is the project's node, and nothing else.
+
+The paragraph above still stands as the *mechanism*: the field, the wire, and
+the agent's refusal are untouched (§15 door 7 — retrofitting node-side
+enforcement onto a deployed fleet means re-enrolling all of it, which is why
+it was built before it was needed). A deliberately restricted node remains
+expressible through the API; it is simply not something anyone has to
+configure to get ordinary work done. Two things are unchanged and stay
+gated on facts rather than toggles: `system` jobs are offered only to a node
+whose census says it carries `bb-sandbox`, and `local` — the controller
+itself — is never given `docker-host`, because containers there would run
+beside `/config` and the dashboard credential (§12).
+
 **`deploy-target` is not a peer of the others**, and the brief treats it as
 one. A deploy target is a `docker-host` plus a way for traffic to reach it,
 and "can traffic reach it" is a property of where the node sits, not a toggle
@@ -490,6 +510,21 @@ and `bb sdk`, operator-gated; that has to generalize without forking.
   the audit row says who did. The Tools tab's installer gains the same node
   picker the Docker manager gets: pick a node, see what is installed *there*,
   install or remove there. The controller is just the `local` row.
+*Amended 2 September:* there are **four** stores, not three — `artifacts`
+joins data, packages and cache: this node's copy of what a project built,
+per project underneath, so a VM that is several projects' node keeps two
+`app-release.apk` apart. It exists for the node that is not on the LAN: an
+emulator or a container on a cloud node should start from a copy beside it
+rather than pulling one across the link on every run, and the second run of
+an unchanged build copies nothing. And **a store path is now refused if it
+is a system directory** — exactly or inside one, and a bare top-level
+directory like `/mnt` with it. A store is a directory this system creates,
+fills and (for the cache) empties on request, so `--cache /etc` would have
+made *Clear cache* delete every directory under `/etc`. Checked on the
+controller so the tab says no before anybody presses Apply, and again on the
+node whatever it is told — the same reasoning as the capability refusal,
+applied to disk.
+
 - **The store is a role with a location, not a mount.** Each node has a
   `packages` store — default an internal path
   (`/var/lib/builderbot/toolchains`), because a node with its own disk should
@@ -916,22 +951,24 @@ surface. The graduation lands with the first batch of controller settings
 (phase 2), not before — converting the popup while it holds one setting would
 be ceremony.
 
-**Project-scoped** — which node (or selector: capability/labels/pool) runs
-this project's Actions, compiles its packages, hosts its dev instance. These
-join the project row's existing settings dialog as a "Nodes" group beside
-model and effort — the dialog and its poll plumbing already exist
-(`claude-prefs.json`), and a second surface for per-project settings would be
-a second place to look. Each binding defaults to **auto by capability**, so a
-project that never opens the dialog behaves exactly as before. Storage:
+**Project-scoped** — which node runs this project's work. One node, named in
+the project row's existing settings dialog beside model and effort (the
+dialog and its poll plumbing already exist in `claude-prefs.json`, and a
+second surface for per-project settings would be a second place to look).
+Not a selector and not per-role: the operator dropped both, on 1 and 2
+September respectively — a project picks a machine, and that machine does its
+containers, builds, tests, CI and emulation. A project that never opens the
+dialog has no node, and is told so where it matters. Storage:
 node *bindings* go in the database (they reference node ids, must survive a
 node's rename, and want auditing); the existing model/effort prefs stay where
 they are — no churn for its own sake.
 
-**Node-scoped** — capabilities, services, labels, pool, concurrency: the
+**Node-scoped** — services, labels, pool, concurrency (capabilities left this
+list on 2 Sep — see §2): the
 **Nodes tab**, a document tab opened from the Tools card beside Docker manager
 and Static analysis. Row anatomy in the house language: name, state as a pill
 (online / offline / draining / pending — the severity-pill palette already
-says how), capability toggles, labels, last-seen, and per-row Test / Drain /
+says how), the toolchains its census reports, labels, last-seen, and per-row Test / Drain /
 Remove; Enroll at the top; the pending-approval strip above the list when a
 bulk token is in play, in the same held-above-the-fold shape the phone card's
 asks use.
