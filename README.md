@@ -1306,6 +1306,23 @@ finish). Re-running `provision.sh` on an enrolled node does the same thing
 from the console, with the node's own token. Nothing updates an agent
 unasked.
 
+**Until it is updated, that node takes nothing else.** The controller is
+where the agent file comes from, so it is always the newer of the two, and a
+job it queues may name something the older agent does not know — a job type,
+a field in the spec — which an older agent meets with a shrug rather than an
+error. So while *update available* is showing, Apply storage, Apply network,
+Install runner, Clear cache and installing a package onto that node are all
+refused, with the reason on the button; the self-update itself is the one
+thing that still goes through. Nodes running the shipped agent are unaffected.
+
+**Saved is not applied.** The settings on a node's page are a record of what
+it *should* be; **Apply** is what makes the machine match. The state line
+under them says which of the two you are looking at — how many changes are
+waiting and what they are, or that the node already matches — and Apply is
+off when there is nothing to do. `dhcp` is the one thing it cannot answer:
+the census reports the addresses a node has, not how it got them, so a node
+set to `dhcp` keeps Apply network live and says so.
+
 An agent node's row is *live* when a poll has arrived within the last 75
 seconds, and the poll carries the numbers — CPU, memory, jobs running and
 free space per store (`data`, `packages`, `cache`) — so the row shows them

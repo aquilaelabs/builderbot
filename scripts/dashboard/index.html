@@ -6849,6 +6849,11 @@ function renderPackagesInto(i){
   const pnodes = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
   if (nodesList === null) loadNodes();
   const onNode = pkgNode !== "local";
+  // An install is a job on the node, so it waits for the same thing every
+  // other agent job waits for: an agent this controller knows how to talk to.
+  // The server refuses it either way (nodes.agent_stale); this is the reason,
+  // said before the press rather than after it.
+  const pstale = onNode && nodeStale(pnodes.find(n => n.id === pkgNode) || {});
   const picker = pnodes.length ? `<div class="pkghead pkgnode">
       <label class="pick">Packages on <select id="pkgNodeSel" aria-label="node">
         <option value="local"${onNode ? "" : " selected"}>this container</option>
@@ -6872,18 +6877,21 @@ function renderPackagesInto(i){
           ? `Installed into <code>${esc(d.root)}</code> — a mapped share, so an image update never re-downloads them.`
           : `Installed into <code>${esc(d.root)}</code> — the home volume. Map an SDK share to keep them out of it.`)
       : "The SDK root could not be determined; this image may predate <code>bb sdk</code>."}</div>
-    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy, job)).join("")}</div>
+    ${pstale ? `<div class="pkghead warn pkgstale">${esc(staleWhy(
+      pnodes.find(n => n.id === pkgNode)))}. Nothing installs here until it is.</div>` : ""}
+    <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy || pstale, job)).join("")}</div>
     <div class="pkghead imghead">Android system images. Not packages: one exists at
       every API level at once, so the question is which level and which flavor
       rather than whether. <code>ANDROID_SYSTEM_IMAGES</code> installs the plain
       Google APIs image for each level it is given; everything else is added
       here, and nothing is removed except by asking.</div>
-    ${imgAdder(d, busy)}
+    ${imgAdder(d, busy || pstale)}
     ${(d.images || []).length
-      ? `<div class="pkgs">${d.images.map(im => imgRow(im, busy)).join("")}</div>`
+      ? `<div class="pkgs">${d.images.map(im => imgRow(im, busy || pstale)).join("")}</div>`
       : `<div class="pkghead">Nothing installed — the emulator has no image to boot.</div>`}
     <div class="macros">
-      <button class="primary" data-pkg="install"${busy ? " disabled" : ""}
+      <button class="primary" data-pkg="install"${busy || pstale ? " disabled" : ""}
+        ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === pkgNode)))}"` : ""}
         >Install selected</button>
       ${busy ? `<button data-pkg="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}

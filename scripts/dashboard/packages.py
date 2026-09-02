@@ -659,18 +659,34 @@ def payload_for_node(nid):
     tc = rep.get("toolchains") or {}
     store = (rep.get("stores") or {}).get("packages") or {}
     items = []
+    # What is IN the store, by directory, which is where bb sdk puts things:
+    # <root>/<name>, and android's parts under <root>/android/. The census's
+    # `toolchains` is a six-name placement summary and reading it as an
+    # inventory called the emulator, the NDK, Playwright and Zig missing on
+    # a share that held all four. Directory names first, the summary only
+    # for the version string it happens to carry.
+    top = set(((rep.get("store_dirs") or {}).get("top")) or [])
+    andr = set(((rep.get("store_dirs") or {}).get("android")) or [])
+    known = bool(top or andr)
     for p in PACKAGES:
-        # A catalog row is known on a node by the toolchain it provides; the
-        # probe names match the census keys (java, flutter, dotnet, node…)
-        # by their first word, which is what the agent reports.
-        key = p["probe"].split(":")[0]
-        have = tc.get(key)
-        kb = _pkg_remembered.get(p["name"])
+        probe, name = p["probe"], p["name"]
+        if probe.startswith("android:"):
+            here = probe.split(":", 1)[1] in andr
+        elif probe == "android-tools":
+            here = bool({"cmdline-tools", "platform-tools"} & andr)
+        else:
+            here = probe in top
+        # A node that has not reported its store yet is not evidence of
+        # absence, so say nothing rather than "not installed".
+        have = tc.get({"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
+        kb = _pkg_remembered.get(name)
         items.append({**{k: p[k] for k in ("name", "label", "about")},
-                      "installed": bool(have), "path": "", "version": have or "",
+                      "installed": here, "unknown": not known,
+                      "path": "", "version": (have if isinstance(have, str) else "") or "",
                       "size": human_kb(kb) if kb else "",
                       "size_from": "measured the last time it was installed here" if kb else "",
                       "latest": "", "state": ""})
+    items.sort(key=lambda x: (not x["installed"], x["label"].lower()))
     job = None
     if nodes:
         for j in nodes.jobs_for(node_id=nid, type="package", active=True, n=1):
