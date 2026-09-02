@@ -169,3 +169,4 @@
 - Every build, start and stop of a dev instance is now a job with its own log — the Jobs tab lists them, and Cancel stops one where it is (80b3dca)
 - Work can be sent to whichever node fits — by capability, label, pool, OS or architecture — and the job says which node took it (80b3dca)
 - A failed Up leaves its reason and output on the instance's row instead of a one-line refusal (80b3dca)
+- A session can now tick off one step of a roadmap plan — the panel shows a tick and offers you the next step instead of a finished one (2a5c032)
