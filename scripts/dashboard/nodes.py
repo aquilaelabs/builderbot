@@ -820,6 +820,9 @@ def _census(c):
                 # What the store holds, from the census's du (phase 6): the
                 # cache's number beside Clear cache. None when not measured.
                 "used_mb": _mb(s.get("used_mb"))}
+    sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else {}
+    out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
+                         for k in ("top", "android")}
     tc = c.get("toolchains") if isinstance(c.get("toolchains"), dict) else {}
     out["toolchains"] = {str(k)[:30]: (str(v)[:40] if v else None)
                          for k, v in list(tc.items())[:16]}
@@ -1090,6 +1093,29 @@ def node_funnel(principal, node_id, port, on=True):
     return r
 
 
+def agent_stale(n):
+    """"" if this node runs the agent this controller ships, else why that
+    matters right now.
+
+    A controller is always newer than or equal to its nodes — it is where
+    the agent file comes from — so a mismatch means the node may not
+    understand a job this version would send it. Job types and spec fields
+    have been added on nearly every phase (system, package, cache-clear,
+    compose plans, bb verbs, store listings), and an older agent meets an
+    unknown one with a shrug rather than an error. So the rule is: an agent
+    that is behind takes nothing but its own update.
+    """
+    if not n or n["kind"] != "agent":
+        return ""
+    ours = agent_file()
+    theirs = (n.get("agent") or {}).get("digest") or ""
+    if not ours["digest"] or not theirs or theirs == ours["digest"]:
+        return ""
+    return (f"{n['name']} runs agent {(n.get('agent') or {}).get('version') or '?'} and this "
+            f"controller ships {ours['version']} — press Update agent on its row first. "
+            "A job this version sends could name something that agent does not know.")
+
+
 def node_update_agent(principal, node_id):
     """Queue the self-update for a node's agent — the file this controller
     serves, named by digest so the node can never be handed anything else
@@ -1358,6 +1384,13 @@ def fits(job, n):
     scheduling policy a single operator needs (docs/nodes.md §2)."""
     if n["state"] != "online" or (n.get("agent") or {}).get("revoked"):
         return False
+    # An agent that is behind takes nothing but its own update. Here as well
+    # as in job_add, because job_add only sees the explicitly-placed case —
+    # a selector-placed job is matched to a node at take time, and this is
+    # where that happens.
+    if job.get("type") != "self-update" and runner_of(job.get("type") or "", n["kind"]) == "node" \
+            and agent_stale(n):
+        return False
     pl = job.get("placement") or {}
     if pl.get("node"):
         return pl["node"] == n["id"]
@@ -1420,7 +1453,7 @@ def job_add(principal, placement, type, spec, project="", source=None):
     pl, why = _placement(placement)
     if why:
         return {"error": why}
-    probe = {"placement": pl}
+    probe = {"placement": pl, "type": type}
     if pl.get("node"):
         n = node(pl["node"])
         if not n:
@@ -1433,6 +1466,12 @@ def job_add(principal, placement, type, spec, project="", source=None):
         if n["kind"] == "agent" and type != "compose" and not n.get("live"):
             return {"error": "the agent on this node is not dialing in — the "
                              "job would wait until it does"}
+        # Everything the AGENT runs waits for the agent to be current; its
+        # own update is the way out and is never blocked.
+        if type != "self-update" and runner_of(type, n["kind"]) == "node":
+            why = agent_stale(n)
+            if why:
+                return {"error": why}
     elif pick(probe, node_list()) is None:
         want = ", ".join(f"{k}={v}" for k, v in pl["select"].items())
         return {"error": f"no node fits {want}"}

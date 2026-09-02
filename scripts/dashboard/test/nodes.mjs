@@ -251,6 +251,11 @@ ok(list[0].id === 'local',
   const napi = async (path, body, headers = H) => (await fetch(base + path, body === undefined
     ? { headers } : { method: 'POST', headers, body: JSON.stringify(body) })).json();
   const minted = await napi('/api/v1/nodes', { action: 'enroll', name: 'shed' });
+  // The digest this controller ships, so the fixture node enrolls CURRENT.
+  // Everything below drives Apply, the runner and installs, all of which are
+  // held while an agent is behind — the stale half is its own block at the
+  // end, where it can hold them without breaking the rest.
+  const shipped = (await napi('/api/v1/nodes')).agent || {};
   const en = await napi('/api/v1/agent/enroll', {
     census: { cpu: 4, mem_mb: 8192, os: 'linux x86_64 Ubuntu', system: 'linux', arch: 'x86_64',
               sandbox: true, stores: { data: { path: '/var/lib/builderbot/data', free_mb: 5000, total_mb: 9000 },
@@ -259,34 +264,32 @@ ok(list[0].id === 'local',
               toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
               mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false, mounted: true, real: 'nas:/mnt/user/old' }],
               network: { interface: 'ens3', addresses: ['10.0.0.40/24'], gateway: '10.0.0.1', dns: ['10.0.0.1'] } },
-    version: '3', digest: 'sha256:' + '0'.repeat(64), user: 'bb' },
+    version: shipped.version, digest: shipped.digest, user: 'bb' },
     { Authorization: 'Bearer ' + minted.token, 'Content-Type': 'application/json' });
   ok(en.ok && en.node_id === minted.id, 'a sandbox node enrolled with mounts and an address in its census');
-  // Its agent's digest is a made-up one, so it is behind the controller's:
-  // the row must say so before anybody presses anything (roadmap #17).
+  // A heartbeat, in the shape the real one has: the sample flattens each
+  // store to a bare free-space number while the census keeps the whole
+  // record. Sent here because reading only the sample called four healthy
+  // stores "missing" on the operator's own node, and the fixture had no
+  // sample at all to catch it.
+  // Raw, not napi: work answers 204 with no body when there is no job, and
+  // the helper parses every answer as JSON.
+  await fetch(base + '/api/v1/agent/work', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sample: { cpu_pct: 3.5, mem_mb: 8192, mem_used_mb: 2048,
+      stores: { data: { free_mb: 5000, total_mb: 9000 },
+                packages: { free_mb: 40000, total_mb: 90000 },
+                artifacts: { free_mb: 30000, total_mb: 90000 } } }, running: 0, wait: 0 }) });
   const lst = await napi('/api/v1/nodes');
-  ok(lst.agent?.digest && lst.agent.digest !== 'sha256:' + '0'.repeat(64),
+  ok(lst.agent?.digest && lst.agent.digest === shipped.digest,
      'the node list names the agent the controller ships');
-  // Enrolling counts as being heard from, so the node is live for a moment
-  // and the update is queued — with the shipped digest in its spec, so the
-  // node can never be handed another file. Canceled here: nothing polls.
-  const upd = await napi('/api/v1/nodes', { action: 'update-agent', id: minted.id });
-  const uj = upd.job ? await napi(`/api/v1/jobs?id=${upd.job}`) : null;
-  ok(upd.ok && uj && uj.type === 'self-update' && uj.spec.digest === lst.agent.digest && uj.node === minted.id,
-     `Update agent queues a self-update naming the shipped digest (${upd.job || upd.error})`);
-  if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
   await page.evaluate(() => { nodesList = null; openNodesTab(); });
   await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
   await pickNode(page, minted.id);
   const ROW = `.nodestab .ndrow[data-node="${minted.id}"]`;
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
-  // The shipped version, read rather than hardcoded — this assertion has
-  // been edited on every agent bump and adds nothing by naming one.
-  const shipped = (await napi('/api/v1/nodes')).agent?.version;
-  ok(await page.$eval(`${ROW} .ndstale`, (e, v) => e.textContent.includes(`update available → ${v}`), shipped)
-     && await page.$(`${ROW} [data-nd="update-agent"]`) !== null
-     && await page.$(`${ROW} [data-nd="update-agent"]`) !== null,
-     'the row wears "update available" with the shipped version and an Update agent button');
+  ok(await page.$(`${ROW} .ndstale`) === null && await page.$(`${ROW} [data-nd="update-agent"]`) === null,
+     'a node running the shipped agent wears no update pill and is offered no update');
   await pickNode(page, 'local');
   ok(await page.$('.nodestab .ndrow[data-node="local"] .ndconf') === null
      && await page.$('.nodestab .ndrow[data-node="local"] [data-nd="update-agent"]') === null,
@@ -305,6 +308,8 @@ ok(list[0].id === 'local',
     width: m.querySelector('.fill').style.width })));
   ok(meters.some(m => m.label === 'packages' && /GB free/.test(m.val))
      && meters.some(m => m.label === 'data') && meters.some(m => m.label === 'artifacts')
+     && !meters.some(m => /missing/.test(m.val))
+     && meters.some(m => m.label === 'cpu') && meters.some(m => m.label === 'memory')
      && meters.every(m => /^\d+%$/.test(m.width)),
      `each store is a meter with its headroom (${meters.map(m => m.label + ' ' + m.val).join(', ')})`);
   ok(await page.$eval(`${ROW} .ndtools`, e => /flutter/.test(e.textContent) && /node/.test(e.textContent)),
@@ -446,6 +451,80 @@ ok(list[0].id === 'local',
   ok(saved.node === minted.id && saved.build === './gradlew assembleDebug'
      && saved.outputs.length === 2 && saved.outputs[1] === 'extra/*.xpi',
      'Save writes the project\'s node, the command and the outputs onto the project record');
+
+  // ---- saved is not applied ----------------------------------------------
+  // Apply used to be live whenever anything had been saved, so a node that
+  // already matched its record looked exactly like one that had never been
+  // applied. The record is compared against the census now, and the state
+  // line says which of the two it is.
+  await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: {
+    mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false }],
+    stores: {}, network: { mode: 'dhcp' } } });
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await pickNode(page, minted.id);
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => /matches what is saved/.test(
+    document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+  ok(await page.$eval(`${ROW} [data-napply="storage"]`, b => b.disabled),
+     'Apply storage is off when the node already has what the record asks for');
+  // ...and comes back the moment the record asks for something it has not got.
+  await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: {
+    mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false },
+             { path: '/mnt/new', source: 'nas:/mnt/user/new', type: 'nfs', ro: false }],
+    stores: {}, network: { mode: 'dhcp' } } });
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => !document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
+                             ROW, { timeout: 10000 });
+  ok(await page.$eval(`${ROW} .ndconfstate`, e => /1 change to apply.*\/mnt\/new/.test(e.textContent)),
+     `...and says how many changes are waiting and what they are (${
+       await page.$eval(`${ROW} .ndconfstate`, e => e.textContent.trim().slice(0, 90))})`);
+
+  // ---- an agent that is behind takes nothing but its own update -----------
+  // A controller is always newer than or equal to its nodes, so a mismatch
+  // means the node may not understand a job this version would send it.
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: { cpu: 4, mem_mb: 8192, sandbox: true },
+                           version: '3', digest: 'sha256:' + '0'.repeat(64) }) });
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => document.querySelector(sel + ' .ndstale'), ROW, { timeout: 10000 });
+  ok(await page.$eval(`${ROW} .ndstale`, (e, v) => e.textContent.includes(`update available → ${v}`), shipped.version)
+     && await page.$(`${ROW} [data-nd="update-agent"]`) !== null,
+     'the row wears "update available" with the shipped version and an Update agent button');
+  const off = await page.evaluate(sel => ({
+    storage: document.querySelector(sel + ' [data-napply="storage"]')?.disabled,
+    network: document.querySelector(sel + ' [data-napply="network"]')?.disabled,
+    runner: document.querySelector(sel + ' [data-nrunner="install"]')?.disabled,
+    cache: document.querySelector(sel + ' [data-nd="cache-clear"]')?.disabled,
+    update: document.querySelector(sel + ' [data-nd="update-agent"]')?.disabled,
+    said: document.querySelector(sel + ' .ndconfstate')?.textContent || '',
+  }), ROW);
+  ok(off.storage && off.network && off.runner && off.cache && !off.update
+     && /runs agent 3 and this controller ships/.test(off.said),
+     `everything the agent runs is off while it is behind, and the state line says why (${
+       JSON.stringify(off).slice(0, 120)})`);
+  // The button is a courtesy; the rule is the server's.
+  const refused = await napi('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+  const refusedPkg = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
+  ok(/runs agent 3/.test(refused.error || '') && /runs agent 3/.test(refusedPkg.error || ''),
+     `...and the server refuses the same jobs, not only the buttons (${(refused.error || 'no error').slice(0, 60)})`);
+  await page.evaluate(() => openPackages());
+  await page.waitForSelector('.pkgtab #pkgNodeSel', { timeout: 15000 });
+  await page.selectOption('.pkgtab #pkgNodeSel', minted.id);
+  await page.waitForSelector('.pkgtab .pkgstale', { timeout: 15000 });
+  ok(await page.$eval('.pkgtab [data-pkg="install"]', b => b.disabled),
+     'the Tools tab says so too, and installs nothing onto a node that is behind');
+  // Its own update is the way out and is never held.
+  const upd = await napi('/api/v1/nodes', { action: 'update-agent', id: minted.id });
+  const uj = upd.job ? await napi(`/api/v1/jobs?id=${upd.job}`) : null;
+  ok(upd.ok && uj && uj.type === 'self-update' && uj.spec.digest === shipped.digest && uj.node === minted.id,
+     `Update agent queues a self-update naming the shipped digest (${upd.job || upd.error})`);
+  if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
+  await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+    headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ census: { cpu: 4, mem_mb: 8192, sandbox: true },
+                           version: shipped.version, digest: shipped.digest }) });
 }
 
 // ---- an ssh node's path mapping (§11: the record owns it) --------------------

@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "10"
+AGENT_VERSION = "11"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -363,12 +363,46 @@ def _toolchains(state):
         if p and os.path.isfile(p):
             arg = "version" if name == "go" else "--version"
             key = "rust" if name == "cargo" else name
-            tc[key] = (_run([p, arg], timeout=20).splitlines() or ["present"])[0][:40]
+            tc[key] = _clean_version((_run([p, arg], timeout=20).splitlines() or [""])[0])
     if find("android-sdk"):
         tc["android-sdk"] = "present"
     if find("emulator"):
         tc["emulator"] = "present"
     return tc
+
+
+def _clean_version(text):
+    """A version line, or "present" when the tool answered with something
+    else. `flutter --version` as root leads with "Woah! You appear to be
+    trying to run flu…" and rustup with "error: rustup could not choose a
+    version" — both mean the thing is there, and neither is a version, so
+    putting them on a row as one is worse than saying nothing."""
+    line = (text or "").strip()
+    if not line or not re.search(r"\d+\.\d+", line[:80]) or re.match(
+            r"(?i)\s*(error|warning|woah|note)\b", line):
+        return "present"
+    return line[:40]
+
+
+def store_dirs(state):
+    """What is actually IN the packages store, as directory names.
+
+    The census's `toolchains` above is a placement summary — six names, so a
+    job can select on them — and it was being read as an inventory of the
+    whole catalog, which called four installed packages missing on a store
+    the controller could see for itself. `bb sdk` puts each package in
+    <root>/<name>, and android's parts under <root>/android/, so the names
+    ARE the inventory and this is one listdir.
+    """
+    store = (state.get("stores") or {}).get("packages") or ""
+    out = {"top": [], "android": []}
+    if not store:
+        return out
+    with contextlib.suppress(OSError):
+        out["top"] = sorted(x for x in os.listdir(store) if not x.startswith("."))[:64]
+    with contextlib.suppress(OSError):
+        out["android"] = sorted(os.listdir(os.path.join(store, "android")))[:64]
+    return out
 
 
 def sdk_env(state, who=None):
@@ -415,6 +449,7 @@ def census(state):
         "sshd": _sshd_listening(),
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
+        "store_dirs": store_dirs(state),
         # The configuration plane's reported half (docs/nodes.md §12): what
         # is mounted and from where, and the address this machine is on.
         # The row draws the operator's desired config against these.

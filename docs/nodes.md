@@ -332,6 +332,18 @@ so a node is never handed a file other than the one this controller serves.
 swap, with the node's own token. The agent's `hello` after re-exec is what
 moves the row.
 
+*And an agent that is behind takes nothing but its own update.* A controller
+is always newer than or equal to its nodes — it is where the agent file comes
+from — so a digest mismatch means the node may not understand a job this
+version would send it. Job types and spec fields have been added on nearly
+every phase (`system`, `package`, `cache-clear`, compose plans, `bb` verbs,
+store listings), and an older agent meets an unknown one with a shrug rather
+than an error, which is the worst of the three possible answers. So
+`job_add` refuses and `fits` declines every job whose runner is the node,
+`self-update` excepted; the Nodes tab and the Tools tab ghost the buttons and
+say why before the press. It is one rule in `nodes.agent_stale` and the UI
+only mirrors it.
+
 *Compose moved to the agent (2 Sep, roadmap #18):* a node enrolled with a
 token needed an ssh key on top of it, because `runner_of` kept compose on the
 controller and it reached the node's daemon over ssh. It does not any more.

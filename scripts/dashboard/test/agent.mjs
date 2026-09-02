@@ -159,9 +159,13 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
      '...holding the node token, the id it was minted for, and the full capability set it enrolled with');
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
   const n = await nodeById(minted.id);
+  // The version is read from the controller, not written here: the agent
+  // just downloaded from it, so the two must agree, and an assertion naming
+  // a number has to be edited on every bump for nothing.
+  const ships = (await api('/api/v1/nodes')).agent || {};
   ok(n.state === 'online' && n.reported.cpu > 0 && n.reported.hostname
-     && n.agent.version === '10' && /^sha256:/.test(n.agent.digest),
-     'the row is online with the census, agent version and digest');
+     && n.agent.version === ships.version && n.agent.digest === ships.digest,
+     `the row is online with the census, and runs the agent this controller ships (${n.agent.version})`);
   // single use
   let again = '';
   try {
@@ -482,10 +486,32 @@ try {
        && /== bb sdk remove flutter/.test(pfin.log) && /not installed|unknown package/.test(pfin.log),
        `the bundle lands in the packages store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
     ok(existsSync(`${DIR}/agentpackages/.bb/bundle.tar`), '...and stays for the next one');
-    const view = await api(`/api/packages?node=${minted.id}`);
-    ok(view.node === minted.id && view.root === `${DIR}/agentpackages` && Array.isArray(view.items)
-       && view.items.every(i => 'installed' in i),
-       'the Tools tab reads that node\'s state: its store, and what its census says it has');
+    // The store's own directories decide what is installed there — not the
+    // census's placement summary, which named six toolchains and called four
+    // installed packages missing on the operator's shared SDK store.
+    mkdirSync(`${DIR}/agentpackages/zig`, { recursive: true });
+    mkdirSync(`${DIR}/agentpackages/android/ndk`, { recursive: true });
+    // The store listing rides the census, which refreshes at hello — and a
+    // job that touches the node ends in one, which is why installing a
+    // package updates this list without waiting ten minutes. Any such job
+    // will do here.
+    const poke = await api('/api/v1/nodes', { action: 'cache-clear', id: minted.id });
+    await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${poke.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 30000);
+    const view = await until(async () => {
+      const v = await api(`/api/packages?node=${minted.id}`);
+      return v.items?.some(i => i.name === 'zig' && i.installed) ? v : null;
+    }, 30000);
+    ok(view && view.node === minted.id && view.root === `${DIR}/agentpackages`,
+       'the Tools tab reads that node\'s own packages store');
+    ok(view && view.items.find(i => i.name === 'zig')?.installed === true
+       && view.items.find(i => i.name === 'android:ndk')?.installed === true,
+       'a package present in the store reads as installed, whatever the census summarises');
+    ok(view && view.items.find(i => i.name === 'swift')?.installed === false
+       && view.items.every(i => i.unknown === false),
+       '...and one that is not there reads as absent, not as unknown');
   }
 
   // ---- the Actions runner as a service on the node (phase 7) ----------------
@@ -605,12 +631,12 @@ try {
   // ---- the agent's own update, driven from the tab (roadmap #17) ---------------
   {
     const all = await api('/api/v1/nodes');
-    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '') && all.agent.version === '10',
+    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '') && /^\d+$/.test(all.agent.version || ''),
        'the node list carries the agent this controller ships, digest and version');
     const lc = await api('/api/v1/nodes', { action: 'update-agent', id: 'local' });
     ok(/only an agent node/.test(lc.error || ''), 'local has no agent to update');
     const cur = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
-    ok(cur.ok && cur.current === true && cur.version === '10',
+    ok(cur.ok && cur.current === true && cur.version === '11',
        'a node already on the shipped agent is told so, and no job is queued');
     const n = await nodeById(minted.id);
     ok(n.agent.digest === all.agent.digest, '...because the digests the row would compare are the same');

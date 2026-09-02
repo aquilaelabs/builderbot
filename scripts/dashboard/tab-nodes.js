@@ -137,7 +137,8 @@ function nodeRunnerSection(n, c){
         rep.busy ? "running a job" : rep.active ? "listening" : "installed, not listening"}${
         rep.labels?.length ? " · labels " + rep.labels.join(", ") : ""}`
     : want.want ? "install asked for; the node has not reported it yet" : "no runner on this node";
-  const busy = n.applying;
+  const busy = n.applying || nodeStale(n);
+  const why = nodeStale(n) ? esc(staleWhy(n)) : "";
   return `
       <div class="ndsec">CI runner — GitHub's Actions runner as a service here; its labels decide which workflows land</div>
       <div class="ndrunner">
@@ -150,10 +151,10 @@ function nodeRunnerSection(n, c){
       <div class="acts">
         <span class="sp"></span>
         <button type="button" data-nrunner="install" ${busy ? "disabled" : ""}
-          title="download GitHub's runner onto the node, register it with a one-hour token the controller mints, and run it as a service">${
+          title="${why || "download GitHub's runner onto the node, register it with a one-hour token the controller mints, and run it as a service"}">${
           rep.installed ? "Reinstall runner" : "Install runner"}</button>
         ${rep.installed || want.want ? `<button type="button" class="rm" data-nrunner="remove" ${busy ? "disabled" : ""}
-          title="deregister it from GitHub and take the service off the node">Remove runner</button>` : ""}
+          title="${why || "deregister it from GitHub and take the service off the node"}">Remove runner</button>` : ""}
       </div>`;
 }
 
@@ -177,6 +178,63 @@ function nodePathsLine(n){
         aria-label="path mapping" title="what this container's paths are called on the node — its daemon resolves bind mounts over there">
       <button type="button" data-nd="paths" title="save the mapping onto the node's record">Save paths</button>
     </div>`;
+}
+
+// Is this node's agent the one this controller ships? Everything the AGENT
+// runs is held until it is: job types and spec fields have been added on
+// nearly every phase, and an older agent meets an unknown one with a shrug
+// rather than an error, so a newer controller must not drive it. Its own
+// update is the way out and is never held. The server refuses the same jobs
+// (nodes.agent_stale) — this only saves the operator the round trip.
+function nodeStale(n){
+  return n.kind === "agent" && n.agent?.digest && nodesAgent?.digest
+    && n.agent.digest !== nodesAgent.digest && !n.agent?.revoked;
+}
+
+function staleWhy(n){
+  return `${n.name} runs agent ${n.agent?.version || "?"} and this controller ships ${
+    nodesAgent?.version} — press Update agent first, so nothing is sent that the agent may not know`;
+}
+
+// Saved is not applied: the record says what the node SHOULD be, the census
+// says what it is, and the gap between them is the only thing Apply is for.
+// Without this the buttons were live whenever anything had been saved, so
+// there was no way to tell a node that matches its record from one that has
+// never been applied. Returns null when nothing is saved at all.
+//
+// dhcp is the one case that cannot be answered: the census reports addresses,
+// not how they were obtained, so a dhcp lease and a static address of the
+// same value look identical. That returns "unknown" rather than a guess.
+function nodeDrift(n){
+  const d = n.config?.desired;
+  if (!d) return null;
+  const rep = n.reported || {};
+  const storage = [];
+  for (const m of d.mounts || []){
+    const [st, cls] = mountState(m, rep.mounts);
+    if (cls) storage.push(`${m.path || m.source || "a mount"}: ${st}`);
+  }
+  for (const [role, path] of Object.entries(d.stores || {})){
+    if (!path) continue;
+    const r = rep.stores?.[role];
+    if (!r) storage.push(`${role} store not reported yet`);
+    else if (r.path !== path) storage.push(`${role} store → ${path}`);
+    else if (r.free_mb === null) storage.push(`${role} store is missing on the node`);
+  }
+  const net = d.network || {}, rn = rep.network || {};
+  let network = [];
+  if (net.mode === "static"){
+    const addr = (net.address || "").trim();
+    if (addr && !(rn.addresses || []).includes(addr)) network.push(`address → ${addr}`);
+    if (net.gateway && rn.gateway !== net.gateway) network.push(`gateway → ${net.gateway}`);
+    const dns = (net.dns || []).filter(Boolean);
+    if (dns.length && dns.join(",") !== (rn.dns || []).join(",")) network.push(`dns → ${dns.join(", ")}`);
+    if (net.interface && rn.interface && net.interface !== rn.interface)
+      network.push(`interface → ${net.interface}`);
+  }else if (rn.addresses?.length){
+    network = "unknown";      // dhcp: the census cannot say how it was addressed
+  }
+  return {storage, network};
 }
 
 function nodeConfFold(n){
@@ -222,10 +280,22 @@ function nodeConfFold(n){
     ? `now ${net.addresses.join(", ")} on ${net.interface || "?"}${net.gateway ? " via " + net.gateway : ""}${
         net.dns?.length ? " · dns " + net.dns.join(", ") : ""}` : "address not reported";
   const isStatic = d.network.mode === "static";
-  const status = busy
-    ? `applying ${esc(busy.what)}${busy.what === "network" ? " — waiting for it to dial back in" : "…"}`
-    : c.dirty ? "unsaved — Save keeps it on the record; Apply makes the node match"
-    : n.config?.desired ? "saved; Apply makes the node match it" : "nothing configured yet";
+  const stale = nodeStale(n);
+  const drift = nodeDrift(n);
+  const netPend = drift && (drift.network === "unknown" || drift.network.length);
+  const pending = drift ? drift.storage.concat(drift.network === "unknown" ? [] : drift.network) : [];
+  // The state line answers one question — is there anything to press Apply
+  // for — and names the changes when there is, so the button is not a leap.
+  const [status, statusCls] = busy
+    ? [`applying ${busy.what}${busy.what === "network" ? " — waiting for it to dial back in" : "…"}`, "note"]
+    : stale ? [staleWhy(n), "warn"]
+    : c.dirty ? ["unsaved — Save keeps it on the record; Apply makes the node match", "warn"]
+    : !drift ? ["nothing configured yet — the node runs on whatever it was set up with", ""]
+    : pending.length ? [`${pending.length} change${pending.length === 1 ? "" : "s"} to apply: ${
+        pending.slice(0, 3).join("; ")}${pending.length > 3 ? "; …" : ""}`, "warn"]
+    : drift.network === "unknown"
+      ? ["the node matches what is saved here, except dhcp, which cannot be told from here", ""]
+      : ["the node matches what is saved here", "ok"];
   return `
   <div class="ndconf">
     <div class="ndconfbody">
@@ -256,13 +326,20 @@ function nodeConfFold(n){
       <div class="sub">${esc(now)}</div>
       ${nodeRunnerSection(n, c)}
       <div class="acts ndconfacts">
-        <span class="sub ndconfstate${busy ? " note" : ""}">${status}</span>
+        <span class="sub ndconfstate${statusCls ? " " + statusCls : ""}">${esc(status)}</span>
         <span class="sp"></span>
         <button type="button" data-nsave ${c.dirty ? "" : "disabled"}>Save</button>
-        <button type="button" data-napply="storage" ${busy || c.dirty || !n.config?.desired ? "disabled" : ""}
-          title="mounts and stores: a system job on the node, through bb-sandbox">Apply storage</button>
-        <button type="button" data-napply="network" ${busy || c.dirty || !n.config?.desired ? "disabled" : ""}
-          title="re-address the node; it must dial back in within three minutes or it reverts">Apply network</button>
+        <button type="button" data-napply="storage" ${
+          busy || c.dirty || stale || !drift?.storage.length ? "disabled" : ""}
+          title="${stale ? esc(staleWhy(n))
+            : !drift ? "nothing is saved to apply"
+            : !drift.storage.length ? "the node already has the mounts and stores saved here"
+            : "mounts and stores: a system job on the node, through bb-sandbox"}">Apply storage</button>
+        <button type="button" data-napply="network" ${busy || c.dirty || stale || !netPend ? "disabled" : ""}
+          title="${stale ? esc(staleWhy(n))
+            : !drift ? "nothing is saved to apply"
+            : !netPend ? "the node is already on the address saved here"
+            : "re-address the node; it must dial back in within three minutes or it reverts"}">Apply network</button>
       </div>
     </div>
   </div>`;
@@ -299,16 +376,24 @@ function nodeMeters(n){
   if (n.live && mem && s.mem_used_mb)
     out.push(meter("memory", s.mem_used_mb / mem * 100,
                    `${gb(s.mem_used_mb)} / ${gb(mem)}`));
-  for (const [role, st] of Object.entries((s.stores || rep.stores) || {})){
-    if (!st || st.free_mb === null || st.free_mb === undefined){
-      out.push(meter(role, 0, "missing", st?.path || ""));
+  // Two shapes for the same fact, and mixing them said "missing" about
+  // four healthy stores. The CENSUS carries the whole story per store
+  // ({path, free_mb, total_mb}) and moves every ten minutes; the heartbeat
+  // flattens each one to a bare free-space number and arrives every poll
+  // (nodes.heartbeat). So the census gives the shape and the sample gives
+  // the freshness — never the sample alone, which has no total to take a
+  // percentage of and no path to name.
+  for (const [role, st] of Object.entries(rep.stores || {})){
+    const live = s.stores?.[role];
+    const free = typeof live === "number" ? live : st?.free_mb;
+    if (free === null || free === undefined){
+      out.push(meter(role, 0, "missing", `${st?.path || role} — the node cannot see it`));
       continue;
     }
-    const total = st.total_mb || 0;
-    const used = total ? total - st.free_mb : 0;
-    out.push(meter(role, total ? used / total * 100 : 0,
-                   `${gb(st.free_mb)} free`,
-                   `${st.path || ""}${total ? ` — ${gb(used)} of ${gb(total)} used` : ""}`));
+    const total = st?.total_mb || 0;
+    const used = total ? Math.max(0, total - free) : 0;
+    out.push(meter(role, total ? used / total * 100 : 0, `${gb(free)} free`,
+                   `${st?.path || ""}${total ? ` — ${gb(used)} of ${gb(total)} used` : ""}`));
   }
   return out.length ? `<div class="ndmeters">${out.join("")}</div>` : "";
 }
@@ -355,8 +440,7 @@ function renderNodesInto(i){
     // Behind when the node's agent is not the file this controller ships.
     // Said on the row before anybody presses anything: a five-version-old
     // agent otherwise looks exactly like a current one.
-    const stale = n.kind === "agent" && n.agent?.digest && nodesAgent?.digest
-      && n.agent.digest !== nodesAgent.digest && !n.agent?.revoked;
+    const stale = nodeStale(n);
     const agentVer = n.kind === "agent" && n.agent?.version
       ? `agent ${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}${
           stale ? ` <span class="pill warn ndstale" title="this controller ships agent ${
@@ -389,8 +473,8 @@ function renderNodesInto(i){
             : "finish what is running, accept nothing new — what makes a node safe to reboot"}">${
           n.state === "draining" ? "Undrain" : "Drain"}</button>`}
         ${n.kind === "agent" && n.state !== "pending" && !n.agent?.revoked
-          ? `<button type="button" data-nd="cache-clear"
-          title="drop this node's build caches — every project's. A cold cache costs the next build time, never correctness">Clear cache</button>` : ""}
+          ? `<button type="button" data-nd="cache-clear" ${stale ? "disabled" : ""}
+          title="${stale ? esc(staleWhy(n)) : "drop this node's build caches — every project's. A cold cache costs the next build time, never correctness"}">Clear cache</button>` : ""}
         ${n.kind === "agent" && n.state !== "pending" && !n.agent?.revoked
           ? `<button type="button" class="rm" data-nd="revoke"
           title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}
