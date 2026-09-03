@@ -85,19 +85,27 @@ await page.waitForFunction(() => document.querySelectorAll('.doc .pkg:not(.img)'
 ok(await page.$$eval('.doc .pkg:not(.img) input:checked', is => is.length === 2),
    'a redraw keeps what was ticked');
 await page.click('.doc [data-pkg="install"]');
-// Four land, not two: android:emulator is installed BY sdkmanager, which
-// android-tools provides, which needs a JDK to run — so the chain comes with
-// it. That is the whole point of `requires`; before it, this pair installed
-// and then failed inside sdkmanager with a message naming neither.
+// More than two land: android:emulator is installed BY sdkmanager, which
+// android-tools provides, which needs a JDK — and the emulator is useless
+// without adb, so platform-tools comes too. That is the point of `requires`;
+// before it, this pair installed and then failed inside sdkmanager with a
+// message naming neither.
+//
+// Asserted as a SET rather than a count. A count has to be edited every time
+// the catalog declares another dependency, which it has done twice, and each
+// edit is a chance to write down a number instead of a fact.
+// The job finishing is not the rows showing it: wait for the payload to
+// carry the whole chain, which is what the draw then reflects.
 await page.waitForFunction(() => packages?.job && !packages.job.running
-  && [...document.querySelectorAll('.doc .pkg:not(.img) .where')]
-       .filter(w => w.classList.contains('on')).length === 4, { timeout: 30000 });
-ok(await page.$$eval('.doc .pkg:not(.img)', rs => {
-     const on = rs.filter(r => r.querySelector('.where')?.classList.contains('on'))
-                  .map(r => r.querySelector('input')?.value);
-     return ['flutter', 'android:emulator', 'android-tools', 'jdk'].every(n => on.includes(n));
-   }),
-   'ticking a package installs what it needs alongside it, transitively');
+  && ['flutter', 'android:emulator', 'android-tools', 'android:platform-tools', 'jdk']
+       .every(n => (packages.items || []).find(i => i.name === n)?.installed),
+  { timeout: 30000 });
+const landed = await page.$$eval('.doc .pkg:not(.img)', rs =>
+  rs.filter(r => r.querySelector('.where')?.classList.contains('on'))
+    .map(r => r.querySelector('input')?.value));
+ok(['flutter', 'android:emulator', 'android-tools', 'android:platform-tools', 'jdk']
+     .every(n => landed.includes(n)),
+   `ticking a package installs what it needs alongside it, transitively (${landed.join(', ')})`);
 list = await rows();
 const flutter = list.find(r => r.name === 'flutter');
 const emu = list.find(r => r.name === 'android:emulator');
@@ -311,9 +319,13 @@ await page.waitForFunction(() => packages?.job && !packages.job.running
   && !(packages.items || []).find(i => i.name === 'go')?.installed, { timeout: 30000 });
 
 // ---- uninstall is per row, and asks ------------------------------------
-// Four, since android:emulator brought android-tools and jdk with it.
-ok(await page.$$eval('.doc .pkg:not(.img)', ls => ls.filter(l => l.querySelector('[data-rm]')).length) === 4,
-   'every installed package carries its own uninstall control');
+// One control per installed row, whatever that number happens to be.
+ok(await page.$$eval('.doc .pkg:not(.img)', ls => {
+     const on = ls.filter(l => l.querySelector('.where')?.classList.contains('on'));
+     return on.length > 0 && on.every(l => l.querySelector('[data-rm]'))
+            && ls.filter(l => l.querySelector('[data-rm]')).length === on.length;
+   }),
+   'every installed package carries its own uninstall control, and only those');
 ok(await page.$('.doc .pkg:not(:has([data-rm])) [data-rm]') === null,
    '...and packages that are not installed do not');
 // One operation at a time — the server answers a second with a 409 — so the
@@ -351,8 +363,8 @@ ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Uninstall'),
 // this reads paths. On this runner that race is the difference between green
 // and a null dereference.
 await page.waitForFunction(() => packages?.job && !packages.job.running
-  && [...document.querySelectorAll('.doc .pkg:not(.img) .where')]
-       .filter(w => w.classList.contains('on')).length === 3, { timeout: 30000 });
+  && !(packages.items || []).find(i => i.name === 'android:emulator')?.installed,
+  { timeout: 30000 });
 list = await rows();
 ok(!list.find(r => r.name === 'android:emulator').installed
    && list.find(r => r.name === 'flutter').installed,

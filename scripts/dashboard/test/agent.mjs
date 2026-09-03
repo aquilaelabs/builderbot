@@ -504,6 +504,24 @@ try {
          && /android=.*agentpackages\/android/.test(log),
          `a build job gets the node's SDK root, JAVA_HOME and ANDROID_HOME (${
            (log.match(/root=.*/) || [''])[0].slice(0, 60)})`);
+      // An empty directory is not a toolchain. cmdline-tools existed on the
+      // operator's node as an empty folder with no sdkmanager, and
+      // platform-tools not at all, and the census called android-sdk present
+      // — so a job needing adb was admitted and failed there rather than
+      // being refused here.
+      mkdirSync(`${DIR}/agentpackages/android/cmdline-tools`, { recursive: true });
+      const bare = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
+        argv: ['sh', '-c', 'true'] });
+      if (bare.job) await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${bare.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 30000);
+      const cens = await until(async () => {
+        const n = await nodeById(minted.id);
+        return n?.reported?.toolchains ? n : null;
+      });
+      ok(cens && !(cens.reported.toolchains || {})['android-sdk'],
+         'an empty cmdline-tools directory is not reported as an Android SDK');
       ok(/path=[^\n]*agentpackages\/jdk\/bin/.test(log)
          && /path=[^\n]*agentpackages\/go\/bin/.test(log),
          '...and every toolchain the store holds is on its PATH, not just the JDK');

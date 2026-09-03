@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "19"
+AGENT_VERSION = "20"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -485,7 +485,14 @@ STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
                "dotnet": ("dotnet/dotnet",), "go": ("go/bin/go",),
                "node": ("node/bin/node",), "swift": ("swift/usr/bin/swift",),
                "cargo": ("rust/cargo/bin/cargo",),
-               "android-sdk": ("android/cmdline-tools", "android/platform-tools"),
+               # The BINARIES, not the directories they sit in. Checking the
+               # directories called android-sdk present on a node whose
+               # cmdline-tools was an empty folder and whose platform-tools
+               # did not exist — so toolchain_gap admitted a job needing adb
+               # and it failed there instead of being refused here.
+               "android-sdk": ("android/platform-tools/adb",
+                               "android/cmdline-tools/latest/bin/sdkmanager",
+                               "android/cmdline-tools/bin/sdkmanager"),
                "emulator": ("android/emulator/emulator",)}
 
 
@@ -520,9 +527,11 @@ def _toolchains(state):
             arg = "version" if name == "go" else "--version"
             key = "rust" if name == "cargo" else name
             tc[key] = _clean_version((_run([p, arg], timeout=20).splitlines() or [""])[0])
-    if find("android-sdk"):
+    p = find("android-sdk")
+    if p and os.path.isfile(p):
         tc["android-sdk"] = "present"
-    if find("emulator"):
+    p = find("emulator")
+    if p and os.path.isfile(p):
         tc["emulator"] = "present"
     return tc
 
