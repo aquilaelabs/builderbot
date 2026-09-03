@@ -220,3 +220,6 @@
 - Node.js can be installed on a node from the Tools tab (cffbed4)
 - A package that needs another now installs it first and says so, instead of failing inside the tool that was missing it (cffbed4)
 - Where each toolchain lands is written down once, in the package catalog, instead of in three places that could disagree (be96732)
+- The Packages tab no longer fails to draw when the page has just loaded (95413cb)
+- Installing an Android package now brings the command-line tools and a JDK with it, instead of failing for want of them (95413cb)
+- Each package says what it needs and what needs it (95413cb)

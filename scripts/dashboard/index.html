@@ -2831,6 +2831,19 @@ body.dragging .tab .lbl{cursor:grabbing}
   </div>
 </main>
 
+<!-- The tab surfaces, BEFORE the script below rather than after it.
+     Each declares its state with `let` at the top level — nodesList is the
+     one that bit — and this file's renderers read those. Loaded last, a
+     renderer that drew before these evaluated hit the temporal dead zone
+     and the tab came up "this tab's renderer failed — nodesList is not
+     defined", healing itself only on the next draw. `typeof` throws on a
+     TDZ binding too, so there is no defensive read; the fix is to declare
+     first. They are pure declarations and run nothing at load, so nothing
+     here depends on the order the other way. -->
+<script src="tab-nodes.js"></script>
+<script src="tab-settings.js"></script>
+<script src="tab-jobs.js"></script>
+
 <script>
 "use strict";
 
@@ -5914,7 +5927,9 @@ function pkgRow(p, busy, job){
       <span class="nm">${esc(p.label)}${p.size
         ? ` <span class="pill" title="${esc(p.size_from)}">${esc(p.size)}</span>` : ""
       }${ver}${next}</span>
-      <span class="sub">${esc(p.about)}</span>
+      <span class="sub">${esc(p.about)}${
+        p.needs?.length ? ` Needs ${esc(p.needs.join(", "))}, installed with it.` : ""}${
+        p.needed_by?.length ? ` Needed by ${esc(p.needed_by.join(", "))}.` : ""}</span>
       ${mine ? prog : `<span class="sub where${p.installed ? " on" : ""}">${
         // The path is the store's, and the head of the tab already says where
         // that is — so naming it per row was a repetition, and on a node,
@@ -11715,8 +11730,5 @@ document.addEventListener("keydown", e => {
 refresh();
 setInterval(refresh, 15000);
 </script>
-<script src="tab-nodes.js"></script>
-<script src="tab-settings.js"></script>
-<script src="tab-jobs.js"></script>
 </body>
 </html>

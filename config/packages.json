@@ -203,6 +203,9 @@
       "platforms": [
         "linux/*"
       ],
+      "requires": [
+        "android-tools"
+      ],
       "about": "The CMake the NDK's build system uses.",
       "source": {
         "kind": "sdkmanager",
@@ -231,6 +234,9 @@
       "platforms": [
         "linux/*"
       ],
+      "requires": [
+        "android-tools"
+      ],
       "about": "The emulator binary. System images are per API level and come from ANDROID_SYSTEM_IMAGES.",
       "source": {
         "kind": "sdkmanager",
@@ -253,6 +259,9 @@
       },
       "platforms": [
         "linux/*"
+      ],
+      "requires": [
+        "android-tools"
       ],
       "about": "Native development kit, for C and C++ inside an Android app.",
       "source": {

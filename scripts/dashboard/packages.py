@@ -465,6 +465,12 @@ def payload():
         else:
             origin = ""
         items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      # What it needs, and what needs it — so a package that
+                      # exists to serve another says so rather than looking
+                      # like an unexplained independent choice.
+                      "needs": list(p.get("requires") or []),
+                      "needed_by": sorted(o["name"] for o in PACKAGES
+                                          if p["name"] in (o.get("requires") or [])),
                       "installed": bool(path), "path": path,
                       "size": size, "size_from": origin,
                       # The version is local knowledge and always shown; the
