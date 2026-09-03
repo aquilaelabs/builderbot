@@ -75,6 +75,9 @@ def load_packages():
         plats = [x for x in (r.get("platforms") or []) if isinstance(x, str) and "/" in x]
         if plats:
             row["platforms"] = plats[:8]
+        reqs = [x for x in (r.get("requires") or []) if isinstance(x, str) and x]
+        if reqs:
+            row["requires"] = reqs[:4]
         out.append(row)
     # Sorted here rather than trusted from the file, so a package added at the
     # end of the catalog still lands where somebody would look for it. Leading
@@ -812,6 +815,61 @@ _ARCH = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm6
          "armv7l": "arm", "arm": "arm"}
 
 
+def node_has(n):
+    """The package names already in this node's packages store, by the
+    directories bb sdk puts them in. Empty when the node has not reported
+    its store — which is not evidence of absence, so a caller must treat it
+    as "unknown" rather than "nothing"."""
+    rep = n.get("reported") or {}
+    top = set(((rep.get("store_dirs") or {}).get("top")) or [])
+    andr = set(((rep.get("store_dirs") or {}).get("android")) or [])
+    if not (top or andr):
+        return set()
+    out = set()
+    for p in PACKAGES:
+        probe = p["probe"]
+        if probe.startswith("android:"):
+            here = probe.split(":", 1)[1] in andr
+        elif probe == "android-tools":
+            here = bool({"cmdline-tools", "platform-tools"} & andr)
+        else:
+            here = probe in top
+        if here:
+            out.add(p["name"])
+    return out
+
+
+def with_requires(names, have):
+    """`names`, with anything they declare a requirement on put in front.
+
+    A recipe that needed another package used to say so only in its `env`
+    block: android-tools points JAVA_HOME at a sibling jdk that may not be
+    there, and sdkmanager then fails with "Could not determine SDK root",
+    naming neither Java nor the package that would have supplied it. The
+    catalog says it now, and the requirement is pulled in rather than
+    discovered.
+
+    Requirements already in the store are left out — this adds what is
+    missing, ahead of what needs it, and never re-installs. Returns
+    (ordered names, what was added).
+    """
+    by = {p["name"]: p for p in PACKAGES}
+    out, seen = [], set()
+
+    def add(n, depth=0):
+        if n in seen or depth > 4:      # a cycle in the catalog is not fatal
+            return
+        seen.add(n)
+        for r in (by.get(n, {}).get("requires") or []):
+            if r in by and r not in have:
+                add(r, depth + 1)
+        out.append(n)
+
+    for n in names:
+        add(n)
+    return out, [n for n in out if n not in names]
+
+
 def platform_of(n):
     """"<os>/<arch>" for a node, or "" when it has not said."""
     os_ = str((n or {}).get("os") or "").strip().lower()
@@ -848,7 +906,11 @@ def node_job(principal, nid, action, names):
     if n["kind"] != "agent":
         return {"error": f"{n['name']} runs no agent — toolchains are installed there by hand"}
     store = ((n.get("reported") or {}).get("stores") or {}).get("packages") or {}
+    added = []
     if action == "install":
+        # What these need, ahead of them. android-tools without a jdk fails
+        # inside sdkmanager with a message that names neither.
+        names, added = with_requires(names, node_has(n))
         # Seven of these recipes name linux-x86_64 in their URL and one names
         # ubuntu24.04, so a node of another platform would download a couple
         # of hundred megabytes and fail on exec — or install and fail later.
@@ -896,8 +958,11 @@ def node_job(principal, nid, action, names):
         return {"error": f"{n['name']} is {n.get('arch')} and shares this packages store with "
                          f"{', '.join(o['name'] + ' (' + str(o.get('arch')) + ')' for o in bad)}"
                          " — one store cannot hold both architectures. Give it a store of its own."}
-    return nodes.job_add(principal, {"node": nid}, "package",
-                         {"action": action, "names": names, "timeout": 3600})
+    r = nodes.job_add(principal, {"node": nid}, "package",
+                      {"action": action, "names": names, "timeout": 3600})
+    if r.get("ok") and added:
+        r["added"] = added
+    return r
 
 
 def start_job(action, names, auto=False):
@@ -913,6 +978,9 @@ def start_job(action, names, auto=False):
                 for other in store_sharers(nodes.LOCAL):
                     if nodes.jobs_for(node_id=other["id"], type="package", active=True, n=1):
                         return False
+        if action == "install":
+            here = {p["name"] for p in PACKAGES if _pkg_path(p["probe"])}
+            names, _added = with_requires(list(names), here)
         _pkg_job.update(running=True, queue=list(names), action=action,
                         current="", log=[], done=[], failed=[], auto=auto,
                         aborting=False,

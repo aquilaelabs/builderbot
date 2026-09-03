@@ -1426,6 +1426,16 @@ and `--write` regenerates `.github/actionlint.yaml` from them, so the lint
 checks `runs-on` against runners that exist. The container's own runner
 stays until a node runner has taken a real job.
 
+**A package that needs another says so, and the missing one is installed
+first.** `android-tools` drives `sdkmanager`, which is a Java program:
+without a JDK it failed inside sdkmanager with a message naming neither Java
+nor the package that supplies it. The catalog carries `requires` now, the
+install pulls in what is missing — never what is already there — and the tab
+says what it added. Node.js is a package like any other for the same reason:
+it is not needed to *be* a node (the agent is Python, and the provisioner
+installs that), but a project built with npm needs it, and so does anything
+driving a browser through Playwright, which declares it.
+
 **Two machines may share one packages store, and BuilderBot recognises the
 pair.** An NFS export mounted by the controller and by a node is one
 directory, and installing into it from both at once is version skew nobody

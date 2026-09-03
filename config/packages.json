@@ -16,6 +16,11 @@
     "           a tool that resolves its own platform. An install onto a node",
     "           outside the list is refused by name rather than downloading a",
     "           couple of hundred megabytes and failing on exec.",
+    "  requires   other packages this one needs in order to work. Installed",
+    "           first, and only when missing. android-tools drives sdkmanager,",
+    "           which is a Java program, and without this it failed inside",
+    "           sdkmanager with a message naming neither Java nor the package",
+    "           that supplies it.",
     "  source   how to get it. {dir} is the install directory, {version} whatever",
     "           the version resolver returned, {script} a downloaded installer.",
     "",
@@ -122,6 +127,9 @@
       "probe": "android-tools",
       "platforms": [
         "linux/*"
+      ],
+      "requires": [
+        "jdk"
       ],
       "about": "sdkmanager and avdmanager — the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
       "source": {
@@ -311,11 +319,37 @@
       }
     },
     {
+      "name": "node",
+      "label": "Node.js",
+      "probe": "node",
+      "platforms": [
+        "linux/amd64"
+      ],
+      "about": "The JavaScript runtime and npm. Not needed to BE a node — the agent is Python and the provisioner installs that — but a project built with npm needs it here, and so does anything that drives a browser through Playwright.",
+      "source": {
+        "kind": "tarball",
+        "fresh_only": true,
+        "version": {
+          "resolver": "node-index",
+          "url": "https://nodejs.org/dist/index.json"
+        },
+        "url": "https://nodejs.org/dist/{version}/node-{version}-linux-x64.tar.xz",
+        "strip": 1,
+        "verify": [
+          "{dir}/bin/node",
+          "--version"
+        ]
+      }
+    },
+    {
       "name": "playwright",
       "label": "Playwright browsers",
       "probe": "playwright",
       "platforms": [
         "linux/*"
+      ],
+      "requires": [
+        "node"
       ],
       "about": "Chromium, Firefox and WebKit. The image carries Playwright itself and the system libraries; these are the browser bundles bb shot and the dashboard's own tests drive.",
       "source": {

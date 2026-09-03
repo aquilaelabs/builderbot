@@ -213,6 +213,17 @@ def resolve(pkg):
         if not url:
             die(f"{pkg['name']}: the index offers no {spec['asset']} build for {version}")
 
+    elif kind == "node-index":
+        # nodejs.org's own index, newest release first. LTS only: a node
+        # building somebody's project should be on the line upstream still
+        # supports, not on the current release that moves under it. The
+        # entry's version already carries its "v", which the download path
+        # and the filename both want.
+        index = json.loads(get(spec["url"]))
+        version = next((r["version"] for r in index if r.get("lts")), "")
+        if not version:
+            die(f"{pkg['name']}: the index offers no LTS release")
+
     elif kind:
         die(f"{pkg['name']}: unknown version resolver {kind!r}")
 

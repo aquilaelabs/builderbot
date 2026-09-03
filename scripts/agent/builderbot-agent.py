@@ -522,6 +522,7 @@ STORE_PATHS = (
     ("dotnet/tools", {}),
     ("swift/usr/bin", {}),
     ("go/bin", {}),
+    ("node/bin", {}),
     ("zig", {}),
     ("rust/cargo/bin", {"RUSTUP_HOME": "rust/rustup", "CARGO_HOME": "rust/cargo"}),
     ("android/cmdline-tools/latest/bin", {}),

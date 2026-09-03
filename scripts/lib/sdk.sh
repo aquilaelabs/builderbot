@@ -310,6 +310,14 @@ print((json.load(sys.stdin).get("releases") or [""])[0].removeprefix("jdk-"))' 2
             done
             [ -z "$props" ] || inst="$(sed -n 's/^Pkg.Revision=//p' "$props" 2>/dev/null | head -1)"
             ;;
+        node)
+            d="$(sdk_find node)" || d=""
+            [ -z "$d" ] || inst="$("$d/bin/node" --version 2>/dev/null | head -1)"
+            [ -n "$local_only" ] || latest="$(timeout 30 curl -fsS https://nodejs.org/dist/index.json 2>/dev/null \
+                      | python3 -c 'import json,sys
+print(next((r["version"] for r in json.load(sys.stdin) if r.get("lts")), ""))' 2>/dev/null)"
+            [ -n "$latest" ] || latest="-"
+            ;;
         zig)
             d="$(sdk_find zig)" || d=""
             [ -z "$d" ] || inst="$("$d/zig" version 2>/dev/null | head -1)"
