@@ -5071,6 +5071,21 @@ function drawRunner(r){
         does not, check for a stray listener with
         <code>pgrep -af Runner.Listener</code>.</span></div>` : "") +
     (r.name ? `<div class="row"><span class="sub">${esc(r.name)} → ${esc(r.url||"")}</span></div>` : "") +
+    // Every node with a runner, beside this container's. A workflow lands on
+    // whichever runner its runs-on matches, and until now the only place that
+    // answer existed was GitHub — the operator ran one on a node and had
+    // nowhere here to see it. The node's own name is the label that pins a
+    // job to it, so it is what the row leads with.
+    ((state.node_runners || []).map(n => {
+      const [word, cls] = !n.live ? ["quiet — the node has not dialed in lately", "warn"]
+        : n.busy ? ["running a job", "ok"]
+        : n.listening ? ["listening — idle", "ok"]
+        : n.installed ? ["installed, not listening", "bad"]
+        : ["install asked for; not reported yet", "warn"];
+      return `<div class="row"><span class="grow"><b>${esc(n.node)}</b>
+        <span class="sub ${cls}">${esc(word)}</span>${n.labels.length
+          ? `<div class="sub dim">runs-on: [self-hosted, ${esc(n.node)}]</div>` : ""}</span></div>`;
+    }).join("")) +
     // One toggle rather than a Restart that silently means stop-and-start.
     // Stopping waits for GitHub to release the session, so it is not instant —
     // the button says so instead of looking wedged.

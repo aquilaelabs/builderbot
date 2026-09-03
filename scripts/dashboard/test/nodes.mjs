@@ -421,6 +421,18 @@ ok(list[0].id === 'local',
        const mounts = kids.findIndex(k => k.classList.contains('ndsec') && /^Mounts/.test(k.textContent));
        return runner >= 0 && mounts >= 0 && runner < mounts;
      }), '...and the runner section comes before the mounts, not after the network');
+  // The sidebar's Runner card carries every node with a runner, not only
+  // this container's — a workflow lands on whichever runner its runs-on
+  // matches, and GitHub was the only place that answer existed.
+  await runnerCensus({ 'actions-runner': { installed: true, active: true, busy: false,
+                                           name: 'shed', url: 'https://github.com/example-org',
+                                           labels: ['builderbot', 'shed'] } });
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => /shed/.test(document.getElementById('runner')?.textContent || ''),
+                             null, { timeout: 10000 });
+  ok(await page.$eval('#runner', e => /listening — idle/.test(e.textContent)
+       && /runs-on: \[self-hosted, shed\]/.test(e.textContent)),
+     'the Runner card carries a node runner, with the runs-on that lands a job on it');
   await runnerCensus({});
   // A node with mounts and no saved config opens on the ones it reports —
   // an empty editor for a machine with three shares was the first thing the

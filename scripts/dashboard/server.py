@@ -1659,6 +1659,29 @@ def mint_runner_token(kind):
                      + (f" ({r['out'].strip()[:120]})" if r["out"].strip() else "")}
 
 
+def node_runners():
+    """[{node, name, listening, busy, labels, url}] for every node whose
+    census reports a runner, or that has been asked for one. Quiet nodes are
+    included and marked: a runner nobody can hear from is a fact worth
+    seeing, not a row to hide."""
+    if NODES_OK or not nodes:
+        return []
+    out = []
+    for n in nodes.node_list():
+        if n["kind"] != "agent":
+            continue
+        rep = ((n.get("reported") or {}).get("services") or {}).get("actions-runner") or {}
+        want = (n.get("services") or {}).get("actions-runner") or {}
+        if not (rep.get("installed") or want.get("want")):
+            continue
+        out.append({"node": n["name"], "id": n["id"], "live": bool(n.get("live")),
+                    "installed": bool(rep.get("installed")),
+                    "listening": bool(rep.get("active")), "busy": bool(rep.get("busy")),
+                    "name": rep.get("name") or "", "url": rep.get("url") or "",
+                    "labels": rep.get("labels") or want.get("labels") or []})
+    return out
+
+
 def runner():
     d = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner"))
     info = {"registered": False, "running": False, "listening": False,
@@ -1668,7 +1691,11 @@ def runner():
     if cfg.is_file():
         info["registered"] = True
         try:
-            j = json.loads(cfg.read_text())
+            # utf-8-sig: config.sh writes .runner with a BOM, so a plain read
+            # throws and this card lost the runner's name and URL on a box
+            # whose runner was registered fine — the same bug as github_url()
+            # and the agent's census.
+            j = json.loads(cfg.read_text(encoding="utf-8-sig"))
             info["name"] = j.get("agentName")
             info["url"] = j.get("gitHubUrl")
         except (ValueError, OSError):
@@ -2413,6 +2440,12 @@ def snapshot():
         "projects": ps,
         "sessions": sessions,
         "runner": runner(),
+        # Every node with a runner on it, so the card answers "which machine
+        # is CI running on" rather than only "is this container's runner up".
+        # The operator ran a workflow on a node and had nowhere on the
+        # dashboard to see it land — GitHub was the only place that answer
+        # existed. Read from the census, which already carries it.
+        "node_runners": node_runners(),
         "reports": REPORTS.is_dir(),
         "reports_mtime": reports_mtime(),
         "findings_counts": findings_counts(ps),
