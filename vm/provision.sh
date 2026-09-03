@@ -56,15 +56,15 @@ usage: provision.sh [options]
   --admin-key "ssh-…"  a PUBLIC key for the admin account, so it can be reached
                        over ssh the way the docker account is.
   --key "ssh-ed25519 …"  a PUBLIC key, appended to this machine's
-                       authorized_keys. It is the .pub half and nothing else:
-                       the private key stays on BuilderBot, shielded in
-                       /secrets/ssh where no session can read it, and this
-                       machine never holds it and never connects out. This is
-                       how BuilderBot reaches the daemon, and the reason no
-                       Docker port has to be opened at all.
-  --share TAG:PATH[:ro]  a virtiofs/9p share Unraid passes in, mounted at
-                       PATH. Repeatable. PATH MUST match the path BuilderBot
-                       uses. `:ro` mounts it read-only — right for the projects
+                       authorized_keys, for reaching it over ssh yourself.
+                       BuilderBot no longer needs one: an enrolled node dials
+                       OUT and every job arrives down that connection, so the
+                       controller holds no key that logs in anywhere. Nothing
+                       here opens a Docker port either.
+  --share TAG:PATH[:ro]  a virtiofs/9p share the HYPERVISOR passes in, mounted
+                       at PATH. Requires one — on bare metal there is nothing
+                       to pass a share in, so use --nfs instead. Repeatable.
+                       PATH MUST match the path BuilderBot uses. `:ro` mounts it read-only — right for the projects
                        share: nothing on this machine needs to WRITE source
                        code, so a wild container cannot either. Leave it off a
                        share containers keep their data on.
@@ -171,9 +171,18 @@ esac
 say "packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-# qemu-guest-agent so Unraid can shut it down cleanly rather than pulling the
-# plug; nfs-common only matters if --nfs is used, and costs nothing if not.
-apt-get install -y -qq ca-certificates curl gnupg qemu-guest-agent nfs-common unzip
+# nfs-common only matters if --nfs is used, and costs nothing if not; unzip
+# because a couple of the toolchains arrive as zips and a fresh install has
+# no unzip, which cost one operator a 100MB download that ended in
+# "unzip: not found".
+apt-get install -y -qq ca-certificates curl gnupg nfs-common unzip
+# ...and the guest agent only where there is a host to talk to, so Unraid can
+# shut the machine down cleanly rather than pulling the plug. Nothing here is
+# otherwise particular to a VM — this runs on bare metal just as well, and an
+# emulator is happier there, with /dev/kvm native instead of nested.
+if systemd-detect-virt --quiet --vm; then
+    apt-get install -y -qq qemu-guest-agent
+fi
 
 say "docker"
 # Docker's own repository rather than the distribution's: the compose plugin
