@@ -21,6 +21,19 @@
     "           which is a Java program, and without this it failed inside",
     "           sdkmanager with a message naming neither Java nor the package",
     "           that supplies it.",
+    "  layout     where this package lands, once, for everybody who needs to",
+    "           know. `bin` are directories under it to put on PATH, `env` the",
+    "           variables it sets (valued as a path under it, \"\" meaning the",
+    "           package directory itself), `tool` the file whose presence",
+    "           proves it is installed, and `reports` the name the census",
+    "           summary calls it. Written here because it was written in four",
+    "           places — sdk_env_snippet, the agent's STORE_TOOLS and",
+    "           STORE_PATHS, and sdk_check_one — and they drifted three times",
+    "           in one day.",
+    "           A path may start `root:` to mean relative to the store rather",
+    "           than to this package — the android packages share one tree,",
+    "           since sdkmanager installs into <root>/android whatever the",
+    "           package is called.",
     "  source   how to get it. {dir} is the install directory, {version} whatever",
     "           the version resolver returned, {script} a downloaded installer.",
     "",
@@ -102,6 +115,16 @@
       "name": "jdk",
       "label": "JDK 21 (Temurin)",
       "probe": "jdk",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {
+          "JAVA_HOME": ""
+        },
+        "tool": "bin/java",
+        "reports": "java"
+      },
       "platforms": [
         "linux/amd64"
       ],
@@ -125,6 +148,14 @@
       "name": "android-tools",
       "label": "Android command-line tools",
       "probe": "android-tools",
+      "layout": {
+        "bin": [
+          "root:android/cmdline-tools/latest/bin",
+          "root:android/platform-tools"
+        ],
+        "env": {},
+        "tool": "cmdline-tools/bin/sdkmanager"
+      },
       "platforms": [
         "linux/*"
       ],
@@ -165,6 +196,10 @@
       "name": "android:cmake",
       "label": "Android CMake",
       "probe": "android:cmake",
+      "layout": {
+        "bin": [],
+        "env": {}
+      },
       "platforms": [
         "linux/*"
       ],
@@ -185,6 +220,14 @@
       "name": "android:emulator",
       "label": "Android emulator",
       "probe": "android:emulator",
+      "layout": {
+        "bin": [
+          "root:android/emulator"
+        ],
+        "env": {},
+        "tool": "root:android/emulator/emulator",
+        "reports": "emulator"
+      },
       "platforms": [
         "linux/*"
       ],
@@ -204,6 +247,10 @@
       "name": "android:ndk",
       "label": "Android NDK",
       "probe": "android:ndk",
+      "layout": {
+        "bin": [],
+        "env": {}
+      },
       "platforms": [
         "linux/*"
       ],
@@ -224,6 +271,14 @@
       "name": "flutter",
       "label": "Flutter",
       "probe": "flutter",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/flutter",
+        "reports": "flutter"
+      },
       "platforms": [
         "linux/*"
       ],
@@ -250,6 +305,14 @@
       "name": "go",
       "label": "Go",
       "probe": "go",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/go",
+        "reports": "go"
+      },
       "platforms": [
         "linux/amd64"
       ],
@@ -274,6 +337,17 @@
       "name": "dotnet",
       "label": ".NET + MAUI",
       "probe": "dotnet",
+      "layout": {
+        "bin": [
+          "",
+          "tools"
+        ],
+        "env": {
+          "DOTNET_ROOT": ""
+        },
+        "tool": "dotnet",
+        "reports": "dotnet"
+      },
       "platforms": [
         "linux/*"
       ],
@@ -322,6 +396,14 @@
       "name": "node",
       "label": "Node.js",
       "probe": "node",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/node",
+        "reports": "node"
+      },
       "platforms": [
         "linux/amd64"
       ],
@@ -345,6 +427,12 @@
       "name": "playwright",
       "label": "Playwright browsers",
       "probe": "playwright",
+      "layout": {
+        "bin": [],
+        "env": {
+          "PLAYWRIGHT_BROWSERS_PATH": ""
+        }
+      },
       "platforms": [
         "linux/*"
       ],
@@ -387,6 +475,17 @@
       "name": "rust",
       "label": "Rust",
       "probe": "rust",
+      "layout": {
+        "bin": [
+          "cargo/bin"
+        ],
+        "env": {
+          "RUSTUP_HOME": "rustup",
+          "CARGO_HOME": "cargo"
+        },
+        "tool": "cargo/bin/cargo",
+        "reports": "rust"
+      },
       "platforms": [
         "linux/amd64"
       ],
@@ -426,6 +525,14 @@
       "name": "swift",
       "label": "Swift",
       "probe": "swift",
+      "layout": {
+        "bin": [
+          "usr/bin"
+        ],
+        "env": {},
+        "tool": "usr/bin/swift",
+        "reports": "swift"
+      },
       "platforms": [
         "linux/amd64"
       ],
@@ -452,6 +559,13 @@
       "name": "zig",
       "label": "Zig",
       "probe": "zig",
+      "layout": {
+        "bin": [
+          ""
+        ],
+        "env": {},
+        "tool": "zig"
+      },
       "platforms": [
         "linux/amd64"
       ],

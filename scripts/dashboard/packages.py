@@ -88,6 +88,14 @@ def load_packages():
         reqs = [x for x in (r.get("requires") or []) if isinstance(x, str) and x]
         if reqs:
             row["requires"] = reqs[:4]
+        lay = r.get("layout")
+        if isinstance(lay, dict):
+            row["layout"] = {
+                "bin": [str(x) for x in (lay.get("bin") or [])][:8],
+                "env": {str(k)[:40]: str(v) for k, v in (lay.get("env") or {}).items()},
+                "tool": str(lay.get("tool") or ""),
+                "reports": str(lay.get("reports") or ""),
+            }
         out.append(row)
     # Sorted here rather than trusted from the file, so a package added at the
     # end of the catalog still lands where somebody would look for it. Leading
@@ -823,6 +831,34 @@ def store_sharers(node_id):
 # with. One mapping, here.
 _ARCH = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64",
          "armv7l": "arm", "arm": "arm"}
+
+
+def layout_for_node():
+    """Every package's layout, as the agent needs it: what to put on PATH,
+    what variables to set, and which file proves a package is there.
+
+    Sent at hello rather than duplicated in the agent. It used to be three
+    hand-written tables — sdk_env_snippet here, STORE_TOOLS and STORE_PATHS
+    on the node — that had to agree about where every package lands and did
+    not: node/bin was missing from one, the android-tools probe read the
+    wrong directory, and the census disagreed with the inventory, all in one
+    day. The catalog is the one place that knows, and this is how a machine
+    with no catalog of its own finds out.
+
+    `dir` is where the package lives relative to the store: android's
+    packages share one tree, so theirs is `android`.
+    """
+    out = []
+    for p in PACKAGES:
+        lay = p.get("layout")
+        if not lay:
+            continue
+        name = p["name"]
+        out.append({"name": name,
+                    "dir": "android" if name.startswith("android:") else name,
+                    "bin": lay["bin"], "env": lay["env"],
+                    "tool": lay["tool"], "reports": lay["reports"]})
+    return out
 
 
 def node_has(n):

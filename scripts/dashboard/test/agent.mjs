@@ -507,6 +507,13 @@ try {
       ok(/path=[^\n]*agentpackages\/jdk\/bin/.test(log)
          && /path=[^\n]*agentpackages\/go\/bin/.test(log),
          '...and every toolchain the store holds is on its PATH, not just the JDK');
+      // ...composed from the catalog's layout, sent at hello, rather than
+      // from a table in the agent that has to agree with three others.
+      const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
+      ok(Array.isArray(st.layout) && st.layout.some(e => e.name === 'jdk' && e.tool === 'bin/java')
+         && st.layout.some(e => e.name === 'node' && (e.bin || []).includes('bin')),
+         `the controller tells the node where packages land, and it keeps it (${
+           (st.layout || []).length} entries)`);
     }
     ok(fin && fin.source.digest === run.snapshot && fin.source.project === 'alpha',
        '...and the row records the source it was built from');

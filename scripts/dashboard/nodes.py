@@ -1356,6 +1356,13 @@ def node_apply(principal, node_id, what):
     return r
 
 
+# Set by server.py at boot, because packages.py imports this one and the
+# catalog is its business, not the registry's. Absent (an older controller,
+# or a store that did not open) simply means the node keeps its built-in
+# answer.
+layout_of = lambda: []
+
+
 def hello(nid, census, addr, version="", digest="", running=None):
     """The agent on connect: refresh the census, record the version it is
     running, and answer with what the controller expects of it — protocol,
@@ -1391,7 +1398,11 @@ def hello(nid, census, addr, version="", digest="", running=None):
                                      "state": n["state"],
                                      "capabilities": n["capabilities"],
                                      "concurrency": n["concurrency"]},
-            "agent": {"digest": ours["digest"], "version": ours["version"]}}
+            "agent": {"digest": ours["digest"], "version": ours["version"]},
+            # Where every package lands, from the catalog — the node has no
+            # catalog of its own, and this is what stops it keeping a second
+            # copy of the answer that drifts from ours.
+            "layout": layout_of() or None}
 
 
 def heartbeat(nid, sample, addr, running=0):
