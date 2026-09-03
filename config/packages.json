@@ -9,6 +9,13 @@
     "           name is a directory under the SDK root, android:<pkg> a package",
     "           directory under ANDROID_HOME. System images are not packages;",
     "           they have a section of their own, above.",
+    "  platforms  which <os>/<arch> this recipe actually works on. Seven of these",
+    "           name linux-x86_64 in their URL, and swift names ubuntu24.04, so",
+    "           \"Linux\" is not one platform here. `*` in the arch position means",
+    "           the payload is arch-independent — shell and jars, a git clone, or",
+    "           a tool that resolves its own platform. An install onto a node",
+    "           outside the list is refused by name rather than downloading a",
+    "           couple of hundred megabytes and failing on exec.",
     "  source   how to get it. {dir} is the install directory, {version} whatever",
     "           the version resolver returned, {script} a downloaded installer.",
     "",
@@ -90,6 +97,9 @@
       "name": "jdk",
       "label": "JDK 21 (Temurin)",
       "probe": "jdk",
+      "platforms": [
+        "linux/amd64"
+      ],
       "about": "A Java runtime for sdkmanager, Gradle and the emulator tooling. The image carries one; a node's packages store does not, so this is the first thing a node needs for Android work.",
       "source": {
         "kind": "tarball",
@@ -110,6 +120,9 @@
       "name": "android-tools",
       "label": "Android command-line tools",
       "probe": "android-tools",
+      "platforms": [
+        "linux/*"
+      ],
       "about": "sdkmanager and avdmanager — the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
       "source": {
         "kind": "script",
@@ -143,6 +156,9 @@
       "name": "android:cmake",
       "label": "Android CMake",
       "probe": "android:cmake",
+      "platforms": [
+        "linux/*"
+      ],
       "about": "The CMake the NDK's build system uses.",
       "source": {
         "kind": "sdkmanager",
@@ -160,6 +176,9 @@
       "name": "android:emulator",
       "label": "Android emulator",
       "probe": "android:emulator",
+      "platforms": [
+        "linux/*"
+      ],
       "about": "The emulator binary. System images are per API level and come from ANDROID_SYSTEM_IMAGES.",
       "source": {
         "kind": "sdkmanager",
@@ -176,6 +195,9 @@
       "name": "android:ndk",
       "label": "Android NDK",
       "probe": "android:ndk",
+      "platforms": [
+        "linux/*"
+      ],
       "about": "Native development kit, for C and C++ inside an Android app.",
       "source": {
         "kind": "sdkmanager",
@@ -193,6 +215,9 @@
       "name": "flutter",
       "label": "Flutter",
       "probe": "flutter",
+      "platforms": [
+        "linux/*"
+      ],
       "about": "Flutter with the bundled Dart SDK. Builds Android APKs here; the iOS half of a Flutter app still needs a Mac.",
       "source": {
         "kind": "git",
@@ -216,6 +241,9 @@
       "name": "go",
       "label": "Go",
       "probe": "go",
+      "platforms": [
+        "linux/amd64"
+      ],
       "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH — no extra toolchain, no target to install.",
       "source": {
         "kind": "tarball",
@@ -237,6 +265,9 @@
       "name": "dotnet",
       "label": ".NET + MAUI",
       "probe": "dotnet",
+      "platforms": [
+        "linux/*"
+      ],
       "about": "The .NET SDK plus the maui-android workload — Android apps from C#.",
       "source": {
         "kind": "script",
@@ -282,6 +313,9 @@
       "name": "playwright",
       "label": "Playwright browsers",
       "probe": "playwright",
+      "platforms": [
+        "linux/*"
+      ],
       "about": "Chromium, Firefox and WebKit. The image carries Playwright itself and the system libraries; these are the browser bundles bb shot and the dashboard's own tests drive.",
       "source": {
         "kind": "command",
@@ -318,6 +352,9 @@
       "name": "rust",
       "label": "Rust",
       "probe": "rust",
+      "platforms": [
+        "linux/amd64"
+      ],
       "about": "rustup, cargo and the stable toolchain, kept in one directory. A Windows target needs a linker as well: gcc-mingw-w64 via EXTRA_APT_PACKAGES, or zig plus cargo-zigbuild.",
       "source": {
         "kind": "script",
@@ -354,6 +391,9 @@
       "name": "swift",
       "label": "Swift",
       "probe": "swift",
+      "platforms": [
+        "linux/amd64"
+      ],
       "about": "The Swift toolchain for Linux: shared logic, server-side Swift, and compiling packages. Not an iOS SDK.",
       "source": {
         "kind": "tarball",
@@ -377,6 +417,9 @@
       "name": "zig",
       "label": "Zig",
       "probe": "zig",
+      "platforms": [
+        "linux/amd64"
+      ],
       "about": "A C and C++ cross-compiler as much as a language: `zig cc -target x86_64-windows-gnu` turns this box into a Windows toolchain, and it links for Rust too.",
       "source": {
         "kind": "tarball",

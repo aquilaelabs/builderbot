@@ -5891,8 +5891,9 @@ function pkgRow(p, busy, job){
   const prog = `<span class="sub prog plain">${esc(doing)}<span class="dots">${
     ".".repeat(pkgDots)}</span></span>`;
   return `<label class="pkg${upToDate ? " done" : ""}">
-    <input type="checkbox" value="${esc(p.name)}"${busy ? " disabled" : ""}${
-      upToDate ? ` checked disabled title="installed and up to date — nothing to do until a check finds an update"`
+    <input type="checkbox" value="${esc(p.name)}"${busy || p.wrong_platform ? " disabled" : ""}${
+      p.wrong_platform ? ` title="this recipe is packaged for ${esc(p.wrong_platform)} — installing it here would fetch binaries that cannot run"`
+      : upToDate ? ` checked disabled title="installed and up to date — nothing to do until a check finds an update"`
                : pkgTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
       <span class="nm">${esc(p.label)}${p.size
@@ -5904,8 +5905,9 @@ function pkgRow(p, busy, job){
         // that is — so naming it per row was a repetition, and on a node,
         // where the census reports no per-package path, it read "installed
         // at " with nothing after it.
-        p.installed ? (p.path ? "installed at " + esc(p.path) : "installed")
-                    : "not installed"}</span>`}
+        p.wrong_platform ? `packaged for ${esc(p.wrong_platform)}, and this node is not`
+        : p.installed ? (p.path ? "installed at " + esc(p.path) : "installed")
+                      : "not installed"}</span>`}
       ${upd}${err}
     </span>
     ${p.installed && !mine ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${

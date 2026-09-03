@@ -66,7 +66,16 @@ def load_packages():
         if not all(isinstance(r.get(k), str) and r.get(k)
                    for k in ("name", "label", "probe", "about")):
             continue
-        out.append({k: r[k] for k in ("name", "label", "probe", "about")})
+        row = {k: r[k] for k in ("name", "label", "probe", "about")}
+        # ...and the platforms it works on, when the catalog says. A list of
+        # "<os>/<arch>", `*` allowed in the arch position. Projected here
+        # like the four above rather than taken whole, so a field the page
+        # does not render cannot arrive through this — and checked, because
+        # a malformed one would otherwise refuse every install silently.
+        plats = [x for x in (r.get("platforms") or []) if isinstance(x, str) and "/" in x]
+        if plats:
+            row["platforms"] = plats[:8]
+        out.append(row)
     # Sorted here rather than trusted from the file, so a package added at the
     # end of the catalog still lands where somebody would look for it. Leading
     # punctuation is ignored: ".NET" belongs under N, not above everything.
@@ -661,6 +670,7 @@ def payload_for_node(nid):
     pv = rep.get("packages_versions") or {}
     if not isinstance(pv, dict):
         pv = {}
+    plat = platform_of(n)
     store = (rep.get("stores") or {}).get("packages") or {}
     items = []
     # What is IN the store, by directory, which is where bb sdk puts things:
@@ -693,6 +703,11 @@ def payload_for_node(nid):
             {"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
         kb = _pkg_remembered.get(name)
         items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      # Said on the row, so a package this node cannot have
+                      # reads that way rather than offering an install that
+                      # is refused at the press.
+                      "wrong_platform": "" if supports(p, plat) else
+                          ", ".join(p.get("platforms") or ["linux/amd64"]),
                       "installed": here, "unknown": not known,
                       "path": "", "version": (have if isinstance(have, str) else "") or "",
                       "size": human_kb(kb) if kb else "",
@@ -790,6 +805,37 @@ def store_sharers(node_id):
             and _store_share(n) == mine]
 
 
+# The census spells an arch the way uname does; the catalog uses the
+# Docker/Go spelling, because that is what upstream download URLs are named
+# with. One mapping, here.
+_ARCH = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm64",
+         "armv7l": "arm", "arm": "arm"}
+
+
+def platform_of(n):
+    """"<os>/<arch>" for a node, or "" when it has not said."""
+    os_ = str((n or {}).get("os") or "").strip().lower()
+    arch = _ARCH.get(str((n or {}).get("arch") or "").strip().lower(), "")
+    return f"{os_}/{arch}" if os_ and arch else ""
+
+
+def supports(pkg, plat):
+    """Whether this recipe works on that platform. Absent list means the
+    historical truth — this catalog only ever served linux/amd64."""
+    want = pkg.get("platforms") or ["linux/amd64"]
+    if not plat:
+        return True                     # a node that has not said is not judged
+    o, _, a = plat.partition("/")
+    return any(x == plat or x == f"{o}/*" for x in want)
+
+
+def unsupported(names, plat):
+    """[(name, platforms)] for the ones this platform cannot have."""
+    by = {p["name"]: p for p in PACKAGES}
+    return [(x, ", ".join(by[x].get("platforms") or ["linux/amd64"]))
+            for x in names if x in by and not supports(by[x], plat)]
+
+
 def node_job(principal, nid, action, names):
     """Queue the package job. Refused, with numbers, when the store cannot
     hold what is asked — measured here the last time it was installed, so a
@@ -803,6 +849,19 @@ def node_job(principal, nid, action, names):
         return {"error": f"{n['name']} runs no agent — toolchains are installed there by hand"}
     store = ((n.get("reported") or {}).get("stores") or {}).get("packages") or {}
     if action == "install":
+        # Seven of these recipes name linux-x86_64 in their URL and one names
+        # ubuntu24.04, so a node of another platform would download a couple
+        # of hundred megabytes and fail on exec — or install and fail later.
+        # Refused by name instead. arm64 Linux needs no new agent to reach
+        # this, which is why it is a live wrong answer rather than a future
+        # one (roadmap #18).
+        plat = platform_of(n)
+        no = unsupported(names, plat)
+        if no:
+            return {"error": f"{n['name']} is {plat}, and "
+                             + "; ".join(f"{x} is packaged for {p}" for x, p in no)
+                             + ". The catalog names the platform each recipe works on; "
+                               "adding another is a URL per row, not a code change."}
         need_kb = sum(_pkg_remembered.get(x, 0) for x in names)
         free = store.get("free_mb")
         if need_kb and free is not None and free * 1024 < need_kb * 1.2:

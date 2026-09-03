@@ -552,6 +552,18 @@ ok(list[0].id === 'local',
         packages: { ...CENSUS.stores.packages, id: ID } } } },
       { Authorization: 'Bearer ' + other.token, 'Content-Type': 'application/json' });
     ok(oen.ok, '(a second node enrolled on the same store)');
+    // ...and the catalog says which platform each recipe is for, so an
+    // install onto a node of another one is refused by name rather than
+    // fetching a couple of hundred megabytes that cannot execute. arm64
+    // Linux needs no new agent to reach this (roadmap #18).
+    const wrong = await napi('/api/packages', { action: 'install', names: ['jdk'], node: other.id });
+    ok(/packaged for linux\/amd64/.test(wrong.error || ''),
+       `an install onto the wrong platform is refused by name (${
+         (wrong.error || 'no error').slice(0, 100)})`);
+    const fine = await napi('/api/packages', { action: 'install', names: ['flutter'], node: other.id });
+    ok(!/packaged for/.test(fine.error || ''),
+       `...while one that resolves its own platform is not refused FOR ITS PLATFORM — this node's refusal is the shared store, a different thing (${String(fine.error).slice(0, 60)})`);
+    if (fine.job) await napi('/api/v1/jobs', { action: 'cancel', id: fine.job });
     const clash = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
     ok(/cannot hold both architectures/.test(clash.error || ''),
        `a store shared across architectures refuses the install (${
