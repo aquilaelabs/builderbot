@@ -1426,6 +1426,25 @@ and `--write` regenerates `.github/actionlint.yaml` from them, so the lint
 checks `runs-on` against runners that exist. The container's own runner
 stays until a node runner has taken a real job.
 
+**A project's node does not decide where its CI runs, and nothing can make
+it.** That setting governs BuilderBot's own queue — `bb build`, `bb test`,
+`bb run`, `bb emu`, compose. Actions dispatch belongs to GitHub, which reads
+`runs-on` and nothing else, so with a runner here *and* on a node,
+`runs-on: [self-hosted, builderbot]` matches both and the job goes to
+whichever is idle — possibly the machine without the toolchain, silently.
+The node's own name is already a label on its runner, so pinning is one
+word:
+
+```yaml
+runs-on: [self-hosted, alpha-vm]
+```
+
+The node's runner section prints that line for you, and `bb lint` says when
+a project has a node and its workflows do not carry it — a note, not a
+failure, because the workflow file is the repo's and this is advice. A
+`runs-on` built from an expression is left alone: choosing the runner at
+dispatch is a deliberate act, not a workflow that forgot.
+
 **How an instance is reached.** Each running instance on the Docker manager
 carries its route: the URL, and a picker for the mode. **lan** is the
 published port at the node's own address, what the manager always linked.

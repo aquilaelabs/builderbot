@@ -398,6 +398,12 @@ ok(list[0].id === 'local',
   ok(await page.$eval(`${ROW} .ndrunstate`, e => /running a job/.test(e.textContent)
        && /registered as shed/.test(e.textContent)),
      '...and one that is working says which job-taking state it is in, by name');
+  // The label is the only thing that pins a workflow to THIS machine —
+  // `self-hosted` alone matches the controller and every other node, so
+  // GitHub sends the job to whichever is idle (roadmap #19).
+  ok(await page.$eval(`${ROW} .ndrunpin`, e =>
+       /runs-on: \[self-hosted, shed\]/.test(e.textContent)),
+     '...and the section prints the exact runs-on line that lands a job here');
   // The runner belongs above the mounts: it is the thing the operator is
   // most often here to check, and it was below three editors.
   ok(await page.$eval(`${ROW} .ndconfbody`, e => {

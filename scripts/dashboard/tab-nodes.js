@@ -186,6 +186,11 @@ function nodeRunnerSection(n, c){
       </div>
       <div class="sub ndrunstate${vcls ? " " + vcls : ""}">${
         rep.busy ? `<span class="pill note ndrunbusy">running a job</span> ` : ""}${esc(state)}</div>
+      ${rep.installed || want.want ? `<div class="sub ndrunpin">Every BuilderBot runner answers
+        <code>self-hosted</code>, so a workflow that asks for no more than that lands on whichever
+        is idle. This node's own name is a label on its runner, so this is the line that pins a
+        job here — <code>bb lint</code> says when a project's workflows do not carry it:
+        <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div>` : ""}
       <div class="acts">
         <span class="sp"></span>
         <button type="button" data-nrunner="install" ${busy ? "disabled" : ""}
