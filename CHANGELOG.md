@@ -209,3 +209,6 @@
 - A node's toolchain versions now read the same way this container's do, instead of showing 'present' where a real version exists (c796d9c)
 - The JDK and the Android command-line tools now report their versions (c796d9c)
 - bb-sandbox sdk shows what the node's packages store holds, from the console, without needing the dashboard (a7c409e)
+- Typing a reason into a bug's delete box or edit form no longer loses it when the list refreshes underneath you (9e8a007)
+- Removing a container you wrote here now takes its env file with it, instead of leaving one behind per removal (9e8a007)
+- Update agent and Clear cache stay greyed until their job finishes, rather than looking pressable again straight away (9e8a007)
