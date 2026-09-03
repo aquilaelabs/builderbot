@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "17"
+AGENT_VERSION = "18"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -504,25 +504,64 @@ def store_dirs(state):
     return out
 
 
+# What the packages store puts on PATH, and the few toolchains that need a
+# variable as well. The container gets this from the generated env.sh
+# (sdk_env_snippet in lib/sdk.sh); a node has no shell profile and no way to
+# run bb at exec time, so it is composed here — from ONE table, which is
+# also what store_dirs and _toolchains read the store by, so the census and
+# the environment a job runs in cannot disagree about what this node has.
+#
+# Each entry is a directory under the store, and the variables it also sets.
+# Only directories that exist are used: a PATH full of absent entries says
+# nothing, and one that names exactly what is there is a description of the
+# node.
+STORE_PATHS = (
+    ("jdk/bin", {"JAVA_HOME": "jdk"}),
+    ("flutter/bin", {}),
+    ("dotnet", {"DOTNET_ROOT": "dotnet"}),
+    ("dotnet/tools", {}),
+    ("swift/usr/bin", {}),
+    ("go/bin", {}),
+    ("zig", {}),
+    ("rust/cargo/bin", {"RUSTUP_HOME": "rust/rustup", "CARGO_HOME": "rust/cargo"}),
+    ("android/cmdline-tools/latest/bin", {}),
+    ("android/platform-tools", {}),
+    ("android/emulator", {}),
+)
+
+
 def sdk_env(state, who=None):
-    """The environment a bb verb runs with on this node: the packages store
-    as the SDK root, its android/ directory as ANDROID_HOME, its jdk as
-    JAVA_HOME, the tools on PATH, and AVDs under the data store. What the
-    image gets from its Dockerfile, a node gets from here."""
+    """The environment a job runs with on this node: the packages store as
+    the SDK root, its android/ directory as ANDROID_HOME, its jdk as
+    JAVA_HOME, every toolchain it holds on PATH, and AVDs under the data
+    store. What the image gets from its Dockerfile, a node gets from here.
+
+    EVERY job, not only a bb verb. It used to be applied in the bb branch of
+    Job.exec alone, so `bb build` and `bb test` — a plain exec — ran with a
+    bare PATH: measured on a real node, java and go were both NOT-ON-PATH
+    and JAVA_HOME unset, on a node whose census reported java 21.0.12.1 and
+    go present. The placement gate said yes and then ./gradlew could not
+    find a compiler (bug #45).
+    """
     stores = state.get("stores") or {}
     store = stores.get("packages") or ""
     env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C.UTF-8"}
     if store:
         android = os.path.join(store, "android")
-        jdk = os.path.join(store, "jdk")
         env.update({"SDK_ROOT": store, "BUILDER_HOME": store, "BB_NODE_PACKAGES": "1",
                     "ANDROID_HOME": android, "ANDROID_SDK_ROOT": android})
-        if os.path.isdir(jdk):
-            env["JAVA_HOME"] = jdk
-        env["PATH"] = ":".join([os.path.join(jdk, "bin"),
-                                os.path.join(android, "cmdline-tools", "latest", "bin"),
-                                os.path.join(android, "platform-tools"),
-                                os.path.join(android, "emulator"), env["PATH"]])
+        front = []
+        for rel, extra in STORE_PATHS:
+            d = os.path.join(store, rel)
+            if not os.path.isdir(d):
+                continue
+            front.append(d)
+            for k, v in extra.items():
+                env.setdefault(k, os.path.join(store, v))
+        # The store ahead of the system PATH: a node that carries its own JDK
+        # is meant to build with that one, not with whatever the distribution
+        # happens to have.
+        env["PATH"] = ":".join(front + [env["PATH"]])
     env["ANDROID_AVD_HOME"] = os.path.join(stores.get("data") or "/tmp", "avd")
     return env
 
@@ -912,9 +951,12 @@ class Job(threading.Thread):
         argv = [str(a) for a in (spec.get("argv") or [])]
         stores = self.agent.state.get("stores") or {}
         cwd = spec.get("cwd") or stores.get("data") or "/tmp"
-        env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
-               "LANG": "C.UTF-8", "BUILDERBOT_NODE": self.agent.state.get("node_id", ""),
-               "BUILDERBOT_JOB": self.job["id"]}
+        # The node's own toolchains, for EVERY job — a build is the case this
+        # whole store exists for, and it was the one case that did not get
+        # them (bug #45).
+        env = dict(sdk_env(self.agent.state))
+        env.update({"BUILDERBOT_NODE": self.agent.state.get("node_id", ""),
+                    "BUILDERBOT_JOB": self.job["id"]})
         who = self.agent.drop_privileges(env)
         bbv = [str(a) for a in (spec.get("bb") or [])]
         if bbv:
@@ -929,7 +971,6 @@ class Job(threading.Thread):
             project = re.sub(r"[^A-Za-z0-9._-]", "_", str(spec.get("project") or "project"))
             cwd = os.path.join(stores.get("data") or "/tmp", "emu", project)
             self.agent.own_dir(cwd, who)
-            env.update(sdk_env(self.agent.state))
             env["BB_PROJECT"] = str(spec.get("project") or "")
         if not argv:
             self.say("refused: empty argv\n")
