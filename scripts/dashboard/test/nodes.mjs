@@ -354,7 +354,17 @@ ok(list[0].id === 'local',
      'the CI runner section says there is none, and offers to install one');
   await page.fill(`${ROW} [data-k="runner:url"]`, 'https://github.com/example-org');
   await page.fill(`${ROW} [data-k="runner:labels"]`, 'gpu');
-  await page.click(`${ROW} [data-nrunner="install"]`);
+  // Dead the moment it is pressed, not when the answer comes back. Every
+  // action here awaits a POST, then loadNodes(), then a repaint — a second
+  // or two in which the button looked untouched, so there was no telling a
+  // press that landed from one that missed. Read synchronously after the
+  // click dispatches, before any await resolves.
+  const pressedState = await page.evaluate(sel => {
+    const b = document.querySelector(sel + ' [data-nrunner="install"]');
+    b.click();
+    return b.disabled;
+  }, ROW);
+  ok(pressedState === true, 'a node action goes dead the instant it is pressed, not when it answers');
   await page.waitForFunction(sel => /applying runner/.test(
     document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
   const rj = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system' && j.spec.apply === 'runner');
@@ -388,6 +398,12 @@ ok(list[0].id === 'local',
   ok(await page.$eval(`${ROW} .ndrunstate`, e => /running a job/.test(e.textContent)
        && /registered as shed/.test(e.textContent)),
      '...and one that is working says which job-taking state it is in, by name');
+  // The label is the only thing that pins a workflow to THIS machine —
+  // `self-hosted` alone matches the controller and every other node, so
+  // GitHub sends the job to whichever is idle (roadmap #19).
+  ok(await page.$eval(`${ROW} .ndrunpin`, e =>
+       /runs-on: \[self-hosted, shed\]/.test(e.textContent)),
+     '...and the section prints the exact runs-on line that lands a job here');
   // The runner belongs above the mounts: it is the thing the operator is
   // most often here to check, and it was below three editors.
   ok(await page.$eval(`${ROW} .ndconfbody`, e => {

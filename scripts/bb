@@ -2668,6 +2668,54 @@ cmd_lint() {
                 done
                 [ -z "$missing" ] || echo "  [note] actionlint.yaml declares labels no runner in the registry carries: ${missing} — bb ci-labels --write regenerates it"
             fi
+            # ...and the other half of the same failure (roadmap #19). A
+            # project's node governs BuilderBot's OWN queue — bb build, test,
+            # run, emu, compose. GitHub Actions dispatch is GitHub's and reads
+            # runs-on only, so nothing connects the two: with a runner on the
+            # controller AND on a node, `runs-on: [self-hosted, builderbot]`
+            # matches both and GitHub picks whichever is idle — which can be
+            # the machine without the toolchain, silently. The node's own name
+            # is already a label on its runner, so pinning is one word. This
+            # can only ever be advice: the workflow file is the repo's and
+            # GitHub reads it, not us.
+            local nid; nid="$(project_node)"
+            if [ -n "$nid" ]; then
+                DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - \
+                    "$(dirname "$(readlink -f "$0")")/dashboard/nodes.py" "$nid" <<'PY' 2>/dev/null
+import importlib.util, os, pathlib, re, sys
+spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
+nodes = importlib.util.module_from_spec(spec); spec.loader.exec_module(nodes)
+try:
+    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    label = nodes.node_runner_label(sys.argv[2])
+except Exception:
+    label = ""
+if label:
+    # runs-on lines that name self-hosted and NOT this node. A hosted runner
+    # (ubuntu-latest) is a deliberate choice and none of this applies to it.
+    loose = []
+    for f in sorted(pathlib.Path(".github/workflows").glob("*.y*ml")):
+        for i, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+            m = re.match(r"\s*runs-on:\s*(.+?)\s*$", line)
+            if not m:
+                continue
+            v = m.group(1)
+            # An expression is a deliberate choice of runner made at
+            # dispatch (the smoke test does exactly this), so it is not a
+            # workflow that forgot to pin.
+            if "self-hosted" in v and label not in v and "${{" not in v:
+                loose.append(f"{f.name}:{i}")
+    if loose:
+        print(f"  [note] this project's node is {label}, and "
+              f"{len(loose)} workflow job{'s' if len(loose) > 1 else ''} "
+              f"do{'' if len(loose) > 1 else 'es'} not pin it "
+              f"({', '.join(loose[:6])}{', …' if len(loose) > 6 else ''})")
+        print(f"         their runs-on matches every BuilderBot runner, so GitHub sends the")
+        print(f"         job to whichever is idle — which may be a machine without the")
+        print(f"         toolchain. To land on this project's node:")
+        print(f"           runs-on: [self-hosted, {label}]")
+PY
+            fi
         fi
     else
         echo "  none found"

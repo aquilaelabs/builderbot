@@ -49,7 +49,7 @@ const SURFACE = [
   'findingsRulesHtml', 'finishTabs', 'flip', 'focusTab', 'foldHeight',
   'fillNodeSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab', 'imgAdder',
   'imgRow', 'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
-  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeDraft', 'mountState', 'nodeStale', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfFold', 'nodeRunnerSection', 'nodePathsLine', 'nodeMeters', 'meter', 'dmRouteLine', 'loadPackages', 'loadWire', 'logNote', 'logSection',
+  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeDraft', 'mountState', 'nodeStale', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfFold', 'nodeRunnerSection', 'nodePathsLine', 'nodeMeters', 'meter', 'dmRouteLine', 'loadPackages', 'loadWire', 'logNote', 'logSection',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onCardDrag', 'onDrag', 'onRev', 'openClaude',

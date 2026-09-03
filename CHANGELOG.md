@@ -198,3 +198,5 @@
 - The changelog panel no longer goes blank when the page refreshes underneath it (8df58a6)
 - A node's runner no longer reports itself as possibly-unregistered when it is registered and listening — its name is read correctly now (8f1380c)
 - The runner smoke test can be pointed at a particular machine, so you can prove which runner took the job (8f1380c)
+- Buttons on the Nodes tab grey out the moment you press them, so a click that has landed looks different from one that missed (f9d7a5a)
+- bb lint now says when a project's workflows do not pin the node it is bound to, and gives the line to paste (5a6e6b6)

@@ -43,6 +43,29 @@ async function loadNodes(){
   if (tabs.some(t => t.kind === "nodes")) drawPanes();
 }
 
+// A button that starts something goes dead the moment it is pressed.
+//
+// Every action here awaits a round trip — the POST, then loadNodes(), then
+// the repaint — and for that second or two the control looked exactly as it
+// did before the click. So there was no way to tell a press that had landed
+// from one that had missed, and a second press queued a second job or
+// collected a "one at a time" refusal for its trouble.
+//
+// Only the gap: the repaint that follows draws the real state (n.applying,
+// the runner's census, a queued job) and replaces this element entirely, so
+// the restore below fires only when nothing repainted — an error, or an
+// action that changes no state. Put the confirm() BEFORE the call, so
+// cancelling leaves the button alive.
+async function pressing(btn, fn){
+  if (!btn || btn.disabled) return undefined;
+  btn.disabled = true;
+  try{
+    return await fn();
+  }finally{
+    if (btn.isConnected) btn.disabled = false;
+  }
+}
+
 async function nodeAct(body){
   const j = await (await fetch("/api/v1/nodes", {
     method: "POST", headers: {"Content-Type": "application/json"},
@@ -163,6 +186,11 @@ function nodeRunnerSection(n, c){
       </div>
       <div class="sub ndrunstate${vcls ? " " + vcls : ""}">${
         rep.busy ? `<span class="pill note ndrunbusy">running a job</span> ` : ""}${esc(state)}</div>
+      ${rep.installed || want.want ? `<div class="sub ndrunpin">Every BuilderBot runner answers
+        <code>self-hosted</code>, so a workflow that asks for no more than that lands on whichever
+        is idle. This node's own name is a label on its runner, so this is the line that pins a
+        job here — <code>bb lint</code> says when a project's workflows do not carry it:
+        <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div>` : ""}
       <div class="acts">
         <span class="sp"></span>
         <button type="button" data-nrunner="install" ${busy ? "disabled" : ""}
@@ -556,7 +584,7 @@ function wireNodesTab(root){
   if (en) en.onclick = () => { nodesOpenForm = nodesOpenForm === "agent" ? "" : "agent";
                                nodesRev++; drawPanes(); };
   const engo = root.querySelector("#ndEnGo");
-  if (engo) engo.onclick = async () => {
+  if (engo) engo.onclick = () => pressing(engo, async () => {
     const name = root.querySelector("#ndEnName").value;
     const r = await nodeAct({action: "enroll", name});
     if (!r.error){
@@ -566,12 +594,12 @@ function wireNodesTab(root){
       nodesMinted = {name: name || "node", token: r.token, url: location.origin};
       nodesOpenForm = ""; nodesRev++; drawPanes();
     }
-  };
+  });
   const tok = root.querySelector("#ndTokDone");
   if (tok) tok.onclick = () => { nodesMinted = null; nodesRev++; drawPanes(); };
   root.querySelectorAll(".ndrow").forEach(row => {
     const id = row.dataset.node;
-    row.querySelectorAll("[data-nd]").forEach(b => b.onclick = async () => {
+    row.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
       if (b.dataset.nd === "retire"
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "
@@ -612,7 +640,7 @@ function wireNodesTab(root){
         return;
       }
       await nodeAct({action: b.dataset.nd, id});
-    });
+    }));
     wireNodeConf(row, id);
     const pi = row.querySelector('.ndpaths [data-k="paths"]');
     if (pi){
@@ -708,13 +736,14 @@ function wireNodeConf(row, id){
     if (!want && !confirm(`Remove the runner from ${n?.name || "this node"}?\n\nIt is deregistered `
         + `from GitHub first; workflows that target its label will wait for a runner.`)) return;
     const labels = (c.draft.runner?.labels || "").split(",").map(x => x.trim()).filter(Boolean);
-    await nodeAct({action: "runner", id, want, labels, url: c.draft.runner?.url || ""});
+    await pressing(b, () => nodeAct({action: "runner", id, want, labels,
+                                     url: c.draft.runner?.url || ""}));
   });
   const save = fold.querySelector("[data-nsave]");
-  if (save) save.onclick = async () => {
+  if (save) save.onclick = () => pressing(save, async () => {
     const r = await nodeAct({action: "config", id, config: c.draft});
     if (!r.error){ c.dirty = false; c.draft = null; nodesRev++; drawPanes(); }
-  };
+  });
   fold.querySelectorAll("[data-napply]").forEach(b => b.onclick = async () => {
     const what = b.dataset.napply;
     const n = nodesList.find(x => x.id === id);
@@ -739,6 +768,6 @@ function wireNodeConf(row, id){
           + `so the old cop${moving.length === 1 ? "y stays" : "ies stay"} where ${
               moving.length === 1 ? "it is" : "they are"} for you to remove.`)) return;
     }
-    await nodeAct({action: "apply", id, what});
+    await pressing(b, () => nodeAct({action: "apply", id, what}));
   });
 }

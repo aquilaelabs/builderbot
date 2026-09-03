@@ -1184,6 +1184,25 @@ def toolchain_gap(node_id, argv):
     return "" if tc.get(want) else want
 
 
+def node_runner_label(node_id):
+    """The label that pins a workflow's runs-on to THIS node's runner — its
+    own name, cleaned the way runner_labels_for cleans it.
+
+    "" when the node has no runner installed or asked for: advising a
+    runs-on that nothing answers is the "Waiting for a runner" strand this
+    exists to prevent, and an empty answer is how the caller knows to say
+    nothing rather than to say something wrong.
+    """
+    n = node(node_id)
+    if not n:
+        return ""
+    rep = ((n.get("reported") or {}).get("services") or {}).get("actions-runner") or {}
+    want = (n.get("services") or {}).get("actions-runner") or {}
+    if not (rep.get("installed") or want.get("want")):
+        return ""
+    return re.sub(r"[^A-Za-z0-9._-]", "-", n["name"])[:40]
+
+
 def runner_labels_known():
     """Every label a runner in the registry carries, reported or wanted, for
     the lint that checks a workflow's runs-on against what exists."""
