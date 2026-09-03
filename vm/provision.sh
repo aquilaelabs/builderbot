@@ -173,7 +173,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 # qemu-guest-agent so Unraid can shut it down cleanly rather than pulling the
 # plug; nfs-common only matters if --nfs is used, and costs nothing if not.
-apt-get install -y -qq ca-certificates curl gnupg qemu-guest-agent nfs-common
+apt-get install -y -qq ca-certificates curl gnupg qemu-guest-agent nfs-common unzip
 
 say "docker"
 # Docker's own repository rather than the distribution's: the compose plugin

@@ -695,6 +695,29 @@ def payload_for_node(nid):
                    "log": nodes.job_tail(j["id"], 1200).splitlines()[-16:], "done": [],
                    "failed": [], "aborting": bool(j.get("cancel")), "node": nid, "id": j["id"]}
             break
+        if job is None:
+            # The last FINISHED one, so the tab can clear what it selected.
+            # Nothing did, on a node: done and failed were hardcoded empty
+            # and the row vanished the moment the job ended, so every tick
+            # survived and the next press re-sent packages that had already
+            # landed — "installing 2" with one left to do.
+            #
+            # Both lists come from the census rather than from the job's log:
+            # what is in the store now is the only thing actually true, and
+            # it is self-correcting — a job that half-worked reports exactly
+            # the packages that did land as done, whatever its exit code was.
+            for j in nodes.jobs_for(node_id=nid, type="package", n=1):
+                if j.get("state") not in ("succeeded", "failed", "canceled"):
+                    break
+                sp = j.get("spec") or {}
+                names = [str(x) for x in (sp.get("names") or [])]
+                act = sp.get("action") or "install"
+                here = {i["name"] for i in items if i["installed"]}
+                done = [x for x in names if (x in here) == (act == "install")]
+                job = {"running": False, "action": act, "queue": [], "current": "",
+                       "done": done, "failed": [x for x in names if x not in done],
+                       "aborting": False, "node": nid, "id": j["id"]}
+                break
     shared = [x["name"] for x in store_sharers(nid)]
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             "shared_with": shared,

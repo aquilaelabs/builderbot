@@ -295,6 +295,10 @@ ok(list[0].id === 'local',
                                        packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 },
                                        artifacts: { path: '/var/lib/builderbot/artifacts', free_mb: 30000, total_mb: 90000 } },
               toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
+              // What the packages store actually holds, which is what the
+              // Tools tab decides `installed` from — the census summary
+              // above is a placement hint, not an inventory.
+              store_dirs: { top: ['flutter', 'node'], android: [] },
               mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false, mounted: true, real: 'nas:/mnt/user/old' }],
               network: { interface: 'ens3', addresses: ['10.0.0.40/24'], gateway: '10.0.0.1', dns: ['10.0.0.1'] } };
   const en = await napi('/api/v1/agent/enroll', {
@@ -514,6 +518,26 @@ ok(list[0].id === 'local',
   ok(tools.some(t => /3\.24\.0/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent)),
      `picking the node lists what its census says it has, and its store's headroom (${
        await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
+  ok(!/installed at\s*(<|$)/m.test(await page.$eval('.pkgtab', e => e.textContent)),
+     'an installed package on a node reads "installed", not "installed at" with nothing after it');
+  // What a FINISHED job on a node reports. It used to report nothing — the
+  // row vanished the moment the job ended, with done and failed hardcoded
+  // empty — so the tab never cleared what the operator had ticked and the
+  // next press re-sent packages that had already landed.
+  {
+    const j = await napi('/api/packages', { action: 'install', names: ['flutter', 'jdk'], node: minted.id });
+    if (j.job) await napi('/api/v1/jobs', { action: 'cancel', id: j.job });
+    let seen = null;
+    for (let t = 0; t < 60 && !seen; t++){
+      const p = await (await fetch(base + '/api/packages?node=' + minted.id, { headers: H })).json();
+      if (p.job && p.job.running === false && p.job.action) seen = p.job;
+      else await sleep(250);
+    }
+    ok(seen && seen.action === 'install' && seen.done.includes('flutter')
+       && seen.failed.includes('jdk'),
+       `a finished node job says what actually landed, read from the census (${
+         JSON.stringify(seen && {done: seen.done, failed: seen.failed})})`);
+  }
   const gate = await napi('/api/packages', { action: 'install', names: ['android:platform-tools'], node: 'local' });
   ok(gate.ok !== undefined || gate.error, '(local installs still go through the installer here)');
 

@@ -37,13 +37,13 @@
     "No size is written down here. One typed into a file is wrong the next time",
     "upstream ships: a row shows what the package takes on this disk once it is",
     "installed, what it took the last time it was, or what the download weighs",
-    "before that \u2014 never a number somebody guessed.",
+    "before that — never a number somebody guessed.",
     "             \"url-matches\" fetches a file upstream publishes and matches the",
     "             URLs out of it, which is how rust's three minimal-profile",
     "             components are counted; \"android-repo\" reads sdkmanager's own",
     "             index, keyed by the package id an install resolves to; and",
     "             \"approximate\" is a number written down, for the one recipe whose",
-    "             download cannot be measured before it happens \u2014 a git clone has",
+    "             download cannot be measured before it happens — a git clone has",
     "             no content length. It is marked as an approximation everywhere",
     "             it is shown."
   ],
@@ -65,12 +65,12 @@
     "flavors": {
       "google_apis": {
         "label": "Google APIs",
-        "about": "Google Play services \u2014 Maps, sign-in, push \u2014 but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what ANDROID_SYSTEM_IMAGES installs.",
+        "about": "Google Play services — Maps, sign-in, push — but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what ANDROID_SYSTEM_IMAGES installs.",
         "xml": "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-3.xml"
       },
       "google_apis_playstore": {
         "label": "Google APIs + Play Store",
-        "about": "The same, plus the Play Store app itself \u2014 for anything that has to sign in to Play, check a license or take an in-app payment. A Play-certified build, so it is not rootable. Google ships it as a separate image; there is no image that is one plus a switch.",
+        "about": "The same, plus the Play Store app itself — for anything that has to sign in to Play, check a license or take an in-app payment. A Play-certified build, so it is not rootable. Google ships it as a separate image; there is no image that is one plus a switch.",
         "xml": "https://dl.google.com/android/repository/sys-img/google_apis_playstore/sys-img2-3.xml"
       },
       "android-tv": {
@@ -110,7 +110,7 @@
       "name": "android-tools",
       "label": "Android command-line tools",
       "probe": "android-tools",
-      "about": "sdkmanager and avdmanager \u2014 the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
+      "about": "sdkmanager and avdmanager — the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -118,7 +118,7 @@
         "run": [
           "sh",
           "-c",
-          "unzip -q \"$1\" -d \"$2\" && root=\"$(dirname \"$2\")/android\" && mkdir -p \"$root/cmdline-tools\" && ln -sfn \"$2/cmdline-tools\" \"$root/cmdline-tools/latest\"",
+          "{ command -v unzip >/dev/null 2>&1 && unzip -q \"$1\" -d \"$2\"; } || python3 -c \"import os,sys,zipfile;z=zipfile.ZipFile(sys.argv[1]);[(z.extract(i,sys.argv[2]), (i.external_attr>>16) and os.chmod(os.path.join(sys.argv[2],i.filename), i.external_attr>>16)) for i in z.infolist()]\" \"$1\" \"$2\" && root=\"$(dirname \"$2\")/android\" && mkdir -p \"$root/cmdline-tools\" && ln -sfn \"$2/cmdline-tools\" \"$root/cmdline-tools/latest\"",
           "_",
           "{script}",
           "{dir}"
@@ -216,7 +216,7 @@
       "name": "go",
       "label": "Go",
       "probe": "go",
-      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH \u2014 no extra toolchain, no target to install.",
+      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH — no extra toolchain, no target to install.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -237,7 +237,7 @@
       "name": "dotnet",
       "label": ".NET + MAUI",
       "probe": "dotnet",
-      "about": "The .NET SDK plus the maui-android workload \u2014 Android apps from C#.",
+      "about": "The .NET SDK plus the maui-android workload — Android apps from C#.",
       "source": {
         "kind": "script",
         "url": "https://dot.net/v1/dotnet-install.sh",
