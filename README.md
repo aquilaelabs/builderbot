@@ -1426,6 +1426,21 @@ and `--write` regenerates `.github/actionlint.yaml` from them, so the lint
 checks `runs-on` against runners that exist. The container's own runner
 stays until a node runner has taken a real job.
 
+**Two machines may share one packages store, and BuilderBot recognises the
+pair.** An NFS export mounted by the controller and by a node is one
+directory, and installing into it from both at once is version skew nobody
+can debug — so a package job waits for any other on a machine that shares
+the store, in both directions. What identifies the pair is a marker file
+inside the store itself, not the mount: this container reaches the SDK share
+through Unraid's FUSE layer while a node reaches the same bytes over NFS,
+and neither mount string can be derived from the other. Nothing
+machine-specific is written into a shared store — the generated
+`sdk-env.sh`, whose every line is an absolute path, lives on the home volume
+for that reason. **A store is never shared across architectures**: the path
+carries no arch, so an arm64 machine pointed at an x86-64 store would get
+binaries that cannot run, and the install is refused with the reason rather
+than failing later.
+
 **A project's node does not decide where its CI runs, and nothing can make
 it.** That setting governs BuilderBot's own queue — `bb build`, `bb test`,
 `bb run`, `bb emu`, compose. Actions dispatch belongs to GitHub, which reads

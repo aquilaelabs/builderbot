@@ -87,11 +87,26 @@ sdk_env_snippet() {
 # restart. The startup hook writes the same file from the same generator;
 # this is the other half — installs happen at runtime, and until now only
 # boot noticed them.
+# Where the generated env file lives. NOT in the SDK root, which is a share
+# two machines mount at different paths: every line in it is absolute
+# (/sdk/flutter/bin, RUSTUP_HOME=/sdk/rust/rustup), so a copy written here is
+# wrong for the sandbox that mounts the same bytes at /mnt/SDK, and whichever
+# machine generated it last won. It was the one piece of machine-specific
+# data in a store that is otherwise identical for everybody — the operator's
+# own test for what may be shared, and the only thing that failed it.
+#
+# The home volume instead: container-local, survives a restart, and
+# regenerated on every boot and every install anyway.
+sdk_env_file() {
+    printf '%s/.cache/builderbot/sdk-env.sh' "${BUILDER_HOME:-$HOME}"
+}
+
 sdk_write_env() {
     local root file tmp
     root="$(sdk_root)"
-    [ -d "$root" ] && [ -w "$root" ] || return 0
-    file="$root/env.sh"
+    [ -d "$root" ] || return 0
+    file="$(sdk_env_file)"
+    mkdir -p "$(dirname "$file")" 2>/dev/null || return 0
     tmp="$file.new.$$"
     if sdk_env_snippet > "$tmp" 2>/dev/null; then
         mv -f "$tmp" "$file"

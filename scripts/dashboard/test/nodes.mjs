@@ -520,6 +520,50 @@ ok(list[0].id === 'local',
        await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.pkgtab', e => e.textContent)),
      'an installed package on a node reads "installed", not "installed at" with nothing after it');
+  // ---- one store, two machines (roadmap #18) ------------------------------
+  // The controller reaches the SDK share through Unraid's FUSE layer and a
+  // node reaches the same bytes over NFS, so neither mount string can be
+  // derived from the other and the pair was invisible. A marker file inside
+  // the store answers exactly, whatever the transport — and once the pair is
+  // visible, two machines of different architectures sharing one store is a
+  // thing that can be refused instead of failing later as binaries that will
+  // not execute.
+  {
+    const ID = 's_' + '9'.repeat(16);
+    const withId = (arch, token) => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { ...CENSUS, arch, stores: { ...CENSUS.stores,
+          packages: { ...CENSUS.stores.packages, id: ID } } },
+        version: shipped.version, digest: shipped.digest }) });
+    await withId('x86_64', en.token);
+    // A second machine on the same store, of another architecture.
+    const other = await napi('/api/v1/nodes', { action: 'enroll', name: 'armbox' });
+    const oen = await napi('/api/v1/agent/enroll', {
+      user: 'bb', version: shipped.version, digest: shipped.digest,
+      census: { ...CENSUS, arch: 'aarch64', stores: { ...CENSUS.stores,
+        packages: { ...CENSUS.stores.packages, id: ID } } } },
+      { Authorization: 'Bearer ' + other.token, 'Content-Type': 'application/json' });
+    ok(oen.ok, '(a second node enrolled on the same store)');
+    const clash = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
+    ok(/cannot hold both architectures/.test(clash.error || ''),
+       `a store shared across architectures refuses the install (${
+         (clash.error || 'no error').slice(0, 100)})`);
+    // Same architecture: allowed, but still one at a time across the pair.
+    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + oen.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { ...CENSUS, arch: 'x86_64', stores: { ...CENSUS.stores,
+          packages: { ...CENSUS.stores.packages, id: ID } } },
+        version: shipped.version, digest: shipped.digest }) });
+    const first = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
+    const second = await napi('/api/packages', { action: 'install', names: ['jdk'], node: other.id });
+    ok(first.job && /shares this packages store/.test(second.error || ''),
+       `...and one install at a time across the pair, naming why (${
+         (second.error || 'no error').slice(0, 90)})`);
+    if (first.job) await napi('/api/v1/jobs', { action: 'cancel', id: first.job });
+    await napi('/api/v1/nodes', { action: 'retire', id: other.id });
+    await withId('x86_64', en.token);
+  }
+
   // What a FINISHED job on a node reports. It used to report nothing — the
   // row vanished the moment the job ended, with done and failed hardcoded
   // empty — so the tab never cleared what the operator had ticked and the

@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "15"
+AGENT_VERSION = "16"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -388,12 +388,33 @@ def _sshd_listening():
     return False
 
 
+STORE_ID_FILE = ".bb-store-id"
+
+
+def store_id(path):
+    """A stable id for a store, from a marker inside it — the same file the
+    controller reads for its own (nodes.store_id).
+
+    Two machines mounting one share cannot recognize each other by path: the
+    controller reaches the SDK share through Unraid's FUSE layer while this
+    node reaches the same bytes over NFS, and neither mount string can be
+    derived from the other. The file answers exactly, whatever the transport.
+    Read-only here: the controller creates it, so a node with a read-only
+    store still reports the right id and never writes to one it should not.
+    """
+    try:
+        with open(os.path.join(path, STORE_ID_FILE)) as f:
+            return f.read().strip()[:64]
+    except OSError:
+        return ""
+
+
 def _stores(stores, used=False):
     out = {}
     for role, path in (stores or {}).items():
         try:
             st = os.statvfs(path)
-            out[role] = {"path": path,
+            out[role] = {"path": path, "id": store_id(path),
                          "free_mb": st.f_bavail * st.f_frsize // (1024 * 1024),
                          "total_mb": st.f_blocks * st.f_frsize // (1024 * 1024)}
         except OSError:
