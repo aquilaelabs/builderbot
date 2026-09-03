@@ -594,6 +594,17 @@ ok(list[0].id === 'local',
     if (first.job) await napi('/api/v1/jobs', { action: 'cancel', id: first.job });
     await napi('/api/v1/nodes', { action: 'retire', id: other.id });
     await withId('x86_64', en.token);
+    // A package that needs another pulls it in, ahead of itself. Before
+    // this, android-tools with no jdk failed inside sdkmanager with a
+    // message naming neither Java nor the package that supplies it.
+    const dep = await napi('/api/packages', { action: 'install',
+                                              names: ['android-tools'], node: minted.id });
+    const depjob = dep.job ? await napi(`/api/v1/jobs?id=${dep.job}`) : null;
+    ok(depjob && JSON.stringify(depjob.spec.names) === JSON.stringify(['jdk', 'android-tools'])
+       && JSON.stringify(dep.added) === JSON.stringify(['jdk']),
+       `a package that needs another installs it first, and says so (${
+         JSON.stringify(depjob?.spec?.names)} added=${JSON.stringify(dep.added)})`);
+    if (dep.job) await napi('/api/v1/jobs', { action: 'cancel', id: dep.job });
   }
 
   // What a FINISHED job on a node reports. It used to report nothing — the

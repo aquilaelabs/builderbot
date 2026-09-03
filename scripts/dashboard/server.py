@@ -2007,6 +2007,10 @@ import nodes                                                     # noqa: E402
 # and audit already no-op when it never came up.
 try:
     nodes.configure(state=STATE)
+    # The registry answers hello; the catalog is packages.py's. Joined here
+    # rather than by one importing the other, which is the same seam every
+    # other module pair uses.
+    nodes.layout_of = packages.layout_for_node
     NODES_OK = ""
 except Exception as e:                                    # noqa: BLE001
     NODES_OK = str(e)

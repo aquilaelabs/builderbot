@@ -485,6 +485,36 @@ try {
     ok(fin && fin.state === 'succeeded' && /hi from the tree/.test(fin.log) && /workspace .*jobs\/j_/.test(fin.log),
        `the agent materializes the snapshot and runs there (${fin?.state}${fin?.state === 'succeeded' ? '' : ': ' + (fin?.error || '') + ' | ' + (fin?.log || '').slice(-400).replace(/\n/g, ' / ')})`);
     ok(fin && /\n0\n/.test(fin.log), '...dist/ stays behind: the snapshot carries the tree, not the shelf');
+    // Bug #45: a plain exec — which is what bb build, bb test and bb run
+    // submit — got a bare PATH, because the node's SDK environment was only
+    // applied in the bb-verb branch. Measured on a real node: java and go
+    // NOT-ON-PATH, JAVA_HOME unset, on a node whose census reported both.
+    {
+      mkdirSync(`${DIR}/agentpackages/jdk/bin`, { recursive: true });
+      mkdirSync(`${DIR}/agentpackages/go/bin`, { recursive: true });
+      const envrun = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
+        argv: ['sh', '-c', 'echo "root=$SDK_ROOT"; echo "java=$JAVA_HOME"; '
+                         + 'echo "android=$ANDROID_HOME"; echo "path=$PATH"'] });
+      const ef = await until(async () => {
+        const r = await api(`/api/v1/jobs?id=${envrun.job}`);
+        return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+      }, 30000);
+      const log = ef?.log || '';
+      ok(/root=.*agentpackages/.test(log) && /java=.*agentpackages\/jdk/.test(log)
+         && /android=.*agentpackages\/android/.test(log),
+         `a build job gets the node's SDK root, JAVA_HOME and ANDROID_HOME (${
+           (log.match(/root=.*/) || [''])[0].slice(0, 60)})`);
+      ok(/path=[^\n]*agentpackages\/jdk\/bin/.test(log)
+         && /path=[^\n]*agentpackages\/go\/bin/.test(log),
+         '...and every toolchain the store holds is on its PATH, not just the JDK');
+      // ...composed from the catalog's layout, sent at hello, rather than
+      // from a table in the agent that has to agree with three others.
+      const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
+      ok(Array.isArray(st.layout) && st.layout.some(e => e.name === 'jdk' && e.tool === 'bin/java')
+         && st.layout.some(e => e.name === 'node' && (e.bin || []).includes('bin')),
+         `the controller tells the node where packages land, and it keeps it (${
+           (st.layout || []).length} entries)`);
+    }
     ok(fin && fin.source.digest === run.snapshot && fin.source.project === 'alpha',
        '...and the row records the source it was built from');
     ok(existsSync(`${DIR}/ws/alpha/dist/app-1.0.apk`) && !existsSync(`${DIR}/ws/alpha/dist/notes.txt`)

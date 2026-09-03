@@ -41,9 +41,19 @@ def configure(*, run, write_json, state):
 
 # The catalog lives beside the code rather than in it: config/packages.json,
 # which ships to /opt/builderbot/config/ and so sits at the same place relative
-# to this file in the image and in a checkout. Adding a package is an entry
-# there plus a recipe in bb's sdk_install — the recipes are the half that
-# cannot be a table, since every one of them installs differently.
+# to this file in the image and in a checkout.
+#
+# Adding a package is an entry there and nothing else, as long as it fits one
+# of the five kinds sdk_install dispatches on (tarball, script, git, command,
+# sdkmanager) — plus a version resolver in sdkmeta.py when upstream publishes
+# its releases in a shape none of the existing ones read. Node.js was exactly
+# that: one catalog row, one resolver, no install code.
+#
+# What is NOT in the catalog, and is worth knowing before adding one: where a
+# package LANDS is written down in several places that must agree — the
+# version probe in sdk.sh's sdk_check_one, sdk_env_snippet's PATH lines, and
+# the agent's own STORE_TOOLS and STORE_PATHS. They have drifted (roadmap
+# #18).
 PACKAGES_FILE = HERE.parent.parent / "config" / "packages.json"
 
 
@@ -75,6 +85,17 @@ def load_packages():
         plats = [x for x in (r.get("platforms") or []) if isinstance(x, str) and "/" in x]
         if plats:
             row["platforms"] = plats[:8]
+        reqs = [x for x in (r.get("requires") or []) if isinstance(x, str) and x]
+        if reqs:
+            row["requires"] = reqs[:4]
+        lay = r.get("layout")
+        if isinstance(lay, dict):
+            row["layout"] = {
+                "bin": [str(x) for x in (lay.get("bin") or [])][:8],
+                "env": {str(k)[:40]: str(v) for k, v in (lay.get("env") or {}).items()},
+                "tool": str(lay.get("tool") or ""),
+                "reports": str(lay.get("reports") or ""),
+            }
         out.append(row)
     # Sorted here rather than trusted from the file, so a package added at the
     # end of the catalog still lands where somebody would look for it. Leading
@@ -812,6 +833,89 @@ _ARCH = {"x86_64": "amd64", "amd64": "amd64", "aarch64": "arm64", "arm64": "arm6
          "armv7l": "arm", "arm": "arm"}
 
 
+def layout_for_node():
+    """Every package's layout, as the agent needs it: what to put on PATH,
+    what variables to set, and which file proves a package is there.
+
+    Sent at hello rather than duplicated in the agent. It used to be three
+    hand-written tables — sdk_env_snippet here, STORE_TOOLS and STORE_PATHS
+    on the node — that had to agree about where every package lands and did
+    not: node/bin was missing from one, the android-tools probe read the
+    wrong directory, and the census disagreed with the inventory, all in one
+    day. The catalog is the one place that knows, and this is how a machine
+    with no catalog of its own finds out.
+
+    `dir` is where the package lives relative to the store: android's
+    packages share one tree, so theirs is `android`.
+    """
+    out = []
+    for p in PACKAGES:
+        lay = p.get("layout")
+        if not lay:
+            continue
+        name = p["name"]
+        out.append({"name": name,
+                    "dir": "android" if name.startswith("android:") else name,
+                    "bin": lay["bin"], "env": lay["env"],
+                    "tool": lay["tool"], "reports": lay["reports"]})
+    return out
+
+
+def node_has(n):
+    """The package names already in this node's packages store, by the
+    directories bb sdk puts them in. Empty when the node has not reported
+    its store — which is not evidence of absence, so a caller must treat it
+    as "unknown" rather than "nothing"."""
+    rep = n.get("reported") or {}
+    top = set(((rep.get("store_dirs") or {}).get("top")) or [])
+    andr = set(((rep.get("store_dirs") or {}).get("android")) or [])
+    if not (top or andr):
+        return set()
+    out = set()
+    for p in PACKAGES:
+        probe = p["probe"]
+        if probe.startswith("android:"):
+            here = probe.split(":", 1)[1] in andr
+        elif probe == "android-tools":
+            here = bool({"cmdline-tools", "platform-tools"} & andr)
+        else:
+            here = probe in top
+        if here:
+            out.add(p["name"])
+    return out
+
+
+def with_requires(names, have):
+    """`names`, with anything they declare a requirement on put in front.
+
+    A recipe that needed another package used to say so only in its `env`
+    block: android-tools points JAVA_HOME at a sibling jdk that may not be
+    there, and sdkmanager then fails with "Could not determine SDK root",
+    naming neither Java nor the package that would have supplied it. The
+    catalog says it now, and the requirement is pulled in rather than
+    discovered.
+
+    Requirements already in the store are left out — this adds what is
+    missing, ahead of what needs it, and never re-installs. Returns
+    (ordered names, what was added).
+    """
+    by = {p["name"]: p for p in PACKAGES}
+    out, seen = [], set()
+
+    def add(n, depth=0):
+        if n in seen or depth > 4:      # a cycle in the catalog is not fatal
+            return
+        seen.add(n)
+        for r in (by.get(n, {}).get("requires") or []):
+            if r in by and r not in have:
+                add(r, depth + 1)
+        out.append(n)
+
+    for n in names:
+        add(n)
+    return out, [n for n in out if n not in names]
+
+
 def platform_of(n):
     """"<os>/<arch>" for a node, or "" when it has not said."""
     os_ = str((n or {}).get("os") or "").strip().lower()
@@ -848,7 +952,11 @@ def node_job(principal, nid, action, names):
     if n["kind"] != "agent":
         return {"error": f"{n['name']} runs no agent — toolchains are installed there by hand"}
     store = ((n.get("reported") or {}).get("stores") or {}).get("packages") or {}
+    added = []
     if action == "install":
+        # What these need, ahead of them. android-tools without a jdk fails
+        # inside sdkmanager with a message that names neither.
+        names, added = with_requires(names, node_has(n))
         # Seven of these recipes name linux-x86_64 in their URL and one names
         # ubuntu24.04, so a node of another platform would download a couple
         # of hundred megabytes and fail on exec — or install and fail later.
@@ -896,8 +1004,11 @@ def node_job(principal, nid, action, names):
         return {"error": f"{n['name']} is {n.get('arch')} and shares this packages store with "
                          f"{', '.join(o['name'] + ' (' + str(o.get('arch')) + ')' for o in bad)}"
                          " — one store cannot hold both architectures. Give it a store of its own."}
-    return nodes.job_add(principal, {"node": nid}, "package",
-                         {"action": action, "names": names, "timeout": 3600})
+    r = nodes.job_add(principal, {"node": nid}, "package",
+                      {"action": action, "names": names, "timeout": 3600})
+    if r.get("ok") and added:
+        r["added"] = added
+    return r
 
 
 def start_job(action, names, auto=False):
@@ -913,6 +1024,9 @@ def start_job(action, names, auto=False):
                 for other in store_sharers(nodes.LOCAL):
                     if nodes.jobs_for(node_id=other["id"], type="package", active=True, n=1):
                         return False
+        if action == "install":
+            here = {p["name"] for p in PACKAGES if _pkg_path(p["probe"])}
+            names, _added = with_requires(list(names), here)
         _pkg_job.update(running=True, queue=list(names), action=action,
                         current="", log=[], done=[], failed=[], auto=auto,
                         aborting=False,

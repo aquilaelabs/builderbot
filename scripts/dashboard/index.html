@@ -7025,6 +7025,12 @@ async function pkgAct(action, only){
       headers:{"Content-Type":"application/json"},
       body: JSON.stringify({action, names, node: pkgNode})});
     const j = await r.json().catch(() => ({}));
+    // A package that needs another used to be installed without it and fail
+    // inside it — android-tools with no jdk, from sdkmanager, naming
+    // neither. The catalog says so now, and so does this, rather than an
+    // extra name appearing in the queue unexplained.
+    if (j?.added?.length)
+      notify(`also installing ${j.added.join(", ")} — needed by what you picked`);
     if (!r.ok) return notify(j.error || `could not start (HTTP ${r.status})`, true);
     notify(action === "check"
       ? "checking versions — each one asks its own upstream"

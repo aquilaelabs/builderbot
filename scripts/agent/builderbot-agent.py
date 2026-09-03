@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "17"
+AGENT_VERSION = "19"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -434,6 +434,53 @@ def _stores(stores, used=False):
 # Where a toolchain installed into the packages store keeps its command,
 # relative to the store (bb sdk's layout), for the census to find without
 # PATH knowing about it. `android` is a directory, not a command.
+def _lay_path(store, entry, rel):
+    """A layout path against the store. `root:` means the store itself;
+    anything else is under the package's own directory."""
+    if rel.startswith("root:"):
+        return os.path.join(store, rel[5:])
+    return os.path.join(store, entry["dir"], rel) if rel else \
+        os.path.join(store, entry["dir"])
+
+
+def store_layout(state):
+    """What the controller last told us about where packages land, or the
+    built-in answer for a controller too old to say.
+
+    The fallback is deliberately the old tables: a node whose controller
+    predates this must keep working, and a node whose controller is newer
+    must follow it rather than a copy of its own that can drift.
+    """
+    got = state.get("layout")
+    return got if isinstance(got, list) and got else BUILTIN_LAYOUT
+
+
+# The answer this agent shipped with, used only when the controller does not
+# send one. Kept short and honest: it is a fallback, not a second authority.
+BUILTIN_LAYOUT = [
+    {"name": "jdk", "dir": "jdk", "bin": ["bin"], "env": {"JAVA_HOME": ""},
+     "tool": "bin/java", "reports": "java"},
+    {"name": "flutter", "dir": "flutter", "bin": ["bin"], "env": {},
+     "tool": "bin/flutter", "reports": "flutter"},
+    {"name": "dotnet", "dir": "dotnet", "bin": ["", "tools"],
+     "env": {"DOTNET_ROOT": ""}, "tool": "dotnet", "reports": "dotnet"},
+    {"name": "go", "dir": "go", "bin": ["bin"], "env": {}, "tool": "bin/go",
+     "reports": "go"},
+    {"name": "node", "dir": "node", "bin": ["bin"], "env": {}, "tool": "bin/node",
+     "reports": "node"},
+    {"name": "swift", "dir": "swift", "bin": ["usr/bin"], "env": {},
+     "tool": "usr/bin/swift", "reports": "swift"},
+    {"name": "rust", "dir": "rust", "bin": ["cargo/bin"],
+     "env": {"RUSTUP_HOME": "rustup", "CARGO_HOME": "cargo"},
+     "tool": "cargo/bin/cargo", "reports": "rust"},
+    {"name": "zig", "dir": "zig", "bin": [""], "env": {}, "tool": "zig", "reports": ""},
+    {"name": "android-tools", "dir": "android-tools",
+     "bin": ["root:android/cmdline-tools/latest/bin", "root:android/platform-tools"],
+     "env": {}, "tool": "cmdline-tools/bin/sdkmanager", "reports": ""},
+    {"name": "android:emulator", "dir": "android", "bin": ["root:android/emulator"],
+     "env": {}, "tool": "root:android/emulator/emulator", "reports": "emulator"},
+]
+
 STORE_TOOLS = {"java": ("jdk/bin/java",), "flutter": ("flutter/bin/flutter",),
                "dotnet": ("dotnet/dotnet",), "go": ("go/bin/go",),
                "node": ("node/bin/node",), "swift": ("swift/usr/bin/swift",),
@@ -447,7 +494,17 @@ def _toolchains(state):
     The census's `toolchains` is what package-build placement selects on."""
     tc = {}
     store = (state.get("stores") or {}).get("packages") or ""
+    by_report = {}
+    for entry in store_layout(state):
+        if entry.get("reports") and entry.get("tool"):
+            by_report[entry["reports"]] = entry
+
     def find(name):
+        entry = by_report.get(name)
+        if store and entry:
+            p = _lay_path(store, entry, entry["tool"])
+            if os.path.exists(p):
+                return p
         for rel in STORE_TOOLS.get(name, ()):
             p = os.path.join(store, rel)
             if store and os.path.exists(p):
@@ -505,24 +562,39 @@ def store_dirs(state):
 
 
 def sdk_env(state, who=None):
-    """The environment a bb verb runs with on this node: the packages store
-    as the SDK root, its android/ directory as ANDROID_HOME, its jdk as
-    JAVA_HOME, the tools on PATH, and AVDs under the data store. What the
-    image gets from its Dockerfile, a node gets from here."""
+    """The environment a job runs with on this node: the packages store as
+    the SDK root, its android/ directory as ANDROID_HOME, its jdk as
+    JAVA_HOME, every toolchain it holds on PATH, and AVDs under the data
+    store. What the image gets from its Dockerfile, a node gets from here.
+
+    EVERY job, not only a bb verb. It used to be applied in the bb branch of
+    Job.exec alone, so `bb build` and `bb test` — a plain exec — ran with a
+    bare PATH: measured on a real node, java and go were both NOT-ON-PATH
+    and JAVA_HOME unset, on a node whose census reported java 21.0.12.1 and
+    go present. The placement gate said yes and then ./gradlew could not
+    find a compiler (bug #45).
+    """
     stores = state.get("stores") or {}
     store = stores.get("packages") or ""
     env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C.UTF-8"}
     if store:
         android = os.path.join(store, "android")
-        jdk = os.path.join(store, "jdk")
         env.update({"SDK_ROOT": store, "BUILDER_HOME": store, "BB_NODE_PACKAGES": "1",
                     "ANDROID_HOME": android, "ANDROID_SDK_ROOT": android})
-        if os.path.isdir(jdk):
-            env["JAVA_HOME"] = jdk
-        env["PATH"] = ":".join([os.path.join(jdk, "bin"),
-                                os.path.join(android, "cmdline-tools", "latest", "bin"),
-                                os.path.join(android, "platform-tools"),
-                                os.path.join(android, "emulator"), env["PATH"]])
+        front = []
+        for entry in store_layout(state):
+            for rel in entry.get("bin") or []:
+                d = _lay_path(store, entry, rel)
+                if os.path.isdir(d) and d not in front:
+                    front.append(d)
+            for k, v in (entry.get("env") or {}).items():
+                d = _lay_path(store, entry, v)
+                if os.path.exists(d):
+                    env.setdefault(k, d)
+        # The store ahead of the system PATH: a node that carries its own JDK
+        # is meant to build with that one, not with whatever the distribution
+        # happens to have.
+        env["PATH"] = ":".join(front + [env["PATH"]])
     env["ANDROID_AVD_HOME"] = os.path.join(stores.get("data") or "/tmp", "avd")
     return env
 
@@ -912,9 +984,12 @@ class Job(threading.Thread):
         argv = [str(a) for a in (spec.get("argv") or [])]
         stores = self.agent.state.get("stores") or {}
         cwd = spec.get("cwd") or stores.get("data") or "/tmp"
-        env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
-               "LANG": "C.UTF-8", "BUILDERBOT_NODE": self.agent.state.get("node_id", ""),
-               "BUILDERBOT_JOB": self.job["id"]}
+        # The node's own toolchains, for EVERY job — a build is the case this
+        # whole store exists for, and it was the one case that did not get
+        # them (bug #45).
+        env = dict(sdk_env(self.agent.state))
+        env.update({"BUILDERBOT_NODE": self.agent.state.get("node_id", ""),
+                    "BUILDERBOT_JOB": self.job["id"]})
         who = self.agent.drop_privileges(env)
         bbv = [str(a) for a in (spec.get("bb") or [])]
         if bbv:
@@ -929,7 +1004,6 @@ class Job(threading.Thread):
             project = re.sub(r"[^A-Za-z0-9._-]", "_", str(spec.get("project") or "project"))
             cwd = os.path.join(stores.get("data") or "/tmp", "emu", project)
             self.agent.own_dir(cwd, who)
-            env.update(sdk_env(self.agent.state))
             env["BB_PROJECT"] = str(spec.get("project") or "")
         if not argv:
             self.say("refused: empty argv\n")
@@ -1098,6 +1172,14 @@ class Agent:
             self.hello_at = time.time()
             self.poll = int(r.get("poll") or 25)
             self.controller_digest = (r.get("agent") or {}).get("digest") or ""
+            # Where packages land, from the controller's catalog. Kept on the
+            # record so a job started before the next hello still has it, and
+            # only replaced when the controller actually sends one — an older
+            # controller says nothing and this node keeps its built-in answer.
+            lay = r.get("layout")
+            if isinstance(lay, list) and lay and lay != self.state.get("layout"):
+                self.state["layout"] = lay
+                save_state(self.state)
             n = r.get("node") or {}
             # The row's capabilities are the controller's claim; the ones
             # this node ENFORCES are the ones it enrolled with, kept in
