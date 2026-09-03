@@ -296,9 +296,19 @@ print((json.load(sys.stdin).get("releases") or [""])[0].removeprefix("jdk-"))' 2
             # sdkmanager --version needs a JDK, so this reads the package file
             # the tools ship instead: no java, no subprocess, and an answer
             # even on a node whose JDK is not installed yet.
-            d="$(sdk_find android-tools)" || d=""
-            [ -z "$d" ] || inst="$(sed -n 's/^Pkg.Revision=//p' \
-                "$d/cmdline-tools/source.properties" 2>/dev/null | head -1)"
+            # Where the SDK really keeps it first — <sdk>/cmdline-tools/latest
+            # is both what the run step symlinks into and what a hand install
+            # produces — then the unpack directory, which is where it sits
+            # before that symlink exists. Reading only the second reported no
+            # version at all for a node whose tools were put in by hand, while
+            # the census beside it said android-sdk was present.
+            local props=""
+            for props in "$(sdk_dir android)/cmdline-tools/latest/source.properties" \
+                         "$(sdk_dir android-tools)/cmdline-tools/source.properties"; do
+                [ -f "$props" ] && break
+                props=""
+            done
+            [ -z "$props" ] || inst="$(sed -n 's/^Pkg.Revision=//p' "$props" 2>/dev/null | head -1)"
             ;;
         zig)
             d="$(sdk_find zig)" || d=""
