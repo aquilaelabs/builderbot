@@ -206,3 +206,5 @@
 - Two machines sharing one packages store are recognised as sharing it, so they no longer install into the same directory at the same time (18fe301)
 - Nothing machine-specific is written into a shared packages store any more — the generated shell environment lives on the home volume (18fe301)
 - A packages store shared by machines of different architectures is refused, instead of filling up with binaries that cannot run there (18fe301)
+- A node's toolchain versions now read the same way this container's do, instead of showing 'present' where a real version exists (c796d9c)
+- The JDK and the Android command-line tools now report their versions (c796d9c)
