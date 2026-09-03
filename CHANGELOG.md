@@ -213,3 +213,4 @@
 - Removing a container you wrote here now takes its env file with it, instead of leaving one behind per removal (9e8a007)
 - Update agent and Clear cache stay greyed until their job finishes, rather than looking pressable again straight away (9e8a007)
 - A package that is not built for a node's platform now says so on the row and refuses, instead of downloading and failing to run (cd7e154)
+- Installing the Android command-line tools onto a node now works, instead of failing its own check and rolling back (24a26ad)

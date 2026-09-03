@@ -138,6 +138,7 @@
         ],
         "verify": [
           "{dir}/cmdline-tools/bin/sdkmanager",
+          "--sdk_root={dir}/../android",
           "--version"
         ],
         "env": {
