@@ -225,3 +225,4 @@
 - Each package says what it needs and what needs it (95413cb)
 - adb and the Android platform tools can be installed on a node, and the emulator brings them with it (a340a7b)
 - A node no longer reports an Android SDK it has not really got (a340a7b)
+- A failed Android command-line tools install no longer leaves a broken link behind for the next one to trip on (5b3a168)
