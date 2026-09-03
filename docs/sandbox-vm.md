@@ -460,6 +460,15 @@ ssh-keyscan -H <vm-ip> >> ~/.ssh/known_hosts
 
 `~` is the home volume, so this survives a container restart.
 
+`bb-sandbox sdk` is the one verb that reads rather than configures, and the
+one that needs no root: it hands you the controller's own `bb` — the copy
+the agent unpacks into the packages store to run jobs with — so `bb-sandbox
+sdk versions` at this console answers with exactly what the Tools tab shows
+for this node, from the same generator. Read-only verbs only; installing
+from here would go around the one-install-at-a-time rule the controller
+keeps across every machine sharing a store, so it says so and points at the
+tab. Nothing to run until a package job has put a `bb` there.
+
 **2. Enroll it as a node.** On the dashboard's Nodes tab, **Enroll node**
 mints a one-time token; run `provision.sh --controller URL --token bbe_…` on
 the VM and it dials in and stays. The node opens no port and this container
