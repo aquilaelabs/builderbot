@@ -219,3 +219,4 @@
 - A build on a node can now find the toolchains that node carries — before this, java and go were installed there but not on a build's PATH (0cf148f)
 - Node.js can be installed on a node from the Tools tab (cffbed4)
 - A package that needs another now installs it first and says so, instead of failing inside the tool that was missing it (cffbed4)
+- Where each toolchain lands is written down once, in the package catalog, instead of in three places that could disagree (be96732)
