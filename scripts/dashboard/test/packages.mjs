@@ -85,9 +85,19 @@ await page.waitForFunction(() => document.querySelectorAll('.doc .pkg:not(.img)'
 ok(await page.$$eval('.doc .pkg:not(.img) input:checked', is => is.length === 2),
    'a redraw keeps what was ticked');
 await page.click('.doc [data-pkg="install"]');
+// Four land, not two: android:emulator is installed BY sdkmanager, which
+// android-tools provides, which needs a JDK to run — so the chain comes with
+// it. That is the whole point of `requires`; before it, this pair installed
+// and then failed inside sdkmanager with a message naming neither.
 await page.waitForFunction(() => packages?.job && !packages.job.running
   && [...document.querySelectorAll('.doc .pkg:not(.img) .where')]
-       .filter(w => w.classList.contains('on')).length === 2, { timeout: 30000 });
+       .filter(w => w.classList.contains('on')).length === 4, { timeout: 30000 });
+ok(await page.$$eval('.doc .pkg:not(.img)', rs => {
+     const on = rs.filter(r => r.querySelector('.where')?.classList.contains('on'))
+                  .map(r => r.querySelector('input')?.value);
+     return ['flutter', 'android:emulator', 'android-tools', 'jdk'].every(n => on.includes(n));
+   }),
+   'ticking a package installs what it needs alongside it, transitively');
 list = await rows();
 const flutter = list.find(r => r.name === 'flutter');
 const emu = list.find(r => r.name === 'android:emulator');
@@ -301,7 +311,8 @@ await page.waitForFunction(() => packages?.job && !packages.job.running
   && !(packages.items || []).find(i => i.name === 'go')?.installed, { timeout: 30000 });
 
 // ---- uninstall is per row, and asks ------------------------------------
-ok(await page.$$eval('.doc .pkg:not(.img)', ls => ls.filter(l => l.querySelector('[data-rm]')).length) === 2,
+// Four, since android:emulator brought android-tools and jdk with it.
+ok(await page.$$eval('.doc .pkg:not(.img)', ls => ls.filter(l => l.querySelector('[data-rm]')).length) === 4,
    'every installed package carries its own uninstall control');
 ok(await page.$('.doc .pkg:not(:has([data-rm])) [data-rm]') === null,
    '...and packages that are not installed do not');
@@ -341,7 +352,7 @@ ok(page.dialogs.length === nd + 1 && page.dialogs[nd].includes('Uninstall'),
 // and a null dereference.
 await page.waitForFunction(() => packages?.job && !packages.job.running
   && [...document.querySelectorAll('.doc .pkg:not(.img) .where')]
-       .filter(w => w.classList.contains('on')).length === 1, { timeout: 30000 });
+       .filter(w => w.classList.contains('on')).length === 3, { timeout: 30000 });
 list = await rows();
 ok(!list.find(r => r.name === 'android:emulator').installed
    && list.find(r => r.name === 'flutter').installed,
@@ -542,4 +553,27 @@ ok(await page.evaluate(() => tabs.some(t => t.kind === 'packages')),
 // fetch either way.
 const errs = page.errors.filter(e => !/status of (400|409)/.test(e));
 ok(errs.length === 0, `zero console errors${errs.length ? ' — ' + errs.join(' | ') : ''}`);
+// The Packages tab reads nodesList, which tab-nodes.js declares with `let`.
+// Loaded after this file's script, a renderer drawing before it evaluated hit
+// the temporal dead zone and the tab came up "this tab's renderer failed —
+// nodesList is not defined". `typeof` throws on a TDZ binding too, so the fix
+// is load order, and this is the check that keeps it: every binding a
+// renderer here reads must exist by the time the first draw can happen.
+ok(await page.evaluate(() => {
+     try { return nodesList !== undefined || nodesList === null || true; }
+     catch (e) { return false; }
+   }),
+   'the tab scripts are evaluated before the renderers that read their state');
+
+// A package that needs another says so on its row, and so does the one that
+// is needed — the operator asked whether a package existing only to serve
+// another should be an entry at all, and the honest answer is that the ones
+// which do nothing alone are leaves that nothing depends on. What was
+// missing was the relationship being visible where it does exist.
+const rel = await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
+ok(rel.some(t => /Android NDK/.test(t) && /Needs android-tools, installed with it/.test(t)),
+   'a package that needs another says so on its row');
+ok(rel.some(t => /JDK 21/.test(t) && /Needed by android-tools/.test(t)),
+   '...and the one it needs says what needs it');
+
 await done(browser);
