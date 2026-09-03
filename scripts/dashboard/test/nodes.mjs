@@ -679,6 +679,20 @@ ok(list[0].id === 'local',
   const uj = upd.job ? await napi(`/api/v1/jobs?id=${upd.job}`) : null;
   ok(upd.ok && uj && uj.type === 'self-update' && uj.spec.digest === shipped.digest && uj.node === minted.id,
      `Update agent queues a self-update naming the shipped digest (${upd.job || upd.error})`);
+  // ...and it stays greyed while that job is queued, through the repaint
+  // that replaces the button. pressing() only covers the round trip; the
+  // render is what has to know, and node_list only tracked system jobs, so
+  // Update agent came back live the instant it answered.
+  // Back to the Nodes tab — the block above left the Tools tab in front.
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await pickNode(page, minted.id);
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => /Updating/.test(
+    document.querySelector(sel + ' [data-nd="update-agent"]')?.textContent || ''),
+    ROW, { timeout: 10000 });
+  ok(await page.$eval(`${ROW} [data-nd="update-agent"]`, b => b.disabled),
+     '...and stays greyed while the update is queued, not only for the round trip');
   if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },

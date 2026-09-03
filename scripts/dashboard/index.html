@@ -9418,7 +9418,7 @@ become that version's section when it is created">Changelog${
       // poll reads it as somebody else's and reloads on top of the answer
       // just received.
       if (bugRev !== null) bugRev += 1;
-      drawBugs();
+      drawBugs(true);
       return j;
     }catch(e){ notify("could not reach the server: " + e, true); return null; }
   }
@@ -9523,10 +9523,24 @@ become that version's section when it is created">Changelog${
     });
   }
 
-  function drawBugs(){
+  // `force` is what a deliberate action passes. Without it, a redraw is
+  // skipped while a row has something typed into it.
+  //
+  // The list is rebuilt with innerHTML, which carries each row's open state
+  // across but nothing else — and the delete box and the edit form are
+  // imperative DOM put into a row AFTER the render, so a repaint took them
+  // and whatever the operator had written in them. Any bug_rev change did
+  // it: another session filing something, or this one closing a bug in a
+  // terminal. The same family as the changelog pane (bug #13), and the same
+  // answer the rest of the notebook already gives — Memory stages behind
+  // Save, the node editor keeps its draft across a repaint. An editor beats
+  // freshness; the next deliberate action redraws with whatever arrived
+  // meanwhile, because `bugs` is still updated underneath.
+  function drawBugs(force){
     const list = $("bugList"), hint = $("bugHint");
     if (!bugs){ hint.textContent = "loading…"; return; }
     if (bugs.error){ hint.textContent = "bugs: " + bugs.error; return; }
+    if (!force && list.querySelector(".dropbox, .bugform")) return;
     const rows = sortedBugs();
     const open = rows.filter(b => b.status === "open").length;
     hint.textContent = rows.length
@@ -9659,7 +9673,9 @@ become that version's section when it is created">Changelog${
             <button type="button" class="danger">Delete it</button></div>`;
         body.appendChild(box);
         arriveBox(box);
-        box.querySelector(".stop").onclick = () => box.remove();
+        // Removed first, then redrawn: the box is what defers the redraw,
+        // so anything that arrived while it was open lands now.
+        box.querySelector(".stop").onclick = () => { box.remove(); drawBugs(true); };
         box.querySelector(".danger").onclick = () => {
           const why = box.querySelector("input").value;
           box.remove();
@@ -9670,7 +9686,9 @@ become that version's section when it is created">Changelog${
         const body = d.querySelector(".body");
         const b = (bugs.bugs || []).find(x => x.id === id);
         body.innerHTML = bugForm(b);
-        body.querySelector(".bfCancel").onclick = drawBugs;
+        // Forced: this IS the deliberate close, and the form it is putting
+        // away is the thing that would otherwise hold the redraw off.
+        body.querySelector(".bfCancel").onclick = () => drawBugs(true);
         body.querySelector(".bfGo").onclick = () =>
           postBug({action: "edit", id, ...readBugForm(body)});
       });

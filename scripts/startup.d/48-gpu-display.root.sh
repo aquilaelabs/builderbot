@@ -26,6 +26,14 @@
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
 
+# One writer for the state, so every branch leaves it readable. The reader is
+# `bb emu gpu` and `bb doctor` running as the builder account, and a file only
+# root can read makes the report they exist to print come out blank.
+say_display() {
+    printf '%s\n' "$1" > "$GPU_DISPLAY_STATE" 2>/dev/null || return 0
+    chmod 0644 "$GPU_DISPLAY_STATE" 2>/dev/null || true
+}
+
 is_true "${ENABLE_GPU_DISPLAY:-true}" || exit 0
 command -v Xorg >/dev/null 2>&1 || exit 0
 command -v nvidia-smi >/dev/null 2>&1 || exit 0
@@ -159,11 +167,11 @@ supervise() {
         sleep $((tries * 20))
         if x_display_up; then
             chmod 1777 /tmp/.X11-unix 2>/dev/null || true
-            printf 'restarted %s times\n' "$tries" > "$GPU_DISPLAY_STATE" 2>/dev/null || true
+            say_display "restarted $tries times"
             log "gpu display: X is back on :0"
         fi
     done
-    printf 'down: %s\n' "$gone" > "$GPU_DISPLAY_STATE" 2>/dev/null || true
+    say_display "down: $gone"
     warn "gpu display: ${gone} — the emulator is on software from here (bb emu gpu)"
 }
 
@@ -183,7 +191,7 @@ if [ -S /tmp/.X11-unix/X0 ]; then
     # user in this container and the socket is not reachable from outside it.
     chmod 1777 /tmp/.X11-unix 2>/dev/null || true
     log "gpu display: X is up on :0 — bb emu start will use -gpu host if EGL agrees"
-    printf 'up\n' > "$GPU_DISPLAY_STATE" 2>/dev/null || true
+    say_display 'up'
     supervise &
 else
     # Name the reason rather than pointing at a log. These three cover what
@@ -200,6 +208,5 @@ else
     fi
     warn "gpu display: Xorg did not come up${reason:+ — $reason}"
     warn "gpu display: the emulator falls back to software rendering; full log in /var/log/xorg-builderbot.log"
-    printf 'down: %s\n' "${reason:-Xorg did not start; see /var/log/xorg-builderbot.log}" \
-        > "$GPU_DISPLAY_STATE" 2>/dev/null || true
+    say_display "down: ${reason:-Xorg did not start; see /var/log/xorg-builderbot.log}"
 fi

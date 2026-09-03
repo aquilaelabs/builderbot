@@ -266,7 +266,16 @@ github_api() {
 #
 # Read by `bb emu gpu` and `bb doctor`. Named here because the hook writes it
 # and both of those read it, which is three files that must agree on one path.
-GPU_DISPLAY_STATE="${GPU_DISPLAY_STATE:-/run/builderbot/gpu-display}"
+# A SIBLING of /run/builderbot, not a file inside it — the same shape
+# BOOT_READY_FILE above uses, and for the same reason. That directory is
+# 0700 root because it holds the secrets stash, so a state file inside it is
+# unreadable by the builder account, which is what `bb emu gpu` and
+# `bb doctor` run as: gpu_display_note() returned empty for everyone but
+# root, and the whole point of writing the state was that the drop to
+# software should be STATED rather than silent. Measured on the box 3 Sep —
+# the supervisor was running and had written 'up', and both commands printed
+# nothing.
+GPU_DISPLAY_STATE="${GPU_DISPLAY_STATE:-/run/builderbot-gpu-display}"
 
 # What the hook last said about the display, or "" when it has said nothing.
 gpu_display_note() {

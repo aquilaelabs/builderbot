@@ -1860,4 +1860,35 @@ rmSync(`${D}/again.txt`, { force: true });
 rmSync(`${D}/after-interrupt.txt`, { force: true });
 rmSync(`${D}/.git`, { recursive: true, force: true });
 execFileSync('git', ['-C', D, 'init', '-q', '.'], { env });
+// ---- removing a written container takes its env (bug #41) -----------------
+// A project's instance keeps its env on Remove, deliberately: the promise is
+// that sending it again finds it. A written container has nowhere to come
+// back from, so keeping its env left one file per removal in /config/devenv
+// with nothing that would ever read it. The stale-named siblings an older
+// scheme left go too — found by the tail, which is a loose match, so the
+// live-instance guard is the half worth testing.
+{
+  const out = execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile
+spec = importlib.util.spec_from_file_location('d', ${
+  JSON.stringify(new globalThis.URL('../devapp.py', import.meta.url).pathname)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
+m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+for n in ('sonarr', 'bbdev-sonarr', 'bbdev-none-sonarr', 'my-sonarr', 'notsonarr'):
+    open(d + '/devenv/' + n + '.env', 'w').write('PORT=1')
+# my-sonarr is somebody else's live instance and ends in -sonarr as well.
+m._load = lambda: {'my-sonarr': {'main': {}}}
+gone = m.forget_container('sonarr')
+print(json.dumps({'gone': sorted(gone),
+                  'left': sorted(x for x in os.listdir(d + '/devenv'))}))
+`], { encoding: 'utf8' });
+  const FC = JSON.parse(out.trim().split('\n').pop());
+  ok(JSON.stringify(FC.gone) === JSON.stringify(
+       ['bbdev-none-sonarr.env', 'bbdev-sonarr.env', 'sonarr.env']),
+     `removing a written container takes its env and the stale-named ones (${FC.gone.join(', ')})`);
+  ok(FC.left.includes('my-sonarr.env') && FC.left.includes('notsonarr.env'),
+     `...and leaves a live instance that merely ends the same way, and a partial match (${FC.left.join(', ')})`);
+}
+
 await done(browser);
