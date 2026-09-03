@@ -658,6 +658,9 @@ def payload_for_node(nid):
         return {"error": "no such node"}
     rep = n.get("reported") or {}
     tc = rep.get("toolchains") or {}
+    pv = rep.get("packages_versions") or {}
+    if not isinstance(pv, dict):
+        pv = {}
     store = (rep.get("stores") or {}).get("packages") or {}
     items = []
     # What is IN the store, by directory, which is where bb sdk puts things:
@@ -679,7 +682,15 @@ def payload_for_node(nid):
             here = probe in top
         # A node that has not reported its store yet is not evidence of
         # absence, so say nothing rather than "not installed".
-        have = tc.get({"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
+        # The node's own `bb sdk versions` first — the same generator this
+        # controller runs for its own list, so one store is described one
+        # way. The census's toolchains dict is the fallback for an agent too
+        # old to report it, and it is a placement summary rather than an
+        # inventory: it answers for six names, says "present" where it cannot
+        # parse, and hands back an unstripped "go version go1.27.0
+        # linux/amd64". That difference is what the operator was looking at.
+        have = pv.get(name) or tc.get(
+            {"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
         kb = _pkg_remembered.get(name)
         items.append({**{k: p[k] for k in ("name", "label", "about")},
                       "installed": here, "unknown": not known,

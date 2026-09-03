@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "16"
+AGENT_VERSION = "17"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -527,6 +527,50 @@ def sdk_env(state, who=None):
     return env
 
 
+def sdk_versions(state):
+    """What `bb sdk versions` reports on this node: {name: version}.
+
+    The SAME generator the controller runs for its own list, so the two
+    describe one store the same way. Before this, a node's versions came
+    from _toolchains() — a six-name placement summary with crude parsing —
+    and the Tools tab showed "present" beside a package the controller could
+    name a version for, an unstripped "go version go1.27.0 linux/amd64", and
+    nothing at all for the NDK. One store, two descriptions of it.
+
+    Run from a bundle already cached in the packages store, which a package
+    job puts there: no round trip, no second copy of the probe logic, and
+    nothing reported at all until a job has run — which is the honest answer
+    rather than a summary standing in for an inventory.
+    """
+    store = (state.get("stores") or {}).get("packages") or ""
+    if not store:
+        return {}
+    bbdir = os.path.join(store, ".bb")
+    try:
+        cands = [os.path.join(bbdir, d) for d in os.listdir(bbdir)]
+        cands.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    except OSError:
+        return {}
+    env = dict(os.environ)
+    env.update(sdk_env(state))
+    for c in cands[:3]:
+        bb = os.path.join(c, "scripts", "bb")
+        if not os.path.isfile(bb):
+            continue
+        try:
+            p = subprocess.run(["bash", bb, "sdk", "versions"], capture_output=True,
+                               text=True, timeout=120, check=False, env=env)
+        except (OSError, subprocess.SubprocessError):
+            return {}
+        out = {}
+        for line in (p.stdout or "").splitlines():
+            f = line.rstrip().split("\t")
+            if len(f) == 4 and f[1] not in ("", "-"):
+                out[f[0][:40]] = f[1][:40]
+        return out
+    return {}
+
+
 def census(state):
     """What this machine is. Asked at hello — every ten minutes — so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -555,6 +599,9 @@ def census(state):
         "sandbox": os.access(SANDBOX_BIN, os.X_OK),
         "mounts": mounts_now(),
         "network": network_now(),
+        # The same report the controller makes for itself, so one store is
+        # not described two ways (roadmap #19).
+        "packages_versions": sdk_versions(state),
         "services": services_now(),
     }
 

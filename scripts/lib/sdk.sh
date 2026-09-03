@@ -280,6 +280,26 @@ sdk_check_one() {
             [ -n "$local_only" ] || latest="$(timeout 30 curl -fsS 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)"
             [ -n "$latest" ] || latest="-"
             ;;
+        jdk)
+            # java -version prints to STDERR, which is why the redirect is a
+            # merge rather than a discard — read the other way this reported
+            # every installed JDK as absent.
+            d="$(sdk_find jdk)" || d=""
+            [ -z "$d" ] || inst="$("$d/bin/java" -version 2>&1 | sed -n 's/.*version "\([^"]*\)".*/\1/p' | head -1)"
+            [ -n "$local_only" ] || latest="$(timeout 30 curl -fsS \
+                'https://api.adoptium.net/v3/info/release_names?release_type=ga&version=%5B21%2C22%29&page_size=1&sort_order=DESC' \
+                2>/dev/null | python3 -c 'import json,sys
+print((json.load(sys.stdin).get("releases") or [""])[0].removeprefix("jdk-"))' 2>/dev/null)"
+            [ -n "$latest" ] || latest="-"
+            ;;
+        android-tools)
+            # sdkmanager --version needs a JDK, so this reads the package file
+            # the tools ship instead: no java, no subprocess, and an answer
+            # even on a node whose JDK is not installed yet.
+            d="$(sdk_find android-tools)" || d=""
+            [ -z "$d" ] || inst="$(sed -n 's/^Pkg.Revision=//p' \
+                "$d/cmdline-tools/source.properties" 2>/dev/null | head -1)"
+            ;;
         zig)
             d="$(sdk_find zig)" || d=""
             [ -z "$d" ] || inst="$("$d/zig" version 2>/dev/null | head -1)"

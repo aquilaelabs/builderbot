@@ -295,6 +295,11 @@ ok(list[0].id === 'local',
                                        packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 },
                                        artifacts: { path: '/var/lib/builderbot/artifacts', free_mb: 30000, total_mb: 90000 } },
               toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
+              // What `bb sdk versions` says on the node — the controller's
+              // own generator, run there. The toolchains dict above is a
+              // placement summary and describes the same store differently,
+              // which is the disparity this replaces.
+              packages_versions: { flutter: '6655482e', 'android:ndk': '29.0.14206865' },
               // What the packages store actually holds, which is what the
               // Tools tab decides `installed` from — the census summary
               // above is a placement hint, not an inventory.
@@ -515,7 +520,10 @@ ok(list[0].id === 'local',
   await page.waitForFunction(() => /on shed/.test(document.querySelector('.pkgtab .pkghead:not(.pkgnode)')?.textContent || ''),
                              null, { timeout: 15000 });
   const tools = await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
-  ok(tools.some(t => /3\.24\.0/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent)),
+  ok(tools.some(t => /6655482e/.test(t)) && tools.some(t => /29\.0\.14206865/.test(t))
+     && !tools.some(t => /3\.24\.0/.test(t)),
+     'a node\'s versions come from its own bb sdk versions, not the census summary');
+  ok(tools.some(t => /6655482e/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent)),
      `picking the node lists what its census says it has, and its store's headroom (${
        await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.pkgtab', e => e.textContent)),

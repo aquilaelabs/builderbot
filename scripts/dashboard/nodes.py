@@ -886,6 +886,12 @@ def _census(c):
                 # What the store holds, from the census's du (phase 6): the
                 # cache's number beside Clear cache. None when not measured.
                 "used_mb": _mb(s.get("used_mb"))}
+    # {name: version} from `bb sdk versions` on the node — the controller's
+    # own generator, run there. Whitelisted like store_dirs, and for the same
+    # reason: a value the agent reports and this drops is a value that does
+    # not exist.
+    pv = c.get("packages_versions") if isinstance(c.get("packages_versions"), dict) else {}
+    out["packages_versions"] = {str(k)[:40]: str(v)[:40] for k, v in list(pv.items())[:40]}
     sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else {}
     out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
                          for k in ("top", "android")}
