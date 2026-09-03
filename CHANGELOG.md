@@ -215,3 +215,4 @@
 - A package that is not built for a node's platform now says so on the row and refuses, instead of downloading and failing to run (cd7e154)
 - Installing the Android command-line tools onto a node now works, instead of failing its own check and rolling back (24a26ad)
 - When the dashboard cannot reach the container, the light says so with the reason and the cards say why, instead of sitting on 'loading…' (2e724cd)
+- The Runner card shows every node with a runner — which machine, whether it is idle or running a job, and the runs-on line that lands a job there (5b7f0a9)
