@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "15"
+AGENT_VERSION = "17"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -388,12 +388,33 @@ def _sshd_listening():
     return False
 
 
+STORE_ID_FILE = ".bb-store-id"
+
+
+def store_id(path):
+    """A stable id for a store, from a marker inside it — the same file the
+    controller reads for its own (nodes.store_id).
+
+    Two machines mounting one share cannot recognize each other by path: the
+    controller reaches the SDK share through Unraid's FUSE layer while this
+    node reaches the same bytes over NFS, and neither mount string can be
+    derived from the other. The file answers exactly, whatever the transport.
+    Read-only here: the controller creates it, so a node with a read-only
+    store still reports the right id and never writes to one it should not.
+    """
+    try:
+        with open(os.path.join(path, STORE_ID_FILE)) as f:
+            return f.read().strip()[:64]
+    except OSError:
+        return ""
+
+
 def _stores(stores, used=False):
     out = {}
     for role, path in (stores or {}).items():
         try:
             st = os.statvfs(path)
-            out[role] = {"path": path,
+            out[role] = {"path": path, "id": store_id(path),
                          "free_mb": st.f_bavail * st.f_frsize // (1024 * 1024),
                          "total_mb": st.f_blocks * st.f_frsize // (1024 * 1024)}
         except OSError:
@@ -506,6 +527,50 @@ def sdk_env(state, who=None):
     return env
 
 
+def sdk_versions(state):
+    """What `bb sdk versions` reports on this node: {name: version}.
+
+    The SAME generator the controller runs for its own list, so the two
+    describe one store the same way. Before this, a node's versions came
+    from _toolchains() — a six-name placement summary with crude parsing —
+    and the Tools tab showed "present" beside a package the controller could
+    name a version for, an unstripped "go version go1.27.0 linux/amd64", and
+    nothing at all for the NDK. One store, two descriptions of it.
+
+    Run from a bundle already cached in the packages store, which a package
+    job puts there: no round trip, no second copy of the probe logic, and
+    nothing reported at all until a job has run — which is the honest answer
+    rather than a summary standing in for an inventory.
+    """
+    store = (state.get("stores") or {}).get("packages") or ""
+    if not store:
+        return {}
+    bbdir = os.path.join(store, ".bb")
+    try:
+        cands = [os.path.join(bbdir, d) for d in os.listdir(bbdir)]
+        cands.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    except OSError:
+        return {}
+    env = dict(os.environ)
+    env.update(sdk_env(state))
+    for c in cands[:3]:
+        bb = os.path.join(c, "scripts", "bb")
+        if not os.path.isfile(bb):
+            continue
+        try:
+            p = subprocess.run(["bash", bb, "sdk", "versions"], capture_output=True,
+                               text=True, timeout=120, check=False, env=env)
+        except (OSError, subprocess.SubprocessError):
+            return {}
+        out = {}
+        for line in (p.stdout or "").splitlines():
+            f = line.rstrip().split("\t")
+            if len(f) == 4 and f[1] not in ("", "-"):
+                out[f[0][:40]] = f[1][:40]
+        return out
+    return {}
+
+
 def census(state):
     """What this machine is. Asked at hello — every ten minutes — so the
     slow questions (docker, java) are allowed here and not in the sample."""
@@ -534,6 +599,9 @@ def census(state):
         "sandbox": os.access(SANDBOX_BIN, os.X_OK),
         "mounts": mounts_now(),
         "network": network_now(),
+        # The same report the controller makes for itself, so one store is
+        # not described two ways (roadmap #19).
+        "packages_versions": sdk_versions(state),
         "services": services_now(),
     }
 

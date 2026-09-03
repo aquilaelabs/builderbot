@@ -295,6 +295,11 @@ ok(list[0].id === 'local',
                                        packages: { path: '/var/lib/builderbot/packages', free_mb: 40000, total_mb: 90000 },
                                        artifacts: { path: '/var/lib/builderbot/artifacts', free_mb: 30000, total_mb: 90000 } },
               toolchains: { flutter: '3.24.0', node: 'v22.1.0' },
+              // What `bb sdk versions` says on the node — the controller's
+              // own generator, run there. The toolchains dict above is a
+              // placement summary and describes the same store differently,
+              // which is the disparity this replaces.
+              packages_versions: { flutter: '6655482e', 'android:ndk': '29.0.14206865' },
               // What the packages store actually holds, which is what the
               // Tools tab decides `installed` from — the census summary
               // above is a placement hint, not an inventory.
@@ -515,11 +520,58 @@ ok(list[0].id === 'local',
   await page.waitForFunction(() => /on shed/.test(document.querySelector('.pkgtab .pkghead:not(.pkgnode)')?.textContent || ''),
                              null, { timeout: 15000 });
   const tools = await page.$$eval('.pkgtab .pkg', rs => rs.map(r => r.textContent.replace(/\s+/g, ' ')));
-  ok(tools.some(t => /3\.24\.0/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent)),
+  ok(tools.some(t => /6655482e/.test(t)) && tools.some(t => /29\.0\.14206865/.test(t))
+     && !tools.some(t => /3\.24\.0/.test(t)),
+     'a node\'s versions come from its own bb sdk versions, not the census summary');
+  ok(tools.some(t => /6655482e/.test(t)) && /40 ?GB free|39 ?GB free|39\.\d ?GB free/.test(await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent)),
      `picking the node lists what its census says it has, and its store's headroom (${
        await page.$eval('.pkgtab .pkghead:not(.pkgnode)', e => e.textContent.replace(/\s+/g, ' ').slice(0, 160))} | ${tools.filter(t => /installed|21\.0/.test(t)).join(' || ').slice(0, 300)})`);
   ok(!/installed at\s*(<|$)/m.test(await page.$eval('.pkgtab', e => e.textContent)),
      'an installed package on a node reads "installed", not "installed at" with nothing after it');
+  // ---- one store, two machines (roadmap #18) ------------------------------
+  // The controller reaches the SDK share through Unraid's FUSE layer and a
+  // node reaches the same bytes over NFS, so neither mount string can be
+  // derived from the other and the pair was invisible. A marker file inside
+  // the store answers exactly, whatever the transport — and once the pair is
+  // visible, two machines of different architectures sharing one store is a
+  // thing that can be refused instead of failing later as binaries that will
+  // not execute.
+  {
+    const ID = 's_' + '9'.repeat(16);
+    const withId = (arch, token) => fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { ...CENSUS, arch, stores: { ...CENSUS.stores,
+          packages: { ...CENSUS.stores.packages, id: ID } } },
+        version: shipped.version, digest: shipped.digest }) });
+    await withId('x86_64', en.token);
+    // A second machine on the same store, of another architecture.
+    const other = await napi('/api/v1/nodes', { action: 'enroll', name: 'armbox' });
+    const oen = await napi('/api/v1/agent/enroll', {
+      user: 'bb', version: shipped.version, digest: shipped.digest,
+      census: { ...CENSUS, arch: 'aarch64', stores: { ...CENSUS.stores,
+        packages: { ...CENSUS.stores.packages, id: ID } } } },
+      { Authorization: 'Bearer ' + other.token, 'Content-Type': 'application/json' });
+    ok(oen.ok, '(a second node enrolled on the same store)');
+    const clash = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
+    ok(/cannot hold both architectures/.test(clash.error || ''),
+       `a store shared across architectures refuses the install (${
+         (clash.error || 'no error').slice(0, 100)})`);
+    // Same architecture: allowed, but still one at a time across the pair.
+    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + oen.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { ...CENSUS, arch: 'x86_64', stores: { ...CENSUS.stores,
+          packages: { ...CENSUS.stores.packages, id: ID } } },
+        version: shipped.version, digest: shipped.digest }) });
+    const first = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
+    const second = await napi('/api/packages', { action: 'install', names: ['jdk'], node: other.id });
+    ok(first.job && /shares this packages store/.test(second.error || ''),
+       `...and one install at a time across the pair, naming why (${
+         (second.error || 'no error').slice(0, 90)})`);
+    if (first.job) await napi('/api/v1/jobs', { action: 'cancel', id: first.job });
+    await napi('/api/v1/nodes', { action: 'retire', id: other.id });
+    await withId('x86_64', en.token);
+  }
+
   // What a FINISHED job on a node reports. It used to report nothing — the
   // row vanished the moment the job ended, with done and failed hardcoded
   // empty — so the tab never cleared what the operator had ticked and the

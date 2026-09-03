@@ -264,6 +264,59 @@ def _insert_node(rec):
           f"({', '.join('?' * len(cols))})", vals)
 
 
+STORE_ID_FILE = ".bb-store-id"
+
+# Where this container keeps its toolchains. `bb sdk root` is the authority
+# and packages.py asks it, but nodes.py is imported at boot before any of
+# that and must not shell out on the seed path — so the same two answers bb
+# itself resolves between, in the same order.
+def sdk_root_of_controller():
+    r = (os.environ.get("SDK_ROOT") or "").strip()
+    if r:
+        return r
+    return "/sdk" if os.path.isdir("/sdk") else ""
+
+
+def store_id(path, make=True):
+    """A stable id for the store at `path`, from a marker inside it.
+
+    Two machines mounting one share have no way to recognize each other by
+    path: this container reaches the SDK share through Unraid's FUSE layer
+    (fstype fuse.shfs, source "shfs") while a node reaches the same bytes
+    over NFS (192.168.1.15:/mnt/user/development/SDK). Neither string can be
+    derived from the other without knowing it is Unraid, so pairing on the
+    mount was never going to work here — measured on this box, 3 Sep.
+
+    A file in the store answers exactly, whatever the transport, and it is
+    store-specific rather than machine-specific, so it is the one kind of
+    thing that belongs in a shared store.
+    """
+    if not path:
+        return ""
+    f = os.path.join(path, STORE_ID_FILE)
+    try:
+        with open(f) as fh:
+            got = fh.read().strip()[:64]
+        if got:
+            return got
+    except OSError:
+        pass
+    if not make:
+        return ""
+    made = "s_" + secrets.token_hex(8)
+    try:
+        # Exclusive, so two machines racing the first mount cannot each
+        # believe they created it — the loser reads the winner's.
+        fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+        with os.fdopen(fd, "w") as fh:
+            fh.write(made + "\n")
+        return made
+    except FileExistsError:
+        return store_id(path, make=False)
+    except OSError:
+        return ""
+
+
 def _seed_local():
     """The controller as a node, present from the first boot.
 
@@ -279,6 +332,19 @@ def _seed_local():
         "mem_mb": _mem_mb(),
         "os": f"{platform.system().lower()} {platform.machine()}",
     }
+    # This container's own packages store, reported like any node's — without
+    # it the controller could not be recognized as sharing a store with a
+    # node, so the "one install at a time across all of them" arbitration
+    # never engaged for the pair that most obviously needs it: the SDK share,
+    # mounted here and on the sandbox at once.
+    root = sdk_root_of_controller()
+    if root:
+        st = {"path": root, "id": store_id(root)}
+        with contextlib.suppress(OSError):
+            u = os.statvfs(root)
+            st["free_mb"] = int(u.f_bavail * u.f_frsize / 1048576)
+            st["total_mb"] = int(u.f_blocks * u.f_frsize / 1048576)
+        reported["stores"] = {"packages": st}
     system, arch = platform.system().lower(), platform.machine()
     if node(LOCAL):
         _exec("UPDATE nodes SET reported = ?, os = ?, arch = ? WHERE id = ?",
@@ -809,11 +875,23 @@ def _census(c):
         if isinstance(s, dict):
             out["stores"][str(role)[:20]] = {
                 "path": str(s.get("path") or "")[:200],
+                # The marker inside the store (store_id): what says two
+                # machines mounting it at different paths, over different
+                # transports, are looking at one directory. Dropping it here
+                # is how the pair stays invisible — the same way store_dirs
+                # was lost before it was whitelisted.
+                "id": str(s.get("id") or "")[:64],
                 "free_mb": _mb(s.get("free_mb")),
                 "total_mb": _mb(s.get("total_mb")),
                 # What the store holds, from the census's du (phase 6): the
                 # cache's number beside Clear cache. None when not measured.
                 "used_mb": _mb(s.get("used_mb"))}
+    # {name: version} from `bb sdk versions` on the node — the controller's
+    # own generator, run there. Whitelisted like store_dirs, and for the same
+    # reason: a value the agent reports and this drops is a value that does
+    # not exist.
+    pv = c.get("packages_versions") if isinstance(c.get("packages_versions"), dict) else {}
+    out["packages_versions"] = {str(k)[:40]: str(v)[:40] for k, v in list(pv.items())[:40]}
     sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else {}
     out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
                          for k in ("top", "android")}

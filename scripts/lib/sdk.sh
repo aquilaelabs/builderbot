@@ -87,11 +87,26 @@ sdk_env_snippet() {
 # restart. The startup hook writes the same file from the same generator;
 # this is the other half — installs happen at runtime, and until now only
 # boot noticed them.
+# Where the generated env file lives. NOT in the SDK root, which is a share
+# two machines mount at different paths: every line in it is absolute
+# (/sdk/flutter/bin, RUSTUP_HOME=/sdk/rust/rustup), so a copy written here is
+# wrong for the sandbox that mounts the same bytes at /mnt/SDK, and whichever
+# machine generated it last won. It was the one piece of machine-specific
+# data in a store that is otherwise identical for everybody — the operator's
+# own test for what may be shared, and the only thing that failed it.
+#
+# The home volume instead: container-local, survives a restart, and
+# regenerated on every boot and every install anyway.
+sdk_env_file() {
+    printf '%s/.cache/builderbot/sdk-env.sh' "${BUILDER_HOME:-$HOME}"
+}
+
 sdk_write_env() {
     local root file tmp
     root="$(sdk_root)"
-    [ -d "$root" ] && [ -w "$root" ] || return 0
-    file="$root/env.sh"
+    [ -d "$root" ] || return 0
+    file="$(sdk_env_file)"
+    mkdir -p "$(dirname "$file")" 2>/dev/null || return 0
     tmp="$file.new.$$"
     if sdk_env_snippet > "$tmp" 2>/dev/null; then
         mv -f "$tmp" "$file"
@@ -264,6 +279,26 @@ sdk_check_one() {
             [ -z "$d" ] || inst="$("$d/bin/go" version 2>/dev/null | awk '{print $3}')"
             [ -n "$local_only" ] || latest="$(timeout 30 curl -fsS 'https://go.dev/VERSION?m=text' 2>/dev/null | head -1)"
             [ -n "$latest" ] || latest="-"
+            ;;
+        jdk)
+            # java -version prints to STDERR, which is why the redirect is a
+            # merge rather than a discard — read the other way this reported
+            # every installed JDK as absent.
+            d="$(sdk_find jdk)" || d=""
+            [ -z "$d" ] || inst="$("$d/bin/java" -version 2>&1 | sed -n 's/.*version "\([^"]*\)".*/\1/p' | head -1)"
+            [ -n "$local_only" ] || latest="$(timeout 30 curl -fsS \
+                'https://api.adoptium.net/v3/info/release_names?release_type=ga&version=%5B21%2C22%29&page_size=1&sort_order=DESC' \
+                2>/dev/null | python3 -c 'import json,sys
+print((json.load(sys.stdin).get("releases") or [""])[0].removeprefix("jdk-"))' 2>/dev/null)"
+            [ -n "$latest" ] || latest="-"
+            ;;
+        android-tools)
+            # sdkmanager --version needs a JDK, so this reads the package file
+            # the tools ship instead: no java, no subprocess, and an answer
+            # even on a node whose JDK is not installed yet.
+            d="$(sdk_find android-tools)" || d=""
+            [ -z "$d" ] || inst="$(sed -n 's/^Pkg.Revision=//p' \
+                "$d/cmdline-tools/source.properties" 2>/dev/null | head -1)"
             ;;
         zig)
             d="$(sdk_find zig)" || d=""

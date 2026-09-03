@@ -406,7 +406,8 @@ cat > "$BBSANDBOX_TMP" <<'BBSANDBOX'
 # of docs/nodes.md — by the node agent, which applies the Nodes tab's desired
 # mounts and stores through these same verbs as audited `system` jobs, so the
 # GUI and this menu can never disagree about what the machine is configured
-# to be. Still deliberately NOT reachable by a session: the agent is offered
+# to be. `sdk` is the exception to all of that: it reads the packages store
+# through the controller's own bb and needs no privilege. Still deliberately NOT reachable by a session: the agent is offered
 # system jobs only because it enrolled as a sandbox, and `list --json` is the
 # whole of what it reads back. The docker account cannot run this at all.
 set -euo pipefail
@@ -425,7 +426,12 @@ DOCKER_USER="${DOCKER_USER:-bb}"
 say()  { printf '\n== %s\n' "$*"; }
 warn() { printf '\n!! %s\n' "$*" >&2; }
 die()  { warn "$*"; exit 1; }
-[ "$(id -u)" -eq 0 ] || die "run this as root: sudo bb-sandbox"
+# Everything here writes to the machine — fstab, netplan, /etc — except `sdk`,
+# which only reads the packages store and needs no privilege to do it.
+case "${1-}" in
+    sdk) ;;
+    *) [ "$(id -u)" -eq 0 ] || die "run this as root: sudo bb-sandbox" ;;
+esac
 
 # Every mount this tool manages, by mountpoint. Read from fstab rather than
 # kept in a list of our own: fstab is what the machine actually boots from, and
@@ -674,6 +680,57 @@ cmd_remove() {
     fi
 }
 
+# bb-sandbox sdk [...] — the controller's own bb, for the questions that make
+# sense on this machine.
+#
+# Not a second copy of anything. The agent unpacks the controller's bb into
+# the packages store to run jobs with, and it has been sitting there
+# unreachable: a person at this console could not ask what toolchains the
+# store holds, though the tool that answers was already on the disk. This
+# hands it over, with the same environment a job gets.
+#
+# READ-ONLY verbs only. Installing from here would go around the arbitration
+# the controller keeps across every machine that shares this store — one
+# install at a time, or two unpackings land in one directory — so those are
+# refused with the place that does it properly.
+BB_READONLY_VERBS="status root list versions images flavors env plan"
+
+cmd_sdk() {
+    local verb="${1:-status}" store user bb newest
+    case " $BB_READONLY_VERBS " in
+        *" $verb "*) ;;
+        *) die "bb-sandbox sdk reads; it does not install. '$verb' changes the store, and
+   doing it from here would go around the one-install-at-a-time rule the
+   controller keeps across every machine sharing it — use the dashboard's
+   Tools tab, with this node picked. Readable: $BB_READONLY_VERBS" ;;
+    esac
+    [ -r "$NODE_JSON" ] || die "this machine is not enrolled ($NODE_JSON is not readable) — there is no store to read"
+    store="$(python3 -c 'import json,sys
+print(((json.load(open(sys.argv[1])).get("stores") or {}).get("packages")) or "")' "$NODE_JSON" 2>/dev/null)"
+    user="$(python3 -c 'import json,sys
+print(json.load(open(sys.argv[1])).get("user") or "")' "$NODE_JSON" 2>/dev/null)"
+    [ -n "$store" ] || die "this node has no packages store"
+    # The newest bundle the agent has unpacked. It appears the first time a
+    # package job runs here, so before that there is honestly nothing to run.
+    newest="$(ls -1dt "$store"/.bb/*/scripts/bb 2>/dev/null | head -1 || true)"
+    [ -n "$newest" ] || die "no bb on this machine yet — the controller unpacks one into
+   ${store}/.bb the first time a package job runs on this node. Install
+   something from the dashboard's Tools tab and it will be here."
+    bb="$newest"
+    local -a env=(env
+        "SDK_ROOT=$store" "BUILDER_HOME=$store" "BB_NODE_PACKAGES=1"
+        "ANDROID_HOME=$store/android" "ANDROID_SDK_ROOT=$store/android"
+        "JAVA_HOME=$store/jdk"
+        "PATH=$store/jdk/bin:$store/android/cmdline-tools/latest/bin:$store/android/platform-tools:$store/android/emulator:$PATH")
+    # As the enrolled account when we are root, so what this reads is what a
+    # job would read rather than whatever root can see.
+    if [ "$(id -u)" -eq 0 ] && [ -n "$user" ] && id -u "$user" >/dev/null 2>&1; then
+        exec setpriv --reuid "$user" --regid "$user" --init-groups \
+            "${env[@]}" bash "$bb" sdk "$@"
+    fi
+    exec "${env[@]}" bash "$bb" sdk "$@"
+}
+
 cmd_list() {
     local path src state real held
     printf '\n%-24s %-34s %s\n' MOUNTPOINT SOURCE STATE
@@ -873,6 +930,7 @@ case "${1-}" in
     appdata)     shift; cmd_appdata "${1-}" ;;
     readonly)    shift; cmd_readonly "${1-}" "${2-on}" ;;
     settings)    cmd_settings ;;
+    sdk)         shift; cmd_sdk "$@" ;;
     -h|--help|help)
         sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//' ;;
     *) die "unknown command: $1 — try: bb-sandbox --help" ;;

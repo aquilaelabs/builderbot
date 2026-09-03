@@ -11,6 +11,7 @@ and remembers the answers; bb decides *how*, out of config/packages.json,
 which holds every URL, flag and argument any of it needs. Neither of them has
 a package name written into it.
 """
+import contextlib
 import json
 import os
 import re
@@ -657,6 +658,9 @@ def payload_for_node(nid):
         return {"error": "no such node"}
     rep = n.get("reported") or {}
     tc = rep.get("toolchains") or {}
+    pv = rep.get("packages_versions") or {}
+    if not isinstance(pv, dict):
+        pv = {}
     store = (rep.get("stores") or {}).get("packages") or {}
     items = []
     # What is IN the store, by directory, which is where bb sdk puts things:
@@ -678,7 +682,15 @@ def payload_for_node(nid):
             here = probe in top
         # A node that has not reported its store yet is not evidence of
         # absence, so say nothing rather than "not installed".
-        have = tc.get({"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
+        # The node's own `bb sdk versions` first — the same generator this
+        # controller runs for its own list, so one store is described one
+        # way. The census's toolchains dict is the fallback for an agent too
+        # old to report it, and it is a placement summary rather than an
+        # inventory: it answers for six names, says "present" where it cannot
+        # parse, and hands back an unstripped "go version go1.27.0
+        # linux/amd64". That difference is what the operator was looking at.
+        have = pv.get(name) or tc.get(
+            {"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
         kb = _pkg_remembered.get(name)
         items.append({**{k: p[k] for k in ("name", "label", "about")},
                       "installed": here, "unknown": not known,
@@ -728,18 +740,29 @@ def payload_for_node(nid):
 
 
 def _store_share(n):
-    """(share source, subpath) when this node's packages store sits on a
-    mount it manages, else None.
+    """What identifies this node's packages store, or None.
 
-    Two nodes pointing `packages` at one NFS export ARE one store, and the
+    Two machines pointing `packages` at one share ARE one store, and the
     controller has to know which pairs those are: the same path STRING says
     nothing — /var/lib/builderbot/packages is every node's default and is a
-    different disk on each. What identifies a shared store is the mount's
-    source, which the census reports beside its path, so this finds the
-    deepest managed mount the store sits under and answers with its source.
+    different disk on each.
+
+    The store's own id first (nodes.store_id — a marker file inside it),
+    because it is the only answer that survives the transport differing. On
+    this box the SDK share is reached through Unraid's FUSE layer by the
+    controller (fstype fuse.shfs, source "shfs") and over NFS by the sandbox
+    (192.168.1.15:/mnt/user/development/SDK); neither string can be derived
+    from the other, so the pair was invisible and the one-install-at-a-time
+    arbitration never engaged for it.
+
+    The mount source stays as the fallback, for a node whose store has no
+    marker yet — a read-only share, or an agent too old to report the id.
     """
     rep = n.get("reported") or {}
-    path = ((rep.get("stores") or {}).get("packages") or {}).get("path") or ""
+    store = (rep.get("stores") or {}).get("packages") or {}
+    path = store.get("path") or ""
+    if store.get("id"):
+        return ("id", store["id"])
     if not path:
         return None
     best = None
@@ -791,12 +814,29 @@ def node_job(principal, nid, action, names):
     # into one NFS directory, or one upgrading a toolchain under another
     # mid-build, is version skew nobody can debug. The rule is enforced
     # across a shared store or it is not enforced at all.
-    for other in [n] + store_sharers(nid):
+    sharers = store_sharers(nid)
+    for other in [n] + sharers:
         for j in nodes.jobs_for(node_id=other["id"], type="package", active=True, n=1):
             where = ("" if other["id"] == nid
                      else f" — it shares this packages store with {n['name']}")
             return {"error": f"a package job is already running on {other['name']}"
                              f"{where}. One at a time."}
+    # ...and this container's own installer, which is not a job and so is
+    # invisible to the loop above. It is the sharer that matters most here:
+    # the SDK share is mounted by the controller and by the sandbox at once.
+    if _pkg_job["running"] and any(o["id"] == nodes.LOCAL for o in sharers):
+        return {"error": "this container is installing into the same packages store "
+                         f"right now — it shares it with {n['name']}. One at a time."}
+    # Installing x86-64 binaries into a store an arm64 machine reads is
+    # silently wrong: the store's path carries no architecture, so nothing
+    # else would catch it and the failure surfaces later as a toolchain that
+    # will not execute.
+    bad = [o for o in sharers if (o.get("arch") or "") and (n.get("arch") or "")
+           and o["arch"] != n["arch"]]
+    if bad:
+        return {"error": f"{n['name']} is {n.get('arch')} and shares this packages store with "
+                         f"{', '.join(o['name'] + ' (' + str(o.get('arch')) + ')' for o in bad)}"
+                         " — one store cannot hold both architectures. Give it a store of its own."}
     return nodes.job_add(principal, {"node": nid}, "package",
                          {"action": action, "names": names, "timeout": 3600})
 
@@ -806,6 +846,14 @@ def start_job(action, names, auto=False):
     with _pkg_lock:
         if _pkg_job["running"]:
             return False
+        # The other half of the shared-store rule: a node unpacking into the
+        # store this container is about to write is the same collision, seen
+        # from the other side.
+        if nodes:
+            with contextlib.suppress(Exception):
+                for other in store_sharers(nodes.LOCAL):
+                    if nodes.jobs_for(node_id=other["id"], type="package", active=True, n=1):
+                        return False
         _pkg_job.update(running=True, queue=list(names), action=action,
                         current="", log=[], done=[], failed=[], auto=auto,
                         aborting=False,
