@@ -41,9 +41,19 @@ def configure(*, run, write_json, state):
 
 # The catalog lives beside the code rather than in it: config/packages.json,
 # which ships to /opt/builderbot/config/ and so sits at the same place relative
-# to this file in the image and in a checkout. Adding a package is an entry
-# there plus a recipe in bb's sdk_install — the recipes are the half that
-# cannot be a table, since every one of them installs differently.
+# to this file in the image and in a checkout.
+#
+# Adding a package is an entry there and nothing else, as long as it fits one
+# of the five kinds sdk_install dispatches on (tarball, script, git, command,
+# sdkmanager) — plus a version resolver in sdkmeta.py when upstream publishes
+# its releases in a shape none of the existing ones read. Node.js was exactly
+# that: one catalog row, one resolver, no install code.
+#
+# What is NOT in the catalog, and is worth knowing before adding one: where a
+# package LANDS is written down in several places that must agree — the
+# version probe in sdk.sh's sdk_check_one, sdk_env_snippet's PATH lines, and
+# the agent's own STORE_TOOLS and STORE_PATHS. They have drifted (roadmap
+# #18).
 PACKAGES_FILE = HERE.parent.parent / "config" / "packages.json"
 
 
