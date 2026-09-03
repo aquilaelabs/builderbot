@@ -235,12 +235,43 @@
         "linux/*"
       ],
       "requires": [
-        "android-tools"
+        "android-tools",
+        "android:platform-tools"
       ],
       "about": "The emulator binary. System images are per API level and come from ANDROID_SYSTEM_IMAGES.",
       "source": {
         "kind": "sdkmanager",
         "package": "emulator",
+        "download": {
+          "resolver": "android-repo",
+          "xml": [
+            "https://dl.google.com/android/repository/repository2-3.xml"
+          ]
+        }
+      }
+    },
+    {
+      "name": "android:platform-tools",
+      "label": "Android platform tools",
+      "probe": "android:platform-tools",
+      "layout": {
+        "bin": [
+          "root:android/platform-tools"
+        ],
+        "env": {},
+        "tool": "root:android/platform-tools/adb",
+        "reports": ""
+      },
+      "platforms": [
+        "linux/*"
+      ],
+      "requires": [
+        "android-tools"
+      ],
+      "about": "adb, and the rest of the tools that talk to a device or an emulator. Every `bb emu` verb goes through adb, so the emulator is unusable without it.",
+      "source": {
+        "kind": "sdkmanager",
+        "package": "platform-tools",
         "download": {
           "resolver": "android-repo",
           "xml": [

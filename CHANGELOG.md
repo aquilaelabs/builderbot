@@ -223,3 +223,5 @@
 - The Packages tab no longer fails to draw when the page has just loaded (95413cb)
 - Installing an Android package now brings the command-line tools and a JDK with it, instead of failing for want of them (95413cb)
 - Each package says what it needs and what needs it (95413cb)
+- adb and the Android platform tools can be installed on a node, and the emulator brings them with it (a340a7b)
+- A node no longer reports an Android SDK it has not really got (a340a7b)

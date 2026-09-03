@@ -6905,10 +6905,14 @@ function renderPackagesInto(i){
     ${picker}
     <div class="pkghead">${onNode
       ? (d.root
-          ? `${d.shared_with?.length ? `<b>Shared store:</b> ${esc(d.name)} keeps its
-              toolchains on the same share as ${esc(d.shared_with.join(", "))}, so what is
-              installed here is installed there. One install at a time across all of them.<br>` : ""
-            }Installed into <code>${esc(d.root)}</code> on ${esc(d.name)} — its packages store${
+          // Nothing here about a shared store. Several nodes pointing at one
+          // share is an ordinary arrangement — three Linux sandboxes on one
+          // NFS export is the obvious way to run this — and it works without
+          // anybody being told. The one moment it matters is when a second
+          // install is refused because one is already running across the
+          // share, and that refusal says so at the press; a standing banner
+          // on every draw was explaining a thing that needs no explaining.
+          ? `Installed into <code>${esc(d.root)}</code> on ${esc(d.name)} — its packages store${
               typeof d.free_mb === "number" ? `, ${d.free_mb >= 10240
                 ? Math.round(d.free_mb / 1024) + "GB" : d.free_mb + "MB"} free` : ""}. An install
             is a job there: bb and the catalog travel to the node, and its census reports what landed.`

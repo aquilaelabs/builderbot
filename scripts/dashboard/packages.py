@@ -772,9 +772,7 @@ def payload_for_node(nid):
                        "done": done, "failed": [x for x in names if x not in done],
                        "aborting": False, "node": nid, "id": j["id"]}
                 break
-    shared = [x["name"] for x in store_sharers(nid)]
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
-            "shared_with": shared,
             "root": store.get("path") or "", "free_mb": store.get("free_mb"),
             "shared": False, "checked": 0, "sizing": False,
             "images": [], "addable": [], "flavors": [], "images_loading": False,
