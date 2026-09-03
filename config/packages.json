@@ -170,7 +170,7 @@
         "run": [
           "sh",
           "-c",
-          "{ command -v unzip >/dev/null 2>&1 && unzip -q \"$1\" -d \"$2\"; } || python3 -c \"import os,sys,zipfile;z=zipfile.ZipFile(sys.argv[1]);[(z.extract(i,sys.argv[2]), (i.external_attr>>16) and os.chmod(os.path.join(sys.argv[2],i.filename), i.external_attr>>16)) for i in z.infolist()]\" \"$1\" \"$2\" && root=\"$(dirname \"$2\")/android\" && mkdir -p \"$root/cmdline-tools\" && ln -sfn \"$2/cmdline-tools\" \"$root/cmdline-tools/latest\"",
+          "{ command -v unzip >/dev/null 2>&1 && unzip -q \"$1\" -d \"$2\"; } || python3 -c \"import os,sys,zipfile;z=zipfile.ZipFile(sys.argv[1]);[(z.extract(i,sys.argv[2]), (i.external_attr>>16) and os.chmod(os.path.join(sys.argv[2],i.filename), i.external_attr>>16)) for i in z.infolist()]\" \"$1\" \"$2\" && root=\"$(dirname \"$2\")/android\" && mkdir -p \"$root/cmdline-tools\" && rm -rf \"$root/cmdline-tools/latest\" && ln -sfn \"$2/cmdline-tools\" \"$root/cmdline-tools/latest\"",
           "_",
           "{script}",
           "{dir}"
