@@ -217,3 +217,5 @@
 - When the dashboard cannot reach the container, the light says so with the reason and the cards say why, instead of sitting on 'loading…' (2e724cd)
 - The Runner card shows every node with a runner — which machine, whether it is idle or running a job, and the runs-on line that lands a job there (5b7f0a9)
 - A build on a node can now find the toolchains that node carries — before this, java and go were installed there but not on a build's PATH (0cf148f)
+- Node.js can be installed on a node from the Tools tab (cffbed4)
+- A package that needs another now installs it first and says so, instead of failing inside the tool that was missing it (cffbed4)
