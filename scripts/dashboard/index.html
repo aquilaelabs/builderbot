@@ -5900,7 +5900,12 @@ function pkgRow(p, busy, job){
       }${ver}${next}</span>
       <span class="sub">${esc(p.about)}</span>
       ${mine ? prog : `<span class="sub where${p.installed ? " on" : ""}">${
-        p.installed ? "installed at " + esc(p.path) : "not installed"}</span>`}
+        // The path is the store's, and the head of the tab already says where
+        // that is — so naming it per row was a repetition, and on a node,
+        // where the census reports no per-package path, it read "installed
+        // at " with nothing after it.
+        p.installed ? (p.path ? "installed at " + esc(p.path) : "installed")
+                    : "not installed"}</span>`}
       ${upd}${err}
     </span>
     ${p.installed && !mine ? `<button class="eye rm" data-rm="${esc(p.name)}" aria-label="uninstall ${esc(p.label)}"${
