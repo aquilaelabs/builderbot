@@ -18,12 +18,24 @@ and a shared Docker network closes only the first:
 2. **Host-published ports, through the default gateway.** Measured: a `curl`
    to `172.17.0.1:<published>` answers. Network membership does not close
    this; only host firewall rules would.
-3. **The daemon itself.** The sandbox node's address is in every session's environment as `DOCKER_HOST`, so
-   a session reaches whatever it names exactly as the dashboard does. A far
-   bigger lever than any HTTP port — and the reason it must not name this
-   box's own daemon.
+3. **The daemon itself.** Whatever address the manager can reach, a session
+   on this box can reach too — the container has one network view, not two.
+   A far bigger lever than any HTTP port, and the reason the daemon must not
+   be this box's own. (It arrived as `DOCKER_HOST` once; the node record
+   carries it now, but the reasoning is unchanged — what the controller can
+   address is not a secret from a session.)
 4. **The dashboard's own API**, which holds the same credential a session
    does.
+
+**A separate physical machine does just as well, and `provision.sh` runs on
+one.** Nothing in the argument below is about virtualization: what closes
+these four paths is that the daemon belongs to a machine whose whole job is
+being wrecked and reset, with no route to the server's containers. A VM is
+simply the cheapest way to get one out of hardware you already own. On bare
+metal the only differences are that `--share` has no hypervisor to pass a
+share in — use `--nfs` — and that an emulator is *happier*, with `/dev/kvm`
+native rather than nested. The provisioner skips the guest agent when it
+finds no host to talk to, and is otherwise the same script.
 
 A VM answers all four at once — and the point worth holding on to is that it
 does not *add* a layer. It takes one away: dev instances run in the VM, so
