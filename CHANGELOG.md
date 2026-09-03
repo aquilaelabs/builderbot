@@ -208,3 +208,4 @@
 - A packages store shared by machines of different architectures is refused, instead of filling up with binaries that cannot run there (18fe301)
 - A node's toolchain versions now read the same way this container's do, instead of showing 'present' where a real version exists (c796d9c)
 - The JDK and the Android command-line tools now report their versions (c796d9c)
+- bb-sandbox sdk shows what the node's packages store holds, from the console, without needing the dashboard (a7c409e)
