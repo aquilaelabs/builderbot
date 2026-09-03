@@ -354,7 +354,17 @@ ok(list[0].id === 'local',
      'the CI runner section says there is none, and offers to install one');
   await page.fill(`${ROW} [data-k="runner:url"]`, 'https://github.com/example-org');
   await page.fill(`${ROW} [data-k="runner:labels"]`, 'gpu');
-  await page.click(`${ROW} [data-nrunner="install"]`);
+  // Dead the moment it is pressed, not when the answer comes back. Every
+  // action here awaits a POST, then loadNodes(), then a repaint — a second
+  // or two in which the button looked untouched, so there was no telling a
+  // press that landed from one that missed. Read synchronously after the
+  // click dispatches, before any await resolves.
+  const pressedState = await page.evaluate(sel => {
+    const b = document.querySelector(sel + ' [data-nrunner="install"]');
+    b.click();
+    return b.disabled;
+  }, ROW);
+  ok(pressedState === true, 'a node action goes dead the instant it is pressed, not when it answers');
   await page.waitForFunction(sel => /applying runner/.test(
     document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
   const rj = (await napi('/api/v1/jobs?active=1')).jobs.find(j => j.type === 'system' && j.spec.apply === 'runner');
