@@ -496,6 +496,10 @@ function renderNodesInto(i){
     // Said on the row before anybody presses anything: a five-version-old
     // agent otherwise looks exactly like a current one.
     const stale = nodeStale(n);
+    // A job of this type queued or running on this node. pressing() greys a
+    // button for the round trip; this is what keeps it grey afterwards,
+    // through the repaint that replaces the element.
+    const inflight = t => (n.jobs || []).some(j => j.type === t);
     const agentVer = n.kind === "agent" && n.agent?.version
       ? `agent ${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}${
           stale ? ` <span class="pill warn ndstale" title="this controller ships agent ${
@@ -521,15 +525,22 @@ function renderNodesInto(i){
             ? "run uname on it through the agent — the channel, end to end"
             : "probe this node's daemon now — docker answering, and the provisioner's sandbox stamp"}">Test</button>`}
         ${stale && n.state !== "pending" ? `<button type="button" data-nd="update-agent"
-          title="hand the node the agent this controller ships (${esc(nodesAgent.version)}) — it swaps itself in place and re-execs; nothing else restarts, and it waits for its own jobs to finish first">Update agent</button>` : ""}
+          ${inflight("self-update") ? "disabled" : ""}
+          title="${inflight("self-update")
+            ? "the update is queued — the row follows the agent's next hello, which is when it has swapped itself in"
+            : `hand the node the agent this controller ships (${esc(nodesAgent.version)}) — it swaps itself in place and re-execs; nothing else restarts, and it waits for its own jobs to finish first`}">${
+          inflight("self-update") ? "Updating…" : "Update agent"}</button>` : ""}
         ${n.state === "pending" ? "" : `<button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}"
           title="${n.state === "draining"
             ? "take new work again"
             : "finish what is running, accept nothing new — what makes a node safe to reboot"}">${
           n.state === "draining" ? "Undrain" : "Drain"}</button>`}
         ${n.kind === "agent" && n.state !== "pending" && !n.agent?.revoked
-          ? `<button type="button" data-nd="cache-clear" ${stale ? "disabled" : ""}
-          title="${stale ? esc(staleWhy(n)) : "drop this node's build caches — every project's. A cold cache costs the next build time, never correctness"}">Clear cache</button>` : ""}
+          ? `<button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}
+          title="${stale ? esc(staleWhy(n))
+            : inflight("cache-clear") ? "already clearing"
+            : "drop this node's build caches — every project's. A cold cache costs the next build time, never correctness"}">${
+          inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>` : ""}
         ${n.kind === "agent" && n.state !== "pending" && !n.agent?.revoked
           ? `<button type="button" class="rm" data-nd="revoke"
           title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}

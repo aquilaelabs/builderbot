@@ -552,6 +552,18 @@ ok(list[0].id === 'local',
         packages: { ...CENSUS.stores.packages, id: ID } } } },
       { Authorization: 'Bearer ' + other.token, 'Content-Type': 'application/json' });
     ok(oen.ok, '(a second node enrolled on the same store)');
+    // ...and the catalog says which platform each recipe is for, so an
+    // install onto a node of another one is refused by name rather than
+    // fetching a couple of hundred megabytes that cannot execute. arm64
+    // Linux needs no new agent to reach this (roadmap #18).
+    const wrong = await napi('/api/packages', { action: 'install', names: ['jdk'], node: other.id });
+    ok(/packaged for linux\/amd64/.test(wrong.error || ''),
+       `an install onto the wrong platform is refused by name (${
+         (wrong.error || 'no error').slice(0, 100)})`);
+    const fine = await napi('/api/packages', { action: 'install', names: ['flutter'], node: other.id });
+    ok(!/packaged for/.test(fine.error || ''),
+       `...while one that resolves its own platform is not refused FOR ITS PLATFORM — this node's refusal is the shared store, a different thing (${String(fine.error).slice(0, 60)})`);
+    if (fine.job) await napi('/api/v1/jobs', { action: 'cancel', id: fine.job });
     const clash = await napi('/api/packages', { action: 'install', names: ['jdk'], node: minted.id });
     ok(/cannot hold both architectures/.test(clash.error || ''),
        `a store shared across architectures refuses the install (${
@@ -679,6 +691,20 @@ ok(list[0].id === 'local',
   const uj = upd.job ? await napi(`/api/v1/jobs?id=${upd.job}`) : null;
   ok(upd.ok && uj && uj.type === 'self-update' && uj.spec.digest === shipped.digest && uj.node === minted.id,
      `Update agent queues a self-update naming the shipped digest (${upd.job || upd.error})`);
+  // ...and it stays greyed while that job is queued, through the repaint
+  // that replaces the button. pressing() only covers the round trip; the
+  // render is what has to know, and node_list only tracked system jobs, so
+  // Update agent came back live the instant it answered.
+  // Back to the Nodes tab — the block above left the Tools tab in front.
+  await page.evaluate(() => openNodesTab());
+  await page.waitForSelector('.nodestab #ndPick', { timeout: 15000 });
+  await pickNode(page, minted.id);
+  await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+  await page.waitForFunction(sel => /Updating/.test(
+    document.querySelector(sel + ' [data-nd="update-agent"]')?.textContent || ''),
+    ROW, { timeout: 10000 });
+  ok(await page.$eval(`${ROW} [data-nd="update-agent"]`, b => b.disabled),
+     '...and stays greyed while the update is queued, not only for the round trip');
   if (upd.job) await napi('/api/v1/jobs', { action: 'cancel', id: upd.job });
   await fetch(base + '/api/v1/agent/hello', { method: 'POST',
     headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },

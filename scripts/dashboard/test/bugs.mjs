@@ -183,6 +183,14 @@ await page.click('#bugList .bug[data-id="3"] .bRm');
 await page.waitForSelector('.bug .dropbox input', { timeout: 10000 });
 ok(read().some(b => b.id === 3),
    'the bin asks in place, and nothing has gone while it is asking');
+// Bug #42: the box is imperative DOM appended after the render, so a repaint
+// used to take it and whatever was typed into it. Type something, force the
+// redraw the poll would have done, and both must survive.
+await page.fill('.bug .dropbox input', 'half a reason, still being written');
+await page.evaluate(p => notebooks.get(p).reloadBugs(), 'alpha');
+const kept = await page.$eval('.bug .dropbox input', e => e.value).catch(() => null);
+ok(kept === 'half a reason, still being written',
+   `a repaint under an open delete box leaves it, and what was typed (${JSON.stringify(kept)})`);
 await page.click('.bug .dropbox .stop');
 // Waited for, not asserted on the next line: the row repaints whenever the
 // tracker's revision moves, and a click that lands as the row is replaced

@@ -1978,7 +1978,25 @@ def read_container(name):
 
 
 def forget_container(name):
-    """Drop the record and the files. Only ever for one this wrote."""
+    """Drop the record and the files. Only ever for one this wrote.
+
+    Including the env, which it did not before. For a PROJECT's instance
+    Remove deliberately keeps the env and the data — the promise is that
+    sending it again finds them — but a written container has nowhere to
+    come back FROM, which is the argument the compose file below is deleted
+    on, and it applies to the env just the same. Kept, it left one file per
+    removed container in /config/devenv with nothing that would ever read it
+    again.
+
+    Stale-named siblings go with it, found by the tail the way stale_name()
+    finds them: a container written under an older naming scheme leaves
+    `bbdev-<name>.env` and `bbdev-none-<name>.env` beside the current one,
+    and those were accumulating too. The `live` check is what makes the
+    loose tail match safe — `my-sonarr` also ends in `-sonarr` while being
+    an instance of its own.
+
+    Returns the env files it removed, for the log.
+    """
     with _lock:
         d = _load()
         if name in d:
@@ -1988,6 +2006,18 @@ def forget_container(name):
         shutil.rmtree(containers_dir(name), ignore_errors=True)
     except OSError:
         pass
+    tail = _pname(name, MAIN)
+    gone = []
+    if tail and ENVDIR.is_dir():
+        live = {_pname(p, i) for p, insts in _load().items() for i in insts}
+        for f in sorted(ENVDIR.glob(f"*{tail}.env")):
+            stem = f.stem
+            if stem in live or not (stem == tail or stem.endswith("-" + tail)):
+                continue
+            with contextlib.suppress(OSError):
+                f.unlink()
+                gone.append(f.name)
+    return gone
 
 
 def create_instance(project, name, node=""):

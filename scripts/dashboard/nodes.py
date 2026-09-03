@@ -217,15 +217,24 @@ def node_list(all=False):
     without a second fetch."""
     rows = [_live(_inflate(r)) for r in _rows(
         "SELECT * FROM nodes ORDER BY kind = 'local' DESC, created")]
-    busy = {}
-    for j in _rows("SELECT id, node, spec FROM jobs WHERE type = 'system' AND "
+    busy, inflight = {}, {}
+    # Every job that has not finished, not only the system ones. A button
+    # whose job type was not tracked here came back live on the repaint that
+    # followed the press — pressing() greys it for the round trip, and then
+    # the render put a fresh, enabled one in its place. Update agent did
+    # exactly that, which is what the operator kept seeing.
+    for j in _rows("SELECT id, node, type, spec FROM jobs WHERE "
                    "state IN ('queued', 'assigned', 'running')"):
+        inflight.setdefault(j["node"], []).append({"id": j["id"], "type": j["type"]})
+        if j["type"] != "system":
+            continue
         try:
             busy[j["node"]] = {"id": j["id"], "what": json.loads(j["spec"]).get("apply", "")}
         except (ValueError, AttributeError):
             busy[j["node"]] = {"id": j["id"], "what": ""}
     for r in rows:
         r["applying"] = busy.get(r["id"])
+        r["jobs"] = inflight.get(r["id"], [])
     return rows if all else [r for r in rows if r["state"] != "retired"]
 
 
