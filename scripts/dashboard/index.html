@@ -11044,6 +11044,8 @@ async function refresh(){
     // a plain reload still lands where it left off.
     viewAfterRestart();
     $("dot").classList.remove("off");
+    $("dot").removeAttribute("title");
+    pollFails = 0;
     // The container's hostname, which answers "which BuilderBot am I looking
     // at" — and on the ordinary box, where the container is called builderbot,
     // answers it with the word already three inches to its left. Two of the
@@ -11104,8 +11106,28 @@ async function refresh(){
     // unreachable or this page tripped over its own data.
     console.error("refresh:", e);
     $("dot").classList.add("off");
+    // ...and the light says so in words, because red on its own does not.
+    // A poll that keeps failing leaves every card that had not drawn yet
+    // sitting at "loading…" forever, which reads as a hung page rather than
+    // as an error — the operator described exactly that and had no way to
+    // tell the two apart. The count is the useful half: one failure is a
+    // blip, a rising number is the box or this page, and the reason names
+    // which.
+    pollFails++;
+    $("dot").setAttribute("title",
+      `not talking to the container — ${pollFails} poll${pollFails === 1 ? "" : "s"} `
+      + `failed in a row. Last reason: ${e && e.message ? e.message : e}`);
+    if (pollFails > 1)
+      document.querySelectorAll(".card .loading").forEach(el => {
+        el.textContent = "not loaded — the page is not reaching the container";
+        el.classList.add("warn");
+      });
   }
 }
+
+// Consecutive failed polls. Zero is healthy; the header's light carries the
+// count and the reason once it is not.
+let pollFails = 0;
 
 // The Static analysis button, and any tab already open on it. Ghosting the
 // button is the ordinary half; closing an open tab is only done ONCE, when the

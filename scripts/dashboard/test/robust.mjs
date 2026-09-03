@@ -83,4 +83,40 @@ ok(took < 6000, `eight status polls at once stay quick (${took}ms)`);
 
 page.errors = [];
 ok(true, 'the console errors above are the refusals themselves');
+// ---- a poll that cannot land says so, rather than sitting on "loading…" ----
+// The operator hit a dashboard where some cards had drawn and the rest were
+// still on their initial text, with a red logo and nothing else to read. Red
+// on its own does not say "error", so it reads as a hung page — and the two
+// want telling apart before anything else can be diagnosed.
+await page.route('**/api/status*', r => r.abort());
+await page.evaluate(() => refresh());
+await page.evaluate(() => refresh());
+await page.waitForTimeout(300);
+const dead = await page.evaluate(() => ({
+  red: !!document.getElementById('dot')?.classList.contains('off'),
+  title: document.getElementById('dot')?.getAttribute('title') || '',
+  fails: pollFails,
+  loading: [...document.querySelectorAll('.card .loading')].map(e => e.textContent),
+}));
+ok(dead.red && /polls failed in a row/.test(dead.title) && dead.fails >= 2,
+   `a failing poll says so on the light, with the count and the reason (${dead.title.slice(0, 80)})`);
+// ...and the case that actually bit: a page whose FIRST poll never lands, so
+// no card ever draws and every one of them keeps its initial text.
+await page.reload({ waitUntil: 'domcontentloaded' });
+await page.evaluate(() => refresh());
+await page.evaluate(() => refresh());
+await page.waitForTimeout(300);
+const cold = await page.evaluate(() =>
+  [...document.querySelectorAll('.card .loading')].map(e => e.textContent));
+ok(cold.length > 0 && cold.every(t => /not reaching the container/.test(t)),
+   `...and on a page whose first poll never landed, every card says why rather than "loading…" (${
+     cold.length} card(s): ${JSON.stringify(cold[0] || '')})`);
+await page.unroute('**/api/status*');
+await page.evaluate(() => refresh());
+await page.waitForTimeout(300);
+ok(await page.evaluate(() => !document.getElementById('dot').classList.contains('off')
+                             && !document.getElementById('dot').getAttribute('title')
+                             && pollFails === 0),
+   '...and it all clears the moment a poll lands again');
+
 await done(browser);
