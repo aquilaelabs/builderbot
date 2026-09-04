@@ -314,8 +314,7 @@ run there.
 
 ### Web dashboard (optional)
 
-1. Container settings → **ENABLE_DASHBOARD** → `true`
-2. **DASHBOARD_AUTH** → `you:a-real-password`. This is read once, to create
+1. **DASHBOARD_AUTH** → `you:a-real-password`. This is read once, to create
    the owner account; afterwards the accounts are the truth and this is
    ignored, so change a password with `bb users passwd <name>` rather than
    here. The dashboard will not start
@@ -424,7 +423,11 @@ metadata before it reached any code.
    — originally *ich777*'s, since adopted by Unraid, so you may see either name
    attached to it.)
 2. Container settings → **Extra Params**: append ` --runtime=nvidia`
-3. Set `NVIDIA_VISIBLE_DEVICES`. `all` is fine for a single card. With more
+3. Set `NVIDIA_VISIBLE_DEVICES` — it is empty by default, because a
+   controller renders nothing and claiming the card would take it from
+   whatever else on the server wants it. Do this on the container that
+   actually boots the emulator, which is a node.
+   `all` is fine for a single card. With more
    than one, use the GPU UUID — **Settings → Nvidia-Driver** lists them, in the
    form `GPU-7f326d12-d4c8-4011-9db1-36c47710daf6`.
 4. Leave `NVIDIA_DRIVER_CAPABILITIES` at `all` (see below).

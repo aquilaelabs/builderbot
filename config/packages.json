@@ -12,7 +12,7 @@
     "  platforms  which <os>/<arch> this recipe actually works on. Seven of these",
     "           name linux-x86_64 in their URL, and swift names ubuntu24.04, so",
     "           \"Linux\" is not one platform here. `*` in the arch position means",
-    "           the payload is arch-independent — shell and jars, a git clone, or",
+    "           the payload is arch-independent \u2014 shell and jars, a git clone, or",
     "           a tool that resolves its own platform. An install onto a node",
     "           outside the list is refused by name rather than downloading a",
     "           couple of hundred megabytes and failing on exec.",
@@ -27,11 +27,11 @@
     "           package directory itself), `tool` the file whose presence",
     "           proves it is installed, and `reports` the name the census",
     "           summary calls it. Written here because it was written in four",
-    "           places — sdk_env_snippet, the agent's STORE_TOOLS and",
-    "           STORE_PATHS, and sdk_check_one — and they drifted three times",
+    "           places \u2014 sdk_env_snippet, the agent's STORE_TOOLS and",
+    "           STORE_PATHS, and sdk_check_one \u2014 and they drifted three times",
     "           in one day.",
     "           A path may start `root:` to mean relative to the store rather",
-    "           than to this package — the android packages share one tree,",
+    "           than to this package \u2014 the android packages share one tree,",
     "           since sdkmanager installs into <root>/android whatever the",
     "           package is called.",
     "  source   how to get it. {dir} is the install directory, {version} whatever",
@@ -62,13 +62,13 @@
     "No size is written down here. One typed into a file is wrong the next time",
     "upstream ships: a row shows what the package takes on this disk once it is",
     "installed, what it took the last time it was, or what the download weighs",
-    "before that — never a number somebody guessed.",
+    "before that \u2014 never a number somebody guessed.",
     "             \"url-matches\" fetches a file upstream publishes and matches the",
     "             URLs out of it, which is how rust's three minimal-profile",
     "             components are counted; \"android-repo\" reads sdkmanager's own",
     "             index, keyed by the package id an install resolves to; and",
     "             \"approximate\" is a number written down, for the one recipe whose",
-    "             download cannot be measured before it happens — a git clone has",
+    "             download cannot be measured before it happens \u2014 a git clone has",
     "             no content length. It is marked as an approximation everywhere",
     "             it is shown."
   ],
@@ -90,12 +90,12 @@
     "flavors": {
       "google_apis": {
         "label": "Google APIs",
-        "about": "Google Play services — Maps, sign-in, push — but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what ANDROID_SYSTEM_IMAGES installs.",
+        "about": "Google Play services \u2014 Maps, sign-in, push \u2014 but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what ANDROID_SYSTEM_IMAGES installs.",
         "xml": "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-3.xml"
       },
       "google_apis_playstore": {
         "label": "Google APIs + Play Store",
-        "about": "The same, plus the Play Store app itself — for anything that has to sign in to Play, check a license or take an in-app payment. A Play-certified build, so it is not rootable. Google ships it as a separate image; there is no image that is one plus a switch.",
+        "about": "The same, plus the Play Store app itself \u2014 for anything that has to sign in to Play, check a license or take an in-app payment. A Play-certified build, so it is not rootable. Google ships it as a separate image; there is no image that is one plus a switch.",
         "xml": "https://dl.google.com/android/repository/sys-img/google_apis_playstore/sys-img2-3.xml"
       },
       "android-tv": {
@@ -162,7 +162,7 @@
       "requires": [
         "jdk"
       ],
-      "about": "sdkmanager and avdmanager — the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
+      "about": "sdkmanager and avdmanager \u2014 the bootstrap every other android:* package installs through. The image carries it under /opt/android-sdk; a node installs it here, and its ANDROID_HOME is the store's android/ directory.",
       "source": {
         "kind": "script",
         "fresh_only": true,
@@ -217,7 +217,8 @@
             "https://dl.google.com/android/repository/repository2-3.xml"
           ]
         }
-      }
+      },
+      "updatable": true
     },
     {
       "name": "android:emulator",
@@ -248,7 +249,8 @@
             "https://dl.google.com/android/repository/repository2-3.xml"
           ]
         }
-      }
+      },
+      "updatable": true
     },
     {
       "name": "android:platform-tools",
@@ -278,7 +280,8 @@
             "https://dl.google.com/android/repository/repository2-3.xml"
           ]
         }
-      }
+      },
+      "updatable": true
     },
     {
       "name": "android:ndk",
@@ -305,7 +308,8 @@
             "https://dl.google.com/android/repository/repository2-3.xml"
           ]
         }
-      }
+      },
+      "updatable": true
     },
     {
       "name": "flutter",
@@ -339,7 +343,8 @@
           "resolver": "approximate",
           "bytes": 520000000
         }
-      }
+      },
+      "updatable": true
     },
     {
       "name": "go",
@@ -356,7 +361,7 @@
       "platforms": [
         "linux/amd64"
       ],
-      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH — no extra toolchain, no target to install.",
+      "about": "Cross-compiles from here to Windows, macOS, Linux and ARM with GOOS and GOARCH \u2014 no extra toolchain, no target to install.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -391,7 +396,7 @@
       "platforms": [
         "linux/*"
       ],
-      "about": "The .NET SDK plus the maui-android workload — Android apps from C#.",
+      "about": "The .NET SDK plus the maui-android workload \u2014 Android apps from C#.",
       "source": {
         "kind": "script",
         "url": "https://dot.net/v1/dotnet-install.sh",
@@ -430,7 +435,8 @@
           ],
           "match": "URL #0[^:]*:\\s+(\\S+)"
         }
-      }
+      },
+      "updatable": true
     },
     {
       "name": "node",
@@ -447,7 +453,7 @@
       "platforms": [
         "linux/amd64"
       ],
-      "about": "The JavaScript runtime and npm. Not needed to BE a node — the agent is Python and the provisioner installs that — but a project built with npm needs it here, and so does anything that drives a browser through Playwright.",
+      "about": "The JavaScript runtime and npm. Not needed to BE a node \u2014 the agent is Python and the provisioner installs that \u2014 but a project built with npm needs it here, and so does anything that drives a browser through Playwright.",
       "source": {
         "kind": "tarball",
         "fresh_only": true,
@@ -509,7 +515,8 @@
           ],
           "match": "Download url:\\s+(\\S+)"
         }
-      }
+      },
+      "updatable": true
     },
     {
       "name": "rust",
@@ -593,7 +600,8 @@
           "{dir}/usr/bin/swift",
           "--version"
         ]
-      }
+      },
+      "updatable": true
     },
     {
       "name": "zig",

@@ -85,6 +85,13 @@ def load_packages():
         plats = [x for x in (r.get("platforms") or []) if isinstance(x, str) and "/" in x]
         if plats:
             row["platforms"] = plats[:8]
+        # Whether `bb sdk update` has a case for this recipe. Five do — a git
+        # clone, two installers and sdkmanager's own — and the rest are a
+        # tarball fetched and unpacked whole, where getting a newer one means
+        # removing this one first. Declared rather than inferred from the
+        # source kind, the same way platforms is (bug #43).
+        if r.get("updatable"):
+            row["updatable"] = True
         reqs = [x for x in (r.get("requires") or []) if isinstance(x, str) and x]
         if reqs:
             row["requires"] = reqs[:4]
@@ -511,6 +518,9 @@ def payload():
         else:
             origin = ""
         items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      # Whether a newer version can be fetched in place, or
+                      # whether getting one means removing this first.
+                      "updatable": bool(p.get("updatable")),
                       # What it needs, and what needs it — so a package that
                       # exists to serve another says so rather than looking
                       # like an unexplained independent choice.
@@ -616,8 +626,14 @@ def _pkg_worker():
             _pkg_job["current"] = name
         verb = action
         if action == "install":
-            probe = next((p["probe"] for p in PACKAGES if p["name"] == name), name)
-            verb = "update" if _pkg_path(probe) else "install"
+            row = next((p for p in PACKAGES if p["name"] == name), {})
+            probe = row.get("probe", name)
+            # Only where the recipe HAS an update. Sending the rest to
+            # `bb sdk update` earned a usage line naming five packages the
+            # operator had not asked about (bug #43); they go to install now,
+            # which refuses with a sentence about the one they did.
+            verb = ("update" if _pkg_path(probe) and row.get("updatable")
+                    else "install")
         with _pkg_lock:
             # Whatever it said last time is about a state that no longer holds;
             # this run is the new answer.
@@ -776,6 +792,9 @@ def payload_for_node(nid):
             {"jdk": "java", "android:emulator": "emulator"}.get(probe, probe))
         kb = _pkg_remembered.get(name)
         items.append({**{k: p[k] for k in ("name", "label", "about")},
+                      # Whether a newer version can be fetched in place, or
+                      # whether getting one means removing this first.
+                      "updatable": bool(p.get("updatable")),
                       # Said on the row, so a package this node cannot have
                       # reads that way rather than offering an install that
                       # is refused at the press.

@@ -194,8 +194,8 @@ Everything else has sane defaults — full reference below.
 | Want | Do |
 |---|---|
 | Android emulator | On by default; needs `--device=/dev/kvm` (pre-set in the template). Then `bb emu start` |
-| Web dashboard | Set `ENABLE_DASHBOARD=true` **and** `DASHBOARD_AUTH=user:pass`, map port 7680 — see [Web dashboard](#web-dashboard) |
-| NVIDIA GPU | `--runtime=nvidia` is pre-set; add the Nvidia-Driver plugin and keep `NVIDIA_DRIVER_CAPABILITIES=all` — see [GPU](#nvidia-gpu) |
+| Web dashboard | Always on — it is the controller. Set `DASHBOARD_AUTH=user:pass` for the first boot and map port 7680 — see [Web dashboard](#web-dashboard) |
+| NVIDIA GPU | Only if this container renders — a controller does not. On a node container, add the Nvidia-Driver plugin and set both NVIDIA variables to `all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
 | Docker builds inside (CI jobs, Claude) | Fill the **Docker socket** path field — **off by default; this is root-equivalent on the host**, read the warning in the docs first |
@@ -298,15 +298,14 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `ANDROID_AVD_NAME` / `ANDROID_AVD_PREFIX` | *(derived)* / `builderbot` | Override the default AVD, or the `<prefix>-<api>` naming |
 | `ENABLE_GPU_DISPLAY` | `true` | Start a headless X server for a passed-through NVIDIA GPU at boot, so the emulator can render on it. Does nothing without one |
 | `ANDROID_EMULATOR_GPU` | *(empty — auto)* | Emulator renderer. Empty tests the GPU and falls back to software; `swiftshader_indirect`/`swangle_indirect` force software, `host` insists on the GPU |
-| `NVIDIA_VISIBLE_DEVICES` | `all` | Only with `--runtime=nvidia`; GPU UUID when you have more than one card |
-| `NVIDIA_DRIVER_CAPABILITIES` | `all` | Only with `--runtime=nvidia`; `all` is what gets you GL/EGL/Vulkan, not just CUDA |
+| `NVIDIA_VISIBLE_DEVICES` | *(empty)* | Empty means this container claims no GPU, which is right for a controller — emulation runs on a node. On a node container that renders, `all`, or a GPU UUID with more than one card |
+| `NVIDIA_DRIVER_CAPABILITIES` | *(empty)* | Set to `all` beside the above on a node container that renders: it is what gets you GL/EGL/Vulkan rather than CUDA alone |
 | `NPM_TOKEN` | — | `npm publish` auth (lands in `~/.npmrc`, session-visible by necessity) |
 | `EXTRA_APT_PACKAGES` / `EXTRA_NPM_PACKAGES` / `EXTRA_PIPX_PACKAGES` | — | Space-separated extras installed each start |
 | `PROJECT_BOOTSTRAP` | `false` | Run `<project>/.builderbot/setup.sh` each start |
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `UNRAID_ICON_NAME` | `BuilderBot` | Only with the icon-cache mapping: Unraid names the cached icon after the container, and nothing inside one can see its own name — set this if you renamed it |
-| `ENABLE_DASHBOARD` | `false` | Web dashboard + browser terminal |
 | `DASHBOARD_AUTH` | *(empty)* | `user:password`, read **once**: it seeds the owner account on the first boot that finds none, and is never consulted again. `bb users passwd NAME` changes a password after that; `bb users add` makes other accounts. With neither accounts nor this, the dashboard will not start |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
@@ -2863,12 +2862,11 @@ denied on every project but a session's own. It is not a sandbox — a session i
 another project can still reach this directory through Bash.
 
 ```
-ENABLE_DASHBOARD=true
 DASHBOARD_AUTH=you:a-real-password
 ```
 
-**`DASHBOARD_AUTH` is mandatory and the dashboard refuses to start without
-it.** What it publishes is a writable shell inside a container holding a loaded
+**`DASHBOARD_AUTH` is needed for the first boot, and the dashboard refuses to
+start with neither it nor an account.** What it publishes is a writable shell inside a container holding a loaded
 ssh-agent and read-write mounts of every project — so that credential is worth
 as much as the ssh keys are. It is not a convenience toggle; treat it like the
 Docker socket mount.

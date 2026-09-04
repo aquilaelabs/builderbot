@@ -2262,8 +2262,17 @@ bb_auth_header() {
 # ...and the sentence to die with when there is neither.
 bb_auth_or_die() {
     local h; h="$(bb_auth_header)"
-    [ -n "$h" ] || die "no dashboard credential — a session gets BB_TOKEN when it \
-starts, and an operator's shell has DASHBOARD_AUTH. Neither is set here."
+    if [ -z "$h" ]; then
+        # Which of the two is actually wrong. Everything that reaches a node
+        # goes through the dashboard, so "no credential" and "no dashboard"
+        # produce the same failure and want different answers.
+        if [ -z "$(dashboard_pid)" ]; then
+            die "the dashboard is not running, and it is the controller: nodes dial \
+into its API, so builds, tests, CI and emulation all go through it. See bb logs."
+        fi
+        die "no dashboard credential — a session gets BB_TOKEN when it starts, and \
+an operator's shell has DASHBOARD_AUTH. Neither is set here."
+    fi
     printf '%s' "$h"
 }
 
@@ -2991,7 +3000,8 @@ cmd_dashboard() {
             [ -f "$dir/server.py" ] && [ -f "$dir/index.html" ] \
                 || die "$dir does not hold a dashboard (server.py + index.html)"
             pid="$(dashboard_pid)" || true
-            [ -n "$pid" ] || die "the dashboard is not running (ENABLE_DASHBOARD / DASHBOARD_AUTH?) — nothing to swap"
+            [ -n "$pid" ] || die "the dashboard is not running — nothing to swap. It \
+refuses to start with neither an account nor DASHBOARD_AUTH; see bb logs."
             env_pid="$pid"
             if [ "$(dashboard_dir)" = "$dir" ]; then
                 log "dashboard: already serving from $dir"; return 0
@@ -3145,10 +3155,10 @@ URLs need their scheme (http:// or https://)"
     local files
     files="$(NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
-        "$mode" "$out" "${urls[@]}" <<'EOF'
+        "$mode" "$out" "${DASHBOARD_PORT:-7680}" "${urls[@]}" <<'EOF'
 const { chromium } = require("playwright");
 const path = require("path");
-const [exe, auth, w, h, scale, wait, full, mode, dest, ...urls] = process.argv.slice(2);
+const [exe, auth, w, h, scale, wait, full, mode, dest, port, ...urls] = process.argv.slice(2);
 (async () => {
   const b = await chromium.launch({ executablePath: exe });
   // Either shape of credential. A session holds a bearer token rather than a
@@ -3167,8 +3177,25 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, ...urls] = process.argv.s
   const ctx = await b.newContext({
     viewport: { width: +w, height: +h },
     deviceScaleFactor: +scale,
-    ...(header ? { extraHTTPHeaders: { Authorization: header } } : {}),
     ...(username ? { httpCredentials: { username, password } } : {}) });
+  // The header goes to the DASHBOARD and nowhere else. On the context it went
+  // to every URL in the run, so `bb shot <dashboard> https://example.com`
+  // handed the credential to example.com as well (bug #49). Per-route, matched
+  // on origin, so shooting somebody else's page cannot carry it there.
+  if (header) {
+    const mine = new Set(urls.filter(u => {
+      try { return new URL(u).port === String(port); } catch { return false; }
+    }).map(u => new URL(u).origin));
+    if (mine.size) {
+      await ctx.route("**/*", async (route) => {
+        let same = false;
+        try { same = mine.has(new URL(route.request().url()).origin); } catch {}
+        await route.continue(same
+          ? { headers: { ...route.request().headers(), authorization: header } }
+          : {});
+      });
+    }
+  }
   const p = await ctx.newPage();
   const taken = new Set();
   for (const url of urls) {

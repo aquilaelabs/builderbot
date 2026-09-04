@@ -443,6 +443,32 @@ ok(await page.$$eval('.doc .pkg:not(.img) .sub.bad', e => e.length === 0),
 await page.waitForFunction(() => packages?.job && !packages.job.running,
                            { timeout: 30000 });
 
+// ---- a recipe that cannot update in place (bug #43) ---------------------
+// The check asks UPSTREAM, not the recipe, so it can report a newer version
+// for a package `bb sdk update` has no case for. Ticking that used to route
+// to update and die on its usage line, naming five packages nobody asked
+// about. The row says so instead, before the press.
+{
+  const rows = await page.$$eval('.doc .pkg:not(.img)', ls => ls.map(l => ({
+    name: l.querySelector('input')?.value,
+    disabled: !!l.querySelector('input')?.disabled,
+    title: l.querySelector('input')?.title || '',
+  })));
+  const go = rows.find(r => r.name === 'go');
+  ok(go && go.disabled && /no update in place/.test(go.title),
+     `an installed tarball recipe cannot be ticked, and says why (${
+       (go?.title || 'no row').slice(0, 60)})`);
+  const fl = rows.find(r => r.name === 'flutter');
+  ok(fl && !/no update in place/.test(fl.title),
+     'while one that CAN update in place is not marked that way');
+  // ...and the catalog is where that is decided, not a list in the server.
+  const seen = await page.evaluate(() => (packages.items || [])
+    .filter(i => i.updatable).map(i => i.name).sort());
+  ok(seen.includes('flutter') && seen.includes('playwright')
+     && !seen.includes('go') && !seen.includes('jdk'),
+     `the catalog says which recipes update in place (${seen.join(', ')})`);
+}
+
 // ---- android images, which are not catalog rows -------------------------
 // They are discovered, not listed: which exist depends on what has been
 // installed, and one exists at every API level at once — so the question is
