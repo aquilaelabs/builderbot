@@ -484,15 +484,15 @@ emu_via_node() {
         [ -f "$f" ] || die "${f} is not in this project's dist/ — the node fetches the APK from there"
         files=("$f"); argv=("emu" "install" "$(basename "$f")")
     fi
-    local auth="${DASHBOARD_AUTH:-}" url="http://127.0.0.1:${DASHBOARD_PORT:-7680}"
-    [ -n "$auth" ] || die "DASHBOARD_AUTH is not set — this talks to the dashboard"
+    local auth url="http://127.0.0.1:${DASHBOARD_PORT:-7680}"
+    auth="$(bb_auth_or_die)"
     local proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
     BB_EMU_FILES="$(printf '%s\n' "${files[@]}")" \
     python3 - "$url" "$auth" "$proj" "${argv[@]}" <<'PY'
 import base64, json, os, sys, time, urllib.request, urllib.error
 url, auth, proj, *argv = sys.argv[1:]
 files = [f for f in os.environ.get("BB_EMU_FILES", "").split("\n") if f]
-hdr = {"Authorization": "Basic " + base64.b64encode(auth.encode()).decode(), "Content-Type": "application/json"}
+hdr = {"Authorization": auth, "Content-Type": "application/json"}
 def call(path, body=None):
     req = urllib.request.Request(url + path, data=json.dumps(body).encode() if body is not None else None,
                                  headers=hdr, method="POST" if body is not None else "GET")
@@ -2055,8 +2055,7 @@ PY
 cmd_phone() {
     local sub="${1:-status}" why="" auth url
     url="http://127.0.0.1:${DASHBOARD_PORT:-7680}/api/phone"
-    auth="${DASHBOARD_AUTH:-}"
-    [ -n "$auth" ] || die "DASHBOARD_AUTH is not set — this talks to the dashboard"
+    auth="$(bb_auth_or_die)"
     shift || true
     case "$sub" in
         status)
@@ -2102,7 +2101,7 @@ import json, os, sys, time, urllib.request, base64
 
 url, auth = os.environ["BB_PHONE_URL"], os.environ["BB_PHONE_AUTH"]
 hdr = {"Content-Type": "application/json",
-       "Authorization": "Basic " + base64.b64encode(auth.encode()).decode()}
+       "Authorization": auth}
 
 
 def post(body):
@@ -2247,6 +2246,27 @@ ago() {
 #
 # Deliberately not a full editor. Roles and project lists belong on the Users
 # tab, where there is room to say what they mean.
+# The credential this bb speaks to the dashboard with, as a finished header.
+#
+# BB_TOKEN first: a Claude session is given one of those — scoped to its own
+# project, `user` rights, an expiry — instead of the operator's password,
+# which is what it used to inherit (bug #16). DASHBOARD_AUTH is the operator's
+# own shell, and a session no longer has it in its environment at all.
+bb_auth_header() {
+    if [ -n "${BB_TOKEN:-}" ]; then printf 'Bearer %s' "$BB_TOKEN"
+    elif [ -n "${DASHBOARD_AUTH:-}" ]; then
+        printf 'Basic %s' "$(printf '%s' "$DASHBOARD_AUTH" | base64 -w0)"
+    fi
+}
+
+# ...and the sentence to die with when there is neither.
+bb_auth_or_die() {
+    local h; h="$(bb_auth_header)"
+    [ -n "$h" ] || die "no dashboard credential — a session gets BB_TOKEN when it \
+starts, and an operator's shell has DASHBOARD_AUTH. Neither is set here."
+    printf '%s' "$h"
+}
+
 cmd_users() {
     local py sub="${1:-list}"
     py="$(dirname "$(readlink -f "$0")")/dashboard/users.py"
@@ -2429,15 +2449,14 @@ cmd_run() {
     done
     [ $# -gt 0 ] || die "bb run needs a command after -- (bb run -h)"
     proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
-    auth="${DASHBOARD_AUTH:-}"
-    [ -n "$auth" ] || die "DASHBOARD_AUTH is not set — this talks to the dashboard"
+    auth="$(bb_auth_or_die)"
     url="http://127.0.0.1:${DASHBOARD_PORT:-7680}"
     BB_RUN_OUTS="$(printf '%s\n' "${outs[@]}")" \
     python3 - "$url" "$auth" "$proj" "$role" "$node" "$timeout" "$@" <<'PY'
 import base64, json, os, sys, time, urllib.request, urllib.error
 url, auth, proj, role, node, timeout, *argv = sys.argv[1:]
 outs = [o for o in os.environ.get("BB_RUN_OUTS", "").split("\n") if o]
-hdr = {"Authorization": "Basic " + base64.b64encode(auth.encode()).decode(),
+hdr = {"Authorization": auth,
        "Content-Type": "application/json"}
 def call(path, body=None):
     req = urllib.request.Request(url + path, data=json.dumps(body).encode() if body is not None else None,
@@ -3075,7 +3094,9 @@ find_chromium() {
 # page. The intended split: a project's own script boots its app into a
 # photogenic state, then ends with one bb shot line.
 cmd_shot() {
-    local auth="${DASHBOARD_AUTH:-}" width=1280 height=800 scale=1 wait=0
+    # The operator's password, or a session's token — whichever this shell
+    # has. --auth overrides both.
+    local auth="${BB_TOKEN:-${DASHBOARD_AUTH:-}}" width=1280 height=800 scale=1 wait=0
     local full=0 resize="" out="" mode=file urls=()
     # Used by the test harness, which needs the same answer this does and
     # should not re-implement the search to get it.
@@ -3130,7 +3151,15 @@ const path = require("path");
 const [exe, auth, w, h, scale, wait, full, mode, dest, ...urls] = process.argv.slice(2);
 (async () => {
   const b = await chromium.launch({ executablePath: exe });
-  const [username, password] = auth.includes(":") ? auth.split(/:(.*)/) : [null, null];
+  // Either shape of credential. A session holds a bearer token rather than a
+  // password now (bug #16), and splitting on ":" produced no credential at
+  // all for one — so a session photographing a dashboard page would have got
+  // the LOGIN page and no error, which is the worst way for this to fail.
+  const bearer = /^bbs_/.test(auth);
+  const [username, password] = !bearer && auth.includes(":")
+    ? auth.split(/:(.*)/) : [null, null];
+  const header = bearer ? "Bearer " + auth
+    : username ? "Basic " + Buffer.from(auth).toString("base64") : "";
   // Credentials go both ways: httpCredentials answers a server that
   // challenges, the preemptive Authorization header satisfies one that
   // deliberately never does (the dashboard, whose challenge-free 401s are
@@ -3138,9 +3167,8 @@ const [exe, auth, w, h, scale, wait, full, mode, dest, ...urls] = process.argv.s
   const ctx = await b.newContext({
     viewport: { width: +w, height: +h },
     deviceScaleFactor: +scale,
-    ...(username ? { httpCredentials: { username, password },
-                     extraHTTPHeaders: { Authorization: "Basic "
-                       + Buffer.from(auth).toString("base64") } } : {}) });
+    ...(header ? { extraHTTPHeaders: { Authorization: header } } : {}),
+    ...(username ? { httpCredentials: { username, password } } : {}) });
   const p = await ctx.newPage();
   const taken = new Set();
   for (const url of urls) {

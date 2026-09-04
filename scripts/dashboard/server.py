@@ -2571,6 +2571,11 @@ class Handler(BaseHTTPRequestHandler):
         suite send; the cookie is what a browser gets from the login page.
         """
         hdr = self.headers.get("Authorization", "")
+        if hdr.startswith("Bearer "):
+            # A session's scoped token: one project, user rights, an expiry.
+            # Never a person, so it can do what a user can do on that project
+            # and nothing else (bug #16).
+            return users.session_principal(hdr[7:].strip())
         if hdr.startswith("Basic "):
             try:
                 given = base64.b64decode(hdr[6:]).decode("utf-8", "replace")
@@ -4042,8 +4047,13 @@ class Handler(BaseHTTPRequestHandler):
         attached device, a Firefox that is actually installed — rather than
         taken as given: this is one of the few places the page causes a program
         to run."""
-        if self._refused("admin"):
-            return
+        # NOT one gate for the whole endpoint. `ask` is what a session does
+        # (bb phone run --why ...) and `outcome` is it reading the answer;
+        # the control on those is that the operator sees the reason and
+        # decides, one command at a time. Pairing, connecting and deciding
+        # are the operator's, and a session may not reach them.
+        if field(req, "action") not in ("ask", "outcome") and self._refused("admin"):
+            return None
         act = field(req, "action")
         if act == "pair":
             r = phone.pair(field(req, "ip"), field(req, "port"), field(req, "code"))

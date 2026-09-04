@@ -137,6 +137,33 @@ claude_scope() {
 # continues the conversation instead of replacing it.
 claude_launcher() {
     local proj="$1" tdir="$2"; shift 2
+# session_token PROJECT — a scoped credential for the session about to start,
+# or empty. Read from users.py so there is one implementation of what a token
+# is; a shell that reimplemented the signing would be a second one to keep in
+# step with the server.
+session_token() {
+    local py="/opt/builderbot/scripts/dashboard/users.py"
+    [ -f "$py" ] || py="$(dirname "$(readlink -f "$0")")/users.py"
+    [ -f "$py" ] || return 0
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$1" <<'PY' 2>/dev/null || true
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location("users", sys.argv[1])
+u = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(u)
+
+
+def write_json(path, data):
+    tmp = str(path) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
+
+
+u.configure(state=os.environ["DASHBOARD_STATE"], write_json=write_json)
+print(u.mint_session(sys.argv[2]))
+PY
+}
+
     local dir out tmp base_resumes=0 a
     for a in "$@"; do [ "$a" = "--resume" ] && base_resumes=1; done
     dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
@@ -157,6 +184,22 @@ claude_launcher() {
         printf '# The model and effort are read here rather than baked in, so a\n'
         printf '# respawn through this file picks up a setting just changed.\n'
         printf 'set -uo pipefail\n'
+        # What the session may do, and what it may no longer do.
+        #
+        # It used to inherit DASHBOARD_AUTH — the operator's own password —
+        # from the container environment, which made "only the operator can
+        # install a package" a rule the code asked nicely about (bug #16). It
+        # gets a token scoped to THIS project with `user` rights instead, and
+        # the password is removed from the environment it runs in.
+        #
+        # Minted per connection rather than kept: they expire, they are cheap,
+        # and rotating the store's key invalidates every one of them at once.
+        # A failure to mint leaves the session with neither, which is the safe
+        # direction — bb then says it has no credential rather than falling
+        # back to the operator's.
+        printf 'unset DASHBOARD_AUTH\n'
+        local tok; tok="$(session_token "$proj")"
+        [ -z "$tok" ] || printf 'export BB_TOKEN=%q\n' "$tok"
         printf 'extra=()\n'
         printf 'v="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
             "$proj" '.projects[$n].model // empty' "$PREFS_FILE"
