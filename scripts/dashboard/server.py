@@ -40,7 +40,6 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 WORKSPACE = Path(os.environ.get("WORKSPACE", "/workspace"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "7680"))
-AUTH = os.environ.get("DASHBOARD_AUTH", "")
 # Loopback only: the browser reaches terminals through this server's own
 # /term proxy, so there is no second port for the page to be told about —
 # which is what DASHBOARD_TTYD_PUBLIC_PORT used to exist for.
@@ -142,11 +141,43 @@ def token_user(tok):
 # into the cookie. autocomplete names are the standard ones so password
 # managers offer to fill and to save — the thing the browser dialog never did
 # well on a phone.
+# The first-run screen. Same card as the sign-in — one look, and one place to
+# change it — with the copy and the fields the first account needs.
+#
+# It is served ONLY while the store holds no accounts, and creating one closes
+# it for good. That window is the honest cost of not putting a password in the
+# container's environment: until somebody claims the box, whoever reaches the
+# port can. Which is why the page says to do it now rather than leaving it to
+# be inferred, and why the dashboard refuses everything else until it is done.
+SETUP_FIELDS = """  <p class="note">Nobody owns this container yet. The first account you make
+    here is the <b>owner</b>: it cannot be deleted, and it is how you add
+    everyone else. Do it now — until you do, anyone who can reach this page
+    can claim it.</p>
+  <!--ERR-->
+  <label for="u">Username</label>
+  <input id="u" name="username" autocomplete="username" autocapitalize="none"
+    required autofocus>
+  <label for="p">Password</label>
+  <input id="p" name="password" type="password" autocomplete="new-password"
+    minlength="8" required>
+  <label for="p2">Password again</label>
+  <input id="p2" name="password2" type="password" autocomplete="new-password"
+    minlength="8" required>
+  <button type="submit">Create the owner</button>"""
+
+LOGIN_FIELDS = """  <!--ERR-->
+  <input type="hidden" name="next" value="/">
+  <label for="u">Username</label>
+  <input id="u" name="username" autocomplete="username" autocapitalize="none" required>
+  <label for="p">Password</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <button type="submit">Sign in</button>"""
+
 LOGIN_HTML = """<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>BuilderBot — sign in</title>
+<title>BuilderBot — <!--TITLE--></title>
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
@@ -178,8 +209,9 @@ LOGIN_HTML = """<!doctype html>
   button{margin-top:6px;background:#1f6f36;border:1px solid #2ea043;color:#e6edf3;
     border-radius:6px;padding:10px;font-size:15px;cursor:pointer}
   .err{color:#f85149;font-size:13px;margin:0}
+  .note{color:#8b98a5;font-size:13px;margin:0 0 4px}
 </style></head><body>
-<form method="post" action="/login">
+<form method="post" action="<!--ACTION-->">
   <h1><svg viewBox="0 0 32 32" aria-hidden="true"><mask id="m">
     <rect width="32" height="32" fill="#000"/>
     <rect x="4" y="8.5" width="24" height="17" rx="5.5" fill="#fff"/>
@@ -190,13 +222,7 @@ LOGIN_HTML = """<!doctype html>
     <rect x="10.6" y="19.6" width="10.8" height="2.6" rx="1.3" fill="#000"/>
   </mask><rect width="32" height="32" fill="currentColor" mask="url(#m)"/></svg>
   BuilderBot</h1>
-  <!--ERR-->
-  <input type="hidden" name="next" value="/">
-  <label for="u">Username</label>
-  <input id="u" name="username" autocomplete="username" autocapitalize="none" required>
-  <label for="p">Password</label>
-  <input id="p" name="password" type="password" autocomplete="current-password" required>
-  <button type="submit">Sign in</button>
+  <!--FIELDS-->
 </form>
 <script>
   const n = new URLSearchParams(location.search).get("next");
@@ -1534,6 +1560,25 @@ _ARG_OWNER = re.compile(r"^u:[^:]*:")
 _SESS_OWNER = re.compile(r"^u_[0-9a-f]{8}~")
 
 
+def _chat_summary(who, ps):
+    """{online, people, unread, rev} for the chat button, or {} for a
+    principal that is not a person."""
+    uid = users.uid_of(who)
+    if not uid:
+        return {}
+    store = users.load()["users"]
+    mine = (who or {}).get("name", "")
+    others = [u.get("uid") for n, u in store.items()
+              if u.get("uid") and n != mine]
+    seen = users.prefs(who).get("chat_seen") or {}
+    return {"online": [n for n in chat.online(_polls) if n != mine],
+            "rev": chat.rev(),
+            "unread": chat.unread(uid, others, [p["name"] for p in ps], seen),
+            # Everybody, not only who is here: a message waiting for somebody
+            # who is away is most of what a history is for.
+            "people": sorted(n for n in store if n != mine)}
+
+
 def claude_sessions(sessions):
     """{project: [account name, ...]} for every Claude session running.
 
@@ -2120,11 +2165,17 @@ import signin                                                    # noqa: E402
 # ---- who may sign in --------------------------------------------------------
 # The dashboard's own accounts (docs/users.md, roadmap #22). Imported here so
 # that everything it needs — STATE, write_json — is already built; nothing in
-# it reaches back. DASHBOARD_AUTH seeds the first account in main() and is
-# read nowhere else.
+# it reaches back. The FIRST account is made on the first-run screen — there
+# is no environment variable behind it any more.
 import users                                                     # noqa: E402
 
 users.configure(state=STATE, write_json=write_json)
+
+# Messages between accounts, and what each project's people are doing. Its own
+# module for the same reason nodes and users are: the rules about who may read
+# a conversation belong beside the conversation, not scattered through here.
+import chat                                                     # noqa: E402
+chat.configure(state=STATE, write_json=write_json)
 
 
 # ---- the bug tracker --------------------------------------------------------
@@ -2642,7 +2693,13 @@ def revisions():
     return revs
 
 
+# Who has polled lately, in memory: presence, not a record. See chat.online.
+_polls = {}
+
+
 def snapshot(who):
+    if who and who.get("name") and users.uid_of(who):
+        _polls[who["name"]] = time.time()
     ps = project_list(who)
     # Sessions this account has any business seeing: its own shells, and
     # anything on a project it was given. Filtered here for the same reason
@@ -2772,6 +2829,11 @@ def snapshot(who):
         # This account's own name, so the row can say "you and alice" rather
         # than reading your own name back at you.
         "me": (who or {}).get("name", ""),
+        # The chat panel's headline: who is here, and what has arrived since
+        # this account last looked. The messages themselves are fetched when
+        # the panel is open — this rides the poll because it is small and it
+        # is what decides whether the button wears a dot.
+        "chat": _chat_summary(who, ps),
         # This account's colour scheme, for a browser that has none stored.
         # index.html's adoptTheme says why localStorage still outranks it.
         "theme": users.prefs(who).get("theme", ""),
@@ -2892,15 +2954,61 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def _login_page(self, error=""):
+    def _login_page(self, error="", setup=False):
+        """The sign-in card, or the first-run card when nobody owns this box.
+
+        One template: the difference between them is three fields and the
+        copy, and two pages would have drifted apart the first time either was
+        touched.
+        """
         err = f'<p class="err">{error}</p>' if error else ""
-        body = LOGIN_HTML.replace("<!--ERR-->", err).encode()
+        body = (LOGIN_HTML
+                .replace("<!--TITLE-->", "set up" if setup else "sign in")
+                .replace("<!--ACTION-->", "/setup" if setup else "/login")
+                .replace("<!--FIELDS-->", SETUP_FIELDS if setup else LOGIN_FIELDS)
+                .replace("<!--ERR-->", err)).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _setup_post(self):
+        """Make the owner, once. Refused the moment there is one.
+
+        Checked against the store rather than a flag: "has anybody claimed
+        this box" is a question with an answer already, and a second copy of
+        it is one more thing that can disagree.
+        """
+        if users.all_users():
+            return self._login_page("This container already has an account.")
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= n <= MAX_BODY:
+                return self._json({"error": "body too large"}, 413)
+            form = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "replace"))
+        except (ValueError, TypeError):
+            return self._json({"error": "bad request"}, 400)
+        name = form.get("username", [""])[0]
+        pw, pw2 = form.get("password", [""])[0], form.get("password2", [""])[0]
+        if pw != pw2:
+            return self._login_page("Those two passwords are not the same.",
+                                    setup=True)
+        r = users.claim(name, pw)
+        if r.get("error"):
+            return self._login_page(r["error"], setup=True)
+        print(f"dashboard: {name} claimed this container as the owner",
+              flush=True)
+        # Straight in, rather than back to a sign-in they just proved: they
+        # typed the password twice thirty seconds ago.
+        self.send_response(303)
+        self.send_header("Location", "/")
+        self.send_header("Set-Cookie",
+                         f"bb_session={make_token(users.get(name))}; Path=/; "
+                         f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _login_post(self):
         try:
@@ -3029,6 +3137,13 @@ class Handler(BaseHTTPRequestHandler):
         uid = users.uid_of(me)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
+        # Announced to everybody sharing the project, once — the connection is
+        # remade on every reattach and a phone waking up, so a line per
+        # connection would be noise rather than news.
+        mysess = users.tmux_prefix(me) + tmux_name(f"claude-{project}")
+        if mysess not in {x["name"] for x in tmux_sessions()}:
+            chat.event(project, uid,
+                       f"{me['name']} started a Claude session on {project}")
         mine = claude_auth(home=home_for(uid)).get("email") or ""
         if not mine:
             return ""                     # not signed in: bb-tty says so, better
@@ -3041,7 +3156,7 @@ class Handler(BaseHTTPRequestHandler):
             other = tmux_owner(s["name"]) or users.uid_of(users.get(owner or ""))
             if not other or other == uid:
                 continue                  # our own session: this is a reattach
-            if (claude_auth(home=home_for(other)).get("email") or "") == mine:
+            if (claude_auth(home=home_for(other)).get("email") or "") == mine:  # noqa: E501
                 return (f"{by_uid.get(other, 'another account')} already has a "
                         f"Claude session on {project} signed in to {mine}. Two "
                         "sessions on one Anthropic account share its limits, "
@@ -3225,6 +3340,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get(self):
         path = self.path.split("?")[0]
+        # Nobody owns this container yet: everything but the assets the card
+        # itself needs is the first-run screen. Not a redirect from /login
+        # alone — a bookmark, a phone reopening the app, and the WebUI link
+        # all arrive at "/", and each of them should land on the thing that
+        # has to happen rather than on a sign-in with nothing to sign in to.
+        if not users.all_users() and path not in ("/favicon.ico", "/favicon.svg"):
+            return self._login_page(setup=True)
         if path == "/login":
             return self._login_page()
         if path == "/logout":
@@ -3526,6 +3648,10 @@ class Handler(BaseHTTPRequestHandler):
         return req
 
     def _post(self):
+        # Before the credential check, because there is nothing to check
+        # against yet — and closed by its own effect the moment there is.
+        if self.path.split("?")[0] == "/setup":
+            return self._setup_post()
         if self.path.split("?")[0] == "/login":
             return self._login_post()
         if self.path.split("?")[0].startswith("/api/v1/agent/"):
@@ -3588,6 +3714,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(req)
         if path.startswith("/api/say"):
             return self._say(req)
+        if path.startswith("/api/chat"):
+            return self._chat(req)
         if path.startswith("/api/layout"):
             return self._layout(req)
         if path.startswith("/api/cards"):
@@ -4341,6 +4469,15 @@ class Handler(BaseHTTPRequestHandler):
         # the name decides a compose project and a data directory, and those
         # are not places to let an arbitrary string reach.
         inst = field(req, "instance") or devapp.MAIN
+        # What the others sharing this project would want to know before they
+        # press the same button. After `inst` is resolved, because the line
+        # names it — the first version read it above and took every compose
+        # action down with an UnboundLocalError. Reads and the env editor are
+        # not news, so they are not on this list.
+        if act in ("up", "down", "rebuild", "remove", "abort"):
+            chat.event(name, users.uid_of(self._who()),
+                       f"{self._principal()[len('user:'):]} ran {act} on "
+                       f"{name}" + (f" ({inst})" if inst != devapp.MAIN else ""))
         # `new` is the one action whose instance does not exist yet — that is
         # what it is for. Everything else names one that must exist, because
         # the string decides a compose project and a data directory and is not
@@ -5178,6 +5315,57 @@ class Handler(BaseHTTPRequestHandler):
                                    TMUX_LITERALS[key]], timeout=10))
         self._json({"error": f"unknown key: {key}"}, 400)
 
+    def _chat(self, req):
+        """Read a conversation, send into one, or mark one seen.
+
+        Who may read what is decided HERE and not in chat.py: a direct
+        conversation is its two ends' and a project feed is whoever may see
+        the project. The store holds lines; the door decides.
+        """
+        me = self._who()
+        uid = users.uid_of(me)
+        if not uid:
+            return self._json({"error": "not an account"}, 403)
+        act = field(req, "action") or "read"
+        store = users.load()["users"]
+        by_name = {n: u.get("uid") for n, u in store.items() if u.get("uid")}
+        who, proj = field(req, "who"), field(req, "project")
+        if proj:
+            # may_see, not may_work: a project's channel is the group chat for
+            # everybody on it, and saying something in one is not a change to
+            # the project. So an administrator, who is shown every project,
+            # can read and answer every channel — which is what makes it
+            # useful to them — while a user has the channels they were given
+            # and no others. The list marks which are actually theirs.
+            if not users.may_see(me, proj):
+                return self._json({"error": "not a project"}, 403)
+            key, box = f"p:{proj}", ("project", proj)
+        elif who:
+            other = by_name.get(who)
+            if not other or other == uid:
+                return self._json({"error": "no such account"}, 403)
+            key, box = f"dm:{other}", ("dm", other)
+        else:
+            return self._json({"error": "name a person or a project"}, 400)
+
+        if act == "send":
+            text = req.get("text", "")
+            r = (chat.post(proj, uid, text) if box[0] == "project"
+                 else chat.say(uid, box[1], text))
+            if r.get("error"):
+                return self._json(r, 400)
+        if act in ("send", "seen", "read"):
+            # Reading it IS seeing it: the panel only asks for a conversation
+            # somebody is looking at.
+            users.prefs_set(me["name"], {"chat_seen":
+                users.prefs(me).get("chat_seen", {}) | {key: chat.now()}})
+        msgs = (chat.feed(proj) if box[0] == "project"
+                else chat.direct(uid, box[1]))
+        names = {u: n for n, u in by_name.items()}
+        return self._json({"messages": [m | {"who": names.get(m.get("from"), "")}
+                                        for m in msgs[-200:]],
+                           "rev": chat.rev()})
+
     def _say(self, req):
         """Type a message into a CLAUDE session and press Enter.
 
@@ -5277,24 +5465,19 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    # DASHBOARD_AUTH seeds the owner on a boot that finds no accounts, and is
-    # ignored ever after — the env seeds, the store owns (docs/users.md). What
-    # the dashboard will not start without is an ACCOUNT; the variable is one
-    # way to get the first one, and `bb users` is the other.
-    seeded = users.seed(AUTH)
-    if seeded.get("seeded"):
-        print(f"dashboard: created the owner account {seeded['name']} from "
-              "DASHBOARD_AUTH — the store owns it now, and the variable is "
-              "no longer read", flush=True)
+    # No accounts is a normal first boot, not a failure. It used to be one:
+    # the owner came from DASHBOARD_AUTH and the dashboard refused to start
+    # without it, which put a password in the container's environment — where
+    # it is visible to anything that can read the template, stays readable
+    # forever, and is the one credential that opens a shell on this box.
+    #
+    # It is the first-run screen instead, and until somebody claims the
+    # container that is the only page it serves. Nothing else is reachable
+    # unauthenticated, which is the property the old refusal was protecting.
     if not users.all_users():
-        raise SystemExit(
-            "No dashboard accounts, and DASHBOARD_AUTH did not make one "
-            f"({seeded.get('why', 'unset')}).\n"
-            "Set DASHBOARD_AUTH=user:password for the first boot, or run\n"
-            "  bb users add <name> --role owner\n"
-            "This serves a terminal into a container holding your ssh agent and\n"
-            "source trees; it will not start unauthenticated."
-        )
+        print("dashboard: no accounts yet — the first page served will ask "
+              "you to make the owner. Do it now: until you do, whoever "
+              "reaches this port can.", flush=True)
     prune_claude_tabs()
     # Daemons: these loops must die with the server, not hold it open.
     threading.Thread(target=_doctor_loop, daemon=True).start()

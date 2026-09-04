@@ -185,14 +185,18 @@ claude_scope() {
     # it denies a file that session was never going to touch and leaves its
     # own editable.
     here="${here:-$WORKSPACE/$proj}"
-    # The hook rides in the same file (roadmap #24). It records what this
-    # session touches and says when another has the same file open — it does
-    # NOT refuse, because each session is in a worktree of its own and two
-    # people editing one function are making two commits, not corrupting one
-    # tree. bb-work-note's header has the whole argument.
+    # Two hooks ride in the same file. bb-work-note records what this session
+    # touches and says when another has the same file open — it does NOT
+    # refuse, because each session is in a worktree of its own and two people
+    # editing one function are making two commits, not corrupting one tree.
+    # bb-prompt-relay puts what was asked into the project's chat feed, so the
+    # others sharing it know what is being worked on before they start the
+    # same thing. Both swallow every failure: a note is never worth an edit
+    # and a chat line is never worth a turn. Their headers have the arguments.
     if walls_around "$proj" "$here" | jq -R . \
          | jq -s --arg ws "$WORKSPACE" --arg here "$here" \
                --arg note "$(dirname "$(readlink -f "$0")")/bb-work-note" \
+               --arg relay "$(dirname "$(readlink -f "$0")")/bb-prompt-relay" \
                --arg proj "$proj" --arg who "${account:-owner}" '
            {permissions: {
               additionalDirectories: [],
@@ -204,7 +208,10 @@ claude_scope() {
             hooks: {PreToolUse: [
               {matcher: "Edit|Write|NotebookEdit",
                hooks: [{type: "command",
-                        command: "\($note) \($proj) \($who)"}]}]}}' > "$tmp" && [ -s "$tmp" ]; then
+                        command: "\($note) \($proj) \($who)"}]}],
+              UserPromptSubmit: [
+              {hooks: [{type: "command",
+                        command: "\($relay) \($proj) \($who)"}]}]}}' > "$tmp" && [ -s "$tmp" ]; then
         mv -f "$tmp" "$out"
         printf '%s' "$out"
         return 0

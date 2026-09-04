@@ -2252,7 +2252,11 @@ ago() {
 #
 # BB_TOKEN first: a Claude session is given one of those — scoped to its own
 # project, `user` rights, an expiry — instead of the operator's password,
-# which is what it used to inherit (bug #16). DASHBOARD_AUTH is the operator's
+# which is what it used to inherit (bug #16). DASHBOARD_AUTH is no longer a
+# container setting — the owner is made on the first-run screen — but it is
+# still read here, so an operator in a plain `docker exec` shell can pass one
+# for a single command rather than being unable to reach the API at all. The
+# operator's
 # own shell, and a session no longer has it in its environment at all.
 bb_auth_header() {
     if [ -n "${BB_TOKEN:-}" ]; then printf 'Bearer %s' "$BB_TOKEN"
@@ -2272,8 +2276,9 @@ bb_auth_or_die() {
             die "the dashboard is not running, and it is the controller: nodes dial \
 into its API, so builds, tests, CI and emulation all go through it. See bb logs."
         fi
-        die "no dashboard credential — a session gets BB_TOKEN when it starts, and \
-an operator's shell has DASHBOARD_AUTH. Neither is set here."
+        die "no dashboard credential — a session started from the dashboard gets \
+BB_TOKEN. From a plain docker exec there is none: run this from a dashboard \
+terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
     fi
     printf '%s' "$h"
 }
@@ -2372,7 +2377,8 @@ pw = os.environ.get("BB_USERS_PW", "")
 if sub == "list":
     rows = users.all_users()
     if not rows:
-        print("no accounts yet — the first boot makes one from DASHBOARD_AUTH")
+        print("no accounts yet — open the dashboard and it will ask you to "
+              "make the owner")
     for u in rows:
         seen = "never" if not u["seen"] else f"{(int(__import__('time').time()) - u['seen']) // 86400}d ago"
         projects = ", ".join(u["projects"]) or "-"
@@ -3057,7 +3063,7 @@ cmd_dashboard() {
                 || die "$dir does not hold a dashboard (server.py + index.html)"
             pid="$(dashboard_pid)" || true
             [ -n "$pid" ] || die "the dashboard is not running — nothing to swap. It \
-refuses to start with neither an account nor DASHBOARD_AUTH; see bb logs."
+is not running; see bb logs."
             env_pid="$pid"
             if [ "$(dashboard_dir)" = "$dir" ]; then
                 log "dashboard: already serving from $dir"; return 0

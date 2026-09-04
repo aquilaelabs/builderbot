@@ -194,7 +194,7 @@ Everything else has sane defaults — full reference below.
 | Want | Do |
 |---|---|
 | Android emulator | On by default; needs `--device=/dev/kvm` (pre-set in the template). Then `bb emu start` |
-| Web dashboard | Always on — it is the controller. Set `DASHBOARD_AUTH=user:pass` for the first boot and map port 7680 — see [Web dashboard](#web-dashboard) |
+| Web dashboard | Always on — it is the controller. Map port 7680 and open it: the first page asks you to make the owner account — see [Web dashboard](#web-dashboard) |
 | NVIDIA GPU | Only if this container renders — a controller does not. On a node container, add the Nvidia-Driver plugin and set both NVIDIA variables to `all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
@@ -306,7 +306,6 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `UNRAID_ICON_NAME` | `BuilderBot` | Only with the icon-cache mapping: Unraid names the cached icon after the container, and nothing inside one can see its own name — set this if you renamed it |
-| `DASHBOARD_AUTH` | *(empty)* | `user:password`, read **once**: it seeds the owner account on the first boot that finds none, and is never consulted again. `bb users passwd NAME` changes a password after that; `bb users add` makes other accounts. With neither accounts nor this, the dashboard will not start |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
@@ -461,7 +460,7 @@ captures it takes `--full` (whole page, not just the viewport), `--scale 2`
 (2x pixels, crisp in GitHub's column), `--wait MS` (pages whose async
 fetches settle after networkidle), and `--resize W` (imagemagick downscale,
 in place, so full-size originals never land in a repo). `--auth user:pass`
-defaults to `DASHBOARD_AUTH`. The intended split for a project's docs
+falls back to `BB_TOKEN` or a `DASHBOARD_AUTH` you pass for the command. The intended split for a project's docs
 screenshots: the project keeps a script that boots its app into a
 photogenic state — staged data, ready-wait — and ends with one `bb shot`
 line; the Playwright plumbing lives here, once.
@@ -2875,15 +2874,21 @@ carries: this stops a session **starting here**, and the file tools are already
 denied on every project but a session's own. It is not a sandbox — a session in
 another project can still reach this directory through Bash.
 
-```
-DASHBOARD_AUTH=you:a-real-password
-```
+**There is no password setting.** The first page the dashboard serves asks you
+to make the **owner** account, and it is the only page it serves until you
+have — nothing else is reachable, signed in or not. So open it as soon as the
+container is up: until somebody claims it, whoever can reach the port can.
 
-**`DASHBOARD_AUTH` is needed for the first boot, and the dashboard refuses to
-start with neither it nor an account.** What it publishes is a writable shell inside a container holding a loaded
-ssh-agent and read-write mounts of every project — so that credential is worth
-as much as the ssh keys are. It is not a convenience toggle; treat it like the
-Docker socket mount.
+That is deliberate rather than a convenience. The alternative was a password in
+the container's environment, where it is readable by anything that can read the
+template, stays readable forever, and is the one credential that opens a shell
+on this box. What the dashboard publishes is a writable shell inside a
+container holding a loaded ssh-agent and read-write mounts of every project —
+worth as much as the ssh keys are — so it is worth typing once into a form
+instead.
+
+Afterwards, `bb users passwd <name>` changes a password and `bb users add`
+makes the others.
 
 #### Accounts
 
@@ -2924,6 +2929,23 @@ two sessions in it commit each other's half-finished work and delete it with a
 merge, where git is good at them. A worktree session builds into its own
 `dist/`, so the Artifacts tab will not show it, and the dev instance belongs to
 the project rather than to the session.
+
+**Chat** is the fourth flyout beside Keys, Commands and Sessions. It lists the
+other accounts — a green dot for whoever is here right now — and, under them,
+the **project channels**, which are group chats for everybody on a project. A
+channel carries what people type into it *and* what the box notices: a Claude
+session started, a rebuild, and what each person asked Claude. Three people on
+one project not doing the same work twice is the whole point of it.
+
+An admin is shown every project's channel, since they are shown every project,
+with the ones they have taken on marked and sorted first. A `user` has the
+channels for the projects they were given. Reading and answering a channel is
+not a change to the project, so it follows what you can *see* rather than what
+you have taken on.
+
+**Prompts on a shared project are not private**, and the panel says so where
+the channel is drawn rather than leaving it to be discovered: what you ask
+Claude on a project you share goes to the people you share it with.
 
 `bb work` says who else is in the project and which files two of you have
 uncommitted at once. Two answers, and the cheap one is the truthful one: **git**

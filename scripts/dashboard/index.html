@@ -1997,6 +1997,38 @@ body.dragging .tab .lbl{cursor:grabbing}
    takes what it needs; the input picks up the global field skin like every
    other control, so nothing is restyled here beyond the layout. */
 .pane .slot:has(.consbar){flex-direction:column}
+/* The chat flyout, in the same box the other three use — it is one strip of
+   space and they take turns (see slidePanel). Only the layout is here: the
+   input picks up the global field skin and .row/.pill/.dot are the page's
+   own, so a chat row looks like every other row on the dashboard. */
+#chat{display:flex;flex-direction:column;min-height:0;height:100%}
+.chatrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  background:none;border:0;border-bottom:1px solid var(--edge);padding:8px 10px}
+.chatrow:hover{background:var(--bg2)}
+/* Taken on, or merely visible. An admin is shown every project's channel and
+   most of them are somebody else's business — dim is the difference, and the
+   ones that are theirs sort above. */
+.chatrow.dim{opacity:.6}
+.chatrow.on .grow{font-weight:600}
+.chatrow .dot{width:8px;height:8px;border-radius:50%;background:var(--edge);flex:none}
+.chatrow .dot.ok{background:var(--ok)}
+.chathead{display:flex;align-items:center;gap:8px;padding:6px 10px;
+  border-bottom:1px solid var(--edge)}
+.chatnote{padding:6px 10px;color:var(--dim)}
+.chatlog{flex:1;overflow:auto;padding:6px 10px;min-height:0;
+  -webkit-overflow-scrolling:touch}
+.chatmsg{padding:4px 0}
+/* What the box noticed, not what somebody typed: dimmer, so a feed of events
+   does not read as a wall of people talking. */
+.chatmsg.ev{opacity:.75;font-style:italic}
+.chatbar{display:flex;gap:6px;padding:6px;border-top:1px solid var(--edge)}
+.chatbar input{flex:1;min-width:0}
+@media(max-width:900px){ .chatbar input{font-size:16px} }
+/* Something is waiting. The same green the state lights use, as a corner
+   rather than a badge: the bar is four buttons wide on a phone. */
+#mChat.unread::after{content:"";position:absolute;top:4px;right:6px;
+  width:7px;height:7px;border-radius:50%;background:var(--ok)}
+#mChat{position:relative}
 .consbar{display:flex;gap:6px;padding:6px;background:var(--bg);
   border-top:1px solid var(--edge);align-items:center}
 .consbar .consin{flex:1;min-width:0}
@@ -2834,10 +2866,14 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="mpanel" id="sespanel">
       <div id="sessions"><div class="loading">loading…</div></div>
     </div>
+    <div class="mpanel" id="chatpanel">
+      <div id="chat"><div class="loading">loading…</div></div>
+    </div>
     <div class="mobar" id="mobar">
       <button id="mKeys">⌨ Keys</button>
       <button id="mMacros">» Commands</button>
       <button id="mSessions">☰ Sessions</button>
+      <button id="mChat">💬 Chat</button>
     </div>
   </div>
 </main>
@@ -4379,13 +4415,14 @@ const KEYS = [
 // time the viewport crossed the phone breakpoint. They just live here now, at
 // every width — one DOM, one set of handlers, and no breakpoint to be on the
 // wrong side of.
-let showMacros = false, showSessions = false;
+let showMacros = false, showSessions = false, showChat = false;
 
 window.matchMedia("(max-width:900px)").addEventListener("change", () => render());
 
 // One panel at a time on the phone: opening any of the three closes the others.
 function mobPanel(which){
-  const on = {keys: showKeys, macros: showMacros, sessions: showSessions}[which];
+  const on = {keys: showKeys, macros: showMacros, sessions: showSessions,
+              chat: showChat}[which];
   // The two panels always take turns: they are the same strip of space. The
   // keys row only joins that trade on a phone, where the three of them plus
   // a terminal do not fit — on a desktop it stays where it was put.
@@ -4393,11 +4430,14 @@ function mobPanel(which){
   else if (isPhone()) showKeys = false;
   showMacros = which === "macros" ? !on : false;
   showSessions = which === "sessions" ? !on : false;
+  showChat = which === "chat" ? !on : false;
+  if (showChat) loadChat();               // open on something, not on "loading…"
   render();
 }
 $("mKeys").onclick     = () => mobPanel("keys");
 $("mMacros").onclick   = () => mobPanel("macros");
 $("mSessions").onclick = () => mobPanel("sessions");
+$("mChat").onclick     = () => mobPanel("chat");
 
 // Slide a bottom flyout open or shut on a phone instead of popping it.
 //
@@ -4503,14 +4543,140 @@ function drawKeys(){
   mm.disabled = !term;
   mm.title = term ? "" : "commands run in a shell — this tab is not one";
   $("mSessions").classList.toggle("on", showSessions);
+  const mc = $("mChat");
+  mc.classList.toggle("on", showChat);
+  // The dot is the whole reason the counts ride the status poll: a chat you
+  // have to open to discover is one nobody opens.
+  const waiting = Object.values(state?.chat?.unread || {}).reduce((a, b) => a + b, 0);
+  mc.classList.toggle("unread", waiting > 0);
+  mc.title = waiting ? `${waiting} unread` : "";
+  drawChat();
   // One panel at a time: whichever is opening slides, and any that is
   // closing in the same breath swaps out under it (see slidePanel).
   // Commands closes with the keys when the tab underneath is not a shell: a
   // flyout of things to type, over something that cannot be typed into.
-  const want = [[el, on], [$("macpanel"), showMacros && term], [$("sespanel"), showSessions]];
+  const want = [[el, on], [$("macpanel"), showMacros && term],
+                [$("sespanel"), showSessions], [$("chatpanel"), showChat]];
   const opener = want.find(([p, s]) => s && p.dataset.shown !== "1");
   const landed = opener ? slidePanel(opener[0], true) : null;
   for (const [p, s] of want) if (p !== opener?.[0]) slidePanel(p, s, landed);
+}
+
+// ---- chat ------------------------------------------------------------
+//
+// Two kinds of conversation in one list, because they are the same thing to
+// read: a person, or a project everybody on it can see. Clicking either opens
+// it; Back returns to the list. History is the server's — this holds only
+// what is on screen and what is half-typed.
+let chatWith = null;                 // {who} or {project}, or null for the list
+let chatMsgs = [], chatDraft = {}, chatSeenRev = -1, chatTimer = null;
+
+const chatKey = w => w?.project ? `p:${w.project}` : w?.who ? `dm:${w.who}` : "";
+
+async function loadChat(){
+  if (!chatWith){ drawChat(); return; }
+  try{
+    const r = await (await fetch("/api/chat", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "read", ...chatWith }) })).json();
+    if (r.error){ notify(r.error, true); chatWith = null; }
+    else { chatMsgs = r.messages || []; chatSeenRev = r.rev; }
+  }catch(e){ /* the poll will come back to it */ }
+  drawChat();
+  refreshSoon();                     // the unread counts move with it
+}
+
+// While the panel is open, faster than the fifteen-second poll — a chat at
+// that cadence is a message board. Only while it is open: this is the one
+// surface that wants a tighter loop and it should not cost anything when it
+// is shut.
+function chatLoop(){
+  clearInterval(chatTimer);
+  chatTimer = showChat ? setInterval(loadChat, 4000) : null;
+}
+
+function chatOpen(w){ chatWith = w; chatMsgs = []; loadChat(); chatLoop(); }
+
+function drawChat(){
+  const el = $("chat");
+  if (!el) return;
+  chatLoop();
+  const c = state?.chat;
+  if (!c || !c.people) return paint(el, `<div class="empty">sign in to chat</div>`);
+  const unread = c.unread || {};
+  if (!chatWith){
+    const here = new Set(c.online || []);
+    const people = (c.people || []).map(n =>
+      `<button class="row chatrow" data-who="${esc(n)}">
+         <span class="dot ${here.has(n) ? "ok" : ""}"></span>
+         <span class="grow">${esc(n)}</span>
+         ${unread["dm:" + n] ? `<span class="pill">${unread["dm:" + n]}</span>` : ""}
+       </button>`);
+    // A project channel is the group chat for everybody on it, and it is where
+    // the Claude sessions and the prompts land. An ADMIN is shown every one —
+    // they are shown every project (roadmap #27) and the same rule decides
+    // this — with the ones they have actually taken on marked and sorted
+    // first, so "mine" and "everything else on the box" are one glance apart
+    // rather than one read of a list of forty.
+    const ps = [...(state?.projects || [])]
+      .sort((a, b) => (notMine(a) - notMine(b)) || a.name.localeCompare(b.name));
+    const projs = ps.map(p =>
+      `<button class="row chatrow${notMine(p) ? " dim" : " on"}" data-proj="${esc(p.name)}"
+         ${notMine(p) ? `title="you have not taken this project on — you can read it"` : ""}>
+         <span class="grow">#${esc(p.name)}</span>
+         ${unread["p:" + p.name] ? `<span class="pill">${unread["p:" + p.name]}</span>` : ""}
+       </button>`);
+    const mine = ps.filter(p => !notMine(p)).length;
+    paint(el, (people.length ? people.join("") : `<div class="empty">no other accounts</div>`)
+      + (projs.length ? `<div class="sub chathead">projects${
+           mine < ps.length ? ` — yours first` : ""}</div>` + projs.join("") : ""));
+    el.querySelectorAll("[data-who]").forEach(b =>
+      b.onclick = () => chatOpen({ who: b.dataset.who }));
+    el.querySelectorAll("[data-proj]").forEach(b =>
+      b.onclick = () => chatOpen({ project: b.dataset.proj }));
+    return;
+  }
+  const title = chatWith.project ? "#" + chatWith.project : chatWith.who;
+  const key = chatKey(chatWith);
+  paint(el, `
+    <div class="chathead">
+      <button class="link" id="chatBack">‹ all</button>
+      <b class="grow">${esc(title)}</b>
+    </div>
+    ${chatWith.project ? `<div class="sub chatnote">everyone with this project
+       sees this, including what each of you asks Claude here</div>` : ""}
+    <div class="chatlog" id="chatlog">${chatMsgs.map(m => `
+      <div class="chatmsg${m.kind === "did" || m.kind === "asked" ? " ev" : ""}">
+        <span class="dim">${esc(m.who || "?")} · ${ago(m.at)}</span>
+        <div>${esc(m.text)}</div>
+      </div>`).join("") || `<div class="empty">nothing yet</div>`}</div>
+    <div class="chatbar">
+      <input id="chatIn" placeholder="message ${esc(title)}" autocomplete="off"
+        aria-label="message">
+      <button class="primary" id="chatSend">Send</button>
+    </div>`);
+  const inp = el.querySelector("#chatIn");
+  inp.value = chatDraft[key] || "";
+  inp.oninput = () => { chatDraft[key] = inp.value; };
+  const send = async () => {
+    const text = inp.value;
+    if (!text.trim()) return;
+    inp.value = ""; chatDraft[key] = "";
+    try{
+      const r = await (await fetch("/api/chat", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send", ...chatWith, text }) })).json();
+      if (r.error){ notify(r.error, true); inp.value = text; chatDraft[key] = text; }
+      else { chatMsgs = r.messages || []; drawChat(); }
+    }catch(e){ inp.value = text; chatDraft[key] = text; }
+  };
+  inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); send(); } };
+  el.querySelector("#chatSend").onclick = send;
+  el.querySelector("#chatBack").onclick = () => { chatWith = null; drawChat(); };
+  // Newest last, and the reader wants the newest: pinned to the bottom the
+  // way the job logs are.
+  const log = el.querySelector("#chatlog");
+  if (log) log.scrollTop = log.scrollHeight;
 }
 
 async function sendKey(key){

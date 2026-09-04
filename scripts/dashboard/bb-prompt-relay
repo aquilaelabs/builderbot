@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+"""UserPromptSubmit hook: put what was asked into the project's feed.
+
+On a shared project, what somebody is asking Claude to do is the thing the
+others need to know and the thing they otherwise find out at the merge. Three
+people on one project, each starting the same refactor, is the failure this
+prevents — and it is cheap, because the prompt has already been typed.
+
+THIS IS NOT PRIVATE, and the dashboard says so where the feed is drawn rather
+than leaving it to be discovered. A project shared with other accounts is not
+a private place to think out loud: your prompts go to the people you share it
+with. Nobody else — the feed is readable by whoever may see the project, which
+is the same rule as the project itself.
+
+It changes nothing about the prompt. A UserPromptSubmit hook can rewrite or
+refuse one; this reads it and gets out of the way, and any failure is
+swallowed, because a chat line is never worth losing somebody's turn.
+"""
+import json
+import os
+import sys
+
+# Long prompts are trimmed rather than dropped: the first part is what says
+# what somebody is doing, and the feed is a glance rather than a transcript.
+MAX = 800
+
+
+def main():
+    project, session = (sys.argv[1:3] + ["", ""])[:2]
+    try:
+        req = json.load(sys.stdin)
+    except (ValueError, OSError):
+        return
+    text = str(req.get("prompt") or "").strip()
+    if not text or not project:
+        return
+    if len(text) > MAX:
+        text = text[:MAX].rstrip() + " …"
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, here)
+    import chat                                              # noqa: E402
+    import users                                             # noqa: E402
+
+    def write_json(p, d):
+        tmp = f"{p}.new"
+        with open(tmp, "w") as f:
+            json.dump(d, f, indent=2)
+        os.replace(tmp, p)
+
+    state = os.environ.get("DASHBOARD_STATE", "/config")
+    chat.configure(state=state, write_json=write_json)
+    users.configure(state=state, write_json=write_json)
+    who = next((n for n, u in users.load()["users"].items()
+                if u.get("uid") == session), session or "somebody")
+    chat.post(project, session, f"{who} asked: {text}", kind="asked")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:                     # noqa: BLE001 — never cost a turn
+        pass
+    sys.exit(0)

@@ -526,6 +526,32 @@ def session_principal(tok):
 
 # --- editing ---------------------------------------------------------------
 
+def claim(name, password):
+    """Make the owner, on a store that has none. The first-run screen's verb.
+
+    Not `add`, which refuses the owner role on purpose — there is only ever
+    one and it is not somebody an administrator creates. This is the one path
+    that makes it, and it is closed by its own result: the second call finds
+    an account and refuses.
+    """
+    name = str(name or "").strip()
+    if not NAME_RE.match(name):
+        return {"error": "a name is letters, digits and . _ @ + - , up to 64"}
+    if len(password or "") < 8:
+        return {"error": "a password is at least 8 characters"}
+    with _lock:
+        d = load()
+        if d["users"]:
+            return {"error": "this container already has an account"}
+        d["users"][name] = {"uid": mint_uid(), "role": "owner",
+                            "projects": ["*"],
+                            "password": hash_password(password),
+                            "created": int(time.time()), "seen": 0,
+                            "prefs": {}}
+        _save(d)
+    return {"ok": True, "name": name}
+
+
 def add(name, password, role="user", projects=None):
     name = str(name or "").strip()
     if not NAME_RE.match(name):

@@ -199,6 +199,54 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
      '...and the owner is untouched by all of it');
 }
 
+// ---- the first run --------------------------------------------------------
+// Nobody owns a fresh container, and that used to be a refusal: the owner came
+// from DASHBOARD_AUTH and the dashboard would not start without it, which put
+// the one credential that opens a shell on this box into the container's
+// environment, readable forever. It is a screen now, and it is the only page
+// served until somebody claims it.
+//
+// Driven against a store of its own rather than this server's, which already
+// has an owner — the whole property is what happens when there is none.
+{
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, readFileSync, existsSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+  const fresh = mkdtempSync(`${tmpdir()}/bbsetup-`);
+  const run = code => execFileSync('python3', ['-c', `
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${fresh}", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+${code}`], { encoding: 'utf8' });
+
+  ok(run('print(len(u.all_users()))').trim() === '0',
+     'a fresh container has no accounts, which is a normal first boot');
+  const made = run('print(json.dumps(u.claim("boss", "longenough1")))');
+  ok(JSON.parse(made).ok, `claiming it makes the owner (${made.trim()})`);
+  const rec = JSON.parse(readFileSync(`${fresh}/users.json`, 'utf8')).users.boss;
+  ok(rec.role === 'owner' && rec.projects.includes('*')
+     && /^pbkdf2_sha256\$/.test(rec.password) && /^u_[0-9a-f]{8}$/.test(rec.uid),
+     '...as an owner, hashed, with every project and an id of its own');
+  ok(!JSON.parse(run('print(json.dumps(u.claim("second", "longenough1")))')).ok,
+     '...and the second claim is refused, because there is now an account');
+  ok(!JSON.parse(run('print(json.dumps(u.claim("x", "short")))')).ok
+     && !JSON.parse(run('print(json.dumps(u.claim("", "longenough1")))')).ok,
+     'a short password and an empty name are both refused');
+  ok(existsSync(`${fresh}/users.json`), 'and the store is written where it will persist');
+
+  // ...and the door is shut on a server that already has an owner, which is
+  // this one. A second claim through the form would be a second owner.
+  const shut = await bare('/setup', { method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'username=usurper&password=longenough1&password2=longenough1' });
+  ok(shut.status === 200 && /already has an account/.test(await shut.text()),
+     'the first-run form is refused once somebody has claimed the container');
+  ok((await bare('/api/status')).status === 401,
+     '...and everything else still wants a sign-in, as it did before');
+}
+
 // ---- a strip each (roadmap #25) --------------------------------------------
 // The tab layout was ONE file for the whole box: written by whichever browser
 // saved last and handed to every other one. Fine for one operator, wrong the
@@ -431,6 +479,63 @@ spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboar
 u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
 u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
 print(u.remove("second"))`], { encoding: 'utf8' });
+  }
+
+  // ---- chat, and the project feed ------------------------------------------
+  // Two kinds of conversation, one store, and the read rule is the addressing:
+  // a direct one belongs to its two ends, a project feed to whoever may see
+  // the project.
+  {
+    const post = (h, path, body) => bare(path, { method: 'POST', headers: h,
+      body: JSON.stringify(body) });
+    const chat = (h, body) => post(h, '/api/chat', body);
+    const uidOf = n => JSON.parse(readFileSync(store, 'utf8')).users[n].uid;
+
+    const sent = await (await chat(owner, { action: 'send', who: 'sharer',
+                                            text: 'ready when you are' })).json();
+    ok((sent.messages || []).some(m => m.text === 'ready when you are'),
+       'a message to another account comes back in the conversation');
+    const theirs = await (await chat(other, { action: 'read', who: 'test' })).json();
+    ok((theirs.messages || []).some(m => m.text === 'ready when you are'
+                                    && m.who === 'test'),
+       '...and the other end sees it, named for who sent it');
+
+    // A project feed is the project's rule, not a new one.
+    ok((await chat(other, { action: 'send', project: 'beta', text: 'looking at this' })).status === 200,
+       'a project they were given takes a message');
+    const denied = await chat(other, { action: 'send', project: 'alpha', text: 'x' });
+    ok(denied.status === 403,
+       '...and one they were not is refused, the same as the project is');
+    // An admin is shown every project, so every project's channel is readable
+    // to them — a channel is the group chat for the people on it, and saying
+    // something in one is not a change to the project. The list marks which
+    // are actually theirs; the door does not need to.
+    ok((await chat(owner, { action: 'read', project: 'gamma' })).status === 200,
+       'an administrator can read a project channel it has not taken on');
+
+    // The status poll carries what is waiting, which is what puts the dot on
+    // the button — a chat you have to open to discover is one nobody opens.
+    await chat(owner, { action: 'send', who: 'sharer', text: 'and another' });
+    const st = await (await bare('/api/status', { headers: other })).json();
+    ok(st.chat && (st.chat.unread || {})[`dm:${uidOf('test')}`] >= 1,
+       `the poll says what is unread (${JSON.stringify(st.chat?.unread)})`);
+    ok((st.chat.people || []).includes('test') && !(st.chat.people || []).includes('sharer'),
+       '...and who there is to talk to, without listing yourself');
+    // Reading it clears it, which is the only thing "seen" has to mean.
+    await chat(other, { action: 'read', who: 'test' });
+    const after = await (await bare('/api/status', { headers: other })).json();
+    ok(!(after.chat.unread || {})[`dm:${uidOf('test')}`],
+       '...and reading a conversation is what marks it seen');
+
+    // The prompt relay, driven the way Claude Code drives it.
+    const relay = `${REPO}/scripts/dashboard/bb-prompt-relay`;
+    execFileSync('python3', [relay, 'beta', uidOf('sharer')], {
+      input: JSON.stringify({ prompt: 'rewrite the parser' }), encoding: 'utf8',
+      env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+    const feed = await (await chat(owner, { action: 'read', project: 'beta' })).json();
+    ok((feed.messages || []).some(m => /sharer asked: rewrite the parser/.test(m.text)
+                                  && m.kind === 'asked'),
+       'a prompt on a shared project reaches the others, marked as a prompt');
   }
 
   // A rename must not lose the strip — the whole reason the key is minted.
