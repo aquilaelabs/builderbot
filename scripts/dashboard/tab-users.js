@@ -142,7 +142,11 @@ function renderUsersInto(i){
           is the way around all of it. Their Claude session opens as a
           console — the real interface, read-only, with a box to type in and
           a button to end it. They can see Docker and the package manager for
-          their own projects' nodes, and change neither.</div>
+          their own projects' nodes — the instances, their ports and mounts,
+          and the web button — and change neither, with one exception:
+          <b>Rebuild</b>. Building what you committed and looking at it is the
+          point of having the project, so that one is theirs, and Abort with
+          it.</div>
         <div class="sub warn">An <b>admin</b> has a shell, and a shell is
           everything: one user inside the container, so an administrator can
           reach any account's files if they go looking. Give that role to

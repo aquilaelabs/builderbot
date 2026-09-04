@@ -2897,20 +2897,49 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def _nodes_for(self, rows):
-        """`rows`, minus the nodes this account has no project on.
+    def _node_scope(self):
+        """Node ids this account may look at, or None for "no restriction".
 
         An account that may change a node is shown the registry — that is what
         the Nodes tab is. One that may not is shown only the machines its own
-        projects name, so the tab is a window on its own work rather than an
-        inventory of the box.
+        projects build on, so every node-shaped surface is a window on its own
+        work rather than an inventory of the box.
+
+        Used by the listing AND by the two endpoints that read a node's
+        contents. Scoping the picker alone would have been theatre: `?node=`
+        is a string in a URL, and the answer is what actually carries the
+        other projects' names (roadmap #27).
         """
         me = self._who()
         if not users.may(me, "node"):
-            return rows
+            return None
         want = {prefs.get(p["name"])["node"] for p in project_list(me)}
         want.discard("")
-        return [n for n in rows if n["id"] in want]
+        return want
+
+    def _node_asked(self, nid):
+        """Resolve and check a `?node=` for this account.
+
+        Returns (node_id, error). An account with no restriction gets what it
+        asked for, "" included, which is "the default node" and predates the
+        picker. A restricted one must land on a node one of its own projects
+        builds on — and when it named none, the first of those, because its
+        picker only ever offered those anyway.
+        """
+        scope = self._node_scope()
+        if scope is None:
+            return nid, None
+        if not scope:
+            return "", "none of your projects builds on a node"
+        if not nid:
+            return sorted(scope)[0], None
+        if nid not in scope:
+            return "", "not a node one of your projects builds on"
+        return nid, None
+
+    def _nodes_for(self, rows):
+        scope = self._node_scope()
+        return rows if scope is None else [n for n in rows if n["id"] in scope]
 
     def _term_refused(self, rest):
         """A sentence when this account may not have the terminal it is asking
@@ -3299,7 +3328,9 @@ class Handler(BaseHTTPRequestHandler):
             # census says it has, and the package job in flight there. The
             # catalog is the same; the state is the node's (docs/nodes.md §6).
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            nid = q.get("node", [""])[0]
+            nid, why = self._node_asked(q.get("node", [""])[0])
+            if why:
+                return self._json({"error": why, "packages": []})
             if nid and nid != "local" and not NODES_OK:
                 return self._json(packages.payload_for_node(nid))
             return self._json(packages.payload())
@@ -3363,7 +3394,23 @@ class Handler(BaseHTTPRequestHandler):
             # is not one of them. No node named means the default, which is
             # the arrangement that predates the picker.
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            return self._json(devapp.overview(q.get("node", [""])[0] or None))
+            nid, why = self._node_asked(q.get("node", [""])[0])
+            if why:
+                return self._json({"error": why, "blind": True,
+                                   "instances": [], "containers": []})
+            got = devapp.overview(nid or None)
+            # An instance of a project this account was not given is one of
+            # the projects hidden from it, wearing a different hat — and a
+            # node is shared, so a restricted account asking about its own
+            # node would otherwise read every other project's name off this
+            # answer. The unowned containers go with them: they are somebody's
+            # work too, and nothing here says whose.
+            if self._node_scope() is not None:
+                seen = {p["name"] for p in project_list(self._who())}
+                got["instances"] = [i for i in got.get("instances") or []
+                                    if i.get("project") in seen]
+                got["containers"] = []
+            return self._json(got)
         if self.path.startswith("/api/containers"):
             # A read, and the only one this dashboard makes of the daemon
             # beyond `docker version` — see the guard in devapp.py, which
@@ -4211,9 +4258,21 @@ class Handler(BaseHTTPRequestHandler):
         # Reading is everybody's; changing what is running is not (roadmap
         # #27). Named, not derived from the verb: an action that should be
         # restricted and is not on this list is a decision somebody has to
-        # make, which is the same rule MACROS follows. `starter` is a read of
-        # the project's own .env.example and `state` is the listing.
-        if act not in ("starter", "state") and self._refused("docker-write"):
+        # make, which is the same rule MACROS follows.
+        #
+        #   starter, state — reads: the project's .env.example, and the row.
+        #   rebuild, abort — a user's own work, on purpose. Somebody given a
+        #     project has to be able to build what they committed and look at
+        #     it, or the project is read-only in the way that matters. Rebuild
+        #     is build-then-down-then-up, so it is also how a stopped instance
+        #     comes back, and the page already ghosts it until the code has
+        #     actually moved. Abort follows it: whoever may start a build may
+        #     stop one, or a mistake is somebody else's problem to clear.
+        #
+        # Everything else — new, remove, env, route — is configuration rather
+        # than a run of the code, and stays an administrator's.
+        if act not in ("starter", "state", "rebuild", "abort") \
+                and self._refused("docker-write"):
             return None
         # Which instance of that project. Absent means the one every project
         # has always had, so a caller that predates instances still works and

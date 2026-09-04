@@ -6829,7 +6829,7 @@ function renderDockerInto(i){
           <div class="wire">reading…</div></details>
       </div>
       <span class="acts">
-        <button type="button" data-dm="up" ${
+        ${!mayDocker() ? "" : `<button type="button" data-dm="up" ${
           d.running || busy || (d.missing_env || []).length ? "disabled" : ""}
           title="${(d.missing_env || []).length
             ? "the env is missing " + esc(d.missing_env.join(", "))
@@ -6845,7 +6845,7 @@ function renderDockerInto(i){
                title="this container's env file">Env</button>`}
         <button type="button" class="rm" data-dm="remove" ${busy ? "disabled" : ""}
           title="take it down and drop it from this list. Its env and its data
-directory stay, so remaking it under the same name finds them">Remove</button>
+directory stay, so remaking it under the same name finds them">Remove</button>`}
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}
             title="stop this build. What is already built is kept — an abort is
@@ -6937,8 +6937,9 @@ for the rest of the work"
     rows || `<div class="empty">${blind
       ? "nothing on record here — an instance appears once it has been sent"
       : "nothing on this daemon yet"}</div>`}
-    <div class="macros"><button id="bDockerNew">New container…</button
-      ><button id="bDockerRe">Refresh</button></div></div>`;
+    <div class="macros">${mayDocker()
+        ? `<button id="bDockerNew">New container…</button>` : ""
+      }<button id="bDockerRe">Refresh</button></div></div>`;
   gateDocker(el, off);
   // Every tail sits at its own bottom after a draw. The list repaints only
   // when the job moved, so between draws the reader keeps whatever scroll
@@ -7092,13 +7093,13 @@ function renderPackagesInto(i){
              ? esc(d.name || "the node") + "'s emulator has no image to boot."
              : "the emulator has no image to boot."}`}</div>`}
     <div class="macros">
-      <button class="primary" data-pkg="install"${busy || pstale ? " disabled" : ""}
+      ${!mayPackages() ? "" : `<button class="primary" data-pkg="install"${busy || pstale ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === pkgNode)))}"` : ""}
-        >Install selected</button>
-      ${busy ? `<button data-pkg="abort"${job.aborting ? " disabled" : ""}>${
+        >Install selected</button>`}
+      ${busy && mayPackages() ? `<button data-pkg="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
       ${busy && !pkgWorkingIsImage(job) ? pkgWorking(job) : ""}
-      <button data-pkg="check"${busy || onNode ? " disabled" : ""}
+      <button data-pkg="check"${busy || onNode || !mayPackages() ? " disabled" : ""}
         ${onNode ? `title="a node says what it has installed; asking upstream what is newer
           is a round trip per toolchain and is not something a node does yet"` : ""}>${
         busy && job.action === "check"

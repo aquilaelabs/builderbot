@@ -2920,9 +2920,15 @@ gets no terminal tab, and their Claude session opens as a **console** instead
 a box to type a message and a button to end the conversation. The proxy
 refuses anything else they ask a terminal for, so a read-only window cannot be
 pointed at somebody else's session. They see Docker and the package manager
-for their own projects' nodes and change neither; they cannot create or rename
-a project, change how one authenticates, or touch a stored token. What they
-can write is the notebook, and a Claude session on a project they were given.
+for their own projects' nodes — the scoping is on the answer, not just the
+picker, so a node none of their projects builds on is refused rather than
+listed — and change neither, with one exception: **Rebuild**, and Abort with
+it. Building what you committed and looking at it is the point of having the
+project, and Rebuild is also how a stopped instance comes back; the page
+already ghosts it until the code has actually moved. They cannot create or
+rename a project, change how one authenticates, or touch a stored token. What
+they can write is the notebook, a rebuild, and a Claude session on a project
+they were given.
 
 **An `admin` has a shell, and a shell is everything.** Every session runs as
 the same user inside the container — deliberately, so everything written to

@@ -336,6 +336,15 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
        '...nor change how one authenticates, which travels through rename');
     ok((await post(other, '/api/devapp', { project: 'beta', action: 'up' })).status === 403,
        'a user cannot start or stop a container');
+    ok((await post(other, '/api/devapp', { project: 'beta', action: 'remove' })).status === 403,
+       '...nor remove one, nor configure it');
+    // ...but building what they committed and looking at it is the point of
+    // having the project. Not a 403: whatever else it answers, it got past
+    // the gate.
+    ok((await post(other, '/api/devapp', { project: 'beta', action: 'rebuild' })).status !== 403,
+       'a user CAN rebuild — that is how you see what you just committed');
+    ok((await post(other, '/api/devapp', { project: 'beta', action: 'abort' })).status !== 403,
+       '...and stop one, since whoever may start a build may stop it');
     ok((await post(other, '/api/packages', { action: 'install', names: ['jdk'] })).status === 403,
        '...nor install gigabytes onto a shared node');
     // ...but the registry it is shown is its own projects' machines only,
@@ -345,6 +354,19 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
     ok(all.nodes.length > theirs.nodes.length,
        `a user sees only the nodes its own projects build on (${
           theirs.nodes.length} of ${all.nodes.length})`);
+    // ...and the scoping is on the ANSWER, not only the picker. `?node=` is a
+    // string in a URL, and the answer is what carries the other projects'
+    // names — scoping the picker alone would have been theatre.
+    const nodeId = all.nodes.find(n => n.id !== 'local')?.id || 'local';
+    const peek = await bare('/api/docker?node=' + encodeURIComponent(nodeId),
+                            { headers: other });
+    const body = await peek.json();
+    ok(/not a node one of your projects builds on|none of your projects/.test(body.error || ''),
+       `a node no project of theirs builds on is refused, not listed (${body.error})`);
+    const pk = await (await bare('/api/packages?node=' + encodeURIComponent(nodeId),
+                                 { headers: other })).json();
+    ok(/not a node one of your projects builds on|none of your projects/.test(pk.error || ''),
+       '...and the same for what that node has installed');
   }
 
   // A rename must not lose the strip — the whole reason the key is minted.
