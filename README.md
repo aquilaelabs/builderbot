@@ -83,7 +83,7 @@ decisions you need to make.
 | Credential | Lives where | Used for |
 |---|---|---|
 | **GHCR pull token** — classic PAT, `read:packages` scope only | On the Unraid **host** (`docker login`) | Lets the server pull the private image. Fine-grained PATs don't work for GHCR pulls |
-| **Runner PAT** — fine-grained, owned by the org. Repo runner: *Administration R/W*. Org runner: *Self-hosted runners R/W*. Nothing else | In the **secrets folder** (recommended) or the `GITHUB_PAT` variable | Mints runner registration tokens — that is its only job. Skip if `ENABLE_RUNNER=false` |
+| **Runner PAT** — fine-grained, owned by the org, and only for minting registration tokens for runners on your *nodes*. Repo: *Administration R/W*. Org: *Self-hosted runners R/W*. Nothing else | In the **secrets folder** (recommended) or the `GITHUB_PAT` variable | Mints runner registration tokens — that is its only job. Skip if `ENABLE_RUNNER=false` |
 | **Git SSH key(s)** | `secrets/ssh/` (shielded) or `home/.ssh/` (simple) | `git clone/pull/push` in your projects. Shielded keys are usable but unreadable |
 
 ### 1. Authorize the server to pull the image (one-time)
@@ -176,10 +176,9 @@ Required / usually touched:
 | State paths | Pre-wired to `/mnt/user/appdata/BuilderBot/{home,config,work}` |
 | **Secrets directory** | The folder from step 3 (or leave empty if unshielded) |
 | `TZ` | Your timezone |
-| `GITHUB_URL` | Repo the runner serves (`https://github.com/OWNER/REPO`) or org (`https://github.com/ORG`) |
+| `GITHUB_URL` | Repo (`https://github.com/OWNER/REPO`) or org (`https://github.com/ORG`) that node runners register with |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | Your commit identity |
 | `ANTHROPIC_API_KEY` | Leave **empty** for Claude subscription login (step 7); set only for API-key billing |
-| `ENABLE_RUNNER` | `true` unless you want a pure workstation |
 
 **The template's Extra Params default to `--hostname=builderbot --device=/dev/kvm
 --runtime=nvidia`**, matching the server it was written for. Both device flags
@@ -223,24 +222,24 @@ If you're on a Claude subscription (no API key):
 docker exec -it BuilderBot bb login    # one time; survives updates
 ```
 
-Confirm the runner: GitHub → repo → *Settings → Actions → Runners* →
-**builderbot** *Idle*. Then use it from a workflow:
+**CI runs on a node, not in this container.** Enroll one (step 9 in
+`docs/unraid.md` — a token from the Nodes tab, then `provision.sh` on the
+machine), open its row on the Nodes tab and press **Install runner**. It
+registers under the node's own name, which is the label a workflow uses:
 
 ```yaml
 jobs:
   build:
-    runs-on: [self-hosted, builderbot]
+    runs-on: [self-hosted, bb-sandbox]
 ```
 
-**Every label in `runs-on` must be one the runner carries.** A job asking for a
-label BuilderBot does not have sits in *Waiting for a runner* forever while the
-runner shows *Idle* — the job is simply not addressed to it, and neither screen
-mentions the other. If a job queues and never starts, compare its
-`Requested labels:` line against the labels beside the runner in
-*Settings → Actions → Runners*, and either fix the workflow or add the label to
-`RUNNER_LABELS`. Stale **Offline** runners carrying the label a job wants are
-worth deleting for the same reason — they make a job look routable when nothing
-is going to pick it up.
+**Every label in `runs-on` must be one some runner carries.** A job asking for
+a label nothing has sits in *Waiting for a runner* forever while the runners
+show *Idle* — the job is simply not addressed to any of them, and neither
+screen mentions the other. `bb ci-labels` lists every label the registry
+knows, `bb lint` refuses a `runs-on` naming one that nothing carries, and
+stale **Offline** runners carrying a label a job wants are worth deleting for
+the same reason — they make a job look routable when nothing will pick it up.
 
 ### 8. Daily use and updating
 
@@ -278,19 +277,14 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `ANTHROPIC_API_KEY` | *(empty)* | API-key billing; empty = subscription login via `bb login` |
 | `AUTO_UPDATE_CLAUDE` | `true` | Update Claude Code on every start |
 | `CLAUDE_CODE_VERSION` | `latest` | Pin the auto-update |
-| `ENABLE_RUNNER` | `true` | `false` = pure workstation |
-| `GITHUB_URL` | — | Repo or org URL the runner registers with |
-| `GITHUB_PAT` | *(empty)* | Runner PAT — prefer the secrets folder; values here are session-visible |
-| `RUNNER_NAME` / `RUNNER_LABELS` / `RUNNER_GROUP` | `builderbot` / `builderbot,self-hosted,linux,x64,unraid` / — | Runner identity |
-| `RUNNER_EPHEMERAL` | `true` | Fresh registration per job |
-| `RUNNER_RESTART_DELAY` | `5` | Seconds between re-registrations |
-| `SHUTDOWN_GRACE` | `90` | Seconds a stop may spend deregistering the runner, powering down the emulator and ending Claude sessions. Unraid caps this with its own Docker Stop Timeout (default **10**) — raise that if you want the full drain |
+| `GITHUB_URL` | — | Repo or org URL node runners register with |
+| `GITHUB_PAT` | *(empty)* | Mints registration tokens for node runners — prefer the secrets folder; values here are session-visible |
+| `SHUTDOWN_GRACE` | `90` | Seconds a stop may spend powering down the emulator and ending Claude sessions. Unraid caps this with its own Docker Stop Timeout (default **10**) — raise that if you want the full drain |
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
-| `SDK_ROOT` | `/sdk` | Where the SDKs *you* install are kept — see [SDKs live outside the image](#sdks-live-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: the runner keeps its own toolchains under `RUNNER_WORKDIR` |
-| `RUNNER_WORKDIR` | `/workspace/_work` | Everything the runner owns: job checkouts, the `_tool` cache `actions/setup-*` fills, cached actions, and `_diag` logs. Mapped to `appdata/BuilderBot/work` by the template |
+| `SDK_ROOT` | `/sdk` | Where the SDKs *you* install are kept — see [SDKs live outside the image](#sdks-live-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create system images and AVDs at startup |
-| `BUILDERBOT_ROLE` | `controller` | `node` makes this container a worker instead of the management instance: it enrolls with a controller and runs its jobs, and the dashboard, runner, Claude and project hooks do not start. See [nodes](docs/nodes.md) |
+| `BUILDERBOT_ROLE` | `controller` | `node` makes this container a worker instead of the management instance: it enrolls with a controller and runs its jobs, and the dashboard, Claude and project hooks do not start. See [nodes](docs/nodes.md) |
 | `CONTROLLER_URL` / `NODE_TOKEN` | — | Node only, and only until it enrolls: the dashboard's address, and a one-time token its Nodes tab mints |
 | `ANDROID_BASELINE_PLATFORM` | *(the image's)* | `none` keeps Android off this container's SDK store entirely — no platform, no build-tools, no emulator. For the box whose Android work runs on a [node](docs/nodes.md): the node carries its own SDK, and the store here is then only what a session needs |
 | `ANDROID_SYSTEM_IMAGES` | `36` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
@@ -376,7 +370,6 @@ bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
-bb runner status | stop | start | restart
 bb emu start [api] | stop | status | list | log [-p]
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only
@@ -796,12 +789,11 @@ PWA work the answer is already installed — Playwright's WebKit is Safari's
 engine, with iPhone device profiles. For a native iOS build you need a Mac.
 
 **CI's toolchains are not these.** A workflow that runs `actions/setup-node`
-downloads its own copy into the runner's tool cache under `RUNNER_WORKDIR`
-(`_work/_tool`), versioned by whatever that workflow asked for. The SDK share
-is the other thing entirely: what you installed, versioned by when you
-installed it. They are kept apart on purpose — a workflow bumping a version
-must not move the ground under a Claude session — and `_work` can be emptied
-whenever no job is running, at the cost of re-downloading on the next run.
+downloads its own copy into its runner's tool cache on the node, versioned by
+whatever that workflow asked for. The SDK share is the other thing entirely:
+what you installed, versioned by when you installed it. They are kept apart on
+purpose — a workflow bumping a version must not move the ground under a Claude
+session.
 
 **What stays in the image, and why.** Anything apt installs (the JDK,
 ffmpeg, imagemagick, build-essential) integrates with the system and cannot
@@ -1471,11 +1463,10 @@ than failing later.
 **A project's node does not decide where its CI runs, and nothing can make
 it.** That setting governs BuilderBot's own queue — `bb build`, `bb test`,
 `bb run`, `bb emu`, compose. Actions dispatch belongs to GitHub, which reads
-`runs-on` and nothing else, so with a runner here *and* on a node,
-`runs-on: [self-hosted, builderbot]` matches both and the job goes to
-whichever is idle — possibly the machine without the toolchain, silently.
-The node's own name is already a label on its runner, so pinning is one
-word:
+`runs-on` and nothing else, so with runners on two nodes a label both carry
+sends the job to whichever is idle — possibly the machine without the
+toolchain, silently. The node's own name is already a label on its runner, so
+pinning is one word:
 
 ```yaml
 runs-on: [self-hosted, alpha-vm]
@@ -2515,7 +2506,7 @@ and the desktop's cards for as long as it did.
 The `bb` commands worth a button are buttons. Clicking one clears whatever is half-typed at
 the prompt, types the command into the terminal you are looking at and presses
 Enter, rather than reporting into a box of its own. The
-output is then somewhere you can scroll it, a slow one like `bb runner stop` is
+output is then somewhere you can scroll it, a slow one like `bb sdk install` is
 watchable while it runs, and one that asks a question (`bb login`) or follows
 (`bb logs -f`) behaves exactly as if you had typed it. A command only ever goes
 to the tab you are looking at, and only if that is a plain shell: with a
@@ -2668,30 +2659,31 @@ idle either way and only one of the two ends in an answer.
 
 ### Reading CI from inside the container
 
-The self-hosted runner streams a job's console output to GitHub and keeps none
-of it. `/workspace/_work/_diag` holds the runner's own diagnostics — which step
-failed and its exit code — and not one line of what that step printed. With
-no git token here there is no API to ask either, so *"CI is red, why?"* had no
-answer in here for a job that ran in this very container.
+A self-hosted runner streams a job's console output to GitHub and keeps none
+of it, and with no git token here there is no API to ask either — so *"CI is
+red, why?"* had no answer in here. Every runner is on a node now, which moves
+the log one machine further away and changes nothing about the answer.
 
 So the lint workflow archives its own output — and so does the `dashboard
 tests` workflow beside it, which carries the browser suite: each check is
 teed into
-`/config/ci-logs/<repo>/<run-id>-<attempt>.log`, with a header naming the
-commit, ref and event, and a `result:` line written by an `if: always()` step
-so a job that died still says so. `bb ci-log` prints the newest, `--list` shows
-the twenty kept with their results, and a run id picks one.
+`ci-logs/<repo>/<run-id>-<attempt>.log` on the runner's node, with a header
+naming the commit, ref and event, and a `result:` line written by an
+`if: always()` step so a job that died still says so. `bb ci-log` fetches the
+newest from the project's node, `--list` shows the twenty kept with their
+results, and a run id picks one.
 
 Two details that are load-bearing. The job sets `shell: bash` rather than
 taking the default `bash -e`, because the difference is `pipefail` — without it
 the tee's exit status becomes the step's and a failing linter reports success.
-And the logs live in `/config` rather than `/tmp`, because a log that vanishes
-with the container is no use for the question *"what broke while I was away?"*.
+And the logs live on the node's disk rather than in a job's temp directory,
+because a log that vanishes with the job is no use for *"what broke while I
+was away?"*.
 
 The image build is the exception that proves it: it runs on a hosted runner, so
-nothing it prints is reachable from in here. Its last job comes back to this
-box — `runs-on: [self-hosted, builderbot]` — and archives the *outcome* into the
-same directory: result, trigger, version, digest, how long it took, and whether
+nothing it prints is reachable from in here. Its last job comes back to a
+node — `runs-on: [self-hosted, bb-sandbox]` — and archives the *outcome* into
+the same directory: result, trigger, version, digest, how long it took, and whether
 the layer cache was used. Not the console output, which is gone; enough to
 answer "did that build land, and why did the host re-pull a gigabyte?".
 
@@ -3142,8 +3134,7 @@ docker-compose.yml               compose variant of the stack
 unraid/builderbot.xml            Unraid Docker template (one-click updates)
 scripts/
   entrypoint.sh                  secrets shield, uid remap, hooks, ssh-agent
-  supervisor.sh                  keeps the box alive; supervises the runner
-  runner.sh                      register / run / deregister the runner
+  supervisor.sh                  keeps the box alive; the graceful shutdown
   mint-runner-token              root-only token helper (the one sudo command)
   healthcheck.sh                 docker healthcheck
   bb                             in-container helper CLI

@@ -368,7 +368,7 @@ def _seed_local():
         "pool": "default", "created": int(time.time()), "state": "online",
         "concurrency": 1, "ssh_addr": "", "os": system, "arch": arch,
         "capabilities": ["package-build"],
-        "services": {"actions-runner": {}},
+        "services": {},                    # no runner here: CI is a node's
         "labels": {"arch": platform.machine()},
         "agent": {}, "reported": reported, "routing": {}, "config": {},
     })

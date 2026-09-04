@@ -9,9 +9,10 @@
      Edits inside this block are lost on the next --update; put them below. -->
 
 You are running inside **BuilderBot**, a long-lived container on an Unraid
-server. It is a Claude Code workstation, a self-hosted GitHub Actions runner, a
-Playwright browser lab and an Android build box. This file describes the
-environment; it is not a description of the project itself.
+server. It is a Claude Code workstation and the controller for one or more
+nodes — the machines where builds, tests, CI and the Android emulator actually
+run. This file describes the environment; it is not a description of the
+project itself.
 
 ## Check this file is current, first
 
@@ -88,9 +89,9 @@ hide. Leave those alone too.
 
 If this session was started from the dashboard, that is also enforced: the file
 tools — `Read`, `Edit`, `Write` and `NotebookEdit` — are denied every sibling
-path and the runner's `_work` tree, via a settings file passed on the command
-line. One of them coming back denied for a path outside this project is that
-rule, working as intended — not a bug to route around with Bash.
+path, via a settings file passed on the command line. One of them coming back
+denied for a path outside this project is that rule, working as intended — not
+a bug to route around with Bash.
 
 Bash is **not** covered by it, and that is worth knowing rather than
 discovering: `cat ../other-project/src/main.kt` works. The settings file is a
@@ -770,32 +771,28 @@ only when the finding is genuinely a false positive, and say why.
 - Never write credentials into this repository, including into test fixtures,
   `.env` files that are not gitignored, or CI config.
 
-## CI runs on this same box
+## CI runs on a node, never here
 
-The self-hosted runner executes jobs in this container, under
-`/workspace/_work`. It is registered at the **organization** level, so it serves
-every repo in the org, not just this one. It carries the labels
-`builderbot,self-hosted,linux,x64,unraid`, and a workflow matches only if every
-label in its `runs-on` is one the runner has. Four implications:
+This container runs no Actions runner. Every runner lives on a node the
+operator enrolled — the dashboard's Nodes tab installs one — and carries that
+node's own name as a label, which is how a workflow chooses it:
 
-- The toolchain CI sees is the toolchain you see. If a build works here it
-  should work in CI, and if you needed an undocumented step, CI needs it too.
-- CI jobs and your session share CPU, RAM and disk. A heavy build while the
-  emulator is running can starve both — stop the emulator before pushing.
-- A job stuck in *Waiting for a runner* while the runner shows *Idle* is a
-  label mismatch, not a broken runner. Compare the job's `Requested labels:`
-  against the list above.
-- `Runner connect error: Error: Conflict` with *A session for this runner
-  already exists* means something else is holding this runner's name — usually
-  a listener left behind by a half-finished restart. It clears when GitHub
-  expires the old session. `bb runner status` says so explicitly; do not
-  re-register to "fix" it, that is what caused it.
-- A push to a *different* repo in the org can be building on this same box
-  right now. If something is inexplicably slow, that is a candidate.
-- A runner can also live on a node (the dashboard's Nodes tab installs one),
-  carrying the node's name as a label. A workflow lands there by naming that
-  label in `runs-on`; `bb ci-labels` lists every label the registry knows,
-  and `bb lint` says when a declared one belongs to no runner.
+```yaml
+runs-on: [self-hosted, bb-sandbox]
+```
+
+Four implications:
+
+- The toolchain CI sees is the **node's**, the same one `bb build` and
+  `bb test` use for this project. If a build works through `bb build` it
+  should work in CI; if it needed a toolchain the node lacks, CI needs it too.
+- A job stuck in *Waiting for a runner* while the runners show *Idle* is a
+  label mismatch, not a broken runner. `bb ci-labels` lists every label the
+  registry knows; compare the job's `Requested labels:` against it.
+- `bb lint` refuses a `runs-on` naming a label no runner carries, so that
+  mismatch is caught here instead of on GitHub.
+- A CI job's console output stays on the node. `bb ci-log` fetches the newest
+  archived run from this project's node; `--list` shows what is kept.
 
 ## Toolchain already present
 
@@ -816,8 +813,9 @@ compose files or XML, run:
 bb lint            # lints those files in the current repo, same tools as CI
 ```
 
-It checks `runs-on` labels against the labels this runner actually carries, so
-the "Waiting for a runner" label mismatch is caught here instead of on GitHub.
+It checks `runs-on` labels against the labels the nodes' runners actually
+carry, so the "Waiting for a runner" mismatch is caught here instead of on
+GitHub.
 It does not run the project's own linters (eslint, ruff configs, gradle
 checks) — those have their own configuration; use the project's documented
 commands for them.

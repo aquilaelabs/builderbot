@@ -28,9 +28,9 @@ PGID="${PGID:-100}"
 # Values stashed for the root helper and registered for log redaction.
 #
 # No git token here: a project carries its own, in the clone dialog. What is
-# left is the runner's, which is shielded rather than explained.
-SECRET_VARS=(GITHUB_PAT RUNNER_TOKEN ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN
-             NODE_TOKEN)
+# left is the PAT that mints registration tokens for NODE runners, which is
+# shielded rather than explained.
+SECRET_VARS=(GITHUB_PAT ANTHROPIC_API_KEY NPM_TOKEN UV_PUBLISH_TOKEN NODE_TOKEN)
 
 # DOCKER_HOST is the operator's to write as the sandbox VM's address — just the
 # machine, `10.0.0.9` — and it is also a variable the docker CLI reads for
@@ -114,11 +114,11 @@ SED
     fi
 
     if is_true "${SHIELD_SECRETS:-true}"; then
-        # The runner gets tokens through the sudo helper; nothing running as
-        # builder needs the raw PAT. Claude-facing tools DO need their own
-        # credentials (ANTHROPIC_API_KEY, NPM_TOKEN), so those stay.
-        unset GITHUB_PAT RUNNER_TOKEN
-        log "secrets shielded: GITHUB_PAT/RUNNER_TOKEN removed from the session environment"
+        # Node runner tokens are minted through the sudo helper; nothing
+        # running as builder needs the raw PAT. Claude-facing tools DO need
+        # their own credentials (ANTHROPIC_API_KEY, NPM_TOKEN), so those stay.
+        unset GITHUB_PAT
+        log "secrets shielded: GITHUB_PAT removed from the session environment"
     fi
 }
 
@@ -352,8 +352,7 @@ seed_home() {
         "$BUILDER_HOME/.local/bin" \
         "$BUILDER_HOME/.ssh" \
         "$BUILDER_HOME/.cache" \
-        "$WORKSPACE" \
-        "${RUNNER_WORKDIR:-$WORKSPACE/_work}"
+        "$WORKSPACE"
     chmod 700 "$BUILDER_HOME/.ssh"
 
     if is_true "${CHOWN_HOME:-true}"; then
@@ -371,8 +370,6 @@ seed_home() {
     else
         chown "$PUID:$PGID" "$WORKSPACE" 2>/dev/null || true
     fi
-    chown "$PUID:$PGID" "${RUNNER_WORKDIR:-$WORKSPACE/_work}" 2>/dev/null || true
-    chown -R "$PUID:$PGID" "$RUNNER_DIR" 2>/dev/null || true
 
     # Project mounts are deliberately left alone — a recursive chown across a
     # share is slow and hard to undo. Set CHOWN_PROJECTS=true to opt in.
@@ -380,7 +377,7 @@ seed_home() {
         local d
         for d in "$WORKSPACE"/*/; do
             [ -d "$d" ] || continue
-            [ "$d" = "${RUNNER_WORKDIR:-$WORKSPACE/_work}/" ] && continue
+            [ "$d" = "$WORKSPACE/_work/" ] && continue   # an old runner tree, left alone
             log "chown -R ${PUID}:${PGID} ${d}"
             chown -R "$PUID:$PGID" "$d"
         done

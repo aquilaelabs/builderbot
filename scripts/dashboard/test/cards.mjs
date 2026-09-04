@@ -693,35 +693,34 @@ ok(JSON.parse(readFileSync(`${DIR}/auth.json`, 'utf8')).loggedIn === true
 ok(await page.$('#authCode') === null,
    '...with the code field gone, because there is nothing left to ask');
 
-// ---- the runner's states -----------------------------------------------
-// Drawn directly, because the interesting ones need GitHub to be in a
-// particular mood. The one that matters is the difference between a runner
-// that cannot be reached and one waiting for GitHub to let go of its own
-// name — which happens after every restart and every finished job on an
-// ephemeral runner, clears itself in a minute or two, and had been wearing
-// the same red as a real outage.
-const runnerPill = r => page.evaluate(x => {
-  drawRunner(x);
-  const p = document.querySelector('#runner .pill');
-  return { cls: p.className, text: p.textContent.trim(),
-           body: document.getElementById('runner').textContent };
-}, r);
+// ---- the runner card -------------------------------------------------------
+// A view of the NODES' runners and nothing else: this container ran a runner
+// of its own until CI moved to nodes (docs/nodes.md phase 7), and the card
+// used to lead with that one's moods. Drawn directly, because each state
+// needs a node to be in a particular one.
+const runnerCard = rows => page.evaluate(x => {
+  const keep = state.node_runners; state.node_runners = x;
+  drawRunner();
+  const out = { body: document.getElementById('runner').textContent,
+                pills: [...document.querySelectorAll('#runner .sub')].map(e => e.className) };
+  state.node_runners = keep;
+  return out;
+}, rows);
 
-let rp = await runnerPill({ enabled: true, listening: true, connected: false,
-  detail: 'a session for this runner already exists' });
-ok(rp.cls.includes('warn') && !rp.cls.includes('bad'),
-   'waiting for GitHub to release a session is amber, not a fault');
-ok(/waiting for GitHub/.test(rp.text) && /clears itself/.test(rp.body),
-   '...and says it clears itself, which is the thing worth knowing');
-
-rp = await runnerPill({ enabled: true, listening: true, connected: false,
-  detail: 'connection refused' });
-ok(rp.cls.includes('bad') && /cannot connect/.test(rp.text),
-   'a runner that genuinely cannot reach GitHub is still red');
-
-rp = await runnerPill({ enabled: true, listening: true, connected: true });
-ok(rp.cls.includes('ok') && /listening for jobs/.test(rp.text),
-   'and a healthy one says so');
+let rc = await runnerCard([]);
+ok(/no runner on any node/.test(rc.body) && /Nodes tab installs one/.test(rc.body),
+   'with no runner anywhere the card says so, and where one is installed');
+rc = await runnerCard([{ node: 'bb-sandbox', live: true, installed: true,
+  listening: true, busy: false, labels: ['bb-sandbox'] }]);
+ok(/bb-sandbox/.test(rc.body) && /listening — idle/.test(rc.body)
+   && /runs-on: \[self-hosted, bb-sandbox\]/.test(rc.body),
+   'a listening node runner leads with the node\'s name, which is the label a workflow uses');
+rc = await runnerCard([{ node: 'bb-sandbox', live: false, installed: true,
+  listening: true, busy: false, labels: [] }]);
+ok(/quiet/.test(rc.body) && rc.pills.some(c => /warn/.test(c)),
+   '...and a runner on a node nobody has heard from lately is amber, not green');
+ok(await page.$('#runner [data-m]') === null,
+   'the card carries no Start/Stop of its own — those are the Nodes tab\'s');
 await page.evaluate(() => refresh());
 
 // The padlock: a project the operator keeps and runs themselves. Its whole

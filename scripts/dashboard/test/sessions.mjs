@@ -107,7 +107,7 @@ await page.evaluate(() => { for (const s of ['shell-alpha', 'shell-ep_silon']){
 await row('claude-alpha').locator('[data-go]').click();
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'claude-alpha'));
 ok((await btn('claude-alpha').textContent()).trim() === 'Close', 'claude session on the strip shows Close');
-ok(await page.$eval('#commands [data-m]', b => b.disabled) && await page.$eval('#runner [data-m]', b => b.disabled), 'macros grayed on a Claude tab');
+ok(await page.$eval('#commands [data-m]', b => b.disabled), 'macros grayed on a Claude tab');
 const nd = page.dialogs.length;
 await btn('claude-alpha').click();
 await page.waitForFunction(() => !document.querySelector('[data-go="claude-alpha"]'), { timeout: 15000 });
@@ -240,8 +240,8 @@ await page.evaluate(() => focusTab(tabs.find(t => sessionOf(t.arg) === 'shell-9'
 ok(await page.$eval('#commands [data-m]', b => !b.disabled), 'macros live on a shell tab');
 // no tabs at all → grayed too, with a tooltip saying to open a shell
 await page.evaluate(() => { const keep = tabs.slice(); keep.forEach(t => dropTab(t.id)); });
-ok(await page.$eval('#commands [data-m]', b => b.disabled && /open one/.test(b.title))
-   && await page.$eval('#runner [data-m]', b => b.disabled), 'macros grayed with no tab open');
+ok(await page.$eval('#commands [data-m]', b => b.disabled && /open one/.test(b.title)),
+   'macros grayed with no tab open');
 await page.evaluate(() => openTab({kind:"term", arg: argForSession('shell-9'), label:'shell-9'}));
 await page.waitForFunction(() => tabs.some(t => sessionOf(t.arg) === 'shell-9'));
 

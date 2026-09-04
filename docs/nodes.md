@@ -1278,9 +1278,12 @@ node runner's — with `--write` regenerating `.github/actionlint.yaml` from
 it; `bb lint` notes a declared label no runner carries. **A project's CI
 node setting decides where its jobs land by label**: the workflow's
 `runs-on` names the node, and nothing else can, because GitHub places the
-job, not this controller. Not yet done, by the phase's own rule: the
-controller's runner is retired only after a node runner has taken a real
-job, which is the operator's to see.
+job, not this controller. The controller's own runner was retired on 5 Sep,
+by the phase's own rule: only after a node runner had taken a real job (3 Sep,
+the smoke test on bb-sandbox) and every workflow in this repo had moved there.
+`runner.sh`, its supervision, `bb runner`, the image's install step and the
+five `RUNNER_*` settings all went in one change; the Runner card is a view of
+the nodes' runners now, and `github_url()` reads only the environment.
 
 **Phase 8 — deploy targets.**
 Modes `lan` and `funnel`; the `route` record shaped for `public`.

@@ -4,7 +4,6 @@
 
 BUILDER_HOME="${BUILDER_HOME:-/home/builder}"
 WORKSPACE="${WORKSPACE:-/workspace}"
-RUNNER_DIR="${RUNNER_DIR:-/opt/actions-runner}"
 
 # Boot's finish line, as a file rather than a log line.
 #

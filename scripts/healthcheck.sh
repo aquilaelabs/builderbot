@@ -16,9 +16,4 @@ command -v claude >/dev/null 2>&1 || {
     su builder -c 'command -v claude' >/dev/null 2>&1 || { echo "claude not on PATH"; exit 1; }
 }
 
-if is_true "${ENABLE_RUNNER:-true}" && [ -n "${GITHUB_URL:-}" ]; then
-    pgrep -f '/opt/builderbot/scripts/runner\.sh' >/dev/null \
-        || { echo "runner supervisor not running"; exit 1; }
-fi
-
 echo "ok"

@@ -256,9 +256,6 @@ MACROS = {
     "status":           ["bb", "status"],
     "update":           ["bb", "update"],
     "login":            ["bb", "login"],
-    "runner-status":    ["bb", "runner", "status"],
-    "runner-stop":      ["bb", "runner", "stop"],
-    "runner-start":     ["bb", "runner", "start"],
     "emu-start":        ["bb", "emu", "start"],
     "emu-stop":         ["bb", "emu", "stop"],
     "emu-status":       ["bb", "emu", "status"],
@@ -268,7 +265,9 @@ MACROS = {
     "logs-follow":      ["bb", "logs", "-f"],
 }
 # Sendable, but not listed in the bb commands card: another card owns them.
-CARD_HIDDEN = {"runner-status", "runner-stop", "runner-start"}
+# Empty since the controller's own runner went (the Runner card is a view of
+# the nodes' runners now, and those are driven from the Nodes tab).
+CARD_HIDDEN = set()
 
 # The Linux and git/GitHub cards. Strings typed into the shell as-is — not
 # argv lists like MACROS, because half of these are pipelines and shlex.join
@@ -1707,80 +1706,6 @@ def tmux_sessions():
     return rows
 
 
-def log_path():
-    """Where entrypoint.sh sends the container log — same rules as bb_log_dir."""
-    d = os.environ.get("BB_LOG_DIR") or ("/logs" if Path("/logs").is_dir()
-                                         else "/config/logs")
-    return Path(d) / "builderbot.log"
-
-
-# The runner announces each job on stdout, which lands in the container log:
-#     2026-08-17 02:27:17Z: Running job: tests
-#     2026-08-17 02:29:04Z: Job tests completed with result: Succeeded
-JOB_START = re.compile(r"Running job:\s*(.+?)\s*$")
-JOB_END = re.compile(r"Job\s+(.+?)\s+completed with result:")
-
-# ...and its connection state the same way:
-#     2026-08-17 02:21:32Z: Listening for Jobs
-#     A session for this runner already exists.
-#     2026-08-17 02:38:35Z: Runner connect error: Error: Conflict. Retrying
-#     2026-08-17 02:39:10Z: Runner reconnected.
-LINK_OK = re.compile(r"Listening for Jobs|Runner reconnected")
-LINK_BAD = re.compile(r"Runner connect error:\s*(.*?)\s*(?:Retrying until reconnected\.?)?\s*$")
-SESSION_TAKEN = re.compile(r"A session for this runner already exists")
-
-
-def log_tail(limit=65536):
-    """Last `limit` bytes of the container log, as lines. Empty if unreadable."""
-    try:
-        with log_path().open("rb") as fh:
-            fh.seek(0, os.SEEK_END)
-            size = fh.tell()
-            fh.seek(max(0, size - limit))       # bounded: this log can be huge
-            return fh.read().decode("utf-8", "replace").splitlines()
-    except OSError:
-        return []
-
-
-def current_job(lines):
-    """Name of the job the runner is on, from the last of those two lines.
-
-    Cosmetic only — whether a job is running at all is decided by the worker
-    process, not by this. A rotated or unreadable log costs the name, nothing
-    more.
-    """
-    for line in reversed(lines):
-        if JOB_END.search(line):
-            return None                          # finished before it started
-        m = JOB_START.search(line)
-        if m:
-            return m.group(1)
-    return None
-
-
-def link_state(lines):
-    """(healthy, detail) for the runner's connection to GitHub.
-
-    A Listener process says the runner is *trying*, not that it succeeded: a
-    rejected connection is retried forever without the process exiting, so
-    pgrep alone reports a green light through an outage. The last connectivity
-    marker in the log is what actually distinguishes the two.
-    """
-    for i in range(len(lines) - 1, -1, -1):
-        line = lines[i]
-        if LINK_OK.search(line):
-            return True, None
-        m = LINK_BAD.search(line)
-        if m:
-            detail = m.group(1).strip(" .") or "connection refused"
-            # "Conflict" on its own means nothing to a reader. The runner
-            # explains it on the preceding line, so look just behind.
-            if any(SESSION_TAKEN.search(x) for x in lines[max(0, i - 5):i]):
-                detail = "a session for this runner already exists"
-            return False, detail
-    return True, None                            # nothing logged either way
-
-
 def last_stop():
     """Project -> transcript id, as recorded by the supervisor on its way down.
 
@@ -1860,43 +1785,16 @@ def respawn_claude(project):
     return {"restarted": True}
 
 
-def _pidfile_alive(p):
-    """Is the process named by this pidfile still there? A stale file is a no."""
-    try:
-        pid = int(p.read_text().strip())
-    except (OSError, ValueError):
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True         # it exists, we just may not signal it
-    except OSError:
-        return False
-    return True
-
-
 def github_url():
-    """The org or repo this box's runner registers with: the environment,
-    or the local runner's own registration when the URL lives only in the
-    root-only stash. Empty when neither knows."""
-    u = os.environ.get("GITHUB_URL", "")
-    if u:
-        return u
-    cfg = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner")) / ".runner"
-    try:
-        # utf-8-sig: config.sh writes .runner with a BOM (see the agent's
-        # services_now), so a plain read_text() throws and this answered
-        # "no URL" on a box whose runner was registered fine.
-        return str(json.loads(cfg.read_text(encoding="utf-8-sig")).get("gitHubUrl") or "")
-    except (OSError, ValueError):
-        return ""
+    """The org or repo a node's runner registers with: GITHUB_URL, and
+    nothing else now that this container runs no runner of its own to read
+    a registration back from. Empty when unset."""
+    return os.environ.get("GITHUB_URL", "")
 
 
 def mint_runner_token(kind):
-    """A runner token for a node, the way runner.sh gets its own: the
-    root-only helper via its one sudo rule, or a session-visible PAT."""
+    """A runner token for a node: the root-only helper via its one sudo
+    rule, or a session-visible PAT."""
     r = run(["sudo", "-n", "/opt/builderbot/scripts/mint-runner-token", kind], timeout=60)
     if r["code"] == 0 and r["out"].strip():
         return {"token": r["out"].strip().splitlines()[-1]}
@@ -1938,58 +1836,6 @@ def node_runners():
                     "name": rep.get("name") or "", "url": rep.get("url") or "",
                     "labels": rep.get("labels") or want.get("labels") or []})
     return out
-
-
-def runner():
-    d = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner"))
-    info = {"registered": False, "running": False, "listening": False,
-            "busy": False, "connected": True, "detail": None,
-            "job": None, "elapsed": None, "name": None, "url": None}
-    cfg = d / ".runner"
-    if cfg.is_file():
-        info["registered"] = True
-        try:
-            # utf-8-sig: config.sh writes .runner with a BOM, so a plain read
-            # throws and this card lost the runner's name and URL on a box
-            # whose runner was registered fine — the same bug as github_url()
-            # and the agent's census.
-            j = json.loads(cfg.read_text(encoding="utf-8-sig"))
-            info["name"] = j.get("agentName")
-            info["url"] = j.get("gitHubUrl")
-        except (ValueError, OSError):
-            pass
-    # Path-anchored so the pattern cannot match a command line that merely
-    # names the binary — a grep, or the `pgrep -af Runner.Listener` we suggest.
-    info["listening"] = run(["pgrep", "-f", "/Runner.Listener"], timeout=10)["code"] == 0
-    # The supervisor, which outlives the listener: an ephemeral runner exits
-    # after each job and runner.sh re-registers it. Stopped means *this* is
-    # gone, so it — not the listener — is what the Stop/Start button reflects.
-    # By pidfile, because there is no command-line pattern for runner.sh that
-    # does not also match unrelated processes.
-    info["running"] = info["listening"] or _pidfile_alive(d / ".runner.pid")
-    # The Listener stays up for the whole of a job and spawns a Worker per job,
-    # so "listening" alone cannot tell idle from busy — which made the dashboard
-    # claim the runner was waiting while it was building.
-    w = run(["pgrep", "-f", "/Runner.Worker"], timeout=10)
-    info["busy"] = w["code"] == 0
-    lines = log_tail() if info["listening"] else []
-    if info["listening"]:
-        info["connected"], info["detail"] = link_state(lines)
-    if info["busy"]:
-        info["job"] = current_job(lines)
-        # How long the job has been going. There is no progress to report
-        # beyond this: a runner long-polls for one job at a time and is never
-        # told what else is queued, and what a job *does* — how many tests, how
-        # far in — is known only to the tool running inside the step.
-        # `out` merges stderr, so take the first token that is actually a pid
-        # rather than whatever happened to be printed first.
-        pid = next((t for t in w["out"].split() if t.isdigit()), None)
-        if pid:
-            e = run(["ps", "-o", "etimes=", "-p", pid], timeout=10)
-            if e["code"] == 0 and e["out"].strip().isdigit():
-                info["elapsed"] = int(e["out"].strip())
-    info["enabled"] = os.environ.get("ENABLE_RUNNER", "true").lower() not in ("false", "0", "no")
-    return info
 
 
 def uptime():
@@ -2753,12 +2599,9 @@ def snapshot(who):
         "image": image_stamp(),
         "projects": ps,
         "sessions": sessions,
-        "runner": runner(),
-        # Every node with a runner on it, so the card answers "which machine
-        # is CI running on" rather than only "is this container's runner up".
-        # The operator ran a workflow on a node and had nowhere on the
-        # dashboard to see it land — GitHub was the only place that answer
-        # existed. Read from the census, which already carries it.
+        # Every node with a runner on it: the Runner card is a view of these
+        # and nothing else, since CI left this container (phase 7). Read from
+        # the census, which already carries it.
         "node_runners": node_runners(),
         "reports": REPORTS.is_dir(),
         "reports_mtime": reports_mtime(),

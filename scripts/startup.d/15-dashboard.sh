@@ -10,7 +10,7 @@
 # needs nothing they produce — ttyd, tmux and python are in the image — and it
 # used to run second-to-last, which meant the whole boot was time the operator
 # spent looking at a browser that would not connect. Measured on this box: a
-# container start to the runner listening is about fifty seconds, and the
+# container start to the last hook finishing is about fifty seconds, and the
 # Claude Code update at hook 20 and any project's own setup.sh at hook 40 are
 # both ahead of where this used to sit.
 #

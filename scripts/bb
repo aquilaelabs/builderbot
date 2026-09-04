@@ -39,10 +39,6 @@ bb — BuilderBot helper
   bb shell               open a login shell as the builder user
   bb update              update Claude Code (and npm globals) in place
   bb login               run the Claude Code auth flow
-  bb runner status       registration, and whether it is connected/busy
-  bb runner stop         stop it and wait for GitHub to release the session
-  bb runner start        start it if it is not already running
-  bb runner restart      stop, then start (add --force to interrupt a job)
   bb emu start [API]     boot the emulator headless (e.g. `bb emu start 37`)
   bb emu stop            shut the emulator down
   bb emu status          adb devices
@@ -149,7 +145,6 @@ cmd_status() {
     version java   java --version
     version adb    adb --version
     version pw     playwright --version
-    printf '  %-8s %s\n' runner "$(cat "${RUNNER_DIR}/.runner-version" 2>/dev/null || echo '-')"
     echo
     # What is installed beyond the image, and where. Here rather than only in
     # `bb sdk` because this is the command a session runs first, and "is
@@ -165,22 +160,8 @@ cmd_status() {
         "$(is_mountpoint "$root" && printf ' (share)' || printf ' (home volume)')"
     printf '  %-8s %s\n' installed "${have:-none — see: bb sdk}"
     echo
-    echo "== runner =="
-    if [ -f "${RUNNER_DIR}/.runner" ]; then
-        jq -r '"  name: \(.agentName)\n  url:  \(.gitHubUrl)"' "${RUNNER_DIR}/.runner" 2>/dev/null \
-            || echo "  registered"
-        if pgrep -f 'Runner.Listener' >/dev/null; then
-            echo "  state: listening for jobs"
-        else
-            echo "  state: starting up or between jobs"
-        fi
-    elif runner_pid >/dev/null; then
-        # Ephemeral gap, not an outage — see the same case in cmd_runner.
-        echo "  re-registering — a job just finished, back in seconds"
-    else
-        echo "  not registered (ENABLE_RUNNER=${ENABLE_RUNNER:-true})"
-    fi
-    echo
+    # CI runs on nodes (docs/nodes.md phase 7); `bb ci-labels` lists their
+    # runners' labels and the Nodes tab shows each one's state.
     cmd_projects
 }
 
@@ -219,162 +200,6 @@ cmd_login() {
     fi
 }
 
-RUNNER_PIDFILE="${RUNNER_DIR}/.runner.pid"
-
-# The supervisor, by pid rather than by command-line pattern. `pgrep -f
-# runner.sh` matches any process that merely mentions the string — a grep, an
-# editor, the shell running this very script — and a pkill on that pattern
-# takes them with it.
-runner_pid() {
-    local pid
-    pid="$(cat "$RUNNER_PIDFILE" 2>/dev/null || true)"
-    case "$pid" in
-        ''|*[!0-9]*) return 1 ;;
-    esac
-    kill -0 "$pid" 2>/dev/null || return 1
-    printf '%s' "$pid"
-}
-
-# The listener, matched on its executable path. The leading slash keeps the
-# pattern from matching a command line that only names it — including the
-# `pgrep -af Runner.Listener` we suggest to the user.
-listener_pids() { pgrep -f '/Runner\.Listener' 2>/dev/null || true; }
-worker_running() { pgrep -f '/Runner\.Worker' >/dev/null 2>&1; }
-
-# runner_alive — anything that still holds this runner's GitHub session.
-#
-# Both halves matter. runner.sh is the supervisor; Runner.Listener is what is
-# actually connected. Killing only the supervisor leaves the listener holding
-# the session, which is what produces "A session for this runner already
-# exists" followed by an endless "Runner connect error: Error: Conflict".
-runner_alive() {
-    runner_pid >/dev/null || [ -n "$(listener_pids)" ]
-}
-
-# runner_link — "ok" or "down", from the last connectivity marker the runner
-# logged. A listener process being up says only that it is trying; the runner
-# retries a rejected connection forever without exiting, so the process alone
-# cannot tell a working runner from one stuck on Conflict.
-runner_link() {
-    local last
-    last="$(tail -n 500 "$(bb_log_dir)/builderbot.log" 2>/dev/null \
-            | grep -E 'Listening for Jobs|Runner reconnected|Runner connect error' \
-            | tail -n 1 || true)"
-    case "$last" in
-        *"Runner connect error"*) printf 'down' ;;
-        *)                        printf 'ok'   ;;   # also the unknown case
-    esac
-}
-
-# runner_stop [--force] — bring the runner down and wait for it to let go.
-#
-# The waiting is the whole point. runner.sh drains any in-flight job and then
-# deregisters, so "stopped" is not immediate; starting a second registration
-# before the first has released the session is exactly what makes GitHub answer
-# Conflict, and the old process's deregister would then tear down the
-# registration the new one just made.
-runner_stop() {
-    local force=0 waited=0 grace="${RUNNER_STOP_GRACE:-90}" pid
-    [ "${1:-}" = "--force" ] && force=1
-
-    if worker_running && [ "$force" -eq 0 ]; then
-        warn "a job is running right now — stopping would fail it on GitHub."
-        warn "Wait for it to finish, or pass --force."
-        return 1
-    fi
-
-    runner_alive || { echo "runner is not running"; return 0; }
-
-    echo "stopping the runner…"
-    pid="$(runner_pid || true)"
-    [ -n "$pid" ] && kill -TERM "$pid" 2>/dev/null
-    pkill -TERM -f '/Runner\.Listener' 2>/dev/null || true
-
-    while runner_alive && [ "$waited" -lt "$grace" ]; do
-        sleep 1
-        waited=$((waited + 1))
-        [ $((waited % 10)) -eq 0 ] && echo "  still stopping… ${waited}s"
-    done
-
-    if runner_alive; then
-        warn "runner did not stop within ${grace}s; killing it"
-        pid="$(runner_pid || true)"
-        [ -n "$pid" ] && kill -KILL "$pid" 2>/dev/null
-        pkill -KILL -f '/Runner\.Listener' 2>/dev/null || true
-        rm -f "$RUNNER_PIDFILE"
-        sleep 2
-        warn "a killed runner cannot deregister — GitHub may hold the old session"
-        warn "for a minute or two and log Conflict until it expires."
-        return 0
-    fi
-    echo "stopped cleanly after ${waited}s"
-}
-
-runner_start() {
-    local out=/proc/1/fd/1 tries=10
-    if runner_alive; then
-        echo "runner is already running"
-        return 0
-    fi
-    # PID 1's stdout is the container log, but /proc/1/fd is root-only — fall
-    # back to the log file rather than let the redirect fail and take the
-    # runner with it.
-    [ -w "$out" ] || out="$(bb_log_dir)/builderbot.log"
-    nohup /opt/builderbot/scripts/runner.sh >>"$out" 2>&1 &
-
-    # Confirm it actually came up. Reporting "starting" and returning is how a
-    # runner that died on launch gets reported as healthy by everything
-    # downstream, including the dashboard.
-    while [ "$tries" -gt 0 ]; do
-        sleep 0.5
-        if runner_alive; then echo "runner started"; return 0; fi
-        tries=$((tries - 1))
-    done
-    warn "runner did not come up within 5s — see: bb logs"
-    return 1
-}
-
-cmd_runner() {
-    case "${1:-status}" in
-        status)
-            if [ -f "${RUNNER_DIR}/.runner" ]; then
-                cat "${RUNNER_DIR}/.runner"
-            elif runner_pid >/dev/null; then
-                # An ephemeral registration is single-use: the runner
-                # deregisters after every job and the supervisor re-registers
-                # it moments later. Unregistered with the supervisor up is the
-                # healthy between-jobs path, not an outage.
-                echo "re-registering — an ephemeral runner deregisters after each job;"
-                echo "the supervisor is up and a fresh registration lands in seconds"
-            else
-                echo "not registered"
-            fi
-            echo
-            if worker_running; then
-                echo "state: running a job"
-            elif ! runner_alive; then
-                echo "state: not running"
-            elif [ "$(runner_link)" = "down" ]; then
-                echo "state: cannot connect — retrying"
-                tail -n 500 "$(bb_log_dir)/builderbot.log" 2>/dev/null \
-                    | grep -E 'Runner connect error|session for this runner already exists' \
-                    | tail -n 2 || true
-                echo
-                echo "If it says the session already exists, something else is holding this"
-                echo "runner's name: another container using the same RUNNER_NAME, or a"
-                echo "listener left behind by a half-finished restart. It clears when GitHub"
-                echo "expires the old session — a minute or two. Check for a stray listener:"
-                echo "    pgrep -af Runner.Listener"
-            else
-                echo "state: listening for jobs"
-            fi
-            ;;
-        stop)    runner_stop "${2:-}" ;;
-        start)   runner_start ;;
-        restart) runner_stop "${2:-}" && runner_start ;;
-        *) usage; exit 1 ;;
-    esac
-}
 
 avd_exists() { avdmanager list avd 2>/dev/null | grep -q "Name: ${1}$"; }
 
@@ -2628,8 +2453,7 @@ cmd_ci_labels() {
     local -a labels=()
     local l
     while IFS= read -r l; do [ -n "$l" ] && labels+=("$l"); done < <(
-        { printf '%s\n' "${RUNNER_LABELS:-builderbot,self-hosted,linux,x64,unraid}" | tr ',' '\n'
-          [ -f "$py" ] && DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" <<'PY' 2>/dev/null
+        { [ -f "$py" ] && DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" <<'PY' 2>/dev/null
 import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec); spec.loader.exec_module(nodes)
@@ -2642,8 +2466,8 @@ PY
         } | awk 'NF && !seen[$0]++')
     if [ "$write" = 1 ]; then
         mkdir -p .github
-        { printf '# Labels the runners in BuilderBot'"'"'s registry carry — this container'"'"'s own and\n'
-          printf '# every node runner'"'"'s. Generated by `bb ci-labels --write`; regenerate rather\n'
+        { printf '# Labels the runners in BuilderBot'"'"'s registry carry — every node runner'"'"'s;\n'
+          printf '# this container runs none. Generated by `bb ci-labels --write`; regenerate rather\n'
           printf '# than edit, so actionlint checks runs-on against what really exists.\n'
           printf 'self-hosted-runner:\n  labels:\n'
           for l in "${labels[@]}"; do printf '    - %s\n' "$l"; done; } > .github/actionlint.yaml
@@ -2839,22 +2663,10 @@ cmd_lint() {
     if compgen -G '.github/workflows/*.yml' >/dev/null \
         || compgen -G '.github/workflows/*.yaml' >/dev/null; then
         if need actionlint; then
-            # A repo that declares its runner's labels wins; otherwise build the
-            # declaration from this container's own RUNNER_LABELS, so runs-on
-            # lines targeting this box are checked against what it really
-            # carries — the "Waiting for a runner" label mismatch, caught here.
+            # A repo declares its runners' labels in .github/actionlint.yaml
+            # (`bb ci-labels --write` generates it from the node registry).
+            # There is no runner on this container to build a fallback from.
             local -a args=()
-            if [ ! -f .github/actionlint.yaml ] && [ ! -f .github/actionlint.yml ] \
-                && [ -n "${RUNNER_LABELS:-}" ]; then
-                local cfg
-                cfg="$(mktemp)"
-                # shellcheck disable=SC2064 # expand now, not at trap time
-                trap "rm -f '$cfg'" RETURN
-                printf 'self-hosted-runner:\n  labels:\n' > "$cfg"
-                printf '%s\n' "${RUNNER_LABELS//,/$'\n'}" \
-                    | sed 's/^/    - /' >> "$cfg"
-                args+=(-config-file "$cfg")
-            fi
             # The workflow files are named explicitly: bare `actionlint` walks
             # up looking for a git repository and refuses a plain directory.
             local -a wfs=()
@@ -3461,7 +3273,7 @@ cmd_doctor() {
             ok=1
         fi
     else
-        printf '  [skip] no runner credential (fine if ENABLE_RUNNER=false)\n'
+        printf '  [skip] no runner credential (only needed to install a runner on a node)\n'
     fi
     # `gh auth status`, said as what it is. This line used to read "git over
     # https not authenticated", which is a claim about pushing and this is not
@@ -3856,7 +3668,6 @@ case "${1:-help}" in
     shell)    exec bash -l ;;
     update)   cmd_update ;;
     login)    cmd_login ;;
-    runner)   shift; cmd_runner "$@" ;;
     emu)      shift; cmd_emu "$@" ;;
     claude-md|claudemd) shift; cmd_claude_md "$@" ;;
     lint)     shift; cmd_lint "$@" ;;

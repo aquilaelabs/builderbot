@@ -148,7 +148,7 @@ dropdown pick **builderbot**. You get a form with everything already wired:
 * the projects folder (`/mnt/user/development/projects`) mapped to `/workspace` — one
   mapping for all of them, so every folder in that share is a project and
   adding one never means editing the container again
-* the appdata paths for home / config / runner work
+* the appdata paths for home / config / work
 * fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), git identity, TZ
 
 Fill in `GITHUB_PAT` (and `GIT_USER_NAME`/`GIT_USER_EMAIL`), leave
@@ -162,9 +162,8 @@ nothing to a running container until you edit that setting on it yourself.
 ### Give the container time to stop
 
 Stopping from the Docker page sends SIGTERM and then SIGKILL. BuilderBot uses
-that window to deregister the Actions runner, power the emulator down instead
-of yanking it, end Claude sessions cleanly and record which conversation each
-project was in.
+that window to power the emulator down instead of yanking it, end Claude
+sessions cleanly and record which conversation each project was in.
 
 **Unraid gives it ten seconds by default, and that is often not enough.**
 Unraid always passes the timeout explicitly when it stops a container —
@@ -180,7 +179,6 @@ What the extra seconds buy, in the order the container spends them:
 
 | | why it wants the time |
 |---|---|
-| Actions runner | deregisters, instead of leaving a session GitHub holds for a minute or two — which is what makes the next start log `A session for this runner already exists` and retry on Conflict |
 | Emulator | `adb emu kill` powers the AVD down; a hard kill leaves it dirty and costs a cold boot next time |
 | Claude sessions | exit having closed the turn rather than being cut off mid-write |
 
@@ -195,16 +193,10 @@ array, and sessions, memory files, logins and AVDs are all on the home volume.
 Uncommitted work is not at risk from a restart.
 
 **The container handles the rest itself** — see *Give the container time to
-stop* above. Stopping it deregisters the runner, powers the emulator down,
-ends Claude sessions cleanly and records which conversation each project was
-in, all on SIGTERM. There is no checklist to run first.
-
-The one thing worth a glance beforehand is whether CI is mid-job, because a
-job killed by the shutdown shows up as a red run on GitHub:
-
-```bash
-docker exec -it BuilderBot bb runner status
-```
+stop* above. Stopping it powers the emulator down, ends Claude sessions
+cleanly and records which conversation each project was in, all on SIGTERM.
+There is no checklist to run first. CI is unaffected: every runner is on a
+node, and a node does not stop with this container.
 
 From a terminal rather than the Unraid UI, pass a timeout — Docker's own
 default is 10 seconds:
@@ -217,9 +209,9 @@ Unraid's Docker page and *Check for Updates* both use the host's configured
 stop timeout (Settings → Docker → Docker Stop Timeout) instead, which is why
 that setting is the one worth raising.
 
-Getting this wrong is recoverable, not fatal: a phantom offline runner in the
-repo's runner list, an AVD that cold-boots next time, and a conversation you
-resume from the dashboard rather than one that closed itself.
+Getting this wrong is recoverable, not fatal: an AVD that cold-boots next
+time, and a conversation you resume from the dashboard rather than one that
+closed itself.
 
 ### Updating — the whole point
 
@@ -300,8 +292,8 @@ without passing it through to a VM and taking it away from everything else.
    it must not share the management container's. Its data, cache and artifacts
    stores live under `/config/node`; map a volume onto any of them — an NFS
    one, made with `docker volume create -o type=nfs …` — if you want it
-   elsewhere. Nothing about the dashboard or the runner needs turning off:
-   in the node role neither one starts.
+   elsewhere. Nothing about the dashboard needs turning off: in the node
+   role it does not start.
 4. Point its **SDK share** at the same share the management container uses.
    One store under two names is recognized, and installs are arbitrated across
    it rather than colliding.
@@ -332,7 +324,7 @@ notebook context. The container that should run none of it is a *node* —
    that, `bb users passwd <name>` changes a password and the Users tab adds
    everyone else
 
-You get container and runner status, a rendered report of whatever SARIF your
+You get container status and every node's runner, a rendered report of whatever SARIF your
 scanner drops in `/reports`, every `bb` command as a button that types into the
 terminal you are looking at (thumbtack the ones you use to keep them on top),
 and browser terminals backed by tmux.
@@ -764,12 +756,12 @@ any project it cannot read, write or enter.
 **`/mnt/user` vs `/mnt/cache`.** Mount through `/mnt/user` (the FUSE layer).
 Mixing direct-disk and user-share paths for the same data corrupts files.
 
-**Public repos.** Don't attach the runner to a public repository — anyone who
-can open a PR could run code on your server.
+**Public repos.** Don't point a node's runner at a public repository — anyone
+who can open a PR could run code on that machine.
 
 **Stopping cleanly.** Stop from the Docker tab (or `docker stop`) sends
-SIGTERM; the runner drains its in-flight job (default 120s) and deregisters.
-Hard kills leave a stale runner entry in GitHub to delete by hand.
+SIGTERM; the emulator is powered down and Claude sessions close their turn.
+A node's runner is unaffected — nodes do not stop with this container.
 
 **Image size.** With Playwright's three browsers plus the Android SDK and
 emulator image baked in, expect a pull of several GB. Updates are

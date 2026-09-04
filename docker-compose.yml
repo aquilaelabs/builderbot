@@ -12,8 +12,6 @@ services:
     # uncomment this block (or keep both to build and tag in one step).
     # build:
     #   context: .
-    #   args:
-    #     RUNNER_VERSION: latest
     # Same name the Unraid template uses, so every `docker exec -it
     # BuilderBot ...` command in the docs works under either install method.
     container_name: BuilderBot
@@ -43,17 +41,11 @@ services:
       AUTO_UPDATE_CLAUDE: ${AUTO_UPDATE_CLAUDE:-true}
       CLAUDE_CODE_VERSION: ${CLAUDE_CODE_VERSION:-latest}
 
-      # --- GitHub Actions runner -------------------------------------------
-      ENABLE_RUNNER: ${ENABLE_RUNNER:-true}
+      # --- GitHub Actions runners, on nodes --------------------------------
+      # CI runs on the nodes you enroll; this container only mints their
+      # registration tokens. Prefer the secrets folder for the PAT.
       GITHUB_URL: ${GITHUB_URL:-}
       GITHUB_PAT: ${GITHUB_PAT:-}
-      # Token for git/gh *inside* the container. Session-readable by design —
-      # scope it to Contents only, never Administration.
-      RUNNER_NAME: ${RUNNER_NAME:-builderbot}
-      RUNNER_LABELS: ${RUNNER_LABELS:-builderbot,self-hosted,linux,x64,unraid}
-      RUNNER_GROUP: ${RUNNER_GROUP:-}
-      RUNNER_EPHEMERAL: ${RUNNER_EPHEMERAL:-true}
-      RUNNER_WORKDIR: /workspace/_work
 
       # --- shutdown ---------------------------------------------------------
       # How long a stop may spend deregistering the runner, powering the
@@ -137,8 +129,8 @@ services:
       NPM_TOKEN: ${NPM_TOKEN:-}
 
       # --- security ---------------------------------------------------------
-      # Scrub GITHUB_PAT/RUNNER_TOKEN from what sessions can see (the runner
-      # uses the root-only stash instead). Set false only if you want the
+      # Scrub GITHUB_PAT from what sessions can see (node runner tokens are
+      # minted from the root-only stash instead). Set false only if you want the
       # legacy behavior back (PAT visible, gh auto-authenticated).
       SHIELD_SECRETS: ${SHIELD_SECRETS:-true}
 
