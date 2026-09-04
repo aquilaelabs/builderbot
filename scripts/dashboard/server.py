@@ -882,8 +882,8 @@ def _valid_projects(ps):
             if not any(i["level"] == "error" for i in p["issues"])}
 
 
-def findings_payload():
-    ps = project_list()
+def findings_payload(who):
+    ps = project_list(who)
     known = {p["name"] for p in ps}
     if not REPORTS.is_dir():
         return {"available": False, "reports": [], "projects": sorted(known)}
@@ -1189,10 +1189,24 @@ def _github_remote(remotes):
 IGNORE_MARKER = ".bbignore"
 
 
-def project_list():
+def project_list(who):
     """Every directory under /workspace that is a project, with what is wrong
     with it. Named _list because `projects` is the module beside this one that
-    creates them — one name for the reading and one for the writing."""
+    creates them — one name for the reading and one for the writing.
+
+    `who` is the account asking (Handler._who()), and it is REQUIRED rather
+    than defaulted for the reason the whole scheme leans on: this is the one
+    function that decides which projects exist, and a call site that forgot to
+    say who was asking would quietly show every project to everybody. Missing
+    it is a TypeError, which a test finds; defaulting it would be a hole
+    nothing finds. The server's own non-request contexts pass users.ALL and
+    say so.
+
+    Filtering here is also most of the authorization. Fifteen handlers ask
+    "is this a project?" against this list, so a project somebody cannot see
+    is not refused to them — it does not exist, which is the same answer a
+    typo gets and leaks nothing by comparison.
+    """
     out = []
     uid, gid = os.getuid(), os.getgid()
     try:
@@ -1390,6 +1404,11 @@ def project_list():
                 "text": f"this name and {others} both shorten to “{slug}” — a "
                         f"dev instance of either is the same containers, env "
                         f"file and data directory. Rename one before using it"})
+    # The last thing, so everything above it stays one description of the
+    # share and this stays one decision about who sees it.
+    if not users.sees_all(who):
+        allow = set((who or {}).get("projects") or [])
+        out = [p for p in out if p["name"] in allow]
     return out
 
 
@@ -2440,8 +2459,8 @@ def revisions():
     return revs
 
 
-def snapshot():
-    ps = project_list()
+def snapshot(who):
+    ps = project_list(who)
     sessions = tmux_sessions()
     login = signin.state()
     # Each shell's git context, resolved here where WORKSPACE is known: the
@@ -2570,6 +2589,44 @@ class Handler(BaseHTTPRequestHandler):
 
     def _authed(self):
         return self._who() is not None
+
+    def _principal(self):
+        """What the audit rows should say this was: the account's name.
+
+        `operator` was a placeholder from before there were accounts — true of
+        every mutation because there was only ever one person who could make
+        one. Now there can be several, and a log that calls them all the same
+        thing is a log that answers no question worth asking.
+        """
+        u = self._who()
+        return f"user:{u['name']}" if u else "anonymous"
+
+    def _refused(self, action, project=None):
+        """True — with the 403 already written — when this account may not.
+
+            if self._refused("rename", name):
+                return
+
+        Returns a BOOLEAN, and the name says so. The first version returned
+        "the response" and read as `if (no := self._may(...)): return no`,
+        which looks exactly like a guard and is not one: _json writes the
+        reply and returns None, so the caller got its 403 while the handler
+        carried on and did the thing anyway. The NODES suite caught it — a
+        refused enrollment that left a node behind — because the assertion on
+        the refusal itself passed perfectly. A guard that returns the thing it
+        wrote is a guard that can be used wrongly, so it returns a bool.
+
+        The project filter in project_list() does most of the authorizing;
+        this is the rest — the verbs a `user` may not use on a project they DO
+        have, and the surfaces that are not projects at all. Named actions
+        rather than anything derived from the URL, so restricting a verb is a
+        decision somebody makes rather than a default they inherit.
+        """
+        why = users.may(self._who(), action, project)
+        if not why:
+            return False
+        self._json({"error": why}, 403)
+        return True
 
     def _deny(self):
         """Not signed in. A person gets the login page, code gets a plain
@@ -2838,13 +2895,13 @@ class Handler(BaseHTTPRequestHandler):
             # it runs git for every project.
             return self._json(revisions())
         if self.path.startswith("/api/status"):
-            return self._json(snapshot())
+            return self._json(snapshot(self._who()))
         if self.path.startswith("/api/findings"):
-            return self._json(findings_payload())
+            return self._json(findings_payload(self._who()))
         if self.path.startswith("/api/changelog"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list()}:
+            if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
             d = version._sub(name, q.get("component", [""])[0])
             if d is None:
@@ -2853,13 +2910,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/version"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list()}:
+            if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
             return self._json(version.payload(name))
         if self.path.startswith("/api/artifacts"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list()}:
+            if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
             # `devapp` is the main instance, which is what the row shows;
             # `devapps` is every instance, which the manager reads. Both, so
@@ -2878,7 +2935,7 @@ class Handler(BaseHTTPRequestHandler):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
             rel = q.get("path", [""])[0]
-            if name not in {p["name"] for p in project_list()}:
+            if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
             f = artifacts.resolve(name, rel)
             if f is None:
@@ -2984,7 +3041,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/todo"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list()}:
+            if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": "not a project"}, 400)
             live = [s["name"] for s in tmux_sessions()]
             return self._json({"project": name} | self._todo_state(name, live))
@@ -2997,7 +3054,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/api/bugs"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
-            if name not in {p["name"] for p in project_list()}:
+            if name not in {p["name"] for p in project_list(self._who())}:
                 return self._json({"error": f"not a project: {name}"}, 400)
             return self._json(bugs.payload(name))
         if self.path.startswith("/api/pubkeys"):
@@ -3047,15 +3104,16 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         # Door 2, at the one funnel every mutation passes: when, who, what,
         # on what, with a parameter digest — never the parameters, which
-        # carry tokens and env text. There is exactly one human credential
-        # today, so the principal is "operator"; that string is data, not a
-        # boolean, and OIDC later is a new way to fill it in, not a new row
-        # shape. (Bug #16's honest caveat applies: anything holding the
-        # credential writes as the operator, because the server cannot tell.)
+        # carry tokens and env text. The principal is the signed-in account
+        # (`user:<name>`), which is a string rather than a boolean precisely
+        # so it could become one — OIDC later is a new way to fill it in, not
+        # a new row shape. (Bug #16's caveat still applies, narrowed: anything
+        # holding an account's credential writes as that account, because the
+        # server cannot tell the person from the session they started.)
         if not NODES_OK:
             act = path + (":" + str(req["action"])[:40]
                           if isinstance(req.get("action"), str) else "")
-            nodes.audit("operator", act,
+            nodes.audit(self._principal(), act,
                         str(req.get("project") or req.get("name")
                             or req.get("id") or "")[:120], req)
         if path.startswith("/api/v1/nodes"):
@@ -3113,6 +3171,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._memory(req)
         if path.startswith("/api/prefs"):
             name = req.get("project", "")
+            # Everything else in this dialog is the project's own; the node is
+            # not, because a node is shared and moving a project onto one
+            # reaches every other project there.
+            if ("node" in req or "dockernode" in req) \
+                    and self._refused("node", name):
+                return
             r = prefs.set_prefs(name, model=req.get("model"),
                                 effort=req.get("effort"),
                                 node=req.get("node") if "node" in req else req.get("dockernode"),
@@ -3153,52 +3217,54 @@ class Handler(BaseHTTPRequestHandler):
         """The Nodes tab's verbs. Thin on purpose: nodes.py owns the rules
         and writes the audit rows; what belongs here is only the principal
         and the one probe that composes two modules (test)."""
+        if self._refused("admin"):
+            return
         if NODES_OK:
             return self._json({"error": "the node store did not open: "
                                         + NODES_OK}, 500)
         act = field(req, "action")
         nid = field(req, "id")
         if act == "add":
-            r = nodes.node_add("operator", field(req, "name"),
+            r = nodes.node_add(self._principal(), field(req, "name"),
                                field(req, "addr"),
                                req.get("capabilities"),
                                field(req, "pool") or "default")
         elif act == "update":
-            r = nodes.node_update("operator", nid, req.get("fields") or {})
+            r = nodes.node_update(self._principal(), nid, req.get("fields") or {})
         elif act in ("drain", "online", "retire"):
-            r = nodes.node_state("operator", nid,
+            r = nodes.node_state(self._principal(), nid,
                                  {"drain": "draining", "online": "online",
                                   "retire": "retired"}[act])
         elif act == "enroll":
-            r = nodes.enroll_mint("operator", field(req, "name"),
+            r = nodes.enroll_mint(self._principal(), field(req, "name"),
                                   req.get("capabilities"),
                                   field(req, "user") or "bb")
         elif act == "revoke":
-            r = nodes.node_revoke("operator", nid)
+            r = nodes.node_revoke(self._principal(), nid)
         elif act == "config":
             # The configuration plane (docs/nodes.md §12): what the operator
             # wants the node to mount and be addressed as. Stored here,
             # applied by the next action as a system job the agent runs.
-            r = nodes.node_config_set("operator", nid, req.get("config"))
+            r = nodes.node_config_set(self._principal(), nid, req.get("config"))
         elif act == "apply":
-            r = nodes.node_apply("operator", nid, field(req, "what"))
+            r = nodes.node_apply(self._principal(), nid, field(req, "what"))
         elif act == "runner":
             # The Actions runner on a node (phase 7): a system job, with
             # the URL from the controller's environment unless one is typed.
-            r = nodes.node_runner("operator", nid, bool(req.get("want", True)),
+            r = nodes.node_runner(self._principal(), nid, bool(req.get("want", True)),
                                   req.get("labels"),
                                   field(req, "url") or github_url())
         elif act == "paths":
             # What this container's paths are called on the node's machine
             # (docs/nodes.md §11): the mapping that was DOCKER_HOST_PATHS.
-            r = nodes.node_paths_set("operator", nid, field(req, "paths"))
+            r = nodes.node_paths_set(self._principal(), nid, field(req, "paths"))
         elif act == "funnel":
             # Tailscale Funnel for a port on the node, raw: the manager's
             # route picker goes through the instance's record; this is the
             # same job by hand, for a port that is not an instance's.
-            r = nodes.node_funnel("operator", nid, req.get("port"), bool(req.get("on", True)))
+            r = nodes.node_funnel(self._principal(), nid, req.get("port"), bool(req.get("on", True)))
         elif act == "update-agent":
-            r = nodes.node_update_agent("operator", nid)
+            r = nodes.node_update_agent(self._principal(), nid)
         elif act == "cache-clear":
             # Drop a node's build caches — one project's, or all (docs/nodes.md
             # §6): a job the agent runs, so it is logged and audited like
@@ -3206,7 +3272,7 @@ class Handler(BaseHTTPRequestHandler):
             n = nodes.node(nid)
             if not n or n["kind"] != "agent":
                 return self._json({"error": "only an agent node keeps caches to clear"}, 400)
-            r = nodes.job_add("operator", {"node": nid}, "cache-clear",
+            r = nodes.job_add(self._principal(), {"node": nid}, "cache-clear",
                               {"project": field(req, "project")})
         elif act == "exec":
             # The channel's one job type, from the tab or from curl: run
@@ -3227,7 +3293,7 @@ class Handler(BaseHTTPRequestHandler):
             # whichever node fits the selector when one asks (phase 4).
             place = ({"select": req["select"]} if not nid
                      and isinstance(req.get("select"), dict) else {"node": nid})
-            r = nodes.job_add("operator", place, "exec", spec, field(req, "project"))
+            r = nodes.job_add(self._principal(), place, "exec", spec, field(req, "project"))
         elif act == "test":
             n = nodes.node(nid)
             if not n:
@@ -3244,7 +3310,7 @@ class Handler(BaseHTTPRequestHandler):
             devapp.forget_available()
             with devapp.on_node(nid):
                 got = devapp.available_cached()
-            nodes.audit("operator", "node-test", nid,
+            nodes.audit(self._principal(), "node-test", nid,
                         {"on": got.get("on")})
             return self._json({"on": bool(got.get("on")),
                                "why": got.get("why") or ""})
@@ -3264,7 +3330,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*self._run_job(req))
         if act != "cancel":
             return self._json({"error": "unknown action"}, 400)
-        r = jobs.cancel("operator", field(req, "id"))
+        r = jobs.cancel(self._principal(), field(req, "id"))
         return self._json(r, 400 if r.get("error") else 200)
 
     def _run_job(self, req):
@@ -3277,7 +3343,7 @@ class Handler(BaseHTTPRequestHandler):
         if NODES_OK:
             return {"error": "the node store did not open: " + NODES_OK}, 500
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list()}:
+        if name not in {p["name"] for p in project_list(self._who())}:
             return {"error": "not a project"}, 400
         argv = [str(a) for a in (req.get("argv") or []) if str(a)][:64]
         if not argv:
@@ -3324,7 +3390,7 @@ class Handler(BaseHTTPRequestHandler):
             timeout = min(4 * 3600, max(30, int(req.get("timeout") or 3600)))
         except (TypeError, ValueError):
             timeout = 3600
-        who = f"session:{name}" if field(req, "from") == "session" else "operator"
+        who = f"session:{name}" if field(req, "from") == "session" else self._principal()
         if emu:
             files, sizes = [], {}
             for f in (req.get("files") or [])[:8]:
@@ -3362,7 +3428,7 @@ class Handler(BaseHTTPRequestHandler):
                                          if n["state"] == "pending"
                                          else "not connected — the agent has "
                                          "not dialed in lately")}
-        r = nodes.job_add("operator", {"node": n["id"]}, "exec",
+        r = nodes.job_add(self._principal(), {"node": n["id"]}, "exec",
                           {"argv": ["uname", "-srm"], "timeout": 20})
         if r.get("error"):
             return {"on": False, "why": r["error"]}
@@ -3371,7 +3437,7 @@ class Handler(BaseHTTPRequestHandler):
             j = nodes.job(r["job"])
             if j and j["state"] in nodes.JOB_END:
                 out = (j.get("log") or "").strip()
-                nodes.audit("operator", "node-test", n["id"],
+                nodes.audit(self._principal(), "node-test", n["id"],
                             {"on": j["state"] == "succeeded"})
                 return {"on": j["state"] == "succeeded",
                         "why": out or f"{j['state']} (exit {j['exit_code']})"}
@@ -3614,7 +3680,7 @@ class Handler(BaseHTTPRequestHandler):
         cannot name something that was never there.
         """
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list()}:
+        if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
         # "send" is a write to the roadmap (it marks a step sent) and starts a
@@ -3737,7 +3803,7 @@ class Handler(BaseHTTPRequestHandler):
         # by string comparison and is exactly it by the time _pname has run:
         # same compose project name, same env file, same data directory, with
         # nothing anywhere saying the two had met.
-        clash = next((p["name"] for p in project_list()
+        clash = next((p["name"] for p in project_list(self._who())
                       if devapp._slug(p["name"]) == devapp._slug(name)), "")
         if name and clash:
             return self._json({"error": f"that is the project {clash} — a "
@@ -3754,6 +3820,8 @@ class Handler(BaseHTTPRequestHandler):
         plain text, and a browser is better at saving one than this is at
         paginating it.
         """
+        if self._refused("admin"):
+            return
         act = field(req, "action")
         if act == "days":
             r = logs.set_days(req.get("days"))
@@ -3771,7 +3839,7 @@ class Handler(BaseHTTPRequestHandler):
         # never will be, but carries every one of these controls. Checked
         # against the store rather than waved through: this name reaches a
         # compose call and a data directory either way.
-        if name not in {p["name"] for p in project_list()} \
+        if name not in {p["name"] for p in project_list(self._who())} \
                 and name not in devapp.overview_names():
             return self._json({"error": f"not a project or container: {name}"}, 400)
         act = field(req, "action")
@@ -3850,13 +3918,18 @@ class Handler(BaseHTTPRequestHandler):
     def _version(self, req):
         """Move a project's version, or change who is allowed to.
 
-        Both are the operator's: this endpoint is only reachable from the
-        panel, so `by="operator"` is the honest value rather than a field the
-        caller supplies. A session's bump goes through `bb version bump`,
-        which asks the same policy and passes `by="claude"`.
+        `by` is a ROLE here, not a name: version.may() compares it against
+        "operator" to tell a person at the panel from a session, and this
+        endpoint is only reachable from the panel. Passing the account name
+        instead turned the operator into a session and a locked project
+        refused its own bump — which is what version.mjs caught. Which PERSON
+        it was belongs in the audit row, and is there.
+
+        A session's bump goes through `bb version bump`, which asks the same
+        policy and passes `by="claude"`.
         """
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list()}:
+        if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
         if act == "bump":
@@ -3896,7 +3969,7 @@ class Handler(BaseHTTPRequestHandler):
         one. The path is resolved against dist/ and unpacked before anything
         runs — push_dir never sees a caller-supplied path."""
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list()}:
+        if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
         if act == "push":
@@ -3955,6 +4028,8 @@ class Handler(BaseHTTPRequestHandler):
         attached device, a Firefox that is actually installed — rather than
         taken as given: this is one of the few places the page causes a program
         to run."""
+        if self._refused("admin"):
+            return
         act = field(req, "action")
         if act == "pair":
             r = phone.pair(field(req, "ip"), field(req, "port"), field(req, "code"))
@@ -3984,7 +4059,7 @@ class Handler(BaseHTTPRequestHandler):
         action there is — the entries are made by findings_counts noticing the
         report changed."""
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list()}:
+        if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
         if field(req, "action") != "history":
             return self._json({"error": "the findings log is read-only"}, 400)
@@ -3997,7 +4072,7 @@ class Handler(BaseHTTPRequestHandler):
         cleaner; this only picks the action and answers with the fresh list,
         so the tab never has to guess what the write left behind."""
         name = field(req, "project")
-        if name not in {p["name"] for p in project_list()}:
+        if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
         act = field(req, "action")
         if (bad := locked_out(name)):
@@ -4153,6 +4228,8 @@ class Handler(BaseHTTPRequestHandler):
         reaches a command line is a string this server chose, which is the
         rule every other executing endpoint here follows.
         """
+        if self._refused("admin"):
+            return
         action = req.get("action")
         nid = field(req, "node")
         if nid and nid != "local":
@@ -4178,7 +4255,7 @@ class Handler(BaseHTTPRequestHandler):
                      or (action == "remove" and packages.is_node_image(node, n))][:8]
             if not names:
                 return self._json({"error": "nothing selected"}, 400)
-            r = packages.node_job("operator", nid, action, names)
+            r = packages.node_job(self._principal(), nid, action, names)
             return self._json(r, 400 if r.get("error") else 200)
         if action == "abort":
             return self._json({"ok": packages.abort_job()})
@@ -4358,6 +4435,8 @@ class Handler(BaseHTTPRequestHandler):
         one being asked for.
         """
         name = req.get("name", "")
+        if self._refused("trash", name):
+            return
         live = {s["name"] for s in tmux_sessions()}
         held = sorted(s for s in live
                       if s == tmux_name(f"claude-{name}")
@@ -4380,10 +4459,14 @@ class Handler(BaseHTTPRequestHandler):
         return self._json(projects.trash_list())
 
     def _trash_restore(self, req):
+        if self._refused("trash"):
+            return
         body, code = projects.trash_restore(req)
         return self._json(body, code)
 
     def _trash_purge(self, req):
+        if self._refused("trash"):
+            return
         """Delete a trashed project for good. The guards are in projects.py —
         the path is resolved against the bin and the name has to be typed back
         — and this is only the route to them."""
@@ -4403,6 +4486,8 @@ class Handler(BaseHTTPRequestHandler):
         than the rename.
         """
         name = req.get("name", "")
+        if self._refused("rename", name):
+            return
         live = {s["name"] for s in tmux_sessions()}
         held = sorted(s for s in live
                       if s == tmux_name(f"claude-{name}")

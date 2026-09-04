@@ -215,6 +215,82 @@ def stamp(u):
     return hashlib.sha256(str((u or {}).get("password", "")).encode()).hexdigest()[:16]
 
 
+# --- who may see and do what ------------------------------------------------
+#
+# Enforced from step 2. The shape to hold to: a project somebody cannot see is
+# ABSENT rather than refused, which server.project_list() does by filtering,
+# and that makes the existence check and the permission check the same check —
+# asking about a project you were not given returns what a typo returns.
+
+# The server's own non-request contexts: a boot log, a background sweep, the
+# doctor. They are not a person and are not filtered, and they say so by
+# passing this rather than by passing None, which would be indistinguishable
+# from "nobody is signed in" and must not be.
+ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server"}
+
+# What a `user` may not do to a project they DO have. Named, not derived: a
+# verb that should be restricted and is not listed is a decision somebody has
+# to make, not something to infer from a URL.
+#
+# There is no "delete" here because there is no delete: a project is removed
+# by moving it to the trash and purging it, and both are `trash`.
+USER_DENIES = ("rename", "trash", "node")
+
+
+def sees_all(u):
+    """Every project, or only the named ones. Owner and admin see everything;
+    so does a record carrying "*", which is what the seeded owner gets."""
+    if u is ALL:
+        return True
+    if not u:
+        return False                        # not signed in sees nothing
+    return u.get("role") in ("owner", "admin") or "*" in (u.get("projects") or [])
+
+
+def visible(u, names):
+    """`names`, minus what this account may not see."""
+    if sees_all(u):
+        return list(names)
+    allow = set((u or {}).get("projects") or [])
+    return [n for n in names if n in allow]
+
+
+def may_see(u, name):
+    return sees_all(u) or name in ((u or {}).get("projects") or [])
+
+
+def is_admin(u):
+    """Whether this account owns the machinery: nodes, packages, settings,
+    the phone, other accounts. Everything that is not a project."""
+    return u is ALL or (u or {}).get("role") in ("owner", "admin")
+
+
+def may(u, action, project=None):
+    """Whether this account may do `action`, optionally to `project`.
+
+    Returns "" when it may, and the reason when it may not — so a caller says
+    the reason rather than inventing one, and a refusal reads the same
+    wherever it is made.
+    """
+    if u is ALL:
+        return ""
+    if not u:
+        return "not signed in"
+    if is_admin(u):
+        return ""
+    if project is not None and not may_see(u, project):
+        return "not a project"              # the same answer a typo gets
+    if action in USER_DENIES:
+        return {"rename": "renaming a project is an administrator's",
+                "trash": "deleting a project is an administrator's",
+                "node": "which node a project builds on is an administrator's — "
+                        "a node is shared, so changing it reaches every project "
+                        "on it"}[action]
+    if action == "admin":
+        return "that is an administrator's"
+    return ""
+
+
 # --- editing ---------------------------------------------------------------
 
 def add(name, password, role="user", projects=None):
