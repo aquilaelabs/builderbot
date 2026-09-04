@@ -307,7 +307,7 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `UNRAID_ICON_NAME` | `BuilderBot` | Only with the icon-cache mapping: Unraid names the cached icon after the container, and nothing inside one can see its own name — set this if you renamed it |
 | `ENABLE_DASHBOARD` | `false` | Web dashboard + browser terminal |
-| `DASHBOARD_AUTH` | *(empty)* | `user:password` — **required** when the dashboard is enabled; it will not start otherwise |
+| `DASHBOARD_AUTH` | *(empty)* | `user:password`, read **once**: it seeds the owner account on the first boot that finds none, and is never consulted again. `bb users passwd NAME` changes a password after that; `bb users add` makes other accounts. With neither accounts nor this, the dashboard will not start |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |

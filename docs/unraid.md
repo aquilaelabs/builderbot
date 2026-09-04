@@ -315,7 +315,10 @@ run there.
 ### Web dashboard (optional)
 
 1. Container settings → **ENABLE_DASHBOARD** → `true`
-2. **DASHBOARD_AUTH** → `you:a-real-password` — the dashboard will not start
+2. **DASHBOARD_AUTH** → `you:a-real-password`. This is read once, to create
+   the owner account; afterwards the accounts are the truth and this is
+   ignored, so change a password with `bb users passwd <name>` rather than
+   here. The dashboard will not start
    without this, and says so in the log
 3. The port mapping (`7680`) is already in the template; change the host
    side if it collides with something else on the server. Terminals ride the

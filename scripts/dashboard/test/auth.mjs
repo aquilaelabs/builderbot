@@ -277,5 +277,80 @@ ${code}`], { encoding: 'utf8' }).trim();
   py('print(u.remove("lim"))');
 }
 
+// ---- the Users tab (roadmap #22 step 3) ---------------------------------
+// The surface accounts are actually managed from; bb users is the way back in
+// when this cannot be reached, not the way in generally.
+{
+  await page.evaluate(() => { const c = document.getElementById('cardTools');
+    if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
+  await page.click('#bUsers');
+  await page.waitForSelector('.userstab .urow', { timeout: 15000 });
+
+  const rows = () => page.$$eval('.userstab .urow', rs => rs.map(r => ({
+    name: r.dataset.user,
+    text: r.textContent.replace(/\s+/g, ' ').trim(),
+    remove: !!r.querySelector('[data-uremove]'),
+    deadRemove: [...r.querySelectorAll('button')].some(
+      b => b.textContent.trim() === 'Remove' && b.disabled),
+    role: !!r.querySelector('[data-urole]'),
+  })));
+  let rs = await rows();
+  const owner = rs.find(r => r.name === 'test');
+  ok(owner && /owner/.test(owner.text), 'the tab lists the owner');
+  ok(owner && !owner.remove && owner.deadRemove && !owner.role,
+     '...with no delete and no role picker, because neither is allowed');
+  ok(owner && /cannot be deleted/.test(owner.text),
+     '...and it says why rather than offering a control that would fail');
+
+  // Adding somebody, from the tab rather than from a shell.
+  await page.fill('#uNewName', 'tabmade');
+  await page.fill('#uNewPw', 'tabmadepw1');
+  await page.selectOption('#uNewRole', 'user');
+  await page.click('#uAdd');
+  await page.waitForFunction(() => !!document.querySelector(
+    '.userstab .urow[data-user="tabmade"]'), null, { timeout: 15000 });
+  ok(true, 'Add makes an account from the tab');
+
+  // ...and giving it a project, which is the whole point of the row.
+  await page.click('.userstab .urow[data-user="tabmade"] [data-uprojects]');
+  await page.waitForSelector('.userstab .upick [data-uproj]', { timeout: 10000 });
+  await page.check('.userstab .upick [data-uproj="alpha"]');
+  await page.click('.userstab [data-usave="tabmade"]');
+  await page.waitForFunction(() => {
+    const r = document.querySelector('.userstab .urow[data-user="tabmade"]');
+    return r && /alpha/.test(r.textContent);
+  }, null, { timeout: 15000 });
+  ok(true, '...and the project picker gives it one');
+
+  // The account it made is real, and scoped.
+  const as = (path) => bare(path, { headers: {
+    Authorization: 'Basic ' + Buffer.from('tabmade:tabmadepw1').toString('base64') } });
+  const seen = await (await as('/api/status')).json();
+  ok(JSON.stringify((seen.projects || []).map(p => p.name)) === '["alpha"]',
+     `...and that account signs in seeing only it (${
+       (seen.projects || []).map(p => p.name).join(', ')})`);
+
+  // The owner cannot be removed through the door either, not just in the page.
+  const refused = await bare('/api/users', { method: 'POST',
+    headers: { 'Content-Type': 'application/json',
+               Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') },
+    body: JSON.stringify({ action: 'remove', name: 'test' }) });
+  ok(refused.status === 400 && /cannot be deleted/.test((await refused.json()).error || ''),
+     'and the store refuses it too, so bb users is held to the same rule');
+
+  // A `user` cannot reach this tab's verbs at all.
+  const notYours = await bare('/api/users', { method: 'POST',
+    headers: { 'Content-Type': 'application/json',
+               Authorization: 'Basic ' + Buffer.from('tabmade:tabmadepw1').toString('base64') },
+    body: JSON.stringify({ action: 'add', name: 'sneaky', password: 'sneakypw1' }) });
+  ok(notYours.status === 403, 'accounts are an administrator\'s');
+
+  await page.click('.userstab .urow[data-user="tabmade"] [data-uremove]');
+  await page.waitForFunction(() => !document.querySelector(
+    '.userstab .urow[data-user="tabmade"]'), null, { timeout: 15000 });
+  ok((await as('/api/status')).status === 401,
+     'Remove ends it: the account it made can no longer sign in');
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

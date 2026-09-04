@@ -2893,7 +2893,12 @@ except xml.parsers.expat.ExpatError as e:
 # an unanchored pkill here once killed the real dashboard and, another time,
 # the very shell that ran it.
 dashboard_pid() {
-    pgrep -f '^python3 [^ ]*/dashboard/server\.py$' 2>/dev/null | head -1
+    # The flags matter: 15-dashboard.sh starts it as `python3 -u .../server.py`,
+    # and a pattern anchored straight from python3 to the path matched nothing —
+    # so `bb dashboard dev` said "the dashboard is not running" while it was
+    # serving the page you were reading. Anything between python3 and the path
+    # is allowed, and the path still has to end at dashboard/server.py.
+    pgrep -f '^python3( +-[^ ]+)* +[^ ]*/dashboard/server\.py$' 2>/dev/null | head -1
 }
 
 # The directory the running dashboard was started from, read off its command
@@ -2901,7 +2906,10 @@ dashboard_pid() {
 dashboard_dir() {
     local pid; pid="$(dashboard_pid)" || true
     [ -n "$pid" ] || return 1
-    tr '\0' ' ' < "/proc/$pid/cmdline" | sed -E 's#^python3 (.*)/server\.py *$#\1#'
+    # Same shape as the pattern above: the flags are skipped rather than
+    # assumed absent, or the directory comes back with "-u " on the front.
+    tr '\0' ' ' < "/proc/$pid/cmdline" \
+        | sed -E 's#^python3( +-[^ ]+)* +(.*)/server\.py *$#\2#'
 }
 
 cmd_dashboard() {

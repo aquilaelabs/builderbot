@@ -2777,6 +2777,7 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
         <button id="bJobs" onclick="openJobsTab()">Jobs</button>
+        <button id="bUsers" onclick="openUsersTab()">Users</button>
       </div>
     </div>
     <!-- A phone on the end of wireless adb. USB is not an option here: there
@@ -2843,6 +2844,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 <script src="tab-nodes.js"></script>
 <script src="tab-settings.js"></script>
 <script src="tab-jobs.js"></script>
+<script src="tab-users.js"></script>
 
 <script>
 "use strict";
@@ -3124,6 +3126,9 @@ const TABKINDS = {
               open: () => loadJobs() },
   settings: { multi: false, label: () => "Settings",
               render: (i) => renderSettingsInto(i), live: () => settingsRev },
+  users:    { multi: false, label: () => "Users",
+              render: (i) => renderUsersInto(i), live: () => usersRev,
+              open: () => loadUsers() },
   findings: { multi: false, label: () => "Analysis",
               render: (i) => renderFindingsInto(i),
               // The ages list as well as the mtime: the mtime is a MAX, so a
