@@ -1548,7 +1548,14 @@ each is a real fork rather than a detail:
    problem arriving somewhere new.
 6. **The shielding.** The sibling-project deny list, the shielded ssh keys and
    the PAT stash are all mechanisms of this image. They have to exist on the
-   node or the bargain quietly changes.
+   node or the bargain quietly changes. And measured on bb-sandbox on 4 Sep:
+   a job runs as `bb`, which has no sudo and cannot read `/etc/builderbot`
+   (0700 root, so the node token is out of reach) — but it IS in the `docker`
+   group, which is root-equivalent on any machine running a daemon. That is
+   acceptable while the sandbox is the blast radius and a session is only
+   visiting through jobs. With the session LIVING there it is the thing to
+   design against: root on the node reads the node token, and a node token
+   fetches bundles and job snapshots from this controller.
 
 What survives from §18 either way: every toolchain on nodes (phases 6, 7, 9),
 the job channel for anything a session should not do by hand, and the honest
