@@ -5402,83 +5402,29 @@ document.addEventListener("keydown", e => {
 });
 
 // ---- sidebar ---------------------------------------------------------
-function drawRunner(r){
+function drawRunner(){
+  // The nodes' runners, and nothing else. This container ran a runner of its
+  // own until phase 7 of the controller design moved CI onto nodes; the card
+  // used to lead with that one's state and keep Start/Stop for it. A workflow
+  // lands on whichever runner its runs-on matches, and the node's own name is
+  // the label that pins a job to it, so that is what each row leads with. The
+  // Nodes tab is where one is installed, started or removed.
   const el = $("runner");
-  if (!r.enabled){ paint(el, '<div class="empty">disabled (ENABLE_RUNNER=false)</div>'); return; }
-  // Order matters. A Listener process is up while a job runs *and* while the
-  // runner is being refused by GitHub and retrying, so "listening" is the
-  // weakest of the three claims and has to be checked last.
-  //
-  // Unregistered is two different states. An ephemeral registration is
-  // single-use: the runner deregisters itself the moment a job finishes and
-  // the supervisor re-registers it seconds later, so unregistered *with the
-  // supervisor up* is the healthy between-jobs path — a red pill here sent
-  // the operator hunting for an outage that was the design working. Red is
-  // reserved for unregistered with nothing coming to fix it.
-  const stuck = r.listening && r.connected === false;
-  // ...and one kind of stuck is not a fault. GitHub holds a runner's session
-  // for a minute or two after the process that had it goes away, so every
-  // container restart and every finished job on an ephemeral runner spends a
-  // moment being refused its own name. It clears itself, so it is amber and
-  // says so; red is for a runner that is genuinely unreachable.
-  const waiting = stuck && /session for this runner already exists/i.test(r.detail || "");
-  const cls = waiting ? "warn"
-            : stuck  ? "bad"
-            : r.busy ? "note"
-            : r.listening ? "ok"
-            : r.registered || r.running ? "warn" : "bad";
-  const txt = waiting ? "waiting for GitHub to release the last session"
-            : stuck  ? "cannot connect — retrying"
-            : r.busy ? (r.job ? `running job: ${r.job}` : "running a job")
-            : r.listening ? "listening for jobs"
-            : r.registered ? "registered, between jobs"
-            : r.running ? "re-registering — a job just finished" : "not registered";
-  paint(el,
-    `<div class="row"><span class="pill ${cls}">${esc(txt)}</span>` +
-    ((r.busy || stuck) ? `<span class="spin${stuck && !waiting ? " bad" : ""}" title="${
-        waiting ? "waiting for the old session to expire, then it connects"
-        : stuck ? "retrying the connection to GitHub"
-        : "a job is executing in this container"
-      }"></span>` : "") +
-    (r.busy && !stuck && r.elapsed != null ? `<span class="sub">${esc(dur(r.elapsed))}</span>` : "") +
-    `</div>` +
-    (waiting ? `<div class="row"><span class="sub">The last process to hold this
-        runner's name has gone, and GitHub has not expired its session yet.
-        Normal after a restart or a finished job, and it clears itself in a
-        minute or two — if it does not, look for a stray listener with
-        <code>pgrep -af Runner.Listener</code>.</span></div>`
-     : stuck ? `<div class="row"><span class="sub">${esc(r.detail || "")}</span></div>
-      <div class="row"><span class="sub">Usually another process holding this
-        runner's name. It clears when GitHub expires the old session; if it
-        does not, check for a stray listener with
-        <code>pgrep -af Runner.Listener</code>.</span></div>` : "") +
-    (r.name ? `<div class="row"><span class="sub">${esc(r.name)} → ${esc(r.url||"")}</span></div>` : "") +
-    // Every node with a runner, beside this container's. A workflow lands on
-    // whichever runner its runs-on matches, and until now the only place that
-    // answer existed was GitHub — the operator ran one on a node and had
-    // nowhere here to see it. The node's own name is the label that pins a
-    // job to it, so it is what the row leads with.
-    ((state.node_runners || []).map(n => {
-      const [word, cls] = !n.live ? ["quiet — the node has not dialed in lately", "warn"]
-        : n.busy ? ["running a job", "ok"]
-        : n.listening ? ["listening — idle", "ok"]
-        : n.installed ? ["installed, not listening", "bad"]
-        : ["install asked for; not reported yet", "warn"];
-      return `<div class="row"><span class="grow"><b>${esc(n.node)}</b>
-        <span class="sub ${cls}">${esc(word)}</span>${n.labels.length
-          ? `<div class="sub dim">runs-on: [self-hosted, ${esc(n.node)}]</div>` : ""}</span></div>`;
-    }).join("")) +
-    // One toggle rather than a Restart that silently means stop-and-start.
-    // Stopping waits for GitHub to release the session, so it is not instant —
-    // the button says so instead of looking wedged.
-    `<div class="macros">${
-      [["runner-status", "Status", ""],
-       r.running ? ["runner-stop", "Stop", ""]
-                 : ["runner-start", "Start", "primary"]
-      ].map(([m, label, cls]) =>
-        `<button class="${cls}" data-m="${m}">${label}</button>`).join("")
-    }</div>`);
-  wireMacros(el);
+  const rows = state?.node_runners || [];
+  if (!rows.length){
+    paint(el, `<div class="empty">no runner on any node — the Nodes tab installs one</div>`);
+    return;
+  }
+  paint(el, rows.map(n => {
+    const [word, cls] = !n.live ? ["quiet — the node has not dialed in lately", "warn"]
+      : n.busy ? ["running a job", "ok"]
+      : n.listening ? ["listening — idle", "ok"]
+      : n.installed ? ["installed, not listening", "bad"]
+      : ["install asked for; not reported yet", "warn"];
+    return `<div class="row"><span class="grow"><b>${esc(n.node)}</b>
+      <span class="sub ${cls}">${esc(word)}</span>${n.labels.length
+        ? `<div class="sub dim">runs-on: [self-hosted, ${esc(n.node)}]</div>` : ""}</span></div>`;
+  }).join(""));
 }
 
 // What gets folded away is what the button says: projects with an *error*, and
@@ -11344,7 +11290,7 @@ function wireMacros(el){
 
 // Macros run in a terminal rather than reporting into a pane of their own: the
 // output belongs where the operator can scroll it, page it, and follow a
-// `bb runner stop` that takes a minute — none of which a one-shot text box did.
+// `bb sdk install` that takes minutes — none of which a one-shot text box did.
 async function macro(name, custom){
   const t = macroTarget();
   if (!t) return;                        // grayed out; a stray tap does nothing
@@ -11375,7 +11321,7 @@ async function macro(name, custom){
 // pills mirror the tab strip, and a minimize would otherwise read as "on the
 // tab bar" for up to a poll interval.
 function render(){ drawTabs(); drawPanes(); drawKeys(); saveLayout();
-                   if (state){ drawSessions(state.sessions); drawRunner(state.runner);
+                   if (state){ drawSessions(state.sessions); drawRunner();
                                drawLinux(); drawCommands(); drawGit(); drawCustom(); } }
 
 // ---- layout, shared between browsers ---------------------------------
@@ -11601,7 +11547,7 @@ async function refresh(){
     const cs = state.sessions.map(s => s.claude).filter(Boolean);
     const glance = cs.find(c => c.state === "waiting") || cs.find(c => c.state === "working");
     $("vTerm").innerHTML = stateDot(glance || null) + "Terminal";
-    drawRunner(state.runner);
+    drawRunner();
     // Adopted before the draw, so a page opened (or reloaded) while a clone
     // is running picks it up and starts watching. pJobSeen redraws the card
     // itself, and would recurse into refresh() on a finish — hence the plain

@@ -39,11 +39,20 @@ Three rules this file keeps that are worth knowing before changing it:
     the provisioner enrolled — the same `bb` that docker runs as — before it
     runs anything. A session that reaches this box through a job has the
     reach it already had over ssh, and no more.
+  * Sessions run here too (roadmap #24), and as a THIRD account. Beside the
+    jobs this keeps two ttyds up — the same two the controller's dashboard
+    hook starts — running bb-tty from the bb bundle the controller ships,
+    so a Claude session on this node's projects lives on this node, with
+    this node's toolchains and the projects share it mounts. They run as
+    the session account the provisioner made (--session-user), which is in
+    no docker group: docker is root on any machine with a daemon, and the
+    account a session works as is the one thing here to keep away from it.
 
 Runs anywhere Python 3.8+ is, with nothing installed:
 
     builderbot-agent enroll --controller URL --token bbe_… [--user bb]
-                            [--store data=/path] [--pin sha256:…]
+                            [--session-user builder] [--store data=/path]
+                            [--pin sha256:…]
     builderbot-agent run            # the loop; what the unit runs
     builderbot-agent status         # what this node is, and does it answer
 """
@@ -66,7 +75,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "22"
+AGENT_VERSION = "23"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -81,6 +90,21 @@ DEFAULT_STORES = {"data": "/var/lib/builderbot/data",
                   # cloud. Per project underneath (artifact_dir), because a
                   # VM may be several projects' node.
                   "artifacts": "/var/lib/builderbot/artifacts"}
+
+# The session half (roadmap #24): the ttyd this node runs bb-tty under, the
+# ports it binds, and the address. Seams for the suite — which runs a ttyd
+# that only records what it was asked — and for a node whose ports are taken.
+# The bind address defaults to the address the default route leaves by (the
+# LAN one the controller reaches), not the loopback: the controller's proxy
+# dials in from another machine. Phase 10b's firewall keeps it to the
+# controller; until then nothing but the network's own rules does.
+TTYD_BIN = os.environ.get("BUILDERBOT_TTYD_BIN", "ttyd")
+SESSION_PORT = int(os.environ.get("BUILDERBOT_SESSION_PORT") or 7681)
+SESSION_BIND = os.environ.get("BUILDERBOT_SESSION_BIND", "")
+# What the census reports about it, kept by the Agent and read by census():
+# the census is a function of the machine, and the session's state is the
+# one part of the machine this process itself is holding.
+SESSION = {}
 
 # Where a store may NOT be put. The stores are directories this agent
 # creates, fills, and — for the cache — empties on request, so a store
@@ -752,7 +776,34 @@ def census(state):
         # not described two ways (roadmap #19).
         "packages_versions": sdk_versions(state),
         "services": services_now(),
+        # The session half (roadmap #24), as this process is holding it.
+        "session": session_now(state),
     }
+
+
+def session_now(state):
+    """Whether this node runs sessions, and what a proxy needs to reach
+    them: the ports, the account, whether the projects share is mounted at
+    /workspace (a session without it has nothing to work on), and which
+    Claude the session account has. Empty until the agent has tried once,
+    so an old census never claims a node it has not measured."""
+    if not SESSION:
+        return {}
+    out = dict(SESSION)
+    out["workspace"] = os.path.ismount("/workspace")
+    home = out.pop("home", "")
+    out.pop("bind", None)
+    # Claude Code as the session account has it: its own ~/.local/bin (the
+    # native installer's home) or ~/.npm-global/bin first, the system after.
+    dirs = [os.path.join(home, ".local", "bin"), os.path.join(home, ".npm-global", "bin")] if home else []
+    claude = ""
+    for d in dirs + ["/usr/local/bin", "/usr/bin"]:
+        exe = os.path.join(d, "claude")
+        if os.access(exe, os.X_OK):
+            claude = _run([exe, "--version"], timeout=15).split("\n")[0][:40] or "installed"
+            break
+    out["claude"] = claude
+    return out
 
 
 def services_now():
@@ -1214,6 +1265,12 @@ class Agent:
         self.hello_at = 0
         self.controller_digest = ""
         self.warned_caps = False
+        # The session half (roadmap #24): the two ttyd processes, the bundle
+        # they run bb-tty from, and when the last start was tried.
+        self.ttyd = []
+        self.session_bundle = ""          # the digest the ttyds run from
+        self.session_digest = ""          # the digest bundle() last fetched
+        self.session_tried = 0
 
     # -- privilege ---------------------------------------------------------
     def drop_privileges(self, env):
@@ -1222,7 +1279,12 @@ class Agent:
         purpose). Popen's own user/group/extra_groups rather than a
         preexec_fn: this process has job threads, and a fork hook that runs
         between fork and exec can deadlock on a lock another thread held."""
-        user = self.state.get("user") or ""
+        return self.as_user(env, self.state.get("user") or "")
+
+    def as_user(self, env, user):
+        """The same, for a named account: jobs drop to the enrolled one,
+        sessions to the session one (roadmap #24), and they are different
+        accounts on purpose."""
         if os.geteuid() != 0 or not user or user == "root":
             return {}
         import grp
@@ -1275,6 +1337,14 @@ class Agent:
                     "needing it will be refused. Re-enroll to adopt them.")
             log(f"hello: node {n.get('id')} ({n.get('name')}), state "
                 f"{n.get('state')}, poll {self.poll}s")
+            # The sessions this node runs use the bb the controller ships;
+            # when that moves, fetch it and restart the ttyds onto it. The
+            # running sessions are tmux's and survive the restart — only the
+            # next connection runs the new bb-tty. Never fatal: the session
+            # half must not take the job half down with it — a packages
+            # store this process cannot write is a node with no sessions,
+            # not a node with no agent.
+            self.session_try(r.get("bundle") or "")
         return st, r
 
     def running(self):
@@ -1298,6 +1368,21 @@ class Agent:
 
     def loop(self):
         delay = 1
+        # The ttyds go with this process: a stop of the unit (an update, a
+        # reboot) ends them, and the tmux server they attached — the
+        # sessions themselves — is its own daemon and outlives both.
+        import signal
+
+        def bye(*_):
+            self.session_stop()
+            raise SystemExit(0)
+        signal.signal(signal.SIGTERM, bye)
+        # The session half first, so the first hello's census already says
+        # it is up: the bundle fetch answers with its own digest, so nothing
+        # from hello is needed to start. A controller that is down fails the
+        # fetch and the hello alike, and the hello that eventually succeeds
+        # starts the sessions then.
+        self.session_try()
         while True:
             if time.time() - self.hello_at > 600:
                 st, r = self.hello()
@@ -1313,6 +1398,7 @@ class Agent:
                     delay = min(delay * 2, 60)
                     continue
                 delay = 1
+            self.session_check()
             n = self.running()
             # The controller counts what is running here from its own rows
             # and wakes a held poll when a job ends, so the poll is held at
@@ -1502,10 +1588,15 @@ class Agent:
     def bundle(self, job, who):
         """bb, its library and the catalog, from the controller by digest
         into the packages store; the directory it runs from, or '' when it
-        could not be fetched. Shared by package jobs and bb verbs."""
+        could not be fetched. Shared by package jobs, bb verbs, and — with
+        no job, so `job` may be None and the log is this process's — the
+        sessions this node runs (roadmap #24). `.bb/current` points at the
+        newest unpacked copy, which is what a shell on this node puts on its
+        PATH."""
+        say = job.say if job else (lambda t: log(t.rstrip("\n")))
         store = (self.state.get("stores") or {}).get("packages") or ""
         if not store:
-            job.say("refused: this node has no packages store\n")
+            say("refused: this node has no packages store\n")
             return ""
         self.own_dir(store, who)
         bbdir = os.path.join(store, ".bb")
@@ -1513,7 +1604,7 @@ class Agent:
         tar_path = os.path.join(bbdir, "bundle.tar")
         st, digest = self.ctl.fetch("download?what=bundle", tar_path)
         if st != 200:
-            job.say(f"could not fetch bb from the controller ({st})\n")
+            say(f"could not fetch bb from the controller ({st})\n")
             return ""
         hexd = digest.split(":", 1)[-1]
         into = os.path.join(bbdir, hexd[:16] or "bundle")
@@ -1524,13 +1615,163 @@ class Agent:
                 else:
                     tar.extractall(into)
             os.chmod(os.path.join(into, "scripts", "bb"), 0o755)
-            job.say(f"bb {hexd[:12]} unpacked into {into}\n")
+            for x in ("bb-tty", "bb-work-note", "bb-prompt-relay"):
+                with contextlib.suppress(OSError):
+                    os.chmod(os.path.join(into, "scripts", "dashboard", x), 0o755)
+            say(f"bb {hexd[:12]} unpacked into {into}\n")
+        with contextlib.suppress(OSError):
+            tmp = os.path.join(bbdir, ".current.new")
+            if os.path.lexists(tmp):
+                os.unlink(tmp)
+            os.symlink(os.path.basename(into), tmp)
+            os.replace(tmp, os.path.join(bbdir, "current"))
         if who:
             for d, dirs, files in os.walk(into):
                 for x in [d] + [os.path.join(d, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
+        self.session_digest = digest
         return into
+
+    # -- the session half (roadmap #24) ---------------------------------------
+    def session_account(self):
+        """The account sessions run as, or "" when this node runs none: the
+        one the provisioner made when this process is root, and this
+        process's own when it is not (a container node runs the agent as
+        the image's builder and sessions as the same)."""
+        if os.geteuid() == 0:
+            return self.state.get("session_user") or ""
+        import pwd
+        return pwd.getpwuid(os.geteuid()).pw_name
+
+    def session_env(self, into):
+        """What every session on this node inherits, through ttyd: this
+        node's toolchains (sdk_env), the bundle's scripts and the account's
+        own bin directories on PATH, the role, and how to reach the
+        controller — the URL and the certificate pin the agent enrolled
+        with, never its token. bb's relayed verbs carry the session's own
+        token, which rides in on the terminal's URL."""
+        env = dict(sdk_env(self.state))
+        who = self.as_user(env, self.session_account())
+        if not who:
+            env.update({"HOME": os.path.expanduser("~"), "USER": self.session_account(),
+                        "LOGNAME": self.session_account()})
+        home = env["HOME"]
+        env["PATH"] = ":".join([os.path.join(into, "scripts"),
+                                os.path.join(home, ".local", "bin"),
+                                os.path.join(home, ".npm-global", "bin"), env["PATH"]])
+        # AVDs under the account's own ~/.android rather than the data store,
+        # which the job account owns: a session's `bb emu create` has to be
+        # able to write where its emulator keeps state.
+        env.pop("ANDROID_AVD_HOME", None)
+        env.update({"BUILDER_HOME": home, "BUILDERBOT_ROLE": "node",
+                    "BB_CONTROLLER": self.ctl.url, "BB_CONTROLLER_PIN": self.state.get("pin", ""),
+                    "BB_NODE": self.state.get("name") or "", "BUILDERBOT_NODE": self.state.get("node_id", ""),
+                    "WORKSPACE": "/workspace", "LANG": "C.UTF-8"})
+        return env, who
+
+    def session_bind(self):
+        if SESSION_BIND:
+            return SESSION_BIND
+        for a in (network_now().get("addresses") or []):
+            if ":" not in a:
+                return a.split("/")[0]
+        return "0.0.0.0"
+
+    def session_start(self, into):
+        """The two ttyds — writable, and the read-only twin an account
+        without a shell is shown — running bb-tty from the bundle, as the
+        session account, on the LAN address. What 15-dashboard.sh does on
+        the controller, done here by the process that is already up."""
+        self.session_stop()
+        bbtty = os.path.join(into, "scripts", "dashboard", "bb-tty")
+        user = self.session_account()
+        if not user or not os.path.isfile(bbtty):
+            SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
+                           why="no session account" if not user else "the bundle carries no bb-tty")
+            return
+        if not shutil.which(TTYD_BIN) and not os.access(TTYD_BIN, os.X_OK):
+            SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
+                           why="ttyd is not installed here")
+            return
+        env, who = self.session_env(into)
+        bind = self.session_bind()
+        logf = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp", "ttyd.log")
+        base = [TTYD_BIN, "--interface", bind, "--url-arg", "--max-clients", "16",
+                "-t", "reconnect=5"]
+        try:
+            out = open(logf, "ab")
+            for port, extra in ((SESSION_PORT, ["--writable"]), (SESSION_PORT + 1, [])):
+                self.ttyd.append(subprocess.Popen(
+                    base[:1] + ["--port", str(port)] + base[1:] + extra + [bbtty],
+                    cwd=env["HOME"] if os.path.isdir(env["HOME"]) else "/",
+                    env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=out, **who))
+            out.close()
+        except (OSError, RuntimeError) as e:
+            self.session_stop()
+            SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
+                           why=f"ttyd could not start: {e}"[:120])
+            log(f"sessions: ttyd could not start: {e}")
+            return
+        SESSION.update(up=True, port=SESSION_PORT, ro_port=SESSION_PORT + 1, user=user,
+                       home=env["HOME"], bind=bind, bundle=self.session_bundle, why="")
+        log(f"sessions: ttyd on {bind}:{SESSION_PORT} (read-only twin on {SESSION_PORT + 1}) "
+            f"as {user}, bb {self.session_bundle[7:19]}")
+
+    def session_stop(self):
+        for p in self.ttyd:
+            with contextlib.suppress(OSError):
+                p.terminate()
+        for p in self.ttyd:
+            with contextlib.suppress(OSError, subprocess.TimeoutExpired):
+                p.wait(5)
+        self.ttyd = []
+
+    def session_try(self, digest=None):
+        """session_refresh, never fatal: the session half must not take the
+        job half down with it — a packages store this process cannot write
+        is a node with no sessions, not a node with no agent."""
+        try:
+            self.session_refresh(digest)
+        except (OSError, RuntimeError, subprocess.SubprocessError) as e:
+            SESSION.update(up=False, port=0, ro_port=0, user=self.session_account(),
+                           bundle="", why=f"{e}"[:120])
+            log(f"sessions: not started — {e}")
+
+    def session_refresh(self, digest=None):
+        """The bundle the controller ships against the one the ttyds run
+        from: fetched and swapped in when they differ, and at the start of
+        this process (no digest to compare — the fetch answers with one),
+        which is when sessions start."""
+        if self.ttyd and (digest is None or digest == self.session_bundle):
+            return
+        if not self.session_account():
+            SESSION.update(up=False, port=0, ro_port=0, user="", bundle="",
+                           why="no session account — provision with --session-user")
+            return
+        env = {}
+        who = self.as_user(env, self.session_account())
+        into = self.bundle(None, who)
+        if not into:
+            return
+        self.session_bundle = self.session_digest or digest
+        self.session_tried = time.time()
+        self.session_start(into)
+
+    def session_check(self):
+        """Once a loop: a ttyd that died is started again, not more often
+        than every thirty seconds — a port already taken would otherwise
+        spin this loop on a failing exec."""
+        if not self.ttyd or all(p.poll() is None for p in self.ttyd):
+            return
+        if time.time() - self.session_tried < 30:
+            return
+        log("sessions: a ttyd exited; starting again")
+        self.session_tried = time.time()
+        store = (self.state.get("stores") or {}).get("packages") or ""
+        into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
+        if into and os.path.isdir(into):
+            self.session_start(into)
 
     def artifact_dir(self, project, who=None, make=True):
         """This node's copy of one project's artifacts. Per project, because
@@ -2175,7 +2416,8 @@ class Agent:
 # commands
 
 def cmd_enroll(args):
-    opts = {"--controller": "", "--token": "", "--user": "bb", "--pin": ""}
+    opts = {"--controller": "", "--token": "", "--user": "bb", "--pin": "",
+            "--session-user": ""}
     stores = dict(DEFAULT_STORES)
     it = iter(args)
     for a in it:
@@ -2210,6 +2452,9 @@ def cmd_enroll(args):
     ctl = Controller(opts["--controller"], opts["--token"], opts["--pin"])
     state = {"controller": ctl.url, "user": opts["--user"], "stores": stores,
              "store_made": marks}
+    # The account sessions run as (roadmap #24), when this agent runs as
+    # root. Recorded even when empty, so `status` shows the decision.
+    state["session_user"] = opts["--session-user"]
     st, r = ctl.call("enroll", {"census": census(state), "version": AGENT_VERSION,
                                 "digest": own_digest(), "user": opts["--user"]},
                      timeout=30)
@@ -2232,7 +2477,8 @@ def cmd_enroll(args):
     save_state(state)
     print(f"enrolled as node {r['node_id']} ({r.get('name')}) — "
           f"capabilities: {', '.join(r.get('capabilities') or []) or 'none'}")
-    print(f"  credential in {NODE_JSON} (0600); jobs run as {opts['--user']}")
+    print(f"  credential in {NODE_JSON} (0600); jobs run as {opts['--user']}"
+          + (f", sessions as {opts['--session-user']}" if opts["--session-user"] else ""))
 
 
 def cmd_run():

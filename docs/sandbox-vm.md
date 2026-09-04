@@ -158,6 +158,26 @@ gives it a key so it can be reached over ssh. No password is set for it — a
 provisioner that invents one has to print it, and a password in a terminal
 scrollback is not a secret — so set one from the console or pass a key.
 
+**And a third, for sessions** (roadmap #24, docs/nodes.md §19). A Claude
+session on a project bound to this node runs *here*, and it runs as
+`builder` — `--session-user NAME`, `none` to run no sessions — which is in
+`kvm` for the emulator and in **no docker group**: the account that edits
+your source is the one thing on this machine to keep away from a group that
+is root. It is made with `--session-uid`/`--session-gid` **99:100**, the
+controller's PUID:PGID, so a file it saves on the projects share is owned
+exactly as one saved from the controller is; a different uid would leave the
+share with files the rest of the array does not expect. `provision.sh`
+installs tmux, ttyd, jq and git for it, Claude Code into its home by the
+native installer, and a `/etc/profile.d` entry so a login shell as that
+account has the role, the controller's address and `bb` (from the bundle the
+agent keeps under the packages store at `.bb/current`) — the same
+environment a dashboard session gets, which is what makes proving the node
+by hand the same path: `sudo -iu builder`, `claude login` once, then
+`bb-tty u:<uid>:claude:<project>` with `BB_TOKEN` from `bb users token
+<project>` on the controller. The projects share has to be mounted at
+`/workspace` for any of it to have a tree to work in — one more row in the
+node's mounts on the Nodes tab.
+
 Be clear about what this does *not* do: `bb` is in the `docker` group, and that
 group is root on this machine to anyone who wants it. One
 `docker run -v /:/host --privileged` and the separation is over. That is not a

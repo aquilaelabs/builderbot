@@ -71,12 +71,7 @@ NOTES
 
   <!-- ===================== GitHub Actions runner ===================== -->
   <Config Name="GITHUB_URL" Target="GITHUB_URL" Default="https://github.com/Stencil-Projects" Mode="" Description="Org URL (https://github.com/ORG) serves every repo in the org and needs Organization - Self-hosted runners: R/W. A repo URL serves one and needs Repository - Administration: R/W." Type="Variable" Display="always" Required="false" Mask="false">https://github.com/Stencil-Projects</Config>
-  <Config Name="GITHUB_PAT" Target="GITHUB_PAT" Default="" Mode="" Description="Fine-grained PAT that mints runner registration tokens - that is its only job. NOTE: a variable set here is readable by sessions; the secrets folder above shields it instead." Type="Variable" Display="always" Required="false" Mask="true"/>
-  <Config Name="ENABLE_RUNNER" Target="ENABLE_RUNNER" Default="true" Mode="" Description="Set false to run as a pure Claude workstation" Type="Variable" Display="always" Required="false" Mask="false">true</Config>
-  <Config Name="RUNNER_NAME" Target="RUNNER_NAME" Default="builderbot" Mode="" Description="Runner name shown in GitHub" Type="Variable" Display="advanced" Required="false" Mask="false">builderbot</Config>
-  <Config Name="RUNNER_LABELS" Target="RUNNER_LABELS" Default="builderbot,self-hosted,linux,x64,unraid" Mode="" Description="Labels workflows target with runs-on" Type="Variable" Display="advanced" Required="false" Mask="false">builderbot,self-hosted,linux,x64,unraid</Config>
-  <Config Name="RUNNER_EPHEMERAL" Target="RUNNER_EPHEMERAL" Default="true" Mode="" Description="Fresh registration per job (recommended)" Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
-  <Config Name="RUNNER_GROUP" Target="RUNNER_GROUP" Default="" Mode="" Description="Runner group (org-level runners only)" Type="Variable" Display="advanced" Required="false" Mask="false"/>
+  <Config Name="GITHUB_PAT" Target="GITHUB_PAT" Default="" Mode="" Description="Fine-grained PAT that mints registration tokens for runners on your NODES - CI never runs in this container - and that is its only job. NOTE: a variable set here is readable by sessions; the secrets folder above shields it instead." Type="Variable" Display="always" Required="false" Mask="true"/>
   <Config Name="CLAUDE_CODE_VERSION" Target="CLAUDE_CODE_VERSION" Default="latest" Mode="" Description="Pin a Claude Code version for the startup auto-update" Type="Variable" Display="advanced" Required="false" Mask="false">latest</Config>
 
   <!-- ===================== git identity ===================== -->
@@ -109,7 +104,7 @@ NOTES
   <Config Name="NPM_TOKEN" Target="NPM_TOKEN" Default="" Mode="" Description="Optional: auth token for npm publish to registry.npmjs.org" Type="Variable" Display="advanced" Required="false" Mask="true"/>
 
   <!-- ===================== security ===================== -->
-  <Config Name="SHIELD_SECRETS" Target="SHIELD_SECRETS" Default="true" Mode="" Description="Scrub GITHUB_PAT/RUNNER_TOKEN from session environments; the runner mints tokens via a root-only helper instead. Set false only for legacy behavior (PAT visible inside, gh auto-authenticated)." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+  <Config Name="SHIELD_SECRETS" Target="SHIELD_SECRETS" Default="true" Mode="" Description="Scrub GITHUB_PAT from session environments; node runner tokens are minted via a root-only helper instead. false = legacy (PAT visible, gh auto-authenticated)." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
 
   <!-- ===================== extras ===================== -->
   <Config Name="EXTRA_APT_PACKAGES" Target="EXTRA_APT_PACKAGES" Default="" Mode="" Description="Space-separated apt packages installed at every start" Type="Variable" Display="advanced" Required="false" Mask="false"/>

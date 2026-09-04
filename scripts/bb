@@ -14,6 +14,10 @@ set -euo pipefail
 # third of this script's length and none of its subject, so it lives next door.
 # shellcheck source=lib/sdk.sh
 . "$(dirname "$(readlink -f "$0")")/lib/sdk.sh"
+# The API client the network verbs share (lib/bbapi.py), loaded by path from
+# the heredocs so a checkout's bb runs with the checkout's client.
+BB_LIB="$(dirname "$(readlink -f "$0")")/lib"
+export BB_LIB
 
 usage() {
     cat <<'EOF'
@@ -39,10 +43,6 @@ bb — BuilderBot helper
   bb shell               open a login shell as the builder user
   bb update              update Claude Code (and npm globals) in place
   bb login               run the Claude Code auth flow
-  bb runner status       registration, and whether it is connected/busy
-  bb runner stop         stop it and wait for GitHub to release the session
-  bb runner start        start it if it is not already running
-  bb runner restart      stop, then start (add --force to interrupt a job)
   bb emu start [API]     boot the emulator headless (e.g. `bb emu start 37`)
   bb emu stop            shut the emulator down
   bb emu status          adb devices
@@ -73,6 +73,8 @@ bb — BuilderBot helper
                          and the scanner's logs
   bb nodes               the node registry, read-only (docs/nodes.md phase 1)
   bb users               the dashboard's accounts; passwd NAME is the way back in
+  bb users token PROJECT a session token for one project, for a node proved by hand
+  bb settings [--json]   this project's settings as the dashboard has them (read-only)
   bb work                who else is changing this project, and which files
                          two of you have open at once
   bb jobs [-n N]         the recent jobs: state, node, what ran, how it ended
@@ -149,7 +151,6 @@ cmd_status() {
     version java   java --version
     version adb    adb --version
     version pw     playwright --version
-    printf '  %-8s %s\n' runner "$(cat "${RUNNER_DIR}/.runner-version" 2>/dev/null || echo '-')"
     echo
     # What is installed beyond the image, and where. Here rather than only in
     # `bb sdk` because this is the command a session runs first, and "is
@@ -165,22 +166,8 @@ cmd_status() {
         "$(is_mountpoint "$root" && printf ' (share)' || printf ' (home volume)')"
     printf '  %-8s %s\n' installed "${have:-none — see: bb sdk}"
     echo
-    echo "== runner =="
-    if [ -f "${RUNNER_DIR}/.runner" ]; then
-        jq -r '"  name: \(.agentName)\n  url:  \(.gitHubUrl)"' "${RUNNER_DIR}/.runner" 2>/dev/null \
-            || echo "  registered"
-        if pgrep -f 'Runner.Listener' >/dev/null; then
-            echo "  state: listening for jobs"
-        else
-            echo "  state: starting up or between jobs"
-        fi
-    elif runner_pid >/dev/null; then
-        # Ephemeral gap, not an outage — see the same case in cmd_runner.
-        echo "  re-registering — a job just finished, back in seconds"
-    else
-        echo "  not registered (ENABLE_RUNNER=${ENABLE_RUNNER:-true})"
-    fi
-    echo
+    # CI runs on nodes (docs/nodes.md phase 7); `bb ci-labels` lists their
+    # runners' labels and the Nodes tab shows each one's state.
     cmd_projects
 }
 
@@ -219,162 +206,6 @@ cmd_login() {
     fi
 }
 
-RUNNER_PIDFILE="${RUNNER_DIR}/.runner.pid"
-
-# The supervisor, by pid rather than by command-line pattern. `pgrep -f
-# runner.sh` matches any process that merely mentions the string — a grep, an
-# editor, the shell running this very script — and a pkill on that pattern
-# takes them with it.
-runner_pid() {
-    local pid
-    pid="$(cat "$RUNNER_PIDFILE" 2>/dev/null || true)"
-    case "$pid" in
-        ''|*[!0-9]*) return 1 ;;
-    esac
-    kill -0 "$pid" 2>/dev/null || return 1
-    printf '%s' "$pid"
-}
-
-# The listener, matched on its executable path. The leading slash keeps the
-# pattern from matching a command line that only names it — including the
-# `pgrep -af Runner.Listener` we suggest to the user.
-listener_pids() { pgrep -f '/Runner\.Listener' 2>/dev/null || true; }
-worker_running() { pgrep -f '/Runner\.Worker' >/dev/null 2>&1; }
-
-# runner_alive — anything that still holds this runner's GitHub session.
-#
-# Both halves matter. runner.sh is the supervisor; Runner.Listener is what is
-# actually connected. Killing only the supervisor leaves the listener holding
-# the session, which is what produces "A session for this runner already
-# exists" followed by an endless "Runner connect error: Error: Conflict".
-runner_alive() {
-    runner_pid >/dev/null || [ -n "$(listener_pids)" ]
-}
-
-# runner_link — "ok" or "down", from the last connectivity marker the runner
-# logged. A listener process being up says only that it is trying; the runner
-# retries a rejected connection forever without exiting, so the process alone
-# cannot tell a working runner from one stuck on Conflict.
-runner_link() {
-    local last
-    last="$(tail -n 500 "$(bb_log_dir)/builderbot.log" 2>/dev/null \
-            | grep -E 'Listening for Jobs|Runner reconnected|Runner connect error' \
-            | tail -n 1 || true)"
-    case "$last" in
-        *"Runner connect error"*) printf 'down' ;;
-        *)                        printf 'ok'   ;;   # also the unknown case
-    esac
-}
-
-# runner_stop [--force] — bring the runner down and wait for it to let go.
-#
-# The waiting is the whole point. runner.sh drains any in-flight job and then
-# deregisters, so "stopped" is not immediate; starting a second registration
-# before the first has released the session is exactly what makes GitHub answer
-# Conflict, and the old process's deregister would then tear down the
-# registration the new one just made.
-runner_stop() {
-    local force=0 waited=0 grace="${RUNNER_STOP_GRACE:-90}" pid
-    [ "${1:-}" = "--force" ] && force=1
-
-    if worker_running && [ "$force" -eq 0 ]; then
-        warn "a job is running right now — stopping would fail it on GitHub."
-        warn "Wait for it to finish, or pass --force."
-        return 1
-    fi
-
-    runner_alive || { echo "runner is not running"; return 0; }
-
-    echo "stopping the runner…"
-    pid="$(runner_pid || true)"
-    [ -n "$pid" ] && kill -TERM "$pid" 2>/dev/null
-    pkill -TERM -f '/Runner\.Listener' 2>/dev/null || true
-
-    while runner_alive && [ "$waited" -lt "$grace" ]; do
-        sleep 1
-        waited=$((waited + 1))
-        [ $((waited % 10)) -eq 0 ] && echo "  still stopping… ${waited}s"
-    done
-
-    if runner_alive; then
-        warn "runner did not stop within ${grace}s; killing it"
-        pid="$(runner_pid || true)"
-        [ -n "$pid" ] && kill -KILL "$pid" 2>/dev/null
-        pkill -KILL -f '/Runner\.Listener' 2>/dev/null || true
-        rm -f "$RUNNER_PIDFILE"
-        sleep 2
-        warn "a killed runner cannot deregister — GitHub may hold the old session"
-        warn "for a minute or two and log Conflict until it expires."
-        return 0
-    fi
-    echo "stopped cleanly after ${waited}s"
-}
-
-runner_start() {
-    local out=/proc/1/fd/1 tries=10
-    if runner_alive; then
-        echo "runner is already running"
-        return 0
-    fi
-    # PID 1's stdout is the container log, but /proc/1/fd is root-only — fall
-    # back to the log file rather than let the redirect fail and take the
-    # runner with it.
-    [ -w "$out" ] || out="$(bb_log_dir)/builderbot.log"
-    nohup /opt/builderbot/scripts/runner.sh >>"$out" 2>&1 &
-
-    # Confirm it actually came up. Reporting "starting" and returning is how a
-    # runner that died on launch gets reported as healthy by everything
-    # downstream, including the dashboard.
-    while [ "$tries" -gt 0 ]; do
-        sleep 0.5
-        if runner_alive; then echo "runner started"; return 0; fi
-        tries=$((tries - 1))
-    done
-    warn "runner did not come up within 5s — see: bb logs"
-    return 1
-}
-
-cmd_runner() {
-    case "${1:-status}" in
-        status)
-            if [ -f "${RUNNER_DIR}/.runner" ]; then
-                cat "${RUNNER_DIR}/.runner"
-            elif runner_pid >/dev/null; then
-                # An ephemeral registration is single-use: the runner
-                # deregisters after every job and the supervisor re-registers
-                # it moments later. Unregistered with the supervisor up is the
-                # healthy between-jobs path, not an outage.
-                echo "re-registering — an ephemeral runner deregisters after each job;"
-                echo "the supervisor is up and a fresh registration lands in seconds"
-            else
-                echo "not registered"
-            fi
-            echo
-            if worker_running; then
-                echo "state: running a job"
-            elif ! runner_alive; then
-                echo "state: not running"
-            elif [ "$(runner_link)" = "down" ]; then
-                echo "state: cannot connect — retrying"
-                tail -n 500 "$(bb_log_dir)/builderbot.log" 2>/dev/null \
-                    | grep -E 'Runner connect error|session for this runner already exists' \
-                    | tail -n 2 || true
-                echo
-                echo "If it says the session already exists, something else is holding this"
-                echo "runner's name: another container using the same RUNNER_NAME, or a"
-                echo "listener left behind by a half-finished restart. It clears when GitHub"
-                echo "expires the old session — a minute or two. Check for a stray listener:"
-                echo "    pgrep -af Runner.Listener"
-            else
-                echo "state: listening for jobs"
-            fi
-            ;;
-        stop)    runner_stop "${2:-}" ;;
-        start)   runner_start ;;
-        restart) runner_stop "${2:-}" && runner_start ;;
-        *) usage; exit 1 ;;
-    esac
-}
 
 avd_exists() { avdmanager list avd 2>/dev/null | grep -q "Name: ${1}$"; }
 
@@ -460,6 +291,10 @@ emu_serial() {
 # none is set. Read here rather than asked of the dashboard, so `bb emu` can
 # decide where it is going before it says anything.
 project_node() {
+    # ON the node, the answer is "here", which this spells as no node at all:
+    # every caller then does the thing locally, which is what being on the
+    # project's node means (roadmap #24).
+    on_node && return 0
     local proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$proj" <<'PY' 2>/dev/null
 import json, os, sys
@@ -486,28 +321,17 @@ emu_via_node() {
         [ -f "$f" ] || die "${f} is not in this project's dist/ — the node fetches the APK from there"
         files=("$f"); argv=("emu" "install" "$(basename "$f")")
     fi
-    local auth url="http://127.0.0.1:${DASHBOARD_PORT:-7680}"
+    local auth
     auth="$(bb_auth_or_die)"
     local proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
     BB_EMU_FILES="$(printf '%s\n' "${files[@]}")" \
-    python3 - "$url" "$auth" "$proj" "${argv[@]}" <<'PY'
-import base64, json, os, sys, time, urllib.request, urllib.error
-url, auth, proj, *argv = sys.argv[1:]
+    python3 - "$auth" "$proj" "${argv[@]}" <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+auth, proj, *argv = sys.argv[1:]
 files = [f for f in os.environ.get("BB_EMU_FILES", "").split("\n") if f]
-hdr = {"Authorization": auth, "Content-Type": "application/json"}
-def call(path, body=None):
-    req = urllib.request.Request(url + path, data=json.dumps(body).encode() if body is not None else None,
-                                 headers=hdr, method="POST" if body is not None else "GET")
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        try:
-            return json.load(e)
-        except ValueError:
-            return {"error": f"HTTP {e.code}"}
-    except (OSError, ValueError) as e:
-        return {"error": str(e)}
+call = lambda path, body=None: bbapi.call(path, body, auth=auth)   # noqa: E731
 r = call("/api/v1/jobs", {"action": "emu", "project": proj, "argv": argv, "files": files,
                           "outputs": ["*.png", "*.txt"],
                           "from": "session" if os.environ.get("CLAUDECODE") else "operator"})
@@ -2055,8 +1879,7 @@ PY
 # session shows the emulator and nothing else. That is the point: not a rule
 # to remember, an address that was never given out.
 cmd_phone() {
-    local sub="${1:-status}" why="" auth url
-    url="http://127.0.0.1:${DASHBOARD_PORT:-7680}/api/phone"
+    local sub="${1:-status}" why="" auth
     auth="$(bb_auth_or_die)"
     shift || true
     case "$sub" in
@@ -2068,13 +1891,14 @@ cmd_phone() {
             # its PROGRAM from stdin, so a heredoc and a pipe are competing for
             # the same channel and the heredoc wins — which is how this came to
             # be parsing an empty stdin as JSON.
-            local body
-            body="$(curl -fsS -u "$auth" "$url")" \
-                || die "could not reach the dashboard on ${url}"
-            BB_PHONE_JSON="$body" python3 - <<'PY'
-import json, os
+            BB_PHONE_AUTH="$auth" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
 
-d = json.loads(os.environ["BB_PHONE_JSON"])
+d = bbapi.call("/api/phone", auth=os.environ["BB_PHONE_AUTH"])
+if d.get("error"):
+    sys.exit(f"[builderbot] ERROR: could not reach the dashboard at {bbapi.url()}: {d['error']}")
 p = d.get("phone")
 if p:
     print("phone:   {} ({})".format(p.get("model") or "phone", p.get("serial")))
@@ -2097,27 +1921,13 @@ PY
             done
             [ -n "$why" ] || die "bb phone run needs --why \"what this is for\""
             [ $# -gt 0 ] || die "nothing to run — put the adb arguments after --"
-            BB_PHONE_WHY="$why" BB_PHONE_URL="$url" BB_PHONE_AUTH="$auth" \
+            BB_PHONE_WHY="$why" BB_PHONE_AUTH="$auth" \
                 python3 - "$@" <<'PY'
-import json, os, sys, time, urllib.request, base64
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
 
-url, auth = os.environ["BB_PHONE_URL"], os.environ["BB_PHONE_AUTH"]
-hdr = {"Content-Type": "application/json",
-       "Authorization": auth}
-
-
-def post(body):
-    req = urllib.request.Request(url, json.dumps(body).encode(), hdr)
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        try:
-            return json.load(e)
-        except Exception:
-            return {"error": f"HTTP {e.code}"}
-    except Exception as e:
-        return {"error": str(e)}
+post = lambda body: bbapi.call("/api/phone", body, auth=os.environ["BB_PHONE_AUTH"])  # noqa: E731
 
 
 r = post({"action": "ask", "why": os.environ["BB_PHONE_WHY"], "cmd": sys.argv[1:]})
@@ -2283,6 +2093,106 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
     printf '%s' "$h"
 }
 
+# ---- a session on a node (roadmap #24) --------------------------------------
+#
+# The notebook, the settings and the registry live on the controller, and a
+# node keeps no /config. So on a node the verbs that read them are RELAYED:
+# the same words go to the controller's /api/v1/bb with the session's token,
+# the controller runs its own bb in this project's tree (the projects share is
+# mounted at /workspace on both sides, so a path here is a path there), and
+# what it printed comes back. One implementation of every verb, kept where
+# the state is; the token decides which project it may be about.
+#
+# What is NOT relayed is what belongs to the machine the session is on:
+# `bb sdk` answers for this node's store, `bb emu` drives this node's
+# emulator, `bb build` is a build (cmd_run). That is the point of being here.
+BB_RELAY_VERBS=" roadmap todo bug bugs history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels "
+
+bb_relay() {
+    local auth proj
+    auth="$(bb_auth_or_die)"
+    proj="${BB_PROJECT:-${BB_ROADMAP_PROJECT:-${BB_BUG_PROJECT:-${BB_VERSION_PROJECT:-$(project_here || true)}}}}"
+    BB_RELAY_PROJECT="$proj" python3 - "$auth" "$@" <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+auth, *argv = sys.argv[1:]
+r = bbapi.call("/api/v1/bb", {"argv": argv, "project": os.environ.get("BB_RELAY_PROJECT", ""),
+                              "cwd": os.getcwd(),
+                              "from": "session" if os.environ.get("CLAUDECODE") else "operator"},
+               auth=auth, timeout=200)
+if r.get("error") and "code" not in r:
+    sys.exit(f"[builderbot] ERROR: {r['error']} (relayed to {bbapi.url()})")
+sys.stdout.write(r.get("out") or "")
+sys.stderr.write(r.get("err") or "")
+sys.stdout.flush()
+sys.exit(int(r.get("code") or 0))
+PY
+}
+
+# run_here ROLE [GLOB...] -- CMD... — `bb run` on the node the session is on:
+# the command in this tree, and each output glob's matches into dist/.
+run_here() {
+    local role="$1" outs=() g f
+    shift
+    while [ $# -gt 0 ]; do
+        case "$1" in --) shift; break ;; *) outs+=("$1"); shift ;; esac
+    done
+    log "$role: running here, on ${BB_NODE:-this node} — $*"
+    local code=0
+    "$@" || code=$?
+    if [ "$code" -eq 0 ] && [ "${#outs[@]}" -gt 0 ]; then
+        mkdir -p dist
+        for g in "${outs[@]}"; do
+            for f in $g; do
+                [ -f "$f" ] || continue
+                cp -f "$f" "dist/$(basename "$f")" && log "into dist/: $(basename "$f")"
+            done
+        done
+    fi
+    return "$code"
+}
+
+# bb settings [--json] — this project's settings, as the dashboard has them:
+# node, model, effort, the build and test commands, whether it is locked.
+# Read-only, and no verb writes any of it: those are the settings dialog's.
+# On a node it is relayed, and it is what bb-tty and bb build read there.
+cmd_settings() {
+    local proj json=0
+    [ "${1:-}" = --json ] && json=1
+    proj="${BB_PROJECT:-${BB_VERSION_PROJECT:-}}"
+    if [ -z "$proj" ]; then
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
+    fi
+    BB_SETTINGS_JSON="$json" DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+        python3 - "$(dirname "$(readlink -f "$0")")/dashboard" "$proj" <<'PY'
+import importlib.util, json, os, sys
+here, proj = sys.argv[1], sys.argv[2]
+state = os.environ["DASHBOARD_STATE"]
+spec = importlib.util.spec_from_file_location("prefs", os.path.join(here, "prefs.py"))
+prefs = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(prefs)
+prefs.configure(state=state, write_json=lambda *a: None)
+rec = dict(prefs.get(proj) or {})
+try:
+    locks = json.load(open(os.path.join(state, "locked-projects.json")))
+except (OSError, ValueError):
+    locks = []
+rec["locked"] = proj in (locks if isinstance(locks, list) else [])
+rec["project"] = proj
+if os.environ.get("BB_SETTINGS_JSON") == "1":
+    print(json.dumps(rec))
+    raise SystemExit(0)
+print(f"{proj}:")
+for k in ("node", "model", "effort", "build", "test", "outputs", "policy", "locked"):
+    v = rec.get(k)
+    if v in (None, "", [], False):
+        continue
+    print(f"  {k:<8} {', '.join(v) if isinstance(v, list) else v}")
+PY
+}
+
 # bb work — who else is changing this project, and where you overlap.
 #
 # Two answers, and the first needs nothing to have been recorded: git knows
@@ -2345,7 +2255,36 @@ cmd_users() {
     shift || true
     case "$sub" in
         list|passwd|add) ;;
-        *) die "usage: bb users [list|passwd NAME|add NAME --role admin|user]" ;;
+        token)
+            # A session token for one project, the kind bb-tty mints for a
+            # session it starts: user rights over that project, an expiry.
+            # For the operator proving a node by hand — the node cannot
+            # mint one, and BB_TOKEN=… is how bb there reaches the
+            # controller — and for the test suite. Never written anywhere.
+            [ -n "${1:-}" ] || die "which project? bb users token PROJECT"
+            [ -d "$WORKSPACE/$1" ] || die "no project called $1 under $WORKSPACE"
+            DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$1" <<'PY'
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location("users", sys.argv[1])
+users = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(users)
+
+
+# A real write, not a no-op: the signing key is made on first use and kept
+# in the store, and a token signed with a key that was never written is one
+# the dashboard cannot verify.
+def write_json(path, data):
+    tmp = str(path) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
+
+
+users.configure(state=os.environ["DASHBOARD_STATE"], write_json=write_json)
+print(users.mint_session(sys.argv[2]))
+PY
+            return ;;
+        *) die "usage: bb users [list|passwd NAME|add NAME --role admin|user|token PROJECT]" ;;
     esac
     # The password is READ, never an argument: an argument is in the process
     # table for anyone on this box to see, and in the shell history after.
@@ -2501,7 +2440,7 @@ PY
 # provenance beside it. Through the dashboard's API rather than the store
 # directly, because the snapshot is the dashboard's to make.
 cmd_run() {
-    local role=build node="" timeout=3600 outs=() proj auth url
+    local role=build node="" timeout=3600 outs=() proj auth
     while [ $# -gt 0 ]; do
         case "$1" in
             --role) role="${2:-}"; shift 2 ;;     # build|test: which command bb build/test are
@@ -2520,28 +2459,24 @@ cmd_run() {
     done
     [ $# -gt 0 ] || die "bb run needs a command after -- (bb run -h)"
     proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
+    # ON A NODE THE SESSION IS WHERE THE TOOLCHAIN IS (roadmap #24), so there
+    # is nothing to snapshot and nowhere to send it: the command runs here,
+    # in this tree, and what --out names is copied into dist/ the way a job's
+    # outputs would have come back. No job row — this is a build, and the
+    # queue is for work that has to travel.
+    if on_node; then
+        run_here "$role" "${outs[@]}" -- "$@"
+        return
+    fi
     auth="$(bb_auth_or_die)"
-    url="http://127.0.0.1:${DASHBOARD_PORT:-7680}"
     BB_RUN_OUTS="$(printf '%s\n' "${outs[@]}")" \
-    python3 - "$url" "$auth" "$proj" "$role" "$node" "$timeout" "$@" <<'PY'
-import base64, json, os, sys, time, urllib.request, urllib.error
-url, auth, proj, role, node, timeout, *argv = sys.argv[1:]
+    python3 - "$auth" "$proj" "$role" "$node" "$timeout" "$@" <<'PY'
+import os, sys, time
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+auth, proj, role, node, timeout, *argv = sys.argv[1:]
 outs = [o for o in os.environ.get("BB_RUN_OUTS", "").split("\n") if o]
-hdr = {"Authorization": auth,
-       "Content-Type": "application/json"}
-def call(path, body=None):
-    req = urllib.request.Request(url + path, data=json.dumps(body).encode() if body is not None else None,
-                                 headers=hdr, method="POST" if body is not None else "GET")
-    try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        try:
-            return json.load(e)
-        except ValueError:
-            return {"error": f"HTTP {e.code}"}
-    except (OSError, ValueError) as e:
-        return {"error": str(e)}
+call = lambda path, body=None: bbapi.call(path, body, auth=auth)   # noqa: E731
 nid = node
 if node:
     # A node by name is what a person types; the API takes the id.
@@ -2597,19 +2532,19 @@ cmd_build_or_test() {
     # One value per line: the command first, then each output glob. Read as
     # lines rather than words, because a build command has spaces in it.
     local -a rec
-    mapfile -t rec < <(DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$proj" "$role" <<'PY'
+    # From the settings dialog's file here; on a node from `bb settings`,
+    # which is the same record relayed from the controller.
+    mapfile -t rec < <(BB_PROJECT="$proj" "$0" settings --json 2>/dev/null \
+        | BB_ROLE_="$role" python3 -c '
 import json, os, sys
-proj, role = sys.argv[1:3]
 try:
-    d = json.load(open(os.path.join(os.environ["DASHBOARD_STATE"], "claude-prefs.json")))
-    rec = (d.get("projects") or {}).get(proj) or {}
-except (OSError, ValueError):
+    rec = json.load(sys.stdin)
+except ValueError:
     rec = {}
-print(rec.get(role) or "")
+print(rec.get(os.environ["BB_ROLE_"]) or "")
 for g in rec.get("outputs") or []:
     print(g)
-PY
-)
+')
     local cmd="${rec[0]:-}"
     [ -n "$cmd" ] || die "no $role command is set for $proj — the operator sets it in the project's settings dialog (Build and test)"
     local -a args=(--role "$role") g
@@ -2628,8 +2563,7 @@ cmd_ci_labels() {
     local -a labels=()
     local l
     while IFS= read -r l; do [ -n "$l" ] && labels+=("$l"); done < <(
-        { printf '%s\n' "${RUNNER_LABELS:-builderbot,self-hosted,linux,x64,unraid}" | tr ',' '\n'
-          [ -f "$py" ] && DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" <<'PY' 2>/dev/null
+        { [ -f "$py" ] && DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" <<'PY' 2>/dev/null
 import importlib.util, os, sys
 spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
 nodes = importlib.util.module_from_spec(spec); spec.loader.exec_module(nodes)
@@ -2642,8 +2576,8 @@ PY
         } | awk 'NF && !seen[$0]++')
     if [ "$write" = 1 ]; then
         mkdir -p .github
-        { printf '# Labels the runners in BuilderBot'"'"'s registry carry — this container'"'"'s own and\n'
-          printf '# every node runner'"'"'s. Generated by `bb ci-labels --write`; regenerate rather\n'
+        { printf '# Labels the runners in BuilderBot'"'"'s registry carry — every node runner'"'"'s;\n'
+          printf '# this container runs none. Generated by `bb ci-labels --write`; regenerate rather\n'
           printf '# than edit, so actionlint checks runs-on against what really exists.\n'
           printf 'self-hosted-runner:\n  labels:\n'
           for l in "${labels[@]}"; do printf '    - %s\n' "$l"; done; } > .github/actionlint.yaml
@@ -2839,22 +2773,10 @@ cmd_lint() {
     if compgen -G '.github/workflows/*.yml' >/dev/null \
         || compgen -G '.github/workflows/*.yaml' >/dev/null; then
         if need actionlint; then
-            # A repo that declares its runner's labels wins; otherwise build the
-            # declaration from this container's own RUNNER_LABELS, so runs-on
-            # lines targeting this box are checked against what it really
-            # carries — the "Waiting for a runner" label mismatch, caught here.
+            # A repo declares its runners' labels in .github/actionlint.yaml
+            # (`bb ci-labels --write` generates it from the node registry).
+            # There is no runner on this container to build a fallback from.
             local -a args=()
-            if [ ! -f .github/actionlint.yaml ] && [ ! -f .github/actionlint.yml ] \
-                && [ -n "${RUNNER_LABELS:-}" ]; then
-                local cfg
-                cfg="$(mktemp)"
-                # shellcheck disable=SC2064 # expand now, not at trap time
-                trap "rm -f '$cfg'" RETURN
-                printf 'self-hosted-runner:\n  labels:\n' > "$cfg"
-                printf '%s\n' "${RUNNER_LABELS//,/$'\n'}" \
-                    | sed 's/^/    - /' >> "$cfg"
-                args+=(-config-file "$cfg")
-            fi
             # The workflow files are named explicitly: bare `actionlint` walks
             # up looking for a git repository and refuses a plain directory.
             local -a wfs=()
@@ -3461,7 +3383,7 @@ cmd_doctor() {
             ok=1
         fi
     else
-        printf '  [skip] no runner credential (fine if ENABLE_RUNNER=false)\n'
+        printf '  [skip] no runner credential (only needed to install a runner on a node)\n'
     fi
     # `gh auth status`, said as what it is. This line used to read "git over
     # https not authenticated", which is a claim about pushing and this is not
@@ -3848,15 +3770,24 @@ print(text, end="")
 PY
 }
 
+# On a node, the verbs whose state is the controller's go there whole (see
+# bb_relay); BB_RELAYED marks the controller's own run so a relayed verb that
+# calls bb again cannot bounce.
+if on_node && [ -z "${BB_RELAYED:-}" ]; then
+    case "$BB_RELAY_VERBS" in
+        *" ${1:-help} "*) bb_relay "$@" ;;
+    esac
+fi
+
 case "${1:-help}" in
     status)   cmd_status ;;
+    settings) shift; cmd_settings "$@" ;;
     version)  shift; cmd_version "$@" ;;
     changelog) shift; cmd_changelog "$@" ;;
     projects) cmd_projects ;;
     shell)    exec bash -l ;;
     update)   cmd_update ;;
     login)    cmd_login ;;
-    runner)   shift; cmd_runner "$@" ;;
     emu)      shift; cmd_emu "$@" ;;
     claude-md|claudemd) shift; cmd_claude_md "$@" ;;
     lint)     shift; cmd_lint "$@" ;;

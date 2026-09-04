@@ -7,7 +7,7 @@
 // exists to prove.
 import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, writeFileSync, mkdirSync, readdirSync, openSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, writeFileSync, mkdirSync, readdirSync, openSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -135,9 +135,27 @@ if a[0] == "funnel":
     json.dump(d, open(st, "w")); sys.exit(0)
 sys.exit(2)
 `, { mode: 0o755 });
+// ttyd, stood in for (roadmap #24): the agent starts two of them for the
+// sessions this node runs, and what is under test is that it does — as
+// which account, on which ports, running bb-tty from which bundle — not
+// ttyd itself. This one records its argv and environment and stays up.
+writeFileSync(`${DIR}/bin/ttyd`, `#!/usr/bin/env bash
+printf '%s\\n' "$@" > "${DIR}/ttyd-$$.argv"
+env > "${DIR}/ttyd-$$.env"
+# Up for as long as the agent that started it is, like the real one under
+# SIGTERM — and not a minute longer, so a killed agent leaves nothing behind.
+while kill -0 "$PPID" 2>/dev/null; do sleep 1; done
+`, { mode: 0o755 });
+const ttydRuns = () => readdirSync(DIR).filter(f => /^ttyd-\d+\.argv$/.test(f))
+  .map(f => ({ argv: readFileSync(`${DIR}/${f}`, 'utf8').trim().split('\n'),
+               env: Object.fromEntries(readFileSync(`${DIR}/${f.replace('.argv', '.env')}`, 'utf8')
+                 .split('\n').filter(Boolean).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)])) }));
+const SESSION_PORT = 17681 + Math.floor(Math.random() * 1000);
 // The stub docker's own state, so the agent's compose reaches the same fake
 // daemon the controller's runner does — a real node needs nothing here.
 const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
+  BUILDERBOT_TTYD_BIN: `${DIR}/bin/ttyd`, BUILDERBOT_SESSION_PORT: String(SESSION_PORT),
+  BUILDERBOT_SESSION_BIND: '127.0.0.1',
   DOCKER_STUB_STATE: `${DIR}/dockerstate`, PATH: `${DIR}/bin:${process.env.PATH}`,
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
   BUILDERBOT_RUNNER_DIR: `${DIR}/runner`, BUILDERBOT_RUNNER_TARBALL: `${DIR}/runner.tar.gz`,
@@ -146,10 +164,12 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
 {
   let out = '';
   try {
+    // A packages store of its own: the default is /var/lib/builderbot, which
+    // this container cannot write, and the session half unpacks bb there.
     out = execFileSync('python3', [AGENT, 'enroll', '--controller', URL,
       '--token', minted.token, '--user', process.env.USER || 'builder',
-      '--store', `data=${DIR}/agentdata`], { env: agentEnv, encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'] });
+      '--store', `data=${DIR}/agentdata`, '--store', `packages=${DIR}/agentpackages`],
+      { env: agentEnv, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (e) { out = String(e.stdout) + String(e.stderr); }
   ok(/enrolled as node n_/.test(out) && existsSync(NODE_JSON)
      && (statSync(NODE_JSON).mode & 0o777) === 0o600,
@@ -259,6 +279,102 @@ try {
        s.mem_used_mb}/${s.mem_mb}MB, data free ${s.stores?.data}MB)`);
   ok(live?.agent?.addr === '127.0.0.1',
      'the address the node dialed in from is on the row');
+
+  // ---- the session half (roadmap #24) ----------------------------------------
+  // On its first hello the agent fetches the bb bundle the controller ships,
+  // unpacks it into the packages store, and starts two ttyds running bb-tty
+  // from it: what the controller's dashboard hook does, done on the node by
+  // the process that is already there. The census then says so, which is
+  // what the proxy (phase 10b) will relay a session on the strength of.
+  {
+    const sess = await until(async () => {
+      const n = await nodeById(minted.id);
+      return n?.reported?.session?.up ? n.reported.session : null;
+    });
+    ok(sess !== null, 'the census reports the session half: ttyd is up');
+    ok(sess?.port === SESSION_PORT && sess?.ro_port === SESSION_PORT + 1
+       && sess?.user === execFileSync('id', ['-un'], { encoding: 'utf8' }).trim(),
+       `...on the ports it bound and as the account sessions run as (${sess?.port}, ${sess?.user})`);
+    ok(typeof sess?.workspace === 'boolean' && /^sha256:/.test(sess?.bundle || ''),
+       '...saying whether /workspace is mounted and which bb bundle bb-tty runs from');
+    // This node's two — the container node enrolled above started its own.
+    const runs = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id);
+    ok(runs.length === 2 && runs.some(r => r.argv.includes('--writable'))
+       && runs.some(r => !r.argv.includes('--writable')),
+       'two ttyds: the writable one and the read-only twin an account without a shell is shown');
+    const bbtty = runs[0]?.argv.at(-1) || '';
+    ok(/\/\.bb\/[0-9a-f]{16}\/scripts\/dashboard\/bb-tty$/.test(bbtty) && existsSync(bbtty),
+       `...both running bb-tty out of the bundle unpacked in the packages store (${bbtty.replace(DIR, '…')})`);
+    ok(runs.every(r => r.argv.includes('--url-arg') && r.argv.includes('--interface')
+                       && r.argv[r.argv.indexOf('--interface') + 1] === '127.0.0.1'),
+       '...with --url-arg for the target, bound where the agent was told');
+    const e = runs[0]?.env || {};
+    ok(e.BUILDERBOT_ROLE === 'node' && e.BB_CONTROLLER === URL.replace(/\/$/, '')
+       && e.WORKSPACE === '/workspace' && !('BB_TOKEN' in e) && !e.BUILDERBOT_NODE_JSON,
+       'the sessions inherit the role and the controller\'s address — never the node\'s token');
+    ok((e.PATH || '').split(':')[0] === bbtty.replace(/\/dashboard\/bb-tty$/, ''),
+       '...and bb from that bundle first on PATH');
+    const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
+    const store = st.stores.packages;
+    ok(existsSync(`${store}/.bb/current/scripts/bb`)
+       && lstatSync(`${store}/.bb/current`).isSymbolicLink(),
+       'the packages store carries a .bb/current link at the newest bundle, for a shell at the console');
+    ok(existsSync(`${store}/.bb/current/scripts/dashboard/bb-work-note`)
+       && existsSync(`${store}/.bb/current/scripts/lib/bbapi.py`),
+       '...and the bundle carries the hooks bb-tty writes into a session and bb\'s API client');
+  }
+
+  // ---- the relay (roadmap #24): bb's notebook verbs from a node ---------------
+  // A session on a node has no /config, so `bb roadmap`, `bb bug`, `bb
+  // version` and the rest send their words to /api/v1/bb with the session's
+  // token, and the controller runs its own bb in that project's tree. What
+  // is asserted: it runs, its answer comes back, the token pins the project,
+  // and the verbs that answer for the machine the session is on are refused.
+  {
+    const tok = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha'],
+      { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+    ok(/^bbs_/.test(tok), `bb users token mints a session token for a project (${tok.slice(0, 8)}…)`);
+    const relay = async (body, auth = 'Bearer ' + tok) => {
+      const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/bb', { method: 'POST',
+        headers: { Authorization: auth, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      return { status: r.status, ...(await r.json()) };
+    };
+    const added = await relay({ argv: ['roadmap', 'add', 'relayed from a node'], cwd: `${DIR}/ws/alpha` });
+    ok(added.status === 200 && added.code === 0 && /added \d+/.test(added.out),
+       `a session's bb roadmap runs on the controller and answers (${(added.out || added.error || '').trim().slice(0, 60)})`);
+    const listed = await relay({ argv: ['roadmap'] });
+    ok(listed.code === 0 && /relayed from a node/.test(listed.out),
+       '...against the project the token was minted for, with no cwd sent at all');
+    const settings = await relay({ argv: ['settings', '--json'] });
+    ok(settings.code === 0 && JSON.parse(settings.out).project === 'alpha'
+       && typeof JSON.parse(settings.out).locked === 'boolean',
+       'bb settings --json relays the project\'s settings, lock included — what bb-tty and bb build read on a node');
+    const other = await relay({ argv: ['roadmap'], project: 'ep.silon' });
+    ok(other.status === 403 && /another project/.test(other.error),
+       'a token for alpha cannot ask about another project');
+    const sdk = await relay({ argv: ['sdk'] });
+    ok(sdk.status === 400 && /not relayed/.test(sdk.error),
+       'bb sdk is refused — it answers for the machine the session is on');
+    const emu = await relay({ argv: ['emu', 'start'] });
+    ok(emu.status === 400, '...and so is bb emu');
+    const nobody = await relay({ argv: ['roadmap'] }, 'Bearer bbs_nonsense');
+    ok(nobody.status === 401, 'a token that does not verify gets nothing');
+    const outside = await relay({ argv: ['version'], cwd: '/etc' });
+    ok(outside.status === 200 && outside.code === 0 && !/etc/.test(outside.out),
+       'a cwd outside the project\'s trees is ignored: the verb runs in the project directory');
+    // The two lists — the verbs bb relays and the verbs the server accepts —
+    // are one contract kept in two files, and this is what keeps them one.
+    const bbList = (readFileSync(`${REPO}/scripts/bb`, 'utf8').match(/^BB_RELAY_VERBS=" (.*) "$/m) || [])[1]
+      ?.split(' ').filter(Boolean).sort();
+    const srvList = execFileSync('python3', ['-c', `
+import ast, re
+src = open(${JSON.stringify(REPO + '/scripts/dashboard/server.py')}).read()
+m = re.search(r'RELAY_VERBS = frozenset\\(\\((.*?)\\)\\)', src, re.S)
+print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding: 'utf8' }).trim().split(' ');
+    ok(bbList && bbList.join(' ') === srvList.join(' '),
+       `bb's BB_RELAY_VERBS and the server's RELAY_VERBS are the same list (${bbList?.length} verbs)`);
+    await relay({ argv: ['roadmap', 'rm', String(((added.out || '').match(/added (\d+)/) || [])[1]), 'test'] });
+  }
 
   // an exec job, end to end
   const j = await api('/api/v1/nodes', { action: 'exec', id: minted.id,
@@ -718,7 +834,12 @@ try {
       const r = await api(`/api/v1/jobs?id=${pj.job}`);
       return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
     }, 60000);
-    ok(pfin && pfin.type === 'package' && /bb .* unpacked into .*agentpackages\/\.bb/.test(pfin.log)
+    // Unpacked by this job, or already there: the session half fetched the
+    // same bundle at start (roadmap #24), and a second unpack of the same
+    // digest is exactly what the digest is for.
+    ok(pfin && pfin.type === 'package'
+       && (/bb .* unpacked into .*agentpackages\/\.bb/.test(pfin.log)
+           || existsSync(`${DIR}/agentpackages/.bb/current/scripts/bb`))
        && /== bb sdk remove flutter/.test(pfin.log) && /not installed|unknown package/.test(pfin.log),
        `the bundle lands in the packages store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
     ok(existsSync(`${DIR}/agentpackages/.bb/bundle.tar`), '...and stays for the next one');

@@ -33,8 +33,8 @@ git config --global advice.waitingForEditor false
 # token that opens one repository opens one repository.
 #
 # A session-visible GITHUB_PAT is still honoured, because that variable exists
-# for the runner and shielding it is the operator's choice — when it is not
-# shielded, refusing to use it would be pretending not to see it.
+# to mint node runner tokens and shielding it is the operator's choice — when
+# it is not shielded, refusing to use it would be pretending not to see it.
 if [ -n "${GITHUB_PAT:-}" ]; then
     if printf '%s' "$GITHUB_PAT" | gh auth login --with-token >/dev/null 2>&1; then
         gh auth setup-git >/dev/null 2>&1 || true

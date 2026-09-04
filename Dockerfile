@@ -24,7 +24,6 @@ LABEL org.opencontainers.image.title="BuilderBot" \
 ARG DEBIAN_FRONTEND=noninteractive
 ARG NODE_MAJOR=22
 # "latest" resolves the newest actions/runner release at build time.
-ARG RUNNER_VERSION=latest
 # ttyd serves the dashboard's terminal. Ubuntu packages it, but the static
 # release is a single self-contained binary and pins to a known version.
 ARG TTYD_VERSION=1.7.7
@@ -67,7 +66,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
     NODE_PATH=/usr/lib/node_modules \
     BUILDER_HOME=/home/builder \
     WORKSPACE=/workspace \
-    RUNNER_DIR=/opt/actions-runner \
     PATH=/opt/builderbot/bin:/home/builder/.npm-global/bin:/home/builder/.local/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 
 # ---------------------------------------------------------------------------
@@ -314,8 +312,8 @@ RUN set -eux; \
     # this pins the guarantee against future drift.)
     passwd -l root; \
     passwd -l builder; \
-    mkdir -p "${WORKSPACE}" "${RUNNER_DIR}" /opt/builderbot; \
-    chown -R builder:builder "${WORKSPACE}" "${RUNNER_DIR}"
+    mkdir -p "${WORKSPACE}" /opt/builderbot; \
+    chown -R builder:builder "${WORKSPACE}"
 
 # ---------------------------------------------------------------------------
 # Claude Code + friends, installed globally so a brand-new (empty) home volume
@@ -333,38 +331,6 @@ RUN set -eux; \
     corepack enable; \
     npm cache clean --force; \
     claude --version
-
-# ---------------------------------------------------------------------------
-# GitHub Actions runner
-# ---------------------------------------------------------------------------
-# DS-0017 suppressed, same as Playwright above: the update feeds the
-# runner's own installdependencies.sh, which apt-get installs in this layer.
-#trivy:ignore:AVD-DS-0017
-RUN set -eux; \
-    case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
-        amd64) RUNNER_ARCH=x64 ;; \
-        arm64) RUNNER_ARCH=arm64 ;; \
-        *) echo "unsupported arch: ${TARGETARCH}" >&2; exit 1 ;; \
-    esac; \
-    version="${RUNNER_VERSION}"; \
-    if [ "$version" = "latest" ]; then \
-        # /releases/latest redirect, not api.github.com — anonymous API calls
-        # are rate-limited per IP and shared Actions egress addresses have
-        # usually exhausted the budget, which kills exactly the unattended
-        # weekly rebuild this "latest" exists for.
-        version="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/actions/runner/releases/latest)"; \
-        version="${version##*/}"; version="${version#v}"; \
-    fi; \
-    echo "installing actions-runner ${version} (${RUNNER_ARCH})"; \
-    curl -fsSL -o /tmp/runner.tar.gz \
-        "https://github.com/actions/runner/releases/download/v${version}/actions-runner-linux-${RUNNER_ARCH}-${version}.tar.gz"; \
-    tar xzf /tmp/runner.tar.gz -C "${RUNNER_DIR}"; \
-    rm /tmp/runner.tar.gz; \
-    apt-get update; \
-    "${RUNNER_DIR}/bin/installdependencies.sh"; \
-    echo "${version}" > "${RUNNER_DIR}/.runner-version"; \
-    chown -R builder:builder "${RUNNER_DIR}"; \
-    rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
 # BuilderBot scripts + home skeleton
@@ -420,10 +386,6 @@ RUN set -eux; \
 #trivy:ignore:AVD-DS-0031
 ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 
-# RUNNER_LABELS here must be the full set runner.sh, the template and the docs
-# agree on. It used to say builderbot,self-hosted,linux — which silently
-# overrode the richer default in runner.sh for anyone running the image bare,
-# because an ENV always exists and a ${VAR:-fallback} therefore never fires.
 # The Android baseline the first boot installs onto the SDK share, and where
 # that share is. Runtime-only, so they live down here: an ENV in the top
 # block invalidates every layer below it, and the host then re-pulls the lot.
@@ -433,10 +395,6 @@ ENV ANDROID_BASELINE_PLATFORM=${ANDROID_PLATFORM} \
 
 ENV PUID=99 \
     PGID=100 \
-    ENABLE_RUNNER=true \
-    RUNNER_EPHEMERAL=true \
-    RUNNER_LABELS=builderbot,self-hosted,linux,x64,unraid \
-    RUNNER_WORKDIR=/workspace/_work \
     AUTO_UPDATE_CLAUDE=true \
     CHOWN_HOME=true
 

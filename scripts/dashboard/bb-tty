@@ -47,6 +47,32 @@ case "$target" in
         ;;
 esac
 
+# ---- what else rode in on the URL (roadmap #24, the session on a node) ------
+#
+# ttyd's --url-arg passes EVERY ?arg= as one more argument, so beside the
+# target the proxy can hand this script the two things a node does not have
+# and cannot make: the account's name (its users.json is on the controller)
+# and a session token for the project (minted there, by the key only it
+# holds). On the controller neither arrives — the name is looked up and the
+# token minted right here — so both are optional, and one that does arrive
+# is taken only in the shape it should have. The token is a credential for
+# one project with user rights and an expiry, which is exactly what the
+# launcher below would have minted; it is not the operator's password.
+for extra in "${@:2}"; do
+    case "$extra" in
+        tok:bbs_*)
+            case "${extra#tok:}" in
+                *[!A-Za-z0-9_-]*) ;;
+                *) export BB_TOKEN="${extra#tok:}" ;;
+            esac ;;
+        name:*)
+            case "${extra#name:}" in
+                ''|*[!A-Za-z0-9._@+-]*) ;;
+                *) export BB_ACCOUNT_NAME="${extra#name:}" BB_ACCOUNT_UID="$account" ;;
+            esac ;;
+    esac
+done
+
 # The account's own home: own shell history, own Claude login, own memories.
 # Exported before anything runs, because tmux hands its environment to the
 # shell it starts and there is no second chance once the session exists.
@@ -78,8 +104,17 @@ sess() {
 LOCKS_FILE="${DASHBOARD_STATE:-/config}/locked-projects.json"
 
 is_locked() {
-    [ -f "$LOCKS_FILE" ] || return 1
-    jq -e --arg n "$1" 'index($n) != null' "$LOCKS_FILE" >/dev/null 2>&1
+    if [ -f "$LOCKS_FILE" ]; then
+        jq -e --arg n "$1" 'index($n) != null' "$LOCKS_FILE" >/dev/null 2>&1
+        return
+    fi
+    # On a node the list is the controller's, and `bb settings` asks it —
+    # over the API, with the session token that rode in above. No token, or
+    # no answer, reads as not locked: the proxy on the controller refuses a
+    # locked project before the connection ever reaches here, so this is the
+    # second check, not the only one.
+    on_node || return 1
+    [ "$(BB_PROJECT="$1" bb settings --json 2>/dev/null | jq -r '.locked // false')" = true ]
 }
 
 # Where the dashboard keeps each project's model and effort. Read by the
@@ -239,6 +274,11 @@ claude_launcher() {
 # is; a shell that reimplemented the signing would be a second one to keep in
 # step with the server.
 session_token() {
+    # A node never mints: the store and its key are the controller's, and
+    # the token is the one that rode in on the URL, or nothing. Nothing is
+    # the safe direction — bb then says it has no credential rather than
+    # reaching for anybody else's.
+    if on_node; then printf '%s' "${BB_TOKEN:-}"; return 0; fi
     local py="/opt/builderbot/scripts/dashboard/users.py"
     [ -f "$py" ] || py="$(dirname "$(readlink -f "$0")")/users.py"
     [ -f "$py" ] || return 0
@@ -298,12 +338,21 @@ PY
         local tok; tok="$(session_token "$proj")"
         [ -z "$tok" ] || printf 'export BB_TOKEN=%q\n' "$tok"
         printf 'extra=()\n'
-        printf 'v="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
+        # The file where the dashboard keeps them, when it is here; on a node
+        # it is not, and `bb settings` asks the controller for the same two
+        # fields — still at exec time, so a respawn still picks up a change.
+        printf 'if [ -r %q ]; then\n' "$PREFS_FILE"
+        printf '  m="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
             "$proj" '.projects[$n].model // empty' "$PREFS_FILE"
-        printf 'case "$v" in opus|sonnet|haiku|fable) extra+=(--model "$v") ;; esac\n'
-        printf 'v="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
+        printf '  e="$(jq -r --arg n %q %q %q 2>/dev/null)"\n' \
             "$proj" '.projects[$n].effort // empty' "$PREFS_FILE"
-        printf 'case "$v" in low|medium|high|xhigh|max) extra+=(--effort "$v") ;; esac\n'
+        printf 'else\n'
+        printf '  s="$(BB_PROJECT=%q bb settings --json 2>/dev/null)"\n' "$proj"
+        printf '  m="$(jq -r %q <<<"$s" 2>/dev/null)"\n' '.model // empty'
+        printf '  e="$(jq -r %q <<<"$s" 2>/dev/null)"\n' '.effort // empty'
+        printf 'fi\n'
+        printf 'case "$m" in opus|sonnet|haiku|fable) extra+=(--model "$m") ;; esac\n'
+        printf 'case "$e" in low|medium|high|xhigh|max) extra+=(--effort "$e") ;; esac\n'
         # Only when the base command does not already name one: a session
         # opened from the resume chooser carries its own --resume, and claude
         # would be handed the flag twice.
@@ -357,9 +406,21 @@ start() {
     # The substitution is made here, on purpose, and mirrored by tmux_name()
     # in server.py and tmuxName() in index.html: three places, one rule.
     s="${s//[.:]/_}"
+    # THE ENVIRONMENT HAS TO BE HANDED OVER, NOT INHERITED. A new session gets
+    # the tmux SERVER's environment, which is whatever the first connection
+    # ever made carried — so once one session existed, every later account's
+    # session ran with the first one's HOME: the owner's Claude login, the
+    # owner's transcripts, whoever asked (bug #54). Measured on tmux 3.4:
+    # HOME set for the client, HOME of the server in the pane. `-e` sets it
+    # on the session this creates, and -A ignores it on an attach, which is
+    # right — the session that exists already has its own.
+    local -a envs=() v
+    for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE; do
+        [ -n "${!v:-}" ] && envs+=(-e "$v=${!v}")
+    done
     # -A -d creates it if it is missing and attaches to it if it is not, without
     # attaching yet — race-free where has-session followed by new-session is not.
-    tmux new-session -A -d -s "$s" -c "$dir" "$@"
+    tmux new-session -A -d -s "$s" -c "$dir" "${envs[@]}" "$@"
 
     # Mouse mode decides who owns a drag. Off, the browser makes an ordinary
     # selection and the terminal copies it as the button comes up. On, tmux
@@ -445,6 +506,13 @@ case "$target" in
         # than a confusing message.
         if [ "$(claude auth status --json 2>/dev/null \
                 | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" = false ]; then
+            if on_node; then
+                # The login lives where the home is, which is this machine:
+                # the Doctor card's sign-in runs on the controller and would
+                # sign in the wrong box. A shell here is the way.
+                bad "This account is not signed in to Claude on ${BB_NODE:-this node}." \
+                    "Open a shell on this project and run: bb login"
+            fi
             bad "This container is not signed in to Claude." \
                 "Sign in from the dashboard's Doctor card, or run: bb login"
         fi

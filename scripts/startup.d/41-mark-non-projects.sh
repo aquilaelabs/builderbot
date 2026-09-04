@@ -53,4 +53,5 @@ EOF
 # projects share when the operator put them there, which the mark() guard
 # checks rather than assumes.
 mark "$(sdk_root)" "the SDK share"
-mark "${RUNNER_WORKDIR:-$WORKSPACE/_work}" "the Actions runner's work directory"
+# An old runner's tree, if an install from before CI moved to nodes left one.
+[ -d "$WORKSPACE/_work" ] && mark "$WORKSPACE/_work" "a retired Actions runner's work directory"

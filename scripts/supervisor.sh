@@ -2,8 +2,9 @@
 #
 # PID 1 payload (running as `builder`).
 #
-# Keeps the container alive as a long-lived Claude Code workstation, and — when
-# ENABLE_RUNNER is true — supervises the GitHub Actions runner alongside it.
+# Keeps the container alive as a long-lived Claude Code workstation, and owns
+# the graceful shutdown below. CI does not run here any more: every runner is
+# on a node (docs/nodes.md phase 7), so there is nothing here to drain.
 #
 set -euo pipefail
 
@@ -134,10 +135,6 @@ shutdown() {
 
     # --- signal every slow thing at once -----------------------------------
     signal_claude
-    if [ -n "$RUNNER_PID" ] && kill -0 "$RUNNER_PID" 2>/dev/null; then
-        log "shutdown: draining the Actions runner so it deregisters"
-        kill -TERM "$RUNNER_PID" 2>/dev/null || true
-    fi
     # A killed emulator leaves the AVD dirty and costs a cold boot next time.
     if emulator_running; then
         log "shutdown: asking the emulator to power off"
@@ -145,23 +142,22 @@ shutdown() {
     fi
 
     # --- now wait on them together, not one after another ------------------
-    local runner_up emu_up cl_up
+    local emu_up cl_up
     while :; do
         waited=$(( $(date +%s) - t0 ))
         if [ "$waited" -ge "$grace" ]; then
             warn "shutdown: ${grace}s budget spent; forcing the rest"
             break
         fi
-        kill -0 "$RUNNER_PID" 2>/dev/null && runner_up=1 || runner_up=0
         emulator_running && emu_up=1 || emu_up=0
         # Claude gets a shorter leash than the rest: its work is already on
-        # disk, so waiting past this only delays the emulator and the runner.
+        # disk, so waiting past this only delays the emulator.
         if [ "$waited" -lt "${SHUTDOWN_CLAUDE_GRACE:-10}" ] && claude_running; then
             cl_up=1
         else
             cl_up=0
         fi
-        if [ "$runner_up" -eq 0 ] && [ "$emu_up" -eq 0 ] && [ "$cl_up" -eq 0 ]; then
+        if [ "$emu_up" -eq 0 ] && [ "$cl_up" -eq 0 ]; then
             log "shutdown: everything stopped cleanly after ${waited}s"
             break
         fi
@@ -175,14 +171,6 @@ shutdown() {
     exit 0
 }
 trap shutdown TERM INT
-
-if is_true "${ENABLE_RUNNER:-true}"; then
-    log "GitHub Actions runner: enabled"
-    /opt/builderbot/scripts/runner.sh &
-    RUNNER_PID=$!
-else
-    log "GitHub Actions runner: disabled (ENABLE_RUNNER=${ENABLE_RUNNER:-})"
-fi
 
 # The container NAME is what `docker exec` needs, and it is not the hostname —
 # Unraid names the container BuilderBot while the hostname is builderbot, and

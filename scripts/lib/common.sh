@@ -4,7 +4,6 @@
 
 BUILDER_HOME="${BUILDER_HOME:-/home/builder}"
 WORKSPACE="${WORKSPACE:-/workspace}"
-RUNNER_DIR="${RUNNER_DIR:-/opt/actions-runner}"
 
 # Boot's finish line, as a file rather than a log line.
 #
@@ -21,6 +20,29 @@ RUNNER_DIR="${RUNNER_DIR:-/opt/actions-runner}"
 # so both survive a `docker restart` and a marker left from last time would say
 # "ready" before this boot had done anything. server.py names the same path.
 BOOT_READY_FILE="${BOOT_READY_FILE:-/run/builderbot-ready}"
+
+# Which half of BuilderBot this process is running on (roadmap #21, #24).
+#
+# `controller` is the management instance: the dashboard, the notebook, the
+# queue and the record. `node` is a machine that enrolled with a controller
+# and runs its jobs — and, since roadmap #24, its SESSIONS: the same bb-tty
+# starts Claude there, on the projects share the node mounts, with this
+# library answering for a machine that keeps no /config and has no owner.
+#
+# One image, two roles, so the same template makes both; on a VM node the
+# agent sets BUILDERBOT_ROLE=node in the environment every session inherits.
+# Read here rather than only in the entrypoint because bb, bb-tty and the
+# account helpers below all have a node answer that differs.
+bb_role() {
+    case "$(printf '%s' "${BUILDERBOT_ROLE:-controller}" | tr '[:upper:]' '[:lower:]')" in
+        node|worker|agent) printf 'node' ;;
+        *)                 printf 'controller' ;;
+    esac
+}
+
+# on_node — true on a node. The four account helpers, bb's notebook verbs
+# and bb-tty all branch on it, so it is one word rather than a case each.
+on_node() { [ "$(bb_role)" = node ]; }
 
 log()  { printf '[builderbot] %s\n'      "$*"; }
 warn() { printf '[builderbot] WARN: %s\n' "$*" >&2; }
@@ -336,6 +358,12 @@ BB_SHARED_DOTFILES="
 # in: every caller of user_home would otherwise have to know it, and one that
 # forgot would quietly give the owner a second home and an empty Claude login.
 owner_uid() {
+    # NO OWNER ON A NODE (roadmap #24). The owner keeps /home/builder and the
+    # bare names because that directory is the controller's precious
+    # original — the login, every transcript. Nothing on a node is anyone's
+    # original, so every account there is prefixed and homed under users/,
+    # the owner included; a node's users.json would not be readable anyway.
+    on_node && return 0
     local f="${DASHBOARD_STATE:-/config}/users.json"
     [ -r "$f" ] || return 0
     jq -r 'first((.users // {}) | to_entries[] | select(.value.role == "owner")
@@ -460,6 +488,13 @@ session_dir() {
 
 # account_name UID — the account's name, for a branch a person has to read.
 account_name() {
+    # On a node there is no store to ask, so bb-tty exports the name the
+    # controller stamped into the terminal's argument beside the id
+    # (BB_ACCOUNT_NAME), and that is the answer for that one account. Any
+    # other id — there should be none — falls back to the id itself.
+    if [ -n "${BB_ACCOUNT_NAME:-}" ] && [ "${BB_ACCOUNT_UID:-}" = "$1" ]; then
+        printf '%s' "$BB_ACCOUNT_NAME"; return 0
+    fi
     local f="${DASHBOARD_STATE:-/config}/users.json"
     [ -r "$f" ] || return 1
     jq -er --arg u "$1" 'first((.users // {}) | to_entries[]

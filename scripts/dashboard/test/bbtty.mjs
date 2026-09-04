@@ -353,6 +353,101 @@ tmuxKill('claude-alpha');
   ok(alive('shell-8') && !existsSync(join(HOMEDIR, 'users', '..', '..', 'etc', '.bashrc')),
      'an argument that is not an id is nobody, not somebody else');
   tmuxKill('shell-8');
+
+  // ---- the environment reaches the pane (bug #54) ----------------------------
+  // A new session gets the tmux SERVER's environment, not the connecting
+  // client's — measured on tmux 3.4 — so the HOME bb-tty exported for an
+  // account never reached the shell once any session existed: every later
+  // account ran with the first one's Claude login. `-e` hands it over.
+  {
+    tmuxKill(`${other}~shell-9`);
+    shell(`u:${other}:sh:9:`);
+    await sleep(300);
+    const home = (() => { try {
+      return execFileSync('tmux', ['show-environment', '-t', `${other}~shell-9`, 'HOME'],
+        { encoding: 'utf8', env: process.env }).trim();
+    } catch { return ''; } })();
+    ok(home === `HOME=${join(HOMEDIR, 'users', other)}`,
+       `the session's own HOME is set on the session, not left to the server (${home})`);
+    tmuxKill(`${other}~shell-9`);
+  }
+
+  // ---- the same script on a NODE (roadmap #24) ------------------------------
+  // BUILDERBOT_ROLE=node is what the agent exports into every session it
+  // starts, and it changes three answers: there is no owner (nothing on a
+  // node is anyone's original, so every account is prefixed and homed under
+  // users/, the owner included); the account's name and a session token
+  // arrive on the URL, since the node has no users.json to look one up in
+  // and no key to mint one with; and a project's directory is never worked
+  // in directly — every session gets a worktree.
+  {
+    const node = { BUILDERBOT_ROLE: 'node' };
+    tmuxKill('shell-10'); tmuxKill(`${ownerUid}~shell-10`);
+    shell(`u:${ownerUid}:sh:10:`, node);
+    await sleep(300);
+    ok(alive(`${ownerUid}~shell-10`) && !alive('shell-10'),
+       'on a node the owner is prefixed like everybody else — there is no owner there');
+    ok(existsSync(join(HOMEDIR, 'users', ownerUid)),
+       '...and gets a home under users/ rather than the box\'s own');
+    tmuxKill(`${ownerUid}~shell-10`);
+
+    const proj = 'wtproj';
+    tmuxKill(`${ownerUid}~claude-${proj}`);
+    // The two extra URL arguments the proxy will add (phase 10b): the name
+    // and a session token. Passed the way ttyd passes them — one argv each.
+    const out = (() => { try {
+      return execFileSync('bash', [BBTTY, `u:${ownerUid}:claude:${proj}:b:${boot}`,
+        'tok:bbs_abc-DEF_123', 'name:the.owner'], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
+               WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
+               BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
+      });
+    } catch (e) { return `${e.stdout || ''}${e.stderr || ''}`; } })();
+    await sleep(400);
+    ok(alive(`${ownerUid}~claude-${proj}`),
+       `on a node the owner's Claude session is prefixed too (${out.split('\n')[0].slice(0, 80)})`);
+    const wt = join(DIR, 'ws', '.worktrees', proj, ownerUid);
+    ok(tmuxFmt(`${ownerUid}~claude-${proj}`, '#{pane_start_path}') === wt,
+       `...and works in a worktree, never the project directory (${wt})`);
+    const branches = execFileSync('git', ['-C', join(DIR, 'ws', proj), 'worktree', 'list', '--porcelain'],
+      { encoding: 'utf8' });
+    ok(/branch refs\/heads\/claude\/the\.owner/.test(branches),
+       '...on a branch named for the account name that rode in on the URL');
+    const envOf = k => { try {
+      return execFileSync('tmux', ['show-environment', '-t', `${ownerUid}~claude-${proj}`, k],
+        { encoding: 'utf8', env: process.env }).trim();
+    } catch { return ''; } };
+    ok(envOf('BB_TOKEN') === 'BB_TOKEN=bbs_abc-DEF_123',
+       'the session token from the URL is the session\'s BB_TOKEN');
+    ok(envOf('BB_ACCOUNT_NAME') === 'BB_ACCOUNT_NAME=the.owner',
+       '...and the name is in its environment for bb to use');
+    const launcher = readFileSync(join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot',
+                                       `claude-run-${proj}.sh`), 'utf8');
+    ok(/bb settings --json/.test(launcher) && /BB_TOKEN=bbs_abc-DEF_123/.test(launcher),
+       'the launcher asks bb settings for the model when the prefs file is not here, and carries the token');
+    tmuxKill(`${ownerUid}~claude-${proj}`);
+
+    // A token or a name in the wrong shape is dropped, not trusted: the
+    // session made by this connection carries neither.
+    tmuxKill(`${ownerUid}~shell-11`);
+    try {
+      execFileSync('bash', [BBTTY, `u:${ownerUid}:sh:11:`, 'tok:bbs_x;rm -rf', 'name:../../etc'], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'),
+               HOME: HOMEDIR, BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
+      });
+    } catch { /* the attach fails without a terminal, as everywhere in this file */ }
+    await sleep(300);
+    const envOf11 = k => { try {
+      return execFileSync('tmux', ['show-environment', '-t', `${ownerUid}~shell-11`, k],
+        { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], env: process.env }).trim();
+    } catch { return ''; } };
+    ok(alive(`${ownerUid}~shell-11`) && !/bbs_/.test(envOf11('BB_TOKEN'))
+       && !/etc/.test(envOf11('BB_ACCOUNT_NAME')),
+       'a token or a name in the wrong shape is dropped rather than exported');
+    tmuxKill(`${ownerUid}~shell-11`);
+  }
 }
 
 await done();

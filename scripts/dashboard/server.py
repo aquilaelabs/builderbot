@@ -252,13 +252,19 @@ LOGIN_HTML = """<!doctype html>
 # for sessions developing the container, not for the operator's dashboard.
 # The runner controls stay because the Runner card sends them, but they are
 # not repeated in the bb commands card (CARD_HIDDEN below).
+# The bb verbs a session on a node may run HERE through /api/v1/bb (roadmap
+# #24): the ones whose state is this container's. The same list bb keeps in
+# BB_RELAY_VERBS, and a test compares the two — a verb added to one side only
+# is either refused on arrival or never sent.
+RELAY_VERBS = frozenset((
+    "roadmap", "todo", "bug", "bugs", "history", "version", "changelog", "work",
+    "findings", "findings-history", "catchup", "claude-md", "claudemd",
+    "settings", "nodes", "jobs", "ci-labels"))
+
 MACROS = {
     "status":           ["bb", "status"],
     "update":           ["bb", "update"],
     "login":            ["bb", "login"],
-    "runner-status":    ["bb", "runner", "status"],
-    "runner-stop":      ["bb", "runner", "stop"],
-    "runner-start":     ["bb", "runner", "start"],
     "emu-start":        ["bb", "emu", "start"],
     "emu-stop":         ["bb", "emu", "stop"],
     "emu-status":       ["bb", "emu", "status"],
@@ -268,7 +274,9 @@ MACROS = {
     "logs-follow":      ["bb", "logs", "-f"],
 }
 # Sendable, but not listed in the bb commands card: another card owns them.
-CARD_HIDDEN = {"runner-status", "runner-stop", "runner-start"}
+# Empty since the controller's own runner went (the Runner card is a view of
+# the nodes' runners now, and those are driven from the Nodes tab).
+CARD_HIDDEN = set()
 
 # The Linux and git/GitHub cards. Strings typed into the shell as-is — not
 # argv lists like MACROS, because half of these are pipelines and shlex.join
@@ -1707,80 +1715,6 @@ def tmux_sessions():
     return rows
 
 
-def log_path():
-    """Where entrypoint.sh sends the container log — same rules as bb_log_dir."""
-    d = os.environ.get("BB_LOG_DIR") or ("/logs" if Path("/logs").is_dir()
-                                         else "/config/logs")
-    return Path(d) / "builderbot.log"
-
-
-# The runner announces each job on stdout, which lands in the container log:
-#     2026-08-17 02:27:17Z: Running job: tests
-#     2026-08-17 02:29:04Z: Job tests completed with result: Succeeded
-JOB_START = re.compile(r"Running job:\s*(.+?)\s*$")
-JOB_END = re.compile(r"Job\s+(.+?)\s+completed with result:")
-
-# ...and its connection state the same way:
-#     2026-08-17 02:21:32Z: Listening for Jobs
-#     A session for this runner already exists.
-#     2026-08-17 02:38:35Z: Runner connect error: Error: Conflict. Retrying
-#     2026-08-17 02:39:10Z: Runner reconnected.
-LINK_OK = re.compile(r"Listening for Jobs|Runner reconnected")
-LINK_BAD = re.compile(r"Runner connect error:\s*(.*?)\s*(?:Retrying until reconnected\.?)?\s*$")
-SESSION_TAKEN = re.compile(r"A session for this runner already exists")
-
-
-def log_tail(limit=65536):
-    """Last `limit` bytes of the container log, as lines. Empty if unreadable."""
-    try:
-        with log_path().open("rb") as fh:
-            fh.seek(0, os.SEEK_END)
-            size = fh.tell()
-            fh.seek(max(0, size - limit))       # bounded: this log can be huge
-            return fh.read().decode("utf-8", "replace").splitlines()
-    except OSError:
-        return []
-
-
-def current_job(lines):
-    """Name of the job the runner is on, from the last of those two lines.
-
-    Cosmetic only — whether a job is running at all is decided by the worker
-    process, not by this. A rotated or unreadable log costs the name, nothing
-    more.
-    """
-    for line in reversed(lines):
-        if JOB_END.search(line):
-            return None                          # finished before it started
-        m = JOB_START.search(line)
-        if m:
-            return m.group(1)
-    return None
-
-
-def link_state(lines):
-    """(healthy, detail) for the runner's connection to GitHub.
-
-    A Listener process says the runner is *trying*, not that it succeeded: a
-    rejected connection is retried forever without the process exiting, so
-    pgrep alone reports a green light through an outage. The last connectivity
-    marker in the log is what actually distinguishes the two.
-    """
-    for i in range(len(lines) - 1, -1, -1):
-        line = lines[i]
-        if LINK_OK.search(line):
-            return True, None
-        m = LINK_BAD.search(line)
-        if m:
-            detail = m.group(1).strip(" .") or "connection refused"
-            # "Conflict" on its own means nothing to a reader. The runner
-            # explains it on the preceding line, so look just behind.
-            if any(SESSION_TAKEN.search(x) for x in lines[max(0, i - 5):i]):
-                detail = "a session for this runner already exists"
-            return False, detail
-    return True, None                            # nothing logged either way
-
-
 def last_stop():
     """Project -> transcript id, as recorded by the supervisor on its way down.
 
@@ -1860,43 +1794,16 @@ def respawn_claude(project):
     return {"restarted": True}
 
 
-def _pidfile_alive(p):
-    """Is the process named by this pidfile still there? A stale file is a no."""
-    try:
-        pid = int(p.read_text().strip())
-    except (OSError, ValueError):
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True         # it exists, we just may not signal it
-    except OSError:
-        return False
-    return True
-
-
 def github_url():
-    """The org or repo this box's runner registers with: the environment,
-    or the local runner's own registration when the URL lives only in the
-    root-only stash. Empty when neither knows."""
-    u = os.environ.get("GITHUB_URL", "")
-    if u:
-        return u
-    cfg = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner")) / ".runner"
-    try:
-        # utf-8-sig: config.sh writes .runner with a BOM (see the agent's
-        # services_now), so a plain read_text() throws and this answered
-        # "no URL" on a box whose runner was registered fine.
-        return str(json.loads(cfg.read_text(encoding="utf-8-sig")).get("gitHubUrl") or "")
-    except (OSError, ValueError):
-        return ""
+    """The org or repo a node's runner registers with: GITHUB_URL, and
+    nothing else now that this container runs no runner of its own to read
+    a registration back from. Empty when unset."""
+    return os.environ.get("GITHUB_URL", "")
 
 
 def mint_runner_token(kind):
-    """A runner token for a node, the way runner.sh gets its own: the
-    root-only helper via its one sudo rule, or a session-visible PAT."""
+    """A runner token for a node: the root-only helper via its one sudo
+    rule, or a session-visible PAT."""
     r = run(["sudo", "-n", "/opt/builderbot/scripts/mint-runner-token", kind], timeout=60)
     if r["code"] == 0 and r["out"].strip():
         return {"token": r["out"].strip().splitlines()[-1]}
@@ -1938,58 +1845,6 @@ def node_runners():
                     "name": rep.get("name") or "", "url": rep.get("url") or "",
                     "labels": rep.get("labels") or want.get("labels") or []})
     return out
-
-
-def runner():
-    d = Path(os.environ.get("RUNNER_DIR", "/opt/actions-runner"))
-    info = {"registered": False, "running": False, "listening": False,
-            "busy": False, "connected": True, "detail": None,
-            "job": None, "elapsed": None, "name": None, "url": None}
-    cfg = d / ".runner"
-    if cfg.is_file():
-        info["registered"] = True
-        try:
-            # utf-8-sig: config.sh writes .runner with a BOM, so a plain read
-            # throws and this card lost the runner's name and URL on a box
-            # whose runner was registered fine — the same bug as github_url()
-            # and the agent's census.
-            j = json.loads(cfg.read_text(encoding="utf-8-sig"))
-            info["name"] = j.get("agentName")
-            info["url"] = j.get("gitHubUrl")
-        except (ValueError, OSError):
-            pass
-    # Path-anchored so the pattern cannot match a command line that merely
-    # names the binary — a grep, or the `pgrep -af Runner.Listener` we suggest.
-    info["listening"] = run(["pgrep", "-f", "/Runner.Listener"], timeout=10)["code"] == 0
-    # The supervisor, which outlives the listener: an ephemeral runner exits
-    # after each job and runner.sh re-registers it. Stopped means *this* is
-    # gone, so it — not the listener — is what the Stop/Start button reflects.
-    # By pidfile, because there is no command-line pattern for runner.sh that
-    # does not also match unrelated processes.
-    info["running"] = info["listening"] or _pidfile_alive(d / ".runner.pid")
-    # The Listener stays up for the whole of a job and spawns a Worker per job,
-    # so "listening" alone cannot tell idle from busy — which made the dashboard
-    # claim the runner was waiting while it was building.
-    w = run(["pgrep", "-f", "/Runner.Worker"], timeout=10)
-    info["busy"] = w["code"] == 0
-    lines = log_tail() if info["listening"] else []
-    if info["listening"]:
-        info["connected"], info["detail"] = link_state(lines)
-    if info["busy"]:
-        info["job"] = current_job(lines)
-        # How long the job has been going. There is no progress to report
-        # beyond this: a runner long-polls for one job at a time and is never
-        # told what else is queued, and what a job *does* — how many tests, how
-        # far in — is known only to the tool running inside the step.
-        # `out` merges stderr, so take the first token that is actually a pid
-        # rather than whatever happened to be printed first.
-        pid = next((t for t in w["out"].split() if t.isdigit()), None)
-        if pid:
-            e = run(["ps", "-o", "etimes=", "-p", pid], timeout=10)
-            if e["code"] == 0 and e["out"].strip().isdigit():
-                info["elapsed"] = int(e["out"].strip())
-    info["enabled"] = os.environ.get("ENABLE_RUNNER", "true").lower() not in ("false", "0", "no")
-    return info
 
 
 def uptime():
@@ -2299,6 +2154,9 @@ try:
     # rather than by one importing the other, which is the same seam every
     # other module pair uses.
     nodes.layout_of = packages.layout_for_node
+    # ...and the digest of the bb bundle, so a node can tell from hello alone
+    # whether the bb its sessions run is the one this controller ships.
+    nodes.bundle_digest = lambda: workspace.bundle()["digest"]
     NODES_OK = ""
 except Exception as e:                                    # noqa: BLE001
     NODES_OK = str(e)
@@ -2753,12 +2611,9 @@ def snapshot(who):
         "image": image_stamp(),
         "projects": ps,
         "sessions": sessions,
-        "runner": runner(),
-        # Every node with a runner on it, so the card answers "which machine
-        # is CI running on" rather than only "is this container's runner up".
-        # The operator ran a workflow on a node and had nowhere on the
-        # dashboard to see it land — GitHub was the only place that answer
-        # existed. Read from the census, which already carries it.
+        # Every node with a runner on it: the Runner card is a view of these
+        # and nothing else, since CI left this container (phase 7). Read from
+        # the census, which already carries it.
         "node_runners": node_runners(),
         "reports": REPORTS.is_dir(),
         "reports_mtime": reports_mtime(),
@@ -3705,6 +3560,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._nodes(req)
         if path.startswith("/api/v1/jobs"):
             return self._jobs(req)
+        if path == "/api/v1/bb":
+            return self._bb_relay(req)
         if path.startswith("/api/lock"):
             return self._lock(req)
         # NOT /api/pin, which is the command pin and has been since long before
@@ -3923,6 +3780,82 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown action"}, 400)
         r = jobs.cancel(self._principal(), field(req, "id"))
         return self._json(r, 400 if r.get("error") else 200)
+
+    def _bb_relay(self, req):
+        """A bb verb from a session on a NODE, run here (roadmap #24).
+
+        The notebook, the settings, the registry and the version policy all
+        live in this container's /config, and a node keeps none of it. So a
+        session over there does not carry copies of the modules that read
+        them: it sends the words — `roadmap add "..."`, `bug show 3`,
+        `version --file` — with its own token, and this runs the same bb it
+        would have run here, in the same tree (the projects share is mounted
+        at /workspace on both sides, which is what makes `cwd` meaningful),
+        and hands back what it printed. One implementation of every verb.
+
+        WHAT THE TOKEN DECIDES. A session token stands for one project with
+        user rights; the relay refuses a request naming another, and every
+        verb runs with that project pinned into the environment, so `bb
+        roadmap` cannot be pointed elsewhere by a working directory. A
+        person's credential (an operator at a node's console) is held to the
+        same rule the page holds them to: a project on their list.
+
+        WHAT IT RUNS. Only the verbs bb itself relays (BB_RELAY_VERBS in
+        scripts/bb) — the notebook, the settings, the registry, the version
+        and changelog, the findings. Not `sdk`, `emu`, `run`, `build`: those
+        answer for the machine the session is on, and relaying them would
+        make a node's session act on this container, which is the very thing
+        roadmap #24 exists to end. Not `users`, `dashboard`, `lint`: nothing
+        that administers this box. The audit row at the top of POST records
+        the argv with the principal, like every other mutation.
+        """
+        me = self._who()
+        if not me:
+            return self._json({"error": "not signed in"}, 401)
+        argv = [str(a) for a in (req.get("argv") or []) if isinstance(a, (str, int))][:64]
+        if not argv or argv[0] not in RELAY_VERBS:
+            return self._json({"error": f"bb {argv[0] if argv else ''} is not relayed — "
+                               "it answers for the machine the session is on"}, 400)
+        project = field(req, "project") or me.get("session") or ""
+        if me.get("session") and project != me["session"]:
+            return self._json({"error": "this session's token is for another project"}, 403)
+        if not project or (WORKSPACE / project).name != project \
+                or not (WORKSPACE / project).is_dir():
+            return self._json({"error": "not a project"}, 400)
+        if self._refused("bb", project):
+            return None
+        # The tree the session is in: the project directory, or one of its
+        # worktrees. Anything else — a path outside the share, a sibling
+        # project — runs in the project directory instead of being trusted.
+        cwd = WORKSPACE / project
+        want = str(req.get("cwd") or "")
+        if want.startswith("/"):
+            real = Path(want).resolve()
+            mine = (WORKSPACE / project).resolve()
+            trees = (WORKSPACE / ".worktrees" / project).resolve()
+            if real.is_dir() and (real == mine or mine in real.parents
+                                  or trees in real.parents):
+                cwd = real
+        env = {k: v for k, v in os.environ.items() if k != "DASHBOARD_AUTH"}
+        env.update({"BB_PROJECT": project, "BB_ROADMAP_PROJECT": project,
+                    "BB_BUG_PROJECT": project, "BB_VERSION_PROJECT": project,
+                    "DASHBOARD_STATE": str(STATE), "WORKSPACE": str(WORKSPACE),
+                    "BB_TOKEN": users.mint_session(project), "BB_RELAYED": "1",
+                    "BUILDERBOT_ROLE": "controller"})
+        if field(req, "from") == "session":
+            env["CLAUDECODE"] = "1"
+        else:
+            env.pop("CLAUDECODE", None)
+        try:
+            r = subprocess.run(["bash", str(HERE.parent / "bb"), *argv], cwd=str(cwd),
+                               env=env, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            return self._json({"error": f"bb {argv[0]} took longer than three minutes",
+                               "code": 124, "out": "", "err": ""}, 504)
+        except OSError as e:
+            return self._json({"error": str(e), "code": 1, "out": "", "err": ""}, 500)
+        return self._json({"code": r.returncode, "out": r.stdout[-200000:],
+                           "err": r.stderr[-20000:]})
 
     def _run_job(self, req):
         """`bb run`, `bb build` and `bb test` land here (docs/nodes.md §6):

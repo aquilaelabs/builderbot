@@ -16,10 +16,13 @@
 # enrolls the machine as a node: the agent is fetched from the controller and
 # left running under systemd, dialing out.
 #
-# It makes two accounts. `bb` runs Docker and answers ssh — the one BuilderBot
-# uses, and the one a Claude session reaches — with no sudo and no bb-sandbox.
-# `admin` has sudo and is the only account bb-sandbox runs for, so the mounts
-# this machine has are a decision made by a person at a console.
+# It makes three accounts. `bb` runs Docker and answers ssh — the one jobs
+# run as — with no sudo and no bb-sandbox. `admin` has sudo and is the only
+# account bb-sandbox runs for, so the mounts this machine has are a decision
+# made by a person at a console. And `builder` is the one a Claude SESSION
+# works as (roadmap #24): the agent runs ttyd for it, and it is in no docker
+# group, because docker is root on any machine with a daemon and the account
+# a session edits files as is the one thing here to keep away from that.
 #
 # It is safe to run again: every step checks before it acts, and a mount whose
 # source has CHANGED since last time is rewritten rather than left alone.
@@ -27,6 +30,16 @@ set -euo pipefail
 
 USER_NAME="bb"
 ADMIN_NAME="admin"
+# The session account (roadmap #24), with the uid:gid the CONTROLLER writes
+# files as — Unraid's nobody:users, the container template's PUID:PGID
+# defaults — so a file a session saves on the projects share is owned exactly
+# as one saved from the controller is. A different uid here would leave the
+# share with files the rest of the array does not expect, which is the one
+# part of this that can spoil somebody's data. `none` makes no such account,
+# and then this node runs no sessions.
+SESSION_NAME="builder"
+SESSION_UID=99
+SESSION_GID=100
 ADMIN_KEY=""
 SSH_KEY=""
 CONTROLLER=""
@@ -55,6 +68,14 @@ usage: provision.sh [options]
                        from the console, or pass --admin-key.
   --admin-key "ssh-…"  a PUBLIC key for the admin account, so it can be reached
                        over ssh the way the docker account is.
+  --session-user NAME|none   the account a Claude SESSION works as on this
+                       node (builder), made with --session-uid/--session-gid
+                       (99:100 — the controller's PUID:PGID, so files it saves
+                       on the projects share are owned as the controller's
+                       are). In kvm for the emulator, in NO docker group. The
+                       agent runs ttyd for it and the dashboard's terminals
+                       reach it; Claude Code is installed into its home.
+                       `none` makes no such account, and no sessions run here.
   --key "ssh-ed25519 …"  a PUBLIC key, appended to this machine's
                        authorized_keys, for reaching it over ssh yourself.
                        BuilderBot no longer needs one: an enrolled node dials
@@ -107,6 +128,9 @@ while [ $# -gt 0 ]; do
         --user)  USER_NAME="$2"; shift 2 ;;
         --admin) ADMIN_NAME="$2"; shift 2 ;;
         --admin-key) ADMIN_KEY="$2"; shift 2 ;;
+        --session-user) SESSION_NAME="$2"; shift 2 ;;
+        --session-uid) SESSION_UID="$2"; shift 2 ;;
+        --session-gid) SESSION_GID="$2"; shift 2 ;;
         --key)   SSH_KEY="$2"; shift 2 ;;
         --share) SHARES+=("$2"); shift 2 ;;
         --nfs)   NFS+=("$2"); shift 2 ;;
@@ -374,6 +398,84 @@ else
     passwd -S "$ADMIN_NAME" 2>/dev/null | grep -q " P " || {
         [ -n "$ADMIN_KEY" ] || printf '   %s has no password and no key yet — set one from the console:\n     sudo passwd %s\n' "$ADMIN_NAME" "$ADMIN_NAME"
     }
+fi
+
+# --- the session account (roadmap #24) ------------------------------------
+# The third account, and the one the design turns on: a Claude session on
+# this node's projects runs HERE, as this account, in a tmux the agent's
+# ttyd starts — with this machine's toolchains and the projects share this
+# machine mounts. Not bb, on purpose: bb is in the docker group, which is
+# root on any machine running a daemon, and a session is exactly the thing
+# to keep away from that. Not admin, obviously. So: no docker, no sudo, kvm
+# for the emulator, a home of its own for the Claude login and the
+# transcripts, and the same uid:gid the controller writes the share as.
+say "session account ${SESSION_NAME}"
+if [ "$SESSION_NAME" = none ] || [ -z "$SESSION_NAME" ]; then
+    printf '   none asked for — this node runs jobs and no sessions\n'
+    SESSION_NAME=""
+elif [ "$SESSION_NAME" = "$USER_NAME" ] || [ "$SESSION_NAME" = "$ADMIN_NAME" ]; then
+    warn "--session-user ${SESSION_NAME} is the docker or the admin account: a session must be neither"
+    printf '   pick a different --session-user, or none\n'
+    SESSION_NAME=""
+else
+    if ! id -u "$SESSION_NAME" >/dev/null 2>&1; then
+        getent group "$SESSION_GID" >/dev/null 2>&1 \
+            || groupadd -g "$SESSION_GID" "$SESSION_NAME" 2>/dev/null \
+            || groupadd -g "$SESSION_GID" "bbusers"
+        if getent passwd "$SESSION_UID" >/dev/null 2>&1; then
+            # The uid is somebody else's here. The account is still made —
+            # a node without sessions is worse — but every file it saves on
+            # the share will be owned by whatever uid it got, and that is
+            # worth a line at provision time rather than a surprise later.
+            warn "uid ${SESSION_UID} is already $(getent passwd "$SESSION_UID" | cut -d: -f1) on this machine"
+            printf '   %s is made with the next free uid; files it saves on the projects share\n' "$SESSION_NAME"
+            printf '   will be owned by that uid rather than the controller'"'"'s %s\n' "$SESSION_UID"
+            useradd -m -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
+        else
+            useradd -m -u "$SESSION_UID" -g "$SESSION_GID" -s /bin/bash "$SESSION_NAME"
+        fi
+    fi
+    getent group kvm >/dev/null 2>&1 && usermod -aG kvm "$SESSION_NAME"
+    # Belt and braces: an account that was in docker before this ran is
+    # taken out, because being out is the whole reason it exists.
+    if id -nG "$SESSION_NAME" | tr ' ' '\n' | grep -qx docker; then
+        gpasswd -d "$SESSION_NAME" docker >/dev/null 2>&1 || true
+        printf '   %s taken out of the docker group\n' "$SESSION_NAME"
+    fi
+    [ -n "$SSH_KEY" ] && authorize "$SESSION_NAME" "$SSH_KEY"
+    # What a session needs on the box: tmux keeps it alive across a dropped
+    # browser, ttyd is what the controller's terminal proxy dials, and jq
+    # and git are what bb-tty and bb reach for. All from the distribution —
+    # ttyd has been in Debian and Ubuntu's universe for years.
+    apt-get install -y -qq tmux ttyd jq git >/dev/null 2>&1 \
+        || warn "tmux, ttyd, jq or git did not install — sessions will not start until they do"
+    # Claude Code, into the account's own home by its native installer: no
+    # node runtime to keep up, and `claude update` from inside a session
+    # keeps it current. Best effort — a node without internet at provision
+    # time is still a node; the session says so when it starts.
+    if ! sudo -u "$SESSION_NAME" -H sh -c 'test -x "$HOME/.local/bin/claude"'; then
+        printf '   installing Claude Code for %s\n' "$SESSION_NAME"
+        sudo -u "$SESSION_NAME" -H bash -c 'curl -fsSL https://claude.ai/install.sh | bash' >/dev/null 2>&1 \
+            || warn "Claude Code did not install for ${SESSION_NAME} — from a shell as that account: curl -fsSL https://claude.ai/install.sh | bash"
+    fi
+    # A login shell as this account gets what a dashboard session gets: the
+    # role, the controller's address, and bb from the bundle the agent keeps
+    # current under the packages store. That is what makes proving the node
+    # by hand — ssh in, run bb-tty, run bb roadmap — the same path the
+    # dashboard takes, rather than a second one.
+    cat > /etc/profile.d/builderbot-session.sh <<EOF
+# Written by BuilderBot's provision.sh. A session on this node, at a console.
+case "\$(id -un)" in
+    ${SESSION_NAME})
+        export BUILDERBOT_ROLE=node WORKSPACE=/workspace
+        export BB_NODE="\$(hostname)"
+        ${CONTROLLER:+export BB_CONTROLLER="${CONTROLLER%/}"}
+        [ -d "${STORE_PACKAGES}/.bb/current/scripts" ] \\
+            && PATH="${STORE_PACKAGES}/.bb/current/scripts:\$PATH"
+        PATH="\$HOME/.local/bin:\$PATH"
+        ;;
+esac
+EOF
 fi
 
 say "bb-sandbox"
@@ -1038,6 +1140,7 @@ if [ -n "$CONTROLLER" ]; then
     chmod 755 "${AGENT}.new"; mv -f "${AGENT}.new" "$AGENT"
     systemctl stop builderbot-agent 2>/dev/null || true
     "$AGENT" enroll --controller "$CONTROLLER" --token "$TOKEN" --user "$USER_NAME" \
+        ${SESSION_NAME:+--session-user "$SESSION_NAME"} \
         --store "data=${STORE_DATA}" --store "packages=${STORE_PACKAGES}" \
         --store "cache=${STORE_CACHE}" --store "artifacts=${STORE_ARTIFACTS}"
     cat > "$UNIT" <<EOF
@@ -1133,6 +1236,19 @@ nothing was opened here for it. Jobs run as ${USER_NAME}.
 
   sudo builderbot-agent status    what this node is, and does the controller answer
 EOF
+    if [ -n "$SESSION_NAME" ]; then
+        cat <<EOF
+
+Sessions run here too, as ${SESSION_NAME}: the agent keeps a ttyd up on this
+machine's LAN address (port 7681, read-only twin on 7682) running bb-tty from
+the bb the controller ships, so a Claude session on a project bound to this
+node lives on this machine. It needs the projects share mounted at /workspace
+— add it on the Nodes tab, the way any mount is — and the account signed in
+to Claude once, from a shell here:
+
+  sudo -iu ${SESSION_NAME}          then: claude login
+EOF
+    fi
 fi
 
 cat <<EOF
@@ -1141,11 +1257,14 @@ Those paths have to be the ones BuilderBot uses. A compose file resolves a
 relative bind against whoever runs the container, so a path that means
 something different on each side is an app that comes up with no data.
 
-Two accounts, and the split is deliberate:
+Three accounts, and the split is deliberate:
 
-  ${USER_NAME}   runs Docker and answers ssh. This is the one BuilderBot uses
-        and the one a Claude session reaches. No sudo, and it cannot run
-        bb-sandbox — reconfiguring this machine is not what it is for.
+  ${USER_NAME}   runs Docker and answers ssh. This is the one jobs run as.
+        No sudo, and it cannot run bb-sandbox — reconfiguring this machine
+        is not what it is for.
+  ${SESSION_NAME:-(none)}  is the one a Claude SESSION works as. In kvm for
+        the emulator and in NO docker group: docker is root on a machine
+        with a daemon, and this is the account that edits your source.
   ${ADMIN_NAME}  administers the machine. sudo, and the account bb-sandbox
         is readable by. Log in here to change mounts. (Optional — nothing
         here requires it; --admin none makes no such account and root, or
