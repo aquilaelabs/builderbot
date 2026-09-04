@@ -237,3 +237,4 @@
 - Typing into the notebook while it refreshes no longer loses what you typed (47ec8ca)
 - The dashboard has a Users tab: accounts, roles, and which projects each person can see (bada6e2)
 - CI runs on the sandbox node instead of the management container, and bb ci-log fetches its logs from there (01c9ac0)
+- A Claude session no longer holds your dashboard password — it gets a token scoped to the one project it is working on (6746d0f)
