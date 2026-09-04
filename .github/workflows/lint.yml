@@ -37,7 +37,7 @@ jobs:
     # down with it and stopped the compose and XML checks below from running
     # at all. Every tool in THIS job is deterministic, so a red run here means
     # something is genuinely wrong.
-    runs-on: [self-hosted, builderbot]
+    runs-on: [self-hosted, bb-sandbox]
     # `bash` rather than the default `bash -e`, because that one difference is
     # pipefail — and every check below is piped into tee. Without it the tee's
     # exit status is the step's, and a failing linter would report success.
@@ -60,7 +60,15 @@ jobs:
         # log that vanishes with the container is no use for the question
         # "what broke while I was away".
         run: |
-          dir="/config/ci-logs/${GITHUB_REPOSITORY##*/}"
+          # Where the log is kept. /config on the controller, because it
+          # survives an image update; a node has no /config, so its runner
+          # keeps them under its own home. `bb ci-log` resolves the same two
+          # in the same order, and fetches across when the run was on a node.
+          dir="${BB_CI_LOG_DIR:-}"
+          if [ -z "$dir" ]; then
+            if [ -w /config ]; then dir=/config/ci-logs; else dir="$HOME/ci-logs"; fi
+          fi
+          dir="$dir/${GITHUB_REPOSITORY##*/}"
           mkdir -p "$dir"
           log="$dir/${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.log"
           echo "CI_LOG=$log" >> "$GITHUB_ENV"

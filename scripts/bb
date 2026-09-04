@@ -743,8 +743,17 @@ cmd_emu() {
 # With no PAT there is no API to ask either, so "CI is red — why?" had no
 # answer in here for a job that ran in this very container. The lint workflow
 # tees each check into /config/ci-logs/<repo>/ and this reads it.
+# Where CI logs are kept, resolved the same way the workflows resolve it:
+# /config on a controller because it survives an image update, and a node's
+# own home otherwise, since a node has no /config at all.
+ci_log_dir() {
+    if [ -n "${BB_CI_LOG_DIR:-}" ]; then printf '%s' "$BB_CI_LOG_DIR"
+    elif [ -w /config ]; then printf '/config/ci-logs'
+    else printf '%s/ci-logs' "$HOME"; fi
+}
+
 cmd_ci_log() {
-    local dir="${BB_CI_LOG_DIR:-/config/ci-logs}"
+    local dir; dir="$(ci_log_dir)"
     local proj="" want="" list=0
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -762,6 +771,32 @@ cmd_ci_log() {
     fi
     local d="$dir/$proj"
     if [ ! -d "$d" ] || [ -z "$(find "$d" -maxdepth 1 -name '*.log' -print -quit 2>/dev/null)" ]; then
+        # Nothing here means the job ran somewhere else, which since the lint
+        # and dashboard workflows moved onto a node is the ordinary case. The
+        # log is on that machine, under the same two-step path this resolves,
+        # and the way to reach a node is the job channel — audited, scoped,
+        # already built — rather than a share or a second credential.
+        if [ -n "$(project_node 2>/dev/null)" ]; then
+            log "nothing kept here — asking ${proj}'s node"
+            local remote='d="${BB_CI_LOG_DIR:-}"; [ -n "$d" ] || { [ -w /config ] \
+                && d=/config/ci-logs || d="$HOME/ci-logs"; }; d="$d/'"$proj"'"'
+            if [ "$list" = 1 ]; then
+                cmd_run --timeout 300 -- sh -c "$remote"'
+                    [ -d "$d" ] || { echo "no CI logs kept on this node either"; exit 0; }
+                    ls -1t "$d"/*.log 2>/dev/null | while read -r f; do
+                        printf "%s  %s\n" "$(basename "$f" .log)" \
+                          "$(date -r "$f" "+%Y-%m-%d %H:%M")"; done'
+            else
+                cmd_run --timeout 300 -- sh -c "$remote"'
+                    [ -d "$d" ] || { echo "no CI logs kept on this node either"; exit 0; }
+                    want="'"$want"'"
+                    if [ -n "$want" ]; then f="$(ls -1 "$d"/"$want"*.log 2>/dev/null | head -1)"
+                    else f="$(ls -1t "$d"/*.log 2>/dev/null | head -1)"; fi
+                    [ -n "$f" ] || { echo "no kept log for that run"; exit 0; }
+                    cat "$f"'
+            fi
+            return 0
+        fi
         log "no CI logs kept for ${proj}"
         log "only a job that runs on this box archives one, and only once the"
         log "workflow carrying the archive step has landed on the branch that ran"
@@ -1075,11 +1110,17 @@ cmd_catchup() {
 
         echo
         echo "== builds this box archived =="
-        local dir="${BB_CI_LOG_DIR:-/config/ci-logs}/$proj" rows
+        local dir rows; dir="$(ci_log_dir)/$proj"
         rows="$(ci_log_rows "$dir" 5)"
         if [ -n "$rows" ]; then
             printf '%s\n' "$rows"
             echo "  ('bb ci-log RUN' for one in full)"
+        elif [ -n "$(project_node 2>/dev/null)" ]; then
+            # CI runs on the project's node now, so the records are there.
+            # Not fetched here: catchup is read often and a job per read is
+            # the wrong price for a summary. bb ci-log goes and gets them.
+            echo "  none kept here — CI runs on this project's node, so its"
+            echo "  records are there: 'bb ci-log --list' fetches them"
         else
             echo "  none kept — only a job that runs on this box archives one"
         fi
