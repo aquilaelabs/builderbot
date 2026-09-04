@@ -2912,13 +2912,24 @@ Each account works as itself:
 - **the owner keeps this container's original home and session names**, so an
   install with one operator is unchanged by any of it
 
-A project's **Claude session belongs to whoever opened it.** There is one
-conversation per project — two in the same working tree edit the same files —
-and another account is told who has it rather than being dropped into it. That
-is enforced where `/term` is proxied, not only in the page, because the ttyd
-URL is reachable directly. The notebook (roadmap, bugs, analysis) stays shared,
-because it is about the project; memories do not, because they are about the
-person.
+**More than one person can work a project at once, in a working tree each.**
+The owner works in the project directory as always; anybody else gets a **git
+worktree** — a checkout of their own, on a branch of their own, sharing the
+project's one `.git`. That is what makes it safe, and coordination inside one
+tree could not have been: `/workspace/<project>` is a single working tree, so
+two sessions in it commit each other's half-finished work and delete it with a
+`checkout`. Separate trees make that impossible and put the conflicts at the
+merge, where git is good at them. A worktree session builds into its own
+`dist/`, so the Artifacts tab will not show it, and the dev instance belongs to
+the project rather than to the session.
+
+What *is* refused is a second session on one **Anthropic account** — they would
+share its limits, and afterwards nothing could say which of them did what. Each
+account signs in to its own from the Doctor card. That refusal is where `/term`
+is proxied, not only in the page, because the ttyd URL is reachable directly.
+
+The notebook (roadmap, bugs, analysis) stays shared, because it is about the
+project; memories do not, because they are about the person.
 
 **A `user` has no shell and no command line at all**, and that is what makes
 the rest of the role mean something: everything else is enforced by the

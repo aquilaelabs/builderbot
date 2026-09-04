@@ -239,14 +239,58 @@ tmuxKill('claude-alpha');
      '...as symlinks: copying .android would duplicate the AVDs and the pairing key');
   tmuxKill(`${other}~shell-7`);
 
-  // A Claude session is NOT per account: one conversation per project, and
-  // who holds it is a record rather than a name.
-  tmuxKill('claude-alpha'); tmuxKill(`${other}~claude-alpha`);
-  shell(`u:${other}:claude:alpha:b:${boot}`);
-  await sleep(300);
-  ok(alive('claude-alpha') && !alive(`${other}~claude-alpha`),
-     'a Claude session keeps the project name whoever opens it — one per project');
-  tmuxKill('claude-alpha');
+  // ---- a worktree each (roadmap #24) ---------------------------------------
+  // More than one person may work a project at once, and the reason it is safe
+  // is that they are not in the same directory: /workspace/<project> is one
+  // working tree, so two sessions in it commit each other's half-finished
+  // work and delete it with a checkout. The owner keeps the project
+  // directory; anybody else gets a worktree on a branch of their own.
+  //
+  // A repo with no commits has an unborn HEAD and `git worktree add` refuses
+  // it, so this makes its own project with one — the fixtures are git init'd
+  // and never committed to, and committing into one would be felt by every
+  // suite that reads git.
+  {
+    const proj = 'wtproj', src = join(DIR, 'ws', proj);
+    mkdirSync(src, { recursive: true });
+    writeFileSync(join(src, 'README.md'), 'x\n');
+    const git = a => execFileSync('git', ['-C', src, ...a],
+      { encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't',
+        GIT_AUTHOR_EMAIL: 't@e', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@e' } });
+    git(['init', '-q']); git(['add', '-A']); git(['commit', '-qm', 'first']);
+
+    tmuxKill(`claude-${proj}`); tmuxKill(`${other}~claude-${proj}`);
+    shell(`u:${ownerUid}:claude:${proj}:b:${boot}`);
+    await sleep(400);
+    ok(alive(`claude-${proj}`),
+       'the owner opens a Claude session under the bare project name');
+    ok(tmuxFmt(`claude-${proj}`, '#{pane_start_path}') === src,
+       '...working in the project directory itself, as it always has');
+
+    shell(`u:${other}:claude:${proj}:b:${boot}`);
+    await sleep(400);
+    ok(alive(`${other}~claude-${proj}`) && alive(`claude-${proj}`),
+       'a second account opens its own alongside it — two at once, not one');
+    const wt = join(DIR, 'ws', '.worktrees', proj, other);
+    ok(tmuxFmt(`${other}~claude-${proj}`, '#{pane_start_path}') === wt,
+       `...in a worktree of its own rather than the same tree (${wt})`);
+    ok(existsSync(join(wt, '.git')) && existsSync(join(wt, 'README.md')),
+       '...which is a real checkout, sharing the project\'s one .git');
+    const branch = git(['worktree', 'list', '--porcelain']);
+    ok(/branch refs\/heads\/claude\//.test(branch),
+       `...on a branch of its own, so the work merges rather than collides (${
+          (branch.match(/branch \S+/g) || []).join(", ")})`);
+    // The scope file walls it into ITS tree and names the other one as off
+    // limits — two people on one project is exactly when that has to hold.
+    const scope = JSON.parse(readFileSync(
+      join(HOMEDIR, '.cache', 'builderbot', `claude-scope-${proj}.json`), 'utf8'));
+    const deny = scope.permissions.deny.join(' ');
+    ok(deny.includes(`Edit(${src}/**)`),
+       '...with the project directory itself denied to it, being another tree');
+    ok(!deny.includes(`Edit(${wt}/**)`),
+       '...and its own not denied, which a blanket rule on .worktrees would have done');
+    tmuxKill(`claude-${proj}`); tmuxKill(`${other}~claude-${proj}`);
+  }
 
   // The id is checked, not trusted: the proxy is what puts it there, and a
   // shape that is not an id must not become a directory name.

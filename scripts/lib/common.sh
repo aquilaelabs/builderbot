@@ -397,3 +397,71 @@ user_home() {
     done
     printf '%s' "$home"
 }
+
+# ---- a working tree per session (roadmap #24) -------------------------------
+#
+# Two Claude sessions in ONE directory is the thing this avoids, and file-level
+# coordination cannot: /workspace/<project> is one working tree, so `git add -A
+# && git commit` commits the other session's half-finished work, checkout and
+# stash delete it, and both share one dist/ and one dev instance. Those are the
+# failures that lose work. A worktree each makes them impossible — separate
+# files, separate commits, separate builds — and puts the conflicts where git
+# is actually good at them, which is the merge.
+#
+# THE OWNER KEEPS THE PROJECT DIRECTORY. Same rule as their home and their
+# session names, and for the same reason: a box with one operator is every box
+# until somebody adds a second account, and it should be untouched by this.
+# It also makes the answer STATIC — a session's directory never depends on who
+# happened to start first, which a first-come rule would have made a race.
+#
+# What a worktree session does not get, and the UI says so: its dist/ is its
+# own, so the Artifacts tab (which reads the project directory) does not show
+# its builds, and the dev instance belongs to the project rather than to it.
+BB_WORKTREES="${BB_WORKTREES:-${WORKSPACE:-/workspace}/.worktrees}"
+
+# A dot directory on purpose: project_list and both its siblings skip those, so
+# a worktree can never be mistaken for a project, land on the sibling deny list
+# or appear in the picker.
+
+# session_dir PROJECT UID — where that account's session on that project works.
+#
+# Prints the path. The project's own directory for the owner and for no account
+# at all; a worktree for anybody else, made on first use and reused after, so
+# somebody coming back to a project finds the branch they left.
+session_dir() {
+    local proj="${1:-}" uid="${2:-}" src="${WORKSPACE:-/workspace}/$1" wt branch
+    [ -d "$src" ] || { printf '%s' "$src"; return 0; }
+    case "$uid" in
+        u_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+        *) printf '%s' "$src"; return 0 ;;
+    esac
+    if [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ]; then
+        printf '%s' "$src"; return 0
+    fi
+    # Not a git repo: there is no worktree to make, and refusing would be worse
+    # than sharing — a directory nobody can branch is one nobody can conflict
+    # in through git either.
+    git -C "$src" rev-parse --git-dir >/dev/null 2>&1 || { printf '%s' "$src"; return 0; }
+    wt="$BB_WORKTREES/$proj/$uid"
+    if [ -d "$wt" ]; then printf '%s' "$wt"; return 0; fi
+    branch="claude/$(account_name "$uid" || printf '%s' "$uid")"
+    mkdir -p "$(dirname "$wt")" 2>/dev/null || { printf '%s' "$src"; return 0; }
+    # An existing branch is checked out rather than recreated: this is somebody
+    # returning to work they left, and -b on a branch that exists fails.
+    if git -C "$src" show-ref --verify --quiet "refs/heads/$branch"; then
+        git -C "$src" worktree add "$wt" "$branch" >/dev/null 2>&1 \
+            || { printf '%s' "$src"; return 0; }
+    else
+        git -C "$src" worktree add -b "$branch" "$wt" >/dev/null 2>&1 \
+            || { printf '%s' "$src"; return 0; }
+    fi
+    printf '%s' "$wt"
+}
+
+# account_name UID — the account's name, for a branch a person has to read.
+account_name() {
+    local f="${DASHBOARD_STATE:-/config}/users.json"
+    [ -r "$f" ] || return 1
+    jq -er --arg u "$1" 'first((.users // {}) | to_entries[]
+                         | select(.value.uid == $u) | .key)' "$f" 2>/dev/null
+}

@@ -1534,18 +1534,32 @@ _ARG_OWNER = re.compile(r"^u:[^:]*:")
 _SESS_OWNER = re.compile(r"^u_[0-9a-f]{8}~")
 
 
-def _claude_held_by(sessions, ps):
-    """{project: account name} for the Claude sessions that are running and
-    have an owner on record. Names, because the page shows one."""
-    live = {s["name"] for s in sessions}
-    store = users.load()["users"]
-    by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
+def claude_sessions(sessions):
+    """{project: [account name, ...]} for every Claude session running.
+
+    Derived from the session NAMES rather than kept in a file. It used to be a
+    record, because one conversation per project meant the single name
+    `claude-<proj>` could not say whose it was. More than one is allowed now
+    (roadmap #24) and each carries its account's prefix, so the name answers
+    it — and a record that could go stale, be orphaned by a deleted account,
+    or disagree with tmux stopped being worth keeping.
+
+    The unprefixed name is the OWNER's, by the same rule as their home and
+    their shells.
+    """
+    by_uid = {u.get("uid"): n for n, u in users.load()["users"].items()
+              if u.get("uid")}
+    owner = users.owner_name()
     out = {}
-    for p in ps:
-        who = holders.holder(p["name"], live, tmux_name, set(by_uid))
+    for s in sessions:
+        base = tmux_base(s["name"])
+        if not base.startswith("claude-"):
+            continue
+        stem = base[len("claude-"):]
+        who = by_uid.get(tmux_owner(s["name"]), owner)
         if who:
-            out[p["name"]] = by_uid.get(who, "")
-    return {k: v for k, v in out.items() if v}
+            out.setdefault(stem, []).append(who)
+    return out
 
 
 def _term_arg(rest):
@@ -2112,11 +2126,6 @@ import users                                                     # noqa: E402
 
 users.configure(state=STATE, write_json=write_json)
 
-# Who has the Claude session on a project. One conversation per project has
-# always been true — bb-tty names the session for the project — and this is
-# the half accounts made necessary: whose it is (roadmap #26).
-import holders                                                   # noqa: E402
-holders.configure(state=STATE, write_json=write_json)
 
 # ---- the bug tracker --------------------------------------------------------
 # The notebook's third view. Same arrangement again: its own file, handed the
@@ -2754,8 +2763,13 @@ def snapshot(who):
         # a bare refusal would tell you nothing you could act on. Only for
         # projects this account can see, and never their own, which is not
         # held against them (roadmap #26).
-        "claude_held": {p: n for p, n in _claude_held_by(sessions, ps).items()
-                        if n != (who or {}).get("name")},
+        # Who else is working each project. More than one may be (roadmap
+        # #24), each in a worktree of their own, so this is a list and it is
+        # information rather than a refusal — the row says who is here, and
+        # nothing is greyed for it.
+        "claude_with": {p: sorted(set(ns) - {(who or {}).get("name")})
+                        for p, ns in claude_sessions(sessions).items()
+                        if set(ns) - {(who or {}).get("name")}},
         # This account's colour scheme, for a browser that has none stored.
         # index.html's adoptTheme says why localStorage still outranks it.
         "theme": users.prefs(who).get("theme", ""),
@@ -2991,12 +3005,19 @@ class Handler(BaseHTTPRequestHandler):
 
     def _claude_held(self, rest):
         """A sentence when this account may not open the Claude session it is
-        asking for, and "" when it may. Claims it on the way through.
+        asking for, and "" when it may.
+
+        More than one conversation per project is allowed now (roadmap #24) —
+        each works in a tree of its own, so they cannot overwrite each other —
+        and what is refused instead is a SECOND SESSION ON ONE ANTHROPIC
+        ACCOUNT. Two dashboard accounts signed in to the same Anthropic login
+        would share its limits and make whose-work-is-whose unanswerable, and
+        the check is a real one rather than a guess: every account has its own
+        home and its own ~/.claude, so the login in it says who it is.
 
         Enforced HERE and not only in the page, for the reason bb-tty's own
         header gives about the lock file: a rule only the UI honors is a
-        suggestion, because the ttyd URL is reachable directly. The page also
-        greys the button, which is the courtesy; this is the rule.
+        suggestion, because the ttyd URL is reachable directly.
         """
         arg = _term_arg(rest)
         if not arg.startswith("claude:"):
@@ -3006,17 +3027,24 @@ class Handler(BaseHTTPRequestHandler):
         uid = users.uid_of(me)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
-        live = {x["name"] for x in tmux_sessions()}
-        known = {u.get("uid") for u in users.load()["users"].values()}
-        who = holders.holder(project, live, tmux_name, known)
-        if who and who != uid:
-            name = next((n for n, u in users.load()["users"].items()
-                         if u.get("uid") == who), "another account")
-            return (f"{name} has a Claude session on {project}. There is one "
-                    "conversation per project — two in the same working tree "
-                    "edit the same files — so this one is theirs until they "
-                    "end it.")
-        holders.claim(project, uid)
+        mine = claude_auth(home=home_for(uid)).get("email") or ""
+        if not mine:
+            return ""                     # not signed in: bb-tty says so, better
+        store = users.load()["users"]
+        by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
+        owner = users.owner_name()
+        for s in tmux_sessions():
+            if tmux_base(s["name"]) != tmux_name(f"claude-{project}"):
+                continue
+            other = tmux_owner(s["name"]) or users.uid_of(users.get(owner or ""))
+            if not other or other == uid:
+                continue                  # our own session: this is a reattach
+            if (claude_auth(home=home_for(other)).get("email") or "") == mine:
+                return (f"{by_uid.get(other, 'another account')} already has a "
+                        f"Claude session on {project} signed in to {mine}. Two "
+                        "sessions on one Anthropic account share its limits, "
+                        "and nothing afterwards can say which of them did "
+                        "what — so this one waits for that to end.")
         return ""
 
     def _ttyd_port(self):
@@ -4086,18 +4114,12 @@ class Handler(BaseHTTPRequestHandler):
         # and refusing on it would be a rule with no reason behind it. An
         # account that sees everything still only owns what it opened.
         me = users.uid_of(self._who())
-        live = {x["name"] for x in tmux_sessions()}
-        known = {u.get("uid") for u in users.load()["users"].values()}
-        # Through the holder map rather than the session names: a session is
-        # named for the project with `.` and `:` rewritten (tmux_name), so
-        # taking the project back out of the name would not match the record.
-        others = {tmux_name(f"claude-{proj}")
-                  for proj, uid in holders.all_held(live, tmux_name, known).items()
-                  if uid != me}
-        # A session nobody is recorded as holding still blocks. Not knowing
-        # whose it is is a reason to be careful, not a reason to proceed.
-        busy = sorted(n for n in live
-                      if n.startswith("claude-") and n not in others)
+        # The name says whose (roadmap #24): a prefix is that account's, and
+        # the bare one is the owner's.
+        busy = sorted(n for n in (x["name"] for x in tmux_sessions())
+                      if tmux_base(n).startswith("claude-")
+                      and (tmux_owner(n) or users.uid_of(
+                          users.get(users.owner_name() or ""))) == me)
         if busy:
             return self._json({"error": "end these first: " + ", ".join(busy)}, 409)
         # In the asking account's home, like the sign-in: signing out is
@@ -5007,11 +5029,6 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass
         body, code = projects.trash(req)
-        if code < 400:
-            # The record is inert either way — a holder is only reported while
-            # its session is alive — but a key for a project that no longer
-            # exists is a line nobody will ever explain.
-            holders.forget(name)
         return self._json(body, code)
 
     def _trash_list(self):
@@ -5063,8 +5080,6 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass          # no daemon, or no compose file: nothing to protect
         body, code = projects.rename(req)
-        if code < 400:
-            holders.forget(req.get("name", ""))
         return self._json(body, code)
 
     def _project_auth(self, req):
@@ -5185,17 +5200,18 @@ class Handler(BaseHTTPRequestHandler):
         """
         me = self._who()
         want = str(req.get("session", ""))
+        # THEIR OWN session on a project they can work on. The name carries the
+        # account (roadmap #24), so this is one comparison rather than a
+        # lookup: a name that is not the one this account's session would have
+        # is somebody else's conversation, and typing into it is the thing a
+        # read-only console must not become.
         project = next((p["name"] for p in project_list(me)
-                        if tmux_name(f"claude-{p['name']}") == want), "")
-        if not project:
-            return self._json({"error": "not a Claude session you can see"}, 403)
-        live = {x["name"] for x in tmux_sessions()}
-        if want not in live:
+                        if users.tmux_prefix(me) + tmux_name(f"claude-{p['name']}")
+                        == want), "")
+        if not project or users.may(me, "claude", project):
+            return self._json({"error": "not a Claude session of yours"}, 403)
+        if want not in {x["name"] for x in tmux_sessions()}:
             return self._json({"error": "that conversation is not running"}, 409)
-        known = {u.get("uid") for u in users.load()["users"].values()}
-        who = holders.holder(project, live, tmux_name, known)
-        if who and who != users.uid_of(me):
-            return self._json({"error": "that conversation is somebody else's"}, 409)
         text = "".join(ch for ch in str(req.get("text", ""))
                        if ch == "\t" or ord(ch) >= 32)[:CUSTOM_LINE_MAX]
         if not text.strip():

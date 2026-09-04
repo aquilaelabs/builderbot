@@ -128,11 +128,21 @@ function renderUsersInto(i){
           scheme follow the account to any browser they sign in on. The
           <b>owner</b> keeps this container's original home, so an install
           with one operator is unchanged.</div>
-        <div class="sub">A project's <b>Claude session</b> belongs to whoever
-          opened it, and nobody else can open that tab — there is one
-          conversation per project, because two in the same working tree edit
-          the same files. Shells are not shared that way: everybody gets their
-          own.</div>
+        <div class="sub">More than one person can work a project at once. The
+          first is the owner, in the project directory; everybody else gets a
+          <b>worktree</b> of their own — a checkout on a branch of their own,
+          sharing the project's git — so two people cannot overwrite each
+          other, commit each other's half-finished work, or share a
+          <code>dist/</code>. Conflicts turn up at the merge, where git is
+          good at them.</div>
+        <div class="sub">A worktree session builds into its own
+          <code>dist/</code>, so the Artifacts tab (which reads the project
+          directory) will not show it, and the dev instance belongs to the
+          project rather than to the session.</div>
+        <div class="sub">What is refused is two sessions on one <b>Anthropic
+          account</b>: they would share its limits, and afterwards nothing
+          could say which of them did what. Each account signs in to its own,
+          from the Doctor card in its own session.</div>
         <div class="sub">The notebook — roadmap, bugs, analysis — stays shared,
           because it is about the project rather than the person. Memories do
           not, for the same reason in reverse.</div>

@@ -97,6 +97,26 @@ siblings_of() {
         | { grep -vxF "$WORKSPACE/$1" || true; }   # sole project: no siblings
 }
 
+# walls_around PROJECT HERE — every tree this session must not reach into.
+#
+# Every project but its own, and every WORKTREE but its own — including the
+# other worktrees of this same project, which is the case that matters: two
+# people working one project are the reason worktrees exist, and a deny list
+# that stopped at the project boundary would let each of them edit the other's
+# checkout, which is exactly what the separate trees are for.
+#
+# siblings_of lists dot directories too, so .worktrees would otherwise be
+# denied WHOLESALE — including the tree this session is sitting in. It is
+# excluded here and its contents enumerated instead.
+walls_around() {
+    local proj="$1" here="$2"
+    siblings_of "$proj" | { grep -vxF "$BB_WORKTREES" || true; }
+    [ "$here" = "$WORKSPACE/$proj" ] || printf '%s\n' "$WORKSPACE/$proj"
+    [ -d "$BB_WORKTREES" ] || return 0
+    find "$BB_WORKTREES" -mindepth 2 -maxdepth 2 -type d -printf '%p\n' 2>/dev/null \
+        | { grep -vxF "$here" || true; }
+}
+
 # claude_scope PROJECT — write a settings file that walls this session into its
 # own directory, and echo the path.
 #
@@ -109,7 +129,7 @@ siblings_of() {
 # the wrong tree by mistake, not a sandbox: Bash still reaches the filesystem,
 # and the only hard boundary is not mounting the other projects at all.
 claude_scope() {
-    local proj="$1" dir out tmp
+    local proj="$1" here="${2:-}" dir out tmp
     # One file per project, rewritten each time rather than a fresh temp file:
     # ttyd runs this script on every browser connection, including a reattach,
     # so mktemp here would drop a file per page load. Under the cache dir
@@ -156,13 +176,23 @@ claude_scope() {
     # Bash. `echo 0.5.0 > VERSION` still works. This makes the sanctioned path
     # the easy one; the record that makes a bad bump recoverable is that
     # VERSION is committed and `git log` says who moved it.
-    if siblings_of "$proj" | jq -R . | jq -s --arg ws "$WORKSPACE" --arg proj "$proj" '
+    # `here` is where the session actually works, which is the project
+    # directory for the owner and a worktree for anybody else (roadmap #24).
+    # It matters twice. A worktree session is OUTSIDE $WORKSPACE/$proj, so the
+    # project directory itself becomes a sibling to deny — the whole point is
+    # that the two are separate trees and one session must not reach into the
+    # other. And the VERSION rule has to name the tree the session is in, or
+    # it denies a file that session was never going to touch and leaves its
+    # own editable.
+    here="${here:-$WORKSPACE/$proj}"
+    if walls_around "$proj" "$here" | jq -R . \
+         | jq -s --arg ws "$WORKSPACE" --arg here "$here" '
            {permissions: {
               additionalDirectories: [],
               deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
                      + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)",
-                        "Edit(\($ws)/\($proj)/VERSION)",
-                        "Edit(\($ws)/\($proj)/**/VERSION)"])
+                        "Edit(\($here)/VERSION)",
+                        "Edit(\($here)/**/VERSION)"])
            }}' > "$tmp" && [ -s "$tmp" ]; then
         mv -f "$tmp" "$out"
         printf '%s' "$out"
@@ -378,6 +408,8 @@ case "$target" in
         dir="$WORKSPACE/$proj"
         # Reject anything that is not a directory sitting directly in the
         # workspace: no traversal, no absolute paths, no invented names.
+        # Checked against the PROJECT, before session_dir may answer with a
+        # worktree — the name is what has to be real.
         if [ "$proj" != "$(basename -- "$proj")" ] || [ ! -d "$dir" ]; then
             echo "No such project: ${proj}" >&2
             echo "Available:" >&2
@@ -414,7 +446,7 @@ case "$target" in
         # that; the page never re-read it. So the URL carries the boot it was
         # opened in, and one from a previous run is refused here, where the
         # session would otherwise be created.
-        if ! tmux has-session -t "=claude-${proj//[.:]/_}" 2>/dev/null \
+        if ! tmux has-session -t "=$(sess "claude-${proj//[.:]/_}")" 2>/dev/null \
            && [ "$want_boot" != "$(boot_id)" ]; then
             bad "This tab is from before the container restarted." \
                 "Its conversation is still on disk. Open Claude on ${proj} from" \
@@ -476,7 +508,16 @@ case "$target" in
         # the session without this block, and cannot if the two are one array.
         prompt=()
         [ -z "$todo_block" ] || prompt=(--append-system-prompt "$todo_block")
-        if scope="$(claude_scope "$proj")"; then
+        # Where this session works (roadmap #24). The owner gets the project
+        # directory; anybody else gets a worktree of their own on a branch of
+        # their own, so two people on one project cannot overwrite each other,
+        # commit each other's half-finished work, or share a dist/.
+        dir="$(session_dir "$proj" "$account")"
+        # Every bb verb resolves the project as BB_PROJECT first and falls back
+        # to the directory's name — which in a worktree is an account id. One
+        # export rather than a special case in each of them.
+        export BB_PROJECT="$proj"
+        if scope="$(claude_scope "$proj" "$dir")"; then
             cmd+=(--settings "$scope")
         else
             # Say so rather than starting an unconfined session that looks
@@ -498,11 +539,12 @@ case "$target" in
         # as subprocesses — so a session busy running a build reports `bash`
         # and would have been killed here, mid-conversation. The start command
         # is what the pane was created with and does not move.
-        if tmux has-session -t "=claude-${proj//[.:]/_}" 2>/dev/null \
-           && ! tmux list-panes -t "=claude-${proj//[.:]/_}" -F '#{pane_start_command}' 2>/dev/null \
+        mysess="$(sess "claude-${proj//[.:]/_}")"
+        if tmux has-session -t "=$mysess" 2>/dev/null \
+           && ! tmux list-panes -t "=$mysess" -F '#{pane_start_command}' 2>/dev/null \
                 | grep -qi claude; then
-            log "claude-${proj}: session is not running claude — replacing it"
-            tmux kill-session -t "=claude-${proj//[.:]/_}" 2>/dev/null || true
+            log "${mysess}: session is not running claude — replacing it"
+            tmux kill-session -t "=$mysess" 2>/dev/null || true
         fi
         # Through a launcher, always — not only when the prompt happens to be
         # long today. A path that is exercised on every session is one that
@@ -513,7 +555,7 @@ case "$target" in
         if launcher="$(claude_launcher "$proj" \
                           "$HOME/.claude/projects/${dir//\//-}" \
                           "${cmd[@]}" "${prompt[@]}")"; then
-            start "claude-${proj}" "$dir" "$launcher"
+            start "$(sess "claude-${proj}")" "$dir" "$launcher"
         else
             # Nowhere to write it. The command without the block still fits on
             # tmux's command line, and a session that starts knowing less is
@@ -524,7 +566,7 @@ case "$target" in
             echo "and on claude's own model rather than the one set for it." >&2
             echo "Everything else about it is the same. Check that ${HOME:-\$HOME}/.cache" >&2
             echo "is writable." >&2
-            start "claude-${proj}" "$dir" "${cmd[@]}"
+            start "$(sess "claude-${proj}")" "$dir" "${cmd[@]}"
         fi
         ;;
     shell:*)

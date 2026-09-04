@@ -2912,7 +2912,12 @@ const myTmux = s => (state?.tmux_prefix || "") + s;
 // The account holding this project's Claude session, when it is not us. The
 // button greys and wears their name; the refusal itself is at the /term proxy,
 // because a rule only the page honors is a suggestion (roadmap #26).
-const heldBy = p => (state?.claude_held || {})[p] || "";
+// Who else has a conversation open on this project. Not a refusal any more
+// (roadmap #24): they each work in a tree of their own, so the row says who is
+// here rather than taking the button away. What IS refused is a second session
+// on one Anthropic account, and that refusal comes from the server when the
+// terminal is opened, in its own words.
+const withMe = p => (state?.claude_with || {})[p] || [];
 // A project this account can see and has not taken on (roadmap #27). An
 // administrator is shown every project — hiding one from somebody who
 // administers the box only sends them looking for it — and works on the ones
@@ -2931,12 +2936,21 @@ const mayShell = () => state?.can?.terminal !== false;
 const mayDocker = () => state?.can?.["docker-write"] !== false;
 const mayPackages = () => state?.can?.["packages-write"] !== false;
 const mayGitAuth = () => state?.can?.["git-auth"] !== false;
+// THIS account's Claude session on a project. Prefixed like a shell since
+// roadmap #24: more than one person may work a project at once, each in a
+// worktree of their own, so the name has to say whose conversation it is —
+// and the name is then the only record of that, with no file to go stale.
+// Every "is it running" question below is about the asker's own.
+const myClaude = proj => myTmux(tmuxName("claude-" + proj));
+// A name with somebody's prefix taken off, for the questions that are about
+// the session rather than about whose it is.
+const tmuxBase = s => String(s).replace(/^u_[0-9a-f]{8}~/, "");
 function sessionOf(arg){
   if (arg.startsWith("sh:")){
     const [, n, proj] = arg.split(":");
     return myTmux(tmuxName(proj ? `shell-${proj}-${n}` : `shell-${n}`));
   }
-  if (arg.startsWith("claude:")) return tmuxName("claude-" + arg.slice(7).split(":")[0]);
+  if (arg.startsWith("claude:")) return myClaude(arg.slice(7).split(":")[0]);
   if (arg.startsWith("shell:"))  return myTmux(tmuxName("shell-"  + arg.slice(6)));
   return arg;
 }
@@ -2946,7 +2960,7 @@ function sessionOf(arg){
 const projFor = n =>
   (state?.projects || []).find(p => tmuxName(p.name) === n)?.name ?? null;
 
-const isClaude = t => t.kind === "term" && sessionOf(t.arg).startsWith("claude-");
+const isClaude = t => t.kind === "term" && tmuxBase(sessionOf(t.arg)).startsWith("claude-");
 const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
 // Signing out pulls the ground from under every conversation on the box, so
 // the button is dead while any of them is running. Named from the session
@@ -4280,7 +4294,7 @@ function rnDrawPrefs(){
   // no typing here that would bring it back.
   const shut = !!p?.locked;
   $("rnModel").disabled = $("rnEffort").disabled = shut;
-  const running = liveSessions().has(tmuxName("claude-" + rnFor));
+  const running = liveSessions().has(myClaude(rnFor));
   const changed = $("rnModel").value !== rnPrefWas.model
                || $("rnEffort").value !== rnPrefWas.effort;
   $("rnPrefHint").textContent = shut
@@ -5341,19 +5355,19 @@ function projectRow(p, live, cls, inTab){
           : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
       <span class="acts">
-      ${isBroken(p) ? "" : `<button class="eye${live.has(tmuxName("claude-"+p.name)) ? " on acc" : ""}"
+      ${isBroken(p) ? "" : `<button class="eye${live.has(myClaude(p.name)) ? " on acc" : ""}"
          data-c="${esc(p.name)}" aria-label="Claude session"${
-         (p.locked || heldBy(p.name) || notMine(p)
-          || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
+         (p.locked || notMine(p)
+          || (!signedIn() && !live.has(myClaude(p.name))))
            ? " disabled" : ""}
          title="${notMine(p) ? NOT_MINE_WHY
                  : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
-                 : heldBy(p.name)
-                   ? `${heldBy(p.name)} has a Claude session on this project — there is one conversation per project, so it is theirs until they end it`
-                 : !signedIn() && !live.has(tmuxName("claude-"+p.name))
+                 : withMe(p.name).length
+                   ? `${withMe(p.name).join(", ")} also working here, in a checkout of their own — start yours`
+                 : !signedIn() && !live.has(myClaude(p.name))
                    ? "this container is not signed in to Claude — the Doctor card has the way in"
-                 : live.has(tmuxName("claude-"+p.name)) ? "Claude — session running, go to its tab"
+                 : live.has(myClaude(p.name)) ? "Claude — session running, go to its tab"
                  : p.last_claude ? "Claude — no session running; resume or start one"
                  : "Claude — start a session here"}">${SPARK}</button>`}
       ${mayShell() ? `<button class="eye" data-s="${esc(p.name)}" aria-label="shell"
@@ -9976,7 +9990,7 @@ become that version's section when it is created">Changelog${
       // Redrawn from what is already in hand rather than re-fetched: the list
       // on screen may be carrying staged changes that are not on the server,
       // and a refetch here would quietly throw them away.
-      const want = tmuxName("claude-" + project);
+      const want = myClaude(project);
       const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
       if (now !== todoSession){ todoSession = now; redrawTodo(); }
       // A session filed, closed or deleted a bug. The tracker is
@@ -10305,7 +10319,7 @@ const ago = s => {
 function openClaude(name, ev){
   ev?.stopPropagation();
   const p = (state?.projects || []).find(x => x.name === name);
-  if (liveSessions().has(tmuxName("claude-" + name)) || !p?.last_claude){
+  if (liveSessions().has(myClaude(name)) || !p?.last_claude){
     resumeFor = null;
     return startClaude(name, null);
   }
@@ -10560,7 +10574,7 @@ async function rnSubmit(){
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs;
   const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
-  const running = liveSessions().has(tmuxName("claude-" + name));
+  const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
   // The one combination the dialog will not write: authenticating with a token

@@ -278,26 +278,37 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
     // No session yet: nobody holds it, and asking is allowed.
     ok((await term(other, 'claude:beta')).status !== 409,
        'with no session running, the project is nobody\'s');
-    try { tmux(['kill-session', '-t', 'claude-beta']); } catch { /* none */ }
-    tmux(['new-session', '-d', '-s', 'claude-beta', '-c', '/tmp']);
-    // The account that claimed it may come back to it...
+    // Named the way bb-tty would name it: a prefix is that account's, and the
+    // bare one is the owner's. The name is the only record of whose it is.
+    const uidOf = n => JSON.parse(readFileSync(store, 'utf8')).users[n].uid;
+    const theirSession = `${uidOf('sharer')}~claude-beta`;
+    try { tmux(['kill-session', '-t', theirSession]); } catch { /* none */ }
+    tmux(['new-session', '-d', '-s', theirSession, '-c', '/tmp']);
+    // The account whose session it is may come back to it...
     ok((await term(other, 'claude:beta')).status !== 409,
        'the account that opened it can reattach');
-    // ...and nobody else may, by name.
+    // ...and so may anybody else, since roadmap #24 — they each work in a
+    // worktree of their own, so a second conversation cannot overwrite the
+    // first. What IS refused is a second session on one ANTHROPIC account:
+    // they would share its limits, and afterwards nothing could say which of
+    // them did what. The harness's claude stub answers with one email for
+    // every home, which is that case exactly.
     const refused = await term(owner, 'claude:beta');
     const why = refused.status === 409 ? (await refused.json()).error : '';
-    ok(refused.status === 409 && /has a Claude session on beta/.test(why),
-       `another account is refused, and told who has it (${why.slice(0, 60)}…)`);
-    ok(/one conversation per project/.test(why),
-       '...and why, since the rule is not obvious from the refusal alone');
+    ok(refused.status === 409 && /already has a Claude session on beta/.test(why),
+       `a second session on one Anthropic account is refused (${why.slice(0, 60)}…)`);
+    ok(/tester@example.com/.test(why) && /share its limits/.test(why),
+       '...naming the login and saying why, not just refusing');
     // A shell on the same project is not affected: shells are per account.
     ok((await term(owner, 'sh:1:beta')).status !== 409,
-       'a shell on that project is still offered — only the conversation is held');
-    // The session ending releases it, with nothing to sweep: the record is
-    // only read alongside the live session list.
-    tmux(['kill-session', '-t', 'claude-beta']);
+       'a shell on that project is unaffected — shells were never shared');
+    // Ending it clears the way, with nothing to sweep: there is no record at
+    // all any more. A session's NAME says whose it is — a prefix is that
+    // account's, the bare one is the owner's — so tmux is the only truth and
+    // it cannot go stale, be orphaned by a deleted account, or disagree.
+    tmux(['kill-session', '-t', theirSession]);
     ok((await term(owner, 'claude:beta')).status !== 409,
-       'ending the session releases it, because the live session is the truth');
+       'ending the session clears the way, because tmux is the only record');
   }
 
   // ---- a user role has no shell at all (roadmap #27) -----------------------
