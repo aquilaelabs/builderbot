@@ -522,6 +522,22 @@ try {
       });
       ok(cens && !(cens.reported.toolchains || {})['android-sdk'],
          'an empty cmdline-tools directory is not reported as an Android SDK');
+      // ...and a job refused on that answer says how old the answer is, and
+      // asks the node for a fresh one. The census rides hello every ten
+      // minutes, so a refusal can be reasoning about the node as it was nine
+      // of them ago — the operator met exactly that: a command refused, the
+      // identical retry allowed, nothing on screen to explain it.
+      const refused = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
+        argv: ['sh', '-c', 'command -v adb'] });
+      ok(/has no android-sdk/.test(refused.error || ''),
+         `a command naming adb is refused on a node with none (${
+           (refused.error || '').slice(0, 60)})`);
+      const fresh = await until(async () => {
+        const n = await nodeById(minted.id);
+        return n?.reported?.at ? n : null;
+      });
+      ok(fresh && typeof fresh.reported.at === 'number',
+         '...and the census carries when it was taken, which the refusal quotes');
       ok(/path=[^\n]*agentpackages\/jdk\/bin/.test(log)
          && /path=[^\n]*agentpackages\/go\/bin/.test(log),
          '...and every toolchain the store holds is on its PATH, not just the JDK');
