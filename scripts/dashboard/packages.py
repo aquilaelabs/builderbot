@@ -398,6 +398,12 @@ def _load_choices():
             f = line.rstrip().split("\t")
             if len(f) == 4 and f[0].startswith("system-images;") and f[3].isdigit():
                 rows.append({"id": f[0], "api": f[1], "kind": f[2],
+                             # The rendered size for the picker, and the raw
+                             # kilobytes beside it: a node's headroom check
+                             # needs a number, and this index is the only
+                             # place an image's size exists before it is
+                             # fetched.
+                             "kb": int(f[3]) // 1024,
                              "size": human_kb(int(f[3]) // 1024)})
     r = run([BB, "sdk", "flavors"], timeout=30)
     if r["code"] == 0:
@@ -410,6 +416,46 @@ def _load_choices():
         if rows:
             _choices.update(at=time.monotonic(), rows=rows, flavors=flavors)
         _choices["loading"] = False
+
+
+def image_kb(image_id):
+    """What the index says this image weighs, in KB, or 0."""
+    for r in image_choices()["rows"]:
+        if r["id"] == image_id:
+            return int(r.get("kb") or 0)
+    return 0
+
+
+def node_images(n):
+    """The system images a node reports, in the shape the tab draws.
+
+    The node walks its store for the ids and the AVDs built on them; the size
+    is joined here, from Google's index. That split is deliberate: an image is
+    a guest artifact, identical on every host, so the controller already knows
+    what one weighs — and `du` over a tens-of-gigabytes tree on an NFS-mounted
+    store is not something to do on every census for a number that is already
+    known. It is the DOWNLOAD size rather than the footprint, so the row says
+    where it came from.
+    """
+    idx = {r["id"]: r for r in image_choices()["rows"]}
+    rows = []
+    for im in (n.get("reported") or {}).get("images") or []:
+        c = idx.get(im.get("id")) or {}
+        rows.append({"id": im.get("id", ""), "api": im.get("api", ""),
+                     "kind": im.get("kind", ""), "size": c.get("size", ""),
+                     "size_from": "the download size, from Google's index — a node does not "
+                                  "measure its image tree" if c.get("size") else "",
+                     "avds": list(im.get("avds") or [])})
+    rows.sort(key=lambda r: (r["kind"], r["api"]))
+    return rows
+
+
+def is_node_image(n, name):
+    """Whether a name is one of the images THIS node just reported. The same
+    rule the local endpoint follows, asked of the node's own inventory: what
+    reaches a command line is a string this server handed out."""
+    return name.startswith("android:") and any(
+        r["id"] == name[len("android:"):] for r in node_images(n))
 
 
 def is_choosable_image(name):
@@ -772,10 +818,31 @@ def payload_for_node(nid):
                        "done": done, "failed": [x for x in names if x not in done],
                        "aborting": False, "node": nid, "id": j["id"]}
                 break
+    # The images are the node's — it walks its own store for them — but which
+    # ones COULD be added is not a per-node question at all: an image is a
+    # guest artifact and the index that lists them is Google's, read here.
+    # So the picker is the controller's list minus what this node already has,
+    # and a node needs no network of its own to be offered one (roadmap #20).
+    imgs = node_images(n)
+    choices = image_choices()
+    here = {i["id"] for i in imgs}
     return {"node": nid, "name": n["name"], "live": bool(n.get("live")),
             "root": store.get("path") or "", "free_mb": store.get("free_mb"),
             "shared": False, "checked": 0, "sizing": False,
-            "images": [], "addable": [], "flavors": [], "images_loading": False,
+            "images": imgs,
+            "addable": [c for c in choices["rows"] if c["id"] not in here],
+            "flavors": choices["flavors"],
+            "images_loading": bool(choices["loading"]),
+            # Whether the node has answered the question at all. An agent too
+            # old to report its images is not a node with none — the same
+            # distinction `unknown` draws on a package row, and without it the
+            # empty state claims something the controller does not know.
+            "images_known": "images" in (n.get("reported") or {}),
+            # An image install is sdkmanager's, so it needs the command-line
+            # tools there first. Said on the tab rather than discovered when
+            # the job dies inside sdkmanager naming neither.
+            "images_need": "" if not known or "android-tools" in node_has(n)
+                           else "android-tools",
             "items": items, "job": job or {"running": False}}
 
 
@@ -954,6 +1021,22 @@ def unsupported(names, plat):
             for x in names if x in by and not supports(by[x], plat)]
 
 
+def is_image_name(name):
+    """A full sdkmanager system-image id, as the picker hands one back."""
+    return str(name).startswith("android:system-images;")
+
+
+def _need_kb(name):
+    """What installing this will cost the store, in KB. Measured here the
+    last time it was installed, for a catalog package; from Google's index,
+    for a system image — which is the only place an image's size exists
+    before the download, and the reason an image can be gated on headroom
+    even on a node this controller has never installed one for."""
+    if is_image_name(name):
+        return image_kb(name[len("android:"):])
+    return _pkg_remembered.get(name, 0)
+
+
 def node_job(principal, nid, action, names):
     """Queue the package job. Refused, with numbers, when the store cannot
     hold what is asked — measured here the last time it was installed, so a
@@ -970,7 +1053,17 @@ def node_job(principal, nid, action, names):
     if action == "install":
         # What these need, ahead of them. android-tools without a jdk fails
         # inside sdkmanager with a message that names neither.
-        names, added = with_requires(names, node_has(n))
+        have = node_has(n)
+        # A system image is installed BY sdkmanager, so the command-line tools
+        # have to be on the node first — and they need a JDK in turn.
+        # with_requires walks the catalog, and an image id is not a catalog
+        # row (which images exist is not a fixed list), so the head of that
+        # chain is named here rather than discovered inside a failing job.
+        pre = ["android-tools"] if (any(is_image_name(x) for x in names)
+                                    and "android-tools" not in have) else []
+        want = pre + [x for x in names if x not in pre]
+        ordered, _ = with_requires(want, have)
+        names, added = ordered, [x for x in ordered if x not in names]
         # Seven of these recipes name linux-x86_64 in their URL and one names
         # ubuntu24.04, so a node of another platform would download a couple
         # of hundred megabytes and fail on exec — or install and fail later.
@@ -984,7 +1077,7 @@ def node_job(principal, nid, action, names):
                              + "; ".join(f"{x} is packaged for {p}" for x, p in no)
                              + ". The catalog names the platform each recipe works on; "
                                "adding another is a URL per row, not a code change."}
-        need_kb = sum(_pkg_remembered.get(x, 0) for x in names)
+        need_kb = sum(_need_kb(x) for x in names)
         free = store.get("free_mb")
         if need_kb and free is not None and free * 1024 < need_kb * 1.2:
             return {"error": f"{n['name']}'s packages store has {human_kb(free * 1024)} free "

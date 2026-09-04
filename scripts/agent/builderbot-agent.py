@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "21"
+AGENT_VERSION = "22"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -570,6 +570,70 @@ def store_dirs(state):
     return out
 
 
+def sdk_images(state):
+    """The android system images in this node's packages store, and which of
+    its AVDs are built on each.
+
+    A directory walk, deliberately — not `bb sdk images`, which is the same
+    listing plus a `du -sk` per image. The controller's own copy can afford
+    that; a node cannot. The packages store is commonly an NFS export here
+    and the tree runs to tens of gigabytes, so a size measured every census
+    would be minutes of stat traffic every ten minutes for a number the
+    catalog already knows: an image is a guest artifact, identical on every
+    host, and its download size comes from Google's index on the controller.
+
+    The AVD half is not derivable anywhere else, which is why it is here. An
+    AVD names one image exactly — `image.sysdir.1=system-images/android-36/
+    google_apis/x86_64/` — and will not boot without it, so it is the whole
+    of the answer to "can this one go?".
+    """
+    stores = state.get("stores") or {}
+    store = stores.get("packages") or ""
+    if not store:
+        return []
+    base = os.path.join(store, "android", "system-images")
+    rows = []
+    for api in sorted(_listdir(base))[:64]:
+        for kind in sorted(_listdir(os.path.join(base, api)))[:16]:
+            for abi in sorted(_listdir(os.path.join(base, api, kind)))[:8]:
+                d = os.path.join(base, api, kind, abi)
+                if not os.path.isdir(d) or not _listdir(d):
+                    continue          # an empty directory is not an image
+                rows.append({"id": f"system-images;{api};{kind};{abi}",
+                             "api": api, "kind": kind, "abi": abi, "avds": []})
+    if not rows:
+        return rows
+    by_id = {r["id"]: r for r in rows}
+    home = os.path.join(stores.get("data") or "/tmp", "avd")   # as sdk_env sets it
+    for name in sorted(_listdir(home))[:64]:
+        if not name.endswith(".avd"):
+            continue
+        try:
+            with open(os.path.join(home, name, "config.ini"), encoding="utf-8",
+                      errors="replace") as f:
+                text = f.read(65536)
+        except OSError:
+            continue
+        # Spaces around the = are allowed: avdmanager writes them, the
+        # emulator's own rewrites do not, and both turn up in one directory.
+        m = re.search(r"(?m)^\s*image\.sysdir\.1\s*=\s*(\S+)", text)
+        if not m:
+            continue
+        want = m.group(1).rstrip("/").replace("/", ";")
+        if want in by_id:
+            by_id[want]["avds"].append(name[:-4])
+    return rows
+
+
+def _listdir(path):
+    if not path:
+        return []
+    try:
+        return [x for x in os.listdir(path) if not x.startswith(".")]
+    except OSError:
+        return []
+
+
 def sdk_env(state, who=None):
     """The environment a job runs with on this node: the packages store as
     the SDK root, its android/ directory as ANDROID_HOME, its jdk as
@@ -674,6 +738,10 @@ def census(state):
         "stores": _stores(state.get("stores"), used=True),
         "toolchains": tc,
         "store_dirs": store_dirs(state),
+        # The android system images the store holds, and the AVDs built on
+        # them (roadmap #20). Not part of store_dirs: it reaches three levels
+        # down and reads the data store's AVD configs as well.
+        "images": sdk_images(state),
         # The configuration plane's reported half (docs/nodes.md §12): what
         # is mounted and from where, and the address this machine is on.
         # The row draws the operator's desired config against these.
@@ -1605,6 +1673,11 @@ class Agent:
             return "failed", 69
         bad = 0
         for name in names:
+            # Which one it is on, for the tab's "Installing …". Only compose
+            # jobs set this before, so a package job on a node drew the verb
+            # with nothing after it — and the image picker, which draws its
+            # own progress only when the step names an image, drew none.
+            job.step(name)
             job.say(f"== bb sdk {action} {name}\n")
             st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
                                             "sdk", action, name],

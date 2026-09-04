@@ -5991,7 +5991,8 @@ function imgRow(im, busy){
   return `<label class="pkg img">
     <span class="grow">
       <span class="nm">${esc(im.api)} <span class="pill">${esc(im.kind)}</span>
-        <span class="pill">${esc(im.size)}</span></span>
+        ${im.size ? `<span class="pill"${im.size_from
+          ? ` title="${esc(im.size_from)}"` : ""}>${esc(im.size)}</span>` : ""}</span>
       <span class="sub where on">installed at ${esc(im.id)}</span>
       ${avds}
     </span>
@@ -6927,13 +6928,26 @@ function renderPackagesInto(i){
     <div class="pkgs">${(d.items || []).map(i => pkgRow(i, busy || pstale, job)).join("")}</div>
     <div class="pkghead imghead">Android system images. Not packages: one exists at
       every API level at once, so the question is which level and which flavor
-      rather than whether. <code>ANDROID_SYSTEM_IMAGES</code> installs the plain
-      Google APIs image for each level it is given; everything else is added
-      here, and nothing is removed except by asking.</div>
+      rather than whether. ${onNode
+      ? `These are the ones in ${esc(d.name || "the node")}'s packages store — what its
+         emulator can boot. The list of what exists is read here, from Google's index; an
+         image is the same bytes on every host, so the node needs no network of its own to
+         be offered one.`
+      : `<code>ANDROID_SYSTEM_IMAGES</code> installs the plain Google APIs image for each
+         level it is given; everything else is added here.`}
+      Nothing is removed except by asking.</div>
+    ${onNode && d.images_need ? `<div class="pkghead sub">Images are installed by
+      sdkmanager, which is part of <code>${esc(d.images_need)}</code> — not on this node
+      yet, so it will be installed first.</div>` : ""}
     ${imgAdder(d, busy || pstale)}
     ${(d.images || []).length
       ? `<div class="pkgs">${d.images.map(im => imgRow(im, busy || pstale)).join("")}</div>`
-      : `<div class="pkghead">Nothing installed — the emulator has no image to boot.</div>`}
+      : `<div class="pkghead">${onNode && d.images_known === false
+          ? `${esc(d.name || "This node")}'s agent is too old to report its system images —
+             update it from the Nodes tab. Its emulator may well have one.`
+          : `Nothing installed — ${onNode
+             ? esc(d.name || "the node") + "'s emulator has no image to boot."
+             : "the emulator has no image to boot."}`}</div>`}
     <div class="macros">
       <button class="primary" data-pkg="install"${busy || pstale ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === pkgNode)))}"` : ""}

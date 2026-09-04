@@ -180,10 +180,12 @@ APK from `dist/` along. You cannot reach that emulator with `adb` from here;
 the verbs are the way in, and `bb emu create API` builds its AVD when the
 node's store has none yet.
 
-Which API levels exist is set by `ANDROID_SYSTEM_IMAGES` on the container. Run
-`bb emu list` before assuming a version is available; if the one you need is
-missing, say so rather than trying to install it — a runtime `sdkmanager`
-install works but the user should decide to spend the disk.
+Which API levels exist is set by `ANDROID_SYSTEM_IMAGES` on the container,
+and on a node by what its packages store holds — the operator adds one from
+the Tools tab with that node picked. Run `bb emu list` before assuming a
+version is available; if the one you need is missing, say so rather than
+trying to install it — a runtime `sdkmanager` install works but the user
+should decide to spend the disk.
 
 ### When the screen is blank but the app is fine
 
