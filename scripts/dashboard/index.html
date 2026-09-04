@@ -733,6 +733,12 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
    panel's own business now. */
 .row.stack2{flex-direction:column;align-items:stretch;gap:4px}
 .row.stack2 .acts{margin-left:0;flex-wrap:wrap}
+/* Who is working here, under the row's controls rather than above them: it is
+   a fact about the project, and the buttons are what somebody came to the row
+   for. The row is a column, so it simply falls last — except on the Projects
+   tab at desktop width, where the row turns back into a line and this has to
+   wrap onto its own beneath it. */
+.row.stack2 .sessline{width:100%;flex-basis:100%;color:var(--accent)}
 /* A command and its thumbtack are one control with two halves, so the tack
    cannot be mistaken for a command of its own. */
 .cmd{display:inline-flex;align-items:stretch;border:1px solid var(--line);
@@ -1541,7 +1547,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    stack — 340px is not room — and so does a phone, where the whole layout is
    one column anyway. */
 @media(min-width:901px){
-  .projtab .row.stack2{flex-direction:row;align-items:center}
+  .projtab .row.stack2{flex-direction:row;align-items:center;flex-wrap:wrap}
   .projtab .row.stack2 .grow{min-width:0}
   .projtab .row.stack2 .acts{margin-left:auto;flex-wrap:nowrap}
 
@@ -2003,17 +2009,21 @@ body.dragging .tab .lbl{cursor:grabbing}
    own, so a chat row looks like every other row on the dashboard. */
 #chat{display:flex;flex-direction:column;min-height:0;height:100%}
 .chatrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
-  background:none;border:0;border-bottom:1px solid var(--edge);padding:8px 10px}
-.chatrow:hover{background:var(--bg2)}
-/* Taken on, or merely visible. An admin is shown every project's channel and
-   most of them are somebody else's business — dim is the difference, and the
-   ones that are theirs sort above. */
-.chatrow.dim{opacity:.6}
-.chatrow.on .grow{font-weight:600}
-.chatrow .dot{width:8px;height:8px;border-radius:50%;background:var(--edge);flex:none}
-.chatrow .dot.ok{background:var(--ok)}
+  background:none;border:0;border-bottom:1px solid var(--line);padding:8px 10px}
+.chatrow:hover{background:var(--panel)}
+/* Taken on, or merely visible. A channel that is yours reads as ordinary text;
+   one an admin can see and has not taken on is dimmer and italic, which says
+   "somebody else's" without competing with the ones that are theirs. They
+   sort above it too. */
+.chatrow.notmine{opacity:.55;font-style:italic}
+/* Something unread, on a channel that is yours. Colour and weight, because
+   the point is to be found without reading the list — and never on a channel
+   that is not yours, which would be a page always asking for attention. */
+.chatrow.unread .grow{color:var(--accent);font-weight:600}
+.chatrow .dot{width:8px;height:8px;border-radius:50%;background:var(--line);flex:none}
+.chatrow .dot.ok{background:var(--accent)}
 .chathead{display:flex;align-items:center;gap:8px;padding:6px 10px;
-  border-bottom:1px solid var(--edge)}
+  border-bottom:1px solid var(--line)}
 .chatnote{padding:6px 10px;color:var(--dim)}
 .chatlog{flex:1;overflow:auto;padding:6px 10px;min-height:0;
   -webkit-overflow-scrolling:touch}
@@ -2021,16 +2031,16 @@ body.dragging .tab .lbl{cursor:grabbing}
 /* What the box noticed, not what somebody typed: dimmer, so a feed of events
    does not read as a wall of people talking. */
 .chatmsg.ev{opacity:.75;font-style:italic}
-.chatbar{display:flex;gap:6px;padding:6px;border-top:1px solid var(--edge)}
+.chatbar{display:flex;gap:6px;padding:6px;border-top:1px solid var(--line)}
 .chatbar input{flex:1;min-width:0}
 @media(max-width:900px){ .chatbar input{font-size:16px} }
 /* Something is waiting. The same green the state lights use, as a corner
    rather than a badge: the bar is four buttons wide on a phone. */
 #mChat.unread::after{content:"";position:absolute;top:4px;right:6px;
-  width:7px;height:7px;border-radius:50%;background:var(--ok)}
+  width:7px;height:7px;border-radius:50%;background:var(--accent)}
 #mChat{position:relative}
 .consbar{display:flex;gap:6px;padding:6px;background:var(--bg);
-  border-top:1px solid var(--edge);align-items:center}
+  border-top:1px solid var(--line);align-items:center}
 .consbar .consin{flex:1;min-width:0}
 @media(max-width:900px){ .consbar .consin{font-size:16px} }
 /* An opaque cover over the frame until the terminal is really there.
@@ -4620,12 +4630,18 @@ function drawChat(){
     // rather than one read of a list of forty.
     const ps = [...(state?.projects || [])]
       .sort((a, b) => (notMine(a) - notMine(b)) || a.name.localeCompare(b.name));
-    const projs = ps.map(p =>
-      `<button class="row chatrow${notMine(p) ? " dim" : " on"}" data-proj="${esc(p.name)}"
+    const projs = ps.map(p => {
+      // Unread is only ever marked on a channel that is YOURS. An admin is
+      // shown every project's channel and most are somebody else's business —
+      // colouring those would be a page permanently asking to be read.
+      const n = notMine(p) ? 0 : unread["p:" + p.name] || 0;
+      return `<button class="row chatrow${notMine(p) ? " notmine" : ""}${
+        n ? " unread" : ""}" data-proj="${esc(p.name)}"
          ${notMine(p) ? `title="you have not taken this project on — you can read it"` : ""}>
          <span class="grow">#${esc(p.name)}</span>
-         ${unread["p:" + p.name] ? `<span class="pill">${unread["p:" + p.name]}</span>` : ""}
-       </button>`);
+         ${n ? `<span class="pill">${n}</span>` : ""}
+       </button>`;
+    });
     const mine = ps.filter(p => !notMine(p)).length;
     paint(el, (people.length ? people.join("") : `<div class="empty">no other accounts</div>`)
       + (projs.length ? `<div class="sub chathead">projects${
@@ -5525,12 +5541,7 @@ function projectRow(p, live, cls, inTab){
           : ""}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
           p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
-        ${sessionWord(p.name) ? `<div class="sub acc">${esc(sessionWord(p.name))}${
-          othersOn(p.name).length
-            // Said once, where somebody would otherwise wonder whether they
-            // are about to walk into each other. They are not: each session
-            // works in a checkout of its own.
-            ? ", each in a checkout of their own" : ""}</div>` : ""}
+
         ${p.issues.map(i => i.action && !p.locked
           // An issue with a fix that takes no decisions says so, and is the
           // control that applies it — underlined, because a line you can click
@@ -5599,6 +5610,12 @@ here. Renaming moves the directory and everything keyed to it">${GEAR}</button>
         title="delete — moves it to /workspace/.trash and keeps every file. Its
 roadmap, bugs and memories stay where they are, so putting it back is a mv">${BIN}</button>` : ""}
       </span>
+      ${sessionWord(p.name) ? `<div class="sub sessline">${esc(sessionWord(p.name))}${
+        othersOn(p.name).length
+          // Said once, where somebody would otherwise wonder whether they are
+          // about to walk into each other. They are not: each session works in
+          // a checkout of its own.
+          ? ", each in a checkout of their own" : ""}</div>` : ""}
     </div>
 `;
 }

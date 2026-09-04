@@ -512,6 +512,14 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     // are actually theirs; the door does not need to.
     ok((await chat(owner, { action: 'read', project: 'gamma' })).status === 200,
        'an administrator can read a project channel it has not taken on');
+    // ...and a user is not even shown that one exists: the channel list is
+    // drawn from the projects in their own payload.
+    const theirProjects = ((await (await bare('/api/status', { headers: other })).json())
+      .projects || []).map(p => p.name);
+    ok(theirProjects.length === 1 && theirProjects[0] === 'beta',
+       `a user's channel list is only the projects they were given (${theirProjects})`);
+    ok((await chat(other, { action: 'read', project: 'gamma' })).status === 403,
+       '...and asking for another one directly is refused, not merely undrawn');
 
     // The status poll carries what is waiting, which is what puts the dot on
     // the button — a chat you have to open to discover is one nobody opens.
@@ -526,6 +534,23 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     const after = await (await bare('/api/status', { headers: other })).json();
     ok(!(after.chat.unread || {})[`dm:${uidOf('test')}`],
        '...and reading a conversation is what marks it seen');
+
+    // A session start is announced ONCE. ttyd's client asks for /term/token
+    // and then /term/ws with the same argument, and both arrive before bb-tty
+    // has made the session — which put the same line in the channel twice on
+    // a real phone. Only the upgrade counts, and a window covers the race.
+    // gamma, which nothing else here opens: the suppression window is per
+    // (project, account), so a project another block has already touched
+    // would answer for that rather than for this.
+    const starts = async () => ((await (await chat(owner,
+      { action: 'read', project: 'gamma' })).json()).messages || [])
+      .filter(m => /started a Claude session/.test(m.text)).length;
+    const was = await starts();
+    for (const path of ['/term/token', '/term/ws', '/term/ws'])
+      await bare(path + '?arg=' + encodeURIComponent('claude:gamma'), { headers: owner });
+    const now = await starts();
+    ok(now === was + 1,
+       `starting a session is announced once, not once per request (${was} → ${now})`);
 
     // The prompt relay, driven the way Claude Code drives it.
     const relay = `${REPO}/scripts/dashboard/bb-prompt-relay`;
