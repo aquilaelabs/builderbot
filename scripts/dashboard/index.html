@@ -2918,6 +2918,24 @@ const myTmux = s => (state?.tmux_prefix || "") + s;
 // on one Anthropic account, and that refusal comes from the server when the
 // terminal is opened, in its own words.
 const withMe = p => (state?.claude_with || {})[p] || [];
+// The others, for the places that are about somebody else being here.
+const othersOn = p => withMe(p).filter(n => n !== state?.me);
+// "you", "alice", "you and alice", "alice, bob and you" — the row's own words
+// for who has a conversation open here. BuilderBot account names, not the
+// Anthropic logins behind them: whose session it is on this box is the
+// question somebody looking at the row is asking.
+function sessionWord(proj){
+  const all = withMe(proj);
+  if (!all.length) return "";
+  const names = all.map(n => n === state?.me ? "you" : n);
+  // "you" last reads better in every combination, and puts the other people
+  // — the part that is news — at the front.
+  names.sort((a, b) => (a === "you") - (b === "you"));
+  const list = names.length === 1 ? names[0]
+    : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+  return `${list} ${names.length === 1 && names[0] !== "you" ? "has" : "have"} `
+       + `a Claude session here`;
+}
 // A project this account can see and has not taken on (roadmap #27). An
 // administrator is shown every project — hiding one from somebody who
 // administers the box only sends them looking for it — and works on the ones
@@ -5341,6 +5359,12 @@ function projectRow(p, live, cls, inTab){
           : ""}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
           p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
+        ${sessionWord(p.name) ? `<div class="sub acc">${esc(sessionWord(p.name))}${
+          othersOn(p.name).length
+            // Said once, where somebody would otherwise wonder whether they
+            // are about to walk into each other. They are not: each session
+            // works in a checkout of its own.
+            ? ", each in a checkout of their own" : ""}</div>` : ""}
         ${p.issues.map(i => i.action && !p.locked
           // An issue with a fix that takes no decisions says so, and is the
           // control that applies it — underlined, because a line you can click
@@ -5363,8 +5387,8 @@ function projectRow(p, live, cls, inTab){
          title="${notMine(p) ? NOT_MINE_WHY
                  : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
-                 : withMe(p.name).length
-                   ? `${withMe(p.name).join(", ")} also working here, in a checkout of their own — start yours`
+                 : othersOn(p.name).length
+                   ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own — start yours`
                  : !signedIn() && !live.has(myClaude(p.name))
                    ? "this container is not signed in to Claude — the Doctor card has the way in"
                  : live.has(myClaude(p.name)) ? "Claude — session running, go to its tab"

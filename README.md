@@ -388,6 +388,8 @@ bb nodes           the node registry, read-only in a terminal — the Nodes
                    tab is where it is edited; `local` is this container
 bb users           the dashboard's accounts. `passwd NAME` resets one from a
                    shell, which is the way back when the owner is locked out
+bb work            who else is working this project, and which files two of
+                   you have uncommitted at once — read-only
 bb jobs [-n N]     the recent jobs: state, node, what ran, how it ended —
                    read-only; the Jobs tab is where one is stopped
 bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
@@ -2922,6 +2924,16 @@ two sessions in it commit each other's half-finished work and delete it with a
 merge, where git is good at them. A worktree session builds into its own
 `dist/`, so the Artifacts tab will not show it, and the dev instance belongs to
 the project rather than to the session.
+
+`bb work` says who else is in the project and which files two of you have
+uncommitted at once. Two answers, and the cheap one is the truthful one: **git**
+is exact — a file changed in two trees at once is a collision whatever anybody
+intended, and it needs nothing recorded — while a **PreToolUse hook** adds the
+finer grain, naming the definition an edit lands in, which is a guess and is
+labelled as one. The hook also tells the second session, before its edit, that
+somebody else has that file open. It does not refuse it: each session is in its
+own worktree, so two people editing one function are making two commits rather
+than corrupting one tree, and that is what a merge is for.
 
 What *is* refused is a second session on one **Anthropic account** — they would
 share its limits, and afterwards nothing could say which of them did what. Each

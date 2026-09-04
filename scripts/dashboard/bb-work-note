@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""PreToolUse hook: record what this session is about to edit, and say who else
+has that file open.
+
+Runs before every file-writing tool in a Claude session, with the project and
+the account baked into its command line by bb-tty's claude_scope(). It does two
+things and neither of them is a refusal:
+
+  * writes the file — and a guess at the symbol — into overlap.py's notes, so
+    `bb work` can say what each session has been touching;
+  * when another session's notes name the same file, says so back into this
+    one, before the edit rather than at the merge.
+
+IT DOES NOT BLOCK, and that is a decision rather than an omission. Every
+session works in a worktree of its own (roadmap #24), so two people editing one
+function are not corrupting anything — they are making two commits that git
+will merge or conflict on, which is the normal way that gets resolved.
+Refusing the second one would be refusing legitimate work on the grounds that
+somebody else got there first. What the second one needs is to KNOW, which is
+what this says.
+
+The symbol is a GUESS and is recorded as one. It reads the definition line
+enclosing the edit, which is right for the languages whose definitions start a
+line and wrong wherever that is not true. The exact answer is the git half of
+`bb work`, which needs no hook and cannot be wrong about which files are open.
+
+Never fatal: a hook that errors takes the tool call with it, and a note is not
+worth an edit. Everything below is wrapped, and the exit is always 0.
+"""
+import json
+import os
+import re
+import sys
+
+# A definition, in the languages this box builds. Anchored at the start of a
+# line because that is the only part of "what function is this" that is cheap
+# and mostly true; anything better wants a parser per language, which is a
+# different project.
+DEF = re.compile(
+    r"^\s*(?:@\w+[^\n]*\n\s*)*"
+    r"(?:(?:public|private|protected|static|final|async|export|default|"
+    r"suspend|override|open|internal|fun|func|def|class|interface|struct|"
+    r"enum|impl|trait|type|const|let|var|function)\s+)+"
+    r"([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def symbol_for(path, old):
+    """The definition the edit lands inside, or "" when nothing looks like one.
+
+    Tries the replaced text first — an edit that rewrites a whole function
+    carries its signature — and otherwise walks back from where that text sits
+    in the file to the nearest definition above it.
+    """
+    for line in (old or "").splitlines()[:40]:
+        m = DEF.match(line)
+        if m:
+            return m.group(1)
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            body = f.read(400_000)
+    except OSError:
+        return ""
+    at = body.find((old or "").split("\n")[0]) if old else -1
+    if at < 0:
+        return ""
+    for line in reversed(body[:at].splitlines()[-400:]):
+        m = DEF.match(line)
+        if m:
+            return m.group(1)
+    return ""
+
+
+def main():
+    project, session = (sys.argv[1:3] + ["", ""])[:2]
+    try:
+        req = json.load(sys.stdin)
+    except (ValueError, OSError):
+        return
+    spec = req.get("tool_input") or {}
+    path = str(spec.get("file_path") or spec.get("notebook_path") or "")
+    if not path or not project or not session:
+        return
+
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, here)
+    import overlap                                            # noqa: E402
+
+    def write_json(p, d):
+        tmp = f"{p}.new"
+        with open(tmp, "w") as f:
+            json.dump(d, f, indent=2)
+        os.replace(tmp, p)
+
+    overlap.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
+                      workspace=os.environ.get("WORKSPACE", "/workspace"),
+                      write_json=write_json)
+    # Recorded relative to the tree, so the same file in two worktrees is one
+    # name — the whole point is comparing across them.
+    root = os.environ.get("BB_TREE") or ""
+    rel = os.path.relpath(path, root) if root and path.startswith(root) else path
+    others = overlap.others_touching(project, session, rel)
+    overlap.note(project, session, rel, symbol_for(path, spec.get("old_string")))
+    if not others:
+        return
+    say = (f"Another session on {project} has {rel} open: "
+           + ", ".join(others)
+           + ". You are each in your own worktree, so nothing is being "
+             "overwritten — but you will be merging against their version of "
+             "this file. `bb work` shows what overlaps.")
+    # The documented shape, and a plain line beside it: if this version of
+    # Claude Code words its hook output differently, the line is still in the
+    # transcript and the note is still on disk.
+    json.dump({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                                      "additionalContext": say}}, sys.stdout)
+    print(f"\n[builderbot] {say}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:                     # noqa: BLE001 — never take an edit with it
+        pass
+    sys.exit(0)

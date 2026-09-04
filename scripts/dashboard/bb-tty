@@ -185,15 +185,26 @@ claude_scope() {
     # it denies a file that session was never going to touch and leaves its
     # own editable.
     here="${here:-$WORKSPACE/$proj}"
+    # The hook rides in the same file (roadmap #24). It records what this
+    # session touches and says when another has the same file open — it does
+    # NOT refuse, because each session is in a worktree of its own and two
+    # people editing one function are making two commits, not corrupting one
+    # tree. bb-work-note's header has the whole argument.
     if walls_around "$proj" "$here" | jq -R . \
-         | jq -s --arg ws "$WORKSPACE" --arg here "$here" '
+         | jq -s --arg ws "$WORKSPACE" --arg here "$here" \
+               --arg note "$(dirname "$(readlink -f "$0")")/bb-work-note" \
+               --arg proj "$proj" --arg who "${account:-owner}" '
            {permissions: {
               additionalDirectories: [],
               deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
                      + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)",
                         "Edit(\($here)/VERSION)",
                         "Edit(\($here)/**/VERSION)"])
-           }}' > "$tmp" && [ -s "$tmp" ]; then
+           },
+            hooks: {PreToolUse: [
+              {matcher: "Edit|Write|NotebookEdit",
+               hooks: [{type: "command",
+                        command: "\($note) \($proj) \($who)"}]}]}}' > "$tmp" && [ -s "$tmp" ]; then
         mv -f "$tmp" "$out"
         printf '%s' "$out"
         return 0
@@ -517,6 +528,10 @@ case "$target" in
         # to the directory's name — which in a worktree is an account id. One
         # export rather than a special case in each of them.
         export BB_PROJECT="$proj"
+        # Which tree this session is in, so the hook records a path relative
+        # to it: the same file in two worktrees has to be one name, or
+        # comparing across them compares nothing.
+        export BB_TREE="$dir"
         if scope="$(claude_scope "$proj" "$dir")"; then
             cmd+=(--settings "$scope")
         else

@@ -73,6 +73,8 @@ bb — BuilderBot helper
                          and the scanner's logs
   bb nodes               the node registry, read-only (docs/nodes.md phase 1)
   bb users               the dashboard's accounts; passwd NAME is the way back in
+  bb work                who else is changing this project, and which files
+                         two of you have open at once
   bb jobs [-n N]         the recent jobs: state, node, what ran, how it ended
   bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node,
                          stream the log back; --out GLOB brings files into dist/
@@ -2276,6 +2278,61 @@ an operator's shell has DASHBOARD_AUTH. Neither is set here."
     printf '%s' "$h"
 }
 
+# bb work — who else is changing this project, and where you overlap.
+#
+# Two answers, and the first needs nothing to have been recorded: git knows
+# what every working tree on this project has uncommitted, and a file changed
+# in two of them at once is a collision whatever anybody meant to do. The
+# second is the hook's notes, which are finer (a function, where it could
+# work one out) and are a guess, and say so.
+#
+# Read-only and no writing verb: this is somebody asking what they are about
+# to walk into, not a place to declare anything.
+cmd_work() {
+    local py proj
+    py="$(dirname "$(readlink -f "$0")")/dashboard/overlap.py"
+    [ -f "$py" ] || die "overlap.py is missing from this image"
+    proj="${BB_PROJECT:-$(basename "$(git rev-parse --show-toplevel 2>/dev/null || pwd)")}"
+    python3 - "$py" "$proj" "${DASHBOARD_STATE:-/config}" "${WORKSPACE:-/workspace}" <<'PY'
+import importlib.util, json, sys
+mod, proj, state, ws = sys.argv[1:5]
+spec = importlib.util.spec_from_file_location("overlap", mod)
+o = importlib.util.module_from_spec(spec); spec.loader.exec_module(o)
+o.configure(state=state, workspace=ws,
+            write_json=lambda p, d: open(p, "w").write(json.dumps(d, indent=2)))
+# The account each worktree belongs to, so the answer names people rather than
+# ids. Missing users.json is not fatal — the ids are still an answer.
+names = {}
+try:
+    with open(f"{state}/users.json") as f:
+        names = {u.get("uid"): n for n, u in (json.load(f).get("users") or {}).items()}
+except Exception:
+    pass
+wt = f"{ws}/.worktrees"
+trees = o.trees(proj, wt)
+if len(trees) < 2:
+    print(f"{proj}: one working tree — nobody else is in it")
+else:
+    print(f"{proj}: {len(trees)} working trees")
+    for label, path in trees.items():
+        n = len(o.changed(path))
+        print(f"  {names.get(label, label or 'owner'):<20} {n} file(s) uncommitted  {path}")
+hits = o.collisions(proj, wt, names)
+if hits:
+    print("\nthe same file, open in more than one:")
+    for h in hits:
+        print(f"  {h['file']}  —  {', '.join(h['trees'])}")
+elif len(trees) > 1:
+    print("\nno file is open in two of them")
+notes = o.notes(proj)
+if notes:
+    print("\nwhat each session last touched (a guess at the symbol, from the edit):")
+    for sess, rec in sorted(notes.items()):
+        for f, syms in sorted((rec.get("files") or {}).items()):
+            print(f"  {names.get(sess, sess):<20} {f}" + (f"  [{', '.join(syms)}]" if syms else ""))
+PY
+}
+
 cmd_users() {
     local py sub="${1:-list}"
     py="$(dirname "$(readlink -f "$0")")/dashboard/users.py"
@@ -3800,6 +3857,7 @@ case "${1:-help}" in
     findings) shift; cmd_findings "$@" ;;
     nodes) shift; cmd_nodes "$@" ;;
     users) shift; cmd_users "$@" ;;
+    work)  shift; cmd_work "$@" ;;
     jobs)  shift; cmd_jobs "$@" ;;
     run)   shift; cmd_run "$@" ;;
     ci-labels) shift; cmd_ci_labels "$@" ;;

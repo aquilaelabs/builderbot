@@ -2763,13 +2763,15 @@ def snapshot(who):
         # a bare refusal would tell you nothing you could act on. Only for
         # projects this account can see, and never their own, which is not
         # held against them (roadmap #26).
-        # Who else is working each project. More than one may be (roadmap
-        # #24), each in a worktree of their own, so this is a list and it is
-        # information rather than a refusal — the row says who is here, and
-        # nothing is greyed for it.
-        "claude_with": {p: sorted(set(ns) - {(who or {}).get("name")})
-                        for p, ns in claude_sessions(sessions).items()
-                        if set(ns) - {(who or {}).get("name")}},
+        # Who has a Claude session on each project — BuilderBot account names,
+        # everybody including the asker. More than one may (roadmap #24), each
+        # in a worktree of their own, so this is a list and it is information
+        # rather than a refusal: the row says who is here and nothing is
+        # greyed for it. The page decides how to word "you and alice".
+        "claude_with": claude_sessions(sessions),
+        # This account's own name, so the row can say "you and alice" rather
+        # than reading your own name back at you.
+        "me": (who or {}).get("name", ""),
         # This account's colour scheme, for a browser that has none stored.
         # index.html's adoptTheme says why localStorage still outranks it.
         "theme": users.prefs(who).get("theme", ""),

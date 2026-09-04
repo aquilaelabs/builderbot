@@ -198,6 +198,7 @@ tmuxKill('claude-alpha');
 // most installs never reach.
 {
   const HOMEDIR = join(DIR, 'home');
+  const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
   const shell = (arg, extra = {}) => {
     try {
       return execFileSync('bash', [BBTTY, arg], {
@@ -289,7 +290,59 @@ tmuxKill('claude-alpha');
        '...with the project directory itself denied to it, being another tree');
     ok(!deny.includes(`Edit(${wt}/**)`),
        '...and its own not denied, which a blanket rule on .worktrees would have done');
+    // The scope file also carries the work hook, which is how the finer half
+    // of `bb work` gets anything to report.
+    ok(JSON.stringify(scope.hooks || {}).includes('bb-work-note'),
+       '...and the settings carry the hook that records what the session touches');
     tmuxKill(`claude-${proj}`); tmuxKill(`${other}~claude-${proj}`);
+
+    // ---- what overlaps (roadmap #24 step 2) --------------------------------
+    // Two answers. Git is exact and needs nothing recorded: a file uncommitted
+    // in two trees at once is a collision whatever anybody intended. The hook
+    // is finer and is a guess, and says so.
+    writeFileSync(join(src, 'm.py'), 'def alpha():\n    return 1\n\ndef beta():\n    return 2\n');
+    git(['add', '-A']); git(['commit', '-qm', 'a module']);
+    execFileSync('git', ['-C', src, 'worktree', 'prune']);
+    const wt2 = join(DIR, 'ws', '.worktrees', proj, other);
+    execFileSync('git', ['-C', wt2, 'merge', '-q', 'HEAD', '--no-edit'], { encoding: 'utf8' })
+      .toString?.();
+    writeFileSync(join(src, 'm.py'), 'def alpha():\n    return 9\n\ndef beta():\n    return 2\n');
+    writeFileSync(join(wt2, 'm.py'), 'def alpha():\n    return 1\n\ndef beta():\n    return 8\n');
+    writeFileSync(join(wt2, 'only-theirs.txt'), 'x\n');
+    const work = execFileSync('bash', [`${REPO}/scripts/bb`, 'work'], {
+      encoding: 'utf8',
+      env: { ...process.env, BB_PROJECT: proj, DASHBOARD_STATE: join(DIR, 'state'),
+             WORKSPACE: join(DIR, 'ws') } });
+    ok(/2 working trees/.test(work),
+       `bb work sees both trees (${work.split('\n')[0]})`);
+    ok(/the same file, open in more than one/.test(work) && /m\.py/.test(work),
+       '...and names the file both of them have uncommitted');
+    ok(!/only-theirs/.test(work),
+       '...and not the one only a single tree has, which is not a collision');
+
+    // The hook: recorded, and the second session is told before it edits.
+    const note = join(REPO, 'scripts', 'dashboard', 'bb-work-note');
+    const hook = (uid, old_string) => execFileSync('python3', [note, proj, uid], {
+      input: JSON.stringify({ tool_name: 'Edit',
+        tool_input: { file_path: join(src, 'm.py'), old_string } }),
+      encoding: 'utf8',
+      env: { ...process.env, DASHBOARD_STATE: join(DIR, 'state'),
+             WORKSPACE: join(DIR, 'ws'), BB_TREE: src } });
+    hook('u_aaaaaaaa', '    return 2');
+    const second = execFileSync('python3', [note, proj, 'u_bbbbbbbb'], {
+      input: JSON.stringify({ tool_name: 'Edit',
+        tool_input: { file_path: join(src, 'm.py'), old_string: '    return 2' } }),
+      encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, DASHBOARD_STATE: join(DIR, 'state'),
+             WORKSPACE: join(DIR, 'ws'), BB_TREE: src } });
+    ok(/additionalContext/.test(second) && /u_aaaaaaaa/.test(second),
+       'the hook tells the second session who else has that file open');
+    ok(!/permissionDecision/.test(second),
+       '...and does not refuse it — two worktrees editing one function is two commits, not a corruption');
+    const rec = JSON.parse(readFileSync(join(DIR, 'state', 'session-work.json'), 'utf8'));
+    ok(rec[proj]['u_aaaaaaaa'].files['m.py'].includes('beta'),
+       `...having recorded the enclosing definition, as a guess (${
+          JSON.stringify(rec[proj]['u_aaaaaaaa'].files)})`);
   }
 
   // The id is checked, not trusted: the proxy is what puts it there, and a

@@ -51,6 +51,7 @@ const SURFACE = [
   'imgRow', 'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
   'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeDraft', 'mountState', 'nodeStale', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfFold', 'nodeRunnerSection', 'nodePathsLine', 'nodeMeters', 'meter', 'dmRouteLine', 'loadPackages', 'loadWire', 'logNote', 'logSection',
   'consoleBar', 'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
+  'sessionWord',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onCardDrag', 'onDrag', 'onRev', 'openClaude',
   'openDevEnv', 'openDocker', 'openEditContainer', 'openLinkProject',
