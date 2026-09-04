@@ -111,8 +111,11 @@ ok(list[0].id === 'local',
   await sleep(300);
   const tail = readStore('m.audit_tail(80)');
   const row = tail.find(r => r.action === '/api/bugs:add');
-  ok(row && row.principal === 'operator' && row.target === 'alpha',
-     'a mutation writes an audit row: who, what, on what');
+  // The principal names the ACCOUNT now, not the fact that somebody was
+  // signed in: `operator` was a placeholder from when only one person could
+  // make a mutation, and a log that calls everybody that answers nothing.
+  ok(row && row.principal === 'user:test' && row.target === 'alpha',
+     `a mutation writes an audit row naming the account: who, what, on what (${row?.principal})`);
   ok(row && /^sha256:[0-9a-f]{12}·\d+b$/.test(row.params),
      '...with a parameter digest in a fixed shape');
   ok(!JSON.stringify(tail).includes('sekrit'),
@@ -213,8 +216,8 @@ ok(list[0].id === 'local',
     `m._rows("SELECT action, principal FROM audit WHERE target = ?", ("${added.id}",))`);
   ok(acts.some(r => r.action === 'node-enroll-mint')
      && acts.some(r => r.action === 'node-update')
-     && acts.some(r => r.principal === 'operator'),
-     'every node mutation wrote an audit row, the operator\'s named as theirs');
+     && acts.some(r => r.principal === 'user:test'),
+     'every node mutation wrote an audit row, naming the account that made it');
 }
 
 // ---- phase 2: the docker manager's picker ----------------------------------

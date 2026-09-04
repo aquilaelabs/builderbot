@@ -7354,12 +7354,41 @@ async function openMemory(name){
 // something noticed mid-task and left undone survives the conversation.
 
 async function loadTodo(gen){
+  // What the staging counter was when we asked. See the guard below.
+  const staged = todoStaged;
   let j;
   try{
     const r = await fetch("/api/todo?project=" + encodeURIComponent(memProj));
     j = await r.json();
   }catch(e){ j = {error: String(e)}; }
   if (gen !== memGen) return;
+  // ...and never over something staged WHILE this was in flight. The guard
+  // above catches a reply meant for a different project; this catches one for
+  // this project that left before the operator typed and came back after.
+  //
+  // Every path that reloads does ask first — rereadTodo confirms, noteBatch
+  // checks that nothing is staged — but they ask BEFORE the fetch, and the
+  // answer stops being true while it is in flight. The list then came back
+  // from the server and quietly took what had been typed since.
+  //
+  // The test is "did anything stage since we asked", not "is anything staged
+  // now": an explicit re-read with work already staged is a request to
+  // replace it, and rereadTodo has confirmed that. Only the typing that
+  // happened DURING the round trip is unanswerable, because nobody was asked
+  // about it.
+  //
+  // Measured rather than reasoned: three concurrent runs of todo.mjs, two of
+  // them with #todoList empty and the hint back to "Nothing yet" a moment
+  // after a row was staged. Filed as a test race for weeks (bug #13) because
+  // it only showed under load — which is exactly when a fetch is slow enough
+  // to land on the wrong side of the typing.
+  //
+  // The batch marker still gets through: a session opening or closing one is
+  // news whether or not this list can be replaced.
+  if (todoStaged !== staged){
+    if (j.batch !== undefined) noteBatch(j.batch);
+    return;
+  }
   drawTodo(j);
 }
 
@@ -8479,12 +8508,17 @@ $("todoLog").onclick = () => {
 // Save button can take back. It flushes whatever is pending first, so the line
 // that goes carries the list as the operator has just arranged it.
 let tmpId = 0;              // ids for items the server has never heard of
+// Moves on every staged change, and never goes back. loadTodo reads it before
+// asking and again before drawing, which is how a reply that left before the
+// operator typed is told from one that left after — see the guard there.
+let todoStaged = 0;
 
 function stage(op, apply){
   if (!todoPending.length) todoWas = structuredClone(todoItems);
   const out = apply();
   if (out === false) return false;      // nothing actually changed
   todoPending.push(op);
+  todoStaged++;
   redrawTodo();
   return true;
 }

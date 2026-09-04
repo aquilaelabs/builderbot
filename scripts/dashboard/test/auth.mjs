@@ -199,5 +199,83 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
      '...and the owner is untouched by all of it');
 }
 
+// ---- what a `user` sees, and does not (roadmap #22 step 2) --------------
+// The property the whole scheme leans on: a project somebody was not given is
+// ABSENT, not refused — so the existence check and the permission check are
+// the same check, and comparing error messages tells you nothing.
+{
+  const { readFileSync } = await import('node:fs');
+  const { execFileSync } = await import('node:child_process');
+  const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+  const bb = (args, input) => execFileSync('bash', [`${REPO}/scripts/bb`, 'users', ...args],
+    { input, encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  const py = (code) => execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+${code}`], { encoding: 'utf8' }).trim();
+
+  bb(['add', 'lim', '--role', 'user'], 'limitedpw1\nlimitedpw1\n');
+  py('print(u.set_projects("lim", ["alpha"]))');
+  const as = (path, opts = {}) => bare(path, { ...opts, headers: {
+    Authorization: 'Basic ' + Buffer.from('lim:limitedpw1').toString('base64'),
+    ...(opts.headers || {}) } });
+  const post = (path, body) => as(path, { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  const mine = await (await as('/api/status')).json();
+  const names = (mine.projects || []).map(p => p.name);
+  ok(names.includes('alpha') && !names.includes('ep.silon') && names.length === 1,
+     `a user's state carries only the projects they were given (${names.join(', ')})`);
+  const all = await (await bare('/api/status', { headers: {
+    Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).json();
+  ok((all.projects || []).length > names.length,
+     '...while the owner still sees every one of them');
+
+  // A project they were not given does not exist, and says so in the words a
+  // typo gets — never "forbidden", which would confirm it is there.
+  const hidden = await (await post('/api/todo', { action: 'save', project: 'ep.silon', items: [] })).json();
+  ok(/not a project/.test(hidden.error || ''),
+     `a project they cannot see reads as absent, not refused (${hidden.error})`);
+
+  // ...and on a project they DO have, the verbs that reach past it are an
+  // administrator's.
+  const renamed = await post('/api/rename', { name: 'alpha', to: 'alpha2' });
+  ok(renamed.status === 403 && /administrator/.test((await renamed.json()).error || ''),
+     'renaming their own project is refused, and says whose it is');
+  const trashed = await post('/api/trash', { name: 'alpha' });
+  ok(trashed.status === 403, 'so is deleting it');
+  const renoded = await post('/api/prefs', { project: 'alpha', node: 'local' });
+  ok(renoded.status === 403 && /node is shared/.test((await renoded.json()).error || ''),
+     '...and moving it to another node, because a node is shared');
+  const built = await post('/api/prefs', { project: 'alpha', build: './gradlew' });
+  ok(built.status === 200, '...while the project\'s own build command is theirs to set');
+
+  // The machinery is not a project and is not theirs at all.
+  for (const [path, body] of [['/api/v1/nodes', { action: 'enroll', name: 'zzprobe' }],
+                              ['/api/packages', { action: 'install', names: ['jdk'] }],
+                              ['/api/phone', { action: 'connect' }]]) {
+    const r3 = await post(path, body);
+    ok(r3.status === 403, `${path} is an administrator's`);
+  }
+  // ...and the refusal REFUSED. Asserting the status alone is what let a
+  // guard through that wrote a 403 and then did the thing anyway: _json
+  // returns None, so `if (no := self._may(...))` was never true. The nodes
+  // suite found it, three files later, as a node nobody had enrolled.
+  {
+    const own = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') };
+    const ns = await (await bare('/api/v1/nodes', { headers: own })).json();
+    const made = (ns.nodes || []).map(n => n.name);
+    ok(!made.includes('zzprobe'),
+       `...and refusing it did not enroll it anyway (${made.join(', ')})`);
+  }
+  // ...and the owner is unaffected by every one of those.
+  ok((await bare('/api/status', { headers: {
+       Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') } })).status === 200,
+     'none of it touches the owner');
+  py('print(u.remove("lim"))');
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);

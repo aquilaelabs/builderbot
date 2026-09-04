@@ -1437,6 +1437,35 @@ ok(/gone stays where it is/.test(refusedBy('step', 'mv', widget.id, '3', 'up')),
 ok(/gone stays where it is/.test(refusedBy('step', 'mv', widget.id, '2', 'down')),
    '...by mark, not by prefix');
 
+// A reload that was already in flight must not take what was typed while it
+// was out. Held open with a route so the race is deterministic: it hid for
+// weeks as a load-dependent flake (bug #13) precisely because a slow box is
+// what puts the reply on the wrong side of the typing.
+{
+  let release, held = false;
+  // Only the FIRST request waits. A handler that holds every one of them
+  // would hang every later test in this file the moment it was released.
+  await page.route('**/api/todo?*', async route => {
+    if (!held){ held = true; await new Promise(r => { release = r; }); }
+    await route.continue().catch(() => {});
+  });
+  page.evaluate(() => notebooks.get('alpha').reload());   // held, so not awaited
+  await page.waitForFunction(() => true);
+  await page.fill('#todoText', 'typed while a reload was out');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(
+    () => [...document.querySelectorAll('#todoList .todo .txt')]
+            .some(e => e.textContent.includes('typed while a reload was out')));
+  release();
+  // Long enough that a reply which was going to overwrite has done it —
+  // and that the released request has finished before the route goes.
+  await new Promise(r => setTimeout(r, patience(1500)));
+  await page.unroute('**/api/todo?*');
+  ok(await page.$$eval('#todoList .todo .txt',
+       es => es.some(e => e.textContent.includes('typed while a reload was out'))),
+     'a reload landing after you type does not take what you typed');
+}
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);
