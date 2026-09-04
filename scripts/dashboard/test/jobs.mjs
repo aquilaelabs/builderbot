@@ -1,7 +1,7 @@
 // Phase 4 of the controller design (docs/nodes.md): jobs and the queue. The
 // rows ARE the queue; placement is a node or a selector, frozen when the job
-// is taken; the controller's own runner executes on local and over ssh, the
-// agent on its node; cancel is a flag on the row that the runner reads; and
+// is taken; the controller's own runner executes on local and the agent on
+// its node (it used to reach an ssh node from here — that kind is gone); cancel is a flag on the row that the runner reads; and
 // the Jobs tab is the operator's window on all of it. Every assertion here
 // goes through the queue end to end — a job queued, placed, run, logged,
 // ended — because the queue is what this phase exists to prove.
@@ -62,12 +62,20 @@ const settled = id => until(async () => { const j = await job(id); return OVER.i
   ok(q.error && /no node fits/.test(q.error) && /arch=riscv64/.test(q.error),
      `a selector nothing fits is refused at the queue, naming the selector (${q.error})`);
   const arch = execFileSync('uname', ['-m'], { encoding: 'utf8' }).trim();
+  // The label as well as the arch, because the selector has to be one only
+  // LOCAL answers. The harness's docker host is an enrolled agent node now
+  // (roadmap #24) and it fits arch and package-build just as well — and its
+  // agent is long-polling, so it takes an unplaced job before the
+  // controller's watcher looks. That is placement working: a selector job is
+  // frozen to whichever node takes it. `labels.arch` is on the controller's
+  // own seeded row and on nothing else.
   const q2 = await exec({ argv: ['sh', '-c', 'echo placed on $BUILDERBOT_NODE'],
-    select: { arch, capability: 'package-build' } });
-  ok(q2.ok, `a selector local fits (arch=${arch}, package-build) is taken`);
+    select: { arch, capability: 'package-build', labels: { arch } } });
+  ok(q2.ok, `a selector only local fits (arch=${arch}, package-build, label arch) is taken`);
   const j = await settled(q2.job);
   ok(j && j.state === 'succeeded' && j.node === 'local' && /placed on local/.test(j.log),
-     'and the job is placed on local when it is taken — the node written on the row');
+     `and the job is placed on local when it is taken — the node written on the row (${
+        j && j.node}, ${j && j.state})`);
   ok(j && j.placement && j.placement.select && j.placement.select.arch === arch,
      'the row keeps the selector it was placed by, not only the answer');
 }

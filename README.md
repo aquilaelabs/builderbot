@@ -1201,7 +1201,8 @@ the daemon resolves a compose file's bind sources on its own filesystem. The
 manager tab says which node it is on — *"on a sandbox VM at ssh://…"* — and
 `bb doctor` prints the same line from the same function, so the two cannot
 disagree about which daemon is live. (`DOCKER_HOST` and `DOCKER_HOST_PATHS`
-from earlier releases seed that record once and are otherwise ignored.)
+named that machine in earlier releases; both are gone, with the `ssh` node
+kind they belonged to.)
 
 **A daemon has to say it is the sandbox before anything is driven on it.**
 `vm/provision.sh` writes a `builderbot.sandbox` label into the VM's
@@ -1273,12 +1274,13 @@ that logs in anywhere, and a node reached by token alone takes every kind of
 job, docker included. The **ssh node kind is retired** (roadmap #18): it
 existed because compose used to run from this container over ssh, which meant
 a node needed a key on top of its token and a token-only node — the cloud
-case — could do everything except docker. A row left over from before says so
-and asks to be enrolled again. Its **path mapping** — what this container's
-paths are called on that machine — is still on its row, which is where the old
-`DOCKER_HOST_PATHS` setting lives now. The
-local node refuses `docker-host` on purpose — it is not a sandbox. Every
-change writes an audit row.
+case — could do everything except docker. The kind itself is gone now, and
+`Add ssh node` with it: the endpoint answers with the way in rather than a
+404. A node's **path mapping** — what this container's paths are called on
+that machine, which its daemon needs to resolve a compose file's bind
+sources — is on its row, and is where the old `DOCKER_HOST_PATHS` setting
+lives. The local node refuses `docker-host` on purpose — it is not a
+sandbox. Every change writes an audit row.
 
 **A node does everything for the projects bound to it.** There is nothing to
 pick per node — no "this one builds, that one deploys". A project names one

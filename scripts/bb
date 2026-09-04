@@ -2369,8 +2369,7 @@ if not rows:
 for n in rows:
     caps = ",".join(n["capabilities"]) or "-"
     ag = n.get("agent") or {}
-    where = n["ssh_addr"] or ("this container" if n["kind"] == "local" else
-                              ag.get("addr") or "-")
+    where = "this container" if n["kind"] == "local" else (ag.get("addr") or "-")
     # An agent node is live or quiet by whether it has dialed in lately —
     # derived, never stored, and the one column the row cannot lie about.
     state = n["state"]
@@ -3329,7 +3328,7 @@ cmd_doctor() {
     check "anthropic api reachable"   curl -sS -m 10 -o /dev/null https://api.anthropic.com/
     check "github api reachable"      curl -sS -m 10 -o /dev/null https://api.github.com/
     # The daemon the dashboard's dev instances are built and run on: the
-    # sandbox VM DOCKER_HOST names. This used to report only a mounted socket,
+    # sandbox VM a node record names. This used to report only a mounted socket,
     # as "docker socket not mounted" — true, and misleading, because it reads
     # as "no docker here" on a box with a working daemon one variable away.
     #

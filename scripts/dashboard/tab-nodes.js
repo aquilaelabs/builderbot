@@ -201,10 +201,13 @@ function nodeRunnerSection(n, c){
       </div>`;
 }
 
-// An ssh node's path mapping (docs/nodes.md §11): what this container's
-// paths are called on that machine, because its daemon resolves a compose
-// file's bind sources over there. Was DOCKER_HOST_PATHS; the record owns it
-// now, and the env var only seeds it once.
+// A node's path mapping (docs/nodes.md §11): what this container's paths are
+// called on that machine, because its daemon resolves a compose file's bind
+// sources over there. Was DOCKER_HOST_PATHS, then the ssh row's; with that
+// kind retired (roadmap #24) it belongs to the agent row, which is the only
+// remote row left — and it is still read, by devapp.host_map, for every node
+// being addressed. A line that drew on no row would have taken an editable
+// setting out of reach without saying so.
 function nodePathsLine(n){
   const paths = n.config?.paths || {};
   const text = Object.entries(paths).map(([k, v]) => `${k}:${v}`).join(", ");
@@ -489,9 +492,7 @@ function renderNodesInto(i){
       ? `${n.reported.cpu} cpu · ${Math.round((n.reported.mem_mb || 0) / 1024)}GB`
       : "";
     const where = n.kind === "local" ? "this container"
-      : n.kind === "agent" ? (n.agent?.addr ? `dials in from ${n.agent.addr}` : "")
-      : n.kind === "ssh" ? `${n.ssh_addr || "ssh"} — the ssh kind is retired; enroll this machine with a token`
-      : (n.ssh_addr || "");
+      : n.agent?.addr ? `dials in from ${n.agent.addr}` : "";
     // Behind when the node's agent is not the file this controller ships.
     // Said on the row before anybody presses anything: a five-version-old
     // agent otherwise looks exactly like a current one.
@@ -517,7 +518,7 @@ function renderNodesInto(i){
         ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}
         <div class="sub ndtest" hidden></div>
         ${n.kind === "agent" && n.reported?.sandbox && n.state !== "pending" ? nodeConfFold(n) : ""}
-        ${n.kind === "ssh" && n.state !== "retired" ? nodePathsLine(n) : ""}
+        ${n.kind === "agent" && n.state !== "pending" ? nodePathsLine(n) : ""}
       </div>
       <span class="acts">
         ${n.kind === "local" || n.state === "pending" ? "" : `<button type="button" data-nd="test"

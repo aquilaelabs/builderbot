@@ -119,15 +119,20 @@ esac
 trap 'cleanup' EXIT
 pid=""
 agent_pid=""
+stub_pid=""
 cleanup() {
     [ -n "$pid" ] && kill "$pid" 2>/dev/null || true
     [ -n "$agent_pid" ] && kill "$agent_pid" 2>/dev/null || true
+    [ -n "$stub_pid" ] && kill "$stub_pid" 2>/dev/null || true
     # The private server only — guarded again, because this is the line that
     # once took the real one down.
     case "$(tmux display-message -p '#{socket_path}' 2>/dev/null)" in
         "$S"/*) tmux kill-server 2>/dev/null || true ;;
     esac
-    rm -rf "$S"
+    # BB_TEST_KEEP=1 leaves the scratch dir behind: the server log, the stub
+    # agent's log and the state dir are the only account of what a failure
+    # inside them looked like, and they used to go with the run that made it.
+    [ -n "${BB_TEST_KEEP:-}" ] && log "scratch kept at $S" || rm -rf "$S"
     [ "$(cat "$LOCK" 2>/dev/null)" = "$$" ] && rm -f "$LOCK"
 }
 
@@ -650,8 +655,6 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     BB_LOGIN_DONE="$S/login-finished" \
     PATH="$S/bin:$PATH" BB_WEBEXT_BIN="$S/bin/web-ext" BB_ADB_BIN="$S/bin/adb" \
     BB_DOCKER_BIN="$S/bin/docker" DOCKER_STUB_STATE="$S/dockerstate" \
-    DOCKER_HOST="ssh://bb@stub" \
-    DOCKER_HOST_PATHS="" \
     BB_DEV_DATA_DIR="$S/devdata" \
     python3 "$DASH/server.py" > "$S/server.log" 2>&1 &
 pid=$!
@@ -660,6 +663,45 @@ for _ in $(seq 40); do
     kill -0 "$pid" 2>/dev/null || { cat "$S/server.log"; die "server exited"; }
     sleep 0.25
 done
+
+# ---- the docker-host node --------------------------------------------------
+# The suite needs one node whose daemon the controller can address, and it
+# used to get one from DOCKER_HOST: the server mirrored the variable into an
+# `ssh`-kind row at boot. That kind is retired (roadmap #24) and so is the
+# seed, so the harness enrolls the node the way an operator now does — mint a
+# token, then present it on the agent channel.
+#
+# Two things are written rather than probed, because this container is not a
+# node and cannot pretend to be one:
+#   * X-Forwarded-For, so the row records the address the stub docker answers
+#     for (`stub`) instead of 127.0.0.1, which is also where every OTHER node
+#     a test enrolls dials in from;
+#   * sshd in the census, because nodes._addr only hands out an ssh address
+#     for a node that reports one, and devapp.available() needs that address.
+#     There is no sshd in here and no way to bind port 22 without privileges.
+# This is the same shape nodes.mjs already uses for its second docker node.
+sandbox_json=$(curl -fs -u test:test -H 'Content-Type: application/json' \
+    -d '{"action":"enroll","name":"sandbox","user":"bb"}' \
+    "http://127.0.0.1:$PORT/api/v1/nodes") || {
+        cat "$S/server.log"; die "could not mint the sandbox node's token"; }
+sandbox_tok=$(printf '%s' "$sandbox_json" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')
+sandbox_node=$(curl -fs -H "Authorization: Bearer $sandbox_tok" \
+    -H 'Content-Type: application/json' -H 'X-Forwarded-For: stub' \
+    -d '{"user":"bb","version":"harness","census":{"cpu":4,"mem_mb":8192,
+         "arch":"x86_64","system":"linux","sshd":true,"docker":true}}' \
+    "http://127.0.0.1:$PORT/api/v1/agent/enroll") || {
+        cat "$S/server.log"; die "the sandbox node would not enroll"; }
+
+# ...and something on the node to take its jobs. Compose on an agent node is
+# the agent's, so without this every Up and Rebuild in the suite would queue
+# and then be reconciled away. agent-stub.py's header says why it is a stub
+# and not the shipped agent.
+STUB_AGENT_URL="http://127.0.0.1:$PORT" \
+STUB_AGENT_DIR="$S/sandboxdata" \
+STUB_AGENT_TOKEN="$(printf '%s' "$sandbox_node" | python3 -c 'import json,sys; print(json.load(sys.stdin)["token"])')" \
+DOCKER_STUB_STATE="$S/dockerstate" PATH="$S/bin:$PATH" \
+    python3 "$HERE/agent-stub.py" > "$S/agent-stub.log" 2>&1 &
+stub_pid=$!
 
 # ---- tests -----------------------------------------------------------------
 if [ $# -gt 0 ]; then

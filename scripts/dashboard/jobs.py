@@ -30,7 +30,6 @@ compose module and this one knows nothing about compose files.
 """
 
 import os
-import shlex
 import signal
 import subprocess
 import sys
@@ -248,19 +247,17 @@ def run_exec(job, run):
     env = dict(os.environ)
     env["BUILDERBOT_NODE"] = job["node"]
     env["BUILDERBOT_JOB"] = job["id"]
-    if n.get("kind") == "local" or not n:
+    # Only local work reaches this runner. Everything on a node is the
+    # agent's, compose included, and runner_of places it there — so a job
+    # arriving here for another node is a placement fault, not something to
+    # paper over by reaching for ssh. This used to run compose on the legacy
+    # ssh kind over a key from this container; that kind is gone (#24).
+    if not n or n.get("kind") == "local":
         cmd = argv
     else:
-        addr = nodes.ssh_addr_of(job["node"])
-        if not addr.startswith("ssh://"):
-            return {"state": "failed", "error": "no address to reach this node at"}
-        # Over ssh, as the account the record names, with the argv quoted
-        # for the remote shell. BatchMode so a key that does not answer is a
-        # failure and not a prompt nothing will ever read.
-        cmd = ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
-               addr[len("ssh://"):], "--",
-               f"BUILDERBOT_NODE={shlex.quote(job['node'])} "
-               f"BUILDERBOT_JOB={shlex.quote(job['id'])} " + shlex.join(argv)]
+        return {"state": "failed",
+                "error": f"{job['node']} is not this controller's to run — "
+                         "its agent takes its own jobs"}
     r = stream(cmd, run, timeout, env=env)
     if run.canceled:
         return {"state": "canceled", "exit": r["code"], "error": "stopped"}

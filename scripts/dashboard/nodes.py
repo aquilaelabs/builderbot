@@ -4,10 +4,12 @@ the audit trail — and, from phase 3, the agent channel: enrollment tokens,
 node credentials, the heartbeat with its census, and the job rows an `exec`
 job rides in on (docs/nodes.md §4, §9).
 
-Phase 1 seeded a `local` node for the container itself, mirrored DOCKER_HOST
-into an `ssh` node so the sandbox VM had a record, answered a read-only list,
-stamped which node a piece of work ran on, and wrote an audit row for every
-mutation the server takes. Phase 2 made the registry editable. Phase 3 is the
+Phase 1 seeded a `local` node for the container itself, answered a read-only
+list, stamped which node a piece of work ran on, and wrote an audit row for
+every mutation the server takes. It also mirrored DOCKER_HOST into an `ssh`
+node so the sandbox VM had a record; that kind is retired (roadmap #24) and
+`local` and `agent` are the two that remain. Phase 2 made the registry
+editable. Phase 3 is the
 first time something OTHER than this container writes here: an agent on a
 node dials in with a bearer token, says what it is, asks for work, and
 reports what happened. Phase 4 made the job rows the queue: placement is a
@@ -40,7 +42,6 @@ import platform
 import re
 import secrets
 import sqlite3
-import sys
 import threading
 import time
 from pathlib import Path
@@ -66,7 +67,6 @@ def configure(*, state):
     _open()
     migrate()
     _seed_local()
-    _adopt_docker_host()
 
 
 def open_readonly(state):
@@ -254,7 +254,7 @@ def _live(rec):
     agent is actually talking to us is a different fact with a different
     owner, so it rides beside it: `live` is True while the last heartbeat is
     recent, False once it is not, and None for a node kind that has no
-    heartbeat to be late with (ssh nodes are probed, local is us)."""
+    heartbeat to be late with, which since roadmap #24 is only local: us."""
     if rec.get("kind") == "agent":
         seen = (rec.get("agent") or {}).get("last_seen") or 0
         rec["live"] = (time.time() - seen) < LIVE_S
@@ -264,6 +264,10 @@ def _live(rec):
 
 
 def _insert_node(rec):
+    # ssh_addr is written empty and read by nothing: the kind that used it is
+    # retired (roadmap #24). The column stays because migrations are numbered
+    # and append-only — dropping one is a one-way door across two engines for
+    # a cosmetic gain — so it is written rather than special-cased away.
     cols = ("id", "name", "kind", "pool", "created", "state", "concurrency",
             "ssh_addr", "os", "arch", *_JSON_COLS)
     vals = [json.dumps(rec.get(c, {})) if c in _JSON_COLS
@@ -378,73 +382,6 @@ def _mem_mb():
         return int(m.group(1)) // 1024 if m else 0
     except OSError:
         return 0
-
-
-def _adopt_docker_host():
-    """Mirror DOCKER_HOST into an ssh-kind node record, once.
-
-    THE LAST THING THAT READS DOCKER_HOST, and the last release that does.
-    The ssh kind is retired (roadmap #18): nothing adds one any more, the
-    tab has no button for it, and a row of that kind says so. This stays one
-    release so a box that upgrades with the variable still set keeps the
-    daemon it had, and so an install that has never had a node row gets one
-    rather than finding every dev-instance control greyed out.
-
-    When it goes, so does _seed_paths, the ssh branch of _addr, and the
-    ssh_addr column stops meaning anything.
-    Keyed on the address so a changed DOCKER_HOST makes a NEW node rather
-    than quietly rewriting what the old record meant; the old one is marked
-    retired, not deleted, because rows are history (door 1).
-    """
-    addr = (os.environ.get("DOCKER_HOST") or "").strip()
-    if not addr.startswith("ssh://"):
-        return
-    print("[nodes] DOCKER_HOST is read only to seed a node record now; the setting "
-          "lives on the Nodes tab and the variable is going away (docs/nodes.md §11)",
-          file=sys.stderr, flush=True)
-    have = _rows("SELECT id FROM nodes WHERE kind = 'ssh' AND ssh_addr = ? "
-                 "AND state != 'retired'", (addr,))
-    if have:
-        _seed_paths(have[0]["id"])
-        return
-    # Only the row THIS migration made goes when the env var moves — marked
-    # so, because with the tab able to add nodes, "retire every other ssh
-    # node" would eat the operator's own rows on the next boot.
-    _exec("UPDATE nodes SET state = 'retired' WHERE kind = 'ssh' "
-          "AND state != 'retired' AND config LIKE ?",
-          ('%"from_env": true%',))
-    nid = mint("n")
-    _insert_node({
-        "id": nid, "name": "sandbox", "kind": "ssh",
-        "pool": "default", "created": int(time.time()), "state": "online",
-        "concurrency": 1, "ssh_addr": addr,
-        "capabilities": list(CAPABILITIES),
-        "services": {}, "labels": {"disposable": "true"},
-        "agent": {}, "reported": {}, "routing": {},
-        "config": {"from_env": True},
-    })
-    audit("system", "node-adopt", nid, {"from": "DOCKER_HOST"})
-    _seed_paths(nid)
-
-
-def _seed_paths(nid):
-    """DOCKER_HOST_PATHS onto the node record, once: env seeds, the record
-    owns (docs/nodes.md §11). A record that already has a mapping is never
-    overwritten by the variable — the row is where it is edited now."""
-    raw = (os.environ.get("DOCKER_HOST_PATHS") or "").strip()
-    n = node(nid)
-    if not raw or not n or (n.get("config") or {}).get("paths"):
-        return
-    paths, why = parse_paths(raw)
-    if why:
-        print(f"[nodes] DOCKER_HOST_PATHS not seeded: {why}", file=sys.stderr, flush=True)
-        return
-    cfg = dict(n.get("config") or {})
-    cfg["paths"] = paths
-    _exec("UPDATE nodes SET config = ? WHERE id = ?", (json.dumps(cfg), nid))
-    audit("system", "node-paths", nid, {"from": "DOCKER_HOST_PATHS", "n": len(paths)})
-    print(f"[nodes] DOCKER_HOST_PATHS seeded onto node {n['name']} ({len(paths)} pair(s)); "
-          "the variable is read for that alone now", file=sys.stderr, flush=True)
 
 
 def parse_paths(text):
@@ -675,13 +612,8 @@ def _addr(n):
     edited.
 
     It is no longer how a compose action reaches the node — that is a job
-    on the agent now (roadmap #18) — but a row still shows where the node
-    answered from, and an `ssh` row left over from before the retirement
-    still reports the address it was added with, so it can be recognized
-    rather than silently doing nothing.
+    on the agent — but a row still shows where the node answered from.
     """
-    if n["kind"] == "ssh":
-        return n.get("ssh_addr") or ""
     if n["kind"] == "agent":
         addr = (n.get("agent") or {}).get("addr") or ""
         user = (n.get("config") or {}).get("user") or ""
@@ -1147,12 +1079,11 @@ def node_runner(principal, node_id, want, labels=None, url=""):
 
 def route_host(node_id):
     """The host a published port on this node is reached at from the LAN:
-    an ssh node's address without scheme or account, an agent node's the
-    address it last dialed in from. '' for local and the unknown."""
+    the address the node last dialed in from. '' for local and the unknown."""
     n = node(node_id)
     if not n or n["kind"] == "local":
         return ""
-    a = _addr(n) if n["kind"] == "ssh" else ((n.get("agent") or {}).get("addr") or "")
+    a = (n.get("agent") or {}).get("addr") or ""
     a = re.sub(r"^[a-z][a-z0-9+.-]*://", "", a)
     a = a.split("@")[-1].split("/")[0].split(":")[0]
     return a
@@ -1527,15 +1458,13 @@ def _jbump():
 def runner_of(job_type, kind):
     """Who executes a job of this type on a node of this kind.
 
-    An agent runs everything for itself, compose included (roadmap #18): the
-    node's own docker, on the node, so the token it enrolled with is the
-    only way in and the controller needs no ssh key. A node with no agent —
-    the legacy `ssh` kind — leaves compose here, over ssh, until that kind
-    goes.
+    An agent runs everything for itself, compose included: the node's own
+    docker, on the node, so the token it enrolled with is the only way in and
+    the controller needs no ssh key. Only `local` is left here, and only
+    because it IS here — the ssh kind, which used to leave compose on the
+    controller over an ssh key, is gone (roadmap #24).
     """
-    if kind != "agent":
-        return "controller"
-    return "node"
+    return "controller" if kind == "local" else "node"
 
 
 def fits(job, n):
@@ -1833,7 +1762,16 @@ def job_result(node_id, job_id, state, exit_code=None, error="", outputs=None):
     fn = ON_DONE.get(got[0]["type"] if "type" in got[0].keys() else "")
     if fn:
         with contextlib.suppress(Exception):     # noqa: BLE001 — a hook must not lose a result
-            fn(job(job_id, with_log=False), state)
+            # A hook may also REWORD the failure. All a node can honestly say
+            # is "exit 1" — it ran an argv somebody else composed — while the
+            # module that wrote the plan knows the step was "starting" and
+            # what that means. The row used to carry that sentence because
+            # the controller ran compose itself; this is how it keeps it now
+            # the node does (roadmap #24).
+            better = fn(job(job_id, with_log=False), state)
+            if state != "succeeded" and isinstance(better, str) and better.strip():
+                _exec("UPDATE jobs SET error = ? WHERE id = ?",
+                      (better.strip()[:500], job_id))
     _jbump()
     with _wake:
         _wake.notify_all()      # the slot is free: a held poll may take the next

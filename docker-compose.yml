@@ -32,9 +32,8 @@ services:
       TZ: ${TZ:-America/New_York}
       # The sandbox VM the Docker manager builds on is a node now, enrolled
       # with a token from the dashboard's Nodes tab — no key here, nothing
-      # named here — with its path mapping on its row. The DOCKER_HOST /
-      # DOCKER_HOST_PATHS of earlier releases seed a record once, for a box
-      # upgrading with them set, and are otherwise ignored.
+      # named here — with its path mapping on its row. DOCKER_HOST and
+      # DOCKER_HOST_PATHS are gone with the ssh node kind.
       # See docs/sandbox-vm.md.
 
       # --- Claude Code ------------------------------------------------------
