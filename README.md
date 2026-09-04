@@ -194,7 +194,7 @@ Everything else has sane defaults — full reference below.
 | Want | Do |
 |---|---|
 | Android emulator | On by default; needs `--device=/dev/kvm` (pre-set in the template). Then `bb emu start` |
-| Web dashboard | Always on — it is the controller. Set `DASHBOARD_AUTH=user:pass` for the first boot and map port 7680 — see [Web dashboard](#web-dashboard) |
+| Web dashboard | Always on — it is the controller. Map port 7680 and open it: the first page asks you to make the owner account — see [Web dashboard](#web-dashboard) |
 | NVIDIA GPU | Only if this container renders — a controller does not. On a node container, add the Nvidia-Driver plugin and set both NVIDIA variables to `all` — see [GPU](#nvidia-gpu) |
 | Logs on the array | Set the **Logs directory** path field (template) / uncomment the `/logs` volume (compose) |
 | Static analysis reports | Point the **Scanner reports** path at your scanner's output dir — read-only; see [Static analysis reports](#static-analysis-reports) |
@@ -306,7 +306,6 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `CHOWN_PROJECTS` | `false` | Recursive chown of project mounts to `PUID:PGID` |
 | `CHOWN_HOME` | `true` | Recursive chown of the home volume at startup. Set `false` if it is large and already correct |
 | `UNRAID_ICON_NAME` | `BuilderBot` | Only with the icon-cache mapping: Unraid names the cached icon after the container, and nothing inside one can see its own name — set this if you renamed it |
-| `DASHBOARD_AUTH` | *(empty)* | `user:password`, read **once**: it seeds the owner account on the first boot that finds none, and is never consulted again. `bb users passwd NAME` changes a password after that; `bb users add` makes other accounts. With neither accounts nor this, the dashboard will not start |
 | `DASHBOARD_PORT` | `7680` | The one published port: page, API and terminals (proxied under `/term`) |
 | `DASHBOARD_TTYD_PORT` | `7681` | ttyd's loopback bind inside the container; never published |
 | `DASHBOARD_DOCTOR_INTERVAL` | `1800` | Seconds between the dashboard's background `bb doctor` runs (min 300) |
@@ -388,6 +387,8 @@ bb nodes           the node registry, read-only in a terminal — the Nodes
                    tab is where it is edited; `local` is this container
 bb users           the dashboard's accounts. `passwd NAME` resets one from a
                    shell, which is the way back when the owner is locked out
+bb work            who else is working this project, and which files two of
+                   you have uncommitted at once — read-only
 bb jobs [-n N]     the recent jobs: state, node, what ran, how it ended —
                    read-only; the Jobs tab is where one is stopped
 bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and
@@ -459,7 +460,7 @@ captures it takes `--full` (whole page, not just the viewport), `--scale 2`
 (2x pixels, crisp in GitHub's column), `--wait MS` (pages whose async
 fetches settle after networkidle), and `--resize W` (imagemagick downscale,
 in place, so full-size originals never land in a repo). `--auth user:pass`
-defaults to `DASHBOARD_AUTH`. The intended split for a project's docs
+falls back to `BB_TOKEN` or a `DASHBOARD_AUTH` you pass for the command. The intended split for a project's docs
 screenshots: the project keeps a script that boots its app into a
 photogenic state — staged data, ready-wait — and ends with one `bb shot`
 line; the Playwright plumbing lives here, once.
@@ -2755,6 +2756,16 @@ ssh push through a deploy key exactly as it catches an https one — and refuses
 with a sentence rather than an auth error. Like the sibling-project rule it is
 a guardrail, not a sandbox: a shell in the container can delete it.
 
+**What decides which branches can be written is GitHub's, not this box's.** A
+credential that can push can push to any branch, `main` included: no GitHub
+credential has a per-branch scope — fine-grained PATs and classic PATs are
+repository-level, and a deploy key is read or write on the whole repo. So
+there is nothing to grant here that pushes to a branch and not to the default
+one. If a merge should be somebody's decision rather than a push, the control
+is a **ruleset on the default branch requiring a pull request**, set once per
+repository on GitHub. Nothing in this container can do that for you, and a
+local refusal would only be one more guardrail a shell can step around.
+
 Projects that already existed when this arrived are granted retroactively if
 their GitHub remote is an ssh one, recorded as `key`. Those are the repos that
 were already being pushed to with deploy keys, and a new rule is not a reason
@@ -2863,15 +2874,120 @@ carries: this stops a session **starting here**, and the file tools are already
 denied on every project but a session's own. It is not a sandbox — a session in
 another project can still reach this directory through Bash.
 
-```
-DASHBOARD_AUTH=you:a-real-password
-```
+**There is no password setting.** The first page the dashboard serves asks you
+to make the **owner** account, and it is the only page it serves until you
+have — nothing else is reachable, signed in or not. So open it as soon as the
+container is up: until somebody claims it, whoever can reach the port can.
 
-**`DASHBOARD_AUTH` is needed for the first boot, and the dashboard refuses to
-start with neither it nor an account.** What it publishes is a writable shell inside a container holding a loaded
-ssh-agent and read-write mounts of every project — so that credential is worth
-as much as the ssh keys are. It is not a convenience toggle; treat it like the
-Docker socket mount.
+That is deliberate rather than a convenience. The alternative was a password in
+the container's environment, where it is readable by anything that can read the
+template, stays readable forever, and is the one credential that opens a shell
+on this box. What the dashboard publishes is a writable shell inside a
+container holding a loaded ssh-agent and read-write mounts of every project —
+worth as much as the ssh keys are — so it is worth typing once into a form
+instead.
+
+Afterwards, `bb users passwd <name>` changes a password and `bb users add`
+makes the others.
+
+#### Accounts
+
+The Tools card's **Users** tab adds people. There is exactly one **owner**,
+undeletable and renameable; an **admin** can do everything except act on the
+owner; a **user** gets the projects you give them and the work inside them,
+but not deleting one, renaming one, or changing which node it builds on — a
+node is shared, and that setting reaches every project on it.
+
+**The project list means the same thing for every role; what differs is the
+remedy.** A project not on your list is read-only: no Claude session, no
+notebook edits, no rebuild. An admin is shown *every* project — hiding one
+from somebody who administers the box only sends them looking for it — with
+the ones they have not taken on marked read-only, and they can add any of them
+to their own list themselves. A user is shown only what you give them, and
+cannot grant themselves anything. So for an admin the list is a seatbelt
+against working on the wrong project; for a user it is the boundary.
+
+Each account works as itself:
+
+- **its own home** — own shell history, own Claude login, own memories. The
+  box's own dotfiles are shared into it rather than copied, so the Android
+  pairing key, the AVDs and the build caches are not duplicated per person
+- **its own terminals.** A shell session is named for the account, so two
+  people opening a terminal on one project do not land in the same one
+- **its own tab strip and colour scheme**, which follow the account to any
+  browser it signs in on rather than living in one browser
+- **the owner keeps this container's original home and session names**, so an
+  install with one operator is unchanged by any of it
+
+**More than one person can work a project at once, in a working tree each.**
+The owner works in the project directory as always; anybody else gets a **git
+worktree** — a checkout of their own, on a branch of their own, sharing the
+project's one `.git`. That is what makes it safe, and coordination inside one
+tree could not have been: `/workspace/<project>` is a single working tree, so
+two sessions in it commit each other's half-finished work and delete it with a
+`checkout`. Separate trees make that impossible and put the conflicts at the
+merge, where git is good at them. A worktree session builds into its own
+`dist/`, so the Artifacts tab will not show it, and the dev instance belongs to
+the project rather than to the session.
+
+**Chat** is the fourth flyout beside Keys, Commands and Sessions. It lists the
+other accounts — a green dot for whoever is here right now — and, under them,
+the **project channels**, which are group chats for everybody on a project. A
+channel carries what people type into it *and* what the box notices: a Claude
+session started, a rebuild, and what each person asked Claude. Three people on
+one project not doing the same work twice is the whole point of it.
+
+An admin is shown every project's channel, since they are shown every project,
+with the ones they have taken on marked and sorted first. A `user` has the
+channels for the projects they were given. Reading and answering a channel is
+not a change to the project, so it follows what you can *see* rather than what
+you have taken on.
+
+**Prompts on a shared project are not private**, and the panel says so where
+the channel is drawn rather than leaving it to be discovered: what you ask
+Claude on a project you share goes to the people you share it with.
+
+`bb work` says who else is in the project and which files two of you have
+uncommitted at once. Two answers, and the cheap one is the truthful one: **git**
+is exact — a file changed in two trees at once is a collision whatever anybody
+intended, and it needs nothing recorded — while a **PreToolUse hook** adds the
+finer grain, naming the definition an edit lands in, which is a guess and is
+labelled as one. The hook also tells the second session, before its edit, that
+somebody else has that file open. It does not refuse it: each session is in its
+own worktree, so two people editing one function are making two commits rather
+than corrupting one tree, and that is what a merge is for.
+
+What *is* refused is a second session on one **Anthropic account** — they would
+share its limits, and afterwards nothing could say which of them did what. Each
+account signs in to its own from the Doctor card. That refusal is where `/term`
+is proxied, not only in the page, because the ttyd URL is reachable directly.
+
+The notebook (roadmap, bugs, analysis) stays shared, because it is about the
+project; memories do not, because they are about the person.
+
+**A `user` has no shell and no command line at all**, and that is what makes
+the rest of the role mean something: everything else is enforced by the
+dashboard, in Python, and a terminal is the way around all of it. So a `user`
+gets no terminal tab, and their Claude session opens as a **console** instead
+— the real interface, rendered by a `ttyd` started without `--writable`, with
+a box to type a message and a button to end the conversation. The proxy
+refuses anything else they ask a terminal for, so a read-only window cannot be
+pointed at somebody else's session. They see Docker and the package manager
+for their own projects' nodes — the scoping is on the answer, not just the
+picker, so a node none of their projects builds on is refused rather than
+listed — and change neither, with one exception: **Rebuild**, and Abort with
+it. Building what you committed and looking at it is the point of having the
+project, and Rebuild is also how a stopped instance comes back; the page
+already ghosts it until the code has actually moved. They cannot create or
+rename a project, change how one authenticates, or touch a stored token. What
+they can write is the notebook, a rebuild, and a Claude session on a project
+they were given.
+
+**An `admin` has a shell, and a shell is everything.** Every session runs as
+the same user inside the container — deliberately, so everything written to
+your array keeps the ownership `PUID`/`PGID` give it — which means an
+administrator can reach any account's files if they go looking. Give that role
+to people you would give the server to.
 
 Only the dashboard port is published. ttyd binds the loopback and the
 dashboard relays `/term` to it, so the browser asks for credentials once and

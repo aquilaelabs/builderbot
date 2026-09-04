@@ -35,7 +35,7 @@ import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
 // what it prints — do not hand-edit it into agreement without looking at why
 // it moved.
 const SURFACE = [
-  'adoptCards', 'adoptLayout', 'applyCards', 'applyNow', 'applyTheme',
+  'adoptCards', 'adoptLayout', 'adoptTheme', 'applyCards', 'applyNow', 'applyTheme',
   'argForSession', 'arriveBox', 'arriveRow', 'askPurge', 'cSeg', 'cSlide',
   'cSubmit', 'cardDropIndex', 'claudeMd', 'daemonHost', 'closeEditor', 'closeNewProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
@@ -50,7 +50,9 @@ const SURFACE = [
   'fillNodeSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab', 'imgAdder',
   'imgRow', 'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
   'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeDraft', 'mountState', 'nodeStale', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfFold', 'nodeRunnerSection', 'nodePathsLine', 'nodeMeters', 'meter', 'dmRouteLine', 'loadPackages', 'loadWire', 'logNote', 'logSection',
+  'chatLoop', 'chatOpen', 'consoleBar', 'drawChat', 'loadChat',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
+  'sessionWord',
   'nbReadOnly', 'newShell', 'nextShell', 'nextStep', 'notify',
   'nudgeTerminals', 'onCardDrag', 'onDrag', 'onRev', 'openClaude',
   'openDevEnv', 'openDocker', 'openEditContainer', 'openLinkProject',
@@ -77,7 +79,7 @@ const SURFACE = [
   'slideHidden', 'slidePanel', 'swapBox', 'startCardDrag', 'startClaude', 'startDrag',
   'tabLabel', 'tabLabels', 'tabTitle', 'tipOff', 'tipify', 'toggleBell',
   'toggleCard', 'togglePin', 'toggleUiMenu', 'unveil', 'updateArrows',
-  'viewAfterRestart', 'watchSignin', 'wireLogSection', 'wireJobsTab', 'wireNodeConf', 'wireNodesTab', 'wireMacros',
+  'viewAfterRestart', 'watchSignin', 'wireConsole', 'wireLogSection', 'wireJobsTab', 'wireNodeConf', 'wireNodesTab', 'wireMacros',
   'wireProjectRows'
 ];
 

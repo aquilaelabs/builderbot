@@ -31,6 +31,7 @@
     if (t && t !== "default" && /^[a-z]{2,12}$/.test(t))
       document.documentElement.dataset.theme = t;
   }catch(e){ /* private mode: the default scheme is a fine answer */ }
+
 </script>
 <!-- Inline so the browser never asks the server for /favicon.ico — the only
      404 this page would otherwise produce. -->
@@ -1991,6 +1992,47 @@ body.dragging .tab .lbl{cursor:grabbing}
 .pane .stack > *:not(.on){visibility:hidden;pointer-events:none}
 .pane .stack > .empty-pane{display:grid;place-items:center}
 .pane .slot{display:flex}
+/* The console bar (roadmap #27), under a read-only Claude terminal for an
+   account with no shell. Column, so the frame keeps its flex:1 and the row
+   takes what it needs; the input picks up the global field skin like every
+   other control, so nothing is restyled here beyond the layout. */
+.pane .slot:has(.consbar){flex-direction:column}
+/* The chat flyout, in the same box the other three use — it is one strip of
+   space and they take turns (see slidePanel). Only the layout is here: the
+   input picks up the global field skin and .row/.pill/.dot are the page's
+   own, so a chat row looks like every other row on the dashboard. */
+#chat{display:flex;flex-direction:column;min-height:0;height:100%}
+.chatrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
+  background:none;border:0;border-bottom:1px solid var(--edge);padding:8px 10px}
+.chatrow:hover{background:var(--bg2)}
+/* Taken on, or merely visible. An admin is shown every project's channel and
+   most of them are somebody else's business — dim is the difference, and the
+   ones that are theirs sort above. */
+.chatrow.dim{opacity:.6}
+.chatrow.on .grow{font-weight:600}
+.chatrow .dot{width:8px;height:8px;border-radius:50%;background:var(--edge);flex:none}
+.chatrow .dot.ok{background:var(--ok)}
+.chathead{display:flex;align-items:center;gap:8px;padding:6px 10px;
+  border-bottom:1px solid var(--edge)}
+.chatnote{padding:6px 10px;color:var(--dim)}
+.chatlog{flex:1;overflow:auto;padding:6px 10px;min-height:0;
+  -webkit-overflow-scrolling:touch}
+.chatmsg{padding:4px 0}
+/* What the box noticed, not what somebody typed: dimmer, so a feed of events
+   does not read as a wall of people talking. */
+.chatmsg.ev{opacity:.75;font-style:italic}
+.chatbar{display:flex;gap:6px;padding:6px;border-top:1px solid var(--edge)}
+.chatbar input{flex:1;min-width:0}
+@media(max-width:900px){ .chatbar input{font-size:16px} }
+/* Something is waiting. The same green the state lights use, as a corner
+   rather than a badge: the bar is four buttons wide on a phone. */
+#mChat.unread::after{content:"";position:absolute;top:4px;right:6px;
+  width:7px;height:7px;border-radius:50%;background:var(--ok)}
+#mChat{position:relative}
+.consbar{display:flex;gap:6px;padding:6px;background:var(--bg);
+  border-top:1px solid var(--edge);align-items:center}
+.consbar .consin{flex:1;min-width:0}
+@media(max-width:900px){ .consbar .consin{font-size:16px} }
 /* An opaque cover over the frame until the terminal is really there.
    The frame's own background (below) is enough in Chromium, and is not in
    Firefox on Android, which paints its white document canvas over it anyway —
@@ -2824,10 +2866,14 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div class="mpanel" id="sespanel">
       <div id="sessions"><div class="loading">loading…</div></div>
     </div>
+    <div class="mpanel" id="chatpanel">
+      <div id="chat"><div class="loading">loading…</div></div>
+    </div>
     <div class="mobar" id="mobar">
       <button id="mKeys">⌨ Keys</button>
       <button id="mMacros">» Commands</button>
       <button id="mSessions">☰ Sessions</button>
+      <button id="mChat">💬 Chat</button>
     </div>
   </div>
 </main>
@@ -2887,13 +2933,79 @@ const isSplit = () => panes[1] !== null;
 // derived from a project name here goes through tmuxName(), or the kill,
 // keys and macro requests would name a session that never existed.
 const tmuxName = s => s.replace(/[.:]/g, "_");
+// Whose shell this is (roadmap #26). A SHELL is named for its account, because
+// two people opening a terminal on one project must otherwise land in the same
+// one — tmux attaches to an existing session rather than making a second. A
+// CLAUDE session is not: one conversation per project is the rule, and who
+// holds it is a record rather than a name.
+//
+// The prefix comes from the server rather than being built here, because the
+// OWNER has none — they keep the bare names, the way they keep /home/builder
+// — and a page that derived the rule for itself would be a fourth copy of it
+// to keep in step. bb-tty's sess() is the other half; `~` is the separator
+// because tmux rewrites `.` and `:` and leaves this alone.
+const myTmux = s => (state?.tmux_prefix || "") + s;
+// The account holding this project's Claude session, when it is not us. The
+// button greys and wears their name; the refusal itself is at the /term proxy,
+// because a rule only the page honors is a suggestion (roadmap #26).
+// Who else has a conversation open on this project. Not a refusal any more
+// (roadmap #24): they each work in a tree of their own, so the row says who is
+// here rather than taking the button away. What IS refused is a second session
+// on one Anthropic account, and that refusal comes from the server when the
+// terminal is opened, in its own words.
+const withMe = p => (state?.claude_with || {})[p] || [];
+// The others, for the places that are about somebody else being here.
+const othersOn = p => withMe(p).filter(n => n !== state?.me);
+// "you", "alice", "you and alice", "alice, bob and you" — the row's own words
+// for who has a conversation open here. BuilderBot account names, not the
+// Anthropic logins behind them: whose session it is on this box is the
+// question somebody looking at the row is asking.
+function sessionWord(proj){
+  const all = withMe(proj);
+  if (!all.length) return "";
+  const names = all.map(n => n === state?.me ? "you" : n);
+  // "you" last reads better in every combination, and puts the other people
+  // — the part that is news — at the front.
+  names.sort((a, b) => (a === "you") - (b === "you"));
+  const list = names.length === 1 ? names[0]
+    : names.slice(0, -1).join(", ") + " and " + names[names.length - 1];
+  return `${list} ${names.length === 1 && names[0] !== "you" ? "has" : "have"} `
+       + `a Claude session here`;
+}
+// A project this account can see and has not taken on (roadmap #27). An
+// administrator is shown every project — hiding one from somebody who
+// administers the box only sends them looking for it — and works on the ones
+// on their own list. Read-only here means the controls that change something
+// are off and the server refuses them; it is a seatbelt against editing the
+// wrong project, not a wall, because an administrator has a shell.
+const notMine = p => p.mine === false;
+const NOT_MINE_WHY = "read-only — you have not taken this project on. Add it "
+  + "to your own list on the Users tab to work on it";
+// May this account have a shell at all (roadmap #27)? An account without one
+// gets its Claude session as a read-only console — the proxy relays it to a
+// ttyd started without --writable and refuses any argument that is not a
+// Claude session on a project they were given. This only decides what is
+// DRAWN; every one of these is refused again on the server.
+const mayShell = () => state?.can?.terminal !== false;
+const mayDocker = () => state?.can?.["docker-write"] !== false;
+const mayPackages = () => state?.can?.["packages-write"] !== false;
+const mayGitAuth = () => state?.can?.["git-auth"] !== false;
+// THIS account's Claude session on a project. Prefixed like a shell since
+// roadmap #24: more than one person may work a project at once, each in a
+// worktree of their own, so the name has to say whose conversation it is —
+// and the name is then the only record of that, with no file to go stale.
+// Every "is it running" question below is about the asker's own.
+const myClaude = proj => myTmux(tmuxName("claude-" + proj));
+// A name with somebody's prefix taken off, for the questions that are about
+// the session rather than about whose it is.
+const tmuxBase = s => String(s).replace(/^u_[0-9a-f]{8}~/, "");
 function sessionOf(arg){
   if (arg.startsWith("sh:")){
     const [, n, proj] = arg.split(":");
-    return tmuxName(proj ? `shell-${proj}-${n}` : `shell-${n}`);
+    return myTmux(tmuxName(proj ? `shell-${proj}-${n}` : `shell-${n}`));
   }
-  if (arg.startsWith("claude:")) return tmuxName("claude-" + arg.slice(7).split(":")[0]);
-  if (arg.startsWith("shell:"))  return tmuxName("shell-"  + arg.slice(6));
+  if (arg.startsWith("claude:")) return myClaude(arg.slice(7).split(":")[0]);
+  if (arg.startsWith("shell:"))  return myTmux(tmuxName("shell-"  + arg.slice(6)));
   return arg;
 }
 // The project a session name was made from, when it is one we know: the
@@ -2902,7 +3014,7 @@ function sessionOf(arg){
 const projFor = n =>
   (state?.projects || []).find(p => tmuxName(p.name) === n)?.name ?? null;
 
-const isClaude = t => t.kind === "term" && sessionOf(t.arg).startsWith("claude-");
+const isClaude = t => t.kind === "term" && tmuxBase(sessionOf(t.arg)).startsWith("claude-");
 const liveSessions = () => new Set((state?.sessions || []).map(s => s.name));
 // Signing out pulls the ground from under every conversation on the box, so
 // the button is dead while any of them is running. Named from the session
@@ -2981,7 +3093,7 @@ function tabLabels(){
 function nextShell(proj){
   const taken = new Set([...liveSessions(),
                          ...tabs.filter(t => t.kind === "term").map(t => sessionOf(t.arg))]);
-  const base = tmuxName(proj ? `shell-${proj}` : "shell");
+  const base = myTmux(tmuxName(proj ? `shell-${proj}` : "shell"));
   for (let n = 1; n <= 99; n++)
     if (!taken.has(`${base}-${n}`)) return `sh:${n}:${proj}`;
   return null;
@@ -3625,7 +3737,9 @@ function drawTabs(){
 
   const bar = $("tabbar");
   const full =
-    `<button id="bNew" class="ic newtab" title="new terminal at /workspace">+</button>` +
+    (mayShell()
+      ? `<button id="bNew" class="ic newtab" title="new terminal at /workspace">+</button>`
+      : "") +
     html +
     // The spacer stays: reorderTabEls inserts before it, and it is what
     // keeps the tabs left-packed. What was after it — the ⌨ toggle — is
@@ -3684,7 +3798,7 @@ function drawTabs(){
   bar.querySelectorAll("[data-close]").forEach(b => b.onclick = e => hideTab(b.dataset.close, e));
   bar.querySelectorAll("[data-l]").forEach(b => b.onclick = e => pinTo(b.dataset.l, 0, e));
   bar.querySelectorAll("[data-r]").forEach(b => b.onclick = e => pinTo(b.dataset.r, 1, e));
-  $("bNew").onclick = () => newShell("");
+  if ($("bNew")) $("bNew").onclick = () => newShell("");
   if (pinFor) placePinMenu();
 
   if (prev){
@@ -3772,6 +3886,7 @@ window.addEventListener("resize", updateArrows);
 
 // A terminal at some directory, always a new one. "" is the workspace root.
 function newShell(proj){
+  if (!mayShell()){ notify("a shell is an administrator's", true); return; }
   const arg = nextShell(proj);
   if (!arg){ notify("Too many terminals open for that directory.", true); return; }
   openTab({kind:"term", arg, label: `sh: ${proj || "workspace"}`});
@@ -3846,6 +3961,59 @@ function unveil(frame){
   else requestAnimationFrame(lift);
 }
 
+// The console bar, for an account with no shell (roadmap #27).
+//
+// The terminal above it is the real one, relayed to a ttyd started WITHOUT
+// --writable: it renders Claude's own full-screen interface correctly, which
+// capturing the pane into a textarea could never do, and the browser cannot
+// type into it at all. So the way in is this row — the send path, which is
+// the same table lookup and literal text every other thing this page can make
+// happen goes through — and the way out is Terminate.
+//
+// Drawn only when there is no shell to have. An administrator types into the
+// terminal itself and would find a second input box confusing.
+function consoleBar(t){
+  if (mayShell() || !isClaude(t)) return "";
+  const s = sessionOf(t.arg);
+  return `<div class="consbar" data-sess="${esc(s)}">
+    <input class="consin" placeholder="message Claude, then Enter"
+      aria-label="message Claude" autocomplete="off" spellcheck="false">
+    <button type="button" class="conssend primary">Send</button>
+    <button type="button" class="consend" title="end this conversation — the
+      transcript is kept and can be resumed">Terminate</button>
+  </div>`;
+}
+
+// Wired after every repaint, because the bar is redrawn with its pane. The
+// field keeps what was typed across a repaint the same way the node config
+// drafts do — a fifteen-second poll must not eat a half-written message.
+const consDraft = {};
+function wireConsole(root){
+  root.querySelectorAll(".consbar").forEach(bar => {
+    const sess = bar.dataset.sess;
+    const inp = bar.querySelector(".consin");
+    if (consDraft[sess] !== undefined) inp.value = consDraft[sess];
+    inp.oninput = () => { consDraft[sess] = inp.value; };
+    const send = async () => {
+      const text = inp.value;
+      if (!text.trim()) return;
+      inp.value = ""; consDraft[sess] = "";
+      let r = {};
+      try{
+        r = await (await fetch("/api/say", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session: sess, text }) })).json();
+      }catch(e){ r = { error: "could not reach the container" }; }
+      // Put it back on failure rather than losing it: a message somebody
+      // typed is worth more than a tidy field.
+      if (r.error){ notify(r.error, true); inp.value = text; consDraft[sess] = text; }
+    };
+    inp.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); } };
+    bar.querySelector(".conssend").onclick = send;
+    bar.querySelector(".consend").onclick = () => killSession(sess);
+  });
+}
+
 function drawPanes(){
   if (!state) return;    // nothing to point a frame at until the first poll
   $("panes").classList.toggle("split", isSplit());
@@ -3913,7 +4081,7 @@ function drawPanes(){
       // its own port and so counts as a cross-origin frame. Claude tabs are
       // left without it — they keep tmux's mouse mode, where a drag never
       // becomes a browser selection in the first place.
-      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i></div>`
+      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
       // Documents are not kept: they redraw from state in a millisecond, and
       // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
@@ -3926,6 +4094,10 @@ function drawPanes(){
       [...st.children].forEach(c => { if (c !== el && c.id) c.removeAttribute("id"); });
       el.id = "doc" + i;
     }
+    // The console bar rides with its pane, so it is wired with it: the row is
+    // replaced whenever the slot is, and a handler bound once would be bound
+    // to a node nothing is looking at any more.
+    wireConsole(el);
     evictFrames(st);
     // Shown again after being hidden: xterm sizes itself from a resize event,
     // and one that was laid out behind another frame may have missed one. One
@@ -4176,7 +4348,7 @@ function rnDrawPrefs(){
   // no typing here that would bring it back.
   const shut = !!p?.locked;
   $("rnModel").disabled = $("rnEffort").disabled = shut;
-  const running = liveSessions().has(tmuxName("claude-" + rnFor));
+  const running = liveSessions().has(myClaude(rnFor));
   const changed = $("rnModel").value !== rnPrefWas.model
                || $("rnEffort").value !== rnPrefWas.effort;
   $("rnPrefHint").textContent = shut
@@ -4243,13 +4415,14 @@ const KEYS = [
 // time the viewport crossed the phone breakpoint. They just live here now, at
 // every width — one DOM, one set of handlers, and no breakpoint to be on the
 // wrong side of.
-let showMacros = false, showSessions = false;
+let showMacros = false, showSessions = false, showChat = false;
 
 window.matchMedia("(max-width:900px)").addEventListener("change", () => render());
 
 // One panel at a time on the phone: opening any of the three closes the others.
 function mobPanel(which){
-  const on = {keys: showKeys, macros: showMacros, sessions: showSessions}[which];
+  const on = {keys: showKeys, macros: showMacros, sessions: showSessions,
+              chat: showChat}[which];
   // The two panels always take turns: they are the same strip of space. The
   // keys row only joins that trade on a phone, where the three of them plus
   // a terminal do not fit — on a desktop it stays where it was put.
@@ -4257,11 +4430,14 @@ function mobPanel(which){
   else if (isPhone()) showKeys = false;
   showMacros = which === "macros" ? !on : false;
   showSessions = which === "sessions" ? !on : false;
+  showChat = which === "chat" ? !on : false;
+  if (showChat) loadChat();               // open on something, not on "loading…"
   render();
 }
 $("mKeys").onclick     = () => mobPanel("keys");
 $("mMacros").onclick   = () => mobPanel("macros");
 $("mSessions").onclick = () => mobPanel("sessions");
+$("mChat").onclick     = () => mobPanel("chat");
 
 // Slide a bottom flyout open or shut on a phone instead of popping it.
 //
@@ -4367,14 +4543,140 @@ function drawKeys(){
   mm.disabled = !term;
   mm.title = term ? "" : "commands run in a shell — this tab is not one";
   $("mSessions").classList.toggle("on", showSessions);
+  const mc = $("mChat");
+  mc.classList.toggle("on", showChat);
+  // The dot is the whole reason the counts ride the status poll: a chat you
+  // have to open to discover is one nobody opens.
+  const waiting = Object.values(state?.chat?.unread || {}).reduce((a, b) => a + b, 0);
+  mc.classList.toggle("unread", waiting > 0);
+  mc.title = waiting ? `${waiting} unread` : "";
+  drawChat();
   // One panel at a time: whichever is opening slides, and any that is
   // closing in the same breath swaps out under it (see slidePanel).
   // Commands closes with the keys when the tab underneath is not a shell: a
   // flyout of things to type, over something that cannot be typed into.
-  const want = [[el, on], [$("macpanel"), showMacros && term], [$("sespanel"), showSessions]];
+  const want = [[el, on], [$("macpanel"), showMacros && term],
+                [$("sespanel"), showSessions], [$("chatpanel"), showChat]];
   const opener = want.find(([p, s]) => s && p.dataset.shown !== "1");
   const landed = opener ? slidePanel(opener[0], true) : null;
   for (const [p, s] of want) if (p !== opener?.[0]) slidePanel(p, s, landed);
+}
+
+// ---- chat ------------------------------------------------------------
+//
+// Two kinds of conversation in one list, because they are the same thing to
+// read: a person, or a project everybody on it can see. Clicking either opens
+// it; Back returns to the list. History is the server's — this holds only
+// what is on screen and what is half-typed.
+let chatWith = null;                 // {who} or {project}, or null for the list
+let chatMsgs = [], chatDraft = {}, chatSeenRev = -1, chatTimer = null;
+
+const chatKey = w => w?.project ? `p:${w.project}` : w?.who ? `dm:${w.who}` : "";
+
+async function loadChat(){
+  if (!chatWith){ drawChat(); return; }
+  try{
+    const r = await (await fetch("/api/chat", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "read", ...chatWith }) })).json();
+    if (r.error){ notify(r.error, true); chatWith = null; }
+    else { chatMsgs = r.messages || []; chatSeenRev = r.rev; }
+  }catch(e){ /* the poll will come back to it */ }
+  drawChat();
+  refreshSoon();                     // the unread counts move with it
+}
+
+// While the panel is open, faster than the fifteen-second poll — a chat at
+// that cadence is a message board. Only while it is open: this is the one
+// surface that wants a tighter loop and it should not cost anything when it
+// is shut.
+function chatLoop(){
+  clearInterval(chatTimer);
+  chatTimer = showChat ? setInterval(loadChat, 4000) : null;
+}
+
+function chatOpen(w){ chatWith = w; chatMsgs = []; loadChat(); chatLoop(); }
+
+function drawChat(){
+  const el = $("chat");
+  if (!el) return;
+  chatLoop();
+  const c = state?.chat;
+  if (!c || !c.people) return paint(el, `<div class="empty">sign in to chat</div>`);
+  const unread = c.unread || {};
+  if (!chatWith){
+    const here = new Set(c.online || []);
+    const people = (c.people || []).map(n =>
+      `<button class="row chatrow" data-who="${esc(n)}">
+         <span class="dot ${here.has(n) ? "ok" : ""}"></span>
+         <span class="grow">${esc(n)}</span>
+         ${unread["dm:" + n] ? `<span class="pill">${unread["dm:" + n]}</span>` : ""}
+       </button>`);
+    // A project channel is the group chat for everybody on it, and it is where
+    // the Claude sessions and the prompts land. An ADMIN is shown every one —
+    // they are shown every project (roadmap #27) and the same rule decides
+    // this — with the ones they have actually taken on marked and sorted
+    // first, so "mine" and "everything else on the box" are one glance apart
+    // rather than one read of a list of forty.
+    const ps = [...(state?.projects || [])]
+      .sort((a, b) => (notMine(a) - notMine(b)) || a.name.localeCompare(b.name));
+    const projs = ps.map(p =>
+      `<button class="row chatrow${notMine(p) ? " dim" : " on"}" data-proj="${esc(p.name)}"
+         ${notMine(p) ? `title="you have not taken this project on — you can read it"` : ""}>
+         <span class="grow">#${esc(p.name)}</span>
+         ${unread["p:" + p.name] ? `<span class="pill">${unread["p:" + p.name]}</span>` : ""}
+       </button>`);
+    const mine = ps.filter(p => !notMine(p)).length;
+    paint(el, (people.length ? people.join("") : `<div class="empty">no other accounts</div>`)
+      + (projs.length ? `<div class="sub chathead">projects${
+           mine < ps.length ? ` — yours first` : ""}</div>` + projs.join("") : ""));
+    el.querySelectorAll("[data-who]").forEach(b =>
+      b.onclick = () => chatOpen({ who: b.dataset.who }));
+    el.querySelectorAll("[data-proj]").forEach(b =>
+      b.onclick = () => chatOpen({ project: b.dataset.proj }));
+    return;
+  }
+  const title = chatWith.project ? "#" + chatWith.project : chatWith.who;
+  const key = chatKey(chatWith);
+  paint(el, `
+    <div class="chathead">
+      <button class="link" id="chatBack">‹ all</button>
+      <b class="grow">${esc(title)}</b>
+    </div>
+    ${chatWith.project ? `<div class="sub chatnote">everyone with this project
+       sees this, including what each of you asks Claude here</div>` : ""}
+    <div class="chatlog" id="chatlog">${chatMsgs.map(m => `
+      <div class="chatmsg${m.kind === "did" || m.kind === "asked" ? " ev" : ""}">
+        <span class="dim">${esc(m.who || "?")} · ${ago(m.at)}</span>
+        <div>${esc(m.text)}</div>
+      </div>`).join("") || `<div class="empty">nothing yet</div>`}</div>
+    <div class="chatbar">
+      <input id="chatIn" placeholder="message ${esc(title)}" autocomplete="off"
+        aria-label="message">
+      <button class="primary" id="chatSend">Send</button>
+    </div>`);
+  const inp = el.querySelector("#chatIn");
+  inp.value = chatDraft[key] || "";
+  inp.oninput = () => { chatDraft[key] = inp.value; };
+  const send = async () => {
+    const text = inp.value;
+    if (!text.trim()) return;
+    inp.value = ""; chatDraft[key] = "";
+    try{
+      const r = await (await fetch("/api/chat", { method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send", ...chatWith, text }) })).json();
+      if (r.error){ notify(r.error, true); inp.value = text; chatDraft[key] = text; }
+      else { chatMsgs = r.messages || []; drawChat(); }
+    }catch(e){ inp.value = text; chatDraft[key] = text; }
+  };
+  inp.onkeydown = e => { if (e.key === "Enter"){ e.preventDefault(); send(); } };
+  el.querySelector("#chatSend").onclick = send;
+  el.querySelector("#chatBack").onclick = () => { chatWith = null; drawChat(); };
+  // Newest last, and the reader wants the newest: pinned to the bottom the
+  // way the job logs are.
+  const log = el.querySelector("#chatlog");
+  if (log) log.scrollTop = log.scrollHeight;
 }
 
 async function sendKey(key){
@@ -4831,12 +5133,18 @@ const THEMES = [
 ];
 const THEME_IDS = new Set(THEMES.map(t => t[0]));
 
-// Kept in the browser rather than on the server, unlike the card order and the
-// tab layout beside it. Those describe the work and should follow you between
-// machines; which colours are comfortable is about the room you are sitting in,
-// and a phone in the dark and a desktop at noon are allowed to differ. It is
-// also the only way to have no flash: applied from the inline block in <head>,
-// before the first paint, where a value fetched from the server cannot be.
+// The browser holds it and the ACCOUNT remembers it, and the order matters
+// (roadmap #25). localStorage is the only way to have no flash: applied from
+// the inline block in <head>, before the first paint, where a value fetched
+// from the server cannot be. So it stays the paint path and is written on
+// every pick.
+//
+// The account record is what a browser that has never seen this account reads
+// instead of starting on the default — the scheme follows the person rather
+// than the machine. But only then: a value already in localStorage WINS,
+// because which colours are comfortable is partly about the room you are
+// sitting in, and a phone in the dark that picked Nocturne must not have it
+// undone by the desktop at noon. adoptTheme is the whole of that rule.
 let themingTimer = null;
 function applyTheme(id){
   const use = THEME_IDS.has(id) ? id : "default";
@@ -4861,7 +5169,34 @@ function applyTheme(id){
   if (use === "default") delete root.dataset.theme;
   else root.dataset.theme = use;
   try{ localStorage.setItem("bb.theme", use); }catch(e){ /* private mode */ }
+  themeSaved = use;
+  // ...and onto the account, which is the truth behind it (roadmap #25).
+  // localStorage stays the PAINT path — the scheme is applied at the top of
+  // this file before the stylesheet parses, and a value fetched over the
+  // network would be a flash of the default followed by a jump — so this is
+  // not a replacement for it. What it buys is a browser that has never seen
+  // this account: it adopts the scheme after first paint instead of never.
+  // Fire and forget: a failed save is a scheme that did not follow you, not
+  // something to interrupt the person picking colours about.
+  fetch("/api/users", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "prefs", prefs: { theme: use } }) })
+    .catch(() => {});
   markUiMenu();
+}
+
+// The account's scheme, taken up only by a browser that has none of its own.
+// Runs on every poll and does nothing on almost all of them; the guard is the
+// stored value, not a flag, so a second tab that picked a scheme is honoured
+// here too rather than being fought over.
+let themeSaved = null;
+function adoptTheme(t){
+  try{
+    if (localStorage.getItem("bb.theme")) return;
+  }catch(e){ return; }              // no storage: leave the default alone
+  if (!t || t === themeSaved || !/^[a-z]{2,12}$/.test(t)) return;
+  themeSaved = t;
+  applyTheme(t);
 }
 
 // Only the marks, never a rebuild. Replacing the grid's innerHTML from inside
@@ -5180,9 +5515,22 @@ function projectRow(p, live, cls, inTab){
           // than a control: the row reads "StreamLift, locked" at a glance
           // without hunting for which of six icons is lit.
           ? ` <span class="lockmark" aria-label="locked" data-tip="locked — you run this one">${LOCK}</span>`
+          : ""}${notMine(p)
+          // The same shape as the padlock and for the same reason: a fact
+          // about the row, said where the name is, rather than something to
+          // work out from which controls are grey. A different word, because
+          // it is a different thing — the padlock is the operator keeping a
+          // project to themselves, this is a project you have not taken on.
+          ? ` <span class="lockmark" aria-label="read-only" data-tip="${esc(NOT_MINE_WHY)}">${LOCK}</span>`
           : ""}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
           p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
+        ${sessionWord(p.name) ? `<div class="sub acc">${esc(sessionWord(p.name))}${
+          othersOn(p.name).length
+            // Said once, where somebody would otherwise wonder whether they
+            // are about to walk into each other. They are not: each session
+            // works in a checkout of its own.
+            ? ", each in a checkout of their own" : ""}</div>` : ""}
         ${p.issues.map(i => i.action && !p.locked
           // An issue with a fix that takes no decisions says so, and is the
           // control that applies it — underlined, because a line you can click
@@ -5197,19 +5545,25 @@ function projectRow(p, live, cls, inTab){
           : `<div class="sub ${cls[i.level] || ""}">${esc(i.text)}</div>`).join("")}
       </div>
       <span class="acts">
-      ${isBroken(p) ? "" : `<button class="eye${live.has(tmuxName("claude-"+p.name)) ? " on acc" : ""}"
+      ${isBroken(p) ? "" : `<button class="eye${live.has(myClaude(p.name)) ? " on acc" : ""}"
          data-c="${esc(p.name)}" aria-label="Claude session"${
-         (p.locked || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
+         (p.locked || notMine(p)
+          || (!signedIn() && !live.has(myClaude(p.name))))
            ? " disabled" : ""}
-         title="${p.locked
+         title="${notMine(p) ? NOT_MINE_WHY
+                 : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
-                 : !signedIn() && !live.has(tmuxName("claude-"+p.name))
+                 : othersOn(p.name).length
+                   ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own — start yours`
+                 : !signedIn() && !live.has(myClaude(p.name))
                    ? "this container is not signed in to Claude — the Doctor card has the way in"
-                 : live.has(tmuxName("claude-"+p.name)) ? "Claude — session running, go to its tab"
+                 : live.has(myClaude(p.name)) ? "Claude — session running, go to its tab"
                  : p.last_claude ? "Claude — no session running; resume or start one"
                  : "Claude — start a session here"}">${SPARK}</button>`}
-      <button class="eye" data-s="${esc(p.name)}" aria-label="shell"
-        title="shell — open another terminal here">${TERM}</button>
+      ${mayShell() ? `<button class="eye" data-s="${esc(p.name)}" aria-label="shell"
+        ${notMine(p) ? "disabled" : ""}
+        title="${notMine(p) ? NOT_MINE_WHY : "shell — open another terminal here"}"
+        >${TERM}</button>` : ""}
       ${p.git_ok && !p.linked && !isBroken(p)
         ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
              title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
@@ -6698,7 +7052,7 @@ function renderDockerInto(i){
           <div class="wire">reading…</div></details>
       </div>
       <span class="acts">
-        <button type="button" data-dm="up" ${
+        ${!mayDocker() ? "" : `<button type="button" data-dm="up" ${
           d.running || busy || (d.missing_env || []).length ? "disabled" : ""}
           title="${(d.missing_env || []).length
             ? "the env is missing " + esc(d.missing_env.join(", "))
@@ -6714,7 +7068,7 @@ function renderDockerInto(i){
                title="this container's env file">Env</button>`}
         <button type="button" class="rm" data-dm="remove" ${busy ? "disabled" : ""}
           title="take it down and drop it from this list. Its env and its data
-directory stay, so remaking it under the same name finds them">Remove</button>
+directory stay, so remaking it under the same name finds them">Remove</button>`}
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}
             title="stop this build. What is already built is kept — an abort is
@@ -6806,8 +7160,9 @@ for the rest of the work"
     rows || `<div class="empty">${blind
       ? "nothing on record here — an instance appears once it has been sent"
       : "nothing on this daemon yet"}</div>`}
-    <div class="macros"><button id="bDockerNew">New container…</button
-      ><button id="bDockerRe">Refresh</button></div></div>`;
+    <div class="macros">${mayDocker()
+        ? `<button id="bDockerNew">New container…</button>` : ""
+      }<button id="bDockerRe">Refresh</button></div></div>`;
   gateDocker(el, off);
   // Every tail sits at its own bottom after a draw. The list repaints only
   // when the job moved, so between draws the reader keeps whatever scroll
@@ -6961,13 +7316,13 @@ function renderPackagesInto(i){
              ? esc(d.name || "the node") + "'s emulator has no image to boot."
              : "the emulator has no image to boot."}`}</div>`}
     <div class="macros">
-      <button class="primary" data-pkg="install"${busy || pstale ? " disabled" : ""}
+      ${!mayPackages() ? "" : `<button class="primary" data-pkg="install"${busy || pstale ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === pkgNode)))}"` : ""}
-        >Install selected</button>
-      ${busy ? `<button data-pkg="abort"${job.aborting ? " disabled" : ""}>${
+        >Install selected</button>`}
+      ${busy && mayPackages() ? `<button data-pkg="abort"${job.aborting ? " disabled" : ""}>${
         job.aborting ? "Stopping…" : "Abort"}</button>` : ""}
       ${busy && !pkgWorkingIsImage(job) ? pkgWorking(job) : ""}
-      <button data-pkg="check"${busy || onNode ? " disabled" : ""}
+      <button data-pkg="check"${busy || onNode || !mayPackages() ? " disabled" : ""}
         ${onNode ? `title="a node says what it has installed; asking upstream what is newer
           is a round trip per toolchain and is not something a node does yet"` : ""}>${
         busy && job.action === "check"
@@ -9825,7 +10180,7 @@ become that version's section when it is created">Changelog${
       // Redrawn from what is already in hand rather than re-fetched: the list
       // on screen may be carrying staged changes that are not on the server,
       // and a refetch here would quietly throw them away.
-      const want = tmuxName("claude-" + project);
+      const want = myClaude(project);
       const now = (state?.sessions || []).some(x => x.name === want) ? want : null;
       if (now !== todoSession){ todoSession = now; redrawTodo(); }
       // A session filed, closed or deleted a bug. The tracker is
@@ -10154,7 +10509,7 @@ const ago = s => {
 function openClaude(name, ev){
   ev?.stopPropagation();
   const p = (state?.projects || []).find(x => x.name === name);
-  if (liveSessions().has(tmuxName("claude-" + name)) || !p?.last_claude){
+  if (liveSessions().has(myClaude(name)) || !p?.last_claude){
     resumeFor = null;
     return startClaude(name, null);
   }
@@ -10409,7 +10764,7 @@ async function rnSubmit(){
   const nodeChanged = node !== rnPrefWas.node || build !== rnPrefWas.build
     || test !== rnPrefWas.test || outputs !== rnPrefWas.outputs;
   const prefChanged = model !== rnPrefWas.model || effort !== rnPrefWas.effort;
-  const running = liveSessions().has(tmuxName("claude-" + name));
+  const running = liveSessions().has(myClaude(name));
   const fail = m => ($("rnErr").textContent = m, $("rnErrWrap").hidden = false);
   if (!to.trim()) return fail("a new name is needed");
   // The one combination the dialog will not write: authenticating with a token
@@ -10637,6 +10992,11 @@ function arriveRow(name, fn){
 // exclusion check and the scoped settings — which is only invisible while the
 // session already exists. Map it back when the project is one we know.
 function argForSession(name){
+  // Whoever owns it, the arg is derived from what comes AFTER the prefix —
+  // that part is the project and the number, which is all bb-tty is told.
+  // The listing only carries sessions this account may see, so a prefixed one
+  // here is this account's own and sessionOf puts the prefix back.
+  name = name.replace(/^u_[0-9a-f]{8}~/, "");
   // Matched through tmuxName (a session's name is the project's with `.` and
   // `:` rewritten), and by exact project first, so a project genuinely called
   // "web-2" is not read as terminal 2 of a project called "web".
@@ -11145,6 +11505,22 @@ async function refresh(){
     if (r.status === 401){ location.href = "/login?next=%2F"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     state = await r.json();
+    // The account's scheme, on a browser that has never seen this account
+    // (roadmap #25). localStorage is the PAINT path — the scheme is applied
+    // at the top of this file before the stylesheet parses, and a value
+    // fetched over the network would be a flash of the default followed by a
+    // jump — so this only speaks when local has nothing to say. A pick made
+    // HERE outranks the record, or picking a scheme on a phone would be
+    // undone by the desktop's next poll.
+    adoptTheme(state.theme);
+    // An account with no shell must not be sitting in one. The page opens on
+    // a workspace terminal and the saved strip may carry more, both of which
+    // predate knowing who is asking — so the first payload that says so is
+    // where they go. Claude tabs stay: those are the console (roadmap #27).
+    if (!mayShell()){
+      const shells = tabs.filter(t => t.kind === "term" && !isClaude(t));
+      if (shells.length) shells.forEach(t => dropTab(t.id));
+    }
     // The container was recreated under this page. Its Claude tabs are tabs to
     // conversations that ended with it — the server prunes them from the saved
     // layout at boot, but a page that has saved since then is ahead of that

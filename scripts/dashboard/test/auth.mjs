@@ -199,6 +199,364 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
      '...and the owner is untouched by all of it');
 }
 
+// ---- the first run --------------------------------------------------------
+// Nobody owns a fresh container, and that used to be a refusal: the owner came
+// from DASHBOARD_AUTH and the dashboard would not start without it, which put
+// the one credential that opens a shell on this box into the container's
+// environment, readable forever. It is a screen now, and it is the only page
+// served until somebody claims it.
+//
+// Driven against a store of its own rather than this server's, which already
+// has an owner — the whole property is what happens when there is none.
+{
+  const { execFileSync } = await import('node:child_process');
+  const { mkdtempSync, readFileSync, existsSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+  const fresh = mkdtempSync(`${tmpdir()}/bbsetup-`);
+  const run = code => execFileSync('python3', ['-c', `
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${fresh}", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+${code}`], { encoding: 'utf8' });
+
+  ok(run('print(len(u.all_users()))').trim() === '0',
+     'a fresh container has no accounts, which is a normal first boot');
+  const made = run('print(json.dumps(u.claim("boss", "longenough1")))');
+  ok(JSON.parse(made).ok, `claiming it makes the owner (${made.trim()})`);
+  const rec = JSON.parse(readFileSync(`${fresh}/users.json`, 'utf8')).users.boss;
+  ok(rec.role === 'owner' && rec.projects.includes('*')
+     && /^pbkdf2_sha256\$/.test(rec.password) && /^u_[0-9a-f]{8}$/.test(rec.uid),
+     '...as an owner, hashed, with every project and an id of its own');
+  ok(!JSON.parse(run('print(json.dumps(u.claim("second", "longenough1")))')).ok,
+     '...and the second claim is refused, because there is now an account');
+  ok(!JSON.parse(run('print(json.dumps(u.claim("x", "short")))')).ok
+     && !JSON.parse(run('print(json.dumps(u.claim("", "longenough1")))')).ok,
+     'a short password and an empty name are both refused');
+  ok(existsSync(`${fresh}/users.json`), 'and the store is written where it will persist');
+
+  // ...and the door is shut on a server that already has an owner, which is
+  // this one. A second claim through the form would be a second owner.
+  const shut = await bare('/setup', { method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'username=usurper&password=longenough1&password2=longenough1' });
+  ok(shut.status === 200 && /already has an account/.test(await shut.text()),
+     'the first-run form is refused once somebody has claimed the container');
+  ok((await bare('/api/status')).status === 401,
+     '...and everything else still wants a sign-in, as it did before');
+}
+
+// ---- a strip each (roadmap #25) --------------------------------------------
+// The tab layout was ONE file for the whole box: written by whichever browser
+// saved last and handed to every other one. Fine for one operator, wrong the
+// moment there are two — you would watch somebody else's tabs open in front
+// of you. It is keyed by the account's minted id now, and the id is minted
+// rather than the name because the owner is renameable on purpose.
+{
+  const { readFileSync } = await import('node:fs');
+  const { execFileSync } = await import('node:child_process');
+  const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+  const bb = (args, input) => execFileSync('bash', [`${REPO}/scripts/bb`, 'users', ...args],
+    { input, encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  const store = `${DIR}/state/users.json`;
+  const read = () => JSON.parse(readFileSync(store, 'utf8'));
+  ok(Object.values(read().users).every(u => /^u_[0-9a-f]{8}$/.test(u.uid || '')),
+     'every account carries a minted id, backfilled onto ones that predate it');
+  const uids = Object.values(read().users).map(u => u.uid);
+  ok(new Set(uids).size === uids.length, '...and no two accounts share one');
+
+  bb(['add', 'sharer', '--role', 'user'], 'stripspass1\nstripspass1\n');
+  const asUser = (u, pw) => ({ Authorization: 'Basic ' + Buffer.from(`${u}:${pw}`).toString('base64'),
+                               'Content-Type': 'application/json' });
+  const putTabs = (h, tabs) => bare('/api/layout', { method: 'POST', headers: h,
+    body: JSON.stringify({ tabs, panes: [tabs[0]?.id || null, null], active: 0 }) });
+  const strip = async h => ((await (await bare('/api/status', { headers: h })).json()).layout || {});
+
+  const owner = asUser('test', 'test');
+  const other = asUser('sharer', 'stripspass1');
+  // Given one project, because a `user` with none can reach nothing at all —
+  // which is correct, and would make everything below pass for the wrong
+  // reason.
+  await bare('/api/users', { method: 'POST', headers: owner,
+    body: JSON.stringify({ action: 'projects', name: 'sharer', projects: ['beta'] }) });
+  await putTabs(owner, [{ id: 't-own', kind: 'term', arg: 'shell-1', label: 'owner shell' }]);
+  await putTabs(other, [{ id: 't-oth', kind: 'term', arg: 'shell-2', label: 'their shell' }]);
+
+  const a = await strip(owner), b = await strip(other);
+  ok(a.tabs?.length === 1 && a.tabs[0].id === 't-own',
+     `the owner keeps the strip they saved (${(a.tabs || []).map(t => t.id).join()})`);
+  ok(b.tabs?.length === 1 && b.tabs[0].id === 't-oth',
+     `...and the other account has its own, not a copy of it (${(b.tabs || []).map(t => t.id).join()})`);
+  const file = JSON.parse(readFileSync(`${DIR}/state/tabs.json`, 'utf8'));
+  ok(file.users && Object.keys(file.users).length === 2
+     && Object.keys(file.users).every(k => /^u_[0-9a-f]{8}$/.test(k)),
+     `...stored one slot per account, keyed by the id rather than the name (${
+        Object.keys(file.users || {}).join()})`);
+
+  // The scheme rides the account too, so a browser that has never seen it
+  // adopts it after first paint rather than starting on the default. Set
+  // through the same endpoint the swatch menu uses.
+  const setTheme = (h, theme) => bare('/api/users', { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'prefs', prefs: { theme } }) });
+  ok((await setTheme(other, 'nocturne')).status === 200,
+     'an account sets its own scheme, without being an administrator');
+  ok((await strip(other), (await (await bare('/api/status', { headers: other })).json()).theme) === 'nocturne',
+     '...and it comes back in that account\'s state payload');
+  ok((await (await bare('/api/status', { headers: owner })).json()).theme !== 'nocturne',
+     '...and not in anybody else\'s');
+  ok((await bare('/api/users', { method: 'POST', headers: other,
+        body: JSON.stringify({ action: 'prefs', prefs: { theme: '../../etc' } }) })).status === 400,
+     'a scheme that is not one of the names is refused, not stored');
+  ok((await bare('/api/users', { method: 'POST', headers: other,
+        body: JSON.stringify({ action: 'role', name: 'test', role: 'user' }) })).status === 403,
+     '...and prefs being open to everyone did not open the rest of the tab');
+
+  // ---- one Claude session per project, and whose (roadmap #26) -------------
+  // bb-tty has always named the session for the project, so there has only
+  // ever been one. What accounts made necessary is knowing WHOSE: without it
+  // a second person pressing Claude lands inside somebody else's conversation
+  // and types into it. Enforced at the /term proxy rather than only in the
+  // page, because the ttyd URL is reachable directly.
+  {
+    const { execFileSync: run } = await import('node:child_process');
+    const tmux = a => run('tmux', a, { encoding: 'utf8',
+      env: { ...process.env, TMUX_TMPDIR: `${DIR}/tmux`, TMUX: '' } });
+    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    // No session yet: nobody holds it, and asking is allowed.
+    ok((await term(other, 'claude:beta')).status !== 409,
+       'with no session running, the project is nobody\'s');
+    // Named the way bb-tty would name it: a prefix is that account's, and the
+    // bare one is the owner's. The name is the only record of whose it is.
+    const uidOf = n => JSON.parse(readFileSync(store, 'utf8')).users[n].uid;
+    const theirSession = `${uidOf('sharer')}~claude-beta`;
+    try { tmux(['kill-session', '-t', theirSession]); } catch { /* none */ }
+    tmux(['new-session', '-d', '-s', theirSession, '-c', '/tmp']);
+    // The account whose session it is may come back to it...
+    ok((await term(other, 'claude:beta')).status !== 409,
+       'the account that opened it can reattach');
+    // ...and so may anybody else, since roadmap #24 — they each work in a
+    // worktree of their own, so a second conversation cannot overwrite the
+    // first. What IS refused is a second session on one ANTHROPIC account:
+    // they would share its limits, and afterwards nothing could say which of
+    // them did what. The harness's claude stub answers with one email for
+    // every home, which is that case exactly.
+    const refused = await term(owner, 'claude:beta');
+    const why = refused.status === 409 ? (await refused.json()).error : '';
+    ok(refused.status === 409 && /already has a Claude session on beta/.test(why),
+       `a second session on one Anthropic account is refused (${why.slice(0, 60)}…)`);
+    ok(/tester@example.com/.test(why) && /share its limits/.test(why),
+       '...naming the login and saying why, not just refusing');
+    // A shell on the same project is not affected: shells are per account.
+    ok((await term(owner, 'sh:1:beta')).status !== 409,
+       'a shell on that project is unaffected — shells were never shared');
+    // Ending it clears the way, with nothing to sweep: there is no record at
+    // all any more. A session's NAME says whose it is — a prefix is that
+    // account's, the bare one is the owner's — so tmux is the only truth and
+    // it cannot go stale, be orphaned by a deleted account, or disagree.
+    tmux(['kill-session', '-t', theirSession]);
+    ok((await term(owner, 'claude:beta')).status !== 409,
+       'ending the session clears the way, because tmux is the only record');
+  }
+
+  // ---- a user role has no shell at all (roadmap #27) -----------------------
+  // The rest of the role is enforced by this server, in Python. A terminal is
+  // the way around all of it — one uid, one tmux server, Bash covered by no
+  // deny list — so an account that may not have one gets its Claude session
+  // as a read-only console and nothing else through /term.
+  {
+    const st = await (await bare('/api/status', { headers: other })).json();
+    ok(st.can && st.can.terminal === false && st.can['docker-write'] === false
+       && st.can['packages-write'] === false && st.can['git-auth'] === false,
+       `the payload says what this account may do, by capability (${
+          JSON.stringify(st.can)})`);
+    const mine = await (await bare('/api/status', { headers: owner })).json();
+    ok(mine.can && mine.can.terminal === true,
+       '...and an administrator is told the opposite, so nothing is drawn dead');
+
+    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    const shell = await term(other, 'sh:1:');
+    ok(shell.status === 403 && /shell is an administrator/.test((await shell.json()).error || ''),
+       'a shell is refused at the proxy, not merely hidden on the page');
+    ok((await term(other, 'shell:beta')).status === 403,
+       '...in every spelling the argument has');
+    // The one thing it may ask for, and only on a project it was given.
+    ok((await term(other, 'claude:zzz-not-a-project')).status === 403,
+       'a Claude session on a project it cannot see is refused the same way');
+    ok((await term(owner, 'sh:1:')).status !== 403,
+       'an administrator still has a shell');
+
+    // ...and the things a user may not change.
+    const post = (h, path, body) => bare(path, { method: 'POST', headers: h,
+      body: JSON.stringify(body) });
+    ok((await post(other, '/api/create', { name: 'sneaky', token: 'ghp_x' })).status === 403,
+       'a user cannot make a project, which is where a git token would be stored');
+    ok((await post(other, '/api/rename', { name: 'beta', to: 'beta2', auth: 'https' })).status === 403,
+       '...nor change how one authenticates, which travels through rename');
+    ok((await post(other, '/api/devapp', { project: 'beta', action: 'up' })).status === 403,
+       'a user cannot start or stop a container');
+    ok((await post(other, '/api/devapp', { project: 'beta', action: 'remove' })).status === 403,
+       '...nor remove one, nor configure it');
+    // ...but building what they committed and looking at it is the point of
+    // having the project. Not a 403: whatever else it answers, it got past
+    // the gate.
+    ok((await post(other, '/api/devapp', { project: 'beta', action: 'rebuild' })).status !== 403,
+       'a user CAN rebuild — that is how you see what you just committed');
+    ok((await post(other, '/api/devapp', { project: 'beta', action: 'abort' })).status !== 403,
+       '...and stop one, since whoever may start a build may stop it');
+    ok((await post(other, '/api/packages', { action: 'install', names: ['jdk'] })).status === 403,
+       '...nor install gigabytes onto a shared node');
+    // ...but the registry it is shown is its own projects' machines only,
+    // because the whole list is otherwise an inventory of the box.
+    const theirs = await (await bare('/api/v1/nodes', { headers: other })).json();
+    const all = await (await bare('/api/v1/nodes', { headers: owner })).json();
+    ok(all.nodes.length > theirs.nodes.length,
+       `a user sees only the nodes its own projects build on (${
+          theirs.nodes.length} of ${all.nodes.length})`);
+    // ...and the scoping is on the ANSWER, not only the picker. `?node=` is a
+    // string in a URL, and the answer is what carries the other projects'
+    // names — scoping the picker alone would have been theatre.
+    const nodeId = all.nodes.find(n => n.id !== 'local')?.id || 'local';
+    const peek = await bare('/api/docker?node=' + encodeURIComponent(nodeId),
+                            { headers: other });
+    const body = await peek.json();
+    ok(/not a node one of your projects builds on|none of your projects/.test(body.error || ''),
+       `a node no project of theirs builds on is refused, not listed (${body.error})`);
+    const pk = await (await bare('/api/packages?node=' + encodeURIComponent(nodeId),
+                                 { headers: other })).json();
+    ok(/not a node one of your projects builds on|none of your projects/.test(pk.error || ''),
+       '...and the same for what that node has installed');
+  }
+
+  // ---- an admin sees everything and works on what it took on (#27) ---------
+  // Two different questions. Hiding a project from somebody who administers
+  // the box only sends them looking for it, so an admin is shown every one —
+  // and the list they keep is a seatbelt against editing the wrong project,
+  // not a wall, because an admin has a shell. A `user` is still only shown
+  // what it was given, because a project it cannot work on is one it has no
+  // reason to know exists.
+  {
+    bb(['add', 'second', '--role', 'admin'], 'adminpass11\nadminpass11\n');
+    const adm = asUser('second', 'adminpass11');
+    const post = (h, path, body) => bare(path, { method: 'POST', headers: h,
+      body: JSON.stringify(body) });
+    const projects = async h => ((await (await bare('/api/status', { headers: h })).json()).projects || []);
+
+    const theirs = await projects(adm);
+    const all = await projects(owner);
+    ok(theirs.length === all.length && theirs.length > 1,
+       `a fresh admin is shown every project (${theirs.length} of ${all.length})`);
+    ok(theirs.every(p => p.mine === false),
+       '...and none of them marked as theirs to change, having taken none on');
+    ok((await projects(other)).every(p => p.name === 'beta'),
+       '...while a user is still shown only what it was given');
+
+    // Read-only means it: the writes refuse, by name, with the remedy.
+    const r = await post(adm, '/api/todo', { project: 'alpha', action: 'add', text: 'x' });
+    ok(r.status === 403 && /taken this project on/.test((await r.json()).error || ''),
+       'an admin cannot edit the notebook of a project it has not taken on');
+    ok((await post(adm, '/api/bugs', { project: 'alpha', action: 'add', title: 'x' })).status === 403,
+       '...nor file a bug on it');
+    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    ok((await term(adm, 'claude:alpha')).status === 403,
+       '...nor start a Claude session in it, which is the most write-shaped thing here');
+    ok((await bare('/api/todo?project=alpha', { headers: adm })).status === 200,
+       '...but reading it is fine, which is what read-only means');
+
+    // ...and the remedy is theirs to apply, which is the whole difference
+    // between this and a user's list.
+    ok((await post(adm, '/api/users', { action: 'projects', name: 'second',
+                                        projects: ['alpha'] })).status === 200,
+       'an admin can add a project to its own list — a seatbelt, not a wall');
+    ok((await post(adm, '/api/todo', { project: 'alpha', action: 'add', text: 'x' })).status === 200,
+       '...and then it works on it');
+    ok((await post(other, '/api/users', { action: 'projects', name: 'sharer',
+                                          projects: ['alpha'] })).status === 403,
+       'a user cannot grant itself anything, which is why theirs is a boundary');
+    execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+print(u.remove("second"))`], { encoding: 'utf8' });
+  }
+
+  // ---- chat, and the project feed ------------------------------------------
+  // Two kinds of conversation, one store, and the read rule is the addressing:
+  // a direct one belongs to its two ends, a project feed to whoever may see
+  // the project.
+  {
+    const post = (h, path, body) => bare(path, { method: 'POST', headers: h,
+      body: JSON.stringify(body) });
+    const chat = (h, body) => post(h, '/api/chat', body);
+    const uidOf = n => JSON.parse(readFileSync(store, 'utf8')).users[n].uid;
+
+    const sent = await (await chat(owner, { action: 'send', who: 'sharer',
+                                            text: 'ready when you are' })).json();
+    ok((sent.messages || []).some(m => m.text === 'ready when you are'),
+       'a message to another account comes back in the conversation');
+    const theirs = await (await chat(other, { action: 'read', who: 'test' })).json();
+    ok((theirs.messages || []).some(m => m.text === 'ready when you are'
+                                    && m.who === 'test'),
+       '...and the other end sees it, named for who sent it');
+
+    // A project feed is the project's rule, not a new one.
+    ok((await chat(other, { action: 'send', project: 'beta', text: 'looking at this' })).status === 200,
+       'a project they were given takes a message');
+    const denied = await chat(other, { action: 'send', project: 'alpha', text: 'x' });
+    ok(denied.status === 403,
+       '...and one they were not is refused, the same as the project is');
+    // An admin is shown every project, so every project's channel is readable
+    // to them — a channel is the group chat for the people on it, and saying
+    // something in one is not a change to the project. The list marks which
+    // are actually theirs; the door does not need to.
+    ok((await chat(owner, { action: 'read', project: 'gamma' })).status === 200,
+       'an administrator can read a project channel it has not taken on');
+
+    // The status poll carries what is waiting, which is what puts the dot on
+    // the button — a chat you have to open to discover is one nobody opens.
+    await chat(owner, { action: 'send', who: 'sharer', text: 'and another' });
+    const st = await (await bare('/api/status', { headers: other })).json();
+    ok(st.chat && (st.chat.unread || {})[`dm:${uidOf('test')}`] >= 1,
+       `the poll says what is unread (${JSON.stringify(st.chat?.unread)})`);
+    ok((st.chat.people || []).includes('test') && !(st.chat.people || []).includes('sharer'),
+       '...and who there is to talk to, without listing yourself');
+    // Reading it clears it, which is the only thing "seen" has to mean.
+    await chat(other, { action: 'read', who: 'test' });
+    const after = await (await bare('/api/status', { headers: other })).json();
+    ok(!(after.chat.unread || {})[`dm:${uidOf('test')}`],
+       '...and reading a conversation is what marks it seen');
+
+    // The prompt relay, driven the way Claude Code drives it.
+    const relay = `${REPO}/scripts/dashboard/bb-prompt-relay`;
+    execFileSync('python3', [relay, 'beta', uidOf('sharer')], {
+      input: JSON.stringify({ prompt: 'rewrite the parser' }), encoding: 'utf8',
+      env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+    const feed = await (await chat(owner, { action: 'read', project: 'beta' })).json();
+    ok((feed.messages || []).some(m => /sharer asked: rewrite the parser/.test(m.text)
+                                  && m.kind === 'asked'),
+       'a prompt on a shared project reaches the others, marked as a prompt');
+  }
+
+  // A rename must not lose the strip — the whole reason the key is minted.
+  execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+print(u.rename("sharer", "renamed"))`], { encoding: 'utf8' });
+  const renamed = asUser('renamed', 'stripspass1');
+  const after = await strip(renamed);
+  ok(after.tabs?.length === 1 && after.tabs[0].id === 't-oth',
+     'renaming an account keeps its strip, because the key was never the name');
+  execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+print(u.remove("renamed"))`], { encoding: 'utf8' });
+}
+
 // ---- what a `user` sees, and does not (roadmap #22 step 2) --------------
 // The property the whole scheme leans on: a project somebody was not given is
 // ABSENT, not refused — so the existence check and the permission check are

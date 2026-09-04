@@ -116,14 +116,11 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-}
 
       # --- web dashboard ----------------------------------------------------
-      # Status page plus a browser terminal. DASHBOARD_AUTH seeds the owner
-      # account on the first boot that finds none, and is not read again —
-      # `bb users` manages accounts after that. Still required to get the
-      # first one:
-      # this serves an interactive shell into a container holding a loaded
-      # ssh-agent and read-write mounts of every project, so it refuses to
-      # start without a credential rather than defaulting to open.
-      DASHBOARD_AUTH: ${DASHBOARD_AUTH:-}
+      # Status page plus a browser terminal. There is no password here: the
+      # first page it serves asks you to make the owner account, and it serves
+      # nothing else until you have. Open it as soon as the container is up —
+      # this publishes an interactive shell into a container holding a loaded
+      # ssh-agent and read-write mounts of every project.
       DASHBOARD_PORT: ${DASHBOARD_PORT:-7680}
       # Loopback only: the browser reaches terminals through the dashboard
       # port under /term, behind the same single sign-in, so this port is

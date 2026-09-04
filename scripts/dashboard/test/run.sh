@@ -107,6 +107,16 @@ S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
 # on cleanup, killed the real server, the operator's shell and the Claude
 # session running the tests along with it. Verified below, not assumed.
 unset TMUX
+# Same reasoning, for the credential. This script is usually run FROM a Claude
+# session, which is given BB_TOKEN — a token scoped to ONE project with `user`
+# rights and a twelve-hour life. `bb` prefers it over DASHBOARD_AUTH, so every
+# test that shells out to `bb` was quietly using the outer session's
+# credential instead of the harness's: it worked while that token was fresh
+# and the project happened to match, and stopped the moment it expired. What
+# that looked like was agent.mjs dying on "no node called agentbox" — a 401
+# the caller reads as an empty node list — hours into a session, with nothing
+# in the diff to explain it.
+unset BB_TOKEN
 export TMUX_TMPDIR="$S/tmux"
 mkdir -p "$TMUX_TMPDIR"
 tmux new-session -d -s probe -c /tmp
@@ -646,7 +656,7 @@ env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HO
     BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
     PKG_AUTOCHECK=0 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
-    FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" DASHBOARD_AUTH=test:test \
+    FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" \
     BB_DOCTOR_FIXTURE="$S/doctor.txt" CLAUDE_AUTH_FIXTURE="$S/auth.json" \
     BB_IMAGE_REV=abc1234def5678901234567890abcdef12345678 \
     BB_IMAGE_BUILT=2026-08-21T19:30Z \
@@ -663,6 +673,26 @@ for _ in $(seq 40); do
     kill -0 "$pid" 2>/dev/null || { cat "$S/server.log"; die "server exited"; }
     sleep 0.25
 done
+
+# ---- the owner ---------------------------------------------------------------
+# There is no DASHBOARD_AUTH any more: a fresh container serves a first-run
+# screen and the person at it makes the owner. The harness cannot use that
+# form — its credential is `test:test`, and the form enforces an eight
+# character password, which every other file here would then have to know
+# about — so it claims the store directly, which is the same call the form
+# makes. The form's own path is covered in auth.mjs, against a store of its
+# own.
+python3 - "$DASH/users.py" "$S/state" <<'PY'
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("users", sys.argv[1])
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state=sys.argv[2], write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+d = u.load()
+d["users"]["test"] = {"uid": u.mint_uid(), "role": "owner", "projects": ["*"],
+                      "password": u.hash_password("test"), "created": 0,
+                      "seen": 0, "prefs": {}}
+u._save(d)
+PY
 
 # ---- the docker-host node --------------------------------------------------
 # The suite needs one node whose daemon the controller can address, and it

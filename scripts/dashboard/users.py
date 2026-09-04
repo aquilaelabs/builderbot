@@ -20,6 +20,7 @@ count lives in each record rather than in a constant here, so raising it later
 upgrades people as they sign in instead of locking everybody out at once.
 """
 import base64
+import contextlib
 import hashlib
 import hmac
 import json
@@ -78,12 +79,37 @@ def check_password(stored, password):
 
 # --- the store -------------------------------------------------------------
 
+def mint_uid():
+    """A stable id for an account, minted once and never reused.
+
+    The NAME is not it. The owner is deliberately renameable — that is the
+    only way to retire the seeded one, since it cannot be deleted — and every
+    other account can be renamed too, so anything durable hung off a name is
+    orphaned the first time somebody uses that. Homes, tab layouts, themes and
+    the Claude-session holder all hang off this instead. Same rule as a node's
+    (docs/nodes.md §15, door 1): ids are minted, never derived, never reused.
+    """
+    return "u_" + secrets.token_hex(4)
+
+
 def load():
     try:
         d = json.loads(_file().read_text())
     except (OSError, ValueError):
         return {"users": {}}
-    return d if isinstance(d.get("users"), dict) else {"users": {}}
+    if not isinstance(d.get("users"), dict):
+        return {"users": {}}
+    # Backfilled rather than migrated: accounts predate the id, and the first
+    # read after an upgrade is the only place that can give them one without
+    # a migration step somebody has to remember to run.
+    missing = [n for n, u in d["users"].items()
+               if isinstance(u, dict) and not u.get("uid")]
+    if missing:
+        for n in missing:
+            d["users"][n]["uid"] = mint_uid()
+        with contextlib.suppress(Exception):     # a read must not fail on this
+            _save(d)
+    return d
 
 
 def _save(d):
@@ -102,7 +128,8 @@ def all_users():
     """Every account, without the hashes. What a listing is allowed to see."""
     out = []
     for name, u in sorted(load()["users"].items()):
-        out.append({"name": name, "role": u.get("role", "user"),
+        out.append({"name": name, "uid": u.get("uid", ""),
+                    "role": u.get("role", "user"),
                     "projects": list(u.get("projects") or []),
                     "created": u.get("created", 0), "seen": u.get("seen", 0)})
     return out
@@ -111,6 +138,69 @@ def all_users():
 def get(name):
     u = load()["users"].get(str(name))
     return {**u, "name": str(name)} if u else None
+
+
+def uid_of(u):
+    """The minted id for a principal, or "" for one that is not a person.
+
+    The server's own contexts (ALL) and a session's scoped token both reach
+    code that wants to remember something per account. Neither should: a
+    background sweep has no tab strip and a `bb` invocation has no browser. So
+    they answer "" and every per-account store treats that as "do not store".
+    """
+    uid = (u or {}).get("uid") or ""
+    return "" if uid == "\u0000server" else str(uid)
+
+
+def tmux_prefix(u):
+    """What this account's shell sessions are named with, or "" for none.
+
+    A SHELL is per account — two people opening a terminal on one project must
+    not land in each other's, which is what one name would do, since tmux
+    attaches to an existing session rather than making a second.
+
+    The OWNER is the exception, and it is the same exception as the home
+    (lib/common.sh's user_home): they keep the unprefixed names, because a box
+    with one operator is every box until somebody adds a second account, and
+    an upgrade that renamed every running session under them would be a cost
+    paid by everyone to serve a case most installs never reach.
+
+    A Claude session is never prefixed at all, whoever opens it: one
+    conversation per project is the rule, and who holds it is a record the
+    dashboard keeps rather than a name (roadmap #26 step 2).
+    """
+    uid = uid_of(u)
+    return f"{uid}~" if uid and uid != owner_uid() else ""
+
+
+def owner_uid():
+    for u in load()["users"].values():
+        if u.get("role") == "owner":
+            return u.get("uid") or ""
+    return ""
+
+
+def prefs(u):
+    """This account's own settings — the theme, today. Never secret, and
+    carried in the state payload, so nothing here may hold a credential."""
+    rec = get((u or {}).get("name") or "") or {}
+    p = rec.get("prefs")
+    return dict(p) if isinstance(p, dict) else {}
+
+
+def prefs_set(name, patch):
+    """Merge into an account's prefs. Keys are whitelisted by the caller —
+    this is reached from a signed-in browser, so an unbounded dict here would
+    be a place to park arbitrary data in a file the login path reads."""
+    with _lock:
+        d = load()
+        u = d["users"].get(str(name))
+        if not u:
+            return {"error": f"no account called {name}"}
+        cur = u.get("prefs")
+        u["prefs"] = (dict(cur) if isinstance(cur, dict) else {}) | dict(patch)
+        _save(d)
+    return {"ok": True, "prefs": u["prefs"]}
 
 
 def owner_name():
@@ -141,9 +231,11 @@ def seed(auth):
             return {"seeded": False, "why": "DASHBOARD_AUTH is not user:password"}
         if not NAME_RE.match(name):
             return {"seeded": False, "why": f"{name!r} is not a usable account name"}
-        d["users"][name] = {"role": "owner", "projects": ["*"],
+        d["users"][name] = {"uid": mint_uid(), "role": "owner",
+                            "projects": ["*"],
                             "password": hash_password(password),
-                            "created": int(time.time()), "seen": 0}
+                            "created": int(time.time()), "seen": 0,
+                            "prefs": {}}
         _save(d)
     return {"seeded": True, "name": name}
 
@@ -227,7 +319,8 @@ def stamp(u):
 # doctor. They are not a person and are not filtered, and they say so by
 # passing this rather than by passing None, which would be indistinguishable
 # from "nobody is signed in" and must not be.
-ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server"}
+ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
+       "uid": "\u0000server"}
 
 # What a `user` may not do to a project they DO have. Named, not derived: a
 # verb that should be restricted and is not listed is a decision somebody has
@@ -235,17 +328,48 @@ ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server"}
 #
 # There is no "delete" here because there is no delete: a project is removed
 # by moving it to the trash and purging it, and both are `trash`.
-USER_DENIES = ("rename", "trash", "node")
+USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth",
+               "docker-write", "packages-write")
 
 
 def sees_all(u):
-    """Every project, or only the named ones. Owner and admin see everything;
-    so does a record carrying "*", which is what the seeded owner gets."""
+    """Whether every project is LISTED for this account.
+
+    Owner and admin see everything, and this is deliberately not the same
+    question as whether they may touch it — see may_work. An administrator
+    hidden from a project could not administer it, and a list with holes in it
+    is how somebody goes looking for a project that is right there.
+
+    A record carrying "*" sees everything too, which is what the seeded owner
+    gets.
+    """
     if u is ALL:
         return True
     if not u:
         return False                        # not signed in sees nothing
     return u.get("role") in ("owner", "admin") or "*" in (u.get("projects") or [])
+
+
+def may_work(u, name):
+    """Whether this account may CHANGE anything about `name`.
+
+    The project list means the same thing for every role, which is the whole
+    point of it: a project you did not take on is one you cannot edit, start a
+    Claude session in, or rebuild — for an administrator exactly as for a
+    user. What differs is the remedy. An administrator can add any project to
+    their own list and carry on; a user has to be given one.
+
+    So this is not a security boundary for an administrator and is not sold as
+    one: it is the seatbelt that stops somebody with rights over forty
+    projects working on the wrong one. For a `user` it is a boundary, because
+    they cannot grant themselves anything.
+    """
+    if u is ALL:
+        return True
+    if not u:
+        return False
+    have = u.get("projects") or []
+    return "*" in have or name in have
 
 
 def visible(u, names):
@@ -283,16 +407,48 @@ def may(u, action, project=None):
         return ""
     if not u:
         return "not signed in"
-    if is_admin(u):
-        return ""
+    # Ahead of the admin pass, because it applies to them too: a project you
+    # have not taken on is read-only whoever you are. The remedy differs and
+    # the sentence says so.
     if project is not None and not may_see(u, project):
         return "not a project"              # the same answer a typo gets
+    if project is not None and not may_work(u, project):
+        return ("you have not taken this project on — add it to your own list "
+                "on the Users tab" if is_admin(u) else
+                "you were not given this project")
+    if is_admin(u):
+        return ""
     if action in USER_DENIES:
         return {"rename": "renaming a project is an administrator's",
                 "trash": "deleting a project is an administrator's",
                 "node": "which node a project builds on is an administrator's — "
                         "a node is shared, so changing it reaches every project "
-                        "on it"}[action]
+                        "on it",
+                # The one that makes the rest of the role mean something.
+                # Everything else here is enforced by this server, in Python,
+                # and a shell is the way around all of it: one uid, one tmux
+                # server, and Bash covered by no deny list. Without a terminal
+                # there is no hole to argue about — which is why an account
+                # that may not have one gets a Claude console instead of a
+                # window it could point somewhere else (roadmap #27).
+                # A project this account made would not be in the list an
+                # administrator gave it, so it would vanish on the next
+                # paint — and the create dialog is one of the two places a
+                # git token is written.
+                "create": "making a project is an administrator's — the "
+                          "projects you can work on are the ones you were "
+                          "given",
+                "terminal": "a shell is an administrator's — your Claude "
+                            "session opens as a console instead",
+                "git-auth": "how a project authenticates to its remote is an "
+                            "administrator's: the token is what pushes, and "
+                            "changing the method or clearing it reaches "
+                            "everybody who works on it",
+                "docker-write": "starting and stopping containers is an "
+                                "administrator's — you can see what is "
+                                "running and open it",
+                "packages-write": "installing on a node is an administrator's "
+                                  "— these are gigabytes on shared disk"}[action]
     if action == "admin":
         return "that is an administrator's"
     return ""
@@ -370,6 +526,32 @@ def session_principal(tok):
 
 # --- editing ---------------------------------------------------------------
 
+def claim(name, password):
+    """Make the owner, on a store that has none. The first-run screen's verb.
+
+    Not `add`, which refuses the owner role on purpose — there is only ever
+    one and it is not somebody an administrator creates. This is the one path
+    that makes it, and it is closed by its own result: the second call finds
+    an account and refuses.
+    """
+    name = str(name or "").strip()
+    if not NAME_RE.match(name):
+        return {"error": "a name is letters, digits and . _ @ + - , up to 64"}
+    if len(password or "") < 8:
+        return {"error": "a password is at least 8 characters"}
+    with _lock:
+        d = load()
+        if d["users"]:
+            return {"error": "this container already has an account"}
+        d["users"][name] = {"uid": mint_uid(), "role": "owner",
+                            "projects": ["*"],
+                            "password": hash_password(password),
+                            "created": int(time.time()), "seen": 0,
+                            "prefs": {}}
+        _save(d)
+    return {"ok": True, "name": name}
+
+
 def add(name, password, role="user", projects=None):
     name = str(name or "").strip()
     if not NAME_RE.match(name):
@@ -382,9 +564,11 @@ def add(name, password, role="user", projects=None):
         d = load()
         if name in d["users"]:
             return {"error": f"{name} already has an account"}
-        d["users"][name] = {"role": role, "projects": list(projects or []),
+        d["users"][name] = {"uid": mint_uid(), "role": role,
+                            "projects": list(projects or []),
                             "password": hash_password(password),
-                            "created": int(time.time()), "seen": 0}
+                            "created": int(time.time()), "seen": 0,
+                            "prefs": {}}
         _save(d)
     return {"ok": True, "name": name}
 

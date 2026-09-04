@@ -40,11 +40,16 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 WORKSPACE = Path(os.environ.get("WORKSPACE", "/workspace"))
 PORT = int(os.environ.get("DASHBOARD_PORT", "7680"))
-AUTH = os.environ.get("DASHBOARD_AUTH", "")
 # Loopback only: the browser reaches terminals through this server's own
 # /term proxy, so there is no second port for the page to be told about —
 # which is what DASHBOARD_TTYD_PUBLIC_PORT used to exist for.
 TTYD_PORT = int(os.environ.get("DASHBOARD_TTYD_PORT", "7681"))
+# The read-only twin (roadmap #27). ttyd is read-only unless started with
+# --writable, so an account that may not have a shell reaches this one and
+# cannot type into the socket at all — its Claude input goes through the send
+# path, which is a table lookup and literal text like every other thing this
+# page can make happen.
+TTYD_RO_PORT = int(os.environ.get("DASHBOARD_TTYD_RO_PORT", str(TTYD_PORT + 1)))
 
 # ---- one login for everything ---------------------------------------------
 # The browser used to be asked twice — once by this server, once by ttyd on
@@ -136,11 +141,43 @@ def token_user(tok):
 # into the cookie. autocomplete names are the standard ones so password
 # managers offer to fill and to save — the thing the browser dialog never did
 # well on a phone.
+# The first-run screen. Same card as the sign-in — one look, and one place to
+# change it — with the copy and the fields the first account needs.
+#
+# It is served ONLY while the store holds no accounts, and creating one closes
+# it for good. That window is the honest cost of not putting a password in the
+# container's environment: until somebody claims the box, whoever reaches the
+# port can. Which is why the page says to do it now rather than leaving it to
+# be inferred, and why the dashboard refuses everything else until it is done.
+SETUP_FIELDS = """  <p class="note">Nobody owns this container yet. The first account you make
+    here is the <b>owner</b>: it cannot be deleted, and it is how you add
+    everyone else. Do it now — until you do, anyone who can reach this page
+    can claim it.</p>
+  <!--ERR-->
+  <label for="u">Username</label>
+  <input id="u" name="username" autocomplete="username" autocapitalize="none"
+    required autofocus>
+  <label for="p">Password</label>
+  <input id="p" name="password" type="password" autocomplete="new-password"
+    minlength="8" required>
+  <label for="p2">Password again</label>
+  <input id="p2" name="password2" type="password" autocomplete="new-password"
+    minlength="8" required>
+  <button type="submit">Create the owner</button>"""
+
+LOGIN_FIELDS = """  <!--ERR-->
+  <input type="hidden" name="next" value="/">
+  <label for="u">Username</label>
+  <input id="u" name="username" autocomplete="username" autocapitalize="none" required>
+  <label for="p">Password</label>
+  <input id="p" name="password" type="password" autocomplete="current-password" required>
+  <button type="submit">Sign in</button>"""
+
 LOGIN_HTML = """<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
-<title>BuilderBot — sign in</title>
+<title>BuilderBot — <!--TITLE--></title>
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <style>
@@ -172,8 +209,9 @@ LOGIN_HTML = """<!doctype html>
   button{margin-top:6px;background:#1f6f36;border:1px solid #2ea043;color:#e6edf3;
     border-radius:6px;padding:10px;font-size:15px;cursor:pointer}
   .err{color:#f85149;font-size:13px;margin:0}
+  .note{color:#8b98a5;font-size:13px;margin:0 0 4px}
 </style></head><body>
-<form method="post" action="/login">
+<form method="post" action="<!--ACTION-->">
   <h1><svg viewBox="0 0 32 32" aria-hidden="true"><mask id="m">
     <rect width="32" height="32" fill="#000"/>
     <rect x="4" y="8.5" width="24" height="17" rx="5.5" fill="#fff"/>
@@ -184,13 +222,7 @@ LOGIN_HTML = """<!doctype html>
     <rect x="10.6" y="19.6" width="10.8" height="2.6" rx="1.3" fill="#000"/>
   </mask><rect width="32" height="32" fill="currentColor" mask="url(#m)"/></svg>
   BuilderBot</h1>
-  <!--ERR-->
-  <input type="hidden" name="next" value="/">
-  <label for="u">Username</label>
-  <input id="u" name="username" autocomplete="username" autocapitalize="none" required>
-  <label for="p">Password</label>
-  <input id="p" name="password" type="password" autocomplete="current-password" required>
-  <button type="submit">Sign in</button>
+  <!--FIELDS-->
 </form>
 <script>
   const n = new URLSearchParams(location.search).get("next");
@@ -448,11 +480,39 @@ TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings",
              "nodes", "settings", "jobs", "users"}
 
 
-def load_layout():
+def _layouts():
+    """The whole file: {"boot": ..., "users": {uid: layout}}.
+
+    One strip per ACCOUNT, keyed by the minted id rather than the name so a
+    rename keeps it (users.mint_uid says why). It was one layout for the whole
+    box until roadmap #25 — written by whoever last saved and handed to
+    everybody else, which is fine for one operator and wrong the moment there
+    are two.
+
+    A file from before that has the layout at the top level. It is moved to
+    the owner, once, on the first read: the owner is who was using it, and
+    dropping it instead would cost somebody their tab strip on an upgrade for
+    no reason.
+    """
     try:
         v = json.loads(TABS_FILE.read_text())
     except (OSError, ValueError):
         v = {}
+    if not isinstance(v, dict):
+        v = {}
+    if not isinstance(v.get("users"), dict):
+        moved = {k: v[k] for k in ("rev", "tabs", "panes", "active") if k in v}
+        v = {"boot": v.get("boot"), "users": {}}
+        if moved:
+            owner = users.get(users.owner_name() or "")
+            if owner and owner.get("uid"):
+                v["users"][owner["uid"]] = moved
+    return v
+
+
+def load_layout(uid):
+    """One account's strip, shape-checked. `uid` is users.uid_of(who)."""
+    v = (_layouts().get("users") or {}).get(str(uid or ""))
     # Shape-checked field by field, not trusted: this runs inside every status
     # poll and once at startup (prune_claude_tabs), so a file holding
     # `"tabs": 5` — a hand edit, or a client that posted junk before the
@@ -487,8 +547,14 @@ def load_layout():
             "active": 1 if v.get("active") == 1 and panes[1] else 0}
 
 
-def save_layout(v):
-    write_json(TABS_FILE, v | {"boot": boot_id()})
+def save_layout(uid, v):
+    """Write one account's strip, leaving every other account's alone."""
+    uid = str(uid or "")
+    if not uid:
+        return                            # not a person: nothing to remember
+    all_of = _layouts()
+    all_of["users"][uid] = v
+    write_json(TABS_FILE, all_of | {"boot": boot_id()})
 
 
 def boot_id():
@@ -521,8 +587,12 @@ def prune_claude_tabs():
     disk, so the project's Claude button offers to resume it; that is a decision
     to make, not one to make silently at boot.
 
-    Called once at startup. The revision is bumped so a browser left open across
-    the restart adopts the pruned strip instead of saving its stale tabs back.
+    Called once at startup, and once for EVERY account: the strip is per
+    person now (roadmap #25), and a boot that pruned only one of them would
+    leave everyone else's dead Claude tabs on their strip.
+
+    The revision is bumped so a browser left open across the restart adopts
+    the pruned strip instead of saving its stale tabs back.
     """
     try:
         stored = json.loads(TABS_FILE.read_text())
@@ -531,20 +601,26 @@ def prune_claude_tabs():
     here = boot_id()
     if not here or stored.get("boot") == here:
         return
-    v = load_layout()
-    kept = [t for t in v["tabs"] if not t["arg"].startswith("claude:")]
-    if len(kept) == len(v["tabs"]):
-        save_layout(v)                  # nothing to drop; just stamp this boot
-        return
-    ids = {t["id"] for t in kept}
-    panes = [p if p in ids else None for p in v["panes"]]
-    if panes[0] is None:
-        panes = [panes[1], None]
+    for uid in list((_layouts().get("users") or {})):
+        v = load_layout(uid)
+        kept = [t for t in v["tabs"] if not t["arg"].startswith("claude:")]
+        if len(kept) == len(v["tabs"]):
+            continue                    # nothing to drop for this one
+        ids = {t["id"] for t in kept}
+        panes = [p if p in ids else None for p in v["panes"]]
+        if panes[0] is None:
+            panes = [panes[1], None]
+        try:
+            save_layout(uid, {"rev": v["rev"] + 1, "tabs": kept, "panes": panes,
+                              "active": 1 if panes[1] else 0})
+        except OSError:
+            return                      # a read-only /config is not fatal here
+    # The boot stamp regardless, so a run that dropped nothing is not asked
+    # again on every restart afterwards.
     try:
-        save_layout({"rev": v["rev"] + 1, "tabs": kept, "panes": panes,
-                     "active": 1 if panes[1] else 0})
+        write_json(TABS_FILE, _layouts() | {"boot": here})
     except OSError:
-        pass                            # a read-only /config is not fatal here
+        pass
 
 
 def load_pins():
@@ -1406,9 +1482,19 @@ def project_list(who):
                         f"file and data directory. Rename one before using it"})
     # The last thing, so everything above it stays one description of the
     # share and this stays one decision about who sees it.
+    #
+    # Two decisions now, and they are different questions. A `user` is shown
+    # only what it was given, because a project it cannot work on is one it
+    # has no reason to know exists. An ADMINISTRATOR is shown everything and
+    # told which of them are theirs to change: hiding a project from somebody
+    # who administers the box would only send them looking for it, and the
+    # list they keep is a seatbelt against editing the wrong one rather than a
+    # wall (users.may_work).
     if not users.sees_all(who):
         allow = set((who or {}).get("projects") or [])
         out = [p for p in out if p["name"] in allow]
+    for p in out:
+        p["mine"] = users.may_work(who, p["name"])
     return out
 
 
@@ -1459,6 +1545,133 @@ def claude_state(title):
     if not title.startswith(SPINNER_GLYPHS + ("✳",)) or task == "Claude Code":
         task = ""
     return ("working" if working else "waiting"), task
+
+
+# The `u:<uid>:` a browser may have sent on a terminal argument, which is
+# stripped before the real one is put on. Anchored, so it can only ever take
+# a prefix off the front.
+_ARG_OWNER = re.compile(r"^u:[^:]*:")
+
+# A session name without the account that owns it. Shell sessions are named
+# `<uid>~shell-…` since roadmap #26 — two people opening a terminal on one
+# project must not land in each other's — and every question of the form
+# "does this project still have terminals open" is about the part after the
+# `~`, whoever owns it.
+_SESS_OWNER = re.compile(r"^u_[0-9a-f]{8}~")
+
+
+def _chat_summary(who, ps):
+    """{online, people, unread, rev} for the chat button, or {} for a
+    principal that is not a person."""
+    uid = users.uid_of(who)
+    if not uid:
+        return {}
+    store = users.load()["users"]
+    mine = (who or {}).get("name", "")
+    others = [u.get("uid") for n, u in store.items()
+              if u.get("uid") and n != mine]
+    seen = users.prefs(who).get("chat_seen") or {}
+    return {"online": [n for n in chat.online(_polls) if n != mine],
+            "rev": chat.rev(),
+            "unread": chat.unread(uid, others, [p["name"] for p in ps], seen),
+            # Everybody, not only who is here: a message waiting for somebody
+            # who is away is most of what a history is for.
+            "people": sorted(n for n in store if n != mine)}
+
+
+def claude_sessions(sessions):
+    """{project: [account name, ...]} for every Claude session running.
+
+    Derived from the session NAMES rather than kept in a file. It used to be a
+    record, because one conversation per project meant the single name
+    `claude-<proj>` could not say whose it was. More than one is allowed now
+    (roadmap #24) and each carries its account's prefix, so the name answers
+    it — and a record that could go stale, be orphaned by a deleted account,
+    or disagree with tmux stopped being worth keeping.
+
+    The unprefixed name is the OWNER's, by the same rule as their home and
+    their shells.
+    """
+    by_uid = {u.get("uid"): n for n, u in users.load()["users"].items()
+              if u.get("uid")}
+    owner = users.owner_name()
+    out = {}
+    for s in sessions:
+        base = tmux_base(s["name"])
+        if not base.startswith("claude-"):
+            continue
+        stem = base[len("claude-"):]
+        who = by_uid.get(tmux_owner(s["name"]), owner)
+        if who:
+            out.setdefault(stem, []).append(who)
+    return out
+
+
+def _term_arg(rest):
+    """The `arg` a /term request carries, with any owner stamp a browser sent
+    taken off. "" when there is none."""
+    _, sep, query = rest.partition("?")
+    if not sep:
+        return ""
+    for kv in query.split("&"):
+        k, eq, v = kv.partition("=")
+        if k == "arg" and eq:
+            return _ARG_OWNER.sub("", urllib.parse.unquote_plus(v))
+    return ""
+
+
+def _session_visible(name, mine, seen, all_of_them):
+    owner, base = tmux_owner(name), tmux_base(name)
+    if owner:
+        return owner == mine            # a shell belongs to exactly one account
+    if all_of_them:
+        return True
+    # Unowned: a Claude session, or a terminal from before accounts. Judged by
+    # the project in its name, which is what the account was or was not given.
+    for pre in ("claude-", "shell-"):
+        if base.startswith(pre):
+            stem = base[len(pre):]
+            return any(tmux_name(p) == stem or stem.startswith(tmux_name(p) + "-")
+                       for p in seen)
+    return False
+
+
+_homes = {}
+
+
+def home_for(uid):
+    """Where that account's home is, from lib/common.sh's user_home.
+
+    Shelled out to rather than reimplemented, because bb-tty calls the same
+    function to decide where a terminal runs: two implementations of "where
+    does this person's Claude login live" would eventually disagree, and the
+    way you would find out is somebody signing in and the session not seeing
+    it. Empty on any failure, which every caller reads as "the box's own".
+    """
+    lib = HERE.parent / "lib" / "common.sh"
+    if not uid or not lib.is_file():
+        return ""
+    # Remembered, because this is on the status poll and the answer cannot
+    # move: an account's home is derived from an id that never changes. The
+    # first call per account also CREATES the directory, which is the other
+    # reason not to do it fifteen times a minute per browser.
+    if uid in _homes:
+        return _homes[uid]
+    r = run(["bash", "-c", f'. {shlex.quote(str(lib))}; user_home "$1"',
+             "_", str(uid)], timeout=10)
+    got = (r.get("out") or "").strip() if r.get("code") == 0 else ""
+    if got:
+        _homes[uid] = got
+    return got
+
+
+def tmux_base(name):
+    return _SESS_OWNER.sub("", str(name))
+
+
+def tmux_owner(name):
+    m = _SESS_OWNER.match(str(name))
+    return m.group(0)[:-1] if m else ""
 
 
 def tmux_name(s):
@@ -1848,7 +2061,15 @@ def run_doctor():
 # Who this container is signed in as, for the Doctor card. `claude auth
 # status --json` answers it locally and instantly — no network — so this is a
 # short cache against a poll every fifteen seconds rather than a real one.
-_auth = {"at": 0.0, "state": {}}
+# Per HOME, because accounts have a home each and a Claude login lives in one
+# (roadmap #26). One global answer meant a new account was shown the owner's
+# sign-in state: the Claude button offered itself, and bb-tty — which reads
+# the RIGHT home — then refused with "not signed in", which is a dead end on
+# the one path a new person has to walk. Keyed by the home rather than the
+# account so the owner and an unauthenticated context share one entry, which
+# is what they are.
+_auth = {}
+_AUTH_EMPTY = {"at": 0.0, "state": {}}
 _auth_lock = threading.Lock()
 AUTH_TTL = 20
 # While a sign-in is open and this box is still signed out, the answer is about
@@ -1860,29 +2081,35 @@ AUTH_TTL = 20
 AUTH_TTL_FAST = 5
 
 
-def claude_auth(fresh=False):
+def claude_auth(fresh=False, home=""):
     """{signed_in, email} — or {"unknown": True} on a claude too old to ask.
 
     The one piece of container health that has an action attached, which is
     why it is a field of its own rather than a line in the doctor verdict: a
     verdict is read, and this is pressed.
+
+    `home` is the asking account's, because the answer is theirs: the
+    credential lives in $HOME/.claude and every account has a home.
     """
+    got = _auth.get(home) or _AUTH_EMPTY
     # Signed in already: nothing a running sign-in does changes that answer,
     # so it keeps the long cache however busy the flow looks.
-    ttl = AUTH_TTL_FAST if fresh and not _auth["state"].get("signed_in") else AUTH_TTL
-    if time.monotonic() - _auth["at"] < ttl and _auth["state"]:
-        return _auth["state"]
+    ttl = AUTH_TTL_FAST if fresh and not got["state"].get("signed_in") else AUTH_TTL
+    if time.monotonic() - got["at"] < ttl and got["state"]:
+        return got["state"]
     # One at a time, and checked again on the way in: without this every
     # request that arrives during the 0.68s answer starts its own copy, which
     # is the difference between one node process and a handful.
     with _auth_lock:
-        if time.monotonic() - _auth["at"] < ttl and _auth["state"]:
-            return _auth["state"]
-        return _read_auth()
+        got = _auth.get(home) or _AUTH_EMPTY
+        if time.monotonic() - got["at"] < ttl and got["state"]:
+            return got["state"]
+        return _read_auth(home)
 
 
-def _read_auth():
-    r = run(["claude", "auth", "status", "--json"], timeout=20)
+def _read_auth(home=""):
+    env = dict(os.environ) | ({"HOME": home} if home else {})
+    r = run(["claude", "auth", "status", "--json"], timeout=20, env=env)
     try:
         d = json.loads(r["out"]) if r["code"] == 0 else {}
         state = {"signed_in": bool(d.get("loggedIn")),
@@ -1893,7 +2120,7 @@ def _read_auth():
         # knowing is not the same as being signed out, and offering to sign
         # somebody out of nothing is worse than offering nothing.
         state = {"unknown": True}
-    _auth.update(at=time.monotonic(), state=state)
+    _auth[home] = {"at": time.monotonic(), "state": state}
     return state
 
 
@@ -1938,11 +2165,18 @@ import signin                                                    # noqa: E402
 # ---- who may sign in --------------------------------------------------------
 # The dashboard's own accounts (docs/users.md, roadmap #22). Imported here so
 # that everything it needs — STATE, write_json — is already built; nothing in
-# it reaches back. DASHBOARD_AUTH seeds the first account in main() and is
-# read nowhere else.
+# it reaches back. The FIRST account is made on the first-run screen — there
+# is no environment variable behind it any more.
 import users                                                     # noqa: E402
 
 users.configure(state=STATE, write_json=write_json)
+
+# Messages between accounts, and what each project's people are doing. Its own
+# module for the same reason nodes and users are: the rules about who may read
+# a conversation belong beside the conversation, not scattered through here.
+import chat                                                     # noqa: E402
+chat.configure(state=STATE, write_json=write_json)
+
 
 # ---- the bug tracker --------------------------------------------------------
 # The notebook's third view. Same arrangement again: its own file, handed the
@@ -2459,9 +2693,24 @@ def revisions():
     return revs
 
 
+# Who has polled lately, in memory: presence, not a record. See chat.online.
+_polls = {}
+
+
 def snapshot(who):
+    if who and who.get("name") and users.uid_of(who):
+        _polls[who["name"]] = time.time()
     ps = project_list(who)
-    sessions = tmux_sessions()
+    # Sessions this account has any business seeing: its own shells, and
+    # anything on a project it was given. Filtered here for the same reason
+    # the project list is (roadmap #22): a member restricted to one project
+    # could otherwise read every other project's name off the session list,
+    # which is exactly what hiding the projects was for. An account that sees
+    # everything sees the unowned ones too — terminals opened before accounts,
+    # or by something that is not a browser.
+    mine, seen = users.uid_of(who), {p["name"] for p in ps}
+    sessions = [s for s in tmux_sessions()
+                if _session_visible(s["name"], mine, seen, users.sees_all(who))]
     login = signin.state()
     # Each shell's git context, resolved here where WORKSPACE is known: the
     # git/GitHub command cards ghost against the directory the active shell
@@ -2520,7 +2769,8 @@ def snapshot(who):
         # Asked in this order: whether a sign-in is running decides whether
         # the answer to "signed in?" is worth re-reading rather than serving
         # from the cache.
-        "claude_auth": claude_auth(fresh=login["running"]),
+        "claude_auth": claude_auth(fresh=login["running"],
+                                   home=home_for(users.uid_of(who))),
         "signin": login,
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
@@ -2544,8 +2794,49 @@ def snapshot(who):
         "cards": load_cards(),
         # The open tabs, so a phone picks up the desktop's layout rather than
         # starting from scratch. Carried in the status poll because it is small
-        # and every client is already asking for that every 15s.
-        "layout": load_layout(),
+        # and every client is already asking for that every 15s. THIS
+        # account's — the strip follows the person to any browser they sign in
+        # on, and stops following them to somebody else's (roadmap #25).
+        "layout": load_layout(users.uid_of(who)),
+        # Who this is, so the page can name a shell session the way bb-tty
+        # will (index.html's myTmux). Not a secret — it is this account's own
+        # id, and it is already the key to everything the page saves.
+        "uid": users.uid_of(who),
+        # What this account's shell sessions are named with — "" for the
+        # owner, who keeps the bare names (users.tmux_prefix says why). The
+        # page has to agree with bb-tty about this exactly, or a tab addresses
+        # a session that was never created under that name.
+        "tmux_prefix": users.tmux_prefix(who),
+        # What this account may do, by capability rather than by role: the
+        # page should never branch on "is this a user", because the answer to
+        # "may I" is the thing that moves and the role is only how it is
+        # decided today. Every one of these is refused again on the server —
+        # this is what stops a dead control being drawn, not what stops the
+        # action (roadmap #27).
+        "can": {name: not users.may(who, name) for name in
+                ("terminal", "docker-write", "packages-write", "git-auth")},
+        # Projects whose Claude session belongs to somebody else, by NAME —
+        # "alice has a session on this" is the whole value of the record, and
+        # a bare refusal would tell you nothing you could act on. Only for
+        # projects this account can see, and never their own, which is not
+        # held against them (roadmap #26).
+        # Who has a Claude session on each project — BuilderBot account names,
+        # everybody including the asker. More than one may (roadmap #24), each
+        # in a worktree of their own, so this is a list and it is information
+        # rather than a refusal: the row says who is here and nothing is
+        # greyed for it. The page decides how to word "you and alice".
+        "claude_with": claude_sessions(sessions),
+        # This account's own name, so the row can say "you and alice" rather
+        # than reading your own name back at you.
+        "me": (who or {}).get("name", ""),
+        # The chat panel's headline: who is here, and what has arrived since
+        # this account last looked. The messages themselves are fetched when
+        # the panel is open — this rides the poll because it is small and it
+        # is what decides whether the button wears a dot.
+        "chat": _chat_summary(who, ps),
+        # This account's colour scheme, for a browser that has none stored.
+        # index.html's adoptTheme says why localStorage still outranks it.
+        "theme": users.prefs(who).get("theme", ""),
     }
 
 
@@ -2606,6 +2897,21 @@ class Handler(BaseHTTPRequestHandler):
         u = self._who()
         return f"user:{u['name']}" if u else "anonymous"
 
+    def _readonly(self, name):
+        """True — with the 403 already written — when this account may see the
+        project but has not taken it on.
+
+        The counterpart to _refused for the handlers whose only check was "is
+        this a project you can see". That was the whole authorization while
+        seeing and working were the same question; they are not any more, so
+        every write that names a project asks this too.
+        """
+        why = users.may(self._who(), "write", name)
+        if not why:
+            return False
+        self._json({"error": why}, 403)
+        return True
+
     def _refused(self, action, project=None):
         """True — with the 403 already written — when this account may not.
 
@@ -2648,15 +2954,61 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
-    def _login_page(self, error=""):
+    def _login_page(self, error="", setup=False):
+        """The sign-in card, or the first-run card when nobody owns this box.
+
+        One template: the difference between them is three fields and the
+        copy, and two pages would have drifted apart the first time either was
+        touched.
+        """
         err = f'<p class="err">{error}</p>' if error else ""
-        body = LOGIN_HTML.replace("<!--ERR-->", err).encode()
+        body = (LOGIN_HTML
+                .replace("<!--TITLE-->", "set up" if setup else "sign in")
+                .replace("<!--ACTION-->", "/setup" if setup else "/login")
+                .replace("<!--FIELDS-->", SETUP_FIELDS if setup else LOGIN_FIELDS)
+                .replace("<!--ERR-->", err)).encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def _setup_post(self):
+        """Make the owner, once. Refused the moment there is one.
+
+        Checked against the store rather than a flag: "has anybody claimed
+        this box" is a question with an answer already, and a second copy of
+        it is one more thing that can disagree.
+        """
+        if users.all_users():
+            return self._login_page("This container already has an account.")
+        try:
+            n = int(self.headers.get("Content-Length", "0"))
+            if not 0 <= n <= MAX_BODY:
+                return self._json({"error": "body too large"}, 413)
+            form = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "replace"))
+        except (ValueError, TypeError):
+            return self._json({"error": "bad request"}, 400)
+        name = form.get("username", [""])[0]
+        pw, pw2 = form.get("password", [""])[0], form.get("password2", [""])[0]
+        if pw != pw2:
+            return self._login_page("Those two passwords are not the same.",
+                                    setup=True)
+        r = users.claim(name, pw)
+        if r.get("error"):
+            return self._login_page(r["error"], setup=True)
+        print(f"dashboard: {name} claimed this container as the owner",
+              flush=True)
+        # Straight in, rather than back to a sign-in they just proved: they
+        # typed the password twice thirty seconds ago.
+        self.send_response(303)
+        self.send_header("Location", "/")
+        self.send_header("Set-Cookie",
+                         f"bb_session={make_token(users.get(name))}; Path=/; "
+                         f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def _login_post(self):
         try:
@@ -2694,6 +3046,157 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _node_scope(self):
+        """Node ids this account may look at, or None for "no restriction".
+
+        An account that may change a node is shown the registry — that is what
+        the Nodes tab is. One that may not is shown only the machines its own
+        projects build on, so every node-shaped surface is a window on its own
+        work rather than an inventory of the box.
+
+        Used by the listing AND by the two endpoints that read a node's
+        contents. Scoping the picker alone would have been theatre: `?node=`
+        is a string in a URL, and the answer is what actually carries the
+        other projects' names (roadmap #27).
+        """
+        me = self._who()
+        if not users.may(me, "node"):
+            return None
+        want = {prefs.get(p["name"])["node"] for p in project_list(me)}
+        want.discard("")
+        return want
+
+    def _node_asked(self, nid):
+        """Resolve and check a `?node=` for this account.
+
+        Returns (node_id, error). An account with no restriction gets what it
+        asked for, "" included, which is "the default node" and predates the
+        picker. A restricted one must land on a node one of its own projects
+        builds on — and when it named none, the first of those, because its
+        picker only ever offered those anyway.
+        """
+        scope = self._node_scope()
+        if scope is None:
+            return nid, None
+        if not scope:
+            return "", "none of your projects builds on a node"
+        if not nid:
+            return sorted(scope)[0], None
+        if nid not in scope:
+            return "", "not a node one of your projects builds on"
+        return nid, None
+
+    def _nodes_for(self, rows):
+        scope = self._node_scope()
+        return rows if scope is None else [n for n in rows if n["id"] in scope]
+
+    def _term_refused(self, rest):
+        """A sentence when this account may not have the terminal it is asking
+        for, and "" when it may.
+
+        Two rules, and they apply to different people.
+
+        A Claude session is a write — the most write-shaped thing on the page
+        — so it needs a project the account has actually taken on, whoever
+        they are. An administrator is shown every project and works on the
+        ones on their own list (users.may_work), so this is where that bites
+        for them.
+
+        And an account with no `terminal` right gets nothing else at all: not
+        a shell, not somebody else's Claude, and not a project it cannot see.
+        A read-only terminal pointed at another session is a way to WATCH one,
+        which is the hole this closes rather than opens.
+        """
+        me = self._who()
+        arg = _term_arg(rest)
+        if arg.startswith("claude:"):
+            return users.may(me, "claude", arg[len("claude:"):].split(":")[0])
+        return users.may(me, "terminal")
+
+    def _claude_held(self, rest):
+        """A sentence when this account may not open the Claude session it is
+        asking for, and "" when it may.
+
+        More than one conversation per project is allowed now (roadmap #24) —
+        each works in a tree of its own, so they cannot overwrite each other —
+        and what is refused instead is a SECOND SESSION ON ONE ANTHROPIC
+        ACCOUNT. Two dashboard accounts signed in to the same Anthropic login
+        would share its limits and make whose-work-is-whose unanswerable, and
+        the check is a real one rather than a guess: every account has its own
+        home and its own ~/.claude, so the login in it says who it is.
+
+        Enforced HERE and not only in the page, for the reason bb-tty's own
+        header gives about the lock file: a rule only the UI honors is a
+        suggestion, because the ttyd URL is reachable directly.
+        """
+        arg = _term_arg(rest)
+        if not arg.startswith("claude:"):
+            return ""
+        project = arg[len("claude:"):].split(":")[0]
+        me = self._who()
+        uid = users.uid_of(me)
+        if not uid or not project:
+            return ""                     # not an account: nothing to scope
+        # Announced to everybody sharing the project, once — the connection is
+        # remade on every reattach and a phone waking up, so a line per
+        # connection would be noise rather than news.
+        mysess = users.tmux_prefix(me) + tmux_name(f"claude-{project}")
+        if mysess not in {x["name"] for x in tmux_sessions()}:
+            chat.event(project, uid,
+                       f"{me['name']} started a Claude session on {project}")
+        mine = claude_auth(home=home_for(uid)).get("email") or ""
+        if not mine:
+            return ""                     # not signed in: bb-tty says so, better
+        store = users.load()["users"]
+        by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
+        owner = users.owner_name()
+        for s in tmux_sessions():
+            if tmux_base(s["name"]) != tmux_name(f"claude-{project}"):
+                continue
+            other = tmux_owner(s["name"]) or users.uid_of(users.get(owner or ""))
+            if not other or other == uid:
+                continue                  # our own session: this is a reattach
+            if (claude_auth(home=home_for(other)).get("email") or "") == mine:  # noqa: E501
+                return (f"{by_uid.get(other, 'another account')} already has a "
+                        f"Claude session on {project} signed in to {mine}. Two "
+                        "sessions on one Anthropic account share its limits, "
+                        "and nothing afterwards can say which of them did "
+                        "what — so this one waits for that to end.")
+        return ""
+
+    def _ttyd_port(self):
+        """Which ttyd this request is relayed to: the writable one, or the
+        read-only twin for an account that may not have a shell."""
+        return TTYD_RO_PORT if users.may(self._who(), "terminal") else TTYD_PORT
+
+    def _scoped_arg(self, rest):
+        """Stamp the terminal's argument with the account that asked for it.
+
+        ttyd runs bb-tty with whatever `?arg=` says, so this is where a
+        terminal learns whose it is: the account is taken from the credential
+        this request already proved and any `u:` the BROWSER sent is thrown
+        away first. Trusting the browser's would make the whole thing a
+        suggestion — one edited URL and you are in somebody else's home with
+        their Claude login (roadmap #26).
+
+        A request with no account behind it is left alone rather than
+        refused. bb-tty reads that as the box's own home and the unprefixed
+        session names, which is what every terminal got before accounts.
+        """
+        head, sep, query = rest.partition("?")
+        if not sep or "arg=" not in query:
+            return rest
+        uid = users.uid_of(self._who())
+        out = []
+        for kv in query.split("&"):
+            k, eq, v = kv.partition("=")
+            if k == "arg" and eq:
+                want = _ARG_OWNER.sub("", urllib.parse.unquote_plus(v))
+                v = urllib.parse.quote(f"u:{uid}:{want}" if uid else want,
+                                       safe="")
+            out.append(f"{k}{eq}{v}")
+        return head + "?" + "&".join(out)
+
     def _term_proxy(self):
         """Everything under /term, relayed byte-for-byte to ttyd on the
         loopback — websockets included.
@@ -2714,7 +3217,16 @@ class Handler(BaseHTTPRequestHandler):
         plain request instead gets Connection: close upstream, which turns
         "relay until EOF" into the complete response.
         """
-        rest = self.path[len("/term"):]
+        refused = self._term_refused(self.path[len("/term"):])
+        if refused:
+            return self._json({"error": refused}, 403)
+        held = self._claude_held(self.path[len("/term"):])
+        if held:
+            # 409, not 403: nothing is wrong with the credential, the thing
+            # asked for is taken. The name is the whole value of the record —
+            # "somebody else has it" tells you nothing you can act on.
+            return self._json({"error": held}, 409)
+        rest = self._scoped_arg(self.path[len("/term"):])
         if not rest or rest.startswith("?"):
             # ttyd's client resolves "token" and "ws" against the page URL,
             # so the page must live under a trailing slash.
@@ -2724,7 +3236,8 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         try:
-            up = socket.create_connection(("127.0.0.1", TTYD_PORT), timeout=5)
+            up = socket.create_connection(("127.0.0.1", self._ttyd_port()),
+                                          timeout=5)
         except OSError:
             return self._json({"error": "the terminal server is not running"}, 502)
         # The connect timeout must not become a *relay* timeout: it stays on
@@ -2827,6 +3340,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def _get(self):
         path = self.path.split("?")[0]
+        # Nobody owns this container yet: everything but the assets the card
+        # itself needs is the first-run screen. Not a redirect from /login
+        # alone — a bookmark, a phone reopening the app, and the WebUI link
+        # all arrive at "/", and each of them should land on the thing that
+        # has to happen rather than on a sign-in with nothing to sign in to.
+        if not users.all_users() and path not in ("/favicon.ico", "/favicon.svg"):
+            return self._login_page(setup=True)
         if path == "/login":
             return self._login_page()
         if path == "/logout":
@@ -2987,7 +3507,9 @@ class Handler(BaseHTTPRequestHandler):
             # census says it has, and the package job in flight there. The
             # catalog is the same; the state is the node's (docs/nodes.md §6).
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            nid = q.get("node", [""])[0]
+            nid, why = self._node_asked(q.get("node", [""])[0])
+            if why:
+                return self._json({"error": why, "packages": []})
             if nid and nid != "local" and not NODES_OK:
                 return self._json(packages.payload_for_node(nid))
             return self._json(packages.payload())
@@ -3011,7 +3533,13 @@ class Handler(BaseHTTPRequestHandler):
                                             + NODES_OK}, 500)
             # The agent this controller ships rides beside the rows, once,
             # so a row can say when its node's agent is behind.
-            return self._json({"nodes": nodes.node_list(), "agent": nodes.agent_shipped()})
+            #
+            # Scoped for an account that may not change a node: it sees the
+            # ones its own projects build on and no others, because the list
+            # is otherwise a way to learn what machines exist and what they
+            # are called (roadmap #27). An administrator sees the registry.
+            return self._json({"nodes": self._nodes_for(nodes.node_list()),
+                               "agent": nodes.agent_shipped()})
         if self.path.startswith("/api/v1/jobs"):
             # One job with its log so far (?id=), or the recent ones —
             # narrowed by ?node=, ?project=, ?type=, ?active=1, at most ?n=.
@@ -3045,7 +3573,23 @@ class Handler(BaseHTTPRequestHandler):
             # is not one of them. No node named means the default, which is
             # the arrangement that predates the picker.
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
-            return self._json(devapp.overview(q.get("node", [""])[0] or None))
+            nid, why = self._node_asked(q.get("node", [""])[0])
+            if why:
+                return self._json({"error": why, "blind": True,
+                                   "instances": [], "containers": []})
+            got = devapp.overview(nid or None)
+            # An instance of a project this account was not given is one of
+            # the projects hidden from it, wearing a different hat — and a
+            # node is shared, so a restricted account asking about its own
+            # node would otherwise read every other project's name off this
+            # answer. The unowned containers go with them: they are somebody's
+            # work too, and nothing here says whose.
+            if self._node_scope() is not None:
+                seen = {p["name"] for p in project_list(self._who())}
+                got["instances"] = [i for i in got.get("instances") or []
+                                    if i.get("project") in seen]
+                got["containers"] = []
+            return self._json(got)
         if self.path.startswith("/api/containers"):
             # A read, and the only one this dashboard makes of the daemon
             # beyond `docker version` — see the guard in devapp.py, which
@@ -3104,6 +3648,10 @@ class Handler(BaseHTTPRequestHandler):
         return req
 
     def _post(self):
+        # Before the credential check, because there is nothing to check
+        # against yet — and closed by its own effect the moment there is.
+        if self.path.split("?")[0] == "/setup":
+            return self._setup_post()
         if self.path.split("?")[0] == "/login":
             return self._login_post()
         if self.path.split("?")[0].startswith("/api/v1/agent/"):
@@ -3164,6 +3712,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._keys(req)
         if path.startswith("/api/send"):
             return self._send(req)
+        if path.startswith("/api/say"):
+            return self._say(req)
+        if path.startswith("/api/chat"):
+            return self._chat(req)
         if path.startswith("/api/layout"):
             return self._layout(req)
         if path.startswith("/api/cards"):
@@ -3633,10 +4185,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _signin(self, req):
         """Start a sign-in, or stop the one that is running."""
-        _auth.update(at=0.0, state={})
+        _auth.clear()               # every home: the flow may have changed any
         if field(req, "action") == "cancel":
             return self._json(signin.cancel() | {"signin": signin.state()})
-        return self._json(signin.start() | {"signin": signin.state()})
+        # In the asking account's home: `claude auth login` writes to
+        # $HOME/.claude, and this card is how a new account signs in to their
+        # OWN Claude (roadmap #26).
+        return self._json(signin.start(home_for(users.uid_of(self._who())))
+                          | {"signin": signin.state()})
 
     def _login_code(self, req):
         """Hand the code from the browser to the sign-in flow.
@@ -3666,7 +4222,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "copy just the code"}, 400)
         r = signin.submit(code)
         # Whatever the cache is holding is about to be wrong either way.
-        _auth.update(at=0.0, state={})
+        _auth.clear()
         return self._json(r | {"signin": signin.state()},
                           400 if r.get("error") else 200)
 
@@ -3678,18 +4234,34 @@ class Handler(BaseHTTPRequestHandler):
         terminal for it. Signing out is one command with no conversation in
         it, so it is a button.
         """
-        # Not while a conversation is running. Signing out pulls the ground
-        # from under every session on the box, and a page that has not polled
-        # for fifteen seconds can offer a button the answer has moved past —
-        # so the refusal is here as well as on the button.
-        busy = [s["name"] for s in tmux_sessions() if s["name"].startswith("claude-")]
+        # Not while a conversation of THIS account's is running. Signing out
+        # pulls the ground from under the sessions it started, and a page that
+        # has not polled for fifteen seconds can offer a button the answer has
+        # moved past — so the refusal is here as well as on the button.
+        #
+        # Theirs, not everyone's: logins are per account now (roadmap #26), so
+        # one person signing out does nothing to somebody else's conversation
+        # and refusing on it would be a rule with no reason behind it. An
+        # account that sees everything still only owns what it opened.
+        me = users.uid_of(self._who())
+        # The name says whose (roadmap #24): a prefix is that account's, and
+        # the bare one is the owner's.
+        busy = sorted(n for n in (x["name"] for x in tmux_sessions())
+                      if tmux_base(n).startswith("claude-")
+                      and (tmux_owner(n) or users.uid_of(
+                          users.get(users.owner_name() or ""))) == me)
         if busy:
             return self._json({"error": "end these first: " + ", ".join(busy)}, 409)
-        r = run(["claude", "auth", "logout"], timeout=60)
-        _auth.update(at=0.0, state={})
+        # In the asking account's home, like the sign-in: signing out is
+        # signing THIS account out, and the credential is in their ~/.claude.
+        home = home_for(users.uid_of(self._who()))
+        r = run(["claude", "auth", "logout"], timeout=60,
+                env=dict(os.environ) | ({"HOME": home} if home else {}))
+        _auth.clear()
         if r["code"] != 0:
             return self._json({"error": r["out"].strip()[-500:] or "logout failed"}, 500)
-        return self._json({"ok": True, "auth": claude_auth()})
+        return self._json({"ok": True,
+                           "auth": claude_auth(home=home_for(users.uid_of(self._who())))})
 
     def _todo(self, req):
         """Add, send, edit or drop one item on a project's list.
@@ -3701,6 +4273,12 @@ class Handler(BaseHTTPRequestHandler):
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
+        # Seeing a project and being able to change it are different
+        # questions now (users.may_work): an administrator is shown every
+        # project and works on the ones they took on. The reads are named,
+        # so an action added later is a write until somebody says otherwise.
+        if field(req, "action") not in ("history",) and self._readonly(name):
+            return None
         act = field(req, "action")
         # "send" is a write to the roadmap (it marks a step sent) and starts a
         # session's turn, so it goes with the rest.
@@ -3862,12 +4440,44 @@ class Handler(BaseHTTPRequestHandler):
                 and name not in devapp.overview_names():
             return self._json({"error": f"not a project or container: {name}"}, 400)
         act = field(req, "action")
+        # Reading is everybody's; changing what is running is not (roadmap
+        # #27). Named, not derived from the verb: an action that should be
+        # restricted and is not on this list is a decision somebody has to
+        # make, which is the same rule MACROS follows.
+        #
+        #   starter, state — reads: the project's .env.example, and the row.
+        #   rebuild, abort — a user's own work, on purpose. Somebody given a
+        #     project has to be able to build what they committed and look at
+        #     it, or the project is read-only in the way that matters. Rebuild
+        #     is build-then-down-then-up, so it is also how a stopped instance
+        #     comes back, and the page already ghosts it until the code has
+        #     actually moved. Abort follows it: whoever may start a build may
+        #     stop one, or a mistake is somebody else's problem to clear.
+        #
+        # Everything else — new, remove, env, route — is configuration rather
+        # than a run of the code, and stays an administrator's.
+        if act not in ("starter", "state", "rebuild", "abort") \
+                and self._refused("docker-write"):
+            return None
+        if act not in ("starter", "state") and name in {p["name"] for p
+                                                        in project_list(self._who())} \
+                and self._readonly(name):
+            return None
         # Which instance of that project. Absent means the one every project
         # has always had, so a caller that predates instances still works and
         # a request that names a strange one is answered rather than obeyed:
         # the name decides a compose project and a data directory, and those
         # are not places to let an arbitrary string reach.
         inst = field(req, "instance") or devapp.MAIN
+        # What the others sharing this project would want to know before they
+        # press the same button. After `inst` is resolved, because the line
+        # names it — the first version read it above and took every compose
+        # action down with an UnboundLocalError. Reads and the env editor are
+        # not news, so they are not on this list.
+        if act in ("up", "down", "rebuild", "remove", "abort"):
+            chat.event(name, users.uid_of(self._who()),
+                       f"{self._principal()[len('user:'):]} ran {act} on "
+                       f"{name}" + (f" ({inst})" if inst != devapp.MAIN else ""))
         # `new` is the one action whose instance does not exist yet — that is
         # what it is for. Everything else names one that must exist, because
         # the string decides a compose project and a data directory and is not
@@ -3990,6 +4600,12 @@ class Handler(BaseHTTPRequestHandler):
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
+        # Seeing a project and being able to change it are different
+        # questions now (users.may_work): an administrator is shown every
+        # project and works on the ones they took on. The reads are named,
+        # so an action added later is a write until somebody says otherwise.
+        if self._readonly(name):
+            return None
         act = field(req, "action")
         if act == "push":
             dev = phone.phone()
@@ -4098,6 +4714,12 @@ class Handler(BaseHTTPRequestHandler):
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
+        # Seeing a project and being able to change it are different
+        # questions now (users.may_work): an administrator is shown every
+        # project and works on the ones they took on. The reads are named,
+        # so an action added later is a write until somebody says otherwise.
+        if field(req, "action") not in ("history",) and self._readonly(name):
+            return None
         act = field(req, "action")
         if (bad := locked_out(name)):
             return self._json(bad, 409)
@@ -4146,6 +4768,12 @@ class Handler(BaseHTTPRequestHandler):
         proj, file = field(req, "project"), field(req, "file")
         if (bad := locked_out(proj)):
             return self._json(bad, 409)
+        # Seeing a project and being able to change it are different
+        # questions now (users.may_work): an administrator is shown every
+        # project and works on the ones they took on. The reads are named,
+        # so an action added later is a write until somebody says otherwise.
+        if act != "history" and self._readonly(proj):
+            return None
         if act == "save":
             r = memory.save(proj, file, field(req, "text"))
         elif act == "index":
@@ -4213,6 +4841,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _create(self, req):
         """New project — a fresh local repo, or a clone. See projects.py."""
+        # An administrator's, for two reasons that both matter: a project this
+        # account made would not be in the list it was given, so it would be
+        # created and then invisible; and the clone dialog is one of the two
+        # places a git token is stored (roadmap #27).
+        if self._refused("create"):
+            return None
         body, code = projects.create(req)
         # Pinned on arrival, once anything has ever been pinned. Without this a
         # project made while a pins file exists is absent from it, so it lands
@@ -4255,9 +4889,29 @@ class Handler(BaseHTTPRequestHandler):
         holds for `bb users` too, and that is the one an operator reaches for
         when they are locked out.
         """
+        act = field(req, "action")
+        # Ahead of the admin gate, because this one is nobody else's business:
+        # an account setting its OWN appearance. Everything below acts on
+        # another account and is an administrator's.
+        if act == "prefs":
+            me = self._who()
+            if not me or not users.uid_of(me):
+                return self._json({"error": "not an account"}, 403)
+            want = req.get("prefs")
+            if not isinstance(want, dict):
+                return self._json({"error": "prefs is an object"}, 400)
+            # Named, not merged wholesale. This file is read on the login path
+            # and holds password hashes; an unbounded dict here would be a
+            # place to park arbitrary data in it.
+            keep = {}
+            theme = str(want.get("theme") or "")
+            if re.fullmatch(r"[a-z]{2,12}", theme):
+                keep["theme"] = theme
+            if not keep:
+                return self._json({"error": "nothing here is a setting"}, 400)
+            return self._json(users.prefs_set(me["name"], keep))
         if self._refused("admin"):
             return None
-        act = field(req, "action")
         name = field(req, "name")
         pw = req.get("password") or ""
         if act == "add":
@@ -4435,19 +5089,20 @@ class Handler(BaseHTTPRequestHandler):
         # have to survive on every poll from then on.
         if not isinstance(req.get("tabs", []), list) or not isinstance(req.get("panes", []), list):
             return self._json({"error": "bad request"}, 400)
+        uid = users.uid_of(self._who())
         with _state_lock:
-            cur = load_layout()
+            cur = load_layout(uid)
             v = {"rev": cur["rev"] + 1,
                  "tabs": req.get("tabs") or [],
                  "panes": req.get("panes") or [None, None],
                  "active": 1 if req.get("active") == 1 else 0}
             try:
-                save_layout(v)
+                save_layout(uid, v)
             except OSError as e:
                 return self._json({"error": f"could not save: {e}"}, 500)
             # Re-read so the caller gets exactly what every other client will
             # see, including anything the validator dropped.
-            return self._json(load_layout())
+            return self._json(load_layout(uid))
 
     def _lock(self, req):
         """Lock or unlock a project: keep it, stop Claude running in it.
@@ -4499,8 +5154,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         live = {s["name"] for s in tmux_sessions()}
         held = sorted(s for s in live
-                      if s == tmux_name(f"claude-{name}")
-                      or s.startswith(tmux_name(f"shell-{name}") + "-"))
+                      if tmux_base(s) == tmux_name(f"claude-{name}")
+                      or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
         if held:
             return self._json({"error": "close its terminals first — "
                                         + ", ".join(held[:3])
@@ -4550,8 +5205,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         live = {s["name"] for s in tmux_sessions()}
         held = sorted(s for s in live
-                      if s == tmux_name(f"claude-{name}")
-                      or s.startswith(tmux_name(f"shell-{name}") + "-"))
+                      if tmux_base(s) == tmux_name(f"claude-{name}")
+                      or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
         if held:
             return self._json({"error": "close its terminals first — "
                                         + ", ".join(held[:3])
@@ -4660,6 +5315,103 @@ class Handler(BaseHTTPRequestHandler):
                                    TMUX_LITERALS[key]], timeout=10))
         self._json({"error": f"unknown key: {key}"}, 400)
 
+    def _chat(self, req):
+        """Read a conversation, send into one, or mark one seen.
+
+        Who may read what is decided HERE and not in chat.py: a direct
+        conversation is its two ends' and a project feed is whoever may see
+        the project. The store holds lines; the door decides.
+        """
+        me = self._who()
+        uid = users.uid_of(me)
+        if not uid:
+            return self._json({"error": "not an account"}, 403)
+        act = field(req, "action") or "read"
+        store = users.load()["users"]
+        by_name = {n: u.get("uid") for n, u in store.items() if u.get("uid")}
+        who, proj = field(req, "who"), field(req, "project")
+        if proj:
+            # may_see, not may_work: a project's channel is the group chat for
+            # everybody on it, and saying something in one is not a change to
+            # the project. So an administrator, who is shown every project,
+            # can read and answer every channel — which is what makes it
+            # useful to them — while a user has the channels they were given
+            # and no others. The list marks which are actually theirs.
+            if not users.may_see(me, proj):
+                return self._json({"error": "not a project"}, 403)
+            key, box = f"p:{proj}", ("project", proj)
+        elif who:
+            other = by_name.get(who)
+            if not other or other == uid:
+                return self._json({"error": "no such account"}, 403)
+            key, box = f"dm:{other}", ("dm", other)
+        else:
+            return self._json({"error": "name a person or a project"}, 400)
+
+        if act == "send":
+            text = req.get("text", "")
+            r = (chat.post(proj, uid, text) if box[0] == "project"
+                 else chat.say(uid, box[1], text))
+            if r.get("error"):
+                return self._json(r, 400)
+        if act in ("send", "seen", "read"):
+            # Reading it IS seeing it: the panel only asks for a conversation
+            # somebody is looking at.
+            users.prefs_set(me["name"], {"chat_seen":
+                users.prefs(me).get("chat_seen", {}) | {key: chat.now()}})
+        msgs = (chat.feed(proj) if box[0] == "project"
+                else chat.direct(uid, box[1]))
+        names = {u: n for n, u in by_name.items()}
+        return self._json({"messages": [m | {"who": names.get(m.get("from"), "")}
+                                        for m in msgs[-200:]],
+                           "rev": chat.rev()})
+
+    def _say(self, req):
+        """Type a message into a CLAUDE session and press Enter.
+
+        The one place this server types free text into a pane, and every
+        restriction on it is load-bearing. /api/send deliberately takes a
+        macro name and never a command string, because a pane is usually a
+        shell and free text there is arbitrary execution. This is the
+        exception an account with no shell needs — its Claude session is a
+        read-only terminal, so the only way to say anything is through here —
+        and it is narrowed until the exception cannot become the rule:
+
+          * the session has to be a `claude-…` one, matched against a project
+            this account can actually see. Not a name from the request: a
+            shell session named through here would be exactly the hole;
+          * it has to be this account's conversation, by the same holder
+            record the proxy checks;
+          * control characters are stripped, so a message cannot move the
+            cursor, clear the screen, or carry an escape sequence.
+
+        What is left is text into Claude's own input box, which is what the
+        person would have typed if they had a terminal.
+        """
+        me = self._who()
+        want = str(req.get("session", ""))
+        # THEIR OWN session on a project they can work on. The name carries the
+        # account (roadmap #24), so this is one comparison rather than a
+        # lookup: a name that is not the one this account's session would have
+        # is somebody else's conversation, and typing into it is the thing a
+        # read-only console must not become.
+        project = next((p["name"] for p in project_list(me)
+                        if users.tmux_prefix(me) + tmux_name(f"claude-{p['name']}")
+                        == want), "")
+        if not project or users.may(me, "claude", project):
+            return self._json({"error": "not a Claude session of yours"}, 403)
+        if want not in {x["name"] for x in tmux_sessions()}:
+            return self._json({"error": "that conversation is not running"}, 409)
+        text = "".join(ch for ch in str(req.get("text", ""))
+                       if ch == "\t" or ord(ch) >= 32)[:CUSTOM_LINE_MAX]
+        if not text.strip():
+            return self._json({"error": "nothing to say"}, 400)
+        r = run(["tmux", "send-keys", "-t", want, "-l", "--", text], timeout=10)
+        if r["code"] != 0:
+            return self._json({"error": r["out"].strip()[:200] or "send failed"}, 500)
+        run(["tmux", "send-keys", "-t", want, "Enter"], timeout=10)
+        return self._json({"ok": True})
+
     def _send(self, req):
         """Type a macro's command line into a shell session and press Enter.
 
@@ -4713,24 +5465,19 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    # DASHBOARD_AUTH seeds the owner on a boot that finds no accounts, and is
-    # ignored ever after — the env seeds, the store owns (docs/users.md). What
-    # the dashboard will not start without is an ACCOUNT; the variable is one
-    # way to get the first one, and `bb users` is the other.
-    seeded = users.seed(AUTH)
-    if seeded.get("seeded"):
-        print(f"dashboard: created the owner account {seeded['name']} from "
-              "DASHBOARD_AUTH — the store owns it now, and the variable is "
-              "no longer read", flush=True)
+    # No accounts is a normal first boot, not a failure. It used to be one:
+    # the owner came from DASHBOARD_AUTH and the dashboard refused to start
+    # without it, which put a password in the container's environment — where
+    # it is visible to anything that can read the template, stays readable
+    # forever, and is the one credential that opens a shell on this box.
+    #
+    # It is the first-run screen instead, and until somebody claims the
+    # container that is the only page it serves. Nothing else is reachable
+    # unauthenticated, which is the property the old refusal was protecting.
     if not users.all_users():
-        raise SystemExit(
-            "No dashboard accounts, and DASHBOARD_AUTH did not make one "
-            f"({seeded.get('why', 'unset')}).\n"
-            "Set DASHBOARD_AUTH=user:password for the first boot, or run\n"
-            "  bb users add <name> --role owner\n"
-            "This serves a terminal into a container holding your ssh agent and\n"
-            "source trees; it will not start unauthenticated."
-        )
+        print("dashboard: no accounts yet — the first page served will ask "
+              "you to make the owner. Do it now: until you do, whoever "
+              "reaches this port can.", flush=True)
     prune_claude_tabs()
     # Daemons: these loops must die with the server, not hold it open.
     threading.Thread(target=_doctor_loop, daemon=True).start()

@@ -119,6 +119,50 @@ function renderUsersInto(i){
   d.list.innerHTML = `
     ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
     ${usersList.map(userRow).join("")}
+    <div class="row stack2">
+      <div class="grow">
+        <div class="name">What an account gets, and what it does not</div>
+        <div class="sub">Everybody here works as themselves: their own
+          terminals, their own shell history, their own Claude login and their
+          own memories, in a home of their own. The tab strip and the colour
+          scheme follow the account to any browser they sign in on. The
+          <b>owner</b> keeps this container's original home, so an install
+          with one operator is unchanged.</div>
+        <div class="sub">More than one person can work a project at once. The
+          first is the owner, in the project directory; everybody else gets a
+          <b>worktree</b> of their own — a checkout on a branch of their own,
+          sharing the project's git — so two people cannot overwrite each
+          other, commit each other's half-finished work, or share a
+          <code>dist/</code>. Conflicts turn up at the merge, where git is
+          good at them.</div>
+        <div class="sub">A worktree session builds into its own
+          <code>dist/</code>, so the Artifacts tab (which reads the project
+          directory) will not show it, and the dev instance belongs to the
+          project rather than to the session.</div>
+        <div class="sub">What is refused is two sessions on one <b>Anthropic
+          account</b>: they would share its limits, and afterwards nothing
+          could say which of them did what. Each account signs in to its own,
+          from the Doctor card in its own session.</div>
+        <div class="sub">The notebook — roadmap, bugs, analysis — stays shared,
+          because it is about the project rather than the person. Memories do
+          not, for the same reason in reverse.</div>
+        <div class="sub">A <b>user</b> has no shell and no command line at
+          all. That is what makes the rest of the role mean something:
+          everything else here is enforced by this dashboard, and a terminal
+          is the way around all of it. Their Claude session opens as a
+          console — the real interface, read-only, with a box to type in and
+          a button to end it. They can see Docker and the package manager for
+          their own projects' nodes — the instances, their ports and mounts,
+          and the web button — and change neither, with one exception:
+          <b>Rebuild</b>. Building what you committed and looking at it is the
+          point of having the project, so that one is theirs, and Abort with
+          it.</div>
+        <div class="sub warn">An <b>admin</b> has a shell, and a shell is
+          everything: one user inside the container, so an administrator can
+          reach any account's files if they go looking. Give that role to
+          people you would give the server to.</div>
+      </div>
+    </div>
     <div class="row stack2 uadd">
       <div class="grow">
         <div class="name">Add somebody</div>
@@ -127,6 +171,14 @@ function renderUsersInto(i){
           inside them — not deleting, renaming, or changing which node one
           builds on, because a node is shared and that reaches every project
           on it.</div>
+        <div class="sub">The project list means the same thing for both, and
+          the difference is the remedy. An admin is shown <b>every</b> project
+          — hiding one from somebody who administers the box only sends them
+          looking for it — and works on the ones on their own list, which they
+          can add to themselves. A user is shown only what you give them and
+          cannot grant themselves anything. So for an admin the list is a
+          seatbelt against editing the wrong project; for a user it is the
+          boundary.</div>
         <div class="acts">
           <input id="uNewName" placeholder="name" autocomplete="off" aria-label="new account name">
           <input id="uNewPw" type="password" placeholder="password"

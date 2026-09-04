@@ -46,6 +46,13 @@ set -euo pipefail
 
 PORT="${DASHBOARD_PORT:-7680}"
 TTYD_PORT="${DASHBOARD_TTYD_PORT:-7681}"
+# The read-only one, for accounts that may watch a Claude session and may not
+# have a shell (roadmap #27). ttyd is READ-ONLY BY DEFAULT — `-W` is what
+# makes the other one writable — so this is the same server minus one flag,
+# which is a far better answer than filtering websocket frames in the proxy:
+# that relay splices bytes and never parses a frame, and it should stay that
+# way. Derived from the writable port so there is one setting, not two.
+TTYD_RO_PORT="${DASHBOARD_TTYD_RO_PORT:-$((TTYD_PORT + 1))}"
 DASH=/opt/builderbot/scripts/dashboard
 
 # A credential is required, but DASHBOARD_AUTH is only one of the two ways to
@@ -143,7 +150,7 @@ elif ! grep -qF 'tmux.builderbot.conf' "$HOME/.tmux.conf"; then
 fi
 
 # One port to publish: terminals are proxied under /term on this one.
-log "dashboard: http://<host>:${PORT}  (terminals proxied at /term; ttyd binds 127.0.0.1:${TTYD_PORT})"
+log "dashboard: http://<host>:${PORT}  (terminals proxied at /term; ttyd binds 127.0.0.1:${TTYD_PORT}, read-only twin on ${TTYD_RO_PORT})"
 
 # --url-arg lets the page choose the session; bb-tty validates it. -W makes
 # the terminal writable, which is the entire point. `-t reconnect=5` shortens
@@ -165,6 +172,18 @@ nohup ttyd --port "$TTYD_PORT" --interface 127.0.0.1 \
         "$DASH/bb-tty" \
     >> "$(bb_log_dir)/ttyd.log" 2>&1 &
 
+# ...and the read-only twin. No --writable, so the browser cannot type into it
+# at all: what an account without a shell gets is a real terminal rendering
+# Claude's own interface, which is the honest way to show a full-screen TUI,
+# with input going through the dashboard's send path instead of the socket.
+# The proxy decides which of the two a request reaches, by role.
+nohup ttyd --port "$TTYD_RO_PORT" --interface 127.0.0.1 \
+        --url-arg \
+        --max-clients 16 \
+        -t reconnect=5 \
+        "$DASH/bb-tty" \
+    >> "$(bb_log_dir)/ttyd.log" 2>&1 &
+
 # Through log-split rather than straight into the file: the full stream stays
 # where it was, and the warnings are copied to this hook's own stdout, which is
 # the container's — and therefore the boot log. That is what makes the session
@@ -173,6 +192,7 @@ nohup ttyd --port "$TTYD_PORT" --interface 127.0.0.1 \
 # -u so a warning is in the file at the moment it happens rather than when a
 # 8kB buffer fills, which for a mostly-idle server can be hours.
 nohup env DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT="$TTYD_PORT" \
+    DASHBOARD_TTYD_RO_PORT="$TTYD_RO_PORT" \
         DASHBOARD_AUTH="$DASHBOARD_AUTH" \
         python3 -u "$DASH/server.py" 2>&1 \
     | /opt/builderbot/scripts/lib/log-split.sh "$(bb_log_dir)/dashboard.log" dashboard &

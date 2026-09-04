@@ -320,16 +320,17 @@ through it, and it is what starts a session with its guardrails and its
 notebook context. The container that should run none of it is a *node* —
 `BUILDERBOT_ROLE=node`, which does not start one.
 
-1. **DASHBOARD_AUTH** → `you:a-real-password`. Read once, to create the owner
-   account; after that the accounts are the truth and this is ignored, so
-   change a password with `bb users passwd <name>` rather than here. With
-   neither an account nor this, the dashboard does not start and says so in
-   the log
-2. The port mapping (`7680`) is already in the template; change the host
+1. The port mapping (`7680`) is already in the template; change the host
    side if it collides with something else on the server. Terminals ride the
    same port, behind the same sign-in — a login page with a 30-day cookie,
    not the browser's credentials prompt, and only asked once
-3. Apply, then click the container's **WebUI** link
+2. Apply, then click the container's **WebUI** link
+3. **The first page asks you to make the owner account.** There is no
+   password in the template — it would sit there readable forever, and it is
+   the one credential that opens a shell on this box. Do it straight away:
+   until somebody claims the container, whoever can reach the port can. After
+   that, `bb users passwd <name>` changes a password and the Users tab adds
+   everyone else
 
 You get container and runner status, a rendered report of whatever SARIF your
 scanner drops in `/reports`, every `bb` command as a button that types into the

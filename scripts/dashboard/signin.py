@@ -55,13 +55,21 @@ class Flow:
         self._proc = None
 
     # -- the flow itself ---------------------------------------------------
-    def start(self):
+    def start(self, home=""):
         master, slave = pty.openpty()
+        # In the ASKING account's home, not the dashboard's own (roadmap #26).
+        # `claude auth login` writes the credential to $HOME/.claude, and
+        # accounts have a home each — so run with the dashboard's environment
+        # and this card signs the wrong person in, silently and every time.
+        # This is the onboarding path for a new account, not an afterthought.
+        env = dict(os.environ)
+        if home:
+            env["HOME"] = home
         # A pty, not a pipe: the flow writes its prompt without a newline and
         # a pipe would have it sitting in a buffer nobody ever sees.
         self._proc = subprocess.Popen(
             ["claude", "auth", "login"], stdin=slave, stdout=slave,
-            stderr=slave, start_new_session=True, close_fds=True)
+            stderr=slave, start_new_session=True, close_fds=True, env=env)
         os.close(slave)
         self._master = master
         threading.Thread(target=self._read, daemon=True).start()
@@ -156,9 +164,12 @@ class Flow:
 URL_WAIT = 6
 
 
-def start():
+def start(home=""):
     """Begin a flow, replacing any that is there. Pressing Sign in is the one
     thing that means start over, so it always does.
+
+    `home` is the requesting account's, so the credential lands in their own
+    ~/.claude rather than the dashboard's.
 
     Waits for the URL rather than returning the moment the process exists:
     the answer is worth having in the response that the button is already
@@ -170,7 +181,7 @@ def start():
     if old:
         old.cancel()
     f = Flow()
-    f.start()
+    f.start(home)
     with _lock:
         _flow = f
     t0 = time.time()
