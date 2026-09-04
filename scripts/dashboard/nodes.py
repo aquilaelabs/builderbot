@@ -1268,7 +1268,23 @@ def toolchain_gap(node_id, argv):
     tc = (n.get("reported") or {}).get("toolchains")
     if not isinstance(tc, dict) or not tc:
         return ""                       # nothing reported yet: not a verdict
-    return "" if tc.get(want) else want
+    if tc.get(want):
+        return ""
+    # Refusing on evidence that can be ten minutes old, so the node is asked
+    # for a fresh census and the caller is told how old this one was. The
+    # alternative is what the operator met: a command refused, the identical
+    # retry allowed, and nothing on screen to explain the difference.
+    ask_hello(node_id)
+    return want
+
+
+def census_age(node_id):
+    """How many seconds old this node's census is, or None when it has never
+    sent one. What a refusal quotes, so "it worked a minute ago" has an
+    answer other than a shrug."""
+    n = node(node_id)
+    at = ((n or {}).get("reported") or {}).get("at")
+    return int(time.time()) - int(at) if at else None
 
 
 def node_runner_label(node_id):
@@ -1385,7 +1401,13 @@ def hello(nid, census, addr, version="", digest="", running=None):
                "protocol": PROTOCOL})
     rep = n.get("reported") or {}
     sample = rep.get("sample")
+    # When this census was taken. The heartbeat is every 25 seconds but the
+    # census only rides hello, every ten minutes, so "when did the node last
+    # dial in" is not the same question as "how old is this answer" — and it
+    # is the second one a refusal is reasoning from.
+    census_at = int(time.time())
     rep = _census(census)
+    rep["at"] = census_at
     if sample:
         rep["sample"] = sample
     _exec("UPDATE nodes SET agent = ?, reported = ?, os = ?, arch = ? "
@@ -1622,6 +1644,22 @@ def job_running(node_id):
                  "('assigned', 'running')", (node_id,))[0]["n"]
 
 
+# Nodes whose census a refusal has just called into question. Set by the
+# gate, cleared when the agent is told; in memory because it is a nudge, not
+# a fact worth surviving a restart.
+_hello_wanted = {}
+
+
+def ask_hello(node_id):
+    if node_id:
+        _hello_wanted[node_id] = True
+        # A Condition over the store lock, not an Event: the held poll is
+        # waiting on it, and notifying is how it hears without waiting out
+        # its five seconds.
+        with _wake:
+            _wake.notify_all()
+
+
 def job_next(node_id, wait, runner="node"):
     """The oldest queued job this node may take, for this runner, else wait
     up to `wait` seconds for one — or for a cancel request, which comes back
@@ -1658,6 +1696,15 @@ def job_next(node_id, wait, runner="node"):
                     "state IN ('assigned', 'running')", (node_id,))]
                 if asked:
                     return {"cancel": asked}
+                # ...and a request for a fresh census, when something has
+                # been refused on the strength of an old one. The agent says
+                # hello every ten minutes, which is fine for a display and
+                # too coarse for a gate: a refusal can be reasoning about a
+                # node as it was nine minutes ago, and the retry a human
+                # makes five seconds later reasons about the same stale
+                # answer. This is how the next one does not.
+                if _hello_wanted.pop(node_id, None):
+                    return {"hello": True}
             left = deadline - time.time()
             if left <= 0:
                 return None

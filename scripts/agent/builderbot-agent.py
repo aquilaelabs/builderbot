@@ -66,7 +66,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "20"
+AGENT_VERSION = "21"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -1259,6 +1259,15 @@ class Agent:
             if st == 200 and r.get("cancel"):
                 # Not a job: the ids of jobs here the operator has stopped.
                 self.cancel([str(i) for i in r["cancel"]])
+                continue
+            if st == 200 and r.get("hello"):
+                # The controller refused something on the strength of a
+                # census that may have gone stale — the census rides hello
+                # every ten minutes, which is fine for a display and too
+                # coarse for a gate. Say it again now, so the retry the
+                # operator is about to make reasons about this machine as it
+                # is rather than as it was.
+                self.hello_at = 0
                 continue
             if st == 200 and r.get("id"):
                 self.take(r)

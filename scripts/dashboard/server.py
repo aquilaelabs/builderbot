@@ -3248,7 +3248,15 @@ class Handler(BaseHTTPRequestHandler):
         # script is left alone.
         gap = nodes.toolchain_gap(nid, argv)
         if gap:
-            return {"error": f"{n['name']} has no {gap}. Install it from the Tools tab "
+            # How old that answer is, because the census rides hello every
+            # ten minutes and a refusal can be reasoning about the node as
+            # it was nine of them ago. The node has just been asked for a
+            # fresh one, so the sentence says a retry may differ.
+            age = nodes.census_age(nid)
+            when = (f" — as of what it reported {age // 60}m ago; it has been "
+                    "asked for a fresh answer, so a retry shortly may differ"
+                    if age and age > 90 else "")
+            return {"error": f"{n['name']} has no {gap}{when}. Install it from the Tools tab "
                              f"with {n['name']} picked, "
                              + ("or push and let CI build it."
                                 if projects.may_push(name)
