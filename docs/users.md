@@ -79,15 +79,55 @@ rights, revocable, and never a person's password. That is the actual fix for
 bug #16, and it belongs here rather than in a separate effort — the token has
 nowhere to come from until users exist.
 
-## Enforcement
+## Enforcement, and why it is mostly one function
 
-One helper resolving the request to a principal, one `may(principal, action,
-project)`, and every endpoint that names a project asking it. The audit rows
-already exist and already take a principal; they stop saying `operator` and
-start saying who it was.
+A project you cannot see does not appear — not greyed out, not present and
+refused. Absent.
 
-The rule to hold to: authorization is checked **on the server, per request**.
-Hiding a button is a courtesy to the person, not a control.
+That is cheaper than it sounds, because there is already one chokepoint.
+`server.project_list()` is what enumerates the projects share, and all
+seventeen of its callers go through it: the sidebar, the state payload, and
+every `if name not in {p["name"] for p in project_list()}` guard. Filter it by
+the requesting principal and three things happen at once.
+
+- The GUI stops listing what the person cannot see, everywhere, because
+  everywhere reads the same list.
+- **The existence check becomes the permission check.** A member asking
+  `/api/todo?project=payroll` gets *not a project* — the same answer a typo
+  gets. No separate `may()` call at those seventeen sites, and no way to probe
+  which projects exist by comparing error messages.
+- Anything added later that lists projects is covered on the day it is
+  written, because it will call the same function.
+
+What is left for `may()` is the short deny list: the destructive verbs a
+member may not use on projects they *do* have — delete, rename, trash,
+re-node. A handful of endpoints, named explicitly.
+
+The rule to hold to: filtering happens **on the server**. Hiding a row in the
+page is a courtesy to the person, not a control.
+
+## What this is, and what it is not
+
+Worth stating plainly, because the gap between these two is where security
+theatre grows.
+
+**A member account with a Claude session is a powerful thing.** Code
+generation plus a shell is most of a computer. The session's own boundary is
+the sibling-project deny list, and that is a guardrail rather than a sandbox —
+the file tools refuse the other projects, `Bash` is not covered, and
+CLAUDE.md says so out loud. So a member who wants to read a project they were
+not given can, with effort, from a session they were given.
+
+This system is therefore for **scoping, not containment**: deciding who works
+on what, keeping the dashboard honest about it, and making the audit trail
+name a person. It is meant for people you would already trust with a shell on
+this box. It is not a defence against one of them deciding to go looking.
+
+Building it as though it were would mean sandboxing every session, and that is
+a different and much larger project — and one the node work has quietly made
+tractable: a person who needs a hard boundary gets their own node, where the
+boundary is a machine rather than a rule. Until somebody needs that, this is
+the honest amount of mechanism.
 
 ## The surface
 
