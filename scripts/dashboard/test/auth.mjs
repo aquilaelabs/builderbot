@@ -561,6 +561,25 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     ok((feed.messages || []).some(m => /sharer asked: rewrite the parser/.test(m.text)
                                   && m.kind === 'asked'),
        'a prompt on a shared project reaches the others, marked as a prompt');
+
+    // ...but only what a PERSON typed. UserPromptSubmit fires for every turn a
+    // session receives, and a background command finishing arrives as one —
+    // which filled a channel with task ids and output paths on a real phone.
+    const relayed = t => { execFileSync('python3', [relay, 'beta', uidOf('sharer')], {
+      input: JSON.stringify({ prompt: t }), encoding: 'utf8',
+      env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } }); };
+    const count = async () => ((await (await chat(owner,
+      { action: 'read', project: 'beta' })).json()).messages || []).length;
+    const n0 = await count();
+    relayed('<task-notification> <task-id>b1</task-id> </task-notification>');
+    relayed('<system-reminder>a file changed</system-reminder>');
+    ok(await count() === n0,
+       'a turn that is all harness machinery is not relayed at all');
+    relayed('fix the login <system-reminder>noise</system-reminder>');
+    const last = ((await (await chat(owner, { action: 'read', project: 'beta' })).json())
+      .messages || []).slice(-1)[0];
+    ok(/asked: fix the login$/.test(last.text),
+       `...and a real message keeps only the half somebody typed (${last.text})`);
   }
 
   // A rename must not lose the strip — the whole reason the key is minted.

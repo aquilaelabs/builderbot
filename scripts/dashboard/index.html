@@ -1675,6 +1675,15 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndrunstate.warn{color:var(--warn)}
 @media (max-width:600px){ .ndrunner{grid-template-columns:minmax(0,1fr)} }
 #rnBuildCmd,#rnTestCmd{margin-bottom:6px}
+/* The node picker and Refresh on one line, the button to the right of the
+   thing it re-reads. It wraps on a narrow phone rather than squeezing the
+   select, which is the control somebody is actually aiming at.
+   Its own class rather than .pkghead: that one is the sentence about where
+   things install, and a row of controls is not a sentence — sharing it made
+   "the first .pkghead" mean two different things depending on whether any
+   node exists. */
+.pkgnode{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:11px 14px;border-bottom:1px solid var(--line);font:var(--f-ui)}
 .pkgnode .pick{display:inline-flex;gap:8px;align-items:center}
 .jbouts a{color:var(--accent)} .jbouts code{font:var(--f-note)}
 @media (max-width:600px){
@@ -3234,7 +3243,7 @@ const TABKINDS = {
               render: (i, t) => renderNotebookInto(i, t.arg), live: "always" },
   packages: { multi: false, label: () => "Packages",
               render: (i) => renderPackagesInto(i), live: () => pkgRev,
-              open: () => loadPackages(), reload: true },
+              open: () => loadPackages() },
   projects: { multi: false, label: () => "Projects",
               render: (i) => renderProjectsInto(i), live: "always" },
   docker:   { multi: false, label: () => "Docker",
@@ -3910,6 +3919,10 @@ function newShell(proj){
 function paintBar(pane, t, i){
   const closeBtn = isSplit()
     ? `<span class="x" data-cp="${i}" title="close this pane">✕</span>` : "";
+  // Only the kinds that still declare it. Packages moved its own into the tab
+  // beside the node picker, where a control belongs: this bar is the tab's
+  // name and its close button everywhere else, and a third thing in it was a
+  // shape one tab had and no other.
   const reload = TABKINDS[t.kind]?.reload
     ? `<button class="ic" data-reload="${esc(t.kind)}" style="margin-left:8px">reload</button>` : "";
   const bar = pane.querySelector(".bar");
@@ -3918,7 +3931,7 @@ function paintBar(pane, t, i){
     b.onclick = e => closePane(Number(b.dataset.cp), e));
   bar.querySelectorAll("[data-reload]").forEach(b =>
     b.onclick = e => { e.stopPropagation();
-      if (b.dataset.reload === "packages") loadPackages(); else loadFindings(true); });
+      loadFindings(true); });
 }
 
 // Uncover a terminal the moment there is nothing white left to see.
@@ -7280,12 +7293,19 @@ function renderPackagesInto(i){
   // The server refuses it either way (nodes.agent_stale); this is the reason,
   // said before the press rather than after it.
   const pstale = onNode && nodeStale(pnodes.find(n => n.id === pkgNode) || {});
-  const picker = pnodes.length ? `<div class="pkghead pkgnode">
-      <label class="pick">Packages on <select id="pkgNodeSel" aria-label="node">
+  // Refresh sits beside the picker rather than in the pane's title bar. That
+  // bar is the tab's name and its close control on every other kind, and a
+  // button in it is a shape only this tab had — so the control lives in the
+  // tab, next to the thing it re-reads.
+  const picker = `<div class="pkgnode">
+      ${pnodes.length ? `<label class="pick">Packages on <select id="pkgNodeSel" aria-label="node">
         <option value="local"${onNode ? "" : " selected"}>this container</option>
         ${pnodes.map(n => `<option value="${esc(n.id)}"${n.id === pkgNode ? " selected" : ""}>${
           esc(n.name)}${n.live === false ? " (quiet)" : ""}</option>`).join("")}
-      </select></label></div>` : "";
+      </select></label>` : ""}
+      <button type="button" id="pkgRefresh"
+        title="read this store again — what is installed, and how big it is">Refresh</button>
+    </div>`;
   el.innerHTML = `<div class="doctab pkgtab">
     ${picker}
     <div class="pkghead">${onNode
@@ -7356,6 +7376,8 @@ function renderPackagesInto(i){
   const psel = el.querySelector("#pkgNodeSel");
   if (psel) psel.onchange = () => { pkgNode = psel.value; packages = null; pkgTicked.clear();
                                     pkgRev++; drawPanes(); loadPackages(); };
+  const pre = el.querySelector("#pkgRefresh");
+  if (pre) pre.onclick = () => loadPackages();
   const fl = el.querySelector("#imgFlavor"), api = el.querySelector("#imgApi");
   if (fl) fl.onchange = () => { pkgFlavor = fl.value; pkgRev++; drawPanes(); };
   if (el.querySelector("#imgAdd")) el.querySelector("#imgAdd").onclick = () => {

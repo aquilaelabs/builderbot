@@ -49,8 +49,18 @@ ok(!!await page.$('.pane .doc.on .pkg'),
 ok(await page.evaluate(() => tabs.some(t => t.kind === 'packages')
      && tabOf(panes[active])?.kind === 'packages'),
    'Additional packages opens a tab, and lands on it');
-ok(await page.$eval('.pane .bar [data-reload]', b => b.dataset.reload) === 'packages',
-   'the pane bar offers a reload, like the findings report');
+// Refresh belongs to the TAB, beside the node picker it re-reads. The pane's
+// title bar is the tab's name and its close control on every other kind, so a
+// button in it was a shape this tab alone had.
+ok(await page.$('.pane .bar [data-reload]') === null,
+   'the pane bar carries no button of its own');
+ok(await page.$eval('.doc .pkgnode #pkgRefresh', b => b.textContent.trim()) === 'Refresh',
+   '...and Refresh sits in the tab, beside the node picker');
+ok(await page.$eval('.doc .pkgnode', el => {
+     const kids = [...el.children];
+     return kids.indexOf(el.querySelector('#pkgRefresh')) === kids.length - 1;
+   }),
+   '...to the right of it, which is the order the eye reads');
 const rows = () => page.$$eval('.doc .pkg:not(.img)', ls => ls.map(l => ({
   name: l.querySelector('input').value,
   installed: !!l.querySelector('.where.on'),
@@ -274,6 +284,40 @@ ok(/versions checked/.test(await page.$eval('.doc .macros', el => el.textContent
 const stored = JSON.parse(readFileSync(`${DIR}/state/pkg-versions.json`, 'utf8'));
 ok(stored.at > 0 && stored.items.flutter.status === 'update',
    '...and they are on disk, to outlive the process that asked');
+// So is the LOCAL read, which is the one that made this tab slow to open
+// after every container restart: `bb sdk versions` is a couple of seconds
+// across every toolchain, and the answer had not changed. Keyed by what it is
+// an answer about — the set of installed paths, and the catalog's own digest
+// — so installing something, or editing a recipe, is not answered from it.
+ok(stored.local && typeof stored.local.key === 'string' && stored.local.key,
+   '...as is the local version read, with the key it is an answer for');
+ok(stored.catalog && stored.local.key.startsWith(stored.catalog),
+   `...and the catalog's digest is in that key, so editing a recipe drops it (${
+      stored.catalog})`);
+{
+  // The module's own view of it, which is where the decision is made: an
+  // answer stored against a different catalog is not an answer any more, and
+  // zeroing the date is what sends the weekly loop looking again.
+  const { execFileSync } = await import('node:child_process');
+  const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+  const ask = extra => execFileSync('python3', ['-c', `
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("pk", "${REPO}/scripts/dashboard/packages.py")
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m.configure(run=lambda *a, **k: {"code": 1, "out": ""},
+            write_json=lambda p, d: None, state="${DIR}/state")
+${extra}
+print(json.dumps({"at": m._pkg_checked, "local": bool(m._pkg_local.get("versions"))}))`],
+    { encoding: 'utf8' });
+  const kept = JSON.parse(ask(''));
+  ok(kept.at > 0, 'a restart reads the check date back rather than starting from zero');
+  const moved = JSON.parse(ask('m.CATALOG_DIGEST = "0000deadbeef0000"\n'
+    + 'm.globals = None\n'
+    + 'v = m.load_versions()\n'
+    + 'm._pkg_checked = v[1]'));
+  ok(moved.at === 0,
+     '...and an edited catalog resets it, because the answers describe recipes');
+}
 ok(await page.$$eval('.doc .pkg:not(.img)', ls => ls
      .filter(l => l.querySelector('input').value === 'swift')
      .every(l => l.querySelectorAll('.nm .pill.warn').length === 0)),

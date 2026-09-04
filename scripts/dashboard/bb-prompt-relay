@@ -18,11 +18,44 @@ swallowed, because a chat line is never worth losing somebody's turn.
 """
 import json
 import os
+import re
 import sys
 
 # Long prompts are trimmed rather than dropped: the first part is what says
 # what somebody is doing, and the feed is a glance rather than a transcript.
 MAX = 800
+
+# What the HARNESS puts in a turn, which is not what a person asked.
+#
+# UserPromptSubmit fires for every prompt a session receives, and only some of
+# them were typed by somebody. A background command finishing, a file changing
+# under an open session, a slash command expanding — each arrives as a turn
+# wrapped in one of these, and relaying them filled a project's channel with
+# task ids and output paths. That is what it looked like on a phone, and the
+# operator's guess was the notebook they happened to be clicking at the time;
+# it was this.
+#
+# Named rather than matched by shape. A pattern for "anything in angle
+# brackets" would eat a prompt that quotes XML, which is a normal thing to ask
+# about — so a wrapper this does not know leaks once and gets added here,
+# which is the failure worth having.
+WRAPPERS = ("task-notification", "system-reminder", "command-name",
+            "command-message", "command-args", "local-command-stdout",
+            "local-command-stderr", "function_results", "function_calls",
+            "user-prompt-submit-hook")
+
+
+def human_part(text):
+    """What a person actually typed, or "" when the turn is all machinery.
+
+    The blocks are removed rather than the whole prompt dropped: a real
+    message often arrives with a system-reminder stapled to it, and throwing
+    that turn away would lose the half worth relaying.
+    """
+    for tag in WRAPPERS:
+        text = re.sub(rf"<{tag}>.*?</{tag}>", " ", text, flags=re.S)
+        text = re.sub(rf"<{tag}\b[^>]*/?>", " ", text)
+    return text.strip()
 
 
 def main():
@@ -31,7 +64,7 @@ def main():
         req = json.load(sys.stdin)
     except (ValueError, OSError):
         return
-    text = str(req.get("prompt") or "").strip()
+    text = human_part(str(req.get("prompt") or ""))
     if not text or not project:
         return
     if len(text) > MAX:
