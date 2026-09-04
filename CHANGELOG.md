@@ -231,3 +231,4 @@
 - A toolchain listing on a node no longer stops at the first package it cannot read (f5efbcc)
 - Android system images can be installed onto a node from the Tools tab, not just onto this container (242c762)
 - Android packages install on a node again — sdkmanager could not find the SDK root there, and the licenses had never been accepted for that store (7484644)
+- bb sdk now reports the store a project actually builds with — its node's, when it has one (94c99a0)

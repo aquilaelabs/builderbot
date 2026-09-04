@@ -1493,3 +1493,71 @@ nothing, with everything through `bb`. The self-hosted runner on this
 container, and everything CLAUDE.md says about CI sharing the box, goes with
 phase 7.
 
+## 19. The session runs on the node
+
+Decided 4 September, and it moves the destination again — further, and in a
+direction that makes §18 the halfway house rather than the end: **Claude works
+*on* the sandbox.** Not a session here reaching a node through `bb` verbs, but
+the session itself living there, editing that machine's files with that
+machine's toolchain. The container keeps the dashboard, the notebook, the
+queue and the record; it stops being where work happens at all.
+
+Why it beats §18, in one line: §18 spends a lot of machinery teaching a
+session on the wrong machine to act on the right one — a job per build, a job
+per emulator verb, snapshots in both directions, a lockdown to stop it doing
+otherwise. Put the session on the node and most of that is simply not needed.
+`bb sdk` on the node already answers for the node. `bb build` is a build.
+
+It also settles a question §18 could not. The operator hit it on 4 September:
+this box's SDK share and bb-sandbox's packages store are **one store under two
+names** — `/sdk` here through Unraid's FUSE layer, `/mnt/SDK` there over NFS,
+store id identical — so "the container has Flutter" and "the node has Flutter"
+were one fact, and nothing could be taken off the container without taking it
+off the node. §18's answer was to split the share, which is a share per
+controller and does not survive more than one node. §19's answer is that the
+question stops mattering: whoever is on the node reads the node's store.
+
+**Nothing here is designed yet.** These are the decisions it turns on, and
+each is a real fork rather than a detail:
+
+1. **The project tree.** The biggest one, and it argues with a rule this
+   document already made: job workspaces are dirty-tree snapshots, *never* a
+   network mount (§6). A snapshot is right for a job that runs for a minute.
+   An interactive session edits one tree for hours and expects its edits to
+   still be there tomorrow. So either the node mounts the projects share and
+   that rule is narrowed to *jobs*, or `/workspace` moves to the node and this
+   container's copy becomes the view rather than the original. Pick one
+   deliberately; they are not compatible half-way.
+2. **A project with no node then has no session.** On 2 September the operator
+   settled the opposite: a project may have no node, and a session there still
+   reads, edits, commits and pushes — it simply cannot compile. If sessions
+   live on nodes that policy has to change, or this container keeps running
+   sessions for the nodeless, which means both paths exist forever.
+3. **The login and the transcripts.** `~/.claude` — the Claude Code login,
+   every session transcript, the memory files — is on this container's home
+   volume. Per node, or mounted, or synced; and the login is one credential
+   being placed on more machines.
+4. **The terminal.** `bb-tty` makes a tmux session locally and the dashboard
+   frames ttyd at it. A session on the VM means the tmux is there, so the
+   dashboard has to reach across — ssh, or the agent proxying a PTY over the
+   job channel. Roadmap #8 (pop-out windows) is in the same code and should
+   land after this, not before.
+5. **The notebook, and `bb` itself.** `bb roadmap`, `bb bug`, `bb version`
+   and the rest read `/config` directly. From the node they are API calls to
+   the controller, with a credential the session holds — which is bug #16's
+   problem arriving somewhere new.
+6. **The shielding.** The sibling-project deny list, the shielded ssh keys and
+   the PAT stash are all mechanisms of this image. They have to exist on the
+   node or the bargain quietly changes. And measured on bb-sandbox on 4 Sep:
+   a job runs as `bb`, which has no sudo and cannot read `/etc/builderbot`
+   (0700 root, so the node token is out of reach) — but it IS in the `docker`
+   group, which is root-equivalent on any machine running a daemon. That is
+   acceptable while the sandbox is the blast radius and a session is only
+   visiting through jobs. With the session LIVING there it is the thing to
+   design against: root on the node reads the node token, and a node token
+   fetches bundles and job snapshots from this controller.
+
+What survives from §18 either way: every toolchain on nodes (phases 6, 7, 9),
+the job channel for anything a session should not do by hand, and the honest
+limit — a permission rule is a guardrail, and what makes a boundary real is
+that the machine on the other side of it has nothing to run.
