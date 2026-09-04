@@ -53,6 +53,66 @@ print(" ".join(p["name"] for p in json.load(open(sys.argv[1]))["packages"]))' "$
 
 sdk_dir() { printf '%s/%s' "$(sdk_root)" "$1"; }
 
+# Where sdkmanager is told the SDK root is — and it has to be TOLD.
+#
+# sdkmanager works <sdk> out from where it is installed, expecting to sit at
+# <sdk>/cmdline-tools/latest/bin, and refuses rather than guessing when it
+# cannot: "Could not determine SDK root". In this container it is there. On a
+# node it is not — `bb sdk install android-tools` unpacks the tools into
+# <store>/android-tools and links <store>/android/cmdline-tools/latest at
+# them, and the wrapper resolves that link PHYSICALLY, landing outside the
+# SDK tree entirely. ANDROID_HOME and ANDROID_SDK_ROOT are both set for the
+# job and both ignored; measured on bb-sandbox on 4 Sep, where the bare call
+# refused and the same call with this flag listed the store.
+#
+# That is why `bb sdk install android:platform-tools` failed on a node with a
+# message naming neither the package nor the store, and why every android:*
+# package — the system images included — could not be installed there. So the
+# root is passed on every call, and nothing here invokes sdkmanager without
+# it. The flag lives in one function so the two forms below cannot drift.
+# ANDROID_HOME, not the store path: on this container they are DIFFERENT
+# roots and only the first is right. /opt/android-sdk is a real directory
+# holding the licenses and a symlink per package onto the share, while
+# sdk_dir android is /sdk/android, where those links point. Passing the store
+# would have moved this container's SDK root out from under sdk_relink_android
+# for no reason — the container can infer its root perfectly well, and this
+# flag must be a no-op here. On a node the agent sets ANDROID_HOME to the
+# store's android/ directory, which is exactly the root that cannot be
+# inferred. So one value is correct in both places.
+sdk_root_flag() { printf -- '--sdk_root=%s' "${ANDROID_HOME:-$(sdk_dir android)}"; }
+sdkmgr() {
+    # Every install goes past the licenses first — see below for why that is
+    # here rather than at each call site.
+    if [ "${1:-}" = --install ]; then sdk_android_licenses; fi
+    sdkmanager "$(sdk_root_flag)" "$@"
+}
+
+# The android SDK licenses, once per SDK root.
+#
+# sdkmanager installs nothing into a root whose licenses have not been
+# accepted, and the refusal names the package rather than the licence: "The
+# following packages can not be installed since their licenses or those of
+# the packages they depend on were not accepted". This image accepts them at
+# build time (Dockerfile) into the image's own <sdk>/licenses — which is why
+# nothing here ever had to. A node's packages store is a DIFFERENT root, and
+# nothing had ever accepted them there, so an android:* install on a node
+# failed at this second hurdle immediately after the SDK-root one.
+#
+# Skipped when the directory is there: accepting is a JVM start, and a store
+# that has been through this once does not need it again. If Google ships a
+# new licence the install refuses with the message above, which at least
+# names what to do.
+sdk_android_licenses() {
+    local root; root="${ANDROID_HOME:-$(sdk_dir android)}"
+    [ ! -d "$root/licenses" ] || return 0
+    log "accepting the android SDK licenses for ${root} — once per store"
+    mkdir -p "$root"
+    # `yes` dies of SIGPIPE when sdkmanager stops reading. Expected, not a
+    # failure — hence the || true inside the pipeline's first stage, the same
+    # shape the Dockerfile uses.
+    (yes || true) | sdkmanager "$(sdk_root_flag)" --licenses >/dev/null 2>&1 || true
+}
+
 # The PATH additions for whatever is installed, regenerated on demand rather
 # than stored: an install or a removal changes it, and a stale file would
 # point at a directory that is not there.
@@ -173,7 +233,7 @@ sdk_status() {
     done
     printf '\n== android packages ==\n'
     if command -v sdkmanager >/dev/null 2>&1; then
-        sdkmanager --list_installed 2>/dev/null | sed -n '/^  /p' | head -20 \
+        sdkmgr --list_installed 2>/dev/null | sed -n '/^  /p' | head -20 \
             || printf '  (sdkmanager could not list them)\n'
     else
         printf '  cmdline-tools are missing from this image\n'
@@ -205,7 +265,9 @@ sdk_android_list() {
     # Written aside and moved into place, so a reader never sees half a table,
     # and nothing is printed at all when sdkmanager cannot answer — a stale
     # snapshot would be a wrong answer to the one question this is asked for.
-    if timeout 120 sdkmanager --list 2>/dev/null > "$f.$$"; then
+    # timeout cannot run a shell function, so this one names the binary
+    # and takes the root from the same place sdkmgr does.
+    if timeout 120 sdkmanager "$(sdk_root_flag)" --list 2>/dev/null > "$f.$$"; then
         mv -f "$f.$$" "$f"; cat "$f"
     else
         rm -f "$f.$$"
@@ -415,7 +477,7 @@ print(next(k for k in d if k != "master"))' 2>/dev/null)"
                 # Trimmed, not stripped of spaces: the version column
                 # is where a release candidate says so ("30.0.15729638
                 # rc2"), and squeezing it out hid that.
-                inst="$(timeout 120 sdkmanager --list_installed 2>/dev/null \
+                inst="$(timeout 120 sdkmanager "$(sdk_root_flag)" --list_installed 2>/dev/null \
                         | awk -F'|' -v p="$pkg" '$1 ~ "^ *"p"(;|  *$)" {v=$2; gsub(/^ +| +$/,"",v); print v; exit}')"
                 [ -n "$inst" ] || inst="installed"
             fi
@@ -518,7 +580,7 @@ sdk_update() {
    package should bring it along, and if it did not then this store has a
    cmdline-tools directory with nothing in it, which is not the same thing."
             log "updating ${what#android:}"
-            sdkmanager --update
+            sdkmgr --update
             ;;
         *) die "usage: bb sdk update playwright|flutter|dotnet|swift|android:<package>" ;;
     esac
@@ -700,7 +762,7 @@ sdk_plan() {
     printf 'directory %s\n' "$d"
     if [ "$kind" = sdkmanager ]; then
         local pkg; pkg="$(sdk_android_id "$what")" || pkg="(cannot resolve — is sdkmanager here?)"
-        printf 'sdkmanager --install %s\n' "$pkg"
+        printf 'sdkmanager %s --install %s\n' "$(sdk_root_flag)" "$pkg"
         return 0
     fi
     rest="$(sdk_meta resolve "$what")"
@@ -771,7 +833,7 @@ sdk_install_android() {
     log "installing ${pkg} — into $(sdk_dir android)"
     sdk_android_clear_stale_installer "$pkg"
     sdk_mark_partial "$(sdk_android_pkg_dir "$pkg")"
-    sdkmanager --install "$pkg"
+    sdkmgr --install "$pkg"
     sdk_android_list_forget
     sdk_relink_android
 }
@@ -1051,7 +1113,7 @@ sdk_remove() {
                         [ -d "$abi" ] || continue
                         log "removing system-images;${api};${image};$(basename "$abi")"
                         sdk_android_clear_stale_installer "system-images;${api};${image};$(basename "$abi")"
-                        sdkmanager --uninstall "system-images;${api};${image};$(basename "$abi")"
+                        sdkmgr --uninstall "system-images;${api};${image};$(basename "$abi")"
                     done
                     # The flavor directory is left behind by the uninstall,
                     # empty, and an empty directory with the right name is what
@@ -1069,7 +1131,7 @@ sdk_remove() {
                         [ -d "$v" ] || continue
                         log "removing ${pkg};$(basename "$v")"
                         sdk_android_clear_stale_installer "${pkg};$(basename "$v")"
-                        sdkmanager --uninstall "${pkg};$(basename "$v")"
+                        sdkmgr --uninstall "${pkg};$(basename "$v")"
                     done
                     sdk_relink_android
                     return 0
@@ -1086,7 +1148,7 @@ sdk_remove() {
                 store="$(readlink -f "${ANDROID_HOME:-/opt/android-sdk}/$pkg")"
             fi
             sdk_android_clear_stale_installer "$pkg"
-            sdkmanager --uninstall "$pkg"
+            sdkmgr --uninstall "$pkg"
             if [ -n "$store" ] && [ -d "$store" ] && [ -n "$(ls -A "$store" 2>/dev/null)" ]; then
                 log "clearing ${store} — sdkmanager removed the link, not the files"
                 rm -rf "${store:?}"
