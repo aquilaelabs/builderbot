@@ -552,10 +552,10 @@ cmd_emu() {
             name="$(emu_avd "$api")"
             if [ ! -d "${ANDROID_HOME:-/opt/android-sdk}/system-images/android-${api}/google_apis/x86_64" ]; then
                 log "installing ${pkg} — a couple of GB, kept on the store"
-                sdkmanager --install "$pkg" || die "could not install ${pkg}"
+                sdkmgr --install "$pkg" || die "could not install ${pkg}"
             fi
             [ -d "${ANDROID_HOME:-/opt/android-sdk}/platforms/android-${api}" ] \
-                || sdkmanager --install "platforms;android-${api}" || warn "could not install platforms;android-${api}"
+                || sdkmgr --install "platforms;android-${api}" || warn "could not install platforms;android-${api}"
             if avd_exists "$name"; then log "AVD '${name}' already exists"; return 0; fi
             echo no | avdmanager create avd -n "$name" -k "$pkg" --device pixel_7 >/dev/null \
                 || die "AVD creation failed for ${name}"

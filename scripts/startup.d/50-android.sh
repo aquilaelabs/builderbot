@@ -24,12 +24,12 @@ log "android sdk: ${ANDROID_HOME:-?} (packages under $(sdk_root)/android)"
 baseline_api="${ANDROID_BASELINE_PLATFORM:-${ANDROID_DEFAULT_API:-36}}"
 if [ ! -d "${ANDROID_HOME}/platforms/android-${baseline_api}" ]; then
     log "installing the android ${baseline_api} baseline — downloaded once, kept outside the image"
-    sdkmanager --install "platforms;android-${baseline_api}" >/dev/null 2>&1 \
+    sdkmanager --sdk_root="${ANDROID_HOME}" --install "platforms;android-${baseline_api}" >/dev/null 2>&1 \
         || warn "could not install platforms;android-${baseline_api}"
 fi
 if [ -n "${ANDROID_BASELINE_BUILD_TOOLS:-}" ] \
    && [ ! -d "${ANDROID_HOME}/build-tools/${ANDROID_BASELINE_BUILD_TOOLS}" ]; then
-    sdkmanager --install "build-tools;${ANDROID_BASELINE_BUILD_TOOLS}" >/dev/null 2>&1 \
+    sdkmanager --sdk_root="${ANDROID_HOME}" --install "build-tools;${ANDROID_BASELINE_BUILD_TOOLS}" >/dev/null 2>&1 \
         || warn "could not install build-tools;${ANDROID_BASELINE_BUILD_TOOLS}"
 fi
 
@@ -45,7 +45,7 @@ if [ -e "$(sdk_removed_marker android:emulator)" ]; then
     warn "  put it back with: bb sdk install android:emulator"
 elif ! command -v emulator >/dev/null 2>&1; then
     log "installing the android emulator — 800MB, downloaded once, kept outside the image"
-    if ! sdkmanager --install emulator >/dev/null 2>&1; then
+    if ! sdkmanager --sdk_root="${ANDROID_HOME}" --install emulator >/dev/null 2>&1; then
         warn "could not install the emulator package"
         exit 0
     fi
@@ -91,7 +91,7 @@ for api in $(printf '%s' "${ANDROID_SYSTEM_IMAGES:-${ANDROID_DEFAULT_API:-36}}" 
 
     if [ ! -d "${ANDROID_HOME}/system-images/android-${api}/${VARIANT_PATH}" ]; then
         log "installing ${pkg} — a couple of GB, downloaded once and kept on the SDK share"
-        if ! sdkmanager --install "$pkg" >/dev/null 2>&1; then
+        if ! sdkmanager --sdk_root="${ANDROID_HOME}" --install "$pkg" >/dev/null 2>&1; then
             warn "could not install ${pkg} — check that API ${api} ships a '${VARIANT}' image"
             continue
         fi
@@ -101,7 +101,7 @@ for api in $(printf '%s' "${ANDROID_SYSTEM_IMAGES:-${ANDROID_DEFAULT_API:-36}}" 
     # Cheap next to the system image, and you generally want to compile against
     # a level you are emulating.
     if [ ! -d "${ANDROID_HOME}/platforms/android-${api}" ]; then
-        sdkmanager --install "platforms;android-${api}" >/dev/null 2>&1 \
+        sdkmanager --sdk_root="${ANDROID_HOME}" --install "platforms;android-${api}" >/dev/null 2>&1 \
             || warn "could not install platforms;android-${api}"
     fi
 
