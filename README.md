@@ -387,6 +387,8 @@ bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb nodes           the node registry, read-only in a terminal — the Nodes
                    tab is where it is edited; `local` is this container
+bb users           the dashboard's accounts. `passwd NAME` resets one from a
+                   shell, which is the way back when the owner is locked out
 bb jobs [-n N]     the recent jobs: state, node, what ran, how it ended —
                    read-only; the Jobs tab is where one is stopped
 bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node and

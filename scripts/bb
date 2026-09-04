@@ -72,6 +72,7 @@ bb — BuilderBot helper
   bb history [--find X]  one search over the notebook: roadmap, bugs, memory
                          and the scanner's logs
   bb nodes               the node registry, read-only (docs/nodes.md phase 1)
+  bb users               the dashboard's accounts; passwd NAME is the way back in
   bb jobs [-n N]         the recent jobs: state, node, what ran, how it ended
   bb run [opts] -- CMD   snapshot this tree, run CMD on the project's node,
                          stream the log back; --out GLOB brings files into dist/
@@ -2196,6 +2197,87 @@ ago() {
 # (docs/nodes.md): the list exists and nothing else does yet, so this prints
 # what the dashboard's store knows and never writes it — the dashboard's boot
 # owns seeding and migration, and a look at the list must not race it.
+# bb users — the dashboard's accounts, from a shell.
+#
+# This exists for the case the GUI cannot serve: the owner has forgotten the
+# password, or there are no accounts at all yet. Whoever can run this can
+# already read everything in the container, so it is not a privilege boundary
+# — it is the way back in, and every system needs one.
+#
+# Deliberately not a full editor. Roles and project lists belong on the Users
+# tab, where there is room to say what they mean.
+cmd_users() {
+    local py sub="${1:-list}"
+    py="$(dirname "$(readlink -f "$0")")/dashboard/users.py"
+    [ -f "$py" ] || die "users.py is missing from this image"
+    shift || true
+    case "$sub" in
+        list|passwd|add) ;;
+        *) die "usage: bb users [list|passwd NAME|add NAME --role admin|user]" ;;
+    esac
+    # The password is READ, never an argument: an argument is in the process
+    # table for anyone on this box to see, and in the shell history after.
+    local pw="" pw2=""
+    if [ "$sub" = passwd ] || [ "$sub" = add ]; then
+        [ -n "${1:-}" ] || die "which account? bb users ${sub} NAME"
+        printf 'password for %s: ' "$1" >&2; read -rs pw; printf '\n' >&2
+        printf 'again: ' >&2; read -rs pw2; printf '\n' >&2
+        [ "$pw" = "$pw2" ] || die "they do not match"
+    fi
+    BB_USERS_PW="$pw" DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+        python3 - "$py" "$sub" "$@" <<'PY'
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location("users", sys.argv[1])
+users = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(users)
+
+
+def write_json(path, data):
+    tmp = str(path) + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f, indent=2)
+    os.replace(tmp, path)
+
+
+users.configure(state=os.environ["DASHBOARD_STATE"], write_json=write_json)
+sub, rest = sys.argv[2], sys.argv[3:]
+pw = os.environ.get("BB_USERS_PW", "")
+if sub == "list":
+    rows = users.all_users()
+    if not rows:
+        print("no accounts yet — the first boot makes one from DASHBOARD_AUTH")
+    for u in rows:
+        seen = "never" if not u["seen"] else f"{(int(__import__('time').time()) - u['seen']) // 86400}d ago"
+        projects = ", ".join(u["projects"]) or "-"
+        print(f'{u["name"]:<24} {u["role"]:<8} seen {seen:<10} {projects}')
+    raise SystemExit(0)
+name = rest[0]
+if sub == "passwd":
+    r = users.set_password(name, pw)
+else:
+    role = "user"
+    if "--role" in rest:
+        role = rest[rest.index("--role") + 1]
+    # No accounts at all means this is the first one, and the first one is the
+    # owner whatever was asked for — a store whose only account cannot
+    # administer it is a store nobody can use.
+    if not users.all_users():
+        with users._lock:
+            d = users.load()
+            d["users"][name] = {"role": "owner", "projects": ["*"],
+                                "password": users.hash_password(pw),
+                                "created": int(__import__("time").time()), "seen": 0}
+            users._save(d)
+        print(f"{name}: created as the owner, since it is the first account")
+        raise SystemExit(0)
+    r = users.add(name, pw, role=role)
+if r.get("error"):
+    print(r["error"], file=sys.stderr)
+    raise SystemExit(1)
+print(f'{name}: {"password changed" if sub == "passwd" else "created"}')
+PY
+}
+
 cmd_nodes() {
     local py
     py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
@@ -3614,6 +3696,7 @@ case "${1:-help}" in
     lint)     shift; cmd_lint "$@" ;;
     findings) shift; cmd_findings "$@" ;;
     nodes) shift; cmd_nodes "$@" ;;
+    users) shift; cmd_users "$@" ;;
     jobs)  shift; cmd_jobs "$@" ;;
     run)   shift; cmd_run "$@" ;;
     ci-labels) shift; cmd_ci_labels "$@" ;;

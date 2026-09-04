@@ -93,17 +93,43 @@ def _session_secret():
 SECRET = _session_secret()
 
 
-def make_token():
+def make_token(u):
+    """A cookie for this account: name, expiry, and a signature over both plus
+    the account's password stamp.
+
+    Stateless, like the one before it — there is no token table to keep. What
+    the stamp buys is the revocation such a table would have given: changing a
+    password or deleting an account moves it, and every cookie signed against
+    the old one stops verifying on the next request.
+    """
     exp = str(int(time.time()) + SESSION_DAYS * 86400)
-    return exp + "." + hmac.new(SECRET, exp.encode(), hashlib.sha256).hexdigest()
+    nm = base64.urlsafe_b64encode(u["name"].encode()).decode().rstrip("=")
+    sig = hmac.new(SECRET, f"{u['name']}|{exp}|{users.stamp(u)}".encode(),
+                   hashlib.sha256).hexdigest()
+    return f"{nm}.{exp}.{sig}"
 
 
-def token_ok(tok):
-    exp, _, sig = tok.partition(".")
+def token_user(tok):
+    """The account a cookie is for, or None. Fails closed on everything.
+
+    A cookie from before accounts existed has two parts rather than three and
+    simply does not verify, which signs those sessions out once. That is the
+    honest outcome: there is no way to know who they were.
+    """
+    nm, _, rest = str(tok or "").partition(".")
+    exp, _, sig = rest.partition(".")
     if not exp.isdigit() or int(exp) < time.time():
-        return False
-    want = hmac.new(SECRET, exp.encode(), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(sig, want)
+        return None
+    try:
+        name = base64.urlsafe_b64decode(nm + "=" * (-len(nm) % 4)).decode()
+    except (ValueError, UnicodeDecodeError):
+        return None
+    u = users.get(name)
+    if not u:
+        return None
+    want = hmac.new(SECRET, f"{name}|{exp}|{users.stamp(u)}".encode(),
+                    hashlib.sha256).hexdigest()
+    return u if hmac.compare_digest(sig, want) else None
 
 
 # The landing page. Same palette as the dashboard, one job: turn a credential
@@ -1890,6 +1916,15 @@ notify.configure(run=run)
 # turned out to be somewhere it could go wrong.
 import signin                                                    # noqa: E402
 
+# ---- who may sign in --------------------------------------------------------
+# The dashboard's own accounts (docs/users.md, roadmap #22). Imported here so
+# that everything it needs — STATE, write_json — is already built; nothing in
+# it reaches back. DASHBOARD_AUTH seeds the first account in main() and is
+# read nowhere else.
+import users                                                     # noqa: E402
+
+users.configure(state=STATE, write_json=write_json)
+
 # ---- the bug tracker --------------------------------------------------------
 # The notebook's third view. Same arrangement again: its own file, handed the
 # two helpers it needs, nothing reaching back.
@@ -2501,23 +2536,40 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):      # quieter than the default
         pass
 
-    def _authed(self):
-        if not AUTH:
-            return False                    # startup refuses this case anyway
+    def _who(self):
+        """The account making this request, or None.
+
+        Deliberately NOT remembered on the handler. BaseHTTPRequestHandler
+        reuses one instance for the life of a connection, so a principal
+        cached on `self` outlives the request that proved it — harmless while
+        protocol_version is HTTP/1.0 and every connection carries one request,
+        and a cross-request credential leak the day somebody turns keep-alive
+        on for the throughput. The cost it would have saved is already saved:
+        users.authenticate_pair remembers a verified credential for a minute,
+        so repeat calls are a digest and a dict lookup rather than a pbkdf2.
+
+        Basic and the cookie both land here. Basic is what `bb` and the test
+        suite send; the cookie is what a browser gets from the login page.
+        """
         hdr = self.headers.get("Authorization", "")
         if hdr.startswith("Basic "):
             try:
                 given = base64.b64decode(hdr[6:]).decode("utf-8", "replace")
             except (ValueError, UnicodeDecodeError):
-                return False
-            # Compare the whole "user:pass" so a correct username with a wrong
-            # password is indistinguishable from both being wrong.
-            return _constant_eq(given, AUTH)
+                return None
+            # The whole "user:password" is checked at once, so a correct name
+            # with a wrong password is indistinguishable from both being wrong.
+            return users.authenticate_pair(given)
         for part in self.headers.get("Cookie", "").split(";"):
             k, _, v = part.strip().partition("=")
-            if k == "bb_session" and token_ok(v.strip()):
-                return True
-        return False
+            if k == "bb_session":
+                u = token_user(v.strip())
+                if u:
+                    return u
+        return None
+
+    def _authed(self):
+        return self._who() is not None
 
     def _deny(self):
         """Not signed in. A person gets the login page, code gets a plain
@@ -2552,20 +2604,22 @@ class Handler(BaseHTTPRequestHandler):
             form = urllib.parse.parse_qs(self.rfile.read(n).decode("utf-8", "replace"))
         except (ValueError, TypeError):
             return self._json({"error": "bad request"}, 400)
-        given = (form.get("username", [""])[0] + ":" + form.get("password", [""])[0])
-        if not (AUTH and _constant_eq(given, AUTH)):
+        u = users.authenticate(form.get("username", [""])[0],
+                               form.get("password", [""])[0])
+        if not u:
             # A beat of delay, so guessing costs something; the message does
-            # not say which half was wrong for the same reason _authed's
-            # comparison does not.
+            # not say which half was wrong for the same reason the store
+            # checks name and password together.
             time.sleep(0.5)
             return self._login_page("Wrong username or password.")
+        users.touch(u["name"])
         nxt = form.get("next", ["/"])[0]
         if not nxt.startswith("/") or nxt.startswith("//"):
             nxt = "/"
         self.send_response(303)
         self.send_header("Location", nxt)
         self.send_header("Set-Cookie",
-                         f"bb_session={make_token()}; Path=/; "
+                         f"bb_session={make_token(u)}; Path=/; "
                          f"Max-Age={SESSION_DAYS * 86400}; HttpOnly; SameSite=Lax")
         self.send_header("Content-Length", "0")
         self.end_headers()
@@ -2625,8 +2679,11 @@ class Handler(BaseHTTPRequestHandler):
             lines.append(f"{k}: {v}")
         lines.append("Connection: " + (self.headers.get("Connection", "Upgrade")
                                        if ws else "close"))
-        lines.append("Authorization: Basic "
-                     + base64.b64encode(AUTH.encode()).decode())
+        # No Authorization upstream: ttyd binds the loopback and is started
+        # with no --credential, because this proxy is the gate (15-dashboard.sh
+        # says the same from the other end). It was sending the operator's
+        # password on every terminal connection to a server that never looked
+        # at it — and with accounts, there is no longer one password to send.
         self.close_connection = True
         down = self.connection
         sel = selectors.DefaultSelector()
@@ -4510,16 +4567,22 @@ class Handler(BaseHTTPRequestHandler):
                                else f"{len(lines)} commands"})
 
 
-def _constant_eq(a, b):
-    """Compare without leaking length or position through timing."""
-    import hmac
-    return hmac.compare_digest(a.encode(), b.encode())
-
-
 def main():
-    if not AUTH or not re.match(r"^[^:]+:.+$", AUTH):
+    # DASHBOARD_AUTH seeds the owner on a boot that finds no accounts, and is
+    # ignored ever after — the env seeds, the store owns (docs/users.md). What
+    # the dashboard will not start without is an ACCOUNT; the variable is one
+    # way to get the first one, and `bb users` is the other.
+    seeded = users.seed(AUTH)
+    if seeded.get("seeded"):
+        print(f"dashboard: created the owner account {seeded['name']} from "
+              "DASHBOARD_AUTH — the store owns it now, and the variable is "
+              "no longer read", flush=True)
+    if not users.all_users():
         raise SystemExit(
-            "DASHBOARD_AUTH must be set as user:password.\n"
+            "No dashboard accounts, and DASHBOARD_AUTH did not make one "
+            f"({seeded.get('why', 'unset')}).\n"
+            "Set DASHBOARD_AUTH=user:password for the first boot, or run\n"
+            "  bb users add <name> --role owner\n"
             "This serves a terminal into a container holding your ssh agent and\n"
             "source trees; it will not start unauthenticated."
         )

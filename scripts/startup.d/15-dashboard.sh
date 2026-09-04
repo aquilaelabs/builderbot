@@ -41,16 +41,24 @@ PORT="${DASHBOARD_PORT:-7680}"
 TTYD_PORT="${DASHBOARD_TTYD_PORT:-7681}"
 DASH=/opt/builderbot/scripts/dashboard
 
-if [ -z "${DASHBOARD_AUTH:-}" ]; then
-    warn "ENABLE_DASHBOARD=true but DASHBOARD_AUTH is empty — dashboard NOT started."
-    warn "Set DASHBOARD_AUTH=user:password. It exposes a shell with your ssh keys"
-    warn "and every mounted project; it will not run without a credential."
+# A credential is required, but DASHBOARD_AUTH is only one of the two ways to
+# have one now: once accounts exist the store owns them and the variable is
+# ignored (docs/users.md), so an operator who removes it after the first boot
+# must not lose their dashboard.
+if [ -s "${DASHBOARD_STATE:-/config}/users.json" ]; then
+    :
+elif [ -z "${DASHBOARD_AUTH:-}" ]; then
+    warn "ENABLE_DASHBOARD=true, no accounts yet and DASHBOARD_AUTH is empty — dashboard NOT started."
+    warn "Set DASHBOARD_AUTH=user:password for the first boot; it creates the owner"
+    warn "account and is then no longer read. This exposes a shell with your ssh"
+    warn "keys and every mounted project; it will not run without a credential."
     exit 0
+else
+    case "$DASHBOARD_AUTH" in
+        *:*) ;;
+        *) warn "DASHBOARD_AUTH must be user:password — dashboard NOT started."; exit 0 ;;
+    esac
 fi
-case "$DASHBOARD_AUTH" in
-    *:*) ;;
-    *) warn "DASHBOARD_AUTH must be user:password — dashboard NOT started."; exit 0 ;;
-esac
 
 for bin in ttyd tmux; do
     command -v "$bin" >/dev/null 2>&1 \
