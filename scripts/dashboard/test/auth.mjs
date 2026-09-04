@@ -199,6 +199,121 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
      '...and the owner is untouched by all of it');
 }
 
+// ---- a strip each (roadmap #25) --------------------------------------------
+// The tab layout was ONE file for the whole box: written by whichever browser
+// saved last and handed to every other one. Fine for one operator, wrong the
+// moment there are two — you would watch somebody else's tabs open in front
+// of you. It is keyed by the account's minted id now, and the id is minted
+// rather than the name because the owner is renameable on purpose.
+{
+  const { readFileSync } = await import('node:fs');
+  const { execFileSync } = await import('node:child_process');
+  const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+  const bb = (args, input) => execFileSync('bash', [`${REPO}/scripts/bb`, 'users', ...args],
+    { input, encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  const store = `${DIR}/state/users.json`;
+  const read = () => JSON.parse(readFileSync(store, 'utf8'));
+  ok(Object.values(read().users).every(u => /^u_[0-9a-f]{8}$/.test(u.uid || '')),
+     'every account carries a minted id, backfilled onto ones that predate it');
+  const uids = Object.values(read().users).map(u => u.uid);
+  ok(new Set(uids).size === uids.length, '...and no two accounts share one');
+
+  bb(['add', 'sharer', '--role', 'user'], 'stripspass1\nstripspass1\n');
+  const asUser = (u, pw) => ({ Authorization: 'Basic ' + Buffer.from(`${u}:${pw}`).toString('base64'),
+                               'Content-Type': 'application/json' });
+  const putTabs = (h, tabs) => bare('/api/layout', { method: 'POST', headers: h,
+    body: JSON.stringify({ tabs, panes: [tabs[0]?.id || null, null], active: 0 }) });
+  const strip = async h => ((await (await bare('/api/status', { headers: h })).json()).layout || {});
+
+  const owner = asUser('test', 'test');
+  const other = asUser('sharer', 'stripspass1');
+  await putTabs(owner, [{ id: 't-own', kind: 'term', arg: 'shell-1', label: 'owner shell' }]);
+  await putTabs(other, [{ id: 't-oth', kind: 'term', arg: 'shell-2', label: 'their shell' }]);
+
+  const a = await strip(owner), b = await strip(other);
+  ok(a.tabs?.length === 1 && a.tabs[0].id === 't-own',
+     `the owner keeps the strip they saved (${(a.tabs || []).map(t => t.id).join()})`);
+  ok(b.tabs?.length === 1 && b.tabs[0].id === 't-oth',
+     `...and the other account has its own, not a copy of it (${(b.tabs || []).map(t => t.id).join()})`);
+  const file = JSON.parse(readFileSync(`${DIR}/state/tabs.json`, 'utf8'));
+  ok(file.users && Object.keys(file.users).length === 2
+     && Object.keys(file.users).every(k => /^u_[0-9a-f]{8}$/.test(k)),
+     `...stored one slot per account, keyed by the id rather than the name (${
+        Object.keys(file.users || {}).join()})`);
+
+  // The scheme rides the account too, so a browser that has never seen it
+  // adopts it after first paint rather than starting on the default. Set
+  // through the same endpoint the swatch menu uses.
+  const setTheme = (h, theme) => bare('/api/users', { method: 'POST', headers: h,
+    body: JSON.stringify({ action: 'prefs', prefs: { theme } }) });
+  ok((await setTheme(other, 'nocturne')).status === 200,
+     'an account sets its own scheme, without being an administrator');
+  ok((await strip(other), (await (await bare('/api/status', { headers: other })).json()).theme) === 'nocturne',
+     '...and it comes back in that account\'s state payload');
+  ok((await (await bare('/api/status', { headers: owner })).json()).theme !== 'nocturne',
+     '...and not in anybody else\'s');
+  ok((await bare('/api/users', { method: 'POST', headers: other,
+        body: JSON.stringify({ action: 'prefs', prefs: { theme: '../../etc' } }) })).status === 400,
+     'a scheme that is not one of the names is refused, not stored');
+  ok((await bare('/api/users', { method: 'POST', headers: other,
+        body: JSON.stringify({ action: 'role', name: 'test', role: 'user' }) })).status === 403,
+     '...and prefs being open to everyone did not open the rest of the tab');
+
+  // ---- one Claude session per project, and whose (roadmap #26) -------------
+  // bb-tty has always named the session for the project, so there has only
+  // ever been one. What accounts made necessary is knowing WHOSE: without it
+  // a second person pressing Claude lands inside somebody else's conversation
+  // and types into it. Enforced at the /term proxy rather than only in the
+  // page, because the ttyd URL is reachable directly.
+  {
+    const { execFileSync: run } = await import('node:child_process');
+    const tmux = a => run('tmux', a, { encoding: 'utf8',
+      env: { ...process.env, TMUX_TMPDIR: `${DIR}/tmux`, TMUX: '' } });
+    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    // No session yet: nobody holds it, and asking is allowed.
+    ok((await term(other, 'claude:beta')).status !== 409,
+       'with no session running, the project is nobody\'s');
+    try { tmux(['kill-session', '-t', 'claude-beta']); } catch { /* none */ }
+    tmux(['new-session', '-d', '-s', 'claude-beta', '-c', '/tmp']);
+    // The account that claimed it may come back to it...
+    ok((await term(other, 'claude:beta')).status !== 409,
+       'the account that opened it can reattach');
+    // ...and nobody else may, by name.
+    const refused = await term(owner, 'claude:beta');
+    const why = refused.status === 409 ? (await refused.json()).error : '';
+    ok(refused.status === 409 && /has a Claude session on beta/.test(why),
+       `another account is refused, and told who has it (${why.slice(0, 60)}…)`);
+    ok(/one conversation per project/.test(why),
+       '...and why, since the rule is not obvious from the refusal alone');
+    // A shell on the same project is not affected: shells are per account.
+    ok((await term(owner, 'sh:1:beta')).status !== 409,
+       'a shell on that project is still offered — only the conversation is held');
+    // The session ending releases it, with nothing to sweep: the record is
+    // only read alongside the live session list.
+    tmux(['kill-session', '-t', 'claude-beta']);
+    ok((await term(owner, 'claude:beta')).status !== 409,
+       'ending the session releases it, because the live session is the truth');
+  }
+
+  // A rename must not lose the strip — the whole reason the key is minted.
+  execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+print(u.rename("sharer", "renamed"))`], { encoding: 'utf8' });
+  const renamed = asUser('renamed', 'stripspass1');
+  const after = await strip(renamed);
+  ok(after.tabs?.length === 1 && after.tabs[0].id === 't-oth',
+     'renaming an account keeps its strip, because the key was never the name');
+  execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+print(u.remove("renamed"))`], { encoding: 'utf8' });
+}
+
 // ---- what a `user` sees, and does not (roadmap #22 step 2) --------------
 // The property the whole scheme leans on: a project somebody was not given is
 // ABSENT, not refused — so the existence check and the permission check are

@@ -23,6 +23,55 @@ set -euo pipefail
 
 target="${1:-shell}"
 
+# ---- whose terminal this is (roadmap #26) ----------------------------------
+#
+# The dashboard's /term proxy stamps the argument with the account it
+# authenticated, as `u:<uid>:<target>`, and OVERWRITES anything the browser
+# put there — so this is the account asking, not the account claimed. That is
+# the same reasoning as the lock check below: a rule only the UI honors is a
+# suggestion, because the ttyd URL is reachable directly.
+#
+# Empty is a real answer and the common one: a terminal opened before accounts
+# existed, or by something that is not a browser. It gets the box's own home
+# and the unprefixed session names, which is exactly what it used to get.
+account=""
+case "$target" in
+    u:*)
+        rest="${target#u:}"
+        account="${rest%%:*}"
+        target="${rest#*:}"
+        case "$account" in
+            u_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *) account="" ;;              # not an id: nobody, not somebody else
+        esac
+        ;;
+esac
+
+# The account's own home: own shell history, own Claude login, own memories.
+# Exported before anything runs, because tmux hands its environment to the
+# shell it starts and there is no second chance once the session exists.
+if [ -n "$account" ]; then
+    HOME="$(user_home "$account")"
+    export HOME
+fi
+
+# sess NAME — the session name for this account.
+#
+# A SHELL is per account: two people opening a terminal on the same project
+# must not land in one another's, which is what one name would do — tmux
+# attaches to an existing session rather than making a second. A CLAUDE
+# session is deliberately NOT per account: one conversation per project is the
+# rule (two in one working tree fight over the same files), and who holds it
+# is a record the dashboard keeps rather than a name.
+#
+# The OWNER keeps the bare names, which is why this asks tmux_prefix rather
+# than building one: same rule as their home, in one place. `~` is the
+# separator because tmux rewrites `.` and `:` in a name and leaves this
+# alone — measured, not assumed.
+sess() {
+    printf '%s%s' "$(tmux_prefix "$account")" "$1"
+}
+
 # Projects the operator keeps but runs themselves. Shared with the dashboard,
 # which writes it; enforced here, because a rule only the UI honors is a
 # suggestion — the ttyd URL is reachable directly.
@@ -291,7 +340,7 @@ start() {
 
 case "$target" in
     shell)
-        start shell "$WORKSPACE"
+        start "$(sess shell)" "$WORKSPACE"
         ;;
 
     # sh:N:PROJECT — an additional numbered terminal, so the Shell button can
@@ -305,12 +354,12 @@ case "$target" in
             ''|*[!0-9]*) bad "Invalid terminal number: ${num}" ;;
         esac
         if [ -z "$proj" ]; then
-            start "shell-${num}" "$WORKSPACE"
+            start "$(sess "shell-${num}")" "$WORKSPACE"
         fi
         dir="$WORKSPACE/$proj"
         [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
-        start "shell-${proj}-${num}" "$dir"
+        start "$(sess "shell-${proj}-${num}")" "$dir"
         ;;
 
     claude:*)
@@ -483,7 +532,7 @@ case "$target" in
         dir="$WORKSPACE/$proj"
         [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
-        start "shell-${proj}" "$dir"
+        start "$(sess "shell-${proj}")" "$dir"
         ;;
     *)
         # A named scratch session. Restricted to characters tmux is happy with

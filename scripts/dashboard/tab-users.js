@@ -119,6 +119,30 @@ function renderUsersInto(i){
   d.list.innerHTML = `
     ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
     ${usersList.map(userRow).join("")}
+    <div class="row stack2">
+      <div class="grow">
+        <div class="name">What an account gets, and what it does not</div>
+        <div class="sub">Everybody here works as themselves: their own
+          terminals, their own shell history, their own Claude login and their
+          own memories, in a home of their own. The tab strip and the colour
+          scheme follow the account to any browser they sign in on. The
+          <b>owner</b> keeps this container's original home, so an install
+          with one operator is unchanged.</div>
+        <div class="sub">A project's <b>Claude session</b> belongs to whoever
+          opened it, and nobody else can open that tab — there is one
+          conversation per project, because two in the same working tree edit
+          the same files. Shells are not shared that way: everybody gets their
+          own.</div>
+        <div class="sub">The notebook — roadmap, bugs, analysis — stays shared,
+          because it is about the project rather than the person. Memories do
+          not, for the same reason in reverse.</div>
+        <div class="sub warn">This is scoping, not containment. Everybody runs
+          as the same user inside the container, so somebody with a terminal
+          can still reach another account's files if they go looking. It keeps
+          people out of each other's way; it is not a wall, and anyone you add
+          here can run code on this machine.</div>
+      </div>
+    </div>
     <div class="row stack2 uadd">
       <div class="grow">
         <div class="name">Add somebody</div>

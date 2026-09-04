@@ -31,6 +31,7 @@
     if (t && t !== "default" && /^[a-z]{2,12}$/.test(t))
       document.documentElement.dataset.theme = t;
   }catch(e){ /* private mode: the default scheme is a fine answer */ }
+
 </script>
 <!-- Inline so the browser never asks the server for /favicon.ico — the only
      404 this page would otherwise produce. -->
@@ -2887,13 +2888,29 @@ const isSplit = () => panes[1] !== null;
 // derived from a project name here goes through tmuxName(), or the kill,
 // keys and macro requests would name a session that never existed.
 const tmuxName = s => s.replace(/[.:]/g, "_");
+// Whose shell this is (roadmap #26). A SHELL is named for its account, because
+// two people opening a terminal on one project must otherwise land in the same
+// one — tmux attaches to an existing session rather than making a second. A
+// CLAUDE session is not: one conversation per project is the rule, and who
+// holds it is a record rather than a name.
+//
+// The prefix comes from the server rather than being built here, because the
+// OWNER has none — they keep the bare names, the way they keep /home/builder
+// — and a page that derived the rule for itself would be a fourth copy of it
+// to keep in step. bb-tty's sess() is the other half; `~` is the separator
+// because tmux rewrites `.` and `:` and leaves this alone.
+const myTmux = s => (state?.tmux_prefix || "") + s;
+// The account holding this project's Claude session, when it is not us. The
+// button greys and wears their name; the refusal itself is at the /term proxy,
+// because a rule only the page honors is a suggestion (roadmap #26).
+const heldBy = p => (state?.claude_held || {})[p] || "";
 function sessionOf(arg){
   if (arg.startsWith("sh:")){
     const [, n, proj] = arg.split(":");
-    return tmuxName(proj ? `shell-${proj}-${n}` : `shell-${n}`);
+    return myTmux(tmuxName(proj ? `shell-${proj}-${n}` : `shell-${n}`));
   }
   if (arg.startsWith("claude:")) return tmuxName("claude-" + arg.slice(7).split(":")[0]);
-  if (arg.startsWith("shell:"))  return tmuxName("shell-"  + arg.slice(6));
+  if (arg.startsWith("shell:"))  return myTmux(tmuxName("shell-"  + arg.slice(6)));
   return arg;
 }
 // The project a session name was made from, when it is one we know: the
@@ -2981,7 +2998,7 @@ function tabLabels(){
 function nextShell(proj){
   const taken = new Set([...liveSessions(),
                          ...tabs.filter(t => t.kind === "term").map(t => sessionOf(t.arg))]);
-  const base = tmuxName(proj ? `shell-${proj}` : "shell");
+  const base = myTmux(tmuxName(proj ? `shell-${proj}` : "shell"));
   for (let n = 1; n <= 99; n++)
     if (!taken.has(`${base}-${n}`)) return `sh:${n}:${proj}`;
   return null;
@@ -4831,12 +4848,18 @@ const THEMES = [
 ];
 const THEME_IDS = new Set(THEMES.map(t => t[0]));
 
-// Kept in the browser rather than on the server, unlike the card order and the
-// tab layout beside it. Those describe the work and should follow you between
-// machines; which colours are comfortable is about the room you are sitting in,
-// and a phone in the dark and a desktop at noon are allowed to differ. It is
-// also the only way to have no flash: applied from the inline block in <head>,
-// before the first paint, where a value fetched from the server cannot be.
+// The browser holds it and the ACCOUNT remembers it, and the order matters
+// (roadmap #25). localStorage is the only way to have no flash: applied from
+// the inline block in <head>, before the first paint, where a value fetched
+// from the server cannot be. So it stays the paint path and is written on
+// every pick.
+//
+// The account record is what a browser that has never seen this account reads
+// instead of starting on the default — the scheme follows the person rather
+// than the machine. But only then: a value already in localStorage WINS,
+// because which colours are comfortable is partly about the room you are
+// sitting in, and a phone in the dark that picked Nocturne must not have it
+// undone by the desktop at noon. adoptTheme is the whole of that rule.
 let themingTimer = null;
 function applyTheme(id){
   const use = THEME_IDS.has(id) ? id : "default";
@@ -4861,7 +4884,34 @@ function applyTheme(id){
   if (use === "default") delete root.dataset.theme;
   else root.dataset.theme = use;
   try{ localStorage.setItem("bb.theme", use); }catch(e){ /* private mode */ }
+  themeSaved = use;
+  // ...and onto the account, which is the truth behind it (roadmap #25).
+  // localStorage stays the PAINT path — the scheme is applied at the top of
+  // this file before the stylesheet parses, and a value fetched over the
+  // network would be a flash of the default followed by a jump — so this is
+  // not a replacement for it. What it buys is a browser that has never seen
+  // this account: it adopts the scheme after first paint instead of never.
+  // Fire and forget: a failed save is a scheme that did not follow you, not
+  // something to interrupt the person picking colours about.
+  fetch("/api/users", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "prefs", prefs: { theme: use } }) })
+    .catch(() => {});
   markUiMenu();
+}
+
+// The account's scheme, taken up only by a browser that has none of its own.
+// Runs on every poll and does nothing on almost all of them; the guard is the
+// stored value, not a flag, so a second tab that picked a scheme is honoured
+// here too rather than being fought over.
+let themeSaved = null;
+function adoptTheme(t){
+  try{
+    if (localStorage.getItem("bb.theme")) return;
+  }catch(e){ return; }              // no storage: leave the default alone
+  if (!t || t === themeSaved || !/^[a-z]{2,12}$/.test(t)) return;
+  themeSaved = t;
+  applyTheme(t);
 }
 
 // Only the marks, never a rebuild. Replacing the grid's innerHTML from inside
@@ -5199,10 +5249,13 @@ function projectRow(p, live, cls, inTab){
       <span class="acts">
       ${isBroken(p) ? "" : `<button class="eye${live.has(tmuxName("claude-"+p.name)) ? " on acc" : ""}"
          data-c="${esc(p.name)}" aria-label="Claude session"${
-         (p.locked || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
+         (p.locked || heldBy(p.name)
+          || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
            ? " disabled" : ""}
          title="${p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
+                 : heldBy(p.name)
+                   ? `${heldBy(p.name)} has a Claude session on this project — there is one conversation per project, so it is theirs until they end it`
                  : !signedIn() && !live.has(tmuxName("claude-"+p.name))
                    ? "this container is not signed in to Claude — the Doctor card has the way in"
                  : live.has(tmuxName("claude-"+p.name)) ? "Claude — session running, go to its tab"
@@ -10637,6 +10690,11 @@ function arriveRow(name, fn){
 // exclusion check and the scoped settings — which is only invisible while the
 // session already exists. Map it back when the project is one we know.
 function argForSession(name){
+  // Whoever owns it, the arg is derived from what comes AFTER the prefix —
+  // that part is the project and the number, which is all bb-tty is told.
+  // The listing only carries sessions this account may see, so a prefixed one
+  // here is this account's own and sessionOf puts the prefix back.
+  name = name.replace(/^u_[0-9a-f]{8}~/, "");
   // Matched through tmuxName (a session's name is the project's with `.` and
   // `:` rewritten), and by exact project first, so a project genuinely called
   // "web-2" is not read as terminal 2 of a project called "web".
@@ -11145,6 +11203,14 @@ async function refresh(){
     if (r.status === 401){ location.href = "/login?next=%2F"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     state = await r.json();
+    // The account's scheme, on a browser that has never seen this account
+    // (roadmap #25). localStorage is the PAINT path — the scheme is applied
+    // at the top of this file before the stylesheet parses, and a value
+    // fetched over the network would be a flash of the default followed by a
+    // jump — so this only speaks when local has nothing to say. A pick made
+    // HERE outranks the record, or picking a scheme on a phone would be
+    // undone by the desktop's next poll.
+    adoptTheme(state.theme);
     // The container was recreated under this page. Its Claude tabs are tabs to
     // conversations that ended with it — the server prunes them from the saved
     // layout at boot, but a page that has saved since then is ahead of that

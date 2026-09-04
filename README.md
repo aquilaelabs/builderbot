@@ -2873,6 +2873,42 @@ ssh-agent and read-write mounts of every project — so that credential is worth
 as much as the ssh keys are. It is not a convenience toggle; treat it like the
 Docker socket mount.
 
+#### Accounts
+
+The Tools card's **Users** tab adds people. There is exactly one **owner**,
+undeletable and renameable; an **admin** can do everything except act on the
+owner; a **user** gets the projects you give them and the work inside them,
+but not deleting one, renaming one, or changing which node it builds on — a
+node is shared, and that setting reaches every project on it. A project an
+account was not given does not appear for them at all.
+
+Each account works as itself:
+
+- **its own home** — own shell history, own Claude login, own memories. The
+  box's own dotfiles are shared into it rather than copied, so the Android
+  pairing key, the AVDs and the build caches are not duplicated per person
+- **its own terminals.** A shell session is named for the account, so two
+  people opening a terminal on one project do not land in the same one
+- **its own tab strip and colour scheme**, which follow the account to any
+  browser it signs in on rather than living in one browser
+- **the owner keeps this container's original home and session names**, so an
+  install with one operator is unchanged by any of it
+
+A project's **Claude session belongs to whoever opened it.** There is one
+conversation per project — two in the same working tree edit the same files —
+and another account is told who has it rather than being dropped into it. That
+is enforced where `/term` is proxied, not only in the page, because the ttyd
+URL is reachable directly. The notebook (roadmap, bugs, analysis) stays shared,
+because it is about the project; memories do not, because they are about the
+person.
+
+**This is scoping, not containment.** Every session still runs as the same user
+inside the container — that is deliberate, so everything written to your array
+keeps the ownership `PUID`/`PGID` give it — which means somebody with a
+terminal can reach another account's files if they go looking. It keeps people
+out of each other's way. It is not a wall, and anyone you add can run code on
+this machine.
+
 Only the dashboard port is published. ttyd binds the loopback and the
 dashboard relays `/term` to it, so the browser asks for credentials once and
 the router needs one port. The relay is deliberately dumb: after checking the

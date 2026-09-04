@@ -448,11 +448,39 @@ TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings",
              "nodes", "settings", "jobs", "users"}
 
 
-def load_layout():
+def _layouts():
+    """The whole file: {"boot": ..., "users": {uid: layout}}.
+
+    One strip per ACCOUNT, keyed by the minted id rather than the name so a
+    rename keeps it (users.mint_uid says why). It was one layout for the whole
+    box until roadmap #25 — written by whoever last saved and handed to
+    everybody else, which is fine for one operator and wrong the moment there
+    are two.
+
+    A file from before that has the layout at the top level. It is moved to
+    the owner, once, on the first read: the owner is who was using it, and
+    dropping it instead would cost somebody their tab strip on an upgrade for
+    no reason.
+    """
     try:
         v = json.loads(TABS_FILE.read_text())
     except (OSError, ValueError):
         v = {}
+    if not isinstance(v, dict):
+        v = {}
+    if not isinstance(v.get("users"), dict):
+        moved = {k: v[k] for k in ("rev", "tabs", "panes", "active") if k in v}
+        v = {"boot": v.get("boot"), "users": {}}
+        if moved:
+            owner = users.get(users.owner_name() or "")
+            if owner and owner.get("uid"):
+                v["users"][owner["uid"]] = moved
+    return v
+
+
+def load_layout(uid):
+    """One account's strip, shape-checked. `uid` is users.uid_of(who)."""
+    v = (_layouts().get("users") or {}).get(str(uid or ""))
     # Shape-checked field by field, not trusted: this runs inside every status
     # poll and once at startup (prune_claude_tabs), so a file holding
     # `"tabs": 5` — a hand edit, or a client that posted junk before the
@@ -487,8 +515,14 @@ def load_layout():
             "active": 1 if v.get("active") == 1 and panes[1] else 0}
 
 
-def save_layout(v):
-    write_json(TABS_FILE, v | {"boot": boot_id()})
+def save_layout(uid, v):
+    """Write one account's strip, leaving every other account's alone."""
+    uid = str(uid or "")
+    if not uid:
+        return                            # not a person: nothing to remember
+    all_of = _layouts()
+    all_of["users"][uid] = v
+    write_json(TABS_FILE, all_of | {"boot": boot_id()})
 
 
 def boot_id():
@@ -521,8 +555,12 @@ def prune_claude_tabs():
     disk, so the project's Claude button offers to resume it; that is a decision
     to make, not one to make silently at boot.
 
-    Called once at startup. The revision is bumped so a browser left open across
-    the restart adopts the pruned strip instead of saving its stale tabs back.
+    Called once at startup, and once for EVERY account: the strip is per
+    person now (roadmap #25), and a boot that pruned only one of them would
+    leave everyone else's dead Claude tabs on their strip.
+
+    The revision is bumped so a browser left open across the restart adopts
+    the pruned strip instead of saving its stale tabs back.
     """
     try:
         stored = json.loads(TABS_FILE.read_text())
@@ -531,20 +569,26 @@ def prune_claude_tabs():
     here = boot_id()
     if not here or stored.get("boot") == here:
         return
-    v = load_layout()
-    kept = [t for t in v["tabs"] if not t["arg"].startswith("claude:")]
-    if len(kept) == len(v["tabs"]):
-        save_layout(v)                  # nothing to drop; just stamp this boot
-        return
-    ids = {t["id"] for t in kept}
-    panes = [p if p in ids else None for p in v["panes"]]
-    if panes[0] is None:
-        panes = [panes[1], None]
+    for uid in list((_layouts().get("users") or {})):
+        v = load_layout(uid)
+        kept = [t for t in v["tabs"] if not t["arg"].startswith("claude:")]
+        if len(kept) == len(v["tabs"]):
+            continue                    # nothing to drop for this one
+        ids = {t["id"] for t in kept}
+        panes = [p if p in ids else None for p in v["panes"]]
+        if panes[0] is None:
+            panes = [panes[1], None]
+        try:
+            save_layout(uid, {"rev": v["rev"] + 1, "tabs": kept, "panes": panes,
+                              "active": 1 if panes[1] else 0})
+        except OSError:
+            return                      # a read-only /config is not fatal here
+    # The boot stamp regardless, so a run that dropped nothing is not asked
+    # again on every restart afterwards.
     try:
-        save_layout({"rev": v["rev"] + 1, "tabs": kept, "panes": panes,
-                     "active": 1 if panes[1] else 0})
+        write_json(TABS_FILE, _layouts() | {"boot": here})
     except OSError:
-        pass                            # a read-only /config is not fatal here
+        pass
 
 
 def load_pins():
@@ -1461,6 +1505,87 @@ def claude_state(title):
     return ("working" if working else "waiting"), task
 
 
+# The `u:<uid>:` a browser may have sent on a terminal argument, which is
+# stripped before the real one is put on. Anchored, so it can only ever take
+# a prefix off the front.
+_ARG_OWNER = re.compile(r"^u:[^:]*:")
+
+# A session name without the account that owns it. Shell sessions are named
+# `<uid>~shell-…` since roadmap #26 — two people opening a terminal on one
+# project must not land in each other's — and every question of the form
+# "does this project still have terminals open" is about the part after the
+# `~`, whoever owns it.
+_SESS_OWNER = re.compile(r"^u_[0-9a-f]{8}~")
+
+
+def _claude_held_by(sessions, ps):
+    """{project: account name} for the Claude sessions that are running and
+    have an owner on record. Names, because the page shows one."""
+    live = {s["name"] for s in sessions}
+    store = users.load()["users"]
+    by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
+    out = {}
+    for p in ps:
+        who = holders.holder(p["name"], live, tmux_name, set(by_uid))
+        if who:
+            out[p["name"]] = by_uid.get(who, "")
+    return {k: v for k, v in out.items() if v}
+
+
+def _session_visible(name, mine, seen, all_of_them):
+    owner, base = tmux_owner(name), tmux_base(name)
+    if owner:
+        return owner == mine            # a shell belongs to exactly one account
+    if all_of_them:
+        return True
+    # Unowned: a Claude session, or a terminal from before accounts. Judged by
+    # the project in its name, which is what the account was or was not given.
+    for pre in ("claude-", "shell-"):
+        if base.startswith(pre):
+            stem = base[len(pre):]
+            return any(tmux_name(p) == stem or stem.startswith(tmux_name(p) + "-")
+                       for p in seen)
+    return False
+
+
+_homes = {}
+
+
+def home_for(uid):
+    """Where that account's home is, from lib/common.sh's user_home.
+
+    Shelled out to rather than reimplemented, because bb-tty calls the same
+    function to decide where a terminal runs: two implementations of "where
+    does this person's Claude login live" would eventually disagree, and the
+    way you would find out is somebody signing in and the session not seeing
+    it. Empty on any failure, which every caller reads as "the box's own".
+    """
+    lib = HERE.parent / "lib" / "common.sh"
+    if not uid or not lib.is_file():
+        return ""
+    # Remembered, because this is on the status poll and the answer cannot
+    # move: an account's home is derived from an id that never changes. The
+    # first call per account also CREATES the directory, which is the other
+    # reason not to do it fifteen times a minute per browser.
+    if uid in _homes:
+        return _homes[uid]
+    r = run(["bash", "-c", f'. {shlex.quote(str(lib))}; user_home "$1"',
+             "_", str(uid)], timeout=10)
+    got = (r.get("out") or "").strip() if r.get("code") == 0 else ""
+    if got:
+        _homes[uid] = got
+    return got
+
+
+def tmux_base(name):
+    return _SESS_OWNER.sub("", str(name))
+
+
+def tmux_owner(name):
+    m = _SESS_OWNER.match(str(name))
+    return m.group(0)[:-1] if m else ""
+
+
 def tmux_name(s):
     """What tmux will actually call a session asked for under this name.
 
@@ -1848,7 +1973,15 @@ def run_doctor():
 # Who this container is signed in as, for the Doctor card. `claude auth
 # status --json` answers it locally and instantly — no network — so this is a
 # short cache against a poll every fifteen seconds rather than a real one.
-_auth = {"at": 0.0, "state": {}}
+# Per HOME, because accounts have a home each and a Claude login lives in one
+# (roadmap #26). One global answer meant a new account was shown the owner's
+# sign-in state: the Claude button offered itself, and bb-tty — which reads
+# the RIGHT home — then refused with "not signed in", which is a dead end on
+# the one path a new person has to walk. Keyed by the home rather than the
+# account so the owner and an unauthenticated context share one entry, which
+# is what they are.
+_auth = {}
+_AUTH_EMPTY = {"at": 0.0, "state": {}}
 _auth_lock = threading.Lock()
 AUTH_TTL = 20
 # While a sign-in is open and this box is still signed out, the answer is about
@@ -1860,29 +1993,35 @@ AUTH_TTL = 20
 AUTH_TTL_FAST = 5
 
 
-def claude_auth(fresh=False):
+def claude_auth(fresh=False, home=""):
     """{signed_in, email} — or {"unknown": True} on a claude too old to ask.
 
     The one piece of container health that has an action attached, which is
     why it is a field of its own rather than a line in the doctor verdict: a
     verdict is read, and this is pressed.
+
+    `home` is the asking account's, because the answer is theirs: the
+    credential lives in $HOME/.claude and every account has a home.
     """
+    got = _auth.get(home) or _AUTH_EMPTY
     # Signed in already: nothing a running sign-in does changes that answer,
     # so it keeps the long cache however busy the flow looks.
-    ttl = AUTH_TTL_FAST if fresh and not _auth["state"].get("signed_in") else AUTH_TTL
-    if time.monotonic() - _auth["at"] < ttl and _auth["state"]:
-        return _auth["state"]
+    ttl = AUTH_TTL_FAST if fresh and not got["state"].get("signed_in") else AUTH_TTL
+    if time.monotonic() - got["at"] < ttl and got["state"]:
+        return got["state"]
     # One at a time, and checked again on the way in: without this every
     # request that arrives during the 0.68s answer starts its own copy, which
     # is the difference between one node process and a handful.
     with _auth_lock:
-        if time.monotonic() - _auth["at"] < ttl and _auth["state"]:
-            return _auth["state"]
-        return _read_auth()
+        got = _auth.get(home) or _AUTH_EMPTY
+        if time.monotonic() - got["at"] < ttl and got["state"]:
+            return got["state"]
+        return _read_auth(home)
 
 
-def _read_auth():
-    r = run(["claude", "auth", "status", "--json"], timeout=20)
+def _read_auth(home=""):
+    env = dict(os.environ) | ({"HOME": home} if home else {})
+    r = run(["claude", "auth", "status", "--json"], timeout=20, env=env)
     try:
         d = json.loads(r["out"]) if r["code"] == 0 else {}
         state = {"signed_in": bool(d.get("loggedIn")),
@@ -1893,7 +2032,7 @@ def _read_auth():
         # knowing is not the same as being signed out, and offering to sign
         # somebody out of nothing is worse than offering nothing.
         state = {"unknown": True}
-    _auth.update(at=time.monotonic(), state=state)
+    _auth[home] = {"at": time.monotonic(), "state": state}
     return state
 
 
@@ -1943,6 +2082,12 @@ import signin                                                    # noqa: E402
 import users                                                     # noqa: E402
 
 users.configure(state=STATE, write_json=write_json)
+
+# Who has the Claude session on a project. One conversation per project has
+# always been true — bb-tty names the session for the project — and this is
+# the half accounts made necessary: whose it is (roadmap #26).
+import holders                                                   # noqa: E402
+holders.configure(state=STATE, write_json=write_json)
 
 # ---- the bug tracker --------------------------------------------------------
 # The notebook's third view. Same arrangement again: its own file, handed the
@@ -2461,7 +2606,16 @@ def revisions():
 
 def snapshot(who):
     ps = project_list(who)
-    sessions = tmux_sessions()
+    # Sessions this account has any business seeing: its own shells, and
+    # anything on a project it was given. Filtered here for the same reason
+    # the project list is (roadmap #22): a member restricted to one project
+    # could otherwise read every other project's name off the session list,
+    # which is exactly what hiding the projects was for. An account that sees
+    # everything sees the unowned ones too — terminals opened before accounts,
+    # or by something that is not a browser.
+    mine, seen = users.uid_of(who), {p["name"] for p in ps}
+    sessions = [s for s in tmux_sessions()
+                if _session_visible(s["name"], mine, seen, users.sees_all(who))]
     login = signin.state()
     # Each shell's git context, resolved here where WORKSPACE is known: the
     # git/GitHub command cards ghost against the directory the active shell
@@ -2520,7 +2674,8 @@ def snapshot(who):
         # Asked in this order: whether a sign-in is running decides whether
         # the answer to "signed in?" is worth re-reading rather than serving
         # from the cache.
-        "claude_auth": claude_auth(fresh=login["running"]),
+        "claude_auth": claude_auth(fresh=login["running"],
+                                   home=home_for(users.uid_of(who))),
         "signin": login,
         # A clone or a first push runs in the background now, so the card can
         # say what it is doing without the dialog being open.
@@ -2544,8 +2699,29 @@ def snapshot(who):
         "cards": load_cards(),
         # The open tabs, so a phone picks up the desktop's layout rather than
         # starting from scratch. Carried in the status poll because it is small
-        # and every client is already asking for that every 15s.
-        "layout": load_layout(),
+        # and every client is already asking for that every 15s. THIS
+        # account's — the strip follows the person to any browser they sign in
+        # on, and stops following them to somebody else's (roadmap #25).
+        "layout": load_layout(users.uid_of(who)),
+        # Who this is, so the page can name a shell session the way bb-tty
+        # will (index.html's myTmux). Not a secret — it is this account's own
+        # id, and it is already the key to everything the page saves.
+        "uid": users.uid_of(who),
+        # What this account's shell sessions are named with — "" for the
+        # owner, who keeps the bare names (users.tmux_prefix says why). The
+        # page has to agree with bb-tty about this exactly, or a tab addresses
+        # a session that was never created under that name.
+        "tmux_prefix": users.tmux_prefix(who),
+        # Projects whose Claude session belongs to somebody else, by NAME —
+        # "alice has a session on this" is the whole value of the record, and
+        # a bare refusal would tell you nothing you could act on. Only for
+        # projects this account can see, and never their own, which is not
+        # held against them (roadmap #26).
+        "claude_held": {p: n for p, n in _claude_held_by(sessions, ps).items()
+                        if n != (who or {}).get("name")},
+        # This account's colour scheme, for a browser that has none stored.
+        # index.html's adoptTheme says why localStorage still outranks it.
+        "theme": users.prefs(who).get("theme", ""),
     }
 
 
@@ -2694,6 +2870,71 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _claude_held(self, rest):
+        """A sentence when this account may not open the Claude session it is
+        asking for, and "" when it may. Claims it on the way through.
+
+        Enforced HERE and not only in the page, for the reason bb-tty's own
+        header gives about the lock file: a rule only the UI honors is a
+        suggestion, because the ttyd URL is reachable directly. The page also
+        greys the button, which is the courtesy; this is the rule.
+        """
+        arg = ""
+        head, sep, query = rest.partition("?")
+        if not sep:
+            return ""
+        for kv in query.split("&"):
+            k, eq, v = kv.partition("=")
+            if k == "arg" and eq:
+                arg = _ARG_OWNER.sub("", urllib.parse.unquote_plus(v))
+        if not arg.startswith("claude:"):
+            return ""
+        project = arg[len("claude:"):].split(":")[0]
+        me = self._who()
+        uid = users.uid_of(me)
+        if not uid or not project:
+            return ""                     # not an account: nothing to scope
+        live = {x["name"] for x in tmux_sessions()}
+        known = {u.get("uid") for u in users.load()["users"].values()}
+        who = holders.holder(project, live, tmux_name, known)
+        if who and who != uid:
+            name = next((n for n, u in users.load()["users"].items()
+                         if u.get("uid") == who), "another account")
+            return (f"{name} has a Claude session on {project}. There is one "
+                    "conversation per project — two in the same working tree "
+                    "edit the same files — so this one is theirs until they "
+                    "end it.")
+        holders.claim(project, uid)
+        return ""
+
+    def _scoped_arg(self, rest):
+        """Stamp the terminal's argument with the account that asked for it.
+
+        ttyd runs bb-tty with whatever `?arg=` says, so this is where a
+        terminal learns whose it is: the account is taken from the credential
+        this request already proved and any `u:` the BROWSER sent is thrown
+        away first. Trusting the browser's would make the whole thing a
+        suggestion — one edited URL and you are in somebody else's home with
+        their Claude login (roadmap #26).
+
+        A request with no account behind it is left alone rather than
+        refused. bb-tty reads that as the box's own home and the unprefixed
+        session names, which is what every terminal got before accounts.
+        """
+        head, sep, query = rest.partition("?")
+        if not sep or "arg=" not in query:
+            return rest
+        uid = users.uid_of(self._who())
+        out = []
+        for kv in query.split("&"):
+            k, eq, v = kv.partition("=")
+            if k == "arg" and eq:
+                want = _ARG_OWNER.sub("", urllib.parse.unquote_plus(v))
+                v = urllib.parse.quote(f"u:{uid}:{want}" if uid else want,
+                                       safe="")
+            out.append(f"{k}{eq}{v}")
+        return head + "?" + "&".join(out)
+
     def _term_proxy(self):
         """Everything under /term, relayed byte-for-byte to ttyd on the
         loopback — websockets included.
@@ -2714,7 +2955,13 @@ class Handler(BaseHTTPRequestHandler):
         plain request instead gets Connection: close upstream, which turns
         "relay until EOF" into the complete response.
         """
-        rest = self.path[len("/term"):]
+        held = self._claude_held(self.path[len("/term"):])
+        if held:
+            # 409, not 403: nothing is wrong with the credential, the thing
+            # asked for is taken. The name is the whole value of the record —
+            # "somebody else has it" tells you nothing you can act on.
+            return self._json({"error": held}, 409)
+        rest = self._scoped_arg(self.path[len("/term"):])
         if not rest or rest.startswith("?"):
             # ttyd's client resolves "token" and "ws" against the page URL,
             # so the page must live under a trailing slash.
@@ -3633,10 +3880,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def _signin(self, req):
         """Start a sign-in, or stop the one that is running."""
-        _auth.update(at=0.0, state={})
+        _auth.clear()               # every home: the flow may have changed any
         if field(req, "action") == "cancel":
             return self._json(signin.cancel() | {"signin": signin.state()})
-        return self._json(signin.start() | {"signin": signin.state()})
+        # In the asking account's home: `claude auth login` writes to
+        # $HOME/.claude, and this card is how a new account signs in to their
+        # OWN Claude (roadmap #26).
+        return self._json(signin.start(home_for(users.uid_of(self._who())))
+                          | {"signin": signin.state()})
 
     def _login_code(self, req):
         """Hand the code from the browser to the sign-in flow.
@@ -3666,7 +3917,7 @@ class Handler(BaseHTTPRequestHandler):
                                         "copy just the code"}, 400)
         r = signin.submit(code)
         # Whatever the cache is holding is about to be wrong either way.
-        _auth.update(at=0.0, state={})
+        _auth.clear()
         return self._json(r | {"signin": signin.state()},
                           400 if r.get("error") else 200)
 
@@ -3678,18 +3929,40 @@ class Handler(BaseHTTPRequestHandler):
         terminal for it. Signing out is one command with no conversation in
         it, so it is a button.
         """
-        # Not while a conversation is running. Signing out pulls the ground
-        # from under every session on the box, and a page that has not polled
-        # for fifteen seconds can offer a button the answer has moved past —
-        # so the refusal is here as well as on the button.
-        busy = [s["name"] for s in tmux_sessions() if s["name"].startswith("claude-")]
+        # Not while a conversation of THIS account's is running. Signing out
+        # pulls the ground from under the sessions it started, and a page that
+        # has not polled for fifteen seconds can offer a button the answer has
+        # moved past — so the refusal is here as well as on the button.
+        #
+        # Theirs, not everyone's: logins are per account now (roadmap #26), so
+        # one person signing out does nothing to somebody else's conversation
+        # and refusing on it would be a rule with no reason behind it. An
+        # account that sees everything still only owns what it opened.
+        me = users.uid_of(self._who())
+        live = {x["name"] for x in tmux_sessions()}
+        known = {u.get("uid") for u in users.load()["users"].values()}
+        # Through the holder map rather than the session names: a session is
+        # named for the project with `.` and `:` rewritten (tmux_name), so
+        # taking the project back out of the name would not match the record.
+        others = {tmux_name(f"claude-{proj}")
+                  for proj, uid in holders.all_held(live, tmux_name, known).items()
+                  if uid != me}
+        # A session nobody is recorded as holding still blocks. Not knowing
+        # whose it is is a reason to be careful, not a reason to proceed.
+        busy = sorted(n for n in live
+                      if n.startswith("claude-") and n not in others)
         if busy:
             return self._json({"error": "end these first: " + ", ".join(busy)}, 409)
-        r = run(["claude", "auth", "logout"], timeout=60)
-        _auth.update(at=0.0, state={})
+        # In the asking account's home, like the sign-in: signing out is
+        # signing THIS account out, and the credential is in their ~/.claude.
+        home = home_for(users.uid_of(self._who()))
+        r = run(["claude", "auth", "logout"], timeout=60,
+                env=dict(os.environ) | ({"HOME": home} if home else {}))
+        _auth.clear()
         if r["code"] != 0:
             return self._json({"error": r["out"].strip()[-500:] or "logout failed"}, 500)
-        return self._json({"ok": True, "auth": claude_auth()})
+        return self._json({"ok": True,
+                           "auth": claude_auth(home=home_for(users.uid_of(self._who())))})
 
     def _todo(self, req):
         """Add, send, edit or drop one item on a project's list.
@@ -4255,9 +4528,29 @@ class Handler(BaseHTTPRequestHandler):
         holds for `bb users` too, and that is the one an operator reaches for
         when they are locked out.
         """
+        act = field(req, "action")
+        # Ahead of the admin gate, because this one is nobody else's business:
+        # an account setting its OWN appearance. Everything below acts on
+        # another account and is an administrator's.
+        if act == "prefs":
+            me = self._who()
+            if not me or not users.uid_of(me):
+                return self._json({"error": "not an account"}, 403)
+            want = req.get("prefs")
+            if not isinstance(want, dict):
+                return self._json({"error": "prefs is an object"}, 400)
+            # Named, not merged wholesale. This file is read on the login path
+            # and holds password hashes; an unbounded dict here would be a
+            # place to park arbitrary data in it.
+            keep = {}
+            theme = str(want.get("theme") or "")
+            if re.fullmatch(r"[a-z]{2,12}", theme):
+                keep["theme"] = theme
+            if not keep:
+                return self._json({"error": "nothing here is a setting"}, 400)
+            return self._json(users.prefs_set(me["name"], keep))
         if self._refused("admin"):
             return None
-        act = field(req, "action")
         name = field(req, "name")
         pw = req.get("password") or ""
         if act == "add":
@@ -4435,19 +4728,20 @@ class Handler(BaseHTTPRequestHandler):
         # have to survive on every poll from then on.
         if not isinstance(req.get("tabs", []), list) or not isinstance(req.get("panes", []), list):
             return self._json({"error": "bad request"}, 400)
+        uid = users.uid_of(self._who())
         with _state_lock:
-            cur = load_layout()
+            cur = load_layout(uid)
             v = {"rev": cur["rev"] + 1,
                  "tabs": req.get("tabs") or [],
                  "panes": req.get("panes") or [None, None],
                  "active": 1 if req.get("active") == 1 else 0}
             try:
-                save_layout(v)
+                save_layout(uid, v)
             except OSError as e:
                 return self._json({"error": f"could not save: {e}"}, 500)
             # Re-read so the caller gets exactly what every other client will
             # see, including anything the validator dropped.
-            return self._json(load_layout())
+            return self._json(load_layout(uid))
 
     def _lock(self, req):
         """Lock or unlock a project: keep it, stop Claude running in it.
@@ -4499,8 +4793,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         live = {s["name"] for s in tmux_sessions()}
         held = sorted(s for s in live
-                      if s == tmux_name(f"claude-{name}")
-                      or s.startswith(tmux_name(f"shell-{name}") + "-"))
+                      if tmux_base(s) == tmux_name(f"claude-{name}")
+                      or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
         if held:
             return self._json({"error": "close its terminals first — "
                                         + ", ".join(held[:3])
@@ -4513,6 +4807,11 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass
         body, code = projects.trash(req)
+        if code < 400:
+            # The record is inert either way — a holder is only reported while
+            # its session is alive — but a key for a project that no longer
+            # exists is a line nobody will ever explain.
+            holders.forget(name)
         return self._json(body, code)
 
     def _trash_list(self):
@@ -4550,8 +4849,8 @@ class Handler(BaseHTTPRequestHandler):
             return
         live = {s["name"] for s in tmux_sessions()}
         held = sorted(s for s in live
-                      if s == tmux_name(f"claude-{name}")
-                      or s.startswith(tmux_name(f"shell-{name}") + "-"))
+                      if tmux_base(s) == tmux_name(f"claude-{name}")
+                      or tmux_base(s).startswith(tmux_name(f"shell-{name}") + "-"))
         if held:
             return self._json({"error": "close its terminals first — "
                                         + ", ".join(held[:3])
@@ -4564,6 +4863,8 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             pass          # no daemon, or no compose file: nothing to protect
         body, code = projects.rename(req)
+        if code < 400:
+            holders.forget(req.get("name", ""))
         return self._json(body, code)
 
     def _project_auth(self, req):

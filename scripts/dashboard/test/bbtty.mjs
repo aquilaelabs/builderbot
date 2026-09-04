@@ -12,7 +12,7 @@
 // that says so.
 import { ok, done, sleep, URL, DIR, tmuxKill, tmuxFmt } from './lib.mjs';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -186,4 +186,76 @@ ok(/--resume\0the-live-one\0/.test(a),
 rmSync(join(DIR, 'state', 'claude-prefs.json'), { force: true });
 
 tmuxKill('claude-alpha');
+// ---- a home and a shell of one's own (roadmap #26) --------------------------
+// The dashboard's /term proxy stamps the argument with the account it
+// authenticated (`u:<uid>:…`), and this is the half that acts on it: a shell
+// runs in that account's home and under a name nobody else attaches to.
+//
+// The OWNER is deliberately the exception on both counts — they keep
+// /home/builder and the bare session names — because a box with one operator
+// is every box until somebody adds a second account, and an upgrade that
+// renamed everything under them would be a cost paid by everyone for a case
+// most installs never reach.
+{
+  const HOMEDIR = join(DIR, 'home');
+  const shell = (arg, extra = {}) => {
+    try {
+      return execFileSync('bash', [BBTTY, arg], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
+               WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
+               BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'),
+               ...extra },
+      });
+    } catch (e) { return `${e.stdout || ''}${e.stderr || ''}`; }
+  };
+  // The box's own, which a home links to rather than copies.
+  mkdirSync(join(HOMEDIR, '.android'), { recursive: true });
+  const store = JSON.parse(readFileSync(join(DIR, 'state', 'users.json'), 'utf8'));
+  const ownerUid = Object.values(store.users).find(u => u.role === 'owner').uid;
+  ok(/^u_[0-9a-f]{8}$/.test(ownerUid || ''), `the owner has a minted id (${ownerUid})`);
+
+  tmuxKill('shell-7'); tmuxKill(`${ownerUid}~shell-7`);
+  shell(`u:${ownerUid}:sh:7:`);
+  await sleep(300);
+  ok(alive('shell-7') && !alive(`${ownerUid}~shell-7`),
+     'the owner keeps the bare session name, so an upgrade renames nothing');
+  ok(tmuxFmt('shell-7', '#{pane_start_path}') !== '' ,
+     '...and it really started');
+  tmuxKill('shell-7');
+
+  // Anybody else gets their own name and their own home.
+  const other = 'u_00c0ffee';
+  tmuxKill(`${other}~shell-7`);
+  shell(`u:${other}:sh:7:`);
+  await sleep(300);
+  ok(alive(`${other}~shell-7`) && !alive('shell-7'),
+     `a second account's shell is named for it, so the two never share one (${other}~shell-7)`);
+  ok(existsSync(join(HOMEDIR, 'users', other)),
+     '...running in a home of its own, made on first use');
+  ok(existsSync(join(HOMEDIR, 'users', other, '.android')),
+     '...with the box\'s own dotfiles linked in rather than copied');
+  ok(lstatSync(join(HOMEDIR, 'users', other, '.android')).isSymbolicLink(),
+     '...as symlinks: copying .android would duplicate the AVDs and the pairing key');
+  tmuxKill(`${other}~shell-7`);
+
+  // A Claude session is NOT per account: one conversation per project, and
+  // who holds it is a record rather than a name.
+  tmuxKill('claude-alpha'); tmuxKill(`${other}~claude-alpha`);
+  shell(`u:${other}:claude:alpha:b:${boot}`);
+  await sleep(300);
+  ok(alive('claude-alpha') && !alive(`${other}~claude-alpha`),
+     'a Claude session keeps the project name whoever opens it — one per project');
+  tmuxKill('claude-alpha');
+
+  // The id is checked, not trusted: the proxy is what puts it there, and a
+  // shape that is not an id must not become a directory name.
+  tmuxKill('shell-8');
+  shell('u:../../etc:sh:8:');
+  await sleep(300);
+  ok(alive('shell-8') && !existsSync(join(HOMEDIR, 'users', '..', '..', 'etc', '.bashrc')),
+     'an argument that is not an id is nobody, not somebody else');
+  tmuxKill('shell-8');
+}
+
 await done();

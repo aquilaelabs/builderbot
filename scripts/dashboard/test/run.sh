@@ -107,6 +107,16 @@ S="$(mktemp -d "${TMPDIR:-/tmp}/dashboard-test.XXXXXX")"
 # on cleanup, killed the real server, the operator's shell and the Claude
 # session running the tests along with it. Verified below, not assumed.
 unset TMUX
+# Same reasoning, for the credential. This script is usually run FROM a Claude
+# session, which is given BB_TOKEN — a token scoped to ONE project with `user`
+# rights and a twelve-hour life. `bb` prefers it over DASHBOARD_AUTH, so every
+# test that shells out to `bb` was quietly using the outer session's
+# credential instead of the harness's: it worked while that token was fresh
+# and the project happened to match, and stopped the moment it expired. What
+# that looked like was agent.mjs dying on "no node called agentbox" — a 401
+# the caller reads as an empty node list — hours into a session, with nothing
+# in the diff to explain it.
+unset BB_TOKEN
 export TMUX_TMPDIR="$S/tmux"
 mkdir -p "$TMUX_TMPDIR"
 tmux new-session -d -s probe -c /tmp

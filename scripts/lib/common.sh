@@ -295,3 +295,105 @@ except OSError:
     sys.exit(1)
 XPY
 }
+
+# ---- per-account homes (roadmap #26) ---------------------------------------
+#
+# The dashboard has accounts, and each of them gets a home: own shell history,
+# own Claude login, own memories. What it is NOT is a second OS user — every
+# session still runs as `builder`, so everything written to the projects share
+# stays PUID:PGID exactly as it always has. A second uid would write files the
+# rest of the array does not expect, which is the one part of this that can
+# spoil somebody's data, and the operator ruled it out.
+#
+# What that buys and what it does not:
+#   * own history, own Claude login, own memories, and a tab strip nobody else
+#     is offered;
+#   * NOT kernel isolation. One uid means one tmux server and one filesystem
+#     view, so a member with a shell can still reach another's home if they go
+#     looking. Same bargain as the sibling-project deny list. The Users tab
+#     says so rather than implying more.
+#
+# THE OWNER KEEPS /home/builder. Not asymmetry for its own sake: that
+# directory already holds a working Claude login and every transcript this box
+# has ever produced, and the safe way to hand it to somebody is not to move
+# it. The owner is undeletable and there is exactly one, so the mapping is
+# stable. Everybody else gets a directory of their own beside it.
+BUILDER_USERS="${BUILDER_USERS:-${BUILDER_HOME}/users}"
+
+# What belongs to the BOX rather than to the person, and is therefore shared by
+# every home rather than copied into it. Getting this list wrong is the
+# expensive mistake in either direction: copy .gradle and each account
+# re-downloads gigabytes; copy .android and the phone pairing key and the AVDs
+# are duplicated, or worse, diverge. Copy .ssh and the shielded keys stop being
+# shielded.
+BB_SHARED_DOTFILES="
+.android .gradle .npm .m2 .nuget .pub-cache .cache .dotnet .docker .nv
+.npm-global .local .config .ssh .gnupg .npmrc .dart-tool .templateengine
+.tmux.conf .tmux.builderbot.conf .emulator_console_auth_token
+"
+
+# The account that keeps /home/builder, read from the store rather than passed
+# in: every caller of user_home would otherwise have to know it, and one that
+# forgot would quietly give the owner a second home and an empty Claude login.
+owner_uid() {
+    local f="${DASHBOARD_STATE:-/config}/users.json"
+    [ -r "$f" ] || return 0
+    jq -r 'first((.users // {}) | to_entries[] | select(.value.role == "owner")
+                 | .value.uid) // ""' "$f" 2>/dev/null
+}
+
+# tmux_prefix UID — what that account's shell sessions are named with.
+#
+# Empty for the owner and for no account at all. The rule is the same one
+# user_home applies and users.tmux_prefix mirrors on the server: the owner
+# keeps the bare names, because a box with one operator is every box until
+# somebody adds a second account.
+tmux_prefix() {
+    local uid="${1:-}"
+    case "$uid" in
+        u_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+        *) return 0 ;;
+    esac
+    [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ] && return 0
+    printf '%s~' "$uid"
+}
+
+# user_home UID — where that account's home is, made if it is missing.
+#
+# Prints the path and nothing else, so a caller can use it directly. An empty
+# or unrecognizable id answers the box's own home, which is what every path
+# that has no account behind it (a boot hook, `bb` on the command line) should
+# get.
+user_home() {
+    local uid="${1:-}" home d target
+    case "$uid" in
+        u_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+        *) printf '%s' "$BUILDER_HOME"; return 0 ;;
+    esac
+    if [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ]; then
+        printf '%s' "$BUILDER_HOME"; return 0
+    fi
+    home="$BUILDER_USERS/$uid"
+    if [ ! -d "$home" ]; then
+        mkdir -p "$home" || { printf '%s' "$BUILDER_HOME"; return 0; }
+        # 0700 stops an accident, not a determined look: one uid owns them all
+        # and can chmod any of them back. It is worth doing anyway — a Claude
+        # credential should not be world-readable inside the container even to
+        # something that could take it a harder way.
+        chmod 700 "$home" 2>/dev/null || true
+        for d in /opt/builderbot/skel/. "$BUILDER_HOME/.bashrc" "$BUILDER_HOME/.profile"; do
+            if [ -e "${d%/.}" ]; then
+                cp -rn "$d" "$home/" 2>/dev/null || true
+            fi
+        done
+    fi
+    # Linked every time rather than only at creation: the list grows as the
+    # image does, and an account made before a name was added to it would
+    # otherwise never get the link.
+    for d in $BB_SHARED_DOTFILES; do
+        target="$BUILDER_HOME/$d"
+        [ -e "$target" ] || continue
+        [ -e "$home/$d" ] || [ -L "$home/$d" ] || ln -s "$target" "$home/$d" 2>/dev/null || true
+    done
+    printf '%s' "$home"
+}

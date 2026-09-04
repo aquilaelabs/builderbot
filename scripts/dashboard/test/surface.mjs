@@ -35,7 +35,7 @@ import { launch, newPage, ok, done, ready, URL } from './lib.mjs';
 // what it prints — do not hand-edit it into agreement without looking at why
 // it moved.
 const SURFACE = [
-  'adoptCards', 'adoptLayout', 'applyCards', 'applyNow', 'applyTheme',
+  'adoptCards', 'adoptLayout', 'adoptTheme', 'applyCards', 'applyNow', 'applyTheme',
   'argForSession', 'arriveBox', 'arriveRow', 'askPurge', 'cSeg', 'cSlide',
   'cSubmit', 'cardDropIndex', 'claudeMd', 'daemonHost', 'closeEditor', 'closeNewProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
