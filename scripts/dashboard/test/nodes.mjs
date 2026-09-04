@@ -77,20 +77,22 @@ ok(list[0].id === 'local',
     body: JSON.stringify({ action: 'new', project: 'ep.silon', instance: 'ph1' }),
   })).json()));
   ok(!r.error, `an instance exists to act on (${r.error || 'ok'})`);
-  // Started and observed in one task: the stub daemon finishes an up in
-  // well under a second and a finished job leaves the slot, so the node
-  // stamp has to be caught while the job is live.
+  // Read from the job ROW, not from the live slot the manager polls. The
+  // first version of this raced the stub daemon — an up finishes in well
+  // under a second and a finished job leaves the slot, so the stamp had to
+  // be caught mid-flight, and on a loaded box the whole job could pass
+  // between two polls. It flaked in full runs and passed in isolation, which
+  // is the worst shape a test has. The row keeps the node forever.
   const job = await page.evaluate(async () => {
-    const going = fetch('/api/devapp', {
+    await (await fetch('/api/devapp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'up', project: 'ep.silon', instance: 'ph1' }),
-    });
-    for (let i = 0; i < 300; i++){
-      const d = await (await fetch('/api/docker')).json();
-      if (d.job && d.job.node) return d.job;
-      await new Promise(r => setTimeout(r, 30));
+    })).json();
+    for (let i = 0; i < 200; i++){
+      const j = ((await (await fetch('/api/v1/jobs?type=compose&n=1')).json()).jobs || [])[0];
+      if (j) return j;
+      await new Promise(r => setTimeout(r, 50));
     }
-    await going;
     return null;
   });
   ok(job && job.node === sandbox.id,
