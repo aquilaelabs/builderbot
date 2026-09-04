@@ -2755,6 +2755,16 @@ ssh push through a deploy key exactly as it catches an https one — and refuses
 with a sentence rather than an auth error. Like the sibling-project rule it is
 a guardrail, not a sandbox: a shell in the container can delete it.
 
+**What decides which branches can be written is GitHub's, not this box's.** A
+credential that can push can push to any branch, `main` included: no GitHub
+credential has a per-branch scope — fine-grained PATs and classic PATs are
+repository-level, and a deploy key is read or write on the whole repo. So
+there is nothing to grant here that pushes to a branch and not to the default
+one. If a merge should be somebody's decision rather than a push, the control
+is a **ruleset on the default branch requiring a pull request**, set once per
+repository on GitHub. Nothing in this container can do that for you, and a
+local refusal would only be one more guardrail a shell can step around.
+
 Projects that already existed when this arrived are granted retroactively if
 their GitHub remote is an ssh one, recorded as `key`. Those are the repos that
 were already being pushed to with deploy keys, and a new rule is not a reason
