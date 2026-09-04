@@ -3,7 +3,7 @@
 // /term proxy that puts the terminals behind the same sign-in. The proxy's
 // upstream is dead in the harness (nothing listens on the ttyd port), which
 // pins the 502 path; the live relay is covered by using the dashboard.
-import { launch, newPage, ok, done, URL } from './lib.mjs';
+import { launch, newPage, ok, done, URL, DIR } from './lib.mjs';
 import http from 'node:http';
 
 // Plain fetches first — no credentials at all, straight from node.
@@ -135,6 +135,69 @@ await page2.goto(URL);
 await page2.waitForURL('**/login**');
 ok(true, 'the sign-out button ends the session for real');
 await ctx2.close();
+
+// ---- accounts, not one env var (roadmap #22 step 1) --------------------
+// DASHBOARD_AUTH=test:test seeded the owner on this server's first boot and
+// is not consulted again. Nothing is restricted yet — that is step 2 — so
+// what is checked here is the store standing where the string used to.
+//
+// Everything below works on a SECOND account. The first version changed the
+// owner's password and could not put it back, because `test` is under the
+// eight-character floor the store enforces — which would have taken the
+// harness credential away from every file that runs after this one.
+{
+  const { readFileSync, existsSync } = await import('node:fs');
+  const { execFileSync } = await import('node:child_process');
+  const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
+  const bb = (args, input) => execFileSync('bash', [`${REPO}/scripts/bb`, 'users', ...args],
+    { input, encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
+  const store = `${DIR}/state/users.json`;
+  const read = () => JSON.parse(readFileSync(store, 'utf8'));
+
+  ok(existsSync(store), 'the first boot writes an account store');
+  const seeded = read().users.test;
+  ok(seeded && seeded.role === 'owner'
+     && /^pbkdf2_sha256\$\d+\$/.test(seeded.password)
+     && !JSON.stringify(read()).includes('test:test'),
+     `DASHBOARD_AUTH seeds the owner, hashed and never in the clear (${
+       String(seeded?.password).slice(0, 24)}…)`);
+
+  bb(['add', 'alt', '--role', 'user'], 'firstpass1\nfirstpass1\n');
+  ok(read().users.alt?.role === 'user', 'bb users add makes an ordinary account');
+  const signin = (u, pw) => bare('/login', { method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `username=${u}&password=${pw}&next=/` });
+  let r2 = await signin('alt', 'firstpass1');
+  const live = (r2.headers.get('set-cookie') || '').split(';')[0];
+  ok(r2.status === 303 && (await bare('/api/status', { headers: { Cookie: live } })).status === 200,
+     '...which signs in and opens the API');
+  const basic = (u, pw) => bare('/api/status',
+    { headers: { Authorization: 'Basic ' + Buffer.from(`${u}:${pw}`).toString('base64') } });
+  ok((await basic('alt', 'firstpass1')).status === 200,
+     '...and answers Basic auth from the store, as bb sends it');
+  ok((await basic('alt', 'wrongpass1')).status === 401, '...but not a wrong password');
+
+  // The property a stateless cookie has to be given deliberately: a password
+  // change takes back the sessions it was used for.
+  bb(['passwd', 'alt'], 'secondpass2\nsecondpass2\n');
+  ok((await bare('/api/status', { headers: { Cookie: live } })).status === 401,
+     'changing a password invalidates the cookies already issued for it');
+  ok((await signin('alt', 'secondpass2')).status === 303, '...and the new one signs in');
+
+  // ...and so does deleting the account, for the same reason and for free.
+  r2 = await signin('alt', 'secondpass2');
+  const doomed = (r2.headers.get('set-cookie') || '').split(';')[0];
+  execFileSync('python3', ['-c', `
+import importlib.util, json, os, sys
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+print(u.remove("alt"))`], { encoding: 'utf8' });
+  ok((await bare('/api/status', { headers: { Cookie: doomed } })).status === 401,
+     'deleting an account ends its sessions too');
+  ok(read().users.test && !read().users.alt,
+     '...and the owner is untouched by all of it');
+}
 
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);
