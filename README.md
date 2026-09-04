@@ -646,18 +646,28 @@ denominator. The full output of every job goes to the log under the buttons,
 which is where to look when "it is working" is not enough.
 
 **Two different questions, two different costs.** What version is installed
-is local knowledge — a directory name, or `flutter --version` — so it is on
-every row from the moment the tab opens, cached until something is installed.
-Whether a newer one exists is a network round trip to a different upstream
-per toolchain, so that one is a slow background errand rather than something
-the poll does: once a minute or so after the container comes up, and once a
-day after that. **Check for updates** asks again on demand, and either way the
-answers are what the rows show. A check answers for the rows
+is local knowledge — a directory name, or `flutter --version` — but asking
+every toolchain to say its own name is a few seconds, so the answer is kept on
+the state volume rather than only in memory. That is what makes the tab open
+at once after a container restart instead of sitting on "loading…" while the
+same unchanged answer is worked out again. It is keyed by what it is an answer
+*about*: the set of installed paths, so installing or removing something drops
+it, and a digest of `config/packages.json`, so editing a recipe does too.
+
+Whether a newer one exists is a network round trip to a different upstream per
+toolchain, so that one is a slow background errand rather than something the
+poll does: **once a week**, counted from when a check last actually happened
+rather than from when the container came up. A restart used to mean a full
+round of upstream requests three minutes later, so an afternoon of image
+updates was an afternoon of asking the internet for answers that had not
+moved. **Check for updates** asks on demand, which is what somebody presses
+when they want to know now, and editing the catalog forces one — the stored
+answers describe recipes, and a changed recipe has no answer yet.
+
+Either way the answers are what the rows show. A check answers for the rows
 that are *not* installed too: the version there is what Install would fetch,
 plainly rather than in amber, since nothing about it is news. What a check
-found is kept on the state volume and dated on the page — those answers cost
-a round trip each and do not go stale quickly, and holding them only in
-memory meant a restart wiped every version the tab had been told.
+found is kept on the state volume and dated on the page.
 
 **The size is an estimate until it is a measurement.** Every row carries one:
 the catalog's `~3 GB` before installation, which is what the download costs,

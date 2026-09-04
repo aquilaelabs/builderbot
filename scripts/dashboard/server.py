@@ -2696,6 +2696,13 @@ def revisions():
 # Who has polled lately, in memory: presence, not a record. See chat.online.
 _polls = {}
 
+# The last time each (project, account) was announced as starting a session,
+# so a race between two requests in the same instant cannot say it twice. In
+# memory because it is about this run of the container, and a restart having
+# forgotten is right: the sessions went with it.
+_announced = {}
+ANNOUNCE_S = 60
+
 
 def snapshot(who):
     if who and who.get("name") and users.uid_of(who):
@@ -3137,11 +3144,24 @@ class Handler(BaseHTTPRequestHandler):
         uid = users.uid_of(me)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
-        # Announced to everybody sharing the project, once — the connection is
-        # remade on every reattach and a phone waking up, so a line per
-        # connection would be noise rather than news.
+        # Announced to everybody sharing the project, ONCE. Three things make
+        # one start look like several, and the first two were what put the
+        # same line in the channel twice:
+        #
+        #   * ttyd's client asks for /term/token and then /term/ws, both
+        #     carrying the same ?arg=, and BOTH arrive before bb-tty has made
+        #     the session — so "does it exist yet" was false for each of them
+        #     and the line landed twice, which is what a phone showed;
+        #   * a dropped socket reconnects and a waking phone reloads the
+        #     iframe. By then the session exists, which the check does catch.
+        #
+        # The window covers both without knowing anything about ttyd's URLs or
+        # its headers — gating on the upgrade was the first fix and it cannot
+        # be tested through fetch, which refuses to set Connection.
         mysess = users.tmux_prefix(me) + tmux_name(f"claude-{project}")
-        if mysess not in {x["name"] for x in tmux_sessions()}:
+        fresh = mysess not in {x["name"] for x in tmux_sessions()}
+        if fresh and time.time() - _announced.get((project, uid), 0) > ANNOUNCE_S:
+            _announced[(project, uid)] = time.time()
             chat.event(project, uid,
                        f"{me['name']} started a Claude session on {project}")
         mine = claude_auth(home=home_for(uid)).get("email") or ""

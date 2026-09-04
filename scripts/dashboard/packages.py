@@ -12,6 +12,7 @@ which holds every URL, flag and argument any of it needs. Neither of them has
 a package name written into it.
 """
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -35,8 +36,8 @@ def configure(*, run, write_json, state):
     """Hand over the server's helpers and read what is on disk."""
     globals().update(run=run, write_json=write_json, STATE=Path(state))
     globals()["VERSIONS_FILE"] = Path(state) / "pkg-versions.json"
-    globals().update(zip(("_pkg_versions", "_pkg_checked", "_pkg_remembered"),
-                         load_versions()))
+    globals().update(zip(("_pkg_versions", "_pkg_checked", "_pkg_remembered",
+                          "_pkg_local"), load_versions()))
 
 
 # The catalog lives beside the code rather than in it: config/packages.json,
@@ -113,6 +114,14 @@ def load_packages():
 
 PACKAGES = load_packages()
 
+# What the catalog says, as one short string. It is the other half of every
+# cache key here: a remembered answer describes a recipe, and editing that
+# recipe — a probe path, a version command, a new package — makes the answer
+# about something that no longer exists. Digested rather than compared whole
+# so the key stays a line rather than the file.
+CATALOG_DIGEST = hashlib.sha256(
+    json.dumps(PACKAGES, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
 # What the last check found, kept on the state volume. Held only in memory
 # until now, which meant a dashboard restart — or a container update — wiped
 # every version the tab had been told, and the rows for things that are not
@@ -126,9 +135,9 @@ def load_versions():
     try:
         v = json.loads(VERSIONS_FILE.read_text())
     except (OSError, ValueError):
-        return {}, 0, {}
+        return {}, 0, {}, {"key": None, "versions": {}}
     if not isinstance(v, dict) or not isinstance(v.get("items"), dict):
-        return {}, 0, {}
+        return {}, 0, {}, {"key": None, "versions": {}}
     known = {p["name"] for p in PACKAGES}
     out = {}
     for name, row in v["items"].items():
@@ -145,8 +154,22 @@ def load_versions():
     for name, kb in (v.get("sizes") or {}).items():
         if name in known and isinstance(kb, int) and kb >= 0:
             sizes[name] = kb
+    # The local read, which is what made the tab slow after a restart. Kept
+    # only when its key still describes this box: a different set of installed
+    # paths, or an edited catalog, and it is an answer about something else.
+    loc = v.get("local")
+    if not (isinstance(loc, dict) and isinstance(loc.get("key"), str)
+            and isinstance(loc.get("versions"), dict)
+            and all(isinstance(x, str) for x in loc["versions"].values())):
+        loc = {"key": None, "versions": {}}
     at = v.get("at")
-    return out, at if isinstance(at, int) and at > 0 else 0, sizes
+    # A check answers a RECIPE. Edit config/packages.json — a new package, a
+    # moved probe, a different version command — and the stored answers are
+    # about something that is no longer there, so the clock is reset and the
+    # loop asks again rather than waiting out the week on stale ones.
+    if v.get("catalog") != CATALOG_DIGEST:
+        at = 0
+    return out, at if isinstance(at, int) and at > 0 else 0, sizes, loc
 
 
 # One install at a time, in a worker thread, because these are minutes long
@@ -241,11 +264,26 @@ def _pkg_path(probe):
 # them costs a couple of seconds across every toolchain (dotnet and swift are
 # slow to say their own name), and they cannot change while nothing is being
 # installed. Re-read when that set does.
+#
+# ON DISK as well as in memory, since it is what made the Packages tab slow to
+# open after every container restart: the answer had not changed — the same
+# toolchains on the same share — and the tab paid four seconds to hear it
+# again. The key is what makes that safe rather than stale. It is the set of
+# (package, path), so anything installed or removed changes it, PLUS the
+# catalog's own digest, so editing config/packages.json changes it too — a
+# recipe whose probe or version command moved would otherwise be answered from
+# a cache of what the old one said.
 _pkg_local = {"key": None, "versions": {}}
 
 
+def _local_key():
+    return "\n".join([CATALOG_DIGEST]
+                      + sorted(f"{p['name']}={_pkg_path(p['probe'])}"
+                               for p in PACKAGES))
+
+
 def local_versions():
-    key = tuple(sorted((p["name"], _pkg_path(p["probe"])) for p in PACKAGES))
+    key = _local_key()
     if _pkg_local["key"] == key:
         return _pkg_local["versions"]
     out = {}
@@ -255,6 +293,7 @@ def local_versions():
         if len(f) == 4 and f[1] not in ("", "-"):
             out[f[0]] = f[1]
     _pkg_local.update(key=key, versions=out)
+    save_versions()
     return out
 
 
@@ -278,7 +317,10 @@ _pkg_sizing = [False]
 
 def save_versions():
     write_json(VERSIONS_FILE, {"at": _pkg_checked, "items": _pkg_versions,
-                               "sizes": _pkg_remembered})
+                               "sizes": _pkg_remembered,
+                               "local": _pkg_local,
+                               # What the answers above are answers ABOUT.
+                               "catalog": CATALOG_DIGEST})
 
 
 def _measure_sizes():
@@ -1173,7 +1215,11 @@ def start_job(action, names, auto=False):
 # is not doing this alongside everything else it does at start. It steps aside
 # for anything the operator started — a check that queued itself behind an
 # install would hold the tab hostage — and tries again later.
-PKG_CHECK_EVERY = 86400
+# Weekly. It was daily, and a check is one network round trip per package to
+# somebody else's servers — for answers that move on a release cadence, not a
+# daily one. The manual button is what a person presses when they actually
+# want to know now.
+PKG_CHECK_EVERY = 7 * 86400
 # Late enough that the startup hooks have finished. 50-android.sh can be
 # running sdkmanager when the dashboard comes up, and two of those on one SDK
 # root is a fight over the same lock.
@@ -1183,8 +1229,17 @@ AUTOCHECK = os.environ.get("PKG_AUTOCHECK", "1") != "0"
 
 def versions_loop():
     time.sleep(PKG_CHECK_DELAY)
-    due = 0                       # the first pass always checks: a container
-    while True:                   # that has just come up gets fresh answers
+    # From when the last check actually happened, not from zero. A container
+    # restart used to mean a full round of upstream requests three minutes
+    # later, so an afternoon of image updates was an afternoon of checking —
+    # for answers that had not moved. The timestamp is on the state volume and
+    # outlives the container, which is the whole reason it is written there.
+    #
+    # A catalog edit still forces one, and that is decided when the file is
+    # read: load_versions zeroes the timestamp when the digest it was saved
+    # against is not the one running now.
+    due = _pkg_checked + PKG_CHECK_EVERY if _pkg_checked else 0
+    while True:
         if PACKAGES and time.time() >= due and not _pkg_job["running"]:
             if start_job("check", [p["name"] for p in PACKAGES], auto=True):
                 due = time.time() + PKG_CHECK_EVERY

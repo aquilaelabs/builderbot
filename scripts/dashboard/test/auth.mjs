@@ -512,6 +512,14 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     // are actually theirs; the door does not need to.
     ok((await chat(owner, { action: 'read', project: 'gamma' })).status === 200,
        'an administrator can read a project channel it has not taken on');
+    // ...and a user is not even shown that one exists: the channel list is
+    // drawn from the projects in their own payload.
+    const theirProjects = ((await (await bare('/api/status', { headers: other })).json())
+      .projects || []).map(p => p.name);
+    ok(theirProjects.length === 1 && theirProjects[0] === 'beta',
+       `a user's channel list is only the projects they were given (${theirProjects})`);
+    ok((await chat(other, { action: 'read', project: 'gamma' })).status === 403,
+       '...and asking for another one directly is refused, not merely undrawn');
 
     // The status poll carries what is waiting, which is what puts the dot on
     // the button — a chat you have to open to discover is one nobody opens.
@@ -527,6 +535,23 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     ok(!(after.chat.unread || {})[`dm:${uidOf('test')}`],
        '...and reading a conversation is what marks it seen');
 
+    // A session start is announced ONCE. ttyd's client asks for /term/token
+    // and then /term/ws with the same argument, and both arrive before bb-tty
+    // has made the session — which put the same line in the channel twice on
+    // a real phone. Only the upgrade counts, and a window covers the race.
+    // gamma, which nothing else here opens: the suppression window is per
+    // (project, account), so a project another block has already touched
+    // would answer for that rather than for this.
+    const starts = async () => ((await (await chat(owner,
+      { action: 'read', project: 'gamma' })).json()).messages || [])
+      .filter(m => /started a Claude session/.test(m.text)).length;
+    const was = await starts();
+    for (const path of ['/term/token', '/term/ws', '/term/ws'])
+      await bare(path + '?arg=' + encodeURIComponent('claude:gamma'), { headers: owner });
+    const now = await starts();
+    ok(now === was + 1,
+       `starting a session is announced once, not once per request (${was} → ${now})`);
+
     // The prompt relay, driven the way Claude Code drives it.
     const relay = `${REPO}/scripts/dashboard/bb-prompt-relay`;
     execFileSync('python3', [relay, 'beta', uidOf('sharer')], {
@@ -536,6 +561,25 @@ print(u.remove("second"))`], { encoding: 'utf8' });
     ok((feed.messages || []).some(m => /sharer asked: rewrite the parser/.test(m.text)
                                   && m.kind === 'asked'),
        'a prompt on a shared project reaches the others, marked as a prompt');
+
+    // ...but only what a PERSON typed. UserPromptSubmit fires for every turn a
+    // session receives, and a background command finishing arrives as one —
+    // which filled a channel with task ids and output paths on a real phone.
+    const relayed = t => { execFileSync('python3', [relay, 'beta', uidOf('sharer')], {
+      input: JSON.stringify({ prompt: t }), encoding: 'utf8',
+      env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } }); };
+    const count = async () => ((await (await chat(owner,
+      { action: 'read', project: 'beta' })).json()).messages || []).length;
+    const n0 = await count();
+    relayed('<task-notification> <task-id>b1</task-id> </task-notification>');
+    relayed('<system-reminder>a file changed</system-reminder>');
+    ok(await count() === n0,
+       'a turn that is all harness machinery is not relayed at all');
+    relayed('fix the login <system-reminder>noise</system-reminder>');
+    const last = ((await (await chat(owner, { action: 'read', project: 'beta' })).json())
+      .messages || []).slice(-1)[0];
+    ok(/asked: fix the login$/.test(last.text),
+       `...and a real message keeps only the half somebody typed (${last.text})`);
   }
 
   // A rename must not lose the strip — the whole reason the key is minted.
