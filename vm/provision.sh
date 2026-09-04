@@ -309,6 +309,13 @@ authorize() {
 say "user ${USER_NAME}"
 id -u "$USER_NAME" >/dev/null 2>&1 || useradd -m -s /bin/bash "$USER_NAME"
 usermod -aG docker "$USER_NAME"
+# ...and kvm, where the host exposes it. Without this the Android emulator on
+# this node runs with no hardware acceleration and is unusably slow — measured
+# on bb-sandbox, where /dev/kvm is present and root:kvm 0660, and a job as the
+# enrolled account got EACCES opening it. `bb emu start` warns and carries on,
+# so the symptom is a boot that never finishes rather than an error naming the
+# group. Absent on a host without KVM, which is why it is conditional.
+getent group kvm >/dev/null 2>&1 && usermod -aG kvm "$USER_NAME"
 if [ -n "$SSH_KEY" ]; then
     # Checked before it is installed, because both ways this goes wrong are
     # expensive and neither says anything at the time. A key that does not
