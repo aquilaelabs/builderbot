@@ -2889,8 +2889,16 @@ The Tools card's **Users** tab adds people. There is exactly one **owner**,
 undeletable and renameable; an **admin** can do everything except act on the
 owner; a **user** gets the projects you give them and the work inside them,
 but not deleting one, renaming one, or changing which node it builds on — a
-node is shared, and that setting reaches every project on it. A project an
-account was not given does not appear for them at all.
+node is shared, and that setting reaches every project on it.
+
+**The project list means the same thing for every role; what differs is the
+remedy.** A project not on your list is read-only: no Claude session, no
+notebook edits, no rebuild. An admin is shown *every* project — hiding one
+from somebody who administers the box only sends them looking for it — with
+the ones they have not taken on marked read-only, and they can add any of them
+to their own list themselves. A user is shown only what you give them, and
+cannot grant themselves anything. So for an admin the list is a seatbelt
+against working on the wrong project; for a user it is the boundary.
 
 Each account works as itself:
 

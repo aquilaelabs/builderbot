@@ -369,6 +369,59 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
        '...and the same for what that node has installed');
   }
 
+  // ---- an admin sees everything and works on what it took on (#27) ---------
+  // Two different questions. Hiding a project from somebody who administers
+  // the box only sends them looking for it, so an admin is shown every one —
+  // and the list they keep is a seatbelt against editing the wrong project,
+  // not a wall, because an admin has a shell. A `user` is still only shown
+  // what it was given, because a project it cannot work on is one it has no
+  // reason to know exists.
+  {
+    bb(['add', 'second', '--role', 'admin'], 'adminpass11\nadminpass11\n');
+    const adm = asUser('second', 'adminpass11');
+    const post = (h, path, body) => bare(path, { method: 'POST', headers: h,
+      body: JSON.stringify(body) });
+    const projects = async h => ((await (await bare('/api/status', { headers: h })).json()).projects || []);
+
+    const theirs = await projects(adm);
+    const all = await projects(owner);
+    ok(theirs.length === all.length && theirs.length > 1,
+       `a fresh admin is shown every project (${theirs.length} of ${all.length})`);
+    ok(theirs.every(p => p.mine === false),
+       '...and none of them marked as theirs to change, having taken none on');
+    ok((await projects(other)).every(p => p.name === 'beta'),
+       '...while a user is still shown only what it was given');
+
+    // Read-only means it: the writes refuse, by name, with the remedy.
+    const r = await post(adm, '/api/todo', { project: 'alpha', action: 'add', text: 'x' });
+    ok(r.status === 403 && /taken this project on/.test((await r.json()).error || ''),
+       'an admin cannot edit the notebook of a project it has not taken on');
+    ok((await post(adm, '/api/bugs', { project: 'alpha', action: 'add', title: 'x' })).status === 403,
+       '...nor file a bug on it');
+    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    ok((await term(adm, 'claude:alpha')).status === 403,
+       '...nor start a Claude session in it, which is the most write-shaped thing here');
+    ok((await bare('/api/todo?project=alpha', { headers: adm })).status === 200,
+       '...but reading it is fine, which is what read-only means');
+
+    // ...and the remedy is theirs to apply, which is the whole difference
+    // between this and a user's list.
+    ok((await post(adm, '/api/users', { action: 'projects', name: 'second',
+                                        projects: ['alpha'] })).status === 200,
+       'an admin can add a project to its own list — a seatbelt, not a wall');
+    ok((await post(adm, '/api/todo', { project: 'alpha', action: 'add', text: 'x' })).status === 200,
+       '...and then it works on it');
+    ok((await post(other, '/api/users', { action: 'projects', name: 'sharer',
+                                          projects: ['alpha'] })).status === 403,
+       'a user cannot grant itself anything, which is why theirs is a boundary');
+    execFileSync('python3', ['-c', `
+import importlib.util, json
+spec = importlib.util.spec_from_file_location("users", "${REPO}/scripts/dashboard/users.py")
+u = importlib.util.module_from_spec(spec); spec.loader.exec_module(u)
+u.configure(state="${DIR}/state", write_json=lambda p, d: open(p, "w").write(json.dumps(d)))
+print(u.remove("second"))`], { encoding: 'utf8' });
+  }
+
   // A rename must not lose the strip — the whole reason the key is minted.
   execFileSync('python3', ['-c', `
 import importlib.util, json

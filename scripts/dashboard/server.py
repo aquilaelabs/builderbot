@@ -1456,9 +1456,19 @@ def project_list(who):
                         f"file and data directory. Rename one before using it"})
     # The last thing, so everything above it stays one description of the
     # share and this stays one decision about who sees it.
+    #
+    # Two decisions now, and they are different questions. A `user` is shown
+    # only what it was given, because a project it cannot work on is one it
+    # has no reason to know exists. An ADMINISTRATOR is shown everything and
+    # told which of them are theirs to change: hiding a project from somebody
+    # who administers the box would only send them looking for it, and the
+    # list they keep is a seatbelt against editing the wrong one rather than a
+    # wall (users.may_work).
     if not users.sees_all(who):
         allow = set((who or {}).get("projects") or [])
         out = [p for p in out if p["name"] in allow]
+    for p in out:
+        p["mine"] = users.may_work(who, p["name"])
     return out
 
 
@@ -2809,6 +2819,21 @@ class Handler(BaseHTTPRequestHandler):
         u = self._who()
         return f"user:{u['name']}" if u else "anonymous"
 
+    def _readonly(self, name):
+        """True — with the 403 already written — when this account may see the
+        project but has not taken it on.
+
+        The counterpart to _refused for the handlers whose only check was "is
+        this a project you can see". That was the whole authorization while
+        seeing and working were the same question; they are not any more, so
+        every write that names a project asks this too.
+        """
+        why = users.may(self._who(), "write", name)
+        if not why:
+            return False
+        self._json({"error": why}, 403)
+        return True
+
     def _refused(self, action, project=None):
         """True — with the 403 already written — when this account may not.
 
@@ -2945,22 +2970,24 @@ class Handler(BaseHTTPRequestHandler):
         """A sentence when this account may not have the terminal it is asking
         for, and "" when it may.
 
-        An account with no `terminal` right gets exactly one thing here: the
-        Claude session on a project it was given. Not a shell, not somebody
-        else's Claude, and not a project it cannot see — a read-only terminal
-        pointed at another session is a way to WATCH one, which is the hole
-        this closes rather than opens.
+        Two rules, and they apply to different people.
+
+        A Claude session is a write — the most write-shaped thing on the page
+        — so it needs a project the account has actually taken on, whoever
+        they are. An administrator is shown every project and works on the
+        ones on their own list (users.may_work), so this is where that bites
+        for them.
+
+        And an account with no `terminal` right gets nothing else at all: not
+        a shell, not somebody else's Claude, and not a project it cannot see.
+        A read-only terminal pointed at another session is a way to WATCH one,
+        which is the hole this closes rather than opens.
         """
         me = self._who()
-        if not users.may(me, "terminal"):
-            return ""                          # a shell is theirs to have
         arg = _term_arg(rest)
-        if not arg.startswith("claude:"):
-            return users.may(me, "terminal")
-        project = arg[len("claude:"):].split(":")[0]
-        if not users.may_see(me, project):
-            return "not a project"             # the same answer a typo gets
-        return ""
+        if arg.startswith("claude:"):
+            return users.may(me, "claude", arg[len("claude:"):].split(":")[0])
+        return users.may(me, "terminal")
 
     def _claude_held(self, rest):
         """A sentence when this account may not open the Claude session it is
@@ -4094,6 +4121,12 @@ class Handler(BaseHTTPRequestHandler):
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
+        # Seeing a project and being able to change it are different
+        # questions now (users.may_work): an administrator is shown every
+        # project and works on the ones they took on. The reads are named,
+        # so an action added later is a write until somebody says otherwise.
+        if field(req, "action") not in ("history",) and self._readonly(name):
+            return None
         act = field(req, "action")
         # "send" is a write to the roadmap (it marks a step sent) and starts a
         # session's turn, so it goes with the rest.
@@ -4274,6 +4307,10 @@ class Handler(BaseHTTPRequestHandler):
         if act not in ("starter", "state", "rebuild", "abort") \
                 and self._refused("docker-write"):
             return None
+        if act not in ("starter", "state") and name in {p["name"] for p
+                                                        in project_list(self._who())} \
+                and self._readonly(name):
+            return None
         # Which instance of that project. Absent means the one every project
         # has always had, so a caller that predates instances still works and
         # a request that names a strange one is answered rather than obeyed:
@@ -4402,6 +4439,12 @@ class Handler(BaseHTTPRequestHandler):
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
+        # Seeing a project and being able to change it are different
+        # questions now (users.may_work): an administrator is shown every
+        # project and works on the ones they took on. The reads are named,
+        # so an action added later is a write until somebody says otherwise.
+        if self._readonly(name):
+            return None
         act = field(req, "action")
         if act == "push":
             dev = phone.phone()
@@ -4510,6 +4553,12 @@ class Handler(BaseHTTPRequestHandler):
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
+        # Seeing a project and being able to change it are different
+        # questions now (users.may_work): an administrator is shown every
+        # project and works on the ones they took on. The reads are named,
+        # so an action added later is a write until somebody says otherwise.
+        if field(req, "action") not in ("history",) and self._readonly(name):
+            return None
         act = field(req, "action")
         if (bad := locked_out(name)):
             return self._json(bad, 409)
@@ -4558,6 +4607,12 @@ class Handler(BaseHTTPRequestHandler):
         proj, file = field(req, "project"), field(req, "file")
         if (bad := locked_out(proj)):
             return self._json(bad, 409)
+        # Seeing a project and being able to change it are different
+        # questions now (users.may_work): an administrator is shown every
+        # project and works on the ones they took on. The reads are named,
+        # so an action added later is a write until somebody says otherwise.
+        if act != "history" and self._readonly(proj):
+            return None
         if act == "save":
             r = memory.save(proj, file, field(req, "text"))
         elif act == "index":

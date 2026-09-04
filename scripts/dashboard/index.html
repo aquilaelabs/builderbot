@@ -2913,6 +2913,15 @@ const myTmux = s => (state?.tmux_prefix || "") + s;
 // button greys and wears their name; the refusal itself is at the /term proxy,
 // because a rule only the page honors is a suggestion (roadmap #26).
 const heldBy = p => (state?.claude_held || {})[p] || "";
+// A project this account can see and has not taken on (roadmap #27). An
+// administrator is shown every project — hiding one from somebody who
+// administers the box only sends them looking for it — and works on the ones
+// on their own list. Read-only here means the controls that change something
+// are off and the server refuses them; it is a seatbelt against editing the
+// wrong project, not a wall, because an administrator has a shell.
+const notMine = p => p.mine === false;
+const NOT_MINE_WHY = "read-only — you have not taken this project on. Add it "
+  + "to your own list on the Users tab to work on it";
 // May this account have a shell at all (roadmap #27)? An account without one
 // gets its Claude session as a read-only console — the proxy relays it to a
 // ttyd started without --writable and refuses any argument that is not a
@@ -5308,6 +5317,13 @@ function projectRow(p, live, cls, inTab){
           // than a control: the row reads "StreamLift, locked" at a glance
           // without hunting for which of six icons is lit.
           ? ` <span class="lockmark" aria-label="locked" data-tip="locked — you run this one">${LOCK}</span>`
+          : ""}${notMine(p)
+          // The same shape as the padlock and for the same reason: a fact
+          // about the row, said where the name is, rather than something to
+          // work out from which controls are grey. A different word, because
+          // it is a different thing — the padlock is the operator keeping a
+          // project to themselves, this is a project you have not taken on.
+          ? ` <span class="lockmark" aria-label="read-only" data-tip="${esc(NOT_MINE_WHY)}">${LOCK}</span>`
           : ""}</div>
         ${p.git ? `<div class="sub">git: ${esc(p.git)}${
           p.push ? ` · <span class="ok">push</span>` : ""}</div>` : ""}
@@ -5327,10 +5343,11 @@ function projectRow(p, live, cls, inTab){
       <span class="acts">
       ${isBroken(p) ? "" : `<button class="eye${live.has(tmuxName("claude-"+p.name)) ? " on acc" : ""}"
          data-c="${esc(p.name)}" aria-label="Claude session"${
-         (p.locked || heldBy(p.name)
+         (p.locked || heldBy(p.name) || notMine(p)
           || (!signedIn() && !live.has(tmuxName("claude-"+p.name))))
            ? " disabled" : ""}
-         title="${p.locked
+         title="${notMine(p) ? NOT_MINE_WHY
+                 : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
                  : heldBy(p.name)
                    ? `${heldBy(p.name)} has a Claude session on this project — there is one conversation per project, so it is theirs until they end it`
@@ -5340,7 +5357,9 @@ function projectRow(p, live, cls, inTab){
                  : p.last_claude ? "Claude — no session running; resume or start one"
                  : "Claude — start a session here"}">${SPARK}</button>`}
       ${mayShell() ? `<button class="eye" data-s="${esc(p.name)}" aria-label="shell"
-        title="shell — open another terminal here">${TERM}</button>` : ""}
+        ${notMine(p) ? "disabled" : ""}
+        title="${notMine(p) ? NOT_MINE_WHY : "shell — open another terminal here"}"
+        >${TERM}</button>` : ""}
       ${p.git_ok && !p.linked && !isBroken(p)
         ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
              title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`

@@ -333,13 +333,43 @@ USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth",
 
 
 def sees_all(u):
-    """Every project, or only the named ones. Owner and admin see everything;
-    so does a record carrying "*", which is what the seeded owner gets."""
+    """Whether every project is LISTED for this account.
+
+    Owner and admin see everything, and this is deliberately not the same
+    question as whether they may touch it — see may_work. An administrator
+    hidden from a project could not administer it, and a list with holes in it
+    is how somebody goes looking for a project that is right there.
+
+    A record carrying "*" sees everything too, which is what the seeded owner
+    gets.
+    """
     if u is ALL:
         return True
     if not u:
         return False                        # not signed in sees nothing
     return u.get("role") in ("owner", "admin") or "*" in (u.get("projects") or [])
+
+
+def may_work(u, name):
+    """Whether this account may CHANGE anything about `name`.
+
+    The project list means the same thing for every role, which is the whole
+    point of it: a project you did not take on is one you cannot edit, start a
+    Claude session in, or rebuild — for an administrator exactly as for a
+    user. What differs is the remedy. An administrator can add any project to
+    their own list and carry on; a user has to be given one.
+
+    So this is not a security boundary for an administrator and is not sold as
+    one: it is the seatbelt that stops somebody with rights over forty
+    projects working on the wrong one. For a `user` it is a boundary, because
+    they cannot grant themselves anything.
+    """
+    if u is ALL:
+        return True
+    if not u:
+        return False
+    have = u.get("projects") or []
+    return "*" in have or name in have
 
 
 def visible(u, names):
@@ -377,10 +407,17 @@ def may(u, action, project=None):
         return ""
     if not u:
         return "not signed in"
-    if is_admin(u):
-        return ""
+    # Ahead of the admin pass, because it applies to them too: a project you
+    # have not taken on is read-only whoever you are. The remedy differs and
+    # the sentence says so.
     if project is not None and not may_see(u, project):
         return "not a project"              # the same answer a typo gets
+    if project is not None and not may_work(u, project):
+        return ("you have not taken this project on — add it to your own list "
+                "on the Users tab" if is_admin(u) else
+                "you were not given this project")
+    if is_admin(u):
+        return ""
     if action in USER_DENIES:
         return {"rename": "renaming a project is an administrator's",
                 "trash": "deleting a project is an administrator's",

@@ -161,6 +161,14 @@ function renderUsersInto(i){
           inside them — not deleting, renaming, or changing which node one
           builds on, because a node is shared and that reaches every project
           on it.</div>
+        <div class="sub">The project list means the same thing for both, and
+          the difference is the remedy. An admin is shown <b>every</b> project
+          — hiding one from somebody who administers the box only sends them
+          looking for it — and works on the ones on their own list, which they
+          can add to themselves. A user is shown only what you give them and
+          cannot grant themselves anything. So for an admin the list is a
+          seatbelt against editing the wrong project; for a user it is the
+          boundary.</div>
         <div class="acts">
           <input id="uNewName" placeholder="name" autocomplete="off" aria-label="new account name">
           <input id="uNewPw" type="password" placeholder="password"
