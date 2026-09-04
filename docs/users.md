@@ -20,48 +20,37 @@ whoever opened the page. Three things follow.
 
 ## The model
 
-Four roles and one special account. Not a permission matrix — a matrix is a
+Three roles and one special account. Not a permission matrix — a matrix is a
 thing nobody maintains, and it answers questions nobody asked.
 
 | Role | What it is |
 |---|---|
 | **owner** | The master admin. Exactly one, always. Its username can be changed; it cannot be deleted, demoted, locked or stripped of a project. Every other rule is a guard rail around that sentence. |
 | **admin** | Everything the owner can do, *except* anything aimed at the owner — no deleting it, no demoting it, no changing its password. |
-| **superuser** | Named projects, and the machinery behind them: which node a project builds on, and that node's own configuration. |
 | **user** | Named projects, and the work inside them. Not where that work runs. |
 
-Both project roles get, on a project they have: sessions, the terminal, the
-notebook, artifacts, dev instances, builds and tests, the project's own build
-and test commands. Neither can delete, rename or trash a project, and neither
-sees anything outside the projects they were given.
+A user, on a project they have: sessions, the terminal, the notebook,
+artifacts, dev instances, builds and tests, and the project's own build and
+test commands. Not: deleting, renaming or trashing it, and nothing outside the
+projects they were given.
 
-The line between them is **reach**. Everything a user does stops at the
-project; the two things a superuser adds do not.
+**Which node a project builds on, and that node's configuration, are an
+admin's.** There was briefly a fourth role that could do those two things; it
+went, and the reason is the thing worth keeping: *a node is shared*. Changing
+the stores or the network of the node project A builds on changes it for every
+other project on that node — including ones the person doing it cannot see.
+That is not a project-scoped act however it is reached, so it does not belong
+to a project-scoped role. Enrollment, revocation, retiring, runner installs
+and agent updates were never in question and stay with an admin too.
 
-| | user | superuser |
-|---|---|---|
-| Change which node the project builds on | no | yes |
-| Edit that node's stores, mounts, network | no | yes |
-| Enroll, revoke, retire a node; install a runner; update an agent | no | no — admin |
-| Delete, rename or trash a project | no | no |
-| Tools installs, Settings, Users, the phone | no | no |
-
-**Say this out loud when handing somebody superuser: a node is shared.**
-Changing the stores or the network of the node project A builds on changes it
-for every other project on that node, including ones this person cannot see.
-It is the one place a project role reaches past its own projects, and it is
-why it is a role of its own rather than something a user simply gets. The
-Nodes tab for a superuser shows the nodes their projects use and lets them
-configure those; enrollment and revocation stay with an admin.
-
-In the project's settings dialog this is a field, not a page: a user sees the
+In the project's settings dialog this is a field, not a page: a user opens the
 dialog and edits the build command, and the node select is not theirs to
 change.
 
-The deny lists are short and stated as deny lists on purpose. An allow list
+The deny list is short and stated as a deny list on purpose. An allow list
 grows a hole every time a feature lands and nobody remembers to add it; a deny
-list fails closed the other way — a new surface is unavailable until somebody
-decides it should not be.
+list fails closed the other way — a new surface is unavailable to users until
+somebody decides it should not be.
 
 ## Storage
 
@@ -123,10 +112,9 @@ the requesting principal and three things happen at once.
 - Anything added later that lists projects is covered on the day it is
   written, because it will call the same function.
 
-What is left for `may()` is the short deny list on projects somebody *does*
-have: delete, rename and trash for both project roles, and re-noding plus node
-configuration for a user but not a superuser. A handful of endpoints, named
-explicitly.
+What is left for `may()` is the short deny list on projects a user *does*
+have: delete, rename, trash, and changing the node it builds on. A handful of
+endpoints, named explicitly.
 
 The rule to hold to: filtering happens **on the server**. Hiding a row in the
 page is a courtesy to the person, not a control.
