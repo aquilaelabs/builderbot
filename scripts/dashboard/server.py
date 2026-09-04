@@ -252,6 +252,15 @@ LOGIN_HTML = """<!doctype html>
 # for sessions developing the container, not for the operator's dashboard.
 # The runner controls stay because the Runner card sends them, but they are
 # not repeated in the bb commands card (CARD_HIDDEN below).
+# The bb verbs a session on a node may run HERE through /api/v1/bb (roadmap
+# #24): the ones whose state is this container's. The same list bb keeps in
+# BB_RELAY_VERBS, and a test compares the two — a verb added to one side only
+# is either refused on arrival or never sent.
+RELAY_VERBS = frozenset((
+    "roadmap", "todo", "bug", "bugs", "history", "version", "changelog", "work",
+    "findings", "findings-history", "catchup", "claude-md", "claudemd",
+    "settings", "nodes", "jobs", "ci-labels"))
+
 MACROS = {
     "status":           ["bb", "status"],
     "update":           ["bb", "update"],
@@ -2145,6 +2154,9 @@ try:
     # rather than by one importing the other, which is the same seam every
     # other module pair uses.
     nodes.layout_of = packages.layout_for_node
+    # ...and the digest of the bb bundle, so a node can tell from hello alone
+    # whether the bb its sessions run is the one this controller ships.
+    nodes.bundle_digest = lambda: workspace.bundle()["digest"]
     NODES_OK = ""
 except Exception as e:                                    # noqa: BLE001
     NODES_OK = str(e)
@@ -3548,6 +3560,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._nodes(req)
         if path.startswith("/api/v1/jobs"):
             return self._jobs(req)
+        if path == "/api/v1/bb":
+            return self._bb_relay(req)
         if path.startswith("/api/lock"):
             return self._lock(req)
         # NOT /api/pin, which is the command pin and has been since long before
@@ -3766,6 +3780,82 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown action"}, 400)
         r = jobs.cancel(self._principal(), field(req, "id"))
         return self._json(r, 400 if r.get("error") else 200)
+
+    def _bb_relay(self, req):
+        """A bb verb from a session on a NODE, run here (roadmap #24).
+
+        The notebook, the settings, the registry and the version policy all
+        live in this container's /config, and a node keeps none of it. So a
+        session over there does not carry copies of the modules that read
+        them: it sends the words — `roadmap add "..."`, `bug show 3`,
+        `version --file` — with its own token, and this runs the same bb it
+        would have run here, in the same tree (the projects share is mounted
+        at /workspace on both sides, which is what makes `cwd` meaningful),
+        and hands back what it printed. One implementation of every verb.
+
+        WHAT THE TOKEN DECIDES. A session token stands for one project with
+        user rights; the relay refuses a request naming another, and every
+        verb runs with that project pinned into the environment, so `bb
+        roadmap` cannot be pointed elsewhere by a working directory. A
+        person's credential (an operator at a node's console) is held to the
+        same rule the page holds them to: a project on their list.
+
+        WHAT IT RUNS. Only the verbs bb itself relays (BB_RELAY_VERBS in
+        scripts/bb) — the notebook, the settings, the registry, the version
+        and changelog, the findings. Not `sdk`, `emu`, `run`, `build`: those
+        answer for the machine the session is on, and relaying them would
+        make a node's session act on this container, which is the very thing
+        roadmap #24 exists to end. Not `users`, `dashboard`, `lint`: nothing
+        that administers this box. The audit row at the top of POST records
+        the argv with the principal, like every other mutation.
+        """
+        me = self._who()
+        if not me:
+            return self._json({"error": "not signed in"}, 401)
+        argv = [str(a) for a in (req.get("argv") or []) if isinstance(a, (str, int))][:64]
+        if not argv or argv[0] not in RELAY_VERBS:
+            return self._json({"error": f"bb {argv[0] if argv else ''} is not relayed — "
+                               "it answers for the machine the session is on"}, 400)
+        project = field(req, "project") or me.get("session") or ""
+        if me.get("session") and project != me["session"]:
+            return self._json({"error": "this session's token is for another project"}, 403)
+        if not project or (WORKSPACE / project).name != project \
+                or not (WORKSPACE / project).is_dir():
+            return self._json({"error": "not a project"}, 400)
+        if self._refused("bb", project):
+            return None
+        # The tree the session is in: the project directory, or one of its
+        # worktrees. Anything else — a path outside the share, a sibling
+        # project — runs in the project directory instead of being trusted.
+        cwd = WORKSPACE / project
+        want = str(req.get("cwd") or "")
+        if want.startswith("/"):
+            real = Path(want).resolve()
+            mine = (WORKSPACE / project).resolve()
+            trees = (WORKSPACE / ".worktrees" / project).resolve()
+            if real.is_dir() and (real == mine or mine in real.parents
+                                  or trees in real.parents):
+                cwd = real
+        env = {k: v for k, v in os.environ.items() if k != "DASHBOARD_AUTH"}
+        env.update({"BB_PROJECT": project, "BB_ROADMAP_PROJECT": project,
+                    "BB_BUG_PROJECT": project, "BB_VERSION_PROJECT": project,
+                    "DASHBOARD_STATE": str(STATE), "WORKSPACE": str(WORKSPACE),
+                    "BB_TOKEN": users.mint_session(project), "BB_RELAYED": "1",
+                    "BUILDERBOT_ROLE": "controller"})
+        if field(req, "from") == "session":
+            env["CLAUDECODE"] = "1"
+        else:
+            env.pop("CLAUDECODE", None)
+        try:
+            r = subprocess.run(["bash", str(HERE.parent / "bb"), *argv], cwd=str(cwd),
+                               env=env, capture_output=True, text=True, timeout=180)
+        except subprocess.TimeoutExpired:
+            return self._json({"error": f"bb {argv[0]} took longer than three minutes",
+                               "code": 124, "out": "", "err": ""}, 504)
+        except OSError as e:
+            return self._json({"error": str(e), "code": 1, "out": "", "err": ""}, 500)
+        return self._json({"code": r.returncode, "out": r.stdout[-200000:],
+                           "err": r.stderr[-20000:]})
 
     def _run_job(self, req):
         """`bb run`, `bb build` and `bb test` land here (docs/nodes.md §6):

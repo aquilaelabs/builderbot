@@ -891,7 +891,9 @@ controller, checks it against the digest header, enrolls as the docker
 account and enables the unit. Package-manager abstraction and
 docker-on-request are still the shape written above, not the shape shipped.
 Notably absent: a `--workspace` role for agent nodes — job-scoped snapshots
-replaced it (§6), and only legacy `ssh` nodes still mount source.
+replaced it (§6) for JOBS. A node that runs sessions (§19, phase 10a) mounts
+the projects share at `/workspace` all the same, through the phase-5 config
+plane like any other mount; that is the session's tree, not a job's.
 
 **Any size of VM, by construction.** The script assumes no disk layout and no
 sizes: every role defaults to the node's own filesystem, a role can be pointed
@@ -1571,3 +1573,52 @@ What survives from §18 either way: every toolchain on nodes (phases 6, 7, 9),
 the job channel for anything a session should not do by hand, and the honest
 limit — a permission rule is a guardrail, and what makes a boundary real is
 that the machine on the other side of it has nothing to run.
+
+### How the forks went (roadmap #24)
+
+Decided 5 September, and phase 10a — the node's half — is built. Each fork
+above, in order:
+
+1. **The projects share is mounted on the node**, at `/workspace`, through the
+   phase-5 config plane (one more row in the node's mounts). §6's rule is
+   narrowed to *jobs*: a job's workspace is still a snapshot and never a
+   mount; a session's tree is the mount, because it edits one tree for
+   hours. Path parity does the rest — `/workspace/<project>` means the same
+   directory on both sides, which is what lets bb's relayed verbs run on the
+   controller in the tree the session is in.
+2. **A project with no node keeps its session here.** Both paths exist, and
+   the proxy decides per project: bound to a node whose census reports the
+   session half up, the session is relayed there; otherwise it is this
+   container's, as it always was.
+3. **The login is per node**, in the session account's home. Sign-in runs
+   inside the session's own terminal (`bb login` there), not the Doctor
+   card's flow, which would sign in the wrong machine. Transcripts and
+   memories are that home's too.
+4. **The terminal is the same ttyd, on the node.** The agent keeps two of
+   them up — writable, and the read-only twin — running bb-tty from the bb
+   bundle the controller ships (refetched when the bundle's digest moves in
+   hello), bound on the node's LAN address; the controller's `/term` proxy
+   dials that instead of the loopback (phase 10b), stamping the account, its
+   name and a session token into the URL exactly as it stamps the account
+   locally. The tmux server is the node's; a dropped browser detaches.
+5. **bb's notebook verbs are relayed**: `POST /api/v1/bb` with the session's
+   token carries the words (`roadmap add …`, `bug show 3`, `version --file`),
+   the controller runs its own bb in that project's tree and returns what it
+   printed. One implementation of every verb, kept where the state is;
+   `RELAY_VERBS` (server.py) and `BB_RELAY_VERBS` (bb) are the one list, and
+   a test holds them equal. `sdk`, `emu`, `run`, `build`, `test` are NOT
+   relayed — they answer for the machine the session is on, which is the
+   point. The token's scope is the project; a session's credential is the
+   same scoped token it has always had (bug #16), now with a hop.
+6. **A third account.** Sessions run as `builder` (provision.sh
+   `--session-user`), made with the controller's PUID:PGID so files it saves
+   on the share are owned as the controller's are; in `kvm` for the
+   emulator, in **no docker group**, no sudo. Jobs stay `bb`; the agent stays
+   root and drops to each. The node token lives in `/etc/builderbot`
+   (0700 root) and never enters a session's environment — the sessions get
+   the controller's URL and certificate pin, and nothing else of the agent's.
+
+Left to phase 10b: the proxy relay, the firewall (ttyd on the node is open
+on the LAN until then), and the Claude button choosing where a session goes.
+Left to 10c: the hooks posting to the API instead of writing `/config`, and
+the image shedding what no session here needs.

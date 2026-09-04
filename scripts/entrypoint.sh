@@ -480,23 +480,15 @@ persist_android_downloads() {
 #
 # SECONDS is bash's own counter, reset at the top of the boot, so both numbers
 # come free.
-# Which half of BuilderBot this container is (roadmap #21).
-#
-# `controller` is the management instance: the dashboard, the terminals, the
-# runner, Claude. `node` is a worker that enrolls with a controller and runs
-# its jobs — builds, tests, emulation. One image, two roles, so the same
-# Unraid template makes both and there is no second thing to keep in step.
+# Which half of BuilderBot this container is: bb_role in lib/common.sh
+# (roadmap #21). `controller` is the management instance; `node` is a worker
+# that enrolls with a controller and runs its jobs and, since roadmap #24,
+# its sessions. One image, two roles, so the same Unraid template makes both.
 #
 # A container node is deliberately NOT a Docker host: dockerd inside a
 # container wants --privileged, which is root on the server, and a VM already
 # does that job properly. Enroll it without the docker-host capability and
 # placement sends dev instances to the VM on its own.
-bb_role() {
-    case "$(printf '%s' "${BUILDERBOT_ROLE:-controller}" | tr '[:upper:]' '[:lower:]')" in
-        node|worker|agent) printf 'node' ;;
-        *)                 printf 'controller' ;;
-    esac
-}
 
 # Does this hook run in this role?
 #

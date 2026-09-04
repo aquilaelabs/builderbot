@@ -884,6 +884,21 @@ def _census(c):
         "dns": re.sub(r"[^A-Za-z0-9.-]", "", str(ts.get("dns") or ""))[:200],
         # https port -> the local port it forwards to, as the node reports it
         "funnel": {str(k)[:6]: _mb(v) for k, v in list(fun.items())[:8]}}
+    # The session half (roadmap #24): whether this node runs sessions, on
+    # which ports, as which account, and whether the projects share is
+    # mounted where they expect it. Absent — not empty — from an agent too
+    # old to report it, so the row can tell "no sessions here" from "did not
+    # say"; the proxy relays a project's session to a node only on the
+    # strength of this.
+    se = c.get("session")
+    if isinstance(se, dict):
+        out["session"] = {
+            "up": bool(se.get("up")), "port": _mb(se.get("port")) or 0,
+            "ro_port": _mb(se.get("ro_port")) or 0,
+            "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
+            "workspace": bool(se.get("workspace")),
+            "claude": str(se.get("claude") or "")[:40],
+            "bundle": str(se.get("bundle") or "")[:80]}
     net = c.get("network") if isinstance(c.get("network"), dict) else {}
     out["network"] = {
         "interface": str(net.get("interface") or "")[:32],
@@ -1325,6 +1340,7 @@ def node_apply(principal, node_id, what):
 # or a store that did not open) simply means the node keeps its built-in
 # answer.
 layout_of = lambda: []
+bundle_digest = lambda: ""
 
 
 def hello(nid, census, addr, version="", digest="", running=None):
@@ -1372,7 +1388,10 @@ def hello(nid, census, addr, version="", digest="", running=None):
             # Where every package lands, from the catalog — the node has no
             # catalog of its own, and this is what stops it keeping a second
             # copy of the answer that drifts from ours.
-            "layout": layout_of() or None}
+            "layout": layout_of() or None,
+            # The bb bundle's digest (roadmap #24): a node keeps an unpacked
+            # copy for the sessions it runs, and refreshes it when this moves.
+            "bundle": bundle_digest() or ""}
 
 
 def heartbeat(nid, sample, addr, running=0):

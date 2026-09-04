@@ -378,6 +378,10 @@ bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
 bb nodes           the node registry, read-only in a terminal — the Nodes
                    tab is where it is edited; `local` is this container
+bb settings        this project's settings as the dashboard has them — node,
+                   model, effort, build and test commands, lock. Read-only;
+                   on a node it is relayed from the controller, and it is
+                   what bb-tty and bb build read there.
 bb users           the dashboard's accounts. `passwd NAME` resets one from a
                    shell, which is the way back when the owner is locked out
 bb work            who else is working this project, and which files two of
@@ -1289,7 +1293,16 @@ sandbox. Every change writes an audit row.
 pick per node — no "this one builds, that one deploys". A project names one
 node in its settings dialog and its containers, builds, tests, CI and
 emulation all go there, so three projects on three VMs stay apart and three
-projects on one VM share it. What a project can actually do on its node is
+projects on one VM share it. **Its Claude sessions too** (roadmap #24,
+docs/nodes.md §19): a node provisioned with a session account keeps two
+ttyds up beside the agent, running bb-tty from the bb the controller ships,
+so a session on a project bound to it works *on* that machine — with its
+toolchains, on the projects share it mounts at `/workspace` (one more row in
+the node's mounts on this tab). The row's census says whether that half is
+up (`session`: ports, account, whether `/workspace` is mounted, which Claude
+the account has); `bb roadmap`, `bb bug`, `bb version` and the other verbs
+whose state is this container's are relayed back here over the API with the
+session's own token. What the proxy does with that is phase 10b. What a project can actually do on its node is
 what is **installed** there: the row lists the toolchains its census found,
 and the Tools tab's node picker is where more are added. (Underneath, the
 node still refuses a job asking for something it did not enrol with — the
@@ -2890,7 +2903,9 @@ worth as much as the ssh keys are — so it is worth typing once into a form
 instead.
 
 Afterwards, `bb users passwd <name>` changes a password and `bb users add`
-makes the others.
+makes the others. `bb users token <project>` mints the scoped session token a
+Claude session is given — for proving a node by hand, where bb reaches the
+controller with `BB_TOKEN` and nothing else.
 
 #### Accounts
 
@@ -3141,6 +3156,7 @@ scripts/
   as-builder                     privilege-dropping wrapper for docker exec
   lib/common.sh                  shared shell helpers
   lib/sdk.sh                     the package manager: `bb sdk`, sourced by bb
+  lib/bbapi.py                   the controller's API from bb: one client, the loopback or BB_CONTROLLER, pinned https
   lib/sdkmeta.py                 reads config/packages.json for bb: fields, argv, versions
   lib/docker-probe.py            which daemon is live, for `bb doctor` and the boot log
   lib/log-split.sh               splits a long-running process's output: all of it to its own file, warnings to the boot log

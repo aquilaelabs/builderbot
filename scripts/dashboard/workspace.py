@@ -253,7 +253,14 @@ def provenance(project, rel):
 # ---------------------------------------------------------------------------
 # the toolchain bundle
 
-BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/packages.json")
+# bb-tty and the two hooks it writes into a session's settings ride along
+# since roadmap #24: a node runs sessions from this same bundle. NOT the
+# rest of scripts/dashboard — the notebook modules, users.py, server.py —
+# because a node has no /config for them to read; the verbs that need them
+# are relayed back here (server._bb_relay).
+BUNDLE_PARTS = ("scripts/bb", "scripts/lib", "config/packages.json",
+                "scripts/dashboard/bb-tty", "scripts/dashboard/bb-work-note",
+                "scripts/dashboard/bb-prompt-relay")
 
 
 def bundle():
