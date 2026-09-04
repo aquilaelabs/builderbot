@@ -605,6 +605,25 @@ ok(list[0].id === 'local',
        `a package that needs another installs it first, and says so (${
          JSON.stringify(depjob?.spec?.names)} added=${JSON.stringify(dep.added)})`);
     if (dep.job) await napi('/api/v1/jobs', { action: 'cancel', id: dep.job });
+    // ...and a bare directory does not count as having it. The operator's
+    // node had an android/cmdline-tools holding only a symlink to a
+    // directory a failed install had removed; android-tools read as
+    // installed, so nothing pulled it in, and the android:* package that
+    // needed it died on "no sdkmanager".
+    await runnerCensus({});
+    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { ...CENSUS, toolchains: { java: '21' },
+        store_dirs: { top: ['jdk'], android: ['cmdline-tools'] } },
+        version: shipped.version, digest: shipped.digest }) });
+    const hollow = await napi('/api/packages', { action: 'install',
+                                                 names: ['android:ndk'], node: minted.id });
+    const hj = hollow.job ? await napi(`/api/v1/jobs?id=${hollow.job}`) : null;
+    ok(hj && (hj.spec.names || []).includes('android-tools'),
+       `an empty cmdline-tools directory does not count as android-tools (${
+         JSON.stringify(hj?.spec?.names)})`);
+    if (hollow.job) await napi('/api/v1/jobs', { action: 'cancel', id: hollow.job });
+    await runnerCensus({});     // put the fixture's store listing back
   }
 
   // What a FINISHED job on a node reports. It used to report nothing — the

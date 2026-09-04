@@ -875,13 +875,23 @@ def node_has(n):
     andr = set(((rep.get("store_dirs") or {}).get("android")) or [])
     if not (top or andr):
         return set()
+    tc = rep.get("toolchains") if isinstance(rep.get("toolchains"), dict) else {}
     out = set()
     for p in PACKAGES:
         probe = p["probe"]
         if probe.startswith("android:"):
             here = probe.split(":", 1)[1] in andr
         elif probe == "android-tools":
-            here = bool({"cmdline-tools", "platform-tools"} & andr)
+            # A directory called cmdline-tools is not sdkmanager. On the
+            # operator's node it held nothing but a symlink pointing at a
+            # directory a failed install had removed — so this said installed,
+            # the requirement was never pulled in, and the android:* package
+            # that needed it died on "no sdkmanager". The census answers from
+            # the binaries, so it corroborates; where a node has reported no
+            # toolchains at all there is nothing to corroborate with and the
+            # directory is all there is to go on.
+            here = bool({"cmdline-tools", "platform-tools"} & andr) \
+                and (bool(tc.get("android-sdk")) if tc else True)
         else:
             here = probe in top
         if here:
