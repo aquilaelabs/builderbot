@@ -136,11 +136,17 @@ function renderUsersInto(i){
         <div class="sub">The notebook — roadmap, bugs, analysis — stays shared,
           because it is about the project rather than the person. Memories do
           not, for the same reason in reverse.</div>
-        <div class="sub warn">This is scoping, not containment. Everybody runs
-          as the same user inside the container, so somebody with a terminal
-          can still reach another account's files if they go looking. It keeps
-          people out of each other's way; it is not a wall, and anyone you add
-          here can run code on this machine.</div>
+        <div class="sub">A <b>user</b> has no shell and no command line at
+          all. That is what makes the rest of the role mean something:
+          everything else here is enforced by this dashboard, and a terminal
+          is the way around all of it. Their Claude session opens as a
+          console — the real interface, read-only, with a box to type in and
+          a button to end it. They can see Docker and the package manager for
+          their own projects' nodes, and change neither.</div>
+        <div class="sub warn">An <b>admin</b> has a shell, and a shell is
+          everything: one user inside the container, so an administrator can
+          reach any account's files if they go looking. Give that role to
+          people you would give the server to.</div>
       </div>
     </div>
     <div class="row stack2 uadd">

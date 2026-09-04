@@ -227,6 +227,11 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
 
   const owner = asUser('test', 'test');
   const other = asUser('sharer', 'stripspass1');
+  // Given one project, because a `user` with none can reach nothing at all —
+  // which is correct, and would make everything below pass for the wrong
+  // reason.
+  await bare('/api/users', { method: 'POST', headers: owner,
+    body: JSON.stringify({ action: 'projects', name: 'sharer', projects: ['beta'] }) });
   await putTabs(owner, [{ id: 't-own', kind: 'term', arg: 'shell-1', label: 'owner shell' }]);
   await putTabs(other, [{ id: 't-oth', kind: 'term', arg: 'shell-2', label: 'their shell' }]);
 
@@ -293,6 +298,53 @@ print(u.remove("alt"))`], { encoding: 'utf8' });
     tmux(['kill-session', '-t', 'claude-beta']);
     ok((await term(owner, 'claude:beta')).status !== 409,
        'ending the session releases it, because the live session is the truth');
+  }
+
+  // ---- a user role has no shell at all (roadmap #27) -----------------------
+  // The rest of the role is enforced by this server, in Python. A terminal is
+  // the way around all of it — one uid, one tmux server, Bash covered by no
+  // deny list — so an account that may not have one gets its Claude session
+  // as a read-only console and nothing else through /term.
+  {
+    const st = await (await bare('/api/status', { headers: other })).json();
+    ok(st.can && st.can.terminal === false && st.can['docker-write'] === false
+       && st.can['packages-write'] === false && st.can['git-auth'] === false,
+       `the payload says what this account may do, by capability (${
+          JSON.stringify(st.can)})`);
+    const mine = await (await bare('/api/status', { headers: owner })).json();
+    ok(mine.can && mine.can.terminal === true,
+       '...and an administrator is told the opposite, so nothing is drawn dead');
+
+    const term = (h, arg) => bare('/term/ws?arg=' + encodeURIComponent(arg), { headers: h });
+    const shell = await term(other, 'sh:1:');
+    ok(shell.status === 403 && /shell is an administrator/.test((await shell.json()).error || ''),
+       'a shell is refused at the proxy, not merely hidden on the page');
+    ok((await term(other, 'shell:beta')).status === 403,
+       '...in every spelling the argument has');
+    // The one thing it may ask for, and only on a project it was given.
+    ok((await term(other, 'claude:zzz-not-a-project')).status === 403,
+       'a Claude session on a project it cannot see is refused the same way');
+    ok((await term(owner, 'sh:1:')).status !== 403,
+       'an administrator still has a shell');
+
+    // ...and the things a user may not change.
+    const post = (h, path, body) => bare(path, { method: 'POST', headers: h,
+      body: JSON.stringify(body) });
+    ok((await post(other, '/api/create', { name: 'sneaky', token: 'ghp_x' })).status === 403,
+       'a user cannot make a project, which is where a git token would be stored');
+    ok((await post(other, '/api/rename', { name: 'beta', to: 'beta2', auth: 'https' })).status === 403,
+       '...nor change how one authenticates, which travels through rename');
+    ok((await post(other, '/api/devapp', { project: 'beta', action: 'up' })).status === 403,
+       'a user cannot start or stop a container');
+    ok((await post(other, '/api/packages', { action: 'install', names: ['jdk'] })).status === 403,
+       '...nor install gigabytes onto a shared node');
+    // ...but the registry it is shown is its own projects' machines only,
+    // because the whole list is otherwise an inventory of the box.
+    const theirs = await (await bare('/api/v1/nodes', { headers: other })).json();
+    const all = await (await bare('/api/v1/nodes', { headers: owner })).json();
+    ok(all.nodes.length > theirs.nodes.length,
+       `a user sees only the nodes its own projects build on (${
+          theirs.nodes.length} of ${all.nodes.length})`);
   }
 
   // A rename must not lose the strip — the whole reason the key is minted.

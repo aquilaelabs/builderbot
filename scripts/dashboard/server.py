@@ -45,6 +45,12 @@ AUTH = os.environ.get("DASHBOARD_AUTH", "")
 # /term proxy, so there is no second port for the page to be told about —
 # which is what DASHBOARD_TTYD_PUBLIC_PORT used to exist for.
 TTYD_PORT = int(os.environ.get("DASHBOARD_TTYD_PORT", "7681"))
+# The read-only twin (roadmap #27). ttyd is read-only unless started with
+# --writable, so an account that may not have a shell reaches this one and
+# cannot type into the socket at all — its Claude input goes through the send
+# path, which is a table lookup and literal text like every other thing this
+# page can make happen.
+TTYD_RO_PORT = int(os.environ.get("DASHBOARD_TTYD_RO_PORT", str(TTYD_PORT + 1)))
 
 # ---- one login for everything ---------------------------------------------
 # The browser used to be asked twice — once by this server, once by ttyd on
@@ -1532,6 +1538,19 @@ def _claude_held_by(sessions, ps):
     return {k: v for k, v in out.items() if v}
 
 
+def _term_arg(rest):
+    """The `arg` a /term request carries, with any owner stamp a browser sent
+    taken off. "" when there is none."""
+    _, sep, query = rest.partition("?")
+    if not sep:
+        return ""
+    for kv in query.split("&"):
+        k, eq, v = kv.partition("=")
+        if k == "arg" and eq:
+            return _ARG_OWNER.sub("", urllib.parse.unquote_plus(v))
+    return ""
+
+
 def _session_visible(name, mine, seen, all_of_them):
     owner, base = tmux_owner(name), tmux_base(name)
     if owner:
@@ -2712,6 +2731,14 @@ def snapshot(who):
         # page has to agree with bb-tty about this exactly, or a tab addresses
         # a session that was never created under that name.
         "tmux_prefix": users.tmux_prefix(who),
+        # What this account may do, by capability rather than by role: the
+        # page should never branch on "is this a user", because the answer to
+        # "may I" is the thing that moves and the role is only how it is
+        # decided today. Every one of these is refused again on the server —
+        # this is what stops a dead control being drawn, not what stops the
+        # action (roadmap #27).
+        "can": {name: not users.may(who, name) for name in
+                ("terminal", "docker-write", "packages-write", "git-auth")},
         # Projects whose Claude session belongs to somebody else, by NAME —
         # "alice has a session on this" is the whole value of the record, and
         # a bare refusal would tell you nothing you could act on. Only for
@@ -2870,6 +2897,42 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", "0")
         self.end_headers()
 
+    def _nodes_for(self, rows):
+        """`rows`, minus the nodes this account has no project on.
+
+        An account that may change a node is shown the registry — that is what
+        the Nodes tab is. One that may not is shown only the machines its own
+        projects name, so the tab is a window on its own work rather than an
+        inventory of the box.
+        """
+        me = self._who()
+        if not users.may(me, "node"):
+            return rows
+        want = {prefs.get(p["name"])["node"] for p in project_list(me)}
+        want.discard("")
+        return [n for n in rows if n["id"] in want]
+
+    def _term_refused(self, rest):
+        """A sentence when this account may not have the terminal it is asking
+        for, and "" when it may.
+
+        An account with no `terminal` right gets exactly one thing here: the
+        Claude session on a project it was given. Not a shell, not somebody
+        else's Claude, and not a project it cannot see — a read-only terminal
+        pointed at another session is a way to WATCH one, which is the hole
+        this closes rather than opens.
+        """
+        me = self._who()
+        if not users.may(me, "terminal"):
+            return ""                          # a shell is theirs to have
+        arg = _term_arg(rest)
+        if not arg.startswith("claude:"):
+            return users.may(me, "terminal")
+        project = arg[len("claude:"):].split(":")[0]
+        if not users.may_see(me, project):
+            return "not a project"             # the same answer a typo gets
+        return ""
+
     def _claude_held(self, rest):
         """A sentence when this account may not open the Claude session it is
         asking for, and "" when it may. Claims it on the way through.
@@ -2879,14 +2942,7 @@ class Handler(BaseHTTPRequestHandler):
         suggestion, because the ttyd URL is reachable directly. The page also
         greys the button, which is the courtesy; this is the rule.
         """
-        arg = ""
-        head, sep, query = rest.partition("?")
-        if not sep:
-            return ""
-        for kv in query.split("&"):
-            k, eq, v = kv.partition("=")
-            if k == "arg" and eq:
-                arg = _ARG_OWNER.sub("", urllib.parse.unquote_plus(v))
+        arg = _term_arg(rest)
         if not arg.startswith("claude:"):
             return ""
         project = arg[len("claude:"):].split(":")[0]
@@ -2906,6 +2962,11 @@ class Handler(BaseHTTPRequestHandler):
                     "end it.")
         holders.claim(project, uid)
         return ""
+
+    def _ttyd_port(self):
+        """Which ttyd this request is relayed to: the writable one, or the
+        read-only twin for an account that may not have a shell."""
+        return TTYD_RO_PORT if users.may(self._who(), "terminal") else TTYD_PORT
 
     def _scoped_arg(self, rest):
         """Stamp the terminal's argument with the account that asked for it.
@@ -2955,6 +3016,9 @@ class Handler(BaseHTTPRequestHandler):
         plain request instead gets Connection: close upstream, which turns
         "relay until EOF" into the complete response.
         """
+        refused = self._term_refused(self.path[len("/term"):])
+        if refused:
+            return self._json({"error": refused}, 403)
         held = self._claude_held(self.path[len("/term"):])
         if held:
             # 409, not 403: nothing is wrong with the credential, the thing
@@ -2971,7 +3035,8 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
         try:
-            up = socket.create_connection(("127.0.0.1", TTYD_PORT), timeout=5)
+            up = socket.create_connection(("127.0.0.1", self._ttyd_port()),
+                                          timeout=5)
         except OSError:
             return self._json({"error": "the terminal server is not running"}, 502)
         # The connect timeout must not become a *relay* timeout: it stays on
@@ -3258,7 +3323,13 @@ class Handler(BaseHTTPRequestHandler):
                                             + NODES_OK}, 500)
             # The agent this controller ships rides beside the rows, once,
             # so a row can say when its node's agent is behind.
-            return self._json({"nodes": nodes.node_list(), "agent": nodes.agent_shipped()})
+            #
+            # Scoped for an account that may not change a node: it sees the
+            # ones its own projects build on and no others, because the list
+            # is otherwise a way to learn what machines exist and what they
+            # are called (roadmap #27). An administrator sees the registry.
+            return self._json({"nodes": self._nodes_for(nodes.node_list()),
+                               "agent": nodes.agent_shipped()})
         if self.path.startswith("/api/v1/jobs"):
             # One job with its log so far (?id=), or the recent ones —
             # narrowed by ?node=, ?project=, ?type=, ?active=1, at most ?n=.
@@ -3411,6 +3482,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._keys(req)
         if path.startswith("/api/send"):
             return self._send(req)
+        if path.startswith("/api/say"):
+            return self._say(req)
         if path.startswith("/api/layout"):
             return self._layout(req)
         if path.startswith("/api/cards"):
@@ -4135,6 +4208,13 @@ class Handler(BaseHTTPRequestHandler):
                 and name not in devapp.overview_names():
             return self._json({"error": f"not a project or container: {name}"}, 400)
         act = field(req, "action")
+        # Reading is everybody's; changing what is running is not (roadmap
+        # #27). Named, not derived from the verb: an action that should be
+        # restricted and is not on this list is a decision somebody has to
+        # make, which is the same rule MACROS follows. `starter` is a read of
+        # the project's own .env.example and `state` is the listing.
+        if act not in ("starter", "state") and self._refused("docker-write"):
+            return None
         # Which instance of that project. Absent means the one every project
         # has always had, so a caller that predates instances still works and
         # a request that names a strange one is answered rather than obeyed:
@@ -4486,6 +4566,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _create(self, req):
         """New project — a fresh local repo, or a clone. See projects.py."""
+        # An administrator's, for two reasons that both matter: a project this
+        # account made would not be in the list it was given, so it would be
+        # created and then invisible; and the clone dialog is one of the two
+        # places a git token is stored (roadmap #27).
+        if self._refused("create"):
+            return None
         body, code = projects.create(req)
         # Pinned on arrival, once anything has ever been pinned. Without this a
         # project made while a pins file exists is absent from it, so it lands
@@ -4960,6 +5046,51 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(run(["tmux", "send-keys", "-t", session, "-l", "--",
                                    TMUX_LITERALS[key]], timeout=10))
         self._json({"error": f"unknown key: {key}"}, 400)
+
+    def _say(self, req):
+        """Type a message into a CLAUDE session and press Enter.
+
+        The one place this server types free text into a pane, and every
+        restriction on it is load-bearing. /api/send deliberately takes a
+        macro name and never a command string, because a pane is usually a
+        shell and free text there is arbitrary execution. This is the
+        exception an account with no shell needs — its Claude session is a
+        read-only terminal, so the only way to say anything is through here —
+        and it is narrowed until the exception cannot become the rule:
+
+          * the session has to be a `claude-…` one, matched against a project
+            this account can actually see. Not a name from the request: a
+            shell session named through here would be exactly the hole;
+          * it has to be this account's conversation, by the same holder
+            record the proxy checks;
+          * control characters are stripped, so a message cannot move the
+            cursor, clear the screen, or carry an escape sequence.
+
+        What is left is text into Claude's own input box, which is what the
+        person would have typed if they had a terminal.
+        """
+        me = self._who()
+        want = str(req.get("session", ""))
+        project = next((p["name"] for p in project_list(me)
+                        if tmux_name(f"claude-{p['name']}") == want), "")
+        if not project:
+            return self._json({"error": "not a Claude session you can see"}, 403)
+        live = {x["name"] for x in tmux_sessions()}
+        if want not in live:
+            return self._json({"error": "that conversation is not running"}, 409)
+        known = {u.get("uid") for u in users.load()["users"].values()}
+        who = holders.holder(project, live, tmux_name, known)
+        if who and who != users.uid_of(me):
+            return self._json({"error": "that conversation is somebody else's"}, 409)
+        text = "".join(ch for ch in str(req.get("text", ""))
+                       if ch == "\t" or ord(ch) >= 32)[:CUSTOM_LINE_MAX]
+        if not text.strip():
+            return self._json({"error": "nothing to say"}, 400)
+        r = run(["tmux", "send-keys", "-t", want, "-l", "--", text], timeout=10)
+        if r["code"] != 0:
+            return self._json({"error": r["out"].strip()[:200] or "send failed"}, 500)
+        run(["tmux", "send-keys", "-t", want, "Enter"], timeout=10)
+        return self._json({"ok": True})
 
     def _send(self, req):
         """Type a macro's command line into a shell session and press Enter.

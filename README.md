@@ -2902,12 +2902,23 @@ URL is reachable directly. The notebook (roadmap, bugs, analysis) stays shared,
 because it is about the project; memories do not, because they are about the
 person.
 
-**This is scoping, not containment.** Every session still runs as the same user
-inside the container — that is deliberate, so everything written to your array
-keeps the ownership `PUID`/`PGID` give it — which means somebody with a
-terminal can reach another account's files if they go looking. It keeps people
-out of each other's way. It is not a wall, and anyone you add can run code on
-this machine.
+**A `user` has no shell and no command line at all**, and that is what makes
+the rest of the role mean something: everything else is enforced by the
+dashboard, in Python, and a terminal is the way around all of it. So a `user`
+gets no terminal tab, and their Claude session opens as a **console** instead
+— the real interface, rendered by a `ttyd` started without `--writable`, with
+a box to type a message and a button to end the conversation. The proxy
+refuses anything else they ask a terminal for, so a read-only window cannot be
+pointed at somebody else's session. They see Docker and the package manager
+for their own projects' nodes and change neither; they cannot create or rename
+a project, change how one authenticates, or touch a stored token. What they
+can write is the notebook, and a Claude session on a project they were given.
+
+**An `admin` has a shell, and a shell is everything.** Every session runs as
+the same user inside the container — deliberately, so everything written to
+your array keeps the ownership `PUID`/`PGID` give it — which means an
+administrator can reach any account's files if they go looking. Give that role
+to people you would give the server to.
 
 Only the dashboard port is published. ttyd binds the loopback and the
 dashboard relays `/term` to it, so the browser asks for credentials once and

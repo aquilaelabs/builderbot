@@ -1992,6 +1992,15 @@ body.dragging .tab .lbl{cursor:grabbing}
 .pane .stack > *:not(.on){visibility:hidden;pointer-events:none}
 .pane .stack > .empty-pane{display:grid;place-items:center}
 .pane .slot{display:flex}
+/* The console bar (roadmap #27), under a read-only Claude terminal for an
+   account with no shell. Column, so the frame keeps its flex:1 and the row
+   takes what it needs; the input picks up the global field skin like every
+   other control, so nothing is restyled here beyond the layout. */
+.pane .slot:has(.consbar){flex-direction:column}
+.consbar{display:flex;gap:6px;padding:6px;background:var(--bg);
+  border-top:1px solid var(--edge);align-items:center}
+.consbar .consin{flex:1;min-width:0}
+@media(max-width:900px){ .consbar .consin{font-size:16px} }
 /* An opaque cover over the frame until the terminal is really there.
    The frame's own background (below) is enough in Chromium, and is not in
    Firefox on Android, which paints its white document canvas over it anyway —
@@ -2904,6 +2913,15 @@ const myTmux = s => (state?.tmux_prefix || "") + s;
 // button greys and wears their name; the refusal itself is at the /term proxy,
 // because a rule only the page honors is a suggestion (roadmap #26).
 const heldBy = p => (state?.claude_held || {})[p] || "";
+// May this account have a shell at all (roadmap #27)? An account without one
+// gets its Claude session as a read-only console — the proxy relays it to a
+// ttyd started without --writable and refuses any argument that is not a
+// Claude session on a project they were given. This only decides what is
+// DRAWN; every one of these is refused again on the server.
+const mayShell = () => state?.can?.terminal !== false;
+const mayDocker = () => state?.can?.["docker-write"] !== false;
+const mayPackages = () => state?.can?.["packages-write"] !== false;
+const mayGitAuth = () => state?.can?.["git-auth"] !== false;
 function sessionOf(arg){
   if (arg.startsWith("sh:")){
     const [, n, proj] = arg.split(":");
@@ -3642,7 +3660,9 @@ function drawTabs(){
 
   const bar = $("tabbar");
   const full =
-    `<button id="bNew" class="ic newtab" title="new terminal at /workspace">+</button>` +
+    (mayShell()
+      ? `<button id="bNew" class="ic newtab" title="new terminal at /workspace">+</button>`
+      : "") +
     html +
     // The spacer stays: reorderTabEls inserts before it, and it is what
     // keeps the tabs left-packed. What was after it — the ⌨ toggle — is
@@ -3701,7 +3721,7 @@ function drawTabs(){
   bar.querySelectorAll("[data-close]").forEach(b => b.onclick = e => hideTab(b.dataset.close, e));
   bar.querySelectorAll("[data-l]").forEach(b => b.onclick = e => pinTo(b.dataset.l, 0, e));
   bar.querySelectorAll("[data-r]").forEach(b => b.onclick = e => pinTo(b.dataset.r, 1, e));
-  $("bNew").onclick = () => newShell("");
+  if ($("bNew")) $("bNew").onclick = () => newShell("");
   if (pinFor) placePinMenu();
 
   if (prev){
@@ -3789,6 +3809,7 @@ window.addEventListener("resize", updateArrows);
 
 // A terminal at some directory, always a new one. "" is the workspace root.
 function newShell(proj){
+  if (!mayShell()){ notify("a shell is an administrator's", true); return; }
   const arg = nextShell(proj);
   if (!arg){ notify("Too many terminals open for that directory.", true); return; }
   openTab({kind:"term", arg, label: `sh: ${proj || "workspace"}`});
@@ -3863,6 +3884,59 @@ function unveil(frame){
   else requestAnimationFrame(lift);
 }
 
+// The console bar, for an account with no shell (roadmap #27).
+//
+// The terminal above it is the real one, relayed to a ttyd started WITHOUT
+// --writable: it renders Claude's own full-screen interface correctly, which
+// capturing the pane into a textarea could never do, and the browser cannot
+// type into it at all. So the way in is this row — the send path, which is
+// the same table lookup and literal text every other thing this page can make
+// happen goes through — and the way out is Terminate.
+//
+// Drawn only when there is no shell to have. An administrator types into the
+// terminal itself and would find a second input box confusing.
+function consoleBar(t){
+  if (mayShell() || !isClaude(t)) return "";
+  const s = sessionOf(t.arg);
+  return `<div class="consbar" data-sess="${esc(s)}">
+    <input class="consin" placeholder="message Claude, then Enter"
+      aria-label="message Claude" autocomplete="off" spellcheck="false">
+    <button type="button" class="conssend primary">Send</button>
+    <button type="button" class="consend" title="end this conversation — the
+      transcript is kept and can be resumed">Terminate</button>
+  </div>`;
+}
+
+// Wired after every repaint, because the bar is redrawn with its pane. The
+// field keeps what was typed across a repaint the same way the node config
+// drafts do — a fifteen-second poll must not eat a half-written message.
+const consDraft = {};
+function wireConsole(root){
+  root.querySelectorAll(".consbar").forEach(bar => {
+    const sess = bar.dataset.sess;
+    const inp = bar.querySelector(".consin");
+    if (consDraft[sess] !== undefined) inp.value = consDraft[sess];
+    inp.oninput = () => { consDraft[sess] = inp.value; };
+    const send = async () => {
+      const text = inp.value;
+      if (!text.trim()) return;
+      inp.value = ""; consDraft[sess] = "";
+      let r = {};
+      try{
+        r = await (await fetch("/api/say", { method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session: sess, text }) })).json();
+      }catch(e){ r = { error: "could not reach the container" }; }
+      // Put it back on failure rather than losing it: a message somebody
+      // typed is worth more than a tidy field.
+      if (r.error){ notify(r.error, true); inp.value = text; consDraft[sess] = text; }
+    };
+    inp.onkeydown = e => { if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); send(); } };
+    bar.querySelector(".conssend").onclick = send;
+    bar.querySelector(".consend").onclick = () => killSession(sess);
+  });
+}
+
 function drawPanes(){
   if (!state) return;    // nothing to point a frame at until the first poll
   $("panes").classList.toggle("split", isSplit());
@@ -3930,7 +4004,7 @@ function drawPanes(){
       // its own port and so counts as a cross-origin frame. Claude tabs are
       // left without it — they keep tmux's mouse mode, where a drag never
       // becomes a browser selection in the first place.
-      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i></div>`
+      ? `<div class="slot"><iframe title="${esc(tabLabel(t))}"${isClaude(t) ? "" : ` allow="clipboard-write"`} src="${esc(ttydUrl(t.arg))}" onload="unveil(this)"></iframe><i class="veil"></i>${consoleBar(t)}</div>`
       // Documents are not kept: they redraw from state in a millisecond, and
       // one per pane means one #docN, which is what renders into them.
       : `<div class="doc fx" id="doc${i}"></div>`);
@@ -3943,6 +4017,10 @@ function drawPanes(){
       [...st.children].forEach(c => { if (c !== el && c.id) c.removeAttribute("id"); });
       el.id = "doc" + i;
     }
+    // The console bar rides with its pane, so it is wired with it: the row is
+    // replaced whenever the slot is, and a handler bound once would be bound
+    // to a node nothing is looking at any more.
+    wireConsole(el);
     evictFrames(st);
     // Shown again after being hidden: xterm sizes itself from a resize event,
     // and one that was laid out behind another frame may have missed one. One
@@ -5261,8 +5339,8 @@ function projectRow(p, live, cls, inTab){
                  : live.has(tmuxName("claude-"+p.name)) ? "Claude — session running, go to its tab"
                  : p.last_claude ? "Claude — no session running; resume or start one"
                  : "Claude — start a session here"}">${SPARK}</button>`}
-      <button class="eye" data-s="${esc(p.name)}" aria-label="shell"
-        title="shell — open another terminal here">${TERM}</button>
+      ${mayShell() ? `<button class="eye" data-s="${esc(p.name)}" aria-label="shell"
+        title="shell — open another terminal here">${TERM}</button>` : ""}
       ${p.git_ok && !p.linked && !isBroken(p)
         ? `<button class="eye" data-l="${esc(p.name)}" aria-label="link to GitHub"
              title="no remote — link this repo to an empty GitHub repository">${LINK}</button>`
@@ -11211,6 +11289,14 @@ async function refresh(){
     // HERE outranks the record, or picking a scheme on a phone would be
     // undone by the desktop's next poll.
     adoptTheme(state.theme);
+    // An account with no shell must not be sitting in one. The page opens on
+    // a workspace terminal and the saved strip may carry more, both of which
+    // predate knowing who is asking — so the first payload that says so is
+    // where they go. Claude tabs stay: those are the console (roadmap #27).
+    if (!mayShell()){
+      const shells = tabs.filter(t => t.kind === "term" && !isClaude(t));
+      if (shells.length) shells.forEach(t => dropTab(t.id));
+    }
     // The container was recreated under this page. Its Claude tabs are tabs to
     // conversations that ended with it — the server prunes them from the saved
     // layout at boot, but a page that has saved since then is ahead of that

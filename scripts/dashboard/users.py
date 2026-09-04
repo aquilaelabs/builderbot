@@ -328,7 +328,8 @@ ALL = {"role": "owner", "projects": ["*"], "name": "\u0000server",
 #
 # There is no "delete" here because there is no delete: a project is removed
 # by moving it to the trash and purging it, and both are `trash`.
-USER_DENIES = ("rename", "trash", "node")
+USER_DENIES = ("rename", "trash", "node", "create", "terminal", "git-auth",
+               "docker-write", "packages-write")
 
 
 def sees_all(u):
@@ -385,7 +386,32 @@ def may(u, action, project=None):
                 "trash": "deleting a project is an administrator's",
                 "node": "which node a project builds on is an administrator's — "
                         "a node is shared, so changing it reaches every project "
-                        "on it"}[action]
+                        "on it",
+                # The one that makes the rest of the role mean something.
+                # Everything else here is enforced by this server, in Python,
+                # and a shell is the way around all of it: one uid, one tmux
+                # server, and Bash covered by no deny list. Without a terminal
+                # there is no hole to argue about — which is why an account
+                # that may not have one gets a Claude console instead of a
+                # window it could point somewhere else (roadmap #27).
+                # A project this account made would not be in the list an
+                # administrator gave it, so it would vanish on the next
+                # paint — and the create dialog is one of the two places a
+                # git token is written.
+                "create": "making a project is an administrator's — the "
+                          "projects you can work on are the ones you were "
+                          "given",
+                "terminal": "a shell is an administrator's — your Claude "
+                            "session opens as a console instead",
+                "git-auth": "how a project authenticates to its remote is an "
+                            "administrator's: the token is what pushes, and "
+                            "changing the method or clearing it reaches "
+                            "everybody who works on it",
+                "docker-write": "starting and stopping containers is an "
+                                "administrator's — you can see what is "
+                                "running and open it",
+                "packages-write": "installing on a node is an administrator's "
+                                  "— these are gigabytes on shared disk"}[action]
     if action == "admin":
         return "that is an administrator's"
     return ""
