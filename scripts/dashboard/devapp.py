@@ -1716,19 +1716,6 @@ def _gate_env(project, instance=MAIN):
 # ---------------------------------------------------------------------------
 # state
 
-def _with_compose():
-    """Projects that have a compose file, so could have an instance at all."""
-    out = []
-    try:
-        for d in sorted(WORKSPACE.iterdir()):
-            if d.is_dir() and not d.name.startswith(".") and d.name != "_work" \
-                    and compose_file(d.name) is not None:
-                out.append(d.name)
-    except OSError:
-        pass
-    return out
-
-
 def overview(node_id=None):
     """Every instance, and everything else on the daemon, from ONE ps.
 
@@ -2215,14 +2202,6 @@ def needs_build(cfg):
         # round — Up stays gated rather than firing an implicit build.
         return True
     return any(bool(sv.get("build")) for sv in _services(cfg).values())
-
-
-def _within(path, base):
-    try:
-        Path(path).resolve().relative_to(Path(base).resolve())
-        return True
-    except (ValueError, OSError):
-        return False
 
 
 def _binds(sv, project):

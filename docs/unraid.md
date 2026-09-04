@@ -312,18 +312,24 @@ It appears on the Nodes tab within a few seconds of starting. Point a project
 at it in the project's settings dialog and `bb build`, `bb test` and `bb emu`
 run there.
 
-### Web dashboard (optional)
+### Web dashboard
 
-1. **DASHBOARD_AUTH** → `you:a-real-password`. This is read once, to create
-   the owner account; afterwards the accounts are the truth and this is
-   ignored, so change a password with `bb users passwd <name>` rather than
-   here. The dashboard will not start
-   without this, and says so in the log
-3. The port mapping (`7680`) is already in the template; change the host
+Not optional, and there is no switch for it: the dashboard is the controller.
+Nodes dial into its API, so builds, tests, CI and Android emulation all go
+through it, and it is what starts a session with its guardrails and its
+notebook context. The container that should run none of it is a *node* —
+`BUILDERBOT_ROLE=node`, which does not start one.
+
+1. **DASHBOARD_AUTH** → `you:a-real-password`. Read once, to create the owner
+   account; after that the accounts are the truth and this is ignored, so
+   change a password with `bb users passwd <name>` rather than here. With
+   neither an account nor this, the dashboard does not start and says so in
+   the log
+2. The port mapping (`7680`) is already in the template; change the host
    side if it collides with something else on the server. Terminals ride the
    same port, behind the same sign-in — a login page with a 30-day cookie,
    not the browser's credentials prompt, and only asked once
-4. Apply, then click the container's **WebUI** link
+3. Apply, then click the container's **WebUI** link
 
 You get container and runner status, a rendered report of whatever SARIF your
 scanner drops in `/reports`, every `bb` command as a button that types into the

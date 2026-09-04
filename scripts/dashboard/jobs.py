@@ -353,11 +353,6 @@ def cancel(principal, job_id):
     return r
 
 
-def running_here():
-    with _lock:
-        return sorted(_runs)
-
-
 # ---------------------------------------------------------------------------
 # the numbers (docs/nodes.md §9)
 

@@ -817,9 +817,15 @@ ok(true, 'pinning it puts it back on the sidebar');
   ok(held === before + 1,
      `polls asked while one is out do not stack (${held - before} request in flight)`);
   release();
-  await new Promise(r => setTimeout(r, 900));
+  // Wait for the deferred poll, do not guess at it: /api/status runs git for
+  // every project, so on a loaded box the released request alone can outlast
+  // any fixed sleep. A 900ms one failed a full run and passed in isolation.
+  const t0 = Date.now();
+  while (held < before + 2 && Date.now() - t0 < 15000)
+    await new Promise(r => setTimeout(r, 50));
   ok(held >= before + 2,
-     '...and the asking is remembered, not dropped — one more goes when it lands');
+     `...and the asking is remembered, not dropped — one more goes when it lands (${
+        held - before} in ${Date.now() - t0}ms)`);
   await page.unroute('**/api/status*');
 }
 
