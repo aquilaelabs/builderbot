@@ -904,6 +904,23 @@ def _census(c):
     sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else {}
     out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
                          for k in ("top", "android")}
+    # The android system images in the packages store, and the AVDs built on
+    # each (roadmap #20). Whitelisted like store_dirs and packages_versions,
+    # and for the same reason: a field the agent reports and this drops is a
+    # field that does not exist. Absent rather than empty when the agent did
+    # not send it at all: an agent too old to report images is not a node with
+    # none, and the tab must not say "nothing installed" on its behalf.
+    if isinstance(c.get("images"), list):
+        out["images"] = []
+        for im in c["images"][:64]:
+            if not isinstance(im, dict) \
+                    or not str(im.get("id") or "").startswith("system-images;"):
+                continue
+            out["images"].append({
+                "id": re.sub(r"[^A-Za-z0-9;._-]", "", str(im["id"]))[:120],
+                "api": str(im.get("api") or "")[:20], "kind": str(im.get("kind") or "")[:40],
+                "abi": str(im.get("abi") or "")[:20],
+                "avds": [str(a)[:60] for a in (im.get("avds") or [])[:16]]})
     tc = c.get("toolchains") if isinstance(c.get("toolchains"), dict) else {}
     out["toolchains"] = {str(k)[:30]: (str(v)[:40] if v else None)
                          for k, v in list(tc.items())[:16]}

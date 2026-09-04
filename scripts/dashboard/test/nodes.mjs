@@ -77,20 +77,22 @@ ok(list[0].id === 'local',
     body: JSON.stringify({ action: 'new', project: 'ep.silon', instance: 'ph1' }),
   })).json()));
   ok(!r.error, `an instance exists to act on (${r.error || 'ok'})`);
-  // Started and observed in one task: the stub daemon finishes an up in
-  // well under a second and a finished job leaves the slot, so the node
-  // stamp has to be caught while the job is live.
+  // Read from the job ROW, not from the live slot the manager polls. The
+  // first version of this raced the stub daemon — an up finishes in well
+  // under a second and a finished job leaves the slot, so the stamp had to
+  // be caught mid-flight, and on a loaded box the whole job could pass
+  // between two polls. It flaked in full runs and passed in isolation, which
+  // is the worst shape a test has. The row keeps the node forever.
   const job = await page.evaluate(async () => {
-    const going = fetch('/api/devapp', {
+    await (await fetch('/api/devapp', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'up', project: 'ep.silon', instance: 'ph1' }),
-    });
-    for (let i = 0; i < 300; i++){
-      const d = await (await fetch('/api/docker')).json();
-      if (d.job && d.job.node) return d.job;
-      await new Promise(r => setTimeout(r, 30));
+    })).json();
+    for (let i = 0; i < 200; i++){
+      const j = ((await (await fetch('/api/v1/jobs?type=compose&n=1')).json()).jobs || [])[0];
+      if (j) return j;
+      await new Promise(r => setTimeout(r, 50));
     }
-    await going;
     return null;
   });
   ok(job && job.node === sandbox.id,
@@ -304,6 +306,12 @@ ok(list[0].id === 'local',
               // Tools tab decides `installed` from — the census summary
               // above is a placement hint, not an inventory.
               store_dirs: { top: ['flutter', 'node'], android: [] },
+              // The android system images in the node's own packages store,
+              // and the AVDs built on them. Walked there; the size is joined
+              // here from Google's index, because an image is a guest
+              // artifact and weighs the same on every host (roadmap #20).
+              images: [{ id: 'system-images;android-30;google_apis;x86_64', api: 'android-30',
+                         kind: 'google_apis', abi: 'x86_64', avds: ['fb30-node'] }],
               mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false, mounted: true, real: 'nas:/mnt/user/old' }],
               network: { interface: 'ens3', addresses: ['10.0.0.40/24'], gateway: '10.0.0.1', dns: ['10.0.0.1'] } };
   const en = await napi('/api/v1/agent/enroll', {
@@ -605,6 +613,25 @@ ok(list[0].id === 'local',
        `a package that needs another installs it first, and says so (${
          JSON.stringify(depjob?.spec?.names)} added=${JSON.stringify(dep.added)})`);
     if (dep.job) await napi('/api/v1/jobs', { action: 'cancel', id: dep.job });
+    // ...and a bare directory does not count as having it. The operator's
+    // node had an android/cmdline-tools holding only a symlink to a
+    // directory a failed install had removed; android-tools read as
+    // installed, so nothing pulled it in, and the android:* package that
+    // needed it died on "no sdkmanager".
+    await runnerCensus({});
+    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: { ...CENSUS, toolchains: { java: '21' },
+        store_dirs: { top: ['jdk'], android: ['cmdline-tools'] } },
+        version: shipped.version, digest: shipped.digest }) });
+    const hollow = await napi('/api/packages', { action: 'install',
+                                                 names: ['android:ndk'], node: minted.id });
+    const hj = hollow.job ? await napi(`/api/v1/jobs?id=${hollow.job}`) : null;
+    ok(hj && (hj.spec.names || []).includes('android-tools'),
+       `an empty cmdline-tools directory does not count as android-tools (${
+         JSON.stringify(hj?.spec?.names)})`);
+    if (hollow.job) await napi('/api/v1/jobs', { action: 'cancel', id: hollow.job });
+    await runnerCensus({});     // put the fixture's store listing back
   }
 
   // What a FINISHED job on a node reports. It used to report nothing — the
@@ -625,6 +652,62 @@ ok(list[0].id === 'local',
        `a finished node job says what actually landed, read from the census (${
          JSON.stringify(seen && {done: seen.done, failed: seen.failed})})`);
   }
+  // ---- android system images on a node (roadmap #20) ---------------------
+  // The node walks its own store for the ids and the AVDs built on them.
+  // What COULD be added is not a per-node question at all: an image is a
+  // guest artifact, identical on every host, so the index is read here and
+  // the node needs no network of its own to be offered one.
+  {
+    await page.evaluate(() => { packages = null; loadPackages(); });
+    await page.waitForFunction(() => (packages?.images || []).length > 0,
+                               null, { timeout: 15000 });
+    const imgs = await page.$$eval('.pkgtab .pkg.img',
+      ls => ls.map(l => l.textContent.replace(/\s+/g, ' ').trim()));
+    ok(imgs.length === 1 && /android-30/.test(imgs[0]) && /1\.\d GB/.test(imgs[0])
+       && /AVD: fb30-node/.test(imgs[0]),
+       `a node's images are listed, with the AVD built on each and the index's size (${imgs[0]})`);
+    const apis = await page.$$eval('.pkgtab #imgApi option', o => o.map(x => x.value));
+    ok(apis.length === 1 && apis[0] === 'system-images;android-31;google_apis;x86_64',
+       `...and the picker offers what the NODE does not have (${JSON.stringify(apis)})`);
+    ok(/sdkmanager, which is part of/.test(await page.$eval('.pkgtab', e => e.textContent)),
+       'a node with no android-tools is told images are installed by sdkmanager');
+    // An image is installed BY sdkmanager, so the command-line tools have to
+    // be there first — and they need a JDK in turn. with_requires walks the
+    // catalog and an image id is not a catalog row, so the head of that chain
+    // is named rather than discovered inside a failing job.
+    const add = await napi('/api/packages', { action: 'install', node: minted.id,
+      names: ['android:system-images;android-31;google_apis;x86_64'] });
+    const aj = add.job ? await napi(`/api/v1/jobs?id=${add.job}`) : null;
+    ok(aj && JSON.stringify(aj.spec.names) === JSON.stringify(
+         ['jdk', 'android-tools', 'android:system-images;android-31;google_apis;x86_64']),
+       `installing an image on a node pulls sdkmanager and its jdk in front of it (${
+         JSON.stringify(aj?.spec?.names)})`);
+    if (add.job) await napi('/api/v1/jobs', { action: 'cancel', id: add.job });
+    // The same rule every executing endpoint here follows, asked of the
+    // node's own inventory: a removal names an image THIS node reported.
+    const badrm = await napi('/api/packages', { action: 'remove', node: minted.id,
+      names: ['android:system-images;android-31;google_apis;x86_64'] });
+    ok(/nothing selected/.test(badrm.error || ''),
+       `an image the node never reported cannot be removed from it (${badrm.error})`);
+    const rm = await napi('/api/packages', { action: 'remove', node: minted.id,
+      names: ['android:system-images;android-30;google_apis;x86_64'] });
+    ok(rm.job, 'one it did report can be');
+    if (rm.job) await napi('/api/v1/jobs', { action: 'cancel', id: rm.job });
+
+    // An agent too old to report the field at all is not a node with no
+    // images. Without the distinction the tab says "nothing installed" on
+    // behalf of a node the controller has not asked.
+    const noField = { ...CENSUS }; delete noField.images;
+    await fetch(base + '/api/v1/agent/hello', { method: 'POST',
+      headers: { Authorization: 'Bearer ' + en.token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ census: noField, version: shipped.version, digest: shipped.digest }) });
+    const old = await (await fetch(base + '/api/packages?node=' + minted.id, { headers: H })).json();
+    ok(old.images_known === false && old.images.length === 0,
+       `an agent that does not report images says so, rather than reporting none (${
+         old.images_known})`);
+    await runnerCensus({});     // put the fixture's census back
+  }
+
   const gate = await napi('/api/packages', { action: 'install', names: ['android:platform-tools'], node: 'local' });
   ok(gate.ok !== undefined || gate.error, '(local installs still go through the installer here)');
 

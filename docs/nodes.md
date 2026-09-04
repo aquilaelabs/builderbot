@@ -564,6 +564,20 @@ controller so the tab says no before anybody presses Apply, and again on the
 node whatever it is told — the same reasoning as the capability refusal,
 applied to disk.
 
+*Amended 3 September:* **system images are per-node state too, and are the
+one thing in this section the catalog cannot list.** Which images exist is
+not a fixed list — it depends on what has been installed — so the node walks
+its own store for the ids and the AVDs built on each, and reports them in the
+census (`reported.images`). What *could* be added is not a per-node question
+at all: an image is a GUEST artifact, identical on every host, so the picker
+is drawn from Google's index read on the controller, minus what that node
+already has. A node therefore needs no network of its own to be offered one,
+and the size on the row is the download size from that index rather than a
+`du` — measuring tens of gigabytes over an NFS-mounted store every ten
+minutes would be minutes of stat traffic for a number already known. Adding
+one is the ordinary package job with `android-tools` (and its JDK) put in
+front of it, since the install is sdkmanager's.
+
 - **The store is a role with a location, not a mount.** Each node has a
   `packages` store — default an internal path
   (`/var/lib/builderbot/toolchains`), because a node with its own disk should

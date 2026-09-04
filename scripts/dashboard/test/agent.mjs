@@ -492,6 +492,17 @@ try {
     {
       mkdirSync(`${DIR}/agentpackages/jdk/bin`, { recursive: true });
       mkdirSync(`${DIR}/agentpackages/go/bin`, { recursive: true });
+      // An android system image in the node's own store, and an AVD in the
+      // data store built on it (roadmap #20). The agent walks for these
+      // rather than running `bb sdk images`, which is the same listing plus
+      // a du over tens of gigabytes of NFS every ten minutes.
+      const IMG = `${DIR}/agentpackages/android/system-images`;
+      mkdirSync(`${IMG}/android-34/google_apis/x86_64`, { recursive: true });
+      writeFileSync(`${IMG}/android-34/google_apis/x86_64/system.img`, 'x');
+      mkdirSync(`${IMG}/android-33/google_apis/x86_64`, { recursive: true });
+      mkdirSync(`${DIR}/agentdata/avd/fbnode.avd`, { recursive: true });
+      writeFileSync(`${DIR}/agentdata/avd/fbnode.avd/config.ini`,
+        'abi.type=x86_64\nimage.sysdir.1 = system-images/android-34/google_apis/x86_64/\n');
       const envrun = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
         argv: ['sh', '-c', 'echo "root=$SDK_ROOT"; echo "java=$JAVA_HOME"; '
                          + 'echo "android=$ANDROID_HOME"; echo "path=$PATH"'] });
@@ -538,6 +549,20 @@ try {
       });
       ok(fresh && typeof fresh.reported.at === 'number',
          '...and the census carries when it was taken, which the refusal quotes');
+      // The refusal above asked the node for a fresh census; this is the
+      // first one taken since the image tree was made, so it is waited for
+      // rather than read off whatever was already on the row.
+      const withImgs = await until(async () => {
+        const n = await nodeById(minted.id);
+        return (n?.reported?.images || []).length ? n : null;
+      }, 30000);
+      const im = (withImgs?.reported?.images || []);
+      ok(im.length === 1 && im[0].id === 'system-images;android-34;google_apis;x86_64'
+         && JSON.stringify(im[0].avds) === JSON.stringify(['fbnode']),
+         `the census reports the store's system images and the AVDs built on them (${
+           JSON.stringify(im)})`);
+      ok(!im.some(x => /android-33/.test(x.id)),
+         '...and an empty image directory is not one: a half-removed tree is not a bootable image');
       ok(/path=[^\n]*agentpackages\/jdk\/bin/.test(log)
          && /path=[^\n]*agentpackages\/go\/bin/.test(log),
          '...and every toolchain the store holds is on its PATH, not just the JDK');

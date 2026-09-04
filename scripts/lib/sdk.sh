@@ -512,7 +512,11 @@ sdk_update() {
             sdk_install "$what"
             ;;
         android:*)
-            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
+            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here — every android:*
+   package installs through it, and it comes from android-tools. On a node, tick
+   Android command-line tools on the Tools tab with that node picked; an android:*
+   package should bring it along, and if it did not then this store has a
+   cmdline-tools directory with nothing in it, which is not the same thing."
             log "updating ${what#android:}"
             sdkmanager --update
             ;;
@@ -757,7 +761,11 @@ sdk_android_id() {
 
 sdk_install_android() {
     local what="$1" pkg
-    command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
+    command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here — every android:*
+   package installs through it, and it comes from android-tools. On a node, tick
+   Android command-line tools on the Tools tab with that node picked; an android:*
+   package should bring it along, and if it did not then this store has a
+   cmdline-tools directory with nothing in it, which is not the same thing."
     pkg="$(sdk_android_id "$what")"
     [ -n "$pkg" ] || die "could not find a ${what#android:} package to install"
     log "installing ${pkg} — into $(sdk_dir android)"
@@ -1024,7 +1032,11 @@ sdk_remove() {
     fi
     case "$kind" in
         sdkmanager)
-            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager in this image"
+            command -v sdkmanager >/dev/null 2>&1 || die "no sdkmanager here — every android:*
+   package installs through it, and it comes from android-tools. On a node, tick
+   Android command-line tools on the Tools tab with that node picked; an android:*
+   package should bring it along, and if it did not then this store has a
+   cmdline-tools directory with nothing in it, which is not the same thing."
             local pkg="${what#android:}" v image="" rest
             if rest="$(sdk_image_flavor "$what")"; then
                 image="${rest%%	*}"; pkg="$image"
