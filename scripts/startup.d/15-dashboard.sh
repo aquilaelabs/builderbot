@@ -26,8 +26,8 @@
 # to do with the session. The dashboard being up early costs nothing; sessions
 # being up early costs that.
 #
-# Off unless ENABLE_DASHBOARD is true, and it refuses to start without
-# DASHBOARD_AUTH. That refusal is the point: this serves an interactive shell
+# It refuses to start with neither an account nor DASHBOARD_AUTH to make the
+# first one. That refusal is the point: this serves an interactive shell
 # into a container holding a loaded ssh-agent and read-write mounts of every
 # project, so an unauthenticated instance on a LAN would hand all of that to
 # anyone who can reach the port. Failing loudly beats defaulting to open.
@@ -35,7 +35,14 @@
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
 
-is_true "${ENABLE_DASHBOARD:-false}" || exit 0
+# No switch. This IS the controller — nodes dial into its API, so without it
+# there are no nodes, and compiling, testing, CI and emulation all run on one.
+# It is also what starts a session with its guardrails: bb-tty writes the
+# settings file that walls a session into its project and injects the roadmap
+# and the bug tracker, so `docker exec claude` without this is a session with
+# no scope and no context. The one arrangement that legitimately has no
+# dashboard is a NODE, and that is BUILDERBOT_ROLE=node — whose hook filter
+# does not run this file at all.
 
 PORT="${DASHBOARD_PORT:-7680}"
 TTYD_PORT="${DASHBOARD_TTYD_PORT:-7681}"
@@ -48,7 +55,7 @@ DASH=/opt/builderbot/scripts/dashboard
 if [ -s "${DASHBOARD_STATE:-/config}/users.json" ]; then
     :
 elif [ -z "${DASHBOARD_AUTH:-}" ]; then
-    warn "ENABLE_DASHBOARD=true, no accounts yet and DASHBOARD_AUTH is empty — dashboard NOT started."
+    warn "no accounts yet and DASHBOARD_AUTH is empty — dashboard NOT started."
     warn "Set DASHBOARD_AUTH=user:password for the first boot; it creates the owner"
     warn "account and is then no longer read. This exposes a shell with your ssh"
     warn "keys and every mounted project; it will not run without a credential."

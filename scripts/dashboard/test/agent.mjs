@@ -1052,12 +1052,18 @@ try {
 // Retire what this file made: the rows stay as history (door 1) and leave
 // every list, which is what the files after this one expect to find — a
 // store holding local and the sandbox and nothing else.
+//
+// BY NAME as well as by kind. The harness's docker host used to be an
+// `ssh` row, so "every agent node" could not reach it; since roadmap #24 it
+// is an enrolled agent node like any other, and this loop retired it — after
+// which every file below had no daemon and devapp.mjs died on the first row
+// it waited for. nodes.mjs spares it the same way.
 for (const n of (await api('/api/v1/nodes')).nodes)
-  if (n.kind === 'agent') await api('/api/v1/nodes', { action: 'retire', id: n.id });
-// Agent nodes only: another suite in the same run may have left an ssh
-// node of its own, and that is its business.
+  if (n.kind === 'agent' && n.name !== 'sandbox')
+    await api('/api/v1/nodes', { action: 'retire', id: n.id });
 const left = (await api('/api/v1/nodes')).nodes;
-ok(!left.some(n => n.kind === 'agent') && left.some(n => n.id === 'local'),
+ok(!left.some(n => n.kind === 'agent' && n.name !== 'sandbox')
+   && left.some(n => n.id === 'local') && left.some(n => n.name === 'sandbox'),
    `retired agent nodes leave the list and the store is as it was (${left.map(n => n.name + ':' + n.kind + ':' + n.state).join(', ')})`);
 
 ok(page.errors.length === 0,

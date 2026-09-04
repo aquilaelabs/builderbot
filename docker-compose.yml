@@ -32,9 +32,8 @@ services:
       TZ: ${TZ:-America/New_York}
       # The sandbox VM the Docker manager builds on is a node now, enrolled
       # with a token from the dashboard's Nodes tab — no key here, nothing
-      # named here — with its path mapping on its row. The DOCKER_HOST /
-      # DOCKER_HOST_PATHS of earlier releases seed a record once, for a box
-      # upgrading with them set, and are otherwise ignored.
+      # named here — with its path mapping on its row. DOCKER_HOST and
+      # DOCKER_HOST_PATHS are gone with the ssh node kind.
       # See docs/sandbox-vm.md.
 
       # --- Claude Code ------------------------------------------------------
@@ -110,15 +109,20 @@ services:
       # reachable. On Unraid, "all" is also fine for NVIDIA_VISIBLE_DEVICES
       # with a single card; with several, use the UUID from the Nvidia-Driver
       # plugin.
-      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
-      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-all}
+      # Empty by default: a controller renders nothing, so claiming the
+      # card here takes it from whatever else wants it. Set both on a
+      # node container that runs the emulator.
+      NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-}
+      NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-}
 
       # --- web dashboard ----------------------------------------------------
-      # Status page plus a browser terminal. DASHBOARD_AUTH is not optional:
+      # Status page plus a browser terminal. DASHBOARD_AUTH seeds the owner
+      # account on the first boot that finds none, and is not read again —
+      # `bb users` manages accounts after that. Still required to get the
+      # first one:
       # this serves an interactive shell into a container holding a loaded
       # ssh-agent and read-write mounts of every project, so it refuses to
       # start without a credential rather than defaulting to open.
-      ENABLE_DASHBOARD: ${ENABLE_DASHBOARD:-false}
       DASHBOARD_AUTH: ${DASHBOARD_AUTH:-}
       DASHBOARD_PORT: ${DASHBOARD_PORT:-7680}
       # Loopback only: the browser reaches terminals through the dashboard

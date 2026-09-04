@@ -2777,6 +2777,7 @@ body.dragging .tab .lbl{cursor:grabbing}
         <button id="bFindings" onclick="openFindingsTab()">Static analysis</button>
         <button id="bNodes" onclick="openNodesTab()">Nodes</button>
         <button id="bJobs" onclick="openJobsTab()">Jobs</button>
+        <button id="bUsers" onclick="openUsersTab()">Users</button>
       </div>
     </div>
     <!-- A phone on the end of wireless adb. USB is not an option here: there
@@ -2843,6 +2844,7 @@ body.dragging .tab .lbl{cursor:grabbing}
 <script src="tab-nodes.js"></script>
 <script src="tab-settings.js"></script>
 <script src="tab-jobs.js"></script>
+<script src="tab-users.js"></script>
 
 <script>
 "use strict";
@@ -3124,6 +3126,9 @@ const TABKINDS = {
               open: () => loadJobs() },
   settings: { multi: false, label: () => "Settings",
               render: (i) => renderSettingsInto(i), live: () => settingsRev },
+  users:    { multi: false, label: () => "Users",
+              render: (i) => renderUsersInto(i), live: () => usersRev,
+              open: () => loadUsers() },
   findings: { multi: false, label: () => "Analysis",
               render: (i) => renderFindingsInto(i),
               // The ages list as well as the mtime: the mtime is a MAX, so a
@@ -5884,6 +5889,11 @@ function pkgRow(p, busy, job){
   // is also why Install is the only verb here: on a row with an update it
   // updates, and the operator never has to know which button to reach for.
   const upToDate = !mine && p.installed && p.state !== "update";
+  // An installed package whose recipe cannot update in place. The check can
+  // still say a newer version exists — it asks upstream, not the recipe — and
+  // before this the row let you tick it and then died on `bb sdk update`'s
+  // usage line, naming five packages you had not asked about (bug #43).
+  const noUpgrade = !mine && p.installed && !p.updatable;
   // Three versions can be on a row and only ever two at once: what is
   // installed, what an update would move it to, and — on a row that has never
   // been installed — what Install would fetch. Only the middle one is yellow,
@@ -5919,8 +5929,10 @@ function pkgRow(p, busy, job){
   const prog = `<span class="sub prog plain">${esc(doing)}<span class="dots">${
     ".".repeat(pkgDots)}</span></span>`;
   return `<label class="pkg${upToDate ? " done" : ""}">
-    <input type="checkbox" value="${esc(p.name)}"${busy || p.wrong_platform ? " disabled" : ""}${
+    <input type="checkbox" value="${esc(p.name)}"${
+      busy || p.wrong_platform || noUpgrade ? " disabled" : ""}${
       p.wrong_platform ? ` title="this recipe is packaged for ${esc(p.wrong_platform)} — installing it here would fetch binaries that cannot run"`
+      : noUpgrade ? ` checked disabled title="installed. This one is fetched and unpacked whole, so there is no update in place — remove it first to get a newer version"`
       : upToDate ? ` checked disabled title="installed and up to date — nothing to do until a check finds an update"`
                : pkgTicked.has(p.name) ? " checked" : ""}>
     <span class="grow">
@@ -11104,7 +11116,26 @@ function reapDeadTerminals(){
   gone.forEach(dropTab);
 }
 
+let refreshBusy = false;     // a poll is out
+let refreshAgain = false;    // ...and somebody asked for another while it was
+
 async function refresh(){
+  // One at a time, and never dropped.
+  //
+  // /api/status runs git for every project, so it is seconds rather than
+  // milliseconds on a cold share — and refreshSoon deliberately fires three
+  // of these within four seconds while the fifteen-second poll carries on.
+  // Without a guard they stack, and because each one costs the same git walk,
+  // stacking makes every one of them slower: the load feeds itself. That is
+  // the shape bug #44 was reported in — cards still on "loading…" minutes
+  // after a restart, while the PHONE card, which fetches on its own, had
+  // drawn fine.
+  //
+  // Asked while one is out, the request is remembered rather than dropped:
+  // an explicit refresh after an action has to land, or the page shows the
+  // state from before the thing the operator just did.
+  if (refreshBusy){ refreshAgain = true; return; }
+  refreshBusy = true;
   const asked = performance.now();
   try{
     const r = preStatusUsed ? await fetch("/api/status")
@@ -11210,6 +11241,9 @@ async function refresh(){
         el.textContent = "not loaded — the page is not reaching the container";
         el.classList.add("warn");
       });
+  }finally{
+    refreshBusy = false;
+    if (refreshAgain){ refreshAgain = false; refresh(); }
   }
 }
 

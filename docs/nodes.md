@@ -61,7 +61,8 @@ Worth writing down, because most of it survives and the parts that do not are
 the parts that decide the phasing.
 
 - `DOCKER_HOST` names one sandbox VM, addressed over ssh, verified by a
-  `builderbot.sandbox` label the provisioner writes. Everything the Docker
+  `builderbot.sandbox` label the provisioner writes. (This section is the
+  *before*: the variable is gone and the VM is an enrolled node — §11.) Everything the Docker
   manager does is `docker compose --project-name …` plus three whitelisted
   one-shot `docker run` shapes, and a guard rebuilds each argv and compares it
   whole.
@@ -693,9 +694,8 @@ unbuilt rather than hiding it; the Artifacts row's Open uses the route's
 URL when it is ready. No deployment record of its own: an instance up on a
 node with a route IS the deployment, and the compose job is its long-lived
 job. The unhardwiring this phase owes: deploy targets touch no environment
-variable of their own — `DOCKER_HOST` became a node in phase 2 and its
-removal from the five places, with `DOCKER_HOST_PATHS` moving onto the
-node record, is its own roadmap step.
+variable of their own — `DOCKER_HOST` became a node in phase 2, and both it
+and `DOCKER_HOST_PATHS` have since left the five places entirely (§11).
 
 ## 8. Security model
 
@@ -795,13 +795,20 @@ What gets each tier there:
 3. Then it leaves the five places (`.env.example`, `docker-compose.yml`,
    `unraid/builderbot.xml`, README reference, `docs/unraid.md`) in one change.
 
-*Where it landed (after phase 9):* both variables are out of the five places
-and out of every doc that named them as settings; `DOCKER_HOST_PATHS` lives on
-the node record (`config.paths`, edited on an ssh node's row, read by
-`devapp.host_map` through the node being addressed); at boot each variable is
-read once more, to seed the record when it has nothing, and the boot log says
-so. `_pairs()` in devapp.py still reads the env when no record carries a
-mapping — the one-release deprecation path — and is the line to delete next.
+*Where it landed (roadmap #24, complete):* both variables are out of the five
+places, out of every doc that named them as settings, and read by nothing.
+The one-release deprecation path is gone with them — `nodes._adopt_docker_host`
+and `_seed_paths` are deleted, and so is the env branch of `devapp._pairs`.
+The path mapping lives on the node record (`config.paths`, edited on an agent
+node's row, read by `devapp.host_map` through the node being addressed).
+
+The `ssh` kind went in the same change, because the seed was the only thing
+that made one: `node_add` is a refusal naming enrollment, `_addr` and
+`runner_of` know two kinds, and the `ssh` branch of `jobs.run_exec` — the
+controller running a job on another machine over a key — is gone. The
+`ssh_addr` column stays, written empty and read by nothing: migrations are
+numbered and append-only, and dropping a column across two engines is a
+one-way door for a cosmetic gain.
 
 **Tools → Nodes** is the screen: a row per node with state, capability
 toggles, services, labels, pool, concurrency, last seen — and Enroll, Test,

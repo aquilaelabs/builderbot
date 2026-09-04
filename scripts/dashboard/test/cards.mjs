@@ -798,6 +798,37 @@ await page.waitForFunction(
           .some(n => n.textContent.trim() === 'alpha'), { timeout: 15000 });
 ok(true, 'pinning it puts it back on the sidebar');
 
+// ---- polls do not stack (bug #44) --------------------------------------
+// /api/status runs git for every project, and refreshSoon fires three
+// refreshes inside four seconds on top of the fifteen-second loop. Stacked,
+// each one makes the next slower, which is the shape the stuck-on-"loading…"
+// report had. Held open with a route so the overlap is deterministic.
+{
+  let release, held = 0;
+  await page.route('**/api/status*', async route => {
+    held++;
+    if (held === 1) await new Promise(r => { release = r; });
+    await route.continue().catch(() => {});
+  });
+  const before = held;
+  // Five asks while the first is still out. They must coalesce into one more.
+  await page.evaluate(() => { refresh(); refresh(); refresh(); refresh(); refresh(); });
+  await new Promise(r => setTimeout(r, 400));
+  ok(held === before + 1,
+     `polls asked while one is out do not stack (${held - before} request in flight)`);
+  release();
+  // Wait for the deferred poll, do not guess at it: /api/status runs git for
+  // every project, so on a loaded box the released request alone can outlast
+  // any fixed sleep. A 900ms one failed a full run and passed in isolation.
+  const t0 = Date.now();
+  while (held < before + 2 && Date.now() - t0 < 15000)
+    await new Promise(r => setTimeout(r, 50));
+  ok(held >= before + 2,
+     `...and the asking is remembered, not dropped — one more goes when it lands (${
+        held - before} in ${Date.now() - t0}ms)`);
+  await page.unroute('**/api/status*');
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 
 // Unpinning from the sidebar has to move the Projects TAB too: they render

@@ -228,17 +228,22 @@ ok(r.rebuild && /the code has moved since/.test(r.text) === false,
   const pub = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'public' });
   ok(/not built/.test(pub.error || ''), 'public is refused by name');
   const fun = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'funnel', port: 7475 });
-  ok(/needs the agent/.test(fun.error || ''), 'funnel on an ssh node says why it cannot');
+  // The harness's docker host is an ordinary agent node that was never
+  // provisioned as a sandbox, so this is the refusal that applies to it now
+  // the ssh kind is gone (roadmap #24). A funnel on a node that WAS
+  // provisioned is nodes.mjs's, where the census says so.
+  ok(/not provisioned as a BuilderBot sandbox/.test(fun.error || ''),
+     'funnel on a node that takes no system jobs says why it cannot');
   const lan = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'lan', port: 7475 });
   ok(lan.ok && lan.state.route.mode === 'lan' && lan.state.route.url === 'http://stub:7475/' && lan.state.route.ready,
      'lan on a published port is a record with the URL that follows from the node');
 }
 
-// A build belongs to the daemon it ran on. Repointing DOCKER_HOST at another
+// A build belongs to the daemon it ran on. Repointing the node at another
 // VM leaves the image and the containers behind on a machine the dashboard can
 // no longer reach, and the row went on saying "built from
 // <rev>" and offering Rebuild for something never built here. Driven through
-// the state file rather than by restarting the server on a second DOCKER_HOST:
+// the state file rather than by enrolling a second node:
 // what is being asserted is that the RECORD is read against today's daemon.
 const devapps = `${DIR}/state/devapps.json`;
 const wasBuilt = JSON.parse(readFileSync(devapps, 'utf8'));
@@ -543,7 +548,7 @@ await page.waitForSelector('#devRow a.btn', { state: 'attached', timeout: 20000 
 // point of the sandbox VM — and a container publishing 7475 publishes it over
 // there. This used to be location.hostname, which on a real box is the Unraid
 // server: a link to a port where either nothing answers or something else does.
-// DOCKER_HOST is ssh://bb@stub here, so the answer is `stub`.
+// The sandbox node dialed in from `stub`, so the answer is `stub`.
 ok(await page.$eval('#devRow a.btn', a => a.getAttribute('href'))
      === 'http://stub:7475/',
    'a running instance opens on the machine its daemon runs, not on the one serving this page');
@@ -1431,7 +1436,7 @@ ok(/\/config/.test(wire) && /↔/.test(wire),
 // It used to be built from location.hostname — the machine serving this page,
 // which is the Unraid box and not the sandbox VM — so every port label and
 // every Open link named a host where either nothing answers or something else
-// does. DOCKER_HOST is ssh://bb@stub here, so the answer is `stub`.
+// does. The sandbox node dialed in from `stub`, so the answer is `stub`.
 ok(await page.$eval(`${DM} .dmwire .wport a`, a => a.getAttribute('href'))
      === 'http://stub:7475/',
    'a published port is a link, to the machine its daemon runs on');
@@ -1494,7 +1499,7 @@ ok(await page.$eval('.dmtab', e => !e.classList.contains('card'))
 // fake daemon away: what is being tested is the gate, and it takes exactly
 // one input.
 await page.evaluate(() => {
-  state.docker = { on: false, why: 'no DOCKER_HOST set — nothing to talk to' };
+  state.docker = { on: false, why: 'no node with a daemon — nothing to talk to' };
   dockerRev++; drawPanes();
 });
 await page.waitForFunction(() => document.getElementById('bDockerNew')?.disabled === true,
@@ -1505,9 +1510,9 @@ ok(await page.$$eval('.dmtab [data-dm="up"],.dmtab [data-dm="down"]',
 // data-tip, not title: tipify() runs after the gate on this surface and turns
 // one into the other, which is the point — the reason is worn the way every
 // other explanation here is.
-ok(await page.$eval('#bDockerNew', b => /no DOCKER_HOST/.test(b.dataset.tip || b.title)),
+ok(await page.$eval('#bDockerNew', b => /no node with a daemon/.test(b.dataset.tip || b.title)),
    '...each carrying the reason rather than just refusing');
-ok(/no DOCKER_HOST/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
+ok(/no node with a daemon/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
    '...and the tab says it in words, since a tooltip is unreachable on a phone');
 ok(await page.$eval('#bDockerRe', b => !b.disabled),
    'Refresh stays live — it is the retry, and disabling it would strand you');

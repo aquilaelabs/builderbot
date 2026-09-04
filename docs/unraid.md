@@ -312,16 +312,24 @@ It appears on the Nodes tab within a few seconds of starting. Point a project
 at it in the project's settings dialog and `bb build`, `bb test` and `bb emu`
 run there.
 
-### Web dashboard (optional)
+### Web dashboard
 
-1. Container settings → **ENABLE_DASHBOARD** → `true`
-2. **DASHBOARD_AUTH** → `you:a-real-password` — the dashboard will not start
-   without this, and says so in the log
-3. The port mapping (`7680`) is already in the template; change the host
+Not optional, and there is no switch for it: the dashboard is the controller.
+Nodes dial into its API, so builds, tests, CI and Android emulation all go
+through it, and it is what starts a session with its guardrails and its
+notebook context. The container that should run none of it is a *node* —
+`BUILDERBOT_ROLE=node`, which does not start one.
+
+1. **DASHBOARD_AUTH** → `you:a-real-password`. Read once, to create the owner
+   account; after that the accounts are the truth and this is ignored, so
+   change a password with `bb users passwd <name>` rather than here. With
+   neither an account nor this, the dashboard does not start and says so in
+   the log
+2. The port mapping (`7680`) is already in the template; change the host
    side if it collides with something else on the server. Terminals ride the
    same port, behind the same sign-in — a login page with a 30-day cookie,
    not the browser's credentials prompt, and only asked once
-4. Apply, then click the container's **WebUI** link
+3. Apply, then click the container's **WebUI** link
 
 You get container and runner status, a rendered report of whatever SARIF your
 scanner drops in `/reports`, every `bb` command as a button that types into the
@@ -421,7 +429,11 @@ metadata before it reached any code.
    — originally *ich777*'s, since adopted by Unraid, so you may see either name
    attached to it.)
 2. Container settings → **Extra Params**: append ` --runtime=nvidia`
-3. Set `NVIDIA_VISIBLE_DEVICES`. `all` is fine for a single card. With more
+3. Set `NVIDIA_VISIBLE_DEVICES` — it is empty by default, because a
+   controller renders nothing and claiming the card would take it from
+   whatever else on the server wants it. Do this on the container that
+   actually boots the emulator, which is a node.
+   `all` is fine for a single card. With more
    than one, use the GPU UUID — **Settings → Nvidia-Driver** lists them, in the
    form `GPU-7f326d12-d4c8-4011-9db1-36c47710daf6`.
 4. Leave `NVIDIA_DRIVER_CAPABILITIES` at `all` (see below).

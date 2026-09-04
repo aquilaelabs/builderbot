@@ -240,7 +240,7 @@ jobs:
     # /config/image-log.tsv anyway. A failed build publishes nothing, so nobody
     # updates, so the runner stays up and the record gets written — which is
     # the case this job exists for.
-    runs-on: [self-hosted, builderbot]
+    runs-on: [self-hosted, bb-sandbox]
     # A bookkeeping job must not be able to paint a successful build red. It
     # still shows as failed on its own row, which is where a broken recorder
     # belongs — the run's status stays the build's.
@@ -258,7 +258,14 @@ jobs:
           BUILD_ELAPSED: ${{ needs.build.outputs.elapsed }}
           NO_CACHE: ${{ inputs.no_cache }}
         run: |
-          dir="/config/ci-logs/${GITHUB_REPOSITORY##*/}"
+          # The same two-step path the other workflows and `bb ci-log`
+          # resolve: /config on a controller, the runner's own home on a
+          # node, which has no /config at all.
+          dir="${BB_CI_LOG_DIR:-}"
+          if [ -z "$dir" ]; then
+            if [ -w /config ]; then dir=/config/ci-logs; else dir="$HOME/ci-logs"; fi
+          fi
+          dir="$dir/${GITHUB_REPOSITORY##*/}"
           # A box with no /config volume should lose the record, not fail the
           # build over it — but it should say so rather than look successful.
           mkdir -p "$dir" || { echo "no writable /config — nothing archived"; exit 0; }

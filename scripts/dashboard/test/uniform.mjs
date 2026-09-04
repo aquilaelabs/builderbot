@@ -65,6 +65,12 @@ const DRIVERS = {
     open: () => page.evaluate(() => openJobsTab()),
     readyWhen: '.jobstab .jbrow, .jobstab .empty',
   },
+  users: {
+    // There is always at least one row: the owner, seeded on the first boot,
+    // which cannot be deleted and so cannot be absent.
+    open: () => page.evaluate(() => openUsersTab()),
+    readyWhen: '.userstab .urow',
+  },
 };
 
 // Every kind that renders a document, from the page's own registry — never a

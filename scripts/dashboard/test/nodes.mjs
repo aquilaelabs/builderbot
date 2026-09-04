@@ -44,11 +44,15 @@ const page = await newPage(browser, { viewport: { width: 1280, height: 900 } });
 await page.goto(URL);
 await ready(page);
 
-// ---- the seeded registry --------------------------------------------------
+// ---- the registry ----------------------------------------------------------
+// Two nodes: the controller, seeded on boot, and the docker host the harness
+// enrolls with a token before any file runs. It used to be mirrored from
+// DOCKER_HOST into an `ssh` row; both the variable and the kind are gone
+// (roadmap #24), so the suite gets its node the way an operator does.
 const list = await page.evaluate(async () =>
   (await (await fetch('/api/v1/nodes')).json()).nodes);
 ok(Array.isArray(list) && list.length === 2,
-   `the store boots with two nodes: local, and DOCKER_HOST mirrored (${
+   `the store holds two nodes: the controller and the enrolled docker host (${
      (list || []).map(n => n.id).join(', ')})`);
 const local = list.find(n => n.id === 'local');
 ok(local && local.kind === 'local' && local.state === 'online'
@@ -58,11 +62,16 @@ ok(!local.capabilities.includes('docker-host'),
    '...and no docker-host capability: the local node is not a sandbox');
 ok(await page.evaluate(() => !document.querySelector('.nodestab [data-cap], .nodestab [data-encap]')),
    'no capability toggles anywhere: a node does everything for the projects bound to it');
-const sandbox = list.find(n => n.kind === 'ssh');
-ok(sandbox && /^n_[0-9a-f]{8}$/.test(sandbox.id)
-   && sandbox.ssh_addr === 'ssh://bb@stub'
+// The docker host, enrolled by the harness with a token (roadmap #24 —
+// there is no ssh kind and no DOCKER_HOST seed any more). Its address is
+// what it dialed in from, reported by the node rather than written here.
+const sandbox = list.find(n => n.name === 'sandbox');
+ok(sandbox && /^n_[0-9a-f]{8}$/.test(sandbox.id) && sandbox.kind === 'agent'
+   && sandbox.agent.addr === 'stub' && sandbox.config.user === 'bb'
    && ['docker-host', 'package-build', 'deploy-target'].every(c => sandbox.capabilities.includes(c)),
    'the sandbox VM has a minted identity that is not its address, and does everything');
+ok(!list.some(n => n.kind === 'ssh'),
+   '...and no node is of the retired ssh kind, here or anywhere');
 ok(list[0].id === 'local',
    'local lists first — the one node every deployment has');
 
@@ -134,7 +143,7 @@ ok(list[0].id === 'local',
     { encoding: 'utf8', cwd: REPO,
       env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
   ok(/local\s+online\s+local\s+package-build/.test(out.replace(/\s+/g, ' '))
-     && /sandbox · ssh:\/\/bb@stub/.test(out),
+     && /sandbox · stub/.test(out),
      'bb nodes prints the same registry, read-only');
 }
 
@@ -160,8 +169,6 @@ ok(list[0].id === 'local',
        '...and the endpoint refuses too, saying the way in rather than 404ing');
     page.errors.length = before;
   }
-  ok(await page.evaluate(() => nodesList.some(n => n.kind === 'ssh')),
-     'a row left over from the ssh kind is still listed rather than vanishing');
   // A second docker node for the rest of this block, enrolled the one way
   // there is. sshd and the account are what give it an address the manager
   // can send docker to.
@@ -820,14 +827,18 @@ ok(list[0].id === 'local',
     body: JSON.stringify({ census: CENSUS, version: shipped.version, digest: shipped.digest }) });
 }
 
-// ---- an ssh node's path mapping (§11: the record owns it) --------------------
+// ---- a node's path mapping (§11: the record owns it) ------------------------
 // What DOCKER_HOST_PATHS was: on the sandbox node's row now, validated to
-// pairs, and read by the manager through the node being addressed.
+// pairs, and read by the manager through the node being addressed. It used
+// to draw on the ssh row only; with that kind retired (roadmap #24) it draws
+// on the agent row, which is the only remote row left — devapp.host_map
+// still reads it for whichever node is being addressed, so a line that drew
+// nowhere would have taken an editable setting out of reach in silence.
 {
   const H = { Authorization: 'Basic ' + Buffer.from('test:test').toString('base64'), 'Content-Type': 'application/json' };
   const base = URL.replace(/\/$/, '');
   const papi = async (body) => (await fetch(base + '/api/v1/nodes', { method: 'POST', headers: H, body: JSON.stringify(body) })).json();
-  const sb = (await (await fetch(base + '/api/v1/nodes', { headers: H })).json()).nodes.find(n => n.kind === 'ssh' && n.name === 'sandbox');
+  const sb = (await (await fetch(base + '/api/v1/nodes', { headers: H })).json()).nodes.find(n => n.name === 'sandbox');
   const bad = await papi({ action: 'paths', id: sb.id, paths: '/workspace:relative' });
   ok(/not a \/container:\/host pair/.test(bad.error || ''), 'a mapping that is not absolute on both sides is refused');
   const local = await papi({ action: 'paths', id: 'local', paths: '/a:/b' });
@@ -840,7 +851,7 @@ ok(list[0].id === 'local',
   await pickNode(page, sb.id);
   await page.waitForSelector(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, { timeout: 15000 });
   ok(await page.$eval(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, e => e.value) === '/workspace:/workspace, /devdata:/mnt/user/bb-dev',
-     '...and the ssh node\'s row shows it, editable');
+     '...and the node\'s row shows it, editable');
   await pickNode(page, 'local');
   ok(await page.$('.nodestab .ndrow[data-node="local"] .ndpaths') === null,
      '...while local, whose paths are its own, has no such line');

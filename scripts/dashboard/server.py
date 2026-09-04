@@ -445,7 +445,7 @@ def save_cards(v):
 # "findings" left the set when the report became the notebook's Analysis
 # view — a stored layout that still carries one sheds it on read.
 TAB_KINDS = {"term", "packages", "todo", "projects", "docker", "findings",
-             "nodes", "settings", "jobs"}
+             "nodes", "settings", "jobs", "users"}
 
 
 def load_layout():
@@ -2571,6 +2571,11 @@ class Handler(BaseHTTPRequestHandler):
         suite send; the cookie is what a browser gets from the login page.
         """
         hdr = self.headers.get("Authorization", "")
+        if hdr.startswith("Bearer "):
+            # A session's scoped token: one project, user rights, an expiry.
+            # Never a person, so it can do what a user can do on that project
+            # and nothing else (bug #16).
+            return users.session_principal(hdr[7:].strip())
         if hdr.startswith("Basic "):
             try:
                 given = base64.b64decode(hdr[6:]).decode("utf-8", "replace")
@@ -2853,7 +2858,8 @@ class Handler(BaseHTTPRequestHandler):
         # file beside index.html (docs/nodes.md §13), and this allowlist is
         # how they are served — full paths, same shape as the favicons, so it
         # never grows into a general file server by accident.
-        if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js"):
+        if path in ("/tab-nodes.js", "/tab-settings.js", "/tab-jobs.js",
+                    "/tab-users.js"):
             try:
                 body, zipped = self._gzip((HERE / path[1:]).read_bytes())
             except OSError:
@@ -2985,6 +2991,17 @@ class Handler(BaseHTTPRequestHandler):
             if nid and nid != "local" and not NODES_OK:
                 return self._json(packages.payload_for_node(nid))
             return self._json(packages.payload())
+        if self.path.startswith("/api/users"):
+            # The listing never carries a hash; all_users() drops it. Projects
+            # come from the same filtered list everything else reads, so an
+            # admin cannot hand out what they cannot see themselves.
+            if self._refused("admin"):
+                return None
+            return self._json({
+                "users": users.all_users(), "owner": users.owner_name(),
+                "me": (self._who() or {}).get("name", ""),
+                "roles": list(users.ROLES),
+                "projects": [p["name"] for p in project_list(self._who())]})
         if self.path.startswith("/api/v1/nodes"):
             # The versioned surface starts here (docs/nodes.md §3): new
             # endpoints land under /api/v1 with their shapes written down;
@@ -3163,6 +3180,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._project_job(req)
         if path.startswith("/api/todo"):
             return self._todo(req)
+        if path.startswith("/api/users"):
+            return self._users(req)
         if path.startswith("/api/packages"):
             return self._packages(req)
         if path.startswith("/api/logs"):
@@ -4028,8 +4047,13 @@ class Handler(BaseHTTPRequestHandler):
         attached device, a Firefox that is actually installed — rather than
         taken as given: this is one of the few places the page causes a program
         to run."""
-        if self._refused("admin"):
-            return
+        # NOT one gate for the whole endpoint. `ask` is what a session does
+        # (bb phone run --why ...) and `outcome` is it reading the answer;
+        # the control on those is that the operator sees the reason and
+        # decides, one command at a time. Pairing, connecting and deciding
+        # are the operator's, and a session may not reach them.
+        if field(req, "action") not in ("ask", "outcome") and self._refused("admin"):
+            return None
         act = field(req, "action")
         if act == "pair":
             r = phone.pair(field(req, "ip"), field(req, "port"), field(req, "code"))
@@ -4220,6 +4244,42 @@ class Handler(BaseHTTPRequestHandler):
         if act == "dismiss":
             return self._json(projects.dismiss())
         return self._json({"error": f"unknown action: {act}"}, 400)
+
+    def _users(self, req):
+        """The Users tab's verbs. Thin, like _nodes: users.py owns the rules —
+        that the owner cannot be deleted or demoted, that there is only ever
+        one, what a password has to be — and this is the door.
+
+        The owner protections live there rather than here on purpose. A rule
+        enforced at the door holds for the door; a rule enforced in the store
+        holds for `bb users` too, and that is the one an operator reaches for
+        when they are locked out.
+        """
+        if self._refused("admin"):
+            return None
+        act = field(req, "action")
+        name = field(req, "name")
+        pw = req.get("password") or ""
+        if act == "add":
+            r = users.add(name, pw, role=field(req, "role") or "user",
+                          projects=req.get("projects") or [])
+        elif act == "passwd":
+            r = users.set_password(name, pw)
+        elif act == "role":
+            r = users.set_role(name, field(req, "role"))
+        elif act == "projects":
+            # Only projects this admin can see — otherwise the tab becomes a
+            # way to learn what exists by handing it out.
+            mine = {p["name"] for p in project_list(self._who())}
+            r = users.set_projects(name, [p for p in (req.get("projects") or [])
+                                          if p in mine])
+        elif act == "rename":
+            r = users.rename(name, field(req, "to"))
+        elif act == "remove":
+            r = users.remove(name)
+        else:
+            return self._json({"error": "unknown action"}, 400)
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _packages(self, req):
         """Queue installs or removals of the packages the Tools card offers.

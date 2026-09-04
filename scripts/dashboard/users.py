@@ -19,6 +19,7 @@ dashboard has no dependencies and is not acquiring one for this. The iteration
 count lives in each record rather than in a constant here, so raising it later
 upgrades people as they sign in instead of locking everybody out at once.
 """
+import base64
 import hashlib
 import hmac
 import json
@@ -261,7 +262,13 @@ def may_see(u, name):
 
 def is_admin(u):
     """Whether this account owns the machinery: nodes, packages, settings,
-    the phone, other accounts. Everything that is not a project."""
+    other accounts. Everything that is not a project.
+
+    A session token is never one, whatever it says: session_principal builds
+    it with `user`, and this refuses to be talked out of that even if a future
+    caller hands in a record claiming otherwise."""
+    if (u or {}).get("session"):
+        return False
     return u is ALL or (u or {}).get("role") in ("owner", "admin")
 
 
@@ -289,6 +296,76 @@ def may(u, action, project=None):
     if action == "admin":
         return "that is an administrator's"
     return ""
+
+
+# --- what a session gets instead of the operator's password --------------
+#
+# A Claude session used to inherit DASHBOARD_AUTH, which is how "only the
+# operator may install a package" ended up being a rule the code asked nicely
+# about (bug #16). It gets one of these instead: one project, `user` rights,
+# and an expiry. Whoever holds it can do what a user can do on that project
+# and nothing else — no other project, no nodes, no packages, no accounts.
+#
+# Stateless, signed with a key kept in the store. That buys revocation without
+# a table to keep: rotating the key invalidates every session token at once,
+# which is the granularity that matters here — they are minted fresh on every
+# connection, so there is nothing long-lived to revoke individually.
+SESSION_PREFIX = "bbs_"
+SESSION_TTL = 12 * 3600
+
+
+def _session_key():
+    with _lock:
+        d = load()
+        k = d.get("session_key")
+        if not k:
+            k = secrets.token_hex(32)
+            d["session_key"] = k
+            _save(d)
+    return k.encode()
+
+
+def revoke_sessions():
+    """Rotate the key: every token minted before this stops verifying."""
+    with _lock:
+        d = load()
+        d["session_key"] = secrets.token_hex(32)
+        _save(d)
+    return {"ok": True}
+
+
+def mint_session(project, ttl=SESSION_TTL):
+    exp = str(int(time.time()) + int(ttl))
+    body = f"{project}|{exp}"
+    sig = hmac.new(_session_key(), body.encode(), hashlib.sha256).hexdigest()[:32]
+    return SESSION_PREFIX + base64.urlsafe_b64encode(
+        f"{body}|{sig}".encode()).decode().rstrip("=")
+
+
+def session_principal(tok):
+    """The account a session token stands for, or None.
+
+    Not a stored account: a synthetic principal with `user` rights over the
+    one project it was minted for. `session` marks it as one, so an audit row
+    can say a session did this rather than naming a person who did not.
+    """
+    tok = str(tok or "")
+    if not tok.startswith(SESSION_PREFIX):
+        return None
+    raw = tok[len(SESSION_PREFIX):]
+    try:
+        body = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode()
+        project, exp, sig = body.rsplit("|", 2)
+    except (ValueError, UnicodeDecodeError):
+        return None
+    if not exp.isdigit() or int(exp) < time.time():
+        return None
+    want = hmac.new(_session_key(), f"{project}|{exp}".encode(),
+                    hashlib.sha256).hexdigest()[:32]
+    if not hmac.compare_digest(sig, want):
+        return None
+    return {"name": f"session:{project}", "role": "user",
+            "projects": [project], "session": project}
 
 
 # --- editing ---------------------------------------------------------------

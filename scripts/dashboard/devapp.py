@@ -344,8 +344,20 @@ def _plan(project, instance, action):
     down = {"name": "stopping", "argv": base + ["down"], "timeout": 180}
     build = {"name": "building", "argv": base + ["build"], "timeout": 3600,
              "env": env | _CLASSIC_BUILD}
+    # The env gate, in the only place a PLAN can carry it: a rebuild that
+    # would start an instance whose env does not answer the repo's new
+    # settings stops after `down`, and the controller rewrites the env and
+    # waits for the operator (compose_done's `gate` branch, and _gate_env).
+    #
+    # The controller's own runner decides this between the down and the up,
+    # with the build already done. Here the whole plan is fixed before the
+    # node sees it, so it is decided up front — which is the same answer,
+    # because neither the build nor the down touches .env.example or the
+    # instance env. What it must NOT do is send `up` anyway and gate
+    # afterwards: that is the broken start the gate exists to prevent.
+    rebuild = [build, down] if missing_env(project, instance) else [build, down, up]
     return {"up": [up], "down": [down], "remove": [down],
-            "rebuild": [build, down, up]}.get(action) or []
+            "rebuild": rebuild}.get(action) or []
 
 
 def _plan_spec(project, instance, action):
@@ -360,13 +372,29 @@ def _plan_spec(project, instance, action):
     return {"project": project, "instance": instance, "action": action,
             "name": _pname(project, instance), "files": files,
             "dirs": sorted(set(list(make) + ([d] if d else []))),
+            # Said in the spec as well as implied by the shorter plan, so the
+            # bookkeeping does not have to infer intent from a step count.
+            "gate": bool(action == "rebuild" and missing_env(project, instance)),
             "plan": _plan(project, instance, action)}
 
 
 def compose_done(job, state):
     """The records for an action the AGENT ran. Same bookkeeping the
     controller's own runner does, applied from the result — the node
-    executes, this side remembers."""
+    executes, this side remembers.
+
+    Addressed at the job's node throughout, which is not decoration: a build
+    is recorded against the daemon it landed on (daemon_id, _uid), and this
+    runs from the agent's result post, where nothing has set that context.
+    Without it every build a node ran was filed under the daemon "none", so
+    state() read it as belonging to another machine and the row went back to
+    saying nothing — the build happened, and the tab forgot it.
+    """
+    with on_node((job or {}).get("node") or ""):
+        return _compose_done(job, state)
+
+
+def _compose_done(job, state):
     sp = (job or {}).get("spec") or {}
     project, instance = sp.get("project", ""), sp.get("instance") or MAIN
     action = sp.get("action")
@@ -386,6 +414,32 @@ def compose_done(job, state):
     if action == "rebuild" and steps >= 1:
         _record_build(project, instance)
     if state != "succeeded":
+        _clear_marker(project, instance)
+        _bump()
+        # The row's sentence, in the controller's words. The node reports
+        # "exit 1", which is all it can honestly know — it ran an argv this
+        # side composed — and the step names in that plan are what say which
+        # part of the action died. Returned rather than written: job_result
+        # owns the row (see nodes.job_result).
+        if state == "canceled":
+            return ""                     # the operator's own word is on it
+        step = ""
+        for o in (job.get("outputs") or []):
+            if isinstance(o, dict) and o.get("kind") == "compose":
+                step = str(o.get("failed_at") or "")
+        return {"building": "build failed — the tail of its output is below",
+                "stopping": "stopping it failed — the tail of its output is below",
+                "starting": "up failed — the tail of its output is below",
+                }.get(step, "")
+    # A gated rebuild built and stopped, and that is the whole of what it was
+    # asked to do: rewrite the env with the old values in comments and leave
+    # Up to the operator. The row below would clear the flag, so this returns.
+    if sp.get("gate"):
+        _gate_env(project, instance)
+        with _lock:
+            d = _load()
+            _rec(d, project, instance)["await_env"] = True
+            write_json(FILE, d)
         _clear_marker(project, instance)
         _bump()
         return
@@ -1318,7 +1372,7 @@ def _pairs():
 
     DOCKER_HOST_PATHS used to be read here as well, for one release, so a
     box that had not rebooted since the upgrade still mapped. That release
-    has been and gone with the ssh kind (roadmap #18), and the variable is
+    has been and gone with the ssh kind (roadmap #24), and the variable is
     out of the five places."""
     nid = getattr(_node_ctx, "node", None) or _default_node()
     got = node_paths(nid) if node_paths and nid else {}
@@ -1715,19 +1769,6 @@ def _gate_env(project, instance=MAIN):
 
 # ---------------------------------------------------------------------------
 # state
-
-def _with_compose():
-    """Projects that have a compose file, so could have an instance at all."""
-    out = []
-    try:
-        for d in sorted(WORKSPACE.iterdir()):
-            if d.is_dir() and not d.name.startswith(".") and d.name != "_work" \
-                    and compose_file(d.name) is not None:
-                out.append(d.name)
-    except OSError:
-        pass
-    return out
-
 
 def overview(node_id=None):
     """Every instance, and everything else on the daemon, from ONE ps.
@@ -2215,14 +2256,6 @@ def needs_build(cfg):
         # round — Up stays gated rather than firing an implicit build.
         return True
     return any(bool(sv.get("build")) for sv in _services(cfg).values())
-
-
-def _within(path, base):
-    try:
-        Path(path).resolve().relative_to(Path(base).resolve())
-        return True
-    except (ValueError, OSError):
-        return False
 
 
 def _binds(sv, project):

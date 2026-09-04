@@ -61,7 +61,11 @@ const SURFACE = [
   'phFetch', 'pinTo', 'pkgAct', 'pkgRow', 'pkgTickDots', 'placeCard',
   'placePinMenu', 'placeResumeMenu', 'placeTab', 'pollRevs', 'postCustom',
   'postTrash', 'projectRow', 'pushLayout', 'reapDeadTerminals',
-  'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
+  'reattachTerminals', 'openFindingsTab', 'openJobsTab', 'openNodesTab', 'openSettingsTab',
+  // The Users tab (roadmap #22 step 3). Functions only: a top-level `let`
+  // is not a window property, so usersList and friends are not listed here.
+  'openUsersTab', 'loadUsers', 'usersAct', 'userRow', 'usersProjectPicker',
+  'renderUsersInto', 'wireUsers', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
   'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderPackagesInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',

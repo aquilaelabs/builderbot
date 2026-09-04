@@ -475,9 +475,9 @@ the VM and it dials in and stays. The node opens no port and this container
 holds no key that logs into it — the credential the node keeps opens its own
 row and nothing else. Adding a machine by ssh address is gone (roadmap #18):
 it existed only because compose used to run from this container over ssh, so
-a node needed a key as well as a token. It does not any more. (The
-`DOCKER_HOST` variable of earlier releases still seeds a record once at boot,
-for a box upgrading with it set, and is otherwise ignored.)
+a node needed a key as well as a token. It does not any more. `DOCKER_HOST`
+and `DOCKER_HOST_PATHS`, which named that machine before there were nodes,
+are gone with that kind and are read nowhere.
 
 Nothing but a sandbox VM is accepted, and the address is only half of what
 decides that. An address of any other kind greys every Docker control out with
