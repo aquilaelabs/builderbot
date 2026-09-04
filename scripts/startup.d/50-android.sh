@@ -22,6 +22,19 @@ log "android sdk: ${ANDROID_HOME:-?} (packages under $(sdk_root)/android)"
 # where the next image update will find them still sitting. A container that
 # has them already does nothing at all.
 baseline_api="${ANDROID_BASELINE_PLATFORM:-${ANDROID_DEFAULT_API:-36}}"
+# `none` keeps Android off this container's SDK store entirely.
+#
+# For the box whose node carries the Android toolchain: the store here is then
+# only what a session itself needs (the Playwright browsers), and a session
+# reading `bb sdk --local` is not shown an SDK its projects do not build with.
+# It matters most where the two are being separated — this box had one share
+# mounted as BOTH the container's SDK root and the node's packages store, so
+# "the container has Android" and "the node has Android" were one fact under
+# two names.
+case "$baseline_api" in
+    none|"") log "android: ANDROID_BASELINE_PLATFORM=none — installing nothing here"
+             exit 0 ;;
+esac
 if [ ! -d "${ANDROID_HOME}/platforms/android-${baseline_api}" ]; then
     log "installing the android ${baseline_api} baseline — downloaded once, kept outside the image"
     sdkmanager --sdk_root="${ANDROID_HOME}" --install "platforms;android-${baseline_api}" >/dev/null 2>&1 \

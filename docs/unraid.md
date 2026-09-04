@@ -278,6 +278,30 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 2. Set `ENABLE_ANDROID_EMULATOR` to `true`
 3. Apply, then: `docker exec -it BuilderBot bb emu start`
 
+### Splitting the SDK share from a node's toolchains (optional)
+
+Only once you have a [node](nodes.md) and it uses the same Unraid share as the
+container's SDK root. That is one store mounted twice — through Unraid's FUSE
+layer here, over NFS there — with one store id, so *this container has Flutter*
+and *the node has Flutter* are one fact under two names. Nothing can be taken
+off the container without taking it off the node too, and a session bound to
+the node is shown a path its project does not build with.
+
+Give the container a small store of its own instead. Nothing is re-downloaded
+except the Playwright browsers, and the node keeps every toolchain and system
+image already on the big share.
+
+1. Make a second share — say `development/SDK-controller`. It ends up holding
+   the Playwright browsers and little else, so a few GB is plenty.
+2. Container settings → **SDK share (large toolchains)** → point it at the new
+   share. The node keeps its own mount of the old one; nothing there moves.
+3. Set **ANDROID_BASELINE_PLATFORM** to `none`, or the next boot installs an
+   Android platform onto the new share — the thing you just moved away from.
+4. Apply. First boot fetches the Playwright browsers (~1.3GB) and nothing else.
+
+Afterwards `bb sdk` in a project bound to that node answers for the node's
+store, which is where its builds run; `bb sdk --local` is this container's.
+
 ### Web dashboard (optional)
 
 1. Container settings → **ENABLE_DASHBOARD** → `true`

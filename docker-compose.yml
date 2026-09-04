@@ -79,6 +79,10 @@ services:
       # --- Android emulator -------------------------------------------------
       # Also uncomment the devices: block below for KVM acceleration.
       ENABLE_ANDROID_EMULATOR: ${ENABLE_ANDROID_EMULATOR:-false}
+      # `none` keeps Android off this container's SDK store altogether —
+      # for the box whose Android work happens on a node. Unset leaves the
+      # image's own baseline, which is right when this container builds.
+      ANDROID_BASELINE_PLATFORM: ${ANDROID_BASELINE_PLATFORM:-}
       # API levels to keep an emulator image + AVD for, e.g. "34,35,36,37"
       # (Android 14 through 17). Each is ~2GB, downloaded once onto the SDK
       # share below, so an image update never re-fetches them.

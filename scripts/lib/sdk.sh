@@ -198,7 +198,92 @@ sdk_write_env() {
     fi
 }
 
+# `bb sdk` answers for the store the project actually builds with.
+#
+# A project bound to a node compiles THERE — bb build, bb test, bb run and
+# bb emu all go to it — so answering with this container's store told a
+# session about a machine its project does not use. Worse on this box, where
+# the SDK share and the node's packages store are ONE store under two names
+# (/sdk here through Unraid's FUSE layer, /mnt/SDK there over NFS, the same
+# store id): the two listings read like two machines' toolchains and were the
+# same bytes.
+#
+# Read from the node's census rather than run as a job there — everything
+# below is already in it, so this stays the instant command it has always
+# been. `bb sdk --local` is this container's own store, and BB_NODE_PACKAGES
+# means we ARE the node, where local is the right answer.
+#
+# Only the bare status routes. `bb sdk images|versions|check|root|env` are
+# what the dashboard shells out to for its own store, and a node's answer
+# there would be a silent wrong one.
 sdk_status() {
+    if [ "${1:-}" != --local ] && [ -z "${BB_NODE_PACKAGES:-}" ]; then
+        local node; node="$(project_node 2>/dev/null)"
+        if [ -n "$node" ] && sdk_status_node "$node"; then return 0; fi
+    fi
+    sdk_status_local
+}
+
+# The project's node's store, from the census the agent last sent. Non-zero
+# when there is nothing on record, so the caller falls back to the local
+# listing: a node that has never dialed in has told us nothing, and inventing
+# an inventory for it would be worse than showing this container's.
+sdk_status_node() {
+    local py; py="$(dirname "$(readlink -f "$0")")/dashboard/nodes.py"
+    [ -f "$py" ] || return 1
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$1" <<'NODESTAT'
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location("nodes", sys.argv[1])
+nodes = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(nodes)
+try:
+    nodes.open_readonly(os.environ["DASHBOARD_STATE"])
+    n = nodes.node(sys.argv[2])
+except Exception:
+    raise SystemExit(1)
+rep = (n or {}).get("reported") or {}
+store = (rep.get("stores") or {}).get("packages") or {}
+if not n or not store.get("path"):
+    raise SystemExit(1)
+
+
+def gb(mb):
+    return f"{mb / 1024:.0f}G" if mb < 1024 * 1024 else f"{mb / 1048576:.1f}T"
+
+
+live = "" if n.get("live") else "  (quiet — this is its last census)"
+print("== sdk root ==")
+print(f"  {store['path']}  on {n['name']} — this project's node, "
+      f"where its builds run{live}")
+if store.get("free_mb"):
+    print(f"  {'space':<14} {gb(store['free_mb'])} free")
+print("\n== toolchains ==")
+vers = rep.get("packages_versions") or {}
+# The store listing is a listdir, so it carries things that are not
+# toolchains: `android` is the SDK tree and has its own section below, and
+# env.sh is the generated PATH snippet. Dotted names are already out.
+top = [d for d in (rep.get("store_dirs") or {}).get("top") or []
+       if not d.startswith(".") and d != "android" and "." not in d]
+if not top:
+    print("  (the node has not reported what its store holds yet)")
+wide = max((len(d) for d in top), default=0)
+for name in sorted(top):
+    # "installed" where the node could not probe a version: `bb sdk versions`
+    # runs there from a cached bundle, so a store written before any package
+    # job has directories and no versions. Present is still the answer.
+    print(f"  {name:<{wide}}  {vers.get(name, 'installed')}")
+print("\n== android packages ==")
+andr = sorted(d for d in (rep.get("store_dirs") or {}).get("android") or []
+              if not d.startswith("."))
+print("  " + (", ".join(andr) if andr else "none"))
+for im in rep.get("images") or []:
+    avds = f"  (AVDs: {', '.join(im['avds'])})" if im.get("avds") else ""
+    print(f"  {im.get('api', '?'):<24} {im.get('kind', '')} {im.get('abi', '')}{avds}")
+print("\nthis container's own store: bb sdk --local")
+NODESTAT
+}
+
+sdk_status_local() {
     local root; root="$(sdk_root)"
     printf '== sdk root ==\n'
     if is_mountpoint "$root"; then
@@ -1217,7 +1302,11 @@ sdk_images() {
 cmd_sdk() {
     local sub="${1:-status}"; shift || true
     case "$sub" in
-        status|"")  sdk_status ;;
+        status|"")  sdk_status "$@" ;;
+        # `bb sdk --local` reads as a flag on the bare command, which is
+        # how anyone would type it — the dispatch would otherwise take it
+        # for a subcommand and print the usage line.
+        --local)    sdk_status --local ;;
         root)       printf '%s\n' "$(sdk_root)" ;;
         env)        sdk_env_snippet ;;
         list)       sdk_meta names ;;
@@ -1231,6 +1320,6 @@ cmd_sdk() {
         relink)     sdk_relink_android ;;
         update)     sdk_update "$@"; sdk_write_env ;;
         remove)     sdk_remove "$@"; sdk_write_env ;;
-        *) die "usage: bb sdk [status|root|env|list|images [--available]|flavors|plan X|versions|check|relink|install X|update X|remove X]" ;;
+        *) die "usage: bb sdk [status [--local]|root|env|list|images [--available]|flavors|plan X|versions|check|relink|install X|update X|remove X]" ;;
     esac
 }
