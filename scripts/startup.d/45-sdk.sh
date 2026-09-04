@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller node
+#
 # Put whatever `bb sdk install` has put on the SDK share onto every shell's
 # PATH.
 #

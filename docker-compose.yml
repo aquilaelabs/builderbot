@@ -76,6 +76,14 @@ services:
       # with the /sdk volume below.
       SDK_ROOT: ${SDK_ROOT:-/sdk}
 
+      # --- role -------------------------------------------------------------
+      # `controller` (default) is the management instance; `node` makes this
+      # container a worker that enrolls with a controller and runs its jobs.
+      # Same image, same template, two instances.
+      BUILDERBOT_ROLE: ${BUILDERBOT_ROLE:-controller}
+      # Node only, and only until it has enrolled.
+      CONTROLLER_URL: ${CONTROLLER_URL:-}
+      NODE_TOKEN: ${NODE_TOKEN:-}
       # --- Android emulator -------------------------------------------------
       # Also uncomment the devices: block below for KVM acceleration.
       ENABLE_ANDROID_EMULATOR: ${ENABLE_ANDROID_EMULATOR:-false}

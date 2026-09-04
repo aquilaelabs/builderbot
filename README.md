@@ -290,6 +290,8 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `SDK_ROOT` | `/sdk` | Where the SDKs *you* install are kept — see [SDKs live outside the image](#sdks-live-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: the runner keeps its own toolchains under `RUNNER_WORKDIR` |
 | `RUNNER_WORKDIR` | `/workspace/_work` | Everything the runner owns: job checkouts, the `_tool` cache `actions/setup-*` fills, cached actions, and `_diag` logs. Mapped to `appdata/BuilderBot/work` by the template |
 | `ENABLE_ANDROID_EMULATOR` | `false` | Create system images and AVDs at startup |
+| `BUILDERBOT_ROLE` | `controller` | `node` makes this container a worker instead of the management instance: it enrolls with a controller and runs its jobs, and the dashboard, runner, Claude and project hooks do not start. See [nodes](docs/nodes.md) |
+| `CONTROLLER_URL` / `NODE_TOKEN` | — | Node only, and only until it enrolls: the dashboard's address, and a one-time token its Nodes tab mints |
 | `ANDROID_BASELINE_PLATFORM` | *(the image's)* | `none` keeps Android off this container's SDK store entirely — no platform, no build-tools, no emulator. For the box whose Android work runs on a [node](docs/nodes.md): the node carries its own SDK, and the store here is then only what a session needs |
 | `ANDROID_SYSTEM_IMAGES` | `36` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
 | `ANDROID_SYSTEM_IMAGE_VARIANT` | `google_apis;x86_64` | Image flavor; `default;x86_64` is smaller AOSP, no Google APIs |

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller node
+#
 # An X display for the GPU, so the Android emulator can render on it.
 #
 # The emulator's `-gpu host` needs GLES from the host's driver, and NVIDIA's

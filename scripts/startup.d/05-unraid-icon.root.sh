@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller node
+#
 # Put this container's icon into Unraid's own icon cache, so the Docker page
 # shows it without ever fetching a URL.
 #
