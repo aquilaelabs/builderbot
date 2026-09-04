@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller
+#
 # Web dashboard: the page, its API and the browser terminals, all on
 # DASHBOARD_PORT. ttyd binds the loopback and is reached through the
 # dashboard's own /term proxy, so there is one port and one sign-in.

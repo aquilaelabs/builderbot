@@ -232,3 +232,4 @@
 - Android system images can be installed onto a node from the Tools tab, not just onto this container (242c762)
 - Android packages install on a node again — sdkmanager could not find the SDK root there, and the licenses had never been accepted for that store (7484644)
 - bb sdk now reports the store a project actually builds with — its node's, when it has one (94c99a0)
+- A second container can be run as a build node — same template, BUILDERBOT_ROLE=node — so builds and Android emulation move off the management container and share the GPU without passing it through to a VM (bfa9ea3)

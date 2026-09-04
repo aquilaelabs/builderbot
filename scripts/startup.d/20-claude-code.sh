@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller
+#
 # Keep Claude Code current and make sure the CLI is usable by `builder`.
 #
 # Updates install into ~/.npm-global (persisted on the home volume), which

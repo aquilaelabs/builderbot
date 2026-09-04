@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller
+#
 # Say at boot whether the docker daemon is reachable, and which one it is.
 #
 # The log said nothing about docker at all. Every other capability announces

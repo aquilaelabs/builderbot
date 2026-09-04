@@ -278,6 +278,40 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
 2. Set `ENABLE_ANDROID_EMULATOR` to `true`
 3. Apply, then: `docker exec -it BuilderBot bb emu start`
 
+### A second container as a build node (optional)
+
+A node is a machine that runs the work — builds, tests, Android emulation —
+while the management container keeps the dashboard and the record. It can be a
+[VM](nodes.md), and it can just as well be another copy of this container.
+
+The container version has one property the VM does not: it shares the server's
+GPU the ordinary Docker way, so the Android emulator renders on the card
+without passing it through to a VM and taking it away from everything else.
+
+1. Dashboard → **Nodes** → **Enroll node**. Name it, tick **package-build**
+   and leave **docker-host** off — a container cannot be a Docker host without
+   `--privileged`, which is root on the server. Copy the `bbe_…` token; it is
+   shown once and lasts 24 hours.
+2. Add this template a second time, with a different container name, and set:
+   - **BUILDERBOT_ROLE** → `node`
+   - **CONTROLLER_URL** → the dashboard's address, e.g. `http://192.168.1.15:7680`
+   - **NODE_TOKEN** → the token you just copied
+3. Give it its own **/config** path — that is where it keeps its identity, so
+   it must not share the management container's. Its data, cache and artifacts
+   stores live under `/config/node`; map a volume onto any of them — an NFS
+   one, made with `docker volume create -o type=nfs …` — if you want it
+   elsewhere. Nothing about the dashboard or the runner needs turning off:
+   in the node role neither one starts.
+4. Point its **SDK share** at the same share the management container uses.
+   One store under two names is recognized, and installs are arbitrated across
+   it rather than colliding.
+5. For the emulator, map `/dev/kvm` and the GPU exactly as you would for the
+   management container.
+
+It appears on the Nodes tab within a few seconds of starting. Point a project
+at it in the project's settings dialog and `bb build`, `bb test` and `bb emu`
+run there.
+
 ### Web dashboard (optional)
 
 1. Container settings → **ENABLE_DASHBOARD** → `true`

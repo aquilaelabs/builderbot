@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller node
+#
 # Playwright's browsers live on the SDK share, not in the image.
 #
 # They are 1.3GB of pure download and /opt is discarded on every image

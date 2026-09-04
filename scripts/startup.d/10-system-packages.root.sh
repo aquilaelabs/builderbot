@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller node
+#
 # Install any extra apt packages requested via EXTRA_APT_PACKAGES.
 # Runs as root, before the unprivileged hooks.
 #

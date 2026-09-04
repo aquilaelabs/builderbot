@@ -160,6 +160,50 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
      && st.stores.data === `${DIR}/agentdata`,
      '...holding the node token, the id it was minted for, and the full capability set it enrolled with');
   ok(/plain http/.test(out), 'plain http is said plainly at enrollment');
+
+  // ---- the container node (roadmap #21) ---------------------------------
+  // The same image in its `node` role: scripts/node-agent.sh is what the
+  // entrypoint execs instead of the supervisor, and it composes the enroll
+  // call from the template's variables. Driven here rather than trusted,
+  // because it is the only path an operator will ever use to make one, and
+  // its arguments are four env vars that nothing else checks.
+  {
+    const NROOT = `${DIR}/nodecontainer`;
+    const two = await api('/api/v1/nodes', { action: 'enroll', name: 'boxnode' });
+    const nenv = { ...agentEnv, BUILDERBOT_NODE_JSON: '', NODE_STORE_ROOT: NROOT,
+                   CONTROLLER_URL: URL, NODE_TOKEN: two.token,
+                   NODE_PACKAGES_STORE: `${DIR}/nodepackages` };
+    delete nenv.BUILDERBOT_NODE_JSON;
+    let nout = '';
+    try {
+      // It ends in `exec ... run`, which never returns — the timeout is how
+      // the enrollment half is exercised without the loop being left behind.
+      nout = execFileSync('bash', [`${REPO}/scripts/node-agent.sh`],
+        { env: nenv, encoding: 'utf8', timeout: 25000, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { nout = String(e.stdout || '') + String(e.stderr || ''); }
+    const rec = `${NROOT}/node.json`;
+    ok(existsSync(rec), `the node role enrolls from CONTROLLER_URL and NODE_TOKEN (${
+      nout.split('\n').filter(Boolean).slice(-2).join(' | ').slice(0, 120)})`);
+    const nst = existsSync(rec) ? JSON.parse(readFileSync(rec, 'utf8')) : {};
+    ok(nst.node_id === two.id && nst.stores?.data === `${NROOT}/data`
+       && nst.stores?.packages === `${DIR}/nodepackages`,
+       `...keeping its identity and stores under NODE_STORE_ROOT, and its packages store
+        where NODE_PACKAGES_STORE says — the SDK share, in the template (${
+         JSON.stringify(nst.stores || {})})`);
+    ok((await nodeById(two.id))?.state === 'online',
+       '...and the row comes online without systemd, ssh or a provisioner');
+    // Second start: the token is spent and the record is what matters. An
+    // image update restarts this container, and re-enrolling every time
+    // would burn a token it does not have and lose the node's identity.
+    let again2 = '';
+    try {
+      again2 = execFileSync('bash', [`${REPO}/scripts/node-agent.sh`],
+        { env: nenv, encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (e) { again2 = String(e.stdout || '') + String(e.stderr || ''); }
+    ok(/already enrolled/.test(again2) && JSON.parse(readFileSync(rec, 'utf8')).node_id === two.id,
+       '...and starting again re-uses the record rather than spending another token');
+    await api('/api/v1/nodes', { action: 'retire', id: two.id });
+  }
   const n = await nodeById(minted.id);
   // The version is read from the controller, not written here: the agent
   // just downloaded from it, so the two must agree, and an assertion naming

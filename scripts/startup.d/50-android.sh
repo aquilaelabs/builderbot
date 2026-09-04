@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller node
+#
 # Android: report the SDK, then make sure every API level in
 # ANDROID_SYSTEM_IMAGES has a system image, a matching platform, and an AVD.
 #

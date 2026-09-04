@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller
+#
 # Wire up package-publishing credentials, when they're provided.
 #
 #   NPM_TOKEN         -> ~/.npmrc auth for registry.npmjs.org (npm publish)

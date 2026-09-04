@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #
+# roles: controller
+#
 # Report on the mounted projects and, optionally, run each project's own
 # bootstrap.
 #
