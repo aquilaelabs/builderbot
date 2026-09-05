@@ -3129,8 +3129,17 @@ function nextShell(proj){
 // holding the tab, and a phone waking up reloads its terminal iframe, which
 // spawns whatever the URL names. A shell carries no marker, because a shell
 // is safe to recreate in the same directory and always was.
+// The boot is the machine the session runs ON: for a project bound to a node
+// it is that node's (the row carries it), because bb-tty there compares
+// against its own run — and a tab stamped with this container's boot was
+// refused on the node on every reconnect, forever (roadmap #24).
+const bootFor = arg => {
+  const proj = arg.startsWith("claude:") ? arg.slice(7).split(":")[0] : "";
+  const row = (state?.projects || []).find(p => p.name === proj);
+  return row?.session_boot || state?.boot || "";
+};
 const ttydUrl = arg => `/term/?arg=${encodeURIComponent(
-  arg.startsWith("claude:") && state?.boot ? `${arg}:b:${state.boot}` : arg)}`;
+  arg.startsWith("claude:") && bootFor(arg) ? `${arg}:b:${bootFor(arg)}` : arg)}`;
 
 const isPhone = () => window.matchMedia("(max-width:900px)").matches;
 

@@ -499,6 +499,30 @@ case "$target" in
                 -not -exec test -e '{}/.bbignore' ';' -printf '  %f\n' >&2
             bad ""
         fi
+        # Attaching to a session that is already running is always fine — the
+        # conversation is there, and this is how a tab comes back to it.
+        # *Starting* one is a decision, and it has to be a decision made now.
+        #
+        # A browser left open across a container restart still holds its Claude
+        # tabs, and a phone waking up reloads the terminal iframe — which
+        # spawns whatever its URL names, silently, minutes after a restart
+        # nobody connected it to. Pruning the stored layout at boot cannot stop
+        # that; the page never re-read it. So the URL carries the boot it was
+        # opened in, and one from a previous run is refused here, where the
+        # session would otherwise be created. On a node the boot in the URL
+        # is the NODE's (the page takes it from the project's row), compared
+        # against this machine's — so a controller restart does not orphan a
+        # tab whose session is alive here, and a node reboot does refuse one.
+        #
+        # First of the checks, so a tab that is going to be refused anyway
+        # does not first fetch a login it will not use.
+        if ! tmux has-session -t "=$(sess "claude-${proj//[.:]/_}")" 2>/dev/null \
+           && [ "$want_boot" != "$(boot_id)" ]; then
+            bad "This tab is from before ${BB_NODE:-the container} restarted." \
+                "Its conversation is still on disk. Open Claude on ${proj} from" \
+                "the dashboard's Projects card to pick it up again — starting a" \
+                "session is a decision, and a reconnecting tab is not one."
+        fi
         # Signed out, a session starts and dies on claude's own error, which
         # reads like the container is broken. Refused positively only: an
         # older claude with no `auth` subcommand, or one that cannot answer,
@@ -530,24 +554,6 @@ case "$target" in
             bad "'${proj}' is locked: the operator runs this one, so no Claude" \
                 "session starts here. Unlock it from the Projects card if that" \
                 "was not what you meant."
-        fi
-        # Attaching to a session that is already running is always fine — the
-        # conversation is there, and this is how a tab comes back to it.
-        # *Starting* one is a decision, and it has to be a decision made now.
-        #
-        # A browser left open across a container restart still holds its Claude
-        # tabs, and a phone waking up reloads the terminal iframe — which
-        # spawns whatever its URL names, silently, minutes after a restart
-        # nobody connected it to. Pruning the stored layout at boot cannot stop
-        # that; the page never re-read it. So the URL carries the boot it was
-        # opened in, and one from a previous run is refused here, where the
-        # session would otherwise be created.
-        if ! tmux has-session -t "=$(sess "claude-${proj//[.:]/_}")" 2>/dev/null \
-           && [ "$want_boot" != "$(boot_id)" ]; then
-            bad "This tab is from before the container restarted." \
-                "Its conversation is still on disk. Open Claude on ${proj} from" \
-                "the dashboard's Projects card to pick it up again — starting a" \
-                "session is a decision, and a reconnecting tab is not one."
         fi
         cmd=(claude --remote-control "$proj")
         if [ -n "$resume" ]; then

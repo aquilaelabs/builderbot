@@ -902,7 +902,11 @@ def _census(c):
             # The agent's own sentence for a half that is down — no session
             # account, no ttyd, a port taken — which the row's dead button
             # repeats. Dropped once, and the button said only "runs none yet".
-            "why": str(se.get("why") or "")[:120]}
+            "why": str(se.get("why") or "")[:120],
+            # The node's own boot id, which a terminal's URL has to carry for
+            # a session THERE (bb-tty compares against the machine it runs
+            # on); the row hands it to the page per project.
+            "boot": re.sub(r"[^0-9.]", "", str(se.get("boot") or ""))[:40]}
     net = c.get("network") if isinstance(c.get("network"), dict) else {}
     out["network"] = {
         "interface": str(net.get("interface") or "")[:32],

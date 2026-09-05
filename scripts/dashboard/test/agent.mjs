@@ -5,7 +5,7 @@
 // take an exec job, stream its log, report the result, and be cut off. Every
 // assertion is a round trip through the channel, which is the thing phase 3
 // exists to prove.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, statSync, lstatSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync } from 'node:fs';
 
@@ -34,6 +34,8 @@ await ready(page);
 
 // ---- minting: a pending row, a one-time token -------------------------------
 const minted = await api('/api/v1/nodes', { action: 'enroll', name: 'agentbox', user: 'nobody' });
+// The node's boot id, once its census reports the session half.
+let nodeBoot = '';
 ok(minted.ok && /^bbe_[A-Za-z0-9_-]{20,}$/.test(minted.token) && /^n_/.test(minted.id),
    `Enroll node mints a bbe_ token bound to a new node id (${minted.id})`);
 {
@@ -338,6 +340,12 @@ try {
     ok(existsSync(`${store}/.bb/current/scripts/dashboard/bb-work-note`)
        && existsSync(`${store}/.bb/current/scripts/lib/bbapi.py`),
        '...and the bundle carries the hooks bb-tty writes into a session and bb\'s API client');
+    // The node's boot rides with it: a terminal's URL carries the boot of
+    // the machine the session runs ON, or bb-tty there refuses every
+    // connection as a stale tab — which is what the first real session did.
+    ok(/^\d+\.\d+$/.test(sess?.boot || ''),
+       `...and the node's own boot id, in bb-tty's shape (${sess?.boot})`);
+    nodeBoot = sess?.boot || '';
   }
 
   // ---- the relay (roadmap #24): bb's notebook verbs from a node ---------------
@@ -703,6 +711,19 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       const alpha = rows.find(p => p.name === 'alpha');
       ok(alpha?.session_at === 'agentbox' && alpha?.session_why === '',
          `the project row says where its sessions run (${alpha?.session_at})`);
+      // In this harness the "node" is a process in the same container, so
+      // its boot id IS this container's; what is asserted is that the row
+      // carries the node's own answer, not that the two differ.
+      ok(alpha?.session_boot === nodeBoot && nodeBoot !== '',
+         '...and carries that node\'s boot for the terminal\'s URL');
+      await refreshUntil(page, () =>
+        ((state?.projects || []).find(p => p.name === 'alpha') || {}).session_at === 'agentbox');
+      const url = await page.evaluate(() => ttydUrl('claude:alpha'));
+      ok(decodeURIComponent(url).endsWith(`claude:alpha:b:${nodeBoot}`),
+         `the page stamps the node's boot into a node-bound terminal's URL (${decodeURIComponent(url)})`);
+      const urlHere = await page.evaluate(() => ttydUrl('claude:beta'));
+      ok(decodeURIComponent(urlHere).endsWith(`claude:beta:b:${(await api('/api/status')).boot}`),
+         '...and this container\'s into everybody else\'s');
       const c = await term('claude:alpha');
       ok(c.status === 200 && /^ttyd-stub GET \/ws\?/.test(c.body),
          `a Claude session on alpha is relayed to agentbox's ttyd (${c.status}: ${c.body.slice(0, 40)})`);

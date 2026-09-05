@@ -2909,9 +2909,9 @@ instead.
 Afterwards, `bb users passwd <name>` changes a password and `bb users add`
 makes the others. `bb users token <project> [<account>]` mints the scoped
 session token a Claude session is given — for proving a node by hand, where
-bb reaches the controller with `BB_TOKEN` and nothing else; with an account
-named it is the token a node-bound terminal carries, which also fetches that
-account's Claude login onto the node.
+`bb` reaches the controller with `BB_TOKEN` and nothing else; with an
+account named it is the token a node-bound terminal carries, which also
+fetches that account's Claude login onto the node.
 
 #### Accounts
 
