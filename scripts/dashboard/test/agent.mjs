@@ -420,6 +420,43 @@ try {
       if (had === null) rmSync(creds); else writeFileSync(creds, had);
     }
 
+    // ---- the hooks post from a node (roadmap #24) ---------------------------
+    // Inside a session on a node the two hooks bb-tty writes into its
+    // settings have no /config to write: they post to the controller with
+    // the session's token, and the same modules record them here — the
+    // overlap note `bb work` reads, the prompt in the project's feed, and
+    // the "started" line the proxy cannot announce for a session it does
+    // not see start.
+    {
+      const forMe = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
+        { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+      const nodeEnv = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+                        BB_TOKEN: forMe, BB_NODE: 'agentbox', BB_TREE: '/workspace/alpha' };
+      const hook = (name, args, input) => execFileSync('python3', [`${REPO}/scripts/dashboard/${name}`, ...args],
+        { input, encoding: 'utf8', env: nodeEnv, stdio: ['pipe', 'pipe', 'pipe'] });
+      const feed = async () => ((await api('/api/chat', { action: 'read', project: 'alpha' })).messages || []);
+      const n0 = (await feed()).length;
+      hook('bb-prompt-relay', ['alpha', 'ignored'], JSON.stringify({ prompt: 'refactor the picker <system-reminder>x</system-reminder>' }));
+      const asked = (await feed()).slice(n0);
+      ok(asked.length === 1 && asked[0].kind === 'asked' && /test asked: refactor the picker$/.test(asked[0].text),
+         `a prompt typed in a session on the node lands in the project's feed, under the token's account (${asked[0]?.text})`);
+      hook('bb-prompt-relay', ['--started', 'alpha', 'ignored'], '');
+      const started = (await feed()).slice(-1)[0];
+      ok(started?.kind === 'did' && /test started a Claude session on alpha \(agentbox\)/.test(started?.text || ''),
+         `...and bb-tty's "started" line arrives the same way, naming the node (${started?.text})`);
+      const noteOut = hook('bb-work-note', ['alpha', 'ignored'],
+        JSON.stringify({ tool_input: { file_path: '/workspace/alpha/src/picker.py', old_string: 'def pick():\n  pass' } }));
+      const work = execFileSync('bash', [`${REPO}/scripts/bb`, 'work'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`,
+        env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha' } });
+      ok(/test\s+src\/picker\.py\s+\[pick\]/.test(work) && noteOut === '',
+         `an edit's note from the node is what bb work reads here, symbol guessed and file relative to the tree (${
+           (work.split('\n').find(l => /picker/.test(l)) || '').trim()})`);
+      const bad = await fetch(URL.replace(/\/$/, '') + '/api/v1/hook', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'asked', text: 'hi' }) });
+      ok(bad.status === 403, 'a token for the project alone — no account — may not post as anybody');
+    }
+
     // ---- the node's sessions are on the Sessions card (roadmap #24) --------
     // The agent's heartbeat carries the session account's tmux sessions;
     // the controller lists them beside its own, named by ITS rule (the

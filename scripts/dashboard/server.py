@@ -2151,6 +2151,13 @@ users.configure(state=STATE, write_json=write_json)
 import chat                                                     # noqa: E402
 chat.configure(state=STATE, write_json=write_json)
 
+# ---- what each session is changing ------------------------------------------
+# Written by the bb-work-note hook inside a session and read by `bb work`;
+# the server touches it only for a session on a node, whose hook posts the
+# note here because the node has no /config to write (roadmap #24).
+import overlap                                                   # noqa: E402
+overlap.configure(state=STATE, workspace=WORKSPACE, write_json=write_json)
+
 
 # ---- the bug tracker --------------------------------------------------------
 # The notebook's third view. Same arrangement again: its own file, handed the
@@ -3724,6 +3731,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._jobs(req)
         if path == "/api/v1/bb":
             return self._bb_relay(req)
+        if path == "/api/v1/hook":
+            return self._hook(req)
         if path.startswith("/api/lock"):
             return self._lock(req)
         # NOT /api/pin, which is the command pin and has been since long before
@@ -3984,6 +3993,54 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the credentials file here could not be read"}, 500)
         return self._json({"credentials": text,
                            "email": claude_auth(home=home).get("email") or ""})
+
+    def _hook(self, req):
+        """What a session's hooks have to say, from a NODE (roadmap #24).
+
+        bb-work-note and bb-prompt-relay write this container's /config
+        when they run here — the overlap notes, the project's chat feed. On
+        a node there is no /config, so they post the same three things to
+        this endpoint with the session's token, and the same modules write
+        them: `note` (a file the session is about to edit, with a guess at
+        the symbol; answers who else has it open), `asked` (what the person
+        typed, into the project feed) and `started` (the session began,
+        which _claude_held announces for a local session and cannot see
+        for one on a node).
+
+        The account is the token's, never the request's: a session token
+        minted for a node-bound terminal names its account, and that is
+        who the note is filed under and who the feed says asked.
+        """
+        me = self._who()
+        if not me:
+            return self._json({"error": "not signed in"}, 401)
+        uid = me.get("uid") if me.get("session") else ""
+        project = me.get("session") or ""
+        if not uid or not project:
+            return self._json({"error": "a hook posts with a session token minted for an "
+                                        "account — the one a node-bound terminal carries"}, 403)
+        kind = field(req, "kind")
+        store = users.load()["users"]
+        name = next((n for n, u in store.items() if u.get("uid") == uid), "") or uid
+        if kind == "note":
+            path = str(req.get("path") or "")[:400]
+            if not path:
+                return self._json({"error": "a note names a file"}, 400)
+            others = overlap.others_touching(project, uid, path)
+            overlap.note(project, uid, path, str(req.get("symbol") or "")[:120])
+            by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
+            return self._json({"ok": True, "others": [by_uid.get(o, o) for o in others]})
+        if kind == "asked":
+            text = str(req.get("text") or "").strip()[:800]
+            if not text:
+                return self._json({"error": "nothing asked"}, 400)
+            chat.post(project, uid, f"{name} asked: {text}", kind="asked")
+            return self._json({"ok": True})
+        if kind == "started":
+            chat.event(project, uid, f"{name} started a Claude session on {project}"
+                                     + (f" ({field(req, 'node')})" if field(req, "node") else ""))
+            return self._json({"ok": True})
+        return self._json({"error": "a hook is note, asked or started"}, 400)
 
     def _bb_relay(self, req):
         """A bb verb from a session on a NODE, run here (roadmap #24).
