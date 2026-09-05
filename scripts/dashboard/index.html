@@ -5517,16 +5517,21 @@ function projectRow(p, live, cls, inTab){
       <span class="acts">
       ${isBroken(p) ? "" : `<button class="eye${live.has(myClaude(p.name)) ? " on acc" : ""}"
          data-c="${esc(p.name)}" aria-label="Claude session"${
-         (p.locked || notMine(p)
-          || (!signedIn() && !live.has(myClaude(p.name))))
+         (p.locked || notMine(p) || p.session_why
+          // The sign-in that matters for a session on a NODE is the one in
+          // that node's home, which this container cannot see (roadmap #24).
+          || (!p.session_at && !signedIn() && !live.has(myClaude(p.name))))
            ? " disabled" : ""}
          title="${notMine(p) ? NOT_MINE_WHY
                  : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
+                 : p.session_why ? p.session_why
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own — start yours`
-                 : !signedIn() && !live.has(myClaude(p.name))
+                 : !p.session_at && !signedIn() && !live.has(myClaude(p.name))
                    ? "this container is not signed in to Claude — the Doctor card has the way in"
+                 : p.session_at
+                   ? `Claude — a session on ${p.session_at}, this project's node; sign in there from a shell if it asks`
                  : live.has(myClaude(p.name)) ? "Claude — session running, go to its tab"
                  : p.last_claude ? "Claude — no session running; resume or start one"
                  : "Claude — start a session here"}">${SPARK}</button>`}
@@ -5574,7 +5579,12 @@ roadmap, bugs and memories stay where they are, so putting it back is a mv">${BI
           // Said once, where somebody would otherwise wonder whether they are
           // about to walk into each other. They are not: each session works in
           // a checkout of its own.
-          ? ", each in a checkout of their own" : ""}</div>` : ""}
+          ? ", each in a checkout of their own" : ""}</div>`
+        // Sessions on a node are in that machine's tmux, which this poll
+        // does not see — so the line says where they are rather than
+        // implying nobody is there (roadmap #24).
+        : p.session_at && !p.session_why
+          ? `<div class="sub sessline">sessions run on ${esc(p.session_at)}</div>` : ""}
     </div>
 `;
 }

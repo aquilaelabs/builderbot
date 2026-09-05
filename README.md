@@ -1302,7 +1302,11 @@ the node's mounts on this tab). The row's census says whether that half is
 up (`session`: ports, account, whether `/workspace` is mounted, which Claude
 the account has); `bb roadmap`, `bb bug`, `bb version` and the other verbs
 whose state is this container's are relayed back here over the API with the
-session's own token. What the proxy does with that is phase 10b. What a project can actually do on its node is
+session's own token. The terminal proxy sends a bound project's session to
+that node when its row says the half is up and `/workspace` is mounted, and
+refuses with the reason — on the row's button and in the terminal — when
+the node cannot take one, rather than starting it on the wrong machine; a
+project with no node keeps its sessions here. What a project can actually do on its node is
 what is **installed** there: the row lists the toolchains its census found,
 and the Tools tab's node picker is where more are added. (Underneath, the
 node still refuses a job asking for something it did not enrol with — the

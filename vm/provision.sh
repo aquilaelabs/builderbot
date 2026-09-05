@@ -1199,6 +1199,67 @@ elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
     systemctl start builderbot-agent 2>/dev/null || true
 fi
 
+# --- the session ports, to the controller only (roadmap #24, phase 10b) ----
+# The agent binds ttyd on this machine's LAN address so the controller's
+# terminal proxy can dial it — and a ttyd on the LAN with no credential of
+# its own is a shell for anyone who can reach the port, cookie or no cookie
+# (the proxy is the gate, and it is on the other machine). So the two ports
+# are opened to the controller's address and nothing else, with nftables,
+# in a table of this script's own that leaves whatever else the machine
+# filters alone. Re-applied at boot by a unit, and rewritten here on every
+# run, so a controller that moved is one re-run away.
+ctl_url="$CONTROLLER"
+[ -n "$ctl_url" ] || ctl_url="$(python3 -c 'import json; print(json.load(open("/etc/builderbot/node.json")).get("controller", ""))' 2>/dev/null || true)"
+if [ -n "$SESSION_NAME" ] && [ -n "$ctl_url" ]; then
+    say "session ports: 7681 and 7682 open to the controller only"
+    ctl_host="${ctl_url#*://}"; ctl_host="${ctl_host%%/*}"; ctl_host="${ctl_host%%:*}"
+    ctl_host="${ctl_host#\[}"; ctl_host="${ctl_host%\]}"
+    ctl_ip="$(getent ahosts "$ctl_host" 2>/dev/null | awk 'NR==1{print $1}')"
+    if [ -z "$ctl_ip" ]; then
+        warn "could not resolve the controller's host ${ctl_host} — the session ports are NOT filtered"
+    else
+        apt-get install -y -qq nftables >/dev/null 2>&1 || true
+        case "$ctl_ip" in *:*) fam=ip6 ;; *) fam=ip ;; esac
+        install -d -m 0755 /etc/builderbot
+        cat > /etc/builderbot/session-ports.nft <<EOF
+# Written by BuilderBot's provision.sh: the session ttyds, reachable from the
+# controller (${ctl_host}) and the loopback, and from nowhere else.
+table inet builderbot_session
+delete table inet builderbot_session
+table inet builderbot_session {
+    chain input {
+        type filter hook input priority -10; policy accept;
+        tcp dport { 7681, 7682 } iifname "lo" accept
+        tcp dport { 7681, 7682 } ${fam} saddr ${ctl_ip} accept
+        tcp dport { 7681, 7682 } drop
+    }
+}
+EOF
+        cat > /etc/systemd/system/builderbot-session-ports.service <<'EOF'
+[Unit]
+Description=BuilderBot: the session ports open to the controller only
+After=network-pre.target
+Wants=network-pre.target
+Before=network.target builderbot-agent.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/builderbot/session-ports.nft
+
+[Install]
+WantedBy=multi-user.target
+EOF
+        systemctl daemon-reload
+        if nft -f /etc/builderbot/session-ports.nft 2>/dev/null; then
+            systemctl enable builderbot-session-ports >/dev/null 2>&1 || true
+            printf '   from %s (%s); everything else dropped\n' "$ctl_host" "$ctl_ip"
+        else
+            warn "nft could not apply the rule — the session ports are NOT filtered"
+        fi
+    fi
+fi
+
 ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
 # What to paste. BuilderBot fills in the scheme and the bb account, so on a
 # default install the address IS the whole setting; the account is spelled out

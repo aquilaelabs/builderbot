@@ -139,12 +139,28 @@ sys.exit(2)
 // sessions this node runs, and what is under test is that it does — as
 // which account, on which ports, running bb-tty from which bundle — not
 // ttyd itself. This one records its argv and environment and stays up.
-writeFileSync(`${DIR}/bin/ttyd`, `#!/usr/bin/env bash
-printf '%s\\n' "$@" > "${DIR}/ttyd-$$.argv"
-env > "${DIR}/ttyd-$$.env"
+writeFileSync(`${DIR}/bin/ttyd`, `#!/usr/bin/env python3
+# ...and answers on its port with the request line, so the controller's
+# terminal proxy can be shown dialing this node with the URL it stamped.
+import http.server, os, socketserver, sys, threading, time
+a = sys.argv[1:]
+open(f"${DIR}/ttyd-{os.getpid()}.argv", "w").write("\\n".join(a) + "\\n")
+open(f"${DIR}/ttyd-{os.getpid()}.env", "w").write("".join(f"{k}={v}\\n" for k, v in os.environ.items()))
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = f"ttyd-stub {self.requestline}".encode()
+        self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *x): pass
 # Up for as long as the agent that started it is, like the real one under
 # SIGTERM — and not a minute longer, so a killed agent leaves nothing behind.
-while kill -0 "$PPID" 2>/dev/null; do sleep 1; done
+def watch():
+    while os.getppid() != 1: time.sleep(1)
+    os._exit(0)
+threading.Thread(target=watch, daemon=True).start()
+socketserver.TCPServer.allow_reuse_address = True
+with socketserver.TCPServer(("127.0.0.1", int(a[a.index("--port") + 1])), H) as srv:
+    srv.serve_forever()
 `, { mode: 0o755 });
 const ttydRuns = () => readdirSync(DIR).filter(f => /^ttyd-\d+\.argv$/.test(f))
   .map(f => ({ argv: readFileSync(`${DIR}/${f}`, 'utf8').trim().split('\n'),
@@ -633,6 +649,56 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       build: 'cat hello.txt && mkdir -p out && echo built > out/app-1.0.apk', outputs: ['out/*.apk'] });
     ok(pr.ok && pr.node === minted.id && /hello/.test(pr.build),
        'the project record takes a build node, a build command and its outputs');
+
+    // ---- the terminal goes to the node (roadmap #24, phase 10b) --------------
+    // alpha is bound to agentbox now, whose census says its session half is
+    // up and /workspace mounted (the stub reports what the agent measures;
+    // the harness runs in a container whose /workspace IS a mount). So the
+    // controller's /term proxy dials agentbox's ttyd — the stub above, which
+    // answers with the request line — with the account, its name and a
+    // session token stamped into the URL.
+    {
+      const term = async (arg, hdr = auth) => {
+        const r = await fetch(URL.replace(/\/$/, '') + '/term/ws?arg=' + encodeURIComponent(arg),
+                              { headers: hdr, redirect: 'manual' });
+        return { status: r.status, body: await r.text() };
+      };
+      const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+      const rows = (await api('/api/status')).projects;
+      const alpha = rows.find(p => p.name === 'alpha');
+      ok(alpha?.session_at === 'agentbox' && alpha?.session_why === '',
+         `the project row says where its sessions run (${alpha?.session_at})`);
+      const c = await term('claude:alpha');
+      ok(c.status === 200 && /^ttyd-stub GET \/ws\?/.test(c.body),
+         `a Claude session on alpha is relayed to agentbox's ttyd (${c.status}: ${c.body.slice(0, 40)})`);
+      const args = (c.body.match(/arg=[^& ]+/g) || []).map(x => decodeURIComponent(x.slice(4)));
+      ok(args[0] === `u:${uid}:claude:alpha`,
+         `...with the account stamped into the argument as it is locally (${args[0]})`);
+      ok(/^tok:bbs_[A-Za-z0-9_-]+$/.test(args[1] || '') && args[2] === 'name:test',
+         `...and the node's two extras after it: a session token and the account's name (${args.slice(1).map(x => x.slice(0, 12)).join(', ')})`);
+      const sh = await term('shell:alpha');
+      ok(sh.status === 200 && /arg=u%3A/.test(sh.body) && /tok%3Abbs_/.test(sh.body),
+         'a project shell goes there too, with the account and a token — bb in that shell reaches the notebook with it');
+      const root = await term('shell');
+      ok(root.status === 502 && /terminal server is not running/.test(root.body),
+         'the workspace shell stays on this container (which the harness runs no ttyd for)');
+      const nonode = await term('claude:beta');
+      ok(nonode.status === 502 && /terminal server is not running/.test(nonode.body),
+         'a project with no node keeps its session here');
+      // Bound to a node that cannot take one: the sandbox row reports no
+      // session half, so the button is dead with the reason and the proxy
+      // says the same rather than starting the session on the wrong box.
+      const sandbox = (await api('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
+      await api('/api/prefs', { project: 'beta', node: sandbox.id });
+      const beta = (await api('/api/status')).projects.find(p => p.name === 'beta');
+      ok(beta?.session_at === 'sandbox' && /runs none yet|predates sessions/.test(beta?.session_why || ''),
+         `a project bound to a node without the session half carries the reason on its row (${(beta?.session_why || '').slice(0, 60)})`);
+      const refused = await term('claude:beta');
+      ok(refused.status === 503 && /sessions run on sandbox/.test(refused.body)
+         && /Unbind the node/.test(refused.body),
+         '...and the proxy refuses with the same sentence rather than starting it here');
+      await api('/api/prefs', { project: 'beta', node: '' });
+    }
     const run = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
       argv: ['sh', '-c', 'cat hello.txt; ls dist 2>/dev/null | wc -l; mkdir -p out; echo built > out/app-1.0.apk; echo notes > out/notes.txt; echo cached > "$BUILDERBOT_CACHE/x"'],
       outputs: ['out/*.apk'] });
