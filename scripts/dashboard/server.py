@@ -1466,16 +1466,11 @@ def project_list(who):
                     # like every other field it shows.
                     "prefs": project_prefs.get(d.name, {"model": "", "effort": ""}),
                     "push_how": projects.push_how(d.name),
-                    # The newest transcript HERE — and a project whose
-                    # sessions run on a node is offered none, because the
-                    # resume it would offer is this container's file and
-                    # the session would start on a machine that has never
-                    # seen it (roadmap #24 step 3 is what makes the two
-                    # one directory; until then, no resume is the honest
-                    # answer rather than a chooser full of conversations
-                    # the node cannot continue).
-                    "last_claude": None if sa["session_at"] and not sa["session_why"]
-                    else last_claude(d, d.name, stopped),
+                    # The newest transcript — read through the home's link
+                    # onto the projects share (lib/common.sh's
+                    # claude_projects_link), so a conversation a node's
+                    # session had is offered here and continued there.
+                    "last_claude": last_claude(d, d.name, stopped),
                     # Where this project's sessions run (roadmap #24): the
                     # node's name, or "" for here — and why the button is
                     # dead when its node cannot take one. The proxy decides
@@ -3227,6 +3222,11 @@ class Handler(BaseHTTPRequestHandler):
                         f"tok:{users.mint_session(project, uid=uid)}", safe=""))
                     out.append("arg=" + urllib.parse.quote(
                         f"name:{me.get('name', '')}", safe=""))
+                    # The owner keeps the project directory on the node as
+                    # here (session_dir in lib/common.sh says why), and the
+                    # node has no store to know who that is.
+                    if me.get("role") == "owner":
+                        out.append("arg=owner%3A1")
                 continue
             out.append(f"{k}{eq}{v}")
         return head + "?" + "&".join(out)

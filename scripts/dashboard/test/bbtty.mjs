@@ -12,7 +12,7 @@
 // that says so.
 import { ok, done, sleep, URL, DIR, tmuxKill, tmuxFmt } from './lib.mjs';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -382,6 +382,8 @@ tmuxKill('claude-alpha');
   // in directly — every session gets a worktree.
   {
     const node = { BUILDERBOT_ROLE: 'node' };
+    // Another account's transcripts on the share, for the walls below.
+    mkdirSync(join(DIR, 'ws', '.claude', 'u_0badf00d', 'projects'), { recursive: true });
     tmuxKill('shell-10'); tmuxKill(`${ownerUid}~shell-10`);
     shell(`u:${ownerUid}:sh:10:`, node);
     await sleep(300);
@@ -409,11 +411,39 @@ tmuxKill('claude-alpha');
        `on a node the owner's Claude session is prefixed too (${out.split('\n')[0].slice(0, 80)})`);
     const wt = join(DIR, 'ws', '.worktrees', proj, ownerUid);
     ok(tmuxFmt(`${ownerUid}~claude-${proj}`, '#{pane_start_path}') === wt,
-       `...and works in a worktree, never the project directory (${wt})`);
+       `...and, not told it is the owner, works in a worktree (${wt})`);
     const branches = execFileSync('git', ['-C', join(DIR, 'ws', proj), 'worktree', 'list', '--porcelain'],
       { encoding: 'utf8' });
     ok(/branch refs\/heads\/claude\/the\.owner/.test(branches),
        '...on a branch named for the account name that rode in on the URL');
+    // The transcripts directory of the node's home is a link onto the
+    // share, so a conversation here is one the controller can resume.
+    const nodeHome = join(HOMEDIR, 'users', ownerUid);
+    ok(lstatSync(join(nodeHome, '.claude', 'projects')).isSymbolicLink()
+       && readlinkSync(join(nodeHome, '.claude', 'projects')) === join(DIR, 'ws', '.claude', ownerUid, 'projects'),
+       'the home\'s ~/.claude/projects is a link to the account\'s directory on the projects share');
+    // ...and the walls: other accounts' transcripts denied, this one's not.
+    const scopeN = JSON.parse(readFileSync(join(nodeHome, '.cache', 'builderbot', `claude-scope-${proj}.json`), 'utf8'));
+    const denyN = scopeN.permissions.deny.join(' ');
+    ok(denyN.includes(`Edit(${join(DIR, 'ws', '.claude', 'u_0badf00d')}/**)`)
+       && !denyN.includes(`Edit(${join(DIR, 'ws', '.claude', ownerUid)}/**)`)
+       && !denyN.includes(`Edit(${join(DIR, 'ws', '.claude')}/**)`),
+       'another account\'s transcripts are walled off; this account\'s memories are not');
+    // Told it is the owner (owner:1 on the URL), it works in the project
+    // directory itself — the same tree, and so the same transcript slug,
+    // as the controller's own session.
+    tmuxKill(`${ownerUid}~claude-${proj}`);
+    try {
+      execFileSync('bash', [BBTTY, `u:${ownerUid}:claude:${proj}:b:${boot}`,
+                            'tok:bbs_abc-DEF_123', 'name:the.owner', 'owner:1'], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
+               BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
+      });
+    } catch { /* the attach fails without a terminal */ }
+    await sleep(400);
+    ok(tmuxFmt(`${ownerUid}~claude-${proj}`, '#{pane_start_path}') === join(DIR, 'ws', proj),
+       'told it is the owner, the session works in the project directory itself, as on the controller');
     const envOf = k => { try {
       return execFileSync('tmux', ['show-environment', '-t', `${ownerUid}~claude-${proj}`, k],
         { encoding: 'utf8', env: process.env }).trim();

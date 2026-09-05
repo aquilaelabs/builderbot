@@ -2937,6 +2937,14 @@ Each account works as itself:
 - **its own home** — own shell history, own Claude login, own memories. The
   box's own dotfiles are shared into it rather than copied, so the Android
   pairing key, the AVDs and the build caches are not duplicated per person
+- **its transcripts and memories in one place whichever machine ran the
+  session**: the home's `~/.claude/projects` is a link to the account's own
+  directory on the projects share (`/workspace/.claude/<uid>/projects`),
+  made on this container and on every node alike, so a conversation held on
+  a node is offered here to resume and its memories show on the notebook's
+  Memory tab. A home that already held transcripts has them copied across
+  once, the original kept beside the link as `projects.moved-<date>` for
+  you to delete. The login itself stays in the home, per machine
 - **its own terminals.** A shell session is named for the account, so two
   people opening a terminal on one project do not land in the same one
 - **its own tab strip and colour scheme**, which follow the account to any

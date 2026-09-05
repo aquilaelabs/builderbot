@@ -70,6 +70,10 @@ for extra in "${@:2}"; do
                 ''|*[!A-Za-z0-9._@+-]*) ;;
                 *) export BB_ACCOUNT_NAME="${extra#name:}" BB_ACCOUNT_UID="$account" ;;
             esac ;;
+        # The owner works in the project directory on a node too (see
+        # session_dir); the node cannot tell who the owner is, so the
+        # controller says so.
+        owner:1) [ -n "$account" ] && export BB_TREE_OWNER=1 BB_ACCOUNT_UID="$account" ;;
     esac
 done
 
@@ -145,8 +149,16 @@ siblings_of() {
 # excluded here and its contents enumerated instead.
 walls_around() {
     local proj="$1" here="$2"
-    siblings_of "$proj" | { grep -vxF "$BB_WORKTREES" || true; }
+    # ...and the same for the transcripts tree (roadmap #24): the whole of it
+    # would deny this account's own memories, which Claude writes through the
+    # file tools; so it is excluded and every OTHER account's directory in it
+    # is listed instead.
+    siblings_of "$proj" | { grep -vxF -e "$BB_WORKTREES" -e "$BB_CLAUDE_SHARE" || true; }
     [ "$here" = "$WORKSPACE/$proj" ] || printf '%s\n' "$WORKSPACE/$proj"
+    if [ -d "$BB_CLAUDE_SHARE" ]; then
+        find "$BB_CLAUDE_SHARE" -mindepth 1 -maxdepth 1 -type d -printf '%p\n' 2>/dev/null \
+            | { grep -vxF "$BB_CLAUDE_SHARE/${account:-owner}" || true; }
+    fi
     [ -d "$BB_WORKTREES" ] || return 0
     find "$BB_WORKTREES" -mindepth 2 -maxdepth 2 -type d -printf '%p\n' 2>/dev/null \
         | { grep -vxF "$here" || true; }
