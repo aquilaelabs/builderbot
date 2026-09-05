@@ -1196,6 +1196,26 @@ elif [ -f /etc/builderbot/node.json ] && [ -x "$AGENT" ]; then
     else
         warn "/etc/builderbot/node.json carries no controller or token — re-enroll with a fresh token to update"
     fi
+    # The session account is part of the enrollment record, and a node
+    # enrolled before there was one carries none — so a re-run that made
+    # the account has to say so in the record too, or the agent keeps
+    # reporting "no session account" and the dashboard keeps the button
+    # dead. Written here rather than by re-enrolling: a re-enrollment is a
+    # NEW node row, and every project bound to the old one would lose it.
+    if [ -n "$(python3 - "${SESSION_NAME:-}" <<'PY'
+import json, sys
+p = "/etc/builderbot/node.json"
+d = json.load(open(p))
+want = sys.argv[1]
+if d.get("session_user", "") != want:
+    d["session_user"] = want
+    json.dump(d, open(p, "w"), indent=2)
+    print("changed")
+PY
+    )" ]; then
+        say "agent: sessions now run as ${SESSION_NAME:-nobody} — restarting the agent"
+        systemctl restart builderbot-agent 2>/dev/null || true
+    fi
     systemctl start builderbot-agent 2>/dev/null || true
 fi
 
