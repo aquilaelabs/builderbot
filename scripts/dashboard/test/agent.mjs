@@ -6,7 +6,7 @@
 // assertion is a round trip through the channel, which is the thing phase 3
 // exists to prove.
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
-         tmuxNew, tmuxKill, tmuxFmt } from './lib.mjs';
+         tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, statSync, lstatSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync } from 'node:fs';
 
@@ -469,7 +469,9 @@ try {
       const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
       const real = `${uid}~claude-alpha`;
       tmuxKill(real); tmuxKill('claude-alpha');       // an earlier file's leftover
-      tmuxNew(real, `${DIR}/ws/alpha`, ['sleep', '600']);
+      // A shell rather than a sleep, so what the console types can be seen
+      // to arrive: the pane runs it and the capture shows the result.
+      tmuxNew(real, `${DIR}/ws/alpha`, ['bash', '--norc', '--noprofile']);
       const onNode = await until(async () =>
         ((await api('/api/status')).sessions || []).find(s => s.node === 'agentbox'), 45000, 500);
       ok(onNode && onNode.name === 'claude-alpha' && onNode.node_name === real,
@@ -479,6 +481,15 @@ try {
       const cw = (await api('/api/status')).claude_with || {};
       ok((cw.alpha || []).includes('test'),
          '...and the project row counts it: the account has a session on alpha');
+      // The read-only console's line, and the key row, reach a node's
+      // session through the same poll: the agent types them into the pane.
+      const said = await api('/api/say', { session: 'claude-alpha', node: onNode?.node_id,
+                                           text: 'echo typed-from-the-console' });
+      ok(said.ok && said.queued, `a console line for a session on the node is queued for its agent (${JSON.stringify(said)})`);
+      const typed = await until(async () => /typed-from-the-console/.test(tmuxCapture(real)) ? true : null, 30000, 500);
+      ok(typed === true, '...and the agent types it into the pane, Enter included');
+      const paged = await api('/api/keys', { session: 'claude-alpha', node: onNode?.node_id, key: 'pgup' });
+      ok(paged.ok && paged.queued, 'the key row\'s PgUp is queued the same way, decided on the node');
       const k = await api('/api/session', { action: 'kill', session: 'claude-alpha', node: onNode?.node_id });
       ok(k.ok && k.queued, `ending it from the card is queued for the agent (${JSON.stringify(k)})`);
       const gone = await until(async () => {

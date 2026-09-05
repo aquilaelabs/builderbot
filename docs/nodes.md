@@ -1644,7 +1644,12 @@ touch, answered with who else has it open — `bb work` reads the same
 record), an `asked` line for the project's feed, and `started`, which
 bb-tty sends when it is about to make the session, since the proxy cannot
 see one start on a node. The account is the token's, never the request's.
-What the controller still cannot do for a node's session: send keys into
-it (the user role's console), and the one-Anthropic-account rule, which is
-the node's own to keep. Left to 10c: the image shedding what no session
-here needs.
+Keys reach a node's session the same way — the key row, the read-only
+console's line, a macro — as tmux commands queued for the agent
+(`nodes.session_tmux`, `{"tmux": [...]}` in the work reply), which types
+them into the pane as the dashboard types into its own; the paging
+decision (copy mode at a prompt, the program's key in a full-screen one)
+is made on the node, where the pane is. What the controller still cannot
+do for a node's session is keep the one-Anthropic-account rule, which is
+the node's own. Left to 10c: the image shedding what no session here
+needs.

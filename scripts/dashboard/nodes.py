@@ -1669,6 +1669,23 @@ def session_kill(node_id, name):
     return {"ok": True, "queued": True}
 
 
+# tmux commands for a node's sessions — keys, a console's line, a macro —
+# queued the same way, taken by the same poll. Each is {"session", "argv"}
+# with the node's own session name already in argv, or {"session", "page"}
+# for the paging decision the agent has to make on the pane it can see.
+_tmux_ops = {}
+
+
+def session_tmux(node_id, ops):
+    n = node(node_id)
+    if not n or n["kind"] != "agent":
+        return {"error": "no such node"}
+    with _wake:
+        _tmux_ops.setdefault(node_id, []).extend(ops[:16])
+        _wake.notify_all()
+    return {"ok": True, "queued": True}
+
+
 def node_sessions():
     """{node id: (name, [session rows])} for every online agent node whose
     heartbeat carried its tmux sessions (roadmap #24)."""
@@ -1725,6 +1742,9 @@ def job_next(node_id, wait, runner="node"):
                 kills = _kills.pop(node_id, None)
                 if kills:
                     return {"kill_sessions": sorted(kills)}
+                ops = _tmux_ops.pop(node_id, None)
+                if ops:
+                    return {"tmux": ops}
                 # ...and a request for a fresh census, when something has
                 # been refused on the strength of an old one. The agent says
                 # hello every ten minutes, which is fine for a display and

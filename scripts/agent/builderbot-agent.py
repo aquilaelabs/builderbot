@@ -1442,6 +1442,12 @@ class Agent:
                 # card: the session account's tmux is only reachable as it.
                 self.kill_sessions([str(x) for x in r["kill_sessions"]])
                 continue
+            if st == 200 and r.get("tmux"):
+                # ...or keys for a session here: the phone keyboard's row,
+                # a console's line, a macro — typed into the pane as the
+                # dashboard would type them into its own tmux.
+                self.tmux_ops(r["tmux"] if isinstance(r["tmux"], list) else [])
+                continue
             if st == 200 and r.get("hello"):
                 # The controller refused something on the strength of a
                 # census that may have gone stale — the census rides hello
@@ -1802,8 +1808,14 @@ class Agent:
         try:
             p = subprocess.run(["tmux", *argv], env=env, capture_output=True, text=True,
                                timeout=timeout, check=False, **who)
-        except (OSError, subprocess.SubprocessError, RuntimeError):
+        except (OSError, subprocess.SubprocessError, RuntimeError) as e:
+            log(f"sessions: tmux {argv[0]}: {e}")
             return None
+        if p.returncode != 0 and argv[0] != "list-panes":
+            # list-panes fails whenever no server is up, which is the normal
+            # state of a node nobody has opened a terminal on; anything else
+            # failing is worth a line.
+            log(f"sessions: tmux {' '.join(argv)}: {(p.stderr or '').strip()[:120]}")
         return p.stdout if p.returncode == 0 else None
 
     def sessions_now(self):
@@ -1826,6 +1838,43 @@ class Agent:
         for name in names:
             log(f"sessions: ending {name} — asked from the dashboard")
             self._tmux(["kill-session", "-t", "=" + name])
+
+    def tmux_ops(self, ops):
+        """Keys into a session here, as the dashboard sends them into its
+        own tmux (server._keys, _say, _send). Only send-keys and copy-mode,
+        only at a session by exact name: the controller composed the
+        argv, and this node still decides what it will run. `page` is the
+        one decision made here — PgUp at a prompt enters copy mode, inside
+        a full-screen program it is the program's key — because the pane's
+        state is only visible on this side."""
+        for op in ops[:16]:
+            if not isinstance(op, dict):
+                continue
+            sess = str(op.get("session") or "")
+            if not sess:
+                continue
+            # A bare name, not `=name`: these take a target-PANE, and the
+            # exact-match prefix is target-session syntax — measured, as
+            # "can't find pane: =…". tmux tries the exact name first anyway.
+            page = op.get("page")
+            if page in ("up", "down"):
+                flags = self._tmux(["display-message", "-p", "-t", sess,
+                                    "#{alternate_on} #{pane_in_mode}"]) or ""
+                alt, mode = (flags.split() + ["0", "0"])[:2]
+                if page == "up":
+                    argv = ["send-keys", "-t", sess, "PPage"] if alt == "1" \
+                        else ["copy-mode", "-eu", "-t", sess]
+                else:
+                    argv = ["send-keys", "-t", sess, "-X", "page-down"] if mode == "1" \
+                        else ["send-keys", "-t", sess, "NPage"]
+                self._tmux(argv)
+                continue
+            argv = [str(a) for a in (op.get("argv") or [])][:12]
+            if argv[:1] not in (["send-keys"], ["copy-mode"]) or "-t" not in argv:
+                continue
+            # The target is this op's session, whatever the argv says.
+            argv[argv.index("-t") + 1] = sess
+            self._tmux(argv)
 
     def session_check(self):
         """Once a loop: a ttyd that died is started again, not more often

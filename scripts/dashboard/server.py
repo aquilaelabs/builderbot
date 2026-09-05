@@ -5508,8 +5508,33 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"code": 0, "out": "", "err": "", "gone": True})
         return self._json(run(["tmux", "kill-session", "-t", session], timeout=10))
 
+    def _session_on_node(self, session, node=""):
+        """The node session row this page-name means, or None — for the
+        three key paths, which type into a node's session through its
+        agent exactly as they type into this container's tmux."""
+        if session in {s["name"] for s in tmux_sessions()} and not node:
+            return None
+        return next((s for s in node_tmux_sessions() if s["name"] == session
+                     and (not node or s["node_id"] == node)), None)
+
     def _keys(self, req):
         session, key = req.get("session", ""), req.get("key", "")
+        on_node = self._session_on_node(session, str(req.get("node") or ""))
+        if on_node:
+            # The same table, queued for the node's agent (roadmap #24); the
+            # paging decision is the agent's, on the pane it can see.
+            real = on_node["node_name"]
+            if key in ("pgup", "pgdn"):
+                op = {"session": real, "page": "up" if key == "pgup" else "down"}
+            elif key in TMUX_KEYS:
+                op = {"session": real, "argv": ["send-keys", "-t", real, TMUX_KEYS[key]]}
+            elif key in TMUX_LITERALS:
+                op = {"session": real, "argv": ["send-keys", "-t", real, "-l", "--",
+                                                TMUX_LITERALS[key]]}
+            else:
+                return self._json({"error": f"unknown key: {key}"}, 400)
+            r = nodes.session_tmux(on_node["node_id"], [op])
+            return self._json(r, 400 if r.get("error") else 200)
         # Only sessions that currently exist — never an arbitrary -t argument.
         if session not in {s["name"] for s in tmux_sessions()}:
             return self._json({"error": f"no such session: {session}"}, 400)
@@ -5625,12 +5650,21 @@ class Handler(BaseHTTPRequestHandler):
                         == want), "")
         if not project or users.may(me, "claude", project):
             return self._json({"error": "not a Claude session of yours"}, 403)
-        if want not in {x["name"] for x in tmux_sessions()}:
+        on_node = self._session_on_node(want, str(req.get("node") or ""))
+        if want not in {x["name"] for x in tmux_sessions()} and not on_node:
             return self._json({"error": "that conversation is not running"}, 409)
         text = "".join(ch for ch in str(req.get("text", ""))
                        if ch == "\t" or ord(ch) >= 32)[:CUSTOM_LINE_MAX]
         if not text.strip():
             return self._json({"error": "nothing to say"}, 400)
+        if on_node:
+            # Into the conversation on the node, through its agent: the same
+            # two keystrokes, the same narrowing above (roadmap #24).
+            real = on_node["node_name"]
+            r = nodes.session_tmux(on_node["node_id"], [
+                {"session": real, "argv": ["send-keys", "-t", real, "-l", "--", text]},
+                {"session": real, "argv": ["send-keys", "-t", real, "Enter"]}])
+            return self._json(r, 400 if r.get("error") else 200)
         r = run(["tmux", "send-keys", "-t", want, "-l", "--", text], timeout=10)
         if r["code"] != 0:
             return self._json({"error": r["out"].strip()[:200] or "send failed"}, 500)
@@ -5659,12 +5693,24 @@ class Handler(BaseHTTPRequestHandler):
                 lines = [SHELL_MACROS[name]]
             else:
                 return self._json({"error": f"unknown macro: {name}"}, 400)
-        if session not in {s["name"] for s in tmux_sessions()}:
+        on_node = self._session_on_node(session, str(req.get("node") or ""))
+        if session not in {s["name"] for s in tmux_sessions()} and not on_node:
             return self._json({"error": f"no such session: {session}"}, 400)
         # Never into a Claude session: that would not run the command, it would
         # submit it as a prompt.
-        if session.startswith("claude-"):
+        if tmux_base(session).startswith("claude-"):
             return self._json({"error": "refusing to type into a Claude session"}, 400)
+        if on_node:
+            # A shell on the node: the same lines, through its agent.
+            real = on_node["node_name"]
+            ops = [{"session": real, "argv": ["send-keys", "-t", real, "C-e", "C-u"]}]
+            for line in lines:
+                ops.append({"session": real, "argv": ["send-keys", "-t", real, "-l", "--", line]})
+                ops.append({"session": real, "argv": ["send-keys", "-t", real, "Enter"]})
+            r = nodes.session_tmux(on_node["node_id"], ops)
+            return self._json(r | {"sent": lines[0] if len(lines) == 1
+                                   else f"{len(lines)} commands"},
+                              400 if r.get("error") else 200)
         # Clear whatever was half-typed at the prompt first, or the command
         # arrives glued to the end of it. End-of-line then kill-line, which is
         # readline editing and not a signal: Ctrl-C would also interrupt
