@@ -791,6 +791,12 @@ def session_now(state):
         return {}
     out = dict(SESSION)
     out["workspace"] = os.path.ismount("/workspace")
+    # ...and writable: a projects share mounted read-only was the right
+    # arrangement for a Docker-only sandbox (nothing there wrote source), and
+    # is the wrong one for a machine that runs sessions — Claude could not
+    # save a file, and the home's transcripts link cannot be made on it.
+    # The kernel answers EROFS for root too, so this is an honest probe.
+    out["writable"] = out["workspace"] and os.access("/workspace", os.W_OK)
     home = out.pop("home", "")
     out.pop("bind", None)
     # Claude Code as the session account has it: its own ~/.local/bin (the

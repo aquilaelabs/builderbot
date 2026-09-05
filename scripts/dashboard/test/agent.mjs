@@ -836,14 +836,16 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       const nonode = await term('claude:beta');
       ok(nonode.status === 502 && /terminal server is not running/.test(nonode.body),
          'a project with no node keeps its session here');
-      // Bound to a node that cannot take one: the sandbox row reports no
-      // session half, so the button is dead with the reason and the proxy
-      // says the same rather than starting the session on the wrong box.
+      // Bound to a node that cannot take one: the sandbox row reports its
+      // session half up on a READ-ONLY projects share, so the button is
+      // dead with the reason and the proxy says the same rather than
+      // starting a session that could not save a file.
       const sandbox = (await api('/api/v1/nodes')).nodes.find(n => n.name === 'sandbox');
       await api('/api/prefs', { project: 'beta', node: sandbox.id });
       const beta = (await api('/api/status')).projects.find(p => p.name === 'beta');
-      ok(beta?.session_at === 'sandbox' && /runs none yet|predates sessions/.test(beta?.session_why || ''),
-         `a project bound to a node without the session half carries the reason on its row (${(beta?.session_why || '').slice(0, 60)})`);
+      ok(beta?.session_at === 'sandbox' && /read-only/.test(beta?.session_why || '')
+         && /bb-sandbox readonly \/workspace off/.test(beta?.session_why || ''),
+         `a project bound to a node that mounts the share read-only carries the reason and the fix on its row (${(beta?.session_why || '').slice(0, 60)})`);
       const refused = await term('claude:beta');
       ok(refused.status === 503 && /sessions run on sandbox/.test(refused.body)
          && /Unbind the node/.test(refused.body),

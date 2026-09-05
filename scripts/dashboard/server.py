@@ -1638,6 +1638,14 @@ def session_target(project):
     elif not se.get("workspace"):
         why = (f"{project}'s sessions run on {name}, which does not mount the projects "
                "share at /workspace — add the mount on its row on the Nodes tab")
+    elif se.get("writable") is False:
+        # Read-only was the right way to mount the share for a Docker-only
+        # sandbox and is the wrong way for one that runs sessions: nothing
+        # could be saved, and the transcripts link cannot be made there.
+        why = (f"{project}'s sessions run on {name}, which mounts the projects share "
+               "read-only — a session there could not save a file. Untick read-only on "
+               "the /workspace mount on its row on the Nodes tab and apply, or `sudo "
+               "bb-sandbox readonly /workspace off` on the machine")
     elif not se.get("boot"):
         # Without the node's boot the page would stamp this container's into
         # the tab, and bb-tty there would refuse every reconnect as a stale

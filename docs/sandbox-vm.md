@@ -197,13 +197,18 @@ do its job. What the split buys is that the machine's own configuration, the
 fstab deciding whether `/workspace` is the projects share and read-only, is not
 one command away from a session that wandered.
 
-**Mount the projects share read-only.** Nothing on this machine writes source
-code — the daemon only ever *resolves* bind sources there — so read-only costs
-nothing and means a container that binds its project tree cannot scribble on
-your source. `:ro` on `add-share`/`add-nfs` decides it when the mount is made;
-`bb-sandbox readonly /workspace` decides it afterwards, which is what you
-usually have, and `readonly /workspace off` puts it back. `list` shows which
-mounts are read-only.
+**Mount the projects share read-only — unless this node runs sessions.** For
+a Docker-only sandbox nothing on the machine writes source code (the daemon
+only ever *resolves* bind sources there), so read-only costs nothing and
+means a container that binds its project tree cannot scribble on your
+source. A node with a session account is the other case: Claude works on
+that share from here, so it has to be read-write — the dashboard refuses to
+send a session to a node whose `/workspace` is read-only and says so on the
+project's button, because a session that cannot save a file is worse than
+none. `:ro` on `add-share`/`add-nfs` decides it when the mount is made;
+`bb-sandbox readonly /workspace` decides it afterwards, and
+`readonly /workspace off` puts it back (or untick read-only on the mount's
+row on the Nodes tab and apply). `list` shows which mounts are read-only.
 
 Leave the shares containers keep their data on — appdata, media — writable,
 being what they are for.

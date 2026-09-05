@@ -85,10 +85,13 @@ usage: provision.sh [options]
   --share TAG:PATH[:ro]  a virtiofs/9p share the HYPERVISOR passes in, mounted
                        at PATH. Requires one — on bare metal there is nothing
                        to pass a share in, so use --nfs instead. Repeatable.
-                       PATH MUST match the path BuilderBot uses. `:ro` mounts it read-only — right for the projects
-                       share: nothing on this machine needs to WRITE source
-                       code, so a wild container cannot either. Leave it off a
-                       share containers keep their data on.
+                       PATH MUST match the path BuilderBot uses. `:ro` mounts
+                       it read-only — right for the projects share on a
+                       Docker-only sandbox, where nothing writes source code;
+                       WRONG on a node with a session account, whose Claude
+                       sessions edit that share and are refused until it is
+                       read-write. Leave it off a share containers keep their
+                       data on.
   --nfs HOST:EXPORT:PATH[:ro]   the same thing over NFS, when a share
                        cannot be passed directly. Repeatable, same `:ro`. EXPORT is the exported
                        share path — on Unraid /mnt/user/<share>/... — and not
