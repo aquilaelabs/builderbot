@@ -254,10 +254,16 @@ html[data-theme="nostromo"] .pane .nb{
     rgba(0,0,0,.04) 0 1px, rgba(0,0,0,0) 1px 3px)}
 
 /* Weathering on the page itself: a slow vignette so the hull darkens at the
-   edges. Fixed and behind everything, pointer-events off — it must never be
-   the thing a click lands on. */
+   edges. Behind everything, pointer-events off — it must never be the thing
+   a click lands on.
+   ABSOLUTE, not fixed, and the difference is only ever about compositing:
+   body is height:100% and overflow:hidden, so nothing at this level ever
+   scrolls and the two resolve to the same rectangle — but `fixed` promotes a
+   full-viewport layer that Chrome re-composites against every scrolling
+   surface on the page, which is the shape of glitch bug #57 describes on a
+   phone. Same pixels, one fewer layer. */
 html[data-theme="nostromo"] body::before{
-  content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
   background:radial-gradient(120% 100% at 50% 0%,
     rgba(255,176,0,.05) 0%, rgba(0,0,0,0) 45%),
     radial-gradient(140% 120% at 50% 120%, rgba(0,0,0,.35) 0%, rgba(0,0,0,0) 60%)}
@@ -273,6 +279,16 @@ body{margin:0;background:var(--bg);color:var(--ink);display:flex;
   font:14px/1.5 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   padding:env(safe-area-inset-top) env(safe-area-inset-right)
           env(safe-area-inset-bottom) env(safe-area-inset-left)}
+/* The selection, in the scheme's own colours. It was the one colour on the
+   page the schemes could not reach: left unstyled, Chrome draws it in the
+   DEVICE's accent, so on an Android with an amber Material You palette a
+   selection is bright yellow — a colour that exists nowhere in any of the
+   twelve schemes. It matters beyond taste: a highlight left behind in a
+   stale tile while a phone scrolls (bug #57) is then a bright yellow block
+   nobody can place, where in the scheme's own accent it reads as what it
+   is. Both halves declared, because a background with no colour beside it
+   inherits the text colour it happens to land on. */
+::selection{background:var(--accent-deep);color:var(--ink)}
 
 header{display:flex;align-items:center;gap:10px;padding:8px 12px;
   background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;
