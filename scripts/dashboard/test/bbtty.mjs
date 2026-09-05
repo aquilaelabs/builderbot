@@ -452,6 +452,14 @@ tmuxKill('claude-alpha');
        'the session token from the URL is the session\'s BB_TOKEN');
     ok(envOf('BB_ACCOUNT_NAME') === 'BB_ACCOUNT_NAME=the.owner',
        '...and the name is in its environment for bb to use');
+    // ...and nowhere ps can show it: a tmux server started by new-session
+    // keeps that command's argv, -e list and all, for as long as it runs.
+    const serverPid = tmuxFmt(`${ownerUid}~claude-${proj}`, '#{pid}');
+    const serverArgs = (() => { try {
+      return execFileSync('ps', ['-o', 'args=', '-p', serverPid], { encoding: 'utf8' }).trim();
+    } catch { return '?'; } })();
+    ok(/tmux/.test(serverArgs) && !/bbs_/.test(serverArgs),
+       `...but not on the tmux server's command line, which every account can read (${serverArgs.slice(0, 40)})`);
     const launcher = readFileSync(join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot',
                                        `claude-run-${proj}.sh`), 'utf8');
     ok(/bb settings --json/.test(launcher) && /BB_TOKEN=bbs_abc-DEF_123/.test(launcher),

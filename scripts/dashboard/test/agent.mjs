@@ -166,7 +166,8 @@ with socketserver.TCPServer(("127.0.0.1", int(a[a.index("--port") + 1])), H) as 
     srv.serve_forever()
 `, { mode: 0o755 });
 const ttydRuns = () => readdirSync(DIR).filter(f => /^ttyd-\d+\.argv$/.test(f))
-  .map(f => ({ argv: readFileSync(`${DIR}/${f}`, 'utf8').trim().split('\n'),
+  .map(f => ({ pid: Number(f.match(/\d+/)[0]),
+               argv: readFileSync(`${DIR}/${f}`, 'utf8').trim().split('\n'),
                env: Object.fromEntries(readFileSync(`${DIR}/${f.replace('.argv', '.env')}`, 'utf8')
                  .split('\n').filter(Boolean).map(l => [l.slice(0, l.indexOf('=')), l.slice(l.indexOf('=') + 1)])) }));
 const SESSION_PORT = 17681 + Math.floor(Math.random() * 1000);
@@ -333,6 +334,37 @@ try {
        'the sessions inherit the role and the controller\'s address — never the node\'s token');
     ok((e.PATH || '').split(':')[0] === bbtty.replace(/\/dashboard\/bb-tty$/, ''),
        '...and bb from that bundle first on PATH');
+    // A port held by a ttyd of an earlier agent process (bug #58). The
+    // agent's self-update re-executes it, which keeps its children and
+    // loses every handle to them: the old ttyds stayed on the ports, every
+    // later start exited on the bind and the census still said up, so a
+    // node served sessions from a bundle four deliveries old. Stood in for
+    // here: the writable ttyd is killed and a stray that looks like ours
+    // (ttyd … bb-tty on its command line) takes its port; the restart has
+    // to end the stray and be up for real, rather than report a start
+    // that died.
+    const writable = runs.find(r => r.argv.includes('--writable'));
+    process.kill(writable.pid, 'SIGKILL');
+    await sleep(500);
+    const stray = spawn(`${DIR}/bin/ttyd`, ['--port', String(SESSION_PORT), '--interface', '127.0.0.1',
+                                            `${DIR}/nowhere/.bb/0000000000000000/scripts/dashboard/bb-tty`],
+                        { stdio: 'ignore' });
+    let strayGone = false;
+    stray.on('exit', () => { strayGone = true; });
+    await sleep(500);
+    const again = await until(async () => {
+      const fresh = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id
+                                        && r.argv.includes('--writable') && r.pid !== writable.pid);
+      const n = await nodeById(minted.id);
+      return strayGone && fresh.length && n?.reported?.session?.up
+        && !n.reported.session.why ? { fresh, sess: n.reported.session } : null;
+    }, 75000, 500);
+    ok(again !== null && strayGone,
+       `a ttyd that died is started again, and a stray bb-tty ttyd holding its port — an earlier agent's — is ended first (${
+         again ? 'up on ' + again.sess.port : 'not up: ' + JSON.stringify((await nodeById(minted.id))?.reported?.session)})`);
+    if (!strayGone) stray.kill('SIGKILL');
+    const answer = await fetch(`http://127.0.0.1:${SESSION_PORT}/ws?arg=x`).then(r => r.text()).catch(e => String(e));
+    ok(/^ttyd-stub GET/.test(answer), `...and the port answers as the agent's own again (${answer.slice(0, 30)})`);
     const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
     const store = st.stores.packages;
     ok(existsSync(`${store}/.bb/current/scripts/bb`)

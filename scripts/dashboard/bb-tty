@@ -453,6 +453,13 @@ start() {
     for v in HOME BB_TOKEN BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE; do
         [ -n "${!v:-}" ] && envs+=(-e "$v=${!v}")
     done
+    # The server is started on its own first. When new-session is what
+    # starts it, the server daemon keeps that new-session's argv — the -e
+    # list above, token included — for the life of the server, where ps
+    # shows it to every account on the machine. A server started bare has
+    # nothing on its command line; the -e values still land in the
+    # session's environment, which is where they were wanted.
+    tmux start-server 2>/dev/null || true
     # -A -d creates it if it is missing and attaches to it if it is not, without
     # attaching yet — race-free where has-session followed by new-session is not.
     tmux new-session -A -d -s "$s" -c "$dir" "${envs[@]}" "$@"

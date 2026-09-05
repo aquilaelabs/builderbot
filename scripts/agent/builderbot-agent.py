@@ -65,6 +65,7 @@ import os
 import platform
 import re
 import shutil
+import signal
 import socket
 import ssl
 import subprocess
@@ -75,7 +76,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "24"
+AGENT_VERSION = "25"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -239,6 +240,14 @@ RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
 # Tailscale, for Funnel (docs/nodes.md §7, phase 8): a seam so the tests can
 # stand in for it, like the rest of the tools the agent drives.
 TAILSCALE_BIN = os.environ.get("BUILDERBOT_TAILSCALE_BIN", "tailscale")
+
+
+def _zombie(pid):
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[-1].split()[0] == "Z"
+    except (OSError, IndexError):
+        return False
 
 
 def log(msg):
@@ -1296,6 +1305,7 @@ class Agent:
         self.session_bundle = ""          # the digest the ttyds run from
         self.session_digest = ""          # the digest bundle() last fetched
         self.session_tried = 0
+        self.session_stale = ""           # a newer bundle's directory, for the loop to restart onto
 
     # -- privilege ---------------------------------------------------------
     def drop_privileges(self, env):
@@ -1396,8 +1406,6 @@ class Agent:
         # The ttyds go with this process: a stop of the unit (an update, a
         # reboot) ends them, and the tmux server they attached — the
         # sessions themselves — is its own daemon and outlives both.
-        import signal
-
         def bye(*_):
             self.session_stop()
             raise SystemExit(0)
@@ -1670,6 +1678,14 @@ class Agent:
                 for x in [d] + [os.path.join(d, f) for f in files]:
                     with contextlib.suppress(OSError):
                         os.lchown(x, who["user"], who["group"])
+        # Fetched by a job while the ttyds run an older copy: leave the
+        # restart to the loop's session_check, which owns self.ttyd — this
+        # may be a job's thread. Without this the sessions ran whatever
+        # bundle the ttyds started on until the next hello, up to ten
+        # minutes, and a bb-tty that old looked for a transcript where the
+        # bundle before it kept them.
+        if self.ttyd and self.session_bundle and digest != self.session_bundle:
+            self.session_stale = into
         self.session_digest = digest
         return into
 
@@ -1718,7 +1734,7 @@ class Agent:
                 return a.split("/")[0]
         return "0.0.0.0"
 
-    def session_start(self, into):
+    def session_start(self, into, retry=False):
         """The two ttyds — writable, and the read-only twin an account
         without a shell is shown — running bb-tty from the bundle, as the
         session account, on the LAN address. What 15-dashboard.sh does on
@@ -1739,6 +1755,7 @@ class Agent:
         logf = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp", "ttyd.log")
         base = [TTYD_BIN, "--interface", bind, "--url-arg", "--max-clients", "16",
                 "-t", "reconnect=5"]
+        self.session_stale = ""
         try:
             out = open(logf, "ab")
             for port, extra in ((SESSION_PORT, ["--writable"]), (SESSION_PORT + 1, [])):
@@ -1753,10 +1770,85 @@ class Agent:
                            why=f"ttyd could not start: {e}"[:120])
             log(f"sessions: ttyd could not start: {e}")
             return
+        # STARTED IS NOT UP. A ttyd whose port is taken exits at once, and
+        # reporting it up on the strength of the Popen is how a node served
+        # sessions from a bundle four deliveries old for a day: the agent's
+        # self-update re-executed this process and the ttyds it had started
+        # stayed on the ports as orphans, every later start failed the same
+        # way in silence, and the census named the bundle nobody was
+        # running. So the start is watched for a moment; one that died has
+        # its port looked at, and a stray bb-tty ttyd there — one of ours,
+        # from a process that is gone — is ended and the start tried once
+        # more. Anything else on the port is named and left alone.
+        died = self._session_died()
+        if died and not retry:
+            stray = [self._port_holder(pt) for pt in died]
+            ours = [(pid, cmd) for pid, cmd in stray
+                    if pid and "ttyd" in cmd and "bb-tty" in cmd]
+            if ours and len(ours) == len(stray):
+                for pid, _ in ours:
+                    log(f"sessions: port held by a ttyd of an earlier agent process (pid {pid}); ending it")
+                    self._end_pid(pid)
+                self.session_stop()
+                return self.session_start(into, retry=True)
+        if died:
+            held = "; ".join(f"port {pt}: " + (f"pid {pid} ({cmd[:40]})" if pid else "taken")
+                             for pt, (pid, cmd) in zip(died, [self._port_holder(pt) for pt in died]))
+            self.session_stop()
+            SESSION.update(up=False, port=0, ro_port=0, user=user, bundle=self.session_bundle,
+                           why=f"ttyd could not bind — {held}"[:160])
+            log(f"sessions: ttyd could not bind — {held}")
+            return
         SESSION.update(up=True, port=SESSION_PORT, ro_port=SESSION_PORT + 1, user=user,
                        home=env["HOME"], bind=bind, bundle=self.session_bundle, why="")
         log(f"sessions: ttyd on {bind}:{SESSION_PORT} (read-only twin on {SESSION_PORT + 1}) "
             f"as {user}, bb {self.session_bundle[7:19]}")
+
+    def _session_died(self):
+        """The ports whose ttyd exited within the first moment of its start —
+        a bind failure shows as an exit in well under a second."""
+        for _ in range(6):
+            time.sleep(0.25)
+            if any(p.poll() is not None for p in self.ttyd):
+                break
+        return [SESSION_PORT + i for i, p in enumerate(self.ttyd) if p.poll() is not None]
+
+    @staticmethod
+    def _port_holder(port):
+        """(pid, cmdline) of what listens on a TCP port, or (0, "") when
+        nothing does or it cannot be told. ss is iproute2's and is on every
+        node this runs on; the pid needs this process to own the socket or
+        be root, which it is on a VM."""
+        try:
+            p = subprocess.run(["ss", "-Hltnp", f"sport = :{port}"], capture_output=True,
+                               text=True, timeout=5, check=False)
+        except (OSError, subprocess.SubprocessError):
+            return 0, ""
+        m = re.search(r"pid=(\d+)", p.stdout or "")
+        if not m:
+            return 0, "taken" if (p.stdout or "").strip() else ""
+        pid = int(m.group(1))
+        try:
+            with open(f"/proc/{pid}/cmdline", "rb") as f:
+                cmd = f.read().replace(b"\0", b" ").decode("utf-8", "replace").strip()
+        except OSError:
+            cmd = ""
+        return pid, cmd
+
+    @staticmethod
+    def _end_pid(pid):
+        """SIGTERM, a moment, then SIGKILL; reaped if it was this process's
+        child — an orphan left over from before a re-exec still is."""
+        for sig, wait in ((signal.SIGTERM, 3.0), (signal.SIGKILL, 1.0)):
+            with contextlib.suppress(OSError):
+                os.kill(pid, sig)
+            end = time.time() + wait
+            while time.time() < end:
+                with contextlib.suppress(OSError):
+                    os.waitpid(pid, os.WNOHANG)
+                if not os.path.exists(f"/proc/{pid}") or _zombie(pid):
+                    return
+                time.sleep(0.1)
 
     def session_stop(self):
         for p in self.ttyd:
@@ -1885,7 +1977,16 @@ class Agent:
     def session_check(self):
         """Once a loop: a ttyd that died is started again, not more often
         than every thirty seconds — a port already taken would otherwise
-        spin this loop on a failing exec."""
+        spin this loop on a failing exec — and ttyds running an older
+        bundle than the one a job just fetched are restarted onto it. The
+        sessions are tmux's either way and survive; a client attached at
+        that moment reconnects."""
+        if self.session_stale and self.ttyd and os.path.isdir(self.session_stale):
+            log(f"sessions: bb moved to {self.session_digest[7:19]}; restarting ttyd onto it")
+            self.session_bundle = self.session_digest
+            self.session_tried = time.time()
+            self.session_start(self.session_stale)
+            return
         if not self.ttyd or all(p.poll() is None for p in self.ttyd):
             return
         if time.time() - self.session_tried < 30:
@@ -1895,6 +1996,9 @@ class Agent:
         store = (self.state.get("stores") or {}).get("packages") or ""
         into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
         if into and os.path.isdir(into):
+            # .bb/current is whatever was fetched last, so the census names
+            # what this start actually runs.
+            self.session_bundle = self.session_digest or self.session_bundle
             self.session_start(into)
 
     def artifact_dir(self, project, who=None, make=True):
@@ -2532,6 +2636,12 @@ class Agent:
         self._sh(job, [NETPLAN_BIN, "apply"])
 
     def reexec(self):
+        # The ttyds first: execv keeps the children and loses every handle
+        # to them, so the new image would find its ports held by processes
+        # it cannot see and serve nothing new for as long as they lived.
+        # The sessions are tmux's and stay; the new agent starts ttyd from
+        # the bundle that is current, which is the point of updating.
+        self.session_stop()
         log("re-executing the new agent")
         os.execv(sys.executable, [sys.executable, os.path.abspath(__file__), "run"])
 
