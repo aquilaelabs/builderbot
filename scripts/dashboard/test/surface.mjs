@@ -42,7 +42,7 @@ const SURFACE = [
   'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
   'dnSubmit', 'docSurface', 'docSection', 'wireSections', 'busy', 'dockerJob', 'drawAuth', 'drawBell', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
-  'drawPanes', 'drawPhone', 'drawProjects', 'drawRunner', 'drawSessions',
+  'drawCard', 'drawPanes', 'drawPhone', 'drawProjects', 'drawRunner', 'drawSessions',
   'drawShellCard', 'drawTabs', 'drawTrash', 'drawUiMenu', 'dressFrame',
   'dropElsewhere', 'dropIndex', 'dropTab', 'edgeScroll', 'editCustom',
   'endCardDrag', 'endDrag', 'endSession', 'evictFrames',
