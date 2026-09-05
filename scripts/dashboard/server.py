@@ -3160,7 +3160,7 @@ class Handler(BaseHTTPRequestHandler):
                 project = _arg_project(want)
                 if node and uid and project:
                     out.append("arg=" + urllib.parse.quote(
-                        f"tok:{users.mint_session(project)}", safe=""))
+                        f"tok:{users.mint_session(project, uid=uid)}", safe=""))
                     out.append("arg=" + urllib.parse.quote(
                         f"name:{me.get('name', '')}", safe=""))
                 continue
@@ -3512,6 +3512,8 @@ class Handler(BaseHTTPRequestHandler):
                 "me": (self._who() or {}).get("name", ""),
                 "roles": list(users.ROLES),
                 "projects": [p["name"] for p in project_list(self._who())]})
+        if self.path == "/api/v1/claude-login":
+            return self._claude_login()
         if self.path.startswith("/api/v1/nodes"):
             # The versioned surface starts here (docs/nodes.md §3): new
             # endpoints land under /api/v1 with their shapes written down;
@@ -3893,6 +3895,48 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown action"}, 400)
         r = jobs.cancel(self._principal(), field(req, "id"))
         return self._json(r, 400 if r.get("error") else 200)
+
+    def _claude_login(self):
+        """This account's Claude login, for a session of theirs on a node
+        (roadmap #24): the credentials file from the account's home here,
+        so the node's copy of that home is signed in the same.
+
+        Only a session token minted FOR an account fetches it — the one the
+        terminal proxy stamps into a node-bound terminal's URL — and only
+        that account's: the account is in the token, signed, not in a
+        parameter. A session on the node can read the same file out of its
+        own home once it is there, so this hands it nothing it will not
+        hold anyway. What it is not is a share: the credential goes to the
+        one machine, into the one home, 0600, and only when that home is
+        not signed in already (bb login decides that on the node).
+
+        The file is the OAuth grant — a refresh token as well as the access
+        token — and whether Claude Code rotates the refresh token on use is
+        not documented. Two machines holding one grant could then sign each
+        other out on refresh, which is why the node takes a copy only when
+        it has none; if that turns out to bite, the fallback is what it
+        always was: sign in on the node from a shell.
+        """
+        me = self._who()
+        if not me:
+            return self._json({"error": "not signed in"}, 401)
+        uid = me.get("uid") if me.get("session") else ""
+        if not uid:
+            return self._json({"error": "a Claude login is fetched with a session token "
+                                        "minted for an account — the one a node-bound "
+                                        "terminal carries"}, 403)
+        home = home_for(uid)
+        path = Path(home) / ".claude" / ".credentials.json" if home else None
+        if not path or not path.is_file():
+            return self._json({"error": "this account is not signed in to Claude on the "
+                                        "controller — the Doctor card's sign-in does that"}, 404)
+        try:
+            text = path.read_text()
+            json.loads(text)
+        except (OSError, ValueError):
+            return self._json({"error": "the credentials file here could not be read"}, 500)
+        return self._json({"credentials": text,
+                           "email": claude_auth(home=home).get("email") or ""})
 
     def _bb_relay(self, req):
         """A bb verb from a session on a NODE, run here (roadmap #24).

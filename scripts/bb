@@ -73,7 +73,8 @@ bb — BuilderBot helper
                          and the scanner's logs
   bb nodes               the node registry, read-only (docs/nodes.md phase 1)
   bb users               the dashboard's accounts; passwd NAME is the way back in
-  bb users token PROJECT a session token for one project, for a node proved by hand
+  bb users token PROJECT [ACCOUNT]  a session token for one project (and one
+                         account), for a node proved by hand
   bb settings [--json]   this project's settings as the dashboard has them (read-only)
   bb work                who else is changing this project, and which files
                          two of you have open at once
@@ -195,6 +196,41 @@ cmd_update() {
 }
 
 cmd_login() {
+    # ON A NODE, the login is taken from the controller first (roadmap #24):
+    # this account signed in there — the Doctor card's flow — and the token
+    # a node-bound terminal carries is minted for that account, so the
+    # controller hands over that account's credentials file and no other.
+    # Only when this home is not signed in already: two copies of one OAuth
+    # grant refreshing independently is the case to avoid, so an existing
+    # login here is left to itself. No credential on the controller, or no
+    # token, falls through to the interactive flow below, which works on a
+    # node exactly as it does here.
+    if on_node && [ -n "${BB_TOKEN:-}" ] && [ "$(claude auth status --json 2>/dev/null \
+            | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ]; then
+        if BB_LOGIN_AUTH="$(bb_auth_header)" python3 - <<'PY'
+import os, sys
+sys.path.insert(0, os.environ["BB_LIB"])
+import bbapi                                                    # noqa: E402
+r = bbapi.call("/api/v1/claude-login", auth=os.environ["BB_LOGIN_AUTH"])
+if r.get("error") or not r.get("credentials"):
+    print(f"[builderbot] no login to take from the controller: {r.get('error', 'no answer')}",
+          file=sys.stderr)
+    sys.exit(1)
+d = os.path.join(os.environ["HOME"], ".claude")
+os.makedirs(d, mode=0o700, exist_ok=True)
+p = os.path.join(d, ".credentials.json")
+fd = os.open(p + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+with os.fdopen(fd, "w") as f:
+    f.write(r["credentials"])
+os.replace(p + ".new", p)
+print(f"[builderbot] signed in on {os.environ.get('BB_NODE', 'this node')} as "
+      f"{r.get('email') or 'the account signed in on the controller'} — the login came from the controller")
+PY
+        then
+            return 0
+        fi
+        log "sign in here instead — the flow runs in this terminal"
+    fi
     # `claude auth login` is the flow built for this and does not leave a
     # session behind afterwards. The older path — start a session and use its
     # slash command — is the fallback for an image whose claude predates the
@@ -2261,9 +2297,11 @@ cmd_users() {
             # For the operator proving a node by hand — the node cannot
             # mint one, and BB_TOKEN=… is how bb there reaches the
             # controller — and for the test suite. Never written anywhere.
-            [ -n "${1:-}" ] || die "which project? bb users token PROJECT"
+            [ -n "${1:-}" ] || die "which project? bb users token PROJECT [ACCOUNT]"
             [ -d "$WORKSPACE/$1" ] || die "no project called $1 under $WORKSPACE"
-            DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$1" <<'PY'
+            # With an account name the token is FOR that account — what a
+            # node-bound terminal gets — and can fetch its Claude login.
+            DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" python3 - "$py" "$1" "${2:-}" <<'PY'
 import importlib.util, json, os, sys
 spec = importlib.util.spec_from_file_location("users", sys.argv[1])
 users = importlib.util.module_from_spec(spec)
@@ -2281,7 +2319,12 @@ def write_json(path, data):
 
 
 users.configure(state=os.environ["DASHBOARD_STATE"], write_json=write_json)
-print(users.mint_session(sys.argv[2]))
+uid = ""
+if sys.argv[3]:
+    uid = (users.load()["users"].get(sys.argv[3]) or {}).get("uid") or ""
+    if not uid:
+        sys.exit(f"[builderbot] ERROR: no account called {sys.argv[3]}")
+print(users.mint_session(sys.argv[2], uid=uid))
 PY
             return ;;
         *) die "usage: bb users [list|passwd NAME|add NAME --role admin|user|token PROJECT]" ;;

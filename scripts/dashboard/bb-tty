@@ -504,14 +504,24 @@ case "$target" in
         # older claude with no `auth` subcommand, or one that cannot answer,
         # gets the benefit of the doubt, because a wrong refusal here is worse
         # than a confusing message.
-        if [ "$(claude auth status --json 2>/dev/null \
-                | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" = false ]; then
+        logged_in() {
+            [ "$(claude auth status --json 2>/dev/null \
+                 | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != false ]
+        }
+        # On a node the account's login is TAKEN FROM THE CONTROLLER on the
+        # first session (roadmap #24): the token this terminal carries is
+        # minted for the account, and `bb login` fetches that account's
+        # credentials into this home with it. So signing in once, on the
+        # Doctor card, signs every node in. Only when the fetch finds
+        # nothing does this ask for a sign-in here.
+        if on_node && ! logged_in; then
+            bb login || true
+        fi
+        if ! logged_in; then
             if on_node; then
-                # The login lives where the home is, which is this machine:
-                # the Doctor card's sign-in runs on the controller and would
-                # sign in the wrong box. A shell here is the way.
-                bad "This account is not signed in to Claude on ${BB_NODE:-this node}." \
-                    "Open a shell on this project and run: bb login"
+                bad "This account is not signed in to Claude on ${BB_NODE:-this node}, and the" \
+                    "controller has no login of yours to hand over. Sign in on the dashboard's" \
+                    "Doctor card and open this again, or open a shell here and run: bb login"
             fi
             bad "This container is not signed in to Claude." \
                 "Sign in from the dashboard's Doctor card, or run: bb login"

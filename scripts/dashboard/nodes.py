@@ -898,7 +898,11 @@ def _census(c):
             "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
             "workspace": bool(se.get("workspace")),
             "claude": str(se.get("claude") or "")[:40],
-            "bundle": str(se.get("bundle") or "")[:80]}
+            "bundle": str(se.get("bundle") or "")[:80],
+            # The agent's own sentence for a half that is down — no session
+            # account, no ttyd, a port taken — which the row's dead button
+            # repeats. Dropped once, and the button said only "runs none yet".
+            "why": str(se.get("why") or "")[:120]}
     net = c.get("network") if isinstance(c.get("network"), dict) else {}
     out["network"] = {
         "interface": str(net.get("interface") or "")[:32],
