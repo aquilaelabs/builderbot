@@ -605,9 +605,13 @@ fresh() {
     rm -rf "$S/state/devenv"
     # Projects a test created through /api/create go too — anything that is
     # not one of the five fixtures. Scoped to $S, like every rm in this file.
+    # .claude stays: it is where every account's ~/.claude/projects points
+    # (roadmap #24), and removing it leaves the home's link dangling — which
+    # is what made seed_memories' mkdir fail with "File exists" on the
+    # second file of a run. It is per-run state like the home is.
     find "$S/ws" -maxdepth 1 -mindepth 1 -type d \
         ! -name alpha ! -name beta ! -name gamma ! -name delta ! -name ep.silon \
-        ! -name toolstore ! -name vendored-junk -exec rm -rf {} +
+        ! -name toolstore ! -name vendored-junk ! -name .claude -exec rm -rf {} +
     rm -rf "$S/home/.ssh"           # deploy-key selectors a test wrote
     rm -rf "$S/dockerstate"; mkdir -p "$S/dockerstate"
     rm -rf "$S/sdk" "$S/androidsdk"; mkdir -p "$S/sdk" "$S/androidsdk"

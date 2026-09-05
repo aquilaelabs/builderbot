@@ -1596,8 +1596,18 @@ above, in order:
    file with it (`GET /api/v1/claude-login`), into that home, 0600, only
    when the node's copy is not signed in. Not a share — one file, one
    machine, one account. The interactive flow in the session's own terminal
-   is the fallback. Transcripts and memories are that home's too (phase 10a
-   step 3 is what makes them one place).
+   is the fallback. **Transcripts and memories are one place**: every
+   account's `~/.claude/projects`, on every machine, is a link to
+   `/workspace/.claude/<uid>/projects` on the projects share
+   (`claude_projects_link` in lib/common.sh, made when the home is), and
+   the tree rule is the same on both machines — the owner in the project
+   directory, everybody else in a worktree — so the transcript slug is the
+   same string wherever the session ran, and the controller's Memory tab and
+   resume chooser read a node's conversations without knowing where they
+   happened. A home that already held transcripts has them copied across
+   and the original kept beside the link, renamed, for the operator to
+   delete. The share carries a `.bbignore`; bb-tty walls every other
+   account's directory in it as it walls a sibling project.
 4. **The terminal is the same ttyd, on the node.** The agent keeps two of
    them up — writable, and the read-only twin — running bb-tty from the bb
    bundle the controller ships (refetched when the bundle's digest moves in

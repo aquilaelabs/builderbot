@@ -399,6 +399,7 @@ user_home() {
         *) printf '%s' "$BUILDER_HOME"; return 0 ;;
     esac
     if [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ]; then
+        claude_projects_link "$BUILDER_HOME" "$uid"
         printf '%s' "$BUILDER_HOME"; return 0
     fi
     home="$BUILDER_USERS/$uid"
@@ -423,7 +424,82 @@ user_home() {
         [ -e "$target" ] || continue
         [ -e "$home/$d" ] || [ -L "$home/$d" ] || ln -s "$target" "$home/$d" 2>/dev/null || true
     done
+    claude_projects_link "$home" "$uid"
     printf '%s' "$home"
+}
+
+# ---- one place for an account's transcripts and memories (roadmap #24) ------
+#
+# Claude Code keeps everything about a conversation under
+# ~/.claude/projects/<slug>/: the transcript, the resume chooser's list, the
+# auto-memory files the notebook's Memory tab reads. A home is per MACHINE —
+# the login in it must be — so a project bound to a node would leave its
+# conversations on whichever box ran them, and unbinding it would strand the
+# node's. This is what keeps them one: the projects directory of every
+# account's home, on every machine, is a link to one directory on the
+# projects share, which both machines mount read-write at the same path.
+# The slug is the working directory with `/` turned into `-`, and path parity
+# (/workspace/<project> on both sides, worktrees included) makes it the same
+# string wherever the session ran — so the controller's Memory tab and
+# resume chooser read a node's sessions without knowing they were there.
+#
+# NOT the login: ~/.claude/.credentials.json stays in the home. A share is
+# the wrong place for a credential; the login follows the account another
+# way (bb login on a node fetches it with the session's token).
+#
+# The directory is the account's: /workspace/.claude/<uid>/projects, 0700.
+# Other accounts' are walled off in a session by bb-tty exactly as sibling
+# projects are, and the tree carries a .bbignore so it is never a project.
+BB_CLAUDE_SHARE="${BB_CLAUDE_SHARE:-${WORKSPACE:-/workspace}/.claude}"
+
+# claude_projects_link HOME UID — point HOME/.claude/projects at the account's
+# directory on the share, making it if it is missing.
+#
+# A real directory already there is MOVED across — a copy into the shared
+# directory (merging with whatever a session on the other machine left), the
+# original renamed beside it rather than deleted — because that is somebody's
+# conversation history, and the one time this runs on the operator's own
+# home it is every transcript this box ever produced. Nothing is removed by
+# this function; the renamed original is the operator's to delete once they
+# have seen the link work. Quietly does nothing when the share is not there
+# to link to (a node whose mount is missing): the home then keeps its own
+# directory, which is the state it was in before.
+claude_projects_link() {
+    local home="$1" uid="$2" share="$BB_CLAUDE_SHARE" target link keep
+    [ -n "$home" ] && [ -n "$uid" ] && [ -d "$home" ] || return 0
+    [ -d "${share%/*}" ] && [ -w "${share%/*}" ] || return 0
+    target="$share/$uid/projects"
+    link="$home/.claude/projects"
+    if [ -L "$link" ]; then
+        [ "$(readlink "$link")" = "$target" ] && return 0
+        rm -f "$link"
+    fi
+    if [ ! -d "$share" ]; then
+        mkdir -p "$share" 2>/dev/null || return 0
+        printf 'BuilderBot: each account'"'"'s Claude transcripts and memories, shared by the controller and its nodes. Not a project.\n' \
+            > "$share/.bbignore" 2>/dev/null || true
+    fi
+    mkdir -p "$target" 2>/dev/null || return 0
+    chmod 700 "$share/$uid" 2>/dev/null || true
+    mkdir -p "$home/.claude" 2>/dev/null || return 0
+    if [ -d "$link" ]; then
+        if [ -n "$(ls -A "$link" 2>/dev/null)" ]; then
+            # Copy first, and only rename the original once the copy is
+            # whole: a failure part-way leaves the home exactly as it was.
+            cp -a "$link/." "$target/" 2>/dev/null || return 0
+            keep="$link.moved-$(date +%Y%m%d-%H%M%S)"
+            mv "$link" "$keep" 2>/dev/null || return 0
+            # Nothing is printed: user_home's callers capture its output as
+            # the home path (the server's home_for reads stdout and stderr
+            # together), and a line here became part of the path — the login
+            # could not be found in "…/home\n[builderbot] claude: …". The
+            # renamed original beside the link is the record, and the docs
+            # say what it is.
+        else
+            rmdir "$link" 2>/dev/null || return 0
+        fi
+    fi
+    ln -s "$target" "$link" 2>/dev/null || true
 }
 
 # ---- a working tree per session (roadmap #24) -------------------------------
@@ -463,7 +539,17 @@ session_dir() {
         u_[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
         *) printf '%s' "$src"; return 0 ;;
     esac
-    if [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ]; then
+    # THE TREE RULE IS THE SAME ON BOTH MACHINES, unlike the home and the
+    # session names: the project directory is on the share, so the owner
+    # working in it from the node is the owner working in it, and — since a
+    # bound project's sessions run on one machine at a time — nobody is in
+    # it from the other. It has to be the same, or the transcript slug (the
+    # directory's path) would differ per machine and roadmap #24's shared
+    # transcripts would not line up. A node has no users.json to say who the
+    # owner is, so the controller says it in the terminal's URL (owner:1)
+    # and bb-tty exports BB_TREE_OWNER.
+    if [ "$uid" = "${BB_OWNER_UID:-$(owner_uid)}" ] \
+       || { on_node && [ "${BB_TREE_OWNER:-}" = 1 ] && [ "${BB_ACCOUNT_UID:-}" = "$uid" ]; }; then
         printf '%s' "$src"; return 0
     fi
     # Not a git repo: there is no worktree to make, and refusing would be worse

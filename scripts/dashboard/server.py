@@ -1450,6 +1450,7 @@ def project_list(who):
         # sentence restating what the padlock beside the name already says, on
         # every locked row, forever. It is also not a fault, and the issue list
         # is where faults go.
+        sa = _session_at(d.name)
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
                     "claude_md": has_md,
@@ -1465,12 +1466,16 @@ def project_list(who):
                     # like every other field it shows.
                     "prefs": project_prefs.get(d.name, {"model": "", "effort": ""}),
                     "push_how": projects.push_how(d.name),
+                    # The newest transcript — read through the home's link
+                    # onto the projects share (lib/common.sh's
+                    # claude_projects_link), so a conversation a node's
+                    # session had is offered here and continued there.
                     "last_claude": last_claude(d, d.name, stopped),
                     # Where this project's sessions run (roadmap #24): the
                     # node's name, or "" for here — and why the button is
                     # dead when its node cannot take one. The proxy decides
                     # the same way, so the row and the refusal agree.
-                    **_session_at(d.name),
+                    **sa,
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
                     "memories": memory.count(d.name),
@@ -3217,6 +3222,11 @@ class Handler(BaseHTTPRequestHandler):
                         f"tok:{users.mint_session(project, uid=uid)}", safe=""))
                     out.append("arg=" + urllib.parse.quote(
                         f"name:{me.get('name', '')}", safe=""))
+                    # The owner keeps the project directory on the node as
+                    # here (session_dir in lib/common.sh says why), and the
+                    # node has no store to know who that is.
+                    if me.get("role") == "owner":
+                        out.append("arg=owner%3A1")
                 continue
             out.append(f"{k}{eq}{v}")
         return head + "?" + "&".join(out)

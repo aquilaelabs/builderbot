@@ -70,6 +70,10 @@ for extra in "${@:2}"; do
                 ''|*[!A-Za-z0-9._@+-]*) ;;
                 *) export BB_ACCOUNT_NAME="${extra#name:}" BB_ACCOUNT_UID="$account" ;;
             esac ;;
+        # The owner works in the project directory on a node too (see
+        # session_dir); the node cannot tell who the owner is, so the
+        # controller says so.
+        owner:1) [ -n "$account" ] && export BB_TREE_OWNER=1 BB_ACCOUNT_UID="$account" ;;
     esac
 done
 
@@ -145,8 +149,16 @@ siblings_of() {
 # excluded here and its contents enumerated instead.
 walls_around() {
     local proj="$1" here="$2"
-    siblings_of "$proj" | { grep -vxF "$BB_WORKTREES" || true; }
+    # ...and the same for the transcripts tree (roadmap #24): the whole of it
+    # would deny this account's own memories, which Claude writes through the
+    # file tools; so it is excluded and every OTHER account's directory in it
+    # is listed instead.
+    siblings_of "$proj" | { grep -vxF -e "$BB_WORKTREES" -e "$BB_CLAUDE_SHARE" || true; }
     [ "$here" = "$WORKSPACE/$proj" ] || printf '%s\n' "$WORKSPACE/$proj"
+    if [ -d "$BB_CLAUDE_SHARE" ]; then
+        find "$BB_CLAUDE_SHARE" -mindepth 1 -maxdepth 1 -type d -printf '%p\n' 2>/dev/null \
+            | { grep -vxF "$BB_CLAUDE_SHARE/${account:-owner}" || true; }
+    fi
     [ -d "$BB_WORKTREES" ] || return 0
     find "$BB_WORKTREES" -mindepth 2 -maxdepth 2 -type d -printf '%p\n' 2>/dev/null \
         | { grep -vxF "$here" || true; }
@@ -369,6 +381,29 @@ PY
     chmod +x "$tmp" 2>/dev/null || { rm -f "$tmp"; return 1; }
     mv -f "$tmp" "$out" 2>/dev/null || { rm -f "$tmp"; return 1; }
     printf '%s' "$out"
+}
+
+# claude_first_run DIR — answer Claude Code's first-run questions for this home
+# and this directory, where they are not answered already. See the call site.
+claude_first_run() {
+    local f="$HOME/.claude.json" tmp
+    [ -d "$HOME" ] || return 0
+    tmp="$f.new"
+    if jq --arg d "$1" '
+          (if type == "object" then . else {} end)
+          | .hasCompletedOnboarding = (.hasCompletedOnboarding // true)
+          | .theme = (.theme // "dark")
+          | .projects = (.projects // {})
+          | .projects[$d] = ((.projects[$d] // {}) | .hasTrustDialogAccepted = (.hasTrustDialogAccepted // true))
+        ' "$f" 2>/dev/null > "$tmp" && [ -s "$tmp" ]; then
+        mv -f "$tmp" "$f"
+    elif jq -n --arg d "$1" '{hasCompletedOnboarding: true, theme: "dark",
+                             projects: {($d): {hasTrustDialogAccepted: true}}}' > "$tmp" \
+         && [ -s "$tmp" ]; then
+        # No file, or one that is not JSON: the answers alone.
+        mv -f "$tmp" "$f"
+    fi
+    rm -f "$tmp"
 }
 
 # bad MESSAGE... — fail visibly. ttyd closes the connection the moment this
@@ -615,6 +650,21 @@ case "$target" in
         # their own, so two people on one project cannot overwrite each other,
         # commit each other's half-finished work, or share a dist/.
         dir="$(session_dir "$proj" "$account")"
+        # Claude Code's first run asks three things at the keyboard — a
+        # text theme, whether to trust the folder, and the onboarding
+        # screens — and a home this dashboard made has never answered them:
+        # every account's home here, and every home on a node. A person at
+        # a terminal can pick; an account with no shell is looking at a
+        # read-only console, and the picker is the one screen its text box
+        # cannot drive. So the answers are written before the session
+        # starts, the way ~/.claude.json would hold them after: dark (every
+        # dashboard scheme is dark, so there is nothing to ask), the
+        # session's own directory trusted (bb-tty walls it in there; the
+        # dialog would be asking about the tree it was just handed), and
+        # onboarding done. Merged into whatever is there, never replacing a
+        # file a person has already shaped, and only when the answer is
+        # missing — a theme somebody set with /theme stays theirs.
+        claude_first_run "$dir"
         # Every bb verb resolves the project as BB_PROJECT first and falls back
         # to the directory's name — which in a worktree is an account id. One
         # export rather than a special case in each of them.

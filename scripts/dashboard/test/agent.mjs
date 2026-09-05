@@ -8,7 +8,7 @@
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
          tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, lstatSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -492,6 +492,8 @@ try {
       ok(paged.ok && paged.queued, 'the key row\'s PgUp is queued the same way, decided on the node');
       const k = await api('/api/session', { action: 'kill', session: 'claude-alpha', node: onNode?.node_id });
       ok(k.ok && k.queued, `ending it from the card is queued for the agent (${JSON.stringify(k)})`);
+      ok(!((await api('/api/status')).sessions || []).some(s => s.node === 'agentbox' && s.name === 'claude-alpha'),
+         '...and the row is gone at once, not at the next heartbeat');
       const gone = await until(async () => {
         // display-message on a name tmux cannot find prints nothing and
         // exits 0 (measured), so "gone" is the name no longer echoing back.
@@ -797,6 +799,18 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       // carries the node's own answer, not that the two differ.
       ok(alpha?.session_boot === nodeBoot && nodeBoot !== '',
          '...and carries that node\'s boot for the terminal\'s URL');
+      // A transcript is one directory for both machines (roadmap #24 step
+      // 3): the home's projects directory is a link onto the projects
+      // share, so one a node's session wrote is offered here to resume.
+      const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
+      const shared = `${DIR}/ws/.claude/${uid}/projects`;
+      ok(lstatSync(`${DIR}/home/.claude/projects`).isSymbolicLink()
+         && readlinkSync(`${DIR}/home/.claude/projects`) === shared && existsSync(`${DIR}/ws/.claude/.bbignore`),
+         `the owner's ~/.claude/projects is a link onto the share, which carries a .bbignore (${readlinkSync(`${DIR}/home/.claude/projects`).replace(DIR, '…')})`);
+      mkdirSync(`${shared}/${slug}`, { recursive: true });
+      writeFileSync(`${shared}/${slug}/0123abcd-0000-4000-8000-000000000000.jsonl`, '{}\n');
+      ok((await api('/api/status')).projects.find(p => p.name === 'alpha')?.last_claude?.id === '0123abcd-0000-4000-8000-000000000000',
+         'a transcript written on the share — as a node\'s session writes it — is offered here to resume');
       await refreshUntil(page, () =>
         ((state?.projects || []).find(p => p.name === 'alpha') || {}).session_at === 'agentbox');
       const url = await page.evaluate(() => ttydUrl('claude:alpha'));
@@ -811,8 +825,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       const args = (c.body.match(/arg=[^& ]+/g) || []).map(x => decodeURIComponent(x.slice(4)));
       ok(args[0] === `u:${uid}:claude:alpha`,
          `...with the account stamped into the argument as it is locally (${args[0]})`);
-      ok(/^tok:bbs_[A-Za-z0-9_-]+$/.test(args[1] || '') && args[2] === 'name:test',
-         `...and the node's two extras after it: a session token and the account's name (${args.slice(1).map(x => x.slice(0, 12)).join(', ')})`);
+      ok(/^tok:bbs_[A-Za-z0-9_-]+$/.test(args[1] || '') && args[2] === 'name:test' && args[3] === 'owner:1',
+         `...and the node's extras after it: a session token, the account's name, and that it is the owner — so the tree and the transcript slug are the same there (${args.slice(1).map(x => x.slice(0, 12)).join(', ')})`);
       const sh = await term('shell:alpha');
       ok(sh.status === 200 && /arg=u%3A/.test(sh.body) && /tok%3Abbs_/.test(sh.body),
          'a project shell goes there too, with the account and a token — bb in that shell reaches the notebook with it');
