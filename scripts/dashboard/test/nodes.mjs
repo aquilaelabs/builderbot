@@ -772,6 +772,42 @@ ok(list[0].id === 'local',
      `...and says how many changes are waiting and what they are (${
        await page.$eval(`${ROW} .ndconfstate`, e => e.textContent.trim().slice(0, 90))})`);
 
+  // ---- an apply that failed says so, where the button is -------------------
+  // A failed apply leaves the drift exactly as it was, so the section went
+  // back to "1 change to apply" and mentioned the attempt nowhere — which
+  // reads as a button that did nothing, and is what the operator saw.
+  {
+    const ap = await napi('/api/v1/nodes', { action: 'apply', id: minted.id, what: 'storage' });
+    await napi('/api/v1/jobs', { action: 'cancel', id: ap.job });
+    await page.waitForFunction(sel => !/applying/.test(
+      document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+    await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+    await page.waitForFunction(sel => /last storage apply/.test(
+      document.querySelector(sel + ' .ndconfstate')?.textContent || ''), ROW, { timeout: 10000 });
+    ok(await page.$eval(`${ROW} .ndconfstate`, e =>
+         /Jobs tab/.test(e.textContent) && e.classList.contains('bad')),
+       'an apply that did not work is reported where the button is, and points at its log');
+    ok(await page.$eval(`${ROW} .ndconfbody`, e =>
+         [...e.querySelectorAll(':scope > details.sect > summary')]
+           .some(s => /Storage/.test(s.textContent) && /apply failed/.test(s.textContent))),
+       '...and on the section heading, so a shut fold still shows it');
+    // Saved since: the failure was about a record that no longer exists, so
+    // the changes waiting are the thing to say instead.
+    await napi('/api/v1/nodes', { action: 'config', id: minted.id, config: {
+      mounts: [{ path: '/mnt/old', source: 'nas:/mnt/user/old', type: 'nfs', ro: false },
+               { path: '/mnt/new2', source: 'nas:/mnt/user/new2', type: 'nfs', ro: false }],
+      stores: {}, network: { mode: 'dhcp' } } });
+    await page.evaluate(id => { delete nodesConf[id]; loadNodes(); }, minted.id);
+    let said = '';
+    for (let i = 0; i < 40; i++){
+      said = await page.$eval(`${ROW} .ndconfstate`, e => e.textContent.trim());
+      if (!/last storage apply/.test(said)) break;
+      await sleep(250);
+    }
+    ok(!/last storage apply/.test(said),
+       `...and a failure the operator has saved past is not reported over the changes that replaced it (${said.slice(0, 90)})`);
+  }
+
   // ---- an agent that is behind takes nothing but its own update -----------
   // A controller is always newer than or equal to its nodes, so a mismatch
   // means the node may not understand a job this version would send it.

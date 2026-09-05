@@ -146,11 +146,6 @@ function mountState(m, reported){
   return [diff ? `${from} — applying will change it` : from, diff ? "warn" : ""];
 }
 
-// The Actions runner on this node (phase 7): what the census says is
-// there, and the labels an install would register with — the node's own
-// name among them, which is the label a workflow's runs-on uses to land
-// here. Install and Remove are system jobs like the rest of the fold.
-
 // The Actions runner on this node (phase 7), as a section: what the census
 // says is there, and the labels an install would register with — the node's
 // own name among them, which is the label a workflow's runs-on uses to land
@@ -404,6 +399,31 @@ function nodeConfSections(n){
   const drift = nodeDrift(n);
   const netPend = drift && (drift.network === "unknown" || drift.network.length);
   const pending = drift ? drift.storage.concat(drift.network === "unknown" ? [] : drift.network) : [];
+  // An apply that ran and did not work, said where the button is. A failed
+  // apply leaves the drift exactly as it was, so the section went back to
+  // "4 changes to apply" and mentioned the attempt nowhere — which is
+  // indistinguishable from a button that does nothing, and is what the
+  // operator saw.
+  //
+  // ONLY WHILE IT IS STILL THE ANSWER. A failure that has been overtaken —
+  // the node matches now, the operator is typing, the agent is behind, one
+  // is running — is history, and the current state is the more useful
+  // sentence. So it is reported only when this kind still has something to
+  // apply and nothing more immediate is true.
+  const stillPending = {storage: !!drift?.storage.length,
+                        network: !!netPend && drift?.network !== "unknown"};
+  // ...and only while it is about the record as it stands. `current` is the
+  // server comparing the config the job carried with the one saved now: a
+  // failure the operator has since saved past is about a record that no
+  // longer exists, and the changes waiting are the thing to say.
+  const la = n.last_apply?.current ? n.last_apply : null;
+  const failedFor = kind =>
+    la && la.state !== "succeeded" && la.what === kind && stillPending[kind]
+    && !busyNow && !stale && !c.dirty
+      ? [`the last ${kind} apply ${la.state === "canceled" ? "was canceled" : "failed"}${
+          la.error ? ": " + la.error : ""} — its log is on the Jobs tab. Nothing on the `
+         + "node changed for whatever did not apply; fix it and Apply again.", "bad"]
+      : null;
   // The state line answers one question — is there anything to press Apply
   // for — and names the changes when there is, so the button is not a leap.
   const [status, statusCls] = busyNow
@@ -429,7 +449,8 @@ function nodeConfSections(n){
         path is refused, here and on the node.</div>
       ${stores}
       <div class="actbar">
-        <span class="state ndconfstate${statusCls ? " " + statusCls : ""}">${esc(status)}</span>
+        <span class="state ndconfstate${(failedFor("storage") || [0, statusCls])[1] ? " " + (failedFor("storage") || [0, statusCls])[1] : ""}">${
+          esc((failedFor("storage") || [status])[0])}</span>
         ${saveBtn}
         <button type="button" data-napply="storage" ${
           busyNow || c.dirty || stale || !drift?.storage.length ? "disabled" : ""}
@@ -459,7 +480,8 @@ function nodeConfSections(n){
       </div>
       <div class="sub">${esc(now)}</div>
       <div class="actbar">
-        <span class="state ndconfstate${statusCls ? " " + statusCls : ""}">${esc(status)}</span>
+        <span class="state ndconfstate${(failedFor("network") || [0, statusCls])[1] ? " " + (failedFor("network") || [0, statusCls])[1] : ""}">${
+          esc((failedFor("network") || [status])[0])}</span>
         ${saveBtn}
         <button type="button" data-napply="network" ${busyNow || c.dirty || stale || !netPend ? "disabled" : ""}
           title="${stale ? esc(staleWhy(n))
@@ -468,13 +490,17 @@ function nodeConfSections(n){
             : "re-address the node; it must dial back in within three minutes or it reverts"}">Apply network</button>
       </div>`;
   const stStatus = busyNow?.what === "storage" ? "applying"
+    : failedFor("storage") ? "apply failed"
     : c.dirty ? "unsaved" : drift?.storage.length ? `${drift.storage.length} to apply`
     : `${(rep.mounts || []).length} mount${(rep.mounts || []).length === 1 ? "" : "s"}`;
-  const stCls = busyNow?.what === "storage" ? "note" : c.dirty || drift?.storage.length ? "warn" : "";
+  const stCls = busyNow?.what === "storage" ? "note"
+    : failedFor("storage") ? "bad" : c.dirty || drift?.storage.length ? "warn" : "";
   const netStatus = busyNow?.what === "network" ? "applying"
+    : failedFor("network") ? "apply failed"
     : c.dirty ? "unsaved" : netPend && drift.network !== "unknown" ? "to apply"
     : net.addresses?.length ? net.addresses[0] : "";
-  const netCls = busyNow?.what === "network" ? "note" : c.dirty || (netPend && drift.network !== "unknown") ? "warn" : "";
+  const netCls = busyNow?.what === "network" ? "note"
+    : failedFor("network") ? "bad" : c.dirty || (netPend && drift.network !== "unknown") ? "warn" : "";
   // .ndconf and .ndconfbody: the names the suite finds the plane by; the
   // sections are its children, so a test can read them in order.
   return `<div class="ndconf"><div class="ndconfbody">

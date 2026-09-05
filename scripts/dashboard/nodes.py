@@ -232,9 +232,39 @@ def node_list(all=False):
             busy[j["node"]] = {"id": j["id"], "what": json.loads(j["spec"]).get("apply", "")}
         except (ValueError, AttributeError):
             busy[j["node"]] = {"id": j["id"], "what": ""}
+    # ...and the last system job that FINISHED on each, which is the only
+    # account of an apply that did not work. Without it the operator pressed
+    # Apply storage, the job ran, failed, and the section went straight back
+    # to "4 changes to apply" — no sign an attempt had happened at all,
+    # which reads as a button that does nothing. Bounded: the newest rows
+    # are the only ones that could be anybody's last.
+    done = {}
+    for j in _rows("SELECT id, node, spec, state, error, ended FROM jobs "
+                   "WHERE type = 'system' AND state IN ('succeeded', 'failed', "
+                   "'canceled') ORDER BY ended DESC LIMIT 200"):
+        if j["node"] in done:
+            continue
+        try:
+            spec = json.loads(j["spec"])
+        except (ValueError, TypeError):
+            spec = {}
+        done[j["node"]] = {"id": j["id"], "what": spec.get("apply", ""),
+                           "state": j["state"], "error": (j["error"] or "")[:200],
+                           "ended": j["ended"], "cfg": spec.get("config")}
     for r in rows:
         r["applying"] = busy.get(r["id"])
         r["jobs"] = inflight.get(r["id"], [])
+        la = done.get(r["id"])
+        if la:
+            # Whether it is still about the record as it stands. Compared by
+            # the config the job CARRIED rather than by when it ran: a save
+            # and an apply land in the same second often enough that a clock
+            # cannot tell them apart, and this can. A failure the operator
+            # has since saved past is about a record that no longer exists.
+            la = dict(la)
+            la["current"] = la.pop("cfg", None) == apply_cfg(
+                (r.get("config") or {}).get("desired"), la["what"])
+        r["last_apply"] = la
     return rows if all else [r for r in rows if r["state"] != "retired"]
 
 
@@ -1301,6 +1331,20 @@ def system_job_for(node_id):
     return None
 
 
+def apply_cfg(desired, what):
+    """The half of a desired config an apply of `what` carries. Its own
+    function because node_list compares a finished job's spec against it to
+    decide whether that job is still about the record as it stands — and a
+    second copy of this shape would make a stale failure look current, or
+    the other way about, whenever either moved."""
+    desired = desired or {}
+    if what == "storage":
+        return {"mounts": desired.get("mounts") or [], "stores": desired.get("stores") or {}}
+    if what == "network":
+        return {"network": desired.get("network") or {}}
+    return None
+
+
 def node_apply(principal, node_id, what):
     """Queue the system job that makes the node match its desired config —
     storage (mounts and stores) or network, which is its own job because it
@@ -1326,8 +1370,7 @@ def node_apply(principal, node_id, what):
         return {"error": "nothing to apply — save a configuration first"}
     if system_job_for(node_id):
         return {"error": "a system job is already in flight on this node — one at a time"}
-    cfg = ({"mounts": desired.get("mounts") or [], "stores": desired.get("stores") or {}}
-           if what == "storage" else {"network": desired.get("network") or {}})
+    cfg = apply_cfg(desired, what)
     # A storage apply that repoints a store copies what is in it first, and a
     # packages store is tens of gigabytes: fifteen minutes is the right ceiling
     # for mounting a share and the wrong one for moving one. `cache` is not
