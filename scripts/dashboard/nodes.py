@@ -1665,8 +1665,18 @@ def session_kill(node_id, name):
         return {"error": "no such node"}
     with _wake:
         _kills.setdefault(node_id, set()).add(str(name)[:120])
+        # Off the list from this moment: the heartbeat that stops carrying
+        # it is up to a poll away, and a row that stays after ✕ for twenty
+        # seconds reads as a button that did nothing.
+        _ended[(node_id, str(name)[:120])] = time.time()
         _wake.notify_all()
     return {"ok": True, "queued": True}
+
+
+# (node id, session name) -> when the operator ended it, so the row goes
+# at once rather than at the next heartbeat; forgotten after a minute, by
+# which time the node has either dropped it or it is genuinely back.
+_ended = {}
 
 
 # tmux commands for a node's sessions — keys, a console's line, a macro —
@@ -1695,7 +1705,10 @@ def node_sessions():
             continue
         rows = (n.get("reported") or {}).get("sessions")
         if isinstance(rows, list):
-            out[n["id"]] = (n["name"], rows)
+            now = time.time()
+            out[n["id"]] = (n["name"], [
+                r for r in rows
+                if now - _ended.get((n["id"], str((r or {}).get("name") or "")), 0) > 60])
     return out
 
 

@@ -492,6 +492,8 @@ try {
       ok(paged.ok && paged.queued, 'the key row\'s PgUp is queued the same way, decided on the node');
       const k = await api('/api/session', { action: 'kill', session: 'claude-alpha', node: onNode?.node_id });
       ok(k.ok && k.queued, `ending it from the card is queued for the agent (${JSON.stringify(k)})`);
+      ok(!((await api('/api/status')).sessions || []).some(s => s.node === 'agentbox' && s.name === 'claude-alpha'),
+         '...and the row is gone at once, not at the next heartbeat');
       const gone = await until(async () => {
         // display-message on a name tmux cannot find prints nothing and
         // exits 0 (measured), so "gone" is the name no longer echoing back.
@@ -797,6 +799,16 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       // carries the node's own answer, not that the two differ.
       ok(alpha?.session_boot === nodeBoot && nodeBoot !== '',
          '...and carries that node\'s boot for the terminal\'s URL');
+      // A transcript here is not one the node can continue, so none is offered.
+      const slug = `${DIR}/ws/alpha`.replace(/\//g, '-');
+      mkdirSync(`${DIR}/home/.claude/projects/${slug}`, { recursive: true });
+      writeFileSync(`${DIR}/home/.claude/projects/${slug}/0123abcd-0000-4000-8000-000000000000.jsonl`, '{}\n');
+      ok((await api('/api/status')).projects.find(p => p.name === 'alpha')?.last_claude === null,
+         'a project whose sessions run on a node offers no resume of this container\'s transcripts');
+      await api('/api/prefs', { project: 'alpha', node: '' });
+      ok((await api('/api/status')).projects.find(p => p.name === 'alpha')?.last_claude?.id === '0123abcd-0000-4000-8000-000000000000',
+         '...and the same transcript is offered again the moment the project is unbound');
+      await api('/api/prefs', { project: 'alpha', node: minted.id });
       await refreshUntil(page, () =>
         ((state?.projects || []).find(p => p.name === 'alpha') || {}).session_at === 'agentbox');
       const url = await page.evaluate(() => ttydUrl('claude:alpha'));

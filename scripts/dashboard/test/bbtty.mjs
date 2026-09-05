@@ -426,6 +426,28 @@ tmuxKill('claude-alpha');
                                        `claude-run-${proj}.sh`), 'utf8');
     ok(/bb settings --json/.test(launcher) && /BB_TOKEN=bbs_abc-DEF_123/.test(launcher),
        'the launcher asks bb settings for the model when the prefs file is not here, and carries the token');
+    // Claude Code's first-run questions are answered before it asks them:
+    // a home this dashboard made has never seen the theme picker, and an
+    // account with no shell could not get past it.
+    const cj = JSON.parse(readFileSync(join(HOMEDIR, 'users', ownerUid, '.claude.json'), 'utf8'));
+    ok(cj.hasCompletedOnboarding === true && cj.theme === 'dark'
+       && cj.projects?.[wt]?.hasTrustDialogAccepted === true,
+       `a fresh home starts with onboarding done, the dark theme and its own tree trusted (${JSON.stringify(cj).slice(0, 80)})`);
+    // ...and a theme somebody chose is not overwritten by the next start.
+    writeFileSync(join(HOMEDIR, 'users', ownerUid, '.claude.json'),
+                  JSON.stringify({ ...cj, theme: 'light', projects: {} }));
+    tmuxKill(`${ownerUid}~claude-${proj}`);
+    try {
+      execFileSync('bash', [BBTTY, `u:${ownerUid}:claude:${proj}:b:${boot}`, 'name:the.owner'], {
+        encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WORKSPACE: join(DIR, 'ws'), HOME: HOMEDIR,
+               BUILDER_HOME: HOMEDIR, DASHBOARD_STATE: join(DIR, 'state'), ...node },
+      });
+    } catch { /* the attach fails without a terminal */ }
+    await sleep(300);
+    const cj2 = JSON.parse(readFileSync(join(HOMEDIR, 'users', ownerUid, '.claude.json'), 'utf8'));
+    ok(cj2.theme === 'light' && cj2.projects?.[wt]?.hasTrustDialogAccepted === true,
+       '...the theme a person set stays theirs, and the trust is put back for the tree');
     tmuxKill(`${ownerUid}~claude-${proj}`);
 
     // A token or a name in the wrong shape is dropped, not trusted: the

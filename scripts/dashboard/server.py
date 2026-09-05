@@ -1450,6 +1450,7 @@ def project_list(who):
         # sentence restating what the padlock beside the name already says, on
         # every locked row, forever. It is also not a fault, and the issue list
         # is where faults go.
+        sa = _session_at(d.name)
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
                     "claude_md": has_md,
@@ -1465,12 +1466,21 @@ def project_list(who):
                     # like every other field it shows.
                     "prefs": project_prefs.get(d.name, {"model": "", "effort": ""}),
                     "push_how": projects.push_how(d.name),
-                    "last_claude": last_claude(d, d.name, stopped),
+                    # The newest transcript HERE — and a project whose
+                    # sessions run on a node is offered none, because the
+                    # resume it would offer is this container's file and
+                    # the session would start on a machine that has never
+                    # seen it (roadmap #24 step 3 is what makes the two
+                    # one directory; until then, no resume is the honest
+                    # answer rather than a chooser full of conversations
+                    # the node cannot continue).
+                    "last_claude": None if sa["session_at"] and not sa["session_why"]
+                    else last_claude(d, d.name, stopped),
                     # Where this project's sessions run (roadmap #24): the
                     # node's name, or "" for here — and why the button is
                     # dead when its node cannot take one. The proxy decides
                     # the same way, so the row and the refusal agree.
-                    **_session_at(d.name),
+                    **sa,
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
                     "memories": memory.count(d.name),
