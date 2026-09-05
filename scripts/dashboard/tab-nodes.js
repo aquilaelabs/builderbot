@@ -23,6 +23,9 @@ let nodesPick = "";              // which node the tab is showing, "" until the 
 // only in the row would lose its text every 25 seconds.
 const nodesConf = {};
 let nodesFocus = null;           // {id, key, i}: the field to refocus after a repaint
+// When Update agent was pressed per node, so the button stays busy until the
+// agent comes back with the new digest (see renderNodesInto).
+const nodesUpdating = {};
 
 function openNodesTab(){
   openTab({kind: "nodes", arg: "__nodes", label: "Nodes"});
@@ -109,7 +112,6 @@ function nodeStatePill(n){
     : ` <span class="pill ndlive">quiet</span>`;
   return `<span class="pill ${cls}">${esc(n.state)}</span>${live}`;
 }
-
 // The draft for a node: what is on the record, until the operator types.
 function nodeDraft(n){
   const c = nodesConf[n.id] || (nodesConf[n.id] = {open: false, dirty: false, draft: null});
@@ -148,6 +150,11 @@ function mountState(m, reported){
 // there, and the labels an install would register with — the node's own
 // name among them, which is the label a workflow's runs-on uses to land
 // here. Install and Remove are system jobs like the rest of the fold.
+
+// The Actions runner on this node (phase 7), as a section: what the census
+// says is there, and the labels an install would register with — the node's
+// own name among them, which is the label a workflow's runs-on uses to land
+// here. Install and Remove are system jobs like the rest of the plane.
 function nodeRunnerSection(n, c){
   const rep = n.reported?.services?.["actions-runner"] || {};
   const want = n.services?.["actions-runner"] || {};
@@ -174,64 +181,114 @@ function nodeRunnerSection(n, c){
        rep.url || "", rep.labels?.length ? "labels " + rep.labels.join(", ") : ""].filter(Boolean).join(" · ")
     : "";
   const state = verdict + (detail ? " · " + detail : "");
-  const busy = n.applying || nodeStale(n);
+  const busyNow = n.applying || nodeStale(n);
   const why = nodeStale(n) ? esc(staleWhy(n)) : "";
-  return `
-      <div class="ndsec">CI runner — GitHub's Actions runner as a service here; its labels decide which workflows land</div>
+  const body = `
+      <div class="sub">GitHub's Actions runner as a service here; its labels decide which workflows land.</div>
       <div class="ndrunner">
         <input data-k="runner:url" value="${esc(d.runner.url)}" spellcheck="false" autocomplete="off"
           placeholder="${esc(want.url || "https://github.com/your-org — the org or repo it registers with")}" aria-label="GitHub URL">
         <input data-k="runner:labels" value="${esc(d.runner.labels)}" spellcheck="false" autocomplete="off"
           placeholder="extra labels, comma-separated — builderbot, self-hosted, linux, the arch and ${esc(n.name)} are always on" aria-label="labels">
       </div>
-      <div class="sub ndrunstate${vcls ? " " + vcls : ""}">${
-        rep.busy ? `<span class="pill note ndrunbusy">running a job</span> ` : ""}${esc(state)}</div>
       ${rep.installed || want.want ? `<div class="sub ndrunpin">Every BuilderBot runner answers
         <code>self-hosted</code>, so a workflow that asks for no more than that lands on whichever
         is idle. This node's own name is a label on its runner, so this is the line that pins a
         job here — <code>bb lint</code> says when a project's workflows do not carry it:
         <pre class="ndcmd">runs-on: [self-hosted, ${esc(n.name.replace(/[^A-Za-z0-9._-]/g, "-").slice(0, 40))}]</pre></div>` : ""}
-      <div class="acts">
-        <span class="sp"></span>
-        <button type="button" data-nrunner="install" ${busy ? "disabled" : ""}
+      <div class="actbar">
+        <span class="state ndrunstate${vcls ? " " + vcls : ""}">${
+          rep.busy ? `<span class="pill note ndrunbusy">running a job</span> ` : ""}${esc(state)}</span>
+        <button type="button" data-nrunner="install" ${busyNow ? "disabled" : ""}
           title="${why || "download GitHub's runner onto the node, register it with a one-hour token the controller mints, and run it as a service"}">${
           rep.installed ? "Reinstall runner" : "Install runner"}</button>
-        ${rep.installed || want.want ? `<button type="button" class="rm" data-nrunner="remove" ${busy ? "disabled" : ""}
+        ${rep.installed || want.want ? `<button type="button" class="rm" data-nrunner="remove" ${busyNow ? "disabled" : ""}
           title="${why || "deregister it from GitHub and take the service off the node"}">Remove runner</button>` : ""}
       </div>`;
+  const status = !rep.installed ? (want.want ? "installing" : "none")
+    : rep.busy ? "busy" : rep.active ? "listening" : "not listening";
+  return docSection("nodes", "runner", "CI runner", status, body, {cls: vcls});
 }
 
-// A node's path mapping (docs/nodes.md §11): what this container's paths are
-// called on that machine, because its daemon resolves a compose file's bind
-// sources over there. Was DOCKER_HOST_PATHS, then the ssh row's; with that
-// kind retired (roadmap #24) it belongs to the agent row, which is the only
-// remote row left — and it is still read, by devapp.host_map, for every node
-// being addressed. A line that drew on no row would have taken an editable
-// setting out of reach without saying so.
-function nodePathsLine(n){
+// The node's sessions (roadmap #24): whether this machine runs them, what a
+// session there gets, and which are open right now. The reasons a project
+// cannot be sent here are the proxy's (server.session_target), repeated in
+// the same words so the row and the refusal agree.
+function nodeSessionsSection(n){
+  const se = n.reported?.session;
+  const list = n.reported?.sessions || [];
+  let status, cls, body;
+  if (!se || typeof se !== "object"){
+    [status, cls] = ["agent too old", "warn"];
+    body = `<div class="sub">This node's agent predates sessions on a node — Update agent, and
+      it reports the half that runs them.</div>`;
+  } else if (!se.up){
+    [status, cls] = ["none", "warn"];
+    body = `<div class="sub">${esc(se.why || "no session account — provision it with --session-user")}.
+      A project bound to this node keeps a dead Claude button until this half is up.</div>`;
+  } else {
+    const gaps = [];
+    if (!se.workspace) gaps.push("the projects share is not mounted at /workspace — add it under Storage");
+    else if (se.writable === false) gaps.push("the projects share is mounted read-only — untick read-only under Storage and apply, or `bb-sandbox readonly /workspace off` on the machine");
+    if (!se.boot) gaps.push("the agent reports no boot id — Update agent");
+    [status, cls] = gaps.length ? ["blocked", "bad"]
+      : [list.length ? `${list.length} open` : "ready", "ok"];
+    body = `
+      <div class="sub">Sessions run here as <code>${esc(se.user || "?")}</code>, on ports ${
+        se.port || "?"} and ${se.ro_port || "?"} (read-only), with ${
+        se.claude ? esc(se.claude) : "no Claude Code installed for that account yet"}.
+        A project bound to this node opens its Claude sessions on this machine.</div>
+      ${gaps.map(g => `<div class="sub bad">${esc(g)}</div>`).join("")}
+      ${list.length ? `<div class="sub">open now: ${list.map(s => `<code>${esc(s.name)}</code>`).join(", ")}
+        — listed on the Sessions card, and ended from there</div>` : ""}`;
+  }
+  return docSection("nodes", "sessions", "Sessions", status, body, {cls});
+}
+
+// The node's path mapping (docs/nodes.md §11): what this container's paths
+// are called on that machine, because its daemon resolves a compose file's
+// bind sources over there. Nearly always the identity now that the projects
+// share is mounted at /workspace on both sides — path parity is a rule, not
+// a setting — so it lives under Advanced with the actions that are rarely
+// pressed, and says why it is there. Still read by devapp.host_map for
+// every node addressed, so it is not gone.
+function nodeAdvancedSection(n, stale, inflight){
   const paths = n.config?.paths || {};
   const text = Object.entries(paths).map(([k, v]) => `${k}:${v}`).join(", ");
   const c = nodeDraft(n);
-  // The draft follows the record when the record moves (a save, another
-  // browser); it keeps the operator's typing otherwise.
   if (c.draft.pathsText === undefined || c.draft.pathsFrom !== text){
     c.draft.pathsText = text; c.draft.pathsFrom = text;
   }
-  return `
-    <div class="sub ndpaths">
+  const body = `
+    <div class="sub">Path mapping — what this container's paths are called on the node, for its
+      daemon to resolve a compose file's bind mounts. With the projects share mounted at
+      <code>/workspace</code> on both machines it is the identity, and this can stay blank.</div>
+    <div class="ndpaths">
       <input data-k="paths" value="${esc(c.draft.pathsText)}" spellcheck="false" autocomplete="off"
-        placeholder="path mapping: /workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
-        aria-label="path mapping" title="what this container's paths are called on the node — its daemon resolves bind mounts over there">
+        placeholder="/workspace:/workspace, /devdata:/mnt/user/appdata/bb-dev"
+        aria-label="path mapping">
       <button type="button" data-nd="paths" title="save the mapping onto the node's record">Save paths</button>
+    </div>
+    <div class="actbar">
+      <span class="state">Drain finishes what is running and takes nothing new — what makes the machine safe
+        to reboot. Revoke and Remove are the way out; the row and its history stay either way.</span>
+      <button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}"
+        title="${n.state === "draining" ? "take new work again"
+          : "finish what is running, accept nothing new — what makes a node safe to reboot"}">${
+        n.state === "draining" ? "Undrain" : "Drain"}</button>
+      ${!n.agent?.revoked ? `<button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}
+        title="${stale ? esc(staleWhy(n))
+          : inflight("cache-clear") ? "already clearing"
+          : "drop this node's build caches — every project's. A cold cache costs the next build time, never correctness"}">${
+        inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>` : ""}
+      ${!n.agent?.revoked ? `<button type="button" class="rm" data-nd="revoke"
+        title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}
+      <button type="button" class="rm" data-nd="retire"
+        title="take it off every list. Its row and its history stay — an id is never reused">Remove</button>
     </div>`;
+  return docSection("nodes", "advanced", "Advanced", n.state === "draining" ? "draining" : "",
+                    body, {cls: n.state === "draining" ? "warn" : ""});
 }
-
-// Is this node's agent the one this controller ships? Everything the AGENT
-// runs is held until it is: job types and spec fields have been added on
-// nearly every phase, and an older agent meets an unknown one with a shrug
-// rather than an error, so a newer controller must not drive it. Its own
-// update is the way out and is never held. The server refuses the same jobs
-// (nodes.agent_stale) — this only saves the operator the round trip.
 function nodeStale(n){
   return n.kind === "agent" && n.agent?.digest && nodesAgent?.digest
     && n.agent.digest !== nodesAgent.digest && !n.agent?.revoked;
@@ -295,11 +352,16 @@ function nodeDrift(n){
   return {storage, network};
 }
 
-function nodeConfFold(n){
+
+// The configuration plane (docs/nodes.md §12) as three sections: the
+// runner, storage (mounts and stores), network. One record underneath —
+// Save keeps the whole draft — so the status line reads the same in both
+// editors: is there anything to press Apply for, and what.
+function nodeConfSections(n){
   const c = nodeDraft(n);
   const d = c.draft;
   const rep = n.reported || {};
-  const busy = n.applying;
+  const busyNow = n.applying;
   const mounts = d.mounts.map((m, i) => {
     const [st, cls] = mountState(m, rep.mounts);
     return `
@@ -344,8 +406,8 @@ function nodeConfFold(n){
   const pending = drift ? drift.storage.concat(drift.network === "unknown" ? [] : drift.network) : [];
   // The state line answers one question — is there anything to press Apply
   // for — and names the changes when there is, so the button is not a leap.
-  const [status, statusCls] = busy
-    ? [`applying ${busy.what}${busy.what === "network" ? " — waiting for it to dial back in" : "…"}`, "note"]
+  const [status, statusCls] = busyNow
+    ? [`applying ${busyNow.what}${busyNow.what === "network" ? " — waiting for it to dial back in" : "…"}`, "note"]
     : stale ? [staleWhy(n), "warn"]
     : c.dirty ? ["unsaved — Save keeps it on the record; Apply makes the node match", "warn"]
     : !drift ? ["nothing configured yet — the node runs on whatever it was set up with", ""]
@@ -354,62 +416,73 @@ function nodeConfFold(n){
     : drift.network === "unknown"
       ? ["the node matches what is saved here, except dhcp, which cannot be told from here", ""]
       : ["the node matches what is saved here", "ok"];
-  return `
-  <div class="ndconf">
-    <div class="ndconfbody">
-      ${nodeRunnerSection(n, c)}
-      <div class="ndsec">Mounts — what this node mounts at boot, applied through bb-sandbox on it${
+  const saveBtn = `<button type="button" data-nsave ${c.dirty ? "" : "disabled"}
+      title="keep this on the node's record — Apply is what makes the node match it">Save</button>`;
+  const storage = `
+      <div class="sub">Mounts — what this node mounts at boot, applied through bb-sandbox on it${
         d.fromNode ? `. <span class="dim">These are the ones the node reports; nothing has been
         saved here yet, so editing and saving is what puts this page in charge of them.</span>` : ""}</div>
       ${mounts}
-      <button type="button" data-madd>+ mount</button>
-      <div class="ndsec">Stores — where the agent keeps job data, toolchains, build caches and
+      <div><button type="button" data-madd>+ mount</button></div>
+      <div class="sub">Stores — where the agent keeps job data, toolchains, build caches and
         this node's copy of what projects built. Each is a directory of its own: a system
         path is refused, here and on the node.</div>
       ${stores}
-      <div class="ndsec">Network — applied with a three-minute dial-back, or reverted</div>
-      <div class="ndnet">
-        <select data-k="net:mode" aria-label="mode">
-          <option value="dhcp" ${isStatic ? "" : "selected"}>dhcp</option>
-          <option value="static" ${isStatic ? "selected" : ""}>static</option>
-        </select>
-        <input data-k="net:address" value="${esc(d.network.address || "")}" ${isStatic ? "" : "disabled"}
-          spellcheck="false" autocomplete="off" placeholder="10.0.0.12/24" aria-label="address">
-        <input data-k="net:gateway" value="${esc(d.network.gateway || "")}" ${isStatic ? "" : "disabled"}
-          spellcheck="false" autocomplete="off" placeholder="gateway 10.0.0.1" aria-label="gateway">
-        <input data-k="net:dns" value="${esc((d.network.dns || []).join(", "))}" ${isStatic ? "" : "disabled"}
-          spellcheck="false" autocomplete="off" placeholder="dns 10.0.0.1, 1.1.1.1" aria-label="dns">
-        <input data-k="net:interface" value="${esc(d.network.interface || "")}" spellcheck="false"
-          autocomplete="off" placeholder="${esc(net.interface || "interface (default route's)")}" aria-label="interface">
-      </div>
-      <div class="sub">${esc(now)}</div>
-      <div class="acts ndconfacts">
-        <span class="sub ndconfstate${statusCls ? " " + statusCls : ""}">${esc(status)}</span>
-        <span class="sp"></span>
-        <button type="button" data-nsave ${c.dirty ? "" : "disabled"}>Save</button>
+      <div class="actbar">
+        <span class="state ndconfstate${statusCls ? " " + statusCls : ""}">${esc(status)}</span>
+        ${saveBtn}
         <button type="button" data-napply="storage" ${
-          busy || c.dirty || stale || !drift?.storage.length ? "disabled" : ""}
+          busyNow || c.dirty || stale || !drift?.storage.length ? "disabled" : ""}
           title="${stale ? esc(staleWhy(n))
             : !drift ? "nothing is saved to apply"
             : !drift.storage.length ? "the node already has the mounts and stores saved here"
             : "mounts and stores: a system job on the node, through bb-sandbox"}">Apply storage</button>
-        <button type="button" data-napply="network" ${busy || c.dirty || stale || !netPend ? "disabled" : ""}
+      </div>`;
+  // The four static fields only when static: five boxes of placeholders
+  // under a dhcp node were the wall this section used to be on a phone.
+  const network = `
+      <div class="sub">Applied with a three-minute dial-back, or reverted.</div>
+      <div class="ndnet${isStatic ? "" : " dhcp"}">
+        <select data-k="net:mode" aria-label="mode">
+          <option value="dhcp" ${isStatic ? "" : "selected"}>dhcp</option>
+          <option value="static" ${isStatic ? "selected" : ""}>static</option>
+        </select>
+        ${isStatic ? `
+        <input data-k="net:address" value="${esc(d.network.address || "")}"
+          spellcheck="false" autocomplete="off" placeholder="10.0.0.12/24" aria-label="address">
+        <input data-k="net:gateway" value="${esc(d.network.gateway || "")}"
+          spellcheck="false" autocomplete="off" placeholder="gateway 10.0.0.1" aria-label="gateway">
+        <input data-k="net:dns" value="${esc((d.network.dns || []).join(", "))}"
+          spellcheck="false" autocomplete="off" placeholder="dns 10.0.0.1, 1.1.1.1" aria-label="dns">
+        <input data-k="net:interface" value="${esc(d.network.interface || "")}" spellcheck="false"
+          autocomplete="off" placeholder="${esc(net.interface || "interface (default route's)")}" aria-label="interface">` : ""}
+      </div>
+      <div class="sub">${esc(now)}</div>
+      <div class="actbar">
+        <span class="state ndconfstate${statusCls ? " " + statusCls : ""}">${esc(status)}</span>
+        ${saveBtn}
+        <button type="button" data-napply="network" ${busyNow || c.dirty || stale || !netPend ? "disabled" : ""}
           title="${stale ? esc(staleWhy(n))
             : !drift ? "nothing is saved to apply"
             : !netPend ? "the node is already on the address saved here"
             : "re-address the node; it must dial back in within three minutes or it reverts"}">Apply network</button>
-      </div>
-    </div>
-  </div>`;
+      </div>`;
+  const stStatus = busyNow?.what === "storage" ? "applying"
+    : c.dirty ? "unsaved" : drift?.storage.length ? `${drift.storage.length} to apply`
+    : `${(rep.mounts || []).length} mount${(rep.mounts || []).length === 1 ? "" : "s"}`;
+  const stCls = busyNow?.what === "storage" ? "note" : c.dirty || drift?.storage.length ? "warn" : "";
+  const netStatus = busyNow?.what === "network" ? "applying"
+    : c.dirty ? "unsaved" : netPend && drift.network !== "unknown" ? "to apply"
+    : net.addresses?.length ? net.addresses[0] : "";
+  const netCls = busyNow?.what === "network" ? "note" : c.dirty || (netPend && drift.network !== "unknown") ? "warn" : "";
+  // .ndconf and .ndconfbody: the names the suite finds the plane by; the
+  // sections are its children, so a test can read them in order.
+  return `<div class="ndconf"><div class="ndconfbody">
+    ${nodeRunnerSection(n, c)}
+    ${docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})}
+    ${docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})}
+  </div></div>`;
 }
-
-// A resource as a bar rather than a sentence. The row said "cpu 0.5% ·
-// 0.7/7GB · data 48GB free · packages 48GB free · cache 48GB free, 1MB used
-// · artifacts 48GB free" in one grey line, which is a paragraph pretending
-// to be a readout — nothing in it can be taken in at a glance, and the one
-// number that matters (a store filling up) reads the same as the five that
-// do not. Pressure picks the colour, so a full disk is the thing your eye
-// lands on. Tokens only; the schemes repaint these with everything else.
 function meter(label, pct, right, title){
   const p = Math.max(0, Math.min(100, Math.round(pct)));
   const cls = p >= 92 ? "bad" : p >= 80 ? "warn" : "";
@@ -456,6 +529,9 @@ function nodeMeters(n){
   return out.length ? `<div class="ndmeters">${out.join("")}</div>` : "";
 }
 
+
+// The node's page: a header band — name, state, where it is, its agent and
+// the one control that is about the agent — then the sections.
 function renderNodesInto(i){
   const d = docSurface(i, "nodes");
   if (!d) return;
@@ -473,8 +549,8 @@ function renderNodesInto(i){
   // actions, per row, for every machine — and the fold that hid it only
   // moved the problem: the settings you came for were two taps down and the
   // ones you did not care about were still in the way. So the tab is a
-  // picker and one machine, expanded, like the Docker manager and the Tools
-  // tab already are (docs/nodes.md §13: one tab, re-rendered per pick).
+  // picker and one machine, in sections, like the Docker manager and the
+  // Tools tab already are (docs/nodes.md §13: one tab, re-rendered per pick).
   const live = nodesList.filter(n => n.state !== "retired");
   if (!live.some(n => n.id === nodesPick)) nodesPick = live[0]?.id || "";
   const n = live.find(x => x.id === nodesPick);
@@ -501,53 +577,54 @@ function renderNodesInto(i){
     // button for the round trip; this is what keeps it grey afterwards,
     // through the repaint that replaces the element.
     const inflight = t => (n.jobs || []).some(j => j.type === t);
-    const agentVer = n.kind === "agent" && n.agent?.version
+    // An update was pressed less than three minutes ago and the agent has
+    // not come back with the new digest: the job row is gone the moment the
+    // agent swaps itself in, but the row only learns that from its next
+    // hello — so for that gap the button stays busy and the line says what
+    // is being waited for, rather than offering the same press again.
+    const updating = stale && (inflight("self-update")
+      || Date.now() - (nodesUpdating[n.id] || 0) < 180000);
+    const agentLine = n.kind === "agent" && n.agent?.version
       ? `agent ${n.agent.version}${n.agent.digest ? " " + n.agent.digest.slice(7, 15) : ""}${
           stale ? ` <span class="pill warn ndstale" title="this controller ships agent ${
             esc(nodesAgent.version)} ${esc(nodesAgent.digest.slice(7, 15))}">update available → ${
             esc(nodesAgent.version)}</span>` : ""}${
           n.config?.user ? ` · jobs run as ${esc(n.config.user)}` : ""}` : "";
+    const pending = n.state === "pending";
+    const agentBar = n.kind === "agent" && !pending ? `
+        <div class="actbar ndagent">
+          <span class="state${updating ? " note" : stale ? " warn" : ""}">${
+            updating ? `updating to agent ${esc(nodesAgent?.version || "")} — it swaps itself in and dials back; the row follows its next hello`
+            : stale ? `behind: ${esc(staleWhy(n))}`
+            : `Test runs uname through the agent — the channel, end to end`}</span>
+          ${stale ? `<button type="button" data-nd="update-agent" ${updating ? "disabled" : ""}
+            title="${updating ? "the update is queued — the row follows the agent's next hello"
+              : `hand the node the agent this controller ships (${esc(nodesAgent.version)}) — it swaps itself in place and re-execs; nothing else restarts, and it waits for its own jobs to finish first`}">${
+            updating ? "Updating…" : "Update agent"}</button>` : ""}
+          <button type="button" data-nd="test" title="run uname on it through the agent — the channel, end to end">Test</button>
+        </div>
+        <div class="sub ndtest" hidden></div>` : "";
+    const health = docSection("nodes", "health", "Health",
+      n.kind === "agent" ? (n.live ? "live" : "quiet") : "", `
+        ${nodeMeters(n) || `<div class="sub dim">nothing measured yet</div>`}
+        ${nodeTools(n)}
+        ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}`,
+      {cls: n.kind === "agent" && n.live ? "ok" : "", open: true});
+    const plane = n.kind === "agent" && n.reported?.sandbox && !pending;
     return `
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
       <div class="grow">
         <div class="name">${esc(n.name)} ${nodeStatePill(n)}
           <span class="dim">· ${esc(n.kind)}</span></div>
-        <div class="sub">${[esc(where), census, esc(seen), agentVer].filter(Boolean).join(" · ")}</div>
-        ${nodeMeters(n)}
-        ${nodeTools(n)}
-        ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}
-        <div class="sub ndtest" hidden></div>
-        ${n.kind === "agent" && n.reported?.sandbox && n.state !== "pending" ? nodeConfFold(n) : ""}
-        ${n.kind === "agent" && n.state !== "pending" ? nodePathsLine(n) : ""}
+        <div class="sub">${[esc(where), census, esc(seen), agentLine].filter(Boolean).join(" · ")}</div>
+        ${agentBar}
       </div>
-      <span class="acts">
-        ${n.kind === "local" || n.state === "pending" ? "" : `<button type="button" data-nd="test"
-          title="${n.kind === "agent"
-            ? "run uname on it through the agent — the channel, end to end"
-            : "probe this node's daemon now — docker answering, and the provisioner's sandbox stamp"}">Test</button>`}
-        ${stale && n.state !== "pending" ? `<button type="button" data-nd="update-agent"
-          ${inflight("self-update") ? "disabled" : ""}
-          title="${inflight("self-update")
-            ? "the update is queued — the row follows the agent's next hello, which is when it has swapped itself in"
-            : `hand the node the agent this controller ships (${esc(nodesAgent.version)}) — it swaps itself in place and re-execs; nothing else restarts, and it waits for its own jobs to finish first`}">${
-          inflight("self-update") ? "Updating…" : "Update agent"}</button>` : ""}
-        ${n.state === "pending" ? "" : `<button type="button" data-nd="${n.state === "draining" ? "online" : "drain"}"
-          title="${n.state === "draining"
-            ? "take new work again"
-            : "finish what is running, accept nothing new — what makes a node safe to reboot"}">${
-          n.state === "draining" ? "Undrain" : "Drain"}</button>`}
-        ${n.kind === "agent" && n.state !== "pending" && !n.agent?.revoked
-          ? `<button type="button" data-nd="cache-clear" ${stale || inflight("cache-clear") ? "disabled" : ""}
-          title="${stale ? esc(staleWhy(n))
-            : inflight("cache-clear") ? "already clearing"
-            : "drop this node's build caches — every project's. A cold cache costs the next build time, never correctness"}">${
-          inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>` : ""}
-        ${n.kind === "agent" && n.state !== "pending" && !n.agent?.revoked
-          ? `<button type="button" class="rm" data-nd="revoke"
-          title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}
-        ${n.kind === "local" ? "" : `<button type="button" class="rm" data-nd="retire"
-          title="take it off every list. Its row and its history stay — an id is never reused">Remove</button>`}
-      </span>
+      <div class="ndsections">
+        ${health}
+        ${n.kind === "agent" && !pending ? nodeSessionsSection(n) : ""}
+        ${plane ? nodeConfSections(n) : ""}
+        ${n.kind === "agent" && !pending ? nodeAdvancedSection(n, stale, inflight) : ""}
+      </div>
     </div>`;
   }).join("");
   const form = nodesOpenForm === "agent" ? `
@@ -559,7 +636,7 @@ function renderNodesInto(i){
           token below is good once and for a day. A node does everything for
           the projects bound to it — what it can actually build is what gets
           installed on it afterwards, from the Tools tab.</div>
-        <div class="acts"><span class="sp"></span>
+        <div class="actbar">
           <button type="button" class="primary" id="ndEnGo">Mint a token</button></div>
       </div>
     </div>` : "";
@@ -575,7 +652,7 @@ function renderNodesInto(i){
         <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(nodesMinted.token)}' ${esc(nodesMinted.url)}/api/v1/agent/download -o /usr/local/sbin/builderbot-agent
 chmod 755 /usr/local/sbin/builderbot-agent
 builderbot-agent enroll --controller ${esc(nodesMinted.url)} --token ${esc(nodesMinted.token)}</pre>
-        <div class="acts"><span class="sp"></span>
+        <div class="actbar">
           <button type="button" id="ndTokDone">Done</button></div>
       </div>
     </div>`;
@@ -597,6 +674,7 @@ function wireNodesTab(root){
                                nodesRev++; drawPanes(); };
   const engo = root.querySelector("#ndEnGo");
   if (engo) engo.onclick = () => pressing(engo, async () => {
+    busy(engo, "Minting");
     const name = root.querySelector("#ndEnName").value;
     const r = await nodeAct({action: "enroll", name});
     if (!r.error){
@@ -609,52 +687,60 @@ function wireNodesTab(root){
   });
   const tok = root.querySelector("#ndTokDone");
   if (tok) tok.onclick = () => { nodesMinted = null; nodesRev++; drawPanes(); };
-  root.querySelectorAll(".ndrow").forEach(row => {
-    const id = row.dataset.node;
-    row.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
-      if (b.dataset.nd === "retire"
+  wireSections(root);
+  root.querySelectorAll(".ndrow").forEach(box => {
+    const id = box.dataset.node;
+    box.querySelectorAll("[data-nd]").forEach(b => b.onclick = () => pressing(b, async () => {
+      const act = b.dataset.nd;
+      if (act === "retire"
           && !confirm("Remove this node from every list? Its containers and "
                       + "its data stay on the machine; the row is kept as "
                       + "history.")) return;
-      if (b.dataset.nd === "revoke"
+      if (act === "revoke"
           && !confirm("Revoke this node's credential? It will stop being able "
                       + "to dial in, and the only way back is enrolling it "
                       + "again with a new token.")) return;
-      if (b.dataset.nd === "cache-clear"
+      if (act === "cache-clear"
           && !confirm("Clear this node's build caches? Every project's Gradle, "
                       + "npm and snapshot cache there goes; the next build of "
                       + "each re-downloads what it needs.")) return;
-      if (b.dataset.nd === "update-agent"){
+      // The verb, said on the button for the round trip and — for the
+      // actions whose effect the row cannot see at once — beyond it.
+      busy(b, {"update-agent": "Updating", test: "Asking", drain: "Draining",
+               online: "Undraining", "cache-clear": "Clearing", revoke: "Revoking",
+               retire: "Removing", paths: "Saving"}[act] || "Working");
+      if (act === "update-agent"){
+        nodesUpdating[id] = Date.now();
         const j = await nodeAct({action: "update-agent", id});
-        if (j.current) notify(`already on ${j.version}`);
+        if (j.current){ delete nodesUpdating[id]; notify(`already on ${j.version}`); }
         else if (j.ok) notify("update queued — the row follows the agent's next hello");
+        else delete nodesUpdating[id];
         return;
       }
-      if (b.dataset.nd === "paths"){
-        const inp = row.querySelector('[data-k="paths"]');
+      if (act === "paths"){
+        const inp = box.querySelector('[data-k="paths"]');
         await nodeAct({action: "paths", id, paths: inp ? inp.value : ""});
         const c = nodesConf[id]; if (c && c.draft) c.draft.pathsText = undefined;
         return;
       }
-      if (b.dataset.nd === "test"){
-        const out = row.querySelector(".ndtest");
-        out.hidden = false;
-        out.textContent = "asking…";
+      if (act === "test"){
+        const out = root.querySelector(`.ndrow[data-node="${CSS.escape(id)}"] .ndtest`);
+        if (out){ out.hidden = false; out.textContent = "asking…"; }
         const j = await nodeAct({action: "test", id});
         // Repainted underneath by the loadNodes() in nodeAct — find the
         // row again rather than writing to the one that was replaced.
-        const now = root.querySelector(`.ndrow[data-node="${CSS.escape(id)}"] .ndtest`)
-                    || out;
+        const now = root.querySelector(`.ndrow[data-node="${CSS.escape(id)}"] .ndtest`) || out;
+        if (!now) return;
         now.hidden = false;
         now.textContent = j.on ? (j.why || "answers, and says it is a sandbox")
                                : (j.why || "no answer");
         now.classList.toggle("warn", !j.on);
         return;
       }
-      await nodeAct({action: b.dataset.nd, id});
+      await nodeAct({action: act, id});
     }));
-    wireNodeConf(row, id);
-    const pi = row.querySelector('.ndpaths [data-k="paths"]');
+    wireNodeConf(box, id);
+    const pi = box.querySelector('.ndpaths [data-k="paths"]');
     if (pi){
       pi.onfocus = () => { nodesFocus = {id, key: "paths", pos: pi.selectionStart ?? undefined}; };
       pi.oninput = () => { const c = nodeDraft(nodesList.find(x => x.id === id)); c.draft.pathsText = pi.value;
@@ -675,7 +761,6 @@ function wireNodesTab(root){
     }
   }
 }
-
 function wireNodeConf(row, id){
   const fold = row.querySelector(".ndconf");
   if (!fold) return;
@@ -721,11 +806,14 @@ function wireNodeConf(row, id){
       // keystroke in a path field does not need the whole tab redrawn.
       if (k === "net:mode" || k === "type"){ nodesRev++; drawPanes(); }
       else {
-        const b = fold.querySelector("[data-nsave]");
-        if (b) b.disabled = false;
+        // Both editors carry a Save and the status line — one record, two
+        // sections — so every copy moves.
+        fold.querySelectorAll("[data-nsave]").forEach(b => { b.disabled = false; });
         fold.querySelectorAll("[data-napply]").forEach(x => { x.disabled = true; });
-        const st = fold.querySelector(".ndconfstate");
-        if (st) st.textContent = "unsaved — Save keeps it on the record; Apply makes the node match";
+        fold.querySelectorAll(".ndconfstate").forEach(st => {
+          st.textContent = "unsaved — Save keeps it on the record; Apply makes the node match";
+          st.className = "state ndconfstate warn";
+        });
       }
     };
     el.oninput = on;
@@ -748,14 +836,14 @@ function wireNodeConf(row, id){
     if (!want && !confirm(`Remove the runner from ${n?.name || "this node"}?\n\nIt is deregistered `
         + `from GitHub first; workflows that target its label will wait for a runner.`)) return;
     const labels = (c.draft.runner?.labels || "").split(",").map(x => x.trim()).filter(Boolean);
-    await pressing(b, () => nodeAct({action: "runner", id, want, labels,
-                                     url: c.draft.runner?.url || ""}));
+    await pressing(b, () => { busy(b, want ? "Installing" : "Removing");
+      return nodeAct({action: "runner", id, want, labels, url: c.draft.runner?.url || ""}); });
   });
-  const save = fold.querySelector("[data-nsave]");
-  if (save) save.onclick = () => pressing(save, async () => {
+  fold.querySelectorAll("[data-nsave]").forEach(save => { save.onclick = () => pressing(save, async () => {
+    busy(save, "Saving");
     const r = await nodeAct({action: "config", id, config: c.draft});
     if (!r.error){ c.dirty = false; c.draft = null; nodesRev++; drawPanes(); }
-  });
+  }); });
   fold.querySelectorAll("[data-napply]").forEach(b => b.onclick = async () => {
     const what = b.dataset.napply;
     const n = nodesList.find(x => x.id === id);
@@ -780,6 +868,6 @@ function wireNodeConf(row, id){
           + `so the old cop${moving.length === 1 ? "y stays" : "ies stay"} where ${
               moving.length === 1 ? "it is" : "they are"} for you to remove.`)) return;
     }
-    await pressing(b, () => nodeAct({action: "apply", id, what}));
+    await pressing(b, () => { busy(b, "Applying"); return nodeAct({action: "apply", id, what}); });
   });
 }

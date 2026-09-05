@@ -83,6 +83,14 @@
    a conformance driver there fails the suite by name. That is deliberate;
    the price of a new tab includes conforming, not just existing.
 
+   A long surface is SECTIONS — docSection(kind, id, title, status, body),
+   one fold per concern with its status on the heading, open on a desktop
+   and closed but the first on a phone — and every set of buttons is an
+   ACTION BAR (.actbar): the status on its own line, the buttons under it,
+   sharing the width on a phone. A button that started something wears
+   busy(btn, verb) until the repaint replaces it. See "sections and action
+   bars" below; the Nodes tab is the worked example.
+
    A new tab lands as: its own classic script file beside this one, an entry
    in TABKINDS here + TAB_KINDS in server.py, its top-level names in
    test/surface.mjs, a driver in test/uniform.mjs, and a content test beside
@@ -1647,15 +1655,67 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndcmd{margin:6px 0;border:1px solid var(--line);border-radius:6px;
   background:var(--sunk);user-select:all}
 .ndnums{font:var(--f-note);color:var(--dim)}
-/* The configuration plane's fold on an agent row (docs/nodes.md §12). A
-   details fold like the manager's wiring, and the same field skin as every
-   other form here — nothing browser-default. */
-.ndconf{margin-top:6px}
-.ndconf summary{color:var(--dim);font:var(--f-note);cursor:pointer;list-style:none}
-.ndconf summary::-webkit-details-marker{display:none}
-.ndconf summary::before{content:"▸";display:inline-block;width:1.1em;transition:transform .15s}
-.ndconf[open] summary::before{transform:rotate(90deg)}
-.ndconfbody{margin-top:6px;display:flex;flex-direction:column;gap:8px}
+/* ---- sections and action bars, for every document tab -------------------
+   Two more pieces of the document language, added when the Nodes tab was
+   one long column of editors and a wall of buttons on a phone.
+
+   A long surface is SECTIONS: one <details class="sect"> per concern —
+   docSection() builds it — whose summary is a band (the same inset as every
+   other band, so the alignment rule holds) carrying the title and, on the
+   right, a one-line status in the shared status colours. The body is the
+   section's controls, stacked. A section remembers whether it was open, per
+   browser; by default every section is open on a desktop and only the first
+   on a phone, where the point is that you see the headings and pick one
+   rather than scroll past four editors to reach the buttons.
+
+   An ACTION BAR (.actbar) is the shape every set of buttons takes: the
+   status line first, on a line of its own, and the buttons under it, right
+   aligned and wrapping. On a phone they share the width in rows of equal
+   buttons at finger height. It replaces the .acts + <span class="sp"> +
+   status-inline pattern, where a status sentence and four buttons fought
+   for one line and the sentence won by pushing the buttons off the edge.
+
+   A BUSY button says so: busy(btn, word) greys it and puts the word and an
+   animated ellipsis in it until the repaint that follows the round trip
+   replaces the element with its real state — so a press cannot be repeated
+   and is never a mystery. */
+.sect{border-top:1px solid var(--line)}
+.sect>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;
+  padding:var(--row-y) var(--row-x);font:var(--f-ui);color:var(--ink);
+  min-height:var(--tap);box-sizing:border-box}
+.sect>summary::-webkit-details-marker{display:none}
+.sect>summary::before{content:"\25B8";color:var(--dim);font-size:11px;width:9px;flex:0 0 auto}
+.sect[open]>summary::before{content:"\25BE"}
+.sect>summary .t{font-weight:600;flex:0 1 auto;min-width:0}
+/* One line, clipped with an ellipsis when it is long: a status that wrapped
+   letter by letter down the right edge was what min-width:0 alone did. */
+/* .sst, not .st — that one is the session dot beside a Claude tab's name. */
+.sect>summary .sst{margin-left:auto;font:var(--f-note);color:var(--dim);text-align:right;
+  flex:0 1 auto;max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sect>summary .sst.ok,.actbar .state.ok{color:var(--accent)}
+.sect>summary .sst.warn,.actbar .state.warn{color:var(--warn)}
+.sect>summary .sst.bad,.actbar .state.bad{color:var(--bad)}
+.sect>summary .sst.note,.actbar .state.note{color:var(--note)}
+.sect>.body{padding:0 var(--row-x) var(--row-y);display:flex;flex-direction:column;gap:8px}
+.sect>.body>.sub:first-child{margin-top:0}
+.actbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}
+.actbar .state{flex:1 1 100%;font:var(--f-note);color:var(--dim);overflow-wrap:anywhere}
+.actbar .lead{margin-right:auto}
+@media(max-width:600px){
+  .actbar button,.actbar select{flex:1 1 auto;min-height:var(--tap)}
+}
+button[aria-busy="true"]{opacity:.75}
+
+/* The configuration plane on an agent row (docs/nodes.md §12): sections of
+   the node's page, on the same field skin as every other form here. The
+   sections are children of the row — every selector that reaches into a
+   node scopes by its row — pulled back out to the row's edges so a summary
+   is a band at content-x and not a band inset inside a band. */
+.ndconf{display:contents}
+.ndconfbody{display:contents}
+.ndrow>.ndsections{margin:8px calc(-1 * var(--row-x)) calc(-1 * var(--row-y))}
+.ndrow .actbar.ndagent{margin-top:4px}
+.ndrow .ndsections .sub{margin:0}
 .ndsec{font:var(--f-note);color:var(--dim);margin-top:4px}
 .ndmount,.ndnet{display:grid;grid-template-columns:minmax(0,7em) minmax(0,2fr) minmax(0,1.6fr) auto auto;
   gap:6px;align-items:center}
@@ -1689,6 +1749,12 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 @media (max-width:600px){
   .ndmount,.ndnet,.ndstore{grid-template-columns:minmax(0,1fr)}
   .ndmount .ndmstate,.ndstore .sub{grid-column:1}
+  /* A mount on a phone: the fields stacked, then read-only and the × on one
+     line — the × was a full-width bar with a dot in it, which read as a
+     field with nothing to type. */
+  .ndmount{grid-template-columns:minmax(0,1fr) auto}
+  .ndmount select,.ndmount input:not([type=checkbox]),.ndmount .ndmstate{grid-column:1 / -1}
+  .ndmount .ndcap{grid-column:1} .ndmount .eye{grid-column:2;justify-self:end}
 }
 /* The Jobs tab: the filter is one checkbox in the bar, skinned like a
    capability toggle; the reason a job ended badly is a warn line; the log
@@ -12077,6 +12143,41 @@ function docSurface(i, kind){
   return { root: box, el, bar, foot, list: box.querySelector(".doclist"),
            setBar(html){ bar.innerHTML = html; bar.hidden = !String(html).trim(); },
            setFoot(html){ foot.innerHTML = html; foot.hidden = !String(html).trim(); } };
+}
+
+// A section of a document tab (see "sections and action bars" in the
+// stylesheet): a fold with a title, a one-line status on the right, and the
+// controls inside. `kind:id` is what its open state is remembered under —
+// per browser, like the terminal's own conveniences — and the default is
+// open on a desktop, only the first on a phone, so a phone shows headings.
+const sectOpen = (() => { try{ return JSON.parse(localStorage.getItem("bb.sect") || "{}"); }
+                          catch(e){ return {}; } })();
+function docSection(kind, id, title, status, body, {cls = "", open} = {}){
+  const key = `${kind}:${id}`;
+  const isOpen = key in sectOpen ? sectOpen[key] : (open !== undefined ? open : !isPhone());
+  return `<details class="sect" data-sect="${esc(key)}"${isOpen ? " open" : ""}>
+    <summary><span class="t">${esc(title)}</span>${
+      status ? `<span class="sst${cls ? " " + cls : ""}">${esc(status)}</span>` : ""}</summary>
+    <div class="body">${body}</div>
+  </details>`;
+}
+function wireSections(root){
+  root.querySelectorAll("details.sect").forEach(d => { d.ontoggle = () => {
+    sectOpen[d.dataset.sect] = d.open;
+    try{ localStorage.setItem("bb.sect", JSON.stringify(sectOpen)); }catch(e){ /* no storage */ }
+  }; });
+}
+// A button that is doing something says so until the repaint replaces it:
+// greyed, and wearing the verb with an animated ellipsis. Pair with
+// pressing(): that disables for the round trip, this says what for.
+function busy(btn, word){
+  if (!btn) return;
+  btn.disabled = true;
+  btn.setAttribute("aria-busy", "true");
+  btn.innerHTML = `${esc(word)}<span class="dots"></span>`;
+  // The one ticker every .dots on the page shares; it stops itself when
+  // the last one is repainted away.
+  if (!pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
 }
 
 // A finding that places in no project still places somewhere on the page.

@@ -1269,12 +1269,18 @@ directory's one-shot containers — addresses that node's daemon.
 ### The Nodes tab
 
 **Tools → Nodes** is the registry (docs/nodes.md): every machine work can run
-on, `local` — this container — first. A row carries the node's state,
-the toolchains its census found — what a project bound to it can build — labels
-and census, with **Test** (probe its daemon now, sandbox stamp included),
-**Drain** (finish what is running, accept nothing new — what makes a node
-safe to reboot) and **Remove** (retire: off every list, row kept as history —
-an id is never reused). **Enroll node** mints a one-time token; the machine
+on, `local` — this container — first. The tab shows one node, picked at the
+top: a header with its state, where it dials in from and its agent (with
+**Update agent** when this container ships a newer one, busy until the node
+comes back on it), then **sections**, each a fold with its status on the
+heading so a phone reads the headings and opens one — Health (the meters,
+the toolchains its census found, which is what a project bound to it can
+build), Sessions (whether it runs them, and which are open), CI runner,
+Storage (mounts and stores), Network, and Advanced, which holds the path
+mapping and the rarely pressed verbs: **Drain** (finish what is running,
+accept nothing new — what makes a node safe to reboot), **Clear cache**,
+**Revoke** and **Remove** (retire: off every list, row kept as history — an
+id is never reused). **Test** probes the channel end to end. **Enroll node** mints a one-time token; the machine
 runs `vm/provision.sh --controller URL --token bbe_…` and dials in. That is
 the only way in — there is no second enrollment, this container holds no key
 that logs in anywhere, and a node reached by token alone takes every kind of

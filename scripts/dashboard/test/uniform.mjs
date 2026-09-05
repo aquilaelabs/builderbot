@@ -89,7 +89,7 @@ ok(undriven.length === 0,
 // different ways before it was a rule. Indented-by-design rows opt out by
 // class, and the list of those is deliberately short.
 const BANDS = '.field, .row, .rule, .empty, .loading, .fnote, .dmsrc, ' +
-              '.macros, .fxproj, .pkghead, .pkg';
+              '.macros, .fxproj, .pkghead, .pkg, .sect>summary';
 const INDENTED = ['img'];        // .pkg.img — a child row, indented on purpose
 
 async function measure(kind){
