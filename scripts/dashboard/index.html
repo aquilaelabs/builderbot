@@ -246,10 +246,17 @@ html[data-theme="nostromo"] .card.closed h2{border-radius:7px 0 0 7px}
 
 /* CRT scanlines, on the panels only — never over a terminal pane, where they
    would sit on top of somebody's actual output at the exact size of its text.
-   3px pitch and 4% black: visible on a flat fill, gone under text. */
+   3px pitch and 4% black: visible on a flat fill, gone under text.
+   The notebook's are on the pane's scrolling BOX, not on the tall content
+   inside it (bug #57). A repeating gradient on the content is rasterized
+   across the whole scroll height — a long roadmap is thousands of pixels of
+   1px stripes for the GPU to tile — and Firefox for Android was painting
+   some of those tiles as yellow striped blocks. On the box it is one
+   viewport of gradient, painted once, and the lines hold still under the
+   scrolling text the way a screen's would. */
 html[data-theme="nostromo"] .card,
 html[data-theme="nostromo"] .modal>.box,
-html[data-theme="nostromo"] .pane .nb{
+html[data-theme="nostromo"] .pane .doc:has(>.nb){
   background-image:repeating-linear-gradient(180deg,
     rgba(0,0,0,.04) 0 1px, rgba(0,0,0,0) 1px 3px)}
 
@@ -1906,6 +1913,10 @@ button.eye svg,button.ic svg{width:16px;height:16px;display:block;fill:none;
 pre{margin:0;padding:9px 11px;font:12px/1.45 var(--mono);white-space:pre-wrap;
   word-break:break-word;max-height:300px;overflow:auto;color:#cbd5e1}
 .empty{color:var(--dim);padding:9px 11px;font-style:italic}
+/* ...and a placeholder that has become a failure notice: the poll's words
+   for a card that could not draw, in the warning colour and no longer
+   pulsing, because nothing is coming. */
+.empty.warn,.loading.warn{color:var(--warn);animation:none}
 /* Loading and empty are not the same thing and had been wearing the same
    clothes — .empty, italic and still, for both "there is nothing here" and
    "this has not arrived yet". A placeholder that is waiting says so by
@@ -3453,6 +3464,21 @@ function renderGuarded(spec, i, t){
   }
 }
 
+// The same guard for a card on the Dashboard side. A card's draw that throws
+// paints the failure into that card and lets the poll carry on to the next
+// one; the error still reaches the console with its stack. id is the card's
+// body element, or null for a step that has no card to write into.
+function drawCard(id, fn){
+  try{ fn(); }
+  catch(e){
+    const el = id && $(id);
+    if (el) paint(el, `<div class="empty warn">not drawn — this card's draw failed
+      on the container's answer; the rest of the page is fine.
+      ${esc(String(e && e.message || e))}</div>`);
+    setTimeout(() => { throw e; });
+  }
+}
+
 // One tab per thing. A second click on Claude or Findings for something already
 // open is a request to go to it, not to open a duplicate. Shell tabs are the
 // exception and are always new — each carries its own session name, so they
@@ -3794,7 +3820,7 @@ const painted = new WeakMap();
 // time a poll moved one word in it, which is worse than not animating at all.
 // "First" means: nothing has been painted here yet, or what was here was a
 // placeholder saying it had not arrived.
-const WAITING = /class="(loading|empty)"|loading…/;
+const WAITING = /class="(loading|empty)[ "]|loading…/;
 function paint(el, html){
   const was = painted.get(el);
   if (was === html) return false;
@@ -11430,9 +11456,14 @@ async function macro(name, custom){
 // The Sessions card redraws with the layout, not just on the status poll: its
 // pills mirror the tab strip, and a minimize would otherwise read as "on the
 // tab bar" for up to a poll interval.
+// Each card under its own guard here too — refresh() ends in render(), so a
+// draw that threw here would still take the poll down after the guarded
+// pass above it had kept the page up.
 function render(){ drawTabs(); drawPanes(); drawKeys(); saveLayout();
-                   if (state){ drawSessions(state.sessions); drawRunner();
-                               drawLinux(); drawCommands(); drawGit(); drawCustom(); } }
+                   if (state){ drawCard("sessions", () => drawSessions(state.sessions));
+                               drawCard("runner", drawRunner); drawCard("linux", drawLinux);
+                               drawCard("commands", drawCommands); drawCard("git", drawGit);
+                               drawCard("custom", drawCustom); } }
 
 // ---- layout, shared between browsers ---------------------------------
 // The tab strip lives on the server so a phone picks up what the desktop has
@@ -11592,6 +11623,7 @@ async function refresh(){
   if (refreshBusy){ refreshAgain = true; return; }
   refreshBusy = true;
   const asked = performance.now();
+  let fetched = false;     // the container answered; what failed is this page
   try{
     const r = preStatusUsed ? await fetch("/api/status")
                             : (preStatusUsed = true, await preStatus);
@@ -11600,6 +11632,7 @@ async function refresh(){
     if (r.status === 401){ location.href = "/login?next=%2F"; return; }
     if (!r.ok) throw new Error("HTTP " + r.status);
     state = await r.json();
+    fetched = true;
     // The account's scheme, on a browser that has never seen this account
     // (roadmap #25). localStorage is the PAINT path — the scheme is applied
     // at the top of this file before the stylesheet parses, and a value
@@ -11635,7 +11668,6 @@ async function refresh(){
     viewAfterRestart();
     $("dot").classList.remove("off");
     $("dot").removeAttribute("title");
-    pollFails = 0;
     // The container's hostname, which answers "which BuilderBot am I looking
     // at" — and on the ordinary box, where the container is called builderbot,
     // answers it with the word already three inches to its left. Two of the
@@ -11657,29 +11689,37 @@ async function refresh(){
     const cs = state.sessions.map(s => s.claude).filter(Boolean);
     const glance = cs.find(c => c.state === "waiting") || cs.find(c => c.state === "working");
     $("vTerm").innerHTML = stateDot(glance || null) + "Terminal";
-    drawRunner();
+    // Every card draws on its own from here (bug #44). They used to run as
+    // one straight line, so a draw that threw on the payload took every
+    // draw after it down with it: the operator saw Runner and Projects still
+    // on "loading…" and Doctor on its boot text, minutes after a restart,
+    // under a red light that only said "error" — while the Phone card, which
+    // fetches for itself, had drawn fine. The container had answered; one
+    // draw had tripped over the answer and the page kept the fact to itself.
+    // Now the card that failed says so in its own body and the rest draw.
+    drawCard("runner", drawRunner);
     // Adopted before the draw, so a page opened (or reloaded) while a clone
     // is running picks it up and starts watching. pJobSeen redraws the card
     // itself, and would recurse into refresh() on a finish — hence the plain
     // assignment here and the poll started beside it.
     pJob = state.project_job || null;
     if (pJob?.running && !pJobTimer) pJobTimer = setTimeout(pJobPoll, 1000);
-    drawProjects(state.projects);
+    drawCard("projects", () => drawProjects(state.projects));
     // An open notebook learns from the poll that a session has started or
     // finished a batch, without the operator having to touch anything.
-    notebooks.forEach(nb => {
+    drawCard(null, () => notebooks.forEach(nb => {
       const p = (state.projects || []).find(x => x.name === nb.project);
       if (p) nb.poll(p);
-    });
-    drawSessions(state.sessions);
-    gateFindings();
-    drawLinux();
-    drawCommands();
-    drawGit();
-    drawCustom();
-    drawDoctor();
-    drawAuth();
-    watchSignin();
+    }));
+    drawCard("sessions", () => drawSessions(state.sessions));
+    drawCard(null, gateFindings);
+    drawCard("linux", drawLinux);
+    drawCard("commands", drawCommands);
+    drawCard("git", drawGit);
+    drawCard("custom", drawCustom);
+    drawCard("doctor", drawDoctor);
+    drawCard("docAuth", drawAuth);
+    drawCard(null, watchSignin);
     // A scan re-ran on the host: drop the cache, and any notebook showing
     // its Analysis view re-reads on its poll below.
     const agesKey = (state.reports_ages || [])
@@ -11691,6 +11731,10 @@ async function refresh(){
     if (findings && !findings.loading && findings.agesKey === undefined)
       findings.agesKey = agesKey;
     render();
+    // Cleared at the END, not where the fetch landed: a poll that arrives
+    // and then fails on this page is still a failed poll, and resetting the
+    // count on arrival read every one of those as the first.
+    pollFails = 0;
   }catch(e){
     // The light goes red either way; the console says whether the box was
     // unreachable or this page tripped over its own data.
@@ -11703,13 +11747,23 @@ async function refresh(){
     // tell the two apart. The count is the useful half: one failure is a
     // blip, a rising number is the box or this page, and the reason names
     // which.
+    //
+    // Two different failures end up here, and they want different words: a
+    // fetch that never landed is the box or the network, a payload that
+    // arrived and then broke this page is a bug in this file. Calling the
+    // second "not reaching the container" sends whoever reads it to check
+    // the wrong machine.
     pollFails++;
-    $("dot").setAttribute("title",
-      `not talking to the container — ${pollFails} poll${pollFails === 1 ? "" : "s"} `
-      + `failed in a row. Last reason: ${e && e.message ? e.message : e}`);
+    const n = `${pollFails} poll${pollFails === 1 ? "" : "s"} failed in a row`;
+    const why = `Last reason: ${e && e.message ? e.message : e}`;
+    $("dot").setAttribute("title", fetched
+      ? `the container answers, but this page fails on its answer — ${n}. ${why}`
+      : `not talking to the container — ${n}. ${why}`);
     if (pollFails > 1)
       document.querySelectorAll(".card .loading").forEach(el => {
-        el.textContent = "not loaded — the page is not reaching the container";
+        el.textContent = fetched
+          ? "not drawn — the container answers, but this page fails on its answer (the light says why)"
+          : "not loaded — the page is not reaching the container";
         el.classList.add("warn");
       });
   }finally{

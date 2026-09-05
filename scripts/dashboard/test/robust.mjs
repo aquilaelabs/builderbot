@@ -119,4 +119,56 @@ ok(await page.evaluate(() => !document.getElementById('dot').classList.contains(
                              && pollFails === 0),
    '...and it all clears the moment a poll lands again');
 
+// ---- one card's draw failing must not strand the rest (bug #44) ----
+// The other shape of the same report: the container answered, one draw threw
+// on the payload, and every card after it kept its initial text under a red
+// light — which the words above would then have blamed on the network. The
+// failed card says so in its own body; the others draw; the light stays on.
+await page.evaluate(() => {
+  window.__drawRunner = drawRunner;
+  drawRunner = () => { throw new Error('runner draw boom'); };
+});
+await page.evaluate(() => refresh());
+await page.waitForTimeout(300);
+const partial = await page.evaluate(() => ({
+  runner: document.getElementById('runner').textContent.trim(),
+  projectsWaiting: !!document.querySelector('#projects .loading'),
+  doctorWaiting: /first run pending/.test(document.getElementById('doctor').textContent),
+  red: document.getElementById('dot').classList.contains('off'),
+}));
+ok(/not drawn/.test(partial.runner) && /runner draw boom/.test(partial.runner),
+   `a card whose draw threw says so in its own body (${JSON.stringify(partial.runner.slice(0, 60))})`);
+ok(!partial.projectsWaiting && !partial.doctorWaiting && !partial.red,
+   `...and the cards after it still draw, under a light that stays on (${JSON.stringify(partial)})`);
+ok(page.errors.some(t => /runner draw boom/.test(t)),
+   '...while the error itself still reaches the console');
+page.errors = [];
+await page.evaluate(() => { drawRunner = window.__drawRunner; });
+await page.evaluate(() => refresh());
+await page.waitForTimeout(300);
+ok(await page.evaluate(() => !/not drawn/.test(document.getElementById('runner').textContent)),
+   '...and the card recovers on the next poll that draws');
+// ...and when the page trips BEFORE the draws — on the payload, not on the
+// fetch — the light and the placeholders blame this page, not the network.
+// The status answer is held for half a second so the stub is in place
+// before the page's own first poll comes back — the placeholders have to be
+// on screen for the words on them to matter.
+await page.route('**/api/status*', async r => {
+  await new Promise(res => setTimeout(res, 500)); await r.continue(); });
+await page.reload({ waitUntil: 'domcontentloaded' });
+await page.evaluate(() => { adoptLayout = () => { throw new Error('layout boom'); }; });
+await page.evaluate(() => refresh());
+await page.evaluate(() => refresh());
+await page.waitForFunction(() => pollFails >= 2, null, { timeout: 5000 });
+await page.unroute('**/api/status*');
+const tripped = await page.evaluate(() => ({
+  title: document.getElementById('dot').getAttribute('title') || '',
+  loading: [...document.querySelectorAll('.card .loading')].map(e => e.textContent),
+}));
+ok(/fails on its answer/.test(tripped.title) && /layout boom/.test(tripped.title)
+   && tripped.loading.length > 0 && tripped.loading.every(t => /fails on its answer/.test(t)),
+   `a page that fails on the container's answer says that, not "not reaching the container" (${
+     tripped.title.slice(0, 70)})`);
+page.errors = [];
+
 await done(browser);

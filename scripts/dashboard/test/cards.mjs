@@ -462,6 +462,19 @@ ok(await page.evaluate(() => {
      const st = getComputedStyle(document.querySelector('header'), '::after');
      return /repeating-linear-gradient/.test(st.backgroundImage);
    }), '...and Nostromo brings its hazard stripe with it, as a gradient');
+// The notebook's scanlines sit on the pane's scrolling box, not on the tall
+// content inside it (bug #57): a gradient rasterized across a long roadmap's
+// whole scroll height is what Firefox for Android was painting as yellow
+// striped tiles. One viewport of gradient, on the box that stays put.
+await page.evaluate(() => openNotebook(state.projects[0].name));
+await page.waitForSelector('.pane .doc > .nb');
+const scan = await page.evaluate(() => {
+  const nb = document.querySelector('.pane .doc > .nb');
+  const g = e => /repeating-linear-gradient/.test(getComputedStyle(e).backgroundImage);
+  return { box: g(nb.parentElement), content: g(nb) };
+});
+ok(scan.box && !scan.content,
+   `...and the notebook's scanlines are on the pane's box, not across the scroll height (${JSON.stringify(scan)})`);
 // A surface that stops following the scheme does it silently — the text
 // fields, the memory folds and the pane's title bar all sat in the default
 // scheme's blue-grey through the first twelve because their colour was typed
