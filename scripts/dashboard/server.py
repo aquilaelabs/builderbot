@@ -1633,6 +1633,12 @@ def session_target(project):
     elif not se.get("workspace"):
         why = (f"{project}'s sessions run on {name}, which does not mount the projects "
                "share at /workspace — add the mount on its row on the Nodes tab")
+    elif not se.get("boot"):
+        # Without the node's boot the page would stamp this container's into
+        # the tab, and bb-tty there would refuse every reconnect as a stale
+        # tab (bug #56) — a loop, not a session. Dead button, plain reason.
+        why = (f"{project}'s sessions run on {name}, whose agent is too old to report "
+               "its boot — Update agent on its row on the Nodes tab, then open this again")
     else:
         return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
                 "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
@@ -1790,6 +1796,39 @@ def tmux_sessions():
                    "cwd": info.get("cwd", "")}
             if name.startswith("claude-"):
                 state, task = claude_state(info.get("title", ""))
+                row["claude"] = {"state": state, "task": task}
+            rows.append(row)
+    return rows
+
+
+def node_tmux_sessions():
+    """The sessions running on nodes (roadmap #24), shaped like this
+    container's own so the Sessions card, the project rows and claude_with
+    read them the same way — plus `node`, the name of the machine.
+
+    NAMED BY THIS CONTAINER'S RULE. On a node every account is prefixed,
+    the owner included; here the owner's sessions are the bare names, and
+    everything on the page — the row's "is my session live", the labels,
+    the kill dialog — is written against that. So the owner's node sessions
+    are shown bare, and `node_name` keeps what the node calls it, which is
+    what a kill has to send back. Nothing on a node is unowned, so an
+    unprefixed name there is not a session of anybody's and is dropped.
+    """
+    if NODES_OK:
+        return []
+    owner = users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else ""
+    rows = []
+    for nid, (nname, sess) in nodes.node_sessions().items():
+        for s in sess:
+            real = s.get("name") or ""
+            who = tmux_owner(real)
+            if not who:
+                continue
+            name = tmux_base(real) if who == owner else real
+            row = {"name": name, "node_name": real, "node": nname, "node_id": nid,
+                   "attached": bool(s.get("attached")), "cwd": s.get("cwd", "")}
+            if tmux_base(real).startswith("claude-"):
+                state, task = claude_state(s.get("title", ""))
                 row["claude"] = {"state": state, "task": task}
             rows.append(row)
     return rows
@@ -2111,6 +2150,13 @@ users.configure(state=STATE, write_json=write_json)
 # a conversation belong beside the conversation, not scattered through here.
 import chat                                                     # noqa: E402
 chat.configure(state=STATE, write_json=write_json)
+
+# ---- what each session is changing ------------------------------------------
+# Written by the bb-work-note hook inside a session and read by `bb work`;
+# the server touches it only for a session on a node, whose hook posts the
+# note here because the node has no /config to write (roadmap #24).
+import overlap                                                   # noqa: E402
+overlap.configure(state=STATE, workspace=WORKSPACE, write_json=write_json)
 
 
 # ---- the bug tracker --------------------------------------------------------
@@ -2654,7 +2700,7 @@ def snapshot(who):
     # everything sees the unowned ones too — terminals opened before accounts,
     # or by something that is not a browser.
     mine, seen = users.uid_of(who), {p["name"] for p in ps}
-    sessions = [s for s in tmux_sessions()
+    sessions = [s for s in tmux_sessions() + node_tmux_sessions()
                 if _session_visible(s["name"], mine, seen, users.sees_all(who))]
     login = signin.state()
     # Each shell's git context, resolved here where WORKSPACE is known: the
@@ -3685,6 +3731,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._jobs(req)
         if path == "/api/v1/bb":
             return self._bb_relay(req)
+        if path == "/api/v1/hook":
+            return self._hook(req)
         if path.startswith("/api/lock"):
             return self._lock(req)
         # NOT /api/pin, which is the command pin and has been since long before
@@ -3945,6 +3993,54 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the credentials file here could not be read"}, 500)
         return self._json({"credentials": text,
                            "email": claude_auth(home=home).get("email") or ""})
+
+    def _hook(self, req):
+        """What a session's hooks have to say, from a NODE (roadmap #24).
+
+        bb-work-note and bb-prompt-relay write this container's /config
+        when they run here — the overlap notes, the project's chat feed. On
+        a node there is no /config, so they post the same three things to
+        this endpoint with the session's token, and the same modules write
+        them: `note` (a file the session is about to edit, with a guess at
+        the symbol; answers who else has it open), `asked` (what the person
+        typed, into the project feed) and `started` (the session began,
+        which _claude_held announces for a local session and cannot see
+        for one on a node).
+
+        The account is the token's, never the request's: a session token
+        minted for a node-bound terminal names its account, and that is
+        who the note is filed under and who the feed says asked.
+        """
+        me = self._who()
+        if not me:
+            return self._json({"error": "not signed in"}, 401)
+        uid = me.get("uid") if me.get("session") else ""
+        project = me.get("session") or ""
+        if not uid or not project:
+            return self._json({"error": "a hook posts with a session token minted for an "
+                                        "account — the one a node-bound terminal carries"}, 403)
+        kind = field(req, "kind")
+        store = users.load()["users"]
+        name = next((n for n, u in store.items() if u.get("uid") == uid), "") or uid
+        if kind == "note":
+            path = str(req.get("path") or "")[:400]
+            if not path:
+                return self._json({"error": "a note names a file"}, 400)
+            others = overlap.others_touching(project, uid, path)
+            overlap.note(project, uid, path, str(req.get("symbol") or "")[:120])
+            by_uid = {u.get("uid"): n for n, u in store.items() if u.get("uid")}
+            return self._json({"ok": True, "others": [by_uid.get(o, o) for o in others]})
+        if kind == "asked":
+            text = str(req.get("text") or "").strip()[:800]
+            if not text:
+                return self._json({"error": "nothing asked"}, 400)
+            chat.post(project, uid, f"{name} asked: {text}", kind="asked")
+            return self._json({"ok": True})
+        if kind == "started":
+            chat.event(project, uid, f"{name} started a Claude session on {project}"
+                                     + (f" ({field(req, 'node')})" if field(req, "node") else ""))
+            return self._json({"ok": True})
+        return self._json({"error": "a hook is note, asked or started"}, 400)
 
     def _bb_relay(self, req):
         """A bb verb from a session on a NODE, run here (roadmap #24).
@@ -5397,12 +5493,48 @@ class Handler(BaseHTTPRequestHandler):
         # instead made the caller that wants a clean slate (Sign in, which ends
         # the sign-in terminal before starting a new flow) report a failure for
         # the ordinary case of there being nothing to end.
+        # A session on a node (roadmap #24): the kill goes to its agent
+        # through the held poll, under the name the node knows it by, and
+        # the row disappears with the next heartbeat. By node id when the
+        # row said which — the same name can exist here and there — and by
+        # name alone for a caller that only knows the name (a tab closing).
+        want_node = str(req.get("node") or "")
+        on_node = next((s for s in node_tmux_sessions() if s["name"] == session
+                        and (not want_node or s["node_id"] == want_node)), None)
+        if on_node and (want_node or session not in {s["name"] for s in tmux_sessions()}):
+            r = nodes.session_kill(on_node["node_id"], on_node["node_name"])
+            return self._json(r, 400 if r.get("error") else 200)
         if session not in {s["name"] for s in tmux_sessions()}:
             return self._json({"code": 0, "out": "", "err": "", "gone": True})
         return self._json(run(["tmux", "kill-session", "-t", session], timeout=10))
 
+    def _session_on_node(self, session, node=""):
+        """The node session row this page-name means, or None — for the
+        three key paths, which type into a node's session through its
+        agent exactly as they type into this container's tmux."""
+        if session in {s["name"] for s in tmux_sessions()} and not node:
+            return None
+        return next((s for s in node_tmux_sessions() if s["name"] == session
+                     and (not node or s["node_id"] == node)), None)
+
     def _keys(self, req):
         session, key = req.get("session", ""), req.get("key", "")
+        on_node = self._session_on_node(session, str(req.get("node") or ""))
+        if on_node:
+            # The same table, queued for the node's agent (roadmap #24); the
+            # paging decision is the agent's, on the pane it can see.
+            real = on_node["node_name"]
+            if key in ("pgup", "pgdn"):
+                op = {"session": real, "page": "up" if key == "pgup" else "down"}
+            elif key in TMUX_KEYS:
+                op = {"session": real, "argv": ["send-keys", "-t", real, TMUX_KEYS[key]]}
+            elif key in TMUX_LITERALS:
+                op = {"session": real, "argv": ["send-keys", "-t", real, "-l", "--",
+                                                TMUX_LITERALS[key]]}
+            else:
+                return self._json({"error": f"unknown key: {key}"}, 400)
+            r = nodes.session_tmux(on_node["node_id"], [op])
+            return self._json(r, 400 if r.get("error") else 200)
         # Only sessions that currently exist — never an arbitrary -t argument.
         if session not in {s["name"] for s in tmux_sessions()}:
             return self._json({"error": f"no such session: {session}"}, 400)
@@ -5518,12 +5650,21 @@ class Handler(BaseHTTPRequestHandler):
                         == want), "")
         if not project or users.may(me, "claude", project):
             return self._json({"error": "not a Claude session of yours"}, 403)
-        if want not in {x["name"] for x in tmux_sessions()}:
+        on_node = self._session_on_node(want, str(req.get("node") or ""))
+        if want not in {x["name"] for x in tmux_sessions()} and not on_node:
             return self._json({"error": "that conversation is not running"}, 409)
         text = "".join(ch for ch in str(req.get("text", ""))
                        if ch == "\t" or ord(ch) >= 32)[:CUSTOM_LINE_MAX]
         if not text.strip():
             return self._json({"error": "nothing to say"}, 400)
+        if on_node:
+            # Into the conversation on the node, through its agent: the same
+            # two keystrokes, the same narrowing above (roadmap #24).
+            real = on_node["node_name"]
+            r = nodes.session_tmux(on_node["node_id"], [
+                {"session": real, "argv": ["send-keys", "-t", real, "-l", "--", text]},
+                {"session": real, "argv": ["send-keys", "-t", real, "Enter"]}])
+            return self._json(r, 400 if r.get("error") else 200)
         r = run(["tmux", "send-keys", "-t", want, "-l", "--", text], timeout=10)
         if r["code"] != 0:
             return self._json({"error": r["out"].strip()[:200] or "send failed"}, 500)
@@ -5552,12 +5693,24 @@ class Handler(BaseHTTPRequestHandler):
                 lines = [SHELL_MACROS[name]]
             else:
                 return self._json({"error": f"unknown macro: {name}"}, 400)
-        if session not in {s["name"] for s in tmux_sessions()}:
+        on_node = self._session_on_node(session, str(req.get("node") or ""))
+        if session not in {s["name"] for s in tmux_sessions()} and not on_node:
             return self._json({"error": f"no such session: {session}"}, 400)
         # Never into a Claude session: that would not run the command, it would
         # submit it as a prompt.
-        if session.startswith("claude-"):
+        if tmux_base(session).startswith("claude-"):
             return self._json({"error": "refusing to type into a Claude session"}, 400)
+        if on_node:
+            # A shell on the node: the same lines, through its agent.
+            real = on_node["node_name"]
+            ops = [{"session": real, "argv": ["send-keys", "-t", real, "C-e", "C-u"]}]
+            for line in lines:
+                ops.append({"session": real, "argv": ["send-keys", "-t", real, "-l", "--", line]})
+                ops.append({"session": real, "argv": ["send-keys", "-t", real, "Enter"]})
+            r = nodes.session_tmux(on_node["node_id"], ops)
+            return self._json(r | {"sent": lines[0] if len(lines) == 1
+                                   else f"{len(lines)} commands"},
+                              400 if r.get("error") else 200)
         # Clear whatever was half-typed at the prompt first, or the command
         # arrives glued to the end of it. End-of-line then kill-line, which is
         # readline editing and not a signal: Ctrl-C would also interrupt

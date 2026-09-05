@@ -82,24 +82,36 @@ def main():
         return
 
     here = os.path.dirname(os.path.abspath(__file__))
-    sys.path.insert(0, here)
-    import overlap                                            # noqa: E402
-
-    def write_json(p, d):
-        tmp = f"{p}.new"
-        with open(tmp, "w") as f:
-            json.dump(d, f, indent=2)
-        os.replace(tmp, p)
-
-    overlap.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
-                      workspace=os.environ.get("WORKSPACE", "/workspace"),
-                      write_json=write_json)
     # Recorded relative to the tree, so the same file in two worktrees is one
     # name — the whole point is comparing across them.
     root = os.environ.get("BB_TREE") or ""
     rel = os.path.relpath(path, root) if root and path.startswith(root) else path
-    others = overlap.others_touching(project, session, rel)
-    overlap.note(project, session, rel, symbol_for(path, spec.get("old_string")))
+    symbol = symbol_for(path, spec.get("old_string"))
+    if os.environ.get("BUILDERBOT_ROLE", "").lower() in ("node", "worker", "agent"):
+        # On a node the notes live on the controller (roadmap #24): the
+        # same record, posted with the session's own token, and the
+        # answer is who else has the file — as names, since the
+        # controller has the store this script does not.
+        sys.path.insert(0, os.path.join(here, "..", "lib"))
+        import bbapi                                          # noqa: E402
+        r = bbapi.call("/api/v1/hook", {"kind": "note", "path": rel, "symbol": symbol},
+                       auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10)
+        others = r.get("others") or [] if isinstance(r, dict) else []
+    else:
+        sys.path.insert(0, here)
+        import overlap                                        # noqa: E402
+
+        def write_json(p, d):
+            tmp = f"{p}.new"
+            with open(tmp, "w") as f:
+                json.dump(d, f, indent=2)
+            os.replace(tmp, p)
+
+        overlap.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
+                          workspace=os.environ.get("WORKSPACE", "/workspace"),
+                          write_json=write_json)
+        others = overlap.others_touching(project, session, rel)
+        overlap.note(project, session, rel, symbol)
     if not others:
         return
     say = (f"Another session on {project} has {rel} open: "

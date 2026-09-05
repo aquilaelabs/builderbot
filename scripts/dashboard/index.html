@@ -3068,9 +3068,12 @@ const baseOf = path => path.replace(/\/+$/, "").split("/").pop() || "/";
 // — and only the duplicates — carry a number.
 function sessionLabels(){
   const list = (state?.sessions || []);
-  const of = s => s.name.startsWith("claude-") ? "Claude: " + (projFor(s.name.slice(7)) ?? s.name.slice(7))
+  // Through tmuxBase: an account's own sessions carry its prefix, and a
+  // prefixed Claude session is still a Claude session.
+  const of = s => { const b = tmuxBase(s.name);
+    return b.startsWith("claude-") ? "Claude: " + (projFor(b.slice(7)) ?? b.slice(7))
            : s.cwd ? "sh: " + baseOf(s.cwd)
-           : "sh: " + s.name;
+           : "sh: " + s.name; };
   const total = {};
   list.forEach(s => { const l = of(s); total[l] = (total[l] || 0) + 1; });
   const nth = {}, out = new Map();
@@ -11033,10 +11036,13 @@ function drawSessions(ss){
   const tabFor = new Map(tabs.filter(t => t.kind === "term").map(t => [sessionOf(t.arg), t]));
   const fresh = paint(el, ss.map(s => {
     const t = tabFor.get(s.name);
-    const claude = s.name.startsWith("claude-");
+    const claude = tmuxBase(s.name).startsWith("claude-");
     const shownAt = t ? panes.indexOf(t.id) : -1;
-    const pill = shownAt === -1 ? ""
-      : `<span class="pill ok att">${isSplit() ? (shownAt === 0 ? "◧ " : "◨ ") : ""}attached</span>`;
+    // A session on a node says so (roadmap #24): it is in that machine's
+    // tmux, reached through the same tab, ended through its agent.
+    const pill = (shownAt === -1 ? ""
+      : `<span class="pill ok att">${isSplit() ? (shownAt === 0 ? "◧ " : "◨ ") : ""}attached</span>`)
+      + (s.node ? ` <span class="pill" title="runs on the node ${esc(s.node)}">on ${esc(s.node)}</span>` : "");
     const tip = tabTitle(t || {kind:"term", arg: argForSession(s.name), label: s.name});
     return `
     <div class="row">
@@ -11053,10 +11059,10 @@ function drawSessions(ss){
           ? `<div class="sub" title="${esc(s.claude.task)}">working on: ${
               esc(s.claude.task)}</div>` : ""}</div>
       ${t ? (claude
-          ? `<button class="primary" data-k="${esc(s.name)}" title="end this Claude session — asks first">Close</button>`
+          ? `<button class="primary" data-k="${esc(s.name)}" data-kn="${esc(s.node_id || "")}" title="end this Claude session — asks first">Close</button>`
           : `<button class="primary" data-min="${esc(t.id)}" title="take its tab off the strip — it keeps running">Minimize</button>`)
           : `<button data-a="${esc(s.name)}" title="reopen its tab">Open</button>`}
-      <button data-k="${esc(s.name)}" title="end this session">✕</button>
+      <button data-k="${esc(s.name)}" data-kn="${esc(s.node_id || "")}" title="end this session">✕</button>
     </div>`; }).join(""));
   if (!fresh) return;
   // On a phone the list is a flyout over the terminal, and picking a session
@@ -11068,17 +11074,20 @@ function drawSessions(ss){
   el.querySelectorAll("[data-min]").forEach(b => b.onclick = () => hideTab(b.dataset.min));
   // Closing a terminal tab leaves its session running, so this is where one
   // actually gets ended — otherwise they would only ever accumulate.
-  el.querySelectorAll("[data-k]").forEach(b => b.onclick = () => killSession(b.dataset.k));
+  el.querySelectorAll("[data-k]").forEach(b => b.onclick = () => killSession(b.dataset.k, b.dataset.kn));
 }
 
-async function killSession(name){
-  const claude = name.startsWith("claude-");
+// `node` is the id of the node the session runs on, when the row said so:
+// the same name can exist here and there — a project unbound from a node
+// while a session was still open on it — and the row knows which it meant.
+async function killSession(name, node = ""){
+  const claude = tmuxBase(name).startsWith("claude-");
   if (!confirm(claude
         ? `End the Claude session "${name}"?\n\nThe transcript is kept and can be `
           + `resumed later, but the conversation stops now.`
         : `End the session "${name}"?\n\nAnything running in it is terminated.`)) return;
   try{
-    const j = await endSession(name);
+    const j = await endSession(name, node);
     if (j.error){ notify(j.error, true); return; }
     // Its tab, if one is open, is now pointing at nothing.
     const t = tabs.find(x => x.kind === "term" && sessionOf(x.arg) === name);
@@ -11091,10 +11100,10 @@ async function killSession(name){
 // End a session, no questions asked. killSession is this with the dialog in
 // front of it; Sign in is this without one, because the person just pressed a
 // button that says what it does.
-async function endSession(name){
+async function endSession(name, node = ""){
   const r = await fetch("/api/session", {method:"POST",
     headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({action:"kill", session:name})});
+    body: JSON.stringify({action:"kill", session:name, node})});
   return r.json();
 }
 

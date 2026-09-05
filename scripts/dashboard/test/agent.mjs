@@ -5,7 +5,8 @@
 // take an exec job, stream its log, report the result, and be cut off. Every
 // assertion is a round trip through the channel, which is the thing phase 3
 // exists to prove.
-import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
+         tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, statSync, lstatSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync } from 'node:fs';
 
@@ -417,6 +418,86 @@ try {
          && (statSync(`${nodeHome}/.claude/.credentials.json`).mode & 0o777) === 0o600,
          `bb login on a node takes the controller's login into that home, 0600 (${out.trim().split('\n').pop().slice(0, 60)})`);
       if (had === null) rmSync(creds); else writeFileSync(creds, had);
+    }
+
+    // ---- the hooks post from a node (roadmap #24) ---------------------------
+    // Inside a session on a node the two hooks bb-tty writes into its
+    // settings have no /config to write: they post to the controller with
+    // the session's token, and the same modules record them here — the
+    // overlap note `bb work` reads, the prompt in the project's feed, and
+    // the "started" line the proxy cannot announce for a session it does
+    // not see start.
+    {
+      const forMe = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
+        { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+      const nodeEnv = { ...process.env, BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''),
+                        BB_TOKEN: forMe, BB_NODE: 'agentbox', BB_TREE: '/workspace/alpha' };
+      const hook = (name, args, input) => execFileSync('python3', [`${REPO}/scripts/dashboard/${name}`, ...args],
+        { input, encoding: 'utf8', env: nodeEnv, stdio: ['pipe', 'pipe', 'pipe'] });
+      const feed = async () => ((await api('/api/chat', { action: 'read', project: 'alpha' })).messages || []);
+      const n0 = (await feed()).length;
+      hook('bb-prompt-relay', ['alpha', 'ignored'], JSON.stringify({ prompt: 'refactor the picker <system-reminder>x</system-reminder>' }));
+      const asked = (await feed()).slice(n0);
+      ok(asked.length === 1 && asked[0].kind === 'asked' && /test asked: refactor the picker$/.test(asked[0].text),
+         `a prompt typed in a session on the node lands in the project's feed, under the token's account (${asked[0]?.text})`);
+      hook('bb-prompt-relay', ['--started', 'alpha', 'ignored'], '');
+      const started = (await feed()).slice(-1)[0];
+      ok(started?.kind === 'did' && /test started a Claude session on alpha \(agentbox\)/.test(started?.text || ''),
+         `...and bb-tty's "started" line arrives the same way, naming the node (${started?.text})`);
+      const noteOut = hook('bb-work-note', ['alpha', 'ignored'],
+        JSON.stringify({ tool_input: { file_path: '/workspace/alpha/src/picker.py', old_string: 'def pick():\n  pass' } }));
+      const work = execFileSync('bash', [`${REPO}/scripts/bb`, 'work'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`,
+        env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws`, BB_PROJECT: 'alpha' } });
+      ok(/test\s+src\/picker\.py\s+\[pick\]/.test(work) && noteOut === '',
+         `an edit's note from the node is what bb work reads here, symbol guessed and file relative to the tree (${
+           (work.split('\n').find(l => /picker/.test(l)) || '').trim()})`);
+      const bad = await fetch(URL.replace(/\/$/, '') + '/api/v1/hook', { method: 'POST',
+        headers: { Authorization: 'Bearer ' + tok, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'asked', text: 'hi' }) });
+      ok(bad.status === 403, 'a token for the project alone — no account — may not post as anybody');
+    }
+
+    // ---- the node's sessions are on the Sessions card (roadmap #24) --------
+    // The agent's heartbeat carries the session account's tmux sessions;
+    // the controller lists them beside its own, named by ITS rule (the
+    // owner's bare, everybody else's prefixed), each saying which node it
+    // is on; and ending one goes back to the agent through its held poll.
+    // The agent here is this user, so its tmux is the harness's private
+    // server — which is also the controller's, so the same session shows
+    // up twice: once as this container's, once as agentbox's.
+    {
+      const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+      const real = `${uid}~claude-alpha`;
+      tmuxKill(real); tmuxKill('claude-alpha');       // an earlier file's leftover
+      // A shell rather than a sleep, so what the console types can be seen
+      // to arrive: the pane runs it and the capture shows the result.
+      tmuxNew(real, `${DIR}/ws/alpha`, ['bash', '--norc', '--noprofile']);
+      const onNode = await until(async () =>
+        ((await api('/api/status')).sessions || []).find(s => s.node === 'agentbox'), 45000, 500);
+      ok(onNode && onNode.name === 'claude-alpha' && onNode.node_name === real,
+         `a session in the node's tmux is listed within a heartbeat, under this container's name for it (${onNode?.name} on ${onNode?.node})`);
+      ok(onNode && onNode.cwd === `${DIR}/ws/alpha` && onNode.claude && 'state' in onNode.claude,
+         '...with its directory and its Claude state, like a local one');
+      const cw = (await api('/api/status')).claude_with || {};
+      ok((cw.alpha || []).includes('test'),
+         '...and the project row counts it: the account has a session on alpha');
+      // The read-only console's line, and the key row, reach a node's
+      // session through the same poll: the agent types them into the pane.
+      const said = await api('/api/say', { session: 'claude-alpha', node: onNode?.node_id,
+                                           text: 'echo typed-from-the-console' });
+      ok(said.ok && said.queued, `a console line for a session on the node is queued for its agent (${JSON.stringify(said)})`);
+      const typed = await until(async () => /typed-from-the-console/.test(tmuxCapture(real)) ? true : null, 30000, 500);
+      ok(typed === true, '...and the agent types it into the pane, Enter included');
+      const paged = await api('/api/keys', { session: 'claude-alpha', node: onNode?.node_id, key: 'pgup' });
+      ok(paged.ok && paged.queued, 'the key row\'s PgUp is queued the same way, decided on the node');
+      const k = await api('/api/session', { action: 'kill', session: 'claude-alpha', node: onNode?.node_id });
+      ok(k.ok && k.queued, `ending it from the card is queued for the agent (${JSON.stringify(k)})`);
+      const gone = await until(async () => {
+        // display-message on a name tmux cannot find prints nothing and
+        // exits 0 (measured), so "gone" is the name no longer echoing back.
+        try { return tmuxFmt(real, '#{session_name}') === real ? null : true; } catch { return true; }
+      }, 30000, 500);
+      ok(gone === true, '...and the agent ends it in the node\'s tmux');
     }
     const outside = await relay({ argv: ['version'], cwd: '/etc' });
     ok(outside.status === 200 && outside.code === 0 && !/etc/.test(outside.out),

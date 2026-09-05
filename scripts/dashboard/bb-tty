@@ -652,6 +652,13 @@ case "$target" in
             log "${mysess}: session is not running claude — replacing it"
             tmux kill-session -t "=$mysess" 2>/dev/null || true
         fi
+        # On a node, a session that is about to be MADE is announced to the
+        # project's channel through the controller — its proxy announces a
+        # local one and cannot see this one. A reattach is not a start.
+        if on_node && ! tmux has-session -t "=$mysess" 2>/dev/null; then
+            "$(dirname "$(readlink -f "$0")")/bb-prompt-relay" --started "$proj" "$account" \
+                >/dev/null 2>&1 || true
+        fi
         # Through a launcher, always — not only when the prompt happens to be
         # long today. A path that is exercised on every session is one that
         # works; a fallback taken only past 16KB is one nobody finds out about

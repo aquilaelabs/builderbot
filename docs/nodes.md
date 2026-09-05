@@ -1631,9 +1631,25 @@ account. The project row carries the same decision (`session_at`,
 `session_why`), so the Claude button is dead with the sentence before
 anything is asked. provision.sh filters 7681/7682 to the controller's
 address with an nftables table of its own, re-applied at boot by a unit.
-What the controller cannot see for a node's sessions: who is in one (the
-row says "sessions run on <node>" instead), and the one-Anthropic-account
-rule, which is the node's own to keep. Left to 10c: the hooks posting to
-the API instead of writing `/config` — which is also how the channel learns
-a session started there — and the image shedding what no session here
+The node's sessions are on the Sessions card too: the agent's heartbeat
+carries the session account's tmux sessions (name, attached, directory,
+pane title), the controller lists them beside its own under its own naming
+rule — the owner's bare, everybody else's prefixed, `node_name` keeping the
+node's — each with an "on <node>" pill, claude_with and the project rows
+count them, and ending one queues a kill the agent's held poll takes at
+once (`nodes.session_kill`, `{"kill_sessions": [...]}` in the work reply).
+The two hooks a session runs post from a node too: `POST /api/v1/hook`
+with the session's token takes a `note` (the file an edit is about to
+touch, answered with who else has it open — `bb work` reads the same
+record), an `asked` line for the project's feed, and `started`, which
+bb-tty sends when it is about to make the session, since the proxy cannot
+see one start on a node. The account is the token's, never the request's.
+Keys reach a node's session the same way — the key row, the read-only
+console's line, a macro — as tmux commands queued for the agent
+(`nodes.session_tmux`, `{"tmux": [...]}` in the work reply), which types
+them into the pane as the dashboard types into its own; the paging
+decision (copy mode at a prompt, the program's key in a full-screen one)
+is made on the node, where the pane is. What the controller still cannot
+do for a node's session is keep the one-Anthropic-account rule, which is
+the node's own. Left to 10c: the image shedding what no session here
 needs.

@@ -58,7 +58,29 @@ def human_part(text):
     return text.strip()
 
 
+def on_node():
+    return os.environ.get("BUILDERBOT_ROLE", "").lower() in ("node", "worker", "agent")
+
+
+def post_hook(body):
+    """The controller's hook endpoint, with the session's own token: how a
+    session on a node reaches the feed it cannot write (roadmap #24)."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, os.path.join(here, "..", "lib"))
+    import bbapi                                             # noqa: E402
+    bbapi.call("/api/v1/hook", body, auth="Bearer " + os.environ.get("BB_TOKEN", ""),
+               timeout=10)
+
+
 def main():
+    # `--started PROJECT SESSION`: not a prompt — bb-tty on a node says the
+    # session began, which the controller's proxy announces for a local one
+    # and cannot see for one on a node. Nothing to read from stdin.
+    if sys.argv[1:2] == ["--started"]:
+        project = (sys.argv[2:3] or [""])[0]
+        if project and on_node():
+            post_hook({"kind": "started", "node": os.environ.get("BB_NODE", "")})
+        return
     project, session = (sys.argv[1:3] + ["", ""])[:2]
     try:
         req = json.load(sys.stdin)
@@ -69,6 +91,12 @@ def main():
         return
     if len(text) > MAX:
         text = text[:MAX].rstrip() + " …"
+
+    if on_node():
+        # The feed is the controller's; the token says whose session this
+        # is, so the line is filed under the right name there.
+        post_hook({"kind": "asked", "text": text})
+        return
 
     here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, here)
