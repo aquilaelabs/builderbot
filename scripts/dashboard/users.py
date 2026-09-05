@@ -460,9 +460,14 @@ def revoke_sessions():
     return {"ok": True}
 
 
-def mint_session(project, ttl=SESSION_TTL):
+def mint_session(project, ttl=SESSION_TTL, uid=""):
+    """A token for one project, and — when it is for a terminal on a node —
+    for one ACCOUNT: `uid` names whose session it is, which is what lets
+    the node fetch that account's Claude login and nobody else's (roadmap
+    #24). A token minted with no account can do what a session on the
+    project can do and nothing personal."""
     exp = str(int(time.time()) + int(ttl))
-    body = f"{project}|{exp}"
+    body = f"{project}|{exp}|{uid}"
     sig = hmac.new(_session_key(), body.encode(), hashlib.sha256).hexdigest()[:32]
     return SESSION_PREFIX + base64.urlsafe_b64encode(
         f"{body}|{sig}".encode()).decode().rstrip("=")
@@ -473,7 +478,8 @@ def session_principal(tok):
 
     Not a stored account: a synthetic principal with `user` rights over the
     one project it was minted for. `session` marks it as one, so an audit row
-    can say a session did this rather than naming a person who did not.
+    can say a session did this rather than naming a person who did not, and
+    `uid` is the account it was minted for, when it was minted for one.
     """
     tok = str(tok or "")
     if not tok.startswith(SESSION_PREFIX):
@@ -481,17 +487,27 @@ def session_principal(tok):
     raw = tok[len(SESSION_PREFIX):]
     try:
         body = base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)).decode()
-        project, exp, sig = body.rsplit("|", 2)
+        parts = body.split("|")
+        # Three fields before the signature now; two from a token minted
+        # before the account rode along, still good until it expires and
+        # not to be refused on the day this lands.
+        if len(parts) == 4:
+            project, exp, uid, sig = parts
+        elif len(parts) == 3:
+            project, exp, sig = parts
+            uid = ""
+        else:
+            return None
     except (ValueError, UnicodeDecodeError):
         return None
     if not exp.isdigit() or int(exp) < time.time():
         return None
-    want = hmac.new(_session_key(), f"{project}|{exp}".encode(),
-                    hashlib.sha256).hexdigest()[:32]
+    signed = f"{project}|{exp}|{uid}" if len(parts) == 4 else f"{project}|{exp}"
+    want = hmac.new(_session_key(), signed.encode(), hashlib.sha256).hexdigest()[:32]
     if not hmac.compare_digest(sig, want):
         return None
     return {"name": f"session:{project}", "role": "user",
-            "projects": [project], "session": project}
+            "projects": [project], "session": project, "uid": uid}
 
 
 # --- editing ---------------------------------------------------------------

@@ -1590,10 +1590,14 @@ above, in order:
    the proxy decides per project: bound to a node whose census reports the
    session half up, the session is relayed there; otherwise it is this
    container's, as it always was.
-3. **The login is per node**, in the session account's home. Sign-in runs
-   inside the session's own terminal (`bb login` there), not the Doctor
-   card's flow, which would sign in the wrong machine. Transcripts and
-   memories are that home's too.
+3. **The login is per node**, in the session account's home — and it gets
+   there from the controller: a node-bound terminal's token is minted for
+   the account, `bb login` on the node fetches that account's credentials
+   file with it (`GET /api/v1/claude-login`), into that home, 0600, only
+   when the node's copy is not signed in. Not a share — one file, one
+   machine, one account. The interactive flow in the session's own terminal
+   is the fallback. Transcripts and memories are that home's too (phase 10a
+   step 3 is what makes them one place).
 4. **The terminal is the same ttyd, on the node.** The agent keeps two of
    them up — writable, and the read-only twin — running bb-tty from the bb
    bundle the controller ships (refetched when the bundle's digest moves in

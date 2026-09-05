@@ -7,7 +7,7 @@
 // exists to prove.
 import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, lstatSync, writeFileSync, mkdirSync, readdirSync, openSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -375,6 +375,41 @@ try {
     ok(emu.status === 400, '...and so is bb emu');
     const nobody = await relay({ argv: ['roadmap'] }, 'Bearer bbs_nonsense');
     ok(nobody.status === 401, 'a token that does not verify gets nothing');
+
+    // ---- the login follows the account to the node (roadmap #24) ----------
+    // A node-bound terminal's token is minted for the ACCOUNT as well as the
+    // project, and with it `bb login` on the node fetches that account's
+    // Claude credentials from the controller into the node's copy of its
+    // home — so signing in once, on the Doctor card, signs every node in.
+    // Only such a token can, and only for its own account.
+    {
+      const creds = `${DIR}/home/.claude/.credentials.json`;
+      const had = existsSync(creds) ? readFileSync(creds, 'utf8') : null;
+      mkdirSync(`${DIR}/home/.claude`, { recursive: true });
+      writeFileSync(creds, '{"claudeAiOauth": {"accessToken": "fake-for-the-suite"}}\n', { mode: 0o600 });
+      const forMe = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
+        { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
+      const login = async (t) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
+        { headers: { Authorization: 'Bearer ' + t } }); return { status: r.status, ...(await r.json()) }; };
+      const mine = await login(forMe);
+      ok(mine.status === 200 && /fake-for-the-suite/.test(mine.credentials || ''),
+         'a token minted for an account fetches that account\'s Claude login from its home here');
+      const anon = await login(tok);
+      ok(anon.status === 403 && /minted for an account/.test(anon.error || ''),
+         '...and a token for the project alone — a relayed verb\'s — cannot');
+      // bb login on the node: the same fetch, into the node's home, 0600.
+      const nodeHome = `${DIR}/nodehome`;
+      mkdirSync(`${DIR}/bin2`, { recursive: true });
+      writeFileSync(`${DIR}/bin2/claude`, '#!/bin/sh\n[ "$1" = auth ] && [ "$2" = status ] && printf \'{"loggedIn":false}\\n\'\nexit 0\n', { mode: 0o755 });
+      const out = execFileSync('bash', [`${REPO}/scripts/bb`, 'login'], { encoding: 'utf8',
+        env: { ...process.env, PATH: `${DIR}/bin2:${process.env.PATH}`, HOME: nodeHome,
+               BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: forMe, BB_NODE: 'agentbox' } });
+      ok(/signed in on agentbox/.test(out) && /came from the controller/.test(out)
+         && readFileSync(`${nodeHome}/.claude/.credentials.json`, 'utf8').includes('fake-for-the-suite')
+         && (statSync(`${nodeHome}/.claude/.credentials.json`).mode & 0o777) === 0o600,
+         `bb login on a node takes the controller's login into that home, 0600 (${out.trim().split('\n').pop().slice(0, 60)})`);
+      if (had === null) rmSync(creds); else writeFileSync(creds, had);
+    }
     const outside = await relay({ argv: ['version'], cwd: '/etc' });
     ok(outside.status === 200 && outside.code === 0 && !/etc/.test(outside.out),
        'a cwd outside the project\'s trees is ignored: the verb runs in the project directory');
