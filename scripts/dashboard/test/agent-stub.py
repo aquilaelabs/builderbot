@@ -42,7 +42,13 @@ CDIR_ROOT = os.environ["STUB_AGENT_DIR"]
 CENSUS = {"cpu": 4, "mem_mb": 8192, "arch": "x86_64", "system": "linux",
           "sshd": True, "docker": True,
           "stores": {"data": {"path": CDIR_ROOT, "free_mb": 50000,
-                              "total_mb": 100000}}}
+                              "total_mb": 100000}},
+          # A session half that is up but on a read-only projects share —
+          # the arrangement a Docker-only sandbox was told to have, and the
+          # one that stranded the first real session (nothing could be
+          # saved). What the proxy refuses on, and the row says.
+          "session": {"up": True, "port": 7681, "ro_port": 7682, "user": "bb",
+                      "workspace": True, "writable": False, "boot": "1.1"}}
 
 
 def call(verb, body, timeout=60):

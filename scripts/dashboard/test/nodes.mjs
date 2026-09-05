@@ -432,13 +432,17 @@ ok(list[0].id === 'local',
        /runs-on: \[self-hosted, shed\]/.test(e.textContent)),
      '...and the section prints the exact runs-on line that lands a job here');
   // The runner belongs above the mounts: it is the thing the operator is
-  // most often here to check, and it was below three editors.
+  // most often here to check, and it was below three editors. The plane is
+  // sections now — one fold per concern, a status on each summary — and
+  // the order still holds.
   ok(await page.$eval(`${ROW} .ndconfbody`, e => {
-       const kids = [...e.children];
-       const runner = kids.findIndex(k => k.classList.contains('ndsec') && /CI runner/.test(k.textContent));
-       const mounts = kids.findIndex(k => k.classList.contains('ndsec') && /^Mounts/.test(k.textContent));
-       return runner >= 0 && mounts >= 0 && runner < mounts;
+       const kids = [...e.querySelectorAll(':scope > details.sect > summary .t')].map(t => t.textContent.trim());
+       return kids.indexOf('CI runner') >= 0 && kids.indexOf('Storage') >= 0
+              && kids.indexOf('CI runner') < kids.indexOf('Storage');
      }), '...and the runner section comes before the mounts, not after the network');
+  ok(await page.$eval(`${ROW} .ndconfbody`, e =>
+       [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
+     '...every section says its state on its summary, so a phone reads the headings and picks one');
   // The sidebar's Runner card carries every node with a runner, not only
   // this container's — a workflow lands on whichever runner its runs-on
   // matches, and GitHub was the only place that answer existed.

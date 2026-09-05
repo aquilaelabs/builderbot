@@ -897,6 +897,9 @@ def _census(c):
             "ro_port": _mb(se.get("ro_port")) or 0,
             "user": re.sub(r"[^A-Za-z0-9._-]", "", str(se.get("user") or ""))[:32],
             "workspace": bool(se.get("workspace")),
+            # Absent from an agent that predates the probe; the proxy reads
+            # None as "not known", not as read-only.
+            "writable": None if "writable" not in se else bool(se.get("writable")),
             "claude": str(se.get("claude") or "")[:40],
             "bundle": str(se.get("bundle") or "")[:80],
             # The agent's own sentence for a half that is down — no session
