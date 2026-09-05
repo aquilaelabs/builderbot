@@ -803,7 +803,26 @@ def session_now(state):
             claude = _run([exe, "--version"], timeout=15).split("\n")[0][:40] or "installed"
             break
     out["claude"] = claude
+    # This machine's boot, in the form bb-tty's boot_id() computes: a
+    # terminal's URL carries the boot it was opened in, and bb-tty refuses
+    # to START a session from a tab older than the machine's current run.
+    # On a node that has to be the node's boot, not the controller's — the
+    # controller stamps this into a node-bound terminal's URL for the page.
+    out["boot"] = boot_id()
     return out
+
+
+def boot_id():
+    """PID 1's start time paired with the host's boot time — the same pair,
+    in the same shape, as the controller's server.boot_id and bb-tty's."""
+    try:
+        with open("/proc/1/stat") as f:
+            start = f.read().rsplit(")", 1)[1].split()[19]
+        with open("/proc/stat") as f:
+            btime = next(l for l in f if l.startswith("btime ")).split()[1]
+        return f"{btime}.{start}"
+    except (OSError, IndexError, StopIteration):
+        return ""
 
 
 def services_now():

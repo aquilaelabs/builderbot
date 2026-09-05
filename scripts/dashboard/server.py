@@ -1276,10 +1276,17 @@ IGNORE_MARKER = ".bbignore"
 def _session_at(name):
     t = session_target(name)
     if t["where"] == "node":
-        return {"session_at": t["name"], "session_why": ""}
+        # The node's boot, for the page to stamp into a terminal's URL in
+        # place of this container's: bb-tty on the node compares against the
+        # node's own run, and a tab carrying the controller's boot was
+        # refused there as "from before the container restarted" on every
+        # connection — a loop nobody could end from the Sessions card,
+        # because the session never started.
+        return {"session_at": t["name"], "session_why": "",
+                "session_boot": t.get("boot") or ""}
     if t["where"] == "refused":
-        return {"session_at": t["name"], "session_why": t["why"]}
-    return {"session_at": "", "session_why": ""}
+        return {"session_at": t["name"], "session_why": t["why"], "session_boot": ""}
+    return {"session_at": "", "session_why": "", "session_boot": ""}
 
 
 def project_list(who):
@@ -1628,7 +1635,8 @@ def session_target(project):
                "share at /workspace — add the mount on its row on the Nodes tab")
     else:
         return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
-                "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0)}
+                "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
+                "boot": str(se.get("boot") or "")}
     return {"where": "refused", "name": name,
             "why": why + ". Unbind the node in the project's settings dialog to work here instead."}
 
