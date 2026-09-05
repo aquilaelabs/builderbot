@@ -75,7 +75,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "23"
+AGENT_VERSION = "24"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.

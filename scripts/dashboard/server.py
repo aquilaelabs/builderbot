@@ -1633,6 +1633,12 @@ def session_target(project):
     elif not se.get("workspace"):
         why = (f"{project}'s sessions run on {name}, which does not mount the projects "
                "share at /workspace — add the mount on its row on the Nodes tab")
+    elif not se.get("boot"):
+        # Without the node's boot the page would stamp this container's into
+        # the tab, and bb-tty there would refuse every reconnect as a stale
+        # tab (bug #56) — a loop, not a session. Dead button, plain reason.
+        why = (f"{project}'s sessions run on {name}, whose agent is too old to report "
+               "its boot — Update agent on its row on the Nodes tab, then open this again")
     else:
         return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
                 "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0),
