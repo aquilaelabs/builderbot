@@ -656,13 +656,32 @@ add_fstab() {
 # merely that something is mounted — `mount -a` skips a busy mountpoint, so a
 # path whose entry was just rewritten stays on the old share and looks fine.
 mount_one() {
-    local path="$1" want got held
+    local path="$1" want got held n
+    want="$(fstab_line "$path")"; want="${want#*: }"; want="${want%% *}"
+    # ONLY WHEN NOTHING IS THERE. `mount /path` does not refuse a path that
+    # already has something on it — for NFS it stacks another mount on top —
+    # so the unconditional `mount` this used to open with added a layer every
+    # time storage was applied. Two applies were enough: findmnt then printed
+    # two sources, the equality test below failed on a healthy mount, and the
+    # job reported a mismatch between a source and itself.
     # This path only. `mount -a` mounted every entry in fstab, so one export
     # the server refuses printed its refusal on every check of every OTHER
     # mount — three copies of one unrelated failure, above the answers.
-    mount "$path" 2>/dev/null || true
-    want="$(fstab_line "$path")"; want="${want#*: }"; want="${want%% *}"
-    got="$(findmnt -rno SOURCE -- "$path" 2>/dev/null || true)"
+    n="$(findmnt -rno SOURCE -- "$path" 2>/dev/null | wc -l)"
+    if [ "$n" -eq 0 ]; then
+        mount "$path" 2>/dev/null || true
+        n="$(findmnt -rno SOURCE -- "$path" 2>/dev/null | wc -l)"
+    fi
+    # One line PER mount at this path. The last is the one on top, and the
+    # only one anything opening a file there actually reaches.
+    got="$(findmnt -rno SOURCE -- "$path" 2>/dev/null | tail -1 || true)"
+    if [ "$n" -gt 1 ]; then
+        warn "$path is mounted ${n} times, stacked — only the top one is visible."
+        printf '   Take the layers off, and this will put it back:\n'
+        printf '     while mountpoint -q %s; do umount -l %s; done; mount %s\n' \
+            "$path" "$path" "$path"
+        return 1
+    fi
     if [ -n "$got" ] && [ "$got" = "$want" ]; then
         say "$path is mounted from $got"
         return 0
@@ -849,7 +868,9 @@ cmd_list() {
     while read -r path; do
         [ -n "$path" ] || continue
         src="$(fstab_line "$path")"; src="${src#*: }"; src="${src%% *}"
-        real="$(findmnt -rno SOURCE -- "$path" 2>/dev/null || true)"
+        # tail -1: one line per mount at this path, and the top one is what
+        # anything opening a file there gets. See mount_one on stacking.
+        real="$(findmnt -rno SOURCE -- "$path" 2>/dev/null | tail -1 || true)"
         if [ -z "$real" ]; then state="NOT MOUNTED"
         elif [ ! -w "$path" ]; then state="mounted, read-only"
         else state="mounted"; fi
@@ -872,7 +893,14 @@ cmd_list() {
 # list --json — the same facts as a machine reads them: the agent's census
 # carries this, and the Nodes tab draws the operator's desired mounts against
 # it. Escaped by hand, since jq may not be here.
-json_str() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
+# Newlines stripped as well as quotes escaped. A raw newline inside a JSON
+# string is not JSON, and the whole document is then unparseable — which is
+# how one stacked mount (findmnt printing a source per layer) took EVERY
+# mount off the Nodes tab at once: the controller read the census, could not
+# parse it, and drew a node with no mounts at all, so all four read "not
+# applied yet". A value that arrives with a line break in it is worth
+# flattening rather than trusting.
+json_str() { printf '%s' "$1" | tr '\n\r' '  ' | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 cmd_list_json() {
     local path line src type opts real ro mounted first=1
     printf '['
@@ -881,7 +909,9 @@ cmd_list_json() {
         line="$(fstab_line "$path")"; line="${line#*: }"
         src="$(awk '{print $1}' <<<"$line")"; type="$(awk '{print $3}' <<<"$line")"
         opts="$(awk '{print $4}' <<<"$line")"
-        real="$(findmnt -rno SOURCE -- "$path" 2>/dev/null || true)"
+        # tail -1: one line per mount at this path, and the top one is what
+        # anything opening a file there gets. See mount_one on stacking.
+        real="$(findmnt -rno SOURCE -- "$path" 2>/dev/null | tail -1 || true)"
         case ",$opts," in *,ro,*) ro=true ;; *) ro=false ;; esac
         if [ -n "$real" ]; then mounted=true; else mounted=false; fi
         [ "$first" = 1 ] || printf ','
