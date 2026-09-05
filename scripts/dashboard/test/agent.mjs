@@ -5,7 +5,8 @@
 // take an exec job, stream its log, report the result, and be cut off. Every
 // assertion is a round trip through the channel, which is the thing phase 3
 // exists to prove.
-import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
+         tmuxNew, tmuxKill, tmuxFmt } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, statSync, lstatSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync } from 'node:fs';
 
@@ -417,6 +418,38 @@ try {
          && (statSync(`${nodeHome}/.claude/.credentials.json`).mode & 0o777) === 0o600,
          `bb login on a node takes the controller's login into that home, 0600 (${out.trim().split('\n').pop().slice(0, 60)})`);
       if (had === null) rmSync(creds); else writeFileSync(creds, had);
+    }
+
+    // ---- the node's sessions are on the Sessions card (roadmap #24) --------
+    // The agent's heartbeat carries the session account's tmux sessions;
+    // the controller lists them beside its own, named by ITS rule (the
+    // owner's bare, everybody else's prefixed), each saying which node it
+    // is on; and ending one goes back to the agent through its held poll.
+    // The agent here is this user, so its tmux is the harness's private
+    // server — which is also the controller's, so the same session shows
+    // up twice: once as this container's, once as agentbox's.
+    {
+      const uid = JSON.parse(readFileSync(`${DIR}/state/users.json`, 'utf8')).users.test.uid;
+      const real = `${uid}~claude-alpha`;
+      tmuxKill(real); tmuxKill('claude-alpha');       // an earlier file's leftover
+      tmuxNew(real, `${DIR}/ws/alpha`, ['sleep', '600']);
+      const onNode = await until(async () =>
+        ((await api('/api/status')).sessions || []).find(s => s.node === 'agentbox'), 45000, 500);
+      ok(onNode && onNode.name === 'claude-alpha' && onNode.node_name === real,
+         `a session in the node's tmux is listed within a heartbeat, under this container's name for it (${onNode?.name} on ${onNode?.node})`);
+      ok(onNode && onNode.cwd === `${DIR}/ws/alpha` && onNode.claude && 'state' in onNode.claude,
+         '...with its directory and its Claude state, like a local one');
+      const cw = (await api('/api/status')).claude_with || {};
+      ok((cw.alpha || []).includes('test'),
+         '...and the project row counts it: the account has a session on alpha');
+      const k = await api('/api/session', { action: 'kill', session: 'claude-alpha', node: onNode?.node_id });
+      ok(k.ok && k.queued, `ending it from the card is queued for the agent (${JSON.stringify(k)})`);
+      const gone = await until(async () => {
+        // display-message on a name tmux cannot find prints nothing and
+        // exits 0 (measured), so "gone" is the name no longer echoing back.
+        try { return tmuxFmt(real, '#{session_name}') === real ? null : true; } catch { return true; }
+      }, 30000, 500);
+      ok(gone === true, '...and the agent ends it in the node\'s tmux');
     }
     const outside = await relay({ argv: ['version'], cwd: '/etc' });
     ok(outside.status === 200 && outside.code === 0 && !/etc/.test(outside.out),

@@ -1425,6 +1425,22 @@ def heartbeat(nid, sample, addr, running=0):
         ag["addr"] = addr
     rep = n.get("reported") or {}
     rep["sample"] = clean
+    # The node's tmux sessions (roadmap #24), for the Sessions card: name,
+    # whether a client is attached, the active pane's directory and title
+    # (a Claude session reports its state through the title). Whitelisted
+    # like everything a node says; absent when the agent did not send it.
+    if isinstance(s.get("sessions"), list):
+        rep["sessions"] = []
+        for row in s["sessions"][:64]:
+            if not isinstance(row, dict):
+                continue
+            name = re.sub(r"[^A-Za-z0-9_~.:-]", "", str(row.get("name") or ""))[:120]
+            if not name:
+                continue
+            rep["sessions"].append({
+                "name": name, "attached": bool(row.get("attached")),
+                "cwd": str(row.get("cwd") or "")[:300],
+                "title": str(row.get("title") or "")[:200]})
     for role, free in clean["stores"].items():
         if role in rep.get("stores", {}):
             rep["stores"][role]["free_mb"] = free
@@ -1633,6 +1649,39 @@ def ask_hello(node_id):
             _wake.notify_all()
 
 
+# Sessions to end on a node, by node id, until its agent's next poll takes
+# them. In memory like the hello requests: a kill nobody delivered within a
+# poll is one the operator will press again, and a restart should forget it.
+_kills = {}
+
+
+def session_kill(node_id, name):
+    """End a tmux session on a node: queued for the agent's held poll, and
+    the poll woken so it goes now. The name is the node's own (the session
+    account's prefix included) — the page's name for it is translated back
+    by the caller."""
+    n = node(node_id)
+    if not n or n["kind"] != "agent":
+        return {"error": "no such node"}
+    with _wake:
+        _kills.setdefault(node_id, set()).add(str(name)[:120])
+        _wake.notify_all()
+    return {"ok": True, "queued": True}
+
+
+def node_sessions():
+    """{node id: (name, [session rows])} for every online agent node whose
+    heartbeat carried its tmux sessions (roadmap #24)."""
+    out = {}
+    for n in node_list():
+        if n["kind"] != "agent" or n["state"] != "online" or not n.get("live"):
+            continue
+        rows = (n.get("reported") or {}).get("sessions")
+        if isinstance(rows, list):
+            out[n["id"]] = (n["name"], rows)
+    return out
+
+
 def job_next(node_id, wait, runner="node"):
     """The oldest queued job this node may take, for this runner, else wait
     up to `wait` seconds for one — or for a cancel request, which comes back
@@ -1669,6 +1718,13 @@ def job_next(node_id, wait, runner="node"):
                     "state IN ('assigned', 'running')", (node_id,))]
                 if asked:
                     return {"cancel": asked}
+                # ...and the sessions the operator has ended from the
+                # Sessions card (roadmap #24): a node's tmux is the
+                # session account's on that machine, so the agent kills
+                # them, and the held poll is how it hears at once.
+                kills = _kills.pop(node_id, None)
+                if kills:
+                    return {"kill_sessions": sorted(kills)}
                 # ...and a request for a fresh census, when something has
                 # been refused on the strength of an old one. The agent says
                 # hello every ten minutes, which is fine for a display and

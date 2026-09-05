@@ -1631,9 +1631,15 @@ account. The project row carries the same decision (`session_at`,
 `session_why`), so the Claude button is dead with the sentence before
 anything is asked. provision.sh filters 7681/7682 to the controller's
 address with an nftables table of its own, re-applied at boot by a unit.
-What the controller cannot see for a node's sessions: who is in one (the
-row says "sessions run on <node>" instead), and the one-Anthropic-account
-rule, which is the node's own to keep. Left to 10c: the hooks posting to
-the API instead of writing `/config` — which is also how the channel learns
-a session started there — and the image shedding what no session here
-needs.
+The node's sessions are on the Sessions card too: the agent's heartbeat
+carries the session account's tmux sessions (name, attached, directory,
+pane title), the controller lists them beside its own under its own naming
+rule — the owner's bare, everybody else's prefixed, `node_name` keeping the
+node's — each with an "on <node>" pill, claude_with and the project rows
+count them, and ending one queues a kill the agent's held poll takes at
+once (`nodes.session_kill`, `{"kill_sessions": [...]}` in the work reply).
+What the controller still cannot do for a node's session: send keys into
+it (the user role's console), and the one-Anthropic-account rule, which is
+the node's own to keep. Left to 10c: the hooks posting to the API instead
+of writing `/config` — which is also how the channel learns a session
+started there — and the image shedding what no session here needs.

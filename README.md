@@ -1306,7 +1306,9 @@ session's own token. The terminal proxy sends a bound project's session to
 that node when its row says the half is up and `/workspace` is mounted, and
 refuses with the reason — on the row's button and in the terminal — when
 the node cannot take one, rather than starting it on the wrong machine; a
-project with no node keeps its sessions here. What a project can actually do on its node is
+project with no node keeps its sessions here. A node's sessions ride its
+heartbeat onto the Sessions card with an "on <node>" pill, and ending one
+there reaches the node's agent within a poll. What a project can actually do on its node is
 what is **installed** there: the row lists the toolchains its census found,
 and the Tools tab's node picker is where more are added. (Underneath, the
 node still refuses a job asking for something it did not enrol with — the

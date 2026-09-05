@@ -1424,14 +1424,23 @@ class Agent:
             # full length whether or not anything is running. The count in
             # the sample is for the row's numbers, not for placement.
             wait = self.poll
-            st, r = self.ctl.call("work", {"sample": self.sampler.sample(self.state, n),
-                                           "running": n, "wait": wait},
+            sample = self.sampler.sample(self.state, n)
+            # The sessions this node runs ride the heartbeat (roadmap #24),
+            # so the dashboard's Sessions card lists them beside its own.
+            if self.ttyd:
+                sample["sessions"] = self.sessions_now()
+            st, r = self.ctl.call("work", {"sample": sample, "running": n, "wait": wait},
                                   timeout=wait + 15)
             if st == 204:
                 continue
             if st == 200 and r.get("cancel"):
                 # Not a job: the ids of jobs here the operator has stopped.
                 self.cancel([str(i) for i in r["cancel"]])
+                continue
+            if st == 200 and r.get("kill_sessions"):
+                # ...or sessions here the operator ended from the Sessions
+                # card: the session account's tmux is only reachable as it.
+                self.kill_sessions([str(x) for x in r["kill_sessions"]])
                 continue
             if st == 200 and r.get("hello"):
                 # The controller refused something on the strength of a
@@ -1776,6 +1785,47 @@ class Agent:
         self.session_bundle = self.session_digest or digest
         self.session_tried = time.time()
         self.session_start(into)
+
+    def _tmux(self, argv, timeout=10):
+        """tmux as the session account — its server, its sessions. The
+        environment is the account's own (HOME and the default socket
+        path follow the uid), not this process's: the agent under systemd
+        has no TMUX_TMPDIR and must not inherit one from a test."""
+        env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+               "LANG": "C.UTF-8"}
+        for k in ("TMUX_TMPDIR",):
+            if k in os.environ:
+                env[k] = os.environ[k]
+        who = self.as_user(env, self.session_account())
+        if not who:
+            env["HOME"] = os.path.expanduser("~")
+        try:
+            p = subprocess.run(["tmux", *argv], env=env, capture_output=True, text=True,
+                               timeout=timeout, check=False, **who)
+        except (OSError, subprocess.SubprocessError, RuntimeError):
+            return None
+        return p.stdout if p.returncode == 0 else None
+
+    def sessions_now(self):
+        """The session account's tmux sessions, for the heartbeat: name,
+        attached, the active pane's directory and title. Empty when the
+        server is not up, which is the normal state of a node nobody has
+        opened a terminal on yet."""
+        out = self._tmux(["list-panes", "-a", "-F",
+                          "#{session_name}\t#{pane_active}\t#{session_attached}\t"
+                          "#{pane_current_path}\t#{pane_title}"])
+        rows = []
+        for line in (out or "").splitlines():
+            parts = line.split("\t", 4)
+            if len(parts) == 5 and parts[1] == "1":
+                rows.append({"name": parts[0], "attached": parts[2].strip() not in ("", "0"),
+                             "cwd": parts[3], "title": parts[4]})
+        return rows[:64]
+
+    def kill_sessions(self, names):
+        for name in names:
+            log(f"sessions: ending {name} — asked from the dashboard")
+            self._tmux(["kill-session", "-t", "=" + name])
 
     def session_check(self):
         """Once a loop: a ttyd that died is started again, not more often

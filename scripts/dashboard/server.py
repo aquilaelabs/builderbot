@@ -1801,6 +1801,39 @@ def tmux_sessions():
     return rows
 
 
+def node_tmux_sessions():
+    """The sessions running on nodes (roadmap #24), shaped like this
+    container's own so the Sessions card, the project rows and claude_with
+    read them the same way — plus `node`, the name of the machine.
+
+    NAMED BY THIS CONTAINER'S RULE. On a node every account is prefixed,
+    the owner included; here the owner's sessions are the bare names, and
+    everything on the page — the row's "is my session live", the labels,
+    the kill dialog — is written against that. So the owner's node sessions
+    are shown bare, and `node_name` keeps what the node calls it, which is
+    what a kill has to send back. Nothing on a node is unowned, so an
+    unprefixed name there is not a session of anybody's and is dropped.
+    """
+    if NODES_OK:
+        return []
+    owner = users.uid_of(users.get(users.owner_name() or "")) if users.owner_name() else ""
+    rows = []
+    for nid, (nname, sess) in nodes.node_sessions().items():
+        for s in sess:
+            real = s.get("name") or ""
+            who = tmux_owner(real)
+            if not who:
+                continue
+            name = tmux_base(real) if who == owner else real
+            row = {"name": name, "node_name": real, "node": nname, "node_id": nid,
+                   "attached": bool(s.get("attached")), "cwd": s.get("cwd", "")}
+            if tmux_base(real).startswith("claude-"):
+                state, task = claude_state(s.get("title", ""))
+                row["claude"] = {"state": state, "task": task}
+            rows.append(row)
+    return rows
+
+
 def last_stop():
     """Project -> transcript id, as recorded by the supervisor on its way down.
 
@@ -2660,7 +2693,7 @@ def snapshot(who):
     # everything sees the unowned ones too — terminals opened before accounts,
     # or by something that is not a browser.
     mine, seen = users.uid_of(who), {p["name"] for p in ps}
-    sessions = [s for s in tmux_sessions()
+    sessions = [s for s in tmux_sessions() + node_tmux_sessions()
                 if _session_visible(s["name"], mine, seen, users.sees_all(who))]
     login = signin.state()
     # Each shell's git context, resolved here where WORKSPACE is known: the
@@ -5403,6 +5436,17 @@ class Handler(BaseHTTPRequestHandler):
         # instead made the caller that wants a clean slate (Sign in, which ends
         # the sign-in terminal before starting a new flow) report a failure for
         # the ordinary case of there being nothing to end.
+        # A session on a node (roadmap #24): the kill goes to its agent
+        # through the held poll, under the name the node knows it by, and
+        # the row disappears with the next heartbeat. By node id when the
+        # row said which — the same name can exist here and there — and by
+        # name alone for a caller that only knows the name (a tab closing).
+        want_node = str(req.get("node") or "")
+        on_node = next((s for s in node_tmux_sessions() if s["name"] == session
+                        and (not want_node or s["node_id"] == want_node)), None)
+        if on_node and (want_node or session not in {s["name"] for s in tmux_sessions()}):
+            r = nodes.session_kill(on_node["node_id"], on_node["node_name"])
+            return self._json(r, 400 if r.get("error") else 200)
         if session not in {s["name"] for s in tmux_sessions()}:
             return self._json({"code": 0, "out": "", "err": "", "gone": True})
         return self._json(run(["tmux", "kill-session", "-t", session], timeout=10))
