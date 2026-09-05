@@ -26,11 +26,13 @@
 # to do with the session. The dashboard being up early costs nothing; sessions
 # being up early costs that.
 #
-# It refuses to start with neither an account nor DASHBOARD_AUTH to make the
-# first one. That refusal is the point: this serves an interactive shell
-# into a container holding a loaded ssh-agent and read-write mounts of every
-# project, so an unauthenticated instance on a LAN would hand all of that to
-# anyone who can reach the port. Failing loudly beats defaulting to open.
+# No credential is needed to START it. A container with no accounts serves
+# the first-run screen and nothing else until somebody claims it, which is
+# what the old DASHBOARD_AUTH gate was protecting — and that gate outlived
+# the variable it read: with DASHBOARD_AUTH gone from the template, its
+# unguarded expansion below killed this hook under set -u, and an updated
+# container came up with no dashboard at all (bug #55). The variable is read
+# by nothing here any more; bb still honours one passed for a single command.
 #
 set -euo pipefail
 . /opt/builderbot/scripts/lib/common.sh
@@ -55,23 +57,8 @@ TTYD_PORT="${DASHBOARD_TTYD_PORT:-7681}"
 TTYD_RO_PORT="${DASHBOARD_TTYD_RO_PORT:-$((TTYD_PORT + 1))}"
 DASH=/opt/builderbot/scripts/dashboard
 
-# A credential is required, but DASHBOARD_AUTH is only one of the two ways to
-# have one now: once accounts exist the store owns them and the variable is
-# ignored (docs/users.md), so an operator who removes it after the first boot
-# must not lose their dashboard.
-if [ -s "${DASHBOARD_STATE:-/config}/users.json" ]; then
-    :
-elif [ -z "${DASHBOARD_AUTH:-}" ]; then
-    warn "no accounts yet and DASHBOARD_AUTH is empty — dashboard NOT started."
-    warn "Set DASHBOARD_AUTH=user:password for the first boot; it creates the owner"
-    warn "account and is then no longer read. This exposes a shell with your ssh"
-    warn "keys and every mounted project; it will not run without a credential."
-    exit 0
-else
-    case "$DASHBOARD_AUTH" in
-        *:*) ;;
-        *) warn "DASHBOARD_AUTH must be user:password — dashboard NOT started."; exit 0 ;;
-    esac
+if [ ! -s "${DASHBOARD_STATE:-/config}/users.json" ]; then
+    log "dashboard: no accounts yet — the first page it serves asks you to make the owner. Do it now."
 fi
 
 for bin in ttyd tmux; do
@@ -193,7 +180,6 @@ nohup ttyd --port "$TTYD_RO_PORT" --interface 127.0.0.1 \
 # 8kB buffer fills, which for a mostly-idle server can be hours.
 nohup env DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT="$TTYD_PORT" \
     DASHBOARD_TTYD_RO_PORT="$TTYD_RO_PORT" \
-        DASHBOARD_AUTH="$DASHBOARD_AUTH" \
         python3 -u "$DASH/server.py" 2>&1 \
     | /opt/builderbot/scripts/lib/log-split.sh "$(bb_log_dir)/dashboard.log" dashboard &
 

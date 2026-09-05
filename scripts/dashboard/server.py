@@ -1273,6 +1273,15 @@ def _github_remote(remotes):
 IGNORE_MARKER = ".bbignore"
 
 
+def _session_at(name):
+    t = session_target(name)
+    if t["where"] == "node":
+        return {"session_at": t["name"], "session_why": ""}
+    if t["where"] == "refused":
+        return {"session_at": t["name"], "session_why": t["why"]}
+    return {"session_at": "", "session_why": ""}
+
+
 def project_list(who):
     """Every directory under /workspace that is a project, with what is wrong
     with it. Named _list because `projects` is the module beside this one that
@@ -1450,6 +1459,11 @@ def project_list(who):
                     "prefs": project_prefs.get(d.name, {"model": "", "effort": ""}),
                     "push_how": projects.push_how(d.name),
                     "last_claude": last_claude(d, d.name, stopped),
+                    # Where this project's sessions run (roadmap #24): the
+                    # node's name, or "" for here — and why the button is
+                    # dead when its node cannot take one. The proxy decides
+                    # the same way, so the row and the refusal agree.
+                    **_session_at(d.name),
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
                     "memories": memory.count(d.name),
@@ -1559,6 +1573,64 @@ def claude_state(title):
 # stripped before the real one is put on. Anchored, so it can only ever take
 # a prefix off the front.
 _ARG_OWNER = re.compile(r"^u:[^:]*:")
+
+
+def _arg_project(arg):
+    """The project a terminal argument is about, or "" (the workspace
+    shell, a named scratch session)."""
+    if arg.startswith("claude:"):
+        return arg[len("claude:"):].split(":")[0]
+    if arg.startswith("shell:"):
+        return arg[len("shell:"):]
+    if arg.startswith("sh:"):
+        return arg.split(":", 2)[2] if arg.count(":") >= 2 else ""
+    return ""
+
+
+def session_target(project):
+    """Where a session on this project runs (roadmap #24, phase 10b):
+
+        {"where": "local"}                                   — this container
+        {"where": "node", "id", "name", "host", "port", "ro_port"}
+        {"where": "refused", "name", "why"}                  — bound to a node
+                                                               that cannot take one
+
+    A project bound to a node whose census says the session half is up and
+    the projects share is mounted gets its session THERE. One bound to a
+    node that is offline, runs no sessions or mounts no /workspace is
+    REFUSED rather than quietly started here: the tree is the same share
+    either way, but a session started on the wrong machine has the wrong
+    toolchains and its transcripts land in the wrong home, and switching
+    later splits a conversation across two boxes. The sentence says which
+    of the three it was and what fixes it. A project with no node keeps its
+    session here, as it always has.
+    """
+    nid = (prefs.get(project) or {}).get("node") or "" if project else ""
+    if not nid or NODES_OK:
+        return {"where": "local"}
+    n = nodes.node(nid)
+    if not n or n.get("kind") == "local":
+        return {"where": "local"}
+    name = n.get("name") or nid
+    rep = n.get("reported") or {}
+    se = rep.get("session")
+    if n.get("state") != "online" or not n.get("live", True) and n.get("state") != "online":
+        why = f"{project}'s sessions run on {name}, which is {n.get('state') or 'not online'}"
+    elif not isinstance(se, dict):
+        why = (f"{project}'s sessions run on {name}, whose agent predates sessions on a "
+               "node — update the agent from the Nodes tab")
+    elif not se.get("up"):
+        why = (f"{project}'s sessions run on {name}, which runs none yet"
+               + (f": {se['why']}" if se.get("why") else
+                  " — provision it with --session-user"))
+    elif not se.get("workspace"):
+        why = (f"{project}'s sessions run on {name}, which does not mount the projects "
+               "share at /workspace — add the mount on its row on the Nodes tab")
+    else:
+        return {"where": "node", "id": nid, "name": name, "host": nodes.route_host(nid),
+                "port": int(se.get("port") or 0), "ro_port": int(se.get("ro_port") or 0)}
+    return {"where": "refused", "name": name,
+            "why": why + ". Unbind the node in the project's settings dialog to work here instead."}
 
 # A session name without the account that owns it. Shell sessions are named
 # `<uid>~shell-…` since roadmap #26 — two people opening a terminal on one
@@ -2999,6 +3071,12 @@ class Handler(BaseHTTPRequestHandler):
         uid = users.uid_of(me)
         if not uid or not project:
             return ""                     # not an account: nothing to scope
+        # A session on a node is in THAT machine's tmux with that account's
+        # login there, neither of which this container can see: the
+        # announcement and the one-Anthropic-account rule are the node's
+        # own to make (phase 10c gives its hooks the API for the first).
+        if session_target(project)["where"] != "local":
+            return ""
         # Announced to everybody sharing the project, ONCE. Three things make
         # one start look like several, and the first two were what put the
         # same line in the channel twice:
@@ -3044,7 +3122,7 @@ class Handler(BaseHTTPRequestHandler):
         read-only twin for an account that may not have a shell."""
         return TTYD_RO_PORT if users.may(self._who(), "terminal") else TTYD_PORT
 
-    def _scoped_arg(self, rest):
+    def _scoped_arg(self, rest, node=False):
         """Stamp the terminal's argument with the account that asked for it.
 
         ttyd runs bb-tty with whatever `?arg=` says, so this is where a
@@ -3061,7 +3139,8 @@ class Handler(BaseHTTPRequestHandler):
         head, sep, query = rest.partition("?")
         if not sep or "arg=" not in query:
             return rest
-        uid = users.uid_of(self._who())
+        me = self._who()
+        uid = users.uid_of(me)
         out = []
         for kv in query.split("&"):
             k, eq, v = kv.partition("=")
@@ -3069,6 +3148,22 @@ class Handler(BaseHTTPRequestHandler):
                 want = _ARG_OWNER.sub("", urllib.parse.unquote_plus(v))
                 v = urllib.parse.quote(f"u:{uid}:{want}" if uid else want,
                                        safe="")
+                out.append(f"{k}{eq}{v}")
+                # Going to a NODE (roadmap #24), two more: the account's
+                # name, since the node has no users.json to look one up in,
+                # and a session token for the project, since only this
+                # container's key can mint one. ttyd hands each ?arg= to
+                # bb-tty as one more argument, and bb-tty takes them only
+                # in the shapes it expects. The token is the same scoped
+                # one the launcher would have minted here — one project,
+                # user rights, an expiry — never the account's credential.
+                project = _arg_project(want)
+                if node and uid and project:
+                    out.append("arg=" + urllib.parse.quote(
+                        f"tok:{users.mint_session(project)}", safe=""))
+                    out.append("arg=" + urllib.parse.quote(
+                        f"name:{me.get('name', '')}", safe=""))
+                continue
             out.append(f"{k}{eq}{v}")
         return head + "?" + "&".join(out)
 
@@ -3101,7 +3196,16 @@ class Handler(BaseHTTPRequestHandler):
             # asked for is taken. The name is the whole value of the record —
             # "somebody else has it" tells you nothing you can act on.
             return self._json({"error": held}, 409)
-        rest = self._scoped_arg(self.path[len("/term"):])
+        # Where this terminal lives (roadmap #24, phase 10b): a project bound
+        # to a node whose session half is up is relayed to THAT machine's
+        # ttyd — the same two ports, the same bb-tty, with the account and
+        # its token stamped into the URL — and everything else stays on the
+        # loopback. session_target says why a node cannot take one, and the
+        # row's button carries the same sentence.
+        target = session_target(_arg_project(_term_arg(self.path[len("/term"):])))
+        if target["where"] == "refused":
+            return self._json({"error": target["why"]}, 503)
+        rest = self._scoped_arg(self.path[len("/term"):], node=target["where"] == "node")
         if not rest or rest.startswith("?"):
             # ttyd's client resolves "token" and "ws" against the page URL,
             # so the page must live under a trailing slash.
@@ -3110,10 +3214,19 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        if target["where"] == "node":
+            writable = not users.may(self._who(), "terminal")
+            upstream = (target["host"], target["port"] if writable else target["ro_port"])
+        else:
+            upstream = ("127.0.0.1", self._ttyd_port())
         try:
-            up = socket.create_connection(("127.0.0.1", self._ttyd_port()),
-                                          timeout=5)
+            up = socket.create_connection(upstream, timeout=5)
         except OSError:
+            if target["where"] == "node":
+                return self._json({"error": f"{target['name']} did not answer on "
+                                            f"{upstream[0]}:{upstream[1]} — its ttyd is "
+                                            "reported up, but this container could not "
+                                            "reach it. A firewall between the two?"}, 502)
             return self._json({"error": "the terminal server is not running"}, 502)
         # The connect timeout must not become a *relay* timeout: it stays on
         # the socket, and a sendall that blocks longer than it — a big paste

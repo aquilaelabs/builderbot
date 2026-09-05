@@ -210,36 +210,6 @@ def owner_name():
     return ""
 
 
-# --- seeding, once ---------------------------------------------------------
-
-def seed(auth):
-    """Make the owner from DASHBOARD_AUTH, on a boot that finds no store.
-
-    Once. After this the file is the truth and the variable is ignored, which
-    is the unhardwiring pattern the node path mapping used — and it matters
-    that it stops being honoured: a credential that keeps working forever is a
-    back door rather than a migration.
-
-    Returns what happened, for the boot log to say.
-    """
-    with _lock:
-        d = load()
-        if d["users"]:
-            return {"seeded": False, "why": "the store already has accounts"}
-        name, _, password = str(auth or "").partition(":")
-        if not name or not password:
-            return {"seeded": False, "why": "DASHBOARD_AUTH is not user:password"}
-        if not NAME_RE.match(name):
-            return {"seeded": False, "why": f"{name!r} is not a usable account name"}
-        d["users"][name] = {"uid": mint_uid(), "role": "owner",
-                            "projects": ["*"],
-                            "password": hash_password(password),
-                            "created": int(time.time()), "seen": 0,
-                            "prefs": {}}
-        _save(d)
-    return {"seeded": True, "name": name}
-
-
 # --- signing in ------------------------------------------------------------
 
 def authenticate(name, password):

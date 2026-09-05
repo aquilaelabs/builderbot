@@ -1618,7 +1618,18 @@ above, in order:
    (0700 root) and never enters a session's environment — the sessions get
    the controller's URL and certificate pin, and nothing else of the agent's.
 
-Left to phase 10b: the proxy relay, the firewall (ttyd on the node is open
-on the LAN until then), and the Claude button choosing where a session goes.
-Left to 10c: the hooks posting to the API instead of writing `/config`, and
-the image shedding what no session here needs.
+Phase 10b is built too: `server.session_target` decides per project —
+local, the node (`reported.session.up` and `/workspace` mounted), or
+refused with the reason (offline, no session half, no mount) rather than
+quietly started on the wrong machine — and `_term_proxy` dials the node's
+ttyd on the address it enrolled from, stamping `tok:` and `name:` after the
+account. The project row carries the same decision (`session_at`,
+`session_why`), so the Claude button is dead with the sentence before
+anything is asked. provision.sh filters 7681/7682 to the controller's
+address with an nftables table of its own, re-applied at boot by a unit.
+What the controller cannot see for a node's sessions: who is in one (the
+row says "sessions run on <node>" instead), and the one-Anthropic-account
+rule, which is the node's own to keep. Left to 10c: the hooks posting to
+the API instead of writing `/config` — which is also how the channel learns
+a session started there — and the image shedding what no session here
+needs.
