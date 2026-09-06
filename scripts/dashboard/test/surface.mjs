@@ -71,7 +71,7 @@ const SURFACE = [
   'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderPackagesInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',
-  'rnDrawPrefs', 'rnFillPrefs', 'rnLoadAuth', 'rnShow', 'rnSubmit',
+  'rnDrawPrefs', 'rnFillNode', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnShow', 'rnSubmit',
   'roomForTab', 'saveCards', 'saveLayout', 'sendCode', 'sendKey',
   'sessionLabels', 'sessionOf', 'setBadge', 'setLocked', 'setPinned',
   'setProjectPinned', 'setView', 'shortUptime', 'shortUptime', 'shellCtx', 'show', 'showInStack',

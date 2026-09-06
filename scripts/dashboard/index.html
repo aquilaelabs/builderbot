@@ -4449,14 +4449,27 @@ function rnFillPrefs(p){
                node: p?.prefs?.node || "",
                build: p?.prefs?.build || "", test: p?.prefs?.test || "",
                outputs: (p?.prefs?.outputs || []).join(", ")};
-  // The project's node: every node but this container, because local can
-  // host neither a build (no workspace of its own) nor, on purpose, a
-  // docker daemon. Shown when there is one to pick; "none" is spelled as an
-  // option so clearing the binding is a pick rather than a mystery.
-  {
+  rnFillNode();
+  rnFillPrefsRest(p);
+}
+
+// The project's node: every node but this container, because local can
+// host neither a build (no workspace of its own) nor, on purpose, a
+// docker daemon. Shown when there is one to pick; "none" is spelled as an
+// option so clearing the binding is a pick rather than a mystery.
+//
+// The list arrives on its own schedule. The first dialog opened after a
+// page load is the one that asks for it, and it fills the picker when the
+// answer lands rather than on the next opening — which is what a dialog
+// that showed no node until it was closed and opened again was: a
+// container restart, then the first press of Settings.
+function rnFillNode(){
     const sel = $("rnNode"), wrap = $("rnNodeField");
     const pick = (nodesList || []).filter(n => n.kind !== "local" && n.state !== "retired");
-    if (nodesList === null) loadNodes();
+    if (nodesList === null){
+      const opened = rnFor;
+      loadNodes().then(() => { if (opened !== null && rnFor === opened) rnFillNode(); });
+    }
     wrap.hidden = !pick.length;
     // What each node carries, on its own option: the node does everything
     // for this project, so the only question left is what is installed on it.
@@ -4466,7 +4479,9 @@ function rnFillPrefs(p){
           esc(n.name)} — ${esc(n.kind)}, ${esc(n.state)}${n.live === false ? ", quiet" : ""}${
           tools(n).length ? " · " + esc(tools(n).slice(0, 4).join(", ")) : ""}</option>`).join("");
     sel.value = pick.some(n => n.id === rnPrefWas.node) ? rnPrefWas.node : "";
-  }
+}
+
+function rnFillPrefsRest(p){
   $("rnBuildCmd").value = p?.prefs?.build || "";
   $("rnTestCmd").value = p?.prefs?.test || "";
   $("rnOutputs").value = (p?.prefs?.outputs || []).join(", ");

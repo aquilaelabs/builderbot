@@ -728,8 +728,14 @@ ok(list[0].id === 'local',
   // ---- the project's nodes, in its settings dialog (phase 6) --------------
   await page.evaluate(() => openProjectsTab());
   await page.waitForSelector('.doc .projtab [data-rn="alpha"]', { timeout: 15000 });
+  // As on the first opening after a page load: the node list has not been
+  // fetched yet. The picker used to stay hidden until the dialog was closed
+  // and opened again; it has to appear on this opening, when the list lands.
+  await page.evaluate(() => { nodesList = null; });
   await page.click('.doc .projtab [data-rn="alpha"]');
   await page.waitForSelector('#rnmodal:not([hidden])', { timeout: 10000 });
+  await page.waitForSelector('#rnNodeField:not([hidden])', { timeout: 10000 });
+  ok(true, 'the node picker appears on the first opening after a load, when the list arrives, not on the next one');
   await page.waitForFunction(id => [...document.querySelectorAll('#rnNode option')].some(o => o.value === id),
                              minted.id, { timeout: 10000 });
   ok(await page.$eval('#rnNode', s => ![...s.options].some(o => o.value === 'local') && [...s.options].some(o => /sandbox/.test(o.textContent))),
