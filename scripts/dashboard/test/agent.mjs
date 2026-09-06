@@ -1143,6 +1143,9 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     // installed packages missing on the operator's shared SDK store.
     mkdirSync(`${DIR}/agentpackages/zig`, { recursive: true });
     mkdirSync(`${DIR}/agentpackages/android/ndk`, { recursive: true });
+    // ...except a directory without the file that completes the package:
+    // playwright's browsers from before the recipe carried the module.
+    mkdirSync(`${DIR}/agentpackages/playwright/chromium-1234`, { recursive: true });
     // The store listing rides the census, which refreshes at hello — and a
     // job that touches the node ends in one, which is why installing a
     // package updates this list without waiting ten minutes. Any such job
@@ -1164,6 +1167,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(view && view.items.find(i => i.name === 'swift')?.installed === false
        && view.items.every(i => i.unknown === false),
        '...and one that is not there reads as absent, not as unknown');
+    ok(view && view.items.find(i => i.name === 'playwright')?.installed === false,
+       '...and a playwright directory without its module reads as not installed, so Install is offered (the row said installed and offered nothing)');
   }
 
   // ---- the Actions runner as a service on the node (phase 7) ----------------

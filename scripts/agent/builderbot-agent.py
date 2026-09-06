@@ -602,6 +602,19 @@ def store_dirs(state):
         out["top"] = sorted(x for x in os.listdir(store) if not x.startswith("."))[:64]
     with contextlib.suppress(OSError):
         out["android"] = sorted(os.listdir(os.path.join(store, "android")))[:64]
+    # A directory is not a package. The playwright recipe used to be its
+    # browsers alone, and a store from then has the directory without the
+    # module the recipe now carries — so the row said installed and offered
+    # nothing, while bb shot on the node could not find the module. A layout
+    # that names the file which completes it (`needs`) is checked here, and
+    # the controller reads a name in this list as not installed.
+    for entry in store_layout(state):
+        need = entry.get("needs")
+        if not need or entry.get("dir", "").startswith("android"):
+            continue
+        d = os.path.join(store, entry["dir"])
+        if os.path.isdir(d) and not os.path.exists(os.path.join(d, need)):
+            out.setdefault("incomplete", []).append(entry["name"])
     return out
 
 
@@ -1118,8 +1131,7 @@ class Job(threading.Thread):
                 # opened after this would still not find the new tool on
                 # PATH (lint-tools on bb-sandbox, measured). The loop
                 # restarts the ttyds; tmux sessions survive it.
-                if state == "succeeded":
-                    self.agent.session_renew()
+                self.agent.session_renew()
             elif self.job.get("type") == "cache-clear":
                 state, code = self.agent.cache_clear(self, spec)
             else:

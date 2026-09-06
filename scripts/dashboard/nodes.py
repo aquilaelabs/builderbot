@@ -865,7 +865,7 @@ def _census(c):
     out["packages_versions"] = {str(k)[:40]: str(v)[:40] for k, v in list(pv.items())[:40]}
     sd = c.get("store_dirs") if isinstance(c.get("store_dirs"), dict) else {}
     out["store_dirs"] = {k: [str(x)[:60] for x in (sd.get(k) or [])[:64]]
-                         for k in ("top", "android")}
+                         for k in ("top", "android", "incomplete")}
     # The android system images in the packages store, and the AVDs built on
     # each (roadmap #20). Whitelisted like store_dirs and packages_versions,
     # and for the same reason: a field the agent reports and this drops is a

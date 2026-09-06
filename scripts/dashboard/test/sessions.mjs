@@ -565,4 +565,30 @@ await page.evaluate(() => {
   if (t) dropTab(t.id);
 });
 
+// ---- the restart check drops the tabs from BEFORE the restart, only ----
+// The page notices a restart on a poll and drops its Claude tabs, whose
+// sessions ended with the container. A tab opened after the container came
+// back but before the page noticed — the operator pressed Claude, the
+// session started, the tab vanished on the next poll while Sessions still
+// listed it — carries the new boot and has to stay.
+const kept = await page.evaluate(async () => {
+  openTab({ kind: 'term', arg: 'claude:alpha', label: 'Claude: alpha' });
+  const before = tabs.filter(t => t.arg === 'claude:alpha').length;
+  while (refreshBusy) await new Promise(r => setTimeout(r, 50));   // a poll in flight would swallow the call
+  bootSeen = 'the-run-before';
+  await refresh();
+  const t = tabs.find(t => t.arg === 'claude:alpha');
+  return { before, after: t ? 1 : 0, stamped: t?.boot === state.boot };
+});
+ok(kept.before === 1 && kept.after === 1 && kept.stamped,
+   'a Claude tab opened under the current boot survives the page noticing a restart');
+const dropped = await page.evaluate(async () => {
+  tabs.find(t => t.arg === 'claude:alpha').boot = 'the-run-before';
+  while (refreshBusy) await new Promise(r => setTimeout(r, 50));
+  bootSeen = 'the-run-before';
+  await refresh();
+  return tabs.filter(t => t.arg === 'claude:alpha').length;
+});
+ok(dropped === 0, '...and one stamped with the boot before it is dropped, as before');
+
 await done(browser);
