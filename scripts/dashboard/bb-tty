@@ -628,14 +628,21 @@ case "$target" in
             [ "$(claude auth status --json 2>/dev/null \
                  | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != false ]
         }
-        # On a node the account's login is TAKEN FROM THE CONTROLLER on the
-        # first session (roadmap #24): the token this terminal carries is
-        # minted for the account, and `bb login` fetches that account's
-        # credentials into this home with it. So signing in once, on the
-        # Doctor card, signs every node in. Only when the fetch finds
-        # nothing does this ask for a sign-in here.
-        if on_node && ! logged_in; then
-            bb login || true
+        # On a node the account's login is KEPT IN STEP WITH THE CONTROLLER
+        # on every connection (roadmap #24, bug #64): the token this terminal
+        # carries is minted for the account, and `bb login --sync` moves the
+        # newer grant whichever way it is going. So signing in once, on the
+        # Doctor card, signs every node in — and a grant this node refreshed
+        # goes back before the controller's copy is the stale one, which is
+        # what used to sign the operator out over there.
+        #
+        # Every connection, not only when this home is signed out: the
+        # refresh happens inside a running session, and opening the tab is
+        # the moment the two can be compared. Never fatal and silent when
+        # nothing moved — a controller that is down costs a session nothing.
+        if on_node; then
+            bb login --sync >/dev/null 2>&1 || true
+            ! logged_in && { bb login || true; }
         fi
         if ! logged_in; then
             if on_node; then

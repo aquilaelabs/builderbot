@@ -24,6 +24,7 @@ import selectors
 import shlex
 import socket
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -3779,6 +3780,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._jobs(req)
         if path == "/api/v1/bb":
             return self._bb_relay(req)
+        if path == "/api/v1/claude-login":
+            return self._claude_login(req)
         if path == "/api/v1/hook":
             return self._hook(req)
         if path.startswith("/api/lock"):
@@ -4002,10 +4005,11 @@ class Handler(BaseHTTPRequestHandler):
         r = jobs.cancel(self._principal(), field(req, "id"))
         return self._json(r, 400 if r.get("error") else 200)
 
-    def _claude_login(self):
-        """This account's Claude login, for a session of theirs on a node
-        (roadmap #24): the credentials file from the account's home here,
-        so the node's copy of that home is signed in the same.
+    def _claude_login(self, req=None):
+        """This account's Claude login, both directions (roadmap #24, bug
+        #64): the credentials file from the account's home here, so the
+        node's copy of that home is signed in the same — and, with a body,
+        the node handing back a NEWER one.
 
         Only a session token minted FOR an account fetches it — the one the
         terminal proxy stamps into a node-bound terminal's URL — and only
@@ -4017,11 +4021,20 @@ class Handler(BaseHTTPRequestHandler):
         not signed in already (bb login decides that on the node).
 
         The file is the OAuth grant — a refresh token as well as the access
-        token — and whether Claude Code rotates the refresh token on use is
-        not documented. Two machines holding one grant could then sign each
-        other out on refresh, which is why the node takes a copy only when
-        it has none; if that turns out to bite, the fallback is what it
-        always was: sign in on the node from a shell.
+        token — and the refresh DOES rotate it: the operator ran sessions on
+        a node for a day and came back to a controller that said it was
+        signed out, because the node had refreshed and this copy still held
+        a refresh token the server had retired (bug #64). Two machines
+        cannot each keep a copy and expect both to work, so the copies are
+        kept in step instead: whichever machine refreshes has the newer
+        grant and puts it back here, and this container stays the one place
+        that holds the account's current one.
+
+        Newer means a later `expiresAt`, which is what a refresh moves. An
+        older grant is refused rather than stored, so a node that has been
+        offline for a week cannot undo a sign-in that happened while it was
+        away, and the copy it replaces is kept beside it for one round —
+        a bad write signs somebody out, and that file is the way back.
         """
         me = self._who()
         if not me:
@@ -4032,6 +4045,8 @@ class Handler(BaseHTTPRequestHandler):
                                         "minted for an account — the one a node-bound "
                                         "terminal carries"}, 403)
         home = home_for(uid)
+        if req is not None:
+            return self._claude_login_put(req, home)
         path = Path(home) / ".claude" / ".credentials.json" if home else None
         if not path or not path.is_file():
             return self._json({"error": "this account is not signed in to Claude on the "
@@ -4043,6 +4058,52 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "the credentials file here could not be read"}, 500)
         return self._json({"credentials": text,
                            "email": claude_auth(home=home).get("email") or ""})
+
+    @staticmethod
+    def _grant_at(text):
+        """When a grant stops being good, as the number a refresh moves.
+        0 for anything that is not one, so a real grant always wins."""
+        try:
+            return int((json.loads(text).get("claudeAiOauth") or {}).get("expiresAt") or 0)
+        except (ValueError, AttributeError, TypeError):
+            return 0
+
+    def _claude_login_put(self, req, home):
+        """A node handing back the grant it refreshed."""
+        if not home:
+            return self._json({"error": "this account has no home here"}, 500)
+        text = req.get("credentials")
+        if not isinstance(text, str) or len(text) > 65536:
+            return self._json({"error": "a credentials file is a JSON string"}, 400)
+        mine = self._grant_at(text)
+        if not mine:
+            return self._json({"error": "that is not a Claude grant — no claudeAiOauth.expiresAt"}, 400)
+        path = Path(home) / ".claude" / ".credentials.json"
+        have = ""
+        with contextlib.suppress(OSError):
+            have = path.read_text()
+        theirs = self._grant_at(have)
+        if theirs and theirs >= mine:
+            return self._json({"ok": True, "stored": False,
+                               "why": "the grant here is the same or newer"})
+        try:
+            path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            if have:
+                # One round of history, because a bad write signs the
+                # operator out and this is the way back.
+                with contextlib.suppress(OSError):
+                    (path.parent / ".credentials.json.prev").write_text(have)
+                    os.chmod(path.parent / ".credentials.json.prev", 0o600)
+            tmp = path.with_suffix(".json.new")
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                f.write(text)
+            os.replace(tmp, path)
+        except OSError as e:
+            return self._json({"error": f"could not store it: {e}"}, 500)
+        print(f"[dashboard] claude login: a node handed back a newer grant for {home}",
+              file=sys.stderr, flush=True)
+        return self._json({"ok": True, "stored": True})
 
     def _hook(self, req):
         """What a session's hooks have to say, from a NODE (roadmap #24).

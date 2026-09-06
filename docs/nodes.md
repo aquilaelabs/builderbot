@@ -1673,6 +1673,15 @@ A node's sessions outlive a controller restart on purpose (the tmux is the
 node's); what must not is the idle rule — the Settings tab's "end a Claude
 session after N idle minutes" rides the hello reply into node.json and the
 agent enforces it on its own tmux, controller up or down (idle.py).
+The account's CLAUDE LOGIN is kept in step rather than copied once: the
+grant is an OAuth pair and a refresh rotates the refresh token, so two
+machines each holding a copy sign each other out — which is exactly what
+happened after a day of node sessions (bug #64). `bb login --sync` runs on
+every connection and moves whichever grant has the later `expiresAt`, up or
+down; an older one is refused rather than stored, and the copy it replaces
+is kept beside it for one round. The controller stays the one place that
+holds the account's current grant, and a machine that has been away cannot
+undo a sign-in that happened while it was gone.
 A CONTAINER node — this image in the node role — is a guest in §20's terms
 before the class exists on the record: no systemd, so its runner is run.sh
 in the foreground under the agent (supervised, taken down with it, reported

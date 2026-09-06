@@ -363,7 +363,9 @@ bb changelog add "..."   log what a change means for the person using it; the
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
-bb login           Claude Code subscription auth flow
+bb login           Claude Code subscription auth flow. On a node it first syncs
+                   this account's login with the controller's, newer wins
+bb login --sync    that half alone, quietly — what every connection already does
 bb git push|fetch|pull|ls-remote [ARGS]
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
