@@ -503,10 +503,20 @@ function nodeConfSections(n){
     : failedFor("network") ? "bad" : c.dirty || (netPend && drift.network !== "unknown") ? "warn" : "";
   // .ndconf and .ndconfbody: the names the suite finds the plane by; the
   // sections are its children, so a test can read them in order.
+  // Storage and Network edit the machine's own configuration — fstab,
+  // netplan — which only a node provisioned as a sandbox (a MANAGED node,
+  // roadmap #23) hands over. A container node or a guest machine keeps its
+  // mounts and its address its own, and the tab says so rather than
+  // offering buttons the agent refuses.
+  const managed = !!rep.sandbox;
   return `<div class="ndconf"><div class="ndconfbody">
     ${nodeRunnerSection(n, c)}
-    ${docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})}
-    ${docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})}
+    ${managed
+      ? docSection("nodes", "storage", "Storage", stStatus, storage, {cls: stCls})
+        + docSection("nodes", "network", "Network", netStatus, network, {cls: netCls})
+      : `<div class="sub dim ndguest">Storage and Network are not offered: this node was not
+         provisioned as a sandbox — a container, or somebody's own machine — so its mounts
+         and its address are its own to change.</div>`}
   </div></div>`;
 }
 function meter(label, pct, right, title){
@@ -636,7 +646,9 @@ function renderNodesInto(i){
         ${nodeTools(n)}
         ${labels ? `<div class="sub ndlabels">${labels}</div>` : ""}`,
       {cls: n.kind === "agent" && n.live ? "ok" : "", open: true});
-    const plane = n.kind === "agent" && n.reported?.sandbox && !pending;
+    // Every live agent node gets the plane: the runner needs no stamp. What
+    // inside it needs one — Storage and Network — nodeConfSections decides.
+    const plane = n.kind === "agent" && !pending;
     return `
     <div class="row stack2 ndrow" data-node="${esc(n.id)}">
       <div class="grow">

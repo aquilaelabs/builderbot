@@ -1671,6 +1671,12 @@ A node's sessions outlive a controller restart on purpose (the tmux is the
 node's); what must not is the idle rule — the Settings tab's "end a Claude
 session after N idle minutes" rides the hello reply into node.json and the
 agent enforces it on its own tmux, controller up or down (idle.py).
+A CONTAINER node — this image in the node role — is a guest in §20's terms
+before the class exists on the record: no systemd, so its runner is run.sh
+in the foreground under the agent (supervised, taken down with it, reported
+by the same pgrep as a service); no bb-sandbox, so no system jobs; no root,
+so a recipe's system packages are the image's to carry. The doctor's GPU
+check runs only in that role, since a controller renders nothing.
 
 ## 20. Three rules from 6 September
 

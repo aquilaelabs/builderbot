@@ -471,7 +471,7 @@ cmd_emu() {
             ;;
         start)
             command -v emulator >/dev/null 2>&1 \
-                || die "emulator is not installed in this image"
+                || die "no emulator in this node's packages store — tick android:emulator on the Tools tab with this node picked"
             if adb devices 2>/dev/null | grep -q '^emulator-'; then
                 log "an emulator is already running"; adb devices; return 0
             fi
@@ -3475,6 +3475,11 @@ cmd_doctor() {
         skip) printf '  [skip] %s\n' "$dmsg" ;;
         *)    printf '  [skip] docker daemon: could not be probed\n' ;;
     esac
+    # The GPU is a NODE's concern (roadmap #24, 10c): a controller renders
+    # nothing — no emulator, no X server — so on one the card is not checked
+    # and not missed. The block below runs in the node role, where the
+    # emulator does, and on this image that is a container enrolled as a node.
+    if on_node; then
     # nvidia-smi is injected by the container runtime, never installed in the
     # image — its absence means no GPU was passed through.
     if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1; then
@@ -3513,6 +3518,7 @@ cmd_doctor() {
         ok=1
     else
         printf '  [skip] no nvidia gpu passed through\n'
+    fi
     fi
     if [ -n "${GITHUB_PAT:-}" ]; then
         printf '  [ok]   runner credential: GITHUB_PAT in environment (visible to sessions)\n'

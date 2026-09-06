@@ -335,7 +335,6 @@ then executes hooks and drops privileges:
 | `30-git-and-auth.sh` | git identity, GitHub host keys, `gh` auth (unshielded mode only) |
 | `35-publishing.sh` | npm publish auth, ghcr docker login (socket + PAT present) |
 | `40-projects.sh` | project report, optional per-project bootstrap |
-| `50-android.sh` | default AVD when the emulator is enabled |
 
 Your own hooks go in `config/startup.d/` on the share — `*.root.sh` runs as
 root, `*.disabled.sh` is skipped, filename order. All hooks are idempotent:
@@ -691,10 +690,12 @@ for it. (Packages left on the home volume from an older image keep working
 where they are: the startup wiring points at whichever location actually
 holds them, and says so.)
 
-Android needs no PATH help — `ANDROID_HOME` still points at
-`/opt/android-sdk`, whose package directories are symlinks into the share, so
-Gradle, Android Studio and `sdkmanager` install and find things exactly where
-they always did. The other toolchains land in their own directory under the
+Android needs no PATH help on the machine that has it: a node's agent points
+`ANDROID_HOME` at its store's `android/` directory for every job and session,
+so Gradle and `sdkmanager` install and find things in one place. (The
+controller has no Android SDK at all since it stopped building — see
+[CI runs on a node](#ci-runs-on-a-node).) The other toolchains land in their
+own directory under the
 share and are put on `PATH` by a generated `env.sh` that every shell sources;
 `bb sdk remove` is `rm -rf` of one directory, because nothing was installed
 anywhere else.
@@ -830,13 +831,13 @@ bb emu log -p        # the previous boot's log — the post-mortem after a death
 As of 2026 the supported range is **34–37** (Android 14 through 17). API 33 and
 below stopped receiving security patches in March 2026.
 
-**Where the space goes.** Nothing downloadable lives in the image: platforms,
-build-tools, the emulator and the system images are all installed into the
-[SDK share](#sdks-live-outside-the-image) and symlinked back into
-`/opt/android-sdk`, so each is downloaded **once** and a weekly `:latest`
-rebuild re-fetches none of them. Budget roughly **2 GB per API level**. If that
-is tight, `ANDROID_SYSTEM_IMAGE_VARIANT=default;x86_64` gets you smaller AOSP
-images at the price of the Google APIs.
+**Where the space goes.** Nothing Android lives in the image at all: the SDK,
+the platforms, the build-tools, the emulator and the system images are
+installed into the node's [packages store](#sdks-live-outside-the-image), so
+each is downloaded **once** and a weekly `:latest` rebuild re-fetches none of
+them. Budget roughly **2 GB per API level**. If that is tight, pick the plain
+**AOSP** flavor in the image picker instead of Google APIs — smaller, at the
+price of Play services.
 
 Two practical limits: an Android 17 phone AVD wants **4 GB of RAM minimum**, and
 `bb emu` runs one emulator at a time — this is for testing across versions in

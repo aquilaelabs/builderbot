@@ -571,24 +571,31 @@ await page.evaluate(() => {
 // back but before the page noticed — the operator pressed Claude, the
 // session started, the tab vanished on the next poll while Sessions still
 // listed it — carries the new boot and has to stay.
+// Against bootFor — the boot of the machine that RUNS the session — rather
+// than this container's, which is not the same thing for a project bound to
+// a node and is why this read the wrong way round once: alpha has a node by
+// the time this file runs after nodes.mjs, so its tab carried the NODE's
+// boot and a controller restart dropped it.
 const kept = await page.evaluate(async () => {
   openTab({ kind: 'term', arg: 'claude:alpha', label: 'Claude: alpha' });
-  const before = tabs.filter(t => t.arg === 'claude:alpha').length;
+  const t0 = tabs.find(t => t.arg === 'claude:alpha');
+  const stamped = !!t0 && t0.boot === bootFor('claude:alpha');
   while (refreshBusy) await new Promise(r => setTimeout(r, 50));   // a poll in flight would swallow the call
   bootSeen = 'the-run-before';
   await refresh();
-  const t = tabs.find(t => t.arg === 'claude:alpha');
-  return { before, after: t ? 1 : 0, stamped: t?.boot === state.boot };
+  return { stamped, after: tabs.filter(t => t.arg === 'claude:alpha').length };
 });
-ok(kept.before === 1 && kept.after === 1 && kept.stamped,
-   'a Claude tab opened under the current boot survives the page noticing a restart');
+ok(kept.stamped && kept.after === 1,
+   `a Claude tab is stamped with the boot of the machine that runs it, and survives the page noticing a restart (${JSON.stringify(kept)})`);
 const dropped = await page.evaluate(async () => {
-  tabs.find(t => t.arg === 'claude:alpha').boot = 'the-run-before';
+  const t = tabs.find(t => t.arg === 'claude:alpha');
+  if (!t) return 'the tab went before this could ask';
+  t.boot = 'the-run-before';
   while (refreshBusy) await new Promise(r => setTimeout(r, 50));
   bootSeen = 'the-run-before';
   await refresh();
   return tabs.filter(t => t.arg === 'claude:alpha').length;
 });
-ok(dropped === 0, '...and one stamped with the boot before it is dropped, as before');
+ok(dropped === 0, `...and one whose machine has restarted under it is dropped (${dropped})`);
 
 await done(browser);

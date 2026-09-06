@@ -1116,8 +1116,9 @@ def node_runner(principal, node_id, want, labels=None, url=""):
         return {"error": "no such node"}
     if n["kind"] != "agent":
         return {"error": "the runner is installed by the agent — an ssh node has none"}
-    if not (n.get("reported") or {}).get("sandbox"):
-        return {"error": "this node was not provisioned as a BuilderBot sandbox, so it takes no system jobs"}
+    # No sandbox stamp needed (roadmap #23): a runner is a tarball and a
+    # token, not a change to the machine, so a container node or a guest
+    # gets one too. Storage and network keep the stamp — node_apply.
     if n["state"] != "online":
         return {"error": f"the node is {n['state']} — system jobs go to an online node"}
     if system_job_for(node_id):
@@ -1158,8 +1159,7 @@ def node_funnel(principal, node_id, port, on=True):
         return {"error": "no such node"}
     if n["kind"] != "agent":
         return {"error": "a funnel needs the agent — this node runs none"}
-    if not (n.get("reported") or {}).get("sandbox"):
-        return {"error": "this node was not provisioned as a BuilderBot sandbox, so it takes no system jobs"}
+    # Like the runner, no sandbox stamp: tailscale's own CLI does the work.
     ts = ((n.get("reported") or {}).get("services") or {}).get("tailscale") or {}
     if not ts.get("installed"):
         return {"error": f"{n['name']} has no tailscale — install and log it in on the node first"}
@@ -1764,10 +1764,19 @@ def node_sessions():
     return out
 
 
-def job_next(node_id, wait, runner="node"):
+def job_next(node_id, wait, runner="node", alive=None):
     """The oldest queued job this node may take, for this runner, else wait
     up to `wait` seconds for one — or for a cancel request, which comes back
     as {"cancel": [ids]} so the agent's held poll hears it at once.
+
+    `alive` says whether the poll's client is still connected, and is asked
+    before anything is handed over. A held poll outlives the agent that
+    made it — an agent that restarted (its self-update, a kill) leaves its
+    last poll on this side for up to a poll length — and a job queued in
+    that window was assigned to the dead poll, written to a closed socket,
+    and marked lost by the new agent's first hello, which never had it. The
+    same poll would have swallowed a cancel, a session kill or a hello
+    request. So a poll nobody is listening to takes nothing.
 
     Drain is honored here: a draining node's agent keeps polling (that is
     how the operator sees it is alive) and is simply never handed work. So
@@ -1776,6 +1785,8 @@ def job_next(node_id, wait, runner="node"):
     deadline = time.time() + max(0, float(wait))
     with _wake:
         while True:
+            if alive is not None and not alive():
+                return None
             n = node(node_id)
             if n and n["state"] == "online" and job_running(node_id) < n["concurrency"]:
                 for j in _rows("SELECT * FROM jobs WHERE state = 'queued' AND "

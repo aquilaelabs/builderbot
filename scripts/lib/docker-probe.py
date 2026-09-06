@@ -27,20 +27,23 @@ def load(path):
 
 def verdict(m):
     """(state, sentence). state is ok, FAIL or skip."""
-    # Off is not a fault to report. A red line on every run of a box that never
-    # wanted dev instances is noise, and noise is how a check stops being read.
-    if not (os.environ.get("DOCKER_HOST") or "").strip():
-        return "skip", ("no docker daemon configured: DOCKER_HOST is unset — "
-                        "dev instances are off")
-    a = m.available()
+    # The daemon is a node's (DOCKER_HOST is gone: the sandbox VM is a node
+    # record, docs/nodes.md §11). No node with one is not a fault to report
+    # red on every run of a box that never wanted dev instances — noise is how
+    # a check stops being read — so that is a skip; a node that names one and
+    # does not answer is the failure worth a line.
+    a = m.available_default()
     why = " ".join((a["why"] or "").split())      # one line, whatever it said
-    return ("ok" if a["on"] else "FAIL"), (
-        f"docker daemon: {a['kind']} at {a['where']}"
-        + ("" if a["on"] else f" — {why}"))
+    if a["on"]:
+        return "ok", f"docker daemon: {a['kind']} at {a['where']}"
+    if why.startswith("no node with a daemon"):
+        return "skip", "no node with a daemon — dev instances run on a node's docker (Nodes tab)"
+    return "FAIL", f"docker daemon: {a.get('kind') or 'node'} at {a.get('where') or '?'} — {why}"
 
 
 def mapping_faults(m):
-    """Complaints about DOCKER_HOST_PATHS, or an empty list.
+    """Complaints about the node's path mapping (its row's node_paths, once
+    DOCKER_HOST_PATHS), or an empty list.
 
     Worth a boot line of its own because it is the failure nothing else
     catches: a pair whose two sides have drifted apart means a bind mount

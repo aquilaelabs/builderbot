@@ -76,7 +76,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "26"
+AGENT_VERSION = "27"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -240,6 +240,18 @@ RUNNER_DIR = os.environ.get("BUILDERBOT_RUNNER_DIR", "/var/lib/builderbot/runner
 APT_BIN = os.environ.get("BUILDERBOT_APT_BIN", "apt-get")
 # Seconds per "minute" of the idle rule; the suite sets 1.
 IDLE_UNIT = float(os.environ.get("BUILDERBOT_IDLE_UNIT", "60"))
+
+
+def has_systemd():
+    """Whether the runner can be a service here. A VM has systemd; a
+    container (this image in the node role) and a guest machine without it
+    run the runner in the foreground under the agent instead. The suite
+    pins the answer with BUILDERBOT_SYSTEMD so both paths are exercised
+    whichever box runs it."""
+    pin = os.environ.get("BUILDERBOT_SYSTEMD", "")
+    if pin in ("0", "1"):
+        return pin == "1"
+    return os.path.isdir("/run/systemd/system")
 DPKG_BIN = os.environ.get("BUILDERBOT_DPKG_BIN", "dpkg")
 RUNNER_TARBALL = os.environ.get("BUILDERBOT_RUNNER_TARBALL", "")
 RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
@@ -1345,6 +1357,10 @@ class Agent:
         self.session_digest = ""          # the digest bundle() last fetched
         self.session_tried = 0
         self.session_stale = ""           # a newer bundle's directory, for the loop to restart onto
+        # The runner as a child of this process where there is no systemd
+        # (a container node): run.sh in the foreground, supervised here.
+        self.runner_proc = None
+        self.runner_tried = 0
 
     # -- privilege ---------------------------------------------------------
     def drop_privileges(self, env):
@@ -1461,11 +1477,14 @@ class Agent:
         if who:
             with contextlib.suppress(OSError):
                 os.chown(os.path.join(d, ".env"), who["user"], who["group"])
-        log(f"runner: archiving CI logs under {ci_log_dir(self.state)}; restarting the service to read it")
-        if os.path.isfile(os.path.join(d, "svc.sh")):
+        log(f"runner: archiving CI logs under {ci_log_dir(self.state)}; restarting the runner to read it")
+        if os.path.isfile(os.path.join(d, "svc.sh")) and has_systemd():
             quiet = type("Q", (), {"say": staticmethod(lambda t: None)})()
             self._sh(quiet, ["bash", "./svc.sh", "stop"], cwd=d)
             self._sh(quiet, ["bash", "./svc.sh", "start"], cwd=d)
+        else:
+            self.runner_stop()
+            self.runner_start(who)
 
     def running(self):
         with self.lock:
@@ -1493,6 +1512,7 @@ class Agent:
         # sessions themselves — is its own daemon and outlives both.
         def bye(*_):
             self.session_stop()
+            self.runner_stop()
             raise SystemExit(0)
         signal.signal(signal.SIGTERM, bye)
         # The session half first, so the first hello's census already says
@@ -1518,6 +1538,7 @@ class Agent:
                 delay = 1
             self.session_check()
             self.session_idle_reap()
+            self.runner_check()
             n = self.running()
             # The controller counts what is running here from its own rows
             # and wakes a held poll when a job ends, so the poll is held at
@@ -2337,11 +2358,17 @@ class Agent:
         dropped to the enrolled account, because mounts and addresses are
         root's; offered by the controller only to nodes that enrolled as a
         sandbox, and refused here without bb-sandbox, which is the stamp."""
-        if not os.access(SANDBOX_BIN, os.X_OK):
-            job.say("refused: this node was not provisioned as a BuilderBot sandbox "
-                    f"({SANDBOX_BIN} is not here), so it takes no system jobs\n")
-            return "failed", 77
         what = spec.get("apply")
+        # Per verb, not one stamp for all of them (roadmap #23): storage and
+        # network edit fstab and netplan, which only a machine provisioned
+        # as a sandbox — a MANAGED node — hands over. A runner needs only its
+        # tarball and a funnel only tailscale, and a container node (this
+        # image in the node role) or a guest machine has neither the stamp
+        # nor any reason to be refused either of those.
+        if what in ("storage", "network") and not os.access(SANDBOX_BIN, os.X_OK):
+            job.say(f"refused: {what} edits this machine's own configuration, and this node "
+                    f"was not provisioned as a BuilderBot sandbox ({SANDBOX_BIN} is not here)\n")
+            return "failed", 77
         cfg = spec.get("config") if isinstance(spec.get("config"), dict) else {}
         if what == "storage":
             return self._apply_storage(job, cfg)
@@ -2638,7 +2665,8 @@ class Agent:
             if st != 200 or not r.get("token"):
                 job.say(f"could not get a removal token from the controller: {r.get('error', st)}\n")
                 return "failed", 69
-            if os.path.isfile(os.path.join(d, "svc.sh")):
+            self.runner_stop()
+            if os.path.isfile(os.path.join(d, "svc.sh")) and has_systemd():
                 self._sh(job, ["bash", "./svc.sh", "stop"], cwd=d)
                 self._sh(job, ["bash", "./svc.sh", "uninstall"], cwd=d)
             code = self._run_as(job, who, d, [os.path.join(d, "config.sh"), "remove", "--token", r["token"]])
@@ -2741,7 +2769,7 @@ class Agent:
             os.chmod(logs, 0o755)
         with open(os.path.join(d, ".env"), "w") as f:
             f.write(f"BB_CI_LOG_DIR={logs}\n")
-        if os.path.isfile(os.path.join(d, "svc.sh")):
+        if os.path.isfile(os.path.join(d, "svc.sh")) and has_systemd():
             for verb in (["install", user], ["start"]):
                 if self._sh(job, ["bash", "./svc.sh", *verb], cwd=d) != 0:
                     # Registered but not serviced is a real state, and the
@@ -2751,9 +2779,79 @@ class Agent:
                     job.say("the runner is registered with GitHub but its service did "
                             "not install — it will not pick up jobs until it does\n")
                     return "failed", 1
+        else:
+            # No systemd — a container node (this image in the node role),
+            # or a guest machine without it (roadmap #23). The runner is
+            # run.sh in the foreground under this agent, which supervises it
+            # and takes it down with itself; the census's pgrep of
+            # Runner.Listener reports it exactly as it would the service.
+            if not self.runner_start(who, job):
+                return "failed", 1
+            job.say("no systemd here — the runner runs in the foreground under this agent\n")
         self.hello()
         job.say("runner installed and started\n")
         return "succeeded", 0
+
+    def runner_start(self, who, job=None):
+        """run.sh as a child of this process, as the enrolled account, its
+        output into runner.log under the data store. Its own session, so a
+        stop reaches the listener and the workers it forks alike."""
+        d = RUNNER_DIR
+        say = job.say if job else (lambda t: log(t.rstrip("\n")))
+        if not os.path.isfile(os.path.join(d, "run.sh")):
+            say("the runner has no run.sh to start\n")
+            return False
+        env = {"PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"), "LANG": "C.UTF-8",
+               "HOME": d}
+        if who:
+            import pwd
+            with contextlib.suppress(KeyError):
+                env["HOME"] = pwd.getpwuid(who["user"]).pw_dir
+        logf = os.path.join((self.state.get("stores") or {}).get("data") or "/tmp", "runner.log")
+        try:
+            out = open(logf, "ab")
+            self.runner_proc = subprocess.Popen(["bash", "./run.sh"], cwd=d, env=env,
+                                                stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                                                start_new_session=True, **who)
+            out.close()
+        except (OSError, RuntimeError) as e:
+            say(f"the runner could not start: {e}\n")
+            self.runner_proc = None
+            return False
+        self.runner_tried = time.time()
+        log(f"runner: run.sh started in the foreground (pid {self.runner_proc.pid}), log {logf}")
+        return True
+
+    def runner_stop(self):
+        p = self.runner_proc
+        self.runner_proc = None
+        if p is None or p.poll() is not None:
+            return
+        for sig, wait in ((signal.SIGTERM, 10.0), (signal.SIGKILL, 3.0)):
+            with contextlib.suppress(OSError):
+                os.killpg(p.pid, sig)
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                p.wait(wait)
+                return
+
+    def runner_check(self):
+        """Once a loop, where there is no systemd: a configured runner that
+        is not running is started — after this agent restarted, or after
+        run.sh exited — not more often than every thirty seconds. One
+        already listening from an earlier agent process is left to it."""
+        d = RUNNER_DIR
+        if has_systemd() or not os.path.isfile(os.path.join(d, ".runner")):
+            return
+        if self.runner_proc is not None and self.runner_proc.poll() is None:
+            return
+        if time.time() - self.runner_tried < 30:
+            return
+        if _run(["pgrep", "-f", os.path.join(d, "bin/Runner.Listener")]):
+            self.runner_tried = time.time()
+            return                          # an earlier agent's; working
+        log("runner: not running; starting run.sh" if self.runner_proc is None
+            else f"runner: run.sh exited ({self.runner_proc.returncode}); starting again")
+        self.runner_start(self.drop_privileges({}))
 
     def _apply_funnel(self, job, cfg):
         """Tailscale Funnel for one local port on https 443 (docs/nodes.md
