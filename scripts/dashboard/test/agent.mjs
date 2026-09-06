@@ -1114,6 +1114,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
   // package asked for is not installed, so this proves the channel and not
   // a download.
   {
+    const ttydsBefore = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id).length;
     const pj = await api('/api/packages', { action: 'remove', names: ['flutter'], node: minted.id });
     ok(pj.ok && /^j_/.test(pj.job), `a package job is queued on the node (${pj.job || pj.error})`);
     const pfin = await until(async () => {
@@ -1129,6 +1130,14 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        && /== bb sdk remove flutter/.test(pfin.log) && /not installed|unknown package/.test(pfin.log),
        `the bundle lands in the packages store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
     ok(existsSync(`${DIR}/agentpackages/.bb/bundle.tar`), '...and stays for the next one');
+    // The store changed, so the ttyds are started again with an environment
+    // built from it — a session opened now finds the new tool on PATH.
+    const renewed = await until(async () => {
+      const n = await nodeById(minted.id);
+      const now = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id).length;
+      return now > ttydsBefore && n?.reported?.session?.up ? now : null;
+    }, 30000, 500);
+    ok(renewed !== null, `...and the session ttyds are restarted onto the changed store (${ttydsBefore} -> ${renewed})`);
     // The store's own directories decide what is installed there — not the
     // census's placement summary, which named six toolchains and called four
     // installed packages missing on the operator's shared SDK store.

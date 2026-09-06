@@ -1113,6 +1113,13 @@ class Job(threading.Thread):
                 state, code = self.agent.compose(self, spec)
             elif self.job.get("type") == "package":
                 state, code = self.agent.package(self, spec)
+                # A recipe landed or left: the session environment is built
+                # from the store's layout at ttyd's start, so a session
+                # opened after this would still not find the new tool on
+                # PATH (lint-tools on bb-sandbox, measured). The loop
+                # restarts the ttyds; tmux sessions survive it.
+                if state == "succeeded":
+                    self.agent.session_renew()
             elif self.job.get("type") == "cache-clear":
                 state, code = self.agent.cache_clear(self, spec)
             else:
@@ -2025,6 +2032,15 @@ class Agent:
             argv[argv.index("-t") + 1] = sess
             self._tmux(argv)
 
+    def session_renew(self):
+        """Ask the loop to restart the ttyds onto the current bundle with a
+        freshly built environment — from a job's thread, so only the flag
+        is set here."""
+        store = (self.state.get("stores") or {}).get("packages") or ""
+        into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
+        if into and os.path.isdir(into) and self.ttyd:
+            self.session_stale = into
+
     def session_check(self):
         """Once a loop: a ttyd that died is started again, not more often
         than every thirty seconds — a port already taken would otherwise
@@ -2033,7 +2049,7 @@ class Agent:
         sessions are tmux's either way and survive; a client attached at
         that moment reconnects."""
         if self.session_stale and self.ttyd and os.path.isdir(self.session_stale):
-            log(f"sessions: bb moved to {self.session_digest[7:19]}; restarting ttyd onto it")
+            log("sessions: the bundle or the store changed; restarting ttyd so new sessions see it")
             self.session_bundle = self.session_digest
             self.session_tried = time.time()
             self.session_start(self.session_stale)
