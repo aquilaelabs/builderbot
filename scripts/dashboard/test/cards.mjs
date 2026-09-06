@@ -1205,19 +1205,26 @@ execFileSync('rm', ['-rf', `${DIR}/ws/.trash`]);
 // slow every hover and every state light on the page to make one rare action
 // look nicer.
 {
+  // What "crossfades" means, asserted without racing the 320ms window: the
+  // swap turns a colour transition ON for its duration. Sampling the colour
+  // partway through needed the evaluate to land inside that window, which a
+  // loaded box does not promise — it read as a cut on the node running the
+  // suite, and reading it synchronously instead caught the value before the
+  // transition had started. So: the class and the transition it brings are
+  // the claim, and the colour is checked once the swap has finished.
   const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   const was = await bg();
-  await page.evaluate(() => applyTheme('nostromo'));
-  await page.waitForTimeout(90);
-  const mid = await bg();
-  const during = await page.evaluate(() =>
-    document.documentElement.classList.contains('theming'));
-  ok(during && mid !== was,
-     'changing the scheme crossfades rather than cutting to it');
-  await page.waitForTimeout(400);
+  const swap = await page.evaluate(() => {
+    applyTheme('nostromo');
+    return { during: document.documentElement.classList.contains('theming'),
+             eased: getComputedStyle(document.body).transitionDuration };
+  });
+  ok(swap.during && /[1-9]/.test(swap.eased),
+     `changing the scheme crossfades rather than cutting to it (${swap.eased} while swapping)`);
+  await page.waitForFunction(() =>
+    !document.documentElement.classList.contains('theming'), null, { timeout: 5000 });
   const done = await bg();
-  ok(done !== mid && !(await page.evaluate(() =>
-       document.documentElement.classList.contains('theming'))),
+  ok(done !== was && /^0s?/.test(await page.$eval('body', b => getComputedStyle(b).transitionDuration)),
      '...and the transition is taken back off, so nothing else on the page drags');
   // Reduced motion gets the swap and none of the fade.
   await page.emulateMedia({ reducedMotion: 'reduce' });

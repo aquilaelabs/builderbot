@@ -2485,13 +2485,18 @@ try:
 except Exception as e:
     print(f"no node store yet — the dashboard creates it on boot ({e})")
     raise SystemExit(0)
+# Enrolled machines only. The controller's own record is registry plumbing —
+# it is how a share it mounts is recognized as a node's store — and never a
+# machine anybody lists: it runs no work and takes no packages.
+rows = [n for n in rows if n["kind"] != "local"]
 if not rows:
-    print("no nodes on record — the dashboard seeds `local` on boot")
+    print("no node is enrolled — the dashboard's Nodes tab mints a token for one")
+    print("a project with no node can be read and edited here, and cannot be built")
     raise SystemExit(0)
 for n in rows:
     caps = ",".join(n["capabilities"]) or "-"
     ag = n.get("agent") or {}
-    where = "this container" if n["kind"] == "local" else (ag.get("addr") or "-")
+    where = ag.get("addr") or "-"
     # An agent node is live or quiet by whether it has dialed in lately —
     # derived, never stored, and the one column the row cannot lie about.
     state = n["state"]

@@ -158,7 +158,8 @@ it was built before it was needed). A deliberately restricted node remains
 expressible through the API; it is simply not something anyone has to
 configure to get ordinary work done. Two things are unchanged and stay
 gated on facts rather than toggles: `system` jobs are offered only to a node
-whose census says it carries `bb-sandbox`, and `local` — the controller
+whose census says it carries `bb-sandbox`, and `local` — the controller's
+own record, which is registry plumbing rather than a row on the tab
 itself — is never given `docker-host`, because containers there would run
 beside `/config` and the dashboard credential (§12).
 
@@ -549,7 +550,8 @@ and `bb sdk`, operator-gated; that has to generalize without forking.
   keeps the existing gate: sessions cannot trigger it, operators can, and now
   the audit row says who did. The Tools tab's installer gains the same node
   picker the Docker manager gets: pick a node, see what is installed *there*,
-  install or remove there. The controller is just the `local` row.
+  install or remove there. The controller is not offered at all (roadmap
+  #26): it takes no packages, and its own record is registry plumbing.
 *Amended 2 September:* there are **four** stores, not three — `artifacts`
 joins data, packages and cache: this node's copy of what a project built,
 per project underneath, so a VM that is several projects' node keeps two

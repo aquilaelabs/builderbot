@@ -587,12 +587,18 @@ function renderNodesInto(i){
   // ones you did not care about were still in the way. So the tab is a
   // picker and one machine, in sections, like the Docker manager and the
   // Tools tab already are (docs/nodes.md §13: one tab, re-rendered per pick).
-  const live = nodesList.filter(n => n.state !== "retired");
+  // Enrolled machines only. The controller has a node record of its own —
+  // that is how a share it mounts is recognized as the same store a node
+  // mounts, and how install arbitration works across the pair — but it is
+  // not a machine anybody configures from here: it runs no work (roadmap
+  // #16), takes no packages (#26), and every section on this tab is about
+  // something it does not have. So it is registry plumbing, not a row.
+  const live = nodesList.filter(n => n.state !== "retired" && n.kind !== "local");
   if (!live.some(n => n.id === nodesPick)) nodesPick = live[0]?.id || "";
   const n = live.find(x => x.id === nodesPick);
-  d.setBar(`<label class="pick">Node <select id="ndPick" aria-label="node">${
+  d.setBar(`${live.length ? `<label class="pick">Node <select id="ndPick" aria-label="node">${
       live.map(x => `<option value="${esc(x.id)}"${x.id === nodesPick ? " selected" : ""}>${
-        esc(x.name)} — ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>
+        esc(x.name)} — ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>` : ""}
     <span class="sp"></span>
     <button type="button" id="ndEnroll">${nodesOpenForm === "agent" ? "Cancel" : "Enroll node…"}</button>`);
   const rows = (n ? [n] : []).map(n => {
@@ -694,7 +700,15 @@ builderbot-agent enroll --controller ${esc(nodesMinted.url)} --token ${esc(nodes
           <button type="button" id="ndTokDone">Done</button></div>
       </div>
     </div>`;
-  d.list.innerHTML = rows + form + minted
+  // Nothing enrolled. Said where the rows would be, rather than an empty
+  // picker over an empty page — the Enroll button above is the whole of what
+  // there is to do here.
+  const none = live.length || nodesOpenForm === "agent" ? "" :
+    `<div class="empty ndnone">No node is enrolled. A node is the machine the
+      work runs on — builds, tests, CI and the Android emulator — and this
+      container runs none of it. <b>Enroll node…</b> above mints a token and
+      shows the one command to run on that machine.</div>`;
+  d.list.innerHTML = rows + none + form + minted
     + (!nodesList.length ? `<div class="empty">no nodes — which cannot happen:
         local is seeded at boot. If you can read this, the store broke.</div>` : "");
   d.setFoot(`a node does everything for the projects bound to it — pick one in a
