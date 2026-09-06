@@ -75,18 +75,11 @@ services:
       # Node only, and only until it has enrolled.
       CONTROLLER_URL: ${CONTROLLER_URL:-}
       NODE_TOKEN: ${NODE_TOKEN:-}
-      # --- Android emulator -------------------------------------------------
-      # Also uncomment the devices: block below for KVM acceleration.
-      ENABLE_ANDROID_EMULATOR: ${ENABLE_ANDROID_EMULATOR:-false}
-      # `none` keeps Android off this container's SDK store altogether —
-      # for the box whose Android work happens on a node. Unset leaves the
-      # image's own baseline, which is right when this container builds.
-      ANDROID_BASELINE_PLATFORM: ${ANDROID_BASELINE_PLATFORM:-}
-      # API levels to keep an emulator image + AVD for, e.g. "34,35,36,37"
-      # (Android 14 through 17). Each is ~2GB, downloaded once onto the SDK
-      # share below, so an image update never re-fetches them.
-      # Start one with: bb emu start 37
-      ANDROID_SYSTEM_IMAGES: ${ANDROID_SYSTEM_IMAGES:-36}
+      # --- Android emulator: node role only ---------------------------------
+      # No SDK in the image (roadmap #24, 10c): the emulator, its images and
+      # the platforms are a node's, from its packages store. These two apply
+      # to a container running as a node that boots one; also uncomment the
+      # devices: block below there for KVM acceleration.
       # swiftshader_indirect (default) is software rendering and always works.
       # swangle_indirect is usually faster, still software. host needs a GPU
       # and the nvidia block below.

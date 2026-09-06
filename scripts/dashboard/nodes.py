@@ -365,10 +365,12 @@ def _seed_local():
 
     Re-seeded shallowly on every boot: the row survives, but the reported
     census is refreshed because it describes this container, and this boot is
-    the authority on this container. Capabilities stay conservative —
-    package-build is what this box demonstrably does; docker-host stays off
-    (the local node is not a sandbox, docs/nodes.md §12) and joins only if a
-    later phase finds a mounted socket and the operator turns it on.
+    the authority on this container. No capabilities at all (roadmap #24,
+    10c): the image carries no JDK and no Android SDK, so package-build —
+    which this box used to demonstrably do — is a node's; docker-host was
+    never here (the local node is not a sandbox, docs/nodes.md §12). The row
+    stays so the controller is recognized as sharing a store with a node,
+    and so a selector job can still be placed here on purpose.
     """
     reported = {
         "cpu": os.cpu_count() or 0,
@@ -397,7 +399,7 @@ def _seed_local():
         "id": LOCAL, "name": "controller", "kind": "local",
         "pool": "default", "created": int(time.time()), "state": "online",
         "concurrency": 1, "ssh_addr": "", "os": system, "arch": arch,
-        "capabilities": ["package-build"],
+        "capabilities": [],
         "services": {},                    # no runner here: CI is a node's
         "labels": {"arch": platform.machine()},
         "agent": {}, "reported": reported, "routing": {}, "config": {},

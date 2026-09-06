@@ -64,14 +64,14 @@ const settled = id => until(async () => { const j = await job(id); return OVER.i
   const arch = execFileSync('uname', ['-m'], { encoding: 'utf8' }).trim();
   // The label as well as the arch, because the selector has to be one only
   // LOCAL answers. The harness's docker host is an enrolled agent node now
-  // (roadmap #24) and it fits arch and package-build just as well — and its
-  // agent is long-polling, so it takes an unplaced job before the
-  // controller's watcher looks. That is placement working: a selector job is
-  // frozen to whichever node takes it. `labels.arch` is on the controller's
-  // own seeded row and on nothing else.
+  // (roadmap #24) and it fits arch just as well — and its agent is
+  // long-polling, so it takes an unplaced job before the controller's
+  // watcher looks. That is placement working: a selector job is frozen to
+  // whichever node takes it. `labels.arch` is on the controller's own seeded
+  // row and on nothing else. No capability: local declares none since 10c.
   const q2 = await exec({ argv: ['sh', '-c', 'echo placed on $BUILDERBOT_NODE'],
-    select: { arch, capability: 'package-build', labels: { arch } } });
-  ok(q2.ok, `a selector only local fits (arch=${arch}, package-build, label arch) is taken`);
+    select: { arch, labels: { arch } } });
+  ok(q2.ok, `a selector only local fits (arch=${arch}, label arch) is taken`);
   const j = await settled(q2.job);
   ok(j && j.state === 'succeeded' && j.node === 'local' && /placed on local/.test(j.log),
      `and the job is placed on local when it is taken — the node written on the row (${

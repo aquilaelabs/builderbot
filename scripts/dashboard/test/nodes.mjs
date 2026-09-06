@@ -142,9 +142,9 @@ ok(list[0].id === 'local',
   const out = execFileSync('bash', ['scripts/bb', 'nodes'],
     { encoding: 'utf8', cwd: REPO,
       env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
-  ok(/local\s+online\s+local\s+package-build/.test(out.replace(/\s+/g, ' '))
+  ok(/local\s+online\s+local\s+-\s/.test(out.replace(/\s+/g, ' '))
      && /sandbox · stub/.test(out),
-     'bb nodes prints the same registry, read-only');
+     'bb nodes prints the same registry, read-only — local with no capability since 10c');
 }
 
 // ---- phase 2: the Nodes tab ------------------------------------------------

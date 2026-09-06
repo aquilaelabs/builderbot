@@ -29,16 +29,10 @@ ARG NODE_MAJOR=22
 ARG TTYD_VERSION=1.7.7
 ARG TARGETARCH
 
-# --- Playwright / Android build knobs --------------------------------------
-# Set INSTALL_* to "false" for a slimmer image without that toolchain.
+# --- Playwright build knob -------------------------------------------------
+# "false" for a slimmer image without the module and its libraries. There is
+# no Android knob any more: the SDK is a node's, from its store (10c).
 ARG INSTALL_PLAYWRIGHT=true
-ARG INSTALL_ANDROID=true
-# Bootstrap build of Google's commandline-tools zip; sdkmanager then manages
-# everything else, so this pin only has to exist, not be current.
-ARG ANDROID_CMDLINE_TOOLS_BUILD=11076708
-ARG ANDROID_PLATFORM=36
-ARG ANDROID_BUILD_TOOLS=36.0.0
-ARG ANDROID_SYSTEM_IMAGE_VARIANT="google_apis;x86_64"
 
 # Several steps below pipe curl into a shell or into gpg. Under the default
 # /bin/sh the exit status of a pipeline is only its *last* command, so a failed
@@ -177,16 +171,6 @@ RUN set -eux; \
     mise --version
 
 # ---------------------------------------------------------------------------
-# Java (needed for Android builds, Gradle/Maven publishing, bundletool)
-# ---------------------------------------------------------------------------
-RUN set -eux; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends openjdk-21-jdk-headless; \
-    rm -rf /var/lib/apt/lists/*
-
-ENV JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
-
-# ---------------------------------------------------------------------------
 # Playwright: the module and the system libraries here, the browsers on the
 # SDK share.
 #
@@ -218,77 +202,28 @@ RUN set -eux; \
     playwright --version
 
 # ---------------------------------------------------------------------------
-# Android SDK: cmdline-tools, platform-tools, build-tools, one platform, and
-# (by default) the emulator with a Google-APIs x86_64 system image.
+# No JDK and no Android SDK in the image (roadmap #24, phase 10c). Builds,
+# tests, CI and the emulator run on a node; what a node needs comes from its
+# packages store through the catalog's recipes (jdk, android-tools,
+# android:*), installed from the Tools tab. A nodeless project's session
+# here reads, edits, commits and pushes, and cannot compile — that is the
+# design, not a gap (docs/nodes.md §18, §20).
 #
-# Only the bootstrap lives in the image: cmdline-tools (sdkmanager), the
-# platform-tools (adb) and bundletool — about 170MB. Everything downloadable
-# on top of that — platforms, build-tools, the 800MB emulator, system images
-# — is installed at runtime into the SDK root, which is a mounted share or
-# the home volume, and is symlinked back into this tree. That is the whole
-# point: /opt is discarded on every image update, so a package baked in here
-# is re-downloaded weekly forever, while one on the share is downloaded once.
-# The startup hook installs the baseline on first boot; `bb sdk` manages the
-# rest. The tree is left world-writable so sdkmanager can write to it.
+# What stays is the small runtime half a CONTAINER in the node role needs
+# and cannot install for itself, since its agent is not root: the libraries
+# the emulator loads (audio, GL), and the X server the GPU path needs —
+# NVIDIA's EGL will not hand out a display without one carrying its own GLX
+# module, which the container runtime injects when NVIDIA_DRIVER_CAPABILITIES
+# includes `display`; scripts/startup.d/48-gpu-display starts it, node role
+# only. A VM node gets the same from the recipe (android:emulator's
+# system.apt) and vm/provision.sh.
 # ---------------------------------------------------------------------------
-ENV ANDROID_HOME=/opt/android-sdk \
-    ANDROID_SDK_ROOT=/opt/android-sdk
-
 RUN set -eux; \
-    if [ "${INSTALL_ANDROID}" != "true" ]; then echo "skipping Android SDK"; exit 0; fi; \
-    arch="${TARGETARCH:-$(dpkg --print-architecture)}"; \
-    if [ "$arch" != "amd64" ]; then echo "skipping Android SDK on ${arch}"; exit 0; fi; \
     apt-get update; \
-    # libegl1/libvulkan1 are the GLVND + Vulkan dispatch layers. They are inert
-    # on their own, but without them the vendor drivers that the NVIDIA
-    # container runtime injects have no loader, so -gpu host cannot work.
-    #
-    # xserver-xorg-core is here for the same reason, and it is the *only*
-    # remaining piece: NVIDIA's EGL refuses to hand out a display without an X
-    # server carrying its own GLX module. Xvfb does not count — it answers
-    # from Mesa, which has no driver for an NVIDIA card and falls back to
-    # llvmpipe, i.e. software by a slower road. The module the real server
-    # needs (libglxserver_nvidia.so) is injected by the container runtime
-    # when NVIDIA_DRIVER_CAPABILITIES includes `display`; this supplies the
-    # server it plugs into. Nothing here starts it — see 48-gpu-display.
     apt-get install -y --no-install-recommends \
         libpulse0 libgl1 libglu1-mesa libasound2t64 libegl1 libvulkan1 \
         xserver-xorg-core xkb-data; \
-    mkdir -p "${ANDROID_HOME}/cmdline-tools"; \
-    curl -fsSL -o /tmp/clt.zip \
-        "https://dl.google.com/android/repository/commandlinetools-linux-${ANDROID_CMDLINE_TOOLS_BUILD}_latest.zip"; \
-    unzip -q /tmp/clt.zip -d /tmp/clt; \
-    rm /tmp/clt.zip; \
-    mv /tmp/clt/cmdline-tools "${ANDROID_HOME}/cmdline-tools/latest"; \
-    sdkm="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"; \
-    # `yes` dies of SIGPIPE when sdkmanager stops reading — expected, and not
-    # a failure, hence the || true inside the pipeline's first stage.
-    (yes || true) | "$sdkm" --licenses >/dev/null; \
-    # platform-tools only: adb has to work before anything else can, and it
-    # is 22MB. The platform and build-tools the baseline needs are installed
-    # on first boot, onto the share, by scripts/startup.d/50-android.sh.
-    "$sdkm" --install "platform-tools" >/dev/null; \
-    # bundletool for building/installing from .aab bundles. Version comes from
-    # the /releases/latest redirect, not api.github.com — the API rate-limits
-    # anonymous callers per IP and Actions egress IPs are shared, so a CI
-    # build can 403 where a local one sails through.
-    bt_ver="$(curl -fsSLI -o /dev/null -w '%{url_effective}' https://github.com/google/bundletool/releases/latest)"; \
-    bt_ver="${bt_ver##*/}"; \
-    curl -fsSL -o "${ANDROID_HOME}/bundletool.jar" \
-        "https://github.com/google/bundletool/releases/download/${bt_ver}/bundletool-all-${bt_ver}.jar"; \
-    printf '#!/bin/sh\nexec java -jar %s/bundletool.jar "$@"\n' "${ANDROID_HOME}" \
-        > /usr/local/bin/bundletool; \
-    chmod +x /usr/local/bin/bundletool; \
-    chmod -R a+rwX "${ANDROID_HOME}"; \
-    rm -rf /var/lib/apt/lists/* /tmp/clt; \
-    "${ANDROID_HOME}/platform-tools/adb" --version | head -1
-
-ENV PATH=${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator
-# What the runtime scripts fall back to when ANDROID_SYSTEM_IMAGES is unset.
-# Derived from the platform this image actually shipped, so a build with a
-# different ANDROID_PLATFORM does not leave `bb emu` defaulting to an API
-# level that is not there.
-ENV ANDROID_DEFAULT_API=${ANDROID_PLATFORM}
+    rm -rf /var/lib/apt/lists/*
 
 # ---------------------------------------------------------------------------
 # Unprivileged user. UID/GID are remapped at startup from PUID/PGID, so the
@@ -386,12 +321,9 @@ RUN set -eux; \
 #trivy:ignore:AVD-DS-0031
 ENV SSH_AUTH_SOCK=/run/ssh-agent.sock
 
-# The Android baseline the first boot installs onto the SDK share, and where
-# that share is. Runtime-only, so they live down here: an ENV in the top
-# block invalidates every layer below it, and the host then re-pulls the lot.
-ENV ANDROID_BASELINE_PLATFORM=${ANDROID_PLATFORM} \
-    ANDROID_BASELINE_BUILD_TOOLS=${ANDROID_BUILD_TOOLS} \
-    SDK_ROOT=/sdk
+# Where the SDK share is. Runtime-only, so it lives down here: an ENV in the
+# top block invalidates every layer below it, and the host then re-pulls the lot.
+ENV SDK_ROOT=/sdk
 
 ENV PUID=99 \
     PGID=100 \
