@@ -477,6 +477,22 @@ start() {
     # nothing on its command line; the -e values still land in the
     # session's environment, which is where they were wanted.
     tmux start-server 2>/dev/null || true
+    # ...and its environment brought up to date, whole. A pane inherits the
+    # SERVER's environment (bug #54), which is frozen at the server's start
+    # — so on a node, once one session existed, every later one ran with
+    # the environment the agent had back then: no NODE_PATH from a recipe
+    # installed since, no BB_CI_LOG_DIR from an agent updated since,
+    # measured on bb-sandbox after the agent update that added it. Copied
+    # in before every session, minus what is one account's rather than the
+    # machine's — those ride on -e below, per session, and must never sit
+    # where another account's pane could inherit them.
+    local kv
+    while IFS= read -r -d '' kv; do
+        case "$kv" in
+            TMUX*=*|_=*|PWD=*|OLDPWD=*|SHLVL=*|HOME=*|USER=*|LOGNAME=*|BB_TOKEN=*|BB_ACCOUNT_*=*|BB_PROJECT=*|BB_TREE=*|BB_TREE_OWNER=*) continue ;;
+        esac
+        tmux set-environment -g "${kv%%=*}" "${kv#*=}" 2>/dev/null || true
+    done < <(env -0)
     # -A -d creates it if it is missing and attaches to it if it is not, without
     # attaching yet — race-free where has-session followed by new-session is not.
     tmux new-session -A -d -s "$s" -c "$dir" "${envs[@]}" "$@"

@@ -381,7 +381,7 @@ tmuxKill('claude-alpha');
   // and no key to mint one with; and a project's directory is never worked
   // in directly — every session gets a worktree.
   {
-    const node = { BUILDERBOT_ROLE: 'node' };
+    const node = { BUILDERBOT_ROLE: 'node', BB_CI_LOG_DIR: '/x/ci-logs' };
     // Another account's transcripts on the share, for the walls below.
     mkdirSync(join(DIR, 'ws', '.claude', 'u_0badf00d', 'projects'), { recursive: true });
     tmuxKill('shell-10'); tmuxKill(`${ownerUid}~shell-10`);
@@ -460,6 +460,13 @@ tmuxKill('claude-alpha');
     } catch { return '?'; } })();
     ok(/tmux/.test(serverArgs) && !/bbs_/.test(serverArgs),
        `...but not on the tmux server's command line, which every account can read (${serverArgs.slice(0, 40)})`);
+    // The server's environment follows the session's — a pane inherits it —
+    // minus what is one account's: the token stays per session.
+    const genv = k => { try {
+      return execFileSync('tmux', ['show-environment', '-g', k], { encoding: 'utf8', env: process.env }).trim();
+    } catch { return ''; } };
+    ok(genv('BB_CI_LOG_DIR') === 'BB_CI_LOG_DIR=/x/ci-logs' && !/bbs_/.test(genv('BB_TOKEN')),
+       `the tmux server's environment is brought up to date before each session, the token excepted (${genv('BB_TOKEN') || 'no BB_TOKEN'})`);
     const launcher = readFileSync(join(HOMEDIR, 'users', ownerUid, '.cache', 'builderbot',
                                        `claude-run-${proj}.sh`), 'utf8');
     ok(/bb settings --json/.test(launcher) && /BB_TOKEN=bbs_abc-DEF_123/.test(launcher),

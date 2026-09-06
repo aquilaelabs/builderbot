@@ -1394,7 +1394,44 @@ class Agent:
             # store this process cannot write is a node with no sessions,
             # not a node with no agent.
             self.session_try(r.get("bundle") or "")
+            self.runner_env_sync()
         return st, r
+
+    def runner_env_sync(self):
+        """An existing runner's .env, kept saying where this agent archives
+        CI logs. _apply_runner writes it at install; a runner installed
+        before this agent knew about it (bb-sandbox's was) kept archiving
+        under its own home. Rewritten when it differs, and the service
+        cycled so the runner reads it — only while it is idle: a restart
+        under a running job would kill the job."""
+        d = RUNNER_DIR
+        if not os.path.isfile(os.path.join(d, ".runner")):
+            return
+        want = f"BB_CI_LOG_DIR={ci_log_dir(self.state)}\n"
+        try:
+            with open(os.path.join(d, ".env")) as f:
+                have = f.read()
+        except OSError:
+            have = ""
+        if have == want:
+            return
+        if _run(["pgrep", "-f", os.path.join(d, "bin/Runner.Worker")]):
+            return                          # busy: next hello
+        env = {}
+        who = self.as_user(env, self.state.get("user") or "")
+        self.own_dir(ci_log_dir(self.state), who)
+        with contextlib.suppress(OSError):
+            os.chmod(ci_log_dir(self.state), 0o755)
+        with open(os.path.join(d, ".env"), "w") as f:
+            f.write(want)
+        if who:
+            with contextlib.suppress(OSError):
+                os.chown(os.path.join(d, ".env"), who["user"], who["group"])
+        log(f"runner: archiving CI logs under {ci_log_dir(self.state)}; restarting the service to read it")
+        if os.path.isfile(os.path.join(d, "svc.sh")):
+            quiet = type("Q", (), {"say": staticmethod(lambda t: None)})()
+            self._sh(quiet, ["bash", "./svc.sh", "stop"], cwd=d)
+            self._sh(quiet, ["bash", "./svc.sh", "start"], cwd=d)
 
     def running(self):
         with self.lock:
