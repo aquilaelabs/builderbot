@@ -16,10 +16,10 @@
 # enrolls the machine as a node: the agent is fetched from the controller and
 # left running under systemd, dialing out.
 #
-# It makes three accounts. `bb` runs Docker and answers ssh — the one jobs
-# run as — with no sudo and no bb-sandbox. `admin` has sudo and is the only
-# account bb-sandbox runs for, so the mounts this machine has are a decision
-# made by a person at a console. And `builder` is the one a Claude SESSION
+# It makes two accounts. `bb` runs Docker and answers ssh — the one jobs
+# run as — with no sudo and no bb-sandbox, so the mounts this machine has
+# stay a decision made by a person with root at a console. And `builder` is
+# the one a Claude SESSION
 # works as (roadmap #24): the agent runs ttyd for it, and it is in no docker
 # group, because docker is root on any machine with a daemon and the account
 # a session edits files as is the one thing here to keep away from that.
@@ -29,7 +29,6 @@
 set -euo pipefail
 
 USER_NAME="bb"
-ADMIN_NAME="admin"
 # The session account (roadmap #24), with the uid:gid the CONTROLLER writes
 # files as — Unraid's nobody:users, the container template's PUID:PGID
 # defaults — so a file a session saves on the projects share is owned exactly
@@ -40,7 +39,6 @@ ADMIN_NAME="admin"
 SESSION_NAME="builder"
 SESSION_UID=99
 SESSION_GID=100
-ADMIN_KEY=""
 SSH_KEY=""
 CONTROLLER=""
 TOKEN=""
@@ -58,16 +56,8 @@ usage: provision.sh [options]
                        default is bb, and BuilderBot assumes bb — so changing
                        it means writing the account out in the node's address. It gets
                        NO sudo and cannot run bb-sandbox: this is the account a
-                       Claude session reaches, and reconfiguring the machine's
+                       session's JOBS run as, and reconfiguring the machine's
                        mounts is not what it is for.
-  --admin NAME|none    the account that administers this machine (admin), or
-                       `none` to make no such account — nothing here requires
-                       one. It
-                       gets sudo and bb-sandbox. Left without a password and
-                       without a key unless you give it one — set a password
-                       from the console, or pass --admin-key.
-  --admin-key "ssh-…"  a PUBLIC key for the admin account, so it can be reached
-                       over ssh the way the docker account is.
   --session-user NAME|none   the account a Claude SESSION works as on this
                        node (builder), made with --session-uid/--session-gid
                        (99:100 — the controller's PUID:PGID, so files it saves
@@ -129,8 +119,14 @@ EOF
 while [ $# -gt 0 ]; do
     case "$1" in
         --user)  USER_NAME="$2"; shift 2 ;;
-        --admin) ADMIN_NAME="$2"; shift 2 ;;
-        --admin-key) ADMIN_KEY="$2"; shift 2 ;;
+        # Named rather than falling into "unknown option", because the flag
+        # was documented and is likely to be in somebody's saved command
+        # line: this script no longer makes an account to administer the
+        # machine. Whatever already has root here does that job.
+        --admin|--admin-key)
+            echo "--admin is gone: this script makes no administrator account." >&2
+            echo "  Root, your own account, or a cloud image's ubuntu/ec2-user administers this box." >&2
+            exit 1 ;;
         --session-user) SESSION_NAME="$2"; shift 2 ;;
         --session-uid) SESSION_UID="$2"; shift 2 ;;
         --session-gid) SESSION_GID="$2"; shift 2 ;;
@@ -354,11 +350,12 @@ if [ -n "$SSH_KEY" ]; then
     authorize "$USER_NAME" "$SSH_KEY"
 fi
 
-# The account that administers this machine, which is NOT the one a session
-# reaches. bb runs Docker and answers ssh; admin has sudo and is the only
-# account bb-sandbox will run for. Mounts, which share holds appdata, and what
-# this VM is called on the network are decisions made by a person at a console,
-# not side effects available to whatever is building a container this afternoon.
+# WHO ADMINISTERS THIS MACHINE, which is never the account a session reaches.
+# bb runs Docker and answers ssh and has no sudo; bb-sandbox runs as root and
+# for nobody else. So the mounts, which share holds appdata, and what this VM
+# is called on the network are decisions made by somebody with root at a
+# console, not side effects available to whatever is building a container this
+# afternoon.
 #
 # BE CLEAR ABOUT WHAT THIS DOES NOT DO. bb is in the docker group, and the
 # docker group is root on this machine to anyone who wants it — one
@@ -367,57 +364,32 @@ fi
 # BuilderBot needs the daemon to do its job. What the split buys is that the
 # machine's OWN configuration is not one command away from a session that
 # wandered — the fstab that decides whether /workspace is the projects share,
-# and read-only, is behind an account nothing here logs into.
-# ...and it is optional. Nothing in BuilderBot uses this account: the agent
-# runs as root under systemd and drops to --user for every job, bb-sandbox
-# refuses to run as anyone but root whoever invokes it, and the controller
-# never names it. It is a convenience — a sudo login that is not the docker
-# account — so a machine that already has one (the operator's own, a cloud
-# image's ubuntu/ec2-user, or just root) should not be given a second nobody
-# logs into. `--admin none` skips it, and the split it protects is unchanged:
-# what matters is that the DOCKER account has no sudo.
-say "admin ${ADMIN_NAME}"
-if [ "$ADMIN_NAME" = none ] || [ -z "$ADMIN_NAME" ]; then
-    printf '   none asked for — this machine is administered by whatever account
-'
-    printf '   already has root here. Nothing in BuilderBot uses one: bb-sandbox
-'
-    printf '   runs as root whoever calls it, and jobs run as %s.
-' "$USER_NAME"
-elif [ "$ADMIN_NAME" = "$USER_NAME" ]; then
-    warn "--admin and --user are both ${ADMIN_NAME}: one account cannot be both"
-    printf '   the split is the point — pick a different --admin\n'
-else
-    id -u "$ADMIN_NAME" >/dev/null 2>&1 || useradd -m -s /bin/bash "$ADMIN_NAME"
-    # sudo where the distro keeps it. Debian says sudo, others say wheel, and
-    # adding to a group that does not exist is an error rather than a no-op.
-    for g in sudo wheel; do
-        getent group "$g" >/dev/null 2>&1 && usermod -aG "$g" "$ADMIN_NAME"
-    done
-    [ -n "$ADMIN_KEY" ] && authorize "$ADMIN_NAME" "$ADMIN_KEY"
-    # No password is set here. A provisioner that invents one has to print it,
-    # and a password printed into a terminal scrollback is not a secret. Set
-    # one from the console, or reach it with --admin-key.
-    passwd -S "$ADMIN_NAME" 2>/dev/null | grep -q " P " || {
-        [ -n "$ADMIN_KEY" ] || printf '   %s has no password and no key yet — set one from the console:\n     sudo passwd %s\n' "$ADMIN_NAME" "$ADMIN_NAME"
-    }
-fi
+# and read-only, needs root, which neither account here has.
+#
+# NO ADMINISTRATOR ACCOUNT IS MADE. This script used to add one with sudo,
+# and it was never needed: the agent runs as root under systemd and drops to
+# --user for every job, bb-sandbox refuses to run as anyone but root whoever
+# invokes it, and the controller never names it. Whatever account already has
+# root here — yours, a cloud image's ubuntu or ec2-user, or root itself —
+# administers this machine, which is the operator's business and not this
+# script's. What matters, and is enforced below, is unchanged: the DOCKER
+# account has no sudo, and the SESSION account is in neither docker nor sudo.
 
 # --- the session account (roadmap #24) ------------------------------------
-# The third account, and the one the design turns on: a Claude session on
+# The second account, and the one the design turns on: a Claude session on
 # this node's projects runs HERE, as this account, in a tmux the agent's
 # ttyd starts — with this machine's toolchains and the projects share this
 # machine mounts. Not bb, on purpose: bb is in the docker group, which is
 # root on any machine running a daemon, and a session is exactly the thing
-# to keep away from that. Not admin, obviously. So: no docker, no sudo, kvm
+# to keep away from that. So: no docker, no sudo, kvm
 # for the emulator, a home of its own for the Claude login and the
 # transcripts, and the same uid:gid the controller writes the share as.
 say "session account ${SESSION_NAME}"
 if [ "$SESSION_NAME" = none ] || [ -z "$SESSION_NAME" ]; then
     printf '   none asked for — this node runs jobs and no sessions\n'
     SESSION_NAME=""
-elif [ "$SESSION_NAME" = "$USER_NAME" ] || [ "$SESSION_NAME" = "$ADMIN_NAME" ]; then
-    warn "--session-user ${SESSION_NAME} is the docker or the admin account: a session must be neither"
+elif [ "$SESSION_NAME" = "$USER_NAME" ]; then
+    warn "--session-user ${SESSION_NAME} is the docker account: a session must not be it"
     printf '   pick a different --session-user, or none\n'
     SESSION_NAME=""
 else
@@ -1094,13 +1066,12 @@ esac
 BBSANDBOX
 install -m 0750 "$BBSANDBOX_TMP" /usr/local/sbin/bb-sandbox
 rm -f "$BBSANDBOX_TMP"
-# Readable and runnable by root and by the admin account's group, and by
-# nothing else. The docker account cannot read it, let alone run it — which is
-# most of what "bb cannot reconfigure this machine" means in practice, since
-# the script refuses to run as anyone but root anyway.
-if id -u "$ADMIN_NAME" >/dev/null 2>&1 && [ "$ADMIN_NAME" != "$USER_NAME" ]; then
-    chgrp "$(id -gn "$ADMIN_NAME")" /usr/local/sbin/bb-sandbox 2>/dev/null || true
-fi
+# Root's, and nobody else's: 0750 root:root. Anyone the operator has given
+# sudo reaches it as `sudo bb-sandbox`, which is how it is meant to be run —
+# it refuses to run as anyone but root anyway. The docker account cannot read
+# it, let alone run it, which is most of what "bb cannot reconfigure this
+# machine" means in practice.
+chown root:root /usr/local/sbin/bb-sandbox 2>/dev/null || true
 # Checked rather than assumed: this is the step that failed silently enough to
 # leave an old copy in place and a new one nowhere.
 [ -s /usr/local/sbin/bb-sandbox ] \
@@ -1385,7 +1356,7 @@ Those paths have to be the ones BuilderBot uses. A compose file resolves a
 relative bind against whoever runs the container, so a path that means
 something different on each side is an app that comes up with no data.
 
-Three accounts, and the split is deliberate:
+Two accounts, and the split is deliberate:
 
   ${USER_NAME}   runs Docker and answers ssh. This is the one jobs run as.
         No sudo, and it cannot run bb-sandbox — reconfiguring this machine
@@ -1393,11 +1364,10 @@ Three accounts, and the split is deliberate:
   ${SESSION_NAME:-(none)}  is the one a Claude SESSION works as. In kvm for
         the emulator and in NO docker group: docker is root on a machine
         with a daemon, and this is the account that edits your source.
-  ${ADMIN_NAME}  administers the machine. sudo, and the account bb-sandbox
-        is readable by. Log in here to change mounts. (Optional — nothing
-        here requires it; --admin none makes no such account and root, or
-        whatever account you already administer this box from, does the same
-        job.)
+
+This script makes no administrator account. Whatever already has root here —
+your own account, a cloud image's ubuntu or ec2-user, or root — runs
+`sudo bb-sandbox` to change what this machine mounts.
 
 Worth knowing rather than discovering: ${USER_NAME} is in the docker group, and
 that group is root on this machine to anyone who wants it. This VM exists to be

@@ -137,28 +137,22 @@ applies them through these very verbs as audited `system` jobs, and
 `bb-sandbox list --json` is what its census reports. The menu stays as the
 console fallback, reading and writing the same fstab — see docs/nodes.md §12.
 
-**The admin account is optional.** Nothing in BuilderBot uses it: the agent
-runs as root under systemd and drops to the docker account for every job,
+**No administrator account is made, and none is wanted.** The provisioner
+used to add one with sudo; nothing in BuilderBot ever used it. The agent runs
+as root under systemd and drops to the docker account for every job,
 `bb-sandbox` refuses to run as anyone but root whoever invokes it, and the
-controller never names it. It is a convenience — a sudo login that is not
-the account a session reaches — so a machine you already administer from
-your own account, a cloud image's `ubuntu`, or root, needs no second one:
-`--admin none` skips it. What the split actually protects is the other half,
-and that half is not optional: the DOCKER account has no sudo.
+controller never names it. Whatever already has root on this machine — your
+own account, a cloud image's `ubuntu` or `ec2-user`, or root itself — runs
+`sudo bb-sandbox`. How that account is set up is yours, not this script's.
 
 **Two accounts, and the split is the point.** `bb` runs Docker and answers
-ssh — the one BuilderBot uses, and so the one a Claude session reaches. It has
-no sudo and cannot run `bb-sandbox`. `admin` has sudo and is the only account
-`bb-sandbox` runs for, so what this machine mounts is a decision made by a
-person at a console rather than something available to whatever is building a
-container this afternoon.
+ssh — the one BuilderBot uses, and so the one a job runs as. It has no sudo
+and cannot read `bb-sandbox`, which is installed `0750 root:root`. So what
+this machine mounts is a decision made by somebody with root at a console
+rather than something available to whatever is building a container this
+afternoon.
 
-`provision.sh` makes both. `--admin NAME` renames the second; `--admin-key`
-gives it a key so it can be reached over ssh. No password is set for it — a
-provisioner that invents one has to print it, and a password in a terminal
-scrollback is not a secret — so set one from the console or pass a key.
-
-**And a third, for sessions** (roadmap #24, docs/nodes.md §19). A Claude
+**And a second, for sessions** (roadmap #24, docs/nodes.md §19). A Claude
 session on a project bound to this node runs *here*, and it runs as
 `builder` — `--session-user NAME`, `none` to run no sessions — which is in
 `kvm` for the emulator and in **no docker group**: the account that edits
