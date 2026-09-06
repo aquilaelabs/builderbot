@@ -878,13 +878,24 @@ ok(true, 'a dotted project name unpins too, animation and all');
 // beside the sidebar, so the row has to unroll rather than shove the projects
 // under it down between two frames. The tween is caught while it runs — the
 // row exists before it, so waiting for the row alone would prove nothing.
-const unrolls = page.waitForFunction(() => {
-  // By the row's own name: the card has no thumbtack to reach it through.
-  const r = document.querySelector('#projects .row[data-row="ep.silon"]');
-  return !!r && r.getAnimations().length > 0;
-}, { timeout: 8000 });
+// Watched at the call rather than caught mid-flight: the tween is 170ms,
+// and a poll that evaluates in the page over CDP can take longer than that
+// on a loaded box — this passed on the controller and failed three times
+// out of four on bb-sandbox with the row rendered, motion allowed and no
+// stub in the way. What is asserted is the same: the row was tweened rather
+// than snapped in.
+await page.evaluate(() => {
+  window.__rowAnims = [];
+  const real = Element.prototype.animate;
+  window.__pinAnimate = real;
+  Element.prototype.animate = function(...a){
+    if (this.matches && this.matches('.row[data-row="ep.silon"]')) window.__rowAnims.push(a[1]?.duration);
+    return real.apply(this, a);
+  };
+});
 await page.evaluate(() => setProjectPinned('ep.silon', true));
-await unrolls;
+await page.waitForFunction(() => window.__rowAnims.length > 0, { timeout: 8000 });
+await page.evaluate(() => { Element.prototype.animate = window.__pinAnimate; });
 ok(true, '...and pinning it back unrolls the row instead of snapping it in');
 await page.waitForFunction(() =>
   [...document.querySelectorAll('#projects .row .name')]

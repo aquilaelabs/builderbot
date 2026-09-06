@@ -215,9 +215,17 @@ sdk_write_env() {
 # what the dashboard shells out to for its own store, and a node's answer
 # there would be a silent wrong one.
 sdk_status() {
-    if [ "${1:-}" != --local ] && [ -z "${BB_NODE_PACKAGES:-}" ]; then
+    if [ "${1:-}" != --local ] && [ -z "${BB_NODE_PACKAGES:-}" ] && ! on_node; then
         local node; node="$(project_node 2>/dev/null)"
         if [ -n "$node" ] && sdk_status_node "$node"; then return 0; fi
+        # No node: nothing installs on a controller (roadmap #26), so the
+        # honest list is empty rather than this container's own store —
+        # which holds the browsers its boot put there and is --local's.
+        if [ -z "$node" ]; then
+            log "this project has no node — packages are installed on a node (the Nodes tab), and a project with none cannot compile here"
+            log "bb sdk --local lists this container's own store: what its boot keeps for bb shot, nothing to install"
+            return 0
+        fi
     fi
     sdk_status_local
 }

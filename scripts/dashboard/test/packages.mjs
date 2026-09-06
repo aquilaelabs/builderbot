@@ -40,6 +40,20 @@ await page.waitForFunction(
           return !!l && !l.querySelector('.loading'); },
                            { timeout: 20000 });
 await page.click('#bPkgs');
+// Packages are installed on nodes (roadmap #26): the tab opens on one — the
+// harness's stub agent here — and never offers "this container". With no
+// node at all it says to enroll one and offers nothing; shown by emptying
+// the page's node list, since the fixture always has the stub. The installer
+// the rest of this file exercises is still there for `bb sdk install` from a
+// shell and for the suite, addressed as "local"; nothing on the page sets it.
+await page.waitForSelector('.doc .pkgtab #pkgNodeSel', { timeout: 20000 });
+ok(await page.$$eval('.doc #pkgNodeSel option', os => !os.some(o => o.value === 'local')),
+   'the Tools tab opens on a node and never offers this container');
+await page.evaluate(() => { nodesList = []; pkgNode = ''; packages = null; loadPackages(); });
+await page.waitForSelector('.doc .pkgtab .pkgnone', { timeout: 20000 });
+ok(await page.evaluate(() => !document.querySelector('.doc .pkg') && !document.querySelector('#pkgNodeSel')),
+   '...and with no node enrolled it says to enroll one, and offers nothing to install here');
+await page.evaluate(() => { nodesList = null; pkgNode = 'local'; packages = null; loadPackages(); });
 await page.waitForFunction(() => document.querySelectorAll('.doc .pkg:not(.img)').length > 0);
 // Structural, not painted: under a loaded box checkVisibility can sample a
 // frame mid-layout. The claim is that the rows are in the document being
@@ -639,6 +653,12 @@ await page.waitForFunction(() => document.querySelectorAll('.doc .pkg:not(.img)'
                            { timeout: 30000 });
 ok(await page.evaluate(() => tabs.some(t => t.kind === 'packages')),
    '...and survives a reload, the way the findings tab does');
+// A fresh page opens the tab on a node, as it should (roadmap #26); the rows
+// the rest of this file reads are the local installer's, so ask for them.
+await page.evaluate(() => { pkgNode = 'local'; packages = null; loadPackages(); });
+await page.waitForFunction(() => pkgNode === 'local' && packages && !packages.name
+                                 && document.querySelectorAll('.doc .pkg:not(.img)').length > 0,
+                           { timeout: 30000 });
 
 // 400s and 409s are asked for on purpose above; the browser logs a failed
 // fetch either way.

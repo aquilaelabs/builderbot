@@ -510,9 +510,13 @@ in software and will mislead you.
 
 The image carries no toolchain beyond node, python and the Playwright
 module. Everything a build needs — the JDK, the Android SDK, the emulator,
-Flutter, .NET — is a recipe installed into a **packages store**: the SDK
-share, mapped here at `/sdk` (Unraid default `/mnt/user/development/SDK`)
-and on a node wherever it was enrolled with, often the same share.
+Flutter, .NET — is a recipe installed into a **node's packages store**, from
+the Tools tab with that node picked; the tab lists nodes and nothing else,
+and with none enrolled it says so. The controller's own store — the SDK
+share, mapped at `/sdk` (Unraid default `/mnt/user/development/SDK`) — holds
+only what its boot keeps for `bb shot`, the Playwright browsers; nothing is
+installed on the controller from the dashboard. A node enrolled with the same
+share is recognized as sharing it, and installs are arbitrated across both.
 
 The reason is arithmetic. `/opt` is discarded and rebuilt on every image
 update, and the update is weekly, so a package baked into the image is

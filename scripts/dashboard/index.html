@@ -6220,11 +6220,22 @@ function openPackages(){
 // on this tab changes on its own.
 let pkgSizeTimer = null;
 async function loadPackages(){
+  const asked = ++pkgLoadSeq;
+  if (nodesList === null) await loadNodes();
+  if (asked !== pkgLoadSeq) return;           // the node changed under this load
+  if (!pkgPick()){
+    packages = {nonode: true};
+    clearTimeout(pkgSizeTimer); pkgSizeTimer = null;
+    pkgRev++; drawPanes();
+    return;
+  }
   try{
     const r = await fetch("/api/packages" + (pkgNode !== "local" ? `?node=${encodeURIComponent(pkgNode)}` : ""));
     if (!r.ok) throw new Error("HTTP " + r.status);
-    packages = await r.json();
-  }catch(e){ packages = {error: String(e)}; }
+    const got = await r.json();
+    if (asked !== pkgLoadSeq) return;
+    packages = got;
+  }catch(e){ if (asked !== pkgLoadSeq) return; packages = {error: String(e)}; }
   clearTimeout(pkgSizeTimer); pkgSizeTimer = null;
   if (packages && packages.sizing) pkgSizeTimer = setTimeout(loadPackages, 1500);
   pkgRev++;
@@ -6241,10 +6252,32 @@ let pkgDots = 0, pkgDotsTimer = null;
 // Which flavor the picker is showing. Page state, not the server's: it is a
 // question being asked, not a fact about the box.
 let pkgFlavor = "";
-// Which node the Tools tab is showing (docs/nodes.md §6): "local" is this
-// container's SDK share and the installer that was always here; any other
-// is an agent node's packages store, where an install is a job.
-let pkgNode = "local";
+// Which node the Tools tab is showing (docs/nodes.md §6): an agent node's
+// packages store, where an install is a job. Empty until pkgPick() chooses
+// one, and empty when there is none to choose — packages are installed on
+// NODES (roadmap #26), and this container is never offered: what it keeps is
+// the Playwright browsers its boot hook put on its store for bb shot, and no
+// button reaches its installer. "local" is still what that installer is
+// called — `bb sdk install` from a shell and the suite address it — but
+// nothing on this page sets it.
+let pkgNode = "";
+let pkgLoadSeq = 0;         // a load that lands after the node changed is dropped
+
+// The node the tab opens on: the one it showed last (remembered in this
+// browser), else the first live agent node, else nothing. Re-asked on every
+// load, so a node that was retired under the tab is not shown as if it were
+// still there.
+function pkgPick(){
+  const live = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
+  if (pkgNode === "local") return pkgNode;
+  let want = pkgNode;
+  if (!live.some(n => n.id === want)){
+    try{ want = localStorage.getItem("bb.pkgnode") || ""; }catch(e){ want = ""; }
+  }
+  if (!live.some(n => n.id === want)) want = live[0]?.id || "";
+  pkgNode = want;
+  return pkgNode;
+}
 
 // What the one job is doing, said next to the control that started it — Add
 // for a system image, Install selected for anything else — rather than
@@ -7368,6 +7401,20 @@ function renderPackagesInto(i){
     `<div class="doctab pkgtab"><div class="loading">loading…</div></div>`; return; }
   if (d.error){ el.innerHTML = `<div class="doctab pkgtab"><div class="empty">${
     esc("could not read the package list: " + d.error)}</div></div>`; return; }
+  // No node to install on. Not this container: it builds nothing and keeps
+  // nothing but the browsers its boot put there, so there is no list to show
+  // and no button that would be honest to offer.
+  if (d.nonode){
+    el.innerHTML = `<div class="doctab pkgtab"><div class="pkgnode">
+        <button type="button" id="pkgRefresh" title="look again for a node">Refresh</button>
+      </div>
+      <div class="empty pkgnone">Packages are installed on a node, and none is enrolled.
+        The Nodes tab's <b>Enroll node</b> makes one; its packages store is what shows here.
+        Nothing installs on this container.</div></div>`;
+    const pre = el.querySelector("#pkgRefresh");
+    if (pre) pre.onclick = () => { nodesList = null; packages = null; pkgRev++; drawPanes(); loadPackages(); };
+    return;
+  }
 
   const job = d.job || {}, busy = !!job.running;
   // A finished package loses its tick — whether it worked or not. One that
@@ -7382,8 +7429,9 @@ function renderPackagesInto(i){
   // you were about to install quietly unticked itself.
   if (!busy && job.action !== "check")
     for (const n of [...(job.done || []), ...(job.failed || [])]) pkgTicked.delete(n);
-  // The picker: this container, or an agent node. Only drawn when there is
-  // an agent node to pick, like every node select here.
+  // The picker: an agent node. Never this container (roadmap #26). Drawn
+  // whenever there is a node, one included, so the tab always says whose
+  // store it is showing.
   const pnodes = (nodesList || []).filter(n => n.kind === "agent" && n.state !== "retired");
   if (nodesList === null) loadNodes();
   const onNode = pkgNode !== "local";
@@ -7398,7 +7446,6 @@ function renderPackagesInto(i){
   // tab, next to the thing it re-reads.
   const picker = `<div class="pkgnode">
       ${pnodes.length ? `<label class="pick">Packages on <select id="pkgNodeSel" aria-label="node">
-        <option value="local"${onNode ? "" : " selected"}>this container</option>
         ${pnodes.map(n => `<option value="${esc(n.id)}"${n.id === pkgNode ? " selected" : ""}>${
           esc(n.name)}${n.live === false ? " (quiet)" : ""}</option>`).join("")}
       </select></label>` : ""}
@@ -7474,6 +7521,7 @@ function renderPackagesInto(i){
   el.querySelectorAll("[data-pkg]").forEach(b => b.onclick = () => pkgAct(b.dataset.pkg));
   const psel = el.querySelector("#pkgNodeSel");
   if (psel) psel.onchange = () => { pkgNode = psel.value; packages = null; pkgTicked.clear();
+                                    try{ localStorage.setItem("bb.pkgnode", pkgNode); }catch(e){ /* private */ }
                                     pkgRev++; drawPanes(); loadPackages(); };
   const pre = el.querySelector("#pkgRefresh");
   if (pre) pre.onclick = () => loadPackages();
