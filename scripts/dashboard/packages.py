@@ -103,6 +103,9 @@ def load_packages():
                 "env": {str(k)[:40]: str(v) for k, v in (lay.get("env") or {}).items()},
                 "tool": str(lay.get("tool") or ""),
                 "reports": str(lay.get("reports") or ""),
+                # A file that has to exist for the package to count as
+                # installed, when the directory alone does not prove it.
+                "needs": str(lay.get("needs") or ""),
             }
         out.append(row)
     # Sorted here rather than trusted from the file, so a package added at the
@@ -530,6 +533,12 @@ def payload():
         _size_refresh()
     for p in PACKAGES:
         path = _pkg_path(p["probe"])
+        # The directory is there but the file that completes the package is
+        # not (layout.needs): not installed, so Install is offered — the
+        # recipe fills the directory in rather than starting over.
+        need = (p.get("layout") or {}).get("needs")
+        if path and need and not os.path.exists(os.path.join(path, need)):
+            path = ""
         v = _pkg_versions.get(p["name"], {})
         # A check answer about a package that has since been installed or
         # removed describes a state that no longer holds, so it is not an
@@ -821,6 +830,8 @@ def payload_for_node(nid):
             here = bool({"cmdline-tools", "platform-tools"} & andr)
         else:
             here = probe in top
+        if name in set((rep.get("store_dirs") or {}).get("incomplete") or []):
+            here = False                    # the directory without what completes it
         # A node that has not reported its store yet is not evidence of
         # absence, so say nothing rather than "not installed".
         # The node's own `bb sdk versions` first — the same generator this
@@ -989,7 +1000,8 @@ def layout_for_node():
         out.append({"name": name,
                     "dir": "android" if name.startswith("android:") else name,
                     "bin": lay["bin"], "env": lay["env"],
-                    "tool": lay["tool"], "reports": lay["reports"]})
+                    "tool": lay["tool"], "reports": lay["reports"],
+                    "needs": lay.get("needs") or ""})
     return out
 
 

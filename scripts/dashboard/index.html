@@ -3489,6 +3489,9 @@ function openTab(spec){
   if (!t){
     if (!roomForTab()) return;
     t = Object.assign({id:"t" + (++seq)}, spec);
+    // The boot it was opened under, for the restart check on the poll: a
+    // tab opened AFTER the container came back is not one from before it.
+    if (String(t.arg).startsWith("claude:")) t.boot = bootFor(t.arg);
     tabs.push(t);
   } else if (t.kind === "term" && t.arg !== spec.arg
              && !liveSessions().has(sessionOf(t.arg))){
@@ -11669,8 +11672,14 @@ async function refresh(){
     // layout at boot, but a page that has saved since then is ahead of that
     // revision and would never adopt the pruned strip. So it drops its own,
     // and the transcripts stay on disk for the Projects card to offer.
+    // Only the tabs from BEFORE the restart. One opened after the container
+    // came back, but before this page had noticed — a poll that failed part
+    // way, a click in the gap — carries the new boot and stays: the operator
+    // pressed Claude, the session started, and the tab vanished a moment
+    // later while the Sessions list still showed it.
     if (state.boot && bootSeen && state.boot !== bootSeen)
-      tabs.filter(t => String(t.arg).startsWith("claude:")).forEach(t => dropTab(t.id));
+      tabs.filter(t => String(t.arg).startsWith("claude:") && t.boot !== state.boot)
+          .forEach(t => dropTab(t.id));
     if (state.boot) bootSeen = state.boot;
     // After the boot check above, which drops every Claude tab on a restart:
     // this would otherwise be reaping tabs that have already gone.

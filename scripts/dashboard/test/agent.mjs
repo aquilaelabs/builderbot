@@ -1114,6 +1114,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
   // package asked for is not installed, so this proves the channel and not
   // a download.
   {
+    const ttydsBefore = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id).length;
     const pj = await api('/api/packages', { action: 'remove', names: ['flutter'], node: minted.id });
     ok(pj.ok && /^j_/.test(pj.job), `a package job is queued on the node (${pj.job || pj.error})`);
     const pfin = await until(async () => {
@@ -1129,11 +1130,22 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        && /== bb sdk remove flutter/.test(pfin.log) && /not installed|unknown package/.test(pfin.log),
        `the bundle lands in the packages store and bb runs from it there (${pfin?.state}: ${(pfin?.log || '').slice(-500).replace(/\n/g, ' / ')})`);
     ok(existsSync(`${DIR}/agentpackages/.bb/bundle.tar`), '...and stays for the next one');
+    // The store changed, so the ttyds are started again with an environment
+    // built from it — a session opened now finds the new tool on PATH.
+    const renewed = await until(async () => {
+      const n = await nodeById(minted.id);
+      const now = ttydRuns().filter(r => r.env.BUILDERBOT_NODE === minted.id).length;
+      return now > ttydsBefore && n?.reported?.session?.up ? now : null;
+    }, 30000, 500);
+    ok(renewed !== null, `...and the session ttyds are restarted onto the changed store (${ttydsBefore} -> ${renewed})`);
     // The store's own directories decide what is installed there — not the
     // census's placement summary, which named six toolchains and called four
     // installed packages missing on the operator's shared SDK store.
     mkdirSync(`${DIR}/agentpackages/zig`, { recursive: true });
     mkdirSync(`${DIR}/agentpackages/android/ndk`, { recursive: true });
+    // ...except a directory without the file that completes the package:
+    // playwright's browsers from before the recipe carried the module.
+    mkdirSync(`${DIR}/agentpackages/playwright/chromium-1234`, { recursive: true });
     // The store listing rides the census, which refreshes at hello — and a
     // job that touches the node ends in one, which is why installing a
     // package updates this list without waiting ten minutes. Any such job
@@ -1155,6 +1167,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(view && view.items.find(i => i.name === 'swift')?.installed === false
        && view.items.every(i => i.unknown === false),
        '...and one that is not there reads as absent, not as unknown');
+    ok(view && view.items.find(i => i.name === 'playwright')?.installed === false,
+       '...and a playwright directory without its module reads as not installed, so Install is offered (the row said installed and offered nothing)');
   }
 
   // ---- the Actions runner as a service on the node (phase 7) ----------------
