@@ -768,6 +768,11 @@ only when the finding is genuinely a false positive, and say why.
   not, say so rather than inventing another auth path. There is no
   container-wide git token: a project that needs one carries its own, set in
   the dashboard's clone dialog.
+- **On a node, pushing is `bb git push`** (and `fetch`, `pull`, `ls-remote`).
+  The tree is the shared projects share, so the controller runs git in it
+  with the keys it holds, and no credential ever lives on a node. Plain
+  `git push` there fails asking for a username: that is the rule, not a
+  fault to work around. `bb status` says which machine this is.
 - Never write credentials into this repository, including into test fixtures,
   `.env` files that are not gitignored, or CI config.
 

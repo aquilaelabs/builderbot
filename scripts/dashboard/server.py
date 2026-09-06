@@ -259,7 +259,10 @@ LOGIN_HTML = """<!doctype html>
 RELAY_VERBS = frozenset((
     "roadmap", "todo", "bug", "bugs", "history", "version", "changelog", "work",
     "findings", "findings-history", "catchup", "claude-md", "claudemd",
-    "settings", "nodes", "jobs", "ci-labels"))
+    "settings", "nodes", "jobs", "ci-labels",
+    # git's network half (docs/nodes.md §20, rule 2): the keys are here and
+    # nowhere else, and the tree is the share, so the push runs here.
+    "git"))
 
 MACROS = {
     "status":           ["bb", "status"],

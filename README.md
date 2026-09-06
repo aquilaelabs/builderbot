@@ -370,6 +370,9 @@ bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
+bb git push|fetch|pull|ls-remote [ARGS]
+                   git's network half, run where the credential is: from a
+                   session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only

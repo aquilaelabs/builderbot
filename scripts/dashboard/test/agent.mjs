@@ -482,6 +482,23 @@ try {
            (once + listing).replace(/\s+/g, ' ').slice(0, 160)})`);
       const num = (once.match(/added (\d+)/) || [])[1];
       bbOnNode(['roadmap', 'rm', String(num), 'test']);
+      // bb git: git's network half from a node runs on the controller, in
+      // the project's tree, with the keys that live only there (docs/nodes.md
+      // §20, rule 2). The fixture has no remote, so git itself answers —
+      // which is the proof that git ran here and not on the "node".
+      const ls = bbOnNode(['git', 'ls-remote', 'origin']);
+      ok(/fatal:/.test(ls) && !/not relayed|not accepted/.test(ls),
+         `bb git ls-remote from a node reaches the controller's git in the project's tree (${ls.replace(/\s+/g, ' ').slice(0, 70)})`);
+      const exec = bbOnNode(['git', 'push', '--upload-pack=/bin/sh', 'origin']);
+      const conf = bbOnNode(['git', 'fetch', '-c', 'core.sshCommand=id']);
+      const other = bbOnNode(['git', 'status']);
+      ok(/not accepted/.test(exec) && /not accepted/.test(conf) && /takes push, fetch/.test(other),
+         '...and an option that would run a program on the controller, or a verb that is not the network half, is refused before git sees it');
+      // The identity a node session adopts is the controller's, through the
+      // same settings answer bb-tty reads.
+      const st = JSON.parse(bbOnNode(['settings', '--json']));
+      ok('git_email' in st && 'git_name' in st,
+         `bb settings carries the commit identity for a node's session to adopt (${st.git_name || '—'} <${st.git_email || '—'}>)`);
       const feed = async () => ((await api('/api/chat', { action: 'read', project: 'alpha' })).messages || []);
       const n0 = (await feed()).length;
       hook('bb-prompt-relay', ['alpha', 'ignored'], JSON.stringify({ prompt: 'refactor the picker <system-reminder>x</system-reminder>' }));
