@@ -142,9 +142,8 @@ ok(list[0].id === 'local',
   const out = execFileSync('bash', ['scripts/bb', 'nodes'],
     { encoding: 'utf8', cwd: REPO,
       env: { ...process.env, DASHBOARD_STATE: `${DIR}/state` } });
-  ok(/local\s+online\s+local\s+-\s/.test(out.replace(/\s+/g, ' '))
-     && /sandbox · stub/.test(out),
-     'bb nodes prints the same registry, read-only — local with no capability since 10c');
+  ok(!/\blocal\b/.test(out) && /sandbox · stub/.test(out),
+     'bb nodes prints the enrolled machines, read-only — never the controller, which is registry plumbing');
 }
 
 // ---- phase 2: the Nodes tab ------------------------------------------------
@@ -153,8 +152,26 @@ ok(list[0].id === 'local',
     if (c?.classList.contains('closed')) c.querySelector('h2').click(); });
   await page.click('#bNodes');
   await page.waitForSelector('.nodestab .ndrow', { timeout: 15000 });
-  ok((await nodeOptions(page)).length === 2,
-     'the Nodes tab lists the registry: local and the sandbox');
+  ok((await nodeOptions(page)).length === 1,
+     'the Nodes tab lists the enrolled machines, and not this container');
+  // ...and with nothing enrolled it says so where the rows would be, rather
+  // than an empty picker over an empty page. Driven by handing the page a
+  // registry holding only the controller's own record, which is what a fresh
+  // install has.
+  const bare = await page.evaluate(async () => {
+    const was = nodesList;
+    nodesList = was.filter(n => n.kind === 'local');
+    nodesRev++; drawPanes();
+    const out = { none: !!document.querySelector('.nodestab .ndnone'),
+                  rows: document.querySelectorAll('.nodestab .ndrow').length,
+                  picker: !!document.querySelector('.nodestab #ndPick'),
+                  enroll: !!document.querySelector('.nodestab #ndEnroll') };
+    nodesList = was; nodesRev++; drawPanes();
+    return out;
+  });
+  ok(bare.none && bare.rows === 0 && !bare.picker && bare.enroll,
+     `...and with none enrolled it says so, with Enroll node still there (${JSON.stringify(bare)})`);
+  await page.waitForSelector('.nodestab .ndrow', { timeout: 10000 });
   // Adding a node by ssh address is retired (roadmap #18): it existed only
   // because compose ran from this container over ssh, so a machine needed a
   // key as well as a token and a token-only node could do everything except
@@ -256,6 +273,7 @@ ok(list[0].id === 'local',
   ok(/not a BuilderBot sandbox|does not answer|docker does not answer/.test(
        await page.$eval('.dmtab .empty', e => e.textContent).catch(() => '')),
      'an unreachable node shows its reason, not a spinner');
+  await page.waitForSelector('.dmtab .dmpick select', { timeout: 15000 });
   ok(await page.$eval('.dmtab .dmpick select', s => !s.disabled),
      '...with the picker still live — the way back is the way in');
   // and back: the sandbox's last-known answer paints instantly from cache
@@ -373,11 +391,12 @@ ok(list[0].id === 'local',
   await page.waitForSelector(`${ROW} .ndconf`, { timeout: 15000 });
   ok(await page.$(`${ROW} .ndstale`) === null && await page.$(`${ROW} [data-nd="update-agent"]`) === null,
      'a node running the shipped agent wears no update pill and is offered no update');
-  await pickNode(page, 'local');
-  ok(await page.$('.nodestab .ndrow[data-node="local"] .ndconf') === null
-     && await page.$('.nodestab .ndrow[data-node="local"] [data-nd="update-agent"]') === null,
-     'local has neither the storage section nor an agent to update');
-  await pickNode(page, minted.id);
+  // The controller is not on this tab at all now — a stronger version of the
+  // claim this used to make by picking it and finding no storage section and
+  // no agent to update.
+  ok(!(await nodeOptions(page)).includes('local')
+     && await page.$('.nodestab .ndrow[data-node="local"]') === null,
+     'the controller cannot be picked here: it runs no work and has nothing this tab configures');
   // Nothing to open: the storage and network settings are always shown now,
   // one node at a time, chosen in the bar.
   await page.waitForSelector(`${ROW} .ndconf [data-madd]`, { timeout: 5000 });
@@ -921,9 +940,8 @@ ok(list[0].id === 'local',
   await page.waitForSelector(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, { timeout: 15000 });
   ok(await page.$eval(`.nodestab .ndrow[data-node="${sb.id}"] .ndpaths [data-k="paths"]`, e => e.value) === '/workspace:/workspace, /devdata:/mnt/user/bb-dev',
      '...and the node\'s row shows it, editable');
-  await pickNode(page, 'local');
   ok(await page.$('.nodestab .ndrow[data-node="local"] .ndpaths') === null,
-     '...while local, whose paths are its own, has no such line');
+     '...while the controller, whose paths are its own, is not a row here at all');
 }
 
 // ...and put the sandbox's path mapping back: it lives on the node record

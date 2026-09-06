@@ -426,7 +426,13 @@ try {
        `a ttyd that died is started again, and a stray bb-tty ttyd holding its port — an earlier agent's — is ended first (${
          again ? 'up on ' + again.sess.port : 'not up: ' + JSON.stringify((await nodeById(minted.id))?.reported?.session)})`);
     if (!strayGone) stray.kill('SIGKILL');
-    const answer = await fetch(`http://127.0.0.1:${SESSION_PORT}/ws?arg=x`).then(r => r.text()).catch(e => String(e));
+    // Retried rather than asked once: the census says up when the process
+    // is alive and still there a moment later, which is what the agent can
+    // know — the stub's own listener binds just after that, so a single
+    // fetch races it and fails on a loaded box.
+    const answer = await until(async () =>
+      fetch(`http://127.0.0.1:${SESSION_PORT}/ws?arg=x`).then(r => r.text()).catch(() => null),
+      15000, 300) || 'never answered';
     ok(/^ttyd-stub GET/.test(answer), `...and the port answers as the agent's own again (${answer.slice(0, 30)})`);
     const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
     const store = st.stores.packages;
@@ -490,7 +496,9 @@ try {
       const creds = `${DIR}/home/.claude/.credentials.json`;
       const had = existsSync(creds) ? readFileSync(creds, 'utf8') : null;
       mkdirSync(`${DIR}/home/.claude`, { recursive: true });
-      writeFileSync(creds, '{"claudeAiOauth": {"accessToken": "fake-for-the-suite"}}\n', { mode: 0o600 });
+      // With an expiresAt, because that is what the two sides compare: a
+      // refresh moves it, and the later grant is the one that wins (bug #64).
+      writeFileSync(creds, '{"claudeAiOauth": {"accessToken": "fake-for-the-suite", "expiresAt": 2000}}\n', { mode: 0o600 });
       const forMe = execFileSync('bash', [`${REPO}/scripts/bb`, 'users', 'token', 'alpha', 'test'],
         { encoding: 'utf8', env: { ...process.env, DASHBOARD_STATE: `${DIR}/state`, WORKSPACE: `${DIR}/ws` } }).trim();
       const login = async (t) => { const r = await fetch(URL.replace(/\/$/, '') + '/api/v1/claude-login',
@@ -512,7 +520,32 @@ try {
          && readFileSync(`${nodeHome}/.claude/.credentials.json`, 'utf8').includes('fake-for-the-suite')
          && (statSync(`${nodeHome}/.claude/.credentials.json`).mode & 0o777) === 0o600,
          `bb login on a node takes the controller's login into that home, 0600 (${out.trim().split('\n').pop().slice(0, 60)})`);
+      // ...and back the other way, which is the half that was missing. The
+      // grant is an OAuth pair whose refresh ROTATES the refresh token, so a
+      // node that refreshes leaves the controller holding one the server has
+      // retired — the operator came back to a controller that said it was
+      // signed out (bug #64). The newer grant goes home.
+      writeFileSync(`${nodeHome}/.claude/.credentials.json`,
+        '{"claudeAiOauth": {"accessToken": "refreshed-on-the-node", "expiresAt": 3000}}\n', { mode: 0o600 });
+      const back = execFileSync('bash', [`${REPO}/scripts/bb`, 'login', '--sync'], { encoding: 'utf8',
+        env: { ...process.env, PATH: `${DIR}/bin2:${process.env.PATH}`, HOME: nodeHome,
+               BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: forMe, BB_NODE: 'agentbox' } });
+      ok(readFileSync(creds, 'utf8').includes('refreshed-on-the-node')
+         && existsSync(`${DIR}/home/.claude/.credentials.json.prev`),
+         `a grant the node refreshed is handed back to the controller, the one it replaced kept beside it (${
+           back.trim() || 'quiet'})`);
+      // ...and an older one cannot undo a sign-in that happened while the
+      // node was away: newer wins, not last-writer.
+      writeFileSync(`${nodeHome}/.claude/.credentials.json`,
+        '{"claudeAiOauth": {"accessToken": "stale-node-copy", "expiresAt": 1000}}\n', { mode: 0o600 });
+      execFileSync('bash', [`${REPO}/scripts/bb`, 'login', '--sync'], { encoding: 'utf8',
+        env: { ...process.env, PATH: `${DIR}/bin2:${process.env.PATH}`, HOME: nodeHome,
+               BUILDERBOT_ROLE: 'node', BB_CONTROLLER: URL.replace(/\/$/, ''), BB_TOKEN: forMe, BB_NODE: 'agentbox' } });
+      ok(readFileSync(creds, 'utf8').includes('refreshed-on-the-node')
+         && readFileSync(`${nodeHome}/.claude/.credentials.json`, 'utf8').includes('refreshed-on-the-node'),
+         '...while an older copy is refused, and the node takes the newer one instead');
       if (had === null) rmSync(creds); else writeFileSync(creds, had);
+      rmSync(`${DIR}/home/.claude/.credentials.json.prev`, { force: true });
     }
 
     // ---- the hooks post from a node (roadmap #24) ---------------------------

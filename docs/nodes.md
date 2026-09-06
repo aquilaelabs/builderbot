@@ -158,7 +158,8 @@ it was built before it was needed). A deliberately restricted node remains
 expressible through the API; it is simply not something anyone has to
 configure to get ordinary work done. Two things are unchanged and stay
 gated on facts rather than toggles: `system` jobs are offered only to a node
-whose census says it carries `bb-sandbox`, and `local` — the controller
+whose census says it carries `bb-sandbox`, and `local` — the controller's
+own record, which is registry plumbing rather than a row on the tab
 itself — is never given `docker-host`, because containers there would run
 beside `/config` and the dashboard credential (§12).
 
@@ -549,7 +550,8 @@ and `bb sdk`, operator-gated; that has to generalize without forking.
   keeps the existing gate: sessions cannot trigger it, operators can, and now
   the audit row says who did. The Tools tab's installer gains the same node
   picker the Docker manager gets: pick a node, see what is installed *there*,
-  install or remove there. The controller is just the `local` row.
+  install or remove there. The controller is not offered at all (roadmap
+  #26): it takes no packages, and its own record is registry plumbing.
 *Amended 2 September:* there are **four** stores, not three — `artifacts`
 joins data, packages and cache: this node's copy of what a project built,
 per project underneath, so a VM that is several projects' node keeps two
@@ -1671,6 +1673,15 @@ A node's sessions outlive a controller restart on purpose (the tmux is the
 node's); what must not is the idle rule — the Settings tab's "end a Claude
 session after N idle minutes" rides the hello reply into node.json and the
 agent enforces it on its own tmux, controller up or down (idle.py).
+The account's CLAUDE LOGIN is kept in step rather than copied once: the
+grant is an OAuth pair and a refresh rotates the refresh token, so two
+machines each holding a copy sign each other out — which is exactly what
+happened after a day of node sessions (bug #64). `bb login --sync` runs on
+every connection and moves whichever grant has the later `expiresAt`, up or
+down; an older one is refused rather than stored, and the copy it replaces
+is kept beside it for one round. The controller stays the one place that
+holds the account's current grant, and a machine that has been away cannot
+undo a sign-in that happened while it was gone.
 A CONTAINER node — this image in the node role — is a guest in §20's terms
 before the class exists on the record: no systemd, so its runner is run.sh
 in the foreground under the agent (supervised, taken down with it, reported

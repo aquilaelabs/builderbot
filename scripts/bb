@@ -42,7 +42,10 @@ bb — BuilderBot helper
   bb projects            list mounted project directories
   bb shell               open a login shell as the builder user
   bb update              update Claude Code (and npm globals) in place
-  bb login               run the Claude Code auth flow
+  bb login               run the Claude Code auth flow. On a node it first
+                         keeps this account's login in step with the
+                         controller's, in whichever direction is newer
+  bb login --sync        that half alone, quietly — what every connection does
   bb git push|fetch|pull|ls-remote [ARGS]
                          git's network half, run where the credential is — from a
                          session on a node it goes through the controller
@@ -198,40 +201,113 @@ cmd_update() {
     claude --version
 }
 
-cmd_login() {
-    # ON A NODE, the login is taken from the controller first (roadmap #24):
-    # this account signed in there — the Doctor card's flow — and the token
-    # a node-bound terminal carries is minted for that account, so the
-    # controller hands over that account's credentials file and no other.
-    # Only when this home is not signed in already: two copies of one OAuth
-    # grant refreshing independently is the case to avoid, so an existing
-    # login here is left to itself. No credential on the controller, or no
-    # token, falls through to the interactive flow below, which works on a
-    # node exactly as it does here.
-    if on_node && [ -n "${BB_TOKEN:-}" ] && [ "$(claude auth status --json 2>/dev/null \
-            | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ]; then
-        if BB_LOGIN_AUTH="$(bb_auth_header)" python3 - <<'PY'
-import os, sys
+# The account's Claude grant, kept in step between this node and the
+# controller (roadmap #24, bug #64).
+#
+# The grant is an OAuth pair and a refresh ROTATES the refresh token, so two
+# machines each keeping a copy sign each other out: the operator ran sessions
+# on a node for a day and came back to a controller that had to be signed in
+# again, because the node had refreshed and the controller still held a
+# refresh token the server had retired. The copies are the design — Claude
+# Code reads a file in the home it runs in — so they are kept in step
+# instead: whichever machine refreshed has the later `expiresAt`, and that
+# one wins. Newer here goes up, newer there comes down, equal does nothing.
+#
+# Never fatal, and quiet when nothing moved: this runs on every connection
+# (bb-tty), where a controller that is down or a token that has expired must
+# cost a session nothing.
+claude_login_sync() {
+    on_node || return 0
+    [ -n "${BB_TOKEN:-}" ] || return 0
+    BB_LOGIN_AUTH="$(bb_auth_header)" python3 - "${1:-}" <<'PY' || true
+import json, os, sys
 sys.path.insert(0, os.environ["BB_LIB"])
 import bbapi                                                    # noqa: E402
-r = bbapi.call("/api/v1/claude-login", auth=os.environ["BB_LOGIN_AUTH"])
-if r.get("error") or not r.get("credentials"):
-    print(f"[builderbot] no login to take from the controller: {r.get('error', 'no answer')}",
-          file=sys.stderr)
+
+loud = sys.argv[1] == "--loud"
+auth = os.environ["BB_LOGIN_AUTH"]
+path = os.path.join(os.environ["HOME"], ".claude", ".credentials.json")
+
+
+def at(text):
+    """When a grant stops being good — the number a refresh moves."""
+    try:
+        return int((json.loads(text).get("claudeAiOauth") or {}).get("expiresAt") or 0)
+    except (ValueError, AttributeError, TypeError):
+        return 0
+
+
+def say(msg):
+    print(f"[builderbot] {msg}")          # bb's own convention: log on stdout
+
+
+def warn(msg):
+    print(f"[builderbot] WARN: {msg}", file=sys.stderr)
+
+
+mine = ""
+try:
+    with open(path) as f:
+        mine = f.read()
+except OSError:
+    pass
+r = bbapi.call("/api/v1/claude-login", auth=auth)
+if r.get("error") and not mine:
+    if loud:
+        warn(f"no login to take from the controller: {r['error']}")
     sys.exit(1)
-d = os.path.join(os.environ["HOME"], ".claude")
-os.makedirs(d, mode=0o700, exist_ok=True)
-p = os.path.join(d, ".credentials.json")
-fd = os.open(p + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-with os.fdopen(fd, "w") as f:
-    f.write(r["credentials"])
-os.replace(p + ".new", p)
-print(f"[builderbot] signed in on {os.environ.get('BB_NODE', 'this node')} as "
-      f"{r.get('email') or 'the account signed in on the controller'} — the login came from the controller")
+theirs = r.get("credentials") or ""
+
+if at(mine) > at(theirs):
+    # This machine refreshed. Hand it back before the controller's copy is
+    # the stale one — that is the whole of bug #64.
+    w = bbapi.call("/api/v1/claude-login", {"credentials": mine}, auth=auth)
+    if w.get("error"):
+        warn(f"could not hand the refreshed login back to the controller: {w['error']}")
+    elif w.get("stored") and loud:
+        say("the login here was newer — the controller has it now")
+    sys.exit(0)
+
+if at(theirs) > at(mine):
+    d = os.path.dirname(path)
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    fd = os.open(path + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(theirs)
+    os.replace(path + ".new", path)
+    who = r.get("email") or "the account signed in on the controller"
+    say(f"signed in on {os.environ.get('BB_NODE', 'this node')} as {who} — "
+        f"the login came from the controller")
+    sys.exit(0)
+
+if loud and not mine:
+    warn("the controller has no login for this account either")
+    sys.exit(1)
+sys.exit(0)
 PY
-        then
-            return 0
-        fi
+}
+
+cmd_login() {
+    # `--sync` is the quiet half on its own: bb-tty runs it on every
+    # connection, where an interactive flow would be wrong and a message
+    # about nothing having moved would be noise.
+    if [ "${1:-}" = --sync ]; then
+        on_node || return 0
+        claude_login_sync
+        return 0
+    fi
+    # ON A NODE, the login is kept in step with the controller first
+    # (roadmap #24): this account signed in there — the Doctor card's flow —
+    # and the token a node-bound terminal carries is minted for that account,
+    # so the controller hands over that account's grant and no other. Both
+    # directions, because a refresh rotates the token and the newer copy has
+    # to win whichever machine made it (bug #64). Still signed out after
+    # that falls through to the interactive flow below, which works on a node
+    # exactly as it does here.
+    if on_node; then
+        claude_login_sync --loud || true
+        [ "$(claude auth status --json 2>/dev/null \
+             | tr -d ' ' | sed -n 's/.*"loggedIn":\([a-z]*\).*/\1/p')" != true ] || return 0
         log "sign in here instead — the flow runs in this terminal"
     fi
     # `claude auth login` is the flow built for this and does not leave a
@@ -2125,8 +2201,45 @@ ago() {
 # for a single command rather than being unable to reach the API at all. The
 # operator's
 # own shell, and a session no longer has it in its environment at all.
+# When a session token stops being good, as a unix time — or nothing for
+# anything that is not one. The body is base64url of `project|exp|uid|sig`.
+bb_token_exp() {
+    case "${1:-}" in bbs_*) ;; *) return 0 ;; esac
+    local b="${1#bbs_}"
+    b="$(printf '%s' "$b" | tr '_-' '/+')"
+    while [ $(( ${#b} % 4 )) -ne 0 ]; do b="${b}="; done
+    printf '%s' "$b" | base64 -d 2>/dev/null | cut -d'|' -f2 | tr -dc '0-9'
+}
+
+bb_token_dead() {
+    local e; e="$(bb_token_exp "${1:-}")"
+    [ -n "$e" ] || return 1                  # not a session token: not ours to judge
+    [ "$e" -le "$(date +%s)" ]
+}
+
+# The session token to use now: the one in the environment unless it has
+# expired, and then the one bb-tty last wrote beside the launcher.
+#
+# A conversation outlives its token — twelve hours — and the environment of a
+# process already running cannot be changed from outside it, so a long session
+# was left holding a token that no longer verified and every verb answered
+# "not signed in". bb-tty refreshes that file on every connection, so opening
+# the tab is what puts this back in touch.
+bb_token_now() {
+    local t="${BB_TOKEN:-}"
+    if [ -n "$t" ] && ! bb_token_dead "$t"; then printf '%s' "$t"; return 0; fi
+    local dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
+    local f="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/token-${BB_PROJECT:-}"
+    if [ -r "$f" ]; then
+        local ft; ft="$(cat "$f" 2>/dev/null)"
+        if [ -n "$ft" ] && ! bb_token_dead "$ft"; then printf '%s' "$ft"; return 0; fi
+    fi
+    printf '%s' "$t"                          # nothing fresher; the die below says so
+}
+
 bb_auth_header() {
-    if [ -n "${BB_TOKEN:-}" ]; then printf 'Bearer %s' "$BB_TOKEN"
+    local t; t="$(bb_token_now)"
+    if [ -n "$t" ]; then printf 'Bearer %s' "$t"
     elif [ -n "${DASHBOARD_AUTH:-}" ]; then
         printf 'Basic %s' "$(printf '%s' "$DASHBOARD_AUTH" | base64 -w0)"
     fi
@@ -2135,6 +2248,14 @@ bb_auth_header() {
 # ...and the sentence to die with when there is neither.
 bb_auth_or_die() {
     local h; h="$(bb_auth_header)"
+    # An expired one is not a missing one, and saying "not signed in" for it
+    # sent somebody looking for a sign-in that was never the problem. A token
+    # lasts twelve hours and a conversation can last longer; re-opening the
+    # tab mints a fresh one, which bb-tty writes where bb_token_now reads it.
+    if [ -n "${BB_TOKEN:-}" ] && bb_token_dead "$(bb_token_now)"; then
+        local e; e="$(bb_token_exp "$BB_TOKEN")"
+        die "this session's token expired$([ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null) — they last 12 hours and a conversation can outlast one. Open this session's tab from the dashboard again and the next command works: that mints a fresh token and leaves it where bb looks."
+    fi
     if [ -z "$h" ]; then
         # Which of the two is actually wrong. Everything that reaches a node
         # goes through the dashboard, so "no credential" and "no dashboard"
@@ -2485,13 +2606,18 @@ try:
 except Exception as e:
     print(f"no node store yet — the dashboard creates it on boot ({e})")
     raise SystemExit(0)
+# Enrolled machines only. The controller's own record is registry plumbing —
+# it is how a share it mounts is recognized as a node's store — and never a
+# machine anybody lists: it runs no work and takes no packages.
+rows = [n for n in rows if n["kind"] != "local"]
 if not rows:
-    print("no nodes on record — the dashboard seeds `local` on boot")
+    print("no node is enrolled — the dashboard's Nodes tab mints a token for one")
+    print("a project with no node can be read and edited here, and cannot be built")
     raise SystemExit(0)
 for n in rows:
     caps = ",".join(n["capabilities"]) or "-"
     ag = n.get("agent") or {}
-    where = "this container" if n["kind"] == "local" else (ag.get("addr") or "-")
+    where = ag.get("addr") or "-"
     # An agent node is live or quiet by whether it has dialed in lately —
     # derived, never stored, and the one column the row cannot lie about.
     state = n["state"]
@@ -3943,7 +4069,7 @@ case "${1:-help}" in
     projects) cmd_projects ;;
     shell)    exec bash -l ;;
     update)   cmd_update ;;
-    login)    cmd_login ;;
+    login)    shift; cmd_login "$@" ;;
     emu)      shift; cmd_emu "$@" ;;
     claude-md|claudemd) shift; cmd_claude_md "$@" ;;
     lint)     shift; cmd_lint "$@" ;;

@@ -1583,6 +1583,10 @@ ok(true, '...and a daemon coming back needs no un-gating: the next draw is clean
   await page.waitForFunction(() => dockerList && dockerList.blind === true,
                              null, { timeout: 20000 });
   await page.evaluate(() => { dockerRev++; drawPanes(); });
+  // Waited for rather than assumed: the repaint is synchronous but the tab
+  // has to be the one on screen, and an earlier file leaving another
+  // document in the pane is enough to lose the race.
+  await page.waitForSelector('.dmtab .empty', { timeout: 15000 });
   ok(/not a BuilderBot sandbox/.test(await page.$eval('.dmtab .empty', e => e.textContent)),
      'a daemon with no provisioner stamp is refused, and named as the reason');
   ok(/provision\.sh/.test(await page.$eval('.dmtab .empty', e => e.textContent)),

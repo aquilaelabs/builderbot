@@ -461,6 +461,11 @@ await page.click('#pCreate');
 await page.waitForFunction(() => document.getElementById('pmodal').hidden,
                            { timeout: 20000 });
 ok(true, 'the dialog closes once the clone is accepted, rather than holding the request');
+// The row arrives with the poll that follows the accept, not with the close:
+// asserted after waiting for it, since a loaded box can put a frame between
+// the two — this read as a missing row on the first run that got here with
+// the earlier files no longer crashing out.
+await page.waitForSelector('#projects .row.job .name', { timeout: 20000 });
 ok(await page.$eval('#projects .row.job .name', el => el.textContent === 'kproj'),
    'the Projects card shows the job where its result will appear');
 ok(await page.$eval('#projects .row.job .sub', el => /clon|start/.test(el.textContent))

@@ -363,7 +363,9 @@ bb changelog add "..."   log what a change means for the person using it; the
 bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
-bb login           Claude Code subscription auth flow
+bb login           Claude Code subscription auth flow. On a node it first syncs
+                   this account's login with the controller's, newer wins
+bb login --sync    that half alone, quietly — what every connection already does
 bb git push|fetch|pull|ls-remote [ARGS]
                    git's network half, run where the credential is: from a
                    session on a node it goes through the controller
@@ -373,8 +375,8 @@ bb claude-md --update   refresh that block only
 bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
-bb nodes           the node registry, read-only in a terminal — the Nodes
-                   tab is where it is edited; `local` is this container
+bb nodes           the machines enrolled as nodes, read-only in a terminal —
+                   the Nodes tab is where they are edited
 bb settings        this project's settings as the dashboard has them — node,
                    model, effort, build and test commands, lock. Read-only;
                    on a node it is relayed from the controller, and it is
@@ -1267,7 +1269,12 @@ directory's one-shot containers — addresses that node's daemon.
 ### The Nodes tab
 
 **Tools → Nodes** is the registry (docs/nodes.md): every machine work can run
-on, `local` — this container — first. The tab shows one node, picked at the
+on. This container is not among them — it runs no work, takes no packages,
+and has nothing any section here configures, so with nothing enrolled the tab
+says so and offers the one thing there is to do. (It does keep a node record
+of its own, which is how a share it mounts is recognized as the same store a
+node mounts and installs are arbitrated across the pair; that is plumbing, not
+a row.) The tab shows one node, picked at the
 top: a header with its state, where it dials in from and its agent (with
 **Update agent** when this container ships a newer one, busy until the node
 comes back on it), then **sections**, each a fold with its status on the
@@ -1290,8 +1297,7 @@ case — could do everything except docker. The kind itself is gone now, and
 404. A node's **path mapping** — what this container's paths are called on
 that machine, which its daemon needs to resolve a compose file's bind
 sources — is on its row, and is where the old `DOCKER_HOST_PATHS` setting
-lives. The local node refuses `docker-host` on purpose — it is not a
-sandbox. Every change writes an audit row.
+lives. Every change writes an audit row.
 
 **A node does everything for the projects bound to it.** There is nothing to
 pick per node — no "this one builds, that one deploys". A project names one
@@ -2922,6 +2928,16 @@ session token a Claude session is given — for proving a node by hand, where
 `bb` reaches the controller with `BB_TOKEN` and nothing else; with an
 account named it is the token a node-bound terminal carries, which also
 fetches that account's Claude login onto the node.
+
+**A token lasts twelve hours, and a conversation can last longer.** One is
+minted per connection, so opening the session's tab refreshes it — but the
+`claude` already running keeps the environment it started in, and nothing
+outside a process can change that. So `bb-tty` also writes the fresh token
+beside the launcher in the account's own cache (0600), and `bb` reads it the
+moment the one in its environment has expired. A long session therefore
+recovers by having its tab opened, and until it is, `bb` says the token
+expired and when — rather than "not signed in", which sent somebody looking
+for a sign-in that was never the problem.
 
 #### Accounts
 
