@@ -2904,7 +2904,11 @@ cmd_lint() {
             # box's and CI runs the same lint elsewhere.
             if [ -f .github/actionlint.yaml ]; then
                 local known declared missing=""
-                known="$(cmd_ci_labels 2>/dev/null | tr '\n' ' ')"
+                # Through the dispatch, not the function: on a node the
+                # registry is the controller's, and bb ci-labels is relayed
+                # there — called direct, it read an empty registry here and
+                # called every label unknown.
+                known="$(bash "$0" ci-labels 2>/dev/null | tr '\n' ' ')"
                 declared="$(sed -n 's/^    - //p' .github/actionlint.yaml)"
                 for l in $declared; do
                     case " $known " in *" $l "*) ;; *) missing="${missing:+$missing, }$l" ;; esac
@@ -3176,9 +3180,24 @@ find_chromium() {
     for base in "${PLAYWRIGHT_BROWSERS_PATH:-}" "$(sdk_root)/playwright" /opt/pw-browsers; do
         [ -n "$base" ] && [ -d "$base" ] || continue
         exe="$base/chromium"
-        [ -x "$exe" ] && { printf '%s' "$exe"; return 0; }
-        exe="$(find -L "$base" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
-        [ -n "$exe" ] && [ -x "$exe" ] && { printf '%s' "$exe"; return 0; }
+        [ -x "$exe" ] || exe="$(find -L "$base" -path '*/chromium-*/chrome-linux*/chrome' -type f 2>/dev/null | head -1)"
+        [ -n "$exe" ] && [ -x "$exe" ] || continue
+        # The browser is in the store but its shared libraries are the
+        # machine's: the image installs them (playwright install-deps), a
+        # node gets them from the provisioner. Without them Chromium dies
+        # at launch behind a Playwright stack that says "browser has been
+        # closed" — measured on bb-sandbox, libatk-1.0.so.0 — so the missing
+        # ones are named here, before the launch.
+        local missing
+        missing="$(ldd "$exe" 2>/dev/null | awk '/not found/{print $1}' | head -5 | tr '\n' ' ')"
+        if [ -n "$missing" ]; then
+            if on_node; then
+                die "Chromium is in the store but ${BB_NODE:-this node} lacks its system libraries (${missing% }).
+   Re-run vm/provision.sh on it — the session half installs them."
+            fi
+            die "Chromium is in the store but this image lacks its system libraries (${missing% })"
+        fi
+        printf '%s' "$exe"; return 0
     done
     die "no Playwright chromium found — install the browsers with: bb sdk install playwright"
 }
