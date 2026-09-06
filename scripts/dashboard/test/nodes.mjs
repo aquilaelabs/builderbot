@@ -571,6 +571,8 @@ ok(list[0].id === 'local',
   // ---- toolchains on the node, from the Tools tab (phase 6) ---------------
   await page.evaluate(() => openPackages());
   await page.waitForSelector('.pkgtab #pkgNodeSel', { timeout: 15000 });
+  ok(await page.$$eval('.pkgtab #pkgNodeSel option', os => os.length > 0 && !os.some(o => o.value === 'local')),
+     'the Tools tab picks among nodes and never offers this container (roadmap #26)');
   await page.selectOption('.pkgtab #pkgNodeSel', minted.id);
   await page.waitForFunction(() => /on shed/.test(document.querySelector('.pkgtab .pkghead:not(.pkgnode)')?.textContent || ''),
                              null, { timeout: 15000 });

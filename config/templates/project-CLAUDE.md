@@ -144,10 +144,11 @@ bb sdk --local    # ...on this container, when the answer above is a node's
 
 **`bb sdk` answers for the store this project actually builds with.** With a
 node, that is the node's — the same machine `bb build`, `bb test` and `bb emu`
-go to — so what it lists is what a build here can use. Without one it is this
-container's. The two can even be the same bytes under different paths, where
-the operator has one share mounted by both; `bb nodes` says which node is
-this project's.
+go to — so what it lists is what a build here can use. Without one there is
+nothing: packages are installed on nodes, never on the controller, and a
+project with no node cannot compile. `bb nodes` says which node is this
+project's. (`bb sdk --local` lists the controller's own store, which holds
+only what its boot keeps for `bb shot`.)
 
 `bb status` prints the same summary in two lines. Check before concluding a
 tool is missing, and check before reaching for a system package manager —

@@ -20,8 +20,14 @@ mkdirSync(stage, { recursive: true });
 writeFileSync(`${stage}/manifest.json`,
   JSON.stringify({ manifest_version: 2, name: 'Companion', version: '0.2.0' }));
 writeFileSync(`${stage}/background.js`, 'console.log(1);');
-execFileSync('zip', ['-qj', `${DIR}/ws/alpha/dist/companion-0.2.0.xpi`,
-  `${stage}/manifest.json`, `${stage}/background.js`]);
+// python's zipfile rather than `zip`: the controller image carries zip, a
+// node running this suite (bb-sandbox) does not, and a fixture should not
+// decide which machines the suite runs on.
+execFileSync('python3', ['-c', `
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1], 'w', zipfile.ZIP_DEFLATED) as z:
+    for f in sys.argv[2:]: z.write(f, f.rsplit('/', 1)[-1])`,
+  `${DIR}/ws/alpha/dist/companion-0.2.0.xpi`, `${stage}/manifest.json`, `${stage}/background.js`]);
 // ...and a secret outside dist/, wired in by symlink: the download endpoint
 // must refuse to follow it out.
 writeFileSync(`${DIR}/ws/alpha/secret.txt`, 'not yours');
