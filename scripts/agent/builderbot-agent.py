@@ -235,6 +235,10 @@ DIAL_BACK_S = 180
 # where it lives, and — for the tests — a tarball to unpack instead of the
 # GitHub release download.
 RUNNER_DIR = os.environ.get("BUILDERBOT_RUNNER_DIR", "/var/lib/builderbot/runner")
+# The machine's package manager, for a recipe's `system` packages. Seams for
+# the suite, which must not touch the box it runs on.
+APT_BIN = os.environ.get("BUILDERBOT_APT_BIN", "apt-get")
+DPKG_BIN = os.environ.get("BUILDERBOT_DPKG_BIN", "dpkg")
 RUNNER_TARBALL = os.environ.get("BUILDERBOT_RUNNER_TARBALL", "")
 RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
 # Tailscale, for Funnel (docs/nodes.md §7, phase 8): a seam so the tests can
@@ -2226,6 +2230,9 @@ class Agent:
             # with nothing after it — and the image picker, which draws its
             # own progress only when the step names an image, drew none.
             job.step(name)
+            if action == "install" and not self._system_deps(job, name, into):
+                bad += 1
+                continue
             job.say(f"== bb sdk {action} {name}\n")
             st_, code = job.exec({"argv": ["bash", os.path.join(into, "scripts", "bb"),
                                             "sdk", action, name],
@@ -2240,6 +2247,53 @@ class Agent:
             job.say(f"{bad} of {len(names)} did not {action}\n")
             return "failed", 1
         return "succeeded", 0
+
+    def _system_deps(self, job, name, into):
+        """A recipe's `system.apt` packages, from the catalog the bundle
+        carries: installed here, as root, on a node this agent may
+        administer (the sandbox stamp — roadmap #23 refines it to a class);
+        named and left to the owner anywhere else. The recipe itself runs
+        as the job account, which is why this cannot be part of it.
+        Playwright's browsers launched from the store and died on
+        libatk-1.0.so.0 behind a stack that said the browser had closed.
+        False when the install was tried and failed; a missing package on a
+        node this cannot administer is a warning, not a refusal — the
+        download is still worth having, and the tool names what is missing
+        when it is used."""
+        try:
+            with open(os.path.join(into, "config", "packages.json")) as f:
+                cat = json.load(f)
+            pkg = next((p for p in cat.get("packages") or [] if p.get("name") == name), {})
+        except (OSError, ValueError):
+            return True
+        want = [str(x) for x in ((pkg.get("system") or {}).get("apt") or []) if x][:64]
+        if not want:
+            return True
+        missing = []
+        for x in want:
+            p = _run([DPKG_BIN, "-s", x])
+            if not p:
+                missing.append(x)
+        if not missing:
+            return True
+        if os.geteuid() != 0 or not os.access(SANDBOX_BIN, os.X_OK):
+            job.say(f"{name} needs system packages this node's owner installs — "
+                    f"not this agent, which does not administer the machine: "
+                    f"{' '.join(missing)}\n")
+            return True
+        job.say(f"== system packages for {name}: {' '.join(missing)}\n")
+        env = dict(os.environ, DEBIAN_FRONTEND="noninteractive")
+        try:
+            p = subprocess.run([APT_BIN, "install", "-y", "-qq", *missing], env=env,
+                               capture_output=True, text=True, timeout=900, check=False)
+        except (OSError, subprocess.SubprocessError) as e:
+            job.say(f"{APT_BIN}: {e}\n")
+            return False
+        if p.returncode != 0:
+            job.say((p.stdout or "")[-2000:] + (p.stderr or "")[-2000:])
+            job.say(f"{name}: its system packages did not install (exit {p.returncode})\n")
+            return False
+        return True
 
     # -- the configuration plane (docs/nodes.md §12, phase 5) -----------------
     def system(self, job, spec):

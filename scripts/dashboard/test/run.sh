@@ -117,6 +117,15 @@ unset TMUX
 # the caller reads as an empty node list — hours into a session, with nothing
 # in the diff to explain it.
 unset BB_TOKEN
+# And the role. Run from a session ON A NODE, this script inherits
+# BUILDERBOT_ROLE=node, the real controller's address and pin, and the
+# account the session runs as — and every `bash scripts/bb` a test makes
+# then relays to the real controller with no token, or reads a node's
+# home. The suite drives the checkout's bb as the CONTROLLER's, against its
+# own server; the tests that mean a node say so in their own env.
+unset BUILDERBOT_ROLE BB_CONTROLLER BB_CONTROLLER_PIN BB_NODE BUILDERBOT_NODE \
+      BB_ACCOUNT_NAME BB_ACCOUNT_UID BB_PROJECT BB_TREE BB_TREE_OWNER BB_CI_LOG_DIR \
+      BB_NODE_PACKAGES BB_EMU_LOCAL   # "already on the node's store": bb emu would run here
 export TMUX_TMPDIR="$S/tmux"
 mkdir -p "$TMUX_TMPDIR"
 tmux new-session -d -s probe -c /tmp

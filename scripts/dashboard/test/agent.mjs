@@ -90,6 +90,16 @@ print("unknown", a, file=sys.stderr); sys.exit(2)
 writeFileSync(`${DIR}/bin/netplan`, `#!/bin/sh
 echo "$*" >> "${DIR}/netplan.log"
 `, { mode: 0o755 });
+// dpkg that has nothing, and an npm that refuses: a recipe's system
+// packages are all missing, and the one recipe that would download a
+// browser stops at its first command instead.
+writeFileSync(`${DIR}/bin/dpkg`, `#!/bin/sh
+exit 1
+`, { mode: 0o755 });
+writeFileSync(`${DIR}/bin/npm`, `#!/bin/sh
+echo "npm: stub — nothing is downloaded in the suite" >&2
+exit 1
+`, { mode: 0o755 });
 // The runner, stood in for: a tarball whose config.sh and svc.sh record
 // what they were asked, and a `sudo` on the server's PATH that answers the
 // token minter with a fake token — the real one needs the root-only stash.
@@ -176,7 +186,13 @@ const SESSION_PORT = 17681 + Math.floor(Math.random() * 1000);
 const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   BUILDERBOT_TTYD_BIN: `${DIR}/bin/ttyd`, BUILDERBOT_SESSION_PORT: String(SESSION_PORT),
   BUILDERBOT_SESSION_BIND: '127.0.0.1',
-  DOCKER_STUB_STATE: `${DIR}/dockerstate`, PATH: `${DIR}/bin:${process.env.PATH}`,
+  // A PATH of the harness's own. The agent reports what it finds on PATH as
+  // the fixture node's toolchains, and run from a session on a node this
+  // process inherits that node's PATH — the real store, flutter included,
+  // which made the fixture node "have" everything this machine has.
+  DOCKER_STUB_STATE: `${DIR}/dockerstate`,
+  PATH: `${DIR}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
+  BUILDERBOT_DPKG_BIN: `${DIR}/bin/dpkg`, BUILDERBOT_APT_BIN: `${DIR}/bin/apt-get-never`,
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
   BUILDERBOT_RUNNER_DIR: `${DIR}/runner`, BUILDERBOT_RUNNER_TARBALL: `${DIR}/runner.tar.gz`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
@@ -729,6 +745,11 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     // the toolchains stayed behind, with nothing saying so.
     {
       mkdirSync(`${DIR}/agentpackages/android`, { recursive: true });
+      // ...with a JDK in it, so "a toolchain the node reports" is the store's
+      // answer and not this machine's: the gap test below turns on java being
+      // there and flutter not, whichever box runs the suite.
+      mkdirSync(`${DIR}/agentpackages/jdk/bin`, { recursive: true });
+      writeFileSync(`${DIR}/agentpackages/jdk/bin/java`, '#!/bin/sh\necho \'openjdk version "21.0.0"\' >&2\n', { mode: 0o755 });
       writeFileSync(`${DIR}/agentpackages/android/marker`, 'a toolchain lives here');
       mkdirSync(`${DIR}/agentcache`, { recursive: true });
       writeFileSync(`${DIR}/agentcache/gradle-blob`, 'rebuildable');
@@ -1146,6 +1167,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     // ...except a directory without the file that completes the package:
     // playwright's browsers from before the recipe carried the module.
     mkdirSync(`${DIR}/agentpackages/playwright/chromium-1234`, { recursive: true });
+    mkdirSync(`${DIR}/agentpackages/node/bin`, { recursive: true });   // playwright requires node
     // The store listing rides the census, which refreshes at hello — and a
     // job that touches the node ends in one, which is why installing a
     // package updates this list without waiting ten minutes. Any such job
@@ -1169,6 +1191,23 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        '...and one that is not there reads as absent, not as unknown');
     ok(view && view.items.find(i => i.name === 'playwright')?.installed === false,
        '...and a playwright directory without its module reads as not installed, so Install is offered (the row said installed and offered nothing)');
+    // A recipe's system packages (the catalog's `system.apt`). This agent is
+    // not root and has no sandbox stamp, so it is not the one to install
+    // them: it names them and carries on to the recipe — which the stub npm
+    // stops before anything is downloaded.
+    const sj = await api('/api/packages', { action: 'install', names: ['playwright'], node: minted.id });
+    ok(sj.ok && /^j_/.test(sj.job), `installing playwright on the node queues a job (${sj.job || sj.error})`);
+    const sfin = await until(async () => {
+      const r = await api(`/api/v1/jobs?id=${sj.job}`);
+      return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+    }, 60000);
+    ok(sfin && /needs system packages this node's owner installs/.test(sfin.log)
+       && /libatk1\.0-0t64/.test(sfin.log) && /libnss3/.test(sfin.log),
+       `a recipe's system packages are named for the owner on a node the agent does not administer (${
+         (sfin?.log || '').match(/needs system packages[^\n]*/)?.[0]?.slice(0, 90)})`);
+    ok(sfin && sfin.state === 'failed' && /npm: stub/.test(sfin.log)
+       && !existsSync(`${DIR}/agentpackages/playwright/node_modules`),
+       '...and the recipe then ran as the job account, where the stub npm stopped it before a download');
   }
 
   // ---- the Actions runner as a service on the node (phase 7) ----------------
@@ -1258,7 +1297,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
       { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...process.env, DASHBOARD_AUTH: 'test:test',
         DASHBOARD_PORT: new globalThis.URL(URL).port, DASHBOARD_STATE: `${DIR}/state`, BB_PROJECT: 'alpha' } });
     ok(/bb emu list on agentbox/.test(cli) && /configured API levels/.test(cli) && /succeeded/.test(cli),
-       'bb emu from a shell goes to the project\'s node and streams the answer back');
+       `bb emu from a shell goes to the project's node and streams the answer back (${cli.replace(/\s+/g, ' ').slice(0, 120)})`);
   }
 
   // ---- Tailscale Funnel, the route's second mode (phase 8) ---------------------

@@ -194,11 +194,13 @@ esac
 say "packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
-# nfs-common only matters if --nfs is used, and costs nothing if not; unzip
-# because a couple of the toolchains arrive as zips and a fresh install has
-# no unzip, which cost one operator a 100MB download that ended in
-# "unzip: not found".
-apt-get install -y -qq ca-certificates curl gnupg nfs-common unzip
+# Only what the agent, Docker and the mounts need. nfs-common matters if
+# --nfs is used and costs nothing if not. What a PACKAGE needs from the
+# machine — Chromium's forty libraries, say — is that package's business:
+# its recipe in config/packages.json names them under `system`, and the
+# agent installs them when the package is (unzip used to be here for the
+# android tools; that recipe unzips with python now).
+apt-get install -y -qq ca-certificates curl gnupg nfs-common
 # ...and the guest agent only where there is a host to talk to, so Unraid can
 # shut the machine down cleanly rather than pulling the plug. Nothing here is
 # otherwise particular to a VM — this runs on bare metal just as well, and an
@@ -424,20 +426,6 @@ else
     # ttyd has been in Debian and Ubuntu's universe for years.
     apt-get install -y -qq tmux ttyd jq git >/dev/null 2>&1 \
         || warn "tmux, ttyd, jq or git did not install — sessions will not start until they do"
-    # Chromium's runtime libraries, for the Playwright browsers a session
-    # drives with bb shot (the browsers themselves come from the packages
-    # store; these are the machine's). The list is what
-    # `playwright install-deps --dry-run chromium` printed on Ubuntu 26.04,
-    # minus the xvfb group a headless browser never opens. The image gets
-    # the same from install-deps at build time.
-    apt-get install -y -qq at-spi2-common fontconfig fonts-freefont-ttf fonts-liberation \
-        fonts-noto-color-emoji fonts-unifont libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 \
-        libatspi2.0-0t64 libcairo2 libcups2t64 libdrm2 libgbm1 libgl1 libgl1-mesa-dri libglx-mesa0 \
-        libgraphite2-3 libharfbuzz0b libnspr4 libnss3 libpango-1.0-0 libvulkan1 libx11-xcb1 \
-        libxcb-dri3-0 libxcb-glx0 libxcb-present0 libxcb-randr0 libxcb-render0 libxcb-shm0 \
-        libxcb-sync1 libxcb-xfixes0 libxcomposite1 libxdamage1 libxfixes3 libxi6 libxkbcommon0 \
-        libxrandr2 libxrender1 libxshmfence1 mesa-libgallium >/dev/null 2>&1 \
-        || warn "Chromium's system libraries did not all install — bb shot will say which are missing"
     # Claude Code, into the account's own home by its native installer: no
     # node runtime to keep up, and `claude update` from inside a session
     # keeps it current. Best effort — a node without internet at provision

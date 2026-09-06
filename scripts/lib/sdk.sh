@@ -854,6 +854,11 @@ sdk_plan() {
     version="${rest%%	*}"; url="${rest#*	}"
     [ -z "$version" ] || printf 'version   %s\n' "$version"
     [ -z "$url" ] || printf 'url       %s\n' "$url"
+    # The machine's packages the recipe needs, installed by the agent on a
+    # node it administers and by hand anywhere else — so the plan says them.
+    local -a sysapt
+    sdk_meta_into sysapt argv "$what" system.apt 2>/dev/null || sysapt=()
+    [ "${#sysapt[@]}" = 0 ] || printf 'system    apt: %s\n' "${sysapt[*]}"
     local -a cmd
     sdk_meta_into cmd argv "$what" source.run "dir=$d" "version=$version" "script=<downloaded>"
     [ "${#cmd[@]}" = 0 ] || printf 'run       %s\n' "${cmd[*]}"

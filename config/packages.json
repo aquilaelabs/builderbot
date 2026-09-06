@@ -34,6 +34,15 @@
     "           than to this package \u2014 the android packages share one tree,",
     "           since sdkmanager installs into <root>/android whatever the",
     "           package is called.",
+    "  system   the machine's own packages this one needs at runtime, by",
+    "           package manager: `apt` for the Debian family. A recipe runs",
+    "           as the job account, so the AGENT installs these first, as",
+    "           root, on a node it may administer (a managed one); on any",
+    "           other it names them and carries on, and the tool says which",
+    "           are missing when it is used. Playwright's browsers are the",
+    "           case: forty libraries the image gets from install-deps and a",
+    "           node got from nowhere.",
+    "",
     "  source   how to get it. {dir} is the install directory, {version} whatever",
     "           the version resolver returned, {script} a downloaded installer.",
     "",
@@ -480,6 +489,18 @@
           "NODE_PATH": "node_modules"
         },
         "needs": "node_modules/.bin/playwright"
+      },
+      "system": {
+        "apt": [
+          "at-spi2-common", "fontconfig", "fonts-freefont-ttf", "fonts-liberation",
+          "fonts-noto-color-emoji", "fonts-unifont", "libasound2t64", "libatk-bridge2.0-0t64",
+          "libatk1.0-0t64", "libatspi2.0-0t64", "libcairo2", "libcups2t64", "libdrm2", "libgbm1",
+          "libgl1", "libgl1-mesa-dri", "libglx-mesa0", "libgraphite2-3", "libharfbuzz0b", "libnspr4",
+          "libnss3", "libpango-1.0-0", "libvulkan1", "libx11-xcb1", "libxcb-dri3-0", "libxcb-glx0",
+          "libxcb-present0", "libxcb-randr0", "libxcb-render0", "libxcb-shm0", "libxcb-sync1",
+          "libxcb-xfixes0", "libxcomposite1", "libxdamage1", "libxfixes3", "libxi6", "libxkbcommon0",
+          "libxrandr2", "libxrender1", "libxshmfence1", "mesa-libgallium"
+        ]
       },
       "platforms": [
         "linux/*"
