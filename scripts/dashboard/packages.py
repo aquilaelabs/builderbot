@@ -1232,9 +1232,9 @@ def start_job(action, names, auto=False):
 # daily one. The manual button is what a person presses when they actually
 # want to know now.
 PKG_CHECK_EVERY = 7 * 86400
-# Late enough that the startup hooks have finished. 50-android.sh can be
-# running sdkmanager when the dashboard comes up, and two of those on one SDK
-# root is a fight over the same lock.
+# Late enough that the startup hooks have finished. A hook installing into
+# the store can be running sdkmanager when the dashboard comes up, and two of
+# those on one SDK root is a fight over the same lock.
 PKG_CHECK_DELAY = int(os.environ.get("PKG_CHECK_DELAY", "180"))
 AUTOCHECK = os.environ.get("PKG_AUTOCHECK", "1") != "0"
 

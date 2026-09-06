@@ -228,12 +228,14 @@ ok(r.rebuild && /the code has moved since/.test(r.text) === false,
   const pub = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'public' });
   ok(/not built/.test(pub.error || ''), 'public is refused by name');
   const fun = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'funnel', port: 7475 });
-  // The harness's docker host is an ordinary agent node that was never
-  // provisioned as a sandbox, so this is the refusal that applies to it now
-  // the ssh kind is gone (roadmap #24). A funnel on a node that WAS
-  // provisioned is nodes.mjs's, where the census says so.
-  ok(/not provisioned as a BuilderBot sandbox/.test(fun.error || ''),
-     'funnel on a node that takes no system jobs says why it cannot');
+  // The reason is tailscale, not the sandbox stamp (roadmap #23): a funnel
+  // is tailscale's own CLI doing the certificate, the DNS and the firewall,
+  // so it is offered to any node that HAS tailscale — a container node or
+  // somebody's own machine included. What still needs the stamp is storage
+  // and network, which edit fstab and netplan. The harness's node has no
+  // tailscale, so that is what it says.
+  ok(/no tailscale/.test(fun.error || ''),
+     `a funnel says what it actually lacks — tailscale, not a provisioner (${fun.error})`);
   const lan = await rapi({ project: 'ep.silon', instance: 'main', action: 'route', mode: 'lan', port: 7475 });
   ok(lan.ok && lan.state.route.mode === 'lan' && lan.state.route.url === 'http://stub:7475/' && lan.state.route.ready,
      'lan on a published port is a record with the URL that follows from the node');

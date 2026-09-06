@@ -2453,6 +2453,25 @@ def _container_age():
         return float("inf")     # cannot tell: treat it as "not booting"
 
 
+def client_gone(sock):
+    """Whether the peer of a held request has closed: readable with nothing
+    to read is EOF. Only a positive answer counts — an exception (a socket
+    that cannot be peeked) reads as still there, so a held poll is never
+    dropped on a guess."""
+    try:
+        sel = selectors.DefaultSelector()
+        try:
+            sel.register(sock, selectors.EVENT_READ)
+            ready = sel.select(0)
+        finally:
+            sel.close()
+        if not ready:
+            return False
+        return sock.recv(1, socket.MSG_PEEK) == b""
+    except (OSError, ValueError):
+        return False
+
+
 def _doctor_loop():
     wait_for_boot()
     while True:
@@ -4410,7 +4429,8 @@ class Handler(BaseHTTPRequestHandler):
                 wait = min(nodes.POLL_S, max(0.0, float(req.get("wait", nodes.POLL_S))))
             except (TypeError, ValueError):
                 wait = nodes.POLL_S
-            j = nodes.job_next(nid, wait, runner="node")
+            j = nodes.job_next(nid, wait, runner="node",
+                               alive=lambda: not client_gone(self.connection))
             if j is None:
                 self.send_response(204)
                 self.send_header("Content-Length", "0")

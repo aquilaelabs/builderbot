@@ -120,7 +120,11 @@ writeFileSync(`${DIR}/runner-src/svc.sh`, `#!/bin/sh
 [ -f ./config.sh ] && echo "RUNNER_ROOT_OK" >> "$(dirname "$0")/calls.log"
 echo "svc $*" >> "$(dirname "$0")/calls.log"
 `, { mode: 0o755 });
-writeFileSync(`${DIR}/runner-src/run.sh`, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+// run.sh, for the node with no systemd: it stays up under the name the
+// census looks for, so a foreground runner reads as listening.
+writeFileSync(`${DIR}/runner-src/run.sh`, `#!/bin/sh
+exec -a "$(cd "$(dirname "$0")" && pwd)/bin/Runner.Listener" sleep 300
+`, { mode: 0o755 });
 execFileSync('tar', ['-czf', `${DIR}/runner.tar.gz`, '-C', `${DIR}/runner-src`, '.']);
 writeFileSync(`${DIR}/bin/sudo`, `#!/bin/sh
 case "$*" in *mint-runner-token*registration*) echo AAAREGTOKEN; exit 0 ;;
@@ -194,6 +198,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   PATH: `${DIR}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
   BUILDERBOT_DPKG_BIN: `${DIR}/bin/dpkg`, BUILDERBOT_APT_BIN: `${DIR}/bin/apt-get-never`,
   BUILDERBOT_IDLE_UNIT: '1',
+  BUILDERBOT_SYSTEMD: '1',      // this agent takes the service path whichever box runs the suite
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
   BUILDERBOT_RUNNER_DIR: `${DIR}/runner`, BUILDERBOT_RUNNER_TARBALL: `${DIR}/runner.tar.gz`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
@@ -235,8 +240,12 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
     try {
       // It ends in `exec ... run`, which never returns — the timeout is how
       // the enrollment half is exercised without the loop being left behind.
+      // SIGKILL, not the default SIGTERM: the agent's own handler stops its
+      // ttyds first and can outlive the call, and one of these left alive
+      // took the container node's runner job below before the agent that
+      // was meant to have it had said hello.
       nout = execFileSync('bash', [`${REPO}/scripts/node-agent.sh`],
-        { env: nenv, encoding: 'utf8', timeout: 25000, stdio: ['ignore', 'pipe', 'pipe'] });
+        { env: nenv, encoding: 'utf8', timeout: 25000, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) { nout = String(e.stdout || '') + String(e.stderr || ''); }
     const rec = `${NROOT}/node.json`;
     ok(existsSync(rec), `the node role enrolls from CONTROLLER_URL and NODE_TOKEN (${
@@ -255,10 +264,47 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
     let again2 = '';
     try {
       again2 = execFileSync('bash', [`${REPO}/scripts/node-agent.sh`],
-        { env: nenv, encoding: 'utf8', timeout: 8000, stdio: ['ignore', 'pipe', 'pipe'] });
+        { env: nenv, encoding: 'utf8', timeout: 8000, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) { again2 = String(e.stdout || '') + String(e.stderr || ''); }
     ok(/already enrolled/.test(again2) && JSON.parse(readFileSync(rec, 'utf8')).node_id === two.id,
        '...and starting again re-uses the record rather than spending another token');
+    // A container node has no systemd, so its runner cannot be a service:
+    // it runs as run.sh in the foreground under the agent, which supervises
+    // it and takes it down with itself. The node is kept running for this,
+    // on ports of its own so its ttyds do not collide with agentbox's.
+    {
+      const fenv = { ...nenv, BUILDERBOT_SYSTEMD: '0', BUILDERBOT_RUNNER_DIR: `${NROOT}/runner`,
+                     BUILDERBOT_SESSION_PORT: String(SESSION_PORT + 20) };
+      const box = spawn('bash', [`${REPO}/scripts/node-agent.sh`], { env: fenv, stdio: ['ignore', 'pipe', 'pipe'] });
+      let boxlog = '';
+      box.stdout.on('data', d => { boxlog += d; }); box.stderr.on('data', d => { boxlog += d; });
+      box.on('exit', () => { try { writeFileSync(`${NROOT}/agent.log`, boxlog); } catch {} });
+      try {
+        await until(async () => (await nodeById(two.id))?.state === 'online' ? true : null, 30000);
+        const inst = await api('/api/v1/nodes', { action: 'runner', id: two.id, want: true,
+          labels: ['box'], url: 'https://github.com/example-org' });
+        const ifin = await until(async () => {
+          const r = await api(`/api/v1/jobs?id=${inst.job}`);
+          return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
+        }, 60000);
+        const listener = () => { try {
+          return execFileSync('pgrep', ['-f', `${NROOT}/runner/bin/Runner.Listener`], { encoding: 'utf8' }).trim();
+        } catch { return ''; } };
+        ok(ifin?.state === 'succeeded' && /foreground under this agent/.test(ifin.log) && listener() !== '',
+           `on a node with no systemd the runner runs as run.sh under the agent (${ifin?.state}: ${
+             (ifin?.log || '').split('\n').filter(l => /foreground|svc|refused|error/.test(l)).join(' / ').slice(0, 120)
+             } · node: ${boxlog.split('\n').filter(Boolean).slice(-3).join(' | ').slice(0, 200)})`);
+        const cen = await until(async () => { const n = await nodeById(two.id);
+          return n?.reported?.services?.['actions-runner']?.active ? n : null; }, 30000);
+        ok(cen !== null, '...and the census reports it listening, the same as a service');
+        box.kill('SIGTERM');
+        await until(() => listener() === '' ? true : null, 15000, 300);
+        ok(listener() === '', '...and it goes down with the agent, workers and all');
+      } finally {
+        if (box.exitCode === null) box.kill('SIGKILL');
+        try { execFileSync('pkill', ['-f', `${NROOT}/runner/bin/Runner.Listener`], { stdio: 'ignore' }); } catch {}
+      }
+    }
     await api('/api/v1/nodes', { action: 'retire', id: two.id });
   }
   const n = await nodeById(minted.id);

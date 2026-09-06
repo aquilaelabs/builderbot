@@ -298,8 +298,20 @@ without passing it through to a VM and taking it away from everything else.
 4. Point its **SDK share** at the same share the management container uses.
    One store under two names is recognized, and installs are arbitrated across
    it rather than colliding.
-5. For the emulator, map `/dev/kvm` and the GPU exactly as you would for the
-   management container.
+5. Map the projects share at **/workspace** too, if sessions should run on
+   it — a project bound to this node runs its Claude session here, in that
+   tree. Without it the node builds from snapshots and runs no sessions.
+6. For the emulator, map `/dev/kvm` and the GPU (`NVIDIA_VISIBLE_DEVICES`,
+   `NVIDIA_DRIVER_CAPABILITIES=all`, `ENABLE_GPU_DISPLAY`) — the node role is
+   where those settings apply; a controller renders nothing.
+
+A container has no systemd, and needs none: the Actions runner installed
+from the Nodes tab runs in the foreground under the agent, which supervises
+it and takes it down with the container, and the census reports it exactly
+as it reports a VM's service. What a container node cannot do is administer
+itself — there is no `bb-sandbox`, so the Storage and Network sections stay
+off — and a recipe's system packages are the image's to carry, since its
+agent is not root; the image carries Chromium's and the emulator's.
 
 It appears on the Nodes tab within a few seconds of starting. Point a project
 at it in the project's settings dialog and `bb build`, `bb test` and `bb emu`

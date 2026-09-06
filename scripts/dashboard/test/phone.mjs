@@ -44,12 +44,19 @@ page.errors = [];
 const asDesktop = await page.evaluate(async () => (await fetch('/api/phone')).json());
 ok(asDesktop.you === undefined,
    'from a desktop the card is not told an address — the browser is not the phone');
-const lan = execSync("hostname -i").toString().trim().split(/\s+/)[0];
-const asPhone = await (await fetch(URL.replace('127.0.0.1', lan) + 'api/phone', {
+// `hostname -I`, not `-i`: the lowercase one answers from /etc/hosts, where
+// the Debian family puts the hostname on 127.0.1.1 — a LOOPBACK address, so
+// the server rightly declined to call it a phone and this failed on the
+// first machine that had one (bb-sandbox, running the suite as a node).
+// The first private non-loopback v4 is what a phone would actually reach.
+const lan = execSync("hostname -I").toString().trim().split(/\s+/)
+  .find(a => /^\d+\.\d+\.\d+\.\d+$/.test(a) && !a.startsWith('127.'));
+const asPhone = !lan ? { you: 'no LAN address on this box — nothing to ask with' }
+  : await (await fetch(URL.replace('127.0.0.1', lan) + 'api/phone', {
   headers: { 'User-Agent': 'Mozilla/5.0 (Android 17; Mobile; rv:145.0) Firefox/145.0',
              Authorization: 'Basic ' + Buffer.from('test:test').toString('base64') }
 })).json();
-ok(typeof asPhone.you === 'string' && /^\d+\.\d+\.\d+\.\d+$/.test(asPhone.you),
+ok(typeof asPhone.you === 'string' && (!lan || /^\d+\.\d+\.\d+\.\d+$/.test(asPhone.you)),
    `from an Android browser it offers that browser's own address (${asPhone.you})`);
 
 // ---- a session asking to reach it -----------------------------------------
