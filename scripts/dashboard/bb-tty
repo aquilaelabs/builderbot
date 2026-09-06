@@ -414,6 +414,23 @@ bad() {
     exit 1
 }
 
+# git_identity PROJECT — on a node, the account's commit identity from the
+# controller (docs/nodes.md §20, rule 2): user.name and user.email are the
+# controller's settings, read through `bb settings`, never set up per node.
+# Once per home, and never over one already there; nothing at all on the
+# controller, where 30-git-and-auth.sh configured it at boot.
+git_identity() {
+    on_node || return 0
+    [ -z "$(git config --global --get user.email 2>/dev/null)" ] || return 0
+    local s name email
+    s="$(BB_PROJECT="$1" bb settings --json 2>/dev/null)" || return 0
+    email="$(printf '%s' "$s" | jq -r '.git_email // empty' 2>/dev/null)"
+    name="$(printf '%s' "$s" | jq -r '.git_name // empty' 2>/dev/null)"
+    [ -n "$email" ] || return 0
+    git config --global user.email "$email" 2>/dev/null || return 0
+    [ -z "$name" ] || git config --global user.name "$name" 2>/dev/null || true
+}
+
 # start SESSION DIR [COMMAND...] — attach to a session, creating it if needed,
 # with the settings this dashboard depends on applied to it.
 #
@@ -508,6 +525,7 @@ case "$target" in
             start "$(sess "shell-${num}")" "$WORKSPACE"
         fi
         dir="$WORKSPACE/$proj"
+        git_identity "$proj"
         [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
         start "$(sess "shell-${proj}-${num}")" "$dir"
@@ -527,6 +545,7 @@ case "$target" in
             *)     proj="$rest" ;;
         esac
         dir="$WORKSPACE/$proj"
+        git_identity "$proj"
         # Reject anything that is not a directory sitting directly in the
         # workspace: no traversal, no absolute paths, no invented names.
         # Checked against the PROJECT, before session_dir may answer with a
@@ -597,6 +616,7 @@ case "$target" in
                 "session starts here. Unlock it from the Projects card if that" \
                 "was not what you meant."
         fi
+        git_identity "$proj"
         cmd=(claude --remote-control "$proj")
         if [ -n "$resume" ]; then
             # Checked against a transcript that actually exists, so a mistyped
@@ -742,6 +762,7 @@ case "$target" in
     shell:*)
         proj="${target#shell:}"
         dir="$WORKSPACE/$proj"
+        git_identity "$proj"
         [ "$proj" = "$(basename -- "$proj")" ] && [ -d "$dir" ] \
             || bad "No such project: ${proj}"
         start "$(sess "shell-${proj}")" "$dir"

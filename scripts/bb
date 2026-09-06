@@ -43,6 +43,9 @@ bb — BuilderBot helper
   bb shell               open a login shell as the builder user
   bb update              update Claude Code (and npm globals) in place
   bb login               run the Claude Code auth flow
+  bb git push|fetch|pull|ls-remote [ARGS]
+                         git's network half, run where the credential is — from a
+                         session on a node it goes through the controller
   bb emu start [API]     boot the emulator headless (e.g. `bb emu start 37`)
   bb emu stop            shut the emulator down
   bb emu status          adb devices
@@ -606,8 +609,10 @@ cmd_emu() {
 # answer in here for a job that ran in this very container. The lint workflow
 # tees each check into /config/ci-logs/<repo>/ and this reads it.
 # Where CI logs are kept, resolved the same way the workflows resolve it:
-# /config on a controller because it survives an image update, and a node's
-# own home otherwise, since a node has no /config at all.
+# BB_CI_LOG_DIR first — on a node the agent sets it for jobs and sessions
+# alike, and writes the same path into the runner's .env, so the archive is
+# under the data store where the session account can read it — then /config
+# on a controller because it survives an image update, then the home.
 ci_log_dir() {
     if [ -n "${BB_CI_LOG_DIR:-}" ]; then printf '%s' "$BB_CI_LOG_DIR"
     elif [ -w /config ]; then printf '/config/ci-logs'
@@ -2142,7 +2147,7 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # What is NOT relayed is what belongs to the machine the session is on:
 # `bb sdk` answers for this node's store, `bb emu` drives this node's
 # emulator, `bb build` is a build (cmd_run). That is the point of being here.
-BB_RELAY_VERBS=" roadmap todo bug bugs history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels "
+BB_RELAY_VERBS=" roadmap todo bug bugs history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
 
 bb_relay() {
     local auth proj
@@ -2193,6 +2198,50 @@ run_here() {
 # node, model, effort, the build and test commands, whether it is locked.
 # Read-only, and no verb writes any of it: those are the settings dialog's.
 # On a node it is relayed, and it is what bb-tty and bb build read there.
+# bb git VERB [ARGS...] — git's network half, run where the credential is.
+#
+# Rule 2 of docs/nodes.md §20: PATs and deploy keys are set up on the
+# controller and nowhere else. A session on a node edits the same tree (the
+# projects share, mounted by both machines) but has no key and no token, so
+# its push, fetch, pull and ls-remote are relayed to the controller — the
+# dispatch below sends the verb whole, and the controller runs THIS function
+# in the same directory with the keys it already shields. Plain `git push`
+# on a node keeps failing, and bb doctor there says to use this.
+#
+# The arguments are held to a short list on purpose. git takes options that
+# run a program — --upload-pack, --receive-pack, -c core.sshCommand, -o —
+# and the process they would run in is the controller's, with its keys in
+# reach. So: refspecs and remote names by shape, and a handful of flags by
+# name; everything else is refused here, before git sees it, whichever side
+# this runs on.
+cmd_git() {
+    local verb="${1:-}" a
+    shift || true
+    case "$verb" in
+        push|fetch|pull|ls-remote) ;;
+        *) die "bb git takes push, fetch, pull or ls-remote — plain git does everything else" ;;
+    esac
+    for a in "$@"; do
+        case "$a" in
+            -u|--set-upstream|--tags|--follow-tags|--delete|-d|--dry-run|-n|--prune|-p|--all|\
+            --force-with-lease|--ff-only|--rebase|--no-rebase|--heads|--porcelain|-v|--verbose|-q|--quiet) ;;
+            -*) die "bb git: '$a' is not accepted — only remote names, refspecs and a few plain flags reach the controller's git" ;;
+            ''|*[!A-Za-z0-9._/:+~^@-]*) die "bb git: '$a' is not a remote name or refspec" ;;
+        esac
+    done
+    git "$verb" "$@"
+}
+
+# pw_node_path — where require("playwright") looks: the store's own module,
+# installed beside the browsers by the playwright recipe, ahead of the
+# image's global one. One rule for both machines: a node has only the store's,
+# and the controller prefers it so the two drive the same browser revisions.
+pw_node_path() {
+    local d; d="$(sdk_dir playwright 2>/dev/null)/node_modules"
+    if [ -d "$d" ]; then printf '%s:%s' "$d" "${NODE_PATH:-/usr/lib/node_modules}"
+    else printf '%s' "${NODE_PATH:-/usr/lib/node_modules}"; fi
+}
+
 cmd_settings() {
     local proj json=0
     [ "${1:-}" = --json ] && json=1
@@ -2217,6 +2266,18 @@ except (OSError, ValueError):
     locks = []
 rec["locked"] = proj in (locks if isinstance(locks, list) else [])
 rec["project"] = proj
+# The commit identity, for a session on a node to adopt (bb-tty's
+# git_identity): the controller's, from its environment or its git config,
+# never something set up per node.
+import subprocess
+def gitc(k):
+    try:
+        return subprocess.run(["git", "config", "--global", "--get", k], capture_output=True,
+                              text=True, timeout=5).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+rec["git_name"] = os.environ.get("GIT_USER_NAME") or gitc("user.name")
+rec["git_email"] = os.environ.get("GIT_USER_EMAIL") or gitc("user.email")
 if os.environ.get("BB_SETTINGS_JSON") == "1":
     print(json.dumps(rec))
     raise SystemExit(0)
@@ -2742,6 +2803,10 @@ cmd_lint() {
     section() { printf '== %s ==\n' "$1"; }
     need() { # need TOOL — false (and say so) when it is not installed
         command -v "$1" >/dev/null 2>&1 && return 0
+        if on_node; then
+            printf '  [skip] %s is not in this node'"'"'s store — the Tools tab installs lint-tools, with this node picked\n' "$1"
+            return 1
+        fi
         printf '  [skip] %s is not in this image (predates it? update the container)\n' "$1"
         skipped=1
         return 1
@@ -3180,7 +3245,7 @@ URLs need their scheme (http:// or https://)"
 
     local chrome; chrome="$(find_chromium)"
     local files
-    files="$(NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - \
+    files="$(NODE_PATH="$(pw_node_path)" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
         "$mode" "$out" "${DASHBOARD_PORT:-7680}" "${urls[@]}" <<'EOF'
 const { chromium } = require("playwright");
@@ -3305,7 +3370,7 @@ cmd_favicon() {
         printf '<!doctype html><style>html,body{margin:0;height:100%%}svg{display:block;width:100vw;height:100vh}</style>\n'
         cat "$svg"
     } > "$tmp/mark.html"
-    NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - "$chrome" "$tmp" <<'EOF'
+    NODE_PATH="$(pw_node_path)" node - "$chrome" "$tmp" <<'EOF'
 const { chromium } = require("playwright");
 const [exe, tmp] = process.argv.slice(2);
 (async () => {
@@ -3451,7 +3516,10 @@ cmd_doctor() {
     case "$origin" in
         https://*)
             cred_project="$(basename "$(git rev-parse --show-toplevel 2>/dev/null || echo .)")"
-            if [ -f "${DASHBOARD_STATE:-/config}/gitcreds/${cred_project}" ]; then
+            if on_node; then
+                printf '  [ok]   pushes go through the controller: bb git push|fetch|pull\n'
+                printf '         (no credential lives on a node — plain git push fails here by design)\n'
+            elif [ -f "${DASHBOARD_STATE:-/config}/gitcreds/${cred_project}" ]; then
                 printf '  [ok]   this repo pushes over https with its own stored token\n'
             else
                 printf '  [FAIL] this repo has an https remote and no credential for it\n'
@@ -3844,6 +3912,7 @@ case "${1:-help}" in
     work)  shift; cmd_work "$@" ;;
     jobs)  shift; cmd_jobs "$@" ;;
     run)   shift; cmd_run "$@" ;;
+    git)   shift; cmd_git "$@" ;;
     ci-labels) shift; cmd_ci_labels "$@" ;;
     build) shift; cmd_build_or_test build "$@" ;;
     test)  shift; cmd_build_or_test test "$@" ;;

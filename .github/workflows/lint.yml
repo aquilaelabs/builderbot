@@ -60,10 +60,12 @@ jobs:
         # log that vanishes with the container is no use for the question
         # "what broke while I was away".
         run: |
-          # Where the log is kept. /config on the controller, because it
-          # survives an image update; a node has no /config, so its runner
-          # keeps them under its own home. `bb ci-log` resolves the same two
-          # in the same order, and fetches across when the run was on a node.
+          # Where the log is kept. On a node, BB_CI_LOG_DIR: the runner's
+          # .env names the node's data store, which a session there can read
+          # (the runner's own home is 0700 to it). Then /config on the
+          # controller, because it survives an image update; the home is the
+          # fallback. `bb ci-log` resolves the same three in the same order,
+          # and fetches across when the run was on a node.
           dir="${BB_CI_LOG_DIR:-}"
           if [ -z "$dir" ]; then
             if [ -w /config ]; then dir=/config/ci-logs; else dir="$HOME/ci-logs"; fi

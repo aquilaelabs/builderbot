@@ -370,6 +370,9 @@ bb projects        mounted project dirs and their branches
 bb shell           login shell as the builder user
 bb update          update Claude Code in place
 bb login           Claude Code subscription auth flow
+bb git push|fetch|pull|ls-remote [ARGS]
+                   git's network half, run where the credential is: from a
+                   session on a node it goes through the controller
 bb emu start [api] | stop | status | list | log [-p]
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only
@@ -2692,7 +2695,9 @@ the log one machine further away and changes nothing about the answer.
 So the lint workflow archives its own output — and so does the `dashboard
 tests` workflow beside it, which carries the browser suite: each check is
 teed into
-`ci-logs/<repo>/<run-id>-<attempt>.log` on the runner's node, with a header
+`ci-logs/<repo>/<run-id>-<attempt>.log` under the runner's node's data store
+(the agent writes that path into the runner's `.env`, so a session on the node
+can read what its runner archived), with a header
 naming the commit, ref and event, and a `result:` line written by an
 `if: always()` step so a job that died still says so. `bb ci-log` fetches the
 newest from the project's node, `--list` shows the twenty kept with their

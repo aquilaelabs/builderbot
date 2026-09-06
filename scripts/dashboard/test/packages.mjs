@@ -84,6 +84,15 @@ const catalog = JSON.parse(                     // URL here is the dashboard's
 ok(catalog.packages.length === list.length
    && catalog.packages.every(c => list.some(r => r.name === c.name)),
    `the tab renders the catalog from config/packages.json (${catalog.packages.length} entries)`);
+// What a session on a node needs from the store rather than from the image
+// (roadmap #24, step 4): the playwright module beside its browsers, with
+// NODE_PATH pointing at it, and the tools bb lint runs.
+const pw = catalog.packages.find(p => p.name === 'playwright');
+const lt = catalog.packages.find(p => p.name === 'lint-tools');
+ok(pw?.layout?.env?.NODE_PATH === 'node_modules' && /npm install/.test(pw?.source?.run?.join(' '))
+   && lt?.layout?.bin?.includes('bin')
+   && ['shellcheck', 'hadolint', 'actionlint', 'ruff', 'yq', 'fd'].every(t => (lt?.source?.run?.join(' ') || '').includes(t)),
+   'the playwright recipe puts the module in the store with NODE_PATH on it, and lint-tools carries what bb lint runs');
 
 // ---- install two, watch them land --------------------------------------
 await page.check('.doc .pkg:not(.img) input[value="flutter"]');

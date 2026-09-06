@@ -499,6 +499,8 @@ BUILTIN_LAYOUT = [
      "env": {"DOTNET_ROOT": ""}, "tool": "dotnet", "reports": "dotnet"},
     {"name": "go", "dir": "go", "bin": ["bin"], "env": {}, "tool": "bin/go",
      "reports": "go"},
+    {"name": "lint-tools", "dir": "lint-tools", "bin": ["bin"], "env": {},
+     "tool": "bin/shellcheck", "reports": "shellcheck"},
     {"name": "node", "dir": "node", "bin": ["bin"], "env": {}, "tool": "bin/node",
      "reports": "node"},
     {"name": "swift", "dir": "swift", "bin": ["usr/bin"], "env": {},
@@ -702,7 +704,19 @@ def sdk_env(state, who=None):
         # happens to have.
         env["PATH"] = ":".join(front + [env["PATH"]])
     env["ANDROID_AVD_HOME"] = os.path.join(stores.get("data") or "/tmp", "avd")
+    # Where CI logs are archived on this node (roadmap #24, step 4). The
+    # workflows honor BB_CI_LOG_DIR and so does `bb ci-log`; without it the
+    # runner kept them under its own home, 0700, where a session on the node
+    # — a different account — could not read them. The data store is the
+    # one directory both accounts see, and the runner's .env (written by
+    # _apply_runner) names the same path, so the archive and the reader
+    # agree without either being configured by hand.
+    env["BB_CI_LOG_DIR"] = ci_log_dir(state)
     return env
+
+
+def ci_log_dir(state):
+    return os.path.join((state.get("stores") or {}).get("data") or "/tmp", "ci-logs")
 
 
 def sdk_versions(state):
@@ -2563,6 +2577,16 @@ class Agent:
             return "failed", code
         with open(os.path.join(d, ".builderbot-labels"), "w") as f:
             f.write(",".join(labels))
+        # The runner reads .env into every job it runs. This is how the
+        # workflows' archive step finds the node's data store instead of
+        # the runner's own home — see ci_log_dir — and the directory is made
+        # here, readable, so the session account can read what lands in it.
+        logs = ci_log_dir(self.state)
+        self.own_dir(logs, who)
+        with contextlib.suppress(OSError):
+            os.chmod(logs, 0o755)
+        with open(os.path.join(d, ".env"), "w") as f:
+            f.write(f"BB_CI_LOG_DIR={logs}\n")
         if os.path.isfile(os.path.join(d, "svc.sh")):
             for verb in (["install", user], ["start"]):
                 if self._sh(job, ["bash", "./svc.sh", *verb], cwd=d) != 0:
