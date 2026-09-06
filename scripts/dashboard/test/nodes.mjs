@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -280,6 +280,27 @@ ok(list[0].id === 'local',
   ok(true, 'All settings… opens the Settings tab, with the log policy on it');
   ok(await page.$eval('.settingstab', e => /unhardwiring|DOCKER_HOST/.test(e.textContent)),
      '...which says what still lives in the environment, and why');
+  // The idle rule for Claude sessions (idle.py): a controller setting the
+  // page applies, and this container enforces on its own tmux. The suite's
+  // server counts a "minute" as a second (BUILDERBOT_IDLE_UNIT), so a rule
+  // of one minute ends an untouched session within a few seconds. Claude
+  // sessions only: the shell beside it stays.
+  ok(await page.$eval('.settingstab #idleMin', e => e.value === '0'),
+     'the Settings tab carries the idle rule, off by default');
+  tmuxNew('claude-idletest'); tmuxNew('shell-idletest');
+  const set = m => page.evaluate(async m => (await (await fetch('/api/idle', { method: 'POST',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ minutes: m }) })).json()), m);
+  const on = await set(1);
+  ok(on.ok && on.minutes === 1, 'a rule of one minute is accepted');
+  const alive = n => { try { execFileSync('tmux', ['has-session', '-t', '=' + n], { stdio: 'ignore' }); return true; }
+                       catch { return false; } };
+  let gone = false;
+  for (let i = 0; i < 40 && !gone; i++){ await sleep(300); gone = !alive('claude-idletest'); }
+  ok(gone && alive('shell-idletest'),
+     'an idle Claude session is ended by the rule, and the shell beside it is left alone');
+  const off = await set(0);
+  ok(off.ok && off.minutes === 0, '...and 0 turns the rule off again');
+  try { execFileSync('tmux', ['kill-session', '-t', '=shell-idletest'], { stdio: 'ignore' }); } catch {}
 }
 
 // ---- the configuration plane on the row (phase 5) ---------------------------

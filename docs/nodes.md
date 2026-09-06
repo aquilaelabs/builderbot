@@ -1667,6 +1667,10 @@ libraries and the X server for the GPU path, and the startup hook that
 builds AVDs from `ANDROID_SYSTEM_IMAGES` is gone — an API level is what a
 store holds an image for, and `bb emu create` fetches one. `bb emu` on a
 controller with no node for the project refuses and says where it runs.
+A node's sessions outlive a controller restart on purpose (the tmux is the
+node's); what must not is the idle rule — the Settings tab's "end a Claude
+session after N idle minutes" rides the hello reply into node.json and the
+agent enforces it on its own tmux, controller up or down (idle.py).
 
 ## 20. Three rules from 6 September
 

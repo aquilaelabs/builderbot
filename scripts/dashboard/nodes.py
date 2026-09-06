@@ -1397,6 +1397,7 @@ def node_apply(principal, node_id, what):
 # answer.
 layout_of = lambda: []
 bundle_digest = lambda: ""
+idle_minutes = lambda: 0            # noqa: E731 — idle.minutes, injected by server.py
 
 
 def hello(nid, census, addr, version="", digest="", running=None):
@@ -1447,7 +1448,10 @@ def hello(nid, census, addr, version="", digest="", running=None):
             "layout": layout_of() or None,
             # The bb bundle's digest (roadmap #24): a node keeps an unpacked
             # copy for the sessions it runs, and refreshes it when this moves.
-            "bundle": bundle_digest() or ""}
+            "bundle": bundle_digest() or "",
+            # The idle rule for Claude sessions (idle.py): the node enforces
+            # it itself, so it holds while this controller is down.
+            "session_idle_minutes": idle_minutes()}
 
 
 def heartbeat(nid, sample, addr, running=0):
