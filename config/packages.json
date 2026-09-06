@@ -476,7 +476,8 @@
       "layout": {
         "bin": [],
         "env": {
-          "PLAYWRIGHT_BROWSERS_PATH": ""
+          "PLAYWRIGHT_BROWSERS_PATH": "",
+          "NODE_PATH": "node_modules"
         }
       },
       "platforms": [
@@ -485,16 +486,16 @@
       "requires": [
         "node"
       ],
-      "about": "Chromium, Firefox and WebKit. The image carries Playwright itself and the system libraries; these are the browser bundles bb shot and the dashboard's own tests drive.",
+      "about": "Chromium, Firefox and WebKit, and the playwright module that drives them, together in the store. The image carries a copy of the module and the system libraries; a node carries neither, so the module lands here beside the browsers and NODE_PATH points at it — what bb shot and the dashboard's own tests require().",
       "source": {
         "kind": "command",
-        "requires": "playwright",
+        "requires": "npm",
         "run": [
-          "playwright",
-          "install",
-          "chromium",
-          "firefox",
-          "webkit"
+          "sh",
+          "-c",
+          "npm install --prefix \"$1\" --no-audit --no-fund --loglevel=error playwright@latest && \"$1/node_modules/.bin/playwright\" install chromium firefox webkit",
+          "--",
+          "{dir}"
         ],
         "env": {
           "PLAYWRIGHT_BROWSERS_PATH": "{dir}"
@@ -514,6 +515,45 @@
             "webkit"
           ],
           "match": "Download url:\\s+(\\S+)"
+        }
+      },
+      "updatable": true
+    },
+    {
+      "name": "lint-tools",
+      "label": "Lint tools (shellcheck, hadolint, actionlint, ruff, yq, fd)",
+      "probe": "lint-tools",
+      "layout": {
+        "bin": [
+          "bin"
+        ],
+        "env": {},
+        "tool": "bin/shellcheck",
+        "reports": "shellcheck"
+      },
+      "platforms": [
+        "linux/amd64"
+      ],
+      "about": "What bb lint runs: shellcheck, hadolint, actionlint and ruff, with yq and fd beside them. The image carries all six; a node's store does not, so bb lint on a node skips its checks until this is installed. Static binaries from each project's latest GitHub release.",
+      "source": {
+        "kind": "script",
+        "fresh_only": true,
+        "url": "https://github.com/hadolint/hadolint/releases/latest/download/hadolint-Linux-x86_64",
+        "run": [
+          "sh",
+          "-ec",
+          "dst=\"$2/bin\"; t=\"$(mktemp -d)\"; mkdir -p \"$dst\"; cp \"$1\" \"$dst/hadolint\"; get() { curl -fsSL --retry 3 -o \"$2\" \"$1\"; }; tag() { curl -fsSIL -o /dev/null -w '%{url_effective}' \"https://github.com/$1/releases/latest\" | sed 's#.*/tag/##'; }; get https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 \"$dst/yq\"; get https://github.com/astral-sh/ruff/releases/latest/download/ruff-x86_64-unknown-linux-gnu.tar.gz \"$t/ruff.tgz\"; tar -xzf \"$t/ruff.tgz\" -C \"$t\"; cp \"$(find \"$t\" -name ruff -type f | head -1)\" \"$dst/\"; v=\"$(tag koalaman/shellcheck)\"; get \"https://github.com/koalaman/shellcheck/releases/download/$v/shellcheck-$v.linux.x86_64.tar.xz\" \"$t/sc.txz\"; tar -xJf \"$t/sc.txz\" -C \"$t\"; cp \"$t/shellcheck-$v/shellcheck\" \"$dst/\"; v=\"$(tag rhysd/actionlint)\"; get \"https://github.com/rhysd/actionlint/releases/download/$v/actionlint_${v#v}_linux_amd64.tar.gz\" \"$t/al.tgz\"; tar -xzf \"$t/al.tgz\" -C \"$t\" actionlint; cp \"$t/actionlint\" \"$dst/\"; v=\"$(tag sharkdp/fd)\"; get \"https://github.com/sharkdp/fd/releases/download/$v/fd-$v-x86_64-unknown-linux-gnu.tar.gz\" \"$t/fd.tgz\"; tar -xzf \"$t/fd.tgz\" -C \"$t\"; cp \"$(find \"$t\" -name fd -type f | head -1)\" \"$dst/\"; chmod +x \"$dst\"/*; rm -rf \"$t\"",
+          "--",
+          "{script}",
+          "{dir}"
+        ],
+        "verify": [
+          "{dir}/bin/shellcheck",
+          "--version"
+        ],
+        "download": {
+          "resolver": "approximate",
+          "bytes": 70000000
         }
       },
       "updatable": true

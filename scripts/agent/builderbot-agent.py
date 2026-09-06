@@ -499,6 +499,8 @@ BUILTIN_LAYOUT = [
      "env": {"DOTNET_ROOT": ""}, "tool": "dotnet", "reports": "dotnet"},
     {"name": "go", "dir": "go", "bin": ["bin"], "env": {}, "tool": "bin/go",
      "reports": "go"},
+    {"name": "lint-tools", "dir": "lint-tools", "bin": ["bin"], "env": {},
+     "tool": "bin/shellcheck", "reports": "shellcheck"},
     {"name": "node", "dir": "node", "bin": ["bin"], "env": {}, "tool": "bin/node",
      "reports": "node"},
     {"name": "swift", "dir": "swift", "bin": ["usr/bin"], "env": {},

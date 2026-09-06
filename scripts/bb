@@ -2230,6 +2230,16 @@ cmd_git() {
     git "$verb" "$@"
 }
 
+# pw_node_path — where require("playwright") looks: the store's own module,
+# installed beside the browsers by the playwright recipe, ahead of the
+# image's global one. One rule for both machines: a node has only the store's,
+# and the controller prefers it so the two drive the same browser revisions.
+pw_node_path() {
+    local d; d="$(sdk_dir playwright 2>/dev/null)/node_modules"
+    if [ -d "$d" ]; then printf '%s:%s' "$d" "${NODE_PATH:-/usr/lib/node_modules}"
+    else printf '%s' "${NODE_PATH:-/usr/lib/node_modules}"; fi
+}
+
 cmd_settings() {
     local proj json=0
     [ "${1:-}" = --json ] && json=1
@@ -2791,6 +2801,10 @@ cmd_lint() {
     section() { printf '== %s ==\n' "$1"; }
     need() { # need TOOL — false (and say so) when it is not installed
         command -v "$1" >/dev/null 2>&1 && return 0
+        if on_node; then
+            printf '  [skip] %s is not in this node'"'"'s store — the Tools tab installs lint-tools, with this node picked\n' "$1"
+            return 1
+        fi
         printf '  [skip] %s is not in this image (predates it? update the container)\n' "$1"
         skipped=1
         return 1
@@ -3229,7 +3243,7 @@ URLs need their scheme (http:// or https://)"
 
     local chrome; chrome="$(find_chromium)"
     local files
-    files="$(NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - \
+    files="$(NODE_PATH="$(pw_node_path)" node - \
         "$chrome" "$auth" "$width" "$height" "$scale" "$wait" "$full" \
         "$mode" "$out" "${DASHBOARD_PORT:-7680}" "${urls[@]}" <<'EOF'
 const { chromium } = require("playwright");
@@ -3354,7 +3368,7 @@ cmd_favicon() {
         printf '<!doctype html><style>html,body{margin:0;height:100%%}svg{display:block;width:100vw;height:100vh}</style>\n'
         cat "$svg"
     } > "$tmp/mark.html"
-    NODE_PATH="${NODE_PATH:-/usr/lib/node_modules}" node - "$chrome" "$tmp" <<'EOF'
+    NODE_PATH="$(pw_node_path)" node - "$chrome" "$tmp" <<'EOF'
 const { chromium } = require("playwright");
 const [exe, tmp] = process.argv.slice(2);
 (async () => {
