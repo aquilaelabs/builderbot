@@ -470,12 +470,16 @@ try {
       // answer and nothing else — the dispatch used to fall through and run
       // the verb a second time locally, so `bb bug` on bb-sandbox printed
       // the tracker and then died with "bugs.py is missing from this image".
-      const bbOnNode = args => execFileSync('bash', [`${REPO}/scripts/bb`, ...args],
-        { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: nodeEnv, stdio: ['ignore', 'pipe', 'pipe'] });
+      const bbOnNode = args => { try {
+        return execFileSync('bash', [`${REPO}/scripts/bb`, ...args],
+          { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...nodeEnv, BB_PROJECT: 'alpha' },
+            stdio: ['ignore', 'pipe', 'pipe'] });   // BB_PROJECT: what bb-tty exports into a session
+      } catch (e) { return `FAILED ${e.status}: ${e.stderr}`; } };
       const once = bbOnNode(['roadmap', 'add', 'once, from a node']);
       const listing = bbOnNode(['roadmap']);
       ok((listing.match(/once, from a node/g) || []).length === 1 && !/nothing on/.test(listing),
-         'a relayed verb run from a node answers once, with the controller\'s answer');
+         `a relayed verb run from a node answers once, with the controller's answer (${
+           (once + listing).replace(/\s+/g, ' ').slice(0, 160)})`);
       const num = (once.match(/added (\d+)/) || [])[1];
       bbOnNode(['roadmap', 'rm', String(num), 'test']);
       const feed = async () => ((await api('/api/chat', { action: 'read', project: 'alpha' })).messages || []);
