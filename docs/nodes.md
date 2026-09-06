@@ -1663,3 +1663,39 @@ is made on the node, where the pane is. What the controller still cannot
 do for a node's session is keep the one-Anthropic-account rule, which is
 the node's own. Left to 10c: the image shedding what no session here
 needs.
+
+## 20. Three rules from 6 September
+
+Set by the operator after a session ran on bb-sandbox for the first time and
+the bill for it came in (roadmap #24, step 4). They bound §19 rather than
+replace it.
+
+**A node may carry the whole workstation.** That was never the objection.
+Nodes exist for resource management — a sandbox on this server or another,
+a cloud box, a Mac, a Windows machine — and the controller exists so all of
+that is configured, enrolled and updated from one place. So the toolchain,
+the lint tools, the browser module, the session half: fine on a node, *as
+long as they arrive from the controller* — the Tools tab, the catalog, the
+bundle, the agent's self-update — and never by somebody logging in and
+setting them up. A new node is a provisioner run and a few clicks, not a
+checklist.
+
+**Credentials are set up on the controller and nowhere else.** PATs, deploy
+keys, the Claude login, the runner registration: one place. A node never
+holds a git credential. Git's network operations from a node session go
+through the controller (`bb git push|fetch|pull`, relayed, run in the
+shared tree with the keys the controller already shields — the shape
+shelved #15 wanted, arrived at from the other side). The Claude login is
+handed to a node's account by `bb login` with the session's token, which
+is the one exception and is deliberate: it is the account's own credential,
+placed in that account's home, 0600, and nowhere a job can read.
+
+**A node keeps one footprint, and the machine stays its owner's.** The
+sandbox VM is *managed*: the controller may edit its fstab, netplan, docker
+and accounts through the config plane, because the VM is for nothing else.
+Everything else is a *guest*: the agent, the stores and the session half
+live in one directory with one service unit, and the controller changes
+nothing outside it. A MacBook enrolled as a node is still a MacBook; a
+`--remove` leaves no trace. The class is declared at enrollment and gates
+the system verbs per what each actually touches (roadmap #23). provision.sh
+today is the managed shape; the guest shape is the work.

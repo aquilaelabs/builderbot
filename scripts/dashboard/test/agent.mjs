@@ -466,6 +466,22 @@ try {
                         BB_TOKEN: forMe, BB_NODE: 'agentbox', BB_TREE: '/workspace/alpha' };
       const hook = (name, args, input) => execFileSync('python3', [`${REPO}/scripts/dashboard/${name}`, ...args],
         { input, encoding: 'utf8', env: nodeEnv, stdio: ['pipe', 'pipe', 'pipe'] });
+      // bb itself in the node role: a relayed verb is the controller's
+      // answer and nothing else — the dispatch used to fall through and run
+      // the verb a second time locally, so `bb bug` on bb-sandbox printed
+      // the tracker and then died with "bugs.py is missing from this image".
+      const bbOnNode = args => { try {
+        return execFileSync('bash', [`${REPO}/scripts/bb`, ...args],
+          { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...nodeEnv, BB_PROJECT: 'alpha' },
+            stdio: ['ignore', 'pipe', 'pipe'] });   // BB_PROJECT: what bb-tty exports into a session
+      } catch (e) { return `FAILED ${e.status}: ${e.stderr}`; } };
+      const once = bbOnNode(['roadmap', 'add', 'once, from a node']);
+      const listing = bbOnNode(['roadmap']);
+      ok((listing.match(/once, from a node/g) || []).length === 1 && !/nothing on/.test(listing),
+         `a relayed verb run from a node answers once, with the controller's answer (${
+           (once + listing).replace(/\s+/g, ' ').slice(0, 160)})`);
+      const num = (once.match(/added (\d+)/) || [])[1];
+      bbOnNode(['roadmap', 'rm', String(num), 'test']);
       const feed = async () => ((await api('/api/chat', { action: 'read', project: 'alpha' })).messages || []);
       const n0 = (await feed()).length;
       hook('bb-prompt-relay', ['alpha', 'ignored'], JSON.stringify({ prompt: 'refactor the picker <system-reminder>x</system-reminder>' }));
