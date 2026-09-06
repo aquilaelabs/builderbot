@@ -609,8 +609,10 @@ cmd_emu() {
 # answer in here for a job that ran in this very container. The lint workflow
 # tees each check into /config/ci-logs/<repo>/ and this reads it.
 # Where CI logs are kept, resolved the same way the workflows resolve it:
-# /config on a controller because it survives an image update, and a node's
-# own home otherwise, since a node has no /config at all.
+# BB_CI_LOG_DIR first — on a node the agent sets it for jobs and sessions
+# alike, and writes the same path into the runner's .env, so the archive is
+# under the data store where the session account can read it — then /config
+# on a controller because it survives an image update, then the home.
 ci_log_dir() {
     if [ -n "${BB_CI_LOG_DIR:-}" ]; then printf '%s' "$BB_CI_LOG_DIR"
     elif [ -w /config ]; then printf '/config/ci-logs'

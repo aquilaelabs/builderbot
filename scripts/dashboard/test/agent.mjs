@@ -949,7 +949,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
         'abi.type=x86_64\nimage.sysdir.1 = system-images/android-34/google_apis/x86_64/\n');
       const envrun = await api('/api/v1/jobs', { action: 'run', project: 'alpha',
         argv: ['sh', '-c', 'echo "root=$SDK_ROOT"; echo "java=$JAVA_HOME"; '
-                         + 'echo "android=$ANDROID_HOME"; echo "path=$PATH"'] });
+                         + 'echo "android=$ANDROID_HOME"; echo "path=$PATH"; echo "cilog=$BB_CI_LOG_DIR"'] });
       const ef = await until(async () => {
         const r = await api(`/api/v1/jobs?id=${envrun.job}`);
         return ['succeeded', 'failed', 'canceled'].includes(r.state) ? r : null;
@@ -959,6 +959,8 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
          && /android=.*agentpackages\/android/.test(log),
          `a build job gets the node's SDK root, JAVA_HOME and ANDROID_HOME (${
            (log.match(/root=.*/) || [''])[0].slice(0, 60)})`);
+      ok(/cilog=.*agentdata\/ci-logs/.test(log),
+         '...and where this node archives CI logs, under the data store both accounts can read');
       // An empty directory is not a toolchain. cmdline-tools existed on the
       // operator's node as an empty folder with no sdkmanager, and
       // platform-tools not at all, and the census called android-sdk present
@@ -1174,6 +1176,9 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        && /RUNNER_ROOT_OK/.test(calls),
        'config.sh gets the minted token, the node\'s name, the default labels plus its own name, and svc.sh installs and starts it');
     ok(!/AAAREGTOKEN/.test(ifin?.log || ''), '...and the token never reaches the job log');
+    const renv = existsSync(`${DIR}/runner/.env`) ? readFileSync(`${DIR}/runner/.env`, 'utf8') : '';
+    ok(/^BB_CI_LOG_DIR=.*agentdata\/ci-logs$/m.test(renv) && existsSync(`${DIR}/agentdata/ci-logs`),
+       'the runner\'s .env points its workflows\' archive step at the data store, and the directory is there');
     const rn = await until(async () => { const n = await nodeById(minted.id);
       return n.reported.services?.['actions-runner']?.installed ? n : null; });
     ok(rn && rn.reported.services['actions-runner'].name === 'agentbox'

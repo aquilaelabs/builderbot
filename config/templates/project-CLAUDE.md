@@ -185,8 +185,10 @@ one at a time — so start it when you need it and stop it when you are done.
 own emulator, images and GPU are used, the output streams back, and what a
 verb writes — `bb emu shot` for a screenshot, `bb emu gfx PKG` for real
 per-frame timings — comes back into `dist/`. `bb emu install FILE` sends an
-APK from `dist/` along. You cannot reach that emulator with `adb` from here;
-the verbs are the way in, and `bb emu create API` builds its AVD when the
+APK from `dist/` along. From a session on the controller you cannot reach
+that emulator with `adb`; the verbs are the way in. From a session **on the
+node** — `bb status` says which this is — the verbs run right here and
+`adb` reaches it directly. `bb emu create API` builds its AVD when the
 node's store has none yet.
 
 Which API levels exist is set by `ANDROID_SYSTEM_IMAGES` on the container,
@@ -776,11 +778,13 @@ only when the finding is genuinely a false positive, and say why.
 - Never write credentials into this repository, including into test fixtures,
   `.env` files that are not gitignored, or CI config.
 
-## CI runs on a node, never here
+## CI runs on a node
 
-This container runs no Actions runner. Every runner lives on a node the
+The controller runs no Actions runner. Every runner lives on a node the
 operator enrolled — the dashboard's Nodes tab installs one — and carries that
-node's own name as a label, which is how a workflow chooses it:
+node's own name as a label, which is how a workflow chooses it. A session on
+the node is on the same machine as its runner; one on the controller is not.
+`bb status` says which this is.
 
 ```yaml
 runs-on: [self-hosted, bb-sandbox]
@@ -796,12 +800,13 @@ Four implications:
   registry knows; compare the job's `Requested labels:` against it.
 - `bb lint` refuses a `runs-on` naming a label no runner carries, so that
   mismatch is caught here instead of on GitHub.
-- A CI job's console output stays on the node. `bb ci-log` fetches the newest
-  archived run from this project's node; `--list` shows what is kept.
+- A CI job's console output is archived on the node, under its data store.
+  `bb ci-log` reads the newest run — right there from a session on the node,
+  fetched across from one on the controller; `--list` shows what is kept.
 
 ## Toolchain already present
 
-Do not install these; they are in the image.
+Do not install these. On the controller they are in the image:
 
 `node 22` · `npm`/`yarn`/`pnpm` · `python 3.12` + `uv`/`pipx` · `jdk 21` ·
 `android sdk` (build-tools, platform-tools, `bundletool`; platforms and system
@@ -810,6 +815,13 @@ images per `ANDROID_SYSTEM_IMAGES`) ·
 `ripgrep`/`fd`/`fzf`/`jq`/`yq` · `build-essential`/`cmake` · `ffmpeg`/`imagemagick` ·
 `shellcheck`/`hadolint`/`actionlint`/`ruff` · `lsof`/`strace`/`tree` ·
 `mise` for per-project tool pinning
+
+On a node the toolchain is the packages store, and `bb sdk` is the list:
+the JDK, the Android SDK, Playwright's browsers with their module, and the
+lint tools are all recipes there, installed from the dashboard's Tools tab
+with that node picked. One `bb lint` check skipping, or `bb shot` failing to
+find its module, means a recipe is not installed yet — say which, and let
+the operator install it; never `apt-get` around it.
 
 Before pushing anything that touches shell scripts, Dockerfiles, workflows,
 compose files or XML, run:

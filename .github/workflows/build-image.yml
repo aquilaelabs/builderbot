@@ -258,9 +258,10 @@ jobs:
           BUILD_ELAPSED: ${{ needs.build.outputs.elapsed }}
           NO_CACHE: ${{ inputs.no_cache }}
         run: |
-          # The same two-step path the other workflows and `bb ci-log`
-          # resolve: /config on a controller, the runner's own home on a
-          # node, which has no /config at all.
+          # The same path the other workflows and `bb ci-log` resolve:
+          # BB_CI_LOG_DIR from the runner's .env on a node (its data store,
+          # readable by a session there), /config on a controller, the home
+          # as the fallback.
           dir="${BB_CI_LOG_DIR:-}"
           if [ -z "$dir" ]; then
             if [ -w /config ]; then dir=/config/ci-logs; else dir="$HOME/ci-logs"; fi
