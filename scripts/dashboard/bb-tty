@@ -349,6 +349,25 @@ PY
         printf 'unset DASHBOARD_AUTH\n'
         local tok; tok="$(session_token "$proj")"
         [ -z "$tok" ] || printf 'export BB_TOKEN=%q\n' "$tok"
+        # ...and beside the launcher, where `bb` can read it at the moment it
+        # is run rather than only at the moment the session started.
+        #
+        # A session outlives its token. The token is twelve hours; a
+        # conversation that has been going longer than that had one in its
+        # environment that no longer verifies, and every bb verb answered
+        # "not signed in" — the notebook, `bb git push` on a node, all of it
+        # — with no way back except ending the session. The launcher above is
+        # already rewritten on every connection, but a claude that is ALREADY
+        # RUNNING keeps the environment it started with, so refreshing the
+        # launcher refreshes nothing for it. This file is what a running one
+        # can pick up: bb prefers it the moment its own BB_TOKEN has expired,
+        # so re-opening the tab is enough to put a long session back in
+        # touch. Same directory and same account as the launcher, which holds
+        # the token too, so it is no wider a secret than it already was.
+        if [ -n "$tok" ]; then
+            ( umask 077; printf '%s\n' "$tok" > "$dir/token-${proj}.new" ) 2>/dev/null \
+                && mv -f "$dir/token-${proj}.new" "$dir/token-${proj}" 2>/dev/null || true
+        fi
         printf 'extra=()\n'
         # The file where the dashboard keeps them, when it is here; on a node
         # it is not, and `bb settings` asks the controller for the same two

@@ -2125,8 +2125,45 @@ ago() {
 # for a single command rather than being unable to reach the API at all. The
 # operator's
 # own shell, and a session no longer has it in its environment at all.
+# When a session token stops being good, as a unix time — or nothing for
+# anything that is not one. The body is base64url of `project|exp|uid|sig`.
+bb_token_exp() {
+    case "${1:-}" in bbs_*) ;; *) return 0 ;; esac
+    local b="${1#bbs_}"
+    b="$(printf '%s' "$b" | tr '_-' '/+')"
+    while [ $(( ${#b} % 4 )) -ne 0 ]; do b="${b}="; done
+    printf '%s' "$b" | base64 -d 2>/dev/null | cut -d'|' -f2 | tr -dc '0-9'
+}
+
+bb_token_dead() {
+    local e; e="$(bb_token_exp "${1:-}")"
+    [ -n "$e" ] || return 1                  # not a session token: not ours to judge
+    [ "$e" -le "$(date +%s)" ]
+}
+
+# The session token to use now: the one in the environment unless it has
+# expired, and then the one bb-tty last wrote beside the launcher.
+#
+# A conversation outlives its token — twelve hours — and the environment of a
+# process already running cannot be changed from outside it, so a long session
+# was left holding a token that no longer verified and every verb answered
+# "not signed in". bb-tty refreshes that file on every connection, so opening
+# the tab is what puts this back in touch.
+bb_token_now() {
+    local t="${BB_TOKEN:-}"
+    if [ -n "$t" ] && ! bb_token_dead "$t"; then printf '%s' "$t"; return 0; fi
+    local dir="${XDG_CACHE_HOME:-${HOME:+$HOME/.cache}}"
+    local f="${dir:-/tmp/bb-scope-$(id -u)}/builderbot/token-${BB_PROJECT:-}"
+    if [ -r "$f" ]; then
+        local ft; ft="$(cat "$f" 2>/dev/null)"
+        if [ -n "$ft" ] && ! bb_token_dead "$ft"; then printf '%s' "$ft"; return 0; fi
+    fi
+    printf '%s' "$t"                          # nothing fresher; the die below says so
+}
+
 bb_auth_header() {
-    if [ -n "${BB_TOKEN:-}" ]; then printf 'Bearer %s' "$BB_TOKEN"
+    local t; t="$(bb_token_now)"
+    if [ -n "$t" ]; then printf 'Bearer %s' "$t"
     elif [ -n "${DASHBOARD_AUTH:-}" ]; then
         printf 'Basic %s' "$(printf '%s' "$DASHBOARD_AUTH" | base64 -w0)"
     fi
@@ -2135,6 +2172,14 @@ bb_auth_header() {
 # ...and the sentence to die with when there is neither.
 bb_auth_or_die() {
     local h; h="$(bb_auth_header)"
+    # An expired one is not a missing one, and saying "not signed in" for it
+    # sent somebody looking for a sign-in that was never the problem. A token
+    # lasts twelve hours and a conversation can last longer; re-opening the
+    # tab mints a fresh one, which bb-tty writes where bb_token_now reads it.
+    if [ -n "${BB_TOKEN:-}" ] && bb_token_dead "$(bb_token_now)"; then
+        local e; e="$(bb_token_exp "$BB_TOKEN")"
+        die "this session's token expired$([ -n "$e" ] && date -d "@$e" '+ %d %b at %H:%M' 2>/dev/null) — they last 12 hours and a conversation can outlast one. Open this session's tab from the dashboard again and the next command works: that mints a fresh token and leaves it where bb looks."
+    fi
     if [ -z "$h" ]; then
         # Which of the two is actually wrong. Everything that reaches a node
         # goes through the dashboard, so "no credential" and "no dashboard"

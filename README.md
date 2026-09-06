@@ -2927,6 +2927,16 @@ session token a Claude session is given — for proving a node by hand, where
 account named it is the token a node-bound terminal carries, which also
 fetches that account's Claude login onto the node.
 
+**A token lasts twelve hours, and a conversation can last longer.** One is
+minted per connection, so opening the session's tab refreshes it — but the
+`claude` already running keeps the environment it started in, and nothing
+outside a process can change that. So `bb-tty` also writes the fresh token
+beside the launcher in the account's own cache (0600), and `bb` reads it the
+moment the one in its environment has expired. A long session therefore
+recovers by having its tab opened, and until it is, `bb` says the token
+expired and when — rather than "not signed in", which sent somebody looking
+for a sign-in that was never the problem.
+
 #### Accounts
 
 The Tools card's **Users** tab adds people. There is exactly one **owner**,

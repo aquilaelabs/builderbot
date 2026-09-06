@@ -771,6 +771,11 @@ only when the finding is genuinely a false positive, and say why.
   not, say so rather than inventing another auth path. There is no
   container-wide git token: a project that needs one carries its own, set in
   the dashboard's clone dialog.
+- **A session's token expires after twelve hours.** If `bb` starts refusing
+  with "this session's token expired", the fix is not a sign-in: ask the
+  operator to open this session's tab in the dashboard, which mints a fresh
+  one and leaves it where `bb` looks. Everything else keeps working meanwhile
+  — the token is only how `bb` reaches the controller.
 - **On a node, pushing is `bb git push`** (and `fetch`, `pull`, `ls-remote`).
   The tree is the shared projects share, so the controller runs git in it
   with the keys it holds, and no credential ever lives on a node. Plain

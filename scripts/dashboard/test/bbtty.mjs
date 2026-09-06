@@ -12,7 +12,7 @@
 // that says so.
 import { ok, done, sleep, URL, DIR, tmuxKill, tmuxFmt } from './lib.mjs';
 import { execFileSync } from 'child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync } from 'fs';
+import { mkdtempSync, mkdirSync, writeFileSync, chmodSync, readFileSync, existsSync, lstatSync, readlinkSync, rmSync, statSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 
@@ -93,6 +93,33 @@ ok(cmd.length < 200 && /claude-run-alpha\.sh$/.test(cmd),
    '...because tmux was handed a launcher, not the command');
 ok(launcher().length > 40000,
    '...and the launcher carries the prompt tmux could not');
+// ...and the token beside it, where a session that has ALREADY STARTED can
+// pick it up. A session outlives its twelve-hour token; the launcher is
+// rewritten on every connection but a running claude keeps the environment
+// it started with, so this file is the only way back for one that has been
+// going longer than that (bb_token_now prefers it once BB_TOKEN is dead).
+const TOKFILE = join(DIR, 'home', '.cache', 'builderbot', 'token-alpha');
+const tokWritten = existsSync(TOKFILE) ? readFileSync(TOKFILE, 'utf8').trim() : '';
+ok(/^bbs_/.test(tokWritten) && (statSync(TOKFILE).mode & 0o077) === 0,
+   `the session's token is written beside the launcher for a running session to pick up, 0600 (${
+     tokWritten.slice(0, 12)}…)`);
+ok(launcher().includes(tokWritten),
+   '...and it is the same one the launcher exports, not a second grant');
+{
+  // What bb does with it: a BB_TOKEN that has expired falls through to this
+  // file, and a live one is left alone.
+  const BBBIN = new globalThis.URL('../../bb', import.meta.url).pathname;
+  const dead = 'bbs_' + Buffer.from('alpha|1000000000|u_0badf00d|deadbeef')
+    .toString('base64url').replace(/=+$/, '');
+  const ask = (env) => execFileSync('bash', ['-c',
+    'eval "$(sed -n "/^bb_token_exp()/,/^}/p;/^bb_token_dead()/,/^}/p;/^bb_token_now()/,/^}/p" "$1")"; bb_token_now',
+    'sh', BBBIN],
+    { encoding: 'utf8', env: { ...process.env, HOME: join(DIR, 'home'), BB_PROJECT: 'alpha', ...env } }).trim();
+  ok(ask({ BB_TOKEN: dead }) === tokWritten,
+     'bb reaches for that file the moment the token it started with has expired');
+  ok(ask({ BB_TOKEN: tokWritten }) === tokWritten,
+     '...and leaves a live one alone');
+}
 const argv = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
 ok(argv.includes('--append-system-prompt') && argv.length > 40000,
    '...which reaches claude whole, roadmap and all');
