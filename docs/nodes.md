@@ -1661,8 +1661,12 @@ them into the pane as the dashboard types into its own; the paging
 decision (copy mode at a prompt, the program's key in a full-screen one)
 is made on the node, where the pane is. What the controller still cannot
 do for a node's session is keep the one-Anthropic-account rule, which is
-the node's own. Left to 10c: the image shedding what no session here
-needs.
+the node's own. 10c landed 6 September: the image carries no JDK and no
+Android SDK; a container in the node role keeps the emulator's runtime
+libraries and the X server for the GPU path, and the startup hook that
+builds AVDs from `ANDROID_SYSTEM_IMAGES` is gone — an API level is what a
+store holds an image for, and `bb emu create` fetches one. `bb emu` on a
+controller with no node for the project refuses and says where it runs.
 
 ## 20. Three rules from 6 September
 

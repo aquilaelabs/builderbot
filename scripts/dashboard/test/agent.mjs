@@ -1271,7 +1271,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     }, 60000);
     // Only the plumbing is asserted: this box has the image's avdmanager on
     // PATH, which a node would not, so what `list` finds here is the box's.
-    ok(efin && efin.state === 'succeeded' && /configured API levels/.test(efin.log),
+    ok(efin && efin.state === 'succeeded' && /API levels with a system image here/.test(efin.log),
        `the node runs it from the bundle with the store as its SDK (${efin?.state}: ${(efin?.log || '').slice(0, 80).replace(/\n/g, ' / ')})`);
     // inputs and outputs without a snapshot: a file from dist/ arrives by
     // name in the job's directory, and what is written there comes back
@@ -1296,7 +1296,7 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     const cli = execFileSync('bash', [`${REPO}/scripts/bb`, 'emu', 'list'],
       { encoding: 'utf8', cwd: `${DIR}/ws/alpha`, env: { ...process.env, DASHBOARD_AUTH: 'test:test',
         DASHBOARD_PORT: new globalThis.URL(URL).port, DASHBOARD_STATE: `${DIR}/state`, BB_PROJECT: 'alpha' } });
-    ok(/bb emu list on agentbox/.test(cli) && /configured API levels/.test(cli) && /succeeded/.test(cli),
+    ok(/bb emu list on agentbox/.test(cli) && /API levels with a system image here/.test(cli) && /succeeded/.test(cli),
        `bb emu from a shell goes to the project's node and streams the answer back (${cli.replace(/\s+/g, ' ').slice(0, 120)})`);
   }
 

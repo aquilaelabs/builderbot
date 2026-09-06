@@ -264,11 +264,12 @@ docker cp BuilderBot:/opt/builderbot/icon.png \
   /var/lib/docker/unraid/images/BuilderBot-icon.png
 ```
 
-### Android emulator (optional)
+### Android emulator (on a node)
 
-1. Container settings → **Extra Params**: append ` --device=/dev/kvm`
-2. Set `ENABLE_ANDROID_EMULATOR` to `true`
-3. Apply, then: `docker exec -it BuilderBot bb emu start`
+The controller runs no emulator and carries no SDK: `bb emu` on a project
+runs on that project's node, whose packages store holds the emulator and its
+images (Tools tab, node picked). For a *container* node, give it
+` --device=/dev/kvm` in Extra Params and the GPU settings below.
 
 ### A second container as a build node (optional)
 
@@ -674,26 +675,20 @@ Headless works out of the box; there is no display server in the container.
 
 ### Android
 
-The SDK (platform-tools, build-tools, platform 36), JDK 21 and `bundletool`
-are baked in — Gradle projects build with their own wrapper immediately:
+Nothing Android is in the image. A project builds on its node: the JDK, the
+SDK (`android-tools`, platforms, build-tools) and the emulator are recipes in
+the node's packages store, installed from the dashboard's Tools tab with that
+node picked. From a session:
 
 ```bash
-cd /workspace/YourApp && ./gradlew assembleRelease
-```
-
-Emulator workflow (after enabling KVM per your install option above):
-
-```bash
-bb emu start        # boots the 'builderbot' AVD headless
-adb devices
-./gradlew connectedAndroidTest
+bb build            # the project's build command, on its node
+bb emu start        # the emulator there; adb reaches it from a session on the node
 bb emu stop
 ```
 
-AVDs persist in the home volume; the images and platforms themselves live on
-the SDK share, so an image update never re-downloads them. Need more
-platforms? `bb sdk install android:"platforms;android-34"`, or tick it in the
-dashboard's Tools tab.
+AVDs live in the node's home; the images and platforms in its store, so an
+update never re-downloads them. Need another level? `bb emu create 34` on the
+node, or tick the image on the Tools tab.
 
 ### Publishing packages
 
@@ -763,6 +758,6 @@ who can open a PR could run code on that machine.
 SIGTERM; the emulator is powered down and Claude sessions close their turn.
 A node's runner is unaffected — nodes do not stop with this container.
 
-**Image size.** With Playwright's three browsers plus the Android SDK and
-emulator image baked in, expect a pull of several GB. Updates are
-layer-diffed, so routine updates move far less data.
+**Image size.** Nothing large is baked in any more — no JDK, no Android SDK,
+and the Playwright browsers live on the SDK share — so a pull is well under
+a gigabyte. Updates are layer-diffed, so routine updates move far less data.

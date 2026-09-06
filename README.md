@@ -7,12 +7,12 @@ in.
 
 ```
   ┌─────────────────────── BuilderBot ────────────────────────┐
-  │  claude · node 22 · python 3 + uv · jdk 21 · gh · docker  │
+  │  claude · node 22 · python 3 + uv · gh · docker           │
   │  playwright (chromium/firefox/webkit)                     │
-  │  android sdk + emulator · bundletool                      │
   │  git/git-lfs · ripgrep/fd/fzf/jq · build-essential · mise │
   │                                                           │
-  │  actions-runner ──► listens for jobs from GitHub          │
+  │  nodes ──► builds, tests, CI and the emulator run there:  │
+  │            jdk · android sdk · flutter · … from a store   │
   │                                                           │
   │  /workspace  ◄─────────  /mnt/user/development/projects   │
   │    every folder in there is a project                     │
@@ -53,9 +53,8 @@ private tmux server and photographs it with `bb shot` — the pattern the
 | **Claude Code** | `@anthropic-ai/claude-code`, auto-updated on every start |
 | **Node** | 22.x (NodeSource) + npm, corepack (yarn/pnpm shims) |
 | **Python** | 3.12, `uv`, `pipx`, venv |
-| **Java** | OpenJDK 21 |
 | **Playwright** | CLI + the system deps; the browsers themselves install to the [SDK share](#sdks-live-outside-the-image) and appear at `/opt/pw-browsers` |
-| **Android** | SDK cmdline-tools (`sdkmanager`), platform-tools (`adb`), `bundletool`. Platforms, build-tools, the emulator and system images install to the [SDK share](#sdks-live-outside-the-image), not the image |
+| **Android, Java, Flutter, .NET…** | Not in the image: a node's, from its packages store — the JDK, the SDK, the emulator and the system images are recipes on the Tools tab, installed with the node picked |
 | **Git** | git, git-lfs, `gh` CLI |
 | **Docker** | CLI + compose/buildx plugins (needs the opt-in socket mount) |
 | **Search** | ripgrep, fd, fzf, jq, yq |
@@ -283,12 +282,8 @@ tick it to force a fresh pull of everything. Rollback = point the Repository fie
 | `SHIELD_SECRETS` | `true` | Scrub PAT from session env; `false` = legacy (PAT visible, `gh` auto-authenticated) |
 | `GIT_USER_NAME` / `GIT_USER_EMAIL` | `BuilderBot` / `builderbot@localhost` | Commit identity |
 | `SDK_ROOT` | `/sdk` | Where the SDKs *you* install are kept — see [SDKs live outside the image](#sdks-live-outside-the-image). Falls back to the home volume when no share is mapped. Not CI's: a node runner keeps its own toolchains in its tool cache |
-| `ENABLE_ANDROID_EMULATOR` | `false` | Create system images and AVDs at startup |
 | `BUILDERBOT_ROLE` | `controller` | `node` makes this container a worker instead of the management instance: it enrolls with a controller and runs its jobs, and the dashboard, Claude and project hooks do not start. See [nodes](docs/nodes.md) |
 | `CONTROLLER_URL` / `NODE_TOKEN` | — | Node only, and only until it enrolls: the dashboard's address, and a one-time token its Nodes tab mints |
-| `ANDROID_BASELINE_PLATFORM` | *(the image's)* | `none` keeps Android off this container's SDK store entirely — no platform, no build-tools, no emulator. For the box whose Android work runs on a [node](docs/nodes.md): the node carries its own SDK, and the store here is then only what a session needs |
-| `ANDROID_SYSTEM_IMAGES` | `36` | API levels to keep an image + AVD for, e.g. `34,35,36,37` |
-| `ANDROID_SYSTEM_IMAGE_VARIANT` | `google_apis;x86_64` | Image flavor; `default;x86_64` is smaller AOSP, no Google APIs |
 | `ANDROID_AVD_NAME` / `ANDROID_AVD_PREFIX` | *(derived)* / `builderbot` | Override the default AVD, or the `<prefix>-<api>` naming |
 | `ENABLE_GPU_DISPLAY` | `true` | Start a headless X server for a passed-through NVIDIA GPU at boot, so the emulator can render on it. Does nothing without one |
 | `ANDROID_EMULATOR_GPU` | *(empty — auto)* | Emulator renderer. Empty tests the GPU and falls back to software; `swiftshader_indirect`/`swangle_indirect` force software, `host` insists on the GPU |
@@ -514,10 +509,11 @@ in software and will mislead you.
 
 ## SDKs live outside the image
 
-The image carries what it takes to *bootstrap* a toolchain, not the toolchain
-itself: `sdkmanager`, `adb`, `bundletool` — about 170MB. Everything large and
-merely downloadable is installed at runtime into the **SDK share**, mapped at
-`/sdk` (Unraid default `/mnt/user/development/SDK`).
+The image carries no toolchain beyond node, python and the Playwright
+module. Everything a build needs — the JDK, the Android SDK, the emulator,
+Flutter, .NET — is a recipe installed into a **packages store**: the SDK
+share, mapped here at `/sdk` (Unraid default `/mnt/user/development/SDK`)
+and on a node wherever it was enrolled with, often the same share.
 
 The reason is arithmetic. `/opt` is discarded and rebuilt on every image
 update, and the update is weekly, so a package baked into the image is
@@ -608,10 +604,9 @@ rather than a boundary (a session has a shell, and could call `sdkmanager`
 directly), and it says how the human at the keyboard overrides it:
 `env -u CLAUDECODE bb sdk install …`.
 
-**A removal sticks.** Two things are fetched on the first boot of a fresh
-share — the Playwright browsers and, with `ENABLE_ANDROID_EMULATOR`, the
-emulator — because a container that comes up "ready" with `bb shot` broken is
-worse than a slow first start. A share somebody has just cleared looks
+**A removal sticks.** The Playwright browsers are fetched on the first boot
+of a fresh share, because a container that comes up "ready" with `bb shot`
+broken is worse than a slow first start. A share somebody has just cleared looks
 identical to a fresh one from a startup hook, so `bb sdk remove` leaves a
 marker under `.removed/` on the share and the hooks respect it; installing
 the package again clears it. Without that, an uninstall lasted until the next
@@ -766,7 +761,7 @@ and which flavor, never whether. The four flavors, and why you would pick one:
 
 | Flavor | What it is |
 |---|---|
-| **Google APIs** | Play *services* — Maps, sign-in, push — but no Play Store app. Rootable: `adb root` works. The default, and what `ANDROID_SYSTEM_IMAGES` installs |
+| **Google APIs** | Play *services* — Maps, sign-in, push — but no Play Store app. Rootable: `adb root` works. The default, and what `bb emu create` fetches |
 | **Google APIs + Play Store** | The same plus the Play Store app itself, for anything that signs in to Play, checks a license or takes an in-app payment. A Play-certified build, so **not** rootable |
 | **Android TV** | Leanback layout, remote-control navigation |
 | **Wear OS** | What modern Galaxy and Pixel watches run |
@@ -813,27 +808,21 @@ pins, and CI that had to wait for a 666MB download before its first job
 would be a worse trade than the megabytes are worth.
 
 **The first boot after an update is not free.** A container whose share is
-empty installs the Android baseline (platform + build-tools, a few hundred MB)
-and the Playwright browsers (~1.3GB) on first start, and the emulator the
-first time `ENABLE_ANDROID_EMULATOR=true` asks for it. That happens once per
-share; from then on updates cost nothing.
+empty installs the Playwright browsers (~1.3GB) on first start. That happens
+once per share; from then on updates cost nothing.
 
 ## Multiple Android versions
 
-No system image is in the image — the first boot installs the baseline onto
-the SDK share. To emulate more levels, list the ones you want:
-
-```
-ANDROID_SYSTEM_IMAGES=34,35,36,37
-```
-
-On the next start each missing level is downloaded and given an AVD named
+Nothing Android is in the image: the SDK, the emulator and the system images
+are a node's, in its packages store. An API level exists where that store
+holds a system image for it — tick one on the Tools tab with the node picked,
+or let `bb emu create <api>` fetch it on demand. Each is given an AVD named
 `builderbot-<api>`:
 
 ```bash
-bb emu list          # configured levels, and which AVDs exist
+bb emu list          # levels with an image here, and which AVDs exist
 bb emu start 37      # boot Android 17
-bb emu start         # the first configured level
+bb emu start         # the newest level with an image
 bb emu stop
 bb emu log -p        # the previous boot's log — the post-mortem after a death
 ```
@@ -876,8 +865,9 @@ NVIDIA GLX, so EGL falls through to Mesa, which has no driver for an NVIDIA
 card and lands on llvmpipe — software by a slower road than the emulator's own
 SwiftShader.
 
-So the container starts a real `Xorg` on the injected `nvidia_drv.so` at boot
-(`ENABLE_GPU_DISPLAY`, on by default, silent without a GPU). It has to happen
+So a container in the node role starts a real `Xorg` on the injected
+`nvidia_drv.so` at boot (`ENABLE_GPU_DISPLAY`, on by default, silent without a
+GPU; a controller starts none). It has to happen
 at boot because a session runs unprivileged with no capabilities and cannot
 become DRM master. `bb emu start` then **tests** the result rather than
 trusting it — EGL has to answer with a vendor driver, and Mesa answering counts

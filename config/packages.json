@@ -99,7 +99,7 @@
     "flavors": {
       "google_apis": {
         "label": "Google APIs",
-        "about": "Google Play services \u2014 Maps, sign-in, push \u2014 but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what ANDROID_SYSTEM_IMAGES installs.",
+        "about": "Google Play services \u2014 Maps, sign-in, push \u2014 but no Play Store app. Rootable: `adb root` works, which the Play Store images refuse. This is the default, and what bb emu create fetches.",
         "xml": "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-3.xml"
       },
       "google_apis_playstore": {
@@ -248,7 +248,10 @@
         "android-tools",
         "android:platform-tools"
       ],
-      "about": "The emulator binary. System images are per API level and come from ANDROID_SYSTEM_IMAGES.",
+      "about": "The emulator binary. System images are per API level and come from the image picker above, or from bb emu create on the node.",
+      "system": {
+        "apt": ["libpulse0", "libgl1", "libglu1-mesa", "libasound2t64", "libegl1", "libvulkan1"]
+      },
       "source": {
         "kind": "sdkmanager",
         "package": "emulator",

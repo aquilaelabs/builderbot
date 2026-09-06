@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# roles: controller node
+# roles: node
 #
 # An X display for the GPU, so the Android emulator can render on it.
 #

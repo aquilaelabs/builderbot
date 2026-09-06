@@ -380,7 +380,7 @@ def installed_images(refresh=True):
     """One row per android system image actually installed here.
 
     Not catalog packages: which exist depends on what has been installed, and
-    the ANDROID_SYSTEM_IMAGES baseline puts them there without anyone choosing
+    a system image lands there by a choice on the Tools tab or bb emu create, never by a baseline
     them one at a time. They accumulate — several API levels' worth were on
     this box, most of them for versions nobody had configured in months — and
     until now the tab could neither show nor remove one.

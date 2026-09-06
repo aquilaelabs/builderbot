@@ -7431,8 +7431,8 @@ function renderPackagesInto(i){
          emulator can boot. The list of what exists is read here, from Google's index; an
          image is the same bytes on every host, so the node needs no network of its own to
          be offered one.`
-      : `<code>ANDROID_SYSTEM_IMAGES</code> installs the plain Google APIs image for each
-         level it is given; everything else is added here.`}
+      : `This container boots no emulator (the image carries no SDK): an image installed
+         here sits in the store for a node that shares it.`}
       Nothing is removed except by asking.</div>
     ${onNode && d.images_need ? `<div class="pkghead sub">Images are installed by
       sdkmanager, which is part of <code>${esc(d.images_need)}</code> — not on this node

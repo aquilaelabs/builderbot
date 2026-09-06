@@ -105,12 +105,12 @@ Everything is headless: no window manager, no monitor, nothing to show a GUI
 on. Run every tool in its headless mode and show the user pixels by saving a
 screenshot to a file.
 
-There may be an X server on `:0` all the same, and it is not an exception to
-any of that. When a GPU is passed through, the container starts a headless
-Xorg at boot for one reason: NVIDIA's EGL will not hand out a display without
-one, and without EGL the Android emulator cannot use the card. It has no
-window manager, no monitor and one intended client. Do not read `$DISPLAY`
-being set as permission to open a window on it.
+On a node with a GPU passed through there may be an X server on `:0` all
+the same, and it is not an exception to any of that. It is started at boot
+for one reason: NVIDIA's EGL will not hand out a display without one, and
+without EGL the Android emulator cannot use the card. It has no window
+manager, no monitor and one intended client. Do not read `$DISPLAY` being
+set as permission to open a window on it.
 
 - **Playwright** — browsers live at `/opt/pw-browsers`, which is a symlink
   onto the SDK share (they are 1.3GB of download, so the image does not carry
@@ -191,9 +191,9 @@ node** — `bb status` says which this is — the verbs run right here and
 `adb` reaches it directly. `bb emu create API` builds its AVD when the
 node's store has none yet.
 
-Which API levels exist is set by `ANDROID_SYSTEM_IMAGES` on the container,
-and on a node by what its packages store holds — the operator adds one from
-the Tools tab with that node picked. Run `bb emu list` before assuming a
+Which API levels exist is what the node's packages store holds a system
+image for — the operator adds one from the Tools tab with that node picked,
+or `bb emu create API` fetches it on demand. Run `bb emu list` before assuming a
 version is available; if the one you need is missing, say so rather than
 trying to install it — a runtime `sdkmanager` install works but the user
 should decide to spend the disk.
@@ -808,18 +808,17 @@ Four implications:
 
 Do not install these. On the controller they are in the image:
 
-`node 22` · `npm`/`yarn`/`pnpm` · `python 3.12` + `uv`/`pipx` · `jdk 21` ·
-`android sdk` (build-tools, platform-tools, `bundletool`; platforms and system
-images per `ANDROID_SYSTEM_IMAGES`) ·
+`node 22` · `npm`/`yarn`/`pnpm` · `python 3.12` + `uv`/`pipx` ·
 `playwright` (chromium/firefox/webkit) · `git`/`git-lfs`/`gh` ·
 `ripgrep`/`fd`/`fzf`/`jq`/`yq` · `build-essential`/`cmake` · `ffmpeg`/`imagemagick` ·
 `shellcheck`/`hadolint`/`actionlint`/`ruff` · `lsof`/`strace`/`tree` ·
 `mise` for per-project tool pinning
 
-On a node the toolchain is the packages store, and `bb sdk` is the list:
-the JDK, the Android SDK, Playwright's browsers with their module, and the
-lint tools are all recipes there, installed from the dashboard's Tools tab
-with that node picked. One `bb lint` check skipping, or `bb shot` failing to
+No JDK and no Android SDK on the controller: compiling happens on a node.
+There the toolchain is the packages store, and `bb sdk` is the list: the
+JDK, the Android SDK, Playwright's browsers with their module, and the lint
+tools are all recipes there, installed from the dashboard's Tools tab with
+that node picked. One `bb lint` check skipping, or `bb shot` failing to
 find its module, means a recipe is not installed yet — say which, and let
 the operator install it; never `apt-get` around it.
 

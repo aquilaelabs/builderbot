@@ -70,15 +70,13 @@ sdk_dir() { printf '%s/%s' "$(sdk_root)" "$1"; }
 # package — the system images included — could not be installed there. So the
 # root is passed on every call, and nothing here invokes sdkmanager without
 # it. The flag lives in one function so the two forms below cannot drift.
-# ANDROID_HOME, not the store path: on this container they are DIFFERENT
-# roots and only the first is right. /opt/android-sdk is a real directory
-# holding the licenses and a symlink per package onto the share, while
-# sdk_dir android is /sdk/android, where those links point. Passing the store
-# would have moved this container's SDK root out from under sdk_relink_android
-# for no reason — the container can infer its root perfectly well, and this
-# flag must be a no-op here. On a node the agent sets ANDROID_HOME to the
-# store's android/ directory, which is exactly the root that cannot be
-# inferred. So one value is correct in both places.
+# ANDROID_HOME when it is set, the store's android/ directory otherwise. On
+# a node the agent sets ANDROID_HOME to that directory for every job and
+# session; on the controller nothing sets it since the image stopped
+# carrying /opt/android-sdk (10c), and the store is the only root there is —
+# sdk_relink_android, which used to point the image's tree onto the share,
+# finds nothing to relink and does nothing. One value, correct in both
+# places, and sdkmanager never runs without it.
 sdk_root_flag() { printf -- '--sdk_root=%s' "${ANDROID_HOME:-$(sdk_dir android)}"; }
 sdkmgr() {
     # Every install goes past the licenses first — see below for why that is
@@ -1264,7 +1262,7 @@ sdk_remove() {
 # bb sdk images — the android system images actually installed here.
 #
 # Not a catalog matter: which exist depends on what has been installed, and the
-# baseline in ANDROID_SYSTEM_IMAGES puts them there without anyone choosing
+# image lands there by a choice on the Tools tab or bb emu create, never by a baseline
 # them one at a time. One TSV line each — id, API level, flavor, size — so
 # the tab can offer to remove the ones nobody is using. Forty-four gigabytes of
 # them accumulated here before there was any way to see them.
