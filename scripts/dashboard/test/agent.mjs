@@ -193,6 +193,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   DOCKER_STUB_STATE: `${DIR}/dockerstate`,
   PATH: `${DIR}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
   BUILDERBOT_DPKG_BIN: `${DIR}/bin/dpkg`, BUILDERBOT_APT_BIN: `${DIR}/bin/apt-get-never`,
+  BUILDERBOT_IDLE_UNIT: '1',
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
   BUILDERBOT_RUNNER_DIR: `${DIR}/runner`, BUILDERBOT_RUNNER_TARBALL: `${DIR}/runner.tar.gz`,
   BUILDERBOT_SANDBOX_BIN: `${DIR}/bin/bb-sandbox`, BB_SANDBOX_STATE: SANDBOX_STATE,
@@ -1208,6 +1209,23 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
     ok(sfin && sfin.state === 'failed' && /npm: stub/.test(sfin.log)
        && !existsSync(`${DIR}/agentpackages/playwright/node_modules`),
        '...and the recipe then ran as the job account, where the stub npm stopped it before a download');
+  }
+
+  // ---- the idle rule reaches the node and stays there (idle.py) -----------
+  // The controller's setting rides the hello reply into node.json, where the
+  // agent enforces it on its own tmux — controller up or down. A change is
+  // heard on the next poll, not the next ten-minute hello.
+  {
+    const on = await api('/api/idle', { minutes: 3 });
+    ok(on.ok && on.minutes === 3, 'the idle rule is set on the controller');
+    const kept = await until(() => {
+      const st = JSON.parse(readFileSync(NODE_JSON, 'utf8'));
+      return st.session_idle_minutes === 3 ? st : null;
+    }, 30000, 500);
+    ok(kept !== null, 'the node hears it on its next poll and keeps it in node.json, to enforce with the controller down');
+    const off = await api('/api/idle', { minutes: 0 });
+    const cleared = await until(() => JSON.parse(readFileSync(NODE_JSON, 'utf8')).session_idle_minutes === 0 ? true : null, 30000, 500);
+    ok(off.ok && cleared, '...and 0 reaches it the same way');
   }
 
   // ---- the Actions runner as a service on the node (phase 7) ----------------

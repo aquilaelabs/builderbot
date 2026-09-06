@@ -76,7 +76,7 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "25"
+AGENT_VERSION = "26"
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.
@@ -238,6 +238,8 @@ RUNNER_DIR = os.environ.get("BUILDERBOT_RUNNER_DIR", "/var/lib/builderbot/runner
 # The machine's package manager, for a recipe's `system` packages. Seams for
 # the suite, which must not touch the box it runs on.
 APT_BIN = os.environ.get("BUILDERBOT_APT_BIN", "apt-get")
+# Seconds per "minute" of the idle rule; the suite sets 1.
+IDLE_UNIT = float(os.environ.get("BUILDERBOT_IDLE_UNIT", "60"))
 DPKG_BIN = os.environ.get("BUILDERBOT_DPKG_BIN", "dpkg")
 RUNNER_TARBALL = os.environ.get("BUILDERBOT_RUNNER_TARBALL", "")
 RUNNER_RELEASES = "https://api.github.com/repos/actions/runner/releases/latest"
@@ -1391,6 +1393,15 @@ class Agent:
             if isinstance(lay, list) and lay and lay != self.state.get("layout"):
                 self.state["layout"] = lay
                 save_state(self.state)
+            # The idle rule for Claude sessions (the controller's idle.py),
+            # kept in node.json so it is enforced here while the controller
+            # is down — a node's sessions outlive a controller restart on
+            # purpose; the rule about when they end must not.
+            im = r.get("session_idle_minutes")
+            if isinstance(im, int) and im >= 0 and im != self.state.get("session_idle_minutes"):
+                self.state["session_idle_minutes"] = im
+                save_state(self.state)
+                log(f"sessions: idle rule is {im} minute(s)" if im else "sessions: no idle rule")
             n = r.get("node") or {}
             # The row's capabilities are the controller's claim; the ones
             # this node ENFORCES are the ones it enrolled with, kept in
@@ -1506,6 +1517,7 @@ class Agent:
                     continue
                 delay = 1
             self.session_check()
+            self.session_idle_reap()
             n = self.running()
             # The controller counts what is running here from its own rows
             # and wakes a held poll when a job ends, so the poll is held at
@@ -2056,6 +2068,29 @@ class Agent:
         into = os.path.realpath(os.path.join(store, ".bb", "current")) if store else ""
         if into and os.path.isdir(into) and self.ttyd:
             self.session_stale = into
+
+    def session_idle_reap(self):
+        """End this node's Claude sessions past the idle rule — the
+        controller's idle.py, enforced here from node.json. Claude sessions
+        by name (claude-<project>, u_xxxx~claude-<project>), by tmux's own
+        session_activity, once per minute."""
+        limit = self.state.get("session_idle_minutes") or 0
+        if limit <= 0 or time.time() - getattr(self, "_idle_at", 0) < IDLE_UNIT:
+            return
+        self._idle_at = time.time()
+        out = self._tmux(["list-sessions", "-F", "#{session_name}\t#{session_activity}"])
+        for line in (out or "").splitlines():
+            if "\t" not in line:
+                continue
+            name, act = line.split("\t", 1)
+            try:
+                last = float(act.strip())
+            except ValueError:
+                continue
+            claude = name.startswith("claude-") or "~claude-" in name
+            if claude and time.time() - last > limit * IDLE_UNIT:
+                log(f"sessions: ending {name} — idle {limit} minute(s), the controller's rule")
+                self._tmux(["kill-session", "-t", "=" + name])
 
     def session_check(self):
         """Once a loop: a ttyd that died is started again, not more often

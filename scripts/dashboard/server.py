@@ -2263,7 +2263,13 @@ todo.configure(write_json=write_json, state=STATE, tell=notify.tell,
 # One preference for every send, on its own card — see the module docstring
 # for why it stopped being a question inside each send box.
 import logs                                                      # noqa: E402
+import idle                                                      # noqa: E402
 logs.configure(state=STATE, write_json=write_json)
+idle.configure(state=STATE, write_json=write_json,
+               # A changed rule reaches every node on its next poll rather
+               # than its next ten-minute hello.
+               changed=lambda: [nodes.ask_hello(n["id"]) for n in nodes.node_list()
+                                if n.get("kind") == "agent"])
 # On boot, because that is when a generation was just rotated in and the oldest
 # one fell off the end of the policy. Nothing else runs on a schedule here.
 logs.prune()
@@ -2299,6 +2305,7 @@ try:
     # ...and the digest of the bb bundle, so a node can tell from hello alone
     # whether the bb its sessions run is the one this controller ships.
     nodes.bundle_digest = lambda: workspace.bundle()["digest"]
+    nodes.idle_minutes = idle.minutes
     NODES_OK = ""
 except Exception as e:                                    # noqa: BLE001
     NODES_OK = str(e)
@@ -2746,6 +2753,7 @@ def snapshot(who):
         # answer rather than each finding out by failing.
         "docker": devapp.available_default(),
         "logs": logs.payload(),
+        "idle": idle.payload(),
         # Which run of the container this is. The page stamps it into the URL
         # of every Claude terminal it opens, so bb-tty can tell a request made
         # now from one a browser carried across a restart.
@@ -3807,6 +3815,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._packages(req)
         if path.startswith("/api/logs"):
             return self._logs(req)
+        if path.startswith("/api/idle"):
+            return self._idle(req)
         if path.startswith("/api/memory"):
             return self._memory(req)
         if path.startswith("/api/prefs"):
@@ -4661,6 +4671,14 @@ class Handler(BaseHTTPRequestHandler):
         if act == "clear":
             return self._json(logs.clear())
         return self._json({"error": f"unknown action: {act}"}, 400)
+
+    def _idle(self, req):
+        """The idle rule for Claude sessions (idle.py): minutes, 0 for never.
+        Operator-only, like the log policy beside it."""
+        if self._refused("admin"):
+            return
+        r = idle.set_minutes(req.get("minutes"))
+        return self._json(r, 400 if r.get("error") else 200)
 
     def _devapp(self, req):
         """The dev-instance controls. Operator-only by construction — these
@@ -5773,6 +5791,7 @@ def main():
     prune_claude_tabs()
     # Daemons: these loops must die with the server, not hold it open.
     threading.Thread(target=_doctor_loop, daemon=True).start()
+    idle.start()
     if packages.AUTOCHECK:
         threading.Thread(target=packages.versions_loop, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
