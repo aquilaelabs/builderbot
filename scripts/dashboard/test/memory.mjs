@@ -90,13 +90,14 @@ await page.$eval('#memList .mem[open] textarea', t => {
   t.value = t.value.replace('asked for it twice', 'asked for it three times');
   t.dispatchEvent(new Event('input'));
 });
-// One Save for the panel: the list's changes and the memory editor's, told to
-// a session once between them. Two buttons meant two lines spent saying the
-// same thing.
-ok(!await page.$eval('#todoSave', b => b.disabled),
+// One Save for the panel, and one only: the list's changes and the memory
+// editor's, written together. There were two, and the second typed the change
+// into a running session — which stopped being the only way anything reached
+// one when the prompt hook got a free channel back (roadmap #27).
+ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
    'typing in a memory arms the panel\'s one Save button');
-await page.click('#todoSave');
-await page.waitForFunction(() => document.getElementById('todoSave').textContent !== 'Saving…',
+await page.click('#todoSaveQuiet');
+await page.waitForFunction(() => document.getElementById('todoSaveQuiet').textContent !== 'Saving…',
                            { timeout: 15000 });
 ok(read('tabs.md').includes('asked for it three times'),
    'Save writes the edit to the file on disk');
@@ -124,10 +125,10 @@ await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixt', i => {
   i.value = 'Loose ends'; i.dispatchEvent(new Event('input')); });
 await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixh', i => {
   i.value = 'only recall ever surfaced this one'; i.dispatchEvent(new Event('input')); });
-ok(!await page.$eval('#todoSave', b => b.disabled),
+ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
    'typing an index line arms the same Save as everything else');
-await page.click('#todoSave');
-await page.waitForFunction(() => document.getElementById('todoSave').textContent !== 'Saving…',
+await page.click('#todoSaveQuiet');
+await page.waitForFunction(() => document.getElementById('todoSaveQuiet').textContent !== 'Saving…',
                            { timeout: 15000 });
 ok(read('MEMORY.md').includes('- [Loose ends](loose.md) — only recall ever surfaced this one'),
    'saving writes the line, in the shape Claude wrote the others in');
@@ -277,13 +278,18 @@ ok(await page.$eval('#memList .mem:has(.mname:text-is("huge"))',
 // counts every one. Cleared here so the check at the end is about the page.
 page.errors = [];
 
-// ...and telling the session is that same Save, once, for both halves —
-// which is why editing a memory marks the project unsaved rather than firing
-// a line of its own. The fixture session is a shell and a shell echoes, so
-// notify.py submits it.
-const pane = tmuxCapture('claude-alpha');
-ok(/notes about how you work here/.test(pane),
-   'saving tells the running session, and the line names the memories');
+// ...and telling the session is not the Save's job at all any more. It used
+// to be: a second button typed the line into the session, because that was
+// the only way anything reached one. The prompt hook carries it now (roadmap
+// #27), so what this asserts is the silence, and that the counter the hook
+// reads from actually moved — the memories are a half of the notebook the
+// line has to be able to name.
+ok(!/notes about how you work here/.test(tmuxCapture('claude-alpha')),
+   'saving a memory spends no line of the session\'s conversation');
+ok((JSON.parse(readFileSync(`${DIR}/state/todos.json`, 'utf8'))
+      .bump?.alpha?.memory || 0) > 0,
+   '...and the memory half of the notebook is marked moved, which is what the '
+   + 'session is told on its next prompt');
 
 // ---- keeping up with the other writer -----------------------------------
 // The stamp on the poll is the directory's own — how many files and how
@@ -314,7 +320,7 @@ await page.$eval('#memList .mem[open] textarea', t => {
 // that passes through nothing this module could count.
 writeFileSync(`${MEM}/clash.md`,
   '---\nname: clash\ndescription: two writers\nmetadata:\n  type: project\n---\n\nwhat the session wrote\n');
-await page.click('#todoSave');
+await page.click('#todoSaveQuiet');
 await page.waitForFunction(() => !document.getElementById('memClash').hidden,
                            { timeout: 15000 });
 const memBand = () => page.$eval('#memClash', el => el.textContent.replace(/\s+/g, ' '));

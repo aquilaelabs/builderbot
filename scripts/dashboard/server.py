@@ -4688,17 +4688,16 @@ class Handler(BaseHTTPRequestHandler):
         # credited.
         me = self._who() or {}
         who = me.get("uid", "") if me.get("session") else ""
-        if act in ("tell", "save"):
-            # Two Saves, one difference: whether a line of the conversation is
-            # spent saying so. Both settle the panel — the plain one is "I have
-            # seen this, do not nag me", which is the right answer while a
-            # session is mid-task or when there is none.
-            told = False
-            if act == "tell":
-                told = bool(todo.announce(name, todo.unsaved(name), live).get("sent"))
+        if act == "save":
+            # The panel's one Save: settle the marker, say nothing. There used
+            # to be a second action here that typed the change into a running
+            # session, back when that was the only way anything reached one.
+            # A session is told by itself now, on the next prompt it is given
+            # (roadmap #27), so the panel has one button and this has one
+            # action. `announce` is still live — the send path below carries
+            # the same line on a message that was going anyway.
             todo.mark_told(name)
-            return self._json({"ok": True, "told": told}
-                              | self._todo_state(name, live))
+            return self._json({"ok": True} | self._todo_state(name, live))
         if act == "add":
             r = todo.add(name, field(req, "text"), steps=field_list(req, "steps"),
                          who=who)
@@ -5143,10 +5142,12 @@ class Handler(BaseHTTPRequestHandler):
         tracker's fields — there is nothing to stage, because what is being
         written is a sentence about a thing that already exists.
 
-        Ingest takes the runner's output as text. It is a POST rather than
-        something this server runs, and that is the design: the dashboard does
-        not run suites, and a duration it produced itself would be a duration
-        measured on a box that was busy serving this request.
+        Ingesting is NOT here, and that is not an omission. It was, and it
+        could never have worked: every body this server takes is capped at
+        MAX_BODY, 64kB, and a full run log is a couple of hundred — so the
+        action existed and returned "body too large" for the only input it was
+        for. `bb tests ingest` does it in process, on the machine whose /config
+        this is, which is where reading a runner's output belongs anyway.
         """
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
@@ -5160,8 +5161,6 @@ class Handler(BaseHTTPRequestHandler):
             r = testreg.describe(name, field(req, "key"),
                                  protects=req.get("protects"),
                                  notes=req.get("notes"))
-        elif act == "ingest":
-            r = testreg.ingest(name, str(req.get("text") or "")[:4_000_000])
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):

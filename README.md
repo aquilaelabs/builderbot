@@ -1923,15 +1923,20 @@ session**, so two people sharing a project each hear once, and neither clears
 it for the other; a session's first prompt is silent, because it was handed the
 whole list in its system prompt a moment earlier.
 
-That leaves the two Save buttons a cleaner difference. **Save** writes any
-memory edits and settles the panel — the session finds out on its next turn.
-**Save & interrupt** does the same and then types the line in, for when the
-next turn is not soon enough. Both are dead until something has moved; the
-second is also dead with nothing running to interrupt.
+Which leaves **one Save**, where there were two. The second typed the line
+into a running session's input box, and it existed because that was the only
+way anything reached one; with the session told by itself, what it bought was
+the difference between telling somebody now and telling them when they next
+look up — not a difference worth a permanent control, when the session's own
+tab is one tap away. Save writes any memory edits, replays whatever the list
+has staged, settles the panel, and says nothing. It is dead until something
+has moved.
 
 The line **names which half moved** — the roadmap, the memories, or both —
 because "something changed" sends somebody to look at both, and one of the two
-is a directory of files.
+is a directory of files. The same line still rides on a **sent step**, which
+is a message going to that session anyway: there it costs nothing extra, which
+is the one place it never did.
 
 **And the panel keeps up by itself.** All four views now re-read when somebody
 else writes: each carries a revision from the status poll, and a change to the
@@ -2400,6 +2405,12 @@ estimate is a guess that ages and reads exactly like a measurement.
 BB_TEST_TIMING=1 bb dashboard test 2>&1 | tee /tmp/run.log
 bb tests ingest /tmp/run.log
 ```
+
+Ingesting is the CLI's and deliberately not an endpoint: every body the server
+takes is capped at 64kB and a run log is a couple of hundred, so an action for
+it would answer "body too large" for the only input it was for. It also
+belongs there — reading a runner's output is work for the machine the runner
+ran on.
 
 A test is keyed on **where the runner puts it** — `<file>#<ordinal>` — rather
 than on its name, so rewording one keeps its description. Ingest reconciles

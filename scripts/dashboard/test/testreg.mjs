@@ -184,6 +184,21 @@ await page.waitForFunction(s => {
 ok(read().tests['slow.mjs#2'].protects === 'the daemon address is parsed, not guessed',
    'the tab writes a description through, with no Save for the panel to hold');
 
+// Ingesting is the CLI's and deliberately not an endpoint. It WAS one, and
+// it could never have worked: every body this server takes is capped at 64kB
+// and a run log is a couple of hundred, so the action existed and answered
+// "body too large" for the only input it was ever for.
+ok((await page.evaluate(async () => {
+     const r = await fetch('/api/tests', { method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ project: 'alpha', action: 'ingest', text: 'x' }) });
+     return r.status;
+   })) === 400,
+   'ingesting is not an endpoint — a run log does not fit in a request');
+// That refusal is a 400 by design, and the harness's console collector counts
+// every one. Cleared here so the check below is about the page.
+page.errors = [];
+
 ok(page.errors.length === 0, `zero console errors${
   page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 await done(browser);
