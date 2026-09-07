@@ -34,6 +34,7 @@ describing the code is worse than no registry.
 Same arrangement as todo.py and bugs.py: the server or the `bb` CLI hands over
 write_json and the state directory; nothing here reaches back.
 """
+import difflib
 import json
 import os
 import re
@@ -177,13 +178,31 @@ def _align(old, new):
     # ...and the leftovers by position, which is a rename: the test is where
     # it was and says something else. Only one candidate each way, or this
     # would pair a deletion here with an addition somewhere else entirely.
-    freeA = [x for x in range(len(a)) if x not in pairs.values()]
+    # ...and the leftovers, which is a rename: the test is where it was and
+    # says something else. Paired by how much of the wording survived, best
+    # first, and never across more than two ordinals.
+    #
+    # Zipping the two leftover lists in order was the obvious version and it
+    # was wrong: one genuine addition near the top of a file shifts every pair
+    # after it, and a file whose names carry a uid or a port — which change on
+    # every run, so every one of them is a rename — is then entirely
+    # mispaired. That combination lost five descriptions the first time it
+    # happened.
+    #
+    # LIKENESS decides, not nearness, because when two candidates sit equally
+    # close only the words can say which is the renamed one. Below the
+    # threshold nothing is paired at all: an undescribed row is visible and a
+    # description on the wrong test is not.
+    taken = set(pairs.values())
+    freeA = {x for x in range(len(a)) if x not in taken}
     freeB = [x for x in range(len(b)) if x not in pairs]
-    for x, y in zip(freeA, freeB):
-        # Positional, so only when nothing matched between them moved far: two
-        # ordinals apart is an edit, twenty is a coincidence.
-        if abs(x - y) <= 2:
-            pairs[y] = x
+    cands = sorted(((difflib.SequenceMatcher(None, a[x], b[y]).ratio(), -abs(x - y), x, y)
+                    for y in freeB for x in freeA if abs(x - y) <= 2), reverse=True)
+    for ratio, _, x, y in cands:
+        if ratio < 0.6 or x not in freeA or y in pairs:
+            continue
+        pairs[y] = x
+        freeA.discard(x)
     return pairs
 
 

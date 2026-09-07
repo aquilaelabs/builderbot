@@ -137,6 +137,31 @@ ok(/gone: 1/.test(bb('ingest', LOG)),
 ok(/gone\s+slow\.mjs#\d+\s+a token with a space/.test(bb('drift')),
    '...and stays on the drift report, which is where the two halves are compared');
 
+// A name that carries a uid or a port changes on every run, so every one of
+// them is a rename — and an assertion inserted ABOVE such a name shifts it.
+// Pairing the leftovers in list order got that wrong and lost the
+// description; they are paired by how much of the wording survived.
+{
+  const was = [['drift.mjs', 'the picker opens', 0.2],
+               ['drift.mjs', 'the owner has a minted id (u_616f379c)', 0.3],
+               ['drift.mjs', 'and the last one', 0.4]];
+  writeFileSync(`${DIR}/run-shift.log`, runlog(was));
+  bb('ingest', `${DIR}/run-shift.log`);
+  bb('note', 'drift.mjs#2', 'the owner is minted, not assumed');
+  const now = [['drift.mjs', 'the picker opens', 0.2],
+               ['drift.mjs', 'a brand new assertion', 0.1],
+               ['drift.mjs', 'the owner has a minted id (u_920b520a)', 0.3],
+               ['drift.mjs', 'and the last one', 0.4]];
+  writeFileSync(`${DIR}/run-shift2.log`, runlog(now));
+  const out = bb('ingest', `${DIR}/run-shift2.log`);
+  ok(/new: 1/.test(out) && /renamed: 1/.test(out) && !/gone:/.test(out),
+     'an assertion inserted above a name that changes every run reads as one addition and one rename');
+  const rows = read().tests;
+  ok(Object.values(rows).some(t => /u_920b520a/.test(t.name || '')
+       && t.protects === 'the owner is minted, not assumed'),
+     '...and the description stays on the row whose words survived');
+}
+
 // Ingesting one file's log must not report every other file as deleted.
 writeFileSync(`${DIR}/run-part.log`, runlog([['fast.mjs', 'the picker opens', 0.2]]));
 const part = bb('ingest', `${DIR}/run-part.log`);
