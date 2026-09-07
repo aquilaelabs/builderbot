@@ -494,24 +494,21 @@ await page.click('#pCreate');
 await page.waitForFunction(() => document.getElementById('pmodal').hidden,
                            { timeout: 20000 });
 ok(true, 'the dialog closes once the clone is accepted, rather than holding the request');
-// The row arrives with the poll that follows the accept, not with the close:
-// asserted after waiting for it, since a loaded box can put a frame between
-// the two — this read as a missing row on the first run that got here with
-// the earlier files no longer crashing out.
-await page.waitForSelector('#projects .row.job .name', { timeout: 20000 });
-ok(await page.$eval('#projects .row.job .name', el => el.textContent === 'kproj'),
-   'the Projects card shows the job where its result will appear');
-ok(await page.$eval('#projects .row.job .sub', el => /clon|start/.test(el.textContent))
-   && await page.$('#projects .row.job .dots') !== null,
-   '...saying what it is doing, with an ellipsis rather than a parsed percentage');
-ok(await page.$eval('#bNewProj', b => b.disabled),
-   '...and New project is dead while it runs — one job at a time');
-// The failure lands on the card, not in a toast that is gone in seven
-// seconds: the page may not have been open when it happened.
+// What a RUNNING row looks like is asserted further down, against the
+// harness's stalling git. Not here: this clone is a real one, and it fails
+// whenever ssh gives up on an alias no config has heard of — sometimes
+// before the page's next poll, which is a row that came and went between two
+// frames. Three full runs died on that. So what is checked here is the
+// outcome, which is the part this clone is for: the failure lands on the
+// card, not in a toast that is gone in seven seconds — the page may not even
+// have been open when it happened.
 await page.waitForFunction(() => {
   const s = document.querySelector('#projects .row .sub.bad');
   return s && s.textContent.length > 0;
 }, { timeout: 60000 });
+ok(await page.$eval('#projects .row .sub.bad',
+     s => s.closest('.row').querySelector('.name').textContent === 'kproj'),
+   'the failure is carried under the name the project would have had');
 ok(await page.$('#projects .row.job') === null
    && await page.$eval('#bNewProj', b => !b.disabled),
    'the job ends and the controls come back');
@@ -535,7 +532,9 @@ await page.click('#pCancel');
 
 // ---- a job outlives the page, and can be stopped ------------------------
 // The whole reason a clone stopped being an HTTP request. The harness's git
-// stalls on this URL, so there is something still running to look at.
+// stalls on this URL, so there is something still running to look at — which
+// is also why every assertion about a job while it runs belongs here rather
+// than against a real clone that may already have failed.
 await page.click('#bNewProj');
 await page.click('#pClone');
 await page.fill('#pUrl', 'https://github.com/owner/slowclone');
@@ -544,6 +543,12 @@ await page.waitForFunction(() => document.getElementById('pmodal').hidden,
                            { timeout: 20000 });
 await page.waitForFunction(() =>
   document.querySelector('#projects .row.job .name')?.textContent === 'slowclone');
+ok(true, 'the Projects card shows the job where its result will appear');
+ok(await page.$eval('#projects .row.job .sub', el => /clon|start/.test(el.textContent))
+   && await page.$('#projects .row.job .dots') !== null,
+   '...saying what it is doing, with an ellipsis rather than a parsed percentage');
+ok(await page.$eval('#bNewProj', b => b.disabled),
+   '...and New project is dead while it runs — one job at a time');
 ok(existsSync(`${DIR}/ws/slowclone`),
    'the directory is claimed up front, so a second request cannot take the name');
 ok(await page.$$eval('#projects .row .name',

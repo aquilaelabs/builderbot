@@ -1898,20 +1898,29 @@ and it now says why it did, in a note kept with the entry in the history.
 **The bin always asks; shelving never does**, because one is recoverable by
 pressing the same button again and the other is not.
 
-**Edits are written immediately; telling the session is separate.** A phone
-that dies half way through tidying a list must not lose it, but every telling
-costs a line of somebody's conversation — so the two are apart, and there are
-two Save buttons for the difference. **Save** writes any memory edits and
-settles the panel without saying anything, which is what you want while a
-session is mid-task or when there is none. **Save & tell the session** does
-the same and spends the line. Both are dead until something has moved; the
-second is also dead with nothing running to tell.
+**Edits are written immediately, and a running session is told by itself.** A
+phone that dies half way through tidying a list must not lose it, so the write
+does not wait for anything. The telling used to: every telling types a line
+into the session's input box, which spends a turn and lands mid-task, so it
+had to be a button somebody remembered to press.
+
+It is not a button any more. The `UserPromptSubmit` hook every session runs
+under carries the news back for free — a hook's stdout is added to the turn as
+context — so the next prompt the session is given arrives with one line saying
+what moved. Nothing is spent and nothing is interrupted. The watermark is **per
+session**, so two people sharing a project each hear once, and neither clears
+it for the other; a session's first prompt is silent, because it was handed the
+whole list in its system prompt a moment earlier.
+
+That leaves the two Save buttons a cleaner difference. **Save** writes any
+memory edits and settles the panel — the session finds out on its next turn.
+**Save & interrupt** does the same and then types the line in, for when the
+next turn is not soon enough. Both are dead until something has moved; the
+second is also dead with nothing running to interrupt.
 
 The line **names which half moved** — the roadmap, the memories, or both —
 because "something changed" sends somebody to look at both, and one of the two
-is a directory of files. There is no way to make a session read something
-without sending it a message: no IPC into a running Claude, so the only door
-is its input box.
+is a directory of files.
 
 Which is why **sending a step folds the two together**. Tapping an arrow
 **arms** it — the arrow lights up and a **send box opens under that row**,

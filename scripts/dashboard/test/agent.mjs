@@ -605,6 +605,21 @@ try {
       const started = (await feed()).slice(-1)[0];
       ok(started?.kind === 'did' && /test started a Claude session on alpha \(agentbox\)/.test(started?.text || ''),
          `...and bb-tty's "started" line arrives the same way, naming the node (${started?.text})`);
+      // ...and the same hook carries the notebook back the other way, for
+      // free (roadmap #27). A session used to hear about a change only when
+      // the operator pressed a button that types into its input box, spending
+      // a turn and landing mid-task. A UserPromptSubmit hook's stdout is
+      // added to the turn as context, so the news rides in on a prompt that
+      // was being sent anyway.
+      const ask = () => hook('bb-prompt-relay', ['alpha', 'ignored'],
+        JSON.stringify({ prompt: 'carry on' }));
+      ok(ask().trim() === '',
+         'the first prompt of a session is told nothing — it was handed the whole list a moment ago');
+      await api('/api/todo', { project: 'alpha', action: 'add', text: 'something the operator added' });
+      const told = ask();
+      ok(/just changed/.test(told) && /to-do list/.test(told),
+         `...and a change made since then arrives on the next prompt, naming which half moved (${told.trim().slice(0, 60)})`);
+      ok(ask().trim() === '', '...once, not on every prompt afterwards');
       const noteOut = hook('bb-work-note', ['alpha', 'ignored'],
         JSON.stringify({ tool_input: { file_path: '/workspace/alpha/src/picker.py', old_string: 'def pick():\n  pass' } }));
       const work = execFileSync('bash', [`${REPO}/scripts/bb`, 'work'], { encoding: 'utf8', cwd: `${DIR}/ws/alpha`,

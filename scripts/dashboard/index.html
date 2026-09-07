@@ -2455,12 +2455,17 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div id="anaList"></div>
     </div>
     <div class="foot">
-      <!-- Two, and the difference is whether a line of the conversation is
-           spent saying so. The plain one settles the panel without telling
-           anybody, which is the right answer while a session is mid-task or
-           when there is none. -->
+      <!-- Two, and the difference is an INTERRUPTION. Both write whatever
+           the editor is holding; a running session finds out either way, on
+           the next prompt it is given, because the hook it runs under carries
+           the news for free (roadmap #27). So the plain Save is the ordinary
+           one, and the other is for when that is not soon enough: it types
+           the line into the session's input box and presses Enter, which
+           lands mid-task and spends a turn. -->
       <button id="todoSaveQuiet" type="button" disabled>Save</button>
-      <button id="todoSave" type="button" disabled>Save &amp; tell the session</button>
+      <button id="todoSave" type="button" disabled
+              title="save, and interrupt the session to read it now — it finds out on its own next prompt otherwise"
+              >Save &amp; interrupt</button>
       <span class="sp"></span>
       <!-- Where Close used to be. The tab does not go away when something is
            saved, so the question this button answers is no longer "am I done
@@ -9206,7 +9211,10 @@ async function flushPending(){
   return map;
 }
 // Both Saves write whatever the memory editor is holding and settle the
-// panel; only one of them spends a line saying so.
+// panel; only one of them interrupts a running session to say so. The other
+// is not silence — the session is told on the next prompt it is given, by the
+// hook it runs under (roadmap #27) — it is the difference between telling
+// somebody now and telling them when they next look up.
 async function saveAll(tellIt){
   const b = $(tellIt ? "todoSave" : "todoSaveQuiet"), was = b.textContent;
   b.disabled = true; b.textContent = "Saving…";
@@ -9223,8 +9231,9 @@ async function saveAll(tellIt){
   b.textContent = was;
   // Committed, so there is nothing left for a Cancel to go back to.
   todoWas = null;
-  if (j) notify([verMsg, j.told ? "saved, and told " + (todoSession || "the session")
-                                : "saved"].filter(Boolean).join(" · "));
+  if (j) notify([verMsg, j.told ? "saved, and interrupted " + (todoSession || "the session")
+                                : "saved — the session reads it on its next prompt"]
+                .filter(Boolean).join(" · "));
 }
 $("todoSave").onclick = () => saveAll(true);
 $("todoSaveQuiet").onclick = () => saveAll(false);
