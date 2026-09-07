@@ -333,6 +333,34 @@ await page.waitForFunction(() => true);
 ok(read('clash.md').includes('what the operator typed'),
    'Write mine over it does exactly that, against what is there now');
 
+// ---- who else is in here -------------------------------------------------
+// Roadmap #26's other half: a refusal makes a collision safe, and this is
+// what stops most of them happening. Both windows are the same ACCOUNT, so
+// the account cannot be the answer — the tab's own id is, which is why the
+// line can say "your other window" rather than naming you at yourself.
+const other = await newPage(browser, { viewport: { width: 1280, height: 900 } });
+await other.goto(URL);
+await ready(other);
+await other.click(`${row('alpha')} [data-m]`);
+await nbShown(other);
+await refreshUntil(page, () => !document.getElementById('nbHere').hidden);
+ok(/your other window/.test(await page.$eval('#nbHere', el => el.textContent)),
+   'a second window on the same notebook is named as one, not as somebody else');
+await other.click('.pane .nb .nbtabs [data-v="roadmap"]');
+await refreshUntil(page, () => /Roadmap/.test(
+  document.getElementById('nbHere').textContent));
+ok(true, '...and says which view it is on, which is where the collision would be');
+// Letting go of the notebook says so rather than leaving the seat to time
+// out: a line claiming somebody is here who has just left is worse than no
+// line. Through destroy(), which is what the tab's ✕ calls — closing the tab
+// itself would not do here, because the tab STRIP is per account and shared,
+// so shutting it in that window shuts it in this one.
+await other.evaluate(() => notebooks.get('alpha').destroy());
+await refreshUntil(page, () => document.getElementById('nbHere').hidden
+  || !/your other window/.test(document.getElementById('nbHere').textContent));
+ok(true, '...and goes when that window closes the notebook');
+await other.close();
+
 // ---- closing -----------------------------------------------------------
 // It is a tab, so it closes the way tabs close and not on a stray Escape.
 await page.keyboard.press('Escape');

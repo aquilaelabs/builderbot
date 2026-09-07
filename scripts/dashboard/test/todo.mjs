@@ -1583,6 +1583,12 @@ asSession('list');
 asSession('edit', clashId, 'read again, then written');
 ok(clashText() === 'read again, then written',
    '...re-reading is what clears it, which makes the honest path the short one');
+// ...and the panel is told that it went and read, which is the question the
+// operator has after changing something. Being TOLD is #27's channel and
+// lands on the session's next prompt; this is the act of going to look.
+await refreshUntil(page, () => /last read the roadmap/.test(
+  document.getElementById('nbHere')?.textContent || ''));
+ok(true, 'the notebook says when a session here last read the roadmap');
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);

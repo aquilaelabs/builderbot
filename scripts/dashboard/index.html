@@ -1543,6 +1543,10 @@ textarea,select{
    ask which version wins is asking the question with the evidence hidden.
    Both texts read as what they are — stored words, not fields — so they use
    the sunk surface without the field skin's focus ring. */
+/* Who else is in here. A quiet line, not a warning: nothing is wrong, and
+   the whole point of it is being read on the way past. */
+.nbhere{padding-top:0;padding-bottom:6px}
+.nbhere[hidden]{display:none}
 .clash{border-left:2px solid var(--bad)}
 .clash[hidden]{display:none}
 .clashpair{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
@@ -2310,6 +2314,11 @@ body.dragging .tab .lbl{cursor:grabbing}
       <button type="button" data-v="analysis">Analysis</button>
       <button type="button" data-v="artifacts">Artifacts</button>
     </div>
+    <!-- Who else is in here. Under the strip rather than above it, because
+         it is about the whole notebook and not about the batch banner's
+         subject — and it is the answer to a question asked before typing
+         starts, so it wants to be read on the way in. -->
+    <div class="field nbhere" id="nbHere" hidden></div>
     <div class="nbview" data-view="roadmap" hidden>
     <!-- The roadmap. Both sides write it, which is what makes it worth a
          panel: everything else here is one-way. Its open items are appended
@@ -7851,6 +7860,10 @@ function nextStep(r){
 const notebooks = new Map();
 // For the tests: the held state of one project's notebook, from outside.
 const nbHeldFor = name => !!notebooks.get(name)?.held();
+// This browser tab, for as long as it is loaded. What makes "your other
+// window" tellable from "you" in the presence line below (roadmap #26) —
+// the account is the same in both, so the account cannot be the answer.
+const nbClient = Math.random().toString(36).slice(2) + Date.now().toString(36);
 
 function getNotebook(project){
   let nb = notebooks.get(project);
@@ -7949,6 +7962,7 @@ async function openMemory(name){
   todoBatch = null; todoStale = false;
   todoRev = memRev = null;
   clash = memClash = null; clashResume = null;
+  nbHere = []; nbRead = 0; nbWhere = "memory"; drawHere();
   todoLogOn = false;
   todoLog = null;
   $("histFind").value = "";
@@ -8585,6 +8599,54 @@ async function postTodo(body, quiet){
   }catch(e){ notify("could not reach the server: " + e, true); return null; }
 }
 
+// ---- who else is in here ---------------------------------------------------
+// Roadmap #26's other half. A refusal makes a collision safe; this is what
+// stops most of them happening — the line says who else has this notebook
+// open before the typing starts, rather than after it.
+//
+// Ridden on the poll rather than on a timer of its own: the panel is already
+// asking the server something every fifteen seconds, and a second clock would
+// be a second thing to get wrong. The request is not awaited — presence is
+// the least important thing on this page, and nothing else waits for it.
+let nbWhere = "memory", nbHere = [], nbRead = 0;
+
+async function beat(leave){
+  if (!memProj) return;
+  try{
+    const r = await fetch("/api/presence", {method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({project: memProj, client: nbClient,
+                            where: nbWhere, ...(leave ? {leave: 1} : {})})});
+    const j = await r.json();
+    if (leave || !j.ok) return;
+    nbHere = j.here || []; nbRead = j.read || 0;
+    drawHere();
+  }catch(e){ /* the least important thing on the page */ }
+}
+
+// Named, not counted. "2 others" is a number somebody then has to go and
+// identify; the whole value of this line is knowing WHO, and on a phone the
+// names are shorter than the sentence explaining there are two of them.
+const WHERE_IS = {memory: "Memory", roadmap: "Roadmap", bugs: "Bugs",
+                  analysis: "Analysis", artifacts: "Artifacts"};
+
+function drawHere(){
+  const el = $("nbHere");
+  if (!el) return;
+  const bits = nbHere.map(o =>
+    `${o.mine ? "your other window" : esc(o.who)}${
+      WHERE_IS[o.where] ? ` (${WHERE_IS[o.where]})` : ""}`);
+  // A session that has gone and read the list, which is a different claim
+  // from having been told: being told rides in on its next prompt (#27), and
+  // what the operator wants to know after changing something is whether it
+  // has actually looked.
+  const read = nbRead ? `a session here last read the roadmap ${ago(nbRead)}` : "";
+  const line = [bits.length ? "Also open: " + bits.join(", ") : "", read]
+    .filter(Boolean).join(" · ");
+  el.hidden = !line;
+  el.innerHTML = line ? `<span class="hint">${line}</span>` : "";
+}
+
 // ---- two writers, one item ------------------------------------------------
 // The optimistic half of roadmap #26. The writes here are tiny and per-field,
 // so they are not serialized behind a lock somebody has to remember to
@@ -8821,10 +8883,13 @@ async function revertNotebook(){
 // shared by every kind and should not learn about any of them.
 function notebookLeaving(){
   const what = nbUnsaved();
-  if (!what) return true;
+  // The seat would time out on its own in under a minute; saying so is what
+  // stops the other window claiming somebody is here who has just left.
+  if (!what){ beat(true); return true; }
   if (!confirm(`Close without saving? ${what} would be dropped.`)) return false;
   revertPending();
   todoOrdering = false;
+  beat(true);
   memGen++; memProj = null;
   return true;
 }
@@ -9455,6 +9520,10 @@ $("todoRevert").onclick = revertNotebook;
 
   // ---- the four views ------------------------------------------------------
   function setNbView(v){
+    // Which view somebody is on is half of what the presence line says, so it
+    // is reported on the switch rather than waiting for the next poll — the
+    // other window would otherwise name the tab this one just left.
+    if (nbWhere !== v){ nbWhere = v; beat(); }
     root.querySelectorAll(".nbtabs button").forEach(b => {
       const on = b.dataset.v === v;
       b.classList.toggle("on", on);
@@ -10613,6 +10682,7 @@ become that version's section when it is created">Changelog${
     view: setNbView,
     poll(p){
       noteBatch(p.todo_batch); drawBatchNote(); syncSave();
+      beat();                       // and who else is in here (roadmap #26)
       // A session started (or ended) under an open notebook.
       //
       // Whether a step can be sent is a fact about the session running beside
@@ -10665,6 +10735,7 @@ become that version's section when it is created">Changelog${
     },
     escape(){ if (todoSel){ cancelSend(); redrawTodo(); return true; } return false; },
     destroy(){
+      beat(true);
       notebooks.delete(project);
       root.remove();
     },

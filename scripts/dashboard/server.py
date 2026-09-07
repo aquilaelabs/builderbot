@@ -2191,6 +2191,13 @@ import overlap                                                   # noqa: E402
 overlap.configure(state=STATE, workspace=WORKSPACE, write_json=write_json)
 
 
+# ---- who else is in the notebook --------------------------------------------
+# The other half of the same question, for a browser rather than a session
+# (roadmap #26). Nothing to configure: it holds live seats in memory and
+# reads no state, which is the whole of its design — see its header.
+import presence                                                  # noqa: E402
+
+
 # ---- the bug tracker --------------------------------------------------------
 # The notebook's third view. Same arrangement again: its own file, handed the
 # two helpers it needs, nothing reaching back.
@@ -3886,6 +3893,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._phone(req)
         if path.startswith("/api/findings"):
             return self._findings_log(req)
+        if path.startswith("/api/presence"):
+            return self._presence(req)
         if path.startswith("/api/bugs"):
             return self._bugs(req)
         if path.startswith("/api/custom"):
@@ -5103,6 +5112,47 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"history": findings.history(
             name, limit=req.get("limit"), since=req.get("since"),
             find=field(req, "find"))})
+
+    def _presence(self, req):
+        """This browser is in a project's notebook — who else is (roadmap #26).
+
+        A heartbeat, ridden on the panel's own poll, answered with the others
+        in the same breath so that asking and being told cost one request
+        rather than two. `leave` is the same call saying the tab has gone,
+        which a seat would work out for itself in fifty seconds; sending it
+        is what stops the panel claiming somebody is here who has just closed
+        the window.
+
+        Names, not accounts: the answer is read by a person, and a uid on
+        screen is a question rather than an answer. Resolved here for the same
+        reason the hook endpoint does it — the module holds ids and knows
+        nothing about who they are.
+        """
+        me = self._who()
+        if not me:
+            return self._json({"error": "not signed in"}, 401)
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list(me)}:
+            return self._json({"error": f"not a project: {name}"}, 400)
+        uid = me.get("uid") or ""
+        client = str(req.get("client") or "")[:64]
+        if req.get("leave"):
+            presence.gone(name, uid, client)
+            return self._json({"ok": True, "here": []})
+        others = presence.mark(name, uid, client, field(req, "where"))
+        by_uid = {u.get("uid"): n for n, u in users.load()["users"].items()
+                  if u.get("uid")}
+        return self._json({
+            "ok": True,
+            "here": [{"who": by_uid.get(o["uid"], "somebody"),
+                      "mine": o["uid"] == uid,
+                      "where": o["where"], "at": o["at"]} for o in others],
+            # ...and when a SESSION here last read the roadmap, which is the
+            # other half of "is anybody else in this". Being told is #27's
+            # channel and arrives on the session's next prompt; this is the
+            # act of going and reading, which is what the operator is
+            # actually asking about after changing something.
+            "read": max(todo.readers(name).values(), default=0)})
 
     def _bugs(self, req):
         """Report, edit, or close one bug. The fields go through bugs.py's own

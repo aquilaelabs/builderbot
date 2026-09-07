@@ -1182,7 +1182,25 @@ def mark_seen(project, who, kind=None):
         seat = d.setdefault("seen", {}).setdefault(project, {}).setdefault(who, {})
         for k in (KINDS if kind is None else [kind]):
             seat[k] = int(b.get(k, 0))
+        # When, kept apart from the counters rather than in the seat beside
+        # them: `catchup` compares the whole seat against the current numbers
+        # to decide whether to write at all, and a timestamp in there would
+        # never match, so every prompt of every session would write the file
+        # to record that nothing had changed.
+        d.setdefault("read", {}).setdefault(project, {})[who] = int(time.time())
         save(d)
+
+
+def readers(project):
+    """{seat: when it last READ this list} — for the panel (roadmap #26).
+
+    The operator's question after changing something is whether the session
+    beside them has taken it in yet, and this is the only thing that answers
+    it: being TOLD is #27's channel and lands on the session's next prompt,
+    but going and reading is an act, and `bb roadmap` is where it happens.
+    """
+    with _lock:
+        return dict(load().get("read", {}).get(project) or {})
 
 
 def catchup(project, who):

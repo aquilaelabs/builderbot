@@ -1959,6 +1959,21 @@ or tick off an item, and told to run `bb roadmap` first. There is no
 `--force` — re-reading is one command, and a flag would make the dishonest
 path the shorter one.
 
+**And a line says who else is in here**, under the view strip, so that most
+collisions are seen rather than resolved: *Also open: your other window
+(Roadmap)*, or somebody's name when the account is not yours. Both windows of
+one account are the same account, so the account cannot be the answer — the
+line is keyed on the browser tab, which is what lets it say *your other
+window*. It rides on the same fifteen-second poll the panel already makes,
+lives in the server's memory and nowhere else (a seat that survived a restart
+would be a claim about somebody who is not there), and closing the notebook
+says so rather than leaving the seat to time out.
+
+Beside it, **when a session here last read the roadmap** — which is a
+different claim from having been told. Being told rides in on the session's
+next prompt; going to look is `bb roadmap`, and after changing something that
+is the question worth answering.
+
 Which is why **sending a step folds the two together**. Tapping an arrow
 **arms** it — the arrow lights up and a **send box opens under that row**,
 carrying the Send button and the two pickers below; tapping the arrow again
@@ -3274,6 +3289,7 @@ scripts/
     migrations/                  numbered schema files for /config/builderbot.db, applied at boot
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist
+    presence.py                  who else has a notebook open, in memory only
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated
