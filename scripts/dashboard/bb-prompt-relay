@@ -114,6 +114,43 @@ def _write_json(p, d):
     os.replace(tmp, p)
 
 
+def rules_firing(project, *, prompt="", path=""):
+    """The operator's conditional rules that this prompt or path fires.
+
+    Read here rather than relayed: on the controller the file is right there.
+
+    A NODE has no /config, and this does not relay — which is a real limit
+    and not an oversight. `bb rules --prompt` is relayed, so a node session
+    still starts with the standing rules in full and the conditional ones by
+    name; what it does not get is one arriving on the turn it becomes
+    relevant. `bb rules show NAME` works there, so the session can still read
+    one. Relaying per prompt would be a round trip on every turn to find out
+    that usually nothing matches, which is the wrong price.
+
+    Silent on any failure either way: a hook that cannot read a rule must not
+    cost somebody a turn.
+    """
+    if on_node():
+        return ""
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import rules                                          # noqa: E402
+        rules.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
+                        write_json=_write_json)
+        hit = rules.matching(project, prompt=prompt, path=path)
+    except Exception:                     # noqa: BLE001 — never cost a turn
+        return ""
+    if not hit:
+        return ""
+    out = ["The operator's house rules for this project cover what you are "
+           "about to do. These are theirs, not yours:"]
+    for r in hit:
+        out.append(f"\n[{r['name']}]\n{r['text']}")
+    return "\n".join(out)
+
+
 def main():
     # `--started PROJECT SESSION`: not a prompt — bb-tty on a node says the
     # session began, which the controller's proxy announces for a local one
@@ -137,6 +174,15 @@ def main():
         say = catchup(project, session)
         if say:
             print(say)
+        # ...and any house rule this prompt fires (roadmap #7). A conditional
+        # rule is named in the standing block and not quoted there, so this is
+        # where its text actually arrives: on the turn somebody asks about the
+        # thing it is about. The full prompt, not human_part — a rule keyed to
+        # "agent" should fire whether the word came from the operator or from
+        # a task notification about one.
+        fired = rules_firing(project, prompt=str(req.get("prompt") or ""))
+        if fired:
+            print(fired)
     if not text or not project:
         return
     if len(text) > MAX:

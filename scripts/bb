@@ -77,6 +77,8 @@ bb — BuilderBot helper
   bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
   bb bug na N ["why"]    it was real and stopped applying — the feature went
   bb bug rm N ["why"]    delete a report that should not have been filed
+  bb rules               the operator's house rules for this project (read-only)
+  bb rules show NAME     one of them in full — what a conditional rule says
   bb tests               the test registry: where the suite's time goes, slowest first
   bb tests show KEY      one test — what it protects, what it exercises, its history
   bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -1817,6 +1819,79 @@ for tag, e in rows:
 PY
 }
 
+cmd_rules() {
+    # The operator's house rules, read-only. There is deliberately no write
+    # verb: a rule a session could set is not a rule, and the point of these
+    # is that they are the one thing in the notebook this side cannot move.
+    # The dashboard's Briefing tab is where they are written.
+    local py
+    py="$(dirname "$(readlink -f "$0")")/dashboard/rules.py"
+    [ -f "$py" ] || die "rules.py is missing from this image"
+    local proj="${BB_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
+    fi
+    DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+        python3 - "$py" "$proj" "$@" <<'RULESPY'
+import importlib.util, os, sys
+
+spec = importlib.util.spec_from_file_location("rules", sys.argv[1])
+reg = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(reg)
+_sfs = importlib.util.spec_from_file_location(
+    "statefile", os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])),
+                              "statefile.py"))
+statefile = importlib.util.module_from_spec(_sfs)
+_sfs.loader.exec_module(statefile)
+sys.modules["statefile"] = statefile
+reg.configure(write_json=statefile.write_json,
+              state=os.environ.get("DASHBOARD_STATE", "/config"))
+
+proj, argv = sys.argv[2], sys.argv[3:]
+op = argv[0] if argv else "list"
+
+# What bb-tty puts in front of a session. Empty output and status 0 when
+# there are no rules, so the caller can test it with `[ -z ]`.
+if op == "--prompt":
+    b = reg.block(proj)
+    if b:
+        print(b)
+elif op == "show":
+    if len(argv) < 2:
+        sys.exit("usage: bb rules show <name>")
+    want = argv[1].strip().lower()
+    for r in reg.rules(proj):
+        if r["name"] == want:
+            print(r["text"])
+            break
+    else:
+        names = ", ".join(r["name"] for r in reg.rules(proj)) or "none"
+        sys.exit(f"no rule called {want} here — this project has: {names}")
+elif op == "list":
+    rs = reg.rules(proj)
+    if not rs:
+        print("no house rules on this project. The operator writes them on "
+              "the notebook's Briefing tab; you cannot.")
+        sys.exit(0)
+    p = reg.payload(proj)
+    print(f"{p['standing']} standing, {p['conditional']} conditional — "
+          f"{p['chars']} characters in front of every session here")
+    for r in rs:
+        when = ""
+        if reg.conditional(r):
+            bits = list(r.get("paths") or []) + list(r.get("words") or [])
+            when = "  [" + ", ".join(bits[:4]) + ("…" if len(bits) > 4 else "") + "]"
+        first = (r["text"].strip().splitlines() or [""])[0]
+        print(f"  {r['name']:<22}{first[:60]}{when}")
+    print("\n`bb rules show <name>` for one in full. These are the operator's; "
+          "there is no verb here that writes one.")
+else:
+    print(f"[builderbot] ERROR: unknown: bb rules {op}", file=sys.stderr)
+    sys.exit(1)
+RULESPY
+}
+
 cmd_tests() {
     # The test registry's CLI half — the side a session drives, and the only
     # side that can ingest, because ingesting means reading what a runner
@@ -2587,7 +2662,7 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # What is NOT relayed is what belongs to the machine the session is on:
 # `bb sdk` answers for this node's store, `bb emu` drives this node's
 # emulator, `bb build` is a build (cmd_run). That is the point of being here.
-BB_RELAY_VERBS=" roadmap todo bug bugs tests history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
+BB_RELAY_VERBS=" roadmap todo bug bugs tests rules history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
 
 bb_relay() {
     local auth proj
@@ -4391,6 +4466,7 @@ case "${1:-help}" in
     roadmap|todo) shift; cmd_roadmap "$@" ;;
     bug|bugs) shift; cmd_bug "$@" ;;
     tests)    shift; cmd_tests "$@" ;;
+    rules)    shift; cmd_rules "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     catchup)  shift; cmd_catchup "$@" ;;

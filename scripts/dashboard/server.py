@@ -258,7 +258,8 @@ LOGIN_HTML = """<!doctype html>
 # BB_RELAY_VERBS, and a test compares the two — a verb added to one side only
 # is either refused on arrival or never sent.
 RELAY_VERBS = frozenset((
-    "roadmap", "todo", "bug", "bugs", "tests", "history", "version", "changelog", "work",
+    "roadmap", "todo", "bug", "bugs", "tests", "rules", "history", "version",
+    "changelog", "work",
     "findings", "findings-history", "catchup", "claude-md", "claudemd",
     "settings", "nodes", "jobs", "ci-labels",
     # git's network half (docs/nodes.md §20, rule 2): the keys are here and
@@ -1355,6 +1356,8 @@ def project_list(who):
     nb_revs = todo.revisions()
     test_revs = testreg.revisions()
     test_counts = testreg.counts()
+    rule_revs = rules.revisions()
+    rule_counts = rules.counts()
     for d in here:
         # Mid-clone: a directory with a .git and not much else, which every
         # check below reads as a repository in a strange state. The job row is
@@ -1508,6 +1511,10 @@ def project_list(who):
                     # ingested: describing one test redraws its own row.
                     "tests_rev": test_revs.get(d.name, 0),
                     "tests": test_counts.get(d.name, 0),
+                    # ...and the rules', which move only when the operator
+                    # writes one: nothing else can.
+                    "rules_rev": rule_revs.get(d.name, 0),
+                    "rules": rule_counts.get(d.name, 0),
                     # The memories are files, and the writer that moves one
                     # most often is a session's own Write tool, which passes
                     # through nothing that could count. So this one is the
@@ -2207,6 +2214,15 @@ overlap.configure(state=STATE, workspace=WORKSPACE, write_json=write_json)
 import testreg                                                   # noqa: E402
 
 testreg.configure(write_json=write_json, state=STATE)
+
+
+# ---- the operator's house rules ---------------------------------------------
+# The one thing in the notebook a session reads and cannot write. It rides in
+# front of every session started here; claude_scope() in bb-tty denies the
+# file tools on the file. Roadmap #7.
+import rules                                                     # noqa: E402
+
+rules.configure(write_json=write_json, state=STATE)
 
 
 # ---- who else is in the notebook --------------------------------------------
@@ -3739,6 +3755,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"error": "not a project"}, 400)
             live = [s["name"] for s in tmux_sessions()]
             return self._json({"project": name} | self._todo_state(name, live))
+        if self.path.startswith("/api/rules"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": "not a project"}, 400)
+            return self._json(rules.payload(name))
         if self.path.startswith("/api/memory"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             got = memory.payload(q.get("project", [""])[0],
@@ -3885,6 +3907,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._logs(req)
         if path.startswith("/api/idle"):
             return self._idle(req)
+        if path.startswith("/api/rules"):
+            return self._rules(req)
         if path.startswith("/api/memory"):
             return self._memory(req)
         if path.startswith("/api/prefs"):
@@ -5137,6 +5161,33 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"history": findings.history(
             name, limit=req.get("limit"), since=req.get("since"),
             find=field(req, "find"))})
+
+    def _rules(self, req):
+        """The operator's house rules for one project — the whole list, saved.
+
+        Whole rather than per-rule because the tab is an editor rather than a
+        form: somebody rewords two rules and drops a third before pressing
+        Save, and replaying that as five operations is five chances to land
+        half of it. The memories beside them are staged the same way and for
+        the same reason.
+
+        Nothing here is reachable by a session. `bb rules` is read-only and
+        the file tools are denied on the file, so the only writer is somebody
+        signed in to this dashboard with the project on their list.
+        """
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list(self._who())}:
+            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._readonly(name):
+            return None
+        if (bad := locked_out(name)):
+            return self._json(bad, 409)
+        if field(req, "action") != "save":
+            return self._json({"error": "unknown action"}, 400)
+        r = rules.replace(name, req.get("rules") or [])
+        if r.get("error"):
+            return self._json(r, 400)
+        return self._json(rules.payload(name))
 
     def _tests(self, req):
         """The hand-written half of the registry, and ingesting a run.

@@ -242,6 +242,7 @@ claude_scope() {
     # and a chat line is never worth a turn. Their headers have the arguments.
     if walls_around "$proj" "$here" | jq -R . \
          | jq -s --arg ws "$WORKSPACE" --arg here "$here" \
+               --arg state "${DASHBOARD_STATE:-/config}" \
                --arg note "$(dirname "$(readlink -f "$0")")/bb-work-note" \
                --arg relay "$(dirname "$(readlink -f "$0")")/bb-prompt-relay" \
                --arg proj "$proj" --arg who "${account:-owner}" '
@@ -250,7 +251,10 @@ claude_scope() {
               deny: (map("Read(\(.)/**)", "Edit(\(.)/**)")
                      + ["Read(\($ws)/_work/**)", "Edit(\($ws)/_work/**)",
                         "Edit(\($here)/VERSION)",
-                        "Edit(\($here)/**/VERSION)"])
+                        "Edit(\($here)/**/VERSION)",
+                        "Edit(\($state)/rules.json)",
+                        "Write(\($state)/rules.json)",
+                        "NotebookEdit(\($state)/rules.json)"])
            },
             hooks: {PreToolUse: [
               {matcher: "Edit|Write|NotebookEdit",
@@ -717,6 +721,15 @@ case "$target" in
         [ -z "$bug_block" ] || todo_block="${todo_block:+$todo_block
 
 }$bug_block"
+        # The operator's house rules go FIRST, ahead of the list: how they want
+        # this worked on comes before what there is to work on. They are the
+        # one block a session cannot write back — claude_scope() denies the
+        # file tools on the file — and a conditional rule contributes only its
+        # name here, its text arriving on the turn it fires. Roadmap #7.
+        rules_block="$(BB_PROJECT="$proj" bb rules --prompt 2>/dev/null || true)"
+        [ -z "$rules_block" ] || todo_block="$rules_block${todo_block:+
+
+$todo_block}"
         # One ceiling up from tmux's there is the kernel's: a single argument
         # cannot exceed MAX_ARG_STRLEN — 131072 bytes, measured here — and past
         # it exec answers "Argument list too long" and the pane dies without
@@ -726,8 +739,9 @@ case "$target" in
         # roadmap is UTF-8, and the kernel counts bytes.
         PROMPT_MAX=100000
         if [ "$(printf '%s' "$todo_block" | wc -c)" -gt "$PROMPT_MAX" ]; then
-            echo "WARNING: this project's roadmap and bugs are too long to fit in a" >&2
-            echo "session's prompt; only the first ${PROMPT_MAX} bytes are in this one." >&2
+            echo "WARNING: this project's rules, roadmap and bugs are" >&2
+            echo "too long to fit in a session's prompt; only the first" >&2
+            echo "${PROMPT_MAX} bytes are in this one." >&2
             echo "Trim the list with \`bb roadmap\`, or the rest of it is invisible" >&2
             echo "to every session started here." >&2
             # Back to a line boundary, so the cut cannot land inside a word —

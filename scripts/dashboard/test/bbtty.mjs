@@ -44,6 +44,7 @@ case "\${1:-}" in
              done
            fi ;;
   bug)     [ "\${2:-}" = --prompt ] && printf 'the bugs block\\n' ;;
+  rules)   [ "\${2:-}" = --prompt ] && printf 'THE HOUSE RULES\\n' ;;
   # The gate bb-tty asks before starting a session: exit 0 means the
   # environment block is stale and no session should start. Answered from an
   # env var the cases below flip, the way the claude stub answers auth from a
@@ -131,6 +132,12 @@ ok(launcher().includes(tokWritten),
 const argv = existsSync(argvOut) ? readFileSync(argvOut, 'utf8') : '';
 ok(argv.includes('--append-system-prompt') && argv.length > 40000,
    '...which reaches claude whole, roadmap and all');
+// The operator's rules go in front of the list: how they want this worked on
+// before what there is to work on. Asserted by ORDER, not presence — the two
+// blocks are one argument and either would be "in" it.
+ok(argv.indexOf('THE HOUSE RULES') >= 0
+   && argv.indexOf('THE HOUSE RULES') < argv.indexOf('the bugs block'),
+   '...with the house rules ahead of the roadmap and the bugs');
 
 // The next ceiling up is the kernel's: one argument cannot pass 131072 bytes,
 // and exec answers "Argument list too long" — a pane that dies without saying

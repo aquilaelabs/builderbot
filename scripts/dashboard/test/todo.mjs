@@ -251,8 +251,8 @@ ok(await page.$('.sendbox') === null,
    '...and no box opens, because there is nothing it could honestly send');
 
 const nd = page.dialogs.length;
-await page.click(tab('memory'));
-await page.waitForFunction(() => !document.querySelector('[data-view="memory"]').hidden,
+await page.click(tab('briefing'));
+await page.waitForFunction(() => !document.querySelector('[data-view="briefing"]').hidden,
                            null, { timeout: 15000 });
 ok(page.dialogs.length === nd + 1 && /thrown away/.test(page.dialogs.at(-1)),
    'leaving the tab asks before throwing the unsaved change away');
@@ -1312,7 +1312,7 @@ const strip = await phone.evaluate(() => {
 ok(strip.clipped && strip.onScreen,
    'the notebook strip scrolls rather than spilling, with the current tab in view');
 
-await phone.click('.pane .nb .nbtabs [data-v="memory"]'); // every control on screen at once
+await phone.click('.pane .nb .nbtabs [data-v="briefing"]'); // every control on screen at once
 await phone.waitForFunction(() => document.getElementById('memList').checkVisibility());
 const wide = await phone.evaluate(() => {
   const out = [];
