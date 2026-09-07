@@ -10619,10 +10619,12 @@ become that version's section when it is created">Changelog${
     // charge is on every session started in this project, forever.
     const chars = ruleDirty() ? null : d.chars;
     const body = `
-      <div class="hint">Yours, not Claude's: a session reads these and the file
-        tools are denied on them, so it cannot edit the rule it is being held
-        to. What it is <b>not</b> is a refusal — a rule is a request the model
-        can still fumble, unlike the sibling-project walls.</div>
+      <div class="hint">How you want this project worked on. A session reads
+        these at the start and can leave rules of its own — those are marked,
+        and it can change only those; yours it cannot touch. Every change by
+        either of you is in the history. What a rule is <b>not</b> is a
+        refusal: it is a request the model can still fumble, unlike the
+        sibling-project walls.</div>
       ${rows.map((r, i) => `
         <div class="rulerow" data-i="${i}">
           <div class="two">
@@ -10630,7 +10632,8 @@ become that version's section when it is created">Changelog${
               placeholder="a short name" value="${esc(r.name || "")}"
               aria-label="rule name">
             <span class="rlkind ${cond(r) ? "cond" : ""}">${
-              cond(r) ? "on its triggers" : "every session"}</span>
+              cond(r) ? "on its triggers" : "every session"}</span>${
+              r.by === "claude" ? `<span class="pill">a session's</span>` : ""}
           </div>
           <textarea class="rlText" spellcheck="false" maxlength="2000"
             placeholder="the rule, in your words">${esc(r.text || "")}</textarea>

@@ -9,11 +9,25 @@ cannot. That is the whole point, and it is the line the Briefing tab draws:
     a MEMORY is Claude's, and Claude may rewrite or forget it;
     a RULE is the operator's, and Claude may not.
 
-The second half is enforced rather than asked for: bb-tty's claude_scope()
-denies Edit, Write and NotebookEdit on this file. Read is left alone
-deliberately — a conditional rule is named in the prompt and not quoted there,
-so a session has to be able to go and read one. What the denial buys is that a
-session cannot quietly edit the rule it is being held to.
+Both sides write them, the way both sides write the roadmap and the tracker.
+What is asymmetric is narrower than "who may write": a session may add a rule
+and change or drop ITS OWN, and may not touch one of the operator's. That is
+the only guarantee worth having — a session cannot rewrite the instruction it
+is being held to — and everything else follows the shape the rest of the
+notebook already has.
+
+The first version of this file had no author and no log, and reached for a
+wall to make up for it: sessions could not write at all. That was the wrong
+fix for the right worry. What makes the roadmap safe to share is not a lock,
+it is that every change carries who made it and lands in a history nobody can
+quietly edit — so that is what this has now.
+
+Two things still hold the line. bb-tty's claude_scope() denies Edit, Write and
+NotebookEdit on the file, so the only way in is a verb that checks ownership;
+and the whole-list replace behind the tab is a person's, because a session
+rewriting every rule at once is the thing the per-rule check exists to stop.
+Read is left alone deliberately — a conditional rule is named in the prompt
+and not quoted there, so a session has to be able to go and read one.
 
 WHY NOT CLAUDE.md, which is the obvious first answer: that file is checked in,
 so a session can edit its own instructions and does; and it is about the
@@ -139,6 +153,11 @@ def _clean(r, i):
             "text": str(r.get("text") or "").strip()[:MAX_TEXT],
             "paths": bits(r.get("paths")),
             "words": [w.lower() for w in bits(r.get("words"))],
+            # Whose it is, and therefore who may change it later. Defaulting
+            # to the operator is deliberate: this field arrived after rules
+            # did, and a rule written before it existed was written on the
+            # tab, which is theirs.
+            "by": "claude" if r.get("by") == "claude" else "you",
             "at": int(r.get("at") or time.time())}
 
 
@@ -159,11 +178,18 @@ def replace(project, rules):
     if len(rules) > MAX_RULES:
         return {"error": f"{MAX_RULES} rules is the limit — every standing one "
                          "is read into every session that starts here"}
+    with _lock:
+        was = {x.get("name"): x for x in
+               ((load().get("projects") or {}).get(project) or {}).get("rules") or []}
     keep, seen = [], set()
     for i, r in enumerate(rules):
         if not isinstance(r, dict):
             continue
-        c = _clean(r, i)
+        # A rule keeps the author it had. The tab is the operator's, but
+        # reading and tidying a session's rule there should not quietly make
+        # it theirs — that is a decision, and it has its own button.
+        prev = was.get(str(r.get("name") or "").strip().lower())
+        c = _clean({**r, "by": r.get("by") or (prev or {}).get("by")}, i)
         if not c["text"]:
             continue                       # an empty rule is a deleted one
         # Names are how a conditional rule is referred to and read, so two of
@@ -177,9 +203,129 @@ def replace(project, rules):
         keep.append(c)
     with _lock:
         d = load()
+        before = {x.get("name") for x in (_project(d, project).get("rules") or [])}
+        now = {x["name"] for x in keep}
+        for n in sorted(now - before):
+            _log(d, project, "you", {"act": "add", "name": n})
+        for n in sorted(before - now):
+            _log(d, project, "you", {"act": "remove", "name": n})
+        if now & before:
+            _log(d, project, "you", {"act": "save", "name": "",
+                                     "text": f"{len(now & before)} kept"})
         _project(d, project)["rules"] = keep
         save(d)
     return {"ok": True, "n": len(keep)}
+
+
+MAX_HISTORY = 300
+
+
+def _log(d, project, by, ev):
+    """Record one change, inside the lock and before the save it describes, so
+    the record and the change land together or neither does. Same shape as
+    todo.py's — one merged history is what `bb history` reads."""
+    h = d.setdefault("history", {}).setdefault(project, [])
+    h.append({"at": int(time.time()),
+              "by": "claude" if by == "claude" else "you", **ev})
+    del h[:-MAX_HISTORY]
+
+
+def history(project, limit=None, since=None, find=None):
+    with _lock:
+        d = load()
+    rows = list((d.get("history") or {}).get(project) or [])
+    if since:
+        rows = [r for r in rows if r.get("at", 0) >= since]
+    if find:
+        f = str(find).lower()
+        rows = [r for r in rows
+                if any(f in str(r.get(k, "")).lower()
+                       for k in ("name", "text", "why", "act"))]
+    rows.sort(key=lambda r: -r.get("at", 0))
+    return rows[:limit] if limit else rows
+
+
+def add(project, name, text, paths="", words="", by="claude"):
+    """One rule, appended. The session's verb — the tab replaces the list.
+
+    A session's rule is marked as its own, which is what lets it change one
+    later and what tells the next session, reading the block, that this line
+    is a note from a session rather than an instruction from the operator.
+    """
+    if not str(text or "").strip():
+        return {"error": "a rule needs something to say"}
+    with _lock:
+        d = load()
+        p = _project(d, project)
+        rs = p.setdefault("rules", [])
+        if len(rs) >= MAX_RULES:
+            return {"error": f"{MAX_RULES} rules is the limit here"}
+        r = _clean({"name": name, "text": text, "paths": paths,
+                    "words": words, "by": by}, len(rs))
+        taken = {x.get("name") for x in rs}
+        base, n = r["name"], 2
+        while r["name"] in taken:
+            r["name"] = f"{base}-{n}"
+            n += 1
+        rs.append(r)
+        _log(d, project, by, {"act": "add", "name": r["name"], "text": r["text"][:200]})
+        save(d)
+    return {"ok": True, "rule": r}
+
+
+def _mine(rs, name, by):
+    """The rule by that name, when this writer may change it.
+
+    A session may change its own and not the operator's; the operator may
+    change anything. The refusal says which it is rather than pretending the
+    rule is not there — "no such rule" for one you can see is the answer that
+    sends somebody looking for a typo.
+    """
+    for i, r in enumerate(rs):
+        if r.get("name") == name:
+            if by == "claude" and r.get("by") != "claude":
+                return None, ("that rule is the operator's — you can read it and "
+                              "cannot change it. Say what you think is wrong with "
+                              "it in your reply; they edit it on the Briefing tab")
+            return i, ""
+    return None, f"no rule called {name} here"
+
+
+def edit(project, name, *, text=None, paths=None, words=None, by="claude"):
+    with _lock:
+        d = load()
+        p = _project(d, project)
+        rs = p.setdefault("rules", [])
+        i, why = _mine(rs, str(name or "").strip().lower(), by)
+        if why:
+            return {"error": why}
+        was = dict(rs[i])
+        merged = dict(was)
+        for k, v in (("text", text), ("paths", paths), ("words", words)):
+            if v is not None:
+                merged[k] = v
+        rs[i] = _clean(merged, i)
+        rs[i]["name"] = was["name"]          # renaming is not what edit is for
+        rs[i]["by"] = was.get("by", "you")
+        _log(d, project, by, {"act": "edit", "name": was["name"],
+                              "text": rs[i]["text"][:200], "was": was["text"][:200]})
+        save(d)
+    return {"ok": True, "rule": rs[i]}
+
+
+def remove(project, name, why="", by="claude"):
+    with _lock:
+        d = load()
+        p = _project(d, project)
+        rs = p.setdefault("rules", [])
+        i, bad = _mine(rs, str(name or "").strip().lower(), by)
+        if bad:
+            return {"error": bad}
+        gone = rs.pop(i)
+        _log(d, project, by, {"act": "remove", "name": gone["name"],
+                              "text": gone["text"][:200], "why": str(why or "")[:300]})
+        save(d)
+    return {"ok": True, "removed": gone["name"]}
 
 
 def rules(project):
@@ -200,11 +346,18 @@ def block(project):
     rs = rules(project)
     if not rs:
         return ""
-    out = ["The operator has set house rules for this project. They are theirs,"
-           " not yours: you can read them and cannot change them.\n"]
+    # WHOSE each one is, marked, because a session's own note must not reach
+    # the next session wearing the operator's authority. Same reason the
+    # roadmap marks the items a session added.
+    out = ["House rules for this project. The ones marked [yours] are notes a"
+           " session left; you may change or drop those with `bb rules`. The"
+           " rest are the operator's — you can read them and cannot change"
+           " them, and if one seems wrong the move is to say so in your"
+           " reply.\n"]
     for r in rs:
         if not conditional(r):
-            out.append(r["text"] + "\n")
+            out.append((("[yours] " if r.get("by") == "claude" else "")
+                        + r["text"]) + "\n")
     named = [r for r in rs if conditional(r)]
     if named:
         out.append("These apply to particular work rather than to everything, "
@@ -213,7 +366,8 @@ def block(project):
                    "also be told, on the turn it becomes relevant:")
         for r in named:
             first = (r["text"].strip().splitlines() or [""])[0]
-            out.append(f"  {r['name']} — {first[:90]}")
+            mine = "[yours] " if r.get("by") == "claude" else ""
+            out.append(f"  {r['name']} — {mine}{first[:90]}")
     return "\n".join(out).strip()
 
 

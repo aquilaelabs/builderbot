@@ -421,8 +421,11 @@ bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
 bb tests run       run the project's test command, time it, and record the run
-bb rules           the operator's house rules for this project (read-only)
+bb rules           the house rules for this project — the operator's and yours
 bb rules show NAME one of them in full — what a conditional rule says
+bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
+bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
+bb rules history   what has changed them, by either of you
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test — what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs

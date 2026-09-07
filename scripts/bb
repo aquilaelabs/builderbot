@@ -78,8 +78,11 @@ bb — BuilderBot helper
   bb bug na N ["why"]    it was real and stopped applying — the feature went
   bb bug rm N ["why"]    delete a report that should not have been filed
   bb tests run           run the project's test command, time it, and record the run
-  bb rules               the operator's house rules for this project (read-only)
+  bb rules               the house rules for this project — the operator's and yours
   bb rules show NAME     one of them in full — what a conditional rule says
+  bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
+  bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
+  bb rules history       what has changed them, by either of you
   bb tests               the test registry: where the suite's time goes, slowest first
   bb tests show KEY      one test — what it protects, what it exercises, its history
   bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
@@ -1835,7 +1838,7 @@ cmd_rules() {
     fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
         python3 - "$py" "$proj" "$@" <<'RULESPY'
-import importlib.util, os, sys
+import importlib.util, os, sys, time
 
 spec = importlib.util.spec_from_file_location("rules", sys.argv[1])
 reg = importlib.util.module_from_spec(spec)
@@ -1851,6 +1854,7 @@ reg.configure(write_json=statefile.write_json,
 
 proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"
+rest = argv[1:]
 
 # What bb-tty puts in front of a session. Empty output and status 0 when
 # there are no rules, so the caller can test it with `[ -z ]`.
@@ -1859,9 +1863,9 @@ if op == "--prompt":
     if b:
         print(b)
 elif op == "show":
-    if len(argv) < 2:
+    if not rest:
         sys.exit("usage: bb rules show <name>")
-    want = argv[1].strip().lower()
+    want = rest[0].strip().lower()
     for r in reg.rules(proj):
         if r["name"] == want:
             print(r["text"])
@@ -1869,6 +1873,47 @@ elif op == "show":
     else:
         names = ", ".join(r["name"] for r in reg.rules(proj)) or "none"
         sys.exit(f"no rule called {want} here — this project has: {names}")
+elif op == "add":
+    if len(rest) < 2:
+        sys.exit('usage: bb rules add <name> "the rule" [--files GLOB,...] [--words W,...]')
+    name, said, paths_, wds_, i = rest[0], [], "", "", 1
+    while i < len(rest):
+        if rest[i] == "--files" and i + 1 < len(rest):
+            paths_ = rest[i + 1]; i += 2
+        elif rest[i] == "--words" and i + 1 < len(rest):
+            wds_ = rest[i + 1]; i += 2
+        else:
+            said.append(rest[i]); i += 1
+    r = reg.add(proj, name, " ".join(said), paths=paths_, words=wds_, by="claude")
+    if r.get("error"):
+        sys.exit(f"[builderbot] ERROR: {r['error']}")
+    print(f"added {r['rule']['name']} — yours, marked as a session's on the "
+          "Briefing tab, and in front of every session started here")
+elif op == "edit":
+    if len(rest) < 2:
+        sys.exit('usage: bb rules edit <name> "what it should say now"')
+    r = reg.edit(proj, rest[0], text=" ".join(rest[1:]), by="claude")
+    if r.get("error"):
+        sys.exit(f"[builderbot] ERROR: {r['error']}")
+    print(f"reworded {rest[0]}")
+elif op == "rm":
+    if not rest:
+        sys.exit('usage: bb rules rm <name> ["why it went"]')
+    r = reg.remove(proj, rest[0], why=" ".join(rest[1:]), by="claude")
+    if r.get("error"):
+        sys.exit(f"[builderbot] ERROR: {r['error']}")
+    print(f"dropped {r['removed']}")
+elif op == "history":
+    rows = reg.history(proj, limit=20)
+    if not rows:
+        print("nothing has changed the rules here yet")
+    for e in rows:
+        when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
+        print(f"  {when}  {e.get('by', ''):>6}  {e.get('act', ''):<7} "
+              f"{e.get('name', '')}  {e.get('text', '')[:60]}")
+        for k in ("was", "why"):
+            if e.get(k):
+                print(f"{'':>32}{k}: {e[k][:60]}")
 elif op == "list":
     rs = reg.rules(proj)
     if not rs:
@@ -1884,9 +1929,11 @@ elif op == "list":
             bits = list(r.get("paths") or []) + list(r.get("words") or [])
             when = "  [" + ", ".join(bits[:4]) + ("…" if len(bits) > 4 else "") + "]"
         first = (r["text"].strip().splitlines() or [""])[0]
-        print(f"  {r['name']:<22}{first[:60]}{when}")
-    print("\n`bb rules show <name>` for one in full. These are the operator's; "
-          "there is no verb here that writes one.")
+        mine = "*" if r.get("by") == "claude" else " "
+        print(f" {mine}{r['name']:<22}{first[:60]}{when}")
+    print("\n`bb rules show <name>` for one in full. A * is one a session "
+          "wrote: yours to `edit` or `rm`. The rest are the operator's — read "
+          "them, and say in your reply if one looks wrong.")
 else:
     print(f"[builderbot] ERROR: unknown: bb rules {op}", file=sys.stderr)
     sys.exit(1)

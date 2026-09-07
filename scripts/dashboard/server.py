@@ -5171,14 +5171,18 @@ class Handler(BaseHTTPRequestHandler):
         half of it. The memories beside them are staged the same way and for
         the same reason.
 
-        Nothing here is reachable by a session. `bb rules` is read-only and
-        the file tools are denied on the file, so the only writer is somebody
-        signed in to this dashboard with the project on their list.
+        A SESSION IS REFUSED HERE, by name. `bb rules` having no write verb
+        and the file tools being denied on the file cover what a session would
+        do in the ordinary course of work; they do not cover a session with a
+        shell and its own token, which authenticates as a principal with user
+        rights over exactly this project — so without this the endpoint would
+        have been the way around the whole arrangement. The only writer is a
+        person signed in to this dashboard with the project on their list.
         """
         name = field(req, "project")
         if name not in {p["name"] for p in project_list(self._who())}:
             return self._json({"error": f"not a project: {name}"}, 400)
-        if self._readonly(name):
+        if self._refused("rules", name) or self._readonly(name):
             return None
         if (bad := locked_out(name)):
             return self._json(bad, 409)

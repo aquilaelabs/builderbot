@@ -115,11 +115,92 @@ ok(/No em dashes/.test(bb('list')) && /agent-compat/.test(bb('list')),
    'bb rules lists what is in effect');
 ok(/add, do not change/.test(bb('show', 'agent-compat')),
    'bb rules show reads one in full — how a session follows the name in its block');
+// What a session may NOT do is the narrow part, and it is about the whole
+// list rather than about writing at all: the tab's replace is a person's,
+// because one call rewriting every rule is exactly what the per-rule
+// ownership check exists to stop.
 let refused = '';
-try { execFileSync(BB, ['rules', 'add', 'x'], { env: ENV }); }
+try { execFileSync(BB, ['rules', 'replace'], { env: ENV }); }
 catch (e) { refused = String(e.stdout || '') + String(e.stderr || ''); }
 ok(/unknown/.test(refused),
-   'there is no verb here that writes one: a rule a session could set is not a rule');
+   'there is no verb that rewrites the whole list — that one is the tab\'s');
+
+// ---- a session's own rules -------------------------------------------------
+// Both sides write these, the way both sides write the roadmap and the
+// tracker. What is asymmetric is narrower than "who may write": a session may
+// leave a rule and change its own, and may not touch one of the operator's.
+ok(/added dont-edit-during-a-suite/.test(
+     bb('add', 'dont edit during a suite',
+        'The page is served from disk per request, so a mid-run edit is tested.',
+        '--words', 'suite, test')),
+   'a session can leave a rule of its own');
+ok(read().find(r => r.name === 'dont-edit-during-a-suite')?.by === 'claude',
+   '...marked as its own, which is what decides who may change it later');
+ok(/reworded/.test(bb('edit', 'dont-edit-during-a-suite', 'Stage edits; apply after.')),
+   '...and change it');
+{
+  let no = '';
+  try { bb('edit', 'voice', 'no em dashes, and no semicolons either'); }
+  catch (e) { no = String(e.stdout || '') + String(e.stderr || ''); }
+  ok(/the operator's/.test(no) && /cannot change it/.test(no),
+     '...and cannot touch one of the operator\'s, being told which it is');
+  ok(read().find(r => r.name === 'voice').text === 'No em dashes.',
+     '...and nothing moved when it tried');
+}
+ok(/\*dont-edit-during-a-suite/.test(bb('list')),
+   'the listing marks which are a session\'s, since that is what decides what it may do');
+ok(/\[yours\]/.test(bb('--prompt')),
+   'and the block says so too — a session\'s own note must not reach the next one '
+   + 'wearing the operator\'s authority');
+{
+  const h = bb('history');
+  ok(/claude\s+add\s+dont-edit-during-a-suite/.test(h) && /you\s+add\s+voice/.test(h),
+     'every change is in a history that says who made it — which is what makes '
+     + 'this safe to share, rather than a lock');
+}
+ok(/dropped dont-edit-during-a-suite/.test(
+     bb('rm', 'dont-edit-during-a-suite', 'it belongs in CLAUDE.md now')),
+   'a session can drop its own, with the reason kept');
+
+// The endpoint, not just the verb. `bb rules` has no write verb and the file
+// tools are denied on the file — but a session has a shell and a token, and
+// that token authenticates as a principal with user rights over exactly this
+// project. Without a refusal here the HTTP route would have been the way
+// around the whole arrangement, which is the kind of hole a design like this
+// is worth nothing without.
+{
+  // A real one, minted the way bb-tty mints the token it hands a session:
+  // the point is a genuine session principal, not a shape.
+  const tok = execFileSync('python3', ['-c', `
+import importlib.util, os, sys
+spec = importlib.util.spec_from_file_location('users', ${
+  JSON.stringify(join(HERE, '..', 'users.py'))})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+import json
+def wj(path, d):
+    tmp = str(path) + '.new'
+    with open(tmp, 'w') as f: json.dump(d, f, indent=2)
+    os.replace(tmp, path)
+m.configure(state=${JSON.stringify(`${DIR}/state`)}, write_json=wj)
+print(m.mint_session('alpha'))
+`], { encoding: 'utf8' }).trim();
+  ok(/^bbs_/.test(tok), 'a session token can be minted for the check below');
+  // From outside the browser, which is where a session actually is: a shell
+  // with a token and no cookie. Through the page it would have carried the
+  // operator's own login as well, and proved nothing.
+  const res = await fetch(URL.replace(/\/$/, '') + '/api/rules', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + tok },
+    body: JSON.stringify({ project: 'alpha', action: 'save',
+                           rules: [{ name: 'mine', text: 'a session wrote this' }] }) });
+  const r = { status: res.status, body: await res.text() };
+  ok(r.status === 403, `a session's own token cannot write a rule (${r.status} ${
+    JSON.stringify(r.body).slice(0, 200)}, token ${tok.slice(0, 10)}…)`);
+  ok(/being held to/.test(r.body),
+     '...and is told why rather than getting a bare no');
+  ok(!read().some(x => x.name === 'mine'),
+     '...and nothing was written');
+}
 
 ok(page.errors.length === 0, `zero console errors${
   page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
