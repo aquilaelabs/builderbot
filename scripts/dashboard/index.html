@@ -1578,6 +1578,40 @@ textarea,select{
    ask which version wins is asking the question with the evidence hidden.
    Both texts read as what they are — stored words, not fields — so they use
    the sunk surface without the field skin's focus ring. */
+/* The test registry's rows. One <details> per test, the same shape a bug
+   report has — the summary is what you scan (how long it took, what it is
+   called, which suite), and the body is the half somebody wrote by hand.
+   Duration leads, because this list is sorted by it and a column of numbers
+   you can run your eye down is the whole point of sorting. */
+.tst{border-bottom:1px solid var(--line)}
+.tst:last-child{border-bottom:0}
+.tst>summary{padding:var(--row-y) var(--row-x);display:flex;gap:8px;
+  align-items:baseline;flex-wrap:wrap;cursor:pointer}
+.tstms{font:600 12px/1.4 var(--mono);color:var(--ink);
+  flex:0 0 auto;min-width:4.5em;text-align:right}
+.tstms.bad{color:var(--warn)}
+.tstname{flex:1 1 12em;min-width:0;font:var(--f-ui);color:var(--ink);
+  white-space:pre-wrap;overflow-wrap:anywhere}
+/* A flagged row is marked on its edge rather than tinted: the list is read
+   for its numbers, and colouring whole rows would make the ones that matter
+   harder to scan rather than easier. */
+.tst.flagged{border-left:2px solid var(--warn)}
+.tst>.body{padding:0 var(--row-x) var(--row-y)}
+.tst>.body textarea{min-height:3.2em;margin-bottom:8px}
+.tst>.body label{margin-top:4px}
+/* The sentence a continuation finishes. On the SUMMARY, on its own line under
+   the name: these names are prose and a "..." row read on its own says
+   nothing, which sorting by duration would otherwise do to every one of them.
+   Indented to the name's column, so it reads as belonging to it. */
+.tstafter{flex:1 0 100%;min-width:0;margin-left:calc(4.5em + 8px);
+  color:var(--dim);font:var(--f-note);font-style:italic;overflow-wrap:anywhere}
+/* The rollup: one line per suite, the number first so the column reads down. */
+.tstsuite{display:flex;gap:10px;align-items:baseline;
+  padding:5px var(--row-x);border-bottom:1px solid var(--line)}
+.tstsuite:last-child{border-bottom:0}
+.tstsuite .tstms{min-width:5.5em}
+.tstsname{font:var(--f-ui);color:var(--ink);flex:0 0 auto;min-width:9em}
+.tstsuite .sub{color:var(--dim);font:var(--f-note);flex:1 1 auto;min-width:0}
 /* Who else is in here. A quiet line, not a warning: nothing is wrong, and
    the whole point of it is being read on the way past. */
 .nbhere{padding-top:0;padding-bottom:6px}
@@ -1724,10 +1758,7 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .ndcap{display:inline-flex;gap:6px;align-items:center;font:var(--f-ui);
   color:var(--ink)}
 .ndcap input{width:15px;height:15px;flex:0 0 auto}
-.ndform label{display:block;font:12px/1.5 system-ui,sans-serif;
-  color:var(--dim);margin:8px 0 5px}
-.ndform .acts{display:flex;gap:8px;margin-top:10px}
-.ndform .acts .sp,.docbarrow .sp{flex:1}
+.docbarrow .sp{flex:1}
 .ndtest.warn,#logDaysSaid.warn{color:var(--warn)}
 /* The one-time enrollment command: a pre, because a wrapped shell line lies
    about what runs — with the page's pre skin, inset like a field. */
@@ -2348,6 +2379,7 @@ body.dragging .tab .lbl{cursor:grabbing}
       <button type="button" data-v="bugs">Bugs</button>
       <button type="button" data-v="analysis">Analysis</button>
       <button type="button" data-v="artifacts">Artifacts</button>
+      <button type="button" data-v="tests">Tests</button>
     </div>
     <!-- Who else is in here. Under the strip rather than above it, because
          it is about the whole notebook and not about the batch banner's
@@ -2489,6 +2521,27 @@ body.dragging .tab .lbl{cursor:grabbing}
          dist/ and nothing else. No History button, deliberately: the files'
          own timestamps are the history, and a log of "the file changed"
          would restate the mtime column. -->
+    <!-- The test registry. Two records that only mean something together: a
+         line per test saying what it protects and what it really exercises,
+         written by hand in the same change as the test; and what each one
+         actually cost, parsed out of a run rather than estimated.
+
+         Sorted by duration, because the question this is opened with is
+         where the suite's time goes. The suites fold above it is the more
+         useful answer more often — one file dominating is a fact about the
+         suite, where one slow test is a fact about one test. -->
+    <div class="nbview" data-view="tests" hidden>
+      <div class="field nbhead vbar"><span id="tstHint">loading…</span></div>
+      <div class="field" id="tstStats" hidden></div>
+      <div id="tstFolds"></div>
+      <div class="field histbar" id="tstBar" hidden>
+        <label for="tstSuite">Suite</label>
+        <select id="tstSuite"><option value="">all</option></select>
+        <label class="ndcap"><input type="checkbox" id="tstFlagged"> flagged only</label>
+        <label class="ndcap"><input type="checkbox" id="tstUndoc"> undescribed only</label>
+      </div>
+      <div class="field" id="tstList"></div>
+    </div>
     <div class="nbview" data-view="artifacts" hidden>
       <div class="field nbhead vbar"><span id="artHint">loading…</span></div>
       <!-- Where this project's compiling happens, or that it has nowhere.
@@ -2798,6 +2851,22 @@ body.dragging .tab .lbl{cursor:grabbing}
     <div id="tList" class="field"></div>
     <div class="foot"><span class="sp"></span>
       <button type="button" id="tClose">Close</button></div>
+  </div>
+</div>
+<!-- Enrolling a node. A dialog, because the Nodes tab is a picker and one
+     machine: a form appended at the foot of it opened BELOW everything about
+     the machine you were looking at, which on a phone is off the bottom of
+     the page. Same shape as New project, which is what anybody reaches for
+     it expecting.
+
+     The box is filled by tab-nodes.js — two states in one: the name, and
+     then the commands that came back. The token is the answer to the form
+     and is shown once, so it belongs where the question was asked rather
+     than appended to the page behind it. -->
+<div id="ndmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="ndTitle">
+  <div class="box wide">
+    <h3 id="ndTitle">Enroll a node</h3>
+    <div id="ndBody"></div>
   </div>
 </div>
 <div id="pmodal" class="modal" hidden role="dialog" aria-modal="true" aria-labelledby="pTitle">
@@ -7998,6 +8067,8 @@ async function openMemory(name){
   todoRev = memRev = null;
   clash = memClash = null; clashResume = null;
   nbHere = []; nbRead = 0; nbWhere = "memory"; drawHere();
+  tests = null; testsRev = null;
+  tstSuite = ""; tstFlagged = tstUndoc = false;
   todoLogOn = false;
   todoLog = null;
   $("histFind").value = "";
@@ -9582,6 +9653,7 @@ $("todoRevert").onclick = revertNotebook;
     if (v === "bugs" && !bugs) loadBugs();
     if (v === "analysis") loadAnalysis();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
+    if (v === "tests" && !tests) loadTests();
   }
   // Unsaved work does not follow you to another tab.
   //
@@ -10366,6 +10438,189 @@ become that version's section when it is created">Changelog${
     paginate(list, ":scope > .rule", {key: "anaList", noun: "rules"});
   }
 
+  // ---- the test registry ---------------------------------------------------
+  // Write-through like the tracker beside it, and for the same reason: what
+  // is written here is a sentence about a test that already exists, so there
+  // is nothing to stage and nothing a Save could mean.
+  //
+  // The timings are not written from this page at all. They are parsed out of
+  // a run somebody ingested — `bb tests ingest` — because a duration this
+  // page produced would be a duration measured on a box that was busy drawing
+  // this page.
+  let tests = null;
+  let testsRev = null;    // the registry's revision as of the last read
+  let tstSuite = "", tstFlagged = false, tstUndoc = false;
+
+  async function loadTests(){
+    try{
+      const r = await fetch("/api/tests?project=" + encodeURIComponent(project));
+      const j = await r.json();
+      tests = j.error ? {tests: [], suites: [], error: j.error} : j;
+    }catch(e){ tests = {tests: [], suites: [], error: String(e)}; }
+    testsRev = (state?.projects || []).find(x => x.name === project)?.tests_rev ?? testsRev;
+    drawTests();
+  }
+
+  async function postTests(body){
+    if (nbHeld()){
+      notify("a session is part-way through changing this notebook — "
+             + "check the banner at the top", true);
+      return null;
+    }
+    try{
+      const r = await fetch("/api/tests", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, ...body})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return null; }
+      tests = j;
+      // This panel's own write moved nothing the poll watches — describing a
+      // test does not ingest a run — but the row it changed is redrawn from
+      // the answer rather than refetched.
+      drawTests();
+      return j;
+    }catch(e){ notify("could not reach the server: " + e, true); return null; }
+  }
+
+  // Durations read as seconds with one decimal up to a minute and as m:ss
+  // past it, because "412.9s" is a number somebody has to divide.
+  const dur = ms => ms == null ? "—"
+    : ms < 60000 ? (ms / 1000).toFixed(1) + "s"
+    : Math.floor(ms / 60000) + "m " + Math.round((ms % 60000) / 1000) + "s";
+
+  function drawTests(){
+    const j = tests || {};
+    if (j.error){
+      $("tstHint").textContent = "tests: " + j.error;
+      $("tstList").innerHTML = ""; $("tstStats").hidden = true;
+      $("tstBar").hidden = true; $("tstFolds").innerHTML = "";
+      return;
+    }
+    const all = j.tests || [];
+    if (!all.length){
+      $("tstHint").textContent = "Nothing ingested yet.";
+      $("tstStats").hidden = false;
+      $("tstStats").innerHTML = `<div class="hint">This is where every test in
+        the project is recorded — what it protects, and what it really
+        exercises. The timings come from a run rather than from anybody's
+        estimate:
+        <pre class="ndcmd">BB_TEST_TIMING=1 bb dashboard test 2>&amp;1 | tee /tmp/run.log
+bb tests ingest /tmp/run.log</pre>
+        Ingest reconciles this list against what the runner reported, so a
+        test that arrived or went says so.</div>`;
+      $("tstList").innerHTML = ""; $("tstBar").hidden = true;
+      $("tstFolds").innerHTML = "";
+      return;
+    }
+    // The header's three numbers. Projected is the sum of every test's last
+    // measured duration — what the suite spends *in* its tests; the last run's
+    // own wall time is shown beside it, and the difference is the harness.
+    const proj = j.total_ms || 0, wall = j.last_wall_ms || 0;
+    $("tstHint").innerHTML = `${j.n} tests · <b>${esc(dur(proj))}</b> projected`
+      + (wall ? ` (last run ${esc(dur(wall))} of wall)` : "")
+      + (j.suspect ? ` · <span class="bad">${j.suspect} flagged, ${esc(dur(j.recover_ms))}
+           of it waiting</span>` : "")
+      + (j.undocumented ? ` · ${j.undocumented} undescribed` : "");
+    $("tstStats").hidden = true;
+    // ---- the folds above the list ------------------------------------------
+    // Suites first: one file dominating is a fact about the suite, where one
+    // slow test is a fact about one test.
+    // One line each, not a row with a subtitle: twenty-four suites as
+    // two-line rows is a fold taller than the screen, and what pushed off the
+    // bottom of it was the list this tab is for.
+    const rollup = (j.suites || []).map(s => `<div class="tstsuite">
+        <span class="tstms">${esc(dur(s.ms))}</span>
+        <span class="tstsname">${esc(s.suite)}</span>
+        <span class="sub">${s.n}${
+          s.suspect ? ` · <span class="bad">${s.suspect} flagged</span>` : ""}${
+          s.fail ? ` · <span class="bad">${s.fail} failing</span>` : ""}${
+          s.skip ? ` · ${s.skip} skipped` : ""}${
+          s.undocumented === s.n ? " · none described"
+            : s.undocumented ? ` · ${s.undocumented} undescribed` : ""}</span>
+      </div>`).join("");
+    const d = j.drift || {};
+    const driftRows = ["added", "gone", "renamed"].flatMap(k =>
+      (d[k] || []).map(x => `<div class="sub">${
+        k === "renamed" ? `renamed: ${esc(x.was)} → ${esc(x.now)}`
+                        : `${k === "added" ? "new" : "gone"}: ${esc(x.name)}`}</div>`));
+    const nDrift = driftRows.length;
+    $("tstFolds").innerHTML =
+      // Closed by default: the list sorted by duration is what this tab is
+      // for, and a fold that opens over it is one somebody has to shut before
+      // they can read the thing they came for. The status carries the number
+      // either way, which is most of what the rollup says.
+      docSection("tests", "suites", "Suites",
+                 `${(j.suites || []).length} · ${dur(proj)}`, rollup, {open: false})
+      + (d.at ? docSection("tests", "drift", "Since the run before",
+           nDrift ? `${nDrift}` : "in step",
+           nDrift ? driftRows.join("")
+                  : `<div class="sub">every test the runner reported is on this
+                     list, and every entry on this list ran.</div>`,
+           {cls: nDrift ? "warn" : "", open: false}) : "");
+    wireSections($("tstFolds"));
+    // ---- the filter --------------------------------------------------------
+    const suites = [...new Set(all.map(t => t.suite))].sort();
+    $("tstBar").hidden = false;
+    $("tstSuite").innerHTML = `<option value="">all suites</option>`
+      + suites.map(x => `<option value="${esc(x)}"${
+          x === tstSuite ? " selected" : ""}>${esc(x)}</option>`).join("");
+    $("tstFlagged").checked = tstFlagged;
+    $("tstUndoc").checked = tstUndoc;
+    const shown = all.filter(t => (!tstSuite || t.suite === tstSuite)
+                                  && (!tstFlagged || t.suspect)
+                                  && (!tstUndoc || !t.protects));
+    // ---- the list ----------------------------------------------------------
+    $("tstList").innerHTML = shown.length ? shown.map(t => `
+      <details class="tst${t.suspect ? " flagged" : ""}" data-key="${esc(t.key)}">
+        <summary>
+          <span class="tstms${t.suspect ? " bad" : ""}">${esc(dur(t.ms))}</span>
+          <span class="tstname">${esc(t.name)}</span>
+          <span class="pill">${esc(t.suite)}</span>
+          ${t.status && t.status !== "pass"
+            ? `<span class="pill ${t.status === "fail" ? "bad" : "warn"}">${esc(t.status)}</span>` : ""}
+          ${t.suspect ? `<span class="pill warn" data-tip="this lands on a ${t.suspect}s
+             boundary — near certainly a fixed sleep or a polling timeout rather
+             than ${t.suspect}s of work">${t.suspect}s wait?</span>` : ""}
+          ${t.after ? `<span class="tstafter">follows: ${esc(
+             t.after.length > 120 ? t.after.slice(0, 118) + "…" : t.after)}</span>` : ""}
+        </summary>
+        <div class="body">
+          <div class="sub">${esc(t.key)}${
+            t.was ? ` · was ${esc(dur(t.was))}` : ""}${
+            (t.history || []).length > 1
+              ? ` · ${t.history.map(h => (h / 1000).toFixed(1)).join(", ")}s` : ""}</div>
+          <label>What it protects</label>
+          <textarea class="tstP" spellcheck="false"
+            placeholder="the behaviour that breaks if this goes red">${esc(t.protects)}</textarea>
+          <label>What it exercises — fixtures, stubs, what is real and what is faked</label>
+          <textarea class="tstN" spellcheck="false"
+            placeholder="e.g. drives the real server; the agent is agent-stub.py; docker is the PATH stub">${esc(t.notes)}</textarea>
+          <div class="actbar"><span class="sp"></span>
+            <button type="button" class="primary tstSave">Save</button></div>
+        </div>
+      </details>`).join("")
+      : `<div class="empty">nothing matches the filters</div>`;
+    paginate($("tstList"), ":scope > .tst", {key: "tstList", noun: "tests"});
+    $("tstList").querySelectorAll(".tst > summary").forEach(sum => {
+      sum.onclick = e => { e.preventDefault();
+        slideDetails(sum.parentElement, !sum.parentElement.open); };
+    });
+    $("tstList").querySelectorAll(".tst").forEach(box => {
+      const key = box.dataset.key;
+      box.querySelector(".tstSave").onclick = e => pressing(e.target, async () => {
+        busy(e.target, "Saving");
+        await postTests({action: "describe", key,
+                         protects: box.querySelector(".tstP").value,
+                         notes: box.querySelector(".tstN").value});
+      });
+    });
+    tipify($("tstList"));
+  }
+
+  $("tstSuite").onchange = () => { tstSuite = $("tstSuite").value; drawTests(); };
+  $("tstFlagged").onchange = () => { tstFlagged = $("tstFlagged").checked; drawTests(); };
+  $("tstUndoc").onchange = () => { tstUndoc = $("tstUndoc").checked; drawTests(); };
+
   // ---- bugs ----------------------------------------------------------------
   // Write-through, unlike the roadmap: a bug report is a form submitted once,
   // not a list curated in place, and a session finding one mid-task must not
@@ -10711,6 +10966,7 @@ become that version's section when it is created">Changelog${
     reload(){ return loadTodo(memGen); },
     reloadMemory(){ return loadMemory(memGen); },
     reloadBugs(){ return loadBugs(); },
+    reloadTests(){ return loadTests(); },
     leaving: notebookLeaving,
     held: nbHeld,
     unsaved: nbUnsaved,
@@ -10741,6 +10997,11 @@ become that version's section when it is created">Changelog${
       // fifteen seconds to find out whether it moved.
       if (bugs && bugRev !== null && p.bug_rev !== bugRev) loadBugs();
       if (p.bug_rev !== undefined) bugRev = p.bug_rev;
+      // A run ingested from somewhere else — a session's `bb tests ingest`,
+      // or another window. Write-through like the tracker, so there is
+      // nothing staged here to lose by re-reading (roadmap #26).
+      if (tests && testsRev !== null && p.tests_rev !== testsRev) loadTests();
+      if (p.tests_rev !== undefined) testsRev = p.tests_rev;
       // The other two halves, which had no such thing until roadmap #26.
       // Guarded rather than unconditional, and that guard is the whole
       // reason they did not have one: the roadmap on screen may be carrying
@@ -12715,10 +12976,22 @@ function docSection(kind, id, title, status, body, {cls = "", open} = {}){
   </details>`;
 }
 function wireSections(root){
-  root.querySelectorAll("details.sect").forEach(d => { d.ontoggle = () => {
-    sectOpen[d.dataset.sect] = d.open;
-    try{ localStorage.setItem("bb.sect", JSON.stringify(sectOpen)); }catch(e){ /* no storage */ }
-  }; });
+  root.querySelectorAll("details.sect").forEach(d => {
+    d.ontoggle = () => {
+      sectOpen[d.dataset.sect] = d.open;
+      try{ localStorage.setItem("bb.sect", JSON.stringify(sectOpen)); }catch(e){ /* no storage */ }
+    };
+    // Driven, not the browser's instant snap — the same helper the memories,
+    // the bug reports, the version tab's fold and the Docker manager's wiring
+    // fold already use. A <details> opens at full height by construction, so
+    // a fold on this page only moves if something moves it, and sections
+    // shipped without it: the one kind of fold that jumped.
+    //
+    // `:scope > summary` because a section can contain folds of its own, and
+    // the section must not answer for theirs.
+    const sum = d.querySelector(":scope > summary");
+    if (sum) sum.onclick = e => { e.preventDefault(); slideDetails(d, !d.open); };
+  });
 }
 // A button that is doing something says so until the repaint replaces it:
 // greyed, and wearing the verb with an animated ellipsis. Pair with

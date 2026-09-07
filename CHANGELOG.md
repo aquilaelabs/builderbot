@@ -242,3 +242,4 @@
 - The notebook refuses a change that would write over somebody else's, and shows both versions instead of losing one (7fb1947)
 - The notebook says who else has it open, and when a session last read the roadmap (272a9d0)
 - A ghosted button's tooltip no longer comes out half-faded under the row below it (8c73950)
+- The notebook has a Tests view: what each test protects, and where the suite's time actually goes (8f05d3d)

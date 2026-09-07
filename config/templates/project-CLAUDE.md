@@ -745,6 +745,56 @@ makes the tracker worth keeping; if you are not correcting your own mistake,
 one of the three closes above is the honest answer. Deleting says why in the
 log, and that note is all that survives it.
 
+## The test registry
+
+The notebook's Tests view, and yours through `bb tests`. Two records that only
+mean something together.
+
+**What each test protects, written by hand.** A line saying what breaks if it
+goes red, and a second saying what it actually exercises — which fixtures,
+which stubs, what is real and what is faked. That second half is the one
+nobody can recover from the code in a hurry, and it is what decides whether a
+red run is a bug or a fixture.
+
+**When you write or change a test, record it in the same change.** Same deal
+as the roadmap: a description written later is a description nobody writes.
+The order is run, ingest, describe — a test gets its key from the runner, so
+there is nothing to describe until a run has reported it once. The run you
+were going to do anyway is the one that mints it, and the new test shows up
+on the drift report as the thing to write a line about.
+
+```bash
+bb tests                 where the suite's time goes, slowest first
+bb tests show KEY        one test: what it protects, what it runs, its history
+bb tests note KEY "what it protects" --how "fixtures, stubs, what is faked"
+bb tests ingest [LOG]    record a run's real durations
+bb tests drift           what the runner reported that this list does not, and back
+bb tests flagged         the ones sitting on a round timeout rather than working
+```
+
+**The timings are measured, never estimated.** They are parsed out of a run:
+
+```bash
+BB_TEST_TIMING=1 bb dashboard test 2>&1 | tee /tmp/run.log
+bb tests ingest /tmp/run.log
+```
+
+Do not put a duration in by hand. A number somebody guessed is worse than no
+number, because it reads exactly like one that was measured.
+
+**A test is keyed on where the runner puts it**, `<file>#<ordinal>`, not on
+its name — the names here are prose and they get reworded, and an entry that
+died on a rename would be an entry nobody trusted. Ingest reconciles: a
+reworded test keeps its description, a test inserted above one does not shift
+anybody's, and what genuinely arrived or went is the drift report. **Read that
+report** — a registry that has quietly stopped describing the code is worse
+than no registry, and it is the failure this whole thing is built to catch.
+
+**A flagged test is the cheapest thing in a suite to fix.** Anything landing
+just above a round boundary — 30.0s, 10.0s, 5.0s — is waiting rather than
+working: a fixed sleep, a polling interval, or a selector that matches nothing
+and times out. The work is already done; only the waiting has to go.
+
 ## Static analysis findings
 
 If `/reports` exists, a scanner runs on the host and drops SARIF there.

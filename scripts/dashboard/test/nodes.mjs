@@ -4,7 +4,7 @@
 // the DOCKER_HOST mirror are seeded, work stamps the node it belongs to,
 // every mutation grows an audit row, and the page the operator sees is
 // exactly the page it was.
-import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew } from './lib.mjs';
+import { URL, launch, newPage, ok, done, ready, sleep, DIR, tmuxNew, animatedDuring, openFold, closeFold } from './lib.mjs';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync, readFileSync } from 'node:fs';
 
@@ -483,6 +483,17 @@ ok(list[0].id === 'local',
   ok(await page.$eval(`${ROW} .ndconfbody`, e =>
        [...e.querySelectorAll(':scope > details.sect > summary .sst')].every(s => s.textContent.trim())),
      '...every section says its state on its summary, so a phone reads the headings and picks one');
+  // Every fold on this page is driven rather than left to the browser's
+  // instant snap — the memories, the bug reports, the version tab's fold, the
+  // Docker manager's wiring. Sections shipped without it and were the one
+  // kind that jumped.
+  {
+    const sel = `${ROW} .ndconfbody > details.sect`;
+    const moved = await animatedDuring(page, () => closeFold(page, sel));
+    ok(moved.some(c => /\bsect\b/.test(c)),
+       '...and a section folds with the same tween as every other fold here');
+    await openFold(page, sel);          // put it back for what reads inside it
+  }
   // The sidebar's Runner card carries every node with a runner, not only
   // this container's — a workflow lands on whichever runner its runs-on
   // matches, and GitHub was the only place that answer existed.

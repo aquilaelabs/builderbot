@@ -1579,14 +1579,27 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
        `the row shows the agent live, its numbers and the account jobs run as (${row.slice(0, 160)}…)`);
     ok(await page.$(`.nodestab .ndrow[data-node="${minted.id}"] [data-nd="revoke"]`) !== null,
        '...and offers Revoke, which an ssh node does not have');
-    // the enroll form shows the command, once
+    // Enrolling is a dialog, like New project — it used to be a panel at the
+    // foot of the tab, below everything about the machine you were looking at.
     await page.click('#ndEnroll');
+    await page.waitForSelector('#ndmodal:not([hidden]) #ndEnName', { timeout: 10000 });
+    ok(await page.$('.nodestab #ndEnName') === null,
+       'Enroll node opens a dialog rather than a panel at the foot of the tab');
     await page.fill('#ndEnName', 'second');
     await page.click('#ndEnGo');
-    await page.waitForSelector('.nodestab .ndtoken', { timeout: 15000 });
-    const shown = await page.$eval('.nodestab .ndtoken', e => e.textContent);
+    await page.waitForSelector('#ndmodal .ndtoken', { timeout: 15000 });
+    const shown = await page.$eval('#ndmodal .ndtoken', e => e.textContent);
     ok(/bbe_/.test(shown) && /provision\.sh/.test(shown) && /--controller/.test(shown),
        'Enroll node shows the one-time token inside the provisioner command');
+    // The backdrop does not close the one thing here shown once.
+    await page.mouse.click(5, 5);
+    ok(await page.$('#ndmodal .ndtoken') !== null,
+       '...and a stray click on the room around it does not take the command away');
+    await page.click('#ndTokDone');
+    // waitForFunction, not waitForSelector: the default there is "visible",
+    // which a hidden dialog never becomes.
+    await page.waitForFunction(() => document.getElementById('ndmodal').hidden,
+                               { timeout: 10000 });
     // One node at a time: the new pending one is in the picker, and its own
     // page says what it is waiting for.
     const opt = await page.$$eval('.nodestab #ndPick option',

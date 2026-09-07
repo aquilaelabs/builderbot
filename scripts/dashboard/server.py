@@ -258,7 +258,7 @@ LOGIN_HTML = """<!doctype html>
 # BB_RELAY_VERBS, and a test compares the two — a verb added to one side only
 # is either refused on arrival or never sent.
 RELAY_VERBS = frozenset((
-    "roadmap", "todo", "bug", "bugs", "history", "version", "changelog", "work",
+    "roadmap", "todo", "bug", "bugs", "tests", "history", "version", "changelog", "work",
     "findings", "findings-history", "catchup", "claude-md", "claudemd",
     "settings", "nodes", "jobs", "ci-labels",
     # git's network half (docs/nodes.md §20, rule 2): the keys are here and
@@ -1353,6 +1353,8 @@ def project_list(who):
     # tab has polled bug_rev since it was built; the Roadmap and Memory views
     # loaded once when the tab opened and then held that drawing forever.
     nb_revs = todo.revisions()
+    test_revs = testreg.revisions()
+    test_counts = testreg.counts()
     for d in here:
         # Mid-clone: a directory with a .git and not much else, which every
         # check below reads as a repository in a strange state. The job row is
@@ -1502,6 +1504,10 @@ def project_list(who):
                     # a memory edit must not throw away a half-typed roadmap
                     # item beside it.
                     "todo_rev": (nb_revs.get(d.name) or {}).get("todo", 0),
+                    # ...and the registry's, which moves only when a run is
+                    # ingested: describing one test redraws its own row.
+                    "tests_rev": test_revs.get(d.name, 0),
+                    "tests": test_counts.get(d.name, 0),
                     # The memories are files, and the writer that moves one
                     # most often is a session's own Write tool, which passes
                     # through nothing that could count. So this one is the
@@ -2189,6 +2195,15 @@ chat.configure(state=STATE, write_json=write_json)
 # note here because the node has no /config to write (roadmap #24).
 import overlap                                                   # noqa: E402
 overlap.configure(state=STATE, workspace=WORKSPACE, write_json=write_json)
+
+
+# ---- the test registry ------------------------------------------------------
+# The notebook's sixth view: what each test protects, and what it costs. The
+# timings are parsed out of a run the operator ingests — nothing here runs a
+# suite, and nothing self-reports a duration.
+import testreg                                                   # noqa: E402
+
+testreg.configure(write_json=write_json, state=STATE)
 
 
 # ---- who else is in the notebook --------------------------------------------
@@ -3727,6 +3742,12 @@ class Handler(BaseHTTPRequestHandler):
                                  [s["name"] for s in tmux_sessions()])
             return self._json(got if got is not None
                               else {"error": "not a project"}, 400 if got is None else 200)
+        if self.path.startswith("/api/tests"):
+            q = urllib.parse.parse_qs(self.path.partition("?")[2])
+            name = q.get("project", [""])[0]
+            if name not in {p["name"] for p in project_list(self._who())}:
+                return self._json({"error": f"not a project: {name}"}, 400)
+            return self._json(testreg.payload(name))
         if self.path.startswith("/api/bugs"):
             q = urllib.parse.parse_qs(self.path.partition("?")[2])
             name = q.get("project", [""])[0]
@@ -3893,6 +3914,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._phone(req)
         if path.startswith("/api/findings"):
             return self._findings_log(req)
+        if path.startswith("/api/tests"):
+            return self._tests(req)
         if path.startswith("/api/presence"):
             return self._presence(req)
         if path.startswith("/api/bugs"):
@@ -5112,6 +5135,38 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"history": findings.history(
             name, limit=req.get("limit"), since=req.get("since"),
             find=field(req, "find"))})
+
+    def _tests(self, req):
+        """The hand-written half of the registry, and ingesting a run.
+
+        Describing a test is a write-through edit of one row, like the bug
+        tracker's fields — there is nothing to stage, because what is being
+        written is a sentence about a thing that already exists.
+
+        Ingest takes the runner's output as text. It is a POST rather than
+        something this server runs, and that is the design: the dashboard does
+        not run suites, and a duration it produced itself would be a duration
+        measured on a box that was busy serving this request.
+        """
+        name = field(req, "project")
+        if name not in {p["name"] for p in project_list(self._who())}:
+            return self._json({"error": f"not a project: {name}"}, 400)
+        if self._readonly(name):
+            return None
+        if (bad := locked_out(name)):
+            return self._json(bad, 409)
+        act = field(req, "action")
+        if act == "describe":
+            r = testreg.describe(name, field(req, "key"),
+                                 protects=req.get("protects"),
+                                 notes=req.get("notes"))
+        elif act == "ingest":
+            r = testreg.ingest(name, str(req.get("text") or "")[:4_000_000])
+        else:
+            return self._json({"error": f"unknown action: {act}"}, 400)
+        if r.get("error"):
+            return self._json(r, 400)
+        return self._json(r | testreg.payload(name))
 
     def _presence(self, req):
         """This browser is in a project's notebook — who else is (roadmap #26).
