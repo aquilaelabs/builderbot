@@ -407,8 +407,8 @@ bb findings        this project's scanner findings (--all for every project)
                    narrow with --level error|warning|note, --rule ID, --find TEXT
 bb findings history   what the scanner stopped and started saying here
                       (-n N, --since 7d, --find TEXT, as the other logs)
-bb roadmap            this project's roadmap
-bb roadmap show N     one item in full: its details, its steps and theirs
+bb roadmap            this project's roadmap — items are R1, R2, ...; bugs are B1, B2
+bb roadmap show N     one item in full: its details, its steps and theirs (N is R12 or 12)
 bb roadmap add "..."  put something on it; `done N` finished, `rm N [why]` not
 bb roadmap shelve N   park one without dropping it; `mv N up|down` moves it
 bb roadmap add "..." --step "..." --step "..."   an ordered group of steps
@@ -1851,10 +1851,13 @@ so nothing gets quietly rewritten.
 
 **The list reads top down, and the top is what matters most** — new items go
 on the end, and the arrows in Reorder are how something gets promoted. Each
-item wears its number: `#4` is the item's own name, not its position, so it is
-what `bb roadmap done 4` takes, what a session means when it says "#4", and what
-survives the list being rearranged. The prompt a session starts with carries
-the same numbers. Steps inside a group number themselves 1, 2, 3 within it.
+item wears its number: `R4` is the item's own name, not its position, so it is
+what `bb roadmap done R4` takes, what a session means when it says "R4", and what
+survives the list being rearranged. The R is the roadmap's letter and B is the
+bug tracker's, so a number in a reply or a commit says which list it is from;
+every verb takes the bare number too, and refuses the other tab's letter. The
+prompt a session starts with carries the same names. Steps inside a group
+number themselves 1, 2, 3 within it.
 A gap in the numbers means something was removed; one out of sequence means
 it was moved.
 

@@ -8286,7 +8286,7 @@ function stepRow(r, idx, live){
             : st.sent ? "this one has gone already — pick it to send it again"
             : idx < 0 && steps.length
               ? (nxt === null ? (steps.every(x => x.done)
-                                 ? `every step of this is done — bb roadmap done ${r.id} takes it off`
+                                 ? `every step of this is done — bb roadmap done R${r.id} takes it off`
                                  : "every step of this has gone")
                               : `pick step ${nxt + 1}, the next one in line`)
             : idx < 0 ? "pick this to send"
@@ -8328,7 +8328,7 @@ function stepRow(r, idx, live){
         : `<span class="n">${idx + 1}</span>`)
                : r.id < 0
                  ? `<span class="n id new" title="not saved yet — it gets its number when you press Save">new</span>`
-                 : `<span class="n id" title="this item is #${r.id} wherever it sits — and what bb roadmap done ${r.id} takes">#${r.id}</span>`}
+                 : `<span class="n id" title="this item is R${r.id} wherever it sits — and what bb roadmap done R${r.id} takes">R${r.id}</span>`}
     <span class="body">
       ${tags ? `<span class="tags">${tags}</span>` : ""}
       <span class="txt" role="textbox" tabindex="0">${esc(st.text)}</span>
@@ -9446,7 +9446,9 @@ function drawHistory(){
   }
   $("todoHist").innerHTML = todoLog.map(e => {
     const [word, tone] = ACT[e.act] || [e.act || "changed", ""];
-    const where = e.step != null ? `step ${e.step + 1} of #${e.id}` : `#${e.id}`;
+    // R on the number, as everywhere an item is named (ids.py): a log line
+    // is exactly where a bare number could be read against the bug tracker.
+    const where = e.step != null ? `step ${e.step + 1} of R${e.id}` : `R${e.id}`;
     return `<div class="hist">
       <span class="when">${esc(stamp(e.at || 0))}</span>
       <span class="act ${tone}">${esc(word)}</span>
@@ -9808,7 +9810,9 @@ $("todoRevert").onclick = revertNotebook;
     found: "new", gone: "gone", changed: "",
   };
 
-  function logPane({btnId, barId, paneId, title, fetchLog, emptyText}){
+  // `letter` is the tab's own on a numbered entry — B for the tracker —
+  // and nothing for logs whose entries are named rather than numbered.
+  function logPane({btnId, barId, paneId, title, fetchLog, emptyText, letter = ""}){
     const btn = $(btnId), bar = $(barId), pane = $(paneId);
     let on = false, timer = null;
     const draw = rows => {
@@ -9822,7 +9826,7 @@ $("todoRevert").onclick = revertNotebook;
         : rows.map(e => `<div class="hist">
             <span class="when">${esc(stamp(e.at || 0))}</span>
             <span class="act ${LOG_ACTS[e.act] || ""}">${esc(e.act || "changed")}</span>
-            <span class="what">${e.id != null ? `#${e.id} · ` : ""}${esc(e.text || "")}
+            <span class="what">${e.id != null ? `${letter}${e.id} · ` : ""}${esc(e.text || "")}
               <span class="who${e.by === "you" ? " you" : ""}">${esc(e.by || "")}</span>${
               e.note ? `<span class="note">${esc(e.note)}</span>` : ""}</span>
           </div>`).join("");
@@ -9864,7 +9868,7 @@ $("todoRevert").onclick = revertNotebook;
            title: "Memory — history",
            fetchLog: q => postMemory({action: "history", ...q})});
   $("bugSort").onchange = drawBugs;
-  logPane({btnId: "bugLog", barId: "bugHistBar", paneId: "bugHist",
+  logPane({btnId: "bugLog", barId: "bugHistBar", paneId: "bugHist", letter: "B",
            title: "Bugs — history",
            fetchLog: q => postBug({action: "history", ...q})});
   // The fourth, so all four answer "what happened here" the same way.
@@ -11139,7 +11143,7 @@ bb tests ingest /tmp/run.log</pre>
       <details class="bug" data-id="${b.id}"${held.has(String(b.id)) ? " open" : ""}>
         <summary>
           <span class="sev ${esc(b.severity)}">${esc(b.severity)}</span>
-          <span class="n id">#${b.id}</span>
+          <span class="n id" title="this bug is B${b.id} — what bb bug show B${b.id} takes">B${b.id}</span>
           <span class="btitle${b.status !== "open" ? " done" : ""}">${esc(b.title)}</span>
           <span class="bstat ${esc(b.status)}">${esc(
             b.status === "na" ? "n/a" : b.status === "wontfix" ? "won't fix" : b.status)}</span>

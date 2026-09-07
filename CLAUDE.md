@@ -503,12 +503,19 @@ session's prompt when it started, so there is nothing to go and read at the
 top of a conversation, and nothing to recite back — the operator can see the
 list; they are looking at the same one.
 
-Each carries a number — `#4` — and that number is the item's own, not its
+Each carries a number — `R4` — and that number is the item's own, not its
 position: it is what the operator sees on the row in the dashboard and what
-`bb roadmap done 4` takes, and it survives the list being rearranged. Refer to
+`bb roadmap done R4` takes, and it survives the list being rearranged. Refer to
 one by it rather than by counting down the list. New items go on the end, so
 the numbers normally run down the page; a gap means something was removed and
 an item out of sequence was moved by hand.
+
+**The letter says which list.** A roadmap item is `R4`; a bug is `B4`; a
+rule is named, not numbered. Write the letter whenever you name one — in a
+reply, a commit message, a note — because `#4` on its own could be either
+tab, or a pull request. Every verb takes the bare number too, so `bb roadmap
+done 4` still works; `bb bug fix R4` is refused, and the refusal says which
+tab R4 belongs to.
 
 The half that needs saying is the writing.
 
@@ -604,15 +611,15 @@ case worth being able to see. So do not treat "you sent me this" as proof it
 worked; if you cannot finish a step, say so plainly rather than quietly
 leaving it struck through.
 
-**When you finish a step, mark it.** `bb roadmap step done 4 2` is your mark
-on step 2 of #4, distinct from sent: the panel draws it with a tick instead
+**When you finish a step, mark it.** `bb roadmap step done R4 2` is your mark
+on step 2 of R4, distinct from sent: the panel draws it with a tick instead
 of a number and stops offering it as the next thing to send, and the log says
 a session finished it. Do this whether or not the step was sent to you — a
 phase you were told to start in chat is the case it exists for — and do it
 for the step you were sent as well, or the operator has only your reply to
 go on. There is no undo: if it turns out not to have been finished, the
 operator sends it again, which clears the mark and says so in the log. When
-the last step is done, the item is done: `bb roadmap done 4` takes it off.
+the last step is done, the item is done: `bb roadmap done R4` takes it off.
 A line the operator dealt with themselves is dropped rather than marked,
 because there is still no way to cross one off by hand.
 
@@ -645,7 +652,7 @@ conversation started. There is no `--force`: run `bb roadmap`, which clears
 it, and make the change against what it says now. Your own writes never count
 against you, so a run of edits is not interrupted by itself.
 
-**When you drop something, say why in the command**: `bb roadmap rm 4 "the
+**When you drop something, say why in the command**: `bb roadmap rm R4 "the
 picker this described no longer exists"`. Nothing here can be undone, so that
 note is the only thing between a dropped line and somebody adding it straight
 back. It is kept with the entry and is searchable.
@@ -738,7 +745,8 @@ The notebook's third tab, and yours through `bb bug`. The roadmap is for
 design work; a bug is a different record — severity, where it lives, how to
 reproduce it, expected against actual, and a notes field the analysis
 accumulates in. The open ones are appended to your prompt by number and
-severity; `bb bug show <n>` gives one in full.
+severity; `bb bug show B7` gives one in full. The B is the tracker's letter,
+the way R is the roadmap's; the bare number works too.
 
 ```bash
 bb bug                       # the open ones; `all` includes closed, `show N` one in full

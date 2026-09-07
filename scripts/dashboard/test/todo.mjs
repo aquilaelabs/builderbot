@@ -282,10 +282,10 @@ ok(/already sent to a session/.test(
    '...and a group\'s steps come with it in order');
 ok(/bb roadmap add/.test(prompt) && /bb roadmap done/.test(prompt),
    '...and tells it how to add and tick, since that is the half it has to do');
-// Numbered in the prompt too: a session that says "#2" and an operator
+// Numbered in the prompt too: a session that says "R2" and an operator
 // looking at the panel have to be talking about the same row, and the
 // alternative is a session shelling out to `bb roadmap` to find out.
-ok(/^- #\d+ /m.test(prompt),
+ok(/^- R\d+ /m.test(prompt),
    '...with each item under the number that is on its row');
 
 const empty = execFileSync(BB, ['roadmap', '--prompt'],
@@ -829,7 +829,7 @@ await page.waitForFunction(id => !document.querySelector(`#todoList .todo[data-i
 await saveList();
 ok(!read().projects.alpha.some(r => String(r.id) === mine.id),
    '...and takes it off for good');
-ok(/remove\s+#\d+\s+delete a project/.test(bbTodoEarly('history', '-n', '4')),
+ok(/remove\s+R\d+\s+delete a project/.test(bbTodoEarly('history', '-n', '4')),
    '...into the log, with or without a reason typed into the box');
 
 // ---- finishing one -------------------------------------------------------
@@ -843,7 +843,7 @@ bbTodo('done', finId);
 ok(!read().projects.alpha.some(r => String(r.id) === finId),
    'bb roadmap done takes the item off the list rather than fading it in place');
 const afterDone = bbTodo('history');
-ok(new RegExp(`done\\s+#${finId}\\s+a job to finish`).test(afterDone),
+ok(new RegExp(`done\\s+R${finId}\\s+a job to finish`).test(afterDone),
    '...and writes it into the history, under the word a session used');
 ok(/\bdone\b/.test(afterDone) && /\bremove\b/.test(afterDone),
    '...which is what tells "ticked off" apart from "dropped": both leave, '
@@ -1390,8 +1390,19 @@ await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => [...document.querySelectorAll('#todoList .todo .txt')]
   .some(t => t.textContent === 'fit the widget'));
 let widget = (await open()).find(i => i.text === 'ship the widget');
-ok(/step 2 of \d+ done/.test(bbTodoEarly('step', 'done', widget.id, '2', 'told in chat')),
+ok(/step 2 of R\d+ done/.test(bbTodoEarly('step', 'done', widget.id, '2', 'told in chat')),
    'a session marks one step of a plan done, out of send order');
+// ---- the letter (roadmap #28): R on every item, the bug tracker's B refused ----
+ok(new RegExp(`R${widget.id}  ship the widget`).test(bbTodoEarly('show', `r${widget.id}`)),
+   'a lower-case r on the number names the same item');
+ok(/B\d+ is a bug; a roadmap item is R\d+/.test((() => {
+     try { return bbTodoEarly('done', `B${widget.id}`); } catch (e) { return e.stderr.toString(); } })()),
+   '...and the bug tracker\'s letter is refused, naming both tabs');
+ok(new RegExp(`- R${widget.id}  ship the widget`).test(bbTodoEarly('--prompt')),
+   'the prompt block names an item with its letter');
+ok(await page.$eval(`#todoList .todo[data-id="${widget.id}"] .n.id`,
+                    (el, id) => el.textContent === 'R' + id, widget.id),
+   '...and so does the row in the notebook');
 ok(/already done/.test((() => { try { return bbTodoEarly('step', 'done', widget.id, '2'); }
                                catch (e) { return String(e.stderr); } })()),
    '...and cannot mark it twice');
@@ -1412,7 +1423,7 @@ ok(drawn.find(d => d.step === '1').can && /finished this/.test(drawn.find(d => d
    '...and the done step stays sendable, worded as the override it would be');
 ok(/2\. fit the widget  \(done\)/.test(bbTodoEarly('--prompt')),
    'the session prompt says (done) on it, not "already sent"');
-ok(/done-step.*step 2 of #\d+  fit the widget/.test(bbTodoEarly('history', '-n', '3'))
+ok(/done-step.*step 2 of R\d+  fit the widget/.test(bbTodoEarly('history', '-n', '3'))
    && /why: told in chat/.test(bbTodoEarly('history', '-n', '3')),
    '...and the log records who finished what, with the note');
 // Send step 1, then mark it done — done wins over sent for the frontier.
@@ -1497,7 +1508,7 @@ ok(true, '...which is why the catch-up waits for Save rather than skipping it');
 // nobody told — so every op that REPLACES something carries what it believes
 // it is replacing, and is refused when that is no longer there (roadmap #26).
 const clashId = String(bbTodoEarly('add', 'the line two people will write')
-  .match(/added (\d+)/)[1]);
+  .match(/added R(\d+)/)[1]);
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(i => !!document.querySelector(
   `#todoList .todo[data-id="${i}"]`), clashId, { timeout: 10000 });

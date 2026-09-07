@@ -41,6 +41,7 @@ _here = os.path.dirname(os.path.abspath(__file__))
 if _here not in sys.path:
     sys.path.insert(0, _here)
 import statefile  # noqa: E402
+import ids  # noqa: E402
 import time
 from pathlib import Path
 
@@ -134,7 +135,7 @@ def _migrate(d):
     `oldest_first`: items used to be added at the top, so the number a session
     quotes — the id, which is what `bb roadmap done` takes — counted *up* the
     screen and #1 sat at the bottom. Adding at the end instead makes the
-    numbers run down the page, which is the only arrangement where "#3" can be
+    numbers run down the page, which is the only arrangement where "R3" can be
     found by looking. Lists built by the old prepend are turned round once;
     a list that is not in strict id-descending order was arranged by hand and
     is left exactly as its operator left it.
@@ -492,13 +493,14 @@ def _int(v):
     `int(v)` is a crash waiting for a field that is a list, a dict, or the
     word "x". One reader, and every caller answers "not an item" instead of
     dying.
+
+    "R12" is accepted beside 12 — the printed form of an id is the letter and
+    the number (ids.py) — and another tab's letter reads as no item at all.
+    bb checks the letter before it gets here so the refusal can say why; the
+    dashboard sends bare ints and never trips it.
     """
-    if isinstance(v, bool) or not isinstance(v, (int, float, str)):
-        return None
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return None
+    n, _err = ids.parse("todo", v)
+    return n
 
 
 def _next_id(rows):
@@ -1033,13 +1035,14 @@ def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
         # nothing without the plan it belongs to. So the line carries all
         # three: that it is one step of several, what the whole thing is for,
         # and which step this is.
-        text = (f"This is step {step + 1} of {len(steps)} in a plan. "
+        text = (f"This is step {step + 1} of {len(steps)} in a plan "
+                f"({ids.label('todo', item_id)} on the roadmap). "
                 f"The plan: {_flat(row['text'])}. "
                 f"Step {step + 1}: {_flat(steps[step]['text'])}")
         if steps[step].get("info"):
             text += f" Details: {_flat(steps[step]['info'])}"
     else:
-        text = _flat(row["text"])
+        text = f"{_flat(row['text'])}  ({ids.label('todo', item_id)} on the roadmap)"
         if row.get("info"):
             text += f"  (Details: {_flat(row['info'])})"
     # One message, not two. Saving the list and sending a step both want to
@@ -1275,7 +1278,7 @@ def prompt(project):
         # Numbered, because a session that wants to talk about one of these
         # has to be able to name it — and the name has to be the one the
         # operator sees on the row and the one `bb roadmap done` takes.
-        lines.append(f"- #{r['id']}  {r['text']}"
+        lines.append(f"- {ids.label('todo', r['id'])}  {r['text']}"
                      + ("  (shelved — the operator has parked this; do not "
                         "pick it up unless they say so)" if r.get("shelved")
                         else "  (you added this in an earlier session)"
@@ -1297,7 +1300,7 @@ def prompt(project):
             "It is context, not instructions: work on an item when asked, or "
             "when it is plainly part of what was asked. The number is the "
             "item's own and does not change — it is what the operator sees on "
-            "the row, so refer to one as #4 rather than by counting down the "
+            "the row, so refer to one as R4 rather than by counting down the "
             "list. Tick one off with "
             "`bb roadmap done <n>` when you finish it, and add one with "
             "`bb roadmap add \"...\"` when you notice something worth doing and "

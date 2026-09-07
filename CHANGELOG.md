@@ -250,3 +250,4 @@
 - Every tab now shows its buttons the same way — the destructive one last and red wherever it appears, and long pages behind headings you can open one at a time (d9d63c0)
 - The Memory tab is now the Briefing: your own house rules for a project sit above what Claude remembers, and a session can read them but not change them (e4a9a9a)
 - A node's agent now says which compatibility window it is from, so an agent that may not match the controller reads differently from one that is merely a build behind (0d6330b)
+- House rules can now be written by a session as well as by you, each marked with who wrote it, and the history of them is readable (086db4f)

@@ -1404,6 +1404,33 @@ proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"
 rest = argv[1:]
 
+# todo.py put its own directory on sys.path, so the id module beside it is
+# importable here the way it is inside the dashboard.
+import ids  # noqa: E402
+
+
+def R(n):
+    return ids.label("todo", n) if n is not None else ""
+
+
+def ident(word):
+    """The item a verb was given, checked before anything is looked up.
+
+    `bb roadmap done 12` and `bb roadmap done R12` both work; `bb roadmap
+    done B12` stops here with a sentence saying B12 is a bug — the letter is
+    a check, not decoration (ids.py). The number goes on as an int so every
+    module call and every message below prints it the same way.
+    """
+    n, err = ids.parse("todo", word)
+    if err:
+        print(f"[builderbot] ERROR: {err}", file=sys.stderr)
+        sys.exit(1)
+    if n is None:
+        print(f"[builderbot] ERROR: not a roadmap item: {word!r} — they are "
+              "numbered R1, R2, ...", file=sys.stderr)
+        sys.exit(1)
+    return n
+
 
 def show():
     rows = todo.items(proj)
@@ -1425,7 +1452,7 @@ def show():
         # asking for anything.
         who = " (claude)" if r.get("by") == "claude" else ""
         mark = "~" if r.get("shelved") else " "
-        print(f" {mark}{r['id']:>3}  {r['text']}{who}"
+        print(f" {mark}{R(r['id']):>4}  {r['text']}{who}"
               + ("  [shelved]" if r.get("shelved") else ""))
         if r.get("info"):
             print("       details: " + r["info"].replace("\n", "\n                "))
@@ -1481,12 +1508,13 @@ elif op == "show":
     # exactly N — the same reason `bb bug show` exists.
     if not rest:
         print("usage: bb roadmap show <n>", file=sys.stderr); sys.exit(1)
-    r = next((x for x in todo.items(proj) if str(x.get("id")) == rest[0]), None)
+    n = ident(rest[0])
+    r = next((x for x in todo.items(proj) if x.get("id") == n), None)
     if r is None:
-        print(f"[builderbot] ERROR: no item #{rest[0]} here", file=sys.stderr)
+        print(f"[builderbot] ERROR: no item {R(n)} here", file=sys.stderr)
         sys.exit(1)
     who = " (claude)" if r.get("by") == "claude" else ""
-    print(f"  #{r['id']}  {r['text']}{who}"
+    print(f"  {R(r['id'])}  {r['text']}{who}"
           + ("  [shelved]" if r.get("shelved") else ""))
     if r.get("info"):
         print("  details: " + r["info"].replace("\n", "\n           "))
@@ -1518,7 +1546,7 @@ elif op == "add":
     r = todo.add(proj, " ".join(words).strip(), by="claude", steps=steps,
                  who=_who); bail(r)
     n = len(r["item"]["steps"])
-    print(f"added {r['item']['id']}: {r['item']['text']}"
+    print(f"added {R(r['item']['id'])}: {r['item']['text']}"
           + (f" ({n} steps)" if n else ""))
 elif op == "done":
     # Off the list and into the log. There is no undoing it: a list is read to
@@ -1526,19 +1554,19 @@ elif op == "done":
     # is where the words live afterwards.
     if not rest:
         print("usage: bb roadmap done <n>", file=sys.stderr); sys.exit(1)
-    fresh()
-    r = todo.tick(proj, rest[0], by="claude", who=_who); bail(r)
-    print(f"done {rest[0]}: {r['item']['text']}")
+    n = ident(rest[0]); fresh()
+    r = todo.tick(proj, n, by="claude", who=_who); bail(r)
+    print(f"done {R(n)}: {r['item']['text']}")
 elif op in ("rm", "remove"):
     # The reason rides with the deletion. Nothing here can be undone, so the
     # only thing that stops the next reader putting it straight back is a note
     # saying why it went.
     if not rest:
         print("usage: bb roadmap rm <n> [\"why it is going\"]", file=sys.stderr); sys.exit(1)
-    fresh()
-    r = todo.remove(proj, rest[0], by="claude", why=" ".join(rest[1:]),
+    n = ident(rest[0]); fresh()
+    r = todo.remove(proj, n, by="claude", why=" ".join(rest[1:]),
                     who=_who); bail(r)
-    print(f"removed {rest[0]}")
+    print(f"removed {R(n)}")
 elif op in ("begin", "commit", "revert"):
     # Working something out is not a series of decisions the operator has to
     # read; it is arriving at one. The work still lands as it happens — hiding
@@ -1568,10 +1596,11 @@ elif op in ("mv", "move"):
     # and the record both.
     if len(rest) < 2 or rest[1] not in ("up", "down"):
         print("usage: bb roadmap mv <n> up|down", file=sys.stderr); sys.exit(1)
-    r = todo.move(proj, rest[0], dir=-1 if rest[1] == "up" else 1, by="claude",
+    n = ident(rest[0])
+    r = todo.move(proj, n, dir=-1 if rest[1] == "up" else 1, by="claude",
                   who=_who)
     bail(r)
-    print(f"moved {rest[0]} {rest[1]}")
+    print(f"moved {R(n)} {rest[1]}")
 elif op == "shelve":
     # Parked, not dropped: a reason to keep it, no intention of doing it now.
     # One direction only. Putting something on the shelf is a thing a session
@@ -1581,17 +1610,18 @@ elif op == "shelve":
     # was not told, so it is theirs, and one tap in the panel.
     if not rest:
         print("usage: bb roadmap shelve <n>", file=sys.stderr); sys.exit(1)
-    r = todo.shelve(proj, rest[0], True, by="claude", who=_who); bail(r)
-    print(f"shelved {rest[0]} — say in your reply why, the operator unshelves it")
+    n = ident(rest[0])
+    r = todo.shelve(proj, n, True, by="claude", who=_who); bail(r)
+    print(f"shelved {R(n)} — say in your reply why, the operator unshelves it")
 elif op == "edit":
     # A plan written last week can describe a design that has since moved.
     # Correcting it is better than working around it, and the history keeps
     # what it used to say.
     if len(rest) < 2:
         print("usage: bb roadmap edit <n> \"the new wording\"", file=sys.stderr); sys.exit(1)
-    fresh()
-    r = todo.edit(proj, rest[0], " ".join(rest[1:]), by="claude", who=_who); bail(r)
-    print(f"reworded {rest[0]}")
+    n = ident(rest[0]); fresh()
+    r = todo.edit(proj, n, " ".join(rest[1:]), by="claude", who=_who); bail(r)
+    print(f"reworded {R(n)}")
 elif op == "info":
     # The technical half, attached where the work is: which files, which
     # functions, the approach. `bb roadmap info N "..."` for an item,
@@ -1599,20 +1629,21 @@ elif op == "info":
     if len(rest) < 2:
         print("usage: bb roadmap info <n> [<step>] \"...\"", file=sys.stderr)
         sys.exit(1)
+    item = ident(rest[0])
     if len(rest) >= 3 and rest[1].isdigit():
         n = int(rest[1])
         if n < 1:
             print("[builderbot] ERROR: step numbers start at 1", file=sys.stderr)
             sys.exit(1)
         fresh()
-        r = todo.set_info(proj, rest[0], " ".join(rest[2:]),
+        r = todo.set_info(proj, item, " ".join(rest[2:]),
                           step=n - 1, by="claude", who=_who); bail(r)
-        print(f"details on step {rest[1]} of {rest[0]}")
+        print(f"details on step {rest[1]} of {R(item)}")
     else:
         fresh()
-        r = todo.set_info(proj, rest[0], " ".join(rest[1:]), by="claude",
+        r = todo.set_info(proj, item, " ".join(rest[1:]), by="claude",
                           who=_who); bail(r)
-        print(f"details on {rest[0]}")
+        print(f"details on {R(item)}")
 elif op == "step":
     sub, srest = (rest[0] if rest else ""), rest[1:]
 
@@ -1631,45 +1662,46 @@ elif op == "step":
                   file=sys.stderr)
             sys.exit(1)
         return n - 1
+    item = ident(srest[0]) if srest else None
     if sub == "add" and len(srest) >= 2:
-        r = todo.add_step(proj, srest[0], " ".join(srest[1:]), by="claude",
+        r = todo.add_step(proj, item, " ".join(srest[1:]), by="claude",
                           who=_who); bail(r)
-        print(f"added a step to {srest[0]}")
+        print(f"added a step to {R(item)}")
     elif sub == "edit" and len(srest) >= 3:
         # 1-based on the way in, because that is how the step is numbered
         # everywhere a human reads it.
         fresh()
-        r = todo.edit(proj, srest[0], " ".join(srest[2:]),
+        r = todo.edit(proj, item, " ".join(srest[2:]),
                       step=step_index(srest[1]),
                       by="claude", who=_who); bail(r)
-        print(f"reworded step {srest[1]} of {srest[0]}")
+        print(f"reworded step {srest[1]} of {R(item)}")
     elif sub in ("rm", "remove") and len(srest) >= 2:
         fresh()
-        r = todo.remove(proj, srest[0],
+        r = todo.remove(proj, item,
                         step=step_index(srest[1]),
                         by="claude", why=" ".join(srest[2:]), who=_who); bail(r)
-        print(f"removed step {srest[1]} of {srest[0]}")
+        print(f"removed step {srest[1]} of {R(item)}")
     elif sub == "info" and len(srest) >= 2:
         fresh()
-        r = todo.set_info(proj, srest[0], " ".join(srest[2:]),
+        r = todo.set_info(proj, item, " ".join(srest[2:]),
                           step=step_index(srest[1]),
                           by="claude", who=_who); bail(r)
-        print(f"details on step {srest[1]} of {srest[0]}")
+        print(f"details on step {srest[1]} of {R(item)}")
     elif sub == "done" and len(srest) >= 2:
         # A session's own mark, distinct from the dashboard's "sent": this
         # step is finished, whether or not anybody sent it. See todo.step_done.
-        r = todo.step_done(proj, srest[0], step_index(srest[1]),
+        r = todo.step_done(proj, item, step_index(srest[1]),
                            by="claude", note=" ".join(srest[2:]), who=_who); bail(r)
-        print(f"step {srest[1]} of {srest[0]} done")
+        print(f"step {srest[1]} of {R(item)} done")
     elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] in ("up", "down"):
         # The other half of restructuring a plan. Without it a session that
         # finds two steps in the wrong order can only delete and retype them,
         # which loses both their words and the record of what really changed.
-        r = todo.move(proj, srest[0],
+        r = todo.move(proj, item,
                       step=step_index(srest[1]),
                       dir=-1 if srest[2] == "up" else 1, by="claude",
                       who=_who); bail(r)
-        print(f"moved step {srest[1]} of {srest[0]} {srest[2]}")
+        print(f"moved step {srest[1]} of {R(item)} {srest[2]}")
     else:
         print("usage: bb roadmap step add <n> \"...\" | step edit <n> <step> \"...\""
               " | step rm <n> <step> [\"why\"] | step mv <n> <step> up|down"
@@ -1714,7 +1746,7 @@ elif op in ("history", "log"):
         when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
         where = f" step {e['step'] + 1} of" if e.get("step") is not None else ""
         print(f"  {when}  {e.get('by', ''):>6}  {e.get('act', ''):<11}"
-              f"{where} #{e.get('id')}  {e.get('text', '')}")
+              f"{where} {R(e.get('id'))}  {e.get('text', '')}")
         if e.get("was"):
             print(f"{'':>32}was: {e['was']}")
         if e.get("why"):
@@ -1763,6 +1795,7 @@ sys.modules["statefile"] = statefile
 write_json = statefile.write_json
 todo = load_mod(dirname, "todo")
 todo.configure(write_json=write_json, state=state)
+import ids  # noqa: E402 — todo.py put its directory on sys.path
 bugs = load_mod(dirname, "bugs")
 bugs.configure(write_json=write_json, state=state)
 memory = load_mod(dirname, "memory")
@@ -1812,7 +1845,11 @@ if not rows:
 for tag, e in rows:
     when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
     where = f" step {e['step'] + 1} of" if e.get("step") is not None else ""
-    ident = f" #{e['id']}" if e.get("id") is not None else ""
+    # The tab's own letter on the number — R12, B62 — because a merged log is
+    # exactly where a bare number could be read against the wrong list.
+    kind = {"roadmap": "todo"}.get(tag, tag)
+    ident = (f" {ids.label(kind, e['id'])}" if e.get("id") is not None
+             and kind in ids.LETTERS else "")
     print(f"  {when}  {tag:>7}  {e.get('by', ''):>6}  {e.get('act', ''):<11}"
           f"{where}{ident}  {e.get('text', '')}")
     if e.get("was"):
@@ -1824,10 +1861,9 @@ PY
 }
 
 cmd_rules() {
-    # The operator's house rules, read-only. There is deliberately no write
-    # verb: a rule a session could set is not a rule, and the point of these
-    # is that they are the one thing in the notebook this side cannot move.
-    # The dashboard's Briefing tab is where they are written.
+    # The house rules: the operator's on the Briefing tab, a session's own
+    # through add/edit/rm here. Each carries who wrote it, and a session may
+    # change only its own — see rules.py for the ownership and the log.
     local py
     py="$(dirname "$(readlink -f "$0")")/dashboard/rules.py"
     [ -f "$py" ] || die "rules.py is missing from this image"
@@ -2265,6 +2301,26 @@ proj, argv = sys.argv[2], sys.argv[3:]
 op = argv[0] if argv else "list"
 rest = argv[1:]
 
+import ids  # noqa: E402 — bugs.py put its directory on sys.path
+
+
+def B(n):
+    return ids.label("bugs", n) if n is not None else ""
+
+
+def ident(word):
+    """The bug a verb names, with the letter checked first — `bb bug fix R12`
+    stops here saying R12 is a roadmap item. See cmd_roadmap's twin."""
+    n, err = ids.parse("bugs", word)
+    if err:
+        print(f"[builderbot] ERROR: {err}", file=sys.stderr)
+        sys.exit(1)
+    if n is None:
+        print(f"[builderbot] ERROR: not a bug number: {word!r} — they are "
+              "B1, B2, ...", file=sys.stderr)
+        sys.exit(1)
+    return n
+
 
 def bail(r):
     if r.get("error"):
@@ -2275,7 +2331,7 @@ def bail(r):
 def line(b):
     mark = " " if b.get("status") == "open" else "x"
     extra = "" if b.get("status") == "open" else f"  [{b['status']}]"
-    return (f"  [{mark}] {b['id']:>3}  ({b.get('severity', 'medium')})  "
+    return (f"  [{mark}] {B(b['id']):>4}  ({b.get('severity', 'medium')})  "
             f"{b['title']}{extra}")
 
 
@@ -2367,9 +2423,10 @@ elif op in ("find", "search"):
 elif op == "show":
     if not rest:
         print("usage: bb bug show <n>", file=sys.stderr); sys.exit(1)
-    b = next((x for x in rows() if str(x.get("id")) == rest[0]), None)
+    n = ident(rest[0])
+    b = next((x for x in rows() if x.get("id") == n), None)
     if b is None:
-        print(f"[builderbot] ERROR: no bug #{rest[0]} here", file=sys.stderr)
+        print(f"[builderbot] ERROR: no bug {B(n)} here", file=sys.stderr)
         sys.exit(1)
     show(b)
 elif op == "add":
@@ -2377,7 +2434,7 @@ elif op == "add":
     r = bugs.add(proj, title, by="claude",
                  severity=flags.pop("severity", "medium"), **flags)
     bail(r)
-    print(f"filed #{r['bug']['id']}: {r['bug']['title']}")
+    print(f"filed {B(r['bug']['id'])}: {r['bug']['title']}")
 elif op == "note":
     # The everyday update: what a session learned about a bug it did not fix.
     # Appended rather than replacing, because the last analysis is not made
@@ -2385,14 +2442,15 @@ elif op == "note":
     if len(rest) < 2:
         print("usage: bb bug note <n> \"what you learned\"", file=sys.stderr)
         sys.exit(1)
-    b = next((x for x in rows() if str(x.get("id")) == rest[0]), None)
+    n = ident(rest[0])
+    b = next((x for x in rows() if x.get("id") == n), None)
     if b is None:
-        print(f"[builderbot] ERROR: no bug #{rest[0]} here", file=sys.stderr)
+        print(f"[builderbot] ERROR: no bug {B(n)} here", file=sys.stderr)
         sys.exit(1)
     stamp = time.strftime("%d %b", time.localtime())
     body = (b.get("notes", "") + f"\n\n[{stamp}] " + " ".join(rest[1:])).strip()
-    r = bugs.edit(proj, rest[0], by="claude", act="noted", notes=body); bail(r)
-    print(f"noted on #{rest[0]}")
+    r = bugs.edit(proj, n, by="claude", act="noted", notes=body); bail(r)
+    print(f"noted on {B(n)}")
 elif op == "edit":
     if len(rest) < 3 or rest[1] not in ("title", "sev", "severity", "area",
                                         "repro", "expected", "actual", "notes"):
@@ -2400,9 +2458,10 @@ elif op == "edit":
               " \"...\"", file=sys.stderr)
         sys.exit(1)
     k = "severity" if rest[1] in ("sev", "severity") else rest[1]
-    r = bugs.edit(proj, rest[0], by="claude", **{k: " ".join(rest[2:])})
+    n = ident(rest[0])
+    r = bugs.edit(proj, n, by="claude", **{k: " ".join(rest[2:])})
     bail(r)
-    print(f"updated {k} on #{rest[0]}")
+    print(f"updated {k} on {B(n)}")
 elif op in ("rm", "remove"):
     # For a report that should not exist — mis-filed, a duplicate, the wrong
     # project. A bug that was real and is dealt with gets `fix` or `wontfix`,
@@ -2411,17 +2470,19 @@ elif op in ("rm", "remove"):
         print("usage: bb bug rm <n> [\"why it should not have been filed\"]",
               file=sys.stderr)
         sys.exit(1)
-    r = bugs.remove(proj, rest[0], why=" ".join(rest[1:]), by="claude"); bail(r)
-    print(f"removed #{rest[0]} — closing keeps a bug, this does not")
+    n = ident(rest[0])
+    r = bugs.remove(proj, n, why=" ".join(rest[1:]), by="claude"); bail(r)
+    print(f"removed {B(n)} — closing keeps a bug, this does not")
 elif op in ("fix", "wontfix", "na", "reopen"):
     if not rest:
         print(f"usage: bb bug {op} <n> [\"note\"]", file=sys.stderr); sys.exit(1)
     status = {"fix": "fixed", "wontfix": "wontfix", "na": "na",
               "reopen": "open"}[op]
-    r = bugs.set_status(proj, rest[0], status,
+    n = ident(rest[0])
+    r = bugs.set_status(proj, n, status,
                         note=" ".join(rest[1:]), by="claude")
     bail(r)
-    print(f"#{rest[0]} {status}")
+    print(f"{B(n)} {status}")
 elif op in ("history", "log"):
     # The same filters `bb roadmap history` takes, because whoever learned one
     # should not have to learn the other. `bb history` merges all four.
@@ -2456,7 +2517,7 @@ elif op in ("history", "log"):
     for e in h:
         when = time.strftime("%d %b %H:%M", time.localtime(e.get("at", 0)))
         print(f"  {when}  {e.get('by', ''):>6}  {e.get('act', ''):<9}"
-              f"  #{e.get('id')}  {e.get('text', '')}")
+              f"  {B(e.get('id'))}  {e.get('text', '')}")
         if e.get("note"):
             print(f"{'':>30}note: {e['note']}")
 elif op == "--prompt":
