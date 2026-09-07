@@ -76,7 +76,27 @@ import time
 import urllib.parse
 import urllib.request
 
-AGENT_VERSION = "27"
+# WINDOW.BUILD, and the two halves answer different questions.
+#
+# The WINDOW is the project's semver minor, and it is the compatibility
+# promise: while BuilderBot is 0.4.x, any 0.4 agent works with any 0.4
+# controller and the other way round. 0.5.0 is where that promise ends and
+# where breaking changes and the removal of stale compatibility paths belong.
+# A test holds this half to the VERSION file, so the two cannot drift apart
+# quietly — see test/agent.mjs.
+#
+# The BUILD is this file's own counter and moves only when this file moves,
+# which is why it is not BuilderBot's patch number: most patches ship no new
+# agent. It does NOT reset at a window boundary — 0.5.28 follows 0.4.27 — so
+# that "which of these two is newer" always has an answer. A reset would put
+# the same number on two different agents, which is what made PROTOCOL below
+# useless.
+AGENT_VERSION = "0.4.27"
+
+# Superseded by the window above and kept only because removing a field the
+# controller still sends is itself a compatibility break: it goes at 0.5.0.
+# Nothing has ever compared it — both sides declared a 1 and neither looked —
+# which is the whole reason the window exists instead.
 PROTOCOL = 1
 # Where the enrollment lands. Overridable for tests, which run a throwaway
 # agent against a throwaway controller and must not touch /etc.

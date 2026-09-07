@@ -49,7 +49,7 @@ const SURFACE = [
   'findingsRulesHtml', 'finishTabs', 'flip', 'focusTab', 'foldHeight',
   'fillNodeSelect', 'gateDocker', 'gateFindings', 'getNotebook', 'hiddenLabel', 'hideTab', 'imgAdder',
   'imgRow', 'killSession', 'layoutNow', 'leaveRow', 'level', 'loadDocker',
-  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeDraft', 'mountState', 'nodeStale', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'loadPackages', 'loadWire', 'logNote', 'logSection',
+  'loadFindings', 'loadJobs', 'jobAct', 'jobTitle', 'jobStatePill', 'jobWhen', 'jobOutputs', 'loadNodes', 'pressing', 'nodeAct', 'nodeStatePill', 'nodeTools', 'nodeDraft', 'mountState', 'nodeStale', 'windowGap', 'staleWhy', 'storeMoves', 'nodeDrift', 'nodeConfSections', 'nodeRunnerSection', 'nodeSessionsSection', 'nodeAdvancedSection', 'nodeMeters', 'meter', 'dmRouteLine', 'loadPackages', 'loadWire', 'logNote', 'logSection',
   'chatLoop', 'chatOpen', 'consoleBar', 'drawChat', 'loadChat',
   'macro', 'macroTarget', 'makeNotebook', 'markUiMenu', 'mobPanel',
   'sessionWord',

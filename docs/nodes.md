@@ -439,6 +439,27 @@ pinned new agent by digest, swaps the file and re-execs. In the homelab this
 is a convenience; at fleet scale it is the difference between a protocol that
 can evolve and one frozen by its oldest node.
 
+**That version is `WINDOW.BUILD`, and only the first half is a promise.** The
+window is BuilderBot's own semver minor: while the project is `0.4.x`, any
+`0.4` agent works with any `0.4` controller, in both directions. `0.5.0` is
+where that ends, and it is therefore where a breaking change to this protocol
+and the removal of the compatibility paths carrying old ones belong. Inside a
+window: add, do not change — a field gains a default rather than a new
+meaning, a verb gains a sibling rather than a signature.
+
+The build is the agent file's own counter and moves only when that file
+moves, which is why it is not the project's patch number; most patches ship
+no new agent. It does not reset at a boundary — `0.5.28` follows `0.4.27` —
+so "which of these is newer" always has an answer.
+
+A node whose agent is from another window is reported as such and not
+refused: the Nodes tab separates *behind* (a newer build in the same window,
+routine) from *out of window* (the promise was never made, update before
+relying on it). Refusing would strand a node on a guess. The older `protocol`
+integer, which both sides declared and neither ever compared, is superseded
+by this and is removed at `0.5.0` — removing a field the other side may still
+read being exactly the kind of break the window exists to schedule.
+
 ### Tailscale
 
 Optional at every tier, exactly as the brief says: a way for the controller to

@@ -1549,8 +1549,10 @@ print(' '.join(sorted(ast.literal_eval('(' + m.group(1) + ')'))))`], { encoding:
   // ---- the agent's own update, driven from the tab (roadmap #17) ---------------
   {
     const all = await api('/api/v1/nodes');
-    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '') && /^\d+$/.test(all.agent.version || ''),
-       'the node list carries the agent this controller ships, digest and version');
+    ok(/^sha256:[0-9a-f]{64}$/.test(all.agent?.digest || '')
+       && /^\d+\.\d+\.\d+$/.test(all.agent.version || ''),
+       `the node list carries the agent this controller ships, digest and version (${
+         all.agent?.version})`);
     const lc = await api('/api/v1/nodes', { action: 'update-agent', id: 'local' });
     ok(/only an agent node/.test(lc.error || ''), 'local has no agent to update');
     const cur = await api('/api/v1/nodes', { action: 'update-agent', id: minted.id });
@@ -1737,6 +1739,25 @@ print(json.dumps({'state': st, 'code': code, 'log': ''.join(j.lines),
      `a network change the controller cannot confirm is reverted (${R.state})`);
   ok(/dhcp4: true/.test(R.file) && !/10\.1\.1\.5/.test(R.file) && R.applies === 2,
      '...the previous file is back and applied a second time');
+}
+
+// ---- the agent's version is WINDOW.BUILD ----------------------------------
+// The window is the project's compatibility promise — while BuilderBot is
+// 0.4.x, any 0.4 agent works with any 0.4 controller — and it is a constant
+// in a file, which means it drifts the moment somebody bumps the minor and
+// does not think about the agent. That is the bump this is about, so the
+// check is here rather than in anybody's memory.
+{
+  const src = readFileSync(AGENT, 'utf8');
+  const av = /^AGENT_VERSION\s*=\s*"([^"]+)"/m.exec(src)?.[1] || '';
+  const win = /^(\d+\.\d+)\./.exec(av)?.[1] || '';
+  const proj = readFileSync(`${REPO}/VERSION`, 'utf8').trim();
+  const minor = proj.split('.').slice(0, 2).join('.');
+  ok(/^\d+\.\d+\.\d+$/.test(av),
+     `the agent's version is WINDOW.BUILD (${av || 'unset'})`);
+  ok(win === minor,
+     `...and its window is the project's minor — bump one and you bump both (${
+       win} against ${minor} from VERSION ${proj})`);
 }
 
 await done(browser);

@@ -7,6 +7,11 @@ _work/
 # the test files, applied to /config, and no more part of the repository than
 # a run log is.
 .bb-descriptions.json
+# The last run's output, written by `bb tests run` and read back by the
+# ingest half. Beside the project because on a node the ingest is relayed and
+# the controller reads the path on its own filesystem — /workspace is the one
+# place both machines see.
+.bb-test-run.log
 # ...and where a run log lands. From a session on a node `bb tests ingest` is
 # relayed, and the controller opens the path it is given — so the log has to
 # be somewhere both machines see, which means inside the project.

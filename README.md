@@ -420,6 +420,7 @@ bb bug find TEXT   search the reports themselves — area, repro and notes too
 bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `revert`
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
+bb tests run       run the project's test command, time it, and record the run
 bb rules           the operator's house rules for this project (read-only)
 bb rules show NAME one of them in full — what a conditional rule says
 bb tests           the test registry: where the suite's time goes, slowest first

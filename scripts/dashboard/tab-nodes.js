@@ -287,9 +287,29 @@ function nodeStale(n){
     && n.agent.digest !== nodesAgent.digest && !n.agent?.revoked;
 }
 
+// The window a version promises — "0.4" of "0.4.27", empty for anything that
+// is not WINDOW.BUILD. Empty means "cannot say" and is never read as a
+// mismatch: an agent built before the window existed is behind for the
+// ordinary reason and does not need a louder claim invented about it.
+const agentWindow = v => (/^(\d+\.\d+)\./.exec(String(v || "")) || [])[1] || "";
+
+// A node whose agent is from ANOTHER window. Inside one, any agent works with
+// any controller and being behind is routine; across one, that promise was
+// never made, which is the difference this exists to draw.
+function windowGap(n){
+  const a = agentWindow(n.agent?.version), b = agentWindow(nodesAgent?.version);
+  return !!(a && b && a !== b);
+}
+
 function staleWhy(n){
-  return `${n.name} runs agent ${n.agent?.version || "?"} and this controller ships ${
-    nodesAgent?.version} — press Update agent first, so nothing is sent that the agent may not know`;
+  const mine = n.agent?.version || "?", ship = nodesAgent?.version;
+  return windowGap(n)
+    ? `${n.name} runs agent ${mine} and this controller ships ${ship} — a DIFFERENT `
+      + `compatibility window (${agentWindow(mine)} against ${agentWindow(ship)}). `
+      + `Inside one window any agent works with any controller; across one that was `
+      + `never promised, so update it before relying on this node`
+    : `${n.name} runs agent ${mine} and this controller ships ${ship} — press `
+      + `Update agent first, so nothing is sent that the agent may not know`;
 }
 
 // Which stores a storage apply would move: saved somewhere other than where
@@ -426,7 +446,7 @@ function nodeConfSections(n){
   // for — and names the changes when there is, so the button is not a leap.
   const [status, statusCls] = busyNow
     ? [`applying ${busyNow.what}${busyNow.what === "network" ? " — waiting for it to dial back in" : "…"}`, "note"]
-    : stale ? [staleWhy(n), "warn"]
+    : stale ? [staleWhy(n), windowGap(n) ? "bad" : "warn"]
     : c.dirty ? ["unsaved — Save keeps it on the record; Apply makes the node match", "warn"]
     : !drift ? ["nothing configured yet — the node runs on whatever it was set up with", ""]
     : pending.length ? [`${pending.length} change${pending.length === 1 ? "" : "s"} to apply: ${
@@ -633,9 +653,10 @@ function renderNodesInto(i){
     const pending = n.state === "pending";
     const agentBar = n.kind === "agent" && !pending ? `
         <div class="actbar ndagent">
-          <span class="state${updating ? " note" : stale ? " warn" : ""}">${
+          <span class="state${updating ? " note"
+                              : stale ? (windowGap(n) ? " bad" : " warn") : ""}">${
             updating ? `updating to agent ${esc(nodesAgent?.version || "")} — it swaps itself in and dials back; the row follows its next hello`
-            : stale ? `behind: ${esc(staleWhy(n))}`
+            : stale ? `${windowGap(n) ? "out of window" : "behind"}: ${esc(staleWhy(n))}`
             : `Test runs uname through the agent — the channel, end to end`}</span>
           ${stale ? `<button type="button" data-nd="update-agent" ${updating ? "disabled" : ""}
             title="${updating ? "the update is queued — the row follows the agent's next hello"

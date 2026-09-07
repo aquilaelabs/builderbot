@@ -304,6 +304,29 @@ ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
   ok(read().rev > before, 'a bulk fill moves it too, having changed what the tab draws');
 }
 
+// `bb tests run` is the loop this file's subject was missing: run the
+// project's own test command, time it, record it — so the registry stops
+// going stale because somebody forgot the second step.
+//
+// What is asserted here is the part that is this file's: a run that never
+// happened is not recorded, and says so once rather than twice. The run
+// itself is `bb test`, which the job suites already drive, and pointing this
+// one at a real suite would be a suite inside a suite.
+{
+  let out = '';
+  try {
+    out = execFileSync(BB, ['tests', 'run'], { env: { ...process.env,
+    BUILDERBOT_ROLE: 'controller', BB_TOKEN: '', DASHBOARD_STATE: `${DIR}/state`,
+    WORKSPACE: `${DIR}/ws`, BB_TESTS_PROJECT: 'alpha',
+      DASHBOARD_PORT: new globalThis.URL(URL).port, DASHBOARD_AUTH: 'test:test' },
+      stdio: ['ignore', 'pipe', 'pipe'] }).toString();
+  } catch (e) { out = String(e.stdout || '') + String(e.stderr || ''); }
+  ok(/nothing timed, so nothing recorded/.test(out),
+     'a run that could not start records nothing, and says so');
+  ok(!/looks like a test run/.test(out),
+     '...once — the ingest is not asked to explain a log that was never written');
+}
+
 // Ingesting is the CLI's and deliberately not an endpoint. It WAS one, and
 // it could never have worked: every body this server takes is capped at 64kB
 // and a run log is a couple of hundred, so the action existed and answered
