@@ -34,6 +34,7 @@ describing the code is worse than no registry.
 Same arrangement as todo.py and bugs.py: the server or the `bb` CLI hands over
 write_json and the state directory; nothing here reaches back.
 """
+import difflib
 import json
 import os
 import re
@@ -177,13 +178,31 @@ def _align(old, new):
     # ...and the leftovers by position, which is a rename: the test is where
     # it was and says something else. Only one candidate each way, or this
     # would pair a deletion here with an addition somewhere else entirely.
-    freeA = [x for x in range(len(a)) if x not in pairs.values()]
+    # ...and the leftovers, which is a rename: the test is where it was and
+    # says something else. Paired by how much of the wording survived, best
+    # first, and never across more than two ordinals.
+    #
+    # Zipping the two leftover lists in order was the obvious version and it
+    # was wrong: one genuine addition near the top of a file shifts every pair
+    # after it, and a file whose names carry a uid or a port — which change on
+    # every run, so every one of them is a rename — is then entirely
+    # mispaired. That combination lost five descriptions the first time it
+    # happened.
+    #
+    # LIKENESS decides, not nearness, because when two candidates sit equally
+    # close only the words can say which is the renamed one. Below the
+    # threshold nothing is paired at all: an undescribed row is visible and a
+    # description on the wrong test is not.
+    taken = set(pairs.values())
+    freeA = {x for x in range(len(a)) if x not in taken}
     freeB = [x for x in range(len(b)) if x not in pairs]
-    for x, y in zip(freeA, freeB):
-        # Positional, so only when nothing matched between them moved far: two
-        # ordinals apart is an edit, twenty is a coincidence.
-        if abs(x - y) <= 2:
-            pairs[y] = x
+    cands = sorted(((difflib.SequenceMatcher(None, a[x], b[y]).ratio(), -abs(x - y), x, y)
+                    for y in freeB for x in freeA if abs(x - y) <= 2), reverse=True)
+    for ratio, _, x, y in cands:
+        if ratio < 0.6 or x not in freeA or y in pairs:
+            continue
+        pairs[y] = x
+        freeA.discard(x)
     return pairs
 
 
@@ -248,8 +267,18 @@ def ingest(project, text, by="you"):
         # Kept rather than only returned: the drift is the thing this file
         # exists to catch, and an answer that only exists in the terminal of
         # whoever ingested is an answer nobody reads twice.
+        # The lists are capped and the COUNTS are not: a first ingest is two
+        # thousand additions, and a fold headed "200" because that is where
+        # the list stops is a number that reads as the answer.
         p["drift"] = {"at": now, "added": added[:200], "gone": gone[:200],
-                      "renamed": renamed[:200]}
+                      "renamed": renamed[:200], "n_added": len(added),
+                      "n_gone": len(gone), "n_renamed": len(renamed)}
+        # Counted separately from the run history, which is capped: after
+        # KEEP_RUNS ingests len(runs) is always KEEP_RUNS, so a poll token
+        # taken from it stops moving and an open tab stops noticing runs.
+        # Seeded from the run count so a registry written before this field
+        # existed steps forward rather than back.
+        p["rev"] = p.get("rev", len(p.get("runs") or [])) + 1
         p.setdefault("runs", []).append({
             "at": now, "by": "claude" if by == "claude" else "you",
             "n": len(roster), "suites": len(by_suite),
@@ -309,6 +338,8 @@ def describe_many(project, rows):
             if "notes" in v:
                 t["notes"] = str(v["notes"] or "").strip()[:MAX_TEXT]
             wrote += 1
+        if wrote:
+            p["rev"] = p.get("rev", len(p.get("runs") or [])) + 1
         save(d)
     return {"ok": True, "wrote": wrote, "unknown": unknown[:50],
             "unknown_n": len(unknown)}
@@ -437,9 +468,17 @@ def counts():
 
 
 def revisions():
-    """{project: how many runs have been ingested} — the tab's re-read token,
-    the same shape bugs.revisions() has. A run is the only thing that changes
-    the timings; a description edit changes one row and the panel drew it."""
+    """{project: a number that moves when this tab has to re-read} — the same
+    shape bugs.revisions() has. What moves it is a run, and a bulk fill from
+    `bb tests describe --from FILE`: both change rows an open tab has no other
+    way to notice. Describing ONE deliberately does not — the panel draws its
+    own save, and a redraw it did not need would take a neighbouring row's
+    unsaved typing with it.
+
+    Counted rather than derived from the run history, which is capped: after
+    KEEP_RUNS ingests its length never changes again, and a token that stops
+    moving is a tab that stops re-reading."""
     with _lock:
         d = load()
-    return {p: len(v.get("runs") or []) for p, v in (d.get("projects") or {}).items()}
+    return {p: v.get("rev", len(v.get("runs") or []))
+            for p, v in (d.get("projects") or {}).items()}

@@ -374,7 +374,11 @@ ok(!!await page.$('.pane .nb'), 'Escape does not dismiss it — a tab is not a d
 const nbTab = await page.$$eval('.tab',
   ts => ts.findIndex(t => /Notebook: alpha/.test(t.textContent)));
 ok(nbTab >= 0, 'it is on the tab strip, named for its project');
-await page.click(`.tab:nth-of-type(${nbTab + 1}) .x, .tab:nth-of-type(${nbTab + 1}) [data-hide]`)
+// Bounded, like create.mjs's: the fallback below is the path that actually
+// runs, and waiting the default thirty seconds to find that out is thirty
+// seconds of the suite.
+await page.click(`.tab:nth-of-type(${nbTab + 1}) .x, .tab:nth-of-type(${nbTab + 1}) [data-hide]`,
+                 { timeout: 1500 })
   .catch(() => page.evaluate(() => hideTab(tabs.find(t => t.kind === 'todo').id)));
 await nbGone(page);
 ok(true, '...and closing that tab puts it away');

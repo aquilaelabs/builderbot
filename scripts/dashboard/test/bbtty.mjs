@@ -156,10 +156,18 @@ ok(alive('claude-alpha') && /claude-run-alpha\.sh$/.test(paneCmd()),
 // is a suggestion — the same reason `excluded` is checked in this script.
 const LOCKS = join(DIR, 'state', 'locked-projects.json');
 writeFileSync(LOCKS, JSON.stringify(['alpha']));
+const refusedAt = Date.now();
 out = connect(0);
+const refusedIn = Date.now() - refusedAt;
 await sleep(400);
 ok(/locked/.test(out) && !alive('claude-alpha'),
    'a locked project refuses a Claude session, whatever the URL asks for');
+// A refusal holds the terminal open for ten seconds so the browser can show
+// the reason — ttyd closes the connection the moment this exits. Only when
+// something is holding one: called from here, with stderr on a pipe, there is
+// nobody to show it to, and five tests in this suite were paying it.
+ok(refusedIn < 5000,
+   `...promptly, rather than pausing for a terminal nobody is holding open (${refusedIn}ms)`);
 ok(/Projects card/.test(out),
    '...and says where to undo it, rather than only that it said no');
 

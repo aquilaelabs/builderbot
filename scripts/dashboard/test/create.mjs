@@ -340,7 +340,10 @@ await page.click('#pClone');
 ok(await page.$eval('#pTokenField', el => !el.hidden)
    && await page.$eval('#pToken', el => el.type === 'password'),
    'cloning is, and it is not typed in the clear');
-await page.click('#pmodalClose').catch(() => page.keyboard.press('Escape'));
+// Bounded: when the close button is not there this waits, and the default
+// wait is thirty seconds for a fallback that is one keystroke.
+await page.click('#pmodalClose', { timeout: 1500 })
+  .catch(() => page.keyboard.press('Escape'));
 
 // Shape is checked before it is written: the store is a one-line format, so a
 // token with a space or a newline in it would produce a file git reads as

@@ -231,6 +231,11 @@ NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
 # How long a network change has to dial back in before it is reverted.
 DIAL_BACK_S = 180
+# How long after a ttyd start this will try another. A port already taken
+# would otherwise spin the loop on a failing exec. Settable only so the suite
+# can stop waiting on it — the test that proves a dead ttyd is started again
+# waits exactly this long, and it was the slowest interval in the suite.
+SESSION_RETRY_S = int(os.environ.get("BUILDERBOT_SESSION_RETRY_S") or 30)
 # The Actions runner as a per-node service (docs/nodes.md §14, phase 7):
 # where it lives, and — for the tests — a tarball to unpack instead of the
 # GitHub release download.
@@ -1791,10 +1796,42 @@ class Agent:
         # bundle the ttyds started on until the next hello, up to ten
         # minutes, and a bb-tty that old looked for a transcript where the
         # bundle before it kept them.
+        self.prune_bundles(bbdir, into)
         if self.ttyd and self.session_bundle and digest != self.session_bundle:
             self.session_stale = into
         self.session_digest = digest
         return into
+
+    @staticmethod
+    def prune_bundles(bbdir, keep):
+        """Drop the bundles nothing is going to run again.
+
+        Every delivery unpacks into a directory named for its digest, and
+        nothing removed them: 33 of them in four days on the first node to be
+        looked at, one per commit that touches bb. Small each, unbounded
+        together.
+
+        What has to survive: the newest, which the ttyds run and `current`
+        names; the three newest, which versions() probes for an SDK
+        inventory; and, for a while, whatever an already-open shell has on
+        its PATH. That last one is why there is an age floor and not a bare
+        count — a session started after `current` went on PATH holds no
+        digest at all, so the floor is a grace period for the shells that
+        predate it rather than a permanent requirement.
+        """
+        keep_n, floor = 5, time.time() - 48 * 3600
+        try:
+            names = [d for d in os.listdir(bbdir) if len(d) == 16
+                     and all(c in "0123456789abcdef" for c in d)]
+            dirs = [os.path.join(bbdir, d) for d in names
+                    if os.path.isdir(os.path.join(bbdir, d))]
+            dirs.sort(key=os.path.getmtime, reverse=True)
+        except OSError:
+            return
+        for d in dirs[keep_n:]:
+            with contextlib.suppress(OSError):
+                if d != keep and os.path.getmtime(d) < floor:
+                    shutil.rmtree(d)
 
     # -- the session half (roadmap #24) ---------------------------------------
     def session_account(self):
@@ -1820,7 +1857,23 @@ class Agent:
             env.update({"HOME": os.path.expanduser("~"), "USER": self.session_account(),
                         "LOGNAME": self.session_account()})
         home = env["HOME"]
-        env["PATH"] = ":".join([os.path.join(into, "scripts"),
+        # The SYMLINK on PATH, not the digest it points at (bug #66). A ttyd
+        # restart onto a new bundle only reaches new connections: a tmux
+        # session's shell was started whenever it was started and keeps the
+        # PATH it was given, so a session that has been open since before an
+        # update went on running the bundle it began with. What that looks
+        # like is a typo — `bb tests` printing bb's usage on a node whose
+        # controller has the verb — rather than a machine that is behind.
+        #
+        # Through `current`, every bb invocation in every shell, however old,
+        # runs whatever was delivered last. The name is resolved at exec, so
+        # there is nothing to restart and nothing to keep in step; `into` is
+        # still the resolved path everywhere else, because the census has to
+        # report the digest actually running rather than a symlink.
+        store = (self.state.get("stores") or {}).get("packages") or ""
+        link = os.path.join(store, ".bb", "current") if store else ""
+        bbdir = link if link and os.path.isdir(link) else into
+        env["PATH"] = ":".join([os.path.join(bbdir, "scripts"),
                                 os.path.join(home, ".local", "bin"),
                                 os.path.join(home, ".npm-global", "bin"), env["PATH"]])
         # AVDs under the account's own ~/.android rather than the data store,
@@ -2115,7 +2168,7 @@ class Agent:
 
     def session_check(self):
         """Once a loop: a ttyd that died is started again, not more often
-        than every thirty seconds — a port already taken would otherwise
+        than SESSION_RETRY_S — a port already taken would otherwise
         spin this loop on a failing exec — and ttyds running an older
         bundle than the one a job just fetched are restarted onto it. The
         sessions are tmux's either way and survive; a client attached at
@@ -2128,7 +2181,7 @@ class Agent:
             return
         if not self.ttyd or all(p.poll() is None for p in self.ttyd):
             return
-        if time.time() - self.session_tried < 30:
+        if time.time() - self.session_tried < SESSION_RETRY_S:
             return
         log("sessions: a ttyd exited; starting again")
         self.session_tried = time.time()
@@ -2634,14 +2687,17 @@ class Agent:
             if st == 200:
                 job.say(f"dialed back in from {network_now().get('addresses') or ['?']}\n")
                 return "succeeded", 0
-            time.sleep(5)
+            # Never past the deadline: a fixed five seconds means a window
+            # shorter than five seconds still costs five, which is what the
+            # test that shortens DIAL_BACK_S was paying twice over.
+            time.sleep(max(0.0, min(5.0, deadline - time.time())))
         job.say(f"could not reach the controller within {DIAL_BACK_S}s — reverting\n")
         self._restore_netplan(job, path, before)
         deadline = time.time() + DIAL_BACK_S
         while time.time() < deadline:
             if self.hello()[0] == 200:
                 break
-            time.sleep(5)
+            time.sleep(max(0.0, min(5.0, deadline - time.time())))
         job.say("reverted to the previous network config\n")
         return "failed", 68
 

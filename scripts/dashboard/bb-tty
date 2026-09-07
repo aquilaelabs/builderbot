@@ -429,7 +429,12 @@ claude_first_run() {
 # exits, so without the pause the browser shows an empty terminal and no reason.
 bad() {
     for line in "$@"; do echo "$line" >&2; done
-    sleep 10
+    # ...but only when something is holding a terminal open to read it. Under
+    # ttyd every fd is the pty. Called from a script with stderr on a pipe
+    # there is nobody to show it to, and the pause was ten seconds of nothing
+    # each time — five tests in the dashboard suite spent it proving that a
+    # refusal is a refusal.
+    if [ -t 2 ]; then sleep 10; fi
     exit 1
 }
 

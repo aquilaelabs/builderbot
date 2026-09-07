@@ -801,7 +801,12 @@ def enroll(auth, census, addr, version="", digest="", user=""):
 # so the verb is POST and the doc was corrected to say so.
 
 PROTOCOL = 1
-POLL_S = 25                      # held below the 30s most proxies allow
+# Held below the 30s most proxies allow. Settable only so the suite can stop
+# waiting on it: an agent does its housekeeping — restarting a ttyd that died,
+# reporting a session that appeared — once per turn of this loop, so a test
+# that watches for any of it waits a poll window per thing it watches, and
+# three of them were the slowest intervals in the suite. Nothing else sets it.
+POLL_S = int(os.environ.get("BB_NODE_POLL") or 25)
 _wake = threading.Condition(_lock)
 # The last minute of samples per node, for a sparkline (docs/nodes.md §9):
 # memory only, and lost on restart, which is the honest scope — the row keeps

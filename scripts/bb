@@ -1095,6 +1095,15 @@ cmd_catchup() {
     fi
 }
 
+# On a node there is no container to have booted, so naming the controller's
+# /config path here reads as a broken install rather than as the wrong
+# machine. Says nothing at all on the controller, where the path is right.
+logs_are_the_controllers() {
+    on_node || return 0
+    die "there is no container log here — this is a node, and that log is the" \
+        "controller's. \`bb ci-log\` reads a CI run's output on this machine"
+}
+
 cmd_logs() {
     local base logfile follow=0 lines=100 gen=""
     base="$(bb_log_dir)/builderbot.log"
@@ -1107,8 +1116,10 @@ cmd_logs() {
                 # which made the other three — the dashboard, docker and ttyd,
                 # all of which rotate the same way now — look like they did not
                 # exist.
-                ls -1t "$(bb_log_dir)"/*.log "$(bb_log_dir)"/*.log.[0-9]* 2>/dev/null \
-                    || die "no logs in $(bb_log_dir)"
+                if ! ls -1t "$(bb_log_dir)"/*.log "$(bb_log_dir)"/*.log.[0-9]* 2>/dev/null; then
+                    logs_are_the_controllers
+                    die "no logs in $(bb_log_dir)"
+                fi
                 return 0
                 ;;
             -p|--prev)
@@ -1128,7 +1139,10 @@ cmd_logs() {
     else
         logfile="$base"
     fi
-    [ -f "$logfile" ] || die "no log at ${logfile} — see: bb logs --list"
+    if [ ! -f "$logfile" ]; then
+        logs_are_the_controllers
+        die "no log at ${logfile} — see: bb logs --list"
+    fi
     if [ "$follow" -eq 1 ]; then
         tail -n "$lines" -f "$logfile"
     else
@@ -1825,14 +1839,24 @@ cmd_tests() {
     # is a couple of hundred kilobytes — passed in the environment it is
     # "Argument list too long", which is how this was found.
     local src="" tmp=""
+    # From a node this verb is relayed, so the path is opened on the
+    # CONTROLLER — which shares /workspace with the node and nothing else. A
+    # log written to the node's own /tmp is simply not there, and "no such
+    # run log" pointing at a file you can see is a confusing way to say it.
+    no_file() {
+        [ -z "${BB_RELAYED:-}" ] || die "$1: $2 — this ran on the controller," \
+            "which shares /workspace with the node and nothing else. Put it" \
+            "under the project and try again"
+        die "$1: $2"
+    }
     if [ "${1:-}" = describe ] && [ "${2:-}" = --from ]; then
         [ -n "${3:-}" ] || die "usage: bb tests describe --from FILE.json"
-        [ -f "$3" ] || die "no such descriptions file: $3"
+        [ -f "$3" ] || no_file "no such descriptions file" "$3"
         src="$3"
     fi
     if [ "${1:-}" = ingest ]; then
         if [ -n "${2:-}" ]; then
-            [ -f "$2" ] || die "no such run log: $2"
+            [ -f "$2" ] || no_file "no such run log" "$2"
             src="$2"
         else
             [ -t 0 ] && die "usage: bb tests ingest [RUNLOG]  (or pipe the run into it)"
@@ -1973,7 +1997,13 @@ elif op == "drift":
     if not d.get("at"):
         print("nothing ingested yet")
         sys.exit(0)
-    n = len(d.get("added") or []) + len(d.get("gone") or []) + len(d.get("renamed") or [])
+    # The stored counts, not the lengths of the lists under them: the lists
+    # are capped and a first ingest is every test in the project, so counting
+    # rows would report where the list stops rather than what drifted.
+    shown = n = 0
+    for k in ("added", "gone", "renamed"):
+        shown += len(d.get(k) or [])
+        n += d.get("n_" + k, len(d.get(k) or []))
     print(f"as of the last ingest: {n} difference{'' if n == 1 else 's'}")
     for x in d.get("added") or []:
         print(f"  new     {x['key']:<20} {x['name'][:60]}")
@@ -1981,6 +2011,8 @@ elif op == "drift":
         print(f"  gone    {x['key']:<20} {x['name'][:60]}")
     for x in d.get("renamed") or []:
         print(f"  renamed {x['key']:<20} {x['was'][:30]} -> {x['now'][:30]}")
+    if n > shown:
+        print(f"  ...and {n - shown} more")
     if p["undocumented"]:
         print(f"\n{p['undocumented']} of {p['n']} tests have no line saying what "
               "they protect — `bb tests list` shows the slowest first")

@@ -137,6 +137,31 @@ ok(/gone: 1/.test(bb('ingest', LOG)),
 ok(/gone\s+slow\.mjs#\d+\s+a token with a space/.test(bb('drift')),
    '...and stays on the drift report, which is where the two halves are compared');
 
+// A name that carries a uid or a port changes on every run, so every one of
+// them is a rename — and an assertion inserted ABOVE such a name shifts it.
+// Pairing the leftovers in list order got that wrong and lost the
+// description; they are paired by how much of the wording survived.
+{
+  const was = [['drift.mjs', 'the picker opens', 0.2],
+               ['drift.mjs', 'the owner has a minted id (u_616f379c)', 0.3],
+               ['drift.mjs', 'and the last one', 0.4]];
+  writeFileSync(`${DIR}/run-shift.log`, runlog(was));
+  bb('ingest', `${DIR}/run-shift.log`);
+  bb('note', 'drift.mjs#2', 'the owner is minted, not assumed');
+  const now = [['drift.mjs', 'the picker opens', 0.2],
+               ['drift.mjs', 'a brand new assertion', 0.1],
+               ['drift.mjs', 'the owner has a minted id (u_920b520a)', 0.3],
+               ['drift.mjs', 'and the last one', 0.4]];
+  writeFileSync(`${DIR}/run-shift2.log`, runlog(now));
+  const out = bb('ingest', `${DIR}/run-shift2.log`);
+  ok(/new: 1/.test(out) && /renamed: 1/.test(out) && !/gone:/.test(out),
+     'an assertion inserted above a name that changes every run reads as one addition and one rename');
+  const rows = read().tests;
+  ok(Object.values(rows).some(t => /u_920b520a/.test(t.name || '')
+       && t.protects === 'the owner is minted, not assumed'),
+     '...and the description stays on the row whose words survived');
+}
+
 // Ingesting one file's log must not report every other file as deleted.
 writeFileSync(`${DIR}/run-part.log`, runlog([['fast.mjs', 'the picker opens', 0.2]]));
 const part = bb('ingest', `${DIR}/run-part.log`);
@@ -167,6 +192,27 @@ ok(rows.some(r => r.name.startsWith('...') && /^follows: /.test(r.after)),
 ok(await page.$('#tstFolds details[data-sect="tests:suites"]') !== null
    && await page.$('#tstFolds details[data-sect="tests:drift"]') !== null,
    'the suite rollup and the drift report are sections, closed over the list');
+// The drift fold counts what drifted, not how many rows it can show. The
+// lists are capped at 200 and a first ingest is every test in the project,
+// so a heading of "200" would be reporting where the list stops.
+{
+  const many = Array.from({ length: 260 }, (_, i) =>
+    ['wide.mjs', `an assertion number ${i}`, 0.01]);
+  writeFileSync(`${DIR}/run-wide.log`, runlog(many));
+  const w = bb('ingest', `${DIR}/run-wide.log`);
+  ok(/new: 260/.test(w), 'a run with more drift than the report holds counts all of it');
+  await page.evaluate(() => notebooks.get('alpha').reloadTests());
+  await page.waitForFunction(() => /260/.test(document.querySelector(
+    '#tstFolds details[data-sect="tests:drift"] summary')?.textContent || ''),
+    { timeout: 15000 });
+  ok(true, '...and the fold is headed with that number, not with the 200 it lists');
+  ok(/and 60 more/.test(await page.$eval(
+       '#tstFolds details[data-sect="tests:drift"]', e => e.textContent)),
+     '...saying how many it did not list');
+  const rep = bb('drift');
+  ok(/260 differences/.test(rep) && /and 60 more/.test(rep),
+     '...and the report on the terminal counts the same way');
+}
 
 // Describing one writes through, like a bug report: there is nothing to stage
 // about a sentence describing a thing that already exists.
@@ -194,6 +240,16 @@ ok(await page.evaluate(() => ({
      areas: document.querySelectorAll('#tstList textarea').length })
    ).then(d => d.rows > 1 && d.areas <= 2),
    '...while the rows nobody opened carry no editor at all');
+// A redraw is not always this panel's own: an ingest under an open tab draws
+// one on the next poll, and it used to take unsaved typing with it.
+await page.fill(`${box} .tstN`, 'half a sentence, not saved yet');
+await page.evaluate(() => notebooks.get('alpha').reloadTests());
+await page.waitForFunction(s => document.querySelector(s + ' .tstN'), box, { timeout: 10000 });
+ok(await page.$eval(`${box} .tstN`, e => e.value) === 'half a sentence, not saved yet',
+   'a redraw under an open editor gives back what was being typed into it');
+ok(await page.$eval(`${box} .tstP`, e => e.value)
+     === 'the daemon address is parsed, not guessed',
+   '...and the field beside it, which was saved, still reads what was stored');
 
 // ---- filling in a registry that already has a suite in it -----------------
 // The per-test verb takes the file lock and rewrites the store on every call,
@@ -219,6 +275,34 @@ ok(after['slow.mjs#1'].protects === 'the token store refuses what it cannot writ
 ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
    && after['slow.mjs#3'].notes === '',
    '...and a row that names only one field leaves the other alone');
+
+// The tab re-reads when the poll says the registry moved, and what the poll
+// compares is a count. Counting the run history was wrong: that list is capped
+// at KEEP_RUNS, so from the twentieth ingest onward the number never changed
+// again and an open tab stopped noticing runs entirely.
+{
+  const st = JSON.parse(readFileSync(FILE, 'utf8'));
+  const p = st.projects.alpha;
+  while (p.runs.length < 20) p.runs.push({ ...p.runs[0] });
+  delete p.rev;                                   // as a registry written before it
+  writeFileSync(FILE, JSON.stringify(st));
+  writeFileSync(`${DIR}/run-again.log`, runlog([['fast.mjs', 'the picker opens', 9.9]]));
+  bb('ingest', `${DIR}/run-again.log`);
+  const now = read();
+  ok(now.runs.length === 20 && now.rev > 20,
+     'the tab\'s re-read token keeps counting past the run history that caps it');
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => /9\.9/.test(document.querySelector(
+    '#tstList .tst[data-key="fast.mjs#1"] .tstms')?.textContent || ''), { timeout: 15000 });
+  ok(true, '...so a run ingested under an open tab is drawn on the next poll');
+  // Same for a bulk fill from the CLI: hundreds of rows land in one write,
+  // and a tab that is already open has nothing else to notice them by.
+  const before = read().rev;
+  writeFileSync(`${DIR}/desc2.json`, JSON.stringify({
+    'fast.mjs#1': { protects: 'the picker opens on the first paint' } }));
+  bb('describe', '--from', `${DIR}/desc2.json`);
+  ok(read().rev > before, 'a bulk fill moves it too, having changed what the tab draws');
+}
 
 // Ingesting is the CLI's and deliberately not an endpoint. It WAS one, and
 // it could never have worked: every body this server takes is capped at 64kB
