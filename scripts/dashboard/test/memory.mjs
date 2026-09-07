@@ -79,6 +79,11 @@ ok(drift.some(d => d.includes('vanished.md') && d.includes('not here')),
    'an index line pointing at nothing is called out');
 ok(drift.some(d => d.includes('loose.md') && d.includes('not in the index')),
    'a memory the index never lists is called out too');
+// One heading with the count on it, rather than two orange paragraphs above
+// the list: on a phone they were what you scrolled past to reach a memory.
+ok(await page.$('#memDrift details[data-sect="memory:drift"]') !== null
+   && /2 problems/.test(await page.$eval('#memDrift .sect > summary', e => e.textContent)),
+   '...and both sit behind one section that counts them');
 
 // ---- editing -----------------------------------------------------------
 await openFold(page, '#memList .mem:has(.mname:text-is("tabs"))');
@@ -97,7 +102,8 @@ await page.$eval('#memList .mem[open] textarea', t => {
 ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
    'typing in a memory arms the panel\'s one Save button');
 await page.click('#todoSaveQuiet');
-await page.waitForFunction(() => document.getElementById('todoSaveQuiet').textContent !== 'Saving…',
+await page.waitForFunction(() => document.getElementById('todoSaveQuiet')
+                             .getAttribute('aria-busy') !== 'true',
                            { timeout: 15000 });
 ok(read('tabs.md').includes('asked for it three times'),
    'Save writes the edit to the file on disk');
@@ -128,7 +134,8 @@ await page.$eval('#memList .mem:has(.mname:text-is("loose")) .ixh', i => {
 ok(!await page.$eval('#todoSaveQuiet', b => b.disabled),
    'typing an index line arms the same Save as everything else');
 await page.click('#todoSaveQuiet');
-await page.waitForFunction(() => document.getElementById('todoSaveQuiet').textContent !== 'Saving…',
+await page.waitForFunction(() => document.getElementById('todoSaveQuiet')
+                             .getAttribute('aria-busy') !== 'true',
                            { timeout: 15000 });
 ok(read('MEMORY.md').includes('- [Loose ends](loose.md) — only recall ever surfaced this one'),
    'saving writes the line, in the shape Claude wrote the others in');

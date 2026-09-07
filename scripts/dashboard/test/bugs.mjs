@@ -91,6 +91,19 @@ ok(read().find(b => b.id === 1).status === 'fixed'
    && read().find(b => b.id === 1).status_note === 'the select re-measures on rotate now',
    'marking one fixed asks what fixed it, and keeps the answer on the bug');
 ok(!/picker loses/.test(bbBug()), '...and it leaves the open list');
+// The row's verbs are an action bar: who reported it on a line of its own,
+// the buttons under it, and the one that cannot be undone last. It was six
+// buttons in a plain div with Delete third, where the thumb goes.
+{
+  const bar = await page.$eval('#bugList .bug[data-id="1"] .macts', el => ({
+    bar: el.classList.contains('actbar'),
+    state: el.querySelector('.state')?.textContent || '',
+    last: el.querySelector('button:last-of-type')?.className || '' }));
+  ok(bar.bar && /reported by/.test(bar.state),
+     'a report\'s verbs are an action bar, with who filed it as its status line');
+  ok(/bRm/.test(bar.last),
+     '...and Delete is last, being the one that cannot be undone');
+}
 ok(/\[fixed\]/.test(bbBug('all')), '...but never the tracker: bb bug all still has it');
 ok(!/#1/.test(bbBug('--prompt')),
    '...and the next session is not handed a bug that is already fixed');

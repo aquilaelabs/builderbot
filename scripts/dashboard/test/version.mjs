@@ -518,6 +518,18 @@ const boxText = () => page.$eval(`${NB} #verBox`, e => e.textContent.replace(/\s
 let r0 = await rows();
 ok(r0['building towards'] === '0.4.0',
    'the tab says what the project is building towards');
+// Build and Version are sections of this tab, and a shut one still answers:
+// the node on the first, the number on the second. They were three unnamed
+// bands stacked, which on a phone is one scroll with nothing labelling it.
+{
+  const sects = await page.$$eval(`${NB} .nbview[data-view="artifacts"] .sect > summary`,
+    ss => ss.map(s => [s.querySelector('.t')?.textContent,
+                       s.querySelector('.sst')?.textContent]));
+  ok(sects.some(([t]) => t === 'Build') && sects.some(([t]) => t === 'Version'),
+     'the tab names what it is showing: Build and Version are sections');
+  ok(sects.find(([t]) => t === 'Version')?.[1] === '0.4.0',
+     '...and the version is the heading\'s status, so a shut one still answers');
+}
 ok(/^0\.4\.0-dev\.3\+[0-9a-f]{7}$/.test(r0['a build now'] || ''),
    '...and what a build right now would be called');
 ok(/since 0\.4\.0: 1 commit\b/.test(await boxText()),
