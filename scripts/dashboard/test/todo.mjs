@@ -682,9 +682,8 @@ const banner = () => page.$eval('#todoBatch',
   el => el.textContent.replace(/\s+/g, ' ').trim());
 ok(/part-way through changing this notebook/.test(await banner()),
    'the notebook says a session is mid-change, without being touched');
-ok(await page.$eval('#todoSaveQuiet', b => b.disabled)
-   && await page.$eval('#todoSave', b => b.disabled),
-   '...and both Saves are held while it is');
+ok(await page.$eval('#todoSaveQuiet', b => b.disabled),
+   '...and Save is held while it is');
 await page.fill('#todoText', 'typed while a session was mid-batch');
 await page.keyboard.press('Enter');
 await page.waitForFunction(() => [...document.querySelectorAll('#todoList .txt')]
@@ -1215,14 +1214,16 @@ ok(await ultra.evaluate(() => {
    '...and so does the packages tab, where the bin was furthest from its row');
 await ultra.close();
 
-// ---- two Saves, and what the line says ----------------------------------
-// The difference between them is whether a line of anybody's conversation is
-// spent. Both settle the panel; only one tells.
+// ---- one Save, and what it does NOT do ----------------------------------
+// There were two, and the second typed the change into a running session's
+// input box — the only way anything reached a session before the prompt hook
+// got a free channel back (roadmap #27). Now the session is told by itself,
+// so the panel writes and says nothing, and this asserts the silence.
 await post({ action: 'add', project: 'alpha', text: 'something to settle' });
 await page.evaluate(() => notebooks.get('alpha').reload());
 await page.waitForFunction(() => !document.getElementById('todoSaveQuiet').disabled);
-ok(!await page.$eval('#todoSave', b => b.disabled),
-   'a change arms both Saves');
+ok(await page.$('#todoSave') === null,
+   'there is one Save in the footer, not two');
 const beforeQuiet = tmuxCapture('claude-alpha').length;
 await page.click('#todoSaveQuiet');
 await page.waitForFunction(() => {
@@ -1230,23 +1231,22 @@ await page.waitForFunction(() => {
   return b.textContent !== 'Saving…' && b.disabled;
 }, { timeout: 15000 });
 ok(tmuxCapture('claude-alpha').length === beforeQuiet,
-   'the plain Save settles it without saying anything to the session');
+   'Save spends no line of the session\'s conversation — it is told on its own '
+   + 'next prompt instead');
 ok((read().unsaved?.alpha || {}).todo === false,
    '...and it really is settled, so it stops asking');
-
-// The line names which half moved — "something changed" sends somebody to
-// look at both, and one of the two is a directory of files.
+// The channel that DOES still carry the line: a step being sent is a message
+// going to that session anyway, so what moved in the notebook rides along on
+// it rather than costing a second one.
+const plainToSend = read().projects.alpha.find(r => !(r.steps || []).length
+                                                    && !r.shelved && !r.sent);
 await post({ action: 'add', project: 'alpha', text: 'and something to tell' });
 await page.evaluate(() => notebooks.get('alpha').reload());
-await page.waitForFunction(() => !document.getElementById('todoSave').disabled);
-await page.click('#todoSave');
-await page.waitForFunction(() => {
-  const b = document.getElementById('todoSave');
-  return b.textContent !== 'Saving…' && b.disabled;
-}, { timeout: 15000 });
+await post({ action: 'send', project: 'alpha', id: plainToSend.id, step: null,
+             tell: true });
 const told = tmuxCapture('claude-alpha');
 ok(/shared to-do list for this project/.test(told),
-   'Save & tell names the to-do list');
+   'a sent step carries what moved in the notebook, naming the to-do list');
 ok(!/notes about how you work/.test(told.slice(beforeQuiet)),
    '...and not the memories, which did not move');
 

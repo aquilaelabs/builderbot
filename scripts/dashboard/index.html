@@ -1342,7 +1342,7 @@ textarea,select{
    History, the Analysis tab. */
 .nb.ro .rolock{margin:0;padding:11px 14px;color:var(--warn);font:var(--f-ui);
   border-bottom:1px solid var(--line)}
-.nb.ro #todoSave,.nb.ro #todoSaveQuiet,.nb.ro #todoAdd,.nb.ro #todoText,
+.nb.ro #todoSaveQuiet,.nb.ro #todoAdd,.nb.ro #todoText,
 .nb.ro #bugAdd,.nb.ro #memAdd,.nb.ro .addstep,.nb.ro .memadd,
 .nb.ro .bug .macts,.nb.ro .mem .macts,.nb.ro .todo .go,.nb.ro .todo .mv,
 .nb.ro .vbar .sp ~ button:not(#nbHistory){
@@ -2576,17 +2576,15 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div id="anaList"></div>
     </div>
     <div class="foot">
-      <!-- Two, and the difference is an INTERRUPTION. Both write whatever
-           the editor is holding; a running session finds out either way, on
-           the next prompt it is given, because the hook it runs under carries
-           the news for free (roadmap #27). So the plain Save is the ordinary
-           one, and the other is for when that is not soon enough: it types
-           the line into the session's input box and presses Enter, which
-           lands mid-task and spends a turn. -->
+      <!-- One. There were two, and the second one typed the change into a
+           running session's input box — which was the ONLY way anything
+           reached a session before #27 gave the prompt hook a free channel
+           back. With the session told by itself, the second button was the
+           difference between telling somebody now and telling them when they
+           next look up, and that is not a difference worth a permanent
+           control: the session's own tab is one tap away for the rare case
+           where a minute matters. -->
       <button id="todoSaveQuiet" type="button" disabled>Save</button>
-      <button id="todoSave" type="button" disabled
-              title="save, and interrupt the session to read it now — it finds out on its own next prompt otherwise"
-              >Save &amp; interrupt</button>
       <span class="sp"></span>
       <!-- Where Close used to be. The tab does not go away when something is
            saved, so the question this button answers is no longer "am I done
@@ -8059,7 +8057,7 @@ async function openMemory(name){
   $("memTitle").textContent = "Notebook — " + name;
   $("memWhere").textContent = "what Claude remembers here";
   $("memDrift").innerHTML = $("memList").innerHTML = $("memAdd").innerHTML = "";
-  $("todoSave").disabled = $("todoSaveQuiet").disabled = true;
+  $("todoSaveQuiet").disabled = true;
   todoSel = null;                 // the send box lives on the row, and the
   todoOrdering = false;           // rows are about to be replaced wholesale
   todoPending = []; todoWas = null;
@@ -8547,8 +8545,8 @@ async function rereadTodo(){
 // memory editor's are not, and either way this is what tells a session. Dead
 // rather than absent, so the footer does not move about under a thumb.
 function syncSave(){
-  const b = $("todoSave"), q = $("todoSaveQuiet");
-  if (!b || !q) return;
+  const q = $("todoSaveQuiet");
+  if (!q) return;
   const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
                 || todoPending.length > 0 || verStagedCount() > 0;
   // Held while a session is mid-batch, and again until the list is re-read
@@ -8564,17 +8562,11 @@ function syncSave(){
       : "throw away what has not been saved — the list and the memory editors "
         + "go back to what is on disk";
   }
-  // Telling needs somewhere to tell. Dead rather than absent either way, so
-  // the footer does not move about under a thumb.
-  b.disabled = !dirty || !todoSession || held;
   q.title = held
     ? (todoBatch ? "a session is part-way through changing this list"
                  : "a session changed this list — reload it before saving over it")
-    : "write any memory edits and settle the panel, without spending a "
-      + "line of anybody's conversation on it";
-  b.title = todoSession
-    ? "...and tell " + todoSession + " which of them moved"
-    : "nothing is running here to tell";
+    : "write any memory edits and settle the panel — a session running here "
+      + "is told what moved on the next prompt it is given";
 }
 
 let todoItems = [];
@@ -9580,17 +9572,16 @@ async function flushPending(){
   todoWas = null;
   return map;
 }
-// Both Saves write whatever the memory editor is holding and settle the
-// panel; only one of them interrupts a running session to say so. The other
-// is not silence — the session is told on the next prompt it is given, by the
-// hook it runs under (roadmap #27) — it is the difference between telling
-// somebody now and telling them when they next look up.
-async function saveAll(tellIt){
-  const b = $(tellIt ? "todoSave" : "todoSaveQuiet"), was = b.textContent;
+// Save writes whatever the memory editor is holding, replays whatever the
+// list has staged, and settles the panel. It says nothing to a running
+// session and does not need to: the hook every session runs under carries the
+// news back on the next prompt it is given (roadmap #27).
+async function saveAll(){
+  const b = $("todoSaveQuiet"), was = b.textContent;
   b.disabled = true; b.textContent = "Saving…";
   // Everything staged, replayed in the order it was made — which is what makes
   // the server arrive at what is on screen.
-  clashResume = () => saveAll(tellIt);
+  clashResume = () => saveAll();
   await flushPending();
   // A refusal stops the replay with the op still at the head of the queue and
   // the band asking which version wins. Settling it calls this again from the
@@ -9604,17 +9595,15 @@ async function saveAll(tellIt){
   // operator should hear that instead of "saved".
   const verMsg = await verCommitStaged();
   if (memDirty()) await saveMemory(true);
-  const j = await postTodo({action: tellIt ? "tell" : "save"});
+  const j = await postTodo({action: "save"});
   await loadMemory(memGen);
   b.textContent = was;
   // Committed, so there is nothing left for a Cancel to go back to.
   todoWas = null;
-  if (j) notify([verMsg, j.told ? "saved, and interrupted " + (todoSession || "the session")
-                                : "saved — the session reads it on its next prompt"]
+  if (j) notify([verMsg, "saved — the session reads it on its next prompt"]
                 .filter(Boolean).join(" · "));
 }
-$("todoSave").onclick = () => saveAll(true);
-$("todoSaveQuiet").onclick = () => saveAll(false);
+$("todoSaveQuiet").onclick = () => saveAll();
 $("todoText").onkeydown = e => {
   if (e.key === "Enter"){ e.preventDefault(); addTodo(); }
   // Escape in a field with something in it clears the field, not the panel.
@@ -11378,6 +11367,14 @@ function placeResumeMenu(){
   m.style.top = (a.bottom - c.top + 4) + "px";
   m.querySelector("[data-r]").onclick = () => startClaude(p.name, p.last_claude.id);
   m.querySelector("[data-n]").onclick = () => startClaude(p.name, null);
+  // ...and brought into the sidebar, which scrolls. Pressing Claude on a
+  // project whose session has ENDED opens this chooser instead of a tab —
+  // that is the design, and it is the only thing the press does — so a
+  // chooser placed below the fold is a press with no visible result. Reported
+  // as "opened Claude again and it did not go to the new tab" (bug #65).
+  // Same rule and the same fix as the notebook's view strip: arriving
+  // somewhere you cannot see reads as nothing having happened.
+  m.scrollIntoView({block: "nearest", inline: "nearest"});
 }
 
 

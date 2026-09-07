@@ -678,9 +678,11 @@ rather than trusting the copy in your context, which was true when the
 conversation started. And a change you make yourself is never announced back
 to you.
 
-**Save & interrupt** is the operator's other button: it types into your input
-box and lands mid-task, which is what they press when the change cannot wait
-for your next turn. Treat one arriving that way as more urgent than the line.
+There is one Save in the panel and it says nothing to you directly — the line
+above is the whole of how a change reaches you. The other way anything lands
+is a step being **sent**, which is a message the operator wrote deliberately;
+what moved in the notebook rides along on that rather than costing a second
+one.
 
 A step arriving as a message *is* a request: the operator sent it deliberately,
 and the panel closed and put them in this tab to read the answer. Sometimes it
