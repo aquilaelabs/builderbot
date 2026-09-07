@@ -969,18 +969,53 @@ textarea,select{
   /* A row's own tips point down instead, or the first row's would be clipped
      by whatever is above the card. */
   .acts [data-tip]::after{bottom:auto;top:calc(100% + 6px)}
-  /* In the sidebar the tip is measured against the ROW rather than the icon.
-     340px of column cannot hold a 280px box centred on its rightmost icon, so
-     one hovered there hung past the edge and the sidebar grew a horizontal
-     scrollbar for as long as the pointer sat still. Anchored to the row it is
-     always inside, always fully readable, and points at the group rather than
-     the button — which in a strip of six icons is what you are reading
-     anyway. Needs the button to stop being the containing block, hence the
-     static: nothing else about these icons depends on being positioned. */
+  /* In the sidebar the tip is measured against the ROW rather than the thing
+     it is on. 340px of column cannot hold a 280px box centred on its
+     rightmost icon, so one hovered there hung past the edge and the sidebar
+     grew a horizontal scrollbar for as long as the pointer sat still.
+     Anchored to the row it is always inside, always fully readable, and
+     points at the group rather than the button — which in a strip of six
+     icons is what you are reading anyway. Needs the thing under the pointer
+     to stop being the containing block, hence the static: nothing in a row
+     depends on being positioned.
+
+     EVERY tip in the row, not only the icons'. A project row's issue line is
+     a LINK, and a link that wraps is an inline box whose two line boxes are
+     what `left:50%` gets measured against — so the tip on "CLAUDE.md
+     environment block is out of date — update" was centred on something that
+     is not where the words are, and slid off the left of the card with its
+     first few characters cut off. Anchored and clamped like the rest, it is
+     one box the width of the row.
+
+     Downward, too, and that is the same choice already made for the icons: a
+     tip pointing up from the issue line lands on the row's own name and git
+     line, which is the one part of a row you need in order to know which
+     project you are reading about. */
   .side .row{position:relative}
-  .side .acts [data-tip]{position:static}
-  .side .acts [data-tip]::after{left:10px;right:10px;
-    transform:none;width:auto;max-width:none}
+  .side .row [data-tip]{position:static}
+  .side .row [data-tip]::after{left:10px;right:10px;
+    transform:none;width:auto;max-width:none;
+    bottom:auto;top:calc(100% + 6px)}
+  /* A DEAD button's tip is the one on this page somebody actually has to
+     read — it is the sentence saying why the button is dead — and it was the
+     one that could not be. The fade on a disabled control is `opacity:.5`,
+     opacity below 1 makes a STACKING CONTEXT, and a stacking context traps
+     the element's own ::after inside it: the tip came out at half strength
+     and painted under the next row, with that row's text straight through
+     it. (The comment on :active above is the other half of the same trap —
+     transform and filter make a containing block and opacity does not, which
+     is why opacity was the answer there and is the problem here.)
+
+     So while the tip is up, the fade stops being opacity and becomes the
+     colours opacity was compositing to. It still looks dead — that is the
+     point of the values, and a ghosted button brightening under the pointer
+     would read as one you could press — and it is no longer a layer of its
+     own. Specificity is deliberate: it has to beat button.eye's own colour
+     and the notebook arrows' heavier fades, which are what wear it. */
+  button:disabled[data-tip]:hover{opacity:1;
+    color:color-mix(in srgb, var(--dim), var(--panel) 45%);
+    background:color-mix(in srgb, var(--btn), var(--panel) 50%);
+    border-color:color-mix(in srgb, var(--line), var(--panel) 45%)}
   /* ...and not while the button is pressed, which is the moment its label is
      least wanted anyway — nor after it, until the pointer reaches something
      else. `:active` covers only the press: release it and the button is still

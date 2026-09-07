@@ -841,6 +841,57 @@ ok(true, 'pinning it puts it back on the sidebar');
   await page.unroute('**/api/status*');
 }
 
+// ---- a row's tooltips -----------------------------------------------------
+// Two failures that were the same failure, and both were reported as "the
+// tooltip gets buried". A tip in a sidebar row is measured against the ROW,
+// because 340px of column cannot hold a 280px box centred on anything in it.
+{
+  // The checkout's template, which is what the server compares against —
+  // run.sh points TEMPLATE_MD at it.
+  const tpl = readFileSync(new globalThis.URL('../../../config/templates/project-CLAUDE.md',
+                                   import.meta.url), 'utf8');
+  writeFileSync(`${DIR}/ws/beta/CLAUDE.md`,
+    tpl.replace('BUILDERBOT:ENV:BEGIN -->', 'BUILDERBOT:ENV:BEGIN -->\nstray.'));
+  await refreshUntil(page, () => ((state.projects || []).find(p => p.name === 'beta')
+    ?.issues || []).some(i => i.action === 'claude-md-update'));
+  const row = '#projects .row[data-row="beta"]';
+  // The issue line is a LINK, and a link that wraps is an inline box whose
+  // line boxes are what a centred tip gets measured against — so this one was
+  // centred on nothing in particular and slid off the left of the card with
+  // its first characters cut off.
+  await page.hover(`${row} [data-fix]`);
+  const fit = await page.evaluate(sel => {
+    const a = document.querySelector(sel + ' [data-fix]');
+    const s = getComputedStyle(a, '::after');
+    // The content width plus what the box adds — 8px of padding either side
+    // and a 1px border — against the row inset 10px either side, which is
+    // where the rule puts it.
+    return { box: parseFloat(s.width) + 18,
+             row: document.querySelector(sel).getBoundingClientRect().width };
+  }, row);
+  ok(Math.abs(fit.box - (fit.row - 20)) < 2,
+     `a row's tooltip is as wide as its row, so nothing can push it off the card (${
+       fit.box} in ${fit.row})`);
+  // ...and the tip on a DEAD control, which is the one somebody has to read,
+  // because it is the sentence saying why the control is dead. The fade on a
+  // disabled button is opacity, and opacity below 1 makes a stacking context
+  // that traps the button's own ::after inside it — half strength, painted
+  // under the next row, that row's text straight through it.
+  const btn = `${row} [data-c]`;
+  await page.hover(btn);
+  // Waited for rather than read at once: the swap from the opacity fade to
+  // the colour one rides the same 150ms transition every other button state
+  // does, and reading it on the first frame reads the fade it is leaving.
+  await page.waitForFunction(sel => getComputedStyle(
+    document.querySelector(sel)).opacity === '1', btn, { timeout: 5000 });
+  const dead = await page.$eval(btn, b => ({ off: b.disabled,
+    op: getComputedStyle(b).opacity,
+    tip: b.dataset.tip || '' }));
+  ok(dead.off && /out of date/.test(dead.tip) && dead.op === '1',
+     `a ghosted button reading out its reason is not a layer of its own (${
+       dead.op}, ${dead.tip.slice(0, 46)}…)`);
+}
+
 ok(page.errors.length === 0, `zero console errors${page.errors.length ? ' — ' + page.errors.join(' | ') : ''}`);
 
 // Unpinning from the sidebar has to move the Projects TAB too: they render
