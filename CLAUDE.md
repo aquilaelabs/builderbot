@@ -1023,10 +1023,15 @@ by hand cost four commands and still could not see the failed builds.
   to start while another run is alive (`BB_TEST_CONCURRENT=1` overrides);
   three suites side by side on this box is bug #13's reproducer. And
   `BB_TEST_TIMING=1` prefixes every result with the seconds since the last
-  one — the whole agent suite is about two minutes of real work, and a run
-  that takes longer is *stuck*, not slow: look at the process, not the clock.
+  one — the whole agent suite is about forty-five seconds of real work and the
+  whole suite about five minutes, and a run that takes much longer is *stuck*,
+  not slow: look at the process, not the clock.
   The one that cost an hour was a test calling `execFileSync` while the
   agent it depended on was blocked writing to a pipe nobody was draining.
+  Feed that output to `bb tests ingest` and the notebook's Tests tab keeps the
+  numbers, flagging anything sitting on a round timeout — every one of those
+  turned out to be waiting for something that had already happened, or for
+  something that was never going to.
   If the *installed* `bb` predates a subcommand, `bash scripts/bb <cmd>` runs
   the repo copy — and `bb lint` prints `[skip]` for any tool the running image
   does not carry yet, rather than passing by omission. The dashboard's server

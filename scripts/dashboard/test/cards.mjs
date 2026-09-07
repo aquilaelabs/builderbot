@@ -216,10 +216,14 @@ await page.selectOption('.fxtab #fxProject', 'alpha');
 await page.waitForFunction(() => !document.querySelector('.fxtab .fxproj'),
                            { timeout: 10000 });
 ok(true, 'picking a project drops the per-project headings — the picker already says it');
-const allRules = await page.$$eval('.fxtab .rule', rs => rs.length);
 await page.selectOption('.fxtab .fxLevel', 'error');
-await page.waitForFunction(n => document.querySelectorAll('.fxtab .rule').length !== n,
-                           allRules, { timeout: 10000 }).catch(() => {});
+// On the condition the assertion is about, not on the row count changing:
+// the count is a proxy that need not move at all, and swallowing its timeout
+// meant waiting the full ten seconds to find that out.
+await page.waitForFunction(() => {
+  const ps = [...document.querySelectorAll('.fxtab .rule .pill')];
+  return ps.length && ps.every(p => p.textContent.trim().startsWith('error'));
+}, null, { timeout: 10000 }).catch(() => {});
 ok(await page.$$eval('.fxtab .rule .pill', ps =>
      ps.every(p => p.textContent.trim().startsWith('error'))),
    'the level filter leaves only that level on the page');

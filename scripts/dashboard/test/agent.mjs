@@ -198,6 +198,7 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
   PATH: `${DIR}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin`,
   BUILDERBOT_DPKG_BIN: `${DIR}/bin/dpkg`, BUILDERBOT_APT_BIN: `${DIR}/bin/apt-get-never`,
   BUILDERBOT_IDLE_UNIT: '1',
+  BUILDERBOT_SESSION_RETRY_S: '2',   // the restart cooldown, which a test waits out
   BUILDERBOT_SYSTEMD: '1',      // this agent takes the service path whichever box runs the suite
   BUILDERBOT_TAILSCALE_BIN: `${DIR}/bin/tailscale`,
   BUILDERBOT_RUNNER_DIR: `${DIR}/runner`, BUILDERBOT_RUNNER_TARBALL: `${DIR}/runner.tar.gz`,
@@ -237,17 +238,25 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
                    NODE_PACKAGES_STORE: `${DIR}/nodepackages` };
     delete nenv.BUILDERBOT_NODE_JSON;
     let nout = '';
-    try {
-      // It ends in `exec ... run`, which never returns — the timeout is how
-      // the enrollment half is exercised without the loop being left behind.
+    const rec = `${NROOT}/node.json`;
+    {
+      // It ends in `exec ... run`, which never returns, so it is killed rather
+      // than waited on — and killed on the STATE the two assertions below are
+      // about, which is reached in a second or so. It used to be a 25s process
+      // timeout, which reached the same place and then sat there: the single
+      // slowest interval in the suite.
       // SIGKILL, not the default SIGTERM: the agent's own handler stops its
       // ttyds first and can outlive the call, and one of these left alive
       // took the container node's runner job below before the agent that
       // was meant to have it had said hello.
-      nout = execFileSync('bash', [`${REPO}/scripts/node-agent.sh`],
-        { env: nenv, encoding: 'utf8', timeout: 25000, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (e) { nout = String(e.stdout || '') + String(e.stderr || ''); }
-    const rec = `${NROOT}/node.json`;
+      const ch = spawn('bash', [`${REPO}/scripts/node-agent.sh`],
+        { env: nenv, stdio: ['ignore', 'pipe', 'pipe'] });
+      ch.stdout.on('data', d => { nout += d; }); ch.stderr.on('data', d => { nout += d; });
+      await until(async () => existsSync(rec)
+        && (await nodeById(two.id))?.state === 'online' ? true : null, 25000);
+      ch.kill('SIGKILL');
+      await new Promise(r => ch.on('exit', r));
+    }
     ok(existsSync(rec), `the node role enrolls from CONTROLLER_URL and NODE_TOKEN (${
       nout.split('\n').filter(Boolean).slice(-2).join(' | ').slice(0, 120)})`);
     const nst = existsSync(rec) ? JSON.parse(readFileSync(rec, 'utf8')) : {};
@@ -262,10 +271,16 @@ const agentEnv = { ...process.env, BUILDERBOT_NODE_JSON: NODE_JSON,
     // image update restarts this container, and re-enrolling every time
     // would burn a token it does not have and lose the node's identity.
     let again2 = '';
-    try {
-      again2 = execFileSync('bash', [`${REPO}/scripts/node-agent.sh`],
-        { env: nenv, encoding: 'utf8', timeout: 8000, killSignal: 'SIGKILL', stdio: ['ignore', 'pipe', 'pipe'] });
-    } catch (e) { again2 = String(e.stdout || '') + String(e.stderr || ''); }
+    {
+      // Same again: killed on the sentence being looked for rather than on a
+      // clock, since this one also ends in a loop that never returns.
+      const ch = spawn('bash', [`${REPO}/scripts/node-agent.sh`],
+        { env: nenv, stdio: ['ignore', 'pipe', 'pipe'] });
+      ch.stdout.on('data', d => { again2 += d; }); ch.stderr.on('data', d => { again2 += d; });
+      await until(() => /already enrolled/.test(again2) || null, 8000);
+      ch.kill('SIGKILL');
+      await new Promise(r => ch.on('exit', r));
+    }
     ok(/already enrolled/.test(again2) && JSON.parse(readFileSync(rec, 'utf8')).node_id === two.id,
        '...and starting again re-uses the record rather than spending another token');
     // A container node has no systemd, so its runner cannot be a service:

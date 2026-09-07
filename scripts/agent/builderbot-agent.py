@@ -231,6 +231,11 @@ NETPLAN_BIN = os.environ.get("BUILDERBOT_NETPLAN_BIN", "netplan")
 NETPLAN_FILE = "90-builderbot.yaml"
 # How long a network change has to dial back in before it is reverted.
 DIAL_BACK_S = 180
+# How long after a ttyd start this will try another. A port already taken
+# would otherwise spin the loop on a failing exec. Settable only so the suite
+# can stop waiting on it — the test that proves a dead ttyd is started again
+# waits exactly this long, and it was the slowest interval in the suite.
+SESSION_RETRY_S = int(os.environ.get("BUILDERBOT_SESSION_RETRY_S") or 30)
 # The Actions runner as a per-node service (docs/nodes.md §14, phase 7):
 # where it lives, and — for the tests — a tarball to unpack instead of the
 # GitHub release download.
@@ -2163,7 +2168,7 @@ class Agent:
 
     def session_check(self):
         """Once a loop: a ttyd that died is started again, not more often
-        than every thirty seconds — a port already taken would otherwise
+        than SESSION_RETRY_S — a port already taken would otherwise
         spin this loop on a failing exec — and ttyds running an older
         bundle than the one a job just fetched are restarted onto it. The
         sessions are tmux's either way and survive; a client attached at
@@ -2176,7 +2181,7 @@ class Agent:
             return
         if not self.ttyd or all(p.poll() is None for p in self.ttyd):
             return
-        if time.time() - self.session_tried < 30:
+        if time.time() - self.session_tried < SESSION_RETRY_S:
             return
         log("sessions: a ttyd exited; starting again")
         self.session_tried = time.time()
@@ -2682,14 +2687,17 @@ class Agent:
             if st == 200:
                 job.say(f"dialed back in from {network_now().get('addresses') or ['?']}\n")
                 return "succeeded", 0
-            time.sleep(5)
+            # Never past the deadline: a fixed five seconds means a window
+            # shorter than five seconds still costs five, which is what the
+            # test that shortens DIAL_BACK_S was paying twice over.
+            time.sleep(max(0.0, min(5.0, deadline - time.time())))
         job.say(f"could not reach the controller within {DIAL_BACK_S}s — reverting\n")
         self._restore_netplan(job, path, before)
         deadline = time.time() + DIAL_BACK_S
         while time.time() < deadline:
             if self.hello()[0] == 200:
                 break
-            time.sleep(5)
+            time.sleep(max(0.0, min(5.0, deadline - time.time())))
         job.say("reverted to the previous network config\n")
         return "failed", 68
 

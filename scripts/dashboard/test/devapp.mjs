@@ -1094,6 +1094,10 @@ spec = importlib.util.spec_from_file_location('d', ${
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 d = tempfile.mkdtemp(); os.makedirs(d + '/devenv')
 m.configure(workspace='/tmp', state=d, write_json=lambda p, o: None)
+# No daemon is dialled: this is about how an address is composed, and
+# available() would otherwise shell out to 'docker version' against each one
+# and wait its ten seconds for a host that is not there.
+m._run = lambda *a, **k: {'code': 1, 'out': 'no daemon', 'err': ''}
 out = {}
 for k, v in [('bare', '10.0.0.9'), ('scheme', 'ssh://10.0.0.9'),
              ('user', 'ssh://someone@10.0.0.9'), ('proxy', 'tcp://p:2375'),

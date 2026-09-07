@@ -2083,7 +2083,10 @@ def run_doctor():
 _auth = {}
 _AUTH_EMPTY = {"at": 0.0, "state": {}}
 _auth_lock = threading.Lock()
-AUTH_TTL = 20
+# Settable only so the suite can stop paying it: the fixture is rewritten
+# behind this cache's back, so a test that changes who is signed in waits the
+# full TTL for the page to agree. Nothing else sets it.
+AUTH_TTL = int(os.environ.get("BB_AUTH_TTL") or 20)
 # While a sign-in is open and this box is still signed out, the answer is about
 # to change and is worth re-reading sooner. Not *every* poll, though: one check
 # is a full node runtime — measured at 357MB and 0.68s — so bypassing the cache
