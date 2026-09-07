@@ -360,7 +360,7 @@ def add(project, title, by="you", severity="medium", **fields):
             return {"error": f"{MAX_BUGS} bugs is the limit — close some, or "
                              "this stops being a tracker and starts being a log"}
         bug = {"id": max((int(b.get("id", 0)) for b in rows), default=0) + 1,
-               "title": title, "severity": severity, "status": "open",
+               "title": title, "severity": severity, "status": "open", "rev": 1,
                "by": "claude" if by == "claude" else "you",
                "at": int(time.time())}
         for k in FIELDS:
@@ -375,7 +375,25 @@ def add(project, title, by="you", severity="medium", **fields):
     return {"ok": True, "bug": bug}
 
 
-def _edit(project, bug_id, change, by="you"):
+def _moved_by(d, project, bug_id):
+    """Who last touched this bug and when, for the refusal below."""
+    b = (d.get("batch", {}).get(project) or {}).get("events") or []
+    for e in reversed(list(d.get("history", {}).get(project) or []) + list(b)):
+        if _int(e.get("id")) == bug_id:
+            return {"by": e.get("by", ""), "at": e.get("at", 0)}
+    return {}
+
+
+def _edit(project, bug_id, change, by="you", rev=None):
+    """One change to one bug, under the lock.
+
+    `rev` is the revision the caller read (roadmap #26): pass it and a write
+    over somebody else's edit is refused rather than applied, answering with
+    the report as it now stands and who moved it. The tab re-fetches on
+    bug_rev, so its window is one poll — but a report is mostly long text
+    fields, and losing a paragraph of somebody's repro to a poll's worth of
+    lateness is exactly the silent loss this exists to stop.
+    """
     bug_id = _int(bug_id)
     if bug_id is None:
         return {"error": "not a bug number"}
@@ -385,17 +403,24 @@ def _edit(project, bug_id, change, by="you"):
         bug = next((b for b in rows if _int(b.get("id")) == bug_id), None)
         if bug is None:
             return {"error": f"no bug #{bug_id} here"}
+        want = _int(rev)
+        if want is not None and want != int(bug.get("rev", 0)):
+            return {"error": "this report changed while you had it open",
+                    "conflict": {"id": bug_id, "rev": int(bug.get("rev", 0)),
+                                 "bug": json.loads(json.dumps(bug)),
+                                 **_moved_by(d, project, bug_id)}}
         out = change(bug)
         ev = out.pop("log", None) if isinstance(out, dict) else None
         if not out.get("error"):
             if ev:
                 _log(d, project, by, ev)
             bug["updated"] = int(time.time())
+            bug["rev"] = int(bug.get("rev", 0)) + 1
             save(d)
     return out
 
 
-def edit(project, bug_id, by="you", act="edited", **fields):
+def edit(project, bug_id, by="you", act="edited", rev=None, **fields):
     """Reword any of a bug's fields. Unknown keys are ignored rather than
     stored: the file's shape is this module's, not the request's.
 
@@ -425,7 +450,7 @@ def edit(project, bug_id, by="you", act="edited", **fields):
         return {"ok": True, "bug": bug,
                 "log": {"act": act, "id": bug["id"], "text": bug["title"],
                         "note": ", ".join(changed)}}
-    return _edit(project, bug_id, change, by)
+    return _edit(project, bug_id, change, by, rev)
 
 
 def send(project, bug_id, sessions=(), note=""):

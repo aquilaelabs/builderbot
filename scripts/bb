@@ -1416,8 +1416,38 @@ def bail(r):
         sys.exit(1)
 
 
+# Which seat this session sits in, for the two questions roadmap #26 and #27
+# both need answered: has this list moved since I last looked at it, and was
+# it me who moved it. Empty for a bb run from a plain shell, which then gets
+# the old behaviour — no check, because there is nothing to check against.
+_who = os.environ.get("BB_ACCOUNT_UID", "")
+
+
+def fresh():
+    """Refuse to write over words this session has not read.
+
+    The exposure is not two writes landing at once — those are per field and
+    under a lock. It is that a session read the roadmap when it started, the
+    operator reworded an item an hour later, and the session then rewrites
+    that item from the copy in its context. Nothing tells either of them.
+
+    So: if the list has moved since this session was last told about it,
+    say so and stop. There is no --force, deliberately. Re-reading is one
+    command and clears the block, which makes the honest path the short one;
+    a flag would make the dishonest path shorter.
+    """
+    if todo.stale(proj, _who):
+        print("[builderbot] ERROR: the roadmap has changed since you last read "
+              "it — run `bb roadmap` and make this change against what it says "
+              "now", file=sys.stderr)
+        sys.exit(2)
+
+
 if op in ("list", "ls"):
     show()
+    # Read, so what arrives on the next prompt is what has moved SINCE this —
+    # and so the guard above stops holding a session that has just looked.
+    todo.mark_seen(proj, _who, "todo")
 elif op == "show":
     # One item in full: its details, its steps and theirs. `list` cannot carry
     # this without becoming unreadable, and a session working item N wants
@@ -1438,6 +1468,7 @@ elif op == "show":
               + ("  (done)" if st.get("done") else "  (sent)" if st.get("sent") else ""))
         if st.get("info"):
             print("       details: " + st["info"].replace("\n", "\n                "))
+    todo.mark_seen(proj, _who, "todo")
 elif op == "--prompt":
     sys.stdout.write(todo.prompt(proj))
 elif op == "add":
@@ -1457,7 +1488,8 @@ elif op == "add":
             steps.append(rest[i + 1]); i += 2
         else:
             words.append(rest[i]); i += 1
-    r = todo.add(proj, " ".join(words).strip(), by="claude", steps=steps); bail(r)
+    r = todo.add(proj, " ".join(words).strip(), by="claude", steps=steps,
+                 who=_who); bail(r)
     n = len(r["item"]["steps"])
     print(f"added {r['item']['id']}: {r['item']['text']}"
           + (f" ({n} steps)" if n else ""))
@@ -1467,7 +1499,8 @@ elif op == "done":
     # is where the words live afterwards.
     if not rest:
         print("usage: bb roadmap done <n>", file=sys.stderr); sys.exit(1)
-    r = todo.tick(proj, rest[0], by="claude"); bail(r)
+    fresh()
+    r = todo.tick(proj, rest[0], by="claude", who=_who); bail(r)
     print(f"done {rest[0]}: {r['item']['text']}")
 elif op in ("rm", "remove"):
     # The reason rides with the deletion. Nothing here can be undone, so the
@@ -1475,7 +1508,9 @@ elif op in ("rm", "remove"):
     # saying why it went.
     if not rest:
         print("usage: bb roadmap rm <n> [\"why it is going\"]", file=sys.stderr); sys.exit(1)
-    r = todo.remove(proj, rest[0], by="claude", why=" ".join(rest[1:])); bail(r)
+    fresh()
+    r = todo.remove(proj, rest[0], by="claude", why=" ".join(rest[1:]),
+                    who=_who); bail(r)
     print(f"removed {rest[0]}")
 elif op in ("begin", "commit", "revert"):
     # Working something out is not a series of decisions the operator has to
@@ -1506,7 +1541,8 @@ elif op in ("mv", "move"):
     # and the record both.
     if len(rest) < 2 or rest[1] not in ("up", "down"):
         print("usage: bb roadmap mv <n> up|down", file=sys.stderr); sys.exit(1)
-    r = todo.move(proj, rest[0], dir=-1 if rest[1] == "up" else 1, by="claude")
+    r = todo.move(proj, rest[0], dir=-1 if rest[1] == "up" else 1, by="claude",
+                  who=_who)
     bail(r)
     print(f"moved {rest[0]} {rest[1]}")
 elif op == "shelve":
@@ -1518,7 +1554,7 @@ elif op == "shelve":
     # was not told, so it is theirs, and one tap in the panel.
     if not rest:
         print("usage: bb roadmap shelve <n>", file=sys.stderr); sys.exit(1)
-    r = todo.shelve(proj, rest[0], True, by="claude"); bail(r)
+    r = todo.shelve(proj, rest[0], True, by="claude", who=_who); bail(r)
     print(f"shelved {rest[0]} — say in your reply why, the operator unshelves it")
 elif op == "edit":
     # A plan written last week can describe a design that has since moved.
@@ -1526,7 +1562,8 @@ elif op == "edit":
     # what it used to say.
     if len(rest) < 2:
         print("usage: bb roadmap edit <n> \"the new wording\"", file=sys.stderr); sys.exit(1)
-    r = todo.edit(proj, rest[0], " ".join(rest[1:]), by="claude"); bail(r)
+    fresh()
+    r = todo.edit(proj, rest[0], " ".join(rest[1:]), by="claude", who=_who); bail(r)
     print(f"reworded {rest[0]}")
 elif op == "info":
     # The technical half, attached where the work is: which files, which
@@ -1540,11 +1577,14 @@ elif op == "info":
         if n < 1:
             print("[builderbot] ERROR: step numbers start at 1", file=sys.stderr)
             sys.exit(1)
+        fresh()
         r = todo.set_info(proj, rest[0], " ".join(rest[2:]),
-                          step=n - 1, by="claude"); bail(r)
+                          step=n - 1, by="claude", who=_who); bail(r)
         print(f"details on step {rest[1]} of {rest[0]}")
     else:
-        r = todo.set_info(proj, rest[0], " ".join(rest[1:]), by="claude"); bail(r)
+        fresh()
+        r = todo.set_info(proj, rest[0], " ".join(rest[1:]), by="claude",
+                          who=_who); bail(r)
         print(f"details on {rest[0]}")
 elif op == "step":
     sub, srest = (rest[0] if rest else ""), rest[1:]
@@ -1565,30 +1605,34 @@ elif op == "step":
             sys.exit(1)
         return n - 1
     if sub == "add" and len(srest) >= 2:
-        r = todo.add_step(proj, srest[0], " ".join(srest[1:]), by="claude"); bail(r)
+        r = todo.add_step(proj, srest[0], " ".join(srest[1:]), by="claude",
+                          who=_who); bail(r)
         print(f"added a step to {srest[0]}")
     elif sub == "edit" and len(srest) >= 3:
         # 1-based on the way in, because that is how the step is numbered
         # everywhere a human reads it.
+        fresh()
         r = todo.edit(proj, srest[0], " ".join(srest[2:]),
                       step=step_index(srest[1]),
-                      by="claude"); bail(r)
+                      by="claude", who=_who); bail(r)
         print(f"reworded step {srest[1]} of {srest[0]}")
     elif sub in ("rm", "remove") and len(srest) >= 2:
+        fresh()
         r = todo.remove(proj, srest[0],
                         step=step_index(srest[1]),
-                        by="claude", why=" ".join(srest[2:])); bail(r)
+                        by="claude", why=" ".join(srest[2:]), who=_who); bail(r)
         print(f"removed step {srest[1]} of {srest[0]}")
     elif sub == "info" and len(srest) >= 2:
+        fresh()
         r = todo.set_info(proj, srest[0], " ".join(srest[2:]),
                           step=step_index(srest[1]),
-                          by="claude"); bail(r)
+                          by="claude", who=_who); bail(r)
         print(f"details on step {srest[1]} of {srest[0]}")
     elif sub == "done" and len(srest) >= 2:
         # A session's own mark, distinct from the dashboard's "sent": this
         # step is finished, whether or not anybody sent it. See todo.step_done.
         r = todo.step_done(proj, srest[0], step_index(srest[1]),
-                           by="claude", note=" ".join(srest[2:])); bail(r)
+                           by="claude", note=" ".join(srest[2:]), who=_who); bail(r)
         print(f"step {srest[1]} of {srest[0]} done")
     elif sub in ("mv", "move") and len(srest) >= 3 and srest[2] in ("up", "down"):
         # The other half of restructuring a plan. Without it a session that
@@ -1596,7 +1640,8 @@ elif op == "step":
         # which loses both their words and the record of what really changed.
         r = todo.move(proj, srest[0],
                       step=step_index(srest[1]),
-                      dir=-1 if srest[2] == "up" else 1, by="claude"); bail(r)
+                      dir=-1 if srest[2] == "up" else 1, by="claude",
+                      who=_who); bail(r)
         print(f"moved step {srest[1]} of {srest[0]} {srest[2]}")
     else:
         print("usage: bb roadmap step add <n> \"...\" | step edit <n> <step> \"...\""

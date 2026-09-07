@@ -228,6 +228,24 @@ def _touch(d, project, kind="todo", on=True):
             b[k] = int(b.get(k, 0)) + 1
 
 
+def _credit(d, project, who, kind="todo"):
+    """Move one seat's watermark up by the change it just made itself.
+
+    Without this, a session that adds an item is immediately behind the
+    counter it moved, and the next prompt tells it the roadmap changed —
+    which it did, by its own hand. Crediting the writer keeps "you have not
+    seen this" meaning somebody ELSE wrote it.
+
+    By one, not up to the current number: the point is to skip its own write,
+    not to mark everything anybody else did as read on the way past.
+    """
+    if not who:
+        return
+    seat = (d.get("seen", {}).get(project) or {}).get(who)
+    if isinstance(seat, dict):
+        seat[kind] = int(seat.get(kind, 0)) + 1
+
+
 # Every change to a list, kept. The list itself only ever shows its present
 # state, and two people write it — so "was that step always worded like that?"
 # and "who dropped the third one?" had no answer at all. Capped per project:
@@ -496,7 +514,7 @@ MAX_INFO = 2000
 MAX_INFO_LINES = 40
 
 
-def set_info(project, item_id, text, step=None, by="you"):
+def set_info(project, item_id, text, step=None, by="you", was=None, who=""):
     """Attach details to an item or one step of it, or clear them with "".
 
     Its own verb rather than a field on edit, because the two change for
@@ -517,14 +535,17 @@ def set_info(project, item_id, text, step=None, by="you"):
                 return {"error": "no such step"}
             target = steps[i]
             ev.update(act="info-step", step=i, of=row["text"])
-        was = target.get("info", "")
+        old = target.get("info", "")
+        if (bad := clash("item's details" if target is row else "step's details",
+                         old, was)):
+            return bad
         if text:
             target["info"] = text
         else:
             target.pop("info", None)
-        ev.update(text=text, **({"was": was} if was else {}))
+        ev.update(text=text, **({"was": old} if old else {}))
         return {"ok": True, "item": row, "log": ev}
-    return _edit(project, item_id, change, by)
+    return _edit(project, item_id, change, by, who)
 
 
 # An item is one thing to do, or several in an order that matters. A change
@@ -534,7 +555,7 @@ def set_info(project, item_id, text, step=None, by="you"):
 MAX_STEPS = 12
 
 
-def add(project, text, by="you", steps=()):
+def add(project, text, by="you", steps=(), who=""):
     text = _clean(text)
     if not text:
         return {"error": "nothing to add"}
@@ -569,6 +590,7 @@ def add(project, text, by="you", steps=()):
                               **({"steps": len(steps)} if steps else {})})
         d["projects"][project] = rows
         _touch(d, project)
+        _credit(d, project, who)
         save(d)
     return {"ok": True, "item": row}
 
@@ -577,13 +599,56 @@ def _find(rows, item_id):
     return next((r for r in rows if _int(r.get("id")) == item_id), None)
 
 
-def _edit(project, item_id, change, by="you"):
+def _moved_by(d, project, item_id):
+    """Who last changed this item and when, out of the log — for the refusal
+    below, which is worth nothing without a name and a time on it.
+
+    An open batch is searched first: its events are newer than anything in the
+    history, and a session working a plan out is the likeliest other writer.
+    """
+    b = (d.get("batch", {}).get(project) or {}).get("events") or []
+    h = d.get("history", {}).get(project) or []
+    for e in reversed(list(h) + list(b)):
+        if _int(e.get("id")) == item_id:
+            return {"by": e.get("by", ""), "at": e.get("at", 0)}
+    return {}
+
+
+def clash(what, stored, was):
+    """The refusal, when a write's base is no longer what is stored.
+
+    What a write to this list replaces is one FIELD — an item's words, or a
+    step's, or either one's details — so what it carries is not a version
+    number for the row but the words it believes it is replacing, and the
+    check is that they are still there (roadmap #26).
+
+    Per field rather than per row on purpose, and it was built the other way
+    first: a session attaching details while the operator rewords the same
+    line is two people doing two things, and a row counter reports that as a
+    conflict and then offers a dialog whose two sides are not in conflict
+    about anything. Same item is not the same as same words.
+
+    `was is None` means the caller did not say what it was replacing, and is
+    unchecked — every caller that predates this, and `bb`, which has its own
+    guard for the same danger and a much longer window to guard.
+    """
+    if was is None or str(was) == str(stored):
+        return None
+    return {"error": f"this {what} changed while you had it open",
+            "conflict": {"current": stored}}
+
+
+def _edit(project, item_id, change, by="you", who=""):
     """Run one change against one item, under the lock.
 
     A change hands back its own history entry under "log", which is stripped
     off here rather than by every caller: the entry has to be written inside
     this lock, next to the change it describes, and a closure that returns it
     cannot reach the loaded file to write it itself.
+
+    It may also hand back a `conflict` — see `clash` above — which is filled
+    in here with who moved the thing and when, for the same reason: the log
+    is inside this lock and the closure cannot reach it.
     """
     item_id = _int(item_id)
     if item_id is None:
@@ -596,15 +661,25 @@ def _edit(project, item_id, change, by="you"):
             return {"error": "no such item"}
         out = change(row, rows)
         ev = out.pop("log", None) if isinstance(out, dict) else None
-        if ev and not out.get("error"):
+        ok = isinstance(out, dict) and not out.get("error")
+        if isinstance(out, dict) and out.get("conflict"):
+            out["conflict"].update(id=item_id, **_moved_by(d, project, item_id))
+            return out
+        if ev and ok:
             _log(d, project, by, ev)
         d["projects"][project] = rows
-        _touch(d, project)
+        # Only when something happened. A refused change — no such step, a
+        # step that has gone — used to mark the list unsaved all the same,
+        # which since #27 means every session on the project is told the
+        # roadmap moved when nothing did.
+        if ok:
+            _touch(d, project)
+            _credit(d, project, who)
         save(d)
     return out
 
 
-def shelve(project, item_id, on=True, by="you"):
+def shelve(project, item_id, on=True, by="you", who=""):
     """Put an item aside without taking it off, or bring it back.
 
     The state between "do this" and "we are not doing this": a reason to keep
@@ -631,10 +706,10 @@ def shelve(project, item_id, on=True, by="you"):
         return {"ok": True, "item": row,
                 "log": {"act": "shelved" if on else "unshelved",
                         "id": row["id"], "text": row["text"]}}
-    return _edit(project, item_id, change, by)
+    return _edit(project, item_id, change, by, who=who)
 
 
-def tick(project, item_id, by="you"):
+def tick(project, item_id, by="you", who=""):
     """Finish an item: off the list, into the log.
 
     It used to fade in place for a week. That is the same mistake striking a
@@ -653,10 +728,10 @@ def tick(project, item_id, by="you"):
                 "log": {"act": "done", "id": row["id"], "text": row["text"],
                         **({"steps": len(row.get("steps") or [])}
                            if row.get("steps") else {})}}
-    return _edit(project, item_id, change, by)
+    return _edit(project, item_id, change, by, who=who)
 
 
-def edit(project, item_id, text, step=None, by="you"):
+def edit(project, item_id, text, step=None, by="you", was=None, who=""):
     """Reword an item, or one step of it."""
     text = _clean(text)
     if not text:
@@ -669,21 +744,25 @@ def edit(project, item_id, text, step=None, by="you"):
     def change(row, rows):
         i = _int(step)
         if i is None or i < 0:
-            was, row["text"] = row["text"], text
+            if (bad := clash("item", row["text"], was)):
+                return bad
+            old, row["text"] = row["text"], text
             return {"ok": True, "item": row,
                     "log": {"act": "edit", "id": row["id"],
-                            "text": text, "was": was}}
+                            "text": text, "was": old}}
         steps = row.get("steps") or []
         if not 0 <= i < len(steps):
             return {"error": "no such step"}
-        was, steps[i]["text"] = steps[i]["text"], text
+        if (bad := clash("step", steps[i]["text"], was)):
+            return bad
+        old, steps[i]["text"] = steps[i]["text"], text
         return {"ok": True, "item": row,
                 "log": {"act": "edit-step", "id": row["id"], "step": i,
-                        "text": text, "was": was, "of": row["text"]}}
-    return _edit(project, item_id, change, by)
+                        "text": text, "was": old, "of": row["text"]}}
+    return _edit(project, item_id, change, by, who)
 
 
-def remove(project, item_id, step=None, by="you", why=""):
+def remove(project, item_id, step=None, by="you", why="", was=None, who=""):
     """Drop an item, or one step out of a group.
 
     Removing a step is how a plan gets corrected mid-flight: the one after it
@@ -703,6 +782,8 @@ def remove(project, item_id, step=None, by="you", why=""):
 
     def change(row, rows):
         if step is None:
+            if (bad := clash("item", row["text"], was)):
+                return bad
             rows.remove(row)
             return {"ok": True,
                     "log": {"act": "remove", "id": row["id"], "text": row["text"],
@@ -715,15 +796,17 @@ def remove(project, item_id, step=None, by="you", why=""):
             return {"error": "not a step"}
         if not 0 <= i < len(steps):
             return {"error": "no such step"}
+        if (bad := clash("step", steps[i].get("text", ""), was)):
+            return bad
         gone = steps.pop(i)
         return {"ok": True,
                 "log": {"act": "remove-step", "id": row["id"], "step": i,
                         "text": gone.get("text", ""), "of": row["text"],
                         **({"why": why} if why else {})}}
-    return _edit(project, item_id, change, by)
+    return _edit(project, item_id, change, by, who)
 
 
-def move(project, item_id, step=None, dir=0, by="you"):
+def move(project, item_id, step=None, dir=0, by="you", who=""):
     """Shuffle an item among the items, or a step within its group.
 
     Steps that have gone do not move, and nothing moves above them: crossed
@@ -763,6 +846,7 @@ def move(project, item_id, step=None, dir=0, by="you"):
             if out.get("ok"):
                 d["projects"][project] = rows
                 _touch(d, project)
+                _credit(d, project, who)
                 save(d)
         return out
 
@@ -780,10 +864,10 @@ def move(project, item_id, step=None, dir=0, by="you"):
         if gone(steps[i]) or (0 <= j < len(steps) and gone(steps[j])):
             return {"error": "a step that has gone stays where it is"}
         return swap(steps, i)
-    return _edit(project, item_id, change, by)
+    return _edit(project, item_id, change, by, who=who)
 
 
-def add_step(project, item_id, text, by="you"):
+def add_step(project, item_id, text, by="you", who=""):
     """Give an item a step — which is how a plain one becomes a plan."""
     text = _clean(text)
     if not text:
@@ -799,10 +883,10 @@ def add_step(project, item_id, text, by="you"):
         return {"ok": True,
                 "log": {"act": "add-step", "id": row["id"],
                         "step": len(steps) - 1, "text": text, "of": row["text"]}}
-    return _edit(project, item_id, change, by)
+    return _edit(project, item_id, change, by, who=who)
 
 
-def cross(project, item_id, step=None, on=True, by="you"):
+def cross(project, item_id, step=None, on=True, by="you", who=""):
     """Put a sent line back, or mark one as gone.
 
     This used to be two features. Striking a line out *by hand* — "I did this
@@ -832,7 +916,7 @@ def cross(project, item_id, step=None, on=True, by="you"):
         if i is not None and i >= 0:
             ev.update(step=i, of=row["text"])
         return {"ok": True, "log": ev}
-    return _edit(project, item_id, change, by)
+    return _edit(project, item_id, change, by, who=who)
 
 
 def _flat(text):
@@ -873,7 +957,7 @@ def next_step(row):
     return None
 
 
-def step_done(project, item_id, step, by="claude", note=""):
+def step_done(project, item_id, step, by="claude", note="", who=""):
     """A session finished one step of a plan, and says so.
 
     The step used to have one mark, sent, and sent is the dashboard's: it
@@ -901,7 +985,7 @@ def step_done(project, item_id, step, by="claude", note=""):
         if note:
             ev["why"] = _clean(note, multiline=False)
         return {"ok": True, "log": ev}
-    return _edit(project, item_id, change, by)
+    return _edit(project, item_id, change, by, who=who)
 
 
 def send(project, item_id, step=None, sessions=(), also_told=False, note=""):
@@ -1048,6 +1132,57 @@ def mark_told(project):
         _touch(d, project, None, False)
         save(d)
     return {"ok": True}
+
+
+def revisions():
+    """{project: {kind: how many times it has moved}} for the status poll.
+
+    So an open notebook can tell that somebody else wrote something without
+    re-fetching the list every fifteen seconds to find out — the same trick
+    the Bugs tab has had since it started polling bug_rev, and the reason the
+    Roadmap and Memory views were the two that sat there stale (roadmap #26).
+
+    The counter is #27's: it moves on every change to either half, whether or
+    not a batch is open, which is what a history length cannot say.
+    """
+    with _lock:
+        b = load().get("bump", {})
+    return {p: {k: int((v or {}).get(k, 0)) for k in KINDS} for p, v in b.items()}
+
+
+def stale(project, who, kind="todo"):
+    """Has this half moved since this seat last saw it?
+
+    What it is for is a session about to write over words it read a while
+    ago. A seat nobody has ever recorded answers False: the list went into
+    that session's prompt when it started and there is nothing to compare
+    against, so refusing would be a guess dressed as a rule.
+    """
+    if not project or not who:
+        return False
+    with _lock:
+        d = load()
+        seat = (d.get("seen", {}).get(project) or {}).get(who)
+        now = int((d.get("bump", {}).get(project) or {}).get(kind, 0))
+    return isinstance(seat, dict) and now > int(seat.get(kind, 0))
+
+
+def mark_seen(project, who, kind=None):
+    """This seat has now read what is there — silently, saying nothing.
+
+    `catchup` is the other half of the same pair and reports as well as
+    records; this one is for the act of READING the list, where there is
+    nothing to report because the thing being marked is on screen.
+    """
+    if not project or not who:
+        return
+    with _lock:
+        d = load()
+        b = d.get("bump", {}).get(project) or {}
+        seat = d.setdefault("seen", {}).setdefault(project, {}).setdefault(who, {})
+        for k in (KINDS if kind is None else [kind]):
+            seat[k] = int(b.get(k, 0))
+        save(d)
 
 
 def catchup(project, who):

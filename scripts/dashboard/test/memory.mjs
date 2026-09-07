@@ -6,7 +6,7 @@
 // The writes run for real against the scratch home, so this also checks the
 // part that matters most: a delete takes the index line out with the file.
 import { launch, newPage, ok, done, ready, tmuxCapture, nbShown, nbGone, URL, DIR,
-         openFold, animatedDuring } from './lib.mjs';
+         openFold, animatedDuring, refreshUntil } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 
 const MEM = `${DIR}/home/.claude/projects/${(DIR + '/ws/alpha').replaceAll('/', '-')}/memory`;
@@ -284,6 +284,54 @@ page.errors = [];
 const pane = tmuxCapture('claude-alpha');
 ok(/notes about how you work here/.test(pane),
    'saving tells the running session, and the line names the memories');
+
+// ---- keeping up with the other writer -----------------------------------
+// The stamp on the poll is the directory's own — how many files and how
+// lately touched — rather than a counter, because the writer that moves a
+// memory most often is a session using its own file tools, which increments
+// nothing (roadmap #26).
+writeFileSync(`${MEM}/arrived.md`,
+  '---\nname: arrived\ndescription: written by a session\nmetadata:\n  type: project\n---\n\nnobody pressed anything\n');
+await refreshUntil(page, () => [...document.querySelectorAll('#memList .mname')]
+  .some(e => e.textContent === 'arrived'));
+ok(true, 'a memory a session writes appears in an open book, with nothing touched');
+
+// ---- a memory that moved under the editor -------------------------------
+// The whole-file write is this panel's genuine last-writer-wins, and a memory
+// is the largest thing anybody types here — so the editor carries the digest
+// of the bytes it loaded, and a save whose base is gone is refused (#26).
+// There is no "keep theirs" for this one: the version in the box may be an
+// hour of typing, so what is stored is put on screen to read and copy from
+// and the two answers are to write over it or to reload deliberately.
+writeFileSync(`${MEM}/clash.md`,
+  '---\nname: clash\ndescription: two writers\nmetadata:\n  type: project\n---\n\nas loaded\n');
+await page.evaluate(() => notebooks.get('alpha').reloadMemory());
+await openFold(page, '#memList .mem:has(.mname:text-is("clash"))');
+await page.$eval('#memList .mem[open] textarea', t => {
+  t.value = t.value.replace('as loaded', 'what the operator typed');
+  t.dispatchEvent(new Event('input')); });
+// A session writing the same file with its own tools, which is the writer
+// that passes through nothing this module could count.
+writeFileSync(`${MEM}/clash.md`,
+  '---\nname: clash\ndescription: two writers\nmetadata:\n  type: project\n---\n\nwhat the session wrote\n');
+await page.click('#todoSave');
+await page.waitForFunction(() => !document.getElementById('memClash').hidden,
+                           { timeout: 15000 });
+const memBand = () => page.$eval('#memClash', el => el.textContent.replace(/\s+/g, ' '));
+ok(/changed on disk while you had it open/.test(await memBand()),
+   'a memory saved over one that moved on disk is refused');
+ok(/what the session wrote/.test(await memBand()),
+   '...showing what is there now, to read and copy from');
+ok(read('clash.md').includes('what the session wrote'), '...with nothing written');
+ok((await page.$eval('#memList .mem[open] textarea', t => t.value))
+     .includes('what the operator typed'),
+   '...and the typing still in the editor, which is why there is no Keep theirs');
+await page.click('#memClashMine');
+await page.waitForFunction(() => document.getElementById('memClash').hidden,
+                           { timeout: 15000 });
+await page.waitForFunction(() => true);
+ok(read('clash.md').includes('what the operator typed'),
+   'Write mine over it does exactly that, against what is there now');
 
 // ---- closing -----------------------------------------------------------
 // It is a tab, so it closes the way tabs close and not on a stray Escape.

@@ -4,7 +4,7 @@
 // `bb roadmap`, and either can tick it off. The open items are appended to every
 // Claude session bb-tty starts, which is the whole point — something noticed
 // mid-task and left undone used to live in the conversation and die with it.
-import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, URL, DIR } from './lib.mjs';
+import { launch, newPage, ok, done, ready, animatedDuring, tmuxCapture, tmuxNew, tmuxKill, nbShown, nbGone, nbTab, patience, refreshUntil, URL, DIR } from './lib.mjs';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -1465,6 +1465,124 @@ ok(/gone stays where it is/.test(refusedBy('step', 'mv', widget.id, '2', 'down')
        es => es.some(e => e.textContent.includes('typed while a reload was out'))),
      'a reload landing after you type does not take what you typed');
 }
+
+// ---- keeping up with the other writer ------------------------------------
+// The Bugs tab has re-read on a revision from the poll since it was built;
+// the Roadmap and Memory views loaded once when the tab opened and then held
+// that drawing until it was closed and reopened, which is a long time to be
+// looking at a list a session has moved on from (roadmap #26). Guarded, and
+// that guard is why they had none: the list on screen may be carrying staged
+// changes the server has never seen.
+await saveList();
+bbTodoEarly('add', 'added while the panel was just sitting there');
+await refreshUntil(page, () => [...document.querySelectorAll('#todoList .todo .txt')]
+  .some(e => e.textContent.includes('added while the panel was just sitting there')));
+ok(true, 'an item a session adds arrives in an open notebook, with nothing touched');
+await page.fill('#todoText', 'something staged, and not to be thrown away');
+await page.keyboard.press('Enter');
+bbTodoEarly('add', 'and one more from the session');
+await refreshUntil(page, () => true, { timeout: 4000 });
+ok(await page.$$eval('#todoList .todo .txt',
+     es => es.some(e => e.textContent.includes('something staged'))
+        && !es.some(e => e.textContent.includes('and one more from the session'))),
+   '...and does not, while something here is staged — a re-read would take it');
+await saveList();
+await refreshUntil(page, () => [...document.querySelectorAll('#todoList .todo .txt')]
+  .some(e => e.textContent.includes('and one more from the session')));
+ok(true, '...which is why the catch-up waits for Save rather than skipping it');
+
+// ---- two writers, one item ----------------------------------------------
+// The panel stages, so what it replays at Save was read some time ago. A
+// session rewording the same line meanwhile would have its words taken with
+// nobody told — so every op that REPLACES something carries what it believes
+// it is replacing, and is refused when that is no longer there (roadmap #26).
+const clashId = String(bbTodoEarly('add', 'the line two people will write')
+  .match(/added (\d+)/)[1]);
+await page.evaluate(() => notebooks.get('alpha').reload());
+await page.waitForFunction(i => !!document.querySelector(
+  `#todoList .todo[data-id="${i}"]`), clashId, { timeout: 10000 });
+const clashBox = () => page.$eval('#todoClash',
+  el => el.textContent.replace(/\s+/g, ' '));
+const rewordTo = async (text) => {
+  await page.click(`#todoList .todo[data-id="${clashId}"][data-step="-1"] .ed`);
+  await page.waitForSelector('.editbox textarea', { timeout: 10000 });
+  await page.fill('.editbox textarea', text);
+  await page.click('.editbox .primary');
+};
+const clashText = () => read().projects.alpha
+  .find(r => String(r.id) === clashId).text;
+// The band gone AND the save it was part of finished — the same predicate
+// saveList waits on, because settling a conflict resumes that save.
+const settled = () => page.waitForFunction(() => {
+  const b = document.getElementById('todoSaveQuiet');
+  return document.getElementById('todoClash').hidden
+         && b.textContent !== 'Saving…' && b.disabled; }, { timeout: 20000 });
+
+await rewordTo("the operator's wording");
+// ...and only now does the other writer land, which is the shape of it:
+// staged here, written there, saved after.
+bbTodoEarly('edit', clashId, "the session's wording");
+await page.click('#todoSaveQuiet');
+await page.waitForFunction(() => !document.getElementById('todoClash').hidden,
+                           { timeout: 15000 });
+ok(/changed this while you had it open/.test(await clashBox()),
+   'a reword over somebody else\'s words is refused rather than applied');
+ok(/the session's wording/.test(await clashBox())
+   && /the operator's wording/.test(await clashBox()),
+   '...and both are shown, because a refusal that only says no leaves the typing nowhere');
+ok(clashText() === "the session's wording", '...with nothing written meanwhile');
+// Settling one carries on the save it interrupted, so what is waited for is
+// that save finishing — the row on screen already said the operator's wording
+// the moment it was staged, and reading the file before the write lands is how
+// this assertion first passed for the wrong reason.
+await page.click('#clashMine');
+await settled();
+ok(clashText() === "the operator's wording",
+   'Use mine writes over theirs — a decision, made knowing what it replaces');
+
+await rewordTo('a wording that is about to lose');
+bbTodoEarly('edit', clashId, 'what the session says now');
+await page.click('#todoSaveQuiet');
+await page.waitForFunction(() => !document.getElementById('todoClash').hidden,
+                           { timeout: 15000 });
+await page.click('#clashTheirs');
+await settled();
+ok(clashText() === 'what the session says now',
+   '...and Keep theirs drops the staged wording instead');
+
+// Same item is not the same words. A session attaching details while the
+// operator rewords the line is two people doing two things, and the check is
+// per field so that it says so — this was built per ROW first, and reported
+// exactly this as a conflict with two sides that did not disagree.
+await rewordTo('reworded beside the details');
+bbTodoEarly('info', clashId, 'which files this touches');
+await saveList();
+const both = read().projects.alpha.find(r => String(r.id) === clashId);
+ok(both.text === 'reworded beside the details' && both.info === 'which files this touches',
+   'a reword and a details change on one item both land — the check is per field');
+
+// ---- a session writing over words it has not read ------------------------
+// The panel's danger is a staged op replayed late; a session's is longer and
+// quieter — it read the list when it started, and may write an item from that
+// copy an hour later. Same answer in a different shape: it is refused until it
+// has read the list again. No --force, because a flag would be the short path.
+const asSession = (...a) => execFileSync(BB, ['roadmap', ...a],
+  { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
+           WORKSPACE: `${DIR}/ws`, BB_ACCOUNT_UID: 'u-test' } }).toString();
+asSession('list');
+asSession('edit', clashId, 'a session may write what it has read');
+ok(clashText() === 'a session may write what it has read',
+   'a session that has read the list writes it, and its own write does not count against it');
+bbTodoEarly('edit', clashId, 'the operator moved it');
+let refusal = '';
+try { asSession('edit', clashId, 'over the top'); }
+catch (e) { refusal = String(e.stderr); }
+ok(/changed since you last read it/.test(refusal) && clashText() === 'the operator moved it',
+   '...and is refused once somebody else has, with nothing written');
+asSession('list');
+asSession('edit', clashId, 'read again, then written');
+ok(clashText() === 'read again, then written',
+   '...re-reading is what clears it, which makes the honest path the short one');
 
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);

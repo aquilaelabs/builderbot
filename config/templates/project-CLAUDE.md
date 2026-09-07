@@ -601,6 +601,14 @@ where quietly rewriting somebody's plan goes unnoticed. That is the point:
 correct the list openly rather than leaving it describing work nobody is
 going to do.
 
+**You can be refused for writing over words you have not read.** `bb roadmap
+edit`, `info`, `rm`, `done` and the step verbs check whether the list has
+moved since you last read it, and stop rather than rewriting an item from the
+copy in your context — which may be hours old, because it arrived when this
+conversation started. There is no `--force`: run `bb roadmap`, which clears
+it, and make the change against what it says now. Your own writes never count
+against you, so a run of edits is not interrupted by itself.
+
 **When you drop something, say why in the command**: `bb roadmap rm 4 "the
 picker this described no longer exists"`. Nothing here can be undone, so that
 note is the only thing between a dropped line and somebody adding it straight
@@ -631,11 +639,13 @@ are not in `bb roadmap history` or `bb bug history` yet — that is the whole
 point of it — so a session that opens a batch and then asks the log what it
 just did gets a confusing answer. Do the reading first, then start editing.
 
-**Do not leave one open.** While a batch is open the operator's Save in the
-panel is held — what is on their screen was read before you started, and
-saving over a list that has moved underneath is how two writers lose each
-other's work. Their typing is not blocked and yours is not either; only the
-writing-back waits. So commit or revert before you finish the reply, and if
+**Do not leave one open.** While a batch is open the panel holds its own
+Save — what is on the operator's screen was read before you started, and
+replaying it over a list that has moved is how two writers lose each other's
+work. Their typing is not blocked and yours is not either; only the
+writing-back waits. That hold is the panel's own courtesy and not a lock:
+nothing here serializes writers, and `bb` and a second session write straight
+through it. So commit or revert before you finish the reply, and if
 you are not about to make several related changes, do not open one at all.
 
 **Read the log narrowed, never whole.** `bb roadmap history` gives the last 20;

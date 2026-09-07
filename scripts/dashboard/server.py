@@ -1348,6 +1348,11 @@ def project_list(who):
         else:
             todo_batches[name] = b
     bug_revs = bugs.revisions()
+    # ...and the roadmap's, so an open notebook stops being the one surface
+    # here that never notices somebody else writing (roadmap #26). The Bugs
+    # tab has polled bug_rev since it was built; the Roadmap and Memory views
+    # loaded once when the tab opened and then held that drawing forever.
+    nb_revs = todo.revisions()
     for d in here:
         # Mid-clone: a directory with a .git and not much else, which every
         # check below reads as a repository in a strange state. The job row is
@@ -1455,6 +1460,7 @@ def project_list(who):
         # every locked row, forever. It is also not a fault, and the issue list
         # is where faults go.
         sa = _session_at(d.name)
+        mem_census = memory.census(d.name)
         out.append({"name": d.name, "git": branch, "git_ok": git_ok,
                     "linked": linked, "github": github,
                     "claude_md": has_md,
@@ -1482,7 +1488,7 @@ def project_list(who):
                     **sa,
                     # What Claude remembers here. On the row because a memory
                     # nobody knows about is the one that goes wrong quietly.
-                    "memories": memory.count(d.name),
+                    "memories": mem_census["count"],
                     # ...and what is still to do, which is the number on the row
                     # actually worth glancing at.
                     "todo": open_todo.get(d.name, 0),
@@ -1492,6 +1498,15 @@ def project_list(who):
                     # So an open Bugs tab notices a session filing or closing
                     # one without polling the tracker itself.
                     "bug_rev": bug_revs.get(d.name, 0),
+                    # Two, because the two halves are re-read separately and
+                    # a memory edit must not throw away a half-typed roadmap
+                    # item beside it.
+                    "todo_rev": (nb_revs.get(d.name) or {}).get("todo", 0),
+                    # The memories are files, and the writer that moves one
+                    # most often is a session's own Write tool, which passes
+                    # through nothing that could count. So this one is the
+                    # directory itself — how many and how lately touched.
+                    "mem_rev": mem_census["rev"],
                     "issues": issues})
     # Two projects whose names slug alike are one dev instance: `My.App` and
     # `my-app` both slug to my-app, which is one compose project name, one env
@@ -4222,6 +4237,15 @@ class Handler(BaseHTTPRequestHandler):
                     "DASHBOARD_STATE": str(STATE), "WORKSPACE": str(WORKSPACE),
                     "BB_TOKEN": users.mint_session(project), "BB_RELAYED": "1",
                     "BUILDERBOT_ROLE": "controller"})
+        # Which seat the caller sits in, so a node's session is the same one
+        # here: it is what says whether the roadmap has moved since that
+        # session last read it, and whether a change was its own (#26, #27).
+        # Only for a session token — a person at a node's console writes as a
+        # person, and a person's writes are news to every session.
+        if me.get("session") and me.get("uid"):
+            env["BB_ACCOUNT_UID"] = me["uid"]
+        else:
+            env.pop("BB_ACCOUNT_UID", None)
         if field(req, "from") == "session":
             env["CLAUDECODE"] = "1"
         else:
@@ -4619,6 +4643,19 @@ class Handler(BaseHTTPRequestHandler):
         if (bad := locked_out(name)):
             return self._json(bad, 409)
         live = [s["name"] for s in tmux_sessions()]
+        # What the caller believes it is replacing, for the verbs that
+        # replace something (roadmap #26). A field's own words rather than a
+        # version for the row: a session attaching details while the operator
+        # rewords the same line is not a conflict. Absent from a client that
+        # has not been taught to send it, which is then unchecked.
+        was = req.get("was")
+        # And who is writing, but only when a SESSION is: its own change must
+        # not come back to it as news on its next prompt (#27's watermark),
+        # while the operator's must, which is the whole point of that channel.
+        # A browser's cookie names the same account and is deliberately not
+        # credited.
+        me = self._who() or {}
+        who = me.get("uid", "") if me.get("session") else ""
         if act in ("tell", "save"):
             # Two Saves, one difference: whether a line of the conversation is
             # spent saying so. Both settle the panel — the plain one is "I have
@@ -4631,7 +4668,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True, "told": told}
                               | self._todo_state(name, live))
         if act == "add":
-            r = todo.add(name, field(req, "text"), steps=field_list(req, "steps"))
+            r = todo.add(name, field(req, "text"), steps=field_list(req, "steps"),
+                         who=who)
         elif act == "send":
             r = todo.send(name, req.get("id"), req.get("step"), live,
                           also_told=todo.unsaved(name) if req.get("tell") else False,
@@ -4639,12 +4677,13 @@ class Handler(BaseHTTPRequestHandler):
             if r.get("sent") and req.get("tell"):
                 todo.mark_told(name)
         elif act == "edit":
-            r = todo.edit(name, req.get("id"), field(req, "text"), req.get("step"))
+            r = todo.edit(name, req.get("id"), field(req, "text"), req.get("step"),
+                          was=was, who=who)
         elif act == "move":
             r = todo.move(name, req.get("id"), req.get("step"), req.get("dir"))
         elif act == "info":
             r = todo.set_info(name, req.get("id"), field(req, "text"),
-                              step=req.get("step"))
+                              step=req.get("step"), was=was, who=who)
         elif act == "add-step":
             r = todo.add_step(name, req.get("id"), field(req, "text"))
         elif act == "cross":
@@ -4652,7 +4691,7 @@ class Handler(BaseHTTPRequestHandler):
                            bool(req.get("on", True)))
         elif act == "remove":
             r = todo.remove(name, req.get("id"), req.get("step"),
-                            why=field(req, "why"))
+                            why=field(req, "why"), was=was, who=who)
         elif act == "shelve":
             r = todo.shelve(name, req.get("id"), bool(req.get("on", True)))
         elif act == "history":
@@ -4666,6 +4705,16 @@ class Handler(BaseHTTPRequestHandler):
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
+            # A conflict answers 200. Not because it is a success — the write
+            # was refused — but because the only client is this page, which
+            # branches on `conflict` before `error`, and a 4xx here would put
+            # "Failed to load resource" in the browser console for an outcome
+            # the page handles. The suite holds every tab to zero console
+            # errors, and that rule is worth more than the status code.
+            # It answers with the item as it now stands so the panel can show
+            # both, and with the fresh list so nothing else on screen is stale.
+            if r.get("conflict"):
+                return self._json(r | self._todo_state(name, live))
             return self._json(r, 400)
         return self._json(r | self._todo_state(name, live))
 
@@ -4674,6 +4723,12 @@ class Handler(BaseHTTPRequestHandler):
         anywhere to send, and whether a session has been told about it yet."""
         session = todo.tmux_name("claude-" + name)
         return {"items": todo.items(name),
+                # What the poll compares against, handed back with every read
+                # AND every write — so this panel's own change never reads as
+                # somebody else's on the next poll, and a change that lands
+                # between opening the tab and the first poll is not missed
+                # (roadmap #26).
+                "rev": (todo.revisions().get(name) or {}).get("todo", 0),
                 "session": session if session in set(live) else None,
                 "unsaved": todo.unsaved(name),
                 # A session part-way through a batch. The panel refuses to save
@@ -5071,7 +5126,7 @@ class Handler(BaseHTTPRequestHandler):
             r = bugs.add(name, fields.pop("title"),
                          severity=field(req, "severity", "medium"), **fields)
         elif act == "edit":
-            r = bugs.edit(name, req.get("id"),
+            r = bugs.edit(name, req.get("id"), rev=req.get("rev"),
                           severity=field(req, "severity", "medium"), **fields)
         elif act == "status":
             r = bugs.set_status(name, req.get("id"), field(req, "status"),
@@ -5095,6 +5150,12 @@ class Handler(BaseHTTPRequestHandler):
         else:
             return self._json({"error": f"unknown action: {act}"}, 400)
         if r.get("error"):
+            # Somebody else edited this report first: answered with what it
+            # now says and the fresh tracker, so the tab can offer the choice
+            # rather than only refusing (roadmap #26). 200 for the same
+            # reason as _todo above.
+            if r.get("conflict"):
+                return self._json(r | bugs.payload(name))
             return self._json(r, 400)
         return self._json(bugs.payload(name))
 
@@ -5117,10 +5178,11 @@ class Handler(BaseHTTPRequestHandler):
         if act != "history" and self._readonly(proj):
             return None
         if act == "save":
-            r = memory.save(proj, file, field(req, "text"))
+            r = memory.save(proj, file, field(req, "text"), rev=field(req, "rev"))
         elif act == "index":
             r = memory.save_index(proj, [e for e in (req.get("lines") or [])
-                                         if isinstance(e, dict)])
+                                         if isinstance(e, dict)],
+                                  rev=field(req, "rev"))
         elif act == "create":
             r = memory.create(proj, field(req, "name"), field(req, "title"),
                               field(req, "hook"), field(req, "type"),
@@ -5138,7 +5200,10 @@ class Handler(BaseHTTPRequestHandler):
         # one line telling a session about all of it.
         if not r.get("error") and act in ("save", "index", "create", "delete"):
             todo.mark_unsaved(proj, "memory")
-        return self._json(r, 400 if r.get("error") else 200)
+        # A conflict answers 200 — see _todo. The whole file as it now stands
+        # rides back in it, which is what lets the editor show both versions
+        # instead of just losing the typing.
+        return self._json(r, 400 if r.get("error") and not r.get("conflict") else 200)
 
     def _custom(self, req):
         """Save or delete one of the operator's own command lists.

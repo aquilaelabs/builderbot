@@ -483,6 +483,46 @@ await page.evaluate(() => {
 await page.waitForFunction(() => !document.querySelector('.nbsheet:not([hidden])'),
                            { timeout: 8000 });
 
+// ---- two writers, one report ---------------------------------------------
+// The tracker is write-through and the tab re-reads on bug_rev, so its window
+// is one poll — but a report is mostly long text fields, and losing a
+// paragraph of somebody's repro to a poll's worth of lateness is exactly the
+// silent loss roadmap #26 is about. The form carries the revision it opened
+// over. Unlike a roadmap item, a whole form replaces every field at once, so
+// the row's own revision is the right unit here.
+bbBug('add', 'two people will edit this one', '--sev', 'low');
+const twoId = read().find(b => b.title === 'two people will edit this one').id;
+await page.evaluate(() => notebooks.get('alpha').reloadBugs());
+await page.waitForFunction(i => !!document.querySelector(`#bugList .bug[data-id="${i}"]`),
+                           twoId, { timeout: 15000 });
+await page.click(`#bugList .bug[data-id="${twoId}"] summary`);
+await page.click(`#bugList .bug[data-id="${twoId}"] .bEdit`);
+await page.waitForSelector('.bugform .bfTitle', { timeout: 10000 });
+await page.fill('.bugform .bfRepro', "the operator's repro, typed at length");
+// The other writer, after the form was opened and before it is saved.
+bbBug('note', String(twoId), 'a session got here first');
+// The form stays on screen either way, so what says the write was refused is
+// the revision it now carries — waited for, or the second press below goes
+// out while the first is still in flight and they both carry the old one.
+const formRev = () => page.$eval('.bugform', f => f.dataset.rev);
+const opened = await formRev();
+await page.click('.bugform .bfGo');
+await page.waitForFunction(r => document.querySelector('.bugform')?.dataset.rev !== r,
+                           opened, { timeout: 15000 });
+ok(read().find(b => b.id === twoId).repro === undefined,
+   'a form saved over a report somebody else edited is refused, not applied');
+ok(await page.$eval('.bugform .bfRepro', t => t.value)
+     === "the operator's repro, typed at length",
+   '...with what was typed still in the form, which is the only copy of it');
+await page.click('.bugform .bfGo');
+await page.waitForFunction(() => !document.querySelector('.bugform .bfTitle'),
+                           { timeout: 15000 });
+const settledBug = read().find(b => b.id === twoId);
+ok(settledBug.repro === "the operator's repro, typed at length"
+   && !/a session got here first/.test(settledBug.notes || ''),
+   '...and pressing Save again writes it over theirs, note and all — which is '
+   + 'what a whole-form edit means, and why the first press had to stop');
+
 ok(page.errors.length === 0, 'zero console errors');
 if (page.errors.length) console.log(page.errors);
 await done(browser);

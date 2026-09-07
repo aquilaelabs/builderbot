@@ -18,6 +18,7 @@ directories actually under /workspace and a file name against the directory's
 own listing, so nothing the page posts can name a path that was not already
 there to be named.
 """
+import hashlib
 import json
 import re
 import threading
@@ -233,6 +234,22 @@ def _front(text):
     return out
 
 
+def _rev(text):
+    """A memory's revision: a short digest of the bytes that were loaded.
+
+    The file is the unit here — a memory is one document somebody types into,
+    not a row of fields — so there is no per-field revision to keep and
+    nothing to count. The digest is what the editor carries back at Save, and
+    a mismatch means the file moved underneath it (roadmap #26).
+
+    Content rather than an mtime: a memory is written by the panel, by `bb`,
+    and by a session using its own file tools, and only the last of those
+    goes through this module at all. A digest catches every one of them, and
+    is the same answer on both sides of a second.
+    """
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
+
+
 def _read(p):
     """One memory file as a row, or None if it cannot be read."""
     try:
@@ -241,7 +258,7 @@ def _read(p):
     except OSError:
         return None
     f = _front(raw)
-    return {"file": p.name,
+    return {"file": p.name, "rev": _rev(raw),
             "name": f.get("name") or p.stem,
             "description": f.get("description", ""),
             "type": f.get("type", ""),
@@ -253,21 +270,48 @@ def _read(p):
             "big": st.st_size > MAX_BYTES}
 
 
-def count(project):
-    """How many memories this project has — for the row's book icon.
+def census(project):
+    """How many memories this project has, and a stamp that moves when any of
+    them does — one walk of the directory for both.
 
-    Read on every status poll, so it is a directory listing and nothing more.
-    A count rather than a boolean because the number is the whole reason to
-    open the book: two is a project Claude barely knows, twenty is one where
-    a wrong memory has had time to matter.
+    The count is for the row's book icon, and is a number rather than a
+    boolean because the number is the whole reason to open the book: two is a
+    project Claude barely knows, twenty is one where a wrong memory has had
+    time to matter.
+
+    The stamp is for the open notebook (roadmap #26): it is what tells a
+    Memory view that it is looking at yesterday's files. Mtimes rather than
+    the digests `payload` builds, because this runs for every project on
+    every poll and reading every memory that often to answer "no change" is
+    the kind of cost nobody notices until the share is slow. It is also the
+    only thing that catches the writer who never passes through this module:
+    a session editing a memory with its own file tools.
     """
     d = memory_dir(project)
+    out = {"count": 0, "rev": ""}
     if d is None:
-        return 0
+        return out
+    n, newest = 0, 0
     try:
-        return sum(1 for p in d.glob("*.md") if p.name != INDEX and p.is_file())
+        for p in d.glob("*.md"):
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            newest = max(newest, int(st.st_mtime))
+            if p.name != INDEX:
+                n += 1
     except OSError:
-        return 0
+        return out
+    # The index counts towards the stamp and not towards the number: it moves
+    # when a line is retitled, which is a change the tab should re-read, and
+    # it is not a memory.
+    return {"count": n, "rev": f"{n}:{newest}"}
+
+
+def count(project):
+    """How many memories this project has — for the row's book icon."""
+    return census(project)["count"]
 
 
 def payload(project, live=()):
@@ -322,6 +366,15 @@ def payload(project, live=()):
     session = tmux_name("claude-" + project)
     return {"project": project, "dir": str(d),
             "memories": memories, "issues": issues, "types": list(TYPES),
+            # The index is regenerated from the lines the memories carry, so
+            # it is one more document with one more revision — a stale client
+            # rewriting it drops the line another writer just added, which is
+            # the third of the three exposures roadmap #26 names.
+            "index_rev": _rev(index),
+            # The directory's own stamp, the same one the poll carries, so an
+            # open book knows which polls are news and which are its own save
+            # coming back.
+            "rev": census(project)["rev"],
             "exists": d.is_dir(),
             # The page offers the note only when there is somewhere to put it.
             "session": session if session in set(live) else None}
@@ -356,7 +409,31 @@ def _write(p, text):
     tmp.replace(p)
 
 
-def save(project, file, text):
+def _conflict(p, rev, what):
+    """Refuse a write whose base is no longer what is on disk (roadmap #26).
+
+    Answers with the file as it now stands, so whoever asked can show both
+    and choose — a refusal that only says no leaves the words that were typed
+    with nowhere to go, which is worse than the overwrite it prevented.
+
+    No `by`: a memory is a file, and the writer that most often moves one is
+    a session using its own file tools, which passes through nothing that
+    could record a name. The time it changed is honest and is all there is.
+    """
+    if not rev:
+        return None
+    try:
+        now = p.read_text(errors="replace") if p.is_file() else ""
+        at = int(p.stat().st_mtime) if p.is_file() else 0
+    except OSError:
+        return None
+    if _rev(now) == rev:
+        return None
+    return {"error": f"this {what} changed while you had it open",
+            "conflict": {"rev": _rev(now), "current": now, "at": at}}
+
+
+def save(project, file, text, rev=None):
     d = memory_dir(project)
     if d is None:
         return {"error": f"not a project: {project}"}
@@ -367,6 +444,8 @@ def save(project, file, text):
         return {"error": f"no memory called {file} here"}
     if len(text.encode()) > MAX_BYTES:
         return {"error": "too large to be a memory"}
+    if (bad := _conflict(p, rev, "memory")):
+        return bad
     # Newline-terminated: these are read by Claude as markdown, and a file
     # whose last line has no ending runs into whatever follows it.
     if text and not text.endswith("\n"):
@@ -380,7 +459,7 @@ def save(project, file, text):
     return {"ok": True, "when": int(time.time())}
 
 
-def save_index(project, entries):
+def save_index(project, entries, rev=None):
     """Rewrite MEMORY.md from the one line each memory carries.
 
     The index is regenerated rather than edited as text, so it cannot end up
@@ -406,6 +485,10 @@ def save_index(project, entries):
         before = p.read_text(errors="replace") if p.is_file() else ""
     except OSError as e:
         return {"error": f"could not read the index: {e}"}
+    if rev and _rev(before) != rev:
+        return {"error": "the index changed while you had it open",
+                "conflict": {"rev": _rev(before), "current": before,
+                             "at": int(p.stat().st_mtime) if p.is_file() else 0}}
     try:
         present = {q.name for q in d.glob("*.md") if q.is_file() and q.name != INDEX}
     except OSError:
