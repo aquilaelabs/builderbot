@@ -420,6 +420,12 @@ bb bug find TEXT   search the reports themselves — area, repro and notes too
 bb bug begin       the same notebook batch `bb roadmap begin` opens; `commit`, `revert`
 bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
                    `wontfix N`, `na N`, `reopen N`, `rm N`, `history`
+bb tests           the test registry: where the suite's time goes, slowest first
+bb tests show KEY  one test — what it protects, what it exercises, its history
+bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
+bb tests ingest [LOG]  record a run's real durations (BB_TEST_TIMING=1 output)
+bb tests drift     what the runner reported that this list does not, and back
+bb tests flagged   the ones sitting on a round timeout rather than working
 bb history         one search over the notebook's logs — roadmap, bugs, memory
                    (`--find X`, `--since 7d`, `-n N`)
 bb roadmap history [-n N] [--since 7d] [--find TEXT]   what changed, narrowed
@@ -2380,6 +2386,44 @@ project — one with an error, because it is not a repository — so subtracting
 only the *listed* names would have left it in play. Subtracting the valid ones
 catches both, and needs no excludes configured on the scanner.
 
+**The test registry** is the notebook's sixth view, and `bb tests` in a
+terminal. It answers two questions that are only worth keeping together: what
+each test protects, and what the suite actually spends its time on.
+
+The first half is written by hand, in the same change as the test — what
+breaks if it goes red, and what it really exercises (which fixtures, which
+stubs, what is real and what is faked). The second half is not written by hand
+at all: `bb tests ingest` parses a run's own output, because a self-reported
+estimate is a guess that ages and reads exactly like a measurement.
+
+```bash
+BB_TEST_TIMING=1 bb dashboard test 2>&1 | tee /tmp/run.log
+bb tests ingest /tmp/run.log
+```
+
+A test is keyed on **where the runner puts it** — `<file>#<ordinal>` — rather
+than on its name, so rewording one keeps its description. Ingest reconciles
+the list against the roster it just read: longest common subsequence on the
+names first, then position for whatever is left, so a rename in place is a
+rename, a test inserted in the middle shifts nobody's entry, and what
+genuinely arrived or went is the **drift report**. That report is the point of
+the thing — a registry that has quietly stopped describing the code is worse
+than no registry.
+
+The view is sorted by duration, longest first, with the projected suite time
+in the header. Suites roll up in a fold above it, because one file dominating
+is a more useful fact than one slow test. A continuation — the names here are
+prose, and the ones beginning `...` only read correctly next to what they
+follow — carries that link on its own row, so sorting by duration cannot
+orphan it. Status shows when it is not a pass, skipped included: a skipped
+test still burns wall time.
+
+And anything landing **just above a round boundary** — 30.0s, 10.0s, 5.0s — is
+flagged. A fixed wait sits on its boundary and picks up a little overhead; it
+never lands below one. Those are waiting rather than working, the header
+totals what they would give back, and they are the cheapest thing in a suite
+to fix.
+
 **The bug tracker** is the notebook's third view, and `bb bug` in a terminal.
 The roadmap is for things somebody decided to build; a bug is a different
 record — it has a severity, a place it lives, a way to make it happen, and a
@@ -3290,6 +3334,8 @@ scripts/
     bugs.py                      the bug tracker; `bb bug` drives the same file
     notebook.py                  one batch over both of those, so half of one cannot exist
     presence.py                  who else has a notebook open, in memory only
+    testreg.py                   the test registry: what each test protects, and
+                                 what a run measured it costing
     notify.py                    getting a line into a running Claude session, and knowing it landed
     signin.py                    the Claude sign-in, under a pty rather than in a terminal
     test/                        its Playwright suite — `bb dashboard test`, isolated

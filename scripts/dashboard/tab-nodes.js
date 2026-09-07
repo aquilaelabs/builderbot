@@ -13,8 +13,6 @@
 let nodesList = null;            // last answer, or null before the first
 let nodesRev = 0;                // bumped when it changes, so panes repaint
 let nodesErr = "";
-let nodesOpenForm = "";          // "" | "agent": whether the enroll form is up
-let nodesMinted = null;          // the last enroll token, shown once, then gone
 let nodesAgent = null;           // the agent this controller ships: {digest, version}
 let nodesPick = "";              // which node the tab is showing, "" until the first draw
 // The configuration plane's editor state, per node (docs/nodes.md §12): the
@@ -600,7 +598,7 @@ function renderNodesInto(i){
       live.map(x => `<option value="${esc(x.id)}"${x.id === nodesPick ? " selected" : ""}>${
         esc(x.name)} — ${esc(x.kind)}${x.live === false ? ", quiet" : ""}</option>`).join("")}</select></label>` : ""}
     <span class="sp"></span>
-    <button type="button" id="ndEnroll">${nodesOpenForm === "agent" ? "Cancel" : "Enroll node…"}</button>`);
+    <button type="button" id="ndEnroll">Enroll node…</button>`);
   const rows = (n ? [n] : []).map(n => {
     const labels = Object.entries(n.labels || {})
       .map(([k, v]) => `<span class="pill">${esc(k)}=${esc(v)}</span>`).join(" ");
@@ -671,44 +669,18 @@ function renderNodesInto(i){
       </div>
     </div>`;
   }).join("");
-  const form = nodesOpenForm === "agent" ? `
-    <div class="row ndform">
-      <div class="grow">
-        <label for="ndEnName">Name</label>
-        <input id="ndEnName" maxlength="60" autocomplete="off" placeholder="buildbox">
-        <div class="hint">the node dials in; nothing here connects to it. The
-          token below is good once and for a day. A node does everything for
-          the projects bound to it — what it can actually build is what gets
-          installed on it afterwards, from the Tools tab.</div>
-        <div class="actbar">
-          <button type="button" class="primary" id="ndEnGo">Mint a token</button></div>
-      </div>
-    </div>` : "";
-  const minted = !nodesMinted ? "" : `
-    <div class="row ndform ndtoken">
-      <div class="grow">
-        <div class="name">${esc(nodesMinted.name)} — enroll it with one of these</div>
-        <div class="hint">shown once; the controller keeps only a hash. On a
-          fresh machine, the provisioner installs docker and the agent
-          together:</div>
-        <pre class="ndcmd">sudo bash provision.sh --controller ${esc(nodesMinted.url)} --token ${esc(nodesMinted.token)}</pre>
-        <div class="hint">or on a machine that already has python3, the agent alone:</div>
-        <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(nodesMinted.token)}' ${esc(nodesMinted.url)}/api/v1/agent/download -o /usr/local/sbin/builderbot-agent
-chmod 755 /usr/local/sbin/builderbot-agent
-builderbot-agent enroll --controller ${esc(nodesMinted.url)} --token ${esc(nodesMinted.token)}</pre>
-        <div class="actbar">
-          <button type="button" id="ndTokDone">Done</button></div>
-      </div>
-    </div>`;
   // Nothing enrolled. Said where the rows would be, rather than an empty
   // picker over an empty page — the Enroll button above is the whole of what
   // there is to do here.
-  const none = live.length || nodesOpenForm === "agent" ? "" :
+  const none = live.length ? "" :
     `<div class="empty ndnone">No node is enrolled. A node is the machine the
       work runs on — builds, tests, CI and the Android emulator — and this
       container runs none of it. <b>Enroll node…</b> above mints a token and
       shows the one command to run on that machine.</div>`;
-  d.list.innerHTML = rows + none + form + minted
+  // Enrolling is a dialog now (#ndmodal), not two panels appended here — see
+  // the markup's comment. Which means a poll landing while it is open cannot
+  // take the name being typed with it, because this list is not where it is.
+  d.list.innerHTML = rows + none
     + (!nodesList.length ? `<div class="empty">no nodes — which cannot happen:
         local is seeded at boot. If you can read this, the store broke.</div>` : "");
   d.setFoot(`a node does everything for the projects bound to it — pick one in a
@@ -721,24 +693,75 @@ function wireNodesTab(root){
   const pick = root.querySelector("#ndPick");
   if (pick) pick.onchange = () => { nodesPick = pick.value; nodesFocus = null;
                                     nodesRev++; drawPanes(); };
+  // ---- enrolling, in a dialog -------------------------------------------
+  // Written here rather than into the tab, so a poll landing mid-type cannot
+  // take the name with it: the box is outside this tab's DOM and survives
+  // every repaint. Painted only when it opens, for the same reason.
+  const modal = document.getElementById("ndmodal");
+  const body = document.getElementById("ndBody");
+  const shut = () => { modal.hidden = true; body.innerHTML = ""; };
+  // The box narrows for the question and widens for the answer: one field
+  // does not want 760px, and a shell line that wraps lies about what runs.
+  const boxWidth = wide => modal.querySelector(".box").classList.toggle("wide", wide);
+  const mintForm = () => {
+    document.getElementById("ndTitle").textContent = "Enroll a node";
+    boxWidth(false);
+    body.innerHTML = `<div class="field">
+        <label for="ndEnName">Name</label>
+        <input id="ndEnName" maxlength="60" autocomplete="off" placeholder="buildbox">
+        <div class="hint">the node dials in; nothing here connects to it. The
+          token you get back is good once and for a day. A node does everything
+          for the projects bound to it — what it can actually build is what
+          gets installed on it afterwards, from the Tools tab.</div>
+      </div>
+      <div class="foot">
+        <button type="button" class="primary" id="ndEnGo">Mint a token</button>
+        <button type="button" id="ndEnCancel">Cancel</button>
+      </div>`;
+    // No focus, like every other dialog here: on a phone it would raise the
+    // keyboard over the box it just opened.
+    body.querySelector("#ndEnCancel").onclick = shut;
+    const go = body.querySelector("#ndEnGo");
+    go.onclick = () => pressing(go, async () => {
+      busy(go, "Minting");
+      const name = body.querySelector("#ndEnName").value;
+      const r = await nodeAct({action: "enroll", name});
+      if (r.error){ mintForm(); return; }   // nodeAct has said why
+      // The URL the node should dial: this page's origin, which is the only
+      // address the browser knows the controller by. A proxy in front is the
+      // operator's to substitute.
+      mintToken({name: name || "node", token: r.token, url: location.origin});
+      nodesRev++; drawPanes();              // the pending row joins the picker
+    });
+    body.querySelector("#ndEnName").onkeydown = e => {
+      if (e.key === "Enter"){ e.preventDefault(); go.click(); }
+    };
+  };
+  const mintToken = (m) => {
+    document.getElementById("ndTitle").textContent = `${m.name} — enroll it with one of these`;
+    boxWidth(true);
+    body.innerHTML = `<div class="field ndtoken">
+        <div class="hint">shown once; the controller keeps only a hash. On a
+          fresh machine, the provisioner installs docker and the agent
+          together:</div>
+        <pre class="ndcmd">sudo bash provision.sh --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
+        <div class="hint">or on a machine that already has python3, the agent alone:</div>
+        <pre class="ndcmd">curl -fsSL -H 'Authorization: Bearer ${esc(m.token)}' ${esc(m.url)}/api/v1/agent/download -o /usr/local/sbin/builderbot-agent
+chmod 755 /usr/local/sbin/builderbot-agent
+builderbot-agent enroll --controller ${esc(m.url)} --token ${esc(m.token)}</pre>
+      </div>
+      <div class="foot"><span class="sp"></span>
+        <button type="button" id="ndTokDone">Done</button></div>`;
+    body.querySelector("#ndTokDone").onclick = shut;
+  };
   const en = root.querySelector("#ndEnroll");
-  if (en) en.onclick = () => { nodesOpenForm = nodesOpenForm === "agent" ? "" : "agent";
-                               nodesRev++; drawPanes(); };
-  const engo = root.querySelector("#ndEnGo");
-  if (engo) engo.onclick = () => pressing(engo, async () => {
-    busy(engo, "Minting");
-    const name = root.querySelector("#ndEnName").value;
-    const r = await nodeAct({action: "enroll", name});
-    if (!r.error){
-      // The URL the node should dial: this page's origin, which is the
-      // only address the browser knows the controller by. A proxy in
-      // front is the operator's to substitute.
-      nodesMinted = {name: name || "node", token: r.token, url: location.origin};
-      nodesOpenForm = ""; nodesRev++; drawPanes();
-    }
-  });
-  const tok = root.querySelector("#ndTokDone");
-  if (tok) tok.onclick = () => { nodesMinted = null; nodesRev++; drawPanes(); };
+  if (en) en.onclick = () => { modal.hidden = false; mintForm(); };
+  // The backdrop closes it, like every other dialog on the page. Not while
+  // the token is up: that is the one thing here shown once, and closing it by
+  // a stray click on the room around it would lose the command.
+  modal.onclick = e => {
+    if (e.target === modal && !body.querySelector(".ndtoken")) shut();
+  };
   wireSections(root);
   root.querySelectorAll(".ndrow").forEach(box => {
     const id = box.dataset.node;

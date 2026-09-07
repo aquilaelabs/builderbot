@@ -77,6 +77,12 @@ bb — BuilderBot helper
   bb bug add "..."       report one; show N, note N, fix N, wontfix N, reopen N
   bb bug na N ["why"]    it was real and stopped applying — the feature went
   bb bug rm N ["why"]    delete a report that should not have been filed
+  bb tests               the test registry: where the suite's time goes, slowest first
+  bb tests show KEY      one test — what it protects, what it exercises, its history
+  bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
+  bb tests ingest [LOG]  record a run's real durations (BB_TEST_TIMING=1 output)
+  bb tests drift         what the runner reported that this list does not, and back
+  bb tests flagged       the ones sitting on a round timeout rather than working
   bb history [--find X]  one search over the notebook: roadmap, bugs, memory
                          and the scanner's logs
   bb nodes               the node registry, read-only (docs/nodes.md phase 1)
@@ -1796,6 +1802,183 @@ for tag, e in rows:
 PY
 }
 
+cmd_tests() {
+    # The test registry's CLI half — the side a session drives, and the only
+    # side that can ingest, because ingesting means reading what a runner
+    # printed and the dashboard runs no suites.
+    #
+    # Same shape as cmd_bug: the project from the working directory (or
+    # BB_TESTS_PROJECT), the module loaded from the file beside this script so
+    # the checkout's copy is the one under test.
+    local py
+    py="$(dirname "$(readlink -f "$0")")/dashboard/testreg.py"
+    [ -f "$py" ] || die "testreg.py is missing from this image"
+    local proj="${BB_TESTS_PROJECT:-}"
+    if [ -z "$proj" ]; then
+        proj="$(project_here)" \
+            || die "not inside a project under ${WORKSPACE} — cd into one first"
+    fi
+    # `ingest` with no file reads stdin, so the whole thing is one pipe. The
+    # log reaches python as a PATH, never as a value: the heredoc below owns
+    # python's stdin (the collision `bb phone` was fixed for), and a run log
+    # is a couple of hundred kilobytes — passed in the environment it is
+    # "Argument list too long", which is how this was found.
+    local src="" tmp=""
+    if [ "${1:-}" = ingest ]; then
+        if [ -n "${2:-}" ]; then
+            [ -f "$2" ] || die "no such run log: $2"
+            src="$2"
+        else
+            [ -t 0 ] && die "usage: bb tests ingest [RUNLOG]  (or pipe the run into it)"
+            tmp="$(mktemp)"; cat > "$tmp"; src="$tmp"
+        fi
+    fi
+    BB_TESTS_FILE="$src" DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
+        python3 - "$py" "$proj" "$@" <<'TESTSPY'
+import importlib.util, os, sys
+
+spec = importlib.util.spec_from_file_location("testreg", sys.argv[1])
+reg = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(reg)
+_sfs = importlib.util.spec_from_file_location(
+    "statefile", os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])),
+                              "statefile.py"))
+statefile = importlib.util.module_from_spec(_sfs)
+_sfs.loader.exec_module(statefile)
+sys.modules["statefile"] = statefile
+reg.configure(write_json=statefile.write_json,
+              state=os.environ.get("DASHBOARD_STATE", "/config"))
+
+proj, argv = sys.argv[2], sys.argv[3:]
+op = argv[0] if argv else "list"
+rest = argv[1:]
+
+
+def secs(ms):
+    return "—" if ms is None else f"{ms / 1000:.1f}s"
+
+
+def bail(r):
+    if r.get("error"):
+        print(f"[builderbot] ERROR: {r['error']}", file=sys.stderr)
+        sys.exit(1)
+
+
+if op in ("list", "ls"):
+    p = reg.payload(proj)
+    if not p["n"]:
+        print(f"nothing on {proj}'s test registry — "
+              "`bb tests ingest RUNLOG` after a run puts the timings in")
+        sys.exit(0)
+    print(f"{p['n']} tests · {p['total_ms'] / 1000:.0f}s measured"
+          + (f" · last run {p['last_wall_ms'] / 1000:.0f}s of wall"
+             if p["last_wall_ms"] else "")
+          + (f" · {p['suspect']} flagged ({p['recover_ms'] // 1000}s waiting)"
+             if p["suspect"] else "")
+          + (f" · {p['undocumented']} undescribed" if p["undocumented"] else ""))
+    print("\n  by suite:")
+    for s in p["suites"]:
+        print(f"   {secs(s['ms']):>8}  {s['suite']:<16} {s['n']:>4} tests"
+              + (f"  {s['suspect']} flagged" if s["suspect"] else ""))
+    # The slowest, which is what this is opened for. Not the whole roster: a
+    # couple of thousand lines is not a thing anybody reads in a terminal.
+    n = 20
+    if rest and rest[0].lstrip("-").isdigit():
+        n = int(rest[0].lstrip("-"))
+    print(f"\n  slowest {n}:")
+    for t in p["tests"][:n]:
+        mark = f"  [{t['suspect']}s wait?]" if t["suspect"] else ""
+        print(f"   {secs(t['ms']):>8}  {t['key']:<20} {t['name'][:60]}{mark}")
+        if t.get("after"):
+            print(f"             follows: {t['after'][:60]}")
+elif op == "show":
+    if not rest:
+        print("usage: bb tests show <key>", file=sys.stderr); sys.exit(1)
+    p = reg.payload(proj)
+    t = next((x for x in p["tests"] if x["key"] == rest[0]), None)
+    if t is None:
+        print(f"[builderbot] ERROR: no test called {rest[0]} here", file=sys.stderr)
+        sys.exit(1)
+    print(f"  {t['key']}  {secs(t['ms'])}  [{t['status'] or '?'}]")
+    print(f"  {t['name']}")
+    if t.get("after"):
+        print(f"  follows: {t['after']}")
+    if len(t.get("history") or []) > 1:
+        print("  history: " + ", ".join(f"{h / 1000:.1f}s" for h in t["history"]))
+    if t["suspect"]:
+        print(f"  FLAGGED: lands on a {t['suspect']}s boundary — a fixed sleep or a "
+              "polling timeout rather than work")
+    print(f"  protects: {t['protects'] or '(nothing written yet)'}")
+    print(f"  exercises: {t['notes'] or '(nothing written yet)'}")
+elif op in ("note", "describe"):
+    # `bb tests note KEY "what it protects" [--how "what it exercises"]`
+    if len(rest) < 2:
+        print('usage: bb tests note <key> "what it protects" [--how "fixtures, stubs"]',
+              file=sys.stderr)
+        sys.exit(1)
+    words, how, i = [], None, 1
+    while i < len(rest):
+        if rest[i] == "--how" and i + 1 < len(rest):
+            how = rest[i + 1]; i += 2
+        else:
+            words.append(rest[i]); i += 1
+    r = reg.describe(proj, rest[0], protects=" ".join(words),
+                     **({"notes": how} if how is not None else {}))
+    bail(r)
+    print(f"described {rest[0]}")
+elif op == "ingest":
+    src = os.environ.get("BB_TESTS_FILE", "")
+    with open(src, encoding="utf-8", errors="replace") as fh:
+        r = reg.ingest(proj, fh.read(), by="claude")
+    bail(r)
+    print(f"ingested {r['n']} results from {len(r['suites'])} suite"
+          f"{'' if len(r['suites']) == 1 else 's'}")
+    for kind, rows in (("new", r["added"]), ("gone", r["gone"]),
+                       ("renamed", r["renamed"])):
+        if not rows:
+            continue
+        print(f"  {kind}: {len(rows)}")
+        for x in rows[:10]:
+            print("    " + (f"{x['was'][:40]} -> {x['now'][:40]}"
+                            if kind == "renamed" else x["name"][:70]))
+        if len(rows) > 10:
+            print(f"    ...and {len(rows) - 10} more")
+    if not (r["added"] or r["gone"] or r["renamed"]):
+        print("  the registry and the runner agree")
+elif op == "drift":
+    p = reg.payload(proj)
+    d = p.get("drift") or {}
+    if not d.get("at"):
+        print("nothing ingested yet")
+        sys.exit(0)
+    n = len(d.get("added") or []) + len(d.get("gone") or []) + len(d.get("renamed") or [])
+    print(f"as of the last ingest: {n} difference{'' if n == 1 else 's'}")
+    for x in d.get("added") or []:
+        print(f"  new     {x['key']:<20} {x['name'][:60]}")
+    for x in d.get("gone") or []:
+        print(f"  gone    {x['key']:<20} {x['name'][:60]}")
+    for x in d.get("renamed") or []:
+        print(f"  renamed {x['key']:<20} {x['was'][:30]} -> {x['now'][:30]}")
+    if p["undocumented"]:
+        print(f"\n{p['undocumented']} of {p['n']} tests have no line saying what "
+              "they protect — `bb tests list` shows the slowest first")
+elif op == "flagged":
+    p = reg.payload(proj)
+    print(f"{p['suspect']} tests land on a round timeout — "
+          f"{p['recover_ms'] // 1000}s of the suite is waiting, not working")
+    for t in p["tests"]:
+        if t["suspect"]:
+            print(f"   {secs(t['ms']):>8}  {t['key']:<20} {t['name'][:56]}"
+                  f"  [{t['suspect']}s]")
+else:
+    print(f"[builderbot] ERROR: unknown: bb tests {op}", file=sys.stderr)
+    sys.exit(1)
+TESTSPY
+    local rc=$?
+    [ -n "$tmp" ] && rm -f "$tmp"
+    return "$rc"
+}
+
 cmd_bug() {
     # The bug tracker's CLI half — the side a session drives. Same shape as
     # cmd_todo: the project from the working directory (or BB_BUG_PROJECT for
@@ -2350,7 +2533,7 @@ terminal, or pass one for the command with DASHBOARD_AUTH=name:password."
 # What is NOT relayed is what belongs to the machine the session is on:
 # `bb sdk` answers for this node's store, `bb emu` drives this node's
 # emulator, `bb build` is a build (cmd_run). That is the point of being here.
-BB_RELAY_VERBS=" roadmap todo bug bugs history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
+BB_RELAY_VERBS=" roadmap todo bug bugs tests history version changelog work findings findings-history catchup claude-md claudemd settings nodes jobs ci-labels git "
 
 bb_relay() {
     local auth proj
@@ -4153,6 +4336,7 @@ case "${1:-help}" in
     # prompt, and a live conversation should not break on a word change.
     roadmap|todo) shift; cmd_roadmap "$@" ;;
     bug|bugs) shift; cmd_bug "$@" ;;
+    tests)    shift; cmd_tests "$@" ;;
     history)  shift; cmd_history "$@" ;;
     logs)     shift; cmd_logs "$@" ;;
     catchup)  shift; cmd_catchup "$@" ;;
