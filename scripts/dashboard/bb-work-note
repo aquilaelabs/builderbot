@@ -70,6 +70,35 @@ def symbol_for(path, old):
     return ""
 
 
+def write_json(p, d):
+    tmp = f"{p}.new"
+    with open(tmp, "w") as f:
+        json.dump(d, f, indent=2)
+    os.replace(tmp, p)
+
+
+def house_rules(project, rel):
+    """The operator's conditional rules that this path fires, as lines to say.
+
+    Silent on a node and silent on any failure: a node keeps no /config, and
+    a rule that cannot be read is never worth taking an edit with.
+    """
+    if os.environ.get("BUILDERBOT_ROLE", "").lower() == "node":
+        return []
+    try:
+        here = os.path.dirname(os.path.abspath(__file__))
+        if here not in sys.path:
+            sys.path.insert(0, here)
+        import rules                                          # noqa: E402
+        rules.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
+                        write_json=write_json)
+        hit = rules.matching(project, path=rel)
+    except Exception:                     # noqa: BLE001 — never take an edit with it
+        return []
+    return [f"The operator's house rule [{r['name']}] covers this file. It is "
+            f"theirs, not yours:\n{r['text']}" for r in hit]
+
+
 def main():
     project, session = (sys.argv[1:3] + ["", ""])[:2]
     try:
@@ -100,25 +129,26 @@ def main():
     else:
         sys.path.insert(0, here)
         import overlap                                        # noqa: E402
-
-        def write_json(p, d):
-            tmp = f"{p}.new"
-            with open(tmp, "w") as f:
-                json.dump(d, f, indent=2)
-            os.replace(tmp, p)
-
         overlap.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
                           workspace=os.environ.get("WORKSPACE", "/workspace"),
                           write_json=write_json)
         others = overlap.others_touching(project, session, rel)
         overlap.note(project, session, rel, symbol)
-    if not others:
+    # ...and any house rule this file fires (roadmap #7). Here rather than in
+    # the prompt hook because this is the half that knows which file is about
+    # to be written — a rule keyed to scripts/agent/** should arrive when the
+    # agent is edited, whether or not anybody said the word.
+    said = []
+    if others:
+        said.append(f"Another session on {project} has {rel} open: "
+                    + ", ".join(others)
+                    + ". You are each in your own worktree, so nothing is being "
+                      "overwritten — but you will be merging against their version "
+                      "of this file. `bb work` shows what overlaps.")
+    said += house_rules(project, rel)
+    if not said:
         return
-    say = (f"Another session on {project} has {rel} open: "
-           + ", ".join(others)
-           + ". You are each in your own worktree, so nothing is being "
-             "overwritten — but you will be merging against their version of "
-             "this file. `bb work` shows what overlaps.")
+    say = "\n\n".join(said)
     # The documented shape, and a plain line beside it: if this version of
     # Claude Code words its hook output differently, the line is still in the
     # transcript and the note is still on disk.

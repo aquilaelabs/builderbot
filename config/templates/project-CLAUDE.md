@@ -438,11 +438,35 @@ true. The rebuild flow reads `.env.example` to know when new settings need
 filling in, so a new variable your code reads belongs there in the same
 commit.
 
+## The operator's house rules
+
+The one thing in the notebook you read and cannot write. If this project has
+any, they are already in your prompt — you will have met them before this
+line. They live in `/config`, never in the repository, and the file tools are
+denied on them, so you cannot edit the rule you are being held to.
+
+```bash
+bb rules                # what is in effect here
+bb rules show NAME      # one of them in full
+```
+
+Most of them are quoted to you in full. A rule that applies to *particular*
+work is named in your prompt instead of quoted — a paragraph about the agent
+is not worth paying for on a CSS change — and its text arrives on the turn it
+becomes relevant, either because you were asked about its subject or because
+you are about to edit a file it covers. `bb rules show NAME` is how you read
+one before either of those happens.
+
+There is no verb here that writes one, and that is the point rather than an
+omission: a rule you could set is not a rule. If one seems wrong, or two of
+them conflict, say so in your reply — the operator changes them on the
+notebook's Briefing tab.
+
 ## The roadmap
 
-Every project has a notebook in the dashboard — memory, roadmap, bugs, one
-tab each. The roadmap is the shared list of design work, and both you and the
-operator write it. (`bb todo` still works as an alias for `bb roadmap`, so a
+Every project has a notebook in the dashboard — the briefing, the roadmap,
+bugs, one tab each. The roadmap is the shared list of design work, and both
+you and the operator write it. (`bb todo` still works as an alias for `bb roadmap`, so a
 conversation that started before the rename does not break mid-task; use
 `bb roadmap`.)
 

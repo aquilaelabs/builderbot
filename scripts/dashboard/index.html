@@ -1482,6 +1482,22 @@ textarea,select{
   font:12px/1.4 system-ui,sans-serif;min-height:var(--tap)}
 @media(hover:hover){ #memAdd .link:hover{color:var(--accent)} }
 /* Dashed, because it is the one thing here that is not a memory yet. */
+/* One rule, in the Briefing. Dashed like the memory form beside it, because
+   both are things being written rather than things being read. */
+.rulerow{border:1px dashed var(--line);border-radius:8px;padding:10px;
+  margin-bottom:8px}
+.rulerow .two{display:flex;gap:6px;align-items:center}
+.rulerow .two>*{flex:1;min-width:0}
+.rulerow textarea{min-height:96px;white-space:pre-wrap;margin:6px 0}
+/* Which kind it is, said rather than chosen: a rule is conditional exactly
+   when it has a trigger, so this follows the fields instead of being a third
+   thing to keep in step with them. */
+.rulerow .rlkind{flex:0 0 auto;font:var(--f-note);color:var(--dim)}
+.rulerow .rlkind.cond{color:var(--accent)}
+@media(max-width:600px){
+  .rulerow .two{display:block}
+  .rulerow .two>*+*{margin-top:6px}
+}
 .memadd{border:1px dashed var(--line);border-radius:8px;padding:10px}
 .memadd .two{display:flex;gap:6px}
 .memadd .two>*{flex:1;min-width:0}
@@ -2412,7 +2428,7 @@ body.dragging .tab .lbl{cursor:grabbing}
          this panel and should not be waiting on it. -->
     <div class="field mdrift" id="todoBatch" hidden></div>
     <div class="nbtabs" role="tablist">
-      <button type="button" data-v="memory">Memory</button>
+      <button type="button" data-v="briefing">Briefing</button>
       <button type="button" data-v="roadmap">Roadmap</button>
       <button type="button" data-v="bugs">Bugs</button>
       <button type="button" data-v="analysis">Analysis</button>
@@ -2482,7 +2498,15 @@ body.dragging .tab .lbl{cursor:grabbing}
     <!-- What Claude remembers, on its own tab: a handful of files nobody
          edits, on screen because they are the one input to a session nobody
          would otherwise ever see. -->
-    <div class="nbview" data-view="memory" hidden>
+    <!-- Everything a session started here begins with, in one place — which
+         is the question this tab answers and the reason it stopped being
+         called Memory. Two halves, and the difference between them is not
+         topic but AUTHORITY: the rules are the operator's and Claude cannot
+         change them, the memories are Claude's and it can. Rules first,
+         because how somebody wants to be worked with comes before what a
+         previous session happened to notice. -->
+    <div class="nbview" data-view="briefing" hidden>
+      <div id="rulesBox"></div>
       <div class="field nbhead vbar"><span id="memWhere">what Claude remembers here</span>
         <span class="sp"></span>
         <button type="button" id="memLog"
@@ -8033,6 +8057,13 @@ function makeNotebook(project){
   document.getElementById("nbPark").appendChild(root);
   const $ = id => root.querySelector('[id="' + CSS.escape(id) + '"]');
   let loaded = false;
+  // Up here, not beside the code that uses them: setNbView() is called
+  // further down this function than the rules block is written, and the
+  // notebook opens on their view — so `!ruleData` in its first-draw guard
+  // would read a `let` before its initializer and take the whole tab down
+  // with it. That is bug #27's shape; the `tests` binding beside them gets
+  // away with being late only because the panel never opens on that view.
+  let ruleData = null, rulePending = null, rulesRev = null;
 
   // ---- the reading room --------------------------------------------------
   // What goes in is the real element, MOVED: every handler bound to a filter
@@ -8114,7 +8145,7 @@ async function openMemory(name){
   todoBatch = null; todoStale = false;
   todoRev = memRev = null;
   clash = memClash = null; clashResume = null;
-  nbHere = []; nbRead = 0; nbWhere = "memory"; drawHere();
+  nbHere = []; nbRead = 0; nbWhere = "briefing"; drawHere();
   tests = null; testsRev = null;
   tstSuite = ""; tstFlagged = tstUndoc = false;
   todoLogOn = false;
@@ -8598,7 +8629,8 @@ function syncSave(){
   const q = $("todoSaveQuiet");
   if (!q) return;
   const dirty = todoUnsaved.todo || todoUnsaved.memory || memDirty()
-                || todoPending.length > 0 || verStagedCount() > 0;
+                || todoPending.length > 0 || verStagedCount() > 0
+                || ruleStagedCount() > 0;
   // Held while a session is mid-batch, and again until the list is re-read
   // after one finishes. Reverting is still allowed either way: throwing away
   // your own unsaved work never depends on what anybody else is doing.
@@ -8607,7 +8639,8 @@ function syncSave(){
   // Revert answers the same question the Saves do, from the other side.
   const rv = $("todoRevert");
   if (rv){
-    rv.disabled = !(todoPending.length || memDirty() || verStagedCount());
+    rv.disabled = !(todoPending.length || memDirty() || verStagedCount()
+                    || ruleStagedCount());
     rv.title = rv.disabled ? "nothing unsaved to throw away"
       : "throw away what has not been saved — the list and the memory editors "
         + "go back to what is on disk";
@@ -8756,7 +8789,7 @@ async function postTodo(body, quiet){
 // asking the server something every fifteen seconds, and a second clock would
 // be a second thing to get wrong. The request is not awaited — presence is
 // the least important thing on this page, and nothing else waits for it.
-let nbWhere = "memory", nbHere = [], nbRead = 0;
+let nbWhere = "briefing", nbHere = [], nbRead = 0;
 
 async function beat(leave){
   if (!memProj) return;
@@ -9003,11 +9036,15 @@ function nbUnsaved(){
   const v = verStagedCount();
   return [n ? `${n} change${n === 1 ? "" : "s"} to the list` : "",
           memDirty() ? "an edited memory" : "",
+          ruleStagedCount() ? "an edited rule" : "",
           v ? `${v} staged version bump${v === 1 ? "" : "s"}` : ""]
     .filter(Boolean).join(" and ");
 }
-// Set by the notebook's version block; the panel-level Save and Revert are
-// outside its closure and need a way to ask.
+// Set by the notebook's version block and its rules; the panel-level Save and
+// Revert are outside those closures and need a way to ask.
+let ruleStagedCount = () => 0;
+let ruleCommitStaged = async () => {};
+let ruleClearStaged = () => {};
 let verStagedCount = () => 0;
 let verCommitStaged = async () => {};
 let verClearStaged = () => {};
@@ -9021,6 +9058,7 @@ async function revertNotebook(){
   if (!confirm(`Revert ${what}?\n\nIt goes back to what is on disk.`)) return;
   revertPending();
   verClearStaged();
+  ruleClearStaged();
   todoOrdering = false;
   redrawTodo();
   await loadMemory(memGen);       // drops whatever the editors were holding
@@ -9659,6 +9697,7 @@ async function saveAll(){
   // is going to refuse — a staged VERSION, a hand edit in the worktree — the
   // operator should hear that instead of "saved".
   const verMsg = await verCommitStaged();
+  await ruleCommitStaged();
   if (memDirty()) await saveMemory(true);
   const j = await postTodo({action: "save"});
   await loadMemory(memGen);
@@ -9713,6 +9752,7 @@ $("todoRevert").onclick = revertNotebook;
     if (v === "analysis") loadAnalysis();
     if (v === "artifacts"){ loadArtifacts(); loadVersion(); }
     if (v === "tests" && !tests) loadTests();
+    if (v === "briefing" && !ruleData) loadRules();
   }
   // Unsaved work does not follow you to another tab.
   //
@@ -10521,6 +10561,165 @@ become that version's section when it is created">Changelog${
     paginate(list, ":scope > .rule", {key: "anaList", noun: "rules"});
   }
 
+  // ---- the operator's house rules (roadmap #7) -----------------------------
+  // The half of the briefing a session cannot write. Staged behind the
+  // panel's Save like the memories beside them, because this is an editor:
+  // somebody rewords two rules and drops a third before they are done, and
+  // writing each keystroke through would be three records of one decision.
+  //
+  // A rule is CONDITIONAL exactly when it has a trigger. There is no kind
+  // field and no picker for one — the presence of a trigger is the answer,
+  // which is one fact to keep true instead of two.
+  async function loadRules(){
+    try{
+      const r = await fetch("/api/rules?project=" + encodeURIComponent(project));
+      ruleData = await r.json();
+    }catch(e){ ruleData = {error: String(e), rules: []}; }
+    rulesRev = (state?.projects || []).find(x => x.name === project)?.rules_rev ?? rulesRev;
+    rulePending = null;
+    drawRules();
+  }
+
+  // What is on screen: the staged copy if anything has been typed, otherwise
+  // what the server last said.
+  const ruleRows = () => rulePending || (ruleData?.rules || []);
+  const ruleDirty = () => rulePending !== null;
+
+  function ruleStage(fn){
+    rulePending = (rulePending || (ruleData?.rules || [])).map(r => ({...r}));
+    fn(rulePending);
+    drawRules();
+    syncSave();
+  }
+
+  // What this rule costs and when it arrives, in a sentence. Both the draw and
+  // the keystroke that turns one kind into the other read it from here.
+  function ruleWhen(r){
+    const on = (r.paths || []).length || (r.words || []).length;
+    return on
+      ? `Named in every session; its text arrives on the turn the work matches. `
+        + `A session reads it with <code>bb rules show ${esc(r.name || "…")}</code>.`
+      : `In front of every session started here, and paid for on every one. `
+        + `Give it a trigger and it arrives only when it applies.`;
+  }
+
+  function drawRules(){
+    const box = $("rulesBox");
+    if (!box) return;
+    const d = ruleData || {};
+    if (d.error){
+      box.innerHTML = `<div class="field"><div class="hint bad">rules: ${esc(d.error)}</div></div>`;
+      return;
+    }
+    const rows = ruleRows();
+    const cond = r => (r.paths || []).length || (r.words || []).length;
+    const standing = rows.filter(r => !cond(r)).length;
+    // The cost, said out loud. "Is this rule worth keeping" is not a question
+    // anybody can answer without knowing what it is charged for, and the
+    // charge is on every session started in this project, forever.
+    const chars = ruleDirty() ? null : d.chars;
+    const body = `
+      <div class="hint">Yours, not Claude's: a session reads these and the file
+        tools are denied on them, so it cannot edit the rule it is being held
+        to. What it is <b>not</b> is a refusal — a rule is a request the model
+        can still fumble, unlike the sibling-project walls.</div>
+      ${rows.map((r, i) => `
+        <div class="rulerow" data-i="${i}">
+          <div class="two">
+            <input class="rlName" maxlength="40" autocomplete="off" spellcheck="false"
+              placeholder="a short name" value="${esc(r.name || "")}"
+              aria-label="rule name">
+            <span class="rlkind ${cond(r) ? "cond" : ""}">${
+              cond(r) ? "on its triggers" : "every session"}</span>
+          </div>
+          <textarea class="rlText" spellcheck="false" maxlength="2000"
+            placeholder="the rule, in your words">${esc(r.text || "")}</textarea>
+          <div class="two">
+            <input class="rlPaths" autocomplete="off" spellcheck="false"
+              placeholder="files it covers — scripts/agent, *.kt"
+              value="${esc((r.paths || []).join(", "))}" aria-label="paths">
+            <input class="rlWords" autocomplete="off" spellcheck="false"
+              placeholder="words that raise it — agent, protocol"
+              value="${esc((r.words || []).join(", "))}" aria-label="words">
+          </div>
+          <div class="actbar">
+            <span class="state">${ruleWhen(r)}</span>
+            <button type="button" class="danger rlRm">Remove</button>
+          </div>
+        </div>`).join("")}
+      <div class="actbar">
+        <span class="state">${rows.length
+          ? (chars === null
+             ? "unsaved — the size is measured on what is written"
+             : `${standing} standing, ${rows.length - standing} conditional · `
+               + `${chars} characters in front of every session here${
+                 d.loud ? " — that is a lot to pay on every conversation" : ""}`)
+          : "Nothing set. A rule here is the one thing in this notebook a "
+            + "session cannot rewrite."}</span>
+        <button type="button" id="rlAdd">Add a rule</button>
+      </div>`;
+    box.innerHTML = docSection("briefing", "rules", "Your rules",
+      rows.length ? `${rows.length}` : "none", body,
+      // No `open` override: the framework's default is right here — open on a
+      // desktop, shut on a phone. Forcing it shut when there are no rules
+      // hides the invitation at exactly the moment it is the whole point.
+      {cls: d.loud && !ruleDirty() ? "warn" : ""});
+    wireSections(box);
+    ruleStagedCount = () => (ruleDirty() ? 1 : 0);
+    ruleClearStaged = () => { rulePending = null; drawRules(); };
+    ruleCommitStaged = saveRules;
+    box.querySelectorAll(".rulerow").forEach(row => {
+      const i = Number(row.dataset.i);
+      const put = (k, sel) => {
+        const el = row.querySelector(sel);
+        el.oninput = () => ruleField(i, k, el.value);
+      };
+      put("name", ".rlName"); put("text", ".rlText");
+      put("paths", ".rlPaths"); put("words", ".rlWords");
+      row.querySelector(".rlRm").onclick = () => ruleStage(rs => rs.splice(i, 1));
+    });
+    const add = $("rlAdd");
+    if (add) add.onclick = () => ruleStage(rs => rs.push(
+      {name: "", text: "", paths: [], words: []}));
+  }
+
+  // Typed into rather than redrawn: a repaint on every keystroke would take
+  // the caret with it. The staged copy is updated in place and the row's
+  // "every session / on its triggers" word is the one thing that has to
+  // follow, so it is the only thing touched.
+  function ruleField(i, key, value){
+    rulePending = (rulePending || (ruleData?.rules || [])).map(r => ({...r}));
+    const r = rulePending[i];
+    if (!r) return;
+    if (key === "paths" || key === "words")
+      r[key] = value.split(/[,\s]+/).filter(Boolean);
+    else r[key] = value;
+    const box = $("rulesBox")?.querySelector(`.rulerow[data-i="${i}"]`);
+    if (box){
+      const on = (r.paths || []).length || (r.words || []).length;
+      const kind = box.querySelector(".rlkind");
+      kind.textContent = on ? "on its triggers" : "every session";
+      kind.classList.toggle("cond", !!on);
+      box.querySelector(".actbar .state").innerHTML = ruleWhen(r);
+    }
+    syncSave();
+  }
+
+  async function saveRules(){
+    if (!ruleDirty()) return;
+    const body = rulePending;
+    try{
+      const r = await fetch("/api/rules", {method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({project, action: "save", rules: body})});
+      const j = await r.json();
+      if (j.error){ notify(j.error, true); return; }
+      ruleData = j;
+      rulePending = null;
+      drawRules();
+    }catch(e){ notify("could not reach the server: " + e, true); }
+  }
+
   // ---- the test registry ---------------------------------------------------
   // Write-through like the tracker beside it, and for the same reason: what
   // is written here is a sentence about a test that already exists, so there
@@ -11136,6 +11335,12 @@ bb tests ingest /tmp/run.log</pre>
       // or another window. Write-through like the tracker, so there is
       // nothing staged here to lose by re-reading (roadmap #26).
       if (tests && testsRev !== null && p.tests_rev !== testsRev) loadTests();
+      // ...and the rules, which only the operator can move — so a change here
+      // is another window of theirs, or `bb rules` reading a file somebody
+      // edited on the box. Never while something is staged: a reload would
+      // take the typing with it.
+      if (ruleData && rulesRev !== null && p.rules_rev !== rulesRev
+          && !ruleDirty()) loadRules();
       if (p.tests_rev !== undefined) testsRev = p.tests_rev;
       // The other two halves, which had no such thing until roadmap #26.
       // Guarded rather than unconditional, and that guard is the whole
