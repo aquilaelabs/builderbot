@@ -195,7 +195,7 @@ function nodeRunnerSection(n, c){
         <button type="button" data-nrunner="install" ${busyNow ? "disabled" : ""}
           title="${why || "download GitHub's runner onto the node, register it with a one-hour token the controller mints, and run it as a service"}">${
           rep.installed ? "Reinstall runner" : "Install runner"}</button>
-        ${rep.installed || want.want ? `<button type="button" class="rm" data-nrunner="remove" ${busyNow ? "disabled" : ""}
+        ${rep.installed || want.want ? `<button type="button" class="danger" data-nrunner="remove" ${busyNow ? "disabled" : ""}
           title="${why || "deregister it from GitHub and take the service off the node"}">Remove runner</button>` : ""}
       </div>`;
   const status = !rep.installed ? (want.want ? "installing" : "none")
@@ -274,9 +274,9 @@ function nodeAdvancedSection(n, stale, inflight){
           : inflight("cache-clear") ? "already clearing"
           : "drop this node's build caches — every project's. A cold cache costs the next build time, never correctness"}">${
         inflight("cache-clear") ? "Clearing…" : "Clear cache"}</button>` : ""}
-      ${!n.agent?.revoked ? `<button type="button" class="rm" data-nd="revoke"
+      ${!n.agent?.revoked ? `<button type="button" class="danger" data-nd="revoke"
         title="cut this node's credential. It stops being able to dial in; the row and its history stay. The way back is a new enrollment">Revoke</button>` : ""}
-      <button type="button" class="rm" data-nd="retire"
+      <button type="button" class="danger" data-nd="retire"
         title="take it off every list. Its row and its history stay — an id is never reused">Remove</button>
     </div>`;
   return docSection("nodes", "advanced", "Advanced", n.state === "draining" ? "draining" : "",

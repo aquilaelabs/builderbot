@@ -139,13 +139,13 @@ function renderJobsInto(i){
         ${open ? `<pre class="dmlog jblog" data-tail="1">${
             esc((jobsLogs[j.id] || "").slice(-4000) || "(no output yet)")}</pre>` : ""}
       </div>
-      <span class="acts">
+      <div class="actbar">
         <button type="button" data-jb="log" title="${open ? "fold the log away" : "what it wrote, the last 4000 characters"}">${
           open ? "Hide log" : "Log"}</button>
-        ${over || j.cancel ? "" : `<button type="button" class="rm" data-jb="cancel"
+        ${over || j.cancel ? "" : `<button type="button" class="danger" data-jb="cancel"
           title="${j.state === "queued" ? "take it off the queue before it starts"
                    : "stop it where it is — the row moves when the runner reports that it did"}">Cancel</button>`}
-      </span>
+      </div>
     </div>`;
   }).join("");
   d.list.innerHTML = rows + (!jobsList.length

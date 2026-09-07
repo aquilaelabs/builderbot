@@ -106,9 +106,9 @@ const row = async () => ({
 // row's whole text: that text carries the buttons' own labels, so "down" in it
 // could as easily be the Down button. The pill says what the row IS — docker,
 // the way the file rows say apk or xpi — and never what it is doing.
-const pill = () => page.$eval(`${DM} .state`, e => e.textContent.replace(/[()]/g, '').trim());
+const pill = () => page.$eval(`${DM} .dmpill`, e => e.textContent.replace(/[()]/g, '').trim());
 const pillIs = async (want) => { await openManager(); return page.waitForFunction(
-  ([w, sel]) => document.querySelector(sel + ' .state')?.textContent.replace(/[()]/g, '').trim() === w,
+  ([w, sel]) => document.querySelector(sel + ' .dmpill')?.textContent.replace(/[()]/g, '').trim() === w,
   [want, DM], { timeout: 20000 }); };
 
 let r = await row();
@@ -1421,17 +1421,17 @@ ok(await page.evaluate(() => typeof dockerList?.job !== "undefined"),
 // when it is opened and not before — parsing the compose file is the one thing
 // the manager's page deliberately does not do for every row at once.
 await openManager();
-ok(await page.$eval(`${DM} .dmwire .wire`, e => /reading/.test(e.textContent)),
+ok(await page.$eval(`${DM} .sect .wire`, e => /reading/.test(e.textContent)),
    'the wiring fold says nothing until it is opened');
-await page.click(`${DM} .dmwire summary`);
+await page.click(`${DM} .sect > summary`);
 // 20s like its neighbours, not 15. The fold fetches, and this is the one
 // assertion in this file that has timed out in a full run while passing 3/3
 // alone — three times now, always with a CI job or another suite sharing the
 // box. See bug #13: the code is not what is slow.
 await page.waitForFunction((sel) => /7475/.test(
-  document.querySelector(sel + ' .dmwire .wire')?.textContent || ''), DM,
+  document.querySelector(sel + ' .sect .wire')?.textContent || ''), DM,
   { timeout: 20000 });
-const wire = await page.$eval(`${DM} .dmwire .wire`, e => e.textContent.replace(/\s+/g, ' '));
+const wire = await page.$eval(`${DM} .sect .wire`, e => e.textContent.replace(/\s+/g, ' '));
 ok(/7474.*7475/.test(wire), '...then the port, the container\'s side first');
 ok(/\/library/.test(wire) && /←/.test(wire),
    '...and a read-only mount with the arrow that says so');
@@ -1443,27 +1443,32 @@ ok(/\/config/.test(wire) && /↔/.test(wire),
 // which is the Unraid box and not the sandbox VM — so every port label and
 // every Open link named a host where either nothing answers or something else
 // does. The sandbox node dialed in from `stub`, so the answer is `stub`.
-ok(await page.$eval(`${DM} .dmwire .wport a`, a => a.getAttribute('href'))
+ok(await page.$eval(`${DM} .sect .wport a`, a => a.getAttribute('href'))
      === 'http://stub:7475/',
    'a published port is a link, to the machine its daemon runs on');
 
-// Columns on a desktop, stacked on a phone. Asserted by where the grid puts
-// them rather than by a screenshot: the question is whether the state sits
-// BESIDE the name or under it, and a computed column answers it exactly.
-const laid = await page.evaluate(async () => {
-  const at = async w => {
-    const row = document.querySelector('.dmtab .row.stack2');
-    const grow = row.querySelector('.grow');
-    const box = e => { const r = e.getBoundingClientRect(); return [Math.round(r.x), Math.round(r.y)]; };
-    return {display: getComputedStyle(grow).display,
-            id: box(grow.querySelector('.dmid')),
-            state: box(grow.querySelector('.dmstate'))};
-  };
-  return {wide: await at()};
+// Where the row's state sits, asserted by geometry rather than by a
+// screenshot. It used to be a third column beside the name; it is the action
+// bar's status line now, which is the shared rule — what a thing is doing
+// gets a line of its own, and the verbs go under it. Measured because the
+// point is the pixels: a status that shared a line with four buttons was the
+// layout this framework exists to stop.
+const laid = await page.evaluate(() => {
+  const bar = document.querySelector('.dmtab .row.stack2 .actbar');
+  const st = bar?.querySelector('.state');
+  const btn = bar?.querySelector('button');
+  if (!bar || !st || !btn) return { err: 'no bar' };
+  const r = e => e.getBoundingClientRect();
+  return { grid: getComputedStyle(
+             document.querySelector('.dmtab .row.stack2 .grow')).display,
+           own: Math.round(r(st).width) >= Math.round(r(bar).width) - 2,
+           above: r(st).bottom <= r(btn).top + 1 };
 });
-ok(laid.wide.display === 'grid' && laid.wide.state[0] > laid.wide.id[0]
-   && laid.wide.state[1] === laid.wide.id[1],
-   '...and on a desktop the state sits beside the name rather than under it');
+ok(!laid.err && laid.own && laid.above,
+   `...and the row's state is the bar's own line, above the verbs (${
+     JSON.stringify(laid)})`);
+ok(laid.grid === 'grid',
+   '...with the name and the ports still a grid beside each other');
 
 // ---- one button, and a second container from one project ---------------
 // The artifact row's controls moved to the manager; what is left is a button
@@ -1535,10 +1540,10 @@ ok(await page.$$eval('.dmtab .row[data-inst]', rs => rs.length > 0),
 ok(await page.$$eval('.dmtab .row[data-inst]',
                      rs => rs.every(r => r.classList.contains('off'))),
    '...greyed, every one of them, so an inert row looks inert before you press');
-ok(await page.$$eval('.dmtab .row[data-inst] .state',
+ok(await page.$$eval('.dmtab .row[data-inst] .dmpill',
                      ss => ss.length > 0 && ss.every(e => /state unknown/.test(e.textContent))),
    '...saying the state is unknown rather than reporting one nobody asked for');
-ok(await page.$$eval('.dmtab .row[data-inst] .state,.dmtab .row[data-inst] .dmstate',
+ok(await page.$$eval('.dmtab .row[data-inst] .dmpill,.dmtab .row[data-inst] .actbar .state',
                      es => es.every(e => !e.classList.contains('ok'))),
    '...and nothing shows as running: green is a claim about a daemon that is not answering');
 await page.evaluate(() => { state.docker = { on: true, why: '' };
@@ -1701,7 +1706,7 @@ ok(pj.strays.join(',') === '/only-over-there',
 // that used to stop this one short had nothing to ask for. That is the whole
 // reason the box is on the send dialog rather than one screen later.
 await page.waitForFunction(() => /running/.test(
-  document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"] .state')?.textContent || ''),
+  document.querySelector('.dmtab .row[data-inst="ep.silon|staging-two"] .dmpill')?.textContent || ''),
   { timeout: 40000 });
 ok(true, '...and it comes up, because its env went in before the build');
 ok(/--env-file/.test(dockerLog()),

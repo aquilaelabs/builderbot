@@ -29,7 +29,7 @@ const saveList = async () => {
   await page.click('#todoSaveQuiet');
   await page.waitForFunction(() => {
     const b = document.getElementById('todoSaveQuiet');
-    return b.textContent !== 'Saving…' && b.disabled; }, { timeout: 15000 });
+    return b.getAttribute('aria-busy') !== 'true' && b.disabled; }, { timeout: 15000 });
 };
 const bbTodoEarly = (...a) => execFileSync(BB, ['roadmap', ...a],
   { env: { ...process.env, BB_ROADMAP_PROJECT: 'alpha', DASHBOARD_STATE: `${DIR}/state`,
@@ -1228,7 +1228,7 @@ const beforeQuiet = tmuxCapture('claude-alpha').length;
 await page.click('#todoSaveQuiet');
 await page.waitForFunction(() => {
   const b = document.getElementById('todoSaveQuiet');
-  return b.textContent !== 'Saving…' && b.disabled;
+  return b.getAttribute('aria-busy') !== 'true' && b.disabled;
 }, { timeout: 15000 });
 ok(tmuxCapture('claude-alpha').length === beforeQuiet,
    'Save spends no line of the session\'s conversation — it is told on its own '
@@ -1516,7 +1516,7 @@ const clashText = () => read().projects.alpha
 const settled = () => page.waitForFunction(() => {
   const b = document.getElementById('todoSaveQuiet');
   return document.getElementById('todoClash').hidden
-         && b.textContent !== 'Saving…' && b.disabled; }, { timeout: 20000 });
+         && b.getAttribute('aria-busy') !== 'true' && b.disabled; }, { timeout: 20000 });
 
 await rewordTo("the operator's wording");
 // ...and only now does the other writer land, which is the shape of it:

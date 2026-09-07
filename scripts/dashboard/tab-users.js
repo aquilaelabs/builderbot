@@ -66,13 +66,13 @@ function userRow(u){
       <div class="name">${esc(u.name)}
         <span class="pill">${esc(u.role)}</span>${
         isMe ? ` <span class="pill">you</span>` : ""}</div>
-      <div class="sub">${esc(seen)}</div>
       <div class="uscope">${scope}</div>
       ${isOwner ? `<div class="sub dim">The owner cannot be deleted or given a
         different role — it is the account every other rule here is a guard rail
         around. Its name can be changed.</div>` : ""}
     </div>
-    <div class="acts">
+    <div class="actbar">
+      <span class="state">${esc(seen)}</span>
       ${u.role === "user" ? `<button type="button" data-uprojects="${esc(u.name)}"
         >${usersEditing === u.name ? "Done" : "Projects"}</button>` : ""}
       ${isOwner ? "" : `<select data-urole="${esc(u.name)}" aria-label="role for ${esc(u.name)}">${
@@ -81,9 +81,9 @@ function userRow(u){
       </select>`}
       <button type="button" data-upasswd="${esc(u.name)}">Password</button>
       ${isOwner
-        ? `<button type="button" disabled title="the owner cannot be deleted — rename it instead"
-             >Remove</button>`
-        : `<button type="button" class="caution" data-uremove="${esc(u.name)}">Remove</button>`}
+        ? `<button type="button" class="danger" disabled
+             title="the owner cannot be deleted — rename it instead">Remove</button>`
+        : `<button type="button" class="danger" data-uremove="${esc(u.name)}">Remove</button>`}
     </div>
     ${usersEditing === u.name ? usersProjectPicker(u) : ""}
   </div>`;
@@ -100,7 +100,7 @@ function usersProjectPicker(u){
           data-uproj="${esc(p)}"${have.has(p) ? " checked" : ""}>
           <span class="grow"><span class="nm">${esc(p)}</span></span></label>`).join("")
       : `<div class="sub">no projects to give</div>`}
-    <div class="acts"><button type="button" class="primary" data-usave="${esc(u.name)}"
+    <div class="actbar"><button type="button" class="primary" data-usave="${esc(u.name)}"
       >Save projects</button></div>
   </div>`;
 }
@@ -119,9 +119,7 @@ function renderUsersInto(i){
   d.list.innerHTML = `
     ${usersErr ? `<div class="row bad"><div class="grow">${esc(usersErr)}</div></div>` : ""}
     ${usersList.map(userRow).join("")}
-    <div class="row stack2">
-      <div class="grow">
-        <div class="name">What an account gets, and what it does not</div>
+    ${docSection("users", "roles", "What an account gets", "", `
         <div class="sub">Everybody here works as themselves: their own
           terminals, their own shell history, their own Claude login and their
           own memories, in a home of their own. The tab strip and the colour
@@ -160,12 +158,8 @@ function renderUsersInto(i){
         <div class="sub warn">An <b>admin</b> has a shell, and a shell is
           everything: one user inside the container, so an administrator can
           reach any account's files if they go looking. Give that role to
-          people you would give the server to.</div>
-      </div>
-    </div>
-    <div class="row stack2 uadd">
-      <div class="grow">
-        <div class="name">Add somebody</div>
+          people you would give the server to.</div>`)}
+    ${docSection("users", "add", "Add somebody", "", `
         <div class="sub">An <b>admin</b> can do anything here except act on the
           owner. A <b>user</b> gets the projects you give them and the work
           inside them — not deleting, renaming, or changing which node one
@@ -179,7 +173,7 @@ function renderUsersInto(i){
           cannot grant themselves anything. So for an admin the list is a
           seatbelt against editing the wrong project; for a user it is the
           boundary.</div>
-        <div class="acts">
+        <div class="actbar uadd">
           <input id="uNewName" placeholder="name" autocomplete="off" aria-label="new account name">
           <input id="uNewPw" type="password" placeholder="password"
             autocomplete="new-password" aria-label="password">
@@ -191,9 +185,8 @@ function renderUsersInto(i){
               `<option value="${esc(r)}"${r === "user" ? " selected" : ""}
                 >${esc(r)}</option>`).join("")}</select>
           <button type="button" class="primary" id="uAdd">Add</button>
-        </div>
-      </div>
-    </div>`;
+        </div>`)}`;
+  wireSections(d.list);
   d.setFoot(`Locked out? <code>bb users passwd &lt;name&gt;</code> in the
     container resets a password, and <code>bb users add</code> makes an account
     when there are none. That path exists because this one can fail.`);

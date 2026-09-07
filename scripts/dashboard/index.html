@@ -707,7 +707,6 @@ button.on{background:var(--accent-deep);border-color:var(--accent-mid)}
 /* How old the version answers are, beside the button that refreshes them:
    they survive a restart now, and a number with no date on it is the kind of
    thing that quietly goes stale. */
-.pkgwhen{align-self:center;color:var(--dim);font:var(--f-note)}
 /* A word and an ellipsis, never a bar — no percentage is read out of a
    job any more, so there is nothing for one to show. */
 .pkg .prog.plain{display:block}
@@ -904,7 +903,13 @@ textarea,select{
 .modal .foot,.nb .foot{display:flex;gap:8px;padding:11px 14px;border-top:1px solid var(--line);
   flex-wrap:wrap}
 .modal .foot .sp,.nb .foot .sp{flex:1}
-.modal .danger,.nb .danger{color:var(--bad);border-color:#94423d}
+/* A verb that cannot be undone, once and everywhere. It was scoped to the
+   modals and the notebook, so the same decision — Remove a container, Revoke
+   a node's credential — was red on one surface and ordinary ink on another,
+   and nothing about a button said which kind it was. One class, so there is
+   one answer: `.rm` used to be a second word for it and is now only what it
+   also was, the dim icon that drops a row from a list. */
+.danger{color:var(--bad);border-color:#94423d}
 /* Revert is amber rather than red. It throws away what has not been saved
    yet — a decision you might want back, and the colour this page already uses
    for "wants a decision from you". Red is kept for the controls that destroy
@@ -1072,11 +1077,6 @@ textarea,select{
 /* The version block. Rows of label + value so the eye runs down the values,
    which is how "what is this at" is actually read; the buttons sit under
    them because a bump is rare and should not lead. */
-/* Only drawn when a repo carries more than one — one product's version needs
-   no heading, and giving it one would imply a choice that is not there. */
-.vername{font:600 11px/1.5 system-ui,sans-serif;color:var(--ink);
-  margin:0 0 4px;letter-spacing:.02em}
-.versep{border-top:1px solid var(--line);margin:12px 0}
 /* The one place a version is typed rather than chosen. A bump can preview its
    next value, so it is a button; a starting number is arbitrary and nothing
    can derive it, so it is a field — validated here and again on the server. */
@@ -1119,8 +1119,7 @@ textarea,select{
 .verln.off code{color:var(--dim)}
 .vermark{font:var(--f-note);color:var(--warn)}
 .verwhy,.prefwhy{color:var(--dim);font:var(--f-note);margin:7px 0 0;max-width:70ch}
-.verbtns{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;align-items:center}
-.verbtns .sp{flex:1 1 auto}
+.verbtns{gap:6px;margin-top:8px}
 /* Claude access: a labelled control on its own line rather than a stray
    caption with a naked select under it. The label sits in the same 118px
    column the value lines use, so the select starts where every value on the
@@ -1141,9 +1140,11 @@ textarea,select{
 @media(max-width:520px){
   .verln span:first-child{flex:0 0 100%}
   .verln{padding:3px 0}
-  .verbtns .sp{display:none}
-  .verbtns button{flex:1 1 auto}
 }
+/* A hairline where the sections above it end. A section draws its own top
+   border and nothing draws a bottom one, so without this the first file in
+   dist/ reads as another line of the Version block it happens to follow. */
+#artList{border-top:1px solid var(--line)}
 .artrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
   border-bottom:1px solid var(--line);padding:9px 2px}
 .artrow:last-child{border-bottom:0}
@@ -1192,6 +1193,16 @@ textarea,select{
 .todoadd[hidden]{display:none}
 .todoadd input{flex:1 1 auto;min-width:0}
 .todoadd button{flex:0 0 auto;min-height:var(--tap)}
+/* On a phone the field and its buttons cannot share a line: at 393px with
+   Add and Reorder beside it the input was eleven characters wide, showing
+   "something for the roa" and then nothing anybody typed. Same shape the
+   action bars take — the thing first, on a line of its own, the buttons
+   under it sharing the width. */
+@media(max-width:600px){
+  .todoadd{flex-wrap:wrap}
+  .todoadd input{flex:1 1 100%}
+  .todoadd button{flex:1 1 auto}
+}
 .grp{border-bottom:1px solid var(--line)}
 .grp:last-child{border-bottom:0}
 .todo{display:flex;gap:9px;align-items:flex-start;padding:9px 0}
@@ -1455,8 +1466,7 @@ textarea,select{
 .mem textarea{white-space:pre-wrap;min-height:190px}
 .mem .body{padding:0 10px 10px}
 .mem .mdesc{color:var(--dim);font:var(--f-ui);margin-bottom:8px}
-.mem .macts{display:flex;gap:8px;margin-top:8px}
-.mem .macts .sp{flex:1}
+.macts{margin-top:8px}
 /* The memory's line in the index, on the memory it belongs to. Two fields
    rather than one: the title is what the line is filed under and the hook is
    what it says, and they are read at different widths. Stacked below 560px —
@@ -1475,13 +1485,19 @@ textarea,select{
 .memadd{border:1px dashed var(--line);border-radius:8px;padding:10px}
 .memadd .two{display:flex;gap:6px}
 .memadd .two>*{flex:1;min-width:0}
+/* Stacked on a phone, like the bug form's pairs: half of 393px shows a
+   dozen characters of a file name, and the file name is the one field here
+   that has to be read to be checked. */
+@media(max-width:600px){
+  .memadd .two{display:block}
+  .memadd .two>*+*{margin-top:6px}
+}
 .memadd label{margin-top:8px}
 .memadd>label:first-child{margin-top:0}
 /* Wrapped, unlike the command editor's: this one is prose, and `.modal
    textarea` defaults to pre for shell lines a wrap would lie about. */
 .memadd textarea{min-height:120px;white-space:pre-wrap}
-.memadd .acts{display:flex;gap:8px;margin-top:10px}
-.memadd .acts .sp{flex:1}
+.memadd .actbar{margin-top:10px}
 /* Bugs: one <details> per report, severity leading the line the way type
    leads a memory's. */
 .bug{border-top:1px solid var(--line);padding:2px 0}
@@ -1511,9 +1527,15 @@ textarea,select{
   text-transform:uppercase;letter-spacing:.4px;display:block}
 .bug .bval{font:12.5px/1.5 system-ui,sans-serif;white-space:pre-wrap;
   overflow-wrap:anywhere}
-.bug .bwho{color:var(--dim);font:var(--f-note);margin:6px 0}
 .bugform .two{display:flex;gap:6px}
 .bugform .two>*{flex:1;min-width:0}
+/* ...but not on a phone, where half of 393px is a field showing a dozen
+   characters and a label wrapping to three lines above it. Stacked, the same
+   answer the add row and the action bars give at this width. */
+@media(max-width:600px){
+  .bugform .two{display:block}
+  .bugform .two>*+*{margin-top:6px}
+}
 /* Drift between the index and the files: never fatal, which is exactly why it
    has to be said out loud rather than left to be noticed. */
 /* The notebook, as a pane's document. Its own heading goes — the pane's bar
@@ -1571,7 +1593,8 @@ textarea,select{
 .dmsrc{color:var(--dim);font:var(--f-ui);border-bottom:1px solid var(--line)}
 #todoBatch{padding:0 14px 8px}
 #todoBatch button{margin-top:6px}
-.mdrift{padding:0 14px 4px}
+/* The padding went with the band: #memDrift is a section now and .sect>.body
+   carries its own. #todoBatch still wears .mdrift as a plain .field band. */
 .mdrift div{color:var(--warn);font:var(--f-ui);margin-bottom:4px}
 /* Two writers, one thing (roadmap #26). A band rather than a modal: the
    typing it is about is still on screen behind it, and covering that up to
@@ -1686,21 +1709,20 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
     align-items:start;column-gap:14px;row-gap:2px}
   .dmtab .row.stack2 .grow > *{grid-column:1 / -1}
   .dmtab .row.stack2 .dmid   {grid-column:1;grid-row:1;min-width:0}
-  .dmtab .row.stack2 .dmstate{grid-column:2;grid-row:1;min-width:0}
-  .dmtab .row.stack2 .dmports{grid-column:3;grid-row:1;min-width:0}
+  .dmtab .row.stack2 .dmports{grid-column:2 / -1;grid-row:1;min-width:0}
   .dmtab .row.stack2 .dmid .sub{margin:0}
 
   /* The fold's two halves, likewise: ports on the left, mounts on the right.
      They are different questions — where it answers, and what it can see —
      and a single column made the reader count lines to tell them apart. */
-  .dmtab .dmwire .wire{display:grid;
+  .dmtab .sect .wire{display:grid;
     grid-template-columns:minmax(0,1fr) minmax(0,1.4fr);
     column-gap:18px;align-items:start}
-  .dmtab .dmwire .wire > .wport {grid-column:1}
-  .dmtab .dmwire .wire > .wmount{grid-column:2}
+  .dmtab .sect .wire > .wport {grid-column:1}
+  .dmtab .sect .wire > .wmount{grid-column:2}
   /* Anything that is neither — "it publishes nothing", a read failure —
      is a sentence and spans. */
-  .dmtab .dmwire .wire > .li:not(.wport):not(.wmount){grid-column:1 / -1}
+  .dmtab .sect .wire > .li:not(.wport):not(.wmount){grid-column:1 / -1}
 }
 /* The wiring's own alignment, at every width: the container's side of the
    arrow is the part being looked up, so it gets the fixed column. */
@@ -1710,7 +1732,6 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 @media(hover:hover){ .wport a:hover{text-decoration:underline} }
 /* Remove, on a manager row: a text button among text buttons, red only under
    the pointer. It is the one control there that takes something away. */
-@media(hover:hover){ .dmtab .acts button.rm:hover{color:var(--bad);border-color:#94423d} }
 /* The Analysis tab: the filter bar, and a project heading when reading
    across all of them. The rules themselves reuse .rule from the notebook's
    Analysis view — same data, same rendering, one implementation. */
@@ -1774,9 +1795,12 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    other band, so the alignment rule holds) carrying the title and, on the
    right, a one-line status in the shared status colours. The body is the
    section's controls, stacked. A section remembers whether it was open, per
-   browser; by default every section is open on a desktop and only the first
-   on a phone, where the point is that you see the headings and pick one
-   rather than scroll past four editors to reach the buttons.
+   browser; by default every section is open on a desktop and none on a
+   phone, where the point is that you see the headings and pick one rather
+   than scroll past four editors to reach the buttons. (This said "only the
+   first on a phone" while the code opened none, which is the better answer
+   and the one every tab has been drawn against: an open first section is
+   the thing you scroll past to reach the headings.)
 
    An ACTION BAR (.actbar) is the shape every set of buttons takes: the
    status line first, on a line of its own, and the buttons under it, right
@@ -1788,7 +1812,29 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
    A BUSY button says so: busy(btn, word) greys it and puts the word and an
    animated ellipsis in it until the repaint that follows the round trip
    replaces the element with its real state — so a press cannot be repeated
-   and is never a mystery. */
+   and is never a mystery. unbusy(btn, word) is for the presses that have no
+   repaint behind them: the ones that stay on screen when the server says no.
+
+   The rest of the language, in the order the eye meets it:
+
+   - `.state` inside a bar is its STATUS LINE, and that is the only thing the
+     name means there. A status sentence never shares a line with buttons.
+   - A section's status is a word or a number — "live", "3 problems", the
+     version — never a sentence. It is what a SHUT section still answers.
+   - `.danger` is the verb that cannot be undone, and it is one class with
+     one colour on every surface. It used to be scoped to the modals and the
+     notebook, so Remove was red in one place and ordinary ink in another.
+   - Nothing safe comes after it. Not "the last button is destructive" —
+     a bar may end with two of them — but nothing you would press by habit
+     sitting under the thumb that was aiming for the one before it.
+
+   These are held to across every tab by test/uniform.mjs, measured rather
+   than read off the markup: a tab that restyles .actbar or .danger locally
+   fails even though its classes say the right words. That is the point of
+   writing them here — a change to the framework has to move every tab with
+   it, and the suite is what makes "every tab" true rather than hopeful. A
+   rule that is genuinely one tab's belongs in that tab's own file, not
+   here. */
 .sect{border-top:1px solid var(--line)}
 .sect>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;
   padding:var(--row-y) var(--row-x);font:var(--f-ui);color:var(--ink);
@@ -1813,6 +1859,12 @@ button.eye.bare{background:none;border:0;padding:5px 4px;min-width:auto}
 .actbar .lead{margin-right:auto}
 @media(max-width:600px){
   .actbar button,.actbar select{flex:1 1 auto;min-height:var(--tap)}
+  /* ...except a lone destructive one. Sharing the width makes a SET of
+     buttons even, which is the point; doing it to a single Forget this makes
+     the one irreversible control on the screen the biggest thing on it. It
+     keeps the finger height and gives up the width. A lone Apply still
+     stretches — that one is the section's whole purpose. */
+  .actbar button.danger:only-of-type{flex:0 0 auto}
 }
 button[aria-busy="true"]{opacity:.75}
 
@@ -1892,21 +1944,7 @@ button[aria-busy="true"]{opacity:.75}
   background:var(--sunk);border:1px solid var(--line);border-radius:6px;
   color:var(--dim);font:11px/1.5 var(--mono);white-space:pre-wrap;
   overflow-wrap:anywhere}
-.dmtab .dmwire{margin-top:4px}
-.dmtab .dmwire summary{color:var(--dim);font:var(--f-note);cursor:pointer;
-  list-style:none}
-.dmtab .dmwire summary::-webkit-details-marker{display:none}
-.dmtab .dmwire summary::before{content:"▸";display:inline-block;width:1.1em;
-  transition:transform .16s ease}
-.dmtab .dmwire[open] summary::before{transform:rotate(90deg)}
-.dmtab .dmwire .li{overflow-wrap:anywhere}
-/* <details> has no transition of its own: the content simply appears at full
-   height. So the panel is measured and animated, and `open` is left on for the
-   whole of the closing one — remove it first and the browser hides the content
-   before there is anything to animate. */
-@media(prefers-reduced-motion:reduce){
-  .dmtab .dmwire summary::before{transition:none}
-}
+.dmtab .sect .li{overflow-wrap:anywhere}
 /* Every icon button draws the same way, whichever class it wears. Keyed to
    .eye alone, the Projects card's trash button (an .ic) got the browser's
    default fill:black/stroke:none — and these paths are open strokes, so it
@@ -2548,11 +2586,11 @@ body.dragging .tab .lbl{cursor:grabbing}
            On this tab because it is the one somebody opens when a build did
            not appear; a project with no node is a legitimate state, so the
            line says what is missing and how to get it. -->
-      <div class="field" id="artBuild" hidden></div>
+      <div id="artBuild" hidden></div>
       <!-- The version, above the things it names. Not a sixth tab: the strip
            already runs past a phone at five labels, and a version and the
            artifacts it stamps are one subject — those filenames carry it. -->
-      <div class="field" id="verBox"></div>
+      <div id="verBox"></div>
       <div class="field" id="artList"></div>
     </div>
     <div class="nbview" data-view="analysis" hidden>
@@ -5592,7 +5630,7 @@ function logSection(){
         <a class="btnish" href="/logs/download?what=archive" download
            title="every log kept, plus the archived CI runs, as a .tar.gz"
            >All logs</a>
-        <button type="button" id="logClear" class="rm"
+        <button type="button" id="logClear" class="danger"
            title="delete every kept log except this session's">Clear</button>
       </div>
     </div>`;
@@ -6504,7 +6542,7 @@ async function drawTrash(){
           title="${t.taken
             ? "a project called " + esc(t.was) + " is back under /workspace — rename it first"
             : "move it back to /workspace/" + esc(t.was)}">Put back</button>
-        <button type="button" class="rm" data-tpurge="${esc(t.name)}"
+        <button type="button" class="danger" data-tpurge="${esc(t.name)}"
           title="delete it and every file in it, for good">${BIN}</button>
       </span></div>`).join("");
   el.querySelectorAll("[data-trestore]").forEach(b => b.onclick = async () => {
@@ -6730,7 +6768,7 @@ function renderProjectsInto(i){
   // live in it; this tab has no such header, and the list of every project is
   // exactly where somebody stands when they want another one — the bottom of a
   // long scroll is the worst place for it.
-  if (paint(el, `<div class="projtab"><div class="macros"><button
+  if (paint(el, `<div class="projtab"><div class="actbar macros"><button
       id="bNewProjTab"
       title="create a project under /workspace — a fresh local repo, or a clone of a GitHub repo the container can reach"
       >New project</button></div>${
@@ -7155,7 +7193,7 @@ async function loadWire(d){
     // snap the wiring shut every half second.
     const inst = d.closest("[data-inst]")?.dataset.inst || `${project}|${instance}`;
     const nd = document.querySelector(
-      `.dmtab .row[data-inst="${CSS.escape(inst)}"] details.dmwire`);
+      `.dmtab .row[data-inst="${CSS.escape(inst)}"] details.sect`);
     if (!nd || nd.dataset.done) return;
     nd.dataset.done = "1";
     nd.querySelector(".wire").innerHTML = html;
@@ -7292,6 +7330,28 @@ async function cSubmit(){
              return fail("could not create it: " + e); }
 }
 
+// What one dev instance is doing, in a line: the action bar's status.
+function dmState(d, job, mine, busy, blind){
+  // Nothing was asked, so nothing is claimed. What it was built from is still
+  // true — that is a record on this side — and it is the one fact worth
+  // carrying into a listing nobody can act on.
+  if (blind)
+    return d.built_rev
+      ? `built from ${esc(d.built_rev)} — the daemon is not answering, so
+         whether it is up is unknown`
+      : "never built — the daemon is not answering";
+  if (busy) return esc(job.step || "working") + '<span class="dots"></span>';
+  // How a job ENDED, which this row never said. A build that failed or was
+  // stopped left the row showing the state it happened to be in, so the only
+  // account of what went wrong was in the tail below it — and an abort, which
+  // ends a job on purpose, said nothing at all.
+  if (mine && job.error) return esc(job.error.split("\n")[0]);
+  if (d.running) return `running · ${d.containers} container(s)`;
+  if (d.exists) return "stopped — its containers are still there";
+  if (d.built_rev) return `built from ${esc(d.built_rev)}, not running`;
+  return "never built";
+}
+
 function renderDockerInto(i){
   const el = $("doc" + i);
   if (!el) return;
@@ -7330,30 +7390,13 @@ function renderDockerInto(i){
       <div class="grow">
         <div class="dmid">
         <div class="name">${esc(d.name)}
-          <span class="dim state ${!blind && d.running ? "ok" : ""}">(${
+          <span class="dim dmpill ${!blind && d.running ? "ok" : ""}">(${
             blind ? "state unknown"
             : d.running ? "running" : d.exists ? "stopped" : "down"})</span></div>
         <div class="sub">${d.source === "file"
           ? `compose written here`
           : `${esc(d.project)} · ${esc(d.instance)}`}</div>
         </div>
-        <div class="sub dmstate ${!blind && d.running ? "ok" : ""}">${
-          // Nothing was asked, so nothing is claimed. What it was built from
-          // is still true — that is a record on this side — and it is the one
-          // fact worth carrying into a listing nobody can act on.
-          blind ? (d.built_rev ? `built from ${esc(d.built_rev)} — the daemon is
-                                  not answering, so whether it is up is unknown`
-                              : "never built — the daemon is not answering")
-          : busy ? esc(job.step || "working") + '<span class="dots"></span>'
-          // How a job ENDED, which this row never said. A build that failed or
-          // was stopped left the row showing the state it happened to be in,
-          // so the only account of what went wrong was in the tail below it —
-          // and an abort, which ends a job on purpose, said nothing at all.
-          : (mine && job.error) ? esc(job.error.split("\n")[0])
-          : d.running ? `running · ${d.containers} container(s)`
-          : d.exists ? "stopped — its containers are still there"
-          : d.built_rev ? `built from ${esc(d.built_rev)}, not running`
-          : "never built"}</div>
         ${d.ports.length ? `<div class="sub dmports">${
           d.ports.map(esc).join(" · ")}</div>` : ""}
         ${dmRouteLine(d)}
@@ -7373,10 +7416,9 @@ function renderDockerInto(i){
           // and never the error that ended it.
           ? `<pre class="dmlog" data-tail="1">${
               esc((job.log || "").slice(-1200))}</pre>` : ""}
-        <details class="dmwire"><summary>ports and mounts</summary>
-          <div class="wire">reading…</div></details>
       </div>
-      <span class="acts">
+      <div class="actbar dmacts">
+        <span class="state${!blind && d.running ? " ok" : ""}">${dmState(d, job, mine, busy, blind)}</span>
         ${!mayDocker() ? "" : `<button type="button" data-dm="up" ${
           d.running || busy || (d.missing_env || []).length ? "disabled" : ""}
           title="${(d.missing_env || []).length
@@ -7391,9 +7433,7 @@ function renderDockerInto(i){
                title="edit this container's compose file and env">Edit</button>`
           : `<button type="button" data-dm="env"
                title="this container's env file">Env</button>`}
-        <button type="button" class="rm" data-dm="remove" ${busy ? "disabled" : ""}
-          title="take it down and drop it from this list. Its env and its data
-directory stay, so remaking it under the same name finds them">Remove</button>`}
+        `}
         ${busy ? `<button type="button" data-dm="abort" ${
             job.aborting ? "disabled" : ""}
             title="stop this build. What is already built is kept — an abort is
@@ -7421,7 +7461,14 @@ for the rest of the work"
                 ? "run it again — the last attempt did not finish"
                 : "the last build is current — this wakes when the code moves"}">${
           d.built_rev ? "Rebuild" : "Build"}</button>
-      </span>
+        ${!mayDocker() ? "" : `<button type="button" class="danger" data-dm="remove" ${
+            busy ? "disabled" : ""}
+            title="take it down and drop it from this list. Its env and its data
+directory stay, so remaking it under the same name finds them">Remove</button>`}
+      </div>
+      ${docSection("docker", `wire:${d.project}|${d.instance}`,
+                   "Ports and mounts", "",
+                   `<div class="wire">reading…</div>`, {open: false})}
     </div>`;
   }).join("") + cs.map(c => `
     <div class="row stack2 off">
@@ -7485,7 +7532,7 @@ for the rest of the work"
     rows || `<div class="empty">${blind
       ? "nothing on record here — an instance appears once it has been sent"
       : "nothing on this daemon yet"}</div>`}
-    <div class="macros">${mayDocker()
+    <div class="actbar macros">${mayDocker()
         ? `<button id="bDockerNew">New container…</button>` : ""
       }<button id="bDockerRe">Refresh</button></div></div>`;
   gateDocker(el, off);
@@ -7518,8 +7565,11 @@ for the rest of the work"
   // The summary's own click, not the toggle: <details> opens instantly by
   // construction, so the flag has to be driven by slideDetails — the same
   // helper the notebook's folds already use — rather than watched afterwards.
-  el.querySelectorAll("details.dmwire").forEach(d => {
-    const sum = d.querySelector("summary");
+  // wireSections first, for the remembered open state; then the click is
+  // rebound, because this fold also has to fetch what it is about to show.
+  wireSections(el);
+  el.querySelectorAll("details.sect").forEach(d => {
+    const sum = d.querySelector(":scope > summary");
     if (!sum) return;
     sum.onclick = (e) => {
       e.preventDefault();
@@ -7661,7 +7711,8 @@ function renderPackagesInto(i){
           : `Nothing installed — ${onNode
              ? esc(d.name || "the node") + "'s emulator has no image to boot."
              : "the emulator has no image to boot."}`}</div>`}
-    <div class="macros">
+    <div class="actbar macros">
+      ${d.checked ? `<span class="state">versions checked ${ago(d.checked)}</span>` : ""}
       ${!mayPackages() ? "" : `<button class="primary" data-pkg="install"${busy || pstale ? " disabled" : ""}
         ${pstale ? `title="${esc(staleWhy(pnodes.find(n => n.id === pkgNode)))}"` : ""}
         >Install selected</button>`}
@@ -7673,8 +7724,7 @@ function renderPackagesInto(i){
           is a round trip per toolchain and is not something a node does yet"` : ""}>${
         busy && job.action === "check"
           ? `Checking for updates<span class="dots">${".".repeat(pkgDots)}</span>`
-        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>${
-      d.checked ? `<span class="sub pkgwhen">versions checked ${ago(d.checked)}</span>` : ""}
+        : (d.items || []).some(i => i.state) ? "Re-check for updates" : "Check for updates"}</button>
     </div>
   </div>`;
 
@@ -8407,7 +8457,7 @@ function sendBoxEl({label, sub, placeholder, onSend, onCancel}){
       sub ? ` <span>— ${esc(sub)}</span>` : ""}</div>
     <textarea id="sendMore" rows="2" maxlength="500"
       placeholder="${esc(placeholder)}"></textarea>
-    <div class="acts"><span class="sp"></span>
+    <div class="actbar">
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="primary" id="todoGo">Send</button></div>`;
   const more = box.querySelector("#sendMore");
@@ -8631,7 +8681,7 @@ async function reallySend(){
   // still has to be the one that gets sent.
   const note = sendNoteText;
   const go = $("todoGo");
-  go.disabled = true; go.textContent = "Sending…"; go.classList.add("busy");
+  busy(go, "Sending");
   // Staged changes go first, always — not only when "also save" is ticked.
   // The line about to be typed into a session is one of them, and sending it
   // against a list the server has not been told about would hand over a step
@@ -8644,14 +8694,14 @@ async function reallySend(){
     // Refused: the step about to be typed into a session is described by a
     // list the server has not accepted, so it must not go.
     if (todoPending.length){
-      go.textContent = "Send"; go.classList.remove("busy"); go.disabled = false;
+      unbusy(go, "Send");
       return;
     }
   }
   // The note rides on the same line as the step rather than chasing it: two
   // messages into one input box is how the second ends up glued to the first.
   const j = await postTodo({action: "send", id, step, tell: true, note});
-  go.textContent = "Send"; go.classList.remove("busy"); go.disabled = false;
+  unbusy(go, "Send");
   if (!j) { drawSendBox(!!todoSession); return; }
   if (!j.sent){
     // Which line stalled matters: a step left in the box is one to press
@@ -8827,7 +8877,7 @@ function openDrop(row, id, step){
   box.innerHTML = `<div class="q">Drop this?${also ? ` <span>— ${esc(also)}</span>` : ""}</div>
     <input maxlength="500" autocomplete="off"
       placeholder="why it is going (optional, kept in the history)">
-    <div class="acts"><span class="sp"></span>
+    <div class="actbar">
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="danger">Drop it</button></div>`;
   row.after(box);
@@ -8864,7 +8914,7 @@ function openReword(row, id, step){
     <div class="q qd"><span>Details — the technical half: files, functions, approach</span></div>
     <textarea class="dta" maxlength="2000" spellcheck="false"
       placeholder="mostly Claude's to write; empty is fine"></textarea>
-    <div class="acts"><span class="sp"></span>
+    <div class="actbar">
       <button type="button" class="stop">Cancel</button>
       <button type="button" class="primary">Save</button></div>`;
   row.after(box);
@@ -9018,7 +9068,20 @@ function drawMemory(j){
     : "what Claude remembers here — nothing yet";
   $("memWhere").title = j.dir;
   memTypes = j.types || memTypes;
-  $("memDrift").innerHTML = j.issues.map(i => `<div>${esc(i.text)}</div>`).join("");
+  // The index and the files disagreeing is the one thing on this tab that is
+  // not a memory, so it is a section rather than two loose orange paragraphs
+  // above the list. The section's own default is what it wants: open on a
+  // desktop, where there is room and this is a warning about what Claude
+  // reads; shut on a phone, where the warnings were what you scrolled past
+  // to reach a memory. The count is on the heading either way, in the warn
+  // colour, so a shut one still says something is wrong.
+  $("memDrift").innerHTML = j.issues.length
+    ? docSection("memory", "drift", "Index",
+                 `${j.issues.length} problem${j.issues.length === 1 ? "" : "s"}`,
+                 j.issues.map(i => `<div>${esc(i.text)}</div>`).join(""),
+                 {cls: "warn"})
+    : "";
+  wireSections($("memDrift"));
   // The note is offered only when there is a session to put it in, and says
   // what it will do: the text is typed, not sent. See memory.py's notify().
   $("memCount").textContent = n ? "Memories — newest first" : "Memories";
@@ -9052,8 +9115,10 @@ function drawMemory(j){
           : `<textarea spellcheck="false" autocomplete="off"
                data-file="${esc(m.file)}"
                data-rev="${esc(m.rev || "")}">${esc(m.text)}</textarea>
-             <div class="macts">
-               <span class="sp"></span>
+             <!-- No status on this one: what there is to say about a memory
+                  is said by the note above the editor, and repeating it here
+                  would be the same sentence twice on one screen. -->
+             <div class="actbar macts">
                <button type="button" class="danger" data-del="${esc(m.file)}"
                  title="delete this memory and take its line out of the index"
                  >Forget this</button>
@@ -9229,7 +9294,7 @@ function paintMemAdd(box){
     <label for="naBody">The memory itself</label>
     <textarea id="naBody" spellcheck="false"
       placeholder="The fact, in a line or two. For a kind that is guidance, follow it with why it is the rule and how to apply it."></textarea>
-    <div class="acts"><span class="sp"></span>
+    <div class="actbar">
       <button type="button" class="stop" id="naCancel">Cancel</button>
       <button type="button" class="primary" id="naGo">Write it</button></div>
   </div>`;
@@ -9578,7 +9643,7 @@ async function flushPending(){
 // news back on the next prompt it is given (roadmap #27).
 async function saveAll(){
   const b = $("todoSaveQuiet"), was = b.textContent;
-  b.disabled = true; b.textContent = "Saving…";
+  busy(b, "Saving");
   // Everything staged, replayed in the order it was made — which is what makes
   // the server arrive at what is on screen.
   clashResume = () => saveAll();
@@ -9588,7 +9653,7 @@ async function saveAll(){
   // top, so nothing further here should run in the meantime — writing the
   // memories and settling the panel while a roadmap change is still unwritten
   // would report "saved" over work that is not.
-  if (todoPending.length){ b.textContent = was; syncSave(); return; }
+  if (todoPending.length){ unbusy(b, was); syncSave(); return; }
   clashResume = null;
   // Before the memory write and the settle: a bump is a git commit, and if it
   // is going to refuse — a staged VERSION, a hand edit in the worktree — the
@@ -9597,6 +9662,11 @@ async function saveAll(){
   if (memDirty()) await saveMemory(true);
   const j = await postTodo({action: "save"});
   await loadMemory(memGen);
+  // Out of the busy state, and no further: the button stays disabled, which
+  // is what a finished save leaves. Asking syncSave here instead re-enabled
+  // it for as long as it took the answer's `unsaved` to land, and a second
+  // Save pressed into that window is a save of nothing.
+  b.removeAttribute("aria-busy");
   b.textContent = was;
   // Committed, so there is nothing left for a Cancel to go back to.
   todoWas = null;
@@ -9817,18 +9887,27 @@ $("todoRevert").onclick = revertNotebook;
       ? `${rows.length} in dist/ — what this project ships, newest first`
       : "nothing here yet";
     {
+      // Where this project compiles, as a section rather than a loose band:
+      // this tab is three subjects stacked — where it builds, what it is
+      // called, and what it shipped — and on a phone they arrived as one
+      // scroll with nothing naming any of them. The status is the answer on
+      // its own, so a shut section still says which node.
       const b = art.build || {};
       const el = $("artBuild");
       if (el){
         el.hidden = false;
-        el.className = "field" + (b.node ? "" : " warn");
-        el.innerHTML = b.node
-          ? `<div class="hint">Builds run on <b>${esc(b.name)}</b>${b.tools?.length
-              ? ` — it carries ${b.tools.map(esc).join(", ")}`
-              : " — it reports no toolchains yet, so a compile will not find one"}.
-             Add to it from the Tools tab.</div>`
-          : `<div class="hint">No node: nothing can be compiled for this project here.
-             ${esc(b.why || "")}</div>`;
+        el.className = "";
+        el.innerHTML = docSection("artifacts", "build", "Build",
+          b.node ? b.name : "no node",
+          b.node
+            ? `<div class="hint">Builds run on <b>${esc(b.name)}</b>${b.tools?.length
+                ? ` — it carries ${b.tools.map(esc).join(", ")}`
+                : " — it reports no toolchains yet, so a compile will not find one"}.
+               Add to it from the Tools tab.</div>`
+            : `<div class="hint">No node: nothing can be compiled for this project here.
+               ${esc(b.why || "")}</div>`,
+          {cls: b.node ? "" : "warn"});
+        wireSections(el);
       }
     }
     // Sizes as a person reads them; the bytes are nobody's unit.
@@ -10052,9 +10131,15 @@ project can have several"
     }catch(e){ box.textContent = "version: " + e; return; }
     if (ver.error && !ver.target){
       // A malformed VERSION is worth saying out loud: everything downstream
-      // assumes the shape, so this is the one place it can be reported.
-      box.innerHTML = `<div class="verln"><span>version</span><code>${
-        esc(ver.error)}</code></div>`;
+      // assumes the shape, so this is the one place it can be reported — in
+      // the section the number itself lives in, or it would be the one band
+      // on this tab with nothing naming it. "unavailable" rather than a
+      // guess at which, because this branch is both a malformed VERSION and
+      // a project with no git behind it; the body says which.
+      box.innerHTML = docSection("artifacts", "version", "Version", "unavailable",
+        `<div class="verln"><span>version</span><code>${esc(ver.error)}</code></div>`,
+        {cls: "warn"});
+      wireSections(box);
       return;
     }
     drawVersion();
@@ -10067,8 +10152,17 @@ project can have several"
   function drawVersion(){
     const box = $("verBox");
     const all = [ver, ...(ver.versions || [])];
-    box.innerHTML = all.map(v => verSection(v, all.length > 1)).join(
-      `<div class="versep"></div>`);
+    // One section per VERSION file, which is almost always one — and the
+    // number is its status, so a shut section still answers the question the
+    // tab is opened with. They used to be bands separated by a rule, with a
+    // wall of bump buttons under each and nothing naming either.
+    box.innerHTML = all.map(v => docSection("artifacts",
+      `version${v.component ? ":" + v.component : ""}`,
+      all.length > 1 ? (v.component || `${v.project} (the project)`) : "Version",
+      v.target || "no VERSION file",
+      verSection(v),
+      {cls: v.target ? "" : "warn"})).join("");
+    wireSections(box);
     box.querySelectorAll("[data-verunbump]").forEach(b => b.onclick = async () => {
       const comp = b.dataset.verunbump || "";
       const blk = all.find(x => (x.component || "") === comp);
@@ -10235,7 +10329,9 @@ this directory">Ask Claude</button>
       </details>`;
   }
 
-  function verSection(v, named){
+  // The block for one VERSION file. Its NAME is not in here: the section
+  // heading around it carries that, along with the number as its status.
+  function verSection(v){
     const f = v.forms || {};
     const staged = verPending[v.component || ""];
     const line = (label, value, cls = "") => value
@@ -10268,9 +10364,7 @@ this directory">Ask Claude</button>
     if (s.done) bits.push(`${s.done} roadmap item${s.done === 1 ? "" : "s"} done`);
     if (s.fixed) bits.push(`${s.fixed} bug${s.fixed === 1 ? "" : "s"} fixed`);
     if (v.unreleased) bits.push(`${v.unreleased} change${v.unreleased === 1 ? "" : "s"} logged`);
-    return (named ? `<div class="vername">${
-        esc(v.component || v.project)}${v.component ? "" : "  (the project)"}</div>` : "")
-      + line("building towards", v.target || "no VERSION file")
+    return line("building towards", v.target || "no VERSION file")
       + (staged ? `<div class="verln"><span></span><span class="vermark">
            staged: ${esc(v.next[staged] || "")} on Save — ${esc(staged)}${
              v.unreleased ? `, dating ${v.unreleased} changelog entr${
@@ -10287,7 +10381,7 @@ this directory">Ask Claude</button>
         <p class="verwhy">${bits.length
           ? "since " + esc(v.target) + ": " + bits.join(" · ")
           : "nothing has landed since " + esc(v.target)}</p>
-        <div class="verbtns">
+        <div class="actbar verbtns">
           ${["patch", "minor", "major"].map(pt => `
             <button type="button" data-verbump="${pt}" data-vercomp="${esc(v.component || "")}"
               class="${staged === pt ? "on" : ""}"
@@ -10332,7 +10426,7 @@ it as work lands, and a bump dates the accumulated lines">Changelog${
             <button type="button" data-verinit="${esc(v.component || "")}"
               title="write a VERSION file at this number and commit it">Set</button>
           </span></div>
-        <div class="verbtns">
+        <div class="actbar verbtns">
           <button type="button" data-verask="${esc(v.component || "")}"
             title="put the question to this project's Claude session — it can read
 the code, the roadmap and the changelog, and you can argue with the answer.
@@ -10781,7 +10875,7 @@ bb tests ingest /tmp/run.log</pre>
       <label>Notes — cause, analysis, fix plan</label>
       <textarea class="bfNotes" spellcheck="false"
         placeholder="what is known about why; mostly Claude's half">${v("notes")}</textarea>
-      <div class="acts"><span class="sp"></span>
+      <div class="actbar">
         <button type="button" class="stop bfCancel">Cancel</button>
         <button type="button" class="primary bfGo">${b ? "Save the bug" : "Report it"}</button></div>
     </div>`;
@@ -10851,11 +10945,11 @@ bb tests ingest /tmp/run.log</pre>
         <div class="body">
           ${["area", "repro", "expected", "actual", "notes"].map(k => b[k]
             ? `<div class="bfield"><label>${k}</label><div class="bval">${esc(b[k])}</div></div>` : "").join("")}
-          <div class="bwho">reported by ${esc(b.by)} · ${ago(b.at)}${
-            b.status !== "open" && b.status_note
-              ? ` · ${esc(STATUS_WORDS[b.status] || b.status)}: ${esc(b.status_note)}`
-              : ""}</div>
-          <div class="macts">
+          <div class="actbar macts">
+            <span class="state">reported by ${esc(b.by)} · ${ago(b.at)}${
+              b.status !== "open" && b.status_note
+                ? ` · ${esc(STATUS_WORDS[b.status] || b.status)}: ${esc(b.status_note)}`
+                : ""}</span>
             <button type="button" class="bSend"${b.status === "open" ? "" : " disabled"}
               title="${b.status === "open"
                 ? `hand this bug to the session running here — it is sent as a
@@ -10866,11 +10960,6 @@ bb tests ingest /tmp/run.log</pre>
                    deal with something already dealt with`}"
               >Send to Claude</button>
             <button type="button" class="bEdit">Edit</button>
-            <button type="button" class="danger bRm"
-              title="for a report that should not exist — mis-filed, a duplicate,
-                     the wrong project. A real one that is dealt with gets
-                     closed instead.">Delete</button>
-            <span class="sp"></span>
             ${b.status === "open"
               ? `<button type="button" class="bFix">Mark fixed</button>
                  <button type="button" class="bWont">Won't fix</button>
@@ -10879,6 +10968,13 @@ bb tests ingest /tmp/run.log</pre>
                           away. Not a fix, and not a decision to leave it."
                    >Not applicable</button>`
               : `<button type="button" class="bReopen">Reopen</button>`}
+            <!-- Last, because it is the one that cannot be undone. It used to
+                 sit third, between Edit and the closes, where the thumb goes
+                 for the verb it is next to. -->
+            <button type="button" class="danger bRm"
+              title="for a report that should not exist — mis-filed, a duplicate,
+                     the wrong project. A real one that is dealt with gets
+                     closed instead.">Delete</button>
           </div>
         </div>
       </details>`).join("");
@@ -10926,9 +11022,9 @@ bb tests ingest /tmp/run.log</pre>
           onCancel: shutSendBoxes,
           onSend: async () => {
             const go = box.querySelector("#todoGo");
-            go.disabled = true; go.textContent = "Sending…"; go.classList.add("busy");
+            busy(go, "Sending");
             const j = await postBug({action: "send", id, note: sendNoteText});
-            go.disabled = false; go.textContent = "Send"; go.classList.remove("busy");
+            unbusy(go, "Send");
             if (!j) return;
             if (!j.sent){
               notify(j.switching
@@ -10959,7 +11055,7 @@ bb tests ingest /tmp/run.log</pre>
             a bug and its answer; this takes the row</span></div>
           <input maxlength="300" autocomplete="off"
             placeholder="why it should not have been filed (optional, kept in the log)">
-          <div class="acts"><span class="sp"></span>
+          <div class="actbar">
             <button type="button" class="stop">Cancel</button>
             <button type="button" class="danger">Delete it</button></div>`;
         body.appendChild(box);
@@ -13010,7 +13106,9 @@ function docSurface(i, kind){
 // stylesheet): a fold with a title, a one-line status on the right, and the
 // controls inside. `kind:id` is what its open state is remembered under —
 // per browser, like the terminal's own conveniences — and the default is
-// open on a desktop, only the first on a phone, so a phone shows headings.
+// open on a desktop and shut on a phone, so a phone shows headings. Pass
+// `open` to override, which is for a section that IS the answer rather than
+// a place to go and look for it.
 const sectOpen = (() => { try{ return JSON.parse(localStorage.getItem("bb.sect") || "{}"); }
                           catch(e){ return {}; } })();
 function docSection(kind, id, title, status, body, {cls = "", open} = {}){
@@ -13051,6 +13149,18 @@ function busy(btn, word){
   // The one ticker every .dots on the page shares; it stops itself when
   // the last one is repainted away.
   if (!pkgDotsTimer) pkgDotsTimer = setInterval(pkgTickDots, 400);
+}
+
+// ...and the other half, for a press that can fail without a repaint behind
+// it. Most busy() calls need none — the round trip redraws the surface and
+// the button with it — but the notebook's Send and Save both stay on screen
+// when the server says no, and a button left wearing "Sending…" over a
+// refusal is the worst of both.
+function unbusy(btn, word){
+  if (!btn) return;
+  btn.disabled = false;
+  btn.removeAttribute("aria-busy");
+  btn.textContent = word;
 }
 
 // A finding that places in no project still places somewhere on the page.
