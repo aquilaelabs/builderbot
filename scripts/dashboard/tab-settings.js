@@ -33,7 +33,7 @@ function renderSettingsInto(i){
         <div class="sub">The machines work runs on — enrollment defaults and
           per-node storage arrive with the agent (phase 3); until then the
           registry itself is the setting.</div>
-        <div class="acts"><button type="button" id="setNodes">Open the Nodes tab</button></div>
+        <div class="actbar"><button type="button" id="setNodes">Open the Nodes tab</button></div>
       </div>
     </div>
     <div class="row stack2">

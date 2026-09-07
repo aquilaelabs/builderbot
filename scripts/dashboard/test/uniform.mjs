@@ -147,6 +147,105 @@ for (const kind of kinds){
        m.controls} checked)`);
 }
 
+// ---- the section and action-bar language -----------------------------------
+// The other half of the document language, and the half that drifts: it is
+// carried by shared classes rather than by a scaffold function, so a tab can
+// quietly answer differently and nothing notices. These rules are the things
+// that must be the SAME on every tab — which is why they are here and not in
+// each kind's own suite. A rule that is genuinely one tab's belongs there.
+//
+// Measured, never taken on faith: the colours and the layout are computed, so
+// a tab that restyles .actbar or .danger locally fails even though its markup
+// says the right words.
+//
+// What this cannot see is a surface that is not on screen when it looks: a
+// Docker row needs an instance, a project picker needs to be expanded. Those
+// are each tab's own fixture and each tab's own suite. What is here is the
+// shape, checked on whatever the tab does render.
+
+// A tab strip is navigation, not actions; the document's own footer has its
+// own shape (one verb left, its undo right). Everything else that holds two
+// or more TEXT buttons is an action bar — icon clusters are exempt by having
+// no text, which is what makes a roadmap row's five pictograms legal and a
+// row of Up / Down / Remove not.
+const NOT_A_BAR = ['nbtabs', 'foot'];
+
+async function language(){
+  return page.evaluate(({ NOT_A_BAR }) => {
+    const host = document.querySelector('.doc.on');
+    const box = host?.querySelector(':scope > .doctab, :scope > .nb, :scope > div');
+    if (!box) return { err: 'no document box found' };
+    const vis = e => e.offsetHeight > 0 || e.offsetWidth > 0;
+    const isBtn = c => (c.tagName === 'BUTTON'
+                        || (c.tagName === 'A' && c.classList.contains('btn'))) && vis(c);
+    const named = e => String(e.className || e.tagName).split(/\s+/)[0] || e.tagName;
+    const gone = b => b.classList.contains('danger');
+    const loose = [], order = [], layout = [], reds = new Set();
+    for (const e of box.querySelectorAll('*')){
+      const btns = [...e.children].filter(isBtn);
+      if (btns.length < 2) continue;
+      if (!btns.some(b => b.textContent.trim())) continue;      // an icon cluster
+      if (!e.classList.contains('actbar')){
+        if (!NOT_A_BAR.some(c => e.classList.contains(c)))
+          loose.push(`${named(e)}(${btns.map(b => b.textContent.trim().slice(0, 12)).join('/')})`);
+        continue;
+      }
+      // Destructive last: not "the last button is destructive", but that
+      // nothing safe sits after something that cannot be undone — which is
+      // the rule a thumb obeys and a two-Remove bar still satisfies.
+      const first = btns.findIndex(gone);
+      if (first >= 0 && btns.slice(first).some(b => !gone(b)))
+        order.push(`${named(e)}(${btns.map(b => (gone(b) ? '!' : '') + b.textContent.trim().slice(0, 10)).join('/')})`);
+      const c = getComputedStyle(e);
+      layout.push([c.display, c.flexWrap, c.justifyContent].join('|'));
+    }
+    // ...and a destructive button LOOKS destructive, the same way everywhere.
+    for (const b of box.querySelectorAll('button.danger, a.btn.danger')){
+      if (!vis(b) || !b.textContent.trim()) continue;
+      reds.add(getComputedStyle(b).color);
+    }
+    const sects = [...box.querySelectorAll('details.sect > summary')].map(s => {
+      const c = getComputedStyle(s);
+      return { status: s.querySelector('.sst')?.textContent?.trim() || '',
+               skin: [c.minHeight, c.fontWeight, c.cursor].join('|') };
+    });
+    return { loose, order, layout: [...new Set(layout)], reds: [...reds], sects };
+  }, { NOT_A_BAR });
+}
+
+// Gathered across every kind and compared at the end: "the same on every tab"
+// is not a claim any one tab can fail on its own.
+const seenBars = new Set(), seenSects = new Set(), seenReds = new Set();
+for (const kind of kinds){
+  if (!DRIVERS[kind]) continue;
+  await page.evaluate(k => { const t = tabs.find(x => x.kind === k);
+                             if (t) focusTab(t.id); }, kind);
+  await page.waitForSelector(DRIVERS[kind].readyWhen, { timeout: 20000 });
+  await sleep(200);
+  const L = await language();
+  ok(!L.err, `[${kind}] measurable for the button language (${L.err || 'ok'})`);
+  if (L.err) continue;
+  ok(L.loose.length === 0,
+     `[${kind}] every set of text buttons is an action bar${
+       L.loose.length ? ` — not: ${L.loose.join(', ')}` : ''}`);
+  ok(L.order.length === 0,
+     `[${kind}] nothing safe sits after a verb that cannot be undone${
+       L.order.length ? ` — ${L.order.join(', ')}` : ''}`);
+  L.layout.forEach(x => seenBars.add(x));
+  L.sects.forEach(x => seenSects.add(x.skin));
+  L.reds.forEach(x => seenReds.add(x));
+  const wordy = L.sects.filter(x => x.status.length > 24).map(x => x.status);
+  ok(wordy.length === 0,
+     `[${kind}] a section's status is a word or a number, not a sentence${
+       wordy.length ? ` — ${JSON.stringify(wordy)}` : ''}`);
+}
+ok(seenBars.size <= 1,
+   `an action bar lays out the same on every tab (${JSON.stringify([...seenBars])})`);
+ok(seenSects.size <= 1,
+   `a section heading wears one skin everywhere (${JSON.stringify([...seenSects])})`);
+ok(seenReds.size <= 1,
+   `a verb that cannot be undone is the same colour everywhere (${JSON.stringify([...seenReds])})`);
+
 // The fence inside the one page: a renderer that throws must break its own
 // tab and nothing else — before renderGuarded, one bug in one kind's render
 // took drawPanes down, and with it the poll, the strip and every terminal.

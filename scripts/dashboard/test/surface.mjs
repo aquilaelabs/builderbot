@@ -40,7 +40,7 @@ const SURFACE = [
   'cSubmit', 'cardDropIndex', 'claudeMd', 'daemonHost', 'closeEditor', 'closeNewProject',
   'closePane', 'closeRename', 'closeSendToDocker', 'commandOrder',
   'currentTheme', 'deleteProject', 'dmAction', 'dnShow',
-  'dnSubmit', 'docSurface', 'docSection', 'wireSections', 'busy', 'unbusy', 'dockerJob', 'drawAuth', 'drawBell', 'drawBuild',
+  'dmState', 'dnSubmit', 'docSurface', 'docSection', 'wireSections', 'busy', 'unbusy', 'dockerJob', 'drawAuth', 'drawBell', 'drawBuild',
   'drawCommands', 'drawCustom', 'drawDoctor', 'drawKeys',
   'drawCard', 'drawPanes', 'drawPhone', 'drawProjects', 'drawRunner', 'drawSessions',
   'drawShellCard', 'drawTabs', 'drawTrash', 'drawUiMenu', 'dressFrame',
