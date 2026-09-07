@@ -363,6 +363,38 @@ ok(await phone.evaluate(() => {
 await phone.click('#projects [data-c="alpha"]');
 ok(await phone.$eval('.resumemenu', el => getComputedStyle(el).display !== 'none' && el.querySelectorAll('button').length === 2),
    'phone: Claude on a project with history shows the Resume/New chooser');
+// ...where it can be seen. The sidebar scrolls, the chooser is placed inside
+// the card, and pressing Claude on a project whose session has ended opens
+// this and NOTHING ELSE — so one drawn below the fold is a press with no
+// visible result, which is what bug #65 was reported as.
+//
+// Set up properly or this asserts nothing: the row has to be at the bottom
+// edge before the press, and the press has to be dispatched rather than
+// clicked, because Playwright scrolls a target into view for you and would
+// undo the very thing being reproduced.
+await phone.click('#projects [data-c="alpha"]');          // put it away again
+await phone.waitForFunction(() => !document.querySelector('.resumemenu'));
+// A window short enough that the row is at the bottom edge, which is the
+// only shape in which the chooser has nowhere to be drawn — on a tall one it
+// lands on screen whatever this does, and the assertion would be vacuous.
+// The press is DISPATCHED rather than clicked, because Playwright scrolls a
+// target into view for you and would undo the thing being reproduced.
+await phone.setViewportSize({ width: 400, height: 300 });
+await phone.evaluate(() => {
+  const side = document.querySelector('.col.side');
+  const btn = document.querySelector('#projects [data-c="alpha"]');
+  side.scrollTop += btn.getBoundingClientRect().bottom
+                    - side.getBoundingClientRect().bottom + 6;
+});
+await phone.evaluate(() => document.querySelector('#projects [data-c="alpha"]').click());
+await phone.waitForSelector('.resumemenu', { timeout: 10000 });
+ok(await phone.$eval('.resumemenu', el => {
+     const m = el.getBoundingClientRect();
+     const side = el.closest('.col.side').getBoundingClientRect();
+     return m.top >= side.top - 1 && m.bottom <= side.bottom + 1;
+   }),
+   '...brought into the scrolled sidebar, not left below its fold');
+await phone.setViewportSize({ width: 400, height: 800 });
 await phone.click('.resumemenu [data-n]');
 await phone.waitForFunction(() => tabs.some(t => t.arg === 'claude:alpha') && document.body.dataset.view === 'terminal');
 ok(true, 'phone: New conversation opens the Claude tab and switches to the terminal');

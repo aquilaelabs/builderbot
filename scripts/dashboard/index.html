@@ -11378,6 +11378,14 @@ function placeResumeMenu(){
   m.style.top = (a.bottom - c.top + 4) + "px";
   m.querySelector("[data-r]").onclick = () => startClaude(p.name, p.last_claude.id);
   m.querySelector("[data-n]").onclick = () => startClaude(p.name, null);
+  // ...and brought into the sidebar, which scrolls. Pressing Claude on a
+  // project whose session has ENDED opens this chooser instead of a tab —
+  // that is the design, and it is the only thing the press does — so a
+  // chooser placed below the fold is a press with no visible result. Reported
+  // as "opened Claude again and it did not go to the new tab" (bug #65).
+  // Same rule and the same fix as the notebook's view strip: arriving
+  // somewhere you cannot see reads as nothing having happened.
+  m.scrollIntoView({block: "nearest", inline: "nearest"});
 }
 
 
