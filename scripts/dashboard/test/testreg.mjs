@@ -195,6 +195,31 @@ ok(await page.evaluate(() => ({
    ).then(d => d.rows > 1 && d.areas <= 2),
    '...while the rows nobody opened carry no editor at all');
 
+// ---- filling in a registry that already has a suite in it -----------------
+// The per-test verb takes the file lock and rewrites the store on every call,
+// which is right for a sentence somebody just typed and wrong for two
+// thousand. The bulk form is one load and one save — and it refuses to invent
+// a row for a key that names no test, because a descriptions file that has
+// drifted from the roster is the same failure the drift report is for.
+writeFileSync(`${DIR}/desc.json`, JSON.stringify({
+  'slow.mjs#1': { protects: 'the token store refuses what it cannot write',
+                  notes: 'posts to /api/create; no GitHub, no clone' },
+  'slow.mjs#3': { protects: 'the daemon answers, and says which one' },
+  'gone.mjs#9': { protects: 'a test that is not here any more' },
+}));
+const bulk = bb('describe', '--from', `${DIR}/desc.json`);
+ok(/described 2 tests/.test(bulk),
+   'a descriptions file fills many at once, in one write');
+ok(/1 keys named no test here/.test(bulk) && /gone\.mjs#9/.test(bulk),
+   '...and a key naming no test is reported rather than invented');
+const after = read().tests;
+ok(after['slow.mjs#1'].protects === 'the token store refuses what it cannot write'
+   && after['slow.mjs#1'].notes === 'posts to /api/create; no GitHub, no clone',
+   '...both fields land');
+ok(after['slow.mjs#3'].protects === 'the daemon answers, and says which one'
+   && after['slow.mjs#3'].notes === '',
+   '...and a row that names only one field leaves the other alone');
+
 // Ingesting is the CLI's and deliberately not an endpoint. It WAS one, and
 // it could never have worked: every body this server takes is capped at 64kB
 // and a run log is a couple of hundred, so the action existed and answered

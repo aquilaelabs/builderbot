@@ -277,6 +277,43 @@ def describe(project, key, protects=None, notes=None):
     return {"ok": True, "test": t | {"key": key}}
 
 
+def describe_many(project, rows):
+    """Write many descriptions at once, from {key: {protects, notes}}.
+
+    One load and one save for the lot. The per-test verb takes the file lock
+    and rewrites the store each time it is called, which is right for a
+    sentence somebody just typed and wrong for two thousand — a bulk fill
+    through it is two thousand rewrites of a file that grows as it goes.
+
+    Keys it does not recognize are counted and handed back rather than
+    written: a description file that has drifted from the roster is the same
+    failure this module exists to catch, and inventing a row for a test that
+    is not there would hide it.
+    """
+    if not isinstance(rows, dict):
+        return {"error": "expected an object of key -> {protects, notes}"}
+    wrote, unknown = 0, []
+    with _lock:
+        d = load()
+        p = _project(d, project)
+        tests = p.get("tests") or {}
+        for key, v in rows.items():
+            t = tests.get(key)
+            if not t:
+                unknown.append(key)
+                continue
+            if not isinstance(v, dict):
+                continue
+            if "protects" in v:
+                t["protects"] = str(v["protects"] or "").strip()[:MAX_TEXT]
+            if "notes" in v:
+                t["notes"] = str(v["notes"] or "").strip()[:MAX_TEXT]
+            wrote += 1
+        save(d)
+    return {"ok": True, "wrote": wrote, "unknown": unknown[:50],
+            "unknown_n": len(unknown)}
+
+
 # ---- the heuristic ---------------------------------------------------------
 # A test that takes 30.0s is not doing 30 seconds of work. It is waiting out
 # something with a round number in it — a default timeout, a poll interval, a
