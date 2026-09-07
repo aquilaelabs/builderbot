@@ -8,7 +8,7 @@
 import { URL, launch, newPage, ok, done, ready, sleep, refreshUntil, DIR,
          tmuxNew, tmuxKill, tmuxFmt, tmuxCapture } from './lib.mjs';
 import { spawn, execFileSync } from 'node:child_process';
-import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync } from 'node:fs';
+import { readFileSync, existsSync, statSync, lstatSync, readlinkSync, writeFileSync, mkdirSync, readdirSync, openSync, rmSync, realpathSync } from 'node:fs';
 
 const REPO = new globalThis.URL('../../..', import.meta.url).pathname;
 const AGENT = `${REPO}/scripts/agent/builderbot-agent.py`;
@@ -395,8 +395,16 @@ try {
     ok(e.BUILDERBOT_ROLE === 'node' && e.BB_CONTROLLER === URL.replace(/\/$/, '')
        && e.WORKSPACE === '/workspace' && !('BB_TOKEN' in e) && !e.BUILDERBOT_NODE_JSON,
        'the sessions inherit the role and the controller\'s address — never the node\'s token');
-    ok((e.PATH || '').split(':')[0] === bbtty.replace(/\/dashboard\/bb-tty$/, ''),
-       '...and bb from that bundle first on PATH');
+    // Through the SYMLINK, not the digest it points at (bug #66). A ttyd
+    // restart onto a new bundle only reaches new connections — a tmux
+    // session's shell keeps the PATH it was started with — so a session open
+    // since before an update went on running the bundle it began with, and a
+    // verb the controller had gained printed bb's usage instead of running.
+    const first = (e.PATH || '').split(':')[0];
+    ok(first.endsWith('/.bb/current/scripts')
+       && realpathSync(first) === realpathSync(bbtty.replace(/\/dashboard\/bb-tty$/, '')),
+       `...and bb on PATH through .bb/current, so a shell open since before an `
+       + `update still runs the bundle delivered last (${first.replace(DIR, '…')})`);
     // A port held by a ttyd of an earlier agent process (bug #58). The
     // agent's self-update re-executes it, which keeps its children and
     // loses every handle to them: the old ttyds stayed on the ports, every
@@ -442,6 +450,29 @@ try {
     ok(existsSync(`${store}/.bb/current/scripts/dashboard/bb-work-note`)
        && existsSync(`${store}/.bb/current/scripts/lib/bbapi.py`),
        '...and the bundle carries the hooks bb-tty writes into a session and bb\'s API client');
+    // ...and the ones before it do not pile up forever. One directory per
+    // delivery, one delivery per commit that touches bb: 33 of them in four
+    // days on the first node anybody looked at. Driven directly rather than
+    // through a run — thirty-three deliveries is not something to wait for.
+    const pruned = JSON.parse(execFileSync('python3', ['-c', `
+import importlib.util, json, os, tempfile, time
+spec = importlib.util.spec_from_file_location('agent', ${JSON.stringify(AGENT)})
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+d = tempfile.mkdtemp(); now = time.time(); names = []
+for i in range(12):
+    n = '%016x' % i
+    os.makedirs(os.path.join(d, n, 'scripts')); names.append(n)
+    os.utime(os.path.join(d, n), (now - i * 86400, now - i * 86400))
+open(os.path.join(d, 'bundle.tar'), 'w').write('x')
+os.symlink(names[0], os.path.join(d, 'current'))
+m.Agent.prune_bundles(d, os.path.join(d, names[0]))
+print(json.dumps(sorted(os.listdir(d))))
+`], { encoding: 'utf8' }).trim().split('\n').pop());
+    ok(pruned.filter(x => /^[0-9a-f]{16}$/.test(x)).length === 5
+       && pruned.includes('0000000000000000') && !pruned.includes('000000000000000b'),
+       `a delivery does not keep every bundle before it — the newest few stay (${pruned.length} left)`);
+    ok(pruned.includes('bundle.tar') && pruned.includes('current'),
+       '...and nothing that is not a bundle is touched');
     // The node's boot rides with it: a terminal's URL carries the boot of
     // the machine the session runs ON, or bb-tty there refuses every
     // connection as a stale tab — which is what the first real session did.

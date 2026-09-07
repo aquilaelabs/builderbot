@@ -10486,6 +10486,20 @@ become that version's section when it is created">Changelog${
       return;
     }
     const all = j.tests || [];
+    // A redraw comes from the poll as well as from this panel, and it
+    // replaces the list wholesale — so text somebody is part-way through
+    // typing has to come back with the row. Carried only where it DIFFERS
+    // from what is about to be drawn, which settles the precedence without a
+    // dirty flag to clear: their unsaved words beat the stored ones, a save
+    // of their own leaves nothing to carry, and a row they never touched
+    // takes whatever another window wrote.
+    const drafts = new Map(), stored = new Map(all.map(t => [t.key, t]));
+    $("tstList").querySelectorAll(".tst[open] > .body").forEach(body => {
+      const t = stored.get(body.parentElement.dataset.key);
+      const p = body.querySelector(".tstP"), n = body.querySelector(".tstN");
+      if (t && p && n && (p.value !== t.protects || n.value !== t.notes))
+        drafts.set(t.key, {protects: p.value, notes: n.value});
+    });
     if (!all.length){
       $("tstHint").textContent = "Nothing ingested yet.";
       $("tstStats").hidden = false;
@@ -10532,7 +10546,12 @@ bb tests ingest /tmp/run.log</pre>
       (d[k] || []).map(x => `<div class="sub">${
         k === "renamed" ? `renamed: ${esc(x.was)} → ${esc(x.now)}`
                         : `${k === "added" ? "new" : "gone"}: ${esc(x.name)}`}</div>`));
-    const nDrift = driftRows.length;
+    // The true count, not the length of the list under it: the rows are
+    // capped at 200 and a first ingest is every test in the project, so a
+    // fold headed "200" would be reporting where the list stops.
+    const nDrift = (d.n_added ?? (d.added || []).length)
+                 + (d.n_gone ?? (d.gone || []).length)
+                 + (d.n_renamed ?? (d.renamed || []).length);
     $("tstFolds").innerHTML =
       // Closed by default: the list sorted by duration is what this tab is
       // for, and a fold that opens over it is one somebody has to shut before
@@ -10543,6 +10562,8 @@ bb tests ingest /tmp/run.log</pre>
       + (d.at ? docSection("tests", "drift", "Since the run before",
            nDrift ? `${nDrift}` : "in step",
            nDrift ? driftRows.join("")
+                    + (nDrift > driftRows.length
+                       ? `<div class="sub dim">…and ${nDrift - driftRows.length} more</div>` : "")
                   : `<div class="sub">every test the runner reported is on this
                      list, and every entry on this list ran.</div>`,
            {cls: nDrift ? "warn" : "", open: false}) : "");
@@ -10597,6 +10618,7 @@ bb tests ingest /tmp/run.log</pre>
       const t = byKey.get(box.dataset.key), body = box.querySelector(".body");
       if (!t || !body || body.dataset.done) return;
       body.dataset.done = "1";
+      const draft = drafts.get(box.dataset.key);
       body.innerHTML = `
         <div class="sub">${esc(t.key)}${
           t.was ? ` · was ${esc(dur(t.was))}` : ""}${
@@ -10604,10 +10626,12 @@ bb tests ingest /tmp/run.log</pre>
             ? ` · ${t.history.map(h => (h / 1000).toFixed(1)).join(", ")}s` : ""}</div>
         <label>What it protects</label>
         <textarea class="tstP" spellcheck="false"
-          placeholder="the behaviour that breaks if this goes red">${esc(t.protects)}</textarea>
+          placeholder="the behaviour that breaks if this goes red">${
+            esc(draft ? draft.protects : t.protects)}</textarea>
         <label>What it exercises — fixtures, stubs, what is real and what is faked</label>
         <textarea class="tstN" spellcheck="false"
-          placeholder="e.g. drives the real server; the agent is agent-stub.py; docker is the PATH stub">${esc(t.notes)}</textarea>
+          placeholder="e.g. drives the real server; the agent is agent-stub.py; docker is the PATH stub">${
+            esc(draft ? draft.notes : t.notes)}</textarea>
         <div class="actbar"><span class="sp"></span>
           <button type="button" class="primary tstSave">Save</button></div>`;
       body.querySelector(".tstSave").onclick = e => pressing(e.target, async () => {

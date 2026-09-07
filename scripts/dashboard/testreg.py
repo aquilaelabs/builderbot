@@ -248,8 +248,18 @@ def ingest(project, text, by="you"):
         # Kept rather than only returned: the drift is the thing this file
         # exists to catch, and an answer that only exists in the terminal of
         # whoever ingested is an answer nobody reads twice.
+        # The lists are capped and the COUNTS are not: a first ingest is two
+        # thousand additions, and a fold headed "200" because that is where
+        # the list stops is a number that reads as the answer.
         p["drift"] = {"at": now, "added": added[:200], "gone": gone[:200],
-                      "renamed": renamed[:200]}
+                      "renamed": renamed[:200], "n_added": len(added),
+                      "n_gone": len(gone), "n_renamed": len(renamed)}
+        # Counted separately from the run history, which is capped: after
+        # KEEP_RUNS ingests len(runs) is always KEEP_RUNS, so a poll token
+        # taken from it stops moving and an open tab stops noticing runs.
+        # Seeded from the run count so a registry written before this field
+        # existed steps forward rather than back.
+        p["rev"] = p.get("rev", len(p.get("runs") or [])) + 1
         p.setdefault("runs", []).append({
             "at": now, "by": "claude" if by == "claude" else "you",
             "n": len(roster), "suites": len(by_suite),
@@ -309,6 +319,8 @@ def describe_many(project, rows):
             if "notes" in v:
                 t["notes"] = str(v["notes"] or "").strip()[:MAX_TEXT]
             wrote += 1
+        if wrote:
+            p["rev"] = p.get("rev", len(p.get("runs") or [])) + 1
         save(d)
     return {"ok": True, "wrote": wrote, "unknown": unknown[:50],
             "unknown_n": len(unknown)}
@@ -437,9 +449,17 @@ def counts():
 
 
 def revisions():
-    """{project: how many runs have been ingested} — the tab's re-read token,
-    the same shape bugs.revisions() has. A run is the only thing that changes
-    the timings; a description edit changes one row and the panel drew it."""
+    """{project: a number that moves when this tab has to re-read} — the same
+    shape bugs.revisions() has. What moves it is a run, and a bulk fill from
+    `bb tests describe --from FILE`: both change rows an open tab has no other
+    way to notice. Describing ONE deliberately does not — the panel draws its
+    own save, and a redraw it did not need would take a neighbouring row's
+    unsaved typing with it.
+
+    Counted rather than derived from the run history, which is capped: after
+    KEEP_RUNS ingests its length never changes again, and a token that stops
+    moving is a tab that stops re-reading."""
     with _lock:
         d = load()
-    return {p: len(v.get("runs") or []) for p, v in (d.get("projects") or {}).items()}
+    return {p: v.get("rev", len(v.get("runs") or []))
+            for p, v in (d.get("projects") or {}).items()}

@@ -7,5 +7,9 @@ _work/
 # the test files, applied to /config, and no more part of the repository than
 # a run log is.
 .bb-descriptions.json
+# ...and where a run log lands. From a session on a node `bb tests ingest` is
+# relayed, and the controller opens the path it is given — so the log has to
+# be somewhere both machines see, which means inside the project.
+scratchpad/
 __pycache__/
 *.pyc
