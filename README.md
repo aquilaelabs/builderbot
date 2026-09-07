@@ -372,6 +372,8 @@ bb git push|fetch|pull|ls-remote [ARGS]
 bb emu start [api] | stop | status | list | log [-p]
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only
+bb claude-md --is-stale exit 0 when the block exists and has drifted — the
+                        gate the ghosted Claude button and bb-tty both ask
 bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
@@ -1896,20 +1898,29 @@ and it now says why it did, in a note kept with the entry in the history.
 **The bin always asks; shelving never does**, because one is recoverable by
 pressing the same button again and the other is not.
 
-**Edits are written immediately; telling the session is separate.** A phone
-that dies half way through tidying a list must not lose it, but every telling
-costs a line of somebody's conversation — so the two are apart, and there are
-two Save buttons for the difference. **Save** writes any memory edits and
-settles the panel without saying anything, which is what you want while a
-session is mid-task or when there is none. **Save & tell the session** does
-the same and spends the line. Both are dead until something has moved; the
-second is also dead with nothing running to tell.
+**Edits are written immediately, and a running session is told by itself.** A
+phone that dies half way through tidying a list must not lose it, so the write
+does not wait for anything. The telling used to: every telling types a line
+into the session's input box, which spends a turn and lands mid-task, so it
+had to be a button somebody remembered to press.
+
+It is not a button any more. The `UserPromptSubmit` hook every session runs
+under carries the news back for free — a hook's stdout is added to the turn as
+context — so the next prompt the session is given arrives with one line saying
+what moved. Nothing is spent and nothing is interrupted. The watermark is **per
+session**, so two people sharing a project each hear once, and neither clears
+it for the other; a session's first prompt is silent, because it was handed the
+whole list in its system prompt a moment earlier.
+
+That leaves the two Save buttons a cleaner difference. **Save** writes any
+memory edits and settles the panel — the session finds out on its next turn.
+**Save & interrupt** does the same and then types the line in, for when the
+next turn is not soon enough. Both are dead until something has moved; the
+second is also dead with nothing running to interrupt.
 
 The line **names which half moved** — the roadmap, the memories, or both —
 because "something changed" sends somebody to look at both, and one of the two
-is a directory of files. There is no way to make a session read something
-without sending it a message: no IPC into a running Claude, so the only door
-is its input box.
+is a directory of files.
 
 Which is why **sending a step folds the two together**. Tapping an arrow
 **arms** it — the arrow lights up and a **send box opens under that row**,
@@ -3106,6 +3117,19 @@ same comparison `bb claude-md` makes — the marked block against the image's
 template, and nothing below the end marker — done in-process rather than by
 shelling out once per project on every poll. A `CLAUDE.md` with no markers is
 named but *not* offered the link, because `--update` refuses that file too.
+
+**And it stops a session starting on a wrong map.** While a project's block is
+out of date its **Claude button is ghosted**, saying why, because the block is
+precisely what a session is briefed with: an old one tells it this container
+carries an Android SDK, or that builds happen here, and the session acts on
+it. Pressing the update link above the button clears both in one go. `bb-tty`
+refuses the same case, so the terminal URL is not a way around it — the same
+reasoning as the lock. Three states are *not* refused: a project with no
+`CLAUDE.md` (that is `--init`, and yours to decide), one predating the markers
+(no fix to press), and one whose session is already running, which the button
+reaches rather than starts — being cut off from a live conversation would be a
+worse fault than the one this prevents. `bb claude-md --is-stale` is the
+predicate, exit code only.
 
 ## Playwright, Android, publishing
 

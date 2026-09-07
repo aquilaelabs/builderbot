@@ -2455,12 +2455,17 @@ body.dragging .tab .lbl{cursor:grabbing}
       <div id="anaList"></div>
     </div>
     <div class="foot">
-      <!-- Two, and the difference is whether a line of the conversation is
-           spent saying so. The plain one settles the panel without telling
-           anybody, which is the right answer while a session is mid-task or
-           when there is none. -->
+      <!-- Two, and the difference is an INTERRUPTION. Both write whatever
+           the editor is holding; a running session finds out either way, on
+           the next prompt it is given, because the hook it runs under carries
+           the news for free (roadmap #27). So the plain Save is the ordinary
+           one, and the other is for when that is not soon enough: it types
+           the line into the session's input box and presses Enter, which
+           lands mid-task and spends a turn. -->
       <button id="todoSaveQuiet" type="button" disabled>Save</button>
-      <button id="todoSave" type="button" disabled>Save &amp; tell the session</button>
+      <button id="todoSave" type="button" disabled
+              title="save, and interrupt the session to read it now — it finds out on its own next prompt otherwise"
+              >Save &amp; interrupt</button>
       <span class="sp"></span>
       <!-- Where Close used to be. The tab does not go away when something is
            saved, so the question this button answers is no longer "am I done
@@ -5578,6 +5583,24 @@ function drawRunner(){
 // a problem to fix but a mount point waiting for content.
 const isBroken = p => p.issues.some(i => i.level === "error");
 
+// The environment block a session is briefed with has fallen behind the image.
+//
+// Not an error — the project is fine and everything else on the row works —
+// but it IS a reason not to start a session: the block tells a session what
+// this container carries, and acting on a stale one is how a session goes
+// looking for an SDK that left the image. It is a warning the row already
+// offers a one-press fix for, so the button waits for that press rather than
+// starting on a wrong map. Only this state: no CLAUDE.md at all is the
+// operator's decision (`--init`), and one predating the markers has no fix to
+// press, so neither of those stops anything. bb-tty refuses the same case, so
+// the URL is not a way around it.
+const mdStale = p => (p.issues || []).some(i => i.action === "claude-md-update");
+
+// ...and a session that is ALREADY RUNNING is reached, not started: the same
+// button goes to its tab, and stranding somebody from a live conversation
+// over a stale file would be a worse fault than the one this prevents.
+const mdBlocks = p => mdStale(p) && !liveSessions().has(myClaude(p.name));
+
 let showAllProjects = false;
 
 // What the fold-away button says. It used to have to split its count two
@@ -5663,11 +5686,16 @@ function projectRow(p, live, cls, inTab){
          (p.locked || notMine(p) || p.session_why
           // The sign-in that matters for a session on a NODE is the one in
           // that node's home, which this container cannot see (roadmap #24).
-          || (!p.session_at && !signedIn() && !live.has(myClaude(p.name))))
+          || (!p.session_at && !signedIn() && !live.has(myClaude(p.name)))
+          || mdBlocks(p))
            ? " disabled" : ""}
          title="${notMine(p) ? NOT_MINE_WHY
                  : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
+                 : mdBlocks(p)
+                   ? "CLAUDE.md's environment block is out of date — a session started now "
+                     + "would be briefed on a container that has moved on. The update link "
+                     + "above fixes it in one press"
                  : p.session_why ? p.session_why
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own — start yours`
@@ -9183,7 +9211,10 @@ async function flushPending(){
   return map;
 }
 // Both Saves write whatever the memory editor is holding and settle the
-// panel; only one of them spends a line saying so.
+// panel; only one of them interrupts a running session to say so. The other
+// is not silence — the session is told on the next prompt it is given, by the
+// hook it runs under (roadmap #27) — it is the difference between telling
+// somebody now and telling them when they next look up.
 async function saveAll(tellIt){
   const b = $(tellIt ? "todoSave" : "todoSaveQuiet"), was = b.textContent;
   b.disabled = true; b.textContent = "Saving…";
@@ -9200,8 +9231,9 @@ async function saveAll(tellIt){
   b.textContent = was;
   // Committed, so there is nothing left for a Cancel to go back to.
   todoWas = null;
-  if (j) notify([verMsg, j.told ? "saved, and told " + (todoSession || "the session")
-                                : "saved"].filter(Boolean).join(" · "));
+  if (j) notify([verMsg, j.told ? "saved, and interrupted " + (todoSession || "the session")
+                                : "saved — the session reads it on its next prompt"]
+                .filter(Boolean).join(" · "));
 }
 $("todoSave").onclick = () => saveAll(true);
 $("todoSaveQuiet").onclick = () => saveAll(false);

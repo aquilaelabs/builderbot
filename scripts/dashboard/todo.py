@@ -215,6 +215,17 @@ def _touch(d, project, kind="todo", on=True):
     else:
         cur[kind] = bool(on)
     d["unsaved"][project] = cur
+    # ...and a counter per kind that only ever goes up, which is what lets a
+    # SESSION be told what it personally has not seen (roadmap #27). The
+    # `unsaved` flag above is one per project — it answers "does the panel
+    # still have something to say", and a second session clearing it would
+    # answer for somebody else. A counter compares instead: each session
+    # remembers the number it last saw, so being told is per session and
+    # nobody's turn is spent on somebody else's behalf.
+    if on:
+        b = d.setdefault("bump", {}).setdefault(project, {})
+        for k in (KINDS if kind is None else [kind]):
+            b[k] = int(b.get(k, 0)) + 1
 
 
 # Every change to a list, kept. The list itself only ever shows its present
@@ -1037,6 +1048,47 @@ def mark_told(project):
         _touch(d, project, None, False)
         save(d)
     return {"ok": True}
+
+
+def catchup(project, who):
+    """What has moved here since THIS session was last told, as one sentence,
+    marking it told in the same breath (roadmap #27).
+
+    Read by the UserPromptSubmit hook, so the answer rides into a turn the
+    operator was already spending rather than costing one of its own — which
+    is the whole difference between this and `announce` below, and the reason
+    the panel need not have a button for the ordinary case.
+
+    A session that has never asked is told NOTHING and starts from here: it
+    was handed the whole list in its system prompt a moment ago, and reading
+    "the roadmap changed" about changes already in front of it is worse than
+    silence. So the first ask only records the watermark.
+
+    Writes only when there is something to record. This runs on every prompt
+    of every session, and a file written that often for nothing is a cost
+    with no answer to show for it.
+    """
+    if not project or not who:
+        return ""
+    with _lock:
+        d = load()
+        b = {k: int((d.get("bump", {}).get(project) or {}).get(k, 0)) for k in KINDS}
+        seats = d.setdefault("seen", {}).setdefault(project, {})
+        was = seats.get(who)
+        kinds = {} if was is None else {k: b[k] > int(was.get(k, 0)) for k in KINDS}
+        if was == b:
+            return ""                       # nothing has moved for this one
+        seats[who] = b
+        # The panel's own marker is settled by the same act: somebody has now
+        # been told, which is all that flag ever meant. It stays per project
+        # — two sessions sharing one would settle it for each other — because
+        # it is a nag rather than the record, and the record is per session
+        # above.
+        for k, moved in kinds.items():
+            if moved:
+                _touch(d, project, k, False)
+        save(d)
+    return changed_line(kinds)
 
 
 def announce(project, kinds, sessions=()):

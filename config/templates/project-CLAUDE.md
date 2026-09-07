@@ -655,14 +655,22 @@ on somebody: park it and say why in your reply. There is no unshelve for you.
 Taking one off the shelf reverses a decision made for reasons you were not
 told, so it is the operator's, and it is one tap in the panel.
 
-If the list or these notes change while you are working, you may be told in
-one line, which names which of the two moved. Read them when it is relevant
-and carry on — a change to the list is not a request to drop what you are
-doing. That line costs the operator a
-message, so it is sent only when they press **Save & tell the session** —
-there is a plain Save beside it that changes things and says nothing. So do
-not expect to hear about every change, and re-read with `bb roadmap` if what you
-are about to do depends on it.
+If the list or these notes change while you are working, **you are told** —
+one line, naming which of the two moved, arriving with the next prompt you
+are given. It costs the operator nothing and interrupts nothing, so it is not
+something they have to remember to do. Read it when it is relevant and carry
+on: a change to the list is not a request to drop what you are doing.
+
+Two things follow from *when* it arrives. It rides on your next turn, so a
+change made while you are mid-task reaches you at the end of it rather than
+during — and if you are about to act on the list, re-read it with `bb roadmap`
+rather than trusting the copy in your context, which was true when the
+conversation started. And a change you make yourself is never announced back
+to you.
+
+**Save & interrupt** is the operator's other button: it types into your input
+box and lands mid-task, which is what they press when the change cannot wait
+for your next turn. Treat one arriving that way as more urgent than the line.
 
 A step arriving as a message *is* a request: the operator sent it deliberately,
 and the panel closed and put them in this tab to read the answer. Sometimes it

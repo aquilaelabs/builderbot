@@ -4110,13 +4110,16 @@ class Handler(BaseHTTPRequestHandler):
 
         bb-work-note and bb-prompt-relay write this container's /config
         when they run here — the overlap notes, the project's chat feed. On
-        a node there is no /config, so they post the same three things to
+        a node there is no /config, so they post the same four things to
         this endpoint with the session's token, and the same modules write
         them: `note` (a file the session is about to edit, with a guess at
         the symbol; answers who else has it open), `asked` (what the person
-        typed, into the project feed) and `started` (the session began,
+        typed, into the project feed), `started` (the session began,
         which _claude_held announces for a local session and cannot see
-        for one on a node).
+        for one on a node), and `seen` (what the notebook has done since
+        this session was last told — the answer goes back into the turn the
+        hook is already in, which is how a session stays current without
+        anybody pressing a button, roadmap #27).
 
         The account is the token's, never the request's: a session token
         minted for a node-bound terminal names its account, and that is
@@ -4151,7 +4154,12 @@ class Handler(BaseHTTPRequestHandler):
             chat.event(project, uid, f"{name} started a Claude session on {project}"
                                      + (f" ({field(req, 'node')})" if field(req, "node") else ""))
             return self._json({"ok": True})
-        return self._json({"error": "a hook is note, asked or started"}, 400)
+        if kind == "seen":
+            # What this session has not been told about the notebook, and
+            # marked told (roadmap #27). The answer rides back into the turn
+            # the hook is already in, so nothing is spent on saying it.
+            return self._json({"ok": True, "line": todo.catchup(project, uid)})
+        return self._json({"error": "a hook is note, asked, started or seen"}, 400)
 
     def _bb_relay(self, req):
         """A bb verb from a session on a NODE, run here (roadmap #24).

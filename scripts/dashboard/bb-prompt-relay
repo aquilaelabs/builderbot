@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""UserPromptSubmit hook: put what was asked into the project's feed.
+"""UserPromptSubmit hook: put what was asked into the project's feed, and
+bring the session up to date with the notebook on the way past.
 
 On a shared project, what somebody is asking Claude to do is the thing the
 others need to know and the thing they otherwise find out at the merge. Three
@@ -12,9 +13,23 @@ a private place to think out loud: your prompts go to the people you share it
 with. Nobody else — the feed is readable by whoever may see the project, which
 is the same rule as the project itself.
 
-It changes nothing about the prompt. A UserPromptSubmit hook can rewrite or
-refuse one; this reads it and gets out of the way, and any failure is
-swallowed, because a chat line is never worth losing somebody's turn.
+It changes nothing about the prompt itself. A UserPromptSubmit hook can
+rewrite or refuse one; this reads it and gets out of the way, and any failure
+is swallowed, because a chat line is never worth losing somebody's turn.
+
+WHAT IT DOES PRINT is the other half (roadmap #27). A hook's stdout is added
+to the turn as context, which makes this the one place a running session can
+be told something for free — no line typed into its input box, no turn spent,
+no interruption mid-task. So when the roadmap or the memories have moved
+since this session last heard, one sentence saying so rides along with the
+prompt the operator was already sending. That is why the panel does not need
+a button for the ordinary case; "Save & tell" is left for the other one,
+where somebody wants the session to stop what it is doing and read now.
+
+Which means stdout matters here in a way it did not before: everything
+printed reaches the model. Nothing else may be written to it — a traceback on
+stdout would arrive as instructions — which is what the bare `except` at the
+bottom is for.
 """
 import json
 import os
@@ -68,8 +83,35 @@ def post_hook(body):
     here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.join(here, "..", "lib"))
     import bbapi                                             # noqa: E402
-    bbapi.call("/api/v1/hook", body, auth="Bearer " + os.environ.get("BB_TOKEN", ""),
-               timeout=10)
+    return bbapi.call("/api/v1/hook", body,
+                      auth="Bearer " + os.environ.get("BB_TOKEN", ""), timeout=10) or {}
+
+
+def catchup(project, session):
+    """One sentence about what has moved in the notebook since this session
+    was last told, or "" — and told, so the next prompt does not repeat it.
+
+    Never raises: the caller prints what comes back, and this is on the path
+    of every prompt in every session.
+    """
+    try:
+        if on_node():
+            return str(post_hook({"kind": "seen"}).get("line") or "")
+        here = os.path.dirname(os.path.abspath(__file__))
+        sys.path.insert(0, here)
+        import todo                                          # noqa: E402
+        todo.configure(state=os.environ.get("DASHBOARD_STATE", "/config"),
+                       write_json=_write_json)
+        return str(todo.catchup(project, session) or "")
+    except Exception:                     # noqa: BLE001 — never cost a turn
+        return ""
+
+
+def _write_json(p, d):
+    tmp = f"{p}.new"
+    with open(tmp, "w") as f:
+        json.dump(d, f, indent=2)
+    os.replace(tmp, p)
 
 
 def main():
@@ -87,6 +129,14 @@ def main():
     except (ValueError, OSError):
         return
     text = human_part(str(req.get("prompt") or ""))
+    # The catch-up rides on EVERY prompt, including the ones a person did not
+    # type: a turn that arrives as a task notification is still a turn this
+    # session is about to spend, and telling it the roadmap moved is worth
+    # exactly as much there. Only the relaying below needs a human part.
+    if project:
+        say = catchup(project, session)
+        if say:
+            print(say)
     if not text or not project:
         return
     if len(text) > MAX:
@@ -103,15 +153,9 @@ def main():
     import chat                                              # noqa: E402
     import users                                             # noqa: E402
 
-    def write_json(p, d):
-        tmp = f"{p}.new"
-        with open(tmp, "w") as f:
-            json.dump(d, f, indent=2)
-        os.replace(tmp, p)
-
     state = os.environ.get("DASHBOARD_STATE", "/config")
-    chat.configure(state=state, write_json=write_json)
-    users.configure(state=state, write_json=write_json)
+    chat.configure(state=state, write_json=_write_json)
+    users.configure(state=state, write_json=_write_json)
     who = next((n for n, u in users.load()["users"].items()
                 if u.get("uid") == session), session or "somebody")
     chat.post(project, session, f"{who} asked: {text}", kind="asked")

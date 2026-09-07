@@ -44,6 +44,13 @@ case "\${1:-}" in
              done
            fi ;;
   bug)     [ "\${2:-}" = --prompt ] && printf 'the bugs block\\n' ;;
+  # The gate bb-tty asks before starting a session: exit 0 means the
+  # environment block is stale and no session should start. Answered from an
+  # env var the cases below flip, the way the claude stub answers auth from a
+  # fixture — and answered HONESTLY by default, because a stub that exits 0
+  # for everything reads as "every project is stale" and would refuse every
+  # session in this file.
+  claude-md) [ "\${FAKE_MD_STALE:-0}" = 1 ] && exit 0; exit 1 ;;
 esac
 exit 0
 `);
@@ -61,14 +68,15 @@ chmodSync(join(bin, 'claude'), 0o755);
 // One connection, the way ttyd makes one. bb-tty ends by exec'ing `tmux
 // attach-session`, which fails without a terminal — by then the session either
 // exists or does not, which is the whole question.
-function connect(promptBytes){
+function connect(promptBytes, env){
   tmuxKill('claude-alpha');
   try {
     return execFileSync('bash', [BBTTY, `claude:alpha:b:${boot}`], {
       encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, PATH: `${bin}:${process.env.PATH}`,
              WORKSPACE: join(DIR, 'ws'), HOME: join(DIR, 'home'),
-             DASHBOARD_STATE: join(DIR, 'state'), FAKE_PROMPT: String(promptBytes) },
+             DASHBOARD_STATE: join(DIR, 'state'), FAKE_PROMPT: String(promptBytes),
+             ...(env || {}) },
     });
   } catch (e) { return `${e.stdout || ''}${e.stderr || ''}`; }
 }
@@ -155,9 +163,22 @@ ok(/locked/.test(out) && !alive('claude-alpha'),
 ok(/Projects card/.test(out),
    '...and says where to undo it, rather than only that it said no');
 
+// A CLAUDE.md whose environment block has fallen behind the image. The block
+// is what a session is briefed with, so starting one on a stale copy is
+// starting it on a wrong map — it reads that this container carries an
+// Android SDK, or that builds happen here, and acts on it. Refused HERE as
+// well as ghosted on the row, for the same reason the lock is: the ttyd URL
+// is reachable directly.
+rmSync(LOCKS, { force: true });
+out = connect(0, { FAKE_MD_STALE: '1' });
+await sleep(400);
+ok(/environment block is out of date/.test(out) && !alive('claude-alpha'),
+   'a stale CLAUDE.md environment block refuses a Claude session too');
+ok(/update/.test(out),
+   '...naming the one-press fix on the row rather than only saying no');
+
 // And unlocking really lets it back in: a gate that cannot be opened again is
 // a different bug, and one nobody notices until they need it.
-rmSync(LOCKS, { force: true });
 out = connect(0);
 await sleep(400);
 ok(alive('claude-alpha'), 'unlocking lets a session start there again');

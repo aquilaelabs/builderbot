@@ -63,6 +63,8 @@ bb — BuilderBot helper
   bb claude-md           is this project's CLAUDE.md environment block current?
   bb claude-md --update  refresh that block, leaving the project section alone
   bb claude-md --init    create a CLAUDE.md here from the shipped template
+  bb claude-md --is-stale  exit 0 when that block exists and has drifted — the
+                         gate the ghosted Claude button and bb-tty both ask
   bb ci-labels [--write] the runner labels the registry knows; --write regenerates
                          .github/actionlint.yaml from them
   bb lint [PATH]         lint the infrastructure files a repo carries: shell
@@ -1154,12 +1156,31 @@ cmd_claude_md() {
             --update) mode=update ;;
             --init)   mode=init ;;
             --check)  mode=check ;;
+            --is-stale) mode=is-stale ;;
             -*) die "unknown option: $1" ;;
             *)  target="$1" ;;
         esac
         shift
     done
     target="${target:-$PWD/CLAUDE.md}"
+
+    # `--is-stale` is the question a gate asks, and the only mode that answers
+    # with its exit code alone: 0 when this project's block EXISTS and differs
+    # from the image's, which is the one state `--update` can fix in a click —
+    # so it is the one state worth refusing a session over (bb-tty, and the
+    # ghosted button beside it). Everything else exits 1 and says nothing: no
+    # template to compare against, no CLAUDE.md at all (that is `--init`, and
+    # the operator's decision), and a file predating the markers (`--update`
+    # refuses that one, so blocking on it would strand somebody with no fix
+    # to press). Silent on purpose — a caller wanting the words runs the
+    # plain check, which prints them and a diff.
+    if [ "$mode" = is-stale ]; then
+        [ -f "$TEMPLATE_MD" ] && [ -f "$target" ] || return 1
+        grep -qF "$ENV_BEGIN" "$target" && grep -qF "$ENV_END" "$target" || return 1
+        ! cmp -s <(md_block "$TEMPLATE_MD") <(md_block "$target")
+        return
+    fi
+
     [ -f "$TEMPLATE_MD" ] || die "no template at ${TEMPLATE_MD} — is this an older image?"
 
     if [ ! -f "$target" ]; then

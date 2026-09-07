@@ -244,6 +244,14 @@ cat > "$S/bin/bb" <<'EOF'
 # directories instead of downloading gigabytes — enough for the Tools card to
 # watch a package appear and disappear.
 if [ "${1:-}" = doctor ]; then cat "${BB_DOCTOR_FIXTURE:?}"; fi
+# claude-md is the REAL one, not a stub. It only reads the shipped template
+# and rewrites a delimited block in the file it is handed — no network, no
+# /config, nothing this harness needs to keep away from — and the dashboard's
+# "environment block is out of date — update" link is only worth testing if
+# pressing it actually fixes the file. Stubbed, that link was tested to POST
+# and nothing more, and a session gate built on the same state had no way to
+# prove it clears.
+if [ "${1:-}" = claude-md ]; then exec bash "${BB_REAL:?}" "$@"; fi
 if [ "${1:-}" = sdk ]; then
     # Where this stub pretends a package lives. Shared by every verb, so
     # check and versions answer for what install and remove actually did —
@@ -666,7 +674,7 @@ fresh
 # started firing against this box's /workspace:/workspace.
 env WORKSPACE="$S/ws" DASHBOARD_PORT="$PORT" DASHBOARD_TTYD_PORT=7999 BUILDER_HOME="$S/home" \
     TEMPLATE_MD="$DASH/../../config/templates/project-CLAUDE.md" \
-    BB_BIN="$S/bin/bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
+    BB_BIN="$S/bin/bb" BB_REAL="$DASH/../bb" SDK_TEST_ROOT="$S/sdk" ANDROID_HOME="$S/androidsdk" \
     PKG_AUTOCHECK=0 \
     SSH_AUTH_SOCK="$S/ssh-agent.sock" \
     FINDINGS_DIR="$S/reports" DASHBOARD_STATE="$S/state" \

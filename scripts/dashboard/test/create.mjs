@@ -115,6 +115,39 @@ ok(marker > 0, 'its CLAUDE.md carries the environment block');
 ok(md.indexOf('A widget frobnicator') > marker,
    '...with the given notes below the end marker');
 
+// ---- a stale environment block ghosts the Claude button ------------------
+// The block is what a session is briefed with, and it goes stale every time
+// the image gains a feature: a session reading an old one goes looking for a
+// toolchain that has left the container, or believes it can build here. The
+// row already offers the one-press fix, so the button waits for that press
+// rather than starting a session on a wrong map.
+{
+  const mdPath = `${DIR}/ws/zeta/CLAUDE.md`;
+  const current = readFileSync(mdPath, 'utf8');
+  writeFileSync(mdPath, current.replace('BUILDERBOT:ENV:BEGIN -->',
+    'BUILDERBOT:ENV:BEGIN -->\nA line the image never wrote.'));
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => (state.projects || []).find(p => p.name === 'zeta')
+    ?.issues.some(i => i.action === 'claude-md-update'), { timeout: 20000 });
+  const btn = '#projects .row[data-row="zeta"] [data-c="zeta"]';
+  await page.waitForSelector(btn, { timeout: 10000 });
+  // dataset.tip, not title: tipify() moves every title onto data-tip so the
+  // page draws its own tooltip rather than waiting on the browser's.
+  const ghosted = await page.$eval(btn, b => ({ off: b.disabled, why: b.dataset.tip || b.title }));
+  // The title as well as the attribute: the button ghosts for half a dozen
+  // reasons, and only the title says this is the one being tested.
+  ok(ghosted.off && /environment block is out of date/.test(ghosted.why),
+     `a stale CLAUDE.md environment block ghosts the Claude button, saying so (${ghosted.why.slice(0, 60)})`);
+  // ...and the fix the row offers is what brings it back.
+  await page.click('#projects .row[data-row="zeta"] [data-fix="claude-md-update"]');
+  await page.waitForFunction(() => !((state.projects || []).find(p => p.name === 'zeta')
+    ?.issues || []).some(i => i.action === 'claude-md-update'), { timeout: 20000 });
+  ok(await page.$eval(btn, b => !b.disabled),
+     '...and the update link on the row lets a session start again');
+  ok(readFileSync(mdPath, 'utf8').includes('A widget frobnicator'),
+     '...with the project\'s own notes below the marker untouched');
+}
+
 // A project made after anything has been pinned is pinned itself. Without
 // that it lands on disk and never reaches the sidebar — created, and to the
 // operator indistinguishable from gone. Unpinning first is what brings the
@@ -461,24 +494,21 @@ await page.click('#pCreate');
 await page.waitForFunction(() => document.getElementById('pmodal').hidden,
                            { timeout: 20000 });
 ok(true, 'the dialog closes once the clone is accepted, rather than holding the request');
-// The row arrives with the poll that follows the accept, not with the close:
-// asserted after waiting for it, since a loaded box can put a frame between
-// the two — this read as a missing row on the first run that got here with
-// the earlier files no longer crashing out.
-await page.waitForSelector('#projects .row.job .name', { timeout: 20000 });
-ok(await page.$eval('#projects .row.job .name', el => el.textContent === 'kproj'),
-   'the Projects card shows the job where its result will appear');
-ok(await page.$eval('#projects .row.job .sub', el => /clon|start/.test(el.textContent))
-   && await page.$('#projects .row.job .dots') !== null,
-   '...saying what it is doing, with an ellipsis rather than a parsed percentage');
-ok(await page.$eval('#bNewProj', b => b.disabled),
-   '...and New project is dead while it runs — one job at a time');
-// The failure lands on the card, not in a toast that is gone in seven
-// seconds: the page may not have been open when it happened.
+// What a RUNNING row looks like is asserted further down, against the
+// harness's stalling git. Not here: this clone is a real one, and it fails
+// whenever ssh gives up on an alias no config has heard of — sometimes
+// before the page's next poll, which is a row that came and went between two
+// frames. Three full runs died on that. So what is checked here is the
+// outcome, which is the part this clone is for: the failure lands on the
+// card, not in a toast that is gone in seven seconds — the page may not even
+// have been open when it happened.
 await page.waitForFunction(() => {
   const s = document.querySelector('#projects .row .sub.bad');
   return s && s.textContent.length > 0;
 }, { timeout: 60000 });
+ok(await page.$eval('#projects .row .sub.bad',
+     s => s.closest('.row').querySelector('.name').textContent === 'kproj'),
+   'the failure is carried under the name the project would have had');
 ok(await page.$('#projects .row.job') === null
    && await page.$eval('#bNewProj', b => !b.disabled),
    'the job ends and the controls come back');
@@ -502,7 +532,9 @@ await page.click('#pCancel');
 
 // ---- a job outlives the page, and can be stopped ------------------------
 // The whole reason a clone stopped being an HTTP request. The harness's git
-// stalls on this URL, so there is something still running to look at.
+// stalls on this URL, so there is something still running to look at — which
+// is also why every assertion about a job while it runs belongs here rather
+// than against a real clone that may already have failed.
 await page.click('#bNewProj');
 await page.click('#pClone');
 await page.fill('#pUrl', 'https://github.com/owner/slowclone');
@@ -511,6 +543,12 @@ await page.waitForFunction(() => document.getElementById('pmodal').hidden,
                            { timeout: 20000 });
 await page.waitForFunction(() =>
   document.querySelector('#projects .row.job .name')?.textContent === 'slowclone');
+ok(true, 'the Projects card shows the job where its result will appear');
+ok(await page.$eval('#projects .row.job .sub', el => /clon|start/.test(el.textContent))
+   && await page.$('#projects .row.job .dots') !== null,
+   '...saying what it is doing, with an ellipsis rather than a parsed percentage');
+ok(await page.$eval('#bNewProj', b => b.disabled),
+   '...and New project is dead while it runs — one job at a time');
 ok(existsSync(`${DIR}/ws/slowclone`),
    'the directory is claimed up front, so a second request cannot take the name');
 ok(await page.$$eval('#projects .row .name',
