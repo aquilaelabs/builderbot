@@ -10559,8 +10559,21 @@ bb tests ingest /tmp/run.log</pre>
                                   && (!tstFlagged || t.suspect)
                                   && (!tstUndoc || !t.protects));
     // ---- the list ----------------------------------------------------------
+    // What a row's editor is built FROM, when it is opened. Not at draw:
+    // two textareas each is nothing until there are two thousand rows, and
+    // then it is 3900 of them and 28k nodes and half a second of a phone's
+    // time to open a tab whose first screen is twenty-five lines. Measured
+    // before and after — see the comment on fill() below.
+    const byKey = new Map(shown.map(t => [t.key, t]));
+    // Which rows were open before this draw. Saving a description redraws the
+    // list, and folding away the row somebody was just writing in is the
+    // wrong answer to "did that work?" — the same rule the memory book keeps
+    // its folds by.
+    const openRows = new Set([...$("tstList").querySelectorAll(".tst[open]")]
+                             .map(e => e.dataset.key));
     $("tstList").innerHTML = shown.length ? shown.map(t => `
-      <details class="tst${t.suspect ? " flagged" : ""}" data-key="${esc(t.key)}">
+      <details class="tst${t.suspect ? " flagged" : ""}" data-key="${esc(t.key)}"${
+        openRows.has(t.key) ? " open" : ""}>
         <summary>
           <span class="tstms${t.suspect ? " bad" : ""}">${esc(dur(t.ms))}</span>
           <span class="tstname">${esc(t.name)}</span>
@@ -10573,36 +10586,49 @@ bb tests ingest /tmp/run.log</pre>
           ${t.after ? `<span class="tstafter">follows: ${esc(
              t.after.length > 120 ? t.after.slice(0, 118) + "…" : t.after)}</span>` : ""}
         </summary>
-        <div class="body">
-          <div class="sub">${esc(t.key)}${
-            t.was ? ` · was ${esc(dur(t.was))}` : ""}${
-            (t.history || []).length > 1
-              ? ` · ${t.history.map(h => (h / 1000).toFixed(1)).join(", ")}s` : ""}</div>
-          <label>What it protects</label>
-          <textarea class="tstP" spellcheck="false"
-            placeholder="the behaviour that breaks if this goes red">${esc(t.protects)}</textarea>
-          <label>What it exercises — fixtures, stubs, what is real and what is faked</label>
-          <textarea class="tstN" spellcheck="false"
-            placeholder="e.g. drives the real server; the agent is agent-stub.py; docker is the PATH stub">${esc(t.notes)}</textarea>
-          <div class="actbar"><span class="sp"></span>
-            <button type="button" class="primary tstSave">Save</button></div>
-        </div>
+        <div class="body"></div>
       </details>`).join("")
       : `<div class="empty">nothing matches the filters</div>`;
     paginate($("tstList"), ":scope > .tst", {key: "tstList", noun: "tests"});
-    $("tstList").querySelectorAll(".tst > summary").forEach(sum => {
-      sum.onclick = e => { e.preventDefault();
-        slideDetails(sum.parentElement, !sum.parentElement.open); };
-    });
-    $("tstList").querySelectorAll(".tst").forEach(box => {
-      const key = box.dataset.key;
-      box.querySelector(".tstSave").onclick = e => pressing(e.target, async () => {
+    // The editor, built on the way open. Every row has one — there is a place
+    // to describe every test in the project — but a row nobody has opened is
+    // a summary line and an empty div until they do.
+    const fill = box => {
+      const t = byKey.get(box.dataset.key), body = box.querySelector(".body");
+      if (!t || !body || body.dataset.done) return;
+      body.dataset.done = "1";
+      body.innerHTML = `
+        <div class="sub">${esc(t.key)}${
+          t.was ? ` · was ${esc(dur(t.was))}` : ""}${
+          (t.history || []).length > 1
+            ? ` · ${t.history.map(h => (h / 1000).toFixed(1)).join(", ")}s` : ""}</div>
+        <label>What it protects</label>
+        <textarea class="tstP" spellcheck="false"
+          placeholder="the behaviour that breaks if this goes red">${esc(t.protects)}</textarea>
+        <label>What it exercises — fixtures, stubs, what is real and what is faked</label>
+        <textarea class="tstN" spellcheck="false"
+          placeholder="e.g. drives the real server; the agent is agent-stub.py; docker is the PATH stub">${esc(t.notes)}</textarea>
+        <div class="actbar"><span class="sp"></span>
+          <button type="button" class="primary tstSave">Save</button></div>`;
+      body.querySelector(".tstSave").onclick = e => pressing(e.target, async () => {
         busy(e.target, "Saving");
-        await postTests({action: "describe", key,
-                         protects: box.querySelector(".tstP").value,
-                         notes: box.querySelector(".tstN").value});
+        await postTests({action: "describe", key: t.key,
+                         protects: body.querySelector(".tstP").value,
+                         notes: body.querySelector(".tstN").value});
       });
+    };
+    $("tstList").querySelectorAll(".tst > summary").forEach(sum => {
+      sum.onclick = e => {
+        e.preventDefault();
+        const box = sum.parentElement;
+        // Filled BEFORE the tween, which measures the height it is animating
+        // to — an empty body would animate to nothing and then jump.
+        if (!box.open) fill(box);
+        slideDetails(box, !box.open);
+      };
     });
+    // ...and the ones that came back open need their editor back with them.
+    $("tstList").querySelectorAll(".tst[open]").forEach(fill);
     tipify($("tstList"));
   }
 

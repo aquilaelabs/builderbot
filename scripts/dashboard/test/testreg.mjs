@@ -183,6 +183,17 @@ await page.waitForFunction(s => {
 }, box, { timeout: 15000 });
 ok(read().tests['slow.mjs#2'].protects === 'the daemon address is parsed, not guessed',
    'the tab writes a description through, with no Save for the panel to hold');
+// The editor is built when a row opens rather than when the list draws —
+// 1950 rows would otherwise be 3900 textareas and 28k nodes for a first
+// screen of 25. Which means a redraw has to put back both the fold AND what
+// was inside it, or saving a description folds away the row you were in.
+ok(await page.$eval(box, e => e.open && !!e.querySelector('.tstP')),
+   '...and the row it was written in stays open, with its editor still there');
+ok(await page.evaluate(() => ({
+     rows: document.querySelectorAll('#tstList .tst').length,
+     areas: document.querySelectorAll('#tstList textarea').length })
+   ).then(d => d.rows > 1 && d.areas <= 2),
+   '...while the rows nobody opened carry no editor at all');
 
 // Ingesting is the CLI's and deliberately not an endpoint. It WAS one, and
 // it could never have worked: every body this server takes is capped at 64kB
