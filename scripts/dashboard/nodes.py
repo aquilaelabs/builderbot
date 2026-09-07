@@ -800,7 +800,26 @@ def enroll(auth, census, addr, version="", digest="", user=""):
 # poll as a GET; a heartbeat is a body, and a GET with a body is not a thing,
 # so the verb is POST and the doc was corrected to say so.
 
+# Superseded by the agent's version window (its WINDOW.BUILD constant, and
+# agent_window() below): this number was declared 1 on both sides and never
+# compared by either, which is why compatibility now rides on a number that
+# means something. Still sent, because removing a field the other side may
+# read is itself the kind of break the window exists to schedule — it goes at
+# 0.5.0.
 PROTOCOL = 1
+
+
+def agent_window(version):
+    """The compatibility window a version string promises — "0.4" of "0.4.27".
+
+    Empty for anything that is not WINDOW.BUILD, which includes every agent
+    built before the window existed. Empty means "cannot say", and every
+    caller reads it that way rather than guessing: an old agent is stale for
+    the ordinary reason (a different digest) and does not need a second,
+    louder claim made up about it.
+    """
+    m = re.match(r"^(\d+\.\d+)\.", str(version or ""))
+    return m.group(1) if m else ""
 # Held below the 30s most proxies allow. Settable only so the suite can stop
 # waiting on it: an agent does its housekeeping — restarting a ttyd that died,
 # reporting a session that appeared — once per turn of this loop, so a test
