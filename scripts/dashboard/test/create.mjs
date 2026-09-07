@@ -115,6 +115,39 @@ ok(marker > 0, 'its CLAUDE.md carries the environment block');
 ok(md.indexOf('A widget frobnicator') > marker,
    '...with the given notes below the end marker');
 
+// ---- a stale environment block ghosts the Claude button ------------------
+// The block is what a session is briefed with, and it goes stale every time
+// the image gains a feature: a session reading an old one goes looking for a
+// toolchain that has left the container, or believes it can build here. The
+// row already offers the one-press fix, so the button waits for that press
+// rather than starting a session on a wrong map.
+{
+  const mdPath = `${DIR}/ws/zeta/CLAUDE.md`;
+  const current = readFileSync(mdPath, 'utf8');
+  writeFileSync(mdPath, current.replace('BUILDERBOT:ENV:BEGIN -->',
+    'BUILDERBOT:ENV:BEGIN -->\nA line the image never wrote.'));
+  await page.evaluate(() => refresh());
+  await page.waitForFunction(() => (state.projects || []).find(p => p.name === 'zeta')
+    ?.issues.some(i => i.action === 'claude-md-update'), { timeout: 20000 });
+  const btn = '#projects .row[data-row="zeta"] [data-c="zeta"]';
+  await page.waitForSelector(btn, { timeout: 10000 });
+  // dataset.tip, not title: tipify() moves every title onto data-tip so the
+  // page draws its own tooltip rather than waiting on the browser's.
+  const ghosted = await page.$eval(btn, b => ({ off: b.disabled, why: b.dataset.tip || b.title }));
+  // The title as well as the attribute: the button ghosts for half a dozen
+  // reasons, and only the title says this is the one being tested.
+  ok(ghosted.off && /environment block is out of date/.test(ghosted.why),
+     `a stale CLAUDE.md environment block ghosts the Claude button, saying so (${ghosted.why.slice(0, 60)})`);
+  // ...and the fix the row offers is what brings it back.
+  await page.click('#projects .row[data-row="zeta"] [data-fix="claude-md-update"]');
+  await page.waitForFunction(() => !((state.projects || []).find(p => p.name === 'zeta')
+    ?.issues || []).some(i => i.action === 'claude-md-update'), { timeout: 20000 });
+  ok(await page.$eval(btn, b => !b.disabled),
+     '...and the update link on the row lets a session start again');
+  ok(readFileSync(mdPath, 'utf8').includes('A widget frobnicator'),
+     '...with the project\'s own notes below the marker untouched');
+}
+
 // A project made after anything has been pinned is pinned itself. Without
 // that it lands on disk and never reaches the sidebar — created, and to the
 // operator indistinguishable from gone. Unpinning first is what brings the

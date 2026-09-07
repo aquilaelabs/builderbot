@@ -5578,6 +5578,24 @@ function drawRunner(){
 // a problem to fix but a mount point waiting for content.
 const isBroken = p => p.issues.some(i => i.level === "error");
 
+// The environment block a session is briefed with has fallen behind the image.
+//
+// Not an error — the project is fine and everything else on the row works —
+// but it IS a reason not to start a session: the block tells a session what
+// this container carries, and acting on a stale one is how a session goes
+// looking for an SDK that left the image. It is a warning the row already
+// offers a one-press fix for, so the button waits for that press rather than
+// starting on a wrong map. Only this state: no CLAUDE.md at all is the
+// operator's decision (`--init`), and one predating the markers has no fix to
+// press, so neither of those stops anything. bb-tty refuses the same case, so
+// the URL is not a way around it.
+const mdStale = p => (p.issues || []).some(i => i.action === "claude-md-update");
+
+// ...and a session that is ALREADY RUNNING is reached, not started: the same
+// button goes to its tab, and stranding somebody from a live conversation
+// over a stale file would be a worse fault than the one this prevents.
+const mdBlocks = p => mdStale(p) && !liveSessions().has(myClaude(p.name));
+
 let showAllProjects = false;
 
 // What the fold-away button says. It used to have to split its count two
@@ -5663,11 +5681,16 @@ function projectRow(p, live, cls, inTab){
          (p.locked || notMine(p) || p.session_why
           // The sign-in that matters for a session on a NODE is the one in
           // that node's home, which this container cannot see (roadmap #24).
-          || (!p.session_at && !signedIn() && !live.has(myClaude(p.name))))
+          || (!p.session_at && !signedIn() && !live.has(myClaude(p.name)))
+          || mdBlocks(p))
            ? " disabled" : ""}
          title="${notMine(p) ? NOT_MINE_WHY
                  : p.locked
                    ? "locked — you run this one. The padlock lets Claude back in"
+                 : mdBlocks(p)
+                   ? "CLAUDE.md's environment block is out of date — a session started now "
+                     + "would be briefed on a container that has moved on. The update link "
+                     + "above fixes it in one press"
                  : p.session_why ? p.session_why
                  : othersOn(p.name).length
                    ? `${othersOn(p.name).join(", ")} also working here, in a checkout of their own — start yours`

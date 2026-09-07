@@ -372,6 +372,8 @@ bb git push|fetch|pull|ls-remote [ARGS]
 bb emu start [api] | stop | status | list | log [-p]
 bb claude-md       is this project's CLAUDE.md environment block current?
 bb claude-md --update   refresh that block only
+bb claude-md --is-stale exit 0 when the block exists and has drifted — the
+                        gate the ghosted Claude button and bb-tty both ask
 bb claude-md --init     create one here from the template
 bb lint [path]     lint a repo's infrastructure files: shell scripts,
                    Dockerfiles, workflows, compose files, XML
@@ -3106,6 +3108,19 @@ same comparison `bb claude-md` makes — the marked block against the image's
 template, and nothing below the end marker — done in-process rather than by
 shelling out once per project on every poll. A `CLAUDE.md` with no markers is
 named but *not* offered the link, because `--update` refuses that file too.
+
+**And it stops a session starting on a wrong map.** While a project's block is
+out of date its **Claude button is ghosted**, saying why, because the block is
+precisely what a session is briefed with: an old one tells it this container
+carries an Android SDK, or that builds happen here, and the session acts on
+it. Pressing the update link above the button clears both in one go. `bb-tty`
+refuses the same case, so the terminal URL is not a way around it — the same
+reasoning as the lock. Three states are *not* refused: a project with no
+`CLAUDE.md` (that is `--init`, and yours to decide), one predating the markers
+(no fix to press), and one whose session is already running, which the button
+reaches rather than starts — being cut off from a live conversation would be a
+worse fault than the one this prevents. `bb claude-md --is-stale` is the
+predicate, exit code only.
 
 ## Playwright, Android, publishing
 

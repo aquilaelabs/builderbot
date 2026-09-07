@@ -658,6 +658,28 @@ case "$target" in
                 "session starts here. Unlock it from the Projects card if that" \
                 "was not what you meant."
         fi
+        # A session whose CLAUDE.md environment block is out of date is a
+        # session being briefed on a container that no longer exists — it
+        # reads that the image carries an Android SDK, or that builds happen
+        # here, and acts on it. The block goes stale every time the image
+        # gains a feature and the fix is one click on the row above, so the
+        # session waits for that click rather than starting on a wrong map.
+        #
+        # Only when it is genuinely stale: a project with no CLAUDE.md, or
+        # one predating the markers, is not refused — `--is-stale` decides,
+        # and says why in its own comment. The PROJECT's copy, not the
+        # worktree's, because that is the file the row's link updates and the
+        # one the ghosted button is reasoning about. An absolute path under
+        # the share also survives the relay: a node sends the words to the
+        # controller, which mounts the same tree at the same path, so the
+        # answer is about this project either way. Never fatal on its own
+        # account — a check that cannot answer must not stop a session.
+        if bb claude-md --is-stale "$WORKSPACE/$proj/CLAUDE.md" 2>/dev/null; then
+            bad "'${proj}' has a CLAUDE.md whose environment block is out of date." \
+                "A session started now would be told about a container that has" \
+                "moved on. The Projects card's 'CLAUDE.md environment block is out" \
+                "of date — update' link fixes it in one press; then open this again."
+        fi
         git_identity "$proj"
         cmd=(claude --remote-control "$proj")
         if [ -n "$resume" ]; then
