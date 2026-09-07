@@ -245,3 +245,5 @@
 - The notebook has a Tests view: what each test protects, and where the suite's time actually goes (8f05d3d)
 - Pressing Claude on a project whose session has ended always shows the Resume chooser, instead of sometimes appearing to do nothing (db74c08)
 - The notebook has one Save button — a running session is told what changed on its own (3346e05)
+- A terminal on a node runs the bb it was last given, instead of the one it opened with — no restart needed (03d7d66)
+- The Tests tab keeps what you were typing when a run lands under it, and counts what changed rather than what fits in the list (03d7d66)
