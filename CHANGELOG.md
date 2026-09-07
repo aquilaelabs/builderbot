@@ -248,3 +248,4 @@
 - A terminal on a node runs the bb it was last given, instead of the one it opened with — no restart needed (03d7d66)
 - The Tests tab keeps what you were typing when a run lands under it, and counts what changed rather than what fits in the list (03d7d66)
 - Every tab now shows its buttons the same way — the destructive one last and red wherever it appears, and long pages behind headings you can open one at a time (d9d63c0)
+- The Memory tab is now the Briefing: your own house rules for a project sit above what Claude remembers, and a session can read them but not change them (e4a9a9a)
