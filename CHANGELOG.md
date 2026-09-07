@@ -243,3 +243,4 @@
 - The notebook says who else has it open, and when a session last read the roadmap (272a9d0)
 - A ghosted button's tooltip no longer comes out half-faded under the row below it (8c73950)
 - The notebook has a Tests view: what each test protects, and where the suite's time actually goes (8f05d3d)
+- Pressing Claude on a project whose session has ended always shows the Resume chooser, instead of sometimes appearing to do nothing (db74c08)
