@@ -240,3 +240,4 @@
 - A Claude session no longer holds your dashboard password — it gets a token scoped to the one project it is working on (6746d0f)
 - The notebook now tells a running session what changed on its own, instead of waiting for a button (133bda9)
 - The notebook refuses a change that would write over somebody else's, and shows both versions instead of losing one (7fb1947)
+- The notebook says who else has it open, and when a session last read the roadmap (272a9d0)
