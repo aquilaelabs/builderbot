@@ -423,6 +423,7 @@ bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
 bb tests           the test registry: where the suite's time goes, slowest first
 bb tests show KEY  one test — what it protects, what it exercises, its history
 bb tests note KEY "..." [--how "..."]   what it protects, and what it really runs
+bb tests describe --from FILE.json      fill many at once, in one write
 bb tests ingest [LOG]  record a run's real durations (BB_TEST_TIMING=1 output)
 bb tests drift     what the runner reported that this list does not, and back
 bb tests flagged   the ones sitting on a round timeout rather than working

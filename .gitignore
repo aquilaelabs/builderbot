@@ -3,5 +3,9 @@
 *.local
 .DS_Store
 _work/
+# A generated descriptions file for `bb tests describe --from` — derived from
+# the test files, applied to /config, and no more part of the repository than
+# a run log is.
+.bb-descriptions.json
 __pycache__/
 *.pyc
