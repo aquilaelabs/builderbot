@@ -296,3 +296,8 @@
 - A CLAUDE.md environment block that has only drifted no longer ghosts the project's Claude button; one from another compatibility window, or a node agent from one, stops that project's sessions until updated, with the update offered in the bell (34754d0)
 - A session can reword a changelog entry that is still unreleased instead of logging the same change twice (3b79e69)
 - A new local project can start from an archive you already have — zip or tar — unpacked into the new directory before it becomes a repository (3b79e69)
+- Every account has a Profile tab: its name and email, the name and email its commits carry, and a password change (9482be8)
+- Commit identity is per account rather than per project — two people on one project commit as two authors, in every session and shell they open (9482be8)
+- Controller settings and Users live on a new Administration card, shown only to administrators; the gear opens your Profile (9482be8)
+- Nothing on a tab takes effect until Save or Apply, the colour scheme aside; a role, a route or a Claude-access policy picked and not saved is not written (9482be8)
+- Controls and rows of controls no longer stretch across a tab or the sidebar, on a desktop or a phone (9482be8)
