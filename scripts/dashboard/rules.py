@@ -392,34 +392,40 @@ def block(project):
     # WHOSE each one is, marked, because a session's own note must not reach
     # the next session wearing the operator's authority. Same reason the
     # roadmap marks the items a session added.
-    out = ["House rules for this project. The ones marked [yours] are notes a"
-           " session left; you may change or drop those with `bb rules`. The"
-           " rest are the operator's — you can read them and cannot change"
-           " them, and if one seems wrong the move is to say so in your"
-           " reply.\n"]
+    # Short, because every session pays for it: the one thing it has to
+    # carry is whose each rule is.
+    out = ["House rules for this project. * marks a session's own note, which"
+           " you may change or drop with `bb rules`; the rest are the"
+           " operator's — you cannot change them, so say in your reply if one"
+           " seems wrong.\n"]
     # A rule with a framework behind it says where it is defined and how it
     # is checked, so the session reads the one and runs the other.
     def frame(r):
         bits = []
         if r.get("doc"):
-            bits.append(f"defined in full in {r['doc']} — read it before this work")
+            bits.append(f"defined in full in {r['doc']}, read first")
         if r.get("check"):
-            bits.append(f"checked by `bb rules check {r['name']}` — run it before calling the work done")
+            bits.append(f"checked by `bb rules check {r['name']}`, run before handing back")
         return (" (" + "; ".join(bits) + ")") if bits else ""
     for r in rs:
         if not conditional(r):
-            out.append((("[yours] " if r.get("by") == "claude" else "")
+            out.append((("* " if r.get("by") == "claude" else "")
                         + r["text"] + frame(r)) + "\n")
     named = [r for r in rs if conditional(r)]
     if named:
-        out.append("These apply to particular work rather than to everything, "
-                   "so they are named here and not quoted. Read one with "
-                   "`bb rules show <name>` when it is relevant — and you will "
-                   "also be told, on the turn it becomes relevant:")
+        # Name and triggers only, no excerpt: the triggers are what say when
+        # to read one, and the text arrives whole on the turn a trigger fires
+        # (bb-work-note on a covered file, bb-prompt-relay on a word). An
+        # excerpt here was ninety characters a session paid for on every
+        # conversation and read on none.
+        out.append("Named, not quoted: `bb rules show <name>` reads one, and "
+                   "its text arrives on the turn you edit a file or are asked "
+                   "about a word it names.")
         for r in named:
-            first = (r["text"].strip().splitlines() or [""])[0]
-            mine = "[yours] " if r.get("by") == "claude" else ""
-            out.append(f"  {r['name']} — {mine}{first[:90]}{frame(r)}")
+            on = "; ".join(x for x in [", ".join(r.get("paths") or []),
+                                       ", ".join(r.get("words") or [])] if x)
+            mine = "*" if r.get("by") == "claude" else ""
+            out.append(f"  {mine}{r['name']} — {on}{frame(r)}")
     return "\n".join(out).strip()
 
 

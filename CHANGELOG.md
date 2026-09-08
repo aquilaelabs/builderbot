@@ -273,3 +273,5 @@
 - A session cannot hand work back while a house rule's check fails on what it changed; BuilderBot's own design language is one document held by such a rule (99c957a)
 - The design language document is checked against the dashboard on every test run, so it cannot describe a framework that has changed (a88da97)
 - Six working conventions that lived in CLAUDE.md and a session's private memory are house rules on the Briefing tab now, where both of you can read and change them (5366f50)
+- Every row in the notebook opens to be read; Edit brings its fields, and Cancel puts them away without keeping what you typed (21eb482)
+- The house rules a session starts with name each conditional rule by its triggers alone, so the block costs half what it did (ebd67c7)
