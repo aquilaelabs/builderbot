@@ -871,6 +871,16 @@ just above a round boundary — 30.0s, 10.0s, 5.0s — is waiting rather than
 working: a fixed sleep, a polling interval, or a selector that matches nothing
 and times out. The work is already done; only the waiting has to go.
 
+**When you add a test, time it before you hand it back.** A test does not
+run alone — the runner runs a file, and the tests in it share one page and
+one server — so run the file it is in with timing on (`bb dashboard test
+FILE` in BuilderBot; the project's own runner pointed at the file
+elsewhere), `bb tests ingest` the output, and read `bb tests flagged`. Your
+new test on that list is waiting on a fixed sleep, a poll interval or a
+selector that never matches: take the wait out and run the file again. Leave
+it only when the time is the work — a real build, a real boot — and say so
+in its `bb tests note`, so the next reader does not chase it.
+
 ## Static analysis findings
 
 If `/reports` exists, a scanner runs on the host and drops SARIF there.
