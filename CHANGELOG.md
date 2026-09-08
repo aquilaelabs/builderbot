@@ -254,3 +254,6 @@
 - Roadmap items and bugs now carry a letter, R12 and B62, so a number in a reply or a log says which list it is from; the bare number still works (4b39de8)
 - A project's settings now say whether what a session adds to the roadmap, bugs and rules lands at once, waits for your approval on the notebook, or is refused; the bell and a band on the notebook show what is waiting, and Review approves or denies it (fd70814)
 - The Briefing tab's History button sits at the same height as on the other notebook tabs (faaa125)
+- A bug report now shows the version it was first seen in and the version it was closed in (c4c778a)
+- Closing a bug that is already closed is refused instead of overwriting its note; reopen it first (c4c778a)
+- An account can no longer read another project's memories through the notebook's memory endpoint (c4c778a)

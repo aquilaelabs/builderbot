@@ -156,6 +156,10 @@ def memory_dir(project):
 
 FIELD_RE = re.compile(r"^\s*(\w+):\s*(.*?)\s*$")
 LINK_RE = re.compile(r"\]\(([^)\s]+)")
+# A [[name]] in a memory's body: a link to another memory by its `name:` slug
+# (the instructions Claude writes them under say so). Unlike the index line
+# it is checked only against the memories that exist here (roadmap #4).
+WIKI_RE = re.compile(r"\[\[([^\]\n]+)\]\]")
 # One index line: `- [Title](file.md) — hook`. The separator is written as an
 # em dash but arrives as whatever the keyboard produced, so any of the dashes
 # is accepted and only the em dash is written back.
@@ -359,6 +363,20 @@ def payload(project, live=()):
                 "text": f"{f} is not in the index — Claude sees it only when "
                         "recall surfaces it, not at the start of every session"}
                for f in sorted(present - listed)]
+    # The third kind (roadmap #4): a [[name]] inside a memory naming no
+    # memory here. The instructions allow one that is not written yet — it
+    # marks something worth writing — but the same shape is what a rename
+    # leaves behind, and it has bitten once: sole-operator.md pointed at a
+    # memory that had been renamed under it, and nothing said so. Named by
+    # file and by link, so the fix is one edit rather than a search.
+    names = {m["name"] for m in memories} | {Path(m["file"]).stem for m in memories}
+    for m in memories:
+        for slug in sorted({x.strip() for x in WIKI_RE.findall(m.get("text") or "")}):
+            if slug and slug not in names:
+                issues.append({"level": "warning",
+                               "text": f"{m['file']} links to [[{slug}]], which names "
+                                       "no memory here — one still to write, or one "
+                                       "that was renamed"})
     if len(found) > MAX_FILES:
         issues.append({"level": "warning",
                        "text": f"{len(found) - MAX_FILES} more files here are not shown"})
