@@ -440,6 +440,12 @@ html.theming,html.theming *,html.theming *::before,html.theming *::after{
 /* Pushed to the end of the row so it reads as acting on the field beside it,
    and never shrunk below a tap target. */
 .logdays button{margin-left:auto;flex:0 0 auto;min-height:var(--tap)}
+/* A Settings-tab field row (R29): the label first, the control taking the
+   room, the source pill after it — and a text field that is not five
+   characters wide, which is the number field's width above. */
+.setrow label{flex:0 0 auto}
+.setrow input[type=text]{flex:1 1 12em;min-width:0}
+.setrow .pill{flex:0 0 auto}
 .logacts{display:flex;flex-wrap:wrap;gap:6px}
 /* An anchor, because a download is a link and a link is what a browser knows
    how to save. Dressed as a button so the row reads as three controls. */
@@ -3661,7 +3667,7 @@ const TABKINDS = {
               render: (i) => renderJobsInto(i), live: () => jobsRev,
               open: () => loadJobs() },
   settings: { multi: false, label: () => "Settings",
-              render: (i) => renderSettingsInto(i), live: () => settingsRev },
+              render: (i) => renderSettingsInto(i), live: settingsLive },
   users:    { multi: false, label: () => "Users",
               render: (i) => renderUsersInto(i), live: () => usersRev,
               open: () => loadUsers() },
@@ -3820,7 +3826,7 @@ function roomForTab(){
   const cap = state?.max_tabs || 12;
   if (tabs.length < cap) return true;
   notify(`Tab limit reached (${cap}). Minimize one first — it keeps running. `
-       + `DASHBOARD_MAX_TABS raises the limit if this box can take more.`, true);
+       + `The Settings tab raises the limit if this box can take more.`, true);
   return false;
 }
 
@@ -10356,7 +10362,7 @@ project can have several"
             ${a.kind === "xpi" ? `<button type="button" data-artpush="${i}"${
                 job.running || !art.webext || !dev ? " disabled" : ""} title="${
                 !dev ? "no phone is connected — pair one on the Phone card"
-                : !art.webext ? "web-ext is not installed — add it to EXTRA_NPM_PACKAGES"
+                : !art.webext ? "web-ext is not installed — add it to the npm packages installed at boot, on the Settings tab"
                 : job.running ? "one push at a time"
                 : "install it on the phone, temporarily"}">Push</button>` : ""}
             <a class="btn" href="/api/artifact?project=${encodeURIComponent(project)

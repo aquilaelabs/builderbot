@@ -332,9 +332,9 @@ def push_dir(d, serial, apk, label=""):
     """
     import shutil
     if shutil.which(WEBEXT_BIN) is None:
-        return {"error": "web-ext is not installed. Add it to EXTRA_NPM_PACKAGES "
-                         "on the container and restart — installing it by hand "
-                         "here would not survive an image update."}
+        return {"error": "web-ext is not installed. Add it to the npm packages "
+                         "installed at boot, on the Settings tab, and restart — "
+                         "installing it by hand here would not survive an image update."}
     with _lock:
         if _job["running"]:
             return {"error": f"already pushing {_job['what']} — stop it first"}

@@ -211,7 +211,7 @@ cmd_projects() {
 
 cmd_update() {
     log "updating Claude Code"
-    install_claude_code "${CLAUDE_CODE_VERSION:-latest}" \
+    install_claude_code "$(bb_setting claude_version CLAUDE_CODE_VERSION latest)" \
         || die "update failed — the image's baked-in version is still on PATH"
     claude --version
 }

@@ -68,7 +68,7 @@ const SURFACE = [
   // is not a window property, so usersList and friends are not listed here.
   'openUsersTab', 'loadUsers', 'usersAct', 'userRow', 'usersProjectPicker',
   'renderUsersInto', 'wireUsers', 'renderFindingsInto', 'fxRows', 'fxFilter', 'fxBarHtml', 'fxBarBand', 'fxWireBar', 'reportAges', 'refresh', 'refreshSoon', 'renameProject', 'render',
-  'idleSection', 'wireIdleSection', 'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
+  'idleSection', 'wireIdleSection', 'settingsSections', 'wireSettingsSections', 'settingsLive', 'renderDoc', 'renderDockerInto', 'renderGuarded', 'renderJobsInto', 'renderNodesInto', 'renderNotebookInto', 'renderSettingsInto',
   'renderPackagesInto', 'renderProjectsInto', 'reorderTabEls', 'repoOfUrl',
   'reschedRevs', 'resetCards', 'revealActiveTab', 'rnDrawAuth',
   'rnDrawPrefs', 'rnFillNode', 'rnFillPrefs', 'rnFillPrefsRest', 'rnLoadAuth', 'rnShow', 'rnSubmit',

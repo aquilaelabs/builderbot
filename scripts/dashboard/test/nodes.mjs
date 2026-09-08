@@ -296,8 +296,9 @@ ok(list[0].id === 'local',
   await page.click('#uiSettings');
   await page.waitForSelector('.settingstab .logdays #logDays', { timeout: 15000 });
   ok(true, 'All settings… opens the Settings tab, with the log policy on it');
-  ok(await page.$eval('.settingstab', e => /unhardwiring|DOCKER_HOST/.test(e.textContent)),
-     '...which says what still lives in the environment, and why');
+  ok(await page.$eval('.settingstab', e => /Still in the template/.test(e.textContent)
+                                          && /Paths, ports, ids and credentials/.test(e.textContent)),
+     '...which says, in a line, what stays in the template and why');
   // The idle rule for Claude sessions (idle.py): a controller setting the
   // page applies, and this container enforces on its own tmux. The suite's
   // server counts a "minute" as a second (BUILDERBOT_IDLE_UNIT), so a rule

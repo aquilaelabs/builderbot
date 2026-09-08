@@ -29,7 +29,8 @@ for dir in "$WORKSPACE"/*/; do
         log "project: ${name}"
     fi
 
-    if is_true "${PROJECT_BOOTSTRAP:-false}" && [ -x "$dir/.builderbot/setup.sh" ]; then
+    if is_true "$(bb_setting project_bootstrap PROJECT_BOOTSTRAP false)" \
+            && [ -x "$dir/.builderbot/setup.sh" ]; then
         log "running ${name}/.builderbot/setup.sh"
         (cd "$dir" && ./.builderbot/setup.sh) || warn "${name} bootstrap exited $?"
     fi

@@ -66,10 +66,10 @@ recreated on every image update.
 - Running processes, including the emulator and any dev server
 
 So: **never `apt-get install` something and consider the problem solved.** It
-will be gone after the next update. Durable extras belong in the container's
-`EXTRA_APT_PACKAGES` / `EXTRA_NPM_PACKAGES` / `EXTRA_PIPX_PACKAGES` variables,
-or in a startup hook in `/config/startup.d/`. Mention it to the user rather
-than trying to edit those yourself — they live in the Unraid template.
+will be gone after the next update. Durable extras belong in the dashboard's
+Settings tab, under packages installed at boot, or in a startup hook in
+`/config/startup.d/`. Mention it to the user rather than trying to set those
+yourself — the tab is theirs.
 
 Uncommitted work in this project is **not** at risk from a container restart.
 It is still worth committing, but do not panic-commit on the theory that the

@@ -38,7 +38,7 @@ set -euo pipefail
 
 CACHE="${UNRAID_ICON_DIR:-/unraid-icons}"
 SRC="${UNRAID_ICON_SRC:-/opt/builderbot/icon.png}"
-NAME="${UNRAID_ICON_NAME:-BuilderBot}"
+NAME="$(bb_setting unraid_icon_name UNRAID_ICON_NAME BuilderBot)"   # the Settings tab's
 
 [ -d "$CACHE" ] || exit 0
 [ -f "$SRC" ]   || { warn "icon source $SRC is missing"; exit 0; }

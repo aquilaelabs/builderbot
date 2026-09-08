@@ -64,7 +64,9 @@ record_sessions() {
 # container; recreating its terminal would produce a new session wearing the old
 # one's name, which is exactly the confusion the tab pruning already avoids.
 SESSION_DIR="${DASHBOARD_STATE:-/config}/sessions"
-SESSION_LINES="${BB_SESSION_HISTORY:-2000}"
+# A constant, not a setting (roadmap R29): nobody had a reason to change it,
+# and a variable that nobody changes is five places to keep in step.
+SESSION_LINES=2000
 
 save_sessions() {
     local name dir first=1 out="$SESSION_DIR/index.json"
@@ -123,7 +125,9 @@ emulator_running() { pgrep -f 'qemu-system|/emulator/emulator|emulator64' >/dev/
 
 shutdown() {
     trap '' TERM INT                 # a second stop must not re-enter this
-    local t0 waited grace="${SHUTDOWN_GRACE:-90}"
+    # 90s, a constant (R29): Unraid's own stop timeout is the number that
+    # actually decides how long a stop gets, and that lives on the host.
+    local t0 waited grace=90
     t0=$(date +%s)
     log "shutdown: stopping cleanly (up to ${grace}s; Unraid's DOCKER_TIMEOUT may cut this short)"
 

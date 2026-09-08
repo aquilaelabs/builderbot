@@ -265,3 +265,4 @@
 - Rules on the Briefing tab read as text with an Edit button, instead of every rule opening as a form (8e7e703)
 - Rules and memories on the Briefing tab are line-divided folds like bug reports: the name on the line, the text behind a click (4b96eb5)
 - The Tests tab and a job's row no longer scroll sideways on a phone (2514f32)
+- A fresh install no longer asks for a runner work directory, and the template describes the container as the workstation and node controller it is (a320ce6)

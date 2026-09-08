@@ -151,7 +151,7 @@ dropdown pick **builderbot**. You get a form with everything already wired:
 * the appdata paths for home / config / work
 * fields for `GITHUB_PAT`, `ANTHROPIC_API_KEY` (masked), git identity, TZ
 
-Fill in `GITHUB_PAT` (and `GIT_USER_NAME`/`GIT_USER_EMAIL`), leave
+Fill in `GITHUB_PAT` (the commit identity is set on the dashboard's Settings tab), leave
 `ANTHROPIC_API_KEY` empty if you're using a Claude subscription, hit
 **Apply**. Unraid pulls the image and starts it.
 
@@ -183,7 +183,7 @@ What the extra seconds buy, in the order the container spends them:
 | Claude sessions | exit having closed the turn rather than being cut off mid-write |
 
 Recording which conversation was open costs milliseconds and happens first, so
-it survives even a ten-second stop. `SHUTDOWN_GRACE` (default 90) caps how long
+it survives even a ten-second stop. A stop tries for up to 90 seconds, which caps how long
 the container will wait in total, if you would rather it gave up sooner.
 
 ### Stopping cleanly before an update
@@ -254,7 +254,7 @@ Two things that will silently defeat it:
   not need to resolve.
 - **The filename comes from the container name**, and nothing inside a
   container can see its own container name. If you renamed this container from
-  `BuilderBot`, set `UNRAID_ICON_NAME` to match.
+  `BuilderBot`, set the container name on the dashboard's Settings tab to match.
 
 The one-time equivalent, if you would rather not add a mapping — just redo it
 if you ever recreate `docker.img`:
@@ -747,7 +747,7 @@ bb logs -p         # the previous boot
 bb logs -p 3       # three boots back
 ```
 
-Five generations are kept (`BB_LOG_KEEP`). A container stuck in a restart loop
+Sixty generations at most are kept. A container stuck in a restart loop
 burns through them quickly — if that happens, raise it or grab the files off
 the share before restarting again.
 
