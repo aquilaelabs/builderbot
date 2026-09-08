@@ -232,19 +232,23 @@ claude_scope() {
     # it denies a file that session was never going to touch and leaves its
     # own editable.
     here="${here:-$WORKSPACE/$proj}"
-    # Two hooks ride in the same file. bb-work-note records what this session
+    # Three hooks ride in the same file. bb-work-note records what this session
     # touches and says when another has the same file open — it does NOT
     # refuse, because each session is in a worktree of its own and two people
     # editing one function are making two commits, not corrupting one tree.
     # bb-prompt-relay puts what was asked into the project's chat feed, so the
     # others sharing it know what is being worked on before they start the
-    # same thing. Both swallow every failure: a note is never worth an edit
-    # and a chat line is never worth a turn. Their headers have the arguments.
+    # same thing. bb-check-relay runs, when the session is about to stop, the
+    # checks of the house rules whose files it changed, and refuses the stop
+    # while one fails (roadmap R31). All three swallow every failure of their
+    # own: a note is never worth an edit and a line is never worth a turn.
+    # Their headers have the arguments.
     if walls_around "$proj" "$here" | jq -R . \
          | jq -s --arg ws "$WORKSPACE" --arg here "$here" \
                --arg state "${DASHBOARD_STATE:-/config}" \
                --arg note "$(dirname "$(readlink -f "$0")")/bb-work-note" \
                --arg relay "$(dirname "$(readlink -f "$0")")/bb-prompt-relay" \
+               --arg check "$(dirname "$(readlink -f "$0")")/bb-check-relay" \
                --arg proj "$proj" --arg who "${account:-owner}" '
            {permissions: {
               additionalDirectories: [],
@@ -262,7 +266,10 @@ claude_scope() {
                         command: "\($note) \($proj) \($who)"}]}],
               UserPromptSubmit: [
               {hooks: [{type: "command",
-                        command: "\($relay) \($proj) \($who)"}]}]}}' > "$tmp" && [ -s "$tmp" ]; then
+                        command: "\($relay) \($proj) \($who)"}]}],
+              Stop: [
+              {hooks: [{type: "command",
+                        command: "\($check) \($proj) \($who)", timeout: 3600}]}]}}' > "$tmp" && [ -s "$tmp" ]; then
         mv -f "$tmp" "$out"
         printf '%s' "$out"
         return 0

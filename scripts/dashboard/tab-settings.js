@@ -36,22 +36,11 @@ function renderSettingsInto(i){
     <div class="row stack2">
       <div class="grow">
         <div class="name">Nodes</div>
-        <div class="sub">The machines work runs on — enrollment defaults and
-          per-node storage arrive with the agent (phase 3); until then the
-          registry itself is the setting.</div>
+        <div class="sub">The machines work runs on, each set up on its own row.</div>
         <div class="actbar"><button type="button" id="setNodes">Open the Nodes tab</button></div>
       </div>
-    </div>
-    <div class="row stack2">
-      <div class="grow">
-        <div class="name">Still in the template</div>
-        <div class="sub">Paths, ports, ids and credentials: what the container
-          needs before it starts stays in the Unraid template.</div>
-      </div>
     </div>`;
-  d.setFoot(`one scope per setting: who has to change it, and what restarts
-    for it to take, decide where it lives — the placement rule is
-    docs/nodes.md §13.`);
+  d.setFoot(`a change takes now, or at the next start — each section says which.`);
   wireLogSection(d.el);
   wireIdleSection(d.el);
   wireSettingsSections(d.el);

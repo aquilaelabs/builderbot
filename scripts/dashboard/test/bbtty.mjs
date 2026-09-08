@@ -355,6 +355,8 @@ tmuxKill('claude-alpha');
        '...and its own not denied, which a blanket rule on .worktrees would have done');
     // The scope file also carries the work hook, which is how the finer half
     // of `bb work` gets anything to report.
+    ok(JSON.stringify(scope.hooks?.Stop || {}).includes('bb-check-relay'),
+       'the settings file wires the Stop hook that runs a rule\'s check before the session hands back (R31)');
     ok(JSON.stringify(scope.hooks || {}).includes('bb-work-note'),
        '...and the settings carry the hook that records what the session touches');
     tmuxKill(`claude-${proj}`); tmuxKill(`${other}~claude-${proj}`);

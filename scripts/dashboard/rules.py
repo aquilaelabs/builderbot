@@ -91,10 +91,12 @@ def replay(project, verb, args):
     """A held rule, replayed on approval — or an edit that rode behind one."""
     if verb == "add":
         return add(project, args.get("name", ""), args.get("text", ""),
-                   paths=args.get("paths", ""), words=args.get("words", ""), by="claude")
+                   paths=args.get("paths", ""), words=args.get("words", ""), by="claude",
+                   doc=args.get("doc", ""), check=args.get("check", ""))
     if verb == "edit":
         return edit(project, args.get("name", ""), text=args.get("text"),
-                    paths=args.get("paths"), words=args.get("words"), by="claude")
+                    paths=args.get("paths"), words=args.get("words"), by="claude",
+                    doc=args.get("doc"), check=args.get("check"))
     return {"error": f"not a rules change that can be replayed: {verb}"}
 
 
@@ -164,10 +166,20 @@ def _clean(r, i):
     name = name.strip("-")[:40].strip("-")
     if not NAME_RE.match(name):
         name = f"rule-{i + 1}"
+    # A framework's two halves (roadmap R31): the document in the repo that
+    # defines it in full, and the command that verifies it. A path is kept
+    # repo-relative and cannot climb; a command is any line, run from the
+    # project root by whoever runs `bb rules check` — a session, on its own
+    # tree — so it is no more than the session could type.
+    doc = str(r.get("doc") or "").strip().replace("\\", "/").lstrip("/")[:200]
+    if ".." in doc.split("/"):
+        doc = ""
     return {"name": name,
             "text": str(r.get("text") or "").strip()[:MAX_TEXT],
             "paths": bits(r.get("paths")),
             "words": [w.lower() for w in bits(r.get("words"))],
+            "doc": doc,
+            "check": " ".join(str(r.get("check") or "").split())[:300],
             # Whose it is, and therefore who may change it later. Defaulting
             # to the operator is deliberate: this field arrived after rules
             # did, and a rule written before it existed was written on the
@@ -261,7 +273,7 @@ def history(project, limit=None, since=None, find=None):
     return rows[:limit] if limit else rows
 
 
-def add(project, name, text, paths="", words="", by="claude"):
+def add(project, name, text, paths="", words="", by="claude", doc="", check=""):
     """One rule, appended. The session's verb — the tab replaces the list.
 
     A session's rule is marked as its own, which is what lets it change one
@@ -278,10 +290,10 @@ def add(project, name, text, paths="", words="", by="claude"):
             return {"error": pending.refusal("rules")}
         if g == "ask":
             r = _clean({"name": name, "text": text, "paths": paths,
-                        "words": words, "by": by}, 0)
+                        "words": words, "by": by, "doc": doc, "check": check}, 0)
             return pending.hold(project, "rules", "add",
                                 {"name": r["name"], "text": text,
-                                 "paths": paths, "words": words},
+                                 "paths": paths, "words": words, "doc": doc, "check": check},
                                 summary=f"{r['name']} — {r['text']}", number=r["name"])
     with _lock:
         d = load()
@@ -290,7 +302,7 @@ def add(project, name, text, paths="", words="", by="claude"):
         if len(rs) >= MAX_RULES:
             return {"error": f"{MAX_RULES} rules is the limit here"}
         r = _clean({"name": name, "text": text, "paths": paths,
-                    "words": words, "by": by}, len(rs))
+                    "words": words, "by": by, "doc": doc, "check": check}, len(rs))
         taken = {x.get("name") for x in rs}
         base, n = r["name"], 2
         while r["name"] in taken:
@@ -320,7 +332,8 @@ def _mine(rs, name, by):
     return None, f"no rule called {name} here"
 
 
-def edit(project, name, *, text=None, paths=None, words=None, by="claude"):
+def edit(project, name, *, text=None, paths=None, words=None, by="claude",
+         doc=None, check=None):
     with _lock:
         d = load()
         p = _project(d, project)
@@ -330,7 +343,8 @@ def edit(project, name, *, text=None, paths=None, words=None, by="claude"):
             return {"error": why}
         was = dict(rs[i])
         merged = dict(was)
-        for k, v in (("text", text), ("paths", paths), ("words", words)):
+        for k, v in (("text", text), ("paths", paths), ("words", words),
+                     ("doc", doc), ("check", check)):
             if v is not None:
                 merged[k] = v
         rs[i] = _clean(merged, i)
@@ -383,10 +397,19 @@ def block(project):
            " rest are the operator's — you can read them and cannot change"
            " them, and if one seems wrong the move is to say so in your"
            " reply.\n"]
+    # A rule with a framework behind it says where it is defined and how it
+    # is checked, so the session reads the one and runs the other.
+    def frame(r):
+        bits = []
+        if r.get("doc"):
+            bits.append(f"defined in full in {r['doc']} — read it before this work")
+        if r.get("check"):
+            bits.append(f"checked by `bb rules check {r['name']}` — run it before calling the work done")
+        return (" (" + "; ".join(bits) + ")") if bits else ""
     for r in rs:
         if not conditional(r):
             out.append((("[yours] " if r.get("by") == "claude" else "")
-                        + r["text"]) + "\n")
+                        + r["text"] + frame(r)) + "\n")
     named = [r for r in rs if conditional(r)]
     if named:
         out.append("These apply to particular work rather than to everything, "
@@ -396,8 +419,21 @@ def block(project):
         for r in named:
             first = (r["text"].strip().splitlines() or [""])[0]
             mine = "[yours] " if r.get("by") == "claude" else ""
-            out.append(f"  {r['name']} — {mine}{first[:90]}")
+            out.append(f"  {r['name']} — {mine}{first[:90]}{frame(r)}")
     return "\n".join(out).strip()
+
+
+def covers(r, path):
+    """Whether a rule's files include this repo-relative path — the same
+    reading `matching` gives a file about to be edited: a glob, or a bare
+    directory meaning everything under it."""
+    for pat in r.get("paths") or []:
+        pat = pat.strip().rstrip("/")
+        if not pat:
+            continue
+        if fnmatch.fnmatch(path, pat) or path == pat or path.startswith(pat + "/"):
+            return True
+    return False
 
 
 def matching(project, *, prompt="", path=""):

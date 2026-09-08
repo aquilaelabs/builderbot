@@ -1951,9 +1951,72 @@ cmd_rules() {
         proj="$(project_here)" \
             || die "not inside a project under ${WORKSPACE} — cd into one first"
     fi
+    # `bb rules check` runs a rule's check command HERE, in this tree, on
+    # whichever machine the session is on (roadmap R31): the rules themselves
+    # come through `bb rules --json`, which is relayed on a node, so this
+    # needs neither /config nor rules.py — only git, the tree and the command.
+    if [ "${1:-}" = check ]; then
+        shift
+        local rules_json
+        rules_json="$(BB_PROJECT="$proj" bash "$0" rules --json)" || die "could not read the rules"
+        RULES_JSON="$rules_json" python3 - "$WORKSPACE/$proj" "$@" <<'CHECKPY'
+import fnmatch, json, os, subprocess, sys
+tree, argv = sys.argv[1], sys.argv[2:]
+rules = json.loads(os.environ.get("RULES_JSON") or "[]")
+want = argv[0] if argv and argv[0] != "--all" else None
+everything = "--all" in argv or want is not None
+
+
+def changed():
+    """What this tree has changed: the diff against HEAD plus untracked files."""
+    out = set()
+    for cmd in (["git", "diff", "--name-only", "HEAD"],
+                ["git", "ls-files", "--others", "--exclude-standard"]):
+        try:
+            r = subprocess.run(cmd, cwd=tree, capture_output=True, text=True, timeout=30)
+            out |= {ln.strip() for ln in r.stdout.splitlines() if ln.strip()}
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return sorted(out)
+
+
+def covers(r, path):
+    for pat in r.get("paths") or []:
+        pat = pat.strip().rstrip("/")
+        if pat and (fnmatch.fnmatch(path, pat) or path == pat or path.startswith(pat + "/")):
+            return True
+    return False
+
+
+todo = [r for r in rules if r.get("check") and (want is None or r.get("name") == want)]
+if want is not None and not todo:
+    sys.exit(f"[builderbot] ERROR: no rule called {want} carries a check")
+if not everything:
+    files = changed()
+    todo = [r for r in todo if not r.get("paths") or any(covers(r, f) for f in files)]
+    if not todo:
+        print("nothing changed here that a rule's check covers")
+        sys.exit(0)
+rc = 0
+for r in todo:
+    print(f"== {r['name']}: {r['check']}")
+    sys.stdout.flush()
+    try:
+        res = subprocess.run(r["check"], shell=True, cwd=tree, timeout=3600)
+        code = res.returncode
+    except subprocess.TimeoutExpired:
+        print("  timed out after an hour"); code = 124
+    except OSError as e:
+        print(f"  could not run: {e}"); code = 126
+    print(f"  {'PASS' if code == 0 else 'FAIL'}  {r['name']} (exit {code})")
+    rc = rc or code
+sys.exit(rc)
+CHECKPY
+        return $?
+    fi
     DASHBOARD_STATE="${DASHBOARD_STATE:-/config}" \
         python3 - "$py" "$proj" "$@" <<'RULESPY'
-import importlib.util, os, sys, time
+import importlib.util, json, os, sys, time
 
 spec = importlib.util.spec_from_file_location("rules", sys.argv[1])
 reg = importlib.util.module_from_spec(spec)
@@ -1978,6 +2041,8 @@ if op == "--prompt":
     b = reg.block(proj)
     if b:
         print(b)
+elif op == "--json":
+    print(json.dumps(reg.rules(proj)))
 elif op == "show":
     if not rest:
         sys.exit("usage: bb rules show <name>")
@@ -1985,6 +2050,10 @@ elif op == "show":
     for r in reg.rules(proj):
         if r["name"] == want:
             print(r["text"])
+            if r.get("doc"):
+                print(f"\ndefined in full in {r['doc']}")
+            if r.get("check"):
+                print(f"checked by: {r['check']}   (bb rules check {r['name']})")
             break
     else:
         names = ", ".join(r["name"] for r in reg.rules(proj)) or "none"
@@ -1992,15 +2061,20 @@ elif op == "show":
 elif op == "add":
     if len(rest) < 2:
         sys.exit('usage: bb rules add <name> "the rule" [--files GLOB,...] [--words W,...]')
-    name, said, paths_, wds_, i = rest[0], [], "", "", 1
+    name, said, paths_, wds_, doc_, chk_, i = rest[0], [], "", "", "", "", 1
     while i < len(rest):
         if rest[i] == "--files" and i + 1 < len(rest):
             paths_ = rest[i + 1]; i += 2
         elif rest[i] == "--words" and i + 1 < len(rest):
             wds_ = rest[i + 1]; i += 2
+        elif rest[i] == "--doc" and i + 1 < len(rest):
+            doc_ = rest[i + 1]; i += 2
+        elif rest[i] == "--check" and i + 1 < len(rest):
+            chk_ = rest[i + 1]; i += 2
         else:
             said.append(rest[i]); i += 1
-    r = reg.add(proj, name, " ".join(said), paths=paths_, words=wds_, by="claude")
+    r = reg.add(proj, name, " ".join(said), paths=paths_, words=wds_, by="claude",
+                doc=doc_, check=chk_)
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
     if r.get("held"):
@@ -2027,10 +2101,21 @@ elif op == "edit":
         print(f"held behind the rule {held['number']} — it lands with it when the "
               "operator approves it, and goes if they deny it")
         sys.exit(0)
-    r = reg.edit(proj, rest[0], text=" ".join(rest[1:]), by="claude")
+    # `edit NAME "text"`, or `edit NAME --doc PATH --check CMD --files ... --words ...`
+    # leaving the words alone; "" clears a flag.
+    said, flags, i = [], {}, 1
+    while i < len(rest):
+        if rest[i] in ("--doc", "--check", "--files", "--words") and i + 1 < len(rest):
+            flags[{"--files": "paths", "--words": "words"}.get(rest[i], rest[i][2:])] = rest[i + 1]
+            i += 2
+        else:
+            said.append(rest[i]); i += 1
+    if not said and not flags:
+        sys.exit('usage: bb rules edit <name> "what it should say now" [--doc PATH] [--check CMD]')
+    r = reg.edit(proj, rest[0], text=" ".join(said) if said else None, by="claude", **flags)
     if r.get("error"):
         sys.exit(f"[builderbot] ERROR: {r['error']}")
-    print(f"reworded {rest[0]}")
+    print(f"reworded {rest[0]}" if said else f"updated {rest[0]}: {', '.join(flags)}")
 elif op == "rm":
     if not rest:
         sys.exit('usage: bb rules rm <name> ["why it went"]')
@@ -2082,7 +2167,8 @@ elif op == "list":
             when = "  [" + ", ".join(bits[:4]) + ("…" if len(bits) > 4 else "") + "]"
         first = (r["text"].strip().splitlines() or [""])[0]
         mine = "*" if r.get("by") == "claude" else " "
-        print(f" {mine}{r['name']:<22}{first[:60]}{when}")
+        frame = (" [doc]" if r.get("doc") else "") + (" [check]" if r.get("check") else "")
+        print(f" {mine}{r['name']:<22}{first[:60]}{when}{frame}")
     print("\n`bb rules show <name>` for one in full. A * is one a session "
           "wrote: yours to `edit` or `rm`. The rest are the operator's — read "
           "them, and say in your reply if one looks wrong.")

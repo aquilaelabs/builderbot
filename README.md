@@ -413,8 +413,9 @@ bb bug add "..."   report one (--sev, --area, --repro, ...); `note N`, `fix N`,
 bb tests run       run the project's test command, time it, and record the run
 bb rules           the house rules for this project — the operator's and yours
 bb rules show NAME one of them in full — what a conditional rule says
-bb rules add NAME "..." [--files ...] [--words ...]   leave one of your own
+bb rules add NAME "..." [--files ...] [--words ...] [--doc PATH] [--check CMD]   leave one of your own
 bb rules edit NAME "..." | rm NAME ["why"]            change or drop yours
+bb rules check [NAME|--all]   run the checks of the rules whose files you changed
 bb rules history   what has changed them, by either of you
 bb rules pending   rules a session added that are waiting for your approval
 bb tests           the test registry: where the suite's time goes, slowest first

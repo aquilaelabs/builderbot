@@ -1,0 +1,114 @@
+#!/usr/bin/env python3
+"""Claude Code Stop hook: a rule's check has to pass before a session hands
+back (roadmap R31, step 2).
+
+    bb-check-relay PROJECT SESSION        # JSON on stdin, the way Claude Code calls a Stop hook
+
+A house rule can carry a check — the command that verifies the framework it
+names (rules.py, `bb rules check`). A session that read the rule may still
+forget to run it, and a rule nobody runs is prose. So when the session is
+about to stop, this runs the checks of the rules whose files the tree has
+changed, and if one fails the stop is refused with the failure, so the
+session fixes the work before it is handed back as done.
+
+Once per batch of edits, not once per turn: a suite can take minutes, and
+running it again on a tree that has not changed since it passed would be
+paying for the same answer. The set of changed files with their sizes and
+mtimes is hashed; a stamp beside the token file remembers the last hash
+that passed, and an unchanged tree is let go without a word.
+
+Never loops: Claude Code marks a stop that a hook already refused once
+(stop_hook_active), and that one is let through — a check that cannot be
+made to pass must not hold a session hostage. Silent on any failure of its
+own: a hook that cannot run is never worth a turn.
+"""
+import hashlib
+import json
+import os
+import subprocess
+import sys
+
+
+def tree():
+    return (os.environ.get("BB_TREE")
+            or os.path.join(os.environ.get("WORKSPACE", "/workspace"), sys.argv[1]))
+
+
+def changed(cwd):
+    out = set()
+    for cmd in (["git", "diff", "--name-only", "HEAD"],
+                ["git", "ls-files", "--others", "--exclude-standard"]):
+        try:
+            r = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=30)
+            out |= {ln.strip() for ln in r.stdout.splitlines() if ln.strip()}
+        except (OSError, subprocess.SubprocessError):
+            pass
+    return sorted(out)
+
+
+def stamp_of(cwd, files):
+    h = hashlib.sha256()
+    for f in files:
+        try:
+            st = os.stat(os.path.join(cwd, f))
+            h.update(f"{f}\0{st.st_size}\0{int(st.st_mtime)}\n".encode())
+        except OSError:
+            h.update(f"{f}\0gone\n".encode())
+    return h.hexdigest()
+
+
+def stamp_file(project):
+    d = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.environ.get("HOME", "/tmp"), ".cache")
+    return os.path.join(d, "builderbot", f"checked-{project}")
+
+
+def main():
+    project = (sys.argv[1:2] or [""])[0]
+    try:
+        req = json.load(sys.stdin)
+    except ValueError:
+        req = {}
+    if not project or req.get("stop_hook_active"):
+        return
+    cwd = tree()
+    if not os.path.isdir(cwd):
+        return
+    files = changed(cwd)
+    if not files:
+        return
+    stamp = stamp_of(cwd, files)
+    sf = stamp_file(project)
+    try:
+        with open(sf) as f:
+            if f.read().strip() == stamp:
+                return                       # this exact tree already passed
+    except OSError:
+        pass
+    bb = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "bb")
+    try:
+        r = subprocess.run(["bash", bb, "rules", "check"], cwd=cwd, capture_output=True,
+                           text=True, timeout=3600,
+                           env={**os.environ, "BB_PROJECT": project})
+    except (OSError, subprocess.SubprocessError):
+        return
+    out = (r.stdout or "") + (r.stderr or "")
+    if r.returncode == 0:
+        try:
+            os.makedirs(os.path.dirname(sf), exist_ok=True)
+            with open(sf, "w") as f:
+                f.write(stamp)
+        except OSError:
+            pass
+        return
+    tail = out.strip()[-1500:]
+    print(json.dumps({"decision": "block",
+                      "reason": ("A house rule's check failed on what you changed. Fix it, or "
+                                 "say plainly why it cannot pass, before handing this back:\n"
+                                 + tail)}))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception:  # noqa: BLE001 — a hook that cannot run is never worth a turn
+        pass

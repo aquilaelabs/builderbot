@@ -37,66 +37,8 @@
      404 this page would otherwise produce. -->
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231b2027'/%3E%3Cg fill='%233fb950'%3E%3Crect x='4' y='8.5' width='24' height='17' rx='5.5'/%3E%3Crect x='15' y='3.5' width='2' height='6' rx='1'/%3E%3Ccircle cx='16' cy='3' r='2.3'/%3E%3C/g%3E%3Cg fill='%231b2027'%3E%3Ccircle cx='11.4' cy='15.4' r='2.1'/%3E%3Ccircle cx='20.6' cy='15.4' r='2.1'/%3E%3Crect x='10.6' y='19.6' width='10.8' height='2.6' rx='1.3'/%3E%3C/g%3E%3C/svg%3E">
 <style>
-/* ---- the design language ------------------------------------------------
-   The page's visual rules, in one place, because they were only ever implied
-   by the sheet below and every new tab re-derived them wrong once. Read this
-   before adding or restyling ANY surface; extend the group selectors named
-   here rather than restyling locally.
-
-   COLOUR comes only from the tokens in :root below — surfaces --bg/--panel/
-   --sunk (page, raised box, set-into-the-panel), edge --line, text --ink and
-   --dim, status --accent/--warn/--bad/--note, buttons --btn/--btn-hi. Twelve
-   schemes repaint the page by swapping nine of them, so a hardcoded hex is a
-   spot the schemes cannot reach.
-
-   SHAPE: 8px radius for boxes (cards, panes, modals), 6px for controls
-   (buttons, fields), 4px for tags, 99px for pills, 50% for dots. Hairlines
-   are 1px solid var(--line).
-
-   TYPE: --mono for data — names, paths, versions, anything a terminal could
-   print; the three secondary voices are --f-note (quiet explainer, in
-   var(--dim)), --f-ui (secondary UI), --f-tag (pills and badges). Severity
-   and level colours agree everywhere: error/high red, warning/medium yellow,
-   note/low blue.
-
-   SPACE: a band of a document surface is inset var(--row-y) var(--row-x) —
-   11px 14px — and `.field` applies it, so a band is a `.field` rather than a
-   local padding. A field inside a field does NOT inset again. The sidebar is
-   denser on purpose (rows 7px 10px, quiet states 9px 11px); nothing else is.
-   Four different left edges in one tab is what retyped padding produces.
-
-   CONTROLS: the field skin (ground, edge, radius) is applied to the elements
-   globally — see "the field skin" rule — so a new surface's controls match by
-   existing. What a surface adds is sizing: full-width 13px mono controls mean
-   joining the `.modal input,...` sizing group, its 16px phone rule (iOS zooms
-   into anything smaller) and its :focus group. Tap targets are min-height
-   var(--tap). A row of filters is `<div class="field histbar">`.
-
-   DOCUMENT TABS: reading surfaces, not terminals. A new kind does NOT write
-   its own chrome — it calls docSurface(i, kind), which builds the standard
-   skeleton (a .doctab.<kind>tab box capped at var(--doc-w): a filter/actions
-   bar slot, the band list, a quiet .fnote footer) and returns the slots to
-   fill. States are .loading / .empty / .hint bad inside the list. The hard
-   rules — one content-x for every band, the field skin on every control, no
-   sideways scroll and 16px controls on a phone — are ENFORCED by
-   test/uniform.mjs against every kind TABKINDS registers: a new kind without
-   a conformance driver there fails the suite by name. That is deliberate;
-   the price of a new tab includes conforming, not just existing.
-
-   A long surface is SECTIONS — docSection(kind, id, title, status, body),
-   one fold per concern with its status on the heading, open on a desktop
-   and closed but the first on a phone — and every set of buttons is an
-   ACTION BAR (.actbar): the status on its own line, the buttons under it,
-   sharing the width on a phone. A button that started something wears
-   busy(btn, verb) until the repaint replaces it. See "sections and action
-   bars" below; the Nodes tab is the worked example.
-
-   A new tab lands as: its own classic script file beside this one, an entry
-   in TABKINDS here + TAB_KINDS in server.py, its top-level names in
-   test/surface.mjs, a driver in test/uniform.mjs, and a content test beside
-   its siblings. Renderers run inside renderGuarded, so a throwing renderer
-   is an error band in its own tab, never a dead dashboard.
-   ------------------------------------------------------------------------ */
+/* The design language is docs/design-language.md, held by the house rule
+   `design` and measured by test/uniform.mjs. */
 :root,.sw[data-theme="default"]{
   --bg:#1a1f26; --panel:#212730; --line:#4d5c6f; --ink:#e6edf3;
   --dim:#9fa9b4; --accent:#3fb950; --warn:#d29922; --bad:#f8524a;
@@ -10922,6 +10864,14 @@ become that version's section when it is created">Changelog${
                 placeholder="words that raise it — agent, protocol"
                 value="${esc((r.words || []).join(", "))}" aria-label="words">
             </div>
+            <div class="two">
+              <input class="rlDoc" autocomplete="off" spellcheck="false"
+                placeholder="the document that defines it — docs/design-language.md"
+                value="${esc(r.doc || "")}" aria-label="document">
+              <input class="rlCheck" autocomplete="off" spellcheck="false"
+                placeholder="the command that checks it — bash scripts/test.sh"
+                value="${esc(r.check || "")}" aria-label="check">
+            </div>
             <div class="actbar macts">
               <span class="state">${ruleWhen(r)} · Save at the foot writes it</span>
               <button type="button" class="rlDone" title="close the fields — what was typed stays staged for Save">Done</button>
@@ -10930,6 +10880,8 @@ become that version's section when it is created">Changelog${
             <div class="bfield"><label>rule</label><div class="bval rlBody">${esc(r.text || "")}</div></div>
             ${(r.paths || []).length ? `<div class="bfield rltrig"><label>files</label><div class="bval">${esc((r.paths || []).join(", "))}</div></div>` : ""}
             ${(r.words || []).length ? `<div class="bfield rltrig"><label>words</label><div class="bval">${esc((r.words || []).join(", "))}</div></div>` : ""}
+            ${r.doc ? `<div class="bfield rlframe"><label>defined in</label><div class="bval">${esc(r.doc)}</div></div>` : ""}
+            ${r.check ? `<div class="bfield rlframe"><label>checked by</label><div class="bval">${esc(r.check)} <span class="dim">· bb rules check ${esc(r.name || "")}</span></div></div>` : ""}
             <div class="actbar macts">
               <span class="state">${ruleWhen(r)}</span>
               <button type="button" class="rlEdit">Edit</button>
@@ -10966,6 +10918,7 @@ become that version's section when it is created">Changelog${
       };
       put("name", ".rlName"); put("text", ".rlText");
       put("paths", ".rlPaths"); put("words", ".rlWords");
+      put("doc", ".rlDoc"); put("check", ".rlCheck");
       // Removing a row shifts every index above it; the set is rebuilt from
       // the rows that stay so an open editor does not jump to its neighbour.
       row.querySelector(".rlRm").onclick = () => {

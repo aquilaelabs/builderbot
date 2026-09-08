@@ -134,6 +134,56 @@ ok(!/add, do not change/.test(
           { tool_name: 'Edit', tool_input: { file_path: `${DIR}/ws/alpha/README.md` } })),
    '...and a file it does not cover brings nothing');
 
+// ---- a rule that carries a framework (roadmap R31) --------------------------
+// The document that defines it and the command that checks it ride on the
+// rule; the block names both, and `bb rules check` runs the command in the
+// tree for the rules whose files changed.
+ok(/added design/.test(bb('add', 'design', 'New surface uses the framework.', '--files', 'src',
+                          '--doc', 'docs/design.md', '--check', 'test -d .git')),
+   'a rule takes a doc and a check');
+ok(read().find(r => r.name === 'design')?.doc === 'docs/design.md'
+   && read().find(r => r.name === 'design')?.check === 'test -d .git',
+   '...stored on it');
+ok(/defined in full in docs\/design\.md/.test(bb('--prompt'))
+   && /bb rules check design/.test(bb('--prompt')),
+   'the block a session is handed says where it is defined and how it is checked');
+ok(/PASS  design/.test(bb('check', 'design')),
+   'bb rules check NAME runs the check in the project tree and reports it');
+ok(/nothing changed here that a rule/.test(bb('check')),
+   '...and with nothing changed under a rule\'s files, bare check has nothing to run');
+{
+  const { writeFileSync: wf, mkdirSync: mk } = await import('node:fs');
+  mk(`${DIR}/ws/alpha/src`, { recursive: true });
+  wf(`${DIR}/ws/alpha/src/new.txt`, 'changed under the rule\n');
+  ok(/== design/.test(bb('check')), '...while a new file under its files makes bare check run it');
+  bb('edit', 'design', '--check', 'false');
+  let out = '';
+  try { bb('check', 'design'); } catch (e) { out = String(e.stdout || ''); }
+  ok(/FAIL  design/.test(out), 'a failing check fails by name, with a non-zero exit');
+  ok(/checked by: false/.test(bb('show', 'design')), 'bb rules show prints the doc and the check');
+
+  // ---- the Stop hook (R31, step 2): a failing check refuses the stop ------
+  // Run the way Claude Code runs it: JSON on stdin, JSON on stdout. The
+  // design rule's check is `false` and src/new.txt is a changed file under
+  // its files, so the stop is refused with the failure; a stop a hook already
+  // refused once is let through; a passing check writes a stamp, and the same
+  // tree is not checked twice.
+  const cache = `${DIR}/cache-check`;
+  const stop = body => execFileSync('python3', [join(HERE, '..', 'bb-check-relay'), 'alpha', 'u_test'],
+    { env: { ...ENV, BB_TREE: `${DIR}/ws/alpha`, XDG_CACHE_HOME: cache }, input: JSON.stringify(body) }).toString();
+  const refused = stop({ stop_hook_active: false });
+  ok(/"decision": "block"/.test(refused) && /FAIL  design/.test(refused),
+     'the Stop hook refuses the stop with the failing check named');
+  ok(stop({ stop_hook_active: true }) === '',
+     '...but lets a stop through that a hook already refused once, so it never loops');
+  bb('edit', 'design', '--check', 'test -d .git');
+  ok(stop({ stop_hook_active: false }) === '' && existsSync(`${cache}/builderbot/checked-alpha`),
+     'a passing check lets the stop go and stamps the tree');
+  bb('edit', 'design', '--check', 'false');
+  ok(stop({ stop_hook_active: false }) === '',
+     '...and the same tree is not checked again, even though the check would now fail');
+}
+
 // ---- reading them from a session -------------------------------------------
 ok(/No em dashes/.test(bb('list')) && /agent-compat/.test(bb('list')),
    'bb rules lists what is in effect');

@@ -95,8 +95,13 @@ def house_rules(project, rel):
         hit = rules.matching(project, path=rel)
     except Exception:                     # noqa: BLE001 — never take an edit with it
         return []
-    return [f"The operator's house rule [{r['name']}] covers this file. It is "
-            f"theirs, not yours:\n{r['text']}" for r in hit]
+    def line(r):
+        who = ("A note a session left, [yours] to change" if r.get("by") == "claude"
+               else "The operator's house rule, theirs and not yours")
+        doc = f"\nIt is defined in full in {r['doc']} — read that before editing." if r.get("doc") else ""
+        chk = f"\nRun `bb rules check {r['name']}` before calling this work done." if r.get("check") else ""
+        return f"{who}: [{r['name']}] covers this file.\n{r['text']}{doc}{chk}"
+    return [line(r) for r in hit]
 
 
 def main():

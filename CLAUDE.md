@@ -467,6 +467,12 @@ becomes relevant, either because you were asked about its subject or because
 you are about to edit a file it covers. `bb rules show NAME` is how you read
 one before either of those happens.
 
+**A rule can carry a whole framework.** `--doc PATH` names the document in
+the repo that defines it in full, and `--check CMD` the command that verifies
+it. Under a rule with a doc, read the doc before the work; under one with a
+check, run `bb rules check` before calling the work done — it runs the checks
+of the rules whose files you changed, and fails by name.
+
 **What belongs here rather than in a memory.** A memory is something you
 noticed; a rule is something that should hold for whoever works here next,
 including a person. "The suite takes ten minutes" is a memory. "Do not edit
@@ -1164,26 +1170,13 @@ by hand cost four commands and still could not see the failed builds.
     That density is the house style, not decoration; match it.
   - The dashboard is deliberately dependency-free: `server.py` is stdlib-only,
     `index.html` is one file of vanilla JS and CSS. No framework, no build step.
-  - **The dashboard's design language is written down once** — the
-    "design language" comment at the top of `index.html`'s stylesheet: tokens,
-    radii, type voices, the global field skin, the document-tab pattern. Read
-    it before adding or restyling any surface, and extend the group selectors
-    it names rather than restyling locally. A new tab shipping with
-    browser-default controls is the failure it exists to prevent.
-  - **A new tab kind is one entry in `TABKINDS`** (scripts/dashboard/index.html)
-    plus its name in `TAB_KINDS` (server.py), and a test compares the two. Its
-    chrome comes from `docSurface()` — never hand-written — and
-    `test/uniform.mjs` holds every kind to the shared hard rules (one band
-    inset, the field skin, phone rules) and fails by name on a kind with no
-    conformance driver. New kinds render inside `renderGuarded`, so a throwing
-    renderer is an error band in its tab, not a dead dashboard. It
-    used to be seven places, three of which failed silently — a kind missing
-    from the server's list vanished on the next reload, one missing from the
-    repaint hatch drew once and then held that drawing forever. Both shipped.
-    Declare `multi` (a notebook is per project; everything else is one window
-    onto one thing), `live` ("always" for a kind rendering from `state`, a
-    revision function for one whose data arrives on its own schedule), and
-    `open` for whatever its first draw has to fetch.
+  - **The dashboard's design language is `docs/design-language.md`**, held
+    by the house rule `design`, which names it and runs `test/uniform.mjs`
+    as its check. A new tab kind declares `multi` (a notebook is per
+    project; everything else is one window onto one thing), `live`
+    ("always" for a kind rendering from `state`, a revision function for one
+    whose data arrives on its own schedule), and `open` for whatever its
+    first draw has to fetch.
   - Anything the web UI can execute is a table lookup (`MACROS`, `TMUX_KEYS`,
     `TMUX_LITERALS`, `PACKAGES`) rather than a command string, and `bb-tty` validates its one
     URL argument against directories that actually exist. New surface keeps that
